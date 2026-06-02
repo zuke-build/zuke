@@ -1,0 +1,20 @@
+{
+  "name": "@zuke/core",
+  "version": "0.0.0",
+  "exports": {
+    ".": "./mod.ts",
+    "./shell": "./src/shell.ts"
+  },
+  "tasks": {
+    "test": "deno test -A",
+    "check": "deno check mod.ts src/*.ts",
+    "fmt": "deno fmt",
+    "lint": "deno lint"
+  },
+  "fmt": {
+    "include": ["mod.ts", "src/", "tests/"]
+  },
+  "lint": {
+    "include": ["mod.ts", "src/", "tests/"]
+  }
+}
