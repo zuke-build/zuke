@@ -66,9 +66,13 @@ Deno.test("$ .env() injects environment variables", async () => {
 
 Deno.test("$ .cwd() sets the working directory", async () => {
   const dir = await Deno.makeTempDir();
-  const out = await $`${DENO} eval ${"console.log(Deno.cwd())"}`.cwd(dir)
-    .text();
-  // realPath collapses any symlinks (e.g. /tmp → /private/tmp) for comparison.
+  // Canonicalise inside the child too: on Windows `Deno.cwd()` can report the
+  // 8.3 short form (RUNNER~1) while the parent's realPath returns the long form;
+  // realPath on both sides also collapses symlinks (e.g. /tmp → /private/tmp).
+  const out =
+    await $`${DENO} eval ${"console.log(Deno.realPathSync(Deno.cwd()))"}`
+      .cwd(dir)
+      .text();
   assertEquals(out, await Deno.realPath(dir));
 });
 
