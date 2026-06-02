@@ -145,7 +145,8 @@ export function plan(root: TargetBuilder): TargetBuilder[] {
   const edges = new Map<TargetBuilder, Set<TargetBuilder>>();
   for (const node of set) edges.set(node, new Set());
   const addEdge = (from: TargetBuilder, to: TargetBuilder) => {
-    if (set.has(from) && set.has(to)) edges.get(from)!.add(to);
+    const fromEdges = edges.get(from);
+    if (fromEdges && set.has(to)) fromEdges.add(to);
   };
 
   for (const node of set) {
@@ -164,7 +165,7 @@ export function plan(root: TargetBuilder): TargetBuilder[] {
   const visit = (node: TargetBuilder) => {
     color.set(node, GRAY);
     stack.push(node);
-    for (const next of edges.get(node)!) {
+    for (const next of edges.get(node) ?? []) {
       const c = color.get(next) ?? WHITE;
       if (c === GRAY) {
         const start = stack.indexOf(next);

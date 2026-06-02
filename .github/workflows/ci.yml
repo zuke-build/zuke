@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Format, lint, type-check & coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Check formatting
+        run: deno fmt --check
+
+      - name: Lint
+        run: deno lint
+
+      - name: Type-check
+        run: deno task check
+
+      - name: Test with coverage
+        run: deno test -A --coverage=cov_profile
+
+      - name: Enforce coverage threshold (95%)
+        run: |
+          deno coverage cov_profile --lcov --exclude='(tests|scripts)/' --output=cov.lcov
+          deno run --allow-read scripts/check-coverage.ts cov.lcov 95
+
+  test-os:
+    name: Tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Run tests
+        run: deno test -A

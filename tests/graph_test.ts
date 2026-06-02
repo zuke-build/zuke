@@ -77,9 +77,9 @@ Deno.test("findCycle reports the offending path", () => {
   discover(inst);
 
   const cycle = findCycle(discover(inst));
-  assertEquals(cycle !== null, true);
+  if (cycle === null) throw new Error("expected a cycle to be found");
   // The path starts and ends at the same node.
-  assertEquals(cycle![0], cycle![cycle!.length - 1]);
+  assertEquals(cycle[0], cycle[cycle.length - 1]);
 });
 
 Deno.test("validateGraph throws GraphError with the cycle path", () => {
@@ -107,6 +107,23 @@ Deno.test("validateReferences rejects a dependency on an undiscovered target", (
     () => validateReferences(discover(new B())),
     GraphError,
     "not discovered",
+  );
+});
+
+Deno.test("validateReferences rejects an undefined (forward-referenced) dep", () => {
+  class B extends Build {
+    // TypeScript catches this forward reference (TS2729); the suppression
+    // simulates a consumer that bypassed type-checking, exercising the runtime
+    // guard. Class fields initialise top-to-bottom, so `this.later` is undefined.
+    // @ts-expect-error -- deliberately forward-references a later field
+
+    early = target().dependsOn(this.later).executes(() => {});
+    later = target().executes(() => {});
+  }
+  assertThrows(
+    () => validateReferences(discover(new B())),
+    GraphError,
+    "undefined dependency",
   );
 });
 
