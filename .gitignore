@@ -1,0 +1,11 @@
+# Coverage artifacts
+/cov_profile/
+/cov.lcov
+/html_cov/
+
+# Build output (example builds produce this)
+/dist/
+
+# Editor / OS noise
+.DS_Store
+*.swp

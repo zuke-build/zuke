@@ -1,0 +1,40 @@
+/**
+ * Zuke — a code-first, strongly-typed build automation system for Deno.
+ *
+ * Public API. Define a build by extending {@link Build}, declare targets with
+ * the {@link target} fluent builder, and make the file runnable with
+ * {@link run}:
+ *
+ * ```ts
+ * import { Build, target, run } from "jsr:@zuke/core";
+ * import { $ } from "jsr:@zuke/core/shell";
+ *
+ * class MyBuild extends Build {
+ *   test = target()
+ *     .description("Run the test suite")
+ *     .executes(async () => { await $`deno test -A`; });
+ * }
+ *
+ * if (import.meta.main) { await run(MyBuild); }
+ * ```
+ *
+ * The shell helper `$` lives in the `./shell` submodule
+ * (`jsr:@zuke/core/shell`).
+ */
+
+export { Build, type BuildResult, discoverTargets } from "./src/build.ts";
+export {
+  type Target,
+  target,
+  TargetBuilder,
+  type TargetFn,
+} from "./src/target.ts";
+export { run } from "./src/cli.ts";
+export { execute, type ExecuteOptions, type Reporter } from "./src/executor.ts";
+export {
+  executionSet,
+  findCycle,
+  GraphError,
+  plan,
+  validateGraph,
+} from "./src/graph.ts";

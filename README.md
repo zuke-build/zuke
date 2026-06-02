@@ -1,0 +1,349 @@
+# Zuke
+
+> A code-first, strongly-typed build automation system for Deno & TypeScript.
+
+Zuke lets you define builds as a **TypeScript class**. Each target is a class
+field declared with a fluent API; targets reference each other by `this.x`
+(not strings), forming a dependency graph that Zuke resolves and runs in
+topological order. Inspired by [NUKE](https://nuke.build/) for .NET.
+
+- **Runtime:** Deno
+- **Package:** `jsr:@zuke/core` (+ `jsr:@zuke/core/shell`)
+- **Build file:** `zuke.ts` in your project root
+- **Zero runtime dependencies**
+
+```ts
+class MyBuild extends Build {
+  compile = target()
+    .dependsOn(this.clean, this.restore)
+    .executes(async () => { await $`deno check mod.ts`; });
+}
+```
+
+---
+
+## Table of contents
+
+- [Why Zuke](#why-zuke)
+- [Install & run](#install--run)
+- [Quick start](#quick-start)
+- [Core concepts](#core-concepts)
+- [Authoring API](#authoring-api)
+  - [`target()`](#target)
+  - [`Build`](#build)
+  - [`run()`](#run)
+- [Shell wrapper (`$`)](#shell-wrapper-)
+- [CLI reference](#cli-reference)
+- [Execution semantics](#execution-semantics)
+- [Programmatic API](#programmatic-api)
+- [Gotchas](#gotchas)
+- [Development](#development)
+- [Contributing](#contributing)
+- [Roadmap](#roadmap)
+- [License](#license)
+
+---
+
+## Why Zuke
+
+- **Typed, refactor-safe dependencies.** You wire targets together with
+  `this.clean`, not `"clean"`. Rename a target and every reference moves with
+  it; a typo is a compile error, not a runtime surprise.
+- **Just TypeScript.** Your build logic is ordinary async functions with full
+  editor support — no YAML, no bespoke DSL.
+- **Ergonomic shell.** The `$` tagged template runs processes with sane
+  defaults (throw on failure, capture output) and is injection-safe.
+- **Small and explicit.** A tiny core: discover targets, build a graph, sort,
+  run. No magic, no plugins to learn (yet).
+
+## Install & run
+
+You need [Deno](https://deno.com/) installed. There's nothing else to install —
+Zuke is imported straight from JSR.
+
+Create a `zuke.ts` in your project root and run it with Deno:
+
+```sh
+deno run -A zuke.ts <target>
+```
+
+The `-A` grants permissions (your targets typically run processes, read/write
+files, etc.). A dedicated `zuke` launcher binary is on the roadmap; for now the
+`deno run` invocation is the interface.
+
+## Quick start
+
+```ts
+// zuke.ts
+import { Build, run, target } from "jsr:@zuke/core";
+import { $ } from "jsr:@zuke/core/shell";
+
+class MyBuild extends Build {
+  clean = target()
+    .description("Remove build artifacts")
+    .executes(async () => {
+      await $`rm -rf dist`;
+    });
+
+  restore = target()
+    .description("Install dependencies")
+    .executes(async () => {
+      await $`deno install`;
+    });
+
+  compile = target()
+    .description("Type-check and build")
+    .dependsOn(this.clean, this.restore)
+    .executes(async () => {
+      await $`deno check mod.ts`;
+    });
+
+  test = target()
+    .description("Run the test suite")
+    .dependsOn(this.compile)
+    .executes(async () => {
+      await $`deno test -A`;
+    });
+
+  // Optional: runs when you invoke `zuke` with no target.
+  default = target().dependsOn(this.test).executes(() => {});
+}
+
+if (import.meta.main) {
+  await run(MyBuild);
+}
+```
+
+```sh
+deno run -A zuke.ts test     # clean → restore → compile → test
+deno run -A zuke.ts          # runs `default` (→ test)
+deno run -A zuke.ts --list   # show all targets
+```
+
+Example output:
+
+```
+▶ clean
+✔ clean (0.0s)
+▶ restore
+✔ restore (0.3s)
+▶ compile
+✔ compile (1.1s)
+▶ test
+✔ test (2.4s)
+
+✔ SUCCESS — 4/4 targets in 3.8s
+```
+
+## Core concepts
+
+| Concept | Description |
+|---|---|
+| **Build** | A class extending `Build`. Each target is a field. |
+| **Target** | A named unit of work: a description, dependencies, and a body. |
+| **Dependency graph** | A DAG derived from `.dependsOn(...)`. Cycles are an error. |
+| **Plan** | The requested target's transitive dependencies, topologically sorted. |
+| **Executor** | Runs the plan sequentially, with timing and pass/fail reporting. |
+
+## Authoring API
+
+### `target()`
+
+`target()` returns a chainable `TargetBuilder`. Everything is optional except a
+body, which is required before the target can run.
+
+| Method | Signature | Purpose |
+|---|---|---|
+| `.description(text)` | `(s: string) => this` | Summary shown in `--list`. |
+| `.dependsOn(...targets)` | `(...t: Target[]) => this` | Hard prerequisites; run first, transitively. |
+| `.executes(fn)` | `(fn: () => void \| Promise<void>) => this` | The body. May be async. |
+| `.before(...targets)` | `(...t: Target[]) => this` | Soft ordering: run before these *if both are planned*. |
+| `.after(...targets)` | `(...t: Target[]) => this` | Soft ordering: run after these *if both are planned*. |
+
+`dependsOn` pulls targets into the plan; `before`/`after` only reorder targets
+that are *already* in the plan — they never pull new targets in.
+
+```ts
+lint = target()
+  .description("Lint sources")
+  .after(this.restore)   // if restore is in the plan, run after it
+  .before(this.test)     // if test is in the plan, run before it
+  .executes(async () => { await $`deno lint`; });
+```
+
+### `Build`
+
+The base class your build extends. It contributes no targets of its own.
+
+- After construction, Zuke discovers targets by introspecting the instance's
+  own enumerable properties (the class fields).
+- Optional lifecycle hooks, overridable on your subclass:
+
+```ts
+class MyBuild extends Build {
+  override onStart() {
+    console.log("Build starting…");
+  }
+  override onFinish(result: BuildResult) {
+    console.log(result.ok ? "All good" : "Something failed");
+  }
+  // …targets…
+}
+```
+
+`BuildResult` is `{ ok: boolean; executed: string[]; error?: unknown }`.
+
+A field literally named `default` is the **default target**, run when no target
+is named on the command line.
+
+### `run()`
+
+```ts
+run(BuildClass: new () => Build, args?: string[]): Promise<void>
+```
+
+Instantiates the build, discovers targets, validates the graph, parses CLI
+arguments (defaulting to `Deno.args`), dispatches to the executor, and calls
+`Deno.exit` with `0` on success or `1` on failure. This is the standard entry
+point at the bottom of `zuke.ts`.
+
+## Shell wrapper (`$`)
+
+Ergonomic process execution built on `Deno.Command`, imported from the `shell`
+submodule:
+
+```ts
+import { $ } from "jsr:@zuke/core/shell";
+
+await $`deno test -A`;                              // throws on non-zero exit
+const sha   = await $`git rev-parse HEAD`.text();   // trimmed stdout
+const files = await $`git diff --name-only`.lines(); // string[]
+const code  = await $`flaky-cmd`.noThrow().code();   // exit code, never throws
+await $`build`.env({ NODE_ENV: "prod" }).cwd("./app").quiet();
+```
+
+| Member | Behaviour |
+|---|---|
+| `` $`…` `` | Builds a lazy command. Awaiting it runs the process and **throws `CommandError` on non-zero exit** by default. |
+| `.text()` | Run; resolve to trimmed stdout. Throws on non-zero (unless `.noThrow()`). |
+| `.lines()` | Run; resolve to `string[]` (stdout split on newlines; empty output → `[]`). |
+| `.code()` | Run; resolve to the numeric exit code. **Never throws** on non-zero. |
+| `.noThrow()` | Suppress throwing on non-zero exit. |
+| `.env(record)` | Merge environment variables. |
+| `.cwd(path)` | Set the working directory. |
+| `.quiet()` | Suppress live stdout/stderr streaming. |
+
+Awaiting a command resolves to a `CommandOutput` (`{ code, stdout, stderr }`,
+plus a `.text()` helper for trimmed stdout).
+
+**Safety:** interpolated values become **discrete argv entries** — they are
+never spliced into a shell string — so there is no injection surface. Arrays
+expand to multiple arguments:
+
+```ts
+const files = ["a.ts", "b.ts"];
+await $`deno fmt ${files}`;          // → ["deno", "fmt", "a.ts", "b.ts"]
+const dirty = "; rm -rf /";
+await $`echo ${dirty}`;              // prints the literal string; runs nothing else
+```
+
+By default a command streams its output live to your terminal and captures
+stdout; `.text()`/`.lines()` capture without echoing; `.quiet()` does neither.
+
+## CLI reference
+
+| Command | Behaviour |
+|---|---|
+| `zuke <target>` | Run the target and all its transitive dependencies, in order. |
+| `zuke <target> --skip <dep>` | Run the target but skip the named dependency (repeatable). |
+| `zuke --list` / `-l` | List all targets with descriptions and dependencies. |
+| `zuke --graph` | Print the dependency graph (`target → deps`). |
+| `zuke --help` / `-h` | Usage. |
+| `zuke` (no target) | Run the `default` target if defined, else print `--list`. |
+
+(Read `zuke` as `deno run -A zuke.ts` until the launcher binary ships.)
+
+**Output:** each target prints `▶ name` on start, then `✔ name (1.2s)` or
+`✘ name (0.4s)`. A failure prints the error, aborts the remaining targets, and
+exits `1`. A final summary reports targets run, total time, and overall status.
+
+## Execution semantics
+
+1. Instantiate the build class.
+2. Discover targets by property introspection.
+3. Build the dependency graph from `.dependsOn(...)`.
+4. **Validate:** an undefined/unknown dependency or a cycle fails fast (with the
+   offending path) and exits `1`.
+5. Compute the requested target's transitive closure.
+6. **Topologically sort** (honouring `before`/`after`); v0 runs **sequentially**.
+7. Run each body. On throw, stop and report.
+8. Each target runs **at most once** per invocation — diamond dependencies
+   dedupe.
+
+## Programmatic API
+
+Beyond authoring, `mod.ts` exports the building blocks if you want to drive Zuke
+yourself or test a build:
+
+```ts
+import {
+  discoverTargets, // (build) => Map<string, TargetBuilder>
+  execute,         // (build, rootTarget, options?) => Promise<BuildResult>
+  plan,            // (rootTarget) => TargetBuilder[]  (topological order)
+  validateGraph,   // (targets) => void  (throws GraphError)
+  findCycle,       // (targets) => string[] | null
+  executionSet,    // (rootTarget) => Set<TargetBuilder>
+  GraphError,
+} from "jsr:@zuke/core";
+```
+
+`execute` accepts `{ silent?, reporter?, skip? }`. Provide a custom `reporter`
+(`{ info(line), error(line) }`) to capture or redirect output.
+
+## Gotchas
+
+- **Declaration order matters.** Because dependencies are `this.x` references
+  and class fields initialise top-to-bottom, a target can only depend on
+  siblings **declared above it**. A forward reference is `undefined` at runtime
+  and reported as an error. TypeScript also flags it (`TS2729`).
+- **A body is required.** Running a target whose `.executes(...)` was never set
+  fails fast with a clear message.
+- **`default` is a convention**, not a keyword — name a field `default` to opt
+  in.
+
+## Development
+
+```sh
+deno task test        # run the suite
+deno task cov         # run with coverage + enforce the 95% gate
+deno task cov:report  # print a per-file coverage table
+deno task check       # type-check
+deno task fmt         # format (fmt:check to verify only)
+deno task lint        # lint
+deno task ci          # everything CI runs: fmt:check, lint, check, cov
+```
+
+CI runs `deno task ci` on every push and pull request (see
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
+
+## Contributing
+
+- Read [`CLAUDE.md`](CLAUDE.md) for the coding standards (strict typing, no
+  `any`/`as`, 95%+ coverage, hermetic tests).
+- Run `deno task ci` before opening a PR — it must be green.
+- Add tests in the same change as the code they cover.
+- Keep commits small and descriptive; update docs when behaviour changes.
+
+## Roadmap
+
+Post-v0, for context (see [`docs/zuke-spec-v0.md`](docs/zuke-spec-v0.md)):
+
+- Parameter & environment injection (`this.configuration`, `--configuration`).
+- Parallel execution of independent targets.
+- A `zuke` standalone binary + `zuke init` scaffolding.
+- Caching / incremental targets.
+- Tool wrapper packages (git, deno, docker helpers).
+
+## License
+
+MIT — see [`LICENSE`](LICENSE).
