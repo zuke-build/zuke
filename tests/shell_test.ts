@@ -79,3 +79,33 @@ Deno.test("$ interpolated values are not re-split (injection safe)", async () =>
     .text();
   assertEquals(out, payload);
 });
+
+Deno.test("$ .text() throws on non-zero exit by default", async () => {
+  const err = await assertRejects(
+    () => $`${DENO} eval ${"console.log('x'); Deno.exit(1)"}`.text(),
+    CommandError,
+  );
+  assertEquals(err instanceof CommandError && err.code === 1, true);
+});
+
+Deno.test("$ .lines() on empty output is an empty array", async () => {
+  const lines = await $`${DENO} eval ${"// prints nothing"}`.lines();
+  assertEquals(lines, []);
+});
+
+Deno.test("$ .quiet() suppresses streaming but still captures", async () => {
+  const out = await $`${DENO} eval ${"console.log('quiet capture')"}`
+    .quiet()
+    .text();
+  assertEquals(out, "quiet capture");
+});
+
+Deno.test("$ awaited result exposes code/stdout and CommandOutput.text()", async () => {
+  const result = await $`${DENO} eval ${"console.log('  hi  ')"}`.quiet();
+  assertEquals(result.code, 0);
+  assertEquals(result.text(), "hi");
+});
+
+Deno.test("$ on an empty command rejects", async () => {
+  await assertRejects(() => $``.quiet(), Error, "empty command");
+});

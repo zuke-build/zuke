@@ -3,6 +3,14 @@
  * dependencies (the sandbox blocks the JSR registry).
  */
 
+/** A constructor usable on the right of `instanceof` (e.g. `TypeError`). */
+type ErrorCtor = new (...args: never[]) => Error;
+
+/** Extract a message from an unknown thrown value without casting. */
+export function messageOf(value: unknown): string {
+  return value instanceof Error ? value.message : String(value);
+}
+
 /** Structural equality via JSON-ish deep comparison. */
 function deepEqual(a: unknown, b: unknown): boolean {
   if (a === b) return true;
@@ -36,8 +44,7 @@ export function assertEquals<T>(actual: T, expected: T, msg?: string): void {
 /** Assert that `fn` throws; optionally check the error type and message. */
 export function assertThrows(
   fn: () => unknown,
-  // deno-lint-ignore no-explicit-any
-  ErrorClass?: new (...args: any[]) => Error,
+  ErrorClass?: ErrorCtor,
   msgIncludes?: string,
 ): Error {
   let thrown: Error | undefined;
@@ -54,8 +61,7 @@ export function assertThrows(
 /** Assert that the promise returned by `fn` rejects. */
 export async function assertRejects(
   fn: () => PromiseLike<unknown>,
-  // deno-lint-ignore no-explicit-any
-  ErrorClass?: new (...args: any[]) => Error,
+  ErrorClass?: ErrorCtor,
   msgIncludes?: string,
 ): Promise<Error> {
   let thrown: Error | undefined;
@@ -71,8 +77,7 @@ export async function assertRejects(
 
 function check(
   error: Error,
-  // deno-lint-ignore no-explicit-any
-  ErrorClass?: new (...args: any[]) => Error,
+  ErrorClass?: ErrorCtor,
   msgIncludes?: string,
 ): void {
   const gotName = error.constructor?.name ?? "Error";

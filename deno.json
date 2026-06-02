@@ -7,14 +7,22 @@
   },
   "tasks": {
     "test": "deno test -A",
-    "check": "deno check mod.ts src/*.ts",
+    "cov": "deno test -A --coverage=cov_profile && deno coverage cov_profile --lcov '--exclude=(tests|scripts)/' --output=cov.lcov && deno run --allow-read scripts/check-coverage.ts cov.lcov 95",
+    "cov:report": "deno coverage cov_profile '--exclude=(tests|scripts)/'",
+    "check": "deno check mod.ts src/*.ts tests/*.ts scripts/*.ts zuke.ts",
     "fmt": "deno fmt",
-    "lint": "deno lint"
+    "fmt:check": "deno fmt --check",
+    "lint": "deno lint",
+    "ci": "deno fmt --check && deno lint && deno task check && deno task cov"
   },
   "fmt": {
-    "include": ["mod.ts", "src/", "tests/"]
+    "include": ["mod.ts", "zuke.ts", "src/", "tests/", "scripts/"]
   },
   "lint": {
-    "include": ["mod.ts", "src/", "tests/"]
+    "include": ["mod.ts", "zuke.ts", "src/", "tests/", "scripts/"],
+    "rules": {
+      "tags": ["recommended"],
+      "include": ["no-explicit-any", "verbatim-module-syntax", "ban-untagged-todo"]
+    }
   }
 }
