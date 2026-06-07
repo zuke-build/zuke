@@ -24,11 +24,6 @@ jobs:
           config-file: .release-please-config.json
           manifest-file: .release-please-manifest.json
 
-      # DEBUG: dump all release-please outputs so we can verify the per-package
-      # key format (path-prefixed vs component-name). Remove once confirmed.
-      - name: Debug release-please outputs
-        run: echo '${{ toJSON(steps.rp.outputs) }}'
-
   publish:
     name: Publish ${{ matrix.package }} to JSR
     needs: release-please

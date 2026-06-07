@@ -2,6 +2,11 @@
 
 > A code-first, strongly-typed build automation system for Deno & TypeScript.
 
+> [!WARNING]
+> **Under heavy development — not production ready.** Zuke is pre-1.0 and
+> evolving fast. APIs across all `@zuke/*` packages can change without notice
+> within `0.x`. Pin exact versions and expect breakage until a `1.0` release.
+
 Zuke lets you define builds as a **TypeScript class**. Each target is a class
 field declared with a fluent API; targets reference each other by `this.x`
 (not strings), forming a dependency graph that Zuke resolves and runs in
