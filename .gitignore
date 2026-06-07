@@ -9,3 +9,12 @@
 # Editor / OS noise
 .DS_Store
 *.swp
+
+# Env
+.env
+
+# Specs
+docs/superpowers/
+
+# OMC session state
+.omc/
