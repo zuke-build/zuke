@@ -312,8 +312,8 @@ my-app/
 ```json
 {
   "imports": {
-    "@zuke/core": "jsr:@zuke/core@^0.0.0",
-    "@zuke/npm": "jsr:@zuke/npm@^0.0.0"
+    "@zuke/core": "jsr:@zuke/core@^0",
+    "@zuke/npm": "jsr:@zuke/npm@^0"
   }
 }
 ```
