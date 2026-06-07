@@ -3,4 +3,4 @@
  * tools that have no dedicated wrapper package.
  */
 
-export { CmdSettings, CmdTasks } from "./src/cmd.ts";
+export { CmdSettings, CmdTasks, type CmdTasksApi } from "./src/cmd.ts";

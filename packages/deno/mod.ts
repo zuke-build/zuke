@@ -12,6 +12,7 @@ export {
   type DenoPermission,
   DenoRunSettings,
   DenoTasks,
+  type DenoTasksApi,
   DenoTaskSettings,
   DenoTestSettings,
 } from "./src/deno.ts";

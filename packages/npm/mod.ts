@@ -12,5 +12,6 @@ export {
   NpmPublishSettings,
   NpmRunSettings,
   NpmTasks,
+  type NpmTasksApi,
   NpmVersionSettings,
 } from "./src/npm.ts";

@@ -320,8 +320,28 @@ export class DenoTaskSettings extends DenoSettings {
   }
 }
 
+/** The shape of {@link DenoTasks}. */
+export interface DenoTasksApi {
+  /** Run a script: `deno run`. */
+  run(configure?: Configure<DenoRunSettings>): Promise<CommandOutput>;
+  /** Run tests: `deno test`. */
+  test(configure?: Configure<DenoTestSettings>): Promise<CommandOutput>;
+  /** Type-check files: `deno check`. */
+  check(configure?: Configure<DenoCheckSettings>): Promise<CommandOutput>;
+  /** Format files: `deno fmt`. */
+  fmt(configure?: Configure<DenoFmtSettings>): Promise<CommandOutput>;
+  /** Lint files: `deno lint`. */
+  lint(configure?: Configure<DenoLintSettings>): Promise<CommandOutput>;
+  /** Warm the module cache: `deno cache`. */
+  cache(configure?: Configure<DenoCacheSettings>): Promise<CommandOutput>;
+  /** Report coverage: `deno coverage`. */
+  coverage(configure?: Configure<DenoCoverageSettings>): Promise<CommandOutput>;
+  /** Run a deno.json task: `deno task`. */
+  task(configure?: Configure<DenoTaskSettings>): Promise<CommandOutput>;
+}
+
 /** Typed task functions for the `deno` CLI. */
-export const DenoTasks = {
+export const DenoTasks: DenoTasksApi = {
   /** Run a script: `deno run`. */
   run(configure?: Configure<DenoRunSettings>): Promise<CommandOutput> {
     return runSettings(new DenoRunSettings(), configure);

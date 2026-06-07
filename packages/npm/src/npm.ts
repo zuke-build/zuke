@@ -242,8 +242,24 @@ export class NpmVersionSettings extends NpmSettings {
   }
 }
 
+/** The shape of {@link NpmTasks}. */
+export interface NpmTasksApi {
+  /** Install dependencies: `npm install`. */
+  install(configure?: Configure<NpmInstallSettings>): Promise<CommandOutput>;
+  /** Clean install from the lockfile: `npm ci`. */
+  ci(configure?: Configure<NpmCiSettings>): Promise<CommandOutput>;
+  /** Run a package.json script: `npm run`. */
+  run(configure?: Configure<NpmRunSettings>): Promise<CommandOutput>;
+  /** Execute a package binary: `npm exec`. */
+  exec(configure?: Configure<NpmExecSettings>): Promise<CommandOutput>;
+  /** Publish the package: `npm publish`. */
+  publish(configure?: Configure<NpmPublishSettings>): Promise<CommandOutput>;
+  /** Bump the package version: `npm version`. */
+  version(configure?: Configure<NpmVersionSettings>): Promise<CommandOutput>;
+}
+
 /** Typed task functions for the `npm` CLI. */
-export const NpmTasks = {
+export const NpmTasks: NpmTasksApi = {
   /** Install dependencies: `npm install`. */
   install(configure?: Configure<NpmInstallSettings>): Promise<CommandOutput> {
     return runSettings(new NpmInstallSettings(), configure);

@@ -31,8 +31,17 @@ export class CmdSettings extends ToolSettings {
   }
 }
 
+/** The shape of {@link CmdTasks}. */
+export interface CmdTasksApi {
+  /** Run `tool` with the configured settings. */
+  exec(
+    tool: string,
+    configure?: Configure<CmdSettings>,
+  ): Promise<CommandOutput>;
+}
+
 /** Task functions for running arbitrary tools. */
-export const CmdTasks = {
+export const CmdTasks: CmdTasksApi = {
   /**
    * Run `tool` with the configured settings.
    *
