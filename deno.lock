@@ -559,17 +559,17 @@
     "members": {
       "packages/cmd": {
         "dependencies": [
-          "jsr:@zuke/core@^0.0.0"
+          "jsr:@zuke/core@0"
         ]
       },
       "packages/deno": {
         "dependencies": [
-          "jsr:@zuke/core@^0.0.0"
+          "jsr:@zuke/core@0"
         ]
       },
       "packages/npm": {
         "dependencies": [
-          "jsr:@zuke/core@^0.0.0"
+          "jsr:@zuke/core@0"
         ]
       }
     }
