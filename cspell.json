@@ -18,7 +18,6 @@
   ],
   "ignorePaths": [
     "cov_profile/",
-    "cov_deno_tmp/",
     "cov.lcov"
   ]
 }
