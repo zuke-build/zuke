@@ -256,4 +256,5 @@ zuke/
 - v0.2: Parallel execution of independent targets.
 - v0.3: `zuke` standalone binary + project scaffolding (`zuke init`).
 - v0.4: Caching / incremental targets.
-- v0.5: Tool wrapper packages (git, deno, docker helpers).
+- v0.5: Tool wrapper packages — shipped for deno/npm/cmd; git/docker remain
+  future siblings.
