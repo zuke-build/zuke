@@ -127,6 +127,22 @@ Anything not covered by a typed option goes through `.args()`.
 ## Docs
 
 - README: new Tools section with examples; workspace/monorepo notes.
+- README: **"Using Zuke in a Node/npm project"** walkthrough (NUKE-style
+  `build/` folder convention). For an existing npm repo:
+  1. Prerequisite: install Deno (one-liner per platform; no changes to the
+     Node toolchain — Deno only drives the build).
+  2. Create a `build/` folder next to `package.json` holding the build
+     project: `build/deno.json` (imports `jsr:@zuke/core`, `jsr:@zuke/npm`,
+     …) and `build/zuke.ts` defining the targets — keeps Zuke fully out of
+     the app's `node_modules`/`package.json` dependencies.
+  3. Targets drive the existing npm workflow via `NpmTasks`
+     (`install`/`ci`/`run`/`publish`) against the repo root
+     (`.cwd("..")` or a configured root path).
+  4. Bridge for npm-centric contributors: a `package.json` script such as
+     `"build": "deno run -A build/zuke.ts"` so `npm run build -- <target>`
+     works without anyone learning Deno commands.
+  5. Show `--list`/`--graph` discovery and a minimal example
+     (`clean → install → test → pack` pipeline) in the walkthrough.
 - CLAUDE.md: layout + commands updated for the workspace.
 - Spec `docs/zuke-spec-v0.md`: tool-wrapper roadmap item updated to reflect
   this design.
