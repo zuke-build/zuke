@@ -3,8 +3,7 @@
 Guidance for working in this repository. Read this before making changes.
 
 Zuke is a code-first, strongly-typed build automation system for Deno/TypeScript
-(inspired by [NUKE](https://nuke.build/)). The full product spec lives in
-[`docs/zuke-spec-v0.md`](docs/zuke-spec-v0.md).
+(inspired by [NUKE](https://nuke.build/)).
 
 ## Tech stack
 
@@ -12,8 +11,10 @@ Zuke is a code-first, strongly-typed build automation system for Deno/TypeScript
   test runner, formatter, linter, type-checker, coverage — is the built-in
   `deno` CLI. No Node, npm, or external build tools.
 - **Language:** TypeScript, strict mode (Deno's default).
-- **Distribution:** [JSR](https://jsr.io/) as `@zuke/core` (entry `mod.ts`,
-  shell submodule `@zuke/core/shell`).
+- **Distribution:** [JSR](https://jsr.io/) as a workspace of four packages:
+  `@zuke/core` (exports `.`, `./shell`, `./tooling`), `@zuke/deno`,
+  `@zuke/npm`, `@zuke/cmd`. The npm org `@zuke-build` is reserved for future
+  npm distribution (1:1 name mapping).
 - **No runtime dependencies.** The library is dependency-free; tests use a
   local assertion helper (`tests/_assert.ts`) rather than a third-party assert
   library so the suite runs with zero network access.
@@ -64,17 +65,21 @@ update the `check` task and CI accordingly. Do not bolt on a parallel
 | Type-check everything | `deno task check` |
 | Format / check formatting | `deno task fmt` / `deno task fmt:check` |
 | Lint | `deno task lint` |
+| Spell-check | `deno task spell` |
 | Full pre-commit / CI gate | `deno task ci` |
 
 ## Repository layout
 
 ```
-mod.ts                    # public API surface
-src/{target,build,graph,executor,cli,shell}.ts
-tests/*_test.ts           # one suite per module (+ _assert.ts helper)
+deno.json                 # workspace root: tasks, fmt/lint config
+packages/
+  core/                   # @zuke/core — mod.ts, src/, tests/ (+ ./shell, ./tooling)
+  deno/                   # @zuke/deno — DenoTasks
+  npm/                    # @zuke/npm  — NpmTasks
+  cmd/                    # @zuke/cmd  — CmdTasks (generic fallback)
+tests/coverage_test.ts    # tests for the root coverage gate script
 scripts/check-coverage.ts # coverage gate
 zuke.ts                   # Zuke's own build (runnable example)
-docs/zuke-spec-v0.md      # the spec
 .github/workflows/ci.yml  # PR checks
 ```
 
@@ -92,6 +97,11 @@ docs/zuke-spec-v0.md      # the spec
 - **The shell `$`** tokenises interpolated values into discrete argv entries
   (never a concatenated shell string), so command construction is
   injection-free.
+- **Tool wrappers** (`@zuke/deno`, `@zuke/npm`, `@zuke/cmd`) follow the NUKE
+  settings-lambda style. Settings classes extend `ToolSettings` from
+  `@zuke/core/tooling`; `buildArgs()` must stay pure (no I/O) so argv
+  construction is unit-testable. Execution reuses `Command` from `shell.ts`.
+  New wrapper packages are workspace siblings that depend only on core.
 
 ## Good open-source practices to follow
 

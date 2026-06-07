@@ -2,6 +2,11 @@
 
 > A code-first, strongly-typed build automation system for Deno & TypeScript.
 
+> [!WARNING]
+> **Under heavy development — not production ready.** Zuke is pre-1.0 and
+> evolving fast. APIs across all `@zuke/*` packages can change without notice
+> within `0.x`. Pin exact versions and expect breakage until a `1.0` release.
+
 Zuke lets you define builds as a **TypeScript class**. Each target is a class
 field declared with a fluent API; targets reference each other by `this.x`
 (not strings), forming a dependency graph that Zuke resolves and runs in
@@ -33,6 +38,8 @@ class MyBuild extends Build {
   - [`Build`](#build)
   - [`run()`](#run)
 - [Shell wrapper (`$`)](#shell-wrapper-)
+- [Tools](#tools)
+- [Using Zuke in a Node/npm project](#using-zuke-in-a-nodenpm-project)
 - [CLI reference](#cli-reference)
 - [Execution semantics](#execution-semantics)
 - [Programmatic API](#programmatic-api)
@@ -60,6 +67,12 @@ class MyBuild extends Build {
 
 You need [Deno](https://deno.com/) installed. There's nothing else to install —
 Zuke is imported straight from JSR.
+
+> [!NOTE]
+> `@zuke/core` is published on [JSR](https://jsr.io/@zuke/core). The tool
+> packages (`@zuke/deno`, `@zuke/npm`, `@zuke/cmd`) will follow once release
+> automation is in place. The npm scope `@zuke` is not controlled by this
+> project — install from JSR, not npm.
 
 Create a `zuke.ts` in your project root and run it with Deno:
 
@@ -250,6 +263,118 @@ await $`echo ${dirty}`;              // prints the literal string; runs nothing 
 By default a command streams its output live to your terminal and captures
 stdout; `.text()`/`.lines()` capture without echoing; `.quiet()` does neither.
 
+## Tools
+
+Typed tool wrappers in the NUKE `DotNetTasks` style: configure a fluent
+settings object in a lambda and the task function builds the argv and runs
+it. Arguments stay a discrete array end-to-end — never a shell string — so
+command construction is injection-free.
+
+```ts
+import { DenoTasks } from "jsr:@zuke/deno";
+import { NpmTasks } from "jsr:@zuke/npm";
+import { CmdTasks } from "jsr:@zuke/cmd";
+
+await DenoTasks.test((s) => s.allowAll().coverage("cov_profile"));
+await NpmTasks.run((s) => s.script("build").workspace("app"));
+
+// Fallback for tools without a dedicated wrapper:
+await CmdTasks.exec("git", (s) => s.args("rev-parse", "HEAD"));
+```
+
+Every settings object also supports `.env()`, `.cwd()`, `.noThrow()`,
+`.quiet()`, `.toolPath()` (binary override) and `.args()` (escape hatch for
+flags without a typed option). Awaiting a task resolves to the same
+`CommandOutput` the shell `$` produces. If a binary is missing, Zuke retries
+through `cmd /c` on Windows (npm ships as a `.cmd` shim there) and otherwise
+raises a `ToolNotFoundError` that names the tool and the fix.
+
+| Package | Tasks |
+|---|---|
+| `@zuke/deno` | `run`, `test`, `check`, `fmt`, `lint`, `cache`, `coverage`, `task` |
+| `@zuke/npm` | `install`, `ci`, `run`, `exec`, `publish`, `version` |
+| `@zuke/cmd` | `exec` (any tool) |
+
+## Using Zuke in a Node/npm project
+
+Zuke can drive a Node project's build without touching its dependencies —
+the NUKE convention of a `build/` folder next to the code. Deno is the only
+prerequisite (it runs the build; your app keeps its Node toolchain):
+
+```
+my-app/
+  package.json          # your app — no zuke dependency added
+  src/ ...
+  build/
+    deno.json           # the build project's config
+    zuke.ts             # your targets
+```
+
+1. Install Deno: https://docs.deno.com/runtime/getting_started/installation/
+
+2. Create `build/deno.json`:
+
+```json
+{
+  "imports": {
+    "@zuke/core": "jsr:@zuke/core@^0",
+    "@zuke/npm": "jsr:@zuke/npm@^0"
+  }
+}
+```
+
+3. Create `build/zuke.ts` — targets drive the repo root via `.cwd("..")`:
+
+```ts
+import { Build, run, target } from "@zuke/core";
+import { NpmTasks } from "@zuke/npm";
+
+class AppBuild extends Build {
+  install = target()
+    .description("Clean-install dependencies")
+    .executes(async () => {
+      await NpmTasks.ci((s) => s.cwd(".."));
+    });
+
+  test = target()
+    .description("Run the app's test script")
+    .dependsOn(this.install)
+    .executes(async () => {
+      await NpmTasks.run((s) => s.script("test").cwd(".."));
+    });
+
+  pack = target()
+    .description("Verify the publishable tarball")
+    .dependsOn(this.test)
+    .executes(async () => {
+      await NpmTasks.publish((s) => s.dryRun().cwd(".."));
+    });
+
+  default = target()
+    .description("Default: install → test → pack")
+    .dependsOn(this.pack)
+    .executes(() => {});
+}
+
+if (import.meta.main) {
+  await run(AppBuild);
+}
+```
+
+4. Bridge it for npm-centric contributors — in `package.json`:
+
+```json
+{
+  "scripts": {
+    "build": "deno run -A build/zuke.ts"
+  }
+}
+```
+
+Now `npm run build` runs the default pipeline, `npm run build -- test` runs
+one target, and `npm run build -- --list` / `-- --graph` show what the build
+can do — no one has to learn Deno commands.
+
 ## CLI reference
 
 | Command | Behaviour |
@@ -320,7 +445,8 @@ deno task cov:report  # print a per-file coverage table
 deno task check       # type-check
 deno task fmt         # format (fmt:check to verify only)
 deno task lint        # lint
-deno task ci          # everything CI runs: fmt:check, lint, check, cov
+deno task spell       # spell-check (cspell)
+deno task ci          # everything CI runs: fmt:check, lint, spell, check, cov
 ```
 
 CI runs `deno task ci` on every push and pull request (see
@@ -336,13 +462,14 @@ CI runs `deno task ci` on every push and pull request (see
 
 ## Roadmap
 
-Post-v0, for context (see [`docs/zuke-spec-v0.md`](docs/zuke-spec-v0.md)):
+Post-v0, for context:
 
 - Parameter & environment injection (`this.configuration`, `--configuration`).
 - Parallel execution of independent targets.
 - A `zuke` standalone binary + `zuke init` scaffolding.
 - Caching / incremental targets.
-- Tool wrapper packages (git, deno, docker helpers).
+- More tool wrapper packages (git, docker helpers) — `@zuke/deno`, `@zuke/npm`,
+  and `@zuke/cmd` already ship; see [Tools](#tools).
 
 ## License
 

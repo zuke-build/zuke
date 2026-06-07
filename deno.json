@@ -1,28 +1,45 @@
 {
-  "name": "@zuke/core",
-  "version": "0.0.0",
-  "exports": {
-    ".": "./mod.ts",
-    "./shell": "./src/shell.ts"
-  },
+  "workspace": [
+    "packages/core",
+    "packages/cmd",
+    "packages/deno",
+    "packages/npm"
+  ],
   "tasks": {
     "test": "deno test -A",
     "cov": "deno test -A --coverage=cov_profile && deno coverage cov_profile --lcov '--exclude=(tests|scripts)/' --output=cov.lcov && deno run --allow-read scripts/check-coverage.ts cov.lcov 95",
     "cov:report": "deno coverage cov_profile '--exclude=(tests|scripts)/'",
-    "check": "deno check mod.ts src/*.ts tests/*.ts scripts/*.ts zuke.ts",
+    "check": "deno check zuke.ts scripts/*.ts tests/*.ts packages/*/mod.ts packages/*/src/*.ts packages/*/tests/*.ts",
     "fmt": "deno fmt",
     "fmt:check": "deno fmt --check",
     "lint": "deno lint",
-    "ci": "deno fmt --check && deno lint && deno task check && deno task cov"
+    "spell": "deno run --allow-read --allow-env --allow-sys npm:cspell@9 lint --no-progress '**'",
+    "ci": "deno fmt --check && deno lint && deno task spell && deno task check && deno task cov"
   },
   "fmt": {
-    "include": ["mod.ts", "zuke.ts", "src/", "tests/", "scripts/"]
+    "include": [
+      "zuke.ts",
+      "scripts/",
+      "tests/",
+      "packages/"
+    ]
   },
   "lint": {
-    "include": ["mod.ts", "zuke.ts", "src/", "tests/", "scripts/"],
+    "include": [
+      "zuke.ts",
+      "scripts/",
+      "tests/",
+      "packages/"
+    ],
     "rules": {
-      "tags": ["recommended"],
-      "include": ["no-explicit-any", "verbatim-module-syntax", "ban-untagged-todo"]
+      "tags": [
+        "recommended"
+      ],
+      "include": [
+        "no-explicit-any",
+        "verbatim-module-syntax",
+        "ban-untagged-todo"
+      ]
     }
   }
 }

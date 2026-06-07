@@ -1,0 +1,23 @@
+{
+  "version": "0.2",
+  "language": "en,en-GB",
+  "useGitignore": true,
+  "words": [
+    "chainers",
+    "cowsay",
+    "Interpolatable",
+    "mytool",
+    "spawnable",
+    "topo",
+    "unconfigured",
+    "zuck",
+    "zudoku",
+    "zuke",
+    "zukebox",
+    "zukeeper"
+  ],
+  "ignorePaths": [
+    "cov_profile/",
+    "cov.lcov"
+  ]
+}

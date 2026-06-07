@@ -30,6 +30,9 @@ jobs:
       - name: Lint
         run: deno lint
 
+      - name: Spell-check
+        run: deno task spell
+
       - name: Type-check
         run: deno task check
 
