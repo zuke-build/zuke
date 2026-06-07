@@ -53,7 +53,23 @@ export type Configure<S> = (settings: S) => S;
  * the base provides the shared chainers and {@link run}.
  */
 export abstract class ToolSettings {
-  /** OS used to decide the `cmd /c` shim fallback; overridable in tests. */
+  /**
+   * The platform identifier used by {@link run} to decide whether to retry a
+   * missing binary through the `cmd /c` shim path (Windows only).
+   *
+   * In production this is always `Deno.build.os`. It is exposed as a public
+   * field — rather than read from `Deno.build.os` inline — so that tests can
+   * pin a specific platform without spawning a subprocess or touching the
+   * environment:
+   *
+   * ```ts
+   * const s = new MyToolSettings();
+   * s.os_ = "windows"; // exercise the cmd /c retry branch on any host
+   * ```
+   *
+   * The trailing underscore signals an internal test seam: do not rely on this
+   * field in production code.
+   */
   os_: typeof Deno.build.os = Deno.build.os;
 
   #env: Record<string, string> = {};
