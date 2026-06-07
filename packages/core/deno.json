@@ -3,7 +3,8 @@
   "version": "0.0.0",
   "exports": {
     ".": "./mod.ts",
-    "./shell": "./src/shell.ts"
+    "./shell": "./src/shell.ts",
+    "./tooling": "./src/tooling.ts"
   },
   "publish": {
     "exclude": ["tests/"]
