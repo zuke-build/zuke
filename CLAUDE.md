@@ -64,6 +64,7 @@ update the `check` task and CI accordingly. Do not bolt on a parallel
 | Type-check everything | `deno task check` |
 | Format / check formatting | `deno task fmt` / `deno task fmt:check` |
 | Lint | `deno task lint` |
+| Spell-check | `deno task spell` |
 | Full pre-commit / CI gate | `deno task ci` |
 
 ## Repository layout

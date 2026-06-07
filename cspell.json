@@ -1,0 +1,17 @@
+{
+  "version": "0.2",
+  "language": "en,en-GB",
+  "words": [
+    "Interpolatable",
+    "topo",
+    "zuck",
+    "zudoku",
+    "zuke",
+    "zukebox",
+    "zukeeper"
+  ],
+  "ignorePaths": [
+    "cov_profile/",
+    "cov.lcov"
+  ]
+}

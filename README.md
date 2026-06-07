@@ -320,7 +320,8 @@ deno task cov:report  # print a per-file coverage table
 deno task check       # type-check
 deno task fmt         # format (fmt:check to verify only)
 deno task lint        # lint
-deno task ci          # everything CI runs: fmt:check, lint, check, cov
+deno task spell       # spell-check (cspell)
+deno task ci          # everything CI runs: fmt:check, lint, spell, check, cov
 ```
 
 CI runs `deno task ci` on every push and pull request (see

@@ -13,7 +13,8 @@
     "fmt": "deno fmt",
     "fmt:check": "deno fmt --check",
     "lint": "deno lint",
-    "ci": "deno fmt --check && deno lint && deno task check && deno task cov"
+    "spell": "deno run --allow-read --allow-env --allow-sys npm:cspell@9 lint --no-progress '**'",
+    "ci": "deno fmt --check && deno lint && deno task spell && deno task check && deno task cov"
   },
   "fmt": {
     "include": ["mod.ts", "zuke.ts", "src/", "tests/", "scripts/"]
