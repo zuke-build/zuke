@@ -451,7 +451,7 @@ CI runs `deno task ci` on every push and pull request (see
 
 ## Roadmap
 
-Post-v0, for context (see [`docs/zuke-spec-v0.md`](docs/zuke-spec-v0.md)):
+Post-v0, for context:
 
 - Parameter & environment injection (`this.configuration`, `--configuration`).
 - Parallel execution of independent targets.

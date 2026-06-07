@@ -3,8 +3,7 @@
 Guidance for working in this repository. Read this before making changes.
 
 Zuke is a code-first, strongly-typed build automation system for Deno/TypeScript
-(inspired by [NUKE](https://nuke.build/)). The full product spec lives in
-[`docs/zuke-spec-v0.md`](docs/zuke-spec-v0.md).
+(inspired by [NUKE](https://nuke.build/)).
 
 ## Tech stack
 
@@ -81,7 +80,6 @@ packages/
 tests/coverage_test.ts    # tests for the root coverage gate script
 scripts/check-coverage.ts # coverage gate
 zuke.ts                   # Zuke's own build (runnable example)
-docs/zuke-spec-v0.md      # the spec
 .github/workflows/ci.yml  # PR checks
 ```
 
