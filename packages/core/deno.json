@@ -1,0 +1,11 @@
+{
+  "name": "@zuke/core",
+  "version": "0.0.0",
+  "exports": {
+    ".": "./mod.ts",
+    "./shell": "./src/shell.ts"
+  },
+  "publish": {
+    "exclude": ["tests/"]
+  }
+}

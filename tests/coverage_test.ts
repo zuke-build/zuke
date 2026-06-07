@@ -1,4 +1,4 @@
-import { assertEquals } from "./_assert.ts";
+import { assertEquals } from "../packages/core/tests/_assert.ts";
 import { parseLcov, pct } from "../scripts/check-coverage.ts";
 
 Deno.test("parseLcov sums LF/LH/BRF/BRH across files", () => {

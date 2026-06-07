@@ -6,8 +6,8 @@
  *   deno run -A zuke.ts --list
  */
 
-import { Build, run, target } from "./mod.ts";
-import { $ } from "./src/shell.ts";
+import { Build, run, target } from "@zuke/core";
+import { $ } from "@zuke/core/shell";
 
 class ZukeBuild extends Build {
   clean = target()
@@ -20,14 +20,14 @@ class ZukeBuild extends Build {
     .description("Install dependencies")
     .executes(async () => {
       // No external dependencies in v0; reload the local module graph.
-      await $`${Deno.execPath()} cache mod.ts`;
+      await $`${Deno.execPath()} cache packages/core/mod.ts`;
     });
 
   compile = target()
     .description("Type-check the project")
     .dependsOn(this.clean, this.restore)
     .executes(async () => {
-      await $`${Deno.execPath()} check mod.ts`;
+      await $`${Deno.execPath()} check packages/core/mod.ts`;
     });
 
   test = target()
