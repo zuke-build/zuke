@@ -1,8 +1,7 @@
 {
-  "workspace": ["packages/core"],
-  "imports": {
-    "@zuke/core": "jsr:@zuke/core@^0.0.0"
-  },
+  "workspace": [
+    "packages/core"
+  ],
   "tasks": {
     "test": "deno test -A",
     "cov": "deno test -A --coverage=cov_profile && deno coverage cov_profile --lcov '--exclude=(tests|scripts)/' --output=cov.lcov && deno run --allow-read scripts/check-coverage.ts cov.lcov 95",
@@ -15,13 +14,29 @@
     "ci": "deno fmt --check && deno lint && deno task spell && deno task check && deno task cov"
   },
   "fmt": {
-    "include": ["zuke.ts", "scripts/", "tests/", "packages/"]
+    "include": [
+      "zuke.ts",
+      "scripts/",
+      "tests/",
+      "packages/"
+    ]
   },
   "lint": {
-    "include": ["zuke.ts", "scripts/", "tests/", "packages/"],
+    "include": [
+      "zuke.ts",
+      "scripts/",
+      "tests/",
+      "packages/"
+    ],
     "rules": {
-      "tags": ["recommended"],
-      "include": ["no-explicit-any", "verbatim-module-syntax", "ban-untagged-todo"]
+      "tags": [
+        "recommended"
+      ],
+      "include": [
+        "no-explicit-any",
+        "verbatim-module-syntax",
+        "ban-untagged-todo"
+      ]
     }
   }
 }
