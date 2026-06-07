@@ -1,6 +1,7 @@
 {
   "workspace": [
-    "packages/core"
+    "packages/core",
+    "packages/cmd"
   ],
   "tasks": {
     "test": "deno test -A",
