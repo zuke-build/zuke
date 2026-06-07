@@ -49,15 +49,21 @@ Deno.test("run() executes and captures output", async () => {
 Deno.test("run() applies env and cwd", async () => {
   const dir = await Deno.makeTempDir();
   try {
+    // Compare the resolved cwd against the target dir *inside* the subprocess,
+    // so both paths are normalised by the same realPath in the same process.
+    // A plain string match is unreliable cross-platform (macOS temp symlinks,
+    // Windows drive-letter casing and 8.3 short vs long names).
+    const script = `console.log(Deno.env.get('ZUKE_T') + ':' + ` +
+      `(Deno.realPathSync(Deno.cwd()) === Deno.realPathSync(${
+        JSON.stringify(dir)
+      })))`;
     const out = await new EvalSettings()
-      .script("console.log(Deno.env.get('ZUKE_T') + ':' + Deno.cwd())")
+      .script(script)
       .env({ ZUKE_T: "v1" })
       .cwd(dir)
       .quiet()
       .run();
-    assertEquals(out.stdout.includes("v1:"), true);
-    // Resolve symlinks (macOS temp dirs) before comparing.
-    assertEquals(out.stdout.includes(await Deno.realPath(dir)), true);
+    assertEquals(out.stdout.includes("v1:true"), true);
   } finally {
     await Deno.remove(dir, { recursive: true });
   }

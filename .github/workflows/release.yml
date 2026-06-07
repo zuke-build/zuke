@@ -27,7 +27,12 @@ jobs:
   publish:
     name: Publish ${{ matrix.package }} to JSR
     needs: release-please
-    if: needs.release-please.outputs.releases_created == 'true'
+    # DISABLED until the @zuke/* packages are linked to this repo on jsr.io.
+    # Re-enable by restoring the condition below:
+    #   if: needs.release-please.outputs.releases_created == 'true'
+    # release-please still runs and prepares release PRs; only JSR publishing
+    # is gated off so a merged release PR cannot trigger a failing publish.
+    if: false
     runs-on: ubuntu-latest
     permissions:
       contents: read
