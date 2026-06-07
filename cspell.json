@@ -1,6 +1,7 @@
 {
   "version": "0.2",
   "language": "en,en-GB",
+  "useGitignore": true,
   "words": [
     "chainers",
     "cowsay",
