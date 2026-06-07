@@ -7,6 +7,11 @@
 > evolving fast. APIs across all `@zuke/*` packages can change without notice
 > within `0.x`. Pin exact versions and expect breakage until a `1.0` release.
 
+> [!NOTE]
+> **Largely AI-written.** Much of this project — code, tests, and docs — was
+> generated with AI assistance. Take it with a grain of salt: review before you
+> rely on it, and don't assume anything is battle-tested.
+
 Zuke lets you define builds as a **TypeScript class**. Each target is a class
 field declared with a fluent API; targets reference each other by `this.x`
 (not strings), forming a dependency graph that Zuke resolves and runs in
