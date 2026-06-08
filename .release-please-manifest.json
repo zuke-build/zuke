@@ -3,5 +3,5 @@
   "packages/deno": "0.0.0",
   "packages/npm": "0.0.0",
   "packages/cmd": "0.0.0",
-  "packages/cli": "0.0.0"
+  "packages/cli": "0.1.0"
 }
