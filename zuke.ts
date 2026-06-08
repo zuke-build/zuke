@@ -156,6 +156,7 @@ class ZukeBuild extends Build {
 
   publish = target()
     .description("Publish new package versions to JSR, core first")
+    .dependsOn(this.release)
     .executes(async () => {
       for (const pkg of PACKAGES) {
         const version = await localVersion(pkg);

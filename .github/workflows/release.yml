@@ -25,14 +25,11 @@ jobs:
         with:
           deno-version: v2.x
 
-      # release-please, driven by Zuke: keep release PRs up to date and, when
-      # one is merged, cut the GitHub release and tag.
-      - name: Manage releases with Zuke
-        run: deno task zuke release
+      # One command: `publish` depends on `release`, so Zuke first runs
+      # release-please (keep release PRs current; cut the release & tag on a
+      # merge) and then publishes any package whose version is not yet on JSR
+      # (core first). Idempotent: a push without a new release does nothing.
+      - name: Release & publish with Zuke
+        run: deno task zuke publish
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      # Publish any package whose version is not yet on JSR (core first). This
-      # is idempotent: on pushes without a new release it does nothing.
-      - name: Publish to JSR with Zuke
-        run: deno task zuke publish
