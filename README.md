@@ -1,4 +1,7 @@
-<img width="400px" src="https://github.com/zuke-build/zuke/raw/master/assets/logo.png" />
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/zuke-build/zuke/raw/master/assets/logo-white.png" />
+  <img width="400px" alt="Zuke" src="https://github.com/zuke-build/zuke/raw/master/assets/logo.png" />
+</picture>
 
 > A code-first, strongly-typed build automation system for Deno & TypeScript.
 
@@ -7,13 +10,19 @@
 > evolving fast. APIs across all `@zuke/*` packages can change without notice
 > within `0.x`. Pin exact versions and expect breakage until a `1.0` release.
 
+> [!NOTE]
+> **Largely AI-written.** Much of this project — code, tests, and docs — was
+> generated with AI assistance. Take it with a grain of salt: review before you
+> rely on it, and don't assume anything is battle-tested.
+
 Zuke lets you define builds as a **TypeScript class**. Each target is a class
 field declared with a fluent API; targets reference each other by `this.x`
 (not strings), forming a dependency graph that Zuke resolves and runs in
 topological order. Inspired by [NUKE](https://nuke.build/) for .NET.
 
 - **Runtime:** Deno
-- **Package:** `jsr:@zuke/core` (+ `jsr:@zuke/core/shell`)
+- **Packages:** `jsr:@zuke/core` plus typed tool wrappers `jsr:@zuke/deno`,
+  `jsr:@zuke/npm`, `jsr:@zuke/cmd` (raw shell via `jsr:@zuke/core/shell`)
 - **Build file:** `zuke.ts` in your project root
 - **Zero runtime dependencies**
 
@@ -21,7 +30,7 @@ topological order. Inspired by [NUKE](https://nuke.build/) for .NET.
 class MyBuild extends Build {
   compile = target()
     .dependsOn(this.clean, this.restore)
-    .executes(async () => { await $`deno check mod.ts`; });
+    .executes(async () => { await DenoTasks.check((s) => s.paths("mod.ts")); });
 }
 ```
 
@@ -90,33 +99,33 @@ files, etc.). A dedicated `zuke` launcher binary is on the roadmap; for now the
 ```ts
 // zuke.ts
 import { Build, run, target } from "jsr:@zuke/core";
-import { $ } from "jsr:@zuke/core/shell";
+import { DenoTasks } from "jsr:@zuke/deno";
 
 class MyBuild extends Build {
   clean = target()
     .description("Remove build artifacts")
     .executes(async () => {
-      await $`rm -rf dist`;
+      await Deno.remove("dist", { recursive: true }).catch(() => {});
     });
 
   restore = target()
-    .description("Install dependencies")
+    .description("Cache dependencies")
     .executes(async () => {
-      await $`deno install`;
+      await DenoTasks.cache((s) => s.paths("mod.ts"));
     });
 
   compile = target()
     .description("Type-check and build")
     .dependsOn(this.clean, this.restore)
     .executes(async () => {
-      await $`deno check mod.ts`;
+      await DenoTasks.check((s) => s.paths("mod.ts"));
     });
 
   test = target()
     .description("Run the test suite")
     .dependsOn(this.compile)
     .executes(async () => {
-      await $`deno test -A`;
+      await DenoTasks.test((s) => s.allowAll());
     });
 
   // Optional: runs when you invoke `zuke` with no target.
@@ -182,7 +191,7 @@ lint = target()
   .description("Lint sources")
   .after(this.restore)   // if restore is in the plan, run after it
   .before(this.test)     // if test is in the plan, run before it
-  .executes(async () => { await $`deno lint`; });
+  .executes(async () => { await DenoTasks.lint(); });
 ```
 
 ### `Build`
