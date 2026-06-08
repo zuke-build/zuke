@@ -21,7 +21,7 @@ Deno.test("isRecord distinguishes plain objects", () => {
 
 Deno.test("starterBuild embeds the class name and entry point", () => {
   const out = starterBuild("Acme");
-  assertEquals(out.includes('import { Build, run, target }'), true);
+  assertEquals(out.includes("import { Build, run, target }"), true);
   assertEquals(out.includes("class Acme extends Build"), true);
   assertEquals(out.includes("await run(Acme)"), true);
 });
