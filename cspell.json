@@ -19,6 +19,8 @@
   ],
   "ignorePaths": [
     "cov_profile/",
-    "cov.lcov"
+    "cov.lcov",
+    "/zuke",
+    "/zuke.ps1"
   ]
 }

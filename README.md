@@ -91,8 +91,23 @@ deno run -A zuke.ts <target>
 ```
 
 The `-A` grants permissions (your targets typically run processes, read/write
-files, etc.). A dedicated `zuke` launcher binary is on the roadmap; for now the
-`deno run` invocation is the interface.
+files, etc.).
+
+### `./zuke` launcher (no Deno required up front)
+
+For a NUKE-style `./build.sh` experience, drop the bootstrap launchers
+[`zuke`](./zuke) (bash) and [`zuke.ps1`](./zuke.ps1) (PowerShell) in your repo
+root. They locate the project, **install Deno on first use if it's missing**,
+then run `zuke.ts` — so a fresh checkout needs nothing but the script:
+
+```sh
+./zuke ci          # full gate          (Windows: .\zuke.ps1 ci)
+./zuke test        # type-check + tests  (Windows: .\zuke.ps1 test)
+./zuke --list      # list every target
+```
+
+If you already have Deno, `deno task zuke <target>` (via the `zuke` task in
+`deno.json`) does the same thing.
 
 ## Quick start
 
