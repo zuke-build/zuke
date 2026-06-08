@@ -1,0 +1,10 @@
+{
+  "name": "@zuke/cli",
+  "version": "0.0.0",
+  "exports": {
+    ".": "./mod.ts"
+  },
+  "publish": {
+    "exclude": ["tests/"]
+  }
+}

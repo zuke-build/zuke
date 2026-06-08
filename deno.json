@@ -3,7 +3,8 @@
     "packages/core",
     "packages/cmd",
     "packages/deno",
-    "packages/npm"
+    "packages/npm",
+    "packages/cli"
   ],
   "tasks": {
     "zuke": "deno run -A zuke.ts",

@@ -24,6 +24,12 @@
       "component": "cmd",
       "changelog-path": "CHANGELOG.md",
       "release-as": "0.1.0"
+    },
+    "packages/cli": {
+      "component": "cli",
+      "changelog-path": "CHANGELOG.md",
+      "release-as": "0.1.0",
+      "extra-files": ["src/version.ts"]
     }
   }
 }

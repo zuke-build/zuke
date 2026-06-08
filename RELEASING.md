@@ -1,8 +1,9 @@
 # Releasing
 
-Zuke publishes four packages to [JSR](https://jsr.io/@zuke) —
-`@zuke/core`, `@zuke/deno`, `@zuke/npm`, `@zuke/cmd` — from a single workspace.
-Releases are automated end to end; you only ever merge a pull request.
+Zuke publishes five packages to [JSR](https://jsr.io/@zuke) — `@zuke/core`,
+`@zuke/deno`, `@zuke/npm`, `@zuke/cmd`, and the `@zuke/cli` command — from a
+single workspace. Releases are automated end to end; you only ever merge a
+pull request.
 
 ## How it works
 
