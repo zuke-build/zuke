@@ -86,9 +86,9 @@ Zuke is imported straight from JSR.
 
 ### Scaffold a project with `zuke setup`
 
-The fastest start is the `@zuke/cli` tool, the Deno analog of NUKE's
-`nuke :setup`. Install it once, then scaffold a starter `zuke.ts`, the `./zuke`
-launchers, and a `deno.json` task into any directory:
+The fastest start is the `@zuke/cli` tool. Install it once, then scaffold a
+starter `zuke.ts`, the `./zuke` launchers, and a `deno.json` task into any
+directory:
 
 ```sh
 deno install -A -g -n zuke jsr:@zuke/cli   # once
@@ -112,7 +112,7 @@ files, etc.).
 
 ### `./zuke` launcher (no Deno required up front)
 
-For a NUKE-style `./build.sh` experience, drop the bootstrap launchers
+For a one-command `./build.sh`-style experience, drop the bootstrap launchers
 [`zuke`](./zuke) (bash) and [`zuke.ps1`](./zuke.ps1) (PowerShell) in your repo
 root. They locate the project, **install Deno on first use if it's missing**,
 then run `zuke.ts` — so a fresh checkout needs nothing but the script:
@@ -307,9 +307,9 @@ stdout; `.text()`/`.lines()` capture without echoing; `.quiet()` does neither.
 
 ## Tools
 
-Typed tool wrappers in the NUKE `DotNetTasks` style: configure a fluent
-settings object in a lambda and the task function builds the argv and runs
-it. Arguments stay a discrete array end-to-end — never a shell string — so
+Typed tool wrappers in a settings-lambda style: configure a fluent settings
+object in a lambda and the task function builds the argv and runs it.
+Arguments stay a discrete array end-to-end — never a shell string — so
 command construction is injection-free.
 
 ```ts
@@ -340,7 +340,7 @@ raises a `ToolNotFoundError` that names the tool and the fix.
 ## Using Zuke in a Node/npm project
 
 Zuke can drive a Node project's build without touching its dependencies —
-the NUKE convention of a `build/` folder next to the code. Deno is the only
+build logic in a `build/` folder that lives next to the code. Deno is the only
 prerequisite (it runs the build; your app keeps its Node toolchain):
 
 ```
