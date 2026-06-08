@@ -19,14 +19,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Deno
-        uses: denoland/setup-deno@v2
-        with:
-          deno-version: v2.x
-
-      # Zuke builds Zuke: fmt → lint → spell → check → test → coverage gate.
+      # No "set up Deno" step: the ./zuke launcher installs Deno on first use,
+      # so every CI run exercises the bootstrap script itself.
       - name: Run the full gate with Zuke
-        run: deno task zuke ci
+        run: ./zuke ci
 
   test-os:
     name: Tests (${{ matrix.os }})
@@ -34,14 +30,18 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest]
+        include:
+          - os: macos-latest
+            shell: bash
+            launch: ./zuke test
+          - os: windows-latest
+            shell: pwsh
+            launch: ./zuke.ps1 test
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Deno
-        uses: denoland/setup-deno@v2
-        with:
-          deno-version: v2.x
-
-      - name: Run tests with Zuke
-        run: deno task zuke test
+      # Exercise the matching launcher per OS (bash on macOS, PowerShell on
+      # Windows); each one bootstraps Deno before running the tests.
+      - name: Run tests with the Zuke launcher
+        shell: ${{ matrix.shell }}
+        run: ${{ matrix.launch }}

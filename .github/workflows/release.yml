@@ -20,16 +20,13 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Set up Deno
-        uses: denoland/setup-deno@v2
-        with:
-          deno-version: v2.x
-
-      # One command: `publish` depends on `release`, so Zuke first runs
-      # release-please (keep release PRs current; cut the release & tag on a
-      # merge) and then publishes any package whose version is not yet on JSR
-      # (core first). Idempotent: a push without a new release does nothing.
+      # No "set up Deno" step: the ./zuke launcher installs Deno if it's
+      # missing, so the release pipeline exercises the bootstrap script too.
+      # `publish` depends on `release`, so Zuke first runs release-please (keep
+      # release PRs current; cut the release & tag on a merge) and then
+      # publishes any package whose version is not yet on JSR (core first).
+      # Idempotent: a push without a new release does nothing.
       - name: Release & publish with Zuke
-        run: deno task zuke publish
+        run: ./zuke publish
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

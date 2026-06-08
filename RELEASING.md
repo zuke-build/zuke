@@ -15,8 +15,9 @@ pull request.
 
 2. **Zuke runs the whole release.** `.github/workflows/release.yml` is itself
    driven by Zuke: on every push to `master` it runs a single command,
-   `deno task zuke publish`. Because `publish` depends on `release`, Zuke runs
-   the `release` target first, then publishes.
+   `./zuke publish` (the launcher installs Deno if the runner lacks it, so the
+   workflow has no separate "set up Deno" step). Because `publish` depends on
+   `release`, Zuke runs the `release` target first, then publishes.
 
 3. **`release` drives release-please.** The `release` target invokes the
    release-please CLI (`release-pr` + `github-release`). release-please
