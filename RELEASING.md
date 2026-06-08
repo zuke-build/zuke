@@ -12,21 +12,23 @@ Releases are automated end to end; you only ever merge a pull request.
    changes bump the **minor** version and stay in `0.x`
    (`bump-minor-pre-major`); they do not jump to `1.0.0`.
 
-2. **release-please opens release PRs.** The `release-please` job in
-   `.github/workflows/release.yml` watches `master` and maintains a release PR
-   per package (`separate-pull-requests`), bumping the version in
+2. **Zuke runs release-please.** `.github/workflows/release.yml` is itself
+   driven by Zuke: on every push to `master` it runs `deno task zuke release`,
+   whose `release` target invokes the release-please CLI
+   (`release-pr` + `github-release`). release-please maintains a release PR per
+   package (`separate-pull-requests`), bumping the version in
    `packages/<pkg>/deno.json`, updating the `CHANGELOG.md`, and updating
    `.release-please-manifest.json`. Merging a release PR tags the release
-   (`<component>-v<version>`, e.g. `core-v0.1.0`) and marks that package as
-   released.
+   (`<component>-v<version>`, e.g. `core-v0.1.0`) and cuts the GitHub release.
 
-3. **Zuke publishes to JSR.** When a release is created, the `publish` job runs
-   `deno task zuke publish`. The `publish` target in `zuke.ts` publishes only
-   the packages flagged by the workflow (`ZUKE_PUBLISH_<PKG>` env vars, wired
-   from release-please outputs) and always publishes `@zuke/core` **before**
-   the packages that depend on it. Authentication is OIDC — the JSR
-   package ↔ repo link means **no tokens or secrets** are required; the job just
-   needs `id-token: write`.
+3. **Zuke publishes to JSR.** The same job then runs `deno task zuke publish`.
+   The `publish` target walks the packages **core first** (so the workspace's
+   `jsr:@zuke/core` dependency resolves) and publishes each one whose
+   `deno.json` version is **not yet on JSR** — it queries each package's JSR
+   `meta.json` first, so the step is idempotent and a no-op on pushes that
+   didn't release anything. Authentication is OIDC — the JSR package ↔ repo
+   link means **no tokens or secrets** are required; the workflow just grants
+   `id-token: write`.
 
 So the steady-state flow is: merge conventional commits → merge the release PR
 → the package publishes itself.
@@ -36,13 +38,16 @@ So the steady-state flow is: merge conventional commits → merge the release PR
 The four JSR packages start empty, so the very first release is bootstrapped to
 land at exactly `0.1.0`:
 
-- `.release-please-manifest.json` is seeded at `0.0.0` for every package.
+- Every package's `deno.json` and `.release-please-manifest.json` are seeded at
+  `0.0.0`. `zuke publish` treats `0.0.0` as "not released yet" and skips it, so
+  nothing is published until release-please bumps a package to a real version.
 - `.release-please-config.json` pins `"release-as": "0.1.0"` per package, so the
   first release PR for each is cut at `0.1.0` regardless of commit history.
 
 To cut the first release:
 
-1. Merge this change to `master`. release-please opens four `0.1.0` release PRs.
+1. Merge this change to `master`. release-please opens four `0.1.0` release PRs
+   (bumping each `deno.json` from `0.0.0` to `0.1.0`); nothing publishes yet.
 2. **Merge the `core` release PR first** and let it publish. The other three
    import `jsr:@zuke/core@^0`, so core must exist on JSR before they publish.
    (Within a single run `zuke publish` already orders core first; this only

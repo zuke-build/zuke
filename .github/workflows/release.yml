@@ -5,36 +5,17 @@ on:
     branches: [master]
   workflow_dispatch:
 
-jobs:
-  release-please:
-    name: Release Please
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
-    outputs:
-      releases_created: ${{ steps.rp.outputs.releases_created }}
-      core_released: ${{ steps.rp.outputs['packages/core--release_created'] }}
-      deno_released: ${{ steps.rp.outputs['packages/deno--release_created'] }}
-      npm_released: ${{ steps.rp.outputs['packages/npm--release_created'] }}
-      cmd_released: ${{ steps.rp.outputs['packages/cmd--release_created'] }}
-    steps:
-      - uses: googleapis/release-please-action@v4
-        id: rp
-        with:
-          config-file: .release-please-config.json
-          manifest-file: .release-please-manifest.json
+# release-please needs to write commits/PRs; JSR publishing uses OIDC, so
+# `id-token: write` mints the short-lived token and no secrets are required.
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
 
-  publish:
-    name: Publish to JSR with Zuke
-    needs: release-please
-    if: needs.release-please.outputs.releases_created == 'true'
+jobs:
+  release:
+    name: Release & publish with Zuke
     runs-on: ubuntu-latest
-    # OIDC: JSR trusts this workflow via the package <-> repo link, so no
-    # secrets are needed. `id-token: write` mints the short-lived token.
-    permissions:
-      contents: read
-      id-token: write
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -44,12 +25,14 @@ jobs:
         with:
           deno-version: v2.x
 
-      # `zuke publish` publishes only the packages flagged below, and always
-      # publishes @zuke/core before the packages that depend on it.
-      - name: Publish released packages to JSR
-        run: deno task zuke publish
+      # release-please, driven by Zuke: keep release PRs up to date and, when
+      # one is merged, cut the GitHub release and tag.
+      - name: Manage releases with Zuke
+        run: deno task zuke release
         env:
-          ZUKE_PUBLISH_CORE: ${{ needs.release-please.outputs.core_released }}
-          ZUKE_PUBLISH_DENO: ${{ needs.release-please.outputs.deno_released }}
-          ZUKE_PUBLISH_NPM: ${{ needs.release-please.outputs.npm_released }}
-          ZUKE_PUBLISH_CMD: ${{ needs.release-please.outputs.cmd_released }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Publish any package whose version is not yet on JSR (core first). This
+      # is idempotent: on pushes without a new release it does nothing.
+      - name: Publish to JSR with Zuke
+        run: deno task zuke publish

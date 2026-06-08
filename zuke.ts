@@ -2,12 +2,13 @@
  * Zuke's own build, authored with Zuke — the project builds itself.
  *
  * Every CI and release step is a target here, so the GitHub workflows collapse
- * to a single `deno task zuke <target>` invocation (equivalently
+ * to `deno task zuke <target>` invocations (equivalently
  * `deno run -A zuke.ts <target>`):
  *
  *   deno task zuke ci        # fmt → lint → spell → check → test → coverage gate
  *   deno task zuke test      # type-check, then run the suite with coverage
- *   deno task zuke publish   # publish released packages to JSR, core first
+ *   deno task zuke release   # release-please: maintain release PRs & releases
+ *   deno task zuke publish   # publish new package versions to JSR, core first
  *   deno task zuke --list    # show every target
  */
 
@@ -18,9 +19,45 @@ import { DenoTasks } from "@zuke/deno";
 /** Workspace packages, in dependency order: core must publish before the rest. */
 const PACKAGES = ["core", "deno", "npm", "cmd"];
 
-/** Per-package publish flag set by the release workflow (`true` to publish). */
-function publishFlag(pkg: string): string | undefined {
-  return Deno.env.get(`ZUKE_PUBLISH_${pkg.toUpperCase()}`);
+/** The `version` field of a package's `deno.json`, validated as a string. */
+function readVersion(value: unknown): string {
+  if (typeof value !== "object" || value === null) {
+    throw new Error("deno.json must be a JSON object.");
+  }
+  if (!("version" in value)) {
+    throw new Error('deno.json is missing a "version" field.');
+  }
+  if (typeof value.version !== "string") {
+    throw new Error('deno.json "version" must be a string.');
+  }
+  return value.version;
+}
+
+/** The current version declared in `packages/<pkg>/deno.json`. */
+async function localVersion(pkg: string): Promise<string> {
+  const text = await Deno.readTextFile(`packages/${pkg}/deno.json`);
+  return readVersion(JSON.parse(text));
+}
+
+/** The set of version strings present in a JSR `meta.json` payload. */
+function publishedVersions(meta: unknown): Set<string> {
+  if (typeof meta !== "object" || meta === null) return new Set<string>();
+  if (!("versions" in meta)) return new Set<string>();
+  const versions = meta.versions;
+  if (typeof versions !== "object" || versions === null) {
+    return new Set<string>();
+  }
+  return new Set(Object.keys(versions));
+}
+
+/** Whether `@zuke/<pkg>@<version>` is already published on JSR. */
+async function isOnJsr(pkg: string, version: string): Promise<boolean> {
+  const res = await fetch(`https://jsr.io/@zuke/${pkg}/meta.json`);
+  if (!res.ok) {
+    await res.body?.cancel();
+    return false;
+  }
+  return publishedVersions(await res.json()).has(version);
 }
 
 class ZukeBuild extends Build {
@@ -88,19 +125,49 @@ class ZukeBuild extends Build {
     .dependsOn(this.format, this.lint, this.spell, this.coverage)
     .executes(() => {});
 
-  publish = target()
-    .description("Publish released packages to JSR, in dependency order")
+  release = target()
+    .description("Maintain release PRs and GitHub releases (release-please)")
     .executes(async () => {
-      const gated = PACKAGES.some((p) => publishFlag(p) !== undefined);
-      const selected = gated
-        ? PACKAGES.filter((p) => publishFlag(p) === "true")
-        : [...PACKAGES];
-      if (selected.length === 0) {
-        console.log("Nothing to publish: no released packages selected.");
-        return;
+      const token = Deno.env.get("GITHUB_TOKEN");
+      const repo = Deno.env.get("GITHUB_REPOSITORY");
+      if (token === undefined || repo === undefined) {
+        throw new Error(
+          "release requires GITHUB_TOKEN and GITHUB_REPOSITORY in the env.",
+        );
       }
-      for (const pkg of selected) {
-        console.log(`Publishing @zuke/${pkg} to JSR...`);
+      const common = [
+        "--token",
+        token,
+        "--repo-url",
+        repo,
+        "--target-branch",
+        "master",
+        "--config-file",
+        ".release-please-config.json",
+        "--manifest-file",
+        ".release-please-manifest.json",
+      ];
+      const cli = ["run", "-A", "npm:release-please@16"];
+      for (const cmd of ["release-pr", "github-release"]) {
+        const argv = [...cli, cmd, ...common];
+        await CmdTasks.exec(Deno.execPath(), (s) => s.args(...argv));
+      }
+    });
+
+  publish = target()
+    .description("Publish new package versions to JSR, core first")
+    .executes(async () => {
+      for (const pkg of PACKAGES) {
+        const version = await localVersion(pkg);
+        if (version === "0.0.0") {
+          console.log(`@zuke/${pkg} has no released version yet.`);
+          continue;
+        }
+        if (await isOnJsr(pkg, version)) {
+          console.log(`@zuke/${pkg}@${version} is already on JSR.`);
+          continue;
+        }
+        console.log(`Publishing @zuke/${pkg}@${version} to JSR...`);
         await CmdTasks.exec(Deno.execPath(), (s) => {
           return s.cwd(`packages/${pkg}`).args("publish", "--allow-dirty");
         });
