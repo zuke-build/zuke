@@ -1,20 +1,7 @@
 {
   "version": "5",
   "specifiers": {
-    "jsr:@img/internal@~0.1.1": "0.1.1",
-    "jsr:@img/png@0.1": "0.1.6",
     "npm:cspell@9": "9.8.0"
-  },
-  "jsr": {
-    "@img/internal@0.1.1": {
-      "integrity": "3f3f58a02d959f913e4715ca1d33064858eb7c32935d351d6357d6bd48b57a70"
-    },
-    "@img/png@0.1.6": {
-      "integrity": "b24db019c96bb0e4fea6a2b1d01c5cc995a56cbc1fe7e40ff77224744e42e37c",
-      "dependencies": [
-        "jsr:@img/internal"
-      ]
-    }
   },
   "npm": {
     "@cspell/cspell-bundled-dicts@9.8.0": {
