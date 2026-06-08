@@ -1,6 +1,6 @@
 /**
- * `NpmTasks` — typed task functions for the `npm` CLI, in the NUKE
- * `DotNetTasks` style: configure a fluent settings object in a lambda, and
+ * `NpmTasks` — typed task functions for the `npm` CLI, in the
+ * settings-lambda style: configure a fluent settings object in a lambda, and
  * the task function builds the command line and executes it.
  *
  * ```ts

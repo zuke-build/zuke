@@ -1,7 +1,7 @@
 /**
- * The scaffolding engine behind `zuke setup` — the Deno analog of NUKE's
- * `nuke :setup`. It writes a starter `zuke.ts`, the `./zuke` bootstrap
- * launchers, and a `deno.json` task into a target directory.
+ * The scaffolding engine behind `zuke setup`. It writes a starter `zuke.ts`,
+ * the `./zuke` bootstrap launchers, and a `deno.json` task into a target
+ * directory.
  *
  * All filesystem and console effects go through an injectable {@link SetupHost}
  * so the logic stays pure and unit-testable; {@link defaultHost} is the real

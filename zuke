@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Zuke bootstrap launcher — the NUKE-style `./build.sh`, but for Deno.
+# Zuke bootstrap launcher — a `./build.sh`-style entry point for Deno.
 #
 #   ./zuke ci          # run the full gate
 #   ./zuke test        # type-check + tests

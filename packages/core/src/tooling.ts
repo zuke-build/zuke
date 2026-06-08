@@ -1,5 +1,5 @@
 /**
- * Foundations for typed tool wrappers (NUKE-style task functions).
+ * Foundations for typed tool wrappers (settings-lambda task functions).
  *
  * A tool package (e.g. `@zuke/deno`, `@zuke/npm`) defines one settings class
  * per subcommand by extending {@link ToolSettings}: `buildArgs()` assembles

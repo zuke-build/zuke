@@ -1,6 +1,6 @@
 #!/usr/bin/env pwsh
 #
-# Zuke bootstrap launcher (PowerShell) — the NUKE-style `.\build.ps1`.
+# Zuke bootstrap launcher (PowerShell) — a `.\build.ps1`-style entry point.
 #
 #   .\zuke.ps1 ci          # run the full gate
 #   .\zuke.ps1 test        # type-check + tests

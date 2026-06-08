@@ -5,8 +5,7 @@
  * deno install -A -g -n zuke jsr:@zuke/cli
  * ```
  *
- * and scaffold Zuke into any project with `zuke setup` (the Deno analog of
- * NUKE's `nuke :setup`).
+ * and scaffold Zuke into any project with `zuke setup`.
  */
 
 import { defaultHost, runSetup, type SetupHost } from "./src/setup.ts";
