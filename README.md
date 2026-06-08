@@ -97,7 +97,8 @@ zuke setup                                  # in your project
 ```
 
 Without installing, the same wizard runs via
-`deno run -A jsr:@zuke/cli setup` (flags: `--name <Class>`, `--force`, `--yes`).
+`deno run -A jsr:@zuke/cli setup` (flags: `--dir <path>`, `--name <Class>`,
+`--force`, `--yes`).
 
 ### Run it yourself
 

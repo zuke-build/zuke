@@ -12,7 +12,23 @@ Deno.test("parseSetupFlags reads every flag form", () => {
   assertEquals(parseSetupFlags(["--name", "Foo"]).name, "Foo");
   assertEquals(parseSetupFlags(["--name=Bar"]).name, "Bar");
   assertEquals(parseSetupFlags(["--name"]).name, undefined);
+  assertEquals(parseSetupFlags(["--dir", "app"]).dir, "app");
+  assertEquals(parseSetupFlags(["--dir=pkg"]).dir, "pkg");
+  assertEquals(parseSetupFlags(["--dir"]).dir, undefined);
   assertEquals(parseSetupFlags(["whatever"]).name, undefined);
+});
+
+Deno.test("main setup honours --dir", async () => {
+  const host = new FakeHost();
+  const code = await main(
+    ["setup", "--yes", "--dir", "sub", "--name", "Widget"],
+    host,
+    new FakePrompter(false),
+  );
+  assertEquals(code, 0);
+  assertEquals(host.files.get("sub/zuke.ts")?.includes("class Widget"), true);
+  assertEquals(host.files.has("sub/deno.json"), true);
+  assertEquals(host.logs[0].includes("into sub"), true);
 });
 
 Deno.test("main --version prints the version", async () => {
