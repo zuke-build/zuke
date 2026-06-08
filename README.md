@@ -79,10 +79,10 @@ You need [Deno](https://deno.com/) installed. There's nothing else to install �
 Zuke is imported straight from JSR.
 
 > [!NOTE]
-> `@zuke/core` is published on [JSR](https://jsr.io/@zuke/core). The tool
-> packages (`@zuke/deno`, `@zuke/npm`, `@zuke/cmd`) will follow once release
-> automation is in place. The npm scope `@zuke` is not controlled by this
-> project — install from JSR, not npm.
+> All four packages — `@zuke/core`, `@zuke/deno`, `@zuke/npm`, `@zuke/cmd` —
+> publish to [JSR](https://jsr.io/@zuke) from CI via release-please and OIDC
+> (see [`RELEASING.md`](./RELEASING.md)). The npm scope `@zuke` is not
+> controlled by this project — install from JSR, not npm.
 
 Create a `zuke.ts` in your project root and run it with Deno:
 

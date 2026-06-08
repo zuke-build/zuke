@@ -6,6 +6,7 @@
     "chainers",
     "cowsay",
     "Interpolatable",
+    "OIDC",
     "mytool",
     "spawnable",
     "topo",

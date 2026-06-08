@@ -6,6 +6,7 @@
     "packages/npm"
   ],
   "tasks": {
+    "zuke": "deno run -A zuke.ts",
     "test": "deno test -A",
     "cov": "deno test -A --coverage=cov_profile && deno coverage cov_profile --lcov '--exclude=(tests|scripts)/' --output=cov.lcov && deno run --allow-read scripts/check-coverage.ts cov.lcov 95",
     "cov:report": "deno coverage cov_profile '--exclude=(tests|scripts)/'",
