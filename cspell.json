@@ -4,6 +4,7 @@
   "useGitignore": true,
   "words": [
     "chainers",
+    "chmods",
     "cowsay",
     "Interpolatable",
     "OIDC",
@@ -11,6 +12,7 @@
     "spawnable",
     "topo",
     "unconfigured",
+    "unparseable",
     "zuck",
     "zudoku",
     "zuke",
