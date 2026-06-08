@@ -23,11 +23,11 @@ Deno.test("release-please config matches the workspace packages", async () => {
   assertEquals(Object.keys(packages).sort(), [...PACKAGES].sort());
 });
 
-Deno.test("the config uses the deno release type", async () => {
-  // The version source of truth is each package's deno.json, so the releaser
-  // must be "deno" (not "node" — there is no package.json in this repo).
+Deno.test("the config uses the simple release type", async () => {
+  // release-please has no "deno" releaser; the version lives in each package's
+  // deno.json, bumped via the simple releaser plus a json extra-files updater.
   const config = await readJson(CONFIG);
-  assertEquals(config["release-type"], "deno");
+  assertEquals(config["release-type"], "simple");
 });
 
 Deno.test("manifest versions match each package deno.json", async () => {
