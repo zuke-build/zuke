@@ -30,18 +30,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: macos-latest
-            shell: bash
-            launch: ./zuke test
-          - os: windows-latest
-            shell: pwsh
-            launch: ./zuke.ps1 test
+        os: [macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
 
-      # Exercise the matching launcher per OS (bash on macOS, PowerShell on
-      # Windows); each one bootstraps Deno before running the tests.
-      - name: Run tests with the Zuke launcher
-        shell: ${{ matrix.shell }}
-        run: ${{ matrix.launch }}
+      # Exercise the matching launcher per OS — each bootstraps Deno first.
+      - name: Run tests with the bash launcher
+        if: runner.os != 'Windows'
+        run: ./zuke test
+
+      - name: Run tests with the PowerShell launcher
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./zuke.ps1 test
