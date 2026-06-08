@@ -1,4 +1,4 @@
-# Zuke
+<img width="400px" src="https://github.com/zuke-build/zuke/raw/master/assets/logo.png" />
 
 > A code-first, strongly-typed build automation system for Deno & TypeScript.
 
@@ -34,8 +34,9 @@ class MyBuild extends Build {
 
 ## Table of contents
 
+- [Table of contents](#table-of-contents)
 - [Why Zuke](#why-zuke)
-- [Install & run](#install--run)
+- [Install \& run](#install--run)
 - [Quick start](#quick-start)
 - [Core concepts](#core-concepts)
 - [Authoring API](#authoring-api)
@@ -315,7 +316,7 @@ my-app/
     zuke.ts             # your targets
 ```
 
-1. Install Deno: https://docs.deno.com/runtime/getting_started/installation/
+1. Install Deno: <https://docs.deno.com/runtime/getting_started/installation/>
 
 2. Create `build/deno.json`:
 
