@@ -1,4 +1,7 @@
-<img width="400px" src="https://github.com/zuke-build/zuke/raw/master/assets/logo.png" />
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/zuke-build/zuke/raw/master/assets/logo-white.png" />
+  <img width="400px" alt="Zuke" src="https://github.com/zuke-build/zuke/raw/master/assets/logo.png" />
+</picture>
 
 > A code-first, strongly-typed build automation system for Deno & TypeScript.
 
