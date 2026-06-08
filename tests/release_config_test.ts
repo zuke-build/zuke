@@ -5,6 +5,7 @@ const PACKAGES = [
   "packages/deno",
   "packages/npm",
   "packages/cmd",
+  "packages/cli",
 ];
 
 async function readJson(path: string): Promise<Record<string, unknown>> {
@@ -13,7 +14,7 @@ async function readJson(path: string): Promise<Record<string, unknown>> {
 
 const CONFIG = ".release-please-config.json";
 
-Deno.test("release-please config lists exactly the four packages", async () => {
+Deno.test("release-please config matches the workspace packages", async () => {
   const config = await readJson(CONFIG);
   const packages = config.packages;
   if (packages === null || typeof packages !== "object") {
