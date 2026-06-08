@@ -97,7 +97,7 @@ zuke.ts                   # Zuke's own build (runnable example)
 - **The shell `$`** tokenises interpolated values into discrete argv entries
   (never a concatenated shell string), so command construction is
   injection-free.
-- **Tool wrappers** (`@zuke/deno`, `@zuke/npm`, `@zuke/cmd`) follow the NUKE
+- **Tool wrappers** (`@zuke/deno`, `@zuke/npm`, `@zuke/cmd`) follow a
   settings-lambda style. Settings classes extend `ToolSettings` from
   `@zuke/core/tooling`; `buildArgs()` must stay pure (no I/O) so argv
   construction is unit-testable. Execution reuses `Command` from `shell.ts`.

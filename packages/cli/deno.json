@@ -1,11 +1,8 @@
 {
-  "name": "@zuke/npm",
+  "name": "@zuke/cli",
   "version": "0.0.0",
   "exports": {
     ".": "./mod.ts"
-  },
-  "imports": {
-    "@zuke/core": "jsr:@zuke/core@^0"
   },
   "publish": {
     "exclude": ["tests/"]

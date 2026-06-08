@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+#
+# Zuke bootstrap launcher — a `./build.sh`-style entry point for Deno.
+#
+#   ./zuke ci          # run the full gate
+#   ./zuke test        # type-check + tests
+#   ./zuke --list      # list every target
+#
+# Ensures Deno is available (installing it on first use if missing), then runs
+# the project's build file (zuke.ts). No global install required.
+#
+# Honoured environment variables:
+#   DENO_INSTALL   where Deno is installed/looked for (default: ~/.deno)
+#   DENO_VERSION   pin a specific Deno version for the bootstrap install
+set -euo pipefail
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$script_dir"
+
+deno_install="${DENO_INSTALL:-$HOME/.deno}"
+
+if command -v deno >/dev/null 2>&1; then
+  deno_bin="$(command -v deno)"
+elif [ -x "$deno_install/bin/deno" ]; then
+  deno_bin="$deno_install/bin/deno"
+else
+  echo "zuke: Deno not found — installing it now..." >&2
+  if ! command -v curl >/dev/null 2>&1; then
+    echo "zuke: curl is required to bootstrap Deno; install Deno manually:" >&2
+    echo "      https://docs.deno.com/runtime/getting_started/installation/" >&2
+    exit 1
+  fi
+  export DENO_INSTALL="$deno_install"
+  if [ -n "${DENO_VERSION:-}" ]; then
+    curl -fsSL https://deno.land/install.sh | sh -s "$DENO_VERSION" >/dev/null
+  else
+    curl -fsSL https://deno.land/install.sh | sh >/dev/null
+  fi
+  deno_bin="$deno_install/bin/deno"
+fi
+
+exec "$deno_bin" run -A zuke.ts "$@"

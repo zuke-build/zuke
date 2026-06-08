@@ -3,22 +3,33 @@
   "release-type": "deno",
   "tag-separator": "-v",
   "separate-pull-requests": true,
+  "bump-minor-pre-major": true,
   "packages": {
     "packages/core": {
       "component": "core",
-      "changelog-path": "CHANGELOG.md"
+      "changelog-path": "CHANGELOG.md",
+      "release-as": "0.1.0"
     },
     "packages/deno": {
       "component": "deno",
-      "changelog-path": "CHANGELOG.md"
+      "changelog-path": "CHANGELOG.md",
+      "release-as": "0.1.0"
     },
     "packages/npm": {
       "component": "npm",
-      "changelog-path": "CHANGELOG.md"
+      "changelog-path": "CHANGELOG.md",
+      "release-as": "0.1.0"
     },
     "packages/cmd": {
       "component": "cmd",
-      "changelog-path": "CHANGELOG.md"
+      "changelog-path": "CHANGELOG.md",
+      "release-as": "0.1.0"
+    },
+    "packages/cli": {
+      "component": "cli",
+      "changelog-path": "CHANGELOG.md",
+      "release-as": "0.1.0",
+      "extra-files": ["src/version.ts"]
     }
   }
 }

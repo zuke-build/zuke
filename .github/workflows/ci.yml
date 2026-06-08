@@ -14,35 +14,15 @@ concurrency:
 
 jobs:
   quality:
-    name: Format, lint, type-check & coverage
+    name: Build & verify with Zuke
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Deno
-        uses: denoland/setup-deno@v2
-        with:
-          deno-version: v2.x
-
-      - name: Check formatting
-        run: deno fmt --check
-
-      - name: Lint
-        run: deno lint
-
-      - name: Spell-check
-        run: deno task spell
-
-      - name: Type-check
-        run: deno task check
-
-      - name: Test with coverage
-        run: deno test -A --coverage=cov_profile
-
-      - name: Enforce coverage threshold (95%)
-        run: |
-          deno coverage cov_profile --lcov --exclude='(tests|scripts)/' --output=cov.lcov
-          deno run --allow-read scripts/check-coverage.ts cov.lcov 95
+      # No "set up Deno" step: the ./zuke launcher installs Deno on first use,
+      # so every CI run exercises the bootstrap script itself.
+      - name: Run the full gate with Zuke
+        run: ./zuke ci
 
   test-os:
     name: Tests (${{ matrix.os }})
@@ -54,10 +34,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Deno
-        uses: denoland/setup-deno@v2
-        with:
-          deno-version: v2.x
+      # Exercise the matching launcher per OS — each bootstraps Deno first.
+      - name: Run tests with the bash launcher
+        if: runner.os != 'Windows'
+        run: ./zuke test
 
-      - name: Run tests
-        run: deno test -A
+      - name: Run tests with the PowerShell launcher
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./zuke.ps1 test
