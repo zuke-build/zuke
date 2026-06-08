@@ -21,11 +21,11 @@ pull request.
 
 3. **`release` drives release-please.** The `release` target invokes the
    release-please CLI (`release-pr` + `github-release`). release-please
-   maintains a release PR per package (`separate-pull-requests`), bumping the
-   version in `packages/<pkg>/deno.json`, updating the `CHANGELOG.md`, and
-   updating `.release-please-manifest.json`. Merging a release PR tags the
-   release (`<component>-v<version>`, e.g. `core-v0.1.0`) and cuts the GitHub
-   release.
+   maintains a **single** release PR covering every package with pending
+   changes, bumping the version in each `packages/<pkg>/deno.json`, updating the
+   `CHANGELOG.md`s, and updating `.release-please-manifest.json`. Merging it tags
+   each release (`<component>-v<version>`, e.g. `core-v0.1.0`) and cuts the
+   GitHub releases.
 
 4. **`publish` pushes to JSR.** The `publish` target walks the packages
    **core first** (so the workspace's `jsr:@zuke/core` dependency resolves) and
@@ -36,7 +36,7 @@ pull request.
    workflow just grants `id-token: write`.
 
 So the steady-state flow is: merge conventional commits → merge the release PR
-→ the package publishes itself.
+→ the packages publish themselves.
 
 ## First release (one-time bootstrap)
 
@@ -47,17 +47,15 @@ land at exactly `0.1.0`:
   `0.0.0`. `zuke publish` treats `0.0.0` as "not released yet" and skips it, so
   nothing is published until release-please bumps a package to a real version.
 - `.release-please-config.json` pins `"release-as": "0.1.0"` per package, so the
-  first release PR for each is cut at `0.1.0` regardless of commit history.
+  first release is cut at `0.1.0` regardless of commit history.
 
 To cut the first release:
 
-1. Merge this change to `master`. release-please opens four `0.1.0` release PRs
-   (bumping each `deno.json` from `0.0.0` to `0.1.0`); nothing publishes yet.
-2. **Merge the `core` release PR first** and let it publish. The other three
-   import `jsr:@zuke/core@^0`, so core must exist on JSR before they publish.
-   (Within a single run `zuke publish` already orders core first; this only
-   matters because the PRs are separate.)
-3. Merge the `deno`, `npm`, and `cmd` release PRs.
+1. Merge this change to `master`. release-please opens a single `0.1.0` release
+   PR covering all packages (bumping each `deno.json` from `0.0.0` to `0.1.0`);
+   nothing publishes yet.
+2. Merge that release PR. `zuke publish` then publishes every package, **core
+   first**, in one run.
 
 ### Remove the `release-as` pins afterwards
 
