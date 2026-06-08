@@ -45,6 +45,8 @@ export interface SetupFlags {
   yes: boolean;
   /** Build class name for the starter `zuke.ts`. */
   name?: string;
+  /** Directory to scaffold into (defaults to the current directory). */
+  dir?: string;
 }
 
 /** Parse the argument list following `zuke setup`. */
@@ -63,6 +65,13 @@ export function parseSetupFlags(args: string[]): SetupFlags {
       }
     } else if (arg.startsWith("--name=")) {
       flags.name = arg.slice("--name=".length);
+    } else if (arg === "--dir") {
+      if (i + 1 < args.length) {
+        i++;
+        flags.dir = args[i];
+      }
+    } else if (arg.startsWith("--dir=")) {
+      flags.dir = arg.slice("--dir=".length);
     }
   }
   return flags;
@@ -71,11 +80,12 @@ export function parseSetupFlags(args: string[]): SetupFlags {
 const HELP = `zuke ${VERSION} — code-first build automation for Deno
 
 Usage:
-  zuke setup [options]   Scaffold Zuke into the current directory
+  zuke setup [options]   Scaffold Zuke into a directory
   zuke --help            Show this help
   zuke --version         Show the version
 
 Setup options:
+  --dir <path>     Directory to scaffold into (default: .)
   --name <Class>   Build class name for zuke.ts (default: MyBuild)
   --force, -f      Overwrite existing files
   --yes, -y        Accept defaults without prompting
@@ -91,6 +101,7 @@ async function commandSetup(
   const flags = parseSetupFlags(args);
   let name = flags.name ?? "MyBuild";
   let force = flags.force;
+  const dir = flags.dir ?? ".";
 
   if (!flags.yes && prompter.interactive()) {
     name = prompter.ask("Build class name", name);
@@ -99,8 +110,9 @@ async function commandSetup(
     }
   }
 
-  host.log("Scaffolding Zuke into the current directory:");
-  const result = await runSetup({ dir: ".", force, name }, host);
+  const where = dir === "." ? "the current directory" : dir;
+  host.log(`Scaffolding Zuke into ${where}:`);
+  const result = await runSetup({ dir, force, name }, host);
   const written = result.files.filter((f) => f.status !== "skipped").length;
   host.log(`Done — ${written} file(s) written. Next: ./zuke`);
   return 0;
