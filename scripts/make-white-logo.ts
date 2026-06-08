@@ -20,20 +20,15 @@ for (let i = 0; i < body.length; i += 4) {
   const r = body[i], g = body[i + 1], b = body[i + 2], a = body[i + 3];
   if (a === 0) continue; // fully transparent — leave it
 
-  const maxChannel = Math.max(r, g, b);
-
-  // Keep the green terminal (green channel dominant).
+  // Keep only the green terminal (green channel dominant).
   if (g > r * 1.15 && g > b * 1.15) continue;
-  // Keep the teal / blue "zuke" gradient (bright, blue-dominant).
-  if (b >= 90 && b >= g) continue;
 
-  // Everything dark (the navy raccoon, wrench, "</>" marks) → white,
-  // keeping the original alpha so edges stay anti-aliased.
-  if (maxChannel < 80) {
-    body[i] = 255;
-    body[i + 1] = 255;
-    body[i + 2] = 255;
-  }
+  // Everything else — the navy raccoon, wrench, "</>" marks and the
+  // teal/blue "zuke" lettering — becomes white, keeping the original
+  // alpha so anti-aliased edges stay smooth.
+  body[i] = 255;
+  body[i + 1] = 255;
+  body[i + 2] = 255;
 }
 
 const out = await encodePNG(body, {
