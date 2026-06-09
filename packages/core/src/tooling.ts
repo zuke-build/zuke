@@ -15,6 +15,8 @@
  * }
  * await runSettings(new MyToolSettings(), (s) => s.cwd("app"));
  * ```
+ *
+ * @module
  */
 
 import { Command, type CommandOutput } from "./shell.ts";
