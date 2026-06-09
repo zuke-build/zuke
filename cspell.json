@@ -24,6 +24,7 @@
     "cov_profile/",
     "cov.lcov",
     "/zuke",
-    "/zuke.ps1"
+    "/zuke.ps1",
+    "packages/*/CHANGELOG.md"
   ]
 }

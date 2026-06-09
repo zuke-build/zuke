@@ -20,6 +20,8 @@
  *
  * The shell helper `$` lives in the `./shell` submodule
  * (`jsr:@zuke/core/shell`).
+ *
+ * @module
  */
 
 export { Build, type BuildResult, discoverTargets } from "./src/build.ts";

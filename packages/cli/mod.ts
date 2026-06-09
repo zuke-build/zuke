@@ -6,6 +6,8 @@
  * ```
  *
  * and scaffold Zuke into any project with `zuke setup`.
+ *
+ * @module
  */
 
 import { defaultHost, runSetup, type SetupHost } from "./src/setup.ts";
