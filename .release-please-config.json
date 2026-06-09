@@ -10,7 +10,7 @@
       "changelog-path": "CHANGELOG.md",
       "release-as": "0.1.0",
       "extra-files": [
-        { "type": "json", "path": "packages/core/deno.json", "jsonpath": "$.version" }
+        { "type": "json", "path": "deno.json", "jsonpath": "$.version" }
       ]
     },
     "packages/deno": {
@@ -18,7 +18,7 @@
       "changelog-path": "CHANGELOG.md",
       "release-as": "0.1.0",
       "extra-files": [
-        { "type": "json", "path": "packages/deno/deno.json", "jsonpath": "$.version" }
+        { "type": "json", "path": "deno.json", "jsonpath": "$.version" }
       ]
     },
     "packages/npm": {
@@ -26,7 +26,7 @@
       "changelog-path": "CHANGELOG.md",
       "release-as": "0.1.0",
       "extra-files": [
-        { "type": "json", "path": "packages/npm/deno.json", "jsonpath": "$.version" }
+        { "type": "json", "path": "deno.json", "jsonpath": "$.version" }
       ]
     },
     "packages/cmd": {
@@ -34,7 +34,7 @@
       "changelog-path": "CHANGELOG.md",
       "release-as": "0.1.0",
       "extra-files": [
-        { "type": "json", "path": "packages/cmd/deno.json", "jsonpath": "$.version" }
+        { "type": "json", "path": "deno.json", "jsonpath": "$.version" }
       ]
     },
     "packages/cli": {
@@ -42,8 +42,8 @@
       "changelog-path": "CHANGELOG.md",
       "release-as": "0.1.0",
       "extra-files": [
-        { "type": "json", "path": "packages/cli/deno.json", "jsonpath": "$.version" },
-        "packages/cli/src/version.ts"
+        { "type": "json", "path": "deno.json", "jsonpath": "$.version" },
+        "src/version.ts"
       ]
     }
   }
