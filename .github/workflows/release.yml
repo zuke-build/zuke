@@ -16,6 +16,9 @@ jobs:
   release:
     name: Release & publish with Zuke
     runs-on: ubuntu-latest
+    # Backstop: `zuke publish` already times out a stalled `deno publish`
+    # per package; this caps the whole job in case anything else hangs.
+    timeout-minutes: 30
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
