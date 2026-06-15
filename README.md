@@ -188,8 +188,28 @@ Example output:
 ▶ test
 ✔ test (2.4s)
 
+Build summary:
+  ✔ clean    0.0s
+  ✔ restore  0.3s
+  ✔ compile  1.1s
+  ✔ test     2.4s
+
 ✔ SUCCESS — 4/4 targets in 3.8s
 ```
+
+Every run ends with a summary listing each target's status (`✔` passed, `✘`
+failed, `⊘` skipped) and duration, plus the total.
+
+### GitHub Actions
+
+When Zuke detects it's running under GitHub Actions (`GITHUB_ACTIONS=true`), it
+switches to that runner's log conventions automatically — no configuration:
+
+- each target becomes a **collapsible log group**, so the workflow log is tidy
+  and every target is easy to find;
+- a failing target emits an **`::error::` annotation** (surfaced on the run and
+  in the diff); and
+- the per-target summary is also written to the **job summary** as a table.
 
 ## Core concepts
 
@@ -433,7 +453,9 @@ can do — no one has to learn Deno commands.
 
 **Output:** each target prints `▶ name` on start, then `✔ name (1.2s)` or
 `✘ name (0.4s)`. A failure prints the error, aborts the remaining targets, and
-exits `1`. A final summary reports targets run, total time, and overall status.
+exits `1`. A final summary lists every target's status and duration plus the
+total. Under GitHub Actions, targets become collapsible log groups, failures
+emit `::error::` annotations, and the summary is written to the job summary.
 
 ## Execution semantics
 
