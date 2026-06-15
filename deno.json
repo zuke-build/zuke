@@ -4,7 +4,8 @@
     "packages/cmd",
     "packages/deno",
     "packages/npm",
-    "packages/cli"
+    "packages/cli",
+    "packages/docker"
   ],
   "tasks": {
     "zuke": "deno run -A zuke.ts",

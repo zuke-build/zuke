@@ -3,5 +3,6 @@
   "packages/deno": "0.1.1",
   "packages/npm": "0.1.1",
   "packages/cmd": "0.1.1",
-  "packages/cli": "0.1.1"
+  "packages/cli": "0.1.1",
+  "packages/docker": "0.0.0"
 }
