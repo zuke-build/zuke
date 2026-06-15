@@ -43,6 +43,7 @@
     },
     "packages/docker": {
       "component": "docker",
+      "release-as": "0.1.0",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
         { "type": "json", "path": "deno.json", "jsonpath": "$.version" }
@@ -50,6 +51,7 @@
     },
     "packages/docker-compose": {
       "component": "docker-compose",
+      "release-as": "0.1.0",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
         { "type": "json", "path": "deno.json", "jsonpath": "$.version" }
