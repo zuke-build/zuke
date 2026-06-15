@@ -1,7 +1,7 @@
 {
-  "packages/core": "0.1.0",
-  "packages/deno": "0.1.0",
-  "packages/npm": "0.1.0",
-  "packages/cmd": "0.1.0",
-  "packages/cli": "0.1.0"
+  "packages/core": "0.1.1",
+  "packages/deno": "0.1.1",
+  "packages/npm": "0.1.1",
+  "packages/cmd": "0.1.1",
+  "packages/cli": "0.1.1"
 }
