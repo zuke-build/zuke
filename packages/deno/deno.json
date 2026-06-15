@@ -1,6 +1,7 @@
 {
   "name": "@zuke/deno",
   "version": "0.1.1",
+  "description": "Typed deno CLI task wrappers for Zuke builds — run, test, check, fmt, lint, cache, coverage, and task via an injection-free settings-lambda API.",
   "exports": {
     ".": "./mod.ts"
   },
