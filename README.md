@@ -200,6 +200,10 @@ Build summary:
 Every run ends with a summary listing each target's status (`✔` passed, `✘`
 failed, `⊘` skipped) and duration, plus the total.
 
+In a terminal, consecutive targets are separated by a blank line and the output
+is coloured (bold headers, green/red/dim status). Colour is used when stdout is
+a TTY and `NO_COLOR` is unset; piped output stays plain.
+
 ### GitHub Actions
 
 When Zuke detects it's running under GitHub Actions (`GITHUB_ACTIONS=true`), it
