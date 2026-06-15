@@ -1,0 +1,13 @@
+{
+  "name": "@zuke/cspell",
+  "version": "0.0.0",
+  "exports": {
+    ".": "./mod.ts"
+  },
+  "imports": {
+    "@zuke/core": "jsr:@zuke/core@^0"
+  },
+  "publish": {
+    "exclude": ["tests/"]
+  }
+}

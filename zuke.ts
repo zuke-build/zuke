@@ -25,6 +25,11 @@ const PACKAGES = [
   "cli",
   "docker",
   "docker-compose",
+  "oxlint",
+  "eslint",
+  "cspell",
+  "jest",
+  "vitest",
 ];
 
 /** The `version` field of a package's `deno.json`, validated as a string. */
