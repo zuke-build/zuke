@@ -12,6 +12,8 @@
  * Interpolated values become *discrete argv entries* — they are never spliced
  * into a shell string — so there is no shell-injection surface. Arrays expand
  * to multiple arguments.
+ *
+ * @module
  */
 
 /** A value that may be interpolated into a `$` template. */

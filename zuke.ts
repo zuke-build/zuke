@@ -60,6 +60,37 @@ async function isOnJsr(pkg: string, version: string): Promise<boolean> {
   return publishedVersions(await res.json()).has(version);
 }
 
+/** How long to wait for one `deno publish` before treating it as stalled. */
+const PUBLISH_TIMEOUT_MS = 180_000;
+
+/**
+ * Publish one package with a timeout. Returns `true` on success, or `false` if
+ * `deno publish` stalled past the timeout and was killed. JSR's post-upload
+ * finalization (provenance) occasionally hangs *after* the upload completes, so
+ * the caller re-checks JSR before deciding whether a `false` is fatal.
+ */
+async function publishWithTimeout(pkg: string): Promise<boolean> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PUBLISH_TIMEOUT_MS);
+  const command = new Deno.Command(Deno.execPath(), {
+    args: ["publish", "--allow-dirty"],
+    cwd: `packages/${pkg}`,
+    stdout: "inherit",
+    stderr: "inherit",
+    signal: controller.signal,
+  });
+  try {
+    const status = await command.spawn().status;
+    if (status.success) return true;
+    if (controller.signal.aborted) return false;
+    throw new Error(
+      `deno publish for @zuke/${pkg} exited with code ${status.code}.`,
+    );
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 class ZukeBuild extends Build {
   clean = target()
     .description("Remove build artifacts")
@@ -169,9 +200,16 @@ class ZukeBuild extends Build {
           continue;
         }
         console.log(`Publishing @zuke/${pkg}@${version} to JSR...`);
-        await CmdTasks.exec(Deno.execPath(), (s) => {
-          return s.cwd(`packages/${pkg}`).args("publish", "--allow-dirty");
-        });
+        if (await publishWithTimeout(pkg)) continue;
+        // Timed out: the upload usually lands before JSR's finalization hangs,
+        // so a re-check tells us whether it actually published.
+        if (await isOnJsr(pkg, version)) {
+          console.log(`@zuke/${pkg}@${version} uploaded (provenance stalled).`);
+          continue;
+        }
+        throw new Error(
+          `Publishing @zuke/${pkg}@${version} timed out before reaching JSR.`,
+        );
       }
     });
 

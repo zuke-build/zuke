@@ -24,6 +24,9 @@
       "scripts/",
       "tests/",
       "packages/"
+    ],
+    "exclude": [
+      "packages/*/CHANGELOG.md"
     ]
   },
   "lint": {
