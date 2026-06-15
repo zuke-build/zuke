@@ -1,6 +1,6 @@
 {
   "name": "@zuke/docker-compose",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "exports": {
     ".": "./mod.ts"
   },
@@ -8,6 +8,8 @@
     "@zuke/core": "jsr:@zuke/core@^0"
   },
   "publish": {
-    "exclude": ["tests/"]
+    "exclude": [
+      "tests/"
+    ]
   }
 }
