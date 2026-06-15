@@ -47,6 +47,13 @@
       "extra-files": [
         { "type": "json", "path": "deno.json", "jsonpath": "$.version" }
       ]
+    },
+    "packages/docker-compose": {
+      "component": "docker-compose",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        { "type": "json", "path": "deno.json", "jsonpath": "$.version" }
+      ]
     }
   }
 }

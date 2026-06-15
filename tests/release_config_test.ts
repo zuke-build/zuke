@@ -7,6 +7,7 @@ const PACKAGES = [
   "packages/cmd",
   "packages/cli",
   "packages/docker",
+  "packages/docker-compose",
 ];
 
 async function readJson(path: string): Promise<Record<string, unknown>> {

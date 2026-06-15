@@ -5,7 +5,8 @@
     "packages/deno",
     "packages/npm",
     "packages/cli",
-    "packages/docker"
+    "packages/docker",
+    "packages/docker-compose"
   ],
   "tasks": {
     "zuke": "deno run -A zuke.ts",

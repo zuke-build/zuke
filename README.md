@@ -22,8 +22,8 @@ order. Inspired by [NUKE](https://nuke.build/) for .NET.
 
 - **Runtime:** Deno
 - **Packages:** `jsr:@zuke/core` plus typed tool wrappers `jsr:@zuke/deno`,
-  `jsr:@zuke/npm`, `jsr:@zuke/docker`, `jsr:@zuke/cmd` (raw shell via
-  `jsr:@zuke/core/shell`)
+  `jsr:@zuke/npm`, `jsr:@zuke/docker`, `jsr:@zuke/docker-compose`,
+  `jsr:@zuke/cmd` (raw shell via `jsr:@zuke/core/shell`)
 - **Build file:** `zuke.ts` in your project root
 - **Zero runtime dependencies**
 
@@ -83,7 +83,7 @@ Zuke is imported straight from JSR.
 
 > [!NOTE]
 > All packages — `@zuke/core`, `@zuke/deno`, `@zuke/npm`, `@zuke/docker`,
-> `@zuke/cmd`, and the `@zuke/cli` command — publish to
+> `@zuke/docker-compose`, `@zuke/cmd`, and the `@zuke/cli` command — publish to
 > [JSR](https://jsr.io/@zuke) from CI via release-please and OIDC (see
 > [`RELEASING.md`](./RELEASING.md)). The npm scope `@zuke` is not controlled by
 > this project — install from JSR, not npm.
@@ -361,12 +361,13 @@ flags without a typed option). Awaiting a task resolves to the same
 through `cmd /c` on Windows (npm ships as a `.cmd` shim there) and otherwise
 raises a `ToolNotFoundError` that names the tool and the fix.
 
-| Package        | Tasks                                                                                                                |
-| -------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `@zuke/deno`   | `run`, `test`, `check`, `fmt`, `lint`, `cache`, `coverage`, `task`                                                   |
-| `@zuke/npm`    | `install`, `ci`, `run`, `exec`, `publish`, `version`                                                                 |
-| `@zuke/docker` | `build`, `run`, `exec`, `push`, `pull`, `tag`, `login`, `images`, `ps`, `stop`, `start`, `rm`, `rmi`, `save`, `load` |
-| `@zuke/cmd`    | `exec` (any tool)                                                                                                    |
+| Package                | Tasks                                                                                                                |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `@zuke/deno`           | `run`, `test`, `check`, `fmt`, `lint`, `cache`, `coverage`, `task`                                                   |
+| `@zuke/npm`            | `install`, `ci`, `run`, `exec`, `publish`, `version`                                                                 |
+| `@zuke/docker`         | `build`, `run`, `exec`, `push`, `pull`, `tag`, `login`, `images`, `ps`, `stop`, `start`, `rm`, `rmi`, `save`, `load` |
+| `@zuke/docker-compose` | `up`, `down`, `build`, `pull`, `push`, `run`, `exec`, `logs`, `ps`, `config`, `start`, `stop`, `restart`, `rm`       |
+| `@zuke/cmd`            | `exec` (any tool)                                                                                                    |
 
 ## Using Zuke in a Node/npm project
 
