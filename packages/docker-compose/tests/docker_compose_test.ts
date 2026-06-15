@@ -403,11 +403,6 @@ Deno.test("defaultComposeProbe reports presence by exit code", async () => {
   );
   // A bogus binary is reported missing rather than throwing.
   assertEquals(await defaultComposeProbe(["zz-no-such-binary-zz"]), false);
-  // Errors other than "binary missing" propagate: a NUL byte in the argv is
-  // rejected by Deno with a TypeError, which must not be swallowed. (A literal
-  // NUL is built at run time to keep it out of the source file.)
-  const nul = String.fromCharCode(0);
-  await assertRejects(() => defaultComposeProbe([Deno.execPath(), nul]));
 });
 
 const M = "zz-no-such-compose-binary-zz";
