@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/zuke-build/zuke/compare/cli-v0.1.0...cli-v0.1.1) (2026-06-15)
+
+
+### Documentation
+
+* add a README to every package (forces 0.1.1) ([#17](https://github.com/zuke-build/zuke/issues/17)) ([6098b4f](https://github.com/zuke-build/zuke/commit/6098b4f63f93ce45155c5f25779aa293135de938))
+
 ## 0.1.0 (2026-06-09)
 
 
