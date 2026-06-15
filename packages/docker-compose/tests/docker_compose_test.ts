@@ -3,7 +3,7 @@ import {
   assertRejects,
   assertThrows,
 } from "../../core/tests/_assert.ts";
-import { ToolNotFoundError } from "@zuke/core/tooling";
+import { ToolNotFoundError, type ToolSettings } from "@zuke/core/tooling";
 import {
   defaultComposeProbe,
   DockerComposeBuildSettings,
@@ -403,33 +403,46 @@ Deno.test("defaultComposeProbe reports presence by exit code", async () => {
   );
   // A bogus binary is reported missing rather than throwing.
   assertEquals(await defaultComposeProbe(["zz-no-such-binary-zz"]), false);
-  // Errors other than "binary missing" propagate: a directory is not runnable
-  // and spawning it raises PermissionDenied, which must not be swallowed.
-  await assertRejects(() => defaultComposeProbe([Deno.cwd()]));
+  // Errors other than "binary missing" propagate: a NUL byte in the argv is
+  // rejected by Deno with a TypeError, which must not be swallowed. (A literal
+  // NUL is built at run time to keep it out of the source file.)
+  const nul = String.fromCharCode(0);
+  await assertRejects(() => defaultComposeProbe([Deno.execPath(), nul]));
 });
 
+const M = "zz-no-such-compose-binary-zz";
+
+/**
+ * Point a settings object at a guaranteed-missing binary with the Windows shim
+ * fallback disabled, so each task reaches execution and raises a
+ * {@link ToolNotFoundError} on every platform — without invoking real Compose.
+ */
+const missing = <S extends ToolSettings>(s: S): S => {
+  s.os_ = "linux";
+  return s.toolPath(M);
+};
+
 Deno.test("every DockerComposeTasks function reaches execution", async () => {
-  const M = "zz-no-such-compose-binary-zz";
   // Seed the cache so the detection path resolves without touching the host.
   resetComposeInvocationCache_();
   await resolveComposeInvocation((argv) =>
     Promise.resolve(argv[0] === "docker-compose")
   );
   const calls: Array<() => Promise<unknown>> = [
-    () => DockerComposeTasks.up((s) => s.toolPath(M)),
-    () => DockerComposeTasks.down((s) => s.toolPath(M)),
-    () => DockerComposeTasks.build((s) => s.toolPath(M)),
-    () => DockerComposeTasks.pull((s) => s.toolPath(M)),
-    () => DockerComposeTasks.push((s) => s.toolPath(M)),
-    () => DockerComposeTasks.run((s) => s.service("web").toolPath(M)),
-    () => DockerComposeTasks.exec((s) => s.service("web").toolPath(M)),
-    () => DockerComposeTasks.logs((s) => s.toolPath(M)),
-    () => DockerComposeTasks.ps((s) => s.toolPath(M)),
-    () => DockerComposeTasks.config((s) => s.toolPath(M)),
-    () => DockerComposeTasks.start((s) => s.toolPath(M)),
-    () => DockerComposeTasks.stop((s) => s.toolPath(M)),
-    () => DockerComposeTasks.restart((s) => s.toolPath(M)),
-    () => DockerComposeTasks.rm((s) => s.toolPath(M)),
+    () => DockerComposeTasks.up(missing),
+    () => DockerComposeTasks.down(missing),
+    () => DockerComposeTasks.build(missing),
+    () => DockerComposeTasks.pull(missing),
+    () => DockerComposeTasks.push(missing),
+    () => DockerComposeTasks.run((s) => missing(s).service("web")),
+    () => DockerComposeTasks.exec((s) => missing(s).service("web")),
+    () => DockerComposeTasks.logs(missing),
+    () => DockerComposeTasks.ps(missing),
+    () => DockerComposeTasks.config(missing),
+    () => DockerComposeTasks.start(missing),
+    () => DockerComposeTasks.stop(missing),
+    () => DockerComposeTasks.restart(missing),
+    () => DockerComposeTasks.rm(missing),
   ];
   for (const call of calls) {
     await assertRejects(call, ToolNotFoundError);
@@ -438,15 +451,14 @@ Deno.test("every DockerComposeTasks function reaches execution", async () => {
 });
 
 Deno.test("a pinned invocation skips detection", async () => {
-  const M = "zz-no-such-compose-binary-zz";
   // No cache seeded: usePlugin/useStandalone must not consult the resolver.
   resetComposeInvocationCache_();
   await assertRejects(
-    () => DockerComposeTasks.up((s) => s.usePlugin().toolPath(M)),
+    () => DockerComposeTasks.up((s) => missing(s).usePlugin()),
     ToolNotFoundError,
   );
   await assertRejects(
-    () => DockerComposeTasks.down((s) => s.useStandalone().toolPath(M)),
+    () => DockerComposeTasks.down((s) => missing(s).useStandalone()),
     ToolNotFoundError,
   );
 });
