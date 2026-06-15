@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/zuke-build/zuke/compare/core-v0.1.1...core-v0.2.0) (2026-06-15)
+
+
+### Features
+
+* **core:** CI-aware, coloured build output with a per-target summary ([#19](https://github.com/zuke-build/zuke/issues/19)) ([fe2a379](https://github.com/zuke-build/zuke/commit/fe2a3798dd8ba68d66291b6248f923013bb1d2db))
+
 ## [0.1.1](https://github.com/zuke-build/zuke/compare/core-v0.1.0...core-v0.1.1) (2026-06-15)
 
 
