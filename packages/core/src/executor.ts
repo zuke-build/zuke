@@ -5,9 +5,11 @@
  * Output adapts to where the build runs. Under GitHub Actions each target is
  * wrapped in a collapsible log group (`::group::`/`::endgroup::`) with an
  * `::error::` annotation on failure and a Markdown table appended to the job
- * summary; in a terminal it prints plain banners. Either way a per-target
- * summary — each target's status and duration, plus the total — is printed when
- * the build finishes.
+ * summary. In a terminal, targets are separated by blank lines and coloured
+ * (bold headers, green/red/dim status) when stdout is a TTY and `NO_COLOR` is
+ * unset; piped output stays plain. Either way a per-target summary — each
+ * target's status and duration, plus the total — is printed when the build
+ * finishes.
  *
  * Sequencing and de-duplication are handled by {@link plan} — the returned
  * order already contains each target exactly once, so diamond dependencies run
@@ -44,6 +46,11 @@ export interface ExecuteOptions {
    * `GITHUB_ACTIONS` environment variable when omitted.
    */
   github?: boolean;
+  /**
+   * Force ANSI colour on or off. Auto-detected (a TTY with `NO_COLOR` unset,
+   * outside GitHub Actions) when omitted; off by default with a custom reporter.
+   */
+  color?: boolean;
 }
 
 /** A target's outcome, collected for the end-of-build summary. */
@@ -61,6 +68,27 @@ const ICON: Record<TargetStatus, string> = {
   skipped: "⊘",
 };
 
+/** ANSI select-graphic-rendition codes used for terminal colour. */
+const SGR = {
+  reset: "\x1b[0m",
+  bold: "\x1b[1m",
+  dim: "\x1b[2m",
+  red: "\x1b[31m",
+  green: "\x1b[32m",
+  cyan: "\x1b[36m",
+};
+
+/** How a run renders its output. */
+interface Style {
+  github: boolean;
+  color: boolean;
+}
+
+/** Wrap text in ANSI codes when colour is enabled, otherwise return it as-is. */
+function paint(color: boolean, codes: string, text: string): string {
+  return color ? `${codes}${text}${SGR.reset}` : text;
+}
+
 /** Whether the build is running inside a GitHub Actions runner. */
 function inGitHubActions(): boolean {
   try {
@@ -70,60 +98,116 @@ function inGitHubActions(): boolean {
   }
 }
 
+/** Whether terminal colour should be used (TTY, and `NO_COLOR` unset). */
+function autoColor(): boolean {
+  try {
+    if (Deno.env.get("NO_COLOR")) return false;
+  } catch {
+    return false;
+  }
+  return Deno.stdout.isTerminal();
+}
+
+/** Resolve the output style from the options and the detected environment. */
+function resolveStyle(options: ExecuteOptions, github: boolean): Style {
+  if (options.color !== undefined) return { github, color: options.color };
+  if (github || options.reporter !== undefined) return { github, color: false };
+  return { github, color: autoColor() };
+}
+
 /** Format a duration in milliseconds as `1.2s`. */
 function formatDuration(ms: number): string {
   return `${(ms / 1000).toFixed(1)}s`;
 }
 
-/** Open a target's section — a collapsible group under GitHub Actions. */
-function openTarget(r: Reporter, github: boolean, name: string): void {
-  r.info(github ? `::group::${name}` : `▶ ${name}`);
+/**
+ * Open a target's section — a collapsible group under GitHub Actions, or a
+ * blank-line-separated bold header in a terminal.
+ */
+function openTarget(
+  r: Reporter,
+  style: Style,
+  name: string,
+  opened: number,
+): void {
+  if (style.github) {
+    r.info(`::group::${name}`);
+    return;
+  }
+  if (opened > 0) r.info("");
+  r.info(paint(style.color, SGR.bold + SGR.cyan, `▶ ${name}`));
 }
 
 /** Close a target's section after it succeeded. */
 function passTarget(
   r: Reporter,
-  github: boolean,
+  style: Style,
   name: string,
   ms: number,
 ): void {
-  r.info(`${ICON.passed} ${name} (${formatDuration(ms)})`);
-  if (github) r.info("::endgroup::");
+  const icon = paint(style.color, SGR.green, ICON.passed);
+  const time = paint(style.color, SGR.dim, `(${formatDuration(ms)})`);
+  r.info(`${icon} ${name} ${time}`);
+  if (style.github) r.info("::endgroup::");
 }
 
 /** Close a target's section after it failed and surface the error. */
 function failTarget(
   r: Reporter,
-  github: boolean,
+  style: Style,
   name: string,
   ms: number,
   error: unknown,
 ): void {
   const message = error instanceof Error ? error.message : String(error);
-  r.error(`${ICON.failed} ${name} (${formatDuration(ms)})`);
-  r.error(message);
-  if (github) {
+  r.error(
+    paint(
+      style.color,
+      SGR.red,
+      `${ICON.failed} ${name} (${formatDuration(ms)})`,
+    ),
+  );
+  r.error(paint(style.color, SGR.red, message));
+  if (style.github) {
     r.info("::endgroup::");
     r.error(`::error title=${name}::${name} failed: ${message}`);
   }
 }
 
+const ROW_COLOR: Record<TargetStatus, string> = {
+  passed: SGR.green,
+  failed: SGR.red,
+  skipped: SGR.dim,
+};
+
 /** Render the end-of-build summary block. */
 function summaryBlock(
+  style: Style,
   reports: TargetReport[],
   totalMs: number,
   ok: boolean,
 ): string {
   const width = reports.reduce((w, x) => Math.max(w, x.name.length), 0);
   const rows = reports.map((x) => {
+    const icon = paint(style.color, ROW_COLOR[x.status], ICON[x.status]);
     const right = x.status === "skipped" ? "skipped" : formatDuration(x.ms);
-    return `  ${ICON[x.status]} ${x.name.padEnd(width)}  ${right}`;
+    return `  ${icon} ${x.name.padEnd(width)}  ${right}`;
   });
   const passed = reports.filter((x) => x.status === "passed").length;
-  const banner = `${ok ? ICON.passed : ICON.failed} ` +
-    `${ok ? "SUCCESS" : "FAILED"} — ${passed}/${reports.length} targets ` +
-    `in ${formatDuration(totalMs)}`;
-  return ["", "Build summary:", ...rows, "", banner].join("\n");
+  const banner = paint(
+    style.color,
+    SGR.bold + (ok ? SGR.green : SGR.red),
+    `${ok ? ICON.passed : ICON.failed} ${ok ? "SUCCESS" : "FAILED"} — ` +
+      `${passed}/${reports.length} targets in ${formatDuration(totalMs)}`,
+  );
+  return [
+    "",
+    paint(style.color, SGR.bold, "Build summary:"),
+    ...rows,
+    "",
+    banner,
+  ]
+    .join("\n");
 }
 
 /** Append a Markdown summary to the GitHub Actions job-summary file, if set. */
@@ -176,6 +260,7 @@ export async function execute(
   const reporter = options.reporter ??
     (options.silent ? silentReporter : consoleReporter);
   const github = options.github ?? inGitHubActions();
+  const style = resolveStyle(options, github);
   const skip = new Set(options.skip ?? []);
 
   const order = plan(root);
@@ -187,6 +272,7 @@ export async function execute(
 
   let failure: unknown;
   let aborted = false;
+  let opened = 0;
 
   for (const t of order) {
     const name = t.name_ ?? "<unnamed>";
@@ -196,14 +282,15 @@ export async function execute(
       continue;
     }
 
-    openTarget(reporter, github, name);
+    openTarget(reporter, style, name, opened);
+    opened++;
     const start = performance.now();
 
     if (!t.fn_) {
       const error = new Error(
         `Target "${name}" has no body — call .executes(...) before running.`,
       );
-      failTarget(reporter, github, name, 0, error);
+      failTarget(reporter, style, name, 0, error);
       reports.push({ name, status: "failed", ms: 0 });
       failure = error;
       aborted = true;
@@ -213,12 +300,12 @@ export async function execute(
     try {
       await t.fn_();
       const ms = performance.now() - start;
-      passTarget(reporter, github, name, ms);
+      passTarget(reporter, style, name, ms);
       reports.push({ name, status: "passed", ms });
       executed.push(name);
     } catch (error) {
       const ms = performance.now() - start;
-      failTarget(reporter, github, name, ms, error);
+      failTarget(reporter, style, name, ms, error);
       reports.push({ name, status: "failed", ms });
       failure = error;
       aborted = true;
@@ -230,8 +317,8 @@ export async function execute(
     : { ok: true, executed };
 
   const totalMs = performance.now() - overallStart;
-  reporter.info(summaryBlock(reports, totalMs, result.ok));
-  if (github) writeJobSummary(reports, totalMs, result.ok);
+  reporter.info(summaryBlock(style, reports, totalMs, result.ok));
+  if (style.github) writeJobSummary(reports, totalMs, result.ok);
   await build.onFinish(result);
   return result;
 }

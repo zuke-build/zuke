@@ -345,6 +345,34 @@ Deno.test("falls back to the console reporter when none is given", async () => {
   assertEquals(captured.some((l) => l.includes("FAILED")), true);
 });
 
+Deno.test("colour mode wraps output in ANSI codes", async () => {
+  const { lines, reporter } = recorder();
+  class B extends Build {
+    work = target().executes(() => {});
+  }
+  const b = new B();
+  discoverTargets(b);
+
+  await execute(b, b.work, { reporter, github: false, color: true });
+  assertEquals(lines[0].includes("\x1b["), true);
+  assertEquals(lines[0].includes("▶ work"), true);
+  assertEquals(lines[lines.length - 1].includes("\x1b["), true);
+});
+
+Deno.test("plain mode separates consecutive targets with a blank line", async () => {
+  const { lines, reporter } = recorder();
+  class B extends Build {
+    a = target().executes(() => {});
+    b = target().dependsOn(this.a).executes(() => {});
+  }
+  const build = new B();
+  discoverTargets(build);
+
+  await execute(build, build.b, { reporter, github: false, color: false });
+  assertEquals(lines[0], "▶ a"); // no leading blank before the first target
+  assertEquals(lines[lines.indexOf("▶ b") - 1], ""); // blank before the second
+});
+
 Deno.test("an unwritable job-summary file never fails the build", async () => {
   const dir = await Deno.makeTempDir(); // a directory is not writable as a file
   const { reporter } = recorder();
