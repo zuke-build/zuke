@@ -3,7 +3,7 @@ import {
   assertRejects,
   assertThrows,
 } from "../../core/tests/_assert.ts";
-import { ToolNotFoundError } from "@zuke/core/tooling";
+import { ToolNotFoundError, type ToolSettings } from "@zuke/core/tooling";
 import {
   DockerBuildSettings,
   DockerExecSettings,
@@ -300,24 +300,35 @@ Deno.test("subcommands with required arguments validate them", () => {
   );
 });
 
+const M = "zz-no-such-docker-binary-zz";
+
+/**
+ * Point a settings object at a guaranteed-missing binary with the Windows shim
+ * fallback disabled, so each DockerTasks function reaches execution and raises
+ * a {@link ToolNotFoundError} on every platform — without invoking real docker.
+ */
+const missing = <S extends ToolSettings>(s: S): S => {
+  s.os_ = "linux";
+  return s.toolPath(M);
+};
+
 Deno.test("every DockerTasks function reaches execution", async () => {
-  const M = "zz-no-such-docker-binary-zz";
   const calls: Array<() => Promise<unknown>> = [
-    () => DockerTasks.build((s) => s.toolPath(M)),
-    () => DockerTasks.run((s) => s.image("x").toolPath(M)),
-    () => DockerTasks.exec((s) => s.container("c").toolPath(M)),
-    () => DockerTasks.push((s) => s.image("x").toolPath(M)),
-    () => DockerTasks.pull((s) => s.image("x").toolPath(M)),
-    () => DockerTasks.tag((s) => s.source("a").target("b").toolPath(M)),
-    () => DockerTasks.login((s) => s.toolPath(M)),
-    () => DockerTasks.images((s) => s.toolPath(M)),
-    () => DockerTasks.ps((s) => s.toolPath(M)),
-    () => DockerTasks.stop((s) => s.containers("c").toolPath(M)),
-    () => DockerTasks.start((s) => s.containers("c").toolPath(M)),
-    () => DockerTasks.rm((s) => s.containers("c").toolPath(M)),
-    () => DockerTasks.rmi((s) => s.images("x").toolPath(M)),
-    () => DockerTasks.save((s) => s.images("x").toolPath(M)),
-    () => DockerTasks.load((s) => s.toolPath(M)),
+    () => DockerTasks.build(missing),
+    () => DockerTasks.run((s) => missing(s).image("x")),
+    () => DockerTasks.exec((s) => missing(s).container("c")),
+    () => DockerTasks.push((s) => missing(s).image("x")),
+    () => DockerTasks.pull((s) => missing(s).image("x")),
+    () => DockerTasks.tag((s) => missing(s).source("a").target("b")),
+    () => DockerTasks.login(missing),
+    () => DockerTasks.images(missing),
+    () => DockerTasks.ps(missing),
+    () => DockerTasks.stop((s) => missing(s).containers("c")),
+    () => DockerTasks.start((s) => missing(s).containers("c")),
+    () => DockerTasks.rm((s) => missing(s).containers("c")),
+    () => DockerTasks.rmi((s) => missing(s).images("x")),
+    () => DockerTasks.save((s) => missing(s).images("x")),
+    () => DockerTasks.load(missing),
   ];
   for (const call of calls) {
     await assertRejects(call, ToolNotFoundError);
