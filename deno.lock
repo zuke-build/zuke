@@ -572,6 +572,11 @@
           "jsr:@zuke/core@0"
         ]
       },
+      "packages/docker-compose": {
+        "dependencies": [
+          "jsr:@zuke/core@0"
+        ]
+      },
       "packages/npm": {
         "dependencies": [
           "jsr:@zuke/core@0"
