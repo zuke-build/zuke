@@ -17,7 +17,7 @@ import { CmdTasks } from "@zuke/cmd";
 import { DenoTasks } from "@zuke/deno";
 
 /** Workspace packages, in dependency order: core must publish before the rest. */
-const PACKAGES = ["core", "deno", "npm", "cmd", "cli"];
+const PACKAGES = ["core", "deno", "npm", "cmd", "cli", "docker"];
 
 /** The `version` field of a package's `deno.json`, validated as a string. */
 function readVersion(value: unknown): string {
