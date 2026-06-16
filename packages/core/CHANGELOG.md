@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/zuke-build/zuke/compare/core-v0.3.0...core-v0.4.0) (2026-06-16)
+
+
+### Features
+
+* **core:** add absolutePath, a NUKE-style fluent path type ([#32](https://github.com/zuke-build/zuke/issues/32)) ([08422e8](https://github.com/zuke-build/zuke/commit/08422e8f72493dc06e8445a5a10f6b54a3f4eb2f))
+
 ## [0.3.0](https://github.com/zuke-build/zuke/compare/core-v0.2.0...core-v0.3.0) (2026-06-16)
 
 
