@@ -1,0 +1,16 @@
+{
+  "name": "@zuke/gh",
+  "version": "0.0.0",
+  "description": "Typed gh (GitHub CLI) task wrapper for Zuke builds — a flexible, injection-free command builder for pr/release/issue/api and more via a settings-lambda API.",
+  "exports": {
+    ".": "./mod.ts"
+  },
+  "imports": {
+    "@zuke/core": "jsr:@zuke/core@^0"
+  },
+  "publish": {
+    "exclude": [
+      "tests/"
+    ]
+  }
+}

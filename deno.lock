@@ -597,6 +597,16 @@
           "jsr:@zuke/core@0"
         ]
       },
+      "packages/gh": {
+        "dependencies": [
+          "jsr:@zuke/core@0"
+        ]
+      },
+      "packages/git": {
+        "dependencies": [
+          "jsr:@zuke/core@0"
+        ]
+      },
       "packages/jest": {
         "dependencies": [
           "jsr:@zuke/core@0"

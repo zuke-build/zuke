@@ -35,6 +35,8 @@ const PACKAGES = [
   "tsgo",
   "dprint",
   "gcloud",
+  "git",
+  "gh",
   "security",
 ];
 

@@ -25,8 +25,8 @@ order. Inspired by [NUKE](https://nuke.build/) for .NET.
   `jsr:@zuke/npm`, `jsr:@zuke/docker`, `jsr:@zuke/docker-compose`,
   `jsr:@zuke/oxlint`, `jsr:@zuke/eslint`, `jsr:@zuke/cspell`, `jsr:@zuke/jest`,
   `jsr:@zuke/vitest`, `jsr:@zuke/tsx`, `jsr:@zuke/tsgo`, `jsr:@zuke/dprint`,
-  `jsr:@zuke/gcloud`, `jsr:@zuke/security`, `jsr:@zuke/cmd` (raw shell via
-  `jsr:@zuke/core/shell`)
+  `jsr:@zuke/gcloud`, `jsr:@zuke/git`, `jsr:@zuke/gh`, `jsr:@zuke/security`,
+  `jsr:@zuke/cmd` (raw shell via `jsr:@zuke/core/shell`)
 - **Build file:** `zuke.ts` in your project root
 - **Zero runtime dependencies**
 
