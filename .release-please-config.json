@@ -97,6 +97,7 @@
     },
     "packages/security": {
       "component": "security",
+      "release-as": "0.1.0",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
         { "type": "json", "path": "deno.json", "jsonpath": "$.version" }

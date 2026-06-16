@@ -14,10 +14,13 @@ import {
 Deno.test("zizmor: full and minimal argv", () => {
   assertEquals(
     new ZizmorSettings()
-      .format("sarif").minSeverity("medium").persona("auditor").offline()
+      .config("zizmor.yml").format("sarif").minSeverity("medium")
+      .persona("auditor").offline()
       .paths(".github/workflows", "extra.yml").argv(),
     [
       "zizmor",
+      "--config",
+      "zizmor.yml",
       "--format",
       "sarif",
       "--min-severity",
