@@ -130,18 +130,14 @@ export function executionSet(root: TargetBuilder): Set<TargetBuilder> {
 }
 
 /**
- * Topologically sort the execution set for `root`, honouring hard dependencies
- * and the soft `before`/`after` ordering hints (the latter only between nodes
- * that are both in the set).
- *
- * @returns target builders in a valid execution order.
- * @throws {GraphError} if the planned graph contains a cycle (which can happen
- *   via soft edges even when the hard graph is acyclic).
+ * Build the "must run before" edges within the execution set for `root`. An
+ * edge `from → to` means `from` runs before `to`. Shared by {@link plan} and
+ * {@link planGraph}.
  */
-export function plan(root: TargetBuilder): TargetBuilder[] {
+function planEdges(
+  root: TargetBuilder,
+): { set: Set<TargetBuilder>; edges: Map<TargetBuilder, Set<TargetBuilder>> } {
   const set = executionSet(root);
-
-  // Build the adjacency list of "must run before" edges within the set.
   const edges = new Map<TargetBuilder, Set<TargetBuilder>>();
   for (const node of set) edges.set(node, new Set());
   const addEdge = (from: TargetBuilder, to: TargetBuilder) => {
@@ -154,9 +150,19 @@ export function plan(root: TargetBuilder): TargetBuilder[] {
     for (const b of node.before_) addEdge(node, b); // node before b
     for (const a of node.after_) addEdge(a, node); // a before node
   }
+  return { set, edges };
+}
 
-  // Deterministic DFS post-order topological sort. Iterate in declaration
-  // order (insertion order of `set`) so output is stable across runs.
+/**
+ * Deterministic DFS post-order topological sort over the precomputed edges.
+ * Iterates in declaration order (insertion order of `set`) so output is stable.
+ *
+ * @throws {GraphError} if the planned graph contains a cycle.
+ */
+function topoOrder(
+  set: Set<TargetBuilder>,
+  edges: Map<TargetBuilder, Set<TargetBuilder>>,
+): TargetBuilder[] {
   const WHITE = 0, GRAY = 1, BLACK = 2;
   const color = new Map<TargetBuilder, number>();
   const order: TargetBuilder[] = [];
@@ -189,4 +195,48 @@ export function plan(root: TargetBuilder): TargetBuilder[] {
   // "must run before" edge points forward.
   order.reverse();
   return order;
+}
+
+/**
+ * Topologically sort the execution set for `root`, honouring hard dependencies
+ * and the soft `before`/`after` ordering hints (the latter only between nodes
+ * that are both in the set).
+ *
+ * @returns target builders in a valid execution order.
+ * @throws {GraphError} if the planned graph contains a cycle (which can happen
+ *   via soft edges even when the hard graph is acyclic).
+ */
+export function plan(root: TargetBuilder): TargetBuilder[] {
+  const { set, edges } = planEdges(root);
+  return topoOrder(set, edges);
+}
+
+/**
+ * A linearised plan plus, for each target, the targets that must finish before
+ * it may start. The predecessors drive parallel scheduling; the order gives a
+ * deterministic listing (e.g. for the build summary).
+ */
+export interface ExecutionPlan {
+  /** Targets in a valid, deterministic execution order. */
+  order: TargetBuilder[];
+  /** For each target, the targets that must complete before it can run. */
+  predecessors: Map<TargetBuilder, TargetBuilder[]>;
+}
+
+/**
+ * Plan the execution set for `root` for scheduling: the deterministic order
+ * plus each target's direct predecessors (hard dependencies and the applicable
+ * soft `before`/`after` edges).
+ *
+ * @throws {GraphError} if the planned graph contains a cycle.
+ */
+export function planGraph(root: TargetBuilder): ExecutionPlan {
+  const { set, edges } = planEdges(root);
+  const order = topoOrder(set, edges);
+  const predecessors = new Map<TargetBuilder, TargetBuilder[]>();
+  for (const node of set) predecessors.set(node, []);
+  for (const [from, tos] of edges) {
+    for (const to of tos) predecessors.get(to)?.push(from);
+  }
+  return { order, predecessors };
 }

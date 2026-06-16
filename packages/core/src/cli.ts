@@ -51,9 +51,18 @@ export interface ParsedArgs {
   output: GraphOutput;
   /** Open the HTML graph in a browser (default true; `--no-open` clears). */
   open: boolean;
+  /** Run independent targets concurrently (`--parallel[=N]`). */
+  parallel?: boolean | number;
   /** Raw parameter values from declared flags, keyed by property name. */
   values: Record<string, string>;
   help: boolean;
+}
+
+/** Parse a `--parallel`/`--parallel=N` value: a positive count, or `true`. */
+function parseParallel(value: string | undefined): boolean | number {
+  if (value === undefined || value === "") return true;
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : true;
 }
 
 /**
@@ -83,6 +92,10 @@ export function parseArgs(
       parsed.list = true;
     } else if (arg === "--no-open") {
       parsed.open = false;
+    } else if (arg === "--parallel") {
+      parsed.parallel = true;
+    } else if (arg.startsWith("--parallel=")) {
+      parsed.parallel = parseParallel(arg.slice("--parallel=".length));
     } else if (arg === "--help" || arg === "-h") {
       parsed.help = true;
     } else if (arg === "--skip") {
@@ -122,13 +135,15 @@ function depNames(t: TargetBuilder): string[] {
 const USAGE = `zuke — code-first build automation
 
 Usage:
-  deno run -A zuke.ts <target> [--skip <dep>]
+  deno run -A zuke.ts <target> [--skip <dep>] [--parallel[=N]]
   deno run -A zuke.ts --list
   deno run -A zuke.ts graph [--output=html] [--no-open]
 
 Options:
   <target>          Run the target and its transitive dependencies.
   --skip <dep>      Skip the named dependency (repeatable).
+  --parallel[=N]    Run independent targets concurrently (N = max in flight,
+                    default = CPU count).
   --list, -l        List all targets with descriptions and dependencies.
   graph             Show the dependency graph. Default output is the terminal
                     adjacency listing; --output=html writes an interactive
@@ -268,6 +283,7 @@ export async function main(
   const result = await execute(build, root, {
     skip: parsed.skip,
     params: parsed.values,
+    parallel: parsed.parallel,
   });
   return result.ok ? 0 : 1;
 }

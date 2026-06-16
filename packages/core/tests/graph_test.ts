@@ -6,6 +6,7 @@ import {
   findCycle,
   GraphError,
   plan,
+  planGraph,
   validateGraph,
   validateReferences,
 } from "../src/graph.ts";
@@ -14,6 +15,44 @@ import {
 function discover(b: Build) {
   return discoverTargets(b);
 }
+
+Deno.test("planGraph returns the order and each target's predecessors", () => {
+  class B extends Build {
+    base = target().executes(() => {});
+    left = target().dependsOn(this.base).executes(() => {});
+    right = target().dependsOn(this.base).executes(() => {});
+    top = target().dependsOn(this.left, this.right).executes(() => {});
+  }
+  const b = new B();
+  discover(b);
+  const { order, predecessors } = planGraph(b.top);
+
+  const names = order.map((t) => t.name_);
+  assertEquals(names[0], "base");
+  assertEquals(names[names.length - 1], "top");
+  assertEquals([...names].sort(), ["base", "left", "right", "top"]);
+  assertEquals(predecessors.get(b.base)?.map((t) => t.name_), []);
+  assertEquals(predecessors.get(b.left)?.map((t) => t.name_), ["base"]);
+  assertEquals(
+    predecessors.get(b.top)?.map((t) => t.name_),
+    ["left", "right"],
+  );
+});
+
+Deno.test("planGraph detects cycles", () => {
+  class B extends Build {
+    a = target().executes(() => {});
+    b = target().executes(() => {});
+    constructor() {
+      super();
+      this.a.dependsOn(this.b);
+      this.b.dependsOn(this.a);
+    }
+  }
+  const b = new B();
+  discover(b);
+  assertThrows(() => planGraph(b.a), GraphError, "cycle");
+});
 
 Deno.test("topological order respects dependencies", () => {
   class B extends Build {
