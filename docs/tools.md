@@ -1,0 +1,39 @@
+# Tools
+
+Typed tool wrappers in a settings-lambda style: configure a fluent settings
+object in a lambda and the task function builds the argv and runs it. Arguments
+stay a discrete array end-to-end — never a shell string — so command
+construction is injection-free.
+
+```ts
+import { DenoTasks } from "jsr:@zuke/deno";
+import { NpmTasks } from "jsr:@zuke/npm";
+import { CmdTasks } from "jsr:@zuke/cmd";
+
+await DenoTasks.test((s) => s.allowAll().coverage("cov_profile"));
+await NpmTasks.run((s) => s.script("build").workspace("app"));
+
+// Fallback for tools without a dedicated wrapper:
+await CmdTasks.exec("git", (s) => s.args("rev-parse", "HEAD"));
+```
+
+Every settings object also supports `.env()`, `.cwd()`, `.noThrow()`,
+`.quiet()`, `.toolPath()` (binary override) and `.args()` (escape hatch for
+flags without a typed option). Awaiting a task resolves to the same
+`CommandOutput` the shell `$` produces. If a binary is missing, Zuke retries
+through `cmd /c` on Windows (npm ships as a `.cmd` shim there) and otherwise
+raises a `ToolNotFoundError` that names the tool and the fix.
+
+| Package                | Tasks                                                                                                                |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `@zuke/deno`           | `run`, `test`, `check`, `fmt`, `lint`, `cache`, `coverage`, `task`                                                   |
+| `@zuke/npm`            | `install`, `ci`, `run`, `exec`, `publish`, `version`                                                                 |
+| `@zuke/docker`         | `build`, `run`, `exec`, `push`, `pull`, `tag`, `login`, `images`, `ps`, `stop`, `start`, `rm`, `rmi`, `save`, `load` |
+| `@zuke/docker-compose` | `up`, `down`, `build`, `pull`, `push`, `run`, `exec`, `logs`, `ps`, `config`, `start`, `stop`, `restart`, `rm`       |
+| `@zuke/oxlint`         | `lint`                                                                                                               |
+| `@zuke/eslint`         | `lint`                                                                                                               |
+| `@zuke/cspell`         | `lint`                                                                                                               |
+| `@zuke/jest`           | `run`                                                                                                                |
+| `@zuke/vitest`         | `run`                                                                                                                |
+| `@zuke/security`       | `zizmor`, `actionlint`, `gitleaks`, `osvScanner`, `semgrep`, `trivyFs`, `trivyConfig`                               |
+| `@zuke/cmd`            | `exec` (any tool)                                                                                                    |
