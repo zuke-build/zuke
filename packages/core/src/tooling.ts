@@ -20,6 +20,7 @@
  */
 
 import { Command, type CommandOutput } from "./shell.ts";
+import type { AbsolutePath } from "./path.ts";
 
 /** Raised when a tool's binary cannot be found on the system. */
 export class ToolNotFoundError extends Error {
@@ -118,7 +119,7 @@ export abstract class ToolSettings {
   }
 
   /** Escape hatch: append raw arguments after all typed options. */
-  args(...extra: Array<string | number>): this {
+  args(...extra: Array<string | number | AbsolutePath>): this {
     this.#extraArgs.push(...extra.map(String));
     return this;
   }

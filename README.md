@@ -53,6 +53,7 @@ class MyBuild extends Build {
   - [`Build`](#build)
   - [`run()`](#run)
 - [Shell wrapper (`$`)](#shell-wrapper-)
+- [Paths (`absolutePath`)](#paths-absolutepath)
 - [Tools](#tools)
 - [Using Zuke in a Node/npm project](#using-zuke-in-a-nodenpm-project)
 - [CLI reference](#cli-reference)
@@ -337,6 +338,34 @@ await $`echo ${dirty}`; // prints the literal string; runs nothing else
 
 By default a command streams its output live to your terminal and captures
 stdout; `.text()`/`.lines()` capture without echoing; `.quiet()` does neither.
+
+## Paths (`absolutePath`)
+
+NUKE overloads `/` so you can write `RootDirectory / "src" / "Project.csproj"`.
+TypeScript has no operator overloading, so `absolutePath` gets as close as the
+language allows: the returned `AbsolutePath` is **callable** (and has an
+equivalent `.join(...)`), so appending segments reads almost the same.
+
+```ts
+import { absolutePath } from "jsr:@zuke/core";
+
+const root = absolutePath("/app");
+const main = root("src", "main.ts"); // callable: /app/src/main.ts
+const test = root.join("tests", "x.ts"); // explicit: /app/tests/x.ts
+
+main.name; // "main.ts"
+main.stem; // "main"
+main.extension; // ".ts"
+main.parent(); // AbsolutePath → /app/src
+main.relativeTo(root); // "src/main.ts"
+main.equals("/app/lib/../src/main.ts"); // true
+
+await $`deno run ${main}`; // toString() → drops straight into $`` and args()
+```
+
+Paths are immutable and normalised (forward slashes, `.`/`..` resolved; a
+Windows `C:/…` drive prefix is preserved). The base must be absolute — start
+with `/` or a drive letter, or build from an absolute base.
 
 ## Tools
 

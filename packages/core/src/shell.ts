@@ -16,11 +16,14 @@
  * @module
  */
 
+import type { AbsolutePath } from "./path.ts";
+
 /** A value that may be interpolated into a `$` template. */
 export type Interpolatable =
   | string
   | number
-  | Array<string | number>;
+  | AbsolutePath
+  | Array<string | number | AbsolutePath>;
 
 /** Raised when a command exits non-zero and throwing was not suppressed. */
 export class CommandError extends Error {
