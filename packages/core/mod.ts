@@ -24,7 +24,12 @@
  * @module
  */
 
-export { Build, type BuildResult, discoverTargets } from "./src/build.ts";
+export {
+  Build,
+  type BuildResult,
+  discoverGroups,
+  discoverTargets,
+} from "./src/build.ts";
 export {
   type Condition,
   Group,

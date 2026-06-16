@@ -1,6 +1,6 @@
 import { assertEquals } from "./_assert.ts";
-import { Build, target } from "../mod.ts";
-import { discoverTargets } from "../src/build.ts";
+import { Build, group, target } from "../mod.ts";
+import { discoverGroups, discoverTargets } from "../src/build.ts";
 import { TargetBuilder } from "../src/target.ts";
 import {
   clientModel,
@@ -24,6 +24,30 @@ Deno.test("graphData yields a node per target and an edge per dependency", () =>
     { name: "build", description: "Build" },
   ]);
   assertEquals(data.edges, [["clean", "build"]]);
+});
+
+Deno.test("graphData records group membership and toMermaid wraps it in a subgraph", () => {
+  class Grouped extends Build {
+    checks = group();
+    clean = target().executes(() => {});
+    lint = target().dependsOn(this.clean).partOf(this.checks).executes(
+      () => {},
+    );
+    format = target().dependsOn(this.clean).partOf(this.checks).executes(
+      () => {},
+    );
+  }
+  const b = new Grouped();
+  discoverTargets(b);
+  discoverGroups(b); // names the group so it can be labelled
+
+  const data = graphData(discoverTargets(b));
+  assertEquals(data.nodes.find((n) => n.name === "lint")?.group, "checks");
+  assertEquals(data.nodes.find((n) => n.name === "clean")?.group, undefined);
+
+  const mermaid = toMermaid(data);
+  assertEquals(mermaid.includes('subgraph g0["checks"]'), true);
+  assertEquals(mermaid.includes("end"), true);
 });
 
 Deno.test("graphData skips edges to undiscovered or unnamed dependencies", () => {

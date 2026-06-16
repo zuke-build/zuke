@@ -27,6 +27,9 @@ everything it connects to — its transitive dependencies and dependents — and
 click the background (or **Reset**) to clear the selection. Mermaid loads from a
 pinned CDN, so the first view needs internet access.
 
+Targets in a [`group()`](./authoring.md#group-and-partof) are drawn inside a
+labelled box (a Mermaid subgraph); the text listing tags them `[group: name]`.
+
 | Option          | Behaviour                                                   |
 | --------------- | ----------------------------------------------------------- |
 | `--output=html` | Render the interactive HTML page instead of terminal text.  |

@@ -1,5 +1,5 @@
 import { assertEquals } from "./_assert.ts";
-import { Build, target } from "../mod.ts";
+import { Build, group, target } from "../mod.ts";
 import {
   formatGraph,
   formatHelp,
@@ -8,7 +8,7 @@ import {
   parseArgs,
   run,
 } from "../src/cli.ts";
-import { discoverTargets } from "../src/build.ts";
+import { discoverGroups, discoverTargets } from "../src/build.ts";
 import { FakeGraphHost } from "./_fakes.ts";
 import { CONFIG_FILE } from "../src/config.ts";
 import { parameter } from "../src/params.ts";
@@ -138,6 +138,17 @@ Deno.test("formatGraph renders adjacency, formatHelp includes usage", () => {
   const targets = discoverTargets(new Demo());
   assertEquals(formatGraph(targets).includes("build → clean"), true);
   assertEquals(formatHelp(targets).includes("Usage:"), true);
+});
+
+Deno.test("formatGraph annotates group membership", () => {
+  class B extends Build {
+    checks = group();
+    lint = target().partOf(this.checks).executes(() => {});
+  }
+  const b = new B();
+  const targets = discoverTargets(b);
+  discoverGroups(b);
+  assertEquals(formatGraph(targets).includes("lint  [group: checks]"), true);
 });
 
 Deno.test("formatList hides unlisted targets but keeps the rest", () => {
