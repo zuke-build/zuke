@@ -6,7 +6,12 @@
     "packages/npm",
     "packages/cli",
     "packages/docker",
-    "packages/docker-compose"
+    "packages/docker-compose",
+    "packages/oxlint",
+    "packages/eslint",
+    "packages/cspell",
+    "packages/jest",
+    "packages/vitest"
   ],
   "tasks": {
     "zuke": "deno run -A zuke.ts",

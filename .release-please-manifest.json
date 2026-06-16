@@ -5,5 +5,10 @@
   "packages/cmd": "0.1.1",
   "packages/cli": "0.1.1",
   "packages/docker": "0.1.0",
-  "packages/docker-compose": "0.1.0"
+  "packages/docker-compose": "0.1.0",
+  "packages/oxlint": "0.0.0",
+  "packages/eslint": "0.0.0",
+  "packages/cspell": "0.0.0",
+  "packages/jest": "0.0.0",
+  "packages/vitest": "0.0.0"
 }

@@ -23,7 +23,8 @@ order. Inspired by [NUKE](https://nuke.build/) for .NET.
 - **Runtime:** Deno
 - **Packages:** `jsr:@zuke/core` plus typed tool wrappers `jsr:@zuke/deno`,
   `jsr:@zuke/npm`, `jsr:@zuke/docker`, `jsr:@zuke/docker-compose`,
-  `jsr:@zuke/cmd` (raw shell via `jsr:@zuke/core/shell`)
+  `jsr:@zuke/oxlint`, `jsr:@zuke/eslint`, `jsr:@zuke/cspell`, `jsr:@zuke/jest`,
+  `jsr:@zuke/vitest`, `jsr:@zuke/cmd` (raw shell via `jsr:@zuke/core/shell`)
 - **Build file:** `zuke.ts` in your project root
 - **Zero runtime dependencies**
 
@@ -83,10 +84,11 @@ Zuke is imported straight from JSR.
 
 > [!NOTE]
 > All packages — `@zuke/core`, `@zuke/deno`, `@zuke/npm`, `@zuke/docker`,
-> `@zuke/docker-compose`, `@zuke/cmd`, and the `@zuke/cli` command — publish to
-> [JSR](https://jsr.io/@zuke) from CI via release-please and OIDC (see
-> [`RELEASING.md`](./RELEASING.md)). The npm scope `@zuke` is not controlled by
-> this project — install from JSR, not npm.
+> `@zuke/docker-compose`, `@zuke/oxlint`, `@zuke/eslint`, `@zuke/cspell`,
+> `@zuke/jest`, `@zuke/vitest`, `@zuke/cmd`, and the `@zuke/cli` command —
+> publish to [JSR](https://jsr.io/@zuke) from CI via release-please and OIDC
+> (see [`RELEASING.md`](./RELEASING.md)). The npm scope `@zuke` is not
+> controlled by this project — install from JSR, not npm.
 
 ### Scaffold a project with `zuke setup`
 
@@ -367,6 +369,11 @@ raises a `ToolNotFoundError` that names the tool and the fix.
 | `@zuke/npm`            | `install`, `ci`, `run`, `exec`, `publish`, `version`                                                                 |
 | `@zuke/docker`         | `build`, `run`, `exec`, `push`, `pull`, `tag`, `login`, `images`, `ps`, `stop`, `start`, `rm`, `rmi`, `save`, `load` |
 | `@zuke/docker-compose` | `up`, `down`, `build`, `pull`, `push`, `run`, `exec`, `logs`, `ps`, `config`, `start`, `stop`, `restart`, `rm`       |
+| `@zuke/oxlint`         | `lint`                                                                                                               |
+| `@zuke/eslint`         | `lint`                                                                                                               |
+| `@zuke/cspell`         | `lint`                                                                                                               |
+| `@zuke/jest`           | `run`                                                                                                                |
+| `@zuke/vitest`         | `run`                                                                                                                |
 | `@zuke/cmd`            | `exec` (any tool)                                                                                                    |
 
 ## Using Zuke in a Node/npm project

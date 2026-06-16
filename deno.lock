@@ -562,6 +562,11 @@
           "jsr:@zuke/core@0"
         ]
       },
+      "packages/cspell": {
+        "dependencies": [
+          "jsr:@zuke/core@0"
+        ]
+      },
       "packages/deno": {
         "dependencies": [
           "jsr:@zuke/core@0"
@@ -577,7 +582,27 @@
           "jsr:@zuke/core@0"
         ]
       },
+      "packages/eslint": {
+        "dependencies": [
+          "jsr:@zuke/core@0"
+        ]
+      },
+      "packages/jest": {
+        "dependencies": [
+          "jsr:@zuke/core@0"
+        ]
+      },
       "packages/npm": {
+        "dependencies": [
+          "jsr:@zuke/core@0"
+        ]
+      },
+      "packages/oxlint": {
+        "dependencies": [
+          "jsr:@zuke/core@0"
+        ]
+      },
+      "packages/vitest": {
         "dependencies": [
           "jsr:@zuke/core@0"
         ]

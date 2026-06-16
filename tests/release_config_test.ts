@@ -8,6 +8,11 @@ const PACKAGES = [
   "packages/cli",
   "packages/docker",
   "packages/docker-compose",
+  "packages/oxlint",
+  "packages/eslint",
+  "packages/cspell",
+  "packages/jest",
+  "packages/vitest",
 ];
 
 async function readJson(path: string): Promise<Record<string, unknown>> {

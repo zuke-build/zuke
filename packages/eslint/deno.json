@@ -1,0 +1,14 @@
+{
+  "name": "@zuke/eslint",
+  "version": "0.0.0",
+  "description": "Typed eslint task wrappers for Zuke builds — lint, fix, caching, and reporters via an injection-free settings-lambda API.",
+  "exports": {
+    ".": "./mod.ts"
+  },
+  "imports": {
+    "@zuke/core": "jsr:@zuke/core@^0"
+  },
+  "publish": {
+    "exclude": ["tests/"]
+  }
+}

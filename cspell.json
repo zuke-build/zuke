@@ -11,6 +11,8 @@
     "jsonpath",
     "OIDC",
     "mytool",
+    "oxlint",
+    "oxlintrc",
     "spawnable",
     "topo",
     "unconfigured",
