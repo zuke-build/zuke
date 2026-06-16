@@ -1,6 +1,6 @@
 {
   "name": "@zuke/cli",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "The zuke command-line tool — scaffold a Zuke project with `zuke setup`, including a starter build, launchers, and tasks.",
   "exports": {
     ".": "./mod.ts"

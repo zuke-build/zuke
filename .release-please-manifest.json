@@ -1,9 +1,9 @@
 {
-  "packages/core": "0.5.0",
+  "packages/core": "0.6.0",
   "packages/deno": "0.3.0",
   "packages/npm": "0.2.0",
   "packages/cmd": "0.3.0",
-  "packages/cli": "0.2.0",
+  "packages/cli": "0.3.0",
   "packages/docker": "0.3.0",
   "packages/docker-compose": "0.3.0",
   "packages/oxlint": "0.2.0",
