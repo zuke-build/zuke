@@ -1,6 +1,6 @@
 {
   "name": "@zuke/gcloud",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Typed gcloud (Google Cloud SDK) task wrapper for Zuke builds — a flexible, injection-free command builder with the common global flags via a settings-lambda API.",
   "exports": {
     ".": "./mod.ts"
