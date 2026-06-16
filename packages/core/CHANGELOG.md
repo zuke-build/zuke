@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/zuke-build/zuke/compare/core-v0.6.0...core-v0.7.0) (2026-06-16)
+
+
+### Features
+
+* **core:** add typed build parameters from flags and env ([#43](https://github.com/zuke-build/zuke/issues/43)) ([a2e136d](https://github.com/zuke-build/zuke/commit/a2e136d988abd3bfd841047263b5753f024486b8))
+
 ## [0.6.0](https://github.com/zuke-build/zuke/compare/core-v0.5.0...core-v0.6.0) (2026-06-16)
 
 
