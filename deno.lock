@@ -582,7 +582,17 @@
           "jsr:@zuke/core@0"
         ]
       },
+      "packages/dprint": {
+        "dependencies": [
+          "jsr:@zuke/core@0"
+        ]
+      },
       "packages/eslint": {
+        "dependencies": [
+          "jsr:@zuke/core@0"
+        ]
+      },
+      "packages/gcloud": {
         "dependencies": [
           "jsr:@zuke/core@0"
         ]
