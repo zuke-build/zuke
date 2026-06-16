@@ -19,3 +19,8 @@ await DockerComposeTasks.up((s) => s.file("compose.yml").detach().build());
 await DockerComposeTasks.logs((s) => s.follow().tail(100));
 await DockerComposeTasks.down((s) => s.volumes());
 ```
+
+## Paths
+
+Every path argument accepts either a string or an `AbsolutePath` from
+`@zuke/core`, so a path built with `absolutePath` can be passed in directly.

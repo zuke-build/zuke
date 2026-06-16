@@ -12,3 +12,8 @@ await OxlintTasks.lint((s) =>
   s.paths("src").config(".oxlintrc.json").fix().denyWarnings()
 );
 ```
+
+## Paths
+
+Every path argument accepts either a string or an `AbsolutePath` from
+`@zuke/core`, so a path built with `absolutePath` can be passed in directly.

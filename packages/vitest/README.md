@@ -14,3 +14,8 @@ import { VitestTasks } from "jsr:@zuke/vitest";
 
 await VitestTasks.run((s) => s.coverage().reporter("dot").bail(1));
 ```
+
+## Paths
+
+Every path argument accepts either a string or an `AbsolutePath` from
+`@zuke/core`, so a path built with `absolutePath` can be passed in directly.

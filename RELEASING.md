@@ -38,6 +38,15 @@ pull request.
 So the steady-state flow is: merge conventional commits → merge the release PR
 → the packages publish themselves.
 
+> [!IMPORTANT]
+> **Keep code snippets out of commit message bodies.** release-please parses
+> each merged commit with a strict conventional-commits parser, and code
+> fragments containing parentheses (for example an arrow-function example) make
+> it fail to parse the whole commit — which silently drops it from the release,
+> so no version is bumped. Because the repo squash-merges, the squash body is
+> built from the PR description/commits, so keep illustrative code in the PR
+> *discussion*, not in the commit body. Describe the change in prose instead.
+
 ## First release (one-time bootstrap)
 
 The four JSR packages start empty, so the very first release is bootstrapped to
