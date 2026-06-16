@@ -45,23 +45,35 @@ Deno.test("parseArgs reads a positional target", () => {
 Deno.test("parseArgs recognises flags and aliases", () => {
   assertEquals(parseArgs(["--list"]).list, true);
   assertEquals(parseArgs(["-l"]).list, true);
-  assertEquals(parseArgs(["--graph"]).graph, true);
   assertEquals(parseArgs(["--help"]).help, true);
   assertEquals(parseArgs(["-h"]).help, true);
 });
 
-Deno.test("parseArgs recognises the graph command and its options", () => {
-  const parsed = parseArgs(["graph", "--out", "g.html", "--no-open"]);
-  assertEquals(parsed.graphHtml, true);
-  assertEquals(parsed.target, undefined);
-  assertEquals(parsed.out, "g.html");
-  assertEquals(parsed.open, false);
+Deno.test("parseArgs recognises the graph command and its output formats", () => {
+  const text = parseArgs(["graph"]);
+  assertEquals([text.graph, text.output, text.target], [
+    true,
+    "text",
+    undefined,
+  ]);
+
+  const eq = parseArgs(["graph", "--output=html", "--no-open"]);
+  assertEquals([eq.graph, eq.output, eq.open], [true, "html", false]);
+
+  const spaced = parseArgs(["graph", "--output", "html"]);
+  assertEquals(spaced.output, "html");
+
+  // An unknown format falls back to text.
+  assertEquals(parseArgs(["graph", "--output=svg"]).output, "text");
 });
 
-Deno.test("parseArgs defaults open to true and graphHtml to false", () => {
+Deno.test("parseArgs defaults graph to false, output to text, open to true", () => {
   const parsed = parseArgs(["build"]);
-  assertEquals(parsed.graphHtml, false);
-  assertEquals(parsed.open, true);
+  assertEquals([parsed.graph, parsed.output, parsed.open], [
+    false,
+    "text",
+    true,
+  ]);
 });
 
 Deno.test("parseArgs collects repeatable --skip and keeps first positional", () => {
@@ -103,20 +115,20 @@ Deno.test("main --help prints usage and returns 0", async () => {
   assertEquals(out.join("\n").includes("Usage:"), true);
 });
 
-Deno.test("main --list and --graph return 0", async () => {
+Deno.test("main --list and graph (text) return 0", async () => {
   const list = await capture(() => main(Demo, ["--list"]));
   assertEquals(list.code, 0);
   assertEquals(list.out.join("\n").includes("Targets:"), true);
 
-  const graph = await capture(() => main(Demo, ["--graph"]));
+  const graph = await capture(() => main(Demo, ["graph"]));
   assertEquals(graph.code, 0);
   assertEquals(graph.out.join("\n").includes("Dependency graph:"), true);
 });
 
-Deno.test("main graph command renders HTML via the injected host", async () => {
+Deno.test("main graph --output=html renders HTML via the injected host", async () => {
   const host = new FakeGraphHost("/repo", [`/repo/${CONFIG_FILE}`]);
   const { code } = await capture(() =>
-    main(Demo, ["graph", "--no-open"], host)
+    main(Demo, ["graph", "--output=html", "--no-open"], host)
   );
   assertEquals(code, 0);
   assertEquals(host.files.has("/repo/.zuke/graph.html"), true);

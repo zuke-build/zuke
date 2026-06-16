@@ -75,5 +75,5 @@ if (import.meta.main) {
 ```
 
 Now `npm run build` runs the default pipeline, `npm run build -- test` runs one
-target, and `npm run build -- --list` / `-- --graph` show what the build can do
+target, and `npm run build -- --list` / `-- graph` show what the build can do
 — no one has to learn Deno commands.

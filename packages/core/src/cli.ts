@@ -1,6 +1,6 @@
 /**
- * The CLI surface: argument parsing, `--list`/`--help`/`--graph`, and the
- * public {@link run} entry point that drives a build from `zuke.ts`.
+ * The CLI surface: argument parsing, `--list`/`--help`/`graph`, and the public
+ * {@link run} entry point that drives a build from `zuke.ts`.
  */
 
 import { type Build, discoverTargets } from "./build.ts";
@@ -16,8 +16,16 @@ import type { TargetBuilder } from "./target.ts";
 /** Convention: a target literally named `default` runs when none is requested. */
 const DEFAULT_TARGET = "default";
 
-/** The reserved positional command that renders the interactive HTML graph. */
+/** The reserved positional command that renders the dependency graph. */
 const GRAPH_COMMAND = "graph";
+
+/** Output format for the `graph` command: a terminal listing or an HTML page. */
+export type GraphOutput = "text" | "html";
+
+/** Normalise an `--output` value; anything but `html` is treated as `text`. */
+function parseOutput(value: string): GraphOutput {
+  return value === "html" ? "html" : "text";
+}
 
 /** Parsed command-line arguments. */
 export interface ParsedArgs {
@@ -26,13 +34,12 @@ export interface ParsedArgs {
   /** Dependencies to skip (`--skip <dep>`, repeatable). */
   skip: string[];
   list: boolean;
+  /** The `graph` command was requested. */
   graph: boolean;
-  /** Render the interactive HTML graph (`graph` command). */
-  graphHtml: boolean;
-  /** Open the generated graph in a browser (default true; `--no-open` clears). */
+  /** Graph output format (`--output`); defaults to `text`. */
+  output: GraphOutput;
+  /** Open the HTML graph in a browser (default true; `--no-open` clears). */
   open: boolean;
-  /** Output path for the generated graph (`--out <path>`). */
-  out?: string;
   help: boolean;
 }
 
@@ -42,28 +49,29 @@ export function parseArgs(args: string[]): ParsedArgs {
     skip: [],
     list: false,
     graph: false,
-    graphHtml: false,
+    output: "text",
     open: true,
     help: false,
   };
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
+    if (arg.startsWith("--output=")) {
+      parsed.output = parseOutput(arg.slice("--output=".length));
+      continue;
+    }
     switch (arg) {
       case "--list":
       case "-l":
         parsed.list = true;
         break;
-      case "--graph":
-        parsed.graph = true;
+      case "--output": {
+        const value = args[++i];
+        if (value) parsed.output = parseOutput(value);
         break;
+      }
       case "--no-open":
         parsed.open = false;
         break;
-      case "--out": {
-        const out = args[++i];
-        if (out) parsed.out = out;
-        break;
-      }
       case "--help":
       case "-h":
         parsed.help = true;
@@ -75,10 +83,9 @@ export function parseArgs(args: string[]): ParsedArgs {
       }
       default:
         if (
-          !arg.startsWith("-") && parsed.target === undefined &&
-          !parsed.graphHtml
+          !arg.startsWith("-") && parsed.target === undefined && !parsed.graph
         ) {
-          if (arg === GRAPH_COMMAND) parsed.graphHtml = true;
+          if (arg === GRAPH_COMMAND) parsed.graph = true;
           else parsed.target = arg;
         }
         break;
@@ -97,18 +104,18 @@ const USAGE = `zuke — code-first build automation
 Usage:
   deno run -A zuke.ts <target> [--skip <dep>]
   deno run -A zuke.ts --list
-  deno run -A zuke.ts --graph
-  deno run -A zuke.ts graph [--out <path>] [--no-open]
+  deno run -A zuke.ts graph [--output=html] [--no-open]
 
 Options:
-  <target>        Run the target and its transitive dependencies.
-  --skip <dep>    Skip the named dependency (repeatable).
-  --list, -l      List all targets with descriptions and dependencies.
-  --graph         Print the dependency graph.
-  graph           Render an interactive HTML graph into .zuke/ and open it.
-  --out <path>    Output path for the HTML graph (with the graph command).
-  --no-open       Do not open the generated graph in a browser.
-  --help, -h      Show this help.`;
+  <target>          Run the target and its transitive dependencies.
+  --skip <dep>      Skip the named dependency (repeatable).
+  --list, -l        List all targets with descriptions and dependencies.
+  graph             Show the dependency graph. Default output is the terminal
+                    adjacency listing; --output=html writes an interactive
+                    page to .zuke/ and opens it in a browser.
+  --output <fmt>    Graph output format: text (default) or html.
+  --no-open         With --output=html, do not open a browser.
+  --help, -h        Show this help.`;
 
 /** Render `--help`, including the available targets. */
 export function formatHelp(targets: Map<string, TargetBuilder>): string {
@@ -129,7 +136,7 @@ export function formatList(targets: Map<string, TargetBuilder>): string {
   return lines.join("\n");
 }
 
-/** Render `--graph`: an adjacency listing of `target → dependencies`. */
+/** Render the `graph` text output: an adjacency listing of `target → deps`. */
 export function formatGraph(targets: Map<string, TargetBuilder>): string {
   if (targets.size === 0) return "No targets defined.";
   const lines = ["Dependency graph:"];
@@ -174,15 +181,11 @@ export async function main(
     return 0;
   }
   if (parsed.graph) {
+    if (parsed.output === "html") {
+      return await graphCommand(targets, { open: parsed.open }, graphHost);
+    }
     console.log(formatGraph(targets));
     return 0;
-  }
-  if (parsed.graphHtml) {
-    return await graphCommand(
-      targets,
-      { open: parsed.open, out: parsed.out },
-      graphHost,
-    );
   }
 
   let name = parsed.target;

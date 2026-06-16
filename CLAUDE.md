@@ -121,7 +121,7 @@ zuke.ts                   # Zuke's own build (runnable example)
 - **No secrets or machine-specific paths** in the repo or commits. Don't commit
   coverage artifacts (`cov_profile/`, `cov.lcov`) — they're git-ignored.
 - **Deterministic output.** Topological order is declaration-stable; keep it
-  that way so `--graph`/`--list` output doesn't churn.
+  that way so `graph`/`--list` output doesn't churn.
 - **Friendly errors.** Validation failures should name the offending target and
   explain the fix (see the cycle and forward-reference messages for the bar).
 - **Don't expand the public API casually.** Internal fields use a trailing

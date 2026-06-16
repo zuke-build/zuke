@@ -82,13 +82,3 @@ Deno.test("defaultGraphHost performs real filesystem effects", async () => {
     await Deno.remove(dir, { recursive: true });
   }
 });
-
-Deno.test("graphCommand honours an explicit --out path", async () => {
-  const host = new FakeGraphHost("/repo", []);
-  await graphCommand(targets(), { open: false, out: "docs/graph.html" }, host);
-  assertEquals(host.files.has("/repo/docs/graph.html"), true);
-
-  const abs = new FakeGraphHost("/repo", []);
-  await graphCommand(targets(), { open: false, out: "/tmp/g.html" }, abs);
-  assertEquals(abs.files.has("/tmp/g.html"), true);
-});

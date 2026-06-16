@@ -80,26 +80,17 @@ export const defaultGraphHost: GraphHost = {
 export interface GraphCommandOptions {
   /** Open the generated file in a browser when done. */
   open: boolean;
-  /** Override the output path (default: `<root>/.zuke/graph.html`). */
-  out?: string;
 }
 
 /** The directory under the repo root where Zuke writes generated artifacts. */
 const ARTIFACT_DIR = ".zuke";
-/** The default graph file name within {@link ARTIFACT_DIR}. */
+/** The graph file name within {@link ARTIFACT_DIR}. */
 const GRAPH_FILE = "graph.html";
 
-/** Resolve `out` against `cwd` unless it is already absolute. */
-function resolveOut(cwd: string, out: string): string {
-  return /^([A-Za-z]:|[/\\])/.test(out)
-    ? absolutePath(out).path
-    : absolutePath(cwd, out).path;
-}
-
 /**
- * Render the build graph to an HTML file and (optionally) open it. The file
- * lands in `<repo root>/.zuke/graph.html` — the root is located via the
- * `zuke.json` config file, falling back to the cwd — unless `out` overrides it.
+ * Render the build graph to `<repo root>/.zuke/graph.html` and (optionally)
+ * open it in a browser. The root is located via the `zuke.json` config file,
+ * falling back to the current directory.
  *
  * @returns a process exit code (always 0; rendering cannot fail on valid input).
  */
@@ -111,9 +102,7 @@ export async function graphCommand(
   const html = renderGraphHtml(graphData(targets));
   const cwd = host.cwd();
   const root = findConfigDir(cwd, (path) => host.exists(path)) ?? cwd;
-  const outPath = options.out !== undefined
-    ? resolveOut(cwd, options.out)
-    : absolutePath(root)(ARTIFACT_DIR, GRAPH_FILE).path;
+  const outPath = absolutePath(root)(ARTIFACT_DIR, GRAPH_FILE).path;
 
   await host.mkdir(absolutePath(outPath).parent().path);
   await host.writeText(outPath, html);
