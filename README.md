@@ -79,6 +79,8 @@ Full documentation lives in [`docs/`](./docs/):
   launcher, and a first build.
 - [Core concepts](./docs/concepts.md) — the build/target/graph model and
   execution semantics.
+- [Parameters](./docs/parameters.md) — typed build inputs from flags and env
+  vars (`parameter()`, `this.x.value`).
 - [Authoring API](./docs/authoring.md) — `target()`, `Build`, `run()`, and
   gotchas.
 - [Shell wrapper (`$`)](./docs/shell.md) — ergonomic, injection-safe process
@@ -118,7 +120,6 @@ CI runs `deno task ci` on every push and pull request (see
 
 Post-v0, for context:
 
-- Parameter & environment injection (`this.configuration`, `--configuration`).
 - Parallel execution of independent targets.
 - A `zuke` standalone binary + `zuke init` scaffolding.
 - Caching / incremental targets.
