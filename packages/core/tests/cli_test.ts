@@ -140,6 +140,16 @@ Deno.test("formatGraph renders adjacency, formatHelp includes usage", () => {
   assertEquals(formatHelp(targets).includes("Usage:"), true);
 });
 
+Deno.test("formatList hides unlisted targets but keeps the rest", () => {
+  class B extends Build {
+    visible = target().description("Shown").executes(() => {});
+    helper = target().unlisted().executes(() => {});
+  }
+  const list = formatList(discoverTargets(new B()));
+  assertEquals(list.includes("visible"), true);
+  assertEquals(list.includes("helper"), false);
+});
+
 Deno.test("formatList/formatGraph handle an empty build", () => {
   class Empty extends Build {}
   const targets = discoverTargets(new Empty());

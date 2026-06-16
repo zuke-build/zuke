@@ -336,6 +336,18 @@ async function runTarget(
   for (const condition of t.onlyWhen_) {
     if (!(await condition())) return { status: "skipped", ms: 0 };
   }
+
+  const missing = t.requires_.filter((p) => !p.isSet_());
+  if (missing.length > 0) {
+    const names = missing.map((p) => `"${p.name_ ?? "(unnamed)"}"`).join(", ");
+    const error = new Error(
+      `Target "${name}" requires parameter(s) that are not set: ${names}.`,
+    );
+    openTarget(reporter, style, name, opened);
+    failTarget(reporter, style, name, 0, error);
+    return { status: "failed", ms: 0, error };
+  }
+
   if (cache !== undefined && await cache.upToDate(t)) {
     return { status: "cached", ms: 0 };
   }
@@ -450,11 +462,12 @@ async function runScheduled(
   cache: BuildCache | undefined,
 ): Promise<RunOutcome> {
   const outcomes = new Map<TargetBuilder, TargetOutcome>();
-  const done = new Set<TargetBuilder>(); // passed or skipped → unblocks dependents
+  const done = new Set<TargetBuilder>(); // passed/cached/skipped → unblocks dependents
   const started = new Set<TargetBuilder>();
   const runningSet = new Set<TargetBuilder>();
   let failure: unknown;
-  let aborted = false;
+  let anyFailed = false; // a failure occurred → the build fails
+  let halted = false; // a non-lenient failure → stop launching new targets
   let flushed = 0;
 
   // `--skip` targets count as completed so their dependents can still run.
@@ -473,7 +486,7 @@ async function runScheduled(
 
   await new Promise<void>((resolve) => {
     const pump = () => {
-      if (!aborted) {
+      if (!halted) {
         for (const t of order) {
           if (runningSet.size >= limit) break;
           if (started.has(t) || !ready(t) || !overlaps(t)) continue;
@@ -493,8 +506,11 @@ async function runScheduled(
               outcomes.set(t, outcome);
               runningSet.delete(t);
               if (outcome.status === "failed") {
-                aborted = true;
-                failure = outcome.error;
+                anyFailed = true;
+                failure ??= outcome.error;
+                // A lenient failure lets independent targets keep going; its
+                // own dependents stay blocked (never added to `done`).
+                if (!t.proceedAfterFailure_) halted = true;
               } else {
                 done.add(t); // passed, cached, or condition-skipped
               }
@@ -524,7 +540,7 @@ async function runScheduled(
     reports.push({ name, status: outcome.status, ms: outcome.ms });
     if (outcome.status === "passed") executed.push(name);
   }
-  return { reports, executed, failure, aborted };
+  return { reports, executed, failure, aborted: anyFailed };
 }
 
 /**
@@ -569,13 +585,16 @@ export async function execute(
   const limit = resolveConcurrency(options.parallel);
   const globalParallel = limit > 1;
   const grouped = order.some((t) => t.group_ !== undefined);
+  // `proceedAfterFailure` needs the scheduler's per-target skip-on-failure, so
+  // the simple sequential loop is only used when none of these features apply.
+  const lenient = order.some((t) => t.proceedAfterFailure_);
   const cache = await resolveCache(options.cache, order);
   const overallStart = performance.now();
 
   await build.onStart();
 
   let run: RunOutcome;
-  if (!globalParallel && !grouped) {
+  if (!globalParallel && !grouped && !lenient) {
     run = await runSequential(order, reporter, style, skip, cache);
   } else {
     // With `--parallel`, anything independent may overlap up to `limit`.

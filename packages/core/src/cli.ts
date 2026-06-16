@@ -171,9 +171,13 @@ export function formatList(
   targets: Map<string, TargetBuilder>,
   params: Map<string, AnyParameter> = new Map(),
 ): string {
-  const targetText = targets.size === 0
+  // `unlisted` targets stay runnable by name but are hidden from the listing.
+  const listed = new Map(
+    [...targets].filter(([, t]) => !t.unlisted_),
+  );
+  const targetText = listed.size === 0
     ? "No targets defined."
-    : renderTargets(targets);
+    : renderTargets(listed);
   const paramText = formatParameters(params);
   return paramText === "" ? targetText : `${targetText}\n\n${paramText}`;
 }

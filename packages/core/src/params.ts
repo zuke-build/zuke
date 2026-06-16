@@ -99,6 +99,8 @@ export interface AnyParameter {
   readonly hasFallback_: boolean;
   /** Resolve from a raw input (or `undefined` when none was supplied). */
   resolve_(raw: string | undefined): void;
+  /** Whether the parameter resolved to a defined value (used by `.requires()`). */
+  isSet_(): boolean;
 }
 
 /** The constructor spec for a {@link Parameter}. */
@@ -173,6 +175,10 @@ export class Parameter<
       );
     }
     return this.#state.value;
+  }
+
+  isSet_(): boolean {
+    return this.#state.ok && this.#state.value !== undefined;
   }
 
   /** Parse the value as a number (e.g. `--workers 4`). */

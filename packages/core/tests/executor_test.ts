@@ -769,6 +769,77 @@ Deno.test("execute caches incrementally via the default .zuke store", async () =
   }
 });
 
+Deno.test("triggers run the triggered target after this one", async () => {
+  const order: string[] = [];
+  class B extends Build {
+    notify = target().executes(() => void order.push("notify"));
+    build = target().triggers(this.notify).executes(() =>
+      void order.push("build")
+    );
+  }
+  const b = new B();
+  discoverTargets(b);
+  const result = await execute(b, b.build, { silent: true });
+  assertEquals(result.ok, true);
+  assertEquals(order, ["build", "notify"]);
+});
+
+Deno.test("proceedAfterFailure keeps the build going but still fails", async () => {
+  const ran: string[] = [];
+  class B extends Build {
+    flaky = target().proceedAfterFailure().executes(() => {
+      throw new Error("flaked");
+    });
+    afterFlaky = target().dependsOn(this.flaky).executes(() =>
+      void ran.push("afterFlaky")
+    );
+    independent = target().executes(() => void ran.push("independent"));
+    all = target()
+      .dependsOn(this.afterFlaky, this.independent)
+      .executes(() => void ran.push("all"));
+  }
+  const b = new B();
+  discoverTargets(b);
+  const result = await execute(b, b.all, { silent: true });
+  assertEquals(result.ok, false); // a failure still fails the build
+  assertEquals(ran.includes("independent"), true); // kept going
+  assertEquals(ran.includes("afterFlaky"), false); // dependent of the failure
+  assertEquals(ran.includes("all"), false); // transitively blocked
+});
+
+Deno.test("requires fails a target whose parameter is unset", async () => {
+  class B extends Build {
+    token = parameter("API token");
+    publish = target().requires(this.token).executes(() => {});
+  }
+  const b = new B();
+  discoverTargets(b);
+  const result = await execute(b, b.publish, {
+    silent: true,
+    readEnv: () => undefined,
+  });
+  assertEquals(result.ok, false);
+  assertEquals(messageOf(result.error).includes("requires parameter"), true);
+});
+
+Deno.test("requires passes once the parameter is set", async () => {
+  const ran: string[] = [];
+  class B extends Build {
+    token = parameter("API token");
+    publish = target().requires(this.token).executes(() =>
+      void ran.push("publish")
+    );
+  }
+  const b = new B();
+  discoverTargets(b);
+  const result = await execute(b, b.publish, {
+    silent: true,
+    params: { token: "secret" },
+  });
+  assertEquals(result.ok, true);
+  assertEquals(ran, ["publish"]);
+});
+
 Deno.test("an unwritable job-summary file never fails the build", async () => {
   const dir = await Deno.makeTempDir(); // a directory is not writable as a file
   const { reporter } = recorder();

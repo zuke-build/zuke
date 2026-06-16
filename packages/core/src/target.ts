@@ -28,6 +28,7 @@
  */
 
 import type { PathLike } from "./path.ts";
+import type { AnyParameter } from "./params.ts";
 
 /** The executable body of a target. May be synchronous or asynchronous. */
 export type TargetFn = () => void | Promise<void>;
@@ -73,6 +74,14 @@ export class TargetBuilder {
   readonly outputs_: string[] = [];
   /** Conditions gating execution; all must hold or the target is skipped. */
   readonly onlyWhen_: Condition[] = [];
+  /** Targets pulled in and run after this one (set by {@link triggers}). */
+  readonly triggers_: TargetBuilder[] = [];
+  /** Parameters that must be set for this target (set by {@link requires}). */
+  readonly requires_: AnyParameter[] = [];
+  /** Continue the build if this target fails (set by {@link proceedAfterFailure}). */
+  proceedAfterFailure_ = false;
+  /** Hide this target from `--list`/`--help` (set by {@link unlisted}). */
+  unlisted_ = false;
 
   /** Set the human-readable description shown in `zuke --list`. */
   description(text: string): this {
@@ -159,6 +168,50 @@ export class TargetBuilder {
   /** Run after the listed targets if both are in the plan (soft ordering). */
   after(...targets: TargetBuilder[]): this {
     this.after_.push(...targets);
+    return this;
+  }
+
+  /**
+   * Pull the listed targets into the plan and run them *after* this one. The
+   * inverse of {@link dependsOn}: running this target triggers the others.
+   */
+  triggers(...targets: TargetBuilder[]): this {
+    this.triggers_.push(...targets);
+    return this;
+  }
+
+  /**
+   * Declare this target as a prerequisite of the listed targets — the reverse
+   * of {@link dependsOn}: each listed target gains this one as a dependency,
+   * so this runs before them. Declare the listed targets above this one.
+   */
+  dependentFor(...targets: TargetBuilder[]): this {
+    for (const t of targets) if (t !== undefined) t.dependsOn_.push(this);
+    return this;
+  }
+
+  /**
+   * Require that the given parameters resolve to a value before this target
+   * runs; otherwise the target fails with a message naming the missing one.
+   * Use it when a target needs a parameter that is optional build-wide.
+   */
+  requires(...params: AnyParameter[]): this {
+    this.requires_.push(...params);
+    return this;
+  }
+
+  /**
+   * Keep running the rest of the build even if this target fails. The build
+   * still reports failure, and this target's own dependents are skipped.
+   */
+  proceedAfterFailure(): this {
+    this.proceedAfterFailure_ = true;
+    return this;
+  }
+
+  /** Hide this target from `--list` and `--help` (it can still be run by name). */
+  unlisted(): this {
+    this.unlisted_ = true;
     return this;
   }
 }

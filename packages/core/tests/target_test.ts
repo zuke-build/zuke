@@ -1,6 +1,30 @@
 import { assertEquals, assertThrows } from "./_assert.ts";
 import { Build, discoverTargets } from "../src/build.ts";
 import { Group, group, target, TargetBuilder } from "../src/target.ts";
+import { parameter } from "../src/params.ts";
+
+Deno.test("triggers, dependentFor, requires, proceedAfterFailure, unlisted record config", () => {
+  class B extends Build {
+    before = target().executes(() => {});
+    after = target().executes(() => {});
+    token = parameter("token");
+    main = target()
+      .triggers(this.after)
+      .dependentFor(this.before)
+      .requires(this.token)
+      .proceedAfterFailure()
+      .unlisted()
+      .executes(() => {});
+  }
+  const b = new B();
+  discoverTargets(b);
+
+  assertEquals(b.main.triggers_.map((t) => t.name_), ["after"]);
+  assertEquals(b.before.dependsOn_.map((t) => t.name_), ["main"]); // dependentFor
+  assertEquals(b.main.requires_.length, 1);
+  assertEquals(b.main.proceedAfterFailure_, true);
+  assertEquals(b.main.unlisted_, true);
+});
 
 Deno.test("partOf joins a group; dependsOn(group) expands to its members", () => {
   class B extends Build {
