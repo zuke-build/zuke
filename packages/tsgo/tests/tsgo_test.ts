@@ -46,6 +46,6 @@ const missing = <S extends ToolSettings>(s: S): S => {
   return s.toolPath("zz-no-such-tsgo-zz");
 };
 
-Deno.test("TsgoTasks.check reaches execution", async () => {
-  await assertRejects(() => TsgoTasks.check(missing), ToolNotFoundError);
+Deno.test("TsgoTasks.tsgo reaches execution", async () => {
+  await assertRejects(() => TsgoTasks.tsgo(missing), ToolNotFoundError);
 });

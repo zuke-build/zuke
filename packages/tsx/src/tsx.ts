@@ -4,13 +4,14 @@
  * fluent settings object in a lambda, and the task function builds the command
  * line and executes it.
  *
- * `tsx` runs a TypeScript entry point directly (transpiling on the fly). This
- * wrapper executes the entry point once by default and switches to `tsx watch`
- * via {@link TsxSettings.watch}.
+ * The task names mirror the `tsx` CLI: {@link TsxTasks.tsx} runs an entry point
+ * (`tsx <file>`) and {@link TsxTasks.watch} re-runs it on changes
+ * (`tsx watch <file>`).
  *
  * ```ts
  * import { TsxTasks } from "jsr:@zuke/tsx";
- * await TsxTasks.run((s) => s.script("src/main.ts").tsconfig("tsconfig.json"));
+ * await TsxTasks.tsx((s) => s.script("src/main.ts").tsconfig("tsconfig.json"));
+ * await TsxTasks.watch((s) => s.script("src/main.ts").noClearScreen());
  * ```
  *
  * Arguments stay a discrete argv array end-to-end — never a concatenated shell
@@ -27,20 +28,16 @@ import {
 } from "@zuke/core/tooling";
 import type { CommandOutput } from "@zuke/core/shell";
 
-/** Settings for a `tsx` run. */
-export class TsxSettings extends ToolSettings {
+/** Options shared by every `tsx` invocation: the entry point and how to load it. */
+abstract class TsxCommonSettings extends ToolSettings {
   #script?: string;
   #scriptArgs: string[] = [];
-  #watch = false;
   #tsconfig?: string;
   #envFile?: string;
   #noCache = false;
   #noWarnings = false;
   #conditions: string[] = [];
   #imports: string[] = [];
-  #noClearScreen = false;
-  #includes: string[] = [];
-  #excludes: string[] = [];
 
   protected override defaultTool(): string {
     return "tsx";
@@ -55,12 +52,6 @@ export class TsxSettings extends ToolSettings {
   /** Arguments passed to the script (after the entry point). */
   scriptArgs(...args: Array<string | number>): this {
     this.#scriptArgs.push(...args.map(String));
-    return this;
-  }
-
-  /** Re-run on file changes (`tsx watch`) instead of the default one-shot run. */
-  watch(): this {
-    this.#watch = true;
     return this;
   }
 
@@ -100,31 +91,12 @@ export class TsxSettings extends ToolSettings {
     return this;
   }
 
-  /** Keep prior output between watch reruns (`--clear-screen=false`). */
-  noClearScreen(): this {
-    this.#noClearScreen = true;
-    return this;
-  }
-
-  /** Additional paths to watch (`--include`); repeatable, watch mode only. */
-  include(...paths: PathLike[]): this {
-    for (const path of paths) this.#includes.push("--include", String(path));
-    return this;
-  }
-
-  /** Paths to ignore while watching (`--exclude`); repeatable, watch mode only. */
-  exclude(...paths: PathLike[]): this {
-    for (const path of paths) this.#excludes.push("--exclude", String(path));
-    return this;
-  }
-
-  protected override buildArgs(): string[] {
+  /** The option flags, then the required entry point and its arguments. */
+  protected entryArgs(): string[] {
     if (this.#script === undefined) {
-      throw new Error("TsxTasks.run: .script() is required.");
+      throw new Error("@zuke/tsx: .script() is required.");
     }
-    const argv: string[] = this.#watch ? ["watch"] : [];
-    if (this.#noClearScreen) argv.push("--clear-screen=false");
-    argv.push(...this.#includes, ...this.#excludes);
+    const argv: string[] = [];
     if (this.#tsconfig !== undefined) argv.push("--tsconfig", this.#tsconfig);
     if (this.#envFile !== undefined) argv.push(`--env-file=${this.#envFile}`);
     if (this.#noCache) argv.push("--no-cache");
@@ -135,15 +107,62 @@ export class TsxSettings extends ToolSettings {
   }
 }
 
+/** Settings for `tsx <file>`. */
+export class TsxSettings extends TsxCommonSettings {
+  protected override buildArgs(): string[] {
+    return this.entryArgs();
+  }
+}
+
+/** Settings for `tsx watch <file>`. */
+export class TsxWatchSettings extends TsxCommonSettings {
+  #noClearScreen = false;
+  #includes: string[] = [];
+  #excludes: string[] = [];
+
+  /** Keep prior output between reruns (`--clear-screen=false`). */
+  noClearScreen(): this {
+    this.#noClearScreen = true;
+    return this;
+  }
+
+  /** Additional paths to watch (`--include`); repeatable. */
+  include(...paths: PathLike[]): this {
+    for (const path of paths) this.#includes.push("--include", String(path));
+    return this;
+  }
+
+  /** Paths to ignore while watching (`--exclude`); repeatable. */
+  exclude(...paths: PathLike[]): this {
+    for (const path of paths) this.#excludes.push("--exclude", String(path));
+    return this;
+  }
+
+  protected override buildArgs(): string[] {
+    const argv = ["watch"];
+    if (this.#noClearScreen) argv.push("--clear-screen=false");
+    argv.push(...this.#includes, ...this.#excludes);
+    argv.push(...this.entryArgs());
+    return argv;
+  }
+}
+
 /** The shape of {@link TsxTasks}. */
 export interface TsxTasksApi {
-  /** Run a TypeScript entry point with `tsx` (one-shot unless {@link TsxSettings.watch}). */
-  run(configure?: Configure<TsxSettings>): Promise<CommandOutput>;
+  /** Run a TypeScript entry point: `tsx <file>`. */
+  tsx(configure?: Configure<TsxSettings>): Promise<CommandOutput>;
+  /** Re-run an entry point on changes: `tsx watch <file>`. */
+  watch(configure?: Configure<TsxWatchSettings>): Promise<CommandOutput>;
 }
 
 /** Typed task functions for the `tsx` TypeScript runner. */
 export const TsxTasks: TsxTasksApi = {
-  run(configure?: Configure<TsxSettings>): Promise<CommandOutput> {
+  /** Run a TypeScript entry point: `tsx <file>`. */
+  tsx(configure?: Configure<TsxSettings>): Promise<CommandOutput> {
     return runSettings(new TsxSettings(), configure);
+  },
+  /** Re-run an entry point on changes: `tsx watch <file>`. */
+  watch(configure?: Configure<TsxWatchSettings>): Promise<CommandOutput> {
+    return runSettings(new TsxWatchSettings(), configure);
   },
 };

@@ -7,7 +7,7 @@
  *
  * ```ts
  * import { TsgoTasks } from "jsr:@zuke/tsgo";
- * await TsgoTasks.check((s) => s.project("tsconfig.json").noEmit());
+ * await TsgoTasks.tsgo((s) => s.project("tsconfig.json").noEmit());
  * ```
  *
  * @module

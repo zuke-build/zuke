@@ -5,13 +5,14 @@
  * settings object in a lambda, and the task function builds the command line
  * and executes it.
  *
- * `tsgo` mirrors the `tsc` command-line surface, so this wrapper exposes the
- * common project, type-check, and emit flags. The default action type-checks;
+ * `tsgo` has no subcommands and mirrors the `tsc` command-line surface, so the
+ * single {@link TsgoTasks.tsgo} task matches the bare invocation and exposes
+ * the common project, type-check, and emit flags. It type-checks by default;
  * pass `.noEmit()` to suppress output, or emit settings to compile.
  *
  * ```ts
  * import { TsgoTasks } from "jsr:@zuke/tsgo";
- * await TsgoTasks.check((s) => s.project("tsconfig.json").noEmit().pretty());
+ * await TsgoTasks.tsgo((s) => s.project("tsconfig.json").noEmit().pretty());
  * ```
  *
  * Arguments stay a discrete argv array end-to-end — never a concatenated shell
@@ -164,12 +165,12 @@ export class TsgoSettings extends ToolSettings {
 /** The shape of {@link TsgoTasks}. */
 export interface TsgoTasksApi {
   /** Type-check (or compile) with `tsgo`. */
-  check(configure?: Configure<TsgoSettings>): Promise<CommandOutput>;
+  tsgo(configure?: Configure<TsgoSettings>): Promise<CommandOutput>;
 }
 
 /** Typed task functions for the `tsgo` TypeScript compiler. */
 export const TsgoTasks: TsgoTasksApi = {
-  check(configure?: Configure<TsgoSettings>): Promise<CommandOutput> {
+  tsgo(configure?: Configure<TsgoSettings>): Promise<CommandOutput> {
     return runSettings(new TsgoSettings(), configure);
   },
 };

@@ -9,7 +9,7 @@ a discrete argv array, so command construction is injection-free.
 ```ts
 import { TsgoTasks } from "jsr:@zuke/tsgo";
 
-await TsgoTasks.check((s) =>
+await TsgoTasks.tsgo((s) =>
   s.project("tsconfig.json").noEmit().strict().pretty()
 );
 ```

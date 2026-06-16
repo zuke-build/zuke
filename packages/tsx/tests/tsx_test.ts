@@ -4,7 +4,7 @@ import {
   assertThrows,
 } from "../../core/tests/_assert.ts";
 import { ToolNotFoundError, type ToolSettings } from "@zuke/core/tooling";
-import { TsxSettings, TsxTasks } from "../src/tsx.ts";
+import { TsxSettings, TsxTasks, TsxWatchSettings } from "../src/tsx.ts";
 
 Deno.test("the default binary is tsx", () => {
   assertEquals(new TsxSettings().script("main.ts").argv(), ["tsx", "main.ts"]);
@@ -12,18 +12,11 @@ Deno.test("the default binary is tsx", () => {
 
 Deno.test("tsx: every option renders, script and its args last", () => {
   const argv = new TsxSettings()
-    .watch().noClearScreen().include("src").exclude("dist")
     .tsconfig("tsconfig.json").envFile(".env").noCache().noWarnings()
     .conditions("development", "browser").importModule("./reg.ts", "dotenv")
     .script("src/main.ts").scriptArgs("--port", 3000).argv();
   assertEquals(argv, [
     "tsx",
-    "watch",
-    "--clear-screen=false",
-    "--include",
-    "src",
-    "--exclude",
-    "dist",
     "--tsconfig",
     "tsconfig.json",
     "--env-file=.env",
@@ -43,15 +36,42 @@ Deno.test("tsx: every option renders, script and its args last", () => {
   ]);
 });
 
-Deno.test("tsx: minimal runs just the entry point", () => {
-  assertEquals(new TsxSettings().script("app.ts").argv(), ["tsx", "app.ts"]);
+Deno.test("tsx watch: subcommand and watch flags precede the entry point", () => {
+  const argv = new TsxWatchSettings()
+    .noClearScreen().include("src").exclude("dist")
+    .tsconfig("tsconfig.json").script("src/main.ts").argv();
+  assertEquals(argv, [
+    "tsx",
+    "watch",
+    "--clear-screen=false",
+    "--include",
+    "src",
+    "--exclude",
+    "dist",
+    "--tsconfig",
+    "tsconfig.json",
+    "src/main.ts",
+  ]);
+});
+
+Deno.test("tsx watch: minimal watches just the entry point", () => {
+  assertEquals(new TsxWatchSettings().script("app.ts").argv(), [
+    "tsx",
+    "watch",
+    "app.ts",
+  ]);
 });
 
 Deno.test("tsx: a missing script is reported", () => {
   assertThrows(
     () => new TsxSettings().argv(),
     Error,
-    "TsxTasks.run: .script() is required.",
+    "@zuke/tsx: .script() is required.",
+  );
+  assertThrows(
+    () => new TsxWatchSettings().argv(),
+    Error,
+    "@zuke/tsx: .script() is required.",
   );
 });
 
@@ -60,9 +80,16 @@ const missing = <S extends ToolSettings>(s: S): S => {
   return s.toolPath("zz-no-such-tsx-zz");
 };
 
-Deno.test("TsxTasks.run reaches execution", async () => {
+Deno.test("TsxTasks.tsx reaches execution", async () => {
   await assertRejects(
-    () => TsxTasks.run((s) => missing(s.script("main.ts"))),
+    () => TsxTasks.tsx((s) => missing(s.script("main.ts"))),
+    ToolNotFoundError,
+  );
+});
+
+Deno.test("TsxTasks.watch reaches execution", async () => {
+  await assertRejects(
+    () => TsxTasks.watch((s) => missing(s.script("main.ts"))),
     ToolNotFoundError,
   );
 });

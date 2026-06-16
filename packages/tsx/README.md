@@ -2,19 +2,19 @@
 
 Typed [`tsx`](https://tsx.is/) task wrappers for
 [Zuke](https://github.com/zuke-build/zuke#readme) builds, in a fluent
-settings-lambda API. Runs a TypeScript entry point directly — one-shot by
-default, or in watch mode via `.watch()`. Arguments stay a discrete argv array,
-so command construction is injection-free.
+settings-lambda API. The task names mirror the CLI: `tsx` runs an entry point
+and `watch` re-runs it on changes. Arguments stay a discrete argv array, so
+command construction is injection-free.
 
 ```ts
 import { TsxTasks } from "jsr:@zuke/tsx";
 
-await TsxTasks.run((s) =>
+await TsxTasks.tsx((s) =>
   s.script("src/main.ts").tsconfig("tsconfig.json").scriptArgs("--port", 3000)
 );
 
 // Watch mode:
-await TsxTasks.run((s) => s.script("src/main.ts").watch().noClearScreen());
+await TsxTasks.watch((s) => s.script("src/main.ts").noClearScreen());
 ```
 
 ## Paths
