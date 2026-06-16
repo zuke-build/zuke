@@ -33,6 +33,8 @@ const PACKAGES = [
   "vitest",
   "tsx",
   "tsgo",
+  "dprint",
+  "gcloud",
   "security",
 ];
 

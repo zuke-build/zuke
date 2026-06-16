@@ -1,0 +1,16 @@
+{
+  "name": "@zuke/dprint",
+  "version": "0.0.0",
+  "description": "Typed dprint task wrappers for Zuke builds — format and check code with config, excludes, and incremental support via an injection-free settings-lambda API.",
+  "exports": {
+    ".": "./mod.ts"
+  },
+  "imports": {
+    "@zuke/core": "jsr:@zuke/core@^0"
+  },
+  "publish": {
+    "exclude": [
+      "tests/"
+    ]
+  }
+}
