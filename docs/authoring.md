@@ -26,20 +26,21 @@ lint = target()
   });
 ```
 
-### `group()`
+### `group()` and `.partOf()`
 
-`group(...targets)` bundles targets into a parallel **batch**: its members run
-concurrently with one another — even when the build is otherwise sequential —
-each still waiting for its own dependencies. Pass the group to `.dependsOn(...)`
-to depend on every member at once.
+`group()` creates a parallel **batch**. A target joins it with `.partOf(group)`;
+members of the same group run concurrently with one another — even when the
+build is otherwise sequential — each still waiting for its own dependencies.
+Pass the group to another target's `.dependsOn(...)` to depend on every member
+at once.
 
 ```ts
-clean = target().executes(/* ... */);
-lint = target().dependsOn(this.clean).executes(/* ... */);
-format = target().dependsOn(this.clean).executes(/* ... */);
-typecheck = target().dependsOn(this.clean).executes(/* ... */);
+checks = group();
 
-checks = group(this.lint, this.format, this.typecheck);
+clean = target().executes(/* ... */);
+lint = target().dependsOn(this.clean).partOf(this.checks).executes(/* ... */);
+format = target().dependsOn(this.clean).partOf(this.checks).executes(/* ... */);
+typecheck = target().dependsOn(this.clean).partOf(this.checks).executes(/* ... */);
 
 deploy = target()
   .dependsOn(this.checks) // waits for lint, format, and typecheck
@@ -50,6 +51,7 @@ Here `clean` runs first (all three depend on it), then `lint`/`format`/
 `typecheck` run together, then `deploy`. Grouping is a property of the members,
 so they batch whenever they run — no `--parallel` flag needed. Ungrouped
 targets stay serialized unless you opt the whole build into `--parallel`.
+Declare the group field above the targets that join it.
 
 ### `Build`
 

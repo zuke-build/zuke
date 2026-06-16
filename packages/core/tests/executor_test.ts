@@ -556,11 +556,17 @@ Deno.test("a group runs its members in parallel without the --parallel flag", as
     active--;
   };
   class B extends Build {
+    checks = group();
     clean = target().executes(track("clean"));
-    lint = target().dependsOn(this.clean).executes(track("lint"));
-    format = target().dependsOn(this.clean).executes(track("format"));
-    typecheck = target().dependsOn(this.clean).executes(track("typecheck"));
-    checks = group(this.lint, this.format, this.typecheck);
+    lint = target().dependsOn(this.clean).partOf(this.checks).executes(
+      track("lint"),
+    );
+    format = target().dependsOn(this.clean).partOf(this.checks).executes(
+      track("format"),
+    );
+    typecheck = target().dependsOn(this.clean).partOf(this.checks).executes(
+      track("typecheck"),
+    );
     deploy = target().dependsOn(this.checks).executes(track("deploy"));
   }
   const b = new B();
@@ -584,13 +590,13 @@ Deno.test("ungrouped targets stay sequential while a group runs in parallel", as
     active--;
   };
   class B extends Build {
+    batch = group();
     // Two independent ungrouped targets — must NOT overlap each other.
     first = target().executes(track);
     second = target().executes(track);
     // A group whose members may overlap.
-    a = target().executes(track);
-    bb = target().executes(track);
-    batch = group(this.a, this.bb);
+    a = target().partOf(this.batch).executes(track);
+    bb = target().partOf(this.batch).executes(track);
     all = target()
       .dependsOn(this.first, this.second, this.batch)
       .executes(() => {});
@@ -606,11 +612,11 @@ Deno.test("ungrouped targets stay sequential while a group runs in parallel", as
 Deno.test("a failing group member skips the group's dependents", async () => {
   const ran: string[] = [];
   class B extends Build {
-    ok = target().executes(() => void ran.push("ok"));
-    boom = target().executes(() => {
+    checks = group();
+    ok = target().partOf(this.checks).executes(() => void ran.push("ok"));
+    boom = target().partOf(this.checks).executes(() => {
       throw new Error("boom");
     });
-    checks = group(this.ok, this.boom);
     deploy = target().dependsOn(this.checks).executes(() =>
       void ran.push("deploy")
     );

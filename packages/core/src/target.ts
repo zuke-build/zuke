@@ -15,13 +15,15 @@
  * (`this.clean`), not strings. The framework maps each builder back to its
  * property name during discovery (see {@link Build}).
  *
- * Related targets can be bundled into a {@link group}: a batch that runs its
- * members concurrently (even in an otherwise sequential build) and can be
- * depended on as a unit.
+ * Targets join a parallel batch with {@link TargetBuilder.partOf}; the
+ * {@link group} they belong to runs its members concurrently (even in a
+ * sequential build) and can itself be a dependency:
  *
  * ```ts
- * checks = group(this.lint, this.format, this.typecheck);
- * deploy = target().dependsOn(this.checks).executes(...); // waits for all three
+ * checks = group();
+ * lint = target().dependsOn(this.clean).partOf(this.checks).executes(...);
+ * format = target().dependsOn(this.clean).partOf(this.checks).executes(...);
+ * deploy = target().dependsOn(this.checks).executes(...); // waits for the batch
  * ```
  */
 
@@ -29,16 +31,15 @@
 export type TargetFn = () => void | Promise<void>;
 
 /**
- * A parallel batch of targets created with {@link group}. Its members run
- * concurrently with one another (subject to their own dependencies) regardless
- * of the global parallel setting, and the group can be passed to
- * {@link TargetBuilder.dependsOn} to depend on every member at once.
+ * A parallel batch of targets, created with {@link group}. Targets join it via
+ * {@link TargetBuilder.partOf}; its members run concurrently with one another
+ * (each still awaiting its own dependencies) regardless of the global parallel
+ * setting. Passing a group to {@link TargetBuilder.dependsOn} depends on every
+ * member at once.
  */
 export class Group {
-  constructor(
-    /** The grouped targets, in declaration order. */
-    readonly members_: ReadonlyArray<TargetBuilder>,
-  ) {}
+  /** Members that declared themselves part of this group, in declaration order. */
+  readonly members_: TargetBuilder[] = [];
 }
 
 /**
@@ -59,7 +60,7 @@ export class TargetBuilder {
   fn_?: TargetFn;
   /** Property name, assigned during discovery. Undefined until then. */
   name_?: string;
-  /** The parallel batch this target belongs to, if any (set by {@link group}). */
+  /** The parallel batch this target belongs to, if any (set by {@link partOf}). */
   group_?: Group;
 
   /** Set the human-readable description shown in `zuke --list`. */
@@ -70,12 +71,28 @@ export class TargetBuilder {
 
   /**
    * Declare hard prerequisites. References sibling targets via `this.x`, or a
-   * {@link group} (which expands to every member of the group).
+   * {@link group} (which expands to every member that has joined it).
    */
   dependsOn(...targets: Array<TargetBuilder | Group>): this {
     for (const t of targets) {
       if (t instanceof Group) this.dependsOn_.push(...t.members_);
       else this.dependsOn_.push(t);
+    }
+    return this;
+  }
+
+  /**
+   * Join a parallel {@link group}. Members of the same group run concurrently
+   * with one another (each still awaiting its own dependencies) even when the
+   * build is otherwise sequential. Declare the group before the targets that
+   * join it.
+   */
+  partOf(group: Group): this {
+    // A forward reference is `undefined` here; ignore it (the group field
+    // should be declared above the targets that join it).
+    if (group !== undefined) {
+      this.group_ = group;
+      group.members_.push(this);
     }
     return this;
   }
@@ -111,21 +128,17 @@ export function target(): TargetBuilder {
 }
 
 /**
- * Bundle targets into a parallel {@link Group}: a batch whose members run
- * concurrently with each other — even when the build is otherwise sequential —
- * each still waiting for its own dependencies. Pass the group to
- * {@link TargetBuilder.dependsOn} to depend on all of its members at once.
+ * Create a parallel {@link Group}. Targets join it with
+ * {@link TargetBuilder.partOf}, and a downstream target can depend on the whole
+ * batch by passing the group to {@link TargetBuilder.dependsOn}.
  *
  * ```ts
- * checks = group(this.lint, this.format, this.typecheck);
+ * checks = group();
+ * lint = target().partOf(this.checks).executes(...);
+ * format = target().partOf(this.checks).executes(...);
  * deploy = target().dependsOn(this.checks).executes(...);
  * ```
  */
-export function group(...targets: TargetBuilder[]): Group {
-  const created = new Group(targets);
-  for (const t of targets) {
-    // A forward reference is `undefined` here; the graph reports it later.
-    if (t !== undefined) t.group_ = created;
-  }
-  return created;
+export function group(): Group {
+  return new Group();
 }
