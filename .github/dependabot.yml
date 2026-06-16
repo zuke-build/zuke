@@ -1,0 +1,14 @@
+version: 2
+updates:
+  # Keep the SHA-pinned GitHub Actions current. Dependabot reads the version
+  # comment next to each pinned SHA and opens PRs that bump both together, so
+  # pinning to a commit never means going stale on security fixes.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: "ci"
