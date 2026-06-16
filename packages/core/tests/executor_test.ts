@@ -1,5 +1,10 @@
 import { assertEquals, messageOf } from "./_assert.ts";
-import { Build, type BuildResult, discoverTargets } from "../src/build.ts";
+import {
+  Build,
+  type BuildResult,
+  discoverTargets,
+  type TargetStatus,
+} from "../src/build.ts";
 import { group, target } from "../src/target.ts";
 import type { BuildCache } from "../src/cache.ts";
 import { parameter } from "../src/params.ts";
@@ -838,6 +843,103 @@ Deno.test("requires passes once the parameter is set", async () => {
   });
   assertEquals(result.ok, true);
   assertEquals(ran, ["publish"]);
+});
+
+Deno.test("always targets run for cleanup even after a failure", async () => {
+  const ran: string[] = [];
+  class B extends Build {
+    boom = target().executes(() => {
+      throw new Error("boom");
+    });
+    cleanup = target().always().executes(() => void ran.push("cleanup"));
+    all = target()
+      .dependsOn(this.boom, this.cleanup)
+      .executes(() => void ran.push("all"));
+  }
+  const b = new B();
+  discoverTargets(b);
+  const result = await execute(b, b.all, { silent: true });
+  assertEquals(result.ok, false);
+  assertEquals(ran.includes("cleanup"), true); // ran despite the failure
+  assertEquals(ran.includes("all"), false); // blocked by the failed dep
+});
+
+Deno.test("whenSkipped(skip-dependencies) skips the target and its exclusive deps", async () => {
+  const ran: string[] = [];
+  class B extends Build {
+    onlyForDocs = target().executes(() => void ran.push("onlyForDocs"));
+    docs = target()
+      .dependsOn(this.onlyForDocs)
+      .onlyWhen(() => false)
+      .whenSkipped("skip-dependencies")
+      .executes(() => void ran.push("docs"));
+    site = target().dependsOn(this.docs).executes(() => void ran.push("site"));
+  }
+  const b = new B();
+  discoverTargets(b);
+  const result = await execute(b, b.site, { silent: true });
+  assertEquals(result.ok, true);
+  assertEquals(ran.includes("docs"), false); // condition false → skipped
+  assertEquals(ran.includes("onlyForDocs"), false); // exclusive dep skipped too
+  assertEquals(ran.includes("site"), true); // dependent still runs
+});
+
+Deno.test("onTargetStart and onTargetEnd fire around each target", async () => {
+  const events: string[] = [];
+  class B extends Build {
+    override onTargetStart(name: string) {
+      events.push(`start:${name}`);
+    }
+    override onTargetEnd(name: string, status: TargetStatus) {
+      events.push(`end:${name}:${status}`);
+    }
+    a = target().executes(() => {});
+    b = target().dependsOn(this.a).executes(() => {});
+  }
+  const b = new B();
+  discoverTargets(b);
+  await execute(b, b.b, { silent: true });
+  assertEquals(events, [
+    "start:a",
+    "end:a:passed",
+    "start:b",
+    "end:b:passed",
+  ]);
+});
+
+Deno.test("secret parameter values are masked under GitHub Actions", async () => {
+  const { lines, reporter } = recorder();
+  class B extends Build {
+    token = parameter("token").secret();
+    go = target().executes(() => {});
+  }
+  const b = new B();
+  discoverTargets(b);
+  await withEnv("GITHUB_STEP_SUMMARY", undefined, async () => {
+    await execute(b, b.go, {
+      reporter,
+      github: true,
+      params: { token: "s3cr3t" },
+    });
+  });
+  assertEquals(lines.includes("::add-mask::s3cr3t"), true);
+});
+
+Deno.test("execute prompts for a missing required parameter", async () => {
+  const seen: string[] = [];
+  class B extends Build {
+    token = parameter("token").required();
+    go = target().executes(() => void seen.push(this.token.value));
+  }
+  const b = new B();
+  discoverTargets(b);
+  const result = await execute(b, b.go, {
+    silent: true,
+    readEnv: () => undefined,
+    prompt: () => "prompted",
+  });
+  assertEquals(result.ok, true);
+  assertEquals(seen, ["prompted"]);
 });
 
 Deno.test("an unwritable job-summary file never fails the build", async () => {

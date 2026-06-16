@@ -19,7 +19,12 @@ body, which is required before the target can run.
 | `.onlyWhen(condition)`   | `(c: () => boolean \| Promise<boolean>) => this` | Run only when the condition holds, else skip.    |
 | `.requires(...params)`   | `(...p: Parameter[]) => this`               | Fail the target unless these parameters are set.       |
 | `.proceedAfterFailure()` | `() => this`                                | Keep the build going if this target fails.             |
+| `.always()`              | `() => this`                                | Run for cleanup even after the build has failed.       |
 | `.unlisted()`            | `() => this`                                | Hide the target from `--list`/`--help`.                |
+| `.cacheKey(fn)`          | `(fn: () => string \| Promise<string>) => this` | Extra (non-file) input to the cache fingerprint. |
+| `.produces(...paths)`    | `(...p: PathLike[]) => this`                | Declare artifact paths this target produces.           |
+| `.consumes(...targets)`  | `(...t: Target[]) => this`                  | Depend on targets and use their `produces` artifacts.  |
+| `.whenSkipped(behavior)` | `("run-dependencies" \| "skip-dependencies") => this` | On skip, also skip exclusive deps.    |
 
 `dependsOn` pulls targets into the plan; `before`/`after` only reorder targets
 that are _already_ in the plan — they never pull new targets in.
@@ -110,8 +115,23 @@ deploy = target()
 - **`.proceedAfterFailure()`** — if this target fails, keep running the rest of
   the build instead of aborting. The build still reports failure, and this
   target's own dependents are skipped.
+- **`.always()`** — run even after the build has already failed, for
+  cleanup/teardown. It still waits for its own dependencies to complete.
 - **`.unlisted()`** — hide a helper target from `--list`/`--help`; it can still
   be run by name or depended on.
+- **`.cacheKey(fn)`** — add a non-file value (a parameter, tool version, git
+  commit…) to the [cache](#incremental-caching-inputs--outputs) fingerprint, so
+  the target also rebuilds when that value changes. Repeatable; may be async.
+- **`.produces(...paths)`** / **`.consumes(...targets)`** — declare artifact
+  paths a target produces, and (on a consumer) depend on the producers.
+- **`.whenSkipped("skip-dependencies")`** — when this target is skipped by a
+  condition, also skip dependencies that no other target needs. Its condition is
+  evaluated up front, so it must not rely on state produced during the run.
+
+### Host detection — `isCI()` / `ciHost()`
+
+`isCI()` and `ciHost()` (e.g. `"github-actions"`, `"gitlab-ci"`, `"local"`) let
+a build branch on where it runs — e.g. `deploy.onlyWhen(() => isCI())`.
 
 ### `Build`
 

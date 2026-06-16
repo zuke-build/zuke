@@ -29,7 +29,9 @@ export {
   type BuildResult,
   discoverGroups,
   discoverTargets,
+  type TargetStatus,
 } from "./src/build.ts";
+export { ciHost, isCI } from "./src/host.ts";
 export {
   type Condition,
   Group,

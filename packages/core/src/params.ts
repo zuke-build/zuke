@@ -97,10 +97,14 @@ export interface AnyParameter {
   readonly envName_?: string;
   /** Whether the parameter has a declared default value. */
   readonly hasFallback_: boolean;
+  /** Whether the value is sensitive and should be masked in CI output. */
+  readonly secret_: boolean;
   /** Resolve from a raw input (or `undefined` when none was supplied). */
   resolve_(raw: string | undefined): void;
   /** Whether the parameter resolved to a defined value (used by `.requires()`). */
   isSet_(): boolean;
+  /** The resolved value as a string, or `undefined` if unset (for masking). */
+  stringValue_(): string | undefined;
 }
 
 /** The constructor spec for a {@link Parameter}. */
@@ -112,6 +116,7 @@ interface ParamSpec<K extends ParamValue, T extends K | undefined> {
   envName?: string;
   parse: (raw: string) => T;
   fallback: Fallback<T>;
+  secret?: boolean;
 }
 
 /**
@@ -134,6 +139,7 @@ export class Parameter<
   readonly options_?: readonly string[];
   readonly envName_?: string;
   readonly hasFallback_: boolean;
+  readonly secret_: boolean;
   readonly #parse: (raw: string) => T;
   readonly #fallback: Fallback<T>;
   #state: Resolved<T> = { ok: false };
@@ -164,6 +170,7 @@ export class Parameter<
     this.#parse = spec.parse;
     this.#fallback = spec.fallback;
     this.hasFallback_ = spec.fallback.has;
+    this.secret_ = spec.secret ?? false;
   }
 
   /** The resolved value. Throws if read before the build resolves parameters. */
@@ -181,6 +188,26 @@ export class Parameter<
     return this.#state.ok && this.#state.value !== undefined;
   }
 
+  stringValue_(): string | undefined {
+    return this.#state.ok && this.#state.value !== undefined
+      ? String(this.#state.value)
+      : undefined;
+  }
+
+  /** Mark the value as sensitive, so it is masked in CI output (`::add-mask::`). */
+  secret(): Parameter<K, T> {
+    return new Parameter<K, T>({
+      description: this.description_,
+      kind: this.kind_,
+      required: this.required_,
+      options: this.options_,
+      envName: this.envName_,
+      parse: this.#parse,
+      fallback: this.#fallback,
+      secret: true,
+    });
+  }
+
   /** Parse the value as a number (e.g. `--workers 4`). */
   number(
     this: Parameter<string, string | undefined>,
@@ -192,6 +219,7 @@ export class Parameter<
       envName: this.envName_,
       parse: parseNumber,
       fallback: { has: true, value: undefined },
+      secret: this.secret_,
     });
   }
 
@@ -206,6 +234,7 @@ export class Parameter<
       envName: this.envName_,
       parse: parseBoolean,
       fallback: { has: true, value: false },
+      secret: this.secret_,
     });
   }
 
@@ -222,6 +251,7 @@ export class Parameter<
       envName: this.envName_,
       parse: makeStringParser(values),
       fallback: this.#fallback,
+      secret: this.secret_,
     });
   }
 
@@ -235,6 +265,7 @@ export class Parameter<
       envName: this.envName_,
       parse: this.#definiteParse(),
       fallback: { has: true, value },
+      secret: this.secret_,
     });
   }
 
@@ -248,6 +279,7 @@ export class Parameter<
       envName: this.envName_,
       parse: this.#definiteParse(),
       fallback: { has: false },
+      secret: this.secret_,
     });
   }
 
@@ -261,6 +293,7 @@ export class Parameter<
       envName: name,
       parse: this.#parse,
       fallback: this.#fallback,
+      secret: this.secret_,
     });
   }
 
@@ -328,16 +361,26 @@ export function envVarName(name: string): string {
  * @param params Discovered parameters.
  * @param cliValues Raw values parsed from the command line, keyed by name.
  * @param readEnv Reads an environment variable by name.
+ * @param prompt Optional: ask for a missing required value (interactive input).
  */
 export function resolveParameters(
   params: Map<string, AnyParameter>,
   cliValues: Record<string, string>,
   readEnv: (name: string) => string | undefined,
+  prompt?: (
+    flag: string,
+    description: string | undefined,
+  ) => string | undefined,
 ): string[] {
   const errors: string[] = [];
   for (const [name, param] of params) {
     const envName = param.envName_ ?? envVarName(name);
-    const raw = name in cliValues ? cliValues[name] : readEnv(envName);
+    let raw = name in cliValues ? cliValues[name] : readEnv(envName);
+    // Prompt for a missing required value when an input source is available.
+    if (raw === undefined && param.required_ && !param.hasFallback_ && prompt) {
+      const answer = prompt(flagName(name), param.description_);
+      if (answer !== undefined && answer !== "") raw = answer;
+    }
     try {
       param.resolve_(raw);
     } catch (error) {

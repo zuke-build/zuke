@@ -71,6 +71,27 @@ Deno.test("inputs, outputs, and onlyWhen record their configuration", () => {
   assertEquals(t.onlyWhen_[0](), true);
 });
 
+Deno.test("cacheKey, produces, consumes, always, whenSkipped record config", () => {
+  class B extends Build {
+    dep = target().executes(() => {});
+    main = target()
+      .inputs("src")
+      .cacheKey(() => "v1")
+      .produces("dist")
+      .consumes(this.dep)
+      .always()
+      .whenSkipped("skip-dependencies")
+      .executes(() => {});
+  }
+  const b = new B();
+  discoverTargets(b);
+  assertEquals(b.main.cacheKeys_.length, 1);
+  assertEquals(b.main.produces_, ["dist"]);
+  assertEquals(b.main.dependsOn_.map((t) => t.name_), ["dep"]); // consumes
+  assertEquals(b.main.always_, true);
+  assertEquals(b.main.skipDependencies_, true);
+});
+
 Deno.test("partOf ignores an undefined (forward-referenced) group", () => {
   const t = target();
   // @ts-expect-error exercising the runtime guard against an unbound reference

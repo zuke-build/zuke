@@ -16,7 +16,7 @@
  * their shared prerequisite a single time.
  */
 
-import type { Build, BuildResult } from "./build.ts";
+import type { Build, BuildResult, TargetStatus } from "./build.ts";
 import { planGraph } from "./graph.ts";
 import {
   discoverParameters,
@@ -27,9 +27,11 @@ import {
   type BuildCache,
   CACHE_FILE,
   defaultCacheHost,
+  isCacheable,
   openCache,
 } from "./cache.ts";
 import { findConfigDir, pathExists } from "./config.ts";
+import { isCI } from "./host.ts";
 import { absolutePath } from "./path.ts";
 import type { TargetBuilder } from "./target.ts";
 
@@ -83,6 +85,15 @@ export interface ExecuteOptions {
    */
   readEnv?: (name: string) => string | undefined;
   /**
+   * Prompt for a missing required parameter, returning the entered value (or
+   * `undefined` to leave it unset). Defaults to an interactive terminal prompt
+   * when stdin is a TTY and the build is not on CI; overridable for testing.
+   */
+  prompt?: (
+    flag: string,
+    description: string | undefined,
+  ) => string | undefined;
+  /**
    * Force GitHub Actions output formatting on or off. Auto-detected from the
    * `GITHUB_ACTIONS` environment variable when omitted.
    */
@@ -93,9 +104,6 @@ export interface ExecuteOptions {
    */
   color?: boolean;
 }
-
-/** A target's outcome, collected for the end-of-build summary. */
-type TargetStatus = "passed" | "failed" | "skipped" | "cached";
 
 interface TargetReport {
   name: string;
@@ -147,6 +155,63 @@ function defaultReadEnv(name: string): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+/** Prompt for a missing required parameter, only at an interactive (non-CI) TTY. */
+function defaultPrompt(
+  flag: string,
+  description: string | undefined,
+): string | undefined {
+  let interactive = false;
+  try {
+    interactive = Deno.stdin.isTerminal();
+  } catch {
+    interactive = false;
+  }
+  if (!interactive || isCI()) return undefined;
+  const label = description ? `--${flag} (${description})` : `--${flag}`;
+  return prompt(`${label}:`) ?? undefined;
+}
+
+/**
+ * Evaluate up-front conditions for `whenSkipped("skip-dependencies")` targets;
+ * return the names to skip — those targets plus any dependencies that no other
+ * target in the plan needs.
+ */
+async function conditionSkips(
+  root: TargetBuilder,
+  order: TargetBuilder[],
+): Promise<Set<string>> {
+  const pruned = new Set<TargetBuilder>();
+  for (const t of order) {
+    if (!t.skipDependencies_ || t.onlyWhen_.length === 0) continue;
+    let run = true;
+    for (const condition of t.onlyWhen_) {
+      if (!(await condition())) {
+        run = false;
+        break;
+      }
+    }
+    if (!run) pruned.add(t);
+  }
+  if (pruned.size === 0) return new Set();
+
+  // Everything still reachable from the root without pulling dependencies in
+  // *through* a pruned target.
+  const kept = new Set<TargetBuilder>();
+  const walk = (node: TargetBuilder) => {
+    if (node === undefined || kept.has(node)) return;
+    kept.add(node);
+    if (pruned.has(node)) return;
+    for (const dep of node.dependsOn_) walk(dep);
+    for (const trigger of node.triggers_) walk(trigger);
+  };
+  walk(root);
+
+  const names = new Set<string>();
+  for (const t of pruned) names.add(t.name_ ?? "");
+  for (const t of order) if (!kept.has(t)) names.add(t.name_ ?? "");
+  return names;
 }
 
 /** Whether terminal colour should be used (TTY, and `NO_COLOR` unset). */
@@ -325,6 +390,7 @@ interface RunOutcome {
  * — both unblock dependents without executing the body.
  */
 async function runTarget(
+  build: Build,
   reporter: Reporter,
   style: Style,
   t: TargetBuilder,
@@ -353,6 +419,7 @@ async function runTarget(
   }
 
   openTarget(reporter, style, name, opened);
+  await build.onTargetStart(name);
   const start = performance.now();
 
   if (!t.fn_) {
@@ -411,6 +478,7 @@ function bufferReporter(): {
 
 /** Sequentially run the plan, aborting (and skipping the rest) on first failure. */
 async function runSequential(
+  build: Build,
   order: TargetBuilder[],
   reporter: Reporter,
   style: Style,
@@ -429,7 +497,8 @@ async function runSequential(
       reports.push({ name, status: "skipped", ms: 0 });
       continue;
     }
-    const outcome = await runTarget(reporter, style, t, opened, cache);
+    const outcome = await runTarget(build, reporter, style, t, opened, cache);
+    await build.onTargetEnd(name, outcome.status);
     if (outcome.status === "passed" || outcome.status === "failed") opened++;
     reports.push({ name, status: outcome.status, ms: outcome.ms });
     if (outcome.status === "passed") executed.push(name);
@@ -452,6 +521,7 @@ async function runSequential(
  * stops new launches; in-flight targets settle and the rest are skipped.
  */
 async function runScheduled(
+  build: Build,
   order: TargetBuilder[],
   predecessors: Map<TargetBuilder, TargetBuilder[]>,
   reporter: Reporter,
@@ -486,38 +556,40 @@ async function runScheduled(
 
   await new Promise<void>((resolve) => {
     const pump = () => {
-      if (!halted) {
-        for (const t of order) {
-          if (runningSet.size >= limit) break;
-          if (started.has(t) || !ready(t) || !overlaps(t)) continue;
-          started.add(t);
-          runningSet.add(t);
-          const buffer = bufferReporter();
-          runTarget(buffer.reporter, style, t, flushed, cache).then(
-            (outcome) => {
-              // Only an executed target prints a block worth separating.
-              const printed = outcome.status === "passed" ||
-                outcome.status === "failed";
-              if (printed) {
-                if (!style.github && flushed > 0) reporter.info("");
-                buffer.flush(reporter);
-                flushed++;
-              }
-              outcomes.set(t, outcome);
-              runningSet.delete(t);
-              if (outcome.status === "failed") {
-                anyFailed = true;
-                failure ??= outcome.error;
-                // A lenient failure lets independent targets keep going; its
-                // own dependents stay blocked (never added to `done`).
-                if (!t.proceedAfterFailure_) halted = true;
-              } else {
-                done.add(t); // passed, cached, or condition-skipped
-              }
-              pump();
-            },
-          );
-        }
+      for (const t of order) {
+        if (runningSet.size >= limit) break;
+        if (started.has(t) || !ready(t) || !overlaps(t)) continue;
+        // After a fatal failure, stop launching — except `always` targets,
+        // which run for cleanup even when the build is failing.
+        if (halted && !t.always_) continue;
+        started.add(t);
+        runningSet.add(t);
+        const buffer = bufferReporter();
+        runTarget(build, buffer.reporter, style, t, flushed, cache).then(
+          async (outcome) => {
+            await build.onTargetEnd(t.name_ ?? "<unnamed>", outcome.status);
+            // Only an executed target prints a block worth separating.
+            const printed = outcome.status === "passed" ||
+              outcome.status === "failed";
+            if (printed) {
+              if (!style.github && flushed > 0) reporter.info("");
+              buffer.flush(reporter);
+              flushed++;
+            }
+            outcomes.set(t, outcome);
+            runningSet.delete(t);
+            if (outcome.status === "failed") {
+              anyFailed = true;
+              failure ??= outcome.error;
+              // A lenient failure lets independent targets keep going; its
+              // own dependents stay blocked (never added to `done`).
+              if (!t.proceedAfterFailure_) halted = true;
+            } else {
+              done.add(t); // passed, cached, or condition-skipped
+            }
+            pump();
+          },
+        );
       }
       if (runningSet.size === 0) {
         for (const t of order) {
@@ -566,10 +638,12 @@ export async function execute(
   // Resolve declared parameters (CLI value → environment → default) before any
   // target runs, so a target body can read `this.param.value`. A missing
   // required parameter or an invalid value fails the build before it starts.
+  const params = discoverParameters(build);
   const paramErrors = resolveParameters(
-    discoverParameters(build),
+    params,
     options.params ?? {},
     options.readEnv ?? defaultReadEnv,
+    options.prompt ?? defaultPrompt,
   );
   if (paramErrors.length > 0) {
     reporter.error("Invalid or missing parameters:");
@@ -580,22 +654,35 @@ export async function execute(
       error: new ParameterError(paramErrors.join("; ")),
     };
   }
+  // Under GitHub Actions, mask resolved secret values so they don't leak.
+  if (style.github) {
+    for (const p of params.values()) {
+      const value = p.secret_ ? p.stringValue_() : undefined;
+      if (value !== undefined && value !== "") {
+        reporter.info(`::add-mask::${value}`);
+      }
+    }
+  }
 
   const { order, predecessors } = planGraph(root);
+  // Evaluate up-front conditions for `whenSkipped("skip-dependencies")` targets
+  // and skip them plus any dependencies that nothing else needs.
+  for (const name of await conditionSkips(root, order)) skip.add(name);
+
   const limit = resolveConcurrency(options.parallel);
   const globalParallel = limit > 1;
   const grouped = order.some((t) => t.group_ !== undefined);
-  // `proceedAfterFailure` needs the scheduler's per-target skip-on-failure, so
-  // the simple sequential loop is only used when none of these features apply.
-  const lenient = order.some((t) => t.proceedAfterFailure_);
+  // `proceedAfterFailure` and `always` need the scheduler's per-target control,
+  // so the simple sequential loop is only used when none of these apply.
+  const scheduled = order.some((t) => t.proceedAfterFailure_ || t.always_);
   const cache = await resolveCache(options.cache, order);
   const overallStart = performance.now();
 
   await build.onStart();
 
   let run: RunOutcome;
-  if (!globalParallel && !grouped && !lenient) {
-    run = await runSequential(order, reporter, style, skip, cache);
+  if (!globalParallel && !grouped && !scheduled) {
+    run = await runSequential(build, order, reporter, style, skip, cache);
   } else {
     // With `--parallel`, anything independent may overlap up to `limit`.
     // Otherwise only same-group members overlap (the rest stay serialized),
@@ -606,6 +693,7 @@ export async function execute(
       : (a: TargetBuilder, b: TargetBuilder) =>
         a.group_ !== undefined && a.group_ === b.group_;
     run = await runScheduled(
+      build,
       order,
       predecessors,
       reporter,
@@ -640,7 +728,7 @@ async function resolveCache(
 ): Promise<BuildCache | undefined> {
   if (option === false) return undefined;
   if (typeof option === "object") return option;
-  if (!order.some((t) => t.inputs_.length > 0)) return undefined;
+  if (!order.some(isCacheable)) return undefined;
   const root = findConfigDir(Deno.cwd(), pathExists) ?? Deno.cwd();
   const storePath = absolutePath(root)(ARTIFACT_DIR, CACHE_FILE).path;
   return await openCache(storePath, defaultCacheHost);

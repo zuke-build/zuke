@@ -88,6 +88,38 @@ Deno.test("env overrides the environment variable name", () => {
   assertEquals(p.envName_, "CI_TOKEN");
 });
 
+Deno.test("secret survives chaining and stringValue exposes the value", () => {
+  const before = parameter("token").secret().required();
+  const after = parameter("token").required().secret();
+  assertEquals(before.secret_, true);
+  assertEquals(after.secret_, true);
+  assertEquals(parameter("plain").secret_, false);
+
+  before.resolve_("hunter2");
+  assertEquals(before.stringValue_(), "hunter2");
+  assertEquals(parameter("x").stringValue_(), undefined); // unresolved
+});
+
+Deno.test("resolveParameters prompts for a missing required value", () => {
+  class B extends Build {
+    token = parameter("API token").required();
+  }
+  const params = discoverParameters(new B());
+  const errors = resolveParameters(
+    params,
+    {},
+    () => undefined,
+    (flag, description) => {
+      assertEquals(flag, "token");
+      assertEquals(description, "API token");
+      return "from-prompt";
+    },
+  );
+  assertEquals(errors, []);
+  const p = params.get("token");
+  if (p instanceof Parameter) assertEquals(p.value, "from-prompt");
+});
+
 Deno.test("flagName and envVarName convert camelCase", () => {
   assertEquals(flagName("environment"), "environment");
   assertEquals(flagName("targetEnv"), "target-env");

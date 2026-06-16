@@ -50,10 +50,27 @@ declaration:
 | `.default(v)` | provide a default | non-optional (`T`) |
 | `.required()` | must be supplied | non-optional (`T`) |
 | `.env("NAME")` | override the env var name | unchanged |
+| `.secret()` | mark the value sensitive | unchanged |
 
 `.number()` and `.boolean()` come first (they change the kind); `.options()`
 applies to strings. A required parameter with no value (and no default) fails
-the build before any target runs, with a message naming the flag and env var.
+the build before any target runs, with a message naming the flag and env var —
+unless it can be supplied interactively (below).
+
+## Secrets
+
+`.secret()` marks a value sensitive. Under GitHub Actions, Zuke emits an
+`::add-mask::` for the resolved value so it is redacted from the logs.
+
+```ts
+token = parameter("Deploy token").secret().required();
+```
+
+## Interactive input
+
+When a required parameter is missing and the build runs at an interactive
+terminal (a TTY, not CI), Zuke prompts for the value instead of failing. On CI
+or non-interactive runs it still errors, so automation stays deterministic.
 
 ## Reading
 
