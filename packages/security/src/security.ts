@@ -30,7 +30,12 @@
  * @module
  */
 
-import { type Configure, runSettings, ToolSettings } from "@zuke/core/tooling";
+import {
+  type Configure,
+  type PathLike,
+  runSettings,
+  ToolSettings,
+} from "@zuke/core/tooling";
 import type { CommandOutput } from "@zuke/core/shell";
 
 /**
@@ -51,14 +56,14 @@ export class ZizmorSettings extends ToolSettings {
   }
 
   /** Add a workflow file or directory to audit (positional); repeatable. */
-  paths(...inputs: string[]): this {
-    this.#paths.push(...inputs);
+  paths(...inputs: PathLike[]): this {
+    this.#paths.push(...inputs.map(String));
     return this;
   }
 
   /** Use an explicit zizmor config file (`--config`). */
-  config(path: string): this {
-    this.#config = path;
+  config(path: PathLike): this {
+    this.#config = String(path);
     return this;
   }
 
@@ -115,8 +120,8 @@ export class ActionlintSettings extends ToolSettings {
   }
 
   /** Add an explicit workflow file to lint (positional); repeatable. */
-  files(...paths: string[]): this {
-    this.#files.push(...paths);
+  files(...paths: PathLike[]): this {
+    this.#files.push(...paths.map(String));
     return this;
   }
 
@@ -166,14 +171,14 @@ export class GitleaksDetectSettings extends ToolSettings {
   }
 
   /** Path to scan (`--source`). */
-  source(path: string): this {
-    this.#source = path;
+  source(path: PathLike): this {
+    this.#source = String(path);
     return this;
   }
 
   /** Use an explicit gitleaks config (`--config`). */
-  config(path: string): this {
-    this.#config = path;
+  config(path: PathLike): this {
+    this.#config = String(path);
     return this;
   }
 
@@ -184,8 +189,8 @@ export class GitleaksDetectSettings extends ToolSettings {
   }
 
   /** Write the report to a file (`--report-path`). */
-  reportPath(path: string): this {
-    this.#reportPath = path;
+  reportPath(path: PathLike): this {
+    this.#reportPath = String(path);
     return this;
   }
 
@@ -240,14 +245,14 @@ export class OsvScannerSettings extends ToolSettings {
   }
 
   /** Scan an explicit lockfile (`--lockfile`); repeatable. */
-  lockfile(path: string): this {
-    this.#lockfiles.push(path);
+  lockfile(path: PathLike): this {
+    this.#lockfiles.push(String(path));
     return this;
   }
 
   /** Add a directory to scan (positional); repeatable. */
-  paths(...inputs: string[]): this {
-    this.#paths.push(...inputs);
+  paths(...inputs: PathLike[]): this {
+    this.#paths.push(...inputs.map(String));
     return this;
   }
 
@@ -258,8 +263,8 @@ export class OsvScannerSettings extends ToolSettings {
   }
 
   /** Write the report to a file (`--output`). */
-  output(path: string): this {
-    this.#output = path;
+  output(path: PathLike): this {
+    this.#output = String(path);
     return this;
   }
 
@@ -304,8 +309,8 @@ export class SemgrepScanSettings extends ToolSettings {
   }
 
   /** Add a path to scan (positional); repeatable. */
-  paths(...inputs: string[]): this {
-    this.#paths.push(...inputs);
+  paths(...inputs: PathLike[]): this {
+    this.#paths.push(...inputs.map(String));
     return this;
   }
 
@@ -322,8 +327,8 @@ export class SemgrepScanSettings extends ToolSettings {
   }
 
   /** Write output to a file (`--output`). */
-  output(path: string): this {
-    this.#output = path;
+  output(path: PathLike): this {
+    this.#output = String(path);
     return this;
   }
 
@@ -363,8 +368,8 @@ abstract class TrivyReportSettings extends ToolSettings {
   }
 
   /** Write the report to a file (`--output`). */
-  output(path: string): this {
-    this.#output = path;
+  output(path: PathLike): this {
+    this.#output = String(path);
     return this;
   }
 
@@ -404,8 +409,8 @@ export class TrivyFsSettings extends TrivyReportSettings {
   #scanners: string[] = [];
 
   /** The path to scan (default `.`). */
-  target(path: string): this {
-    this.#target = path;
+  target(path: PathLike): this {
+    this.#target = String(path);
     return this;
   }
 
@@ -435,8 +440,8 @@ export class TrivyConfigSettings extends TrivyReportSettings {
   #target = ".";
 
   /** The path to scan (default `.`). */
-  target(path: string): this {
-    this.#target = path;
+  target(path: PathLike): this {
+    this.#target = String(path);
     return this;
   }
 

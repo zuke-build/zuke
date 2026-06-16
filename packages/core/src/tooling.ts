@@ -20,7 +20,9 @@
  */
 
 import { Command, type CommandOutput } from "./shell.ts";
-import type { AbsolutePath } from "./path.ts";
+import type { AbsolutePath, PathLike } from "./path.ts";
+
+export type { PathLike };
 
 /** Raised when a tool's binary cannot be found on the system. */
 export class ToolNotFoundError extends Error {
@@ -95,8 +97,8 @@ export abstract class ToolSettings {
   }
 
   /** Set the working directory for the process. */
-  cwd(path: string): this {
-    this.#cwd = path;
+  cwd(path: PathLike): this {
+    this.#cwd = String(path);
     return this;
   }
 
@@ -113,8 +115,8 @@ export abstract class ToolSettings {
   }
 
   /** Override the binary to run (e.g. an absolute path to the tool). */
-  toolPath(path: string): this {
-    this.#toolPath = path;
+  toolPath(path: PathLike): this {
+    this.#toolPath = String(path);
     return this;
   }
 

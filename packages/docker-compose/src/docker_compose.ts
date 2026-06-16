@@ -23,7 +23,12 @@
  * @module
  */
 
-import { type Configure, runSettings, ToolSettings } from "@zuke/core/tooling";
+import {
+  type Configure,
+  type PathLike,
+  runSettings,
+  ToolSettings,
+} from "@zuke/core/tooling";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import { Command, type CommandOutput } from "@zuke/core/shell";
 
@@ -111,8 +116,8 @@ export abstract class DockerComposeSettings extends ToolSettings {
   }
 
   /** Add a Compose file (`-f`); repeatable, order-significant. */
-  file(path: string): this {
-    this.#files.push("-f", path);
+  file(path: PathLike): this {
+    this.#files.push("-f", String(path));
     return this;
   }
 
@@ -129,14 +134,14 @@ export abstract class DockerComposeSettings extends ToolSettings {
   }
 
   /** Set the project working directory (`--project-directory`). */
-  projectDirectory(path: string): this {
-    this.#projectDirectory = path;
+  projectDirectory(path: PathLike): this {
+    this.#projectDirectory = String(path);
     return this;
   }
 
   /** Load environment from a file (`--env-file`). */
-  envFile(path: string): this {
-    this.#envFile = path;
+  envFile(path: PathLike): this {
+    this.#envFile = String(path);
     return this;
   }
 
@@ -477,8 +482,8 @@ export class DockerComposeExecSettings extends DockerComposeSettings {
   }
 
   /** Working directory inside the container (`-w`). */
-  workdir(path: string): this {
-    this.#workdir = path;
+  workdir(path: PathLike): this {
+    this.#workdir = String(path);
     return this;
   }
 

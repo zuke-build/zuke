@@ -16,7 +16,7 @@
  * @module
  */
 
-import type { AbsolutePath } from "./path.ts";
+import type { AbsolutePath, PathLike } from "./path.ts";
 
 /** A value that may be interpolated into a `$` template. */
 export type Interpolatable =
@@ -121,8 +121,8 @@ export class Command implements PromiseLike<CommandOutput> {
   }
 
   /** Set the working directory for the process. */
-  cwd(path: string): this {
-    this.#cwd = path;
+  cwd(path: PathLike): this {
+    this.#cwd = String(path);
     return this;
   }
 

@@ -15,7 +15,12 @@
  * @module
  */
 
-import { type Configure, runSettings, ToolSettings } from "@zuke/core/tooling";
+import {
+  type Configure,
+  type PathLike,
+  runSettings,
+  ToolSettings,
+} from "@zuke/core/tooling";
 import type { CommandOutput } from "@zuke/core/shell";
 
 /** Settings for an `oxlint` run. */
@@ -39,20 +44,20 @@ export class OxlintSettings extends ToolSettings {
   }
 
   /** Files or directories to lint (positional); repeatable. */
-  paths(...values: string[]): this {
-    this.#paths.push(...values);
+  paths(...values: PathLike[]): this {
+    this.#paths.push(...values.map(String));
     return this;
   }
 
   /** Use an explicit config file (`-c`/`--config`). */
-  config(path: string): this {
-    this.#config = path;
+  config(path: PathLike): this {
+    this.#config = String(path);
     return this;
   }
 
   /** Point at a `tsconfig.json` for type-aware rules (`--tsconfig`). */
-  tsconfig(path: string): this {
-    this.#tsconfig = path;
+  tsconfig(path: PathLike): this {
+    this.#tsconfig = String(path);
     return this;
   }
 
@@ -87,8 +92,8 @@ export class OxlintSettings extends ToolSettings {
   }
 
   /** Read ignore globs from a file (`--ignore-path`). */
-  ignorePath(path: string): this {
-    this.#ignorePath = path;
+  ignorePath(path: PathLike): this {
+    this.#ignorePath = String(path);
     return this;
   }
 
