@@ -34,6 +34,7 @@ export {
 export { run } from "./src/cli.ts";
 export { execute, type ExecuteOptions, type Reporter } from "./src/executor.ts";
 export { type AbsolutePath, absolutePath, type PathLike } from "./src/path.ts";
+export { CONFIG_FILE, repoRoot } from "./src/config.ts";
 export {
   executionSet,
   findCycle,

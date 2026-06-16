@@ -9,6 +9,8 @@ import {
   run,
 } from "../src/cli.ts";
 import { discoverTargets } from "../src/build.ts";
+import { FakeGraphHost } from "./_fakes.ts";
+import { CONFIG_FILE } from "../src/config.ts";
 
 /** Run `fn` with `console.log`/`console.error` captured instead of printed. */
 async function capture(
@@ -46,6 +48,20 @@ Deno.test("parseArgs recognises flags and aliases", () => {
   assertEquals(parseArgs(["--graph"]).graph, true);
   assertEquals(parseArgs(["--help"]).help, true);
   assertEquals(parseArgs(["-h"]).help, true);
+});
+
+Deno.test("parseArgs recognises the graph command and its options", () => {
+  const parsed = parseArgs(["graph", "--out", "g.html", "--no-open"]);
+  assertEquals(parsed.graphHtml, true);
+  assertEquals(parsed.target, undefined);
+  assertEquals(parsed.out, "g.html");
+  assertEquals(parsed.open, false);
+});
+
+Deno.test("parseArgs defaults open to true and graphHtml to false", () => {
+  const parsed = parseArgs(["build"]);
+  assertEquals(parsed.graphHtml, false);
+  assertEquals(parsed.open, true);
 });
 
 Deno.test("parseArgs collects repeatable --skip and keeps first positional", () => {
@@ -95,6 +111,16 @@ Deno.test("main --list and --graph return 0", async () => {
   const graph = await capture(() => main(Demo, ["--graph"]));
   assertEquals(graph.code, 0);
   assertEquals(graph.out.join("\n").includes("Dependency graph:"), true);
+});
+
+Deno.test("main graph command renders HTML via the injected host", async () => {
+  const host = new FakeGraphHost("/repo", [`/repo/${CONFIG_FILE}`]);
+  const { code } = await capture(() =>
+    main(Demo, ["graph", "--no-open"], host)
+  );
+  assertEquals(code, 0);
+  assertEquals(host.files.has("/repo/.zuke/graph.html"), true);
+  assertEquals(host.opened, []);
 });
 
 Deno.test("main runs a target and its dependencies, returning 0", async () => {

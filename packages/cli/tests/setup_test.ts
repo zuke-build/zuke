@@ -7,6 +7,7 @@ import {
   mergeDenoJson,
   runSetup,
   starterBuild,
+  starterConfig,
   zukeTaskState,
 } from "../src/setup.ts";
 import { FakeHost } from "./_fakes.ts";
@@ -24,6 +25,12 @@ Deno.test("starterBuild embeds the class name and entry point", () => {
   assertEquals(out.includes("import { Build, run, target }"), true);
   assertEquals(out.includes("class Acme extends Build"), true);
   assertEquals(out.includes("await run(Acme)"), true);
+});
+
+Deno.test("starterConfig records the build name as JSON", () => {
+  const parsed: unknown = JSON.parse(starterConfig("Acme"));
+  assertEquals(isRecord(parsed) && parsed.name === "Acme", true);
+  assertEquals(starterConfig("Acme").endsWith("\n"), true);
 });
 
 Deno.test("launchers carry a shebang and run zuke.ts", () => {
@@ -81,12 +88,32 @@ Deno.test("runSetup scaffolds an empty project", async () => {
     "created",
     "created",
     "created",
+    "created",
+    "created",
   ]);
   assertEquals(host.files.get("zuke.ts")?.includes("class Foo"), true);
   assertEquals(host.files.has("zuke"), true);
   assertEquals(host.files.has("zuke.ps1"), true);
+  assertEquals(host.files.get("zuke.json")?.includes('"name": "Foo"'), true);
   assertEquals(host.files.has("deno.json"), true);
+  assertEquals(host.files.get(".gitignore")?.includes(".zuke/"), true);
   assertEquals(host.chmods[0], ["zuke", 0o755]);
+});
+
+Deno.test("runSetup skips a .gitignore that already ignores .zuke/", async () => {
+  const host = new FakeHost({ ".gitignore": "node_modules/\n.zuke/\n" });
+  const result = await runSetup({ dir: ".", force: false, name: "Foo" }, host);
+  const gi = result.files.find((f) => f.path === ".gitignore");
+  assertEquals(gi?.status, "skipped");
+  assertEquals(host.files.get(".gitignore"), "node_modules/\n.zuke/\n");
+});
+
+Deno.test("runSetup appends .zuke/ to an existing .gitignore", async () => {
+  const host = new FakeHost({ ".gitignore": "node_modules/" });
+  const result = await runSetup({ dir: ".", force: false, name: "Foo" }, host);
+  const gi = result.files.find((f) => f.path === ".gitignore");
+  assertEquals(gi?.status, "overwritten");
+  assertEquals(host.files.get(".gitignore"), "node_modules/\n.zuke/\n");
 });
 
 Deno.test("runSetup skips existing files without --force", async () => {
@@ -139,9 +166,11 @@ Deno.test("runSetup writes to disk via the default host", async () => {
   const dir = await Deno.makeTempDir();
   try {
     const result = await runSetup({ dir, force: false, name: "Acme" });
-    assertEquals(result.files.length, 4);
+    assertEquals(result.files.length, 6);
     const zukeTs = await Deno.readTextFile(`${dir}/zuke.ts`);
     assertEquals(zukeTs.includes("class Acme extends Build"), true);
+    const config = await Deno.readTextFile(`${dir}/zuke.json`);
+    assertEquals(config.includes('"name": "Acme"'), true);
     if (Deno.build.os !== "windows") {
       const info = await Deno.lstat(`${dir}/zuke`);
       assertEquals((info.mode ?? 0) & 0o100, 0o100);

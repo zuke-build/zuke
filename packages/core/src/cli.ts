@@ -6,10 +6,18 @@
 import { type Build, discoverTargets } from "./build.ts";
 import { GraphError, validateGraph } from "./graph.ts";
 import { execute } from "./executor.ts";
+import {
+  defaultGraphHost,
+  graphCommand,
+  type GraphHost,
+} from "./graph_view.ts";
 import type { TargetBuilder } from "./target.ts";
 
 /** Convention: a target literally named `default` runs when none is requested. */
 const DEFAULT_TARGET = "default";
+
+/** The reserved positional command that renders the interactive HTML graph. */
+const GRAPH_COMMAND = "graph";
 
 /** Parsed command-line arguments. */
 export interface ParsedArgs {
@@ -19,6 +27,12 @@ export interface ParsedArgs {
   skip: string[];
   list: boolean;
   graph: boolean;
+  /** Render the interactive HTML graph (`graph` command). */
+  graphHtml: boolean;
+  /** Open the generated graph in a browser (default true; `--no-open` clears). */
+  open: boolean;
+  /** Output path for the generated graph (`--out <path>`). */
+  out?: string;
   help: boolean;
 }
 
@@ -28,6 +42,8 @@ export function parseArgs(args: string[]): ParsedArgs {
     skip: [],
     list: false,
     graph: false,
+    graphHtml: false,
+    open: true,
     help: false,
   };
   for (let i = 0; i < args.length; i++) {
@@ -40,6 +56,14 @@ export function parseArgs(args: string[]): ParsedArgs {
       case "--graph":
         parsed.graph = true;
         break;
+      case "--no-open":
+        parsed.open = false;
+        break;
+      case "--out": {
+        const out = args[++i];
+        if (out) parsed.out = out;
+        break;
+      }
       case "--help":
       case "-h":
         parsed.help = true;
@@ -50,8 +74,12 @@ export function parseArgs(args: string[]): ParsedArgs {
         break;
       }
       default:
-        if (!arg.startsWith("-") && parsed.target === undefined) {
-          parsed.target = arg;
+        if (
+          !arg.startsWith("-") && parsed.target === undefined &&
+          !parsed.graphHtml
+        ) {
+          if (arg === GRAPH_COMMAND) parsed.graphHtml = true;
+          else parsed.target = arg;
         }
         break;
     }
@@ -70,12 +98,16 @@ Usage:
   deno run -A zuke.ts <target> [--skip <dep>]
   deno run -A zuke.ts --list
   deno run -A zuke.ts --graph
+  deno run -A zuke.ts graph [--out <path>] [--no-open]
 
 Options:
   <target>        Run the target and its transitive dependencies.
   --skip <dep>    Skip the named dependency (repeatable).
   --list, -l      List all targets with descriptions and dependencies.
   --graph         Print the dependency graph.
+  graph           Render an interactive HTML graph into .zuke/ and open it.
+  --out <path>    Output path for the HTML graph (with the graph command).
+  --no-open       Do not open the generated graph in a browser.
   --help, -h      Show this help.`;
 
 /** Render `--help`, including the available targets. */
@@ -116,6 +148,7 @@ export function formatGraph(targets: Map<string, TargetBuilder>): string {
 export async function main(
   BuildClass: new () => Build,
   args: string[],
+  graphHost: GraphHost = defaultGraphHost,
 ): Promise<number> {
   const build = new BuildClass();
   const targets = discoverTargets(build);
@@ -143,6 +176,13 @@ export async function main(
   if (parsed.graph) {
     console.log(formatGraph(targets));
     return 0;
+  }
+  if (parsed.graphHtml) {
+    return await graphCommand(
+      targets,
+      { open: parsed.open, out: parsed.out },
+      graphHost,
+    );
   }
 
   let name = parsed.target;

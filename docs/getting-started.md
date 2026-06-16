@@ -14,8 +14,9 @@ Zuke is imported straight from JSR.
 ## Scaffold a project with `zuke setup`
 
 The fastest start is the `@zuke/cli` tool. Install it once, then scaffold a
-starter `zuke.ts`, the `./zuke` launchers, and a `deno.json` task into any
-directory:
+starter `zuke.ts`, the `./zuke` launchers, a `deno.json` task, and a `zuke.json`
+config (which marks the repo root — see [paths](./paths.md#repo-root-reporoot))
+into any directory:
 
 ```sh
 deno install -A -g -n zuke jsr:@zuke/cli   # once
