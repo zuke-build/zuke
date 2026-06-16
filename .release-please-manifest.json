@@ -1,14 +1,14 @@
 {
-  "packages/core": "0.2.0",
-  "packages/deno": "0.1.1",
-  "packages/npm": "0.1.1",
-  "packages/cmd": "0.1.1",
-  "packages/cli": "0.1.1",
-  "packages/docker": "0.1.0",
-  "packages/docker-compose": "0.1.0",
-  "packages/oxlint": "0.0.0",
-  "packages/eslint": "0.0.0",
-  "packages/cspell": "0.0.0",
-  "packages/jest": "0.0.0",
-  "packages/vitest": "0.0.0"
+  "packages/core": "0.3.0",
+  "packages/deno": "0.2.0",
+  "packages/npm": "0.2.0",
+  "packages/cmd": "0.2.0",
+  "packages/cli": "0.2.0",
+  "packages/docker": "0.2.0",
+  "packages/docker-compose": "0.2.0",
+  "packages/oxlint": "0.1.0",
+  "packages/eslint": "0.1.0",
+  "packages/cspell": "0.1.0",
+  "packages/jest": "0.1.0",
+  "packages/vitest": "0.1.0"
 }

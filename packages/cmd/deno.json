@@ -1,6 +1,6 @@
 {
   "name": "@zuke/cmd",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Generic command task wrapper for Zuke builds — run any CLI tool through a typed, injection-free settings-lambda API.",
   "exports": {
     ".": "./mod.ts"

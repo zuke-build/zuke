@@ -1,6 +1,6 @@
 {
   "name": "@zuke/docker",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Typed docker CLI task wrappers for Zuke builds — build, run, exec, push, pull, tag, login, images, ps, and more via an injection-free settings-lambda API.",
   "exports": {
     ".": "./mod.ts"
