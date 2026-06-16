@@ -24,8 +24,9 @@ import { SecurityTasks } from "jsr:@zuke/security";
 // Audit your workflows and fail the build on findings.
 await SecurityTasks.zizmor((s) => s.paths(".github/workflows"));
 
-// Check the lockfile against the OSV database.
-await SecurityTasks.osvScanner((s) => s.lockfile("deno.lock"));
+// Check a supported lockfile against the OSV database (npm/cargo/go/etc.;
+// osv-scanner has no extractor for Deno's deno.lock).
+await SecurityTasks.osvScanner((s) => s.lockfile("package-lock.json"));
 
 // Emit SARIF for GitHub code scanning.
 await SecurityTasks.gitleaks((s) =>

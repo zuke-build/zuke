@@ -20,7 +20,7 @@
  *
  * await SecurityTasks.zizmor((s) => s.paths(".github/workflows").format("sarif"));
  * await SecurityTasks.gitleaks((s) => s.source(".").redact());
- * await SecurityTasks.osvScanner((s) => s.lockfile("deno.lock"));
+ * await SecurityTasks.osvScanner((s) => s.lockfile("package-lock.json"));
  * ```
  *
  * Each binary is resolved on `PATH` (override with `.toolPath(...)`), and every

@@ -47,20 +47,28 @@ What the project does to keep releases trustworthy:
 - **Pinned, monitored Actions.** Every GitHub Action is pinned to a full commit
   SHA (with a version comment, kept current by Dependabot), and every job runs
   `step-security/harden-runner` to audit outbound network egress.
-- **Pinned toolchain.** CI installs Deno via the pinned `denoland/setup-deno`
-  action rather than executing a remote install script. Dependencies are
-  resolved against a committed `deno.lock`, enforced with `--frozen`.
-- **Continuous scanning.** CodeQL (TypeScript), OpenSSF Scorecard, zizmor
-  (Actions SAST), gitleaks (secrets), Trivy (filesystem/config), and
-  osv-scanner (lockfile vulns) run in CI and report to the Security tab.
+- **Pinned toolchain.** The `./zuke` launcher bootstraps a **pinned** Deno
+  version by default (override with `DENO_VERSION`), so CI and local builds
+  install a known version rather than a moving `latest`. Dependencies are
+  resolved against a committed `deno.lock`, enforced with `--frozen`, and the
+  scanner CLIs are pinned to exact versions in the security workflow.
+- **Scanning via Zuke.** The supply-chain scanners run as a typed Zuke build
+  target — `./zuke security` drives zizmor (Actions SAST), actionlint, and
+  gitleaks (secrets) through [`@zuke/security`](./packages/security), failing
+  the build on findings. (The package also wraps osv-scanner, semgrep, and
+  Trivy for consumers whose projects have lockfiles/manifests those tools
+  support.) Code-level SARIF for the GitHub Security tab comes from CodeQL
+  (TypeScript) and OpenSSF Scorecard, which have no CLI to wrap and stay as
+  native actions.
 
 ### Known trade-offs
 
 - **Bootstrap launchers.** `./zuke` and `./zuke.ps1` install Deno on first use
-  via the official `https://deno.land` install script (`curl … | sh`). This is
-  a convenience for local development and the cross-OS launcher test only —
-  pin the version with `DENO_VERSION`, or install Deno yourself, to avoid it.
-  Privileged CI (the release/publish jobs) never relies on it.
+  via the official `https://deno.land` install script (`curl … | sh`). The
+  version is pinned by default (set `DENO_VERSION=latest` or a specific version
+  to override), and `step-security/harden-runner` audits runner egress, but the
+  install *script itself* is fetched at run time. To avoid it entirely, install
+  Deno yourself so the launcher finds it on `PATH`.
 - **`deno publish --allow-dirty`.** The publish step currently allows a dirty
   tree as a backstop. The merged release tree should already be clean; once a
   real release confirms this, drop the flag for the strongest
@@ -76,11 +84,11 @@ own pipeline:
 import { SecurityTasks } from "jsr:@zuke/security";
 
 await SecurityTasks.zizmor((s) => s.paths(".github/workflows"));
-await SecurityTasks.osvScanner((s) => s.lockfile("deno.lock"));
+await SecurityTasks.osvScanner((s) => s.lockfile("package-lock.json"));
 ```
 
 In this repository, `deno task zuke security` runs the bundled set (zizmor,
-actionlint, gitleaks, osv-scanner) once the tools are installed on `PATH`.
+actionlint, gitleaks) once the tools are installed on `PATH`.
 
 ## Recommended repository settings
 

@@ -563,9 +563,10 @@ As a build tool that runs in other people's pipelines, Zuke treats
 supply-chain integrity as a first-class concern: zero runtime dependencies,
 injection-free `Deno.Command` execution, OIDC trusted publishing with
 provenance, least-privilege and SHA-pinned CI, a frozen lockfile, and
-continuous scanning (CodeQL, OpenSSF Scorecard, zizmor, gitleaks, Trivy,
-osv-scanner). The same scanners ship as Zuke tasks in
-[`@zuke/security`](./packages/security) so you can run them in your own build.
+continuous scanning. Scanning runs as a typed Zuke target — `deno task zuke
+security` drives zizmor, actionlint, and gitleaks through
+[`@zuke/security`](./packages/security) (which also wraps osv-scanner, semgrep,
+and Trivy) — alongside CodeQL and OpenSSF Scorecard for the Security tab.
 
 See [`SECURITY.md`](./SECURITY.md) for the full posture and how to report a
 vulnerability.

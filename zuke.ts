@@ -180,14 +180,34 @@ class ZukeBuild extends Build {
 
   // Supply-chain scanning, dogfooding @zuke/security. Kept out of `ci` so the
   // core gate stays runnable without the scanner binaries installed; the
-  // dedicated security workflow installs them and runs this target.
+  // dedicated security workflow installs them and runs this target. Every
+  // scanner runs (noThrow) so one finding doesn't mask the rest, then the
+  // target fails if any reported issues.
   security = target()
     .description("Run supply-chain security scanners (zuke/security)")
     .executes(async () => {
-      await SecurityTasks.zizmor((s) => s.paths(".github/workflows"));
-      await SecurityTasks.actionlint();
-      await SecurityTasks.gitleaks((s) => s.source(".").redact());
-      await SecurityTasks.osvScanner((s) => s.lockfile("deno.lock"));
+      const failures: string[] = [];
+      const gate = async (name: string, output: Promise<{ code: number }>) => {
+        const { code } = await output;
+        if (code !== 0) failures.push(`${name} (exit ${code})`);
+      };
+      await gate(
+        "zizmor",
+        SecurityTasks.zizmor((s) => s.paths(".github/workflows").noThrow()),
+      );
+      await gate("actionlint", SecurityTasks.actionlint((s) => s.noThrow()));
+      await gate(
+        "gitleaks",
+        SecurityTasks.gitleaks((s) => s.source(".").redact().noThrow()),
+      );
+      // osv-scanner is omitted here: it has no extractor for Deno's lockfile.
+      // The @zuke/security wrapper still ships it for projects with npm/cargo/
+      // go/etc. lockfiles it does understand.
+      if (failures.length > 0) {
+        throw new Error(
+          `Security scan reported issues: ${failures.join("; ")}`,
+        );
+      }
     });
 
   release = target()

@@ -11,8 +11,15 @@
 #
 # Honoured environment variables:
 #   DENO_INSTALL   where Deno is installed/looked for (default: ~/.deno)
-#   DENO_VERSION   pin a specific Deno version for the bootstrap install
+#   DENO_VERSION   which Deno to install on bootstrap. Defaults to a pinned,
+#                  known-good version (see DEFAULT_DENO_VERSION) for reproducible
+#                  and more predictable installs; set to "latest" for the newest
+#                  release, or to a specific version ("v2.8.3" or "2.8.3").
 set -euo pipefail
+
+# Pinned default so the bootstrap installs a known version rather than whatever
+# "latest" happens to be. Bump deliberately; keep in sync with zuke.ps1.
+DEFAULT_DENO_VERSION="v2.8.3"
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$script_dir"
@@ -31,10 +38,16 @@ else
     exit 1
   fi
   export DENO_INSTALL="$deno_install"
-  if [ -n "${DENO_VERSION:-}" ]; then
-    curl -fsSL https://deno.land/install.sh | sh -s "$DENO_VERSION" >/dev/null
-  else
+  deno_version="${DENO_VERSION:-$DEFAULT_DENO_VERSION}"
+  if [ "$deno_version" = "latest" ]; then
     curl -fsSL https://deno.land/install.sh | sh >/dev/null
+  else
+    # install.sh expects a leading "v"; accept either form from DENO_VERSION.
+    case "$deno_version" in
+      v*) ;;
+      *) deno_version="v$deno_version" ;;
+    esac
+    curl -fsSL https://deno.land/install.sh | sh -s "$deno_version" >/dev/null
   fi
   deno_bin="$deno_install/bin/deno"
 fi

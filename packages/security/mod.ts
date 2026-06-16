@@ -6,7 +6,7 @@
  * import { SecurityTasks } from "jsr:@zuke/security";
  *
  * await SecurityTasks.zizmor((s) => s.paths(".github/workflows"));
- * await SecurityTasks.osvScanner((s) => s.lockfile("deno.lock"));
+ * await SecurityTasks.osvScanner((s) => s.lockfile("package-lock.json"));
  * await SecurityTasks.gitleaks((s) => s.source(".").redact());
  * ```
  *
