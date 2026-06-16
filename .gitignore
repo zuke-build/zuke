@@ -6,6 +6,9 @@
 # Build output (example builds produce this)
 /dist/
 
+# Generated Zuke artifacts (e.g. `zuke graph` output)
+/.zuke/
+
 # Editor / OS noise
 .DS_Store
 *.swp

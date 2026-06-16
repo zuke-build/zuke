@@ -38,6 +38,15 @@ if (import.meta.main) {
 `;
 }
 
+/**
+ * The starter `zuke.json` config. Its presence at the repository root is what
+ * `@zuke/core`'s `repoRoot()` walks up to find; the recorded `name` is the
+ * build class for reference.
+ */
+export function starterConfig(name: string): string {
+  return `${JSON.stringify({ name }, null, 2)}\n`;
+}
+
 /* cspell:disable */
 
 /** The bash bootstrap launcher (`./zuke`). Installs Deno on first use. */
@@ -218,6 +227,7 @@ export async function runSetup(
     { name: "zuke.ts", content: starterBuild(options.name) },
     { name: "zuke", content: launcherBash(), mode: 0o755 },
     { name: "zuke.ps1", content: launcherPwsh() },
+    { name: "zuke.json", content: starterConfig(options.name) },
   ];
 
   for (const item of scaffold) {
@@ -242,7 +252,35 @@ export async function runSetup(
   }
 
   files.push(await setupDenoJson(options.dir, host));
+  files.push(await setupGitignore(options.dir, host));
   return { files };
+}
+
+/** The line `setup` ensures is present in `.gitignore` for generated output. */
+const GITIGNORE_ENTRY = ".zuke/";
+
+/** Create or update `.gitignore` so the generated `.zuke/` folder is ignored. */
+async function setupGitignore(
+  dir: string,
+  host: SetupHost,
+): Promise<FileResult> {
+  const name = ".gitignore";
+  const path = joinPath(dir, name);
+  if (!(await host.exists(path))) {
+    await host.writeText(path, `${GITIGNORE_ENTRY}\n`);
+    host.log(`  create   ${name}`);
+    return { path: name, status: "created" };
+  }
+
+  const before = await host.readText(path);
+  if (before.split(/\r?\n/).some((line) => line.trim() === GITIGNORE_ENTRY)) {
+    host.log(`  skip     ${name}  (${GITIGNORE_ENTRY} already ignored)`);
+    return { path: name, status: "skipped" };
+  }
+  const separator = before === "" || before.endsWith("\n") ? "" : "\n";
+  await host.writeText(path, `${before}${separator}${GITIGNORE_ENTRY}\n`);
+  host.log(`  update   ${name}`);
+  return { path: name, status: "overwritten" };
 }
 
 /** Create or merge `deno.json`, returning what happened to it. */
