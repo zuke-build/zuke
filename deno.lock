@@ -607,6 +607,16 @@
           "jsr:@zuke/core@0"
         ]
       },
+      "packages/tsgo": {
+        "dependencies": [
+          "jsr:@zuke/core@0"
+        ]
+      },
+      "packages/tsx": {
+        "dependencies": [
+          "jsr:@zuke/core@0"
+        ]
+      },
       "packages/vitest": {
         "dependencies": [
           "jsr:@zuke/core@0"

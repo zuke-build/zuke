@@ -13,6 +13,8 @@ const PACKAGES = [
   "packages/cspell",
   "packages/jest",
   "packages/vitest",
+  "packages/tsx",
+  "packages/tsgo",
   "packages/security",
 ];
 

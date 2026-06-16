@@ -31,6 +31,8 @@ const PACKAGES = [
   "cspell",
   "jest",
   "vitest",
+  "tsx",
+  "tsgo",
   "security",
 ];
 

@@ -1,0 +1,16 @@
+{
+  "name": "@zuke/tsgo",
+  "version": "0.0.0",
+  "description": "Typed tsgo task wrappers for Zuke builds — type-check and compile with the native TypeScript compiler (TypeScript 7) via an injection-free settings-lambda API.",
+  "exports": {
+    ".": "./mod.ts"
+  },
+  "imports": {
+    "@zuke/core": "jsr:@zuke/core@^0"
+  },
+  "publish": {
+    "exclude": [
+      "tests/"
+    ]
+  }
+}
