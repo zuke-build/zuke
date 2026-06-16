@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.0](https://github.com/zuke-build/zuke/compare/core-v0.9.0...core-v0.10.0) (2026-06-16)
+
+
+### Features
+
+* **core:** visualise parallel groups in the graph ([#51](https://github.com/zuke-build/zuke/issues/51)) ([26b8c91](https://github.com/zuke-build/zuke/commit/26b8c9154e1b6a65a7bb130e872b9fec02381008))
+
 ## [0.9.0](https://github.com/zuke-build/zuke/compare/core-v0.8.0...core-v0.9.0) (2026-06-16)
 
 
