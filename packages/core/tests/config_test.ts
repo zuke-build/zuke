@@ -1,4 +1,5 @@
 import { assertEquals, assertThrows } from "./_assert.ts";
+import { absolutePath } from "../src/path.ts";
 import {
   CONFIG_FILE,
   findConfigDir,
@@ -61,7 +62,9 @@ Deno.test("repoRoot resolves from the current working directory", async () => {
   try {
     await Deno.writeTextFile(`${dir}/${CONFIG_FILE}`, "{}\n");
     Deno.chdir(dir);
-    const here = Deno.cwd();
+    // Normalise the cwd the way AbsolutePath does (forward slashes), so the
+    // assertion holds on Windows where Deno.cwd() uses backslashes.
+    const here = absolutePath(Deno.cwd()).path;
     assertEquals(repoRoot().path, here);
     assertEquals(repoRoot("src", "x.ts").path, `${here}/src/x.ts`);
   } finally {
