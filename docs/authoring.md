@@ -12,6 +12,14 @@ body, which is required before the target can run.
 | `.executes(fn)`          | `(fn: () => void \| Promise<void>) => this` | The body. May be async.                                |
 | `.before(...targets)`    | `(...t: Target[]) => this`                  | Soft ordering: run before these _if both are planned_. |
 | `.after(...targets)`     | `(...t: Target[]) => this`                  | Soft ordering: run after these _if both are planned_.  |
+| `.triggers(...targets)`  | `(...t: Target[]) => this`                  | Pull these into the plan and run them _after_ this.    |
+| `.dependentFor(...targets)` | `(...t: Target[]) => this`               | Reverse of `dependsOn`: run this _before_ those.       |
+| `.inputs(...paths)`      | `(...p: PathLike[]) => this`                | Cache inputs: skip the target when these are unchanged. |
+| `.outputs(...paths)`     | `(...p: PathLike[]) => this`                | Cache outputs: a hit also requires these to still exist. |
+| `.onlyWhen(condition)`   | `(c: () => boolean \| Promise<boolean>) => this` | Run only when the condition holds, else skip.    |
+| `.requires(...params)`   | `(...p: Parameter[]) => this`               | Fail the target unless these parameters are set.       |
+| `.proceedAfterFailure()` | `() => this`                                | Keep the build going if this target fails.             |
+| `.unlisted()`            | `() => this`                                | Hide the target from `--list`/`--help`.                |
 
 `dependsOn` pulls targets into the plan; `before`/`after` only reorder targets
 that are _already_ in the plan — they never pull new targets in.
@@ -52,6 +60,58 @@ Here `clean` runs first (all three depend on it), then `lint`/`format`/
 so they batch whenever they run — no `--parallel` flag needed. Ungrouped
 targets stay serialized unless you opt the whole build into `--parallel`.
 Declare the group field above the targets that join it.
+
+### Incremental caching — `.inputs()` / `.outputs()`
+
+A target that declares **inputs** becomes incremental: Zuke fingerprints those
+files/directories (SHA-256 of their contents, directories hashed recursively)
+and **skips** the target — reporting it `cached` — when the fingerprint is
+unchanged since the last successful run and every declared **output** still
+exists. Otherwise it runs and refreshes the fingerprint.
+
+```ts
+compile = target()
+  .inputs("src", "deno.json") // re-run only when these change…
+  .outputs("dist") // …or when dist is missing
+  .executes(async () => {
+    await DenoTasks.run((s) => s.script("build.ts"));
+  });
+```
+
+Fingerprints live in `<repo root>/.zuke/cache.json` (git-ignored). A target with
+no inputs always runs. Pass `--no-cache` (or `execute(..., { cache: false })`)
+to ignore the cache and rebuild everything. A skipped/cached target counts as
+satisfied, so its dependents still run.
+
+### Conditional execution — `.onlyWhen()`
+
+`.onlyWhen(condition)` runs the target only when the condition holds; otherwise
+it is skipped (and its dependents still run). The predicate may be async and can
+read resolved [parameters](./parameters.md) or the environment. Repeatable — all
+conditions must hold.
+
+```ts
+deploy = target()
+  .onlyWhen(() => this.environment.value === "production")
+  .executes(/* ... */);
+```
+
+### More target options
+
+- **`.triggers(...targets)`** — the inverse of `dependsOn`: running this target
+  pulls the listed targets into the plan and runs them _after_ it (e.g. a
+  `notify` target triggered by `deploy`).
+- **`.dependentFor(...targets)`** — declare this target as a prerequisite of
+  others without editing them: each listed target gains this one as a
+  dependency. Declare the listed targets above this one.
+- **`.requires(...params)`** — fail the target (with a message naming the
+  parameter) unless each listed [parameter](./parameters.md) resolved to a
+  value. Use it for a parameter that is optional build-wide but mandatory here.
+- **`.proceedAfterFailure()`** — if this target fails, keep running the rest of
+  the build instead of aborting. The build still reports failure, and this
+  target's own dependents are skipped.
+- **`.unlisted()`** — hide a helper target from `--list`/`--help`; it can still
+  be run by name or depended on.
 
 ### `Build`
 

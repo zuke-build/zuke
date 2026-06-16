@@ -1,6 +1,26 @@
 import { assertEquals, messageOf } from "./_assert.ts";
 import { Build, type BuildResult, discoverTargets } from "../src/build.ts";
 import { group, target } from "../src/target.ts";
+import type { BuildCache } from "../src/cache.ts";
+import { parameter } from "../src/params.ts";
+
+/** An in-memory {@link BuildCache} for executor caching tests. */
+class FakeCache implements BuildCache {
+  readonly fresh = new Set<string>();
+  readonly recorded: string[] = [];
+  saved = false;
+  upToDate(t: { name_?: string }): Promise<boolean> {
+    return Promise.resolve(this.fresh.has(t.name_ ?? ""));
+  }
+  record(t: { name_?: string }): Promise<void> {
+    this.recorded.push(t.name_ ?? "");
+    return Promise.resolve();
+  }
+  save(): Promise<void> {
+    this.saved = true;
+    return Promise.resolve();
+  }
+}
 import {
   execute,
   type ExecuteOptions,
@@ -627,6 +647,197 @@ Deno.test("a failing group member skips the group's dependents", async () => {
   const result = await execute(b, b.deploy, { silent: true });
   assertEquals(result.ok, false);
   assertEquals(ran.includes("deploy"), false); // group member failed
+});
+
+Deno.test("onlyWhen=false skips the target but its dependents still run", async () => {
+  const ran: string[] = [];
+  class B extends Build {
+    gated = target().onlyWhen(() => false).executes(() =>
+      void ran.push("gated")
+    );
+    after = target().dependsOn(this.gated).executes(() =>
+      void ran.push("after")
+    );
+  }
+  const b = new B();
+  discoverTargets(b);
+
+  const result = await execute(b, b.after, { silent: true });
+  assertEquals(result.ok, true);
+  assertEquals(ran, ["after"]); // gated skipped, dependent still ran
+});
+
+Deno.test("onlyWhen can gate on a resolved parameter", async () => {
+  const ran: string[] = [];
+  class B extends Build {
+    env = parameter("env").default("dev");
+    deploy = target()
+      .onlyWhen(() => this.env.value === "prod")
+      .executes(() => void ran.push("deploy"));
+  }
+  const dev = new B();
+  discoverTargets(dev);
+  await execute(dev, dev.deploy, { silent: true, params: { env: "dev" } });
+  assertEquals(ran, []); // dev → skipped
+
+  const prod = new B();
+  discoverTargets(prod);
+  await execute(prod, prod.deploy, { silent: true, params: { env: "prod" } });
+  assertEquals(ran, ["deploy"]);
+});
+
+Deno.test("a cached target is skipped and counted as succeeded", async () => {
+  const { lines, reporter } = recorder();
+  const ran: string[] = [];
+  class B extends Build {
+    build = target().inputs("x").executes(() => void ran.push("build"));
+  }
+  const b = new B();
+  discoverTargets(b);
+  const cache = new FakeCache();
+  cache.fresh.add("build");
+
+  const result = await execute(b, b.build, {
+    reporter,
+    github: false,
+    cache,
+  });
+  assertEquals(result.ok, true);
+  assertEquals(ran, []); // body not run
+  assertEquals(cache.saved, true);
+  const summary = lines[lines.length - 1];
+  assertEquals(summary.includes("⊙ build"), true);
+  assertEquals(summary.includes("cached"), true);
+  assertEquals(summary.includes("1/1 targets"), true);
+});
+
+Deno.test("a stale target runs and records its fingerprint", async () => {
+  const ran: string[] = [];
+  class B extends Build {
+    build = target().inputs("x").executes(() => void ran.push("build"));
+  }
+  const b = new B();
+  discoverTargets(b);
+  const cache = new FakeCache(); // nothing fresh → must run
+
+  await execute(b, b.build, { silent: true, cache });
+  assertEquals(ran, ["build"]);
+  assertEquals(cache.recorded, ["build"]);
+});
+
+Deno.test("cache:false runs cacheable targets without touching the cache", async () => {
+  const ran: string[] = [];
+  class B extends Build {
+    build = target().inputs("x").executes(() => void ran.push("build"));
+  }
+  const b = new B();
+  discoverTargets(b);
+  const result = await execute(b, b.build, { silent: true, cache: false });
+  assertEquals(result.ok, true);
+  assertEquals(ran, ["build"]);
+});
+
+Deno.test("execute caches incrementally via the default .zuke store", async () => {
+  const dir = await Deno.makeTempDir();
+  const original = Deno.cwd();
+  try {
+    await Deno.writeTextFile(`${dir}/zuke.json`, "{}\n");
+    await Deno.writeTextFile(`${dir}/input.txt`, "v1");
+    Deno.chdir(dir);
+    let runs = 0;
+    class B extends Build {
+      build = target().inputs("input.txt").executes(() => void runs++);
+    }
+    const first = new B();
+    discoverTargets(first);
+    await execute(first, first.build, { silent: true });
+    assertEquals(runs, 1);
+
+    const second = new B(); // unchanged input → cached
+    discoverTargets(second);
+    await execute(second, second.build, { silent: true });
+    assertEquals(runs, 1);
+
+    await Deno.writeTextFile(`${dir}/input.txt`, "v2"); // changed → rebuild
+    const third = new B();
+    discoverTargets(third);
+    await execute(third, third.build, { silent: true });
+    assertEquals(runs, 2);
+  } finally {
+    Deno.chdir(original);
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("triggers run the triggered target after this one", async () => {
+  const order: string[] = [];
+  class B extends Build {
+    notify = target().executes(() => void order.push("notify"));
+    build = target().triggers(this.notify).executes(() =>
+      void order.push("build")
+    );
+  }
+  const b = new B();
+  discoverTargets(b);
+  const result = await execute(b, b.build, { silent: true });
+  assertEquals(result.ok, true);
+  assertEquals(order, ["build", "notify"]);
+});
+
+Deno.test("proceedAfterFailure keeps the build going but still fails", async () => {
+  const ran: string[] = [];
+  class B extends Build {
+    flaky = target().proceedAfterFailure().executes(() => {
+      throw new Error("flaked");
+    });
+    afterFlaky = target().dependsOn(this.flaky).executes(() =>
+      void ran.push("afterFlaky")
+    );
+    independent = target().executes(() => void ran.push("independent"));
+    all = target()
+      .dependsOn(this.afterFlaky, this.independent)
+      .executes(() => void ran.push("all"));
+  }
+  const b = new B();
+  discoverTargets(b);
+  const result = await execute(b, b.all, { silent: true });
+  assertEquals(result.ok, false); // a failure still fails the build
+  assertEquals(ran.includes("independent"), true); // kept going
+  assertEquals(ran.includes("afterFlaky"), false); // dependent of the failure
+  assertEquals(ran.includes("all"), false); // transitively blocked
+});
+
+Deno.test("requires fails a target whose parameter is unset", async () => {
+  class B extends Build {
+    token = parameter("API token");
+    publish = target().requires(this.token).executes(() => {});
+  }
+  const b = new B();
+  discoverTargets(b);
+  const result = await execute(b, b.publish, {
+    silent: true,
+    readEnv: () => undefined,
+  });
+  assertEquals(result.ok, false);
+  assertEquals(messageOf(result.error).includes("requires parameter"), true);
+});
+
+Deno.test("requires passes once the parameter is set", async () => {
+  const ran: string[] = [];
+  class B extends Build {
+    token = parameter("API token");
+    publish = target().requires(this.token).executes(() =>
+      void ran.push("publish")
+    );
+  }
+  const b = new B();
+  discoverTargets(b);
+  const result = await execute(b, b.publish, {
+    silent: true,
+    params: { token: "secret" },
+  });
+  assertEquals(result.ok, true);
+  assertEquals(ran, ["publish"]);
 });
 
 Deno.test("an unwritable job-summary file never fails the build", async () => {

@@ -54,6 +54,30 @@ Deno.test("planGraph detects cycles", () => {
   assertThrows(() => planGraph(b.a), GraphError, "cycle");
 });
 
+Deno.test("triggers pull targets into the plan and run them after", () => {
+  class B extends Build {
+    cleanup = target().executes(() => {});
+    main = target().triggers(this.cleanup).executes(() => {});
+  }
+  const b = new B();
+  discover(b);
+  const order = plan(b.main).map((t) => t.name_);
+  assertEquals(order.includes("cleanup"), true); // pulled into the plan
+  assertEquals(order.indexOf("main") < order.indexOf("cleanup"), true);
+});
+
+Deno.test("validateReferences rejects an undefined trigger", () => {
+  const main = target();
+  main.name_ = "main";
+  // @ts-expect-error simulate a forward-referenced (unbound) trigger
+  main.triggers(undefined);
+  assertThrows(
+    () => validateReferences(new Map([["main", main]])),
+    GraphError,
+    "undefined target",
+  );
+});
+
 Deno.test("topological order respects dependencies", () => {
   class B extends Build {
     clean = target().executes(() => {});
@@ -162,7 +186,7 @@ Deno.test("validateReferences rejects an undefined (forward-referenced) dep", ()
   assertThrows(
     () => validateReferences(discover(new B())),
     GraphError,
-    "undefined dependency",
+    "undefined target",
   );
 });
 

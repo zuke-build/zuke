@@ -53,6 +53,8 @@ export interface ParsedArgs {
   open: boolean;
   /** Run independent targets concurrently (`--parallel[=N]`). */
   parallel?: boolean | number;
+  /** Disable the incremental cache (`--no-cache`); undefined leaves it on. */
+  cache?: boolean;
   /** Raw parameter values from declared flags, keyed by property name. */
   values: Record<string, string>;
   help: boolean;
@@ -92,6 +94,8 @@ export function parseArgs(
       parsed.list = true;
     } else if (arg === "--no-open") {
       parsed.open = false;
+    } else if (arg === "--no-cache") {
+      parsed.cache = false;
     } else if (arg === "--parallel") {
       parsed.parallel = true;
     } else if (arg.startsWith("--parallel=")) {
@@ -144,6 +148,7 @@ Options:
   --skip <dep>      Skip the named dependency (repeatable).
   --parallel[=N]    Run independent targets concurrently (N = max in flight,
                     default = CPU count).
+  --no-cache        Ignore the incremental cache; re-run every target.
   --list, -l        List all targets with descriptions and dependencies.
   graph             Show the dependency graph. Default output is the terminal
                     adjacency listing; --output=html writes an interactive
@@ -166,9 +171,13 @@ export function formatList(
   targets: Map<string, TargetBuilder>,
   params: Map<string, AnyParameter> = new Map(),
 ): string {
-  const targetText = targets.size === 0
+  // `unlisted` targets stay runnable by name but are hidden from the listing.
+  const listed = new Map(
+    [...targets].filter(([, t]) => !t.unlisted_),
+  );
+  const targetText = listed.size === 0
     ? "No targets defined."
-    : renderTargets(targets);
+    : renderTargets(listed);
   const paramText = formatParameters(params);
   return paramText === "" ? targetText : `${targetText}\n\n${paramText}`;
 }
@@ -284,6 +293,7 @@ export async function main(
     skip: parsed.skip,
     params: parsed.values,
     parallel: parsed.parallel,
+    cache: parsed.cache,
   });
   return result.ok ? 0 : 1;
 }

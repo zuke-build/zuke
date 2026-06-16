@@ -23,7 +23,18 @@ import {
   ParameterError,
   resolveParameters,
 } from "./params.ts";
+import {
+  type BuildCache,
+  CACHE_FILE,
+  defaultCacheHost,
+  openCache,
+} from "./cache.ts";
+import { findConfigDir, pathExists } from "./config.ts";
+import { absolutePath } from "./path.ts";
 import type { TargetBuilder } from "./target.ts";
+
+/** The artifact directory (under the repo root) for the cache store. */
+const ARTIFACT_DIR = ".zuke";
 
 /** Sink for executor output, defaulting to the console. Overridable in tests. */
 export interface Reporter {
@@ -53,6 +64,13 @@ export interface ExecuteOptions {
    */
   parallel?: boolean | number;
   /**
+   * Incremental caching: skip targets whose declared {@link TargetBuilder.inputs}
+   * are unchanged since the last successful run (and whose outputs still exist).
+   * Defaults to on; pass `false` to disable (CLI `--no-cache`). A {@link
+   * BuildCache} may be supplied directly (used in tests).
+   */
+  cache?: boolean | BuildCache;
+  /**
    * Raw parameter values from the command line, keyed by parameter (property)
    * name. Each declared {@link Parameter} is resolved from this map, then the
    * environment, then its declared default before any target runs.
@@ -77,7 +95,7 @@ export interface ExecuteOptions {
 }
 
 /** A target's outcome, collected for the end-of-build summary. */
-type TargetStatus = "passed" | "failed" | "skipped";
+type TargetStatus = "passed" | "failed" | "skipped" | "cached";
 
 interface TargetReport {
   name: string;
@@ -89,6 +107,7 @@ const ICON: Record<TargetStatus, string> = {
   passed: "✔",
   failed: "✘",
   skipped: "⊘",
+  cached: "⊙",
 };
 
 /** ANSI select-graphic-rendition codes used for terminal colour. */
@@ -210,6 +229,7 @@ const ROW_COLOR: Record<TargetStatus, string> = {
   passed: SGR.green,
   failed: SGR.red,
   skipped: SGR.dim,
+  cached: SGR.cyan,
 };
 
 /** Render the end-of-build summary block. */
@@ -222,15 +242,18 @@ function summaryBlock(
   const width = reports.reduce((w, x) => Math.max(w, x.name.length), 0);
   const rows = reports.map((x) => {
     const icon = paint(style.color, ROW_COLOR[x.status], ICON[x.status]);
-    const right = x.status === "skipped" ? "skipped" : formatDuration(x.ms);
+    const ran = x.status === "passed" || x.status === "failed";
+    const right = ran ? formatDuration(x.ms) : x.status;
     return `  ${icon} ${x.name.padEnd(width)}  ${right}`;
   });
-  const passed = reports.filter((x) => x.status === "passed").length;
+  const succeeded =
+    reports.filter((x) => x.status === "passed" || x.status === "cached")
+      .length;
   const banner = paint(
     style.color,
     SGR.bold + (ok ? SGR.green : SGR.red),
     `${ok ? ICON.passed : ICON.failed} ${ok ? "SUCCESS" : "FAILED"} — ` +
-      `${passed}/${reports.length} targets in ${formatDuration(totalMs)}`,
+      `${succeeded}/${reports.length} targets in ${formatDuration(totalMs)}`,
   );
   return [
     "",
@@ -256,13 +279,16 @@ function writeJobSummary(
   }
   if (path === undefined || path === "") return;
 
-  const passed = reports.filter((x) => x.status === "passed").length;
+  const succeeded =
+    reports.filter((x) => x.status === "passed" || x.status === "cached")
+      .length;
   const rows = reports.map((x) => {
-    const time = x.status === "skipped" ? "—" : formatDuration(x.ms);
+    const ran = x.status === "passed" || x.status === "failed";
+    const time = ran ? formatDuration(x.ms) : "—";
     return `| ${x.name} | ${ICON[x.status]} ${x.status} | ${time} |`;
   });
   const markdown = [
-    `## ${ok ? "✅" : "❌"} Zuke build — ${passed}/${reports.length} ` +
+    `## ${ok ? "✅" : "❌"} Zuke build — ${succeeded}/${reports.length} ` +
     `targets in ${formatDuration(totalMs)}`,
     "",
     "| Target | Result | Time |",
@@ -292,14 +318,40 @@ interface RunOutcome {
   aborted: boolean;
 }
 
-/** Run one target: open its section, run its body, report pass/fail. */
+/**
+ * Run one target: honour its `onlyWhen` conditions and the incremental cache,
+ * then (if it must run) open its section, run its body, and report pass/fail.
+ * A condition that fails yields `skipped`; an up-to-date target yields `cached`
+ * — both unblock dependents without executing the body.
+ */
 async function runTarget(
   reporter: Reporter,
   style: Style,
   t: TargetBuilder,
   opened: number,
+  cache: BuildCache | undefined,
 ): Promise<TargetOutcome> {
   const name = t.name_ ?? "<unnamed>";
+
+  for (const condition of t.onlyWhen_) {
+    if (!(await condition())) return { status: "skipped", ms: 0 };
+  }
+
+  const missing = t.requires_.filter((p) => !p.isSet_());
+  if (missing.length > 0) {
+    const names = missing.map((p) => `"${p.name_ ?? "(unnamed)"}"`).join(", ");
+    const error = new Error(
+      `Target "${name}" requires parameter(s) that are not set: ${names}.`,
+    );
+    openTarget(reporter, style, name, opened);
+    failTarget(reporter, style, name, 0, error);
+    return { status: "failed", ms: 0, error };
+  }
+
+  if (cache !== undefined && await cache.upToDate(t)) {
+    return { status: "cached", ms: 0 };
+  }
+
   openTarget(reporter, style, name, opened);
   const start = performance.now();
 
@@ -314,6 +366,7 @@ async function runTarget(
   try {
     await t.fn_();
     const ms = performance.now() - start;
+    if (cache !== undefined) await cache.record(t);
     passTarget(reporter, style, name, ms);
     return { status: "passed", ms };
   } catch (error) {
@@ -362,6 +415,7 @@ async function runSequential(
   reporter: Reporter,
   style: Style,
   skip: Set<string>,
+  cache: BuildCache | undefined,
 ): Promise<RunOutcome> {
   const reports: TargetReport[] = [];
   const executed: string[] = [];
@@ -375,11 +429,11 @@ async function runSequential(
       reports.push({ name, status: "skipped", ms: 0 });
       continue;
     }
-    const outcome = await runTarget(reporter, style, t, opened);
-    opened++;
+    const outcome = await runTarget(reporter, style, t, opened, cache);
+    if (outcome.status === "passed" || outcome.status === "failed") opened++;
     reports.push({ name, status: outcome.status, ms: outcome.ms });
     if (outcome.status === "passed") executed.push(name);
-    else {
+    else if (outcome.status === "failed") {
       failure = outcome.error;
       aborted = true;
     }
@@ -405,13 +459,15 @@ async function runScheduled(
   skip: Set<string>,
   limit: number,
   canOverlap: (a: TargetBuilder, b: TargetBuilder) => boolean,
+  cache: BuildCache | undefined,
 ): Promise<RunOutcome> {
   const outcomes = new Map<TargetBuilder, TargetOutcome>();
-  const done = new Set<TargetBuilder>(); // passed or skipped → unblocks dependents
+  const done = new Set<TargetBuilder>(); // passed/cached/skipped → unblocks dependents
   const started = new Set<TargetBuilder>();
   const runningSet = new Set<TargetBuilder>();
   let failure: unknown;
-  let aborted = false;
+  let anyFailed = false; // a failure occurred → the build fails
+  let halted = false; // a non-lenient failure → stop launching new targets
   let flushed = 0;
 
   // `--skip` targets count as completed so their dependents can still run.
@@ -430,26 +486,37 @@ async function runScheduled(
 
   await new Promise<void>((resolve) => {
     const pump = () => {
-      if (!aborted) {
+      if (!halted) {
         for (const t of order) {
           if (runningSet.size >= limit) break;
           if (started.has(t) || !ready(t) || !overlaps(t)) continue;
           started.add(t);
           runningSet.add(t);
           const buffer = bufferReporter();
-          runTarget(buffer.reporter, style, t, flushed).then((outcome) => {
-            if (!style.github && flushed > 0) reporter.info("");
-            buffer.flush(reporter);
-            flushed++;
-            outcomes.set(t, outcome);
-            runningSet.delete(t);
-            if (outcome.status === "passed") done.add(t);
-            else {
-              aborted = true;
-              failure = outcome.error;
-            }
-            pump();
-          });
+          runTarget(buffer.reporter, style, t, flushed, cache).then(
+            (outcome) => {
+              // Only an executed target prints a block worth separating.
+              const printed = outcome.status === "passed" ||
+                outcome.status === "failed";
+              if (printed) {
+                if (!style.github && flushed > 0) reporter.info("");
+                buffer.flush(reporter);
+                flushed++;
+              }
+              outcomes.set(t, outcome);
+              runningSet.delete(t);
+              if (outcome.status === "failed") {
+                anyFailed = true;
+                failure ??= outcome.error;
+                // A lenient failure lets independent targets keep going; its
+                // own dependents stay blocked (never added to `done`).
+                if (!t.proceedAfterFailure_) halted = true;
+              } else {
+                done.add(t); // passed, cached, or condition-skipped
+              }
+              pump();
+            },
+          );
         }
       }
       if (runningSet.size === 0) {
@@ -473,7 +540,7 @@ async function runScheduled(
     reports.push({ name, status: outcome.status, ms: outcome.ms });
     if (outcome.status === "passed") executed.push(name);
   }
-  return { reports, executed, failure, aborted };
+  return { reports, executed, failure, aborted: anyFailed };
 }
 
 /**
@@ -518,13 +585,17 @@ export async function execute(
   const limit = resolveConcurrency(options.parallel);
   const globalParallel = limit > 1;
   const grouped = order.some((t) => t.group_ !== undefined);
+  // `proceedAfterFailure` needs the scheduler's per-target skip-on-failure, so
+  // the simple sequential loop is only used when none of these features apply.
+  const lenient = order.some((t) => t.proceedAfterFailure_);
+  const cache = await resolveCache(options.cache, order);
   const overallStart = performance.now();
 
   await build.onStart();
 
   let run: RunOutcome;
-  if (!globalParallel && !grouped) {
-    run = await runSequential(order, reporter, style, skip);
+  if (!globalParallel && !grouped && !lenient) {
+    run = await runSequential(order, reporter, style, skip, cache);
   } else {
     // With `--parallel`, anything independent may overlap up to `limit`.
     // Otherwise only same-group members overlap (the rest stay serialized),
@@ -542,8 +613,10 @@ export async function execute(
       skip,
       effectiveLimit,
       canOverlap,
+      cache,
     );
   }
+  if (cache !== undefined) await cache.save();
 
   const result: BuildResult = run.aborted
     ? { ok: false, executed: run.executed, error: run.failure }
@@ -554,4 +627,21 @@ export async function execute(
   if (style.github) writeJobSummary(run.reports, totalMs, result.ok);
   await build.onFinish(result);
   return result;
+}
+
+/**
+ * Resolve the incremental cache for a run: `false` disables it, a supplied
+ * {@link BuildCache} is used directly, and otherwise a `.zuke/cache.json`-backed
+ * cache is opened — but only when at least one target declares inputs.
+ */
+async function resolveCache(
+  option: boolean | BuildCache | undefined,
+  order: TargetBuilder[],
+): Promise<BuildCache | undefined> {
+  if (option === false) return undefined;
+  if (typeof option === "object") return option;
+  if (!order.some((t) => t.inputs_.length > 0)) return undefined;
+  const root = findConfigDir(Deno.cwd(), pathExists) ?? Deno.cwd();
+  const storePath = absolutePath(root)(ARTIFACT_DIR, CACHE_FILE).path;
+  return await openCache(storePath, defaultCacheHost);
 }

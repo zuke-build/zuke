@@ -26,6 +26,7 @@
 
 export { Build, type BuildResult, discoverTargets } from "./src/build.ts";
 export {
+  type Condition,
   Group,
   group,
   type Target,
@@ -35,6 +36,7 @@ export {
 } from "./src/target.ts";
 export { run } from "./src/cli.ts";
 export { execute, type ExecuteOptions, type Reporter } from "./src/executor.ts";
+export type { BuildCache } from "./src/cache.ts";
 export { type AbsolutePath, absolutePath, type PathLike } from "./src/path.ts";
 export { CONFIG_FILE, repoRoot } from "./src/config.ts";
 export {

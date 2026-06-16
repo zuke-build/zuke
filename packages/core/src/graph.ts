@@ -35,24 +35,32 @@ export function validateReferences(
   targets: Map<string, TargetBuilder>,
 ): void {
   const known = new Set(targets.values());
-  for (const [name, t] of targets) {
-    for (const dep of t.dependsOn_) {
-      if (dep === undefined) {
+  const check = (
+    name: string,
+    refs: ReadonlyArray<TargetBuilder>,
+    verb: string,
+  ) => {
+    for (const ref of refs) {
+      if (ref === undefined) {
         throw new GraphError(
-          `Target "${name}" has an undefined dependency. This usually means it ` +
+          `Target "${name}" ${verb} an undefined target. This usually means it ` +
             `references a sibling via this.x that is declared *after* it — ` +
-            `class fields initialise top-to-bottom, so dependencies must be ` +
-            `declared before the targets that depend on them.`,
+            `class fields initialise top-to-bottom, so referenced targets must ` +
+            `be declared before the targets that reference them.`,
         );
       }
-      if (!known.has(dep)) {
+      if (!known.has(ref)) {
         throw new GraphError(
-          `Target "${name}" depends on a target that was not discovered ` +
-            `(${label(dep)}). Dependencies must reference sibling targets ` +
+          `Target "${name}" ${verb} a target that was not discovered ` +
+            `(${label(ref)}). References must point at sibling targets ` +
             `declared as properties of the build.`,
         );
       }
     }
+  };
+  for (const [name, t] of targets) {
+    check(name, t.dependsOn_, "depends on");
+    check(name, t.triggers_, "triggers");
   }
 }
 
@@ -124,6 +132,7 @@ export function executionSet(root: TargetBuilder): Set<TargetBuilder> {
     if (set.has(node)) return;
     set.add(node);
     for (const dep of node.dependsOn_) walk(dep);
+    for (const trigger of node.triggers_) walk(trigger);
   };
   walk(root);
   return set;
@@ -149,6 +158,7 @@ function planEdges(
     for (const dep of node.dependsOn_) addEdge(dep, node); // dep before node
     for (const b of node.before_) addEdge(node, b); // node before b
     for (const a of node.after_) addEdge(a, node); // a before node
+    for (const t of node.triggers_) addEdge(node, t); // node before trigger
   }
   return { set, edges };
 }
