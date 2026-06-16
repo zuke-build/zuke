@@ -15,6 +15,7 @@
 import { Build, run, target } from "@zuke/core";
 import { CmdTasks } from "@zuke/cmd";
 import { DenoTasks } from "@zuke/deno";
+import { SecurityTasks } from "@zuke/security";
 
 /** Workspace packages, in dependency order: core must publish before the rest. */
 const PACKAGES = [
@@ -30,6 +31,7 @@ const PACKAGES = [
   "cspell",
   "jest",
   "vitest",
+  "security",
 ];
 
 /** The `version` field of a package's `deno.json`, validated as a string. */
@@ -86,6 +88,11 @@ async function publishWithTimeout(pkg: string): Promise<boolean> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), PUBLISH_TIMEOUT_MS);
   const command = new Deno.Command(Deno.execPath(), {
+    // `--allow-dirty`: release-please bumps `deno.json` versions on the release
+    // PR branch, so the merged tree should already be clean here. It is kept as
+    // a backstop; for the strongest "published == committed source" guarantee
+    // (which provenance otherwise gives) drop it once a real release confirms
+    // the publish tree is clean. See SECURITY.md.
     args: ["publish", "--allow-dirty"],
     cwd: `packages/${pkg}`,
     stdout: "inherit",
@@ -149,7 +156,9 @@ class ZukeBuild extends Build {
     .description("Run the test suite with coverage")
     .dependsOn(this.check)
     .executes(async () => {
-      await DenoTasks.test((s) => s.allowAll().coverage("cov_profile"));
+      await DenoTasks.test((s) =>
+        s.allowAll().coverage("cov_profile").args("--frozen")
+      );
     });
 
   coverage = target()
@@ -168,6 +177,18 @@ class ZukeBuild extends Build {
     .description("Full pre-commit / CI gate")
     .dependsOn(this.format, this.lint, this.spell, this.coverage)
     .executes(() => {});
+
+  // Supply-chain scanning, dogfooding @zuke/security. Kept out of `ci` so the
+  // core gate stays runnable without the scanner binaries installed; the
+  // dedicated security workflow installs them and runs this target.
+  security = target()
+    .description("Run supply-chain security scanners (zuke/security)")
+    .executes(async () => {
+      await SecurityTasks.zizmor((s) => s.paths(".github/workflows"));
+      await SecurityTasks.actionlint();
+      await SecurityTasks.gitleaks((s) => s.source(".").redact());
+      await SecurityTasks.osvScanner((s) => s.lockfile("deno.lock"));
+    });
 
   release = target()
     .description("Maintain release PRs and GitHub releases (release-please)")
@@ -191,16 +212,15 @@ class ZukeBuild extends Build {
         "--manifest-file",
         ".release-please-manifest.json",
       ];
-      const cli = ["run", "-A", "npm:release-please@16"];
+      const cli = ["run", "-A", "npm:release-please@16.18.0"];
       for (const cmd of ["release-pr", "github-release"]) {
         const argv = [...cli, cmd, ...common];
         await CmdTasks.exec(Deno.execPath(), (s) => s.args(...argv));
       }
     });
 
-  publish = target()
+  publishJsr = target()
     .description("Publish new package versions to JSR, core first")
-    .dependsOn(this.release)
     .executes(async () => {
       for (const pkg of PACKAGES) {
         const version = await localVersion(pkg);
@@ -225,6 +245,15 @@ class ZukeBuild extends Build {
         );
       }
     });
+
+  // `release` (release-please) needs a GITHUB_TOKEN; `publishJsr` needs JSR
+  // OIDC. The release workflow runs them as two least-privilege jobs. This
+  // aggregate keeps the single-command `./zuke publish` working locally and
+  // runs release first (declared earlier) so versions are current before JSR.
+  publish = target()
+    .description("Release then publish new versions to JSR")
+    .dependsOn(this.release, this.publishJsr)
+    .executes(() => {});
 
   // Convention: the `default` target runs when none is named.
   default = target()
