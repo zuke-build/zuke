@@ -91,6 +91,28 @@ Deno.test("a cache round-trip skips an unchanged target", async () => {
   assertEquals(await reopened.upToDate(make()), false);
 });
 
+Deno.test("a cacheKey contributes to the fingerprint", async () => {
+  const host = new MemHost();
+  let key = "v1";
+  const t = target().cacheKey(() => key);
+  const first = await fingerprint(t, host);
+  key = "v2";
+  const second = await fingerprint(t, host);
+  assertEquals(first === second, false);
+
+  // A target with only a cacheKey (no inputs) is still cacheable.
+  t.name_ = "keyed";
+  const cache = await openCache(STORE, host);
+  key = "v1";
+  assertEquals(await cache.upToDate(t), false);
+  await cache.record(t);
+  await cache.save();
+  const reopened = await openCache(STORE, host);
+  assertEquals(await reopened.upToDate(t), true);
+  key = "v3";
+  assertEquals(await reopened.upToDate(t), false);
+});
+
 Deno.test("a target without inputs is never cached", async () => {
   const host = new MemHost();
   const cache = await openCache(STORE, host);

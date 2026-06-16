@@ -82,8 +82,16 @@ export class TargetBuilder {
   readonly requires_: AnyParameter[] = [];
   /** Continue the build if this target fails (set by {@link proceedAfterFailure}). */
   proceedAfterFailure_ = false;
+  /** Run even after the build has failed (set by {@link always}). */
+  always_ = false;
   /** Hide this target from `--list`/`--help` (set by {@link unlisted}). */
   unlisted_ = false;
+  /** Extra cache-key contributors beyond input files (set by {@link cacheKey}). */
+  readonly cacheKeys_: Array<() => string | Promise<string>> = [];
+  /** Artifact paths this target produces (set by {@link produces}). */
+  readonly produces_: string[] = [];
+  /** When skipped by a condition, also skip dependencies (set by {@link whenSkipped}). */
+  skipDependencies_ = false;
 
   /** Set the human-readable description shown in `zuke --list`. */
   description(text: string): this {
@@ -214,6 +222,60 @@ export class TargetBuilder {
   /** Hide this target from `--list` and `--help` (it can still be run by name). */
   unlisted(): this {
     this.unlisted_ = true;
+    return this;
+  }
+
+  /**
+   * Run this target even after the build has failed — for cleanup/teardown that
+   * must happen regardless. It still waits for its own dependencies to complete;
+   * the build's overall result is unchanged. Repeatable conditions/inputs apply.
+   */
+  always(): this {
+    this.always_ = true;
+    return this;
+  }
+
+  /**
+   * Contribute an extra value to this target's cache fingerprint, beyond its
+   * input files — e.g. a parameter value, tool version, or git commit. The
+   * target is up-to-date only when its inputs *and* every cache key are
+   * unchanged. The function may be async. Repeatable.
+   *
+   * ```ts
+   * compile = target()
+   *   .inputs("src")
+   *   .cacheKey(() => this.configuration.value)
+   *   .executes(...);
+   * ```
+   */
+  cacheKey(fn: () => string | Promise<string>): this {
+    this.cacheKeys_.push(fn);
+    return this;
+  }
+
+  /** Declare artifact files/directories this target produces (metadata). */
+  produces(...paths: PathLike[]): this {
+    this.produces_.push(...paths.map(String));
+    return this;
+  }
+
+  /**
+   * Depend on the listed targets and consume their artifacts: equivalent to
+   * {@link dependsOn} for ordering, expressing that this target uses what they
+   * {@link produces}.
+   */
+  consumes(...targets: Array<TargetBuilder | Group>): this {
+    return this.dependsOn(...targets);
+  }
+
+  /**
+   * When this target is skipped by an {@link onlyWhen} condition, also skip its
+   * dependencies that no other planned target needs. Because the dependencies
+   * would otherwise run first, the condition is evaluated up front, so it must
+   * not depend on state produced by other targets during the run.
+   */
+  whenSkipped(behavior: "run-dependencies" | "skip-dependencies"): this {
+    this.skipDependencies_ = behavior === "skip-dependencies";
     return this;
   }
 }

@@ -9,6 +9,9 @@
 
 import { Group, TargetBuilder } from "./target.ts";
 
+/** The outcome of a single target, reported in the summary and lifecycle hooks. */
+export type TargetStatus = "passed" | "failed" | "skipped" | "cached";
+
 /** Result passed to the {@link Build.onFinish} lifecycle hook. */
 export interface BuildResult {
   /** Whether every executed target succeeded. */
@@ -29,6 +32,12 @@ export class Build {
 
   /** Called once after the run completes (success or failure). */
   onFinish(_result: BuildResult): void | Promise<void> {}
+
+  /** Called just before a target's body executes (not for skipped/cached). */
+  onTargetStart(_name: string): void | Promise<void> {}
+
+  /** Called after each target settles, with its final status. */
+  onTargetEnd(_name: string, _status: TargetStatus): void | Promise<void> {}
 }
 
 /**

@@ -118,7 +118,15 @@ export async function fingerprint(
   for (const input of target.inputs_) {
     parts.push(`${input}:${await hashPath(input, host)}`);
   }
+  for (const cacheKey of target.cacheKeys_) {
+    parts.push(`key:${await cacheKey()}`);
+  }
   return hashText(parts.join("\n"));
+}
+
+/** Whether a target participates in caching (declares inputs or cache keys). */
+export function isCacheable(target: TargetBuilder): boolean {
+  return target.inputs_.length > 0 || target.cacheKeys_.length > 0;
 }
 
 /** The incremental cache used by the executor to skip up-to-date targets. */
@@ -169,7 +177,7 @@ class FsCache implements BuildCache {
   }
 
   async upToDate(target: TargetBuilder): Promise<boolean> {
-    if (target.inputs_.length === 0) return false;
+    if (!isCacheable(target)) return false;
     const fp = await fingerprint(target, this.#host);
     this.#computed.set(target, fp);
     if (this.#store[target.name_ ?? ""] !== fp) return false;
@@ -180,7 +188,7 @@ class FsCache implements BuildCache {
   }
 
   async record(target: TargetBuilder): Promise<void> {
-    if (target.inputs_.length === 0) return;
+    if (!isCacheable(target)) return;
     const name = target.name_ ?? "";
     const fp = this.#computed.get(target) ??
       await fingerprint(target, this.#host);
