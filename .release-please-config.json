@@ -57,7 +57,6 @@
     },
     "packages/oxlint": {
       "component": "oxlint",
-      "release-as": "0.1.0",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
         { "type": "json", "path": "deno.json", "jsonpath": "$.version" }
@@ -65,7 +64,6 @@
     },
     "packages/eslint": {
       "component": "eslint",
-      "release-as": "0.1.0",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
         { "type": "json", "path": "deno.json", "jsonpath": "$.version" }
@@ -73,7 +71,6 @@
     },
     "packages/cspell": {
       "component": "cspell",
-      "release-as": "0.1.0",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
         { "type": "json", "path": "deno.json", "jsonpath": "$.version" }
@@ -81,7 +78,6 @@
     },
     "packages/jest": {
       "component": "jest",
-      "release-as": "0.1.0",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
         { "type": "json", "path": "deno.json", "jsonpath": "$.version" }
@@ -89,7 +85,6 @@
     },
     "packages/vitest": {
       "component": "vitest",
-      "release-as": "0.1.0",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
         { "type": "json", "path": "deno.json", "jsonpath": "$.version" }
@@ -97,7 +92,6 @@
     },
     "packages/security": {
       "component": "security",
-      "release-as": "0.1.0",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
         { "type": "json", "path": "deno.json", "jsonpath": "$.version" }
