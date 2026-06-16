@@ -1,0 +1,45 @@
+name: Security scanners
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  schedule:
+    - cron: "42 5 * * 3"
+
+# The scanners run as a Zuke build gate (./zuke security) and fail the job on
+# findings; results are in the job log. Code-level SARIF for the Security tab
+# comes from the CodeQL and Scorecard workflows.
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    name: Scan with Zuke (zuke/security)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          # Full history so gitleaks scans past commits, not just the tip.
+          fetch-depth: 0
+          persist-credentials: false
+
+      # Install the scanner CLIs that `./zuke security` drives, pinned to exact
+      # versions. Go and pipx are preinstalled on the runner.
+      - name: Install scanners
+        run: |
+          pipx install zizmor==1.25.2
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          go install github.com/zricethezav/gitleaks/v8@v8.30.1
+          echo "$HOME/go/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      # The ./zuke launcher bootstraps a pinned Deno version, then runs the
+      # typed `security` target (zizmor, actionlint, gitleaks).
+      - name: Run security scanners with Zuke
+        run: ./zuke security

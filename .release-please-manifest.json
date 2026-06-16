@@ -10,5 +10,6 @@
   "packages/eslint": "0.1.0",
   "packages/cspell": "0.1.0",
   "packages/jest": "0.1.0",
-  "packages/vitest": "0.1.0"
+  "packages/vitest": "0.1.0",
+  "packages/security": "0.0.0"
 }

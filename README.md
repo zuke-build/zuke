@@ -24,7 +24,8 @@ order. Inspired by [NUKE](https://nuke.build/) for .NET.
 - **Packages:** `jsr:@zuke/core` plus typed tool wrappers `jsr:@zuke/deno`,
   `jsr:@zuke/npm`, `jsr:@zuke/docker`, `jsr:@zuke/docker-compose`,
   `jsr:@zuke/oxlint`, `jsr:@zuke/eslint`, `jsr:@zuke/cspell`, `jsr:@zuke/jest`,
-  `jsr:@zuke/vitest`, `jsr:@zuke/cmd` (raw shell via `jsr:@zuke/core/shell`)
+  `jsr:@zuke/vitest`, `jsr:@zuke/security`, `jsr:@zuke/cmd` (raw shell via
+  `jsr:@zuke/core/shell`)
 - **Build file:** `zuke.ts` in your project root
 - **Zero runtime dependencies**
 
@@ -85,10 +86,10 @@ Zuke is imported straight from JSR.
 > [!NOTE]
 > All packages — `@zuke/core`, `@zuke/deno`, `@zuke/npm`, `@zuke/docker`,
 > `@zuke/docker-compose`, `@zuke/oxlint`, `@zuke/eslint`, `@zuke/cspell`,
-> `@zuke/jest`, `@zuke/vitest`, `@zuke/cmd`, and the `@zuke/cli` command —
-> publish to [JSR](https://jsr.io/@zuke) from CI via release-please and OIDC
-> (see [`RELEASING.md`](./RELEASING.md)). The npm scope `@zuke` is not
-> controlled by this project — install from JSR, not npm.
+> `@zuke/jest`, `@zuke/vitest`, `@zuke/security`, `@zuke/cmd`, and the
+> `@zuke/cli` command — publish to [JSR](https://jsr.io/@zuke) from CI via
+> release-please and OIDC (see [`RELEASING.md`](./RELEASING.md)). The npm scope
+> `@zuke` is not controlled by this project — install from JSR, not npm.
 
 ### Scaffold a project with `zuke setup`
 
@@ -374,6 +375,7 @@ raises a `ToolNotFoundError` that names the tool and the fix.
 | `@zuke/cspell`         | `lint`                                                                                                               |
 | `@zuke/jest`           | `run`                                                                                                                |
 | `@zuke/vitest`         | `run`                                                                                                                |
+| `@zuke/security`       | `zizmor`, `actionlint`, `gitleaks`, `osvScanner`, `semgrep`, `trivyFs`, `trivyConfig`                               |
 | `@zuke/cmd`            | `exec` (any tool)                                                                                                    |
 
 ## Using Zuke in a Node/npm project
@@ -554,6 +556,20 @@ Post-v0, for context:
 - Caching / incremental targets.
 - More tool wrapper packages (git, docker helpers) — `@zuke/deno`, `@zuke/npm`,
   and `@zuke/cmd` already ship; see [Tools](#tools).
+
+## Security
+
+As a build tool that runs in other people's pipelines, Zuke treats
+supply-chain integrity as a first-class concern: zero runtime dependencies,
+injection-free `Deno.Command` execution, OIDC trusted publishing with
+provenance, least-privilege and SHA-pinned CI, a frozen lockfile, and
+continuous scanning. Scanning runs as a typed Zuke target — `deno task zuke
+security` drives zizmor, actionlint, and gitleaks through
+[`@zuke/security`](./packages/security) (which also wraps osv-scanner, semgrep,
+and Trivy) — alongside CodeQL and OpenSSF Scorecard for the Security tab.
+
+See [`SECURITY.md`](./SECURITY.md) for the full posture and how to report a
+vulnerability.
 
 ## License
 

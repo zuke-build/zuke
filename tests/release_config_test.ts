@@ -13,6 +13,7 @@ const PACKAGES = [
   "packages/cspell",
   "packages/jest",
   "packages/vitest",
+  "packages/security",
 ];
 
 async function readJson(path: string): Promise<Record<string, unknown>> {

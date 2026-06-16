@@ -5,31 +5,67 @@ on:
     branches: [master]
   workflow_dispatch:
 
-# release-please needs to write commits/PRs; JSR publishing uses OIDC, so
-# `id-token: write` mints the short-lived token and no secrets are required.
-permissions:
-  contents: write
-  pull-requests: write
-  id-token: write
+# Default to no permissions; each job opts into exactly what it needs.
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
+  # release-please maintains the release PR and cuts GitHub releases/tags.
+  # It needs to write repo contents and PRs, but must NOT hold the JSR OIDC
+  # token — that lives only in the separate `publish` job below.
   release:
-    name: Release & publish with Zuke
+    name: Maintain releases (release-please)
     runs-on: ubuntu-latest
-    # Backstop: `zuke publish` already times out a stalled `deno publish`
-    # per package; this caps the whole job in case anything else hangs.
-    timeout-minutes: 30
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
+      - name: Harden the runner
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        with:
+          egress-policy: audit
 
-      # No "set up Deno" step: the ./zuke launcher installs Deno if it's
-      # missing, so the release pipeline exercises the bootstrap script too.
-      # `publish` depends on `release`, so Zuke first runs release-please (keep
-      # release PRs current; cut the release & tag on a merge) and then
-      # publishes any package whose version is not yet on JSR (core first).
-      # Idempotent: a push without a new release does nothing.
-      - name: Release & publish with Zuke
-        run: ./zuke publish
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      # The ./zuke launcher bootstraps a pinned Deno version (override with
+      # DENO_VERSION); no separate setup-deno step.
+      - name: Run release-please with Zuke
+        run: ./zuke release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Publish to JSR via OIDC. This is the only job with `id-token: write`, and it
+  # gets no GITHUB_TOKEN and only read access to contents — so the publishing
+  # credential is isolated from the release-please write scopes. `publishJsr`
+  # is idempotent (it skips versions already on JSR), so it is a safe no-op when
+  # a push didn't actually release anything.
+  publish:
+    name: Publish to JSR
+    needs: release
+    runs-on: ubuntu-latest
+    # Backstop: `publishJsr` already times out a stalled `deno publish` per
+    # package; this caps the whole job in case anything else hangs.
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      # The ./zuke launcher bootstraps a pinned Deno version (override with
+      # DENO_VERSION); no separate setup-deno step.
+      - name: Publish new versions to JSR with Zuke
+        run: ./zuke publishJsr

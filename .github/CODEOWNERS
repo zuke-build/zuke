@@ -1,0 +1,21 @@
+# Code owners — require review on security-sensitive paths. Pair this with a
+# branch protection rule on `master` that requires CODEOWNER review (see
+# SECURITY.md for the full settings checklist).
+#
+# Replace @zuke-build/maintainers with the real owner/team before enabling.
+
+# Default owner for everything.
+*                               @zuke-build/maintainers
+
+# Supply-chain-critical surfaces: CI/CD, release & publish, and package
+# manifests (a version or export change here ships to consumers).
+/.github/                       @zuke-build/maintainers
+/zuke                           @zuke-build/maintainers
+/zuke.ps1                       @zuke-build/maintainers
+/zuke.ts                        @zuke-build/maintainers
+/deno.json                      @zuke-build/maintainers
+/deno.lock                      @zuke-build/maintainers
+/.release-please-config.json    @zuke-build/maintainers
+/.release-please-manifest.json  @zuke-build/maintainers
+/scripts/                       @zuke-build/maintainers
+**/deno.json                    @zuke-build/maintainers
