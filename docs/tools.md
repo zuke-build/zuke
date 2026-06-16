@@ -35,5 +35,7 @@ raises a `ToolNotFoundError` that names the tool and the fix.
 | `@zuke/cspell`         | `lint`                                                                                                               |
 | `@zuke/jest`           | `run`                                                                                                                |
 | `@zuke/vitest`         | `run`                                                                                                                |
-| `@zuke/security`       | `zizmor`, `actionlint`, `gitleaks`, `osvScanner`, `semgrep`, `trivyFs`, `trivyConfig`                               |
+| `@zuke/tsx`            | `tsx`, `watch`                                                                                                       |
+| `@zuke/tsgo`           | `tsgo`                                                                                                               |
+| `@zuke/security`       | `zizmor`, `actionlint`, `gitleaks`, `osvScanner`, `semgrep`, `trivyFs`, `trivyConfig`                                |
 | `@zuke/cmd`            | `exec` (any tool)                                                                                                    |
