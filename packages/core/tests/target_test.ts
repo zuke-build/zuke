@@ -1,6 +1,30 @@
 import { assertEquals, assertThrows } from "./_assert.ts";
 import { Build, discoverTargets } from "../src/build.ts";
-import { target, TargetBuilder } from "../src/target.ts";
+import { Group, group, target, TargetBuilder } from "../src/target.ts";
+
+Deno.test("group expands to its members in dependsOn and tags them", () => {
+  class B extends Build {
+    a = target().executes(() => {});
+    b = target().executes(() => {});
+    batch = group(this.a, this.b);
+    c = target().dependsOn(this.batch).executes(() => {});
+    d = target().dependsOn(this.batch, this.c).executes(() => {});
+  }
+  const b = new B();
+  discoverTargets(b);
+
+  assertEquals(b.batch instanceof Group, true);
+  assertEquals(b.c.dependsOn_.map((t) => t.name_), ["a", "b"]);
+  assertEquals(b.d.dependsOn_.map((t) => t.name_), ["a", "b", "c"]);
+  assertEquals(b.a.group_, b.batch);
+  assertEquals(b.a.group_ === b.b.group_, true);
+});
+
+Deno.test("group tolerates an undefined (forward-referenced) member", () => {
+  // @ts-expect-error exercising the runtime guard against an unbound reference
+  const g = group(undefined);
+  assertEquals(g.members_.length, 1);
+});
 
 Deno.test("target() builder is chainable and records configuration", () => {
   const dep = target();

@@ -1,6 +1,6 @@
 import { assertEquals, messageOf } from "./_assert.ts";
 import { Build, type BuildResult, discoverTargets } from "../src/build.ts";
-import { target } from "../src/target.ts";
+import { group, target } from "../src/target.ts";
 import {
   execute,
   type ExecuteOptions,
@@ -542,6 +542,85 @@ Deno.test("parallel buffers each target's block (plain and github)", async () =>
   assertEquals(open >= 0, true);
   assertEquals(gh.lines[open + 1].startsWith("✔ a ("), true);
   assertEquals(gh.lines[open + 2], "::endgroup::");
+});
+
+Deno.test("a group runs its members in parallel without the --parallel flag", async () => {
+  const order: string[] = [];
+  let active = 0;
+  let peak = 0;
+  const track = (name: string) => async () => {
+    order.push(name);
+    active++;
+    peak = Math.max(peak, active);
+    await delay(20);
+    active--;
+  };
+  class B extends Build {
+    clean = target().executes(track("clean"));
+    lint = target().dependsOn(this.clean).executes(track("lint"));
+    format = target().dependsOn(this.clean).executes(track("format"));
+    typecheck = target().dependsOn(this.clean).executes(track("typecheck"));
+    checks = group(this.lint, this.format, this.typecheck);
+    deploy = target().dependsOn(this.checks).executes(track("deploy"));
+  }
+  const b = new B();
+  discoverTargets(b);
+
+  // No `parallel` option: only the group's members run concurrently.
+  const result = await execute(b, b.deploy, { silent: true });
+  assertEquals(result.ok, true);
+  assertEquals(peak, 3); // lint, format, typecheck overlapped
+  assertEquals(order[0], "clean"); // clean ran first (all depend on it)
+  assertEquals(order[order.length - 1], "deploy"); // deploy ran after the group
+});
+
+Deno.test("ungrouped targets stay sequential while a group runs in parallel", async () => {
+  let active = 0;
+  let peak = 0;
+  const track = async () => {
+    active++;
+    peak = Math.max(peak, active);
+    await delay(20);
+    active--;
+  };
+  class B extends Build {
+    // Two independent ungrouped targets — must NOT overlap each other.
+    first = target().executes(track);
+    second = target().executes(track);
+    // A group whose members may overlap.
+    a = target().executes(track);
+    bb = target().executes(track);
+    batch = group(this.a, this.bb);
+    all = target()
+      .dependsOn(this.first, this.second, this.batch)
+      .executes(() => {});
+  }
+  const b = new B();
+  discoverTargets(b);
+
+  await execute(b, b.all, { silent: true });
+  // Peak 2 comes only from the group; first/second never overlap anything.
+  assertEquals(peak, 2);
+});
+
+Deno.test("a failing group member skips the group's dependents", async () => {
+  const ran: string[] = [];
+  class B extends Build {
+    ok = target().executes(() => void ran.push("ok"));
+    boom = target().executes(() => {
+      throw new Error("boom");
+    });
+    checks = group(this.ok, this.boom);
+    deploy = target().dependsOn(this.checks).executes(() =>
+      void ran.push("deploy")
+    );
+  }
+  const b = new B();
+  discoverTargets(b);
+
+  const result = await execute(b, b.deploy, { silent: true });
+  assertEquals(result.ok, false);
+  assertEquals(ran.includes("deploy"), false); // group member failed
 });
 
 Deno.test("an unwritable job-summary file never fails the build", async () => {

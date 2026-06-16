@@ -53,3 +53,7 @@ as skipped. The build summary stays in declaration order regardless.
 
 Programmatic callers get the same behaviour via `execute(build, target, { parallel: true })`
 (or a number) — see the [programmatic API](./programmatic-api.md).
+
+For parallelism scoped to specific targets rather than the whole build, bundle
+them into a [`group()`](./authoring.md#group) — the group's members run
+concurrently even without `--parallel`.

@@ -1,5 +1,6 @@
 /**
- * Target authoring API: the `target()` fluent builder and the `Target` type.
+ * Target authoring API: the `target()` fluent builder, the `group()` parallel
+ * batch, and the `Target` type.
  *
  * A target is declared as a class property on a {@link Build} subclass:
  *
@@ -13,10 +14,32 @@
  * Dependencies are declared by passing sibling target *references*
  * (`this.clean`), not strings. The framework maps each builder back to its
  * property name during discovery (see {@link Build}).
+ *
+ * Related targets can be bundled into a {@link group}: a batch that runs its
+ * members concurrently (even in an otherwise sequential build) and can be
+ * depended on as a unit.
+ *
+ * ```ts
+ * checks = group(this.lint, this.format, this.typecheck);
+ * deploy = target().dependsOn(this.checks).executes(...); // waits for all three
+ * ```
  */
 
 /** The executable body of a target. May be synchronous or asynchronous. */
 export type TargetFn = () => void | Promise<void>;
+
+/**
+ * A parallel batch of targets created with {@link group}. Its members run
+ * concurrently with one another (subject to their own dependencies) regardless
+ * of the global parallel setting, and the group can be passed to
+ * {@link TargetBuilder.dependsOn} to depend on every member at once.
+ */
+export class Group {
+  constructor(
+    /** The grouped targets, in declaration order. */
+    readonly members_: ReadonlyArray<TargetBuilder>,
+  ) {}
+}
 
 /**
  * The fluent builder returned by {@link target}. All configuration methods are
@@ -36,6 +59,8 @@ export class TargetBuilder {
   fn_?: TargetFn;
   /** Property name, assigned during discovery. Undefined until then. */
   name_?: string;
+  /** The parallel batch this target belongs to, if any (set by {@link group}). */
+  group_?: Group;
 
   /** Set the human-readable description shown in `zuke --list`. */
   description(text: string): this {
@@ -43,9 +68,15 @@ export class TargetBuilder {
     return this;
   }
 
-  /** Declare hard prerequisites. References sibling targets via `this.x`. */
-  dependsOn(...targets: TargetBuilder[]): this {
-    this.dependsOn_.push(...targets);
+  /**
+   * Declare hard prerequisites. References sibling targets via `this.x`, or a
+   * {@link group} (which expands to every member of the group).
+   */
+  dependsOn(...targets: Array<TargetBuilder | Group>): this {
+    for (const t of targets) {
+      if (t instanceof Group) this.dependsOn_.push(...t.members_);
+      else this.dependsOn_.push(t);
+    }
     return this;
   }
 
@@ -77,4 +108,24 @@ export type Target = TargetBuilder;
 /** Create a new, empty target builder. */
 export function target(): TargetBuilder {
   return new TargetBuilder();
+}
+
+/**
+ * Bundle targets into a parallel {@link Group}: a batch whose members run
+ * concurrently with each other — even when the build is otherwise sequential —
+ * each still waiting for its own dependencies. Pass the group to
+ * {@link TargetBuilder.dependsOn} to depend on all of its members at once.
+ *
+ * ```ts
+ * checks = group(this.lint, this.format, this.typecheck);
+ * deploy = target().dependsOn(this.checks).executes(...);
+ * ```
+ */
+export function group(...targets: TargetBuilder[]): Group {
+  const created = new Group(targets);
+  for (const t of targets) {
+    // A forward reference is `undefined` here; the graph reports it later.
+    if (t !== undefined) t.group_ = created;
+  }
+  return created;
 }

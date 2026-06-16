@@ -17,7 +17,7 @@
  */
 
 import type { Build, BuildResult } from "./build.ts";
-import { plan, planGraph } from "./graph.ts";
+import { planGraph } from "./graph.ts";
 import {
   discoverParameters,
   ParameterError,
@@ -326,11 +326,14 @@ async function runTarget(
 /** Resolve the concurrency limit; 1 means sequential. */
 function resolveConcurrency(option: boolean | number | undefined): number {
   if (option === undefined || option === false) return 1;
-  if (option === true) {
-    const cpus = navigator.hardwareConcurrency;
-    return cpus > 0 ? cpus : 4;
-  }
+  if (option === true) return cpuCount();
   return option > 1 ? Math.floor(option) : 1;
+}
+
+/** The host's CPU count, used as the default parallel/batch concurrency. */
+function cpuCount(): number {
+  const cpus = navigator.hardwareConcurrency;
+  return cpus > 0 ? cpus : 4;
 }
 
 /** A reporter that buffers lines so a target's block can flush atomically. */
@@ -355,12 +358,11 @@ function bufferReporter(): {
 
 /** Sequentially run the plan, aborting (and skipping the rest) on first failure. */
 async function runSequential(
-  root: TargetBuilder,
+  order: TargetBuilder[],
   reporter: Reporter,
   style: Style,
   skip: Set<string>,
 ): Promise<RunOutcome> {
-  const order = plan(root);
   const reports: TargetReport[] = [];
   const executed: string[] = [];
   let failure: unknown;
@@ -387,24 +389,29 @@ async function runSequential(
 
 /**
  * Run the plan with up to `limit` targets in flight, respecting dependencies.
+ * `canOverlap` decides which ready targets may run at the same time: with
+ * global parallelism it is always true; otherwise only members of the same
+ * {@link group} overlap, keeping ungrouped targets serialized.
+ *
  * Each target's framework output is buffered and flushed as a contiguous block
  * on completion, so concurrent runs don't interleave their banners. A failure
  * stops new launches; in-flight targets settle and the rest are skipped.
  */
-async function runParallel(
-  root: TargetBuilder,
+async function runScheduled(
+  order: TargetBuilder[],
+  predecessors: Map<TargetBuilder, TargetBuilder[]>,
   reporter: Reporter,
   style: Style,
   skip: Set<string>,
   limit: number,
+  canOverlap: (a: TargetBuilder, b: TargetBuilder) => boolean,
 ): Promise<RunOutcome> {
-  const { order, predecessors } = planGraph(root);
   const outcomes = new Map<TargetBuilder, TargetOutcome>();
   const done = new Set<TargetBuilder>(); // passed or skipped → unblocks dependents
   const started = new Set<TargetBuilder>();
+  const runningSet = new Set<TargetBuilder>();
   let failure: unknown;
   let aborted = false;
-  let running = 0;
   let flushed = 0;
 
   // `--skip` targets count as completed so their dependents can still run.
@@ -418,22 +425,24 @@ async function runParallel(
 
   const ready = (t: TargetBuilder): boolean =>
     (predecessors.get(t) ?? []).every((p) => done.has(p));
+  const overlaps = (t: TargetBuilder): boolean =>
+    [...runningSet].every((r) => canOverlap(t, r));
 
   await new Promise<void>((resolve) => {
     const pump = () => {
       if (!aborted) {
         for (const t of order) {
-          if (running >= limit) break;
-          if (started.has(t) || !ready(t)) continue;
+          if (runningSet.size >= limit) break;
+          if (started.has(t) || !ready(t) || !overlaps(t)) continue;
           started.add(t);
-          running++;
+          runningSet.add(t);
           const buffer = bufferReporter();
           runTarget(buffer.reporter, style, t, flushed).then((outcome) => {
             if (!style.github && flushed > 0) reporter.info("");
             buffer.flush(reporter);
             flushed++;
             outcomes.set(t, outcome);
-            running--;
+            runningSet.delete(t);
             if (outcome.status === "passed") done.add(t);
             else {
               aborted = true;
@@ -443,7 +452,7 @@ async function runParallel(
           });
         }
       }
-      if (running === 0) {
+      if (runningSet.size === 0) {
         for (const t of order) {
           if (!started.has(t)) {
             outcomes.set(t, { status: "skipped", ms: 0 });
@@ -505,14 +514,36 @@ export async function execute(
     };
   }
 
+  const { order, predecessors } = planGraph(root);
   const limit = resolveConcurrency(options.parallel);
+  const globalParallel = limit > 1;
+  const grouped = order.some((t) => t.group_ !== undefined);
   const overallStart = performance.now();
 
   await build.onStart();
 
-  const run = limit > 1
-    ? await runParallel(root, reporter, style, skip, limit)
-    : await runSequential(root, reporter, style, skip);
+  let run: RunOutcome;
+  if (!globalParallel && !grouped) {
+    run = await runSequential(order, reporter, style, skip);
+  } else {
+    // With `--parallel`, anything independent may overlap up to `limit`.
+    // Otherwise only same-group members overlap (the rest stay serialized),
+    // bounded by the CPU count.
+    const effectiveLimit = globalParallel ? limit : cpuCount();
+    const canOverlap = globalParallel
+      ? () => true
+      : (a: TargetBuilder, b: TargetBuilder) =>
+        a.group_ !== undefined && a.group_ === b.group_;
+    run = await runScheduled(
+      order,
+      predecessors,
+      reporter,
+      style,
+      skip,
+      effectiveLimit,
+      canOverlap,
+    );
+  }
 
   const result: BuildResult = run.aborted
     ? { ok: false, executed: run.executed, error: run.failure }
