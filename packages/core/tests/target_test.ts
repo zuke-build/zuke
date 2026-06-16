@@ -1,6 +1,32 @@
 import { assertEquals, assertThrows } from "./_assert.ts";
 import { Build, discoverTargets } from "../src/build.ts";
-import { target, TargetBuilder } from "../src/target.ts";
+import { Group, group, target, TargetBuilder } from "../src/target.ts";
+
+Deno.test("partOf joins a group; dependsOn(group) expands to its members", () => {
+  class B extends Build {
+    checks = group();
+    a = target().partOf(this.checks).executes(() => {});
+    b = target().partOf(this.checks).executes(() => {});
+    c = target().dependsOn(this.checks).executes(() => {});
+    d = target().dependsOn(this.checks, this.c).executes(() => {});
+  }
+  const b = new B();
+  discoverTargets(b);
+
+  assertEquals(b.checks instanceof Group, true);
+  assertEquals(b.checks.members_.map((t) => t.name_), ["a", "b"]);
+  assertEquals(b.a.group_, b.checks);
+  assertEquals(b.a.group_ === b.b.group_, true);
+  assertEquals(b.c.dependsOn_.map((t) => t.name_), ["a", "b"]);
+  assertEquals(b.d.dependsOn_.map((t) => t.name_), ["a", "b", "c"]);
+});
+
+Deno.test("partOf ignores an undefined (forward-referenced) group", () => {
+  const t = target();
+  // @ts-expect-error exercising the runtime guard against an unbound reference
+  t.partOf(undefined);
+  assertEquals(t.group_, undefined);
+});
 
 Deno.test("target() builder is chainable and records configuration", () => {
   const dep = target();

@@ -107,6 +107,13 @@ Deno.test("parseArgs collects declared parameter flags", () => {
   assertEquals(parseArgs(["--nope", "x"], greetFlags).values, {});
 });
 
+Deno.test("parseArgs reads the --parallel flag and count", () => {
+  assertEquals(parseArgs(["build", "--parallel"]).parallel, true);
+  assertEquals(parseArgs(["build", "--parallel=4"]).parallel, 4);
+  assertEquals(parseArgs(["build", "--parallel=bad"]).parallel, true);
+  assertEquals(parseArgs(["build"]).parallel, undefined);
+});
+
 Deno.test("parseArgs collects repeatable --skip and keeps first positional", () => {
   const parsed = parseArgs([
     "build",
@@ -205,6 +212,21 @@ Deno.test("main runs a target and its dependencies, returning 0", async () => {
   const { code } = await capture(() => main(Tracked, ["b"]));
   assertEquals(code, 0);
   assertEquals(log, ["a", "b"]);
+});
+
+Deno.test("main runs targets in parallel and returns 0", async () => {
+  const log: string[] = [];
+  class Par extends Build {
+    a = target().executes(() => void log.push("a"));
+    b = target().executes(() => void log.push("b"));
+    all = target().dependsOn(this.a, this.b).executes(() =>
+      void log.push("all")
+    );
+  }
+  const { code } = await capture(() => main(Par, ["all", "--parallel=2"]));
+  assertEquals(code, 0);
+  assertEquals(log[log.length - 1], "all"); // dependents still run last
+  assertEquals(log.includes("a") && log.includes("b"), true);
 });
 
 Deno.test("main runs the default target when none is named", async () => {

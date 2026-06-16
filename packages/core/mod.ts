@@ -26,6 +26,8 @@
 
 export { Build, type BuildResult, discoverTargets } from "./src/build.ts";
 export {
+  Group,
+  group,
   type Target,
   target,
   TargetBuilder,

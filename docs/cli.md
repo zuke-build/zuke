@@ -4,6 +4,7 @@
 | ---------------------------- | ------------------------------------------------------------- |
 | `zuke <target>`              | Run the target and all its transitive dependencies, in order. |
 | `zuke <target> --skip <dep>` | Run the target but skip the named dependency (repeatable).    |
+| `zuke <target> --parallel`   | Run independent targets concurrently (`--parallel=N` caps it). |
 | `zuke --list` / `-l`         | List all targets with descriptions and dependencies.          |
 | `zuke graph`                 | Print the dependency graph (`target → deps`).                 |
 | `zuke graph --output=html`   | Render an interactive HTML graph into `.zuke/` and open it.   |
@@ -38,3 +39,21 @@ name.
 exits `1`. A final summary lists every target's status and duration plus the
 total. Under GitHub Actions, targets become collapsible log groups, failures
 emit `::error::` annotations, and the summary is written to the job summary.
+
+## Parallel execution
+
+By default targets run one at a time in a deterministic order. `--parallel`
+runs independent targets concurrently while still completing every dependency
+before its dependents; `--parallel=N` caps the number in flight (the default is
+the host's CPU count). Each target's banner block is buffered and flushed as a
+unit, so concurrent runs don't interleave their headers (a target's own
+subprocess output may still interleave, as with `make -j`). The first failure
+stops new launches; targets already running finish, and the rest are reported
+as skipped. The build summary stays in declaration order regardless.
+
+Programmatic callers get the same behaviour via `execute(build, target, { parallel: true })`
+(or a number) — see the [programmatic API](./programmatic-api.md).
+
+For parallelism scoped to specific targets rather than the whole build, put
+them in a [`group()`](./authoring.md#group-and-partof) with `.partOf(...)` — the
+group's members run concurrently even without `--parallel`.

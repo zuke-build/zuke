@@ -17,7 +17,7 @@
  */
 
 import type { Build, BuildResult } from "./build.ts";
-import { plan } from "./graph.ts";
+import { planGraph } from "./graph.ts";
 import {
   discoverParameters,
   ParameterError,
@@ -46,6 +46,12 @@ export interface ExecuteOptions {
   reporter?: Reporter;
   /** Target names to skip even if they appear in the plan (CLI `--skip`). */
   skip?: string[];
+  /**
+   * Run independent targets concurrently. `false`/omitted runs sequentially in
+   * deterministic order; `true` uses the host's CPU count; a number sets the
+   * maximum concurrency. Dependencies still complete before their dependents.
+   */
+  parallel?: boolean | number;
   /**
    * Raw parameter values from the command line, keyed by parameter (property)
    * name. Each declared {@link Parameter} is resolved from this map, then the
@@ -271,12 +277,213 @@ function writeJobSummary(
   }
 }
 
+/** The result of one target, plus the framework error if it failed. */
+interface TargetOutcome {
+  status: TargetStatus;
+  ms: number;
+  error?: unknown;
+}
+
+/** What a run (sequential or parallel) produced, fed into the shared summary. */
+interface RunOutcome {
+  reports: TargetReport[];
+  executed: string[];
+  failure: unknown;
+  aborted: boolean;
+}
+
+/** Run one target: open its section, run its body, report pass/fail. */
+async function runTarget(
+  reporter: Reporter,
+  style: Style,
+  t: TargetBuilder,
+  opened: number,
+): Promise<TargetOutcome> {
+  const name = t.name_ ?? "<unnamed>";
+  openTarget(reporter, style, name, opened);
+  const start = performance.now();
+
+  if (!t.fn_) {
+    const error = new Error(
+      `Target "${name}" has no body — call .executes(...) before running.`,
+    );
+    failTarget(reporter, style, name, 0, error);
+    return { status: "failed", ms: 0, error };
+  }
+
+  try {
+    await t.fn_();
+    const ms = performance.now() - start;
+    passTarget(reporter, style, name, ms);
+    return { status: "passed", ms };
+  } catch (error) {
+    const ms = performance.now() - start;
+    failTarget(reporter, style, name, ms, error);
+    return { status: "failed", ms, error };
+  }
+}
+
+/** Resolve the concurrency limit; 1 means sequential. */
+function resolveConcurrency(option: boolean | number | undefined): number {
+  if (option === undefined || option === false) return 1;
+  if (option === true) return cpuCount();
+  return option > 1 ? Math.floor(option) : 1;
+}
+
+/** The host's CPU count, used as the default parallel/batch concurrency. */
+function cpuCount(): number {
+  const cpus = navigator.hardwareConcurrency;
+  return cpus > 0 ? cpus : 4;
+}
+
+/** A reporter that buffers lines so a target's block can flush atomically. */
+function bufferReporter(): {
+  reporter: Reporter;
+  flush: (to: Reporter) => void;
+} {
+  const lines: Array<{ error: boolean; text: string }> = [];
+  return {
+    reporter: {
+      info: (text) => void lines.push({ error: false, text }),
+      error: (text) => void lines.push({ error: true, text }),
+    },
+    flush: (to) => {
+      for (const line of lines) {
+        if (line.error) to.error(line.text);
+        else to.info(line.text);
+      }
+    },
+  };
+}
+
+/** Sequentially run the plan, aborting (and skipping the rest) on first failure. */
+async function runSequential(
+  order: TargetBuilder[],
+  reporter: Reporter,
+  style: Style,
+  skip: Set<string>,
+): Promise<RunOutcome> {
+  const reports: TargetReport[] = [];
+  const executed: string[] = [];
+  let failure: unknown;
+  let aborted = false;
+  let opened = 0;
+
+  for (const t of order) {
+    const name = t.name_ ?? "<unnamed>";
+    if (skip.has(name) || aborted) {
+      reports.push({ name, status: "skipped", ms: 0 });
+      continue;
+    }
+    const outcome = await runTarget(reporter, style, t, opened);
+    opened++;
+    reports.push({ name, status: outcome.status, ms: outcome.ms });
+    if (outcome.status === "passed") executed.push(name);
+    else {
+      failure = outcome.error;
+      aborted = true;
+    }
+  }
+  return { reports, executed, failure, aborted };
+}
+
+/**
+ * Run the plan with up to `limit` targets in flight, respecting dependencies.
+ * `canOverlap` decides which ready targets may run at the same time: with
+ * global parallelism it is always true; otherwise only members of the same
+ * {@link group} overlap, keeping ungrouped targets serialized.
+ *
+ * Each target's framework output is buffered and flushed as a contiguous block
+ * on completion, so concurrent runs don't interleave their banners. A failure
+ * stops new launches; in-flight targets settle and the rest are skipped.
+ */
+async function runScheduled(
+  order: TargetBuilder[],
+  predecessors: Map<TargetBuilder, TargetBuilder[]>,
+  reporter: Reporter,
+  style: Style,
+  skip: Set<string>,
+  limit: number,
+  canOverlap: (a: TargetBuilder, b: TargetBuilder) => boolean,
+): Promise<RunOutcome> {
+  const outcomes = new Map<TargetBuilder, TargetOutcome>();
+  const done = new Set<TargetBuilder>(); // passed or skipped → unblocks dependents
+  const started = new Set<TargetBuilder>();
+  const runningSet = new Set<TargetBuilder>();
+  let failure: unknown;
+  let aborted = false;
+  let flushed = 0;
+
+  // `--skip` targets count as completed so their dependents can still run.
+  for (const t of order) {
+    if (skip.has(t.name_ ?? "<unnamed>")) {
+      outcomes.set(t, { status: "skipped", ms: 0 });
+      done.add(t);
+      started.add(t);
+    }
+  }
+
+  const ready = (t: TargetBuilder): boolean =>
+    (predecessors.get(t) ?? []).every((p) => done.has(p));
+  const overlaps = (t: TargetBuilder): boolean =>
+    [...runningSet].every((r) => canOverlap(t, r));
+
+  await new Promise<void>((resolve) => {
+    const pump = () => {
+      if (!aborted) {
+        for (const t of order) {
+          if (runningSet.size >= limit) break;
+          if (started.has(t) || !ready(t) || !overlaps(t)) continue;
+          started.add(t);
+          runningSet.add(t);
+          const buffer = bufferReporter();
+          runTarget(buffer.reporter, style, t, flushed).then((outcome) => {
+            if (!style.github && flushed > 0) reporter.info("");
+            buffer.flush(reporter);
+            flushed++;
+            outcomes.set(t, outcome);
+            runningSet.delete(t);
+            if (outcome.status === "passed") done.add(t);
+            else {
+              aborted = true;
+              failure = outcome.error;
+            }
+            pump();
+          });
+        }
+      }
+      if (runningSet.size === 0) {
+        for (const t of order) {
+          if (!started.has(t)) {
+            outcomes.set(t, { status: "skipped", ms: 0 });
+            started.add(t);
+          }
+        }
+        resolve();
+      }
+    };
+    pump();
+  });
+
+  const reports: TargetReport[] = [];
+  const executed: string[] = [];
+  for (const t of order) {
+    const name = t.name_ ?? "<unnamed>";
+    const outcome = outcomes.get(t) ?? { status: "skipped", ms: 0 };
+    reports.push({ name, status: outcome.status, ms: outcome.ms });
+    if (outcome.status === "passed") executed.push(name);
+  }
+  return { reports, executed, failure, aborted };
+}
+
 /**
  * Execute the requested target and its transitive dependencies.
  *
- * Runs the build's `onStart`/`onFinish` lifecycle hooks around the plan. Stops
- * at the first target that throws, reports it, marks the unreached targets as
- * skipped, and returns a failing result.
+ * Runs the build's `onStart`/`onFinish` lifecycle hooks around the plan. By
+ * default targets run sequentially in deterministic order; with `parallel`,
+ * independent targets run concurrently while dependencies still complete first.
+ * Stops launching after the first failure, marks unreached targets as skipped,
+ * and returns a failing result.
  */
 export async function execute(
   build: Build,
@@ -307,62 +514,44 @@ export async function execute(
     };
   }
 
-  const order = plan(root);
-  const reports: TargetReport[] = [];
-  const executed: string[] = [];
+  const { order, predecessors } = planGraph(root);
+  const limit = resolveConcurrency(options.parallel);
+  const globalParallel = limit > 1;
+  const grouped = order.some((t) => t.group_ !== undefined);
   const overallStart = performance.now();
 
   await build.onStart();
 
-  let failure: unknown;
-  let aborted = false;
-  let opened = 0;
-
-  for (const t of order) {
-    const name = t.name_ ?? "<unnamed>";
-
-    if (skip.has(name) || aborted) {
-      reports.push({ name, status: "skipped", ms: 0 });
-      continue;
-    }
-
-    openTarget(reporter, style, name, opened);
-    opened++;
-    const start = performance.now();
-
-    if (!t.fn_) {
-      const error = new Error(
-        `Target "${name}" has no body — call .executes(...) before running.`,
-      );
-      failTarget(reporter, style, name, 0, error);
-      reports.push({ name, status: "failed", ms: 0 });
-      failure = error;
-      aborted = true;
-      continue;
-    }
-
-    try {
-      await t.fn_();
-      const ms = performance.now() - start;
-      passTarget(reporter, style, name, ms);
-      reports.push({ name, status: "passed", ms });
-      executed.push(name);
-    } catch (error) {
-      const ms = performance.now() - start;
-      failTarget(reporter, style, name, ms, error);
-      reports.push({ name, status: "failed", ms });
-      failure = error;
-      aborted = true;
-    }
+  let run: RunOutcome;
+  if (!globalParallel && !grouped) {
+    run = await runSequential(order, reporter, style, skip);
+  } else {
+    // With `--parallel`, anything independent may overlap up to `limit`.
+    // Otherwise only same-group members overlap (the rest stay serialized),
+    // bounded by the CPU count.
+    const effectiveLimit = globalParallel ? limit : cpuCount();
+    const canOverlap = globalParallel
+      ? () => true
+      : (a: TargetBuilder, b: TargetBuilder) =>
+        a.group_ !== undefined && a.group_ === b.group_;
+    run = await runScheduled(
+      order,
+      predecessors,
+      reporter,
+      style,
+      skip,
+      effectiveLimit,
+      canOverlap,
+    );
   }
 
-  const result: BuildResult = aborted
-    ? { ok: false, executed, error: failure }
-    : { ok: true, executed };
+  const result: BuildResult = run.aborted
+    ? { ok: false, executed: run.executed, error: run.failure }
+    : { ok: true, executed: run.executed };
 
   const totalMs = performance.now() - overallStart;
-  reporter.info(summaryBlock(style, reports, totalMs, result.ok));
-  if (style.github) writeJobSummary(reports, totalMs, result.ok);
+  reporter.info(summaryBlock(style, run.reports, totalMs, result.ok));
+  if (style.github) writeJobSummary(run.reports, totalMs, result.ok);
   await build.onFinish(result);
   return result;
 }
