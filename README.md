@@ -117,13 +117,6 @@ CI runs `deno task ci` on every push and pull request (see
 - Add tests in the same change as the code they cover.
 - Keep commits small and descriptive; update docs when behaviour changes.
 
-## Roadmap
-
-Post-v0, for context:
-
-- A `zuke` standalone binary + `zuke init` scaffolding.
-- More tool wrapper packages — see [Tools](./docs/tools.md) for what ships today.
-
 ## Security
 
 As a build tool that runs in other people's pipelines, Zuke treats
