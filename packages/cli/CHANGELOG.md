@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/zuke-build/zuke/compare/cli-v0.2.0...cli-v0.3.0) (2026-06-16)
+
+
+### Features
+
+* add `zuke graph` visualisation and repoRoot config ([#41](https://github.com/zuke-build/zuke/issues/41)) ([a40fbea](https://github.com/zuke-build/zuke/commit/a40fbea0a52b620f07211b15355c903cdb40159e))
+
 ## [0.2.0](https://github.com/zuke-build/zuke/compare/cli-v0.1.1...cli-v0.2.0) (2026-06-16)
 
 

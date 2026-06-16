@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/zuke-build/zuke/compare/core-v0.5.0...core-v0.6.0) (2026-06-16)
+
+
+### Features
+
+* add `zuke graph` visualisation and repoRoot config ([#41](https://github.com/zuke-build/zuke/issues/41)) ([a40fbea](https://github.com/zuke-build/zuke/commit/a40fbea0a52b620f07211b15355c903cdb40159e))
+
 ## [0.5.0](https://github.com/zuke-build/zuke/compare/core-v0.4.0...core-v0.5.0) (2026-06-16)
 
 
