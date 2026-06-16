@@ -13,7 +13,12 @@
  * `.toolPath(...)`.
  */
 
-import { type Configure, runSettings, ToolSettings } from "@zuke/core/tooling";
+import {
+  type Configure,
+  type PathLike,
+  runSettings,
+  ToolSettings,
+} from "@zuke/core/tooling";
 import type { CommandOutput } from "@zuke/core/shell";
 
 /** A Deno permission domain, as used by `--allow-*` flags. */
@@ -68,8 +73,8 @@ export class DenoRunSettings extends DenoPermissionSettings {
   #reload = false;
 
   /** The script to run (required). */
-  script(path: string): this {
-    this.#script = path;
+  script(path: PathLike): this {
+    this.#script = String(path);
     return this;
   }
 
@@ -80,8 +85,8 @@ export class DenoRunSettings extends DenoPermissionSettings {
   }
 
   /** Use an explicit config file (`--config`). */
-  config(path: string): this {
-    this.#config = path;
+  config(path: PathLike): this {
+    this.#config = String(path);
     return this;
   }
 
@@ -112,14 +117,14 @@ export class DenoTestSettings extends DenoPermissionSettings {
   #failFast = false;
 
   /** Restrict the run to specific test files or directories. */
-  paths(...paths: string[]): this {
-    this.#paths.push(...paths);
+  paths(...paths: PathLike[]): this {
+    this.#paths.push(...paths.map(String));
     return this;
   }
 
   /** Collect coverage into the given profile directory (`--coverage=`). */
-  coverage(dir: string): this {
-    this.#coverage = dir;
+  coverage(dir: PathLike): this {
+    this.#coverage = String(dir);
     return this;
   }
 
@@ -159,8 +164,8 @@ export class DenoCheckSettings extends DenoSettings {
   #paths: string[] = [];
 
   /** The files to type-check (at least one is required). */
-  paths(...paths: string[]): this {
-    this.#paths.push(...paths);
+  paths(...paths: PathLike[]): this {
+    this.#paths.push(...paths.map(String));
     return this;
   }
 
@@ -186,8 +191,8 @@ export class DenoFmtSettings extends DenoSettings {
   }
 
   /** Restrict formatting to specific files or directories. */
-  paths(...paths: string[]): this {
-    this.#paths.push(...paths);
+  paths(...paths: PathLike[]): this {
+    this.#paths.push(...paths.map(String));
     return this;
   }
 
@@ -211,8 +216,8 @@ export class DenoLintSettings extends DenoSettings {
   }
 
   /** Restrict linting to specific files or directories. */
-  paths(...paths: string[]): this {
-    this.#paths.push(...paths);
+  paths(...paths: PathLike[]): this {
+    this.#paths.push(...paths.map(String));
     return this;
   }
 
@@ -236,8 +241,8 @@ export class DenoCacheSettings extends DenoSettings {
   }
 
   /** The entry points to cache (at least one is required). */
-  paths(...paths: string[]): this {
-    this.#paths.push(...paths);
+  paths(...paths: PathLike[]): this {
+    this.#paths.push(...paths.map(String));
     return this;
   }
 
@@ -262,8 +267,8 @@ export class DenoCoverageSettings extends DenoSettings {
   #exclude?: string;
 
   /** The coverage profile directory to report on. */
-  dir(path: string): this {
-    this.#dir = path;
+  dir(path: PathLike): this {
+    this.#dir = String(path);
     return this;
   }
 
@@ -274,8 +279,8 @@ export class DenoCoverageSettings extends DenoSettings {
   }
 
   /** Write the report to a file (`--output=`). */
-  output(path: string): this {
-    this.#output = path;
+  output(path: PathLike): this {
+    this.#output = String(path);
     return this;
   }
 

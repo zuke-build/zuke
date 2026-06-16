@@ -9,17 +9,22 @@
  * ```
  */
 
-import { type Configure, runSettings, ToolSettings } from "@zuke/core/tooling";
+import {
+  type Configure,
+  type PathLike,
+  runSettings,
+  ToolSettings,
+} from "@zuke/core/tooling";
 import type { CommandOutput } from "@zuke/core/shell";
 
 /** Settings for a generic command: the tool name plus raw arguments. */
 export class CmdSettings extends ToolSettings {
   #tool: string;
 
-  constructor(tool: string) {
+  constructor(tool: PathLike) {
     super();
     if (!tool) throw new Error("CmdTasks.exec: tool name is required.");
-    this.#tool = tool;
+    this.#tool = String(tool);
   }
 
   protected override defaultTool(): string {
@@ -35,7 +40,7 @@ export class CmdSettings extends ToolSettings {
 export interface CmdTasksApi {
   /** Run `tool` with the configured settings. */
   exec(
-    tool: string,
+    tool: PathLike,
     configure?: Configure<CmdSettings>,
   ): Promise<CommandOutput>;
 }
@@ -48,7 +53,7 @@ export const CmdTasks: CmdTasksApi = {
    * @example `await CmdTasks.exec("git", (s) => s.args("status", "-s"))`
    */
   exec(
-    tool: string,
+    tool: PathLike,
     configure?: Configure<CmdSettings>,
   ): Promise<CommandOutput> {
     return runSettings(new CmdSettings(tool), configure);

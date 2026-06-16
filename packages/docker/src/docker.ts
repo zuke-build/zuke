@@ -16,7 +16,12 @@
  * @module
  */
 
-import { type Configure, runSettings, ToolSettings } from "@zuke/core/tooling";
+import {
+  type Configure,
+  type PathLike,
+  runSettings,
+  ToolSettings,
+} from "@zuke/core/tooling";
 import type { CommandOutput } from "@zuke/core/shell";
 
 /** Base for all `docker` subcommand settings: the binary is `docker`. */
@@ -45,8 +50,8 @@ export class DockerBuildSettings extends DockerSettings {
   }
 
   /** Use an explicit Dockerfile (`-f`). */
-  file(path: string): this {
-    this.#file = path;
+  file(path: PathLike): this {
+    this.#file = String(path);
     return this;
   }
 
@@ -87,8 +92,8 @@ export class DockerBuildSettings extends DockerSettings {
   }
 
   /** The build context path or URL (default `.`). */
-  context(path: string): this {
-    this.#context = path;
+  context(path: PathLike): this {
+    this.#context = String(path);
     return this;
   }
 
@@ -170,8 +175,8 @@ export class DockerRunSettings extends DockerSettings {
   }
 
   /** Bind-mount or attach a volume (`-v source:target`). */
-  volume(source: string, target: string): this {
-    this.#volumes.push("-v", `${source}:${target}`);
+  volume(source: PathLike, target: PathLike): this {
+    this.#volumes.push("-v", `${String(source)}:${String(target)}`);
     return this;
   }
 
@@ -238,8 +243,8 @@ export class DockerExecSettings extends DockerSettings {
   }
 
   /** Working directory inside the container (`-w`). */
-  workdir(path: string): this {
-    this.#workdir = path;
+  workdir(path: PathLike): this {
+    this.#workdir = String(path);
     return this;
   }
 
@@ -599,8 +604,8 @@ export class DockerSaveSettings extends DockerSettings {
   }
 
   /** Write to a file instead of STDOUT (`-o`). */
-  output(path: string): this {
-    this.#output = path;
+  output(path: PathLike): this {
+    this.#output = String(path);
     return this;
   }
 
@@ -621,8 +626,8 @@ export class DockerLoadSettings extends DockerSettings {
   #quiet = false;
 
   /** Read from a tar archive instead of STDIN (`-i`). */
-  input(path: string): this {
-    this.#input = path;
+  input(path: PathLike): this {
+    this.#input = String(path);
     return this;
   }
 

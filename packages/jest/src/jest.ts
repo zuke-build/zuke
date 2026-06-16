@@ -15,7 +15,12 @@
  * @module
  */
 
-import { type Configure, runSettings, ToolSettings } from "@zuke/core/tooling";
+import {
+  type Configure,
+  type PathLike,
+  runSettings,
+  ToolSettings,
+} from "@zuke/core/tooling";
 import type { CommandOutput } from "@zuke/core/shell";
 
 /** Settings for a `jest` run. */
@@ -44,14 +49,14 @@ export class JestSettings extends ToolSettings {
   }
 
   /** Regex patterns matched against test paths (positional); repeatable. */
-  paths(...values: string[]): this {
-    this.#patterns.push(...values);
+  paths(...values: PathLike[]): this {
+    this.#patterns.push(...values.map(String));
     return this;
   }
 
   /** Use an explicit config file (`-c`/`--config`). */
-  config(path: string): this {
-    this.#config = path;
+  config(path: PathLike): this {
+    this.#config = String(path);
     return this;
   }
 

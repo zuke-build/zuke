@@ -15,7 +15,12 @@
  * @module
  */
 
-import { type Configure, runSettings, ToolSettings } from "@zuke/core/tooling";
+import {
+  type Configure,
+  type PathLike,
+  runSettings,
+  ToolSettings,
+} from "@zuke/core/tooling";
 import type { CommandOutput } from "@zuke/core/shell";
 
 /** Settings for a `cspell lint` run. */
@@ -40,14 +45,14 @@ export class CspellSettings extends ToolSettings {
   }
 
   /** Files or globs to check (positional); repeatable. */
-  files(...globs: string[]): this {
-    this.#files.push(...globs);
+  files(...globs: PathLike[]): this {
+    this.#files.push(...globs.map(String));
     return this;
   }
 
   /** Use an explicit config file (`-c`/`--config`). */
-  config(path: string): this {
-    this.#config = path;
+  config(path: PathLike): this {
+    this.#config = String(path);
     return this;
   }
 

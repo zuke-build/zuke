@@ -19,7 +19,12 @@
  * @module
  */
 
-import { type Configure, runSettings, ToolSettings } from "@zuke/core/tooling";
+import {
+  type Configure,
+  type PathLike,
+  runSettings,
+  ToolSettings,
+} from "@zuke/core/tooling";
 import type { CommandOutput } from "@zuke/core/shell";
 
 /** Settings for a `vitest` run. */
@@ -61,20 +66,20 @@ export class VitestSettings extends ToolSettings {
   }
 
   /** Use an explicit config file (`-c`/`--config`). */
-  config(path: string): this {
-    this.#config = path;
+  config(path: PathLike): this {
+    this.#config = String(path);
     return this;
   }
 
   /** Project root (`--root`). */
-  root(path: string): this {
-    this.#root = path;
+  root(path: PathLike): this {
+    this.#root = String(path);
     return this;
   }
 
   /** Restrict the scanned directory (`--dir`). */
-  dir(path: string): this {
-    this.#dir = path;
+  dir(path: PathLike): this {
+    this.#dir = String(path);
     return this;
   }
 
@@ -127,8 +132,8 @@ export class VitestSettings extends ToolSettings {
   }
 
   /** Write report output to a file (`--outputFile`). */
-  outputFile(path: string): this {
-    this.#outputFile = path;
+  outputFile(path: PathLike): this {
+    this.#outputFile = String(path);
     return this;
   }
 

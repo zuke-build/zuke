@@ -15,7 +15,12 @@
  * @module
  */
 
-import { type Configure, runSettings, ToolSettings } from "@zuke/core/tooling";
+import {
+  type Configure,
+  type PathLike,
+  runSettings,
+  ToolSettings,
+} from "@zuke/core/tooling";
 import type { CommandOutput } from "@zuke/core/shell";
 
 /** Settings for an `eslint` run. */
@@ -43,14 +48,14 @@ export class EslintSettings extends ToolSettings {
   }
 
   /** Files, directories, or globs to lint (positional); repeatable. */
-  paths(...values: string[]): this {
-    this.#paths.push(...values);
+  paths(...values: PathLike[]): this {
+    this.#paths.push(...values.map(String));
     return this;
   }
 
   /** Use an explicit config file (`-c`/`--config`). */
-  config(path: string): this {
-    this.#config = path;
+  config(path: PathLike): this {
+    this.#config = String(path);
     return this;
   }
 
@@ -97,8 +102,8 @@ export class EslintSettings extends ToolSettings {
   }
 
   /** Write the report to a file (`-o`/`--output-file`). */
-  outputFile(path: string): this {
-    this.#outputFile = path;
+  outputFile(path: PathLike): this {
+    this.#outputFile = String(path);
     return this;
   }
 
@@ -109,14 +114,14 @@ export class EslintSettings extends ToolSettings {
   }
 
   /** Where to store the cache (`--cache-location`). */
-  cacheLocation(path: string): this {
-    this.#cacheLocation = path;
+  cacheLocation(path: PathLike): this {
+    this.#cacheLocation = String(path);
     return this;
   }
 
   /** Read ignore globs from a file (`--ignore-path`). */
-  ignorePath(path: string): this {
-    this.#ignorePath = path;
+  ignorePath(path: PathLike): this {
+    this.#ignorePath = String(path);
     return this;
   }
 

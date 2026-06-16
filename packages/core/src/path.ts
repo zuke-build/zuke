@@ -29,6 +29,13 @@
  * @module
  */
 
+/**
+ * A filesystem path accepted by Zuke APIs: either a plain string or an
+ * {@link AbsolutePath}. Anywhere a tool wrapper or build helper takes a path,
+ * it accepts a `PathLike` and coerces it to a string.
+ */
+export type PathLike = string | AbsolutePath;
+
 /** The separated form of a path: its root (`""` if relative) and clean parts. */
 interface PathParts {
   /** `"/"`, a drive root like `"C:/"`, or `""` for a relative path. */
