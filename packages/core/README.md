@@ -20,3 +20,9 @@ Also exports `jsr:@zuke/core/shell` (the injection-safe `$` runner) and
 `jsr:@zuke/core/tooling` (the base for typed tool wrappers).
 
 See [Zuke](https://github.com/zuke-build/zuke#readme) for the full guide.
+
+## Paths
+
+`@zuke/core` exports `absolutePath` and the `PathLike` type. Across the Zuke
+tool-wrapper packages, every path argument accepts either a string or an
+`AbsolutePath`.

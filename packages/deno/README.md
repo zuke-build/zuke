@@ -11,3 +11,8 @@ import { DenoTasks } from "jsr:@zuke/deno";
 await DenoTasks.test((s) => s.allowAll().coverage("cov_profile"));
 await DenoTasks.fmt((s) => s.check());
 ```
+
+## Paths
+
+Every path argument accepts either a string or an `AbsolutePath` from
+`@zuke/core`, so a path built with `absolutePath` can be passed in directly.

@@ -109,6 +109,13 @@ zuke.ts                   # Zuke's own build (runnable example)
   (imperative mood; explain the *why*). Keep PRs reviewable.
 - **Conventional, semantic versioning** for releases; keep a changelog as the
   project grows.
+- **Keep code snippets out of commit message bodies.** release-please parses
+  every merged commit with a strict conventional-commits parser, and a code
+  fragment containing parentheses (e.g. an arrow function) makes it fail to
+  parse the whole commit — which silently drops it from the release, so no
+  version is bumped. The repo squash-merges, so the squash body comes from the
+  PR description/commits: put illustrative code in the PR discussion, and keep
+  commit bodies to prose. See [`RELEASING.md`](RELEASING.md).
 - **Update docs with code.** If behaviour changes, update `README.md`, JSDoc,
   and the spec/acceptance criteria in the same PR.
 - **No secrets or machine-specific paths** in the repo or commits. Don't commit

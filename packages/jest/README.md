@@ -10,3 +10,8 @@ import { JestTasks } from "jsr:@zuke/jest";
 
 await JestTasks.run((s) => s.ci().coverage().maxWorkers("50%").bail());
 ```
+
+## Paths
+
+Every path argument accepts either a string or an `AbsolutePath` from
+`@zuke/core`, so a path built with `absolutePath` can be passed in directly.
