@@ -39,5 +39,7 @@ raises a `ToolNotFoundError` that names the tool and the fix.
 | `@zuke/tsgo`           | `tsgo`                                                                                                               |
 | `@zuke/dprint`         | `fmt`, `check`                                                                                                      |
 | `@zuke/gcloud`         | `run` (any command)                                                                                                 |
+| `@zuke/git`            | `init`, `clone`, `add`, `commit`, `status`, `checkout`, `branch`, `tag`, `push`, `pull`, `fetch`, `run`             |
+| `@zuke/gh`             | `run` (any command)                                                                                                 |
 | `@zuke/security`       | `zizmor`, `actionlint`, `gitleaks`, `osvScanner`, `semgrep`, `trivyFs`, `trivyConfig`                                |
 | `@zuke/cmd`            | `exec` (any tool)                                                                                                    |

@@ -17,6 +17,8 @@ const PACKAGES = [
   "packages/tsgo",
   "packages/dprint",
   "packages/gcloud",
+  "packages/git",
+  "packages/gh",
   "packages/security",
 ];
 
