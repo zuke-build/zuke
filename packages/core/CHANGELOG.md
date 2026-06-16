@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.0](https://github.com/zuke-build/zuke/compare/core-v0.8.0...core-v0.9.0) (2026-06-16)
+
+
+### Features
+
+* **core:** incremental caching, conditions, and more target methods ([#47](https://github.com/zuke-build/zuke/issues/47)) ([c80b9f3](https://github.com/zuke-build/zuke/commit/c80b9f3365c355d6aae1e89235d0b5915653070c))
+
 ## [0.8.0](https://github.com/zuke-build/zuke/compare/core-v0.7.0...core-v0.8.0) (2026-06-16)
 
 
