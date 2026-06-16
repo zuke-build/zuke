@@ -11,6 +11,22 @@ import {
 import { discoverTargets } from "../src/build.ts";
 import { FakeGraphHost } from "./_fakes.ts";
 import { CONFIG_FILE } from "../src/config.ts";
+import { parameter } from "../src/params.ts";
+
+/** A build with declared parameters, for the parameter-aware CLI tests. */
+class Parameterised extends Build {
+  environment = parameter("Target environment").options("dev", "prod")
+    .required();
+  verbose = parameter("Verbose logging").boolean();
+  greet = target().executes(() => {
+    console.log(`env=${this.environment.value} verbose=${this.verbose.value}`);
+  });
+}
+
+const greetFlags = [
+  { name: "environment", flag: "environment", boolean: false },
+  { name: "verbose", flag: "verbose", boolean: true },
+];
 
 /** Run `fn` with `console.log`/`console.error` captured instead of printed. */
 async function capture(
@@ -76,6 +92,21 @@ Deno.test("parseArgs defaults graph to false, output to text, open to true", () 
   ]);
 });
 
+Deno.test("parseArgs collects declared parameter flags", () => {
+  const valued = parseArgs(
+    ["greet", "--environment", "prod", "--verbose"],
+    greetFlags,
+  );
+  assertEquals(valued.target, "greet");
+  assertEquals(valued.values, { environment: "prod", verbose: "true" });
+
+  const inline = parseArgs(["--environment=dev"], greetFlags);
+  assertEquals(inline.values, { environment: "dev" });
+
+  // Unknown flags are ignored, not treated as parameters.
+  assertEquals(parseArgs(["--nope", "x"], greetFlags).values, {});
+});
+
 Deno.test("parseArgs collects repeatable --skip and keeps first positional", () => {
   const parsed = parseArgs([
     "build",
@@ -133,6 +164,36 @@ Deno.test("main graph --output=html renders HTML via the injected host", async (
   assertEquals(code, 0);
   assertEquals(host.files.has("/repo/.zuke/graph.html"), true);
   assertEquals(host.opened, []);
+});
+
+Deno.test("main lists declared parameters under --help and --list", async () => {
+  const help = await capture(() => main(Parameterised, ["--help"]));
+  const text = help.out.join("\n");
+  assertEquals(text.includes("Parameters:"), true);
+  assertEquals(text.includes("--environment"), true);
+  assertEquals(text.includes("required"), true);
+  assertEquals(text.includes("one of: dev, prod"), true);
+});
+
+Deno.test("main resolves a parameter flag and runs the target", async () => {
+  const { code, out } = await capture(() =>
+    main(Parameterised, ["greet", "--environment", "dev", "--verbose"])
+  );
+  assertEquals(code, 0);
+  assertEquals(out.join("\n").includes("env=dev verbose=true"), true);
+});
+
+Deno.test("main fails with exit 1 when a required parameter is missing", async () => {
+  // Ensure the value can't leak in from the ambient environment.
+  const saved = Deno.env.get("ENVIRONMENT");
+  Deno.env.delete("ENVIRONMENT");
+  try {
+    const { code, err } = await capture(() => main(Parameterised, ["greet"]));
+    assertEquals(code, 1);
+    assertEquals(err.join("\n").includes("--environment is required"), true);
+  } finally {
+    if (saved !== undefined) Deno.env.set("ENVIRONMENT", saved);
+  }
 });
 
 Deno.test("main runs a target and its dependencies, returning 0", async () => {

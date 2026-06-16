@@ -18,6 +18,11 @@
 
 import type { Build, BuildResult } from "./build.ts";
 import { plan } from "./graph.ts";
+import {
+  discoverParameters,
+  ParameterError,
+  resolveParameters,
+} from "./params.ts";
 import type { TargetBuilder } from "./target.ts";
 
 /** Sink for executor output, defaulting to the console. Overridable in tests. */
@@ -41,6 +46,18 @@ export interface ExecuteOptions {
   reporter?: Reporter;
   /** Target names to skip even if they appear in the plan (CLI `--skip`). */
   skip?: string[];
+  /**
+   * Raw parameter values from the command line, keyed by parameter (property)
+   * name. Each declared {@link Parameter} is resolved from this map, then the
+   * environment, then its declared default before any target runs.
+   */
+  params?: Record<string, string>;
+  /**
+   * Reads an environment variable as a parameter fallback. Defaults to
+   * `Deno.env.get` (returning `undefined` when env access is unavailable);
+   * overridable so parameter resolution can be tested hermetically.
+   */
+  readEnv?: (name: string) => string | undefined;
   /**
    * Force GitHub Actions output formatting on or off. Auto-detected from the
    * `GITHUB_ACTIONS` environment variable when omitted.
@@ -95,6 +112,15 @@ function inGitHubActions(): boolean {
     return Deno.env.get("GITHUB_ACTIONS") === "true";
   } catch {
     return false;
+  }
+}
+
+/** Read an environment variable, treating missing env access as unset. */
+function defaultReadEnv(name: string): string | undefined {
+  try {
+    return Deno.env.get(name);
+  } catch {
+    return undefined;
   }
 }
 
@@ -262,6 +288,24 @@ export async function execute(
   const github = options.github ?? inGitHubActions();
   const style = resolveStyle(options, github);
   const skip = new Set(options.skip ?? []);
+
+  // Resolve declared parameters (CLI value → environment → default) before any
+  // target runs, so a target body can read `this.param.value`. A missing
+  // required parameter or an invalid value fails the build before it starts.
+  const paramErrors = resolveParameters(
+    discoverParameters(build),
+    options.params ?? {},
+    options.readEnv ?? defaultReadEnv,
+  );
+  if (paramErrors.length > 0) {
+    reporter.error("Invalid or missing parameters:");
+    for (const message of paramErrors) reporter.error(`  ${message}`);
+    return {
+      ok: false,
+      executed: [],
+      error: new ParameterError(paramErrors.join("; ")),
+    };
+  }
 
   const order = plan(root);
   const reports: TargetReport[] = [];

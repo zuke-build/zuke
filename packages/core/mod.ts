@@ -36,6 +36,14 @@ export { execute, type ExecuteOptions, type Reporter } from "./src/executor.ts";
 export { type AbsolutePath, absolutePath, type PathLike } from "./src/path.ts";
 export { CONFIG_FILE, repoRoot } from "./src/config.ts";
 export {
+  type AnyParameter,
+  discoverParameters,
+  Parameter,
+  parameter,
+  ParameterError,
+  type ParamValue,
+} from "./src/params.ts";
+export {
   executionSet,
   findCycle,
   GraphError,

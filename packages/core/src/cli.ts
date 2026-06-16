@@ -11,6 +11,7 @@ import {
   graphCommand,
   type GraphHost,
 } from "./graph_view.ts";
+import { type AnyParameter, discoverParameters, flagName } from "./params.ts";
 import type { TargetBuilder } from "./target.ts";
 
 /** Convention: a target literally named `default` runs when none is requested. */
@@ -27,6 +28,16 @@ function parseOutput(value: string): GraphOutput {
   return value === "html" ? "html" : "text";
 }
 
+/** A declared parameter's CLI flag and whether it is a value-less boolean. */
+export interface ParamFlag {
+  /** The parameter's property name. */
+  name: string;
+  /** The CLI flag (without leading dashes). */
+  flag: string;
+  /** Whether the parameter is a boolean (its flag takes no value). */
+  boolean: boolean;
+}
+
 /** Parsed command-line arguments. */
 export interface ParsedArgs {
   /** The requested target, if a positional argument was given. */
@@ -40,55 +51,64 @@ export interface ParsedArgs {
   output: GraphOutput;
   /** Open the HTML graph in a browser (default true; `--no-open` clears). */
   open: boolean;
+  /** Raw parameter values from declared flags, keyed by property name. */
+  values: Record<string, string>;
   help: boolean;
 }
 
-/** Parse `zuke` arguments. Unknown flags are reported by the caller. */
-export function parseArgs(args: string[]): ParsedArgs {
+/**
+ * Parse `zuke` arguments. Built-in flags are recognised first; `paramFlags`
+ * lets the caller pass the build's declared parameter flags so their values are
+ * collected. Unknown flags are ignored.
+ */
+export function parseArgs(
+  args: string[],
+  paramFlags: ParamFlag[] = [],
+): ParsedArgs {
   const parsed: ParsedArgs = {
     skip: [],
     list: false,
     graph: false,
     output: "text",
     open: true,
+    values: {},
     help: false,
   };
+  const byFlag = new Map<string, ParamFlag>();
+  for (const pf of paramFlags) byFlag.set(pf.flag, pf);
+
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
-    if (arg.startsWith("--output=")) {
+    if (arg === "--list" || arg === "-l") {
+      parsed.list = true;
+    } else if (arg === "--no-open") {
+      parsed.open = false;
+    } else if (arg === "--help" || arg === "-h") {
+      parsed.help = true;
+    } else if (arg === "--skip") {
+      const dep = args[++i];
+      if (dep) parsed.skip.push(dep);
+    } else if (arg === "--output") {
+      const value = args[++i];
+      if (value) parsed.output = parseOutput(value);
+    } else if (arg.startsWith("--output=")) {
       parsed.output = parseOutput(arg.slice("--output=".length));
-      continue;
-    }
-    switch (arg) {
-      case "--list":
-      case "-l":
-        parsed.list = true;
-        break;
-      case "--output": {
-        const value = args[++i];
-        if (value) parsed.output = parseOutput(value);
-        break;
-      }
-      case "--no-open":
-        parsed.open = false;
-        break;
-      case "--help":
-      case "-h":
-        parsed.help = true;
-        break;
-      case "--skip": {
-        const dep = args[++i];
-        if (dep) parsed.skip.push(dep);
-        break;
-      }
-      default:
-        if (
-          !arg.startsWith("-") && parsed.target === undefined && !parsed.graph
-        ) {
-          if (arg === GRAPH_COMMAND) parsed.graph = true;
-          else parsed.target = arg;
+    } else if (arg.startsWith("--")) {
+      const eq = arg.indexOf("=");
+      const flag = eq === -1 ? arg.slice(2) : arg.slice(2, eq);
+      const pf = byFlag.get(flag);
+      if (pf !== undefined) {
+        if (eq !== -1) parsed.values[pf.name] = arg.slice(eq + 1);
+        else if (pf.boolean) parsed.values[pf.name] = "true";
+        else {
+          const value = args[++i];
+          if (value !== undefined) parsed.values[pf.name] = value;
         }
-        break;
+      }
+      // Unknown flags are ignored.
+    } else if (parsed.target === undefined && !parsed.graph) {
+      if (arg === GRAPH_COMMAND) parsed.graph = true;
+      else parsed.target = arg;
     }
   }
   return parsed;
@@ -115,16 +135,31 @@ Options:
                     page to .zuke/ and opens it in a browser.
   --output <fmt>    Graph output format: text (default) or html.
   --no-open         With --output=html, do not open a browser.
+  --<param> <val>   Set a declared build parameter (see Parameters below).
   --help, -h        Show this help.`;
 
-/** Render `--help`, including the available targets. */
-export function formatHelp(targets: Map<string, TargetBuilder>): string {
-  return `${USAGE}\n\n${formatList(targets)}`;
+/** Render `--help`, including the available targets and parameters. */
+export function formatHelp(
+  targets: Map<string, TargetBuilder>,
+  params: Map<string, AnyParameter> = new Map(),
+): string {
+  return `${USAGE}\n\n${formatList(targets, params)}`;
 }
 
-/** Render `--list`: each target with its description and dependencies. */
-export function formatList(targets: Map<string, TargetBuilder>): string {
-  if (targets.size === 0) return "No targets defined.";
+/** Render `--list`: each target with its description and dependencies, then parameters. */
+export function formatList(
+  targets: Map<string, TargetBuilder>,
+  params: Map<string, AnyParameter> = new Map(),
+): string {
+  const targetText = targets.size === 0
+    ? "No targets defined."
+    : renderTargets(targets);
+  const paramText = formatParameters(params);
+  return paramText === "" ? targetText : `${targetText}\n\n${paramText}`;
+}
+
+/** Render the target listing (non-empty). */
+function renderTargets(targets: Map<string, TargetBuilder>): string {
   const width = Math.max(...[...targets.keys()].map((n) => n.length));
   const lines = ["Targets:"];
   for (const [name, t] of targets) {
@@ -132,6 +167,25 @@ export function formatList(targets: Map<string, TargetBuilder>): string {
     const desc = t.description_ ?? "";
     const suffix = deps.length ? `  (depends on: ${deps.join(", ")})` : "";
     lines.push(`  ${name.padEnd(width)}  ${desc}${suffix}`);
+  }
+  return lines.join("\n");
+}
+
+/** Render the parameters section, or `""` when no parameters are declared. */
+function formatParameters(params: Map<string, AnyParameter>): string {
+  if (params.size === 0) return "";
+  const flags = [...params.keys()].map(flagName);
+  const width = Math.max(...flags.map((f) => f.length));
+  const lines = ["Parameters:"];
+  for (const [name, p] of params) {
+    const bits: string[] = [];
+    if (p.required_) bits.push("required");
+    if (p.options_ && p.options_.length > 0) {
+      bits.push(`one of: ${p.options_.join(", ")}`);
+    }
+    const meta = bits.length > 0 ? `  (${bits.join("; ")})` : "";
+    const desc = p.description_ ?? "";
+    lines.push(`  --${flagName(name).padEnd(width)}  ${desc}${meta}`);
   }
   return lines.join("\n");
 }
@@ -159,10 +213,16 @@ export async function main(
 ): Promise<number> {
   const build = new BuildClass();
   const targets = discoverTargets(build);
-  const parsed = parseArgs(args);
+  const params = discoverParameters(build);
+  const paramFlags: ParamFlag[] = [...params.entries()].map(([name, p]) => ({
+    name,
+    flag: flagName(name),
+    boolean: p.kind_ === "boolean",
+  }));
+  const parsed = parseArgs(args, paramFlags);
 
   if (parsed.help) {
-    console.log(formatHelp(targets));
+    console.log(formatHelp(targets, params));
     return 0;
   }
 
@@ -177,7 +237,7 @@ export async function main(
   }
 
   if (parsed.list) {
-    console.log(formatList(targets));
+    console.log(formatList(targets, params));
     return 0;
   }
   if (parsed.graph) {
@@ -193,7 +253,7 @@ export async function main(
     if (targets.has(DEFAULT_TARGET)) {
       name = DEFAULT_TARGET;
     } else {
-      console.log(formatList(targets));
+      console.log(formatList(targets, params));
       return 0;
     }
   }
@@ -201,11 +261,14 @@ export async function main(
   const root = targets.get(name);
   if (!root) {
     console.error(`Unknown target: ${name}\n`);
-    console.error(formatList(targets));
+    console.error(formatList(targets, params));
     return 1;
   }
 
-  const result = await execute(build, root, { skip: parsed.skip });
+  const result = await execute(build, root, {
+    skip: parsed.skip,
+    params: parsed.values,
+  });
   return result.ok ? 0 : 1;
 }
 
