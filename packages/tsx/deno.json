@@ -1,6 +1,6 @@
 {
   "name": "@zuke/tsx",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Typed tsx task wrappers for Zuke builds — run TypeScript entry points directly, with watch mode, tsconfig, and preload support via an injection-free settings-lambda API.",
   "exports": {
     ".": "./mod.ts"
