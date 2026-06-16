@@ -7,7 +7,7 @@
  * its property name.
  */
 
-import { TargetBuilder } from "./target.ts";
+import { Group, TargetBuilder } from "./target.ts";
 
 /** Result passed to the {@link Build.onFinish} lifecycle hook. */
 export interface BuildResult {
@@ -56,4 +56,20 @@ export function discoverTargets(build: Build): Map<string, TargetBuilder> {
     }
   }
   return targets;
+}
+
+/**
+ * Discover all parallel {@link Group} batches declared on a build instance,
+ * binding each its property name (for labelling, e.g. in the graph). Groups
+ * that are not assigned to a build property simply stay unnamed.
+ */
+export function discoverGroups(build: Build): Map<string, Group> {
+  const groups = new Map<string, Group>();
+  for (const [key, value] of Object.entries(build)) {
+    if (value instanceof Group) {
+      value.name_ = key;
+      groups.set(key, value);
+    }
+  }
+  return groups;
 }

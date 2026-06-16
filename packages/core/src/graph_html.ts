@@ -23,6 +23,8 @@ export interface GraphNode {
   name: string;
   /** The target's description, or `""` if none. */
   description: string;
+  /** The name of the parallel group this target belongs to, if any. */
+  group?: string;
 }
 
 /** The nodes and dependency edges of a build graph. */
@@ -41,7 +43,10 @@ export function graphData(targets: Map<string, TargetBuilder>): GraphData {
   const nodes: GraphNode[] = [];
   const edges: Array<[string, string]> = [];
   for (const [name, t] of targets) {
-    nodes.push({ name, description: t.description_ ?? "" });
+    const node: GraphNode = { name, description: t.description_ ?? "" };
+    const group = t.group_?.name_;
+    if (group !== undefined) node.group = group;
+    nodes.push(node);
     for (const dep of t.dependsOn_) {
       const depName = dep?.name_;
       if (depName !== undefined && targets.has(depName)) {
@@ -59,8 +64,9 @@ function mermaidLabel(text: string): string {
 
 /**
  * Render {@link GraphData} as Mermaid `flowchart TD` source. Each node gets a
- * synthetic id (`n0`, `n1`, …) so the markup is independent of target names; an
- * empty graph renders a single placeholder node.
+ * synthetic id (`n0`, `n1`, …) so the markup is independent of target names;
+ * targets that share a parallel {@link group} are wrapped in a Mermaid
+ * `subgraph`. An empty graph renders a single placeholder node.
  */
 export function toMermaid(data: GraphData): string {
   if (data.nodes.length === 0) {
@@ -70,10 +76,30 @@ export function toMermaid(data: GraphData): string {
   data.nodes.forEach((n, i) => {
     id[n.name] = `n${i}`;
   });
-  const lines = ["flowchart TD"];
+  const def = (n: GraphNode) => `${id[n.name]}["${mermaidLabel(n.name)}"]`;
+
+  // Bucket nodes by group (declaration order preserved); ungrouped stay flat.
+  const grouped = new Map<string, GraphNode[]>();
+  const ungrouped: GraphNode[] = [];
   for (const n of data.nodes) {
-    lines.push(`  ${id[n.name]}["${mermaidLabel(n.name)}"]`);
+    if (n.group !== undefined && n.group !== "") {
+      const members = grouped.get(n.group) ?? [];
+      members.push(n);
+      grouped.set(n.group, members);
+    } else {
+      ungrouped.push(n);
+    }
   }
+
+  const lines = ["flowchart TD"];
+  let g = 0;
+  for (const [name, members] of grouped) {
+    lines.push(`  subgraph g${g}["${mermaidLabel(name)}"]`);
+    for (const n of members) lines.push(`    ${def(n)}`);
+    lines.push("  end");
+    g++;
+  }
+  for (const n of ungrouped) lines.push(`  ${def(n)}`);
   for (const [from, to] of data.edges) {
     lines.push(`  ${id[from]} --> ${id[to]}`);
   }

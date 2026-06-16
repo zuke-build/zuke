@@ -46,6 +46,8 @@ export type Condition = () => boolean | Promise<boolean>;
 export class Group {
   /** Members that declared themselves part of this group, in declaration order. */
   readonly members_: TargetBuilder[] = [];
+  /** Property name, assigned during discovery. Undefined until then. */
+  name_?: string;
 }
 
 /**

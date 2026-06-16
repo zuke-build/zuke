@@ -3,7 +3,7 @@
  * {@link run} entry point that drives a build from `zuke.ts`.
  */
 
-import { type Build, discoverTargets } from "./build.ts";
+import { type Build, discoverGroups, discoverTargets } from "./build.ts";
 import { GraphError, validateGraph } from "./graph.ts";
 import { execute } from "./executor.ts";
 import {
@@ -220,7 +220,11 @@ export function formatGraph(targets: Map<string, TargetBuilder>): string {
   const lines = ["Dependency graph:"];
   for (const [name, t] of targets) {
     const deps = depNames(t);
-    lines.push(deps.length ? `  ${name} → ${deps.join(", ")}` : `  ${name}`);
+    const group = t.group_?.name_ !== undefined
+      ? `  [group: ${t.group_.name_}]`
+      : "";
+    const arrow = deps.length ? ` → ${deps.join(", ")}` : "";
+    lines.push(`  ${name}${arrow}${group}`);
   }
   return lines.join("\n");
 }
@@ -238,6 +242,7 @@ export async function main(
   const build = new BuildClass();
   const targets = discoverTargets(build);
   const params = discoverParameters(build);
+  discoverGroups(build); // names group batches so the graph can label them
   const paramFlags: ParamFlag[] = [...params.entries()].map(([name, p]) => ({
     name,
     flag: flagName(name),

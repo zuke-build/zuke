@@ -1,7 +1,18 @@
 import { assertEquals, assertThrows } from "./_assert.ts";
-import { Build, discoverTargets } from "../src/build.ts";
+import { Build, discoverGroups, discoverTargets } from "../src/build.ts";
 import { Group, group, target, TargetBuilder } from "../src/target.ts";
 import { parameter } from "../src/params.ts";
+
+Deno.test("discoverGroups binds each group to its property name", () => {
+  class B extends Build {
+    checks = group();
+    a = target().partOf(this.checks).executes(() => {});
+  }
+  const b = new B();
+  const groups = discoverGroups(b);
+  assertEquals([...groups.keys()], ["checks"]);
+  assertEquals(b.checks.name_, "checks");
+});
 
 Deno.test("triggers, dependentFor, requires, proceedAfterFailure, unlisted record config", () => {
   class B extends Build {
