@@ -40,6 +40,7 @@ import type { CommandOutput } from "@zuke/core/shell";
  */
 export class ZizmorSettings extends ToolSettings {
   #paths: string[] = [];
+  #config?: string;
   #format?: string;
   #minSeverity?: string;
   #persona?: string;
@@ -52,6 +53,12 @@ export class ZizmorSettings extends ToolSettings {
   /** Add a workflow file or directory to audit (positional); repeatable. */
   paths(...inputs: string[]): this {
     this.#paths.push(...inputs);
+    return this;
+  }
+
+  /** Use an explicit zizmor config file (`--config`). */
+  config(path: string): this {
+    this.#config = path;
     return this;
   }
 
@@ -81,6 +88,7 @@ export class ZizmorSettings extends ToolSettings {
 
   protected override buildArgs(): string[] {
     const argv: string[] = [];
+    if (this.#config !== undefined) argv.push("--config", this.#config);
     if (this.#format !== undefined) argv.push("--format", this.#format);
     if (this.#minSeverity !== undefined) {
       argv.push("--min-severity", this.#minSeverity);
