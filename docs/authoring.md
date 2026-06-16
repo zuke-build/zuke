@@ -12,6 +12,9 @@ body, which is required before the target can run.
 | `.executes(fn)`          | `(fn: () => void \| Promise<void>) => this` | The body. May be async.                                |
 | `.before(...targets)`    | `(...t: Target[]) => this`                  | Soft ordering: run before these _if both are planned_. |
 | `.after(...targets)`     | `(...t: Target[]) => this`                  | Soft ordering: run after these _if both are planned_.  |
+| `.inputs(...paths)`      | `(...p: PathLike[]) => this`                | Cache inputs: skip the target when these are unchanged. |
+| `.outputs(...paths)`     | `(...p: PathLike[]) => this`                | Cache outputs: a hit also requires these to still exist. |
+| `.onlyWhen(condition)`   | `(c: () => boolean \| Promise<boolean>) => this` | Run only when the condition holds, else skip.    |
 
 `dependsOn` pulls targets into the plan; `before`/`after` only reorder targets
 that are _already_ in the plan — they never pull new targets in.
@@ -52,6 +55,41 @@ Here `clean` runs first (all three depend on it), then `lint`/`format`/
 so they batch whenever they run — no `--parallel` flag needed. Ungrouped
 targets stay serialized unless you opt the whole build into `--parallel`.
 Declare the group field above the targets that join it.
+
+### Incremental caching — `.inputs()` / `.outputs()`
+
+A target that declares **inputs** becomes incremental: Zuke fingerprints those
+files/directories (SHA-256 of their contents, directories hashed recursively)
+and **skips** the target — reporting it `cached` — when the fingerprint is
+unchanged since the last successful run and every declared **output** still
+exists. Otherwise it runs and refreshes the fingerprint.
+
+```ts
+compile = target()
+  .inputs("src", "deno.json") // re-run only when these change…
+  .outputs("dist") // …or when dist is missing
+  .executes(async () => {
+    await DenoTasks.run((s) => s.script("build.ts"));
+  });
+```
+
+Fingerprints live in `<repo root>/.zuke/cache.json` (git-ignored). A target with
+no inputs always runs. Pass `--no-cache` (or `execute(..., { cache: false })`)
+to ignore the cache and rebuild everything. A skipped/cached target counts as
+satisfied, so its dependents still run.
+
+### Conditional execution — `.onlyWhen()`
+
+`.onlyWhen(condition)` runs the target only when the condition holds; otherwise
+it is skipped (and its dependents still run). The predicate may be async and can
+read resolved [parameters](./parameters.md) or the environment. Repeatable — all
+conditions must hold.
+
+```ts
+deploy = target()
+  .onlyWhen(() => this.environment.value === "production")
+  .executes(/* ... */);
+```
 
 ### `Build`
 

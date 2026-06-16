@@ -121,7 +121,6 @@ CI runs `deno task ci` on every push and pull request (see
 Post-v0, for context:
 
 - A `zuke` standalone binary + `zuke init` scaffolding.
-- Caching / incremental targets.
 - More tool wrapper packages — see [Tools](./docs/tools.md) for what ships today.
 
 ## Security

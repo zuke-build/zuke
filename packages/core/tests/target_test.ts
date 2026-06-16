@@ -21,6 +21,21 @@ Deno.test("partOf joins a group; dependsOn(group) expands to its members", () =>
   assertEquals(b.d.dependsOn_.map((t) => t.name_), ["a", "b", "c"]);
 });
 
+Deno.test("inputs, outputs, and onlyWhen record their configuration", () => {
+  let allow = false;
+  const t = target()
+    .inputs("src", "deno.json")
+    .outputs("dist")
+    .onlyWhen(() => allow)
+    .executes(() => {});
+  assertEquals(t.inputs_, ["src", "deno.json"]);
+  assertEquals(t.outputs_, ["dist"]);
+  assertEquals(t.onlyWhen_.length, 1);
+  assertEquals(t.onlyWhen_[0](), false);
+  allow = true;
+  assertEquals(t.onlyWhen_[0](), true);
+});
+
 Deno.test("partOf ignores an undefined (forward-referenced) group", () => {
   const t = target();
   // @ts-expect-error exercising the runtime guard against an unbound reference

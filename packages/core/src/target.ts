@@ -27,8 +27,13 @@
  * ```
  */
 
+import type { PathLike } from "./path.ts";
+
 /** The executable body of a target. May be synchronous or asynchronous. */
 export type TargetFn = () => void | Promise<void>;
+
+/** A predicate gating whether a target runs; may be synchronous or async. */
+export type Condition = () => boolean | Promise<boolean>;
 
 /**
  * A parallel batch of targets, created with {@link group}. Targets join it via
@@ -62,6 +67,12 @@ export class TargetBuilder {
   name_?: string;
   /** The parallel batch this target belongs to, if any (set by {@link partOf}). */
   group_?: Group;
+  /** Input files/directories whose contents key the cache (set by {@link inputs}). */
+  readonly inputs_: string[] = [];
+  /** Output files/directories that must exist for a cache hit (set by {@link outputs}). */
+  readonly outputs_: string[] = [];
+  /** Conditions gating execution; all must hold or the target is skipped. */
+  readonly onlyWhen_: Condition[] = [];
 
   /** Set the human-readable description shown in `zuke --list`. */
   description(text: string): this {
@@ -94,6 +105,42 @@ export class TargetBuilder {
       this.group_ = group;
       group.members_.push(this);
     }
+    return this;
+  }
+
+  /**
+   * Declare input files or directories (directories are hashed recursively).
+   * A target with inputs is *incremental*: it is skipped (reported `cached`)
+   * when its inputs are unchanged since the last successful run and all its
+   * {@link outputs} still exist. Repeatable.
+   */
+  inputs(...paths: PathLike[]): this {
+    this.inputs_.push(...paths.map(String));
+    return this;
+  }
+
+  /**
+   * Declare output files or directories. A cache hit also requires every output
+   * to still exist, so deleting an output forces a rebuild. Repeatable.
+   */
+  outputs(...paths: PathLike[]): this {
+    this.outputs_.push(...paths.map(String));
+    return this;
+  }
+
+  /**
+   * Run only when `condition` holds; otherwise the target is skipped (and its
+   * dependents still run). The predicate may be async and can read resolved
+   * parameters or the environment. Repeatable — all conditions must hold.
+   *
+   * ```ts
+   * deploy = target()
+   *   .onlyWhen(() => this.environment.value === "production")
+   *   .executes(...);
+   * ```
+   */
+  onlyWhen(condition: Condition): this {
+    this.onlyWhen_.push(condition);
     return this;
   }
 

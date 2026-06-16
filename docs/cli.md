@@ -5,6 +5,7 @@
 | `zuke <target>`              | Run the target and all its transitive dependencies, in order. |
 | `zuke <target> --skip <dep>` | Run the target but skip the named dependency (repeatable).    |
 | `zuke <target> --parallel`   | Run independent targets concurrently (`--parallel=N` caps it). |
+| `zuke <target> --no-cache`   | Ignore the incremental cache; re-run every target.            |
 | `zuke --list` / `-l`         | List all targets with descriptions and dependencies.          |
 | `zuke graph`                 | Print the dependency graph (`target → deps`).                 |
 | `zuke graph --output=html`   | Render an interactive HTML graph into `.zuke/` and open it.   |
@@ -57,3 +58,11 @@ Programmatic callers get the same behaviour via `execute(build, target, { parall
 For parallelism scoped to specific targets rather than the whole build, put
 them in a [`group()`](./authoring.md#group-and-partof) with `.partOf(...)` — the
 group's members run concurrently even without `--parallel`.
+
+## Incremental builds
+
+Targets that declare [`.inputs()`](./authoring.md#incremental-caching-inputs--outputs)
+are cached: Zuke skips one (showing it `cached` in the summary) when its inputs
+are unchanged since the last successful run and its outputs still exist.
+Fingerprints live in `.zuke/cache.json`. `--no-cache` ignores the cache and
+re-runs everything.
