@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.0](https://github.com/zuke-build/zuke/compare/core-v0.10.0...core-v0.11.0) (2026-06-16)
+
+
+### Features
+
+* **core:** cacheKey, finally targets, secrets, artifacts, host detection, prompts ([#52](https://github.com/zuke-build/zuke/issues/52)) ([bfa2e34](https://github.com/zuke-build/zuke/commit/bfa2e34fc826632b42c2c3f83a371fe01fca1d1d))
+
 ## [0.10.0](https://github.com/zuke-build/zuke/compare/core-v0.9.0...core-v0.10.0) (2026-06-16)
 
 
