@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/zuke-build/zuke/compare/cmd-v0.2.0...cmd-v0.3.0) (2026-06-16)
+
+
+### Features
+
+* document AbsolutePath support across the tool-wrapper packages ([#37](https://github.com/zuke-build/zuke/issues/37)) ([94c8ccb](https://github.com/zuke-build/zuke/commit/94c8ccb22dde1ccddc7264bff7bdb3b4a2cb5d5e))
+
 ## [0.2.0](https://github.com/zuke-build/zuke/compare/cmd-v0.1.1...cmd-v0.2.0) (2026-06-16)
 
 
