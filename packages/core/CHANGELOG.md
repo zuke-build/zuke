@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/zuke-build/zuke/compare/core-v0.7.0...core-v0.8.0) (2026-06-16)
+
+
+### Features
+
+* **core:** parallel execution — `--parallel` flag and `group()` batches ([#45](https://github.com/zuke-build/zuke/issues/45)) ([764b785](https://github.com/zuke-build/zuke/commit/764b785dda90e2f8d30100a70ed824822b0f3e05))
+
 ## [0.7.0](https://github.com/zuke-build/zuke/compare/core-v0.6.0...core-v0.7.0) (2026-06-16)
 
 
