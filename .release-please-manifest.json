@@ -11,7 +11,7 @@
   "packages/cspell": "0.2.0",
   "packages/jest": "0.2.0",
   "packages/vitest": "0.2.0",
-  "packages/tsx": "0.0.0",
-  "packages/tsgo": "0.0.0",
+  "packages/tsx": "0.1.0",
+  "packages/tsgo": "0.1.0",
   "packages/security": "0.2.0"
 }
