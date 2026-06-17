@@ -60,3 +60,27 @@ raises a `ToolNotFoundError` that names the tool and the fix.
 | `@zuke/tofu`           | `init`, `validate`, `plan`, `apply`, `destroy`, `fmt`, `output`                                                      |
 | `@zuke/security`       | `zizmor`, `actionlint`, `gitleaks`, `osvScanner`, `semgrep`, `trivyFs`, `trivyConfig`                                |
 | `@zuke/cmd`            | `exec` (any tool)                                                                                                    |
+
+## Define your own tool
+
+For a CLI without a dedicated package, `defineTool` (from `@zuke/core/tooling`)
+gives you a typed, fluent task in the same style — no class needed. Build the
+argv with `arg` / `flag` / `option` (in call order), and the shared chainers
+(`cwd`, `env`, `noThrow`, `quiet`, `toolPath`, `args`) all apply. An optional
+`subcommand` is prepended to every invocation.
+
+```ts
+import { defineTool } from "jsr:@zuke/core/tooling";
+
+const terraform = defineTool("terraform");
+await terraform((s) => s.arg("plan").option("out", "plan.tfplan"));
+// → terraform plan --out plan.tfplan
+
+const helmUpgrade = defineTool("helm", { subcommand: "upgrade" });
+await helmUpgrade((s) => s.arg("api", "./chart").flag("install").cwd("infra"));
+// → helm upgrade api ./chart --install   (run in ./infra)
+```
+
+`flag`/`option` add a `--` prefix unless the name already starts with a dash
+(so `flag("-v")` stays `-v`). Argv is a discrete array end-to-end, so a
+`defineTool` command is just as injection-free as the built-in wrappers.

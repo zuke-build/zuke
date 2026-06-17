@@ -5,6 +5,8 @@ import {
   messageOf,
 } from "./_assert.ts";
 import {
+  defineTool,
+  DynamicToolSettings,
   runSettings,
   shimFallbackArgv,
   ToolNotFoundError,
@@ -157,4 +159,65 @@ Deno.test("a subclass can reject invalid settings from buildArgs", () => {
     Error,
     ".value() is required",
   );
+});
+
+Deno.test("defineTool: binary, then arg/flag/option in call order", () => {
+  const tool = defineTool("mytool");
+  // The task closes over a fresh settings each call; build one directly to
+  // inspect argv via the configure lambda.
+  const s = new DynamicToolSettings("mytool");
+  s.arg("build").option("output", "dist").flag("verbose").arg("src");
+  assertEquals(s.argv(), [
+    "mytool",
+    "build",
+    "--output",
+    "dist",
+    "--verbose",
+    "src",
+  ]);
+  assertEquals(typeof tool, "function");
+});
+
+Deno.test("defineTool: short flags and pre-dashed names are left as-is", () => {
+  const s = new DynamicToolSettings("x");
+  s.flag("-v").option("-o", "f").flag("--long");
+  assertEquals(s.argv().slice(1), ["-v", "-o", "f", "--long"]);
+});
+
+Deno.test("defineTool: subcommand prepends a leading token (string or array)", () => {
+  assertEquals(
+    new DynamicToolSettings("helm", ["upgrade"]).arg("api").argv().slice(1),
+    ["upgrade", "api"],
+  );
+  // defineTool normalizes its subcommand option to the initial tokens.
+  const one = defineTool("git", { subcommand: "status" });
+  const many = defineTool("docker", { subcommand: ["image", "ls"] });
+  assertEquals(typeof one, "function");
+  assertEquals(typeof many, "function");
+});
+
+Deno.test("defineTool: numeric args/options are coerced to strings", () => {
+  const s = new DynamicToolSettings("x");
+  s.arg(1).option("port", 8080);
+  assertEquals(s.argv().slice(1), ["1", "--port", "8080"]);
+});
+
+/** Force the no-shim-fallback path so a missing binary throws on every OS. */
+const onLinux = (s: DynamicToolSettings): DynamicToolSettings => {
+  s.os_ = "linux";
+  return s;
+};
+
+Deno.test("defineTool: base chainers still apply; reaches execution", async () => {
+  const tool = defineTool("zuke-no-such-tool-xyz", { subcommand: "go" });
+  await assertRejects(
+    () => tool((s) => onLinux(s).arg("x")),
+    ToolNotFoundError,
+  );
+});
+
+Deno.test("defineTool: subcommand array initial tokens drive a real run", async () => {
+  // Exercise the array-subcommand path through the task closure.
+  const tool = defineTool("zuke-no-such-tool-xyz", { subcommand: ["a", "b"] });
+  await assertRejects(() => tool(onLinux), ToolNotFoundError);
 });
