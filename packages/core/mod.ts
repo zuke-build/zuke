@@ -62,3 +62,11 @@ export {
   validateGraph,
 } from "./src/graph.ts";
 export { glob, type GlobOptions, globToRegExp } from "./src/glob.ts";
+export {
+  assert,
+  assertDirectoryExists,
+  assertExists,
+  assertFileExists,
+  AssertionError,
+  fail,
+} from "./src/assert.ts";
