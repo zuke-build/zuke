@@ -18,18 +18,19 @@
 ## `zuke graph`
 
 Shows the build's dependency graph. By default it prints the terminal adjacency
-listing (`target → deps`). With `--output=html` it renders the graph as a
-[Mermaid](https://mermaid.js.org/) flowchart inside a self-contained HTML page,
-writes it to `<repo root>/.zuke/graph.html`, and opens it in your default
-browser. The repo root is located via the
+listing (`target → deps`). With `--output=html` it renders the graph as an
+interactive [Cytoscape](https://js.cytoscape.org/) diagram inside a
+self-contained HTML page, writes it to `<repo root>/.zuke/graph.html`, and opens
+it in your default browser. The repo root is located via the
 [`zuke.json`](./paths.md#repo-root-reporoot) config file (falling back to the
-current directory). The page is interactive: **click a target** to highlight
-everything it connects to — its transitive dependencies and dependents — and
-click the background (or **Reset**) to clear the selection. Mermaid loads from a
-pinned CDN, so the first view needs internet access.
+current directory). The page is interactive: pan and zoom freely, **click a
+target** to highlight everything it connects to — its transitive dependencies
+and dependents — and click the background (or **Reset**) to clear the selection.
+Cytoscape loads from a pinned CDN, so the first view needs internet access.
 
 Targets in a [`group()`](./authoring.md#group-and-partof) are drawn inside a
-labelled box (a Mermaid subgraph); the text listing tags them `[group: name]`.
+labelled box (a Cytoscape compound node); the text listing tags them
+`[group: name]`.
 
 | Option          | Behaviour                                                   |
 | --------------- | ----------------------------------------------------------- |

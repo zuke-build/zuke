@@ -1,21 +1,26 @@
 /**
- * Render a build's dependency graph as a Mermaid flowchart embedded in a
- * self-contained, interactive HTML page.
+ * Render a build's dependency graph as an interactive
+ * [Cytoscape](https://js.cytoscape.org/) diagram embedded in a self-contained
+ * HTML page.
  *
  * Everything here is pure: {@link graphData} extracts nodes and edges from the
- * discovered targets, {@link toMermaid} renders the flowchart source, and
- * {@link renderGraphHtml} wraps it in a page whose nodes are clickable —
- * selecting a target highlights every other target it connects to. The
- * effectful parts (writing the file, opening a browser) live in `graph_view.ts`.
+ * discovered targets, {@link cytoscapeElements} renders the diagram's element
+ * model, and {@link renderGraphHtml} wraps it in a page whose nodes are
+ * clickable — selecting a target highlights every other target it connects to.
+ * The effectful parts (writing the file, opening a browser) live in
+ * `graph_view.ts`.
  *
  * @module
  */
 
 import type { TargetBuilder } from "./target.ts";
 
-/** Pinned Mermaid build loaded by the generated page (needs network to view). */
-const MERMAID_CDN =
-  "https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.esm.min.mjs";
+/** Pinned Cytoscape build loaded by the generated page (needs network to view). */
+const CYTOSCAPE_CDN =
+  "https://cdn.jsdelivr.net/npm/cytoscape@3.30.3/dist/cytoscape.esm.min.mjs";
+/** Pinned dagre layout extension (bundles its own dagre via jsDelivr's `+esm`). */
+const CYTOSCAPE_DAGRE_CDN =
+  "https://cdn.jsdelivr.net/npm/cytoscape-dagre@2.5.0/+esm";
 
 /** A target in the visualised graph. */
 export interface GraphNode {
@@ -57,97 +62,76 @@ export function graphData(targets: Map<string, TargetBuilder>): GraphData {
   return { nodes, edges };
 }
 
-/** Escape a label for a Mermaid quoted-string node (`["..."]`). */
-function mermaidLabel(text: string): string {
-  return text.replace(/"/g, "&quot;");
+/** The `data` payload of a single Cytoscape element (node or edge). */
+export interface CyElementData {
+  /** Synthetic id (`n0`, `g0`, `e0`, …) so the markup is name-independent. */
+  id: string;
+  /** Display label (targets and group boxes). */
+  label?: string;
+  /** The target's description, omitted when empty. */
+  description?: string;
+  /** The compound parent's id, for targets inside a parallel group. */
+  parent?: string;
+  /** Edge source node id (the dependency that runs first). */
+  source?: string;
+  /** Edge target node id (the dependent). */
+  target?: string;
+}
+
+/** A single Cytoscape element: a node, group box, or edge. */
+export interface CyElement {
+  /** The element's data payload. */
+  data: CyElementData;
+  /** Space-separated style classes (`target`, `group`). Absent for edges. */
+  classes?: string;
 }
 
 /**
- * Render {@link GraphData} as Mermaid `flowchart TD` source. Each node gets a
- * synthetic id (`n0`, `n1`, …) so the markup is independent of target names;
- * targets that share a parallel {@link group} are wrapped in a Mermaid
- * `subgraph`. An empty graph renders a single placeholder node.
+ * Render {@link GraphData} as a Cytoscape element model. Each target becomes a
+ * `target` node with a synthetic id (`n0`, `n1`, …); targets that share a
+ * parallel {@link GraphNode.group} are nested inside a compound `group` node
+ * (`g0`, `g1`, …, assigned by first appearance) that Cytoscape draws as a
+ * labelled box. Dependencies become directed edges. An empty graph renders a
+ * single placeholder node.
  */
-export function toMermaid(data: GraphData): string {
+export function cytoscapeElements(data: GraphData): CyElement[] {
   if (data.nodes.length === 0) {
-    return 'flowchart TD\n  empty["No targets defined"]';
+    return [{
+      data: { id: "empty", label: "No targets defined" },
+      classes: "target",
+    }];
   }
+  const elements: CyElement[] = [];
+
+  // Assign a compound parent per group, in order of first appearance.
+  const groupId = new Map<string, string>();
+  for (const n of data.nodes) {
+    const g = n.group;
+    if (g !== undefined && g !== "" && !groupId.has(g)) {
+      const id = `g${groupId.size}`;
+      groupId.set(g, id);
+      elements.push({ data: { id, label: g }, classes: "group" });
+    }
+  }
+
   const id: Record<string, string> = {};
   data.nodes.forEach((n, i) => {
     id[n.name] = `n${i}`;
   });
-  const def = (n: GraphNode) => `${id[n.name]}["${mermaidLabel(n.name)}"]`;
-
-  // Bucket nodes by group (declaration order preserved); ungrouped stay flat.
-  const grouped = new Map<string, GraphNode[]>();
-  const ungrouped: GraphNode[] = [];
-  for (const n of data.nodes) {
-    if (n.group !== undefined && n.group !== "") {
-      const members = grouped.get(n.group) ?? [];
-      members.push(n);
-      grouped.set(n.group, members);
-    } else {
-      ungrouped.push(n);
+  data.nodes.forEach((n, i) => {
+    const d: CyElementData = { id: `n${i}`, label: n.name };
+    if (n.description !== "") d.description = n.description;
+    const g = n.group;
+    if (g !== undefined && g !== "") {
+      const gid = groupId.get(g);
+      if (gid !== undefined) d.parent = gid;
     }
-  }
-
-  const lines = ["flowchart TD"];
-  let g = 0;
-  for (const [name, members] of grouped) {
-    lines.push(`  subgraph g${g}["${mermaidLabel(name)}"]`);
-    for (const n of members) lines.push(`    ${def(n)}`);
-    lines.push("  end");
-    g++;
-  }
-  for (const n of ungrouped) lines.push(`  ${def(n)}`);
-  for (const [from, to] of data.edges) {
-    lines.push(`  ${id[from]} --> ${id[to]}`);
-  }
-  return lines.join("\n");
-}
-
-/** A graph node enriched with its synthetic id and adjacency, for the client. */
-export interface ClientNode {
-  /** Synthetic id matching {@link toMermaid} (`n0`, `n1`, …). */
-  id: string;
-  /** The target's name. */
-  name: string;
-  /** The target's description. */
-  description: string;
-  /** Ids of direct dependencies (targets that run before this one). */
-  deps: string[];
-  /** Ids of direct dependents (targets that depend on this one). */
-  dependents: string[];
-}
-
-/** The adjacency model embedded in the page for client-side highlighting. */
-export interface ClientModel {
-  /** Nodes with their synthetic ids and adjacency. */
-  nodes: ClientNode[];
-  /** Edges as `[fromId, toId]`, in the same order {@link toMermaid} emits them. */
-  edges: Array<[string, string]>;
-}
-
-/** Build the {@link ClientModel} that drives the page's interactivity. */
-export function clientModel(data: GraphData): ClientModel {
-  const nodes: ClientNode[] = data.nodes.map((n, i) => ({
-    id: `n${i}`,
-    name: n.name,
-    description: n.description,
-    deps: [],
-    dependents: [],
-  }));
-  const byName: Record<string, ClientNode> = {};
-  for (const node of nodes) byName[node.name] = node;
-  const edges: Array<[string, string]> = [];
-  for (const [from, to] of data.edges) {
-    const f = byName[from];
-    const t = byName[to];
-    f.dependents.push(t.id);
-    t.deps.push(f.id);
-    edges.push([f.id, t.id]);
-  }
-  return { nodes, edges };
+    elements.push({ data: d, classes: "target" });
+  });
+  data.edges.forEach(([from, to], i) => {
+    elements.push({ data: { id: `e${i}`, source: id[from], target: id[to] } });
+  });
+  return elements;
 }
 
 /** Embed a value as a JS literal, neutralising `<` so it can't end the script. */
@@ -159,16 +143,17 @@ function embed(value: unknown): string {
 
 /**
  * Render a complete, interactive HTML page for a build graph. The page loads
- * Mermaid from a pinned CDN, draws the flowchart, and wires click handlers so
- * selecting a target dims everything except the targets it connects to (its
- * transitive dependencies and dependents); clicking the background resets.
+ * Cytoscape from a pinned CDN, lays the diagram out with the dagre extension,
+ * and wires tap handlers so selecting a target dims everything except the
+ * targets it connects to (its transitive dependencies and dependents); tapping
+ * the background resets.
  */
 export function renderGraphHtml(
   data: GraphData,
   title = "Zuke build graph",
 ): string {
-  const src = embed(toMermaid(data));
-  const model = embed(clientModel(data));
+  const elements = embed(cytoscapeElements(data));
+  const count = embed(data.nodes.length);
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -178,21 +163,16 @@ export function renderGraphHtml(
 <style>
   :root { color-scheme: light dark; }
   * { box-sizing: border-box; }
-  body { margin: 0; font: 14px/1.5 system-ui, -apple-system, sans-serif; color: #1a1a1a; background: #fafafa; }
-  header { display: flex; align-items: center; gap: 1rem; padding: .75rem 1rem; border-bottom: 1px solid #e2e2e2; background: #fff; position: sticky; top: 0; z-index: 1; }
+  html, body { height: 100%; }
+  body { margin: 0; display: flex; flex-direction: column; font: 14px/1.5 system-ui, -apple-system, sans-serif; color: #1a1a1a; background: #fafafa; }
+  header { display: flex; align-items: center; gap: 1rem; padding: .75rem 1rem; border-bottom: 1px solid #e2e2e2; background: #fff; z-index: 1; }
   header h1 { font-size: 1rem; margin: 0; font-weight: 600; }
   .count { color: #666; }
   .spacer { flex: 1; }
   .hint { color: #666; }
   button { font: inherit; padding: .35rem .8rem; border: 1px solid #cfcfcf; border-radius: 6px; background: #fff; cursor: pointer; }
   button:hover { background: #f0f0f0; }
-  #graph { padding: 1.5rem; }
-  #graph svg { max-width: 100%; height: auto; }
-  .node { cursor: pointer; }
-  svg.zuke-selecting .node, svg.zuke-selecting .edgePaths path { opacity: .12; transition: opacity .15s ease; }
-  svg.zuke-selecting .node.zuke-on { opacity: 1; }
-  svg.zuke-selecting .edgePaths path.zuke-on { opacity: .85; }
-  svg.zuke-selecting .node.zuke-active > * { stroke-width: 2.5px; }
+  #graph { flex: 1; min-height: 0; }
   @media (prefers-color-scheme: dark) {
     body { color: #e6e6e6; background: #16181d; }
     header { background: #1d2025; border-color: #2c2f36; }
@@ -210,59 +190,57 @@ export function renderGraphHtml(
   <span class="hint">Click a target to highlight what it connects to</span>
   <button id="reset" type="button">Reset</button>
 </header>
-<main><div id="graph"></div></main>
+<main id="graph"></main>
 <script type="module">
-import mermaid from "${MERMAID_CDN}";
-const SRC = ${src};
-const MODEL = ${model};
-mermaid.initialize({ startOnLoad: false, securityLevel: "loose", flowchart: { useMaxWidth: true } });
-const host = document.getElementById("graph");
-const { svg } = await mermaid.render("zuke-graph", SRC);
-host.innerHTML = svg;
-const root = host.querySelector("svg");
-const byId = new Map(MODEL.nodes.map(function (n) { return [n.id, n]; }));
-document.getElementById("count").textContent = MODEL.nodes.length + " targets";
-const nodeEls = new Map();
-root.querySelectorAll(".node").forEach(function (g) {
-  const m = g.id.match(/(?:^|-)(n\\d+)-\\d+$/);
-  if (m) nodeEls.set(m[1], g);
+import cytoscape from "${CYTOSCAPE_CDN}";
+import dagre from "${CYTOSCAPE_DAGRE_CDN}";
+cytoscape.use(dagre);
+const ELEMENTS = ${elements};
+const COUNT = ${count};
+document.getElementById("count").textContent = COUNT + (COUNT === 1 ? " target" : " targets");
+const dark = matchMedia("(prefers-color-scheme: dark)").matches;
+const palette = dark
+  ? { node: "#23262c", nodeBorder: "#3a3e46", text: "#e6e6e6", edge: "#5b606b", group: "#1f2937", groupBorder: "#3a4658", groupText: "#9aa0aa", accent: "#6ea8fe" }
+  : { node: "#ffffff", nodeBorder: "#cfcfcf", text: "#1a1a1a", edge: "#b3b3b3", group: "#f1f5fb", groupBorder: "#c7d4e6", groupText: "#5a6b86", accent: "#3b82f6" };
+const cy = cytoscape({
+  container: document.getElementById("graph"),
+  elements: ELEMENTS,
+  minZoom: 0.2,
+  maxZoom: 2.5,
+  style: [
+    { selector: "node.target", style: {
+      "label": "data(label)", "text-valign": "center", "text-halign": "center",
+      "text-wrap": "wrap", "text-max-width": 160, "shape": "round-rectangle",
+      "width": "label", "height": "label", "padding": "12px",
+      "background-color": palette.node, "border-width": 1, "border-color": palette.nodeBorder,
+      "color": palette.text, "font-size": 13, "font-weight": 500,
+    } },
+    { selector: "node.group", style: {
+      "label": "data(label)", "text-valign": "top", "text-halign": "center",
+      "text-margin-y": 6, "shape": "round-rectangle", "padding": "18px",
+      "background-color": palette.group, "background-opacity": dark ? 0.5 : 1,
+      "border-width": 1, "border-color": palette.groupBorder, "border-style": "dashed",
+      "color": palette.groupText, "font-size": 12, "font-weight": 600,
+    } },
+    { selector: "edge", style: {
+      "width": 1.5, "line-color": palette.edge, "target-arrow-color": palette.edge,
+      "target-arrow-shape": "triangle", "curve-style": "bezier", "arrow-scale": 0.9,
+    } },
+    { selector: ".active", style: { "border-width": 2.5, "border-color": palette.accent } },
+    { selector: ".faded", style: { "opacity": 0.12 } },
+  ],
+  layout: { name: "dagre", rankDir: "TB", nodeSep: 36, rankSep: 56, edgeSep: 12, fit: true, padding: 30 },
 });
-const edgeEls = Array.prototype.slice.call(root.querySelectorAll(".edgePaths > path"));
-function connected(start) {
-  const seen = new Set([start]);
-  const stack = [start];
-  while (stack.length) {
-    const cur = byId.get(stack.pop());
-    if (!cur) continue;
-    cur.deps.concat(cur.dependents).forEach(function (id) {
-      if (!seen.has(id)) { seen.add(id); stack.push(id); }
-    });
-  }
-  return seen;
-}
-function select(id) {
-  const set = connected(id);
-  root.classList.add("zuke-selecting");
-  nodeEls.forEach(function (g, nid) {
-    g.classList.toggle("zuke-on", set.has(nid));
-    g.classList.toggle("zuke-active", nid === id);
-  });
-  edgeEls.forEach(function (p, i) {
-    const e = MODEL.edges[i] || [];
-    p.classList.toggle("zuke-on", set.has(e[0]) && set.has(e[1]));
-  });
-}
-function reset() {
-  root.classList.remove("zuke-selecting");
-  nodeEls.forEach(function (g) { g.classList.remove("zuke-on", "zuke-active"); });
-  edgeEls.forEach(function (p) { p.classList.remove("zuke-on"); });
-}
-nodeEls.forEach(function (g, id) {
-  g.addEventListener("click", function (ev) { ev.stopPropagation(); select(id); });
+function reset() { cy.elements().removeClass("faded active"); }
+cy.on("tap", "node.target", function (evt) {
+  const n = evt.target;
+  const hood = n.predecessors().union(n.successors()).union(n);
+  cy.elements().addClass("faded");
+  hood.removeClass("faded");
+  cy.nodes(".group").removeClass("faded");
+  n.addClass("active");
 });
-root.addEventListener("click", function (ev) {
-  if (!ev.target.closest(".node")) reset();
-});
+cy.on("tap", function (evt) { if (evt.target === cy) reset(); });
 document.getElementById("reset").addEventListener("click", reset);
 </script>
 </body>
