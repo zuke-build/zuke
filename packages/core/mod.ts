@@ -77,3 +77,12 @@ export {
   type HttpOptions,
   httpText,
 } from "./src/http.ts";
+export {
+  createTarGzip,
+  extractTarGzip,
+  gunzip,
+  gzip,
+  tar,
+  type TarEntry,
+  untar,
+} from "./src/compression.ts";
