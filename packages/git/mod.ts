@@ -6,11 +6,16 @@
  * `GitTasks.run` with `.command(...)` for anything else.
  *
  * ```ts
- * import { GitTasks } from "jsr:@zuke/git";
+ * import { GitTasks, gitInfo } from "jsr:@zuke/git";
  * await GitTasks.commit((s) => s.all().message("ci: release"));
+ * const { branch, shortCommit } = await gitInfo();
  * ```
+ *
+ * The `gitInfo()` helper resolves repository metadata (branch, commit, tag,
+ * dirty state, remote) for versioning and conditional steps.
  *
  * @module
  */
 
 export * from "./src/git.ts";
+export * from "./src/git_info.ts";
