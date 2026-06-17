@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.0](https://github.com/zuke-build/zuke/compare/core-v0.11.0...core-v0.12.0) (2026-06-17)
+
+
+### Features
+
+* **core:** reusable components, multi-value params, dry-run, glob, timeout/retry ([#57](https://github.com/zuke-build/zuke/issues/57)) ([3dc6f17](https://github.com/zuke-build/zuke/commit/3dc6f17873a90ed448e0a3ab564294197f294353))
+
 ## [0.11.0](https://github.com/zuke-build/zuke/compare/core-v0.10.0...core-v0.11.0) (2026-06-16)
 
 
