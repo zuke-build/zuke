@@ -11,6 +11,7 @@ const PACKAGES = [
   "packages/cli",
   "packages/docker",
   "packages/docker-compose",
+  "packages/kubectl",
   "packages/oxlint",
   "packages/eslint",
   "packages/cspell",
