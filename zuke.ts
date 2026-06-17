@@ -39,6 +39,8 @@ const PACKAGES = [
   "biome",
   "vite",
   "tsup",
+  "turbo",
+  "nx",
   "tsx",
   "tsgo",
   "dprint",

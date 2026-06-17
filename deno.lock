@@ -632,6 +632,11 @@
           "jsr:@zuke/core@0"
         ]
       },
+      "packages/nx": {
+        "dependencies": [
+          "jsr:@zuke/core@0"
+        ]
+      },
       "packages/oxlint": {
         "dependencies": [
           "jsr:@zuke/core@0"
@@ -673,6 +678,11 @@
         ]
       },
       "packages/tsx": {
+        "dependencies": [
+          "jsr:@zuke/core@0"
+        ]
+      },
+      "packages/turbo": {
         "dependencies": [
           "jsr:@zuke/core@0"
         ]
