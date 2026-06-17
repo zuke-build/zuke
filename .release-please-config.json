@@ -114,6 +114,14 @@
         { "type": "json", "path": "deno.json", "jsonpath": "$.version" }
       ]
     },
+    "packages/playwright": {
+      "component": "playwright",
+      "release-as": "0.1.0",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        { "type": "json", "path": "deno.json", "jsonpath": "$.version" }
+      ]
+    },
     "packages/tsx": {
       "component": "tsx",
       "release-as": "0.1.0",
@@ -156,6 +164,22 @@
     },
     "packages/gh": {
       "component": "gh",
+      "release-as": "0.1.0",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        { "type": "json", "path": "deno.json", "jsonpath": "$.version" }
+      ]
+    },
+    "packages/terraform": {
+      "component": "terraform",
+      "release-as": "0.1.0",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        { "type": "json", "path": "deno.json", "jsonpath": "$.version" }
+      ]
+    },
+    "packages/tofu": {
+      "component": "tofu",
       "release-as": "0.1.0",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [

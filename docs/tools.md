@@ -38,11 +38,14 @@ raises a `ToolNotFoundError` that names the tool and the fix.
 | `@zuke/cspell`         | `lint`                                                                                                               |
 | `@zuke/jest`           | `run`                                                                                                                |
 | `@zuke/vitest`         | `run`                                                                                                                |
+| `@zuke/playwright`     | `test`, `install`, `showReport`, `codegen`                                                                           |
 | `@zuke/tsx`            | `tsx`, `watch`                                                                                                       |
 | `@zuke/tsgo`           | `tsgo`                                                                                                               |
 | `@zuke/dprint`         | `fmt`, `check`                                                                                                      |
 | `@zuke/gcloud`         | `run` (any command)                                                                                                 |
 | `@zuke/git`            | `init`, `clone`, `add`, `commit`, `status`, `checkout`, `branch`, `tag`, `push`, `pull`, `fetch`, `run`             |
 | `@zuke/gh`             | `run` (any command)                                                                                                 |
+| `@zuke/terraform`      | `init`, `validate`, `plan`, `apply`, `destroy`, `fmt`, `output`                                                      |
+| `@zuke/tofu`           | `init`, `validate`, `plan`, `apply`, `destroy`, `fmt`, `output`                                                      |
 | `@zuke/security`       | `zizmor`, `actionlint`, `gitleaks`, `osvScanner`, `semgrep`, `trivyFs`, `trivyConfig`                                |
 | `@zuke/cmd`            | `exec` (any tool)                                                                                                    |
