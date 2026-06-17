@@ -63,6 +63,23 @@ async function withEnv(
   }
 }
 
+/**
+ * Run `fn` with `console.log`/`console.error` silenced — for tests that drive
+ * the default console reporter (so the job summary is written) but don't want
+ * the banner output cluttering the test log.
+ */
+async function withSilencedConsole(fn: () => Promise<unknown>): Promise<void> {
+  const { log, error } = console;
+  console.log = () => {};
+  console.error = () => {};
+  try {
+    await fn();
+  } finally {
+    console.log = log;
+    console.error = error;
+  }
+}
+
 Deno.test("executes dependencies before dependents, in order", async () => {
   const log: string[] = [];
   class B extends Build {
@@ -315,9 +332,8 @@ Deno.test("auto-detects GitHub Actions from the environment", async () => {
   });
 });
 
-Deno.test("github mode appends a Markdown job summary", async () => {
+Deno.test("github mode appends a Markdown job summary (default console)", async () => {
   const tmp = await Deno.makeTempFile();
-  const { reporter } = recorder();
   class B extends Build {
     a = target().executes(() => {});
     b = target().dependsOn(this.a).executes(() => {});
@@ -326,8 +342,12 @@ Deno.test("github mode appends a Markdown job summary", async () => {
   discoverTargets(build);
 
   try {
+    // The summary is only written on a default-console run (no custom reporter,
+    // not silent); silence the console to keep the banner out of the test log.
     await withEnv("GITHUB_STEP_SUMMARY", tmp, async () => {
-      await execute(build, build.b, { reporter, github: true });
+      await withSilencedConsole(() =>
+        execute(build, build.b, { github: true })
+      );
     });
     const md = await Deno.readTextFile(tmp);
     assertEquals(md.includes("Zuke build"), true);
@@ -335,6 +355,28 @@ Deno.test("github mode appends a Markdown job summary", async () => {
     assertEquals(md.includes("| a | ✔ passed |"), true);
   } finally {
     await Deno.remove(tmp);
+  }
+});
+
+Deno.test("the job summary is NOT written when output is redirected or silent", async () => {
+  const { reporter } = recorder();
+  class B extends Build {
+    work = target().executes(() => {});
+  }
+  const build = new B();
+  discoverTargets(build);
+
+  for (const options of [{ reporter }, { silent: true }] as const) {
+    const tmp = await Deno.makeTempFile();
+    try {
+      await withEnv("GITHUB_STEP_SUMMARY", tmp, async () => {
+        await execute(build, build.work, { ...options, github: true });
+      });
+      // A redirected/silent run must not touch the shared summary file.
+      assertEquals(await Deno.readTextFile(tmp), "");
+    } finally {
+      await Deno.remove(tmp);
+    }
   }
 });
 
@@ -967,7 +1009,6 @@ Deno.test("targets from a reusable component run in dependency order", async () 
 
 Deno.test("an unwritable job-summary file never fails the build", async () => {
   const dir = await Deno.makeTempDir(); // a directory is not writable as a file
-  const { reporter } = recorder();
   class B extends Build {
     work = target().executes(() => {});
   }
@@ -976,8 +1017,12 @@ Deno.test("an unwritable job-summary file never fails the build", async () => {
 
   try {
     let result: BuildResult | undefined;
+    // Default-console run so the summary write is attempted (and fails on the
+    // directory path); console silenced to keep the banner quiet.
     await withEnv("GITHUB_STEP_SUMMARY", dir, async () => {
-      result = await execute(b, b.work, { reporter, github: true });
+      await withSilencedConsole(async () => {
+        result = await execute(b, b.work, { github: true });
+      });
     });
     assertEquals(result?.ok, true);
   } finally {

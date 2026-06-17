@@ -715,6 +715,13 @@ export async function execute(
 ): Promise<BuildResult> {
   const reporter = options.reporter ??
     (options.silent ? silentReporter : consoleReporter);
+  // The GitHub job summary is a real-world output side effect (it appends to a
+  // shared file named by GITHUB_STEP_SUMMARY). Only write it when output goes to
+  // the default console — i.e. neither silenced nor redirected to a custom
+  // reporter. This keeps embedded/test runs (a build's own test suite calls
+  // `execute` with `silent`/a custom reporter) from polluting the workflow
+  // summary, while a normal CLI run still writes it.
+  const writesToConsole = options.reporter === undefined && !options.silent;
   const github = options.github ?? inGitHubActions();
   const style = resolveStyle(options, github);
   const skip = new Set(options.skip ?? []);
@@ -807,7 +814,9 @@ export async function execute(
 
   const totalMs = performance.now() - overallStart;
   reporter.info(summaryBlock(style, run.reports, totalMs, result.ok));
-  if (style.github) writeJobSummary(run.reports, totalMs, result.ok);
+  if (style.github && writesToConsole) {
+    writeJobSummary(run.reports, totalMs, result.ok);
+  }
   await build.onFinish(result);
   return result;
 }
