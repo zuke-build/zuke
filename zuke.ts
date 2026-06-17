@@ -30,6 +30,8 @@ const PACKAGES = [
   "docker",
   "docker-compose",
   "kubectl",
+  "helm",
+  "kustomize",
   "oxlint",
   "eslint",
   "cspell",

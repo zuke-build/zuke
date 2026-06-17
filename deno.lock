@@ -622,6 +622,11 @@
           "jsr:@zuke/core@0"
         ]
       },
+      "packages/helm": {
+        "dependencies": [
+          "jsr:@zuke/core@0"
+        ]
+      },
       "packages/jest": {
         "dependencies": [
           "jsr:@zuke/core@0"
@@ -638,6 +643,11 @@
         ]
       },
       "packages/kubectl": {
+        "dependencies": [
+          "jsr:@zuke/core@0"
+        ]
+      },
+      "packages/kustomize": {
         "dependencies": [
           "jsr:@zuke/core@0"
         ]
