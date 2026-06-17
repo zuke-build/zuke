@@ -24,14 +24,14 @@ order. Inspired by [NUKE](https://nuke.build/) for .NET.
 - **Packages:** `jsr:@zuke/core` plus typed tool wrappers `jsr:@zuke/deno`,
   `jsr:@zuke/npm`, `jsr:@zuke/bun`, `jsr:@zuke/pnpm`, `jsr:@zuke/yarn`,
   `jsr:@zuke/docker`, `jsr:@zuke/docker-compose`, `jsr:@zuke/kubectl`,
-  `jsr:@zuke/helm`, `jsr:@zuke/kustomize`, `jsr:@zuke/oxlint`, `jsr:@zuke/eslint`, `jsr:@zuke/biome`, `jsr:@zuke/knip`,
-  `jsr:@zuke/cspell`, `jsr:@zuke/jest`, `jsr:@zuke/vitest`,
-  `jsr:@zuke/playwright`, `jsr:@zuke/cypress`, `jsr:@zuke/vite`,
-  `jsr:@zuke/tsup`, `jsr:@zuke/turbo`, `jsr:@zuke/nx`, `jsr:@zuke/jsr`,
-  `jsr:@zuke/tsx`, `jsr:@zuke/tsgo`, `jsr:@zuke/dprint`,
-  `jsr:@zuke/gcloud`, `jsr:@zuke/git`, `jsr:@zuke/gh`, `jsr:@zuke/terraform`,
-  `jsr:@zuke/tofu`, `jsr:@zuke/security`, `jsr:@zuke/cmd` (raw shell via
-  `jsr:@zuke/core/shell`)
+  `jsr:@zuke/helm`, `jsr:@zuke/kustomize`, `jsr:@zuke/oxlint`,
+  `jsr:@zuke/eslint`, `jsr:@zuke/biome`, `jsr:@zuke/knip`, `jsr:@zuke/cspell`,
+  `jsr:@zuke/jest`, `jsr:@zuke/vitest`, `jsr:@zuke/playwright`,
+  `jsr:@zuke/cypress`, `jsr:@zuke/vite`, `jsr:@zuke/tsup`, `jsr:@zuke/turbo`,
+  `jsr:@zuke/nx`, `jsr:@zuke/jsr`, `jsr:@zuke/tsx`, `jsr:@zuke/tsgo`,
+  `jsr:@zuke/dprint`, `jsr:@zuke/gcloud`, `jsr:@zuke/git`, `jsr:@zuke/gh`,
+  `jsr:@zuke/terraform`, `jsr:@zuke/tofu`, `jsr:@zuke/security`, `jsr:@zuke/cmd`
+  (raw shell via `jsr:@zuke/core/shell`)
 - **Build file:** `zuke.ts` in your project root
 - **Zero runtime dependencies**
 
@@ -56,6 +56,10 @@ class MyBuild extends Build {
   (throw on failure, capture output) and is injection-safe.
 - **Small and explicit.** A tiny core: discover targets, build a graph, sort,
   run. No magic, no plugins to learn (yet).
+- **Code-first CI.** Declare your pipeline in the build with
+  `cicd({ provider: "github" })` — the provider is the only required field — and
+  Zuke generates GitHub Actions, GitLab CI, or Azure Pipelines YAML,
+  regenerating it whenever the build runs (and verifying it on CI).
 
 ## Install
 
@@ -87,8 +91,8 @@ Full documentation lives in [`docs/`](./docs/):
   execution semantics.
 - [Parameters](./docs/parameters.md) — typed build inputs from flags and env
   vars (`parameter()`, `this.x.value`).
-- [Authoring API](./docs/authoring.md) — `target()`, `Build`, `run()`, and
-  gotchas.
+- [Authoring API](./docs/authoring.md) — `target()`, `Build`, `run()`,
+  code-first CI generation (`cicd()`), and gotchas.
 - [Shell wrapper (`$`)](./docs/shell.md) — ergonomic, injection-safe process
   execution.
 - [Paths (`absolutePath`)](./docs/paths.md) — the fluent path type.
@@ -96,7 +100,8 @@ Full documentation lives in [`docs/`](./docs/):
 - [Using Zuke in a Node/npm project](./docs/node-projects.md) — drive a Node
   build with Deno.
 - [CLI reference](./docs/cli.md) — commands and flags.
-- [Programmatic API](./docs/programmatic-api.md) — drive Zuke from your own code.
+- [Programmatic API](./docs/programmatic-api.md) — drive Zuke from your own
+  code.
 
 ## Development
 
@@ -124,14 +129,15 @@ CI runs `deno task ci` on every push and pull request (see
 
 ## Security
 
-As a build tool that runs in other people's pipelines, Zuke treats
-supply-chain integrity as a first-class concern: zero runtime dependencies,
-injection-free `Deno.Command` execution, OIDC trusted publishing with
-provenance, least-privilege and SHA-pinned CI, a frozen lockfile, and
-continuous scanning. Scanning runs as a typed Zuke target — `deno task zuke
-security` drives zizmor, actionlint, and gitleaks through
-[`@zuke/security`](./packages/security) (which also wraps osv-scanner, semgrep,
-and Trivy) — alongside CodeQL and OpenSSF Scorecard for the Security tab.
+As a build tool that runs in other people's pipelines, Zuke treats supply-chain
+integrity as a first-class concern: zero runtime dependencies, injection-free
+`Deno.Command` execution, OIDC trusted publishing with provenance,
+least-privilege and SHA-pinned CI, a frozen lockfile, and continuous scanning.
+Scanning runs as a typed Zuke target — `deno task zuke
+security` drives zizmor,
+actionlint, and gitleaks through [`@zuke/security`](./packages/security) (which
+also wraps osv-scanner, semgrep, and Trivy) — alongside CodeQL and OpenSSF
+Scorecard for the Security tab.
 
 See [`SECURITY.md`](./SECURITY.md) for the full posture and how to report a
 vulnerability.

@@ -41,6 +41,22 @@ export function assertEquals<T>(actual: T, expected: T, msg?: string): void {
   }
 }
 
+/** Assert that `haystack` contains the substring `needle`. */
+export function assertStringIncludes(
+  haystack: string,
+  needle: string,
+  msg?: string,
+): void {
+  if (!haystack.includes(needle)) {
+    throw new Error(
+      msg ??
+        `Expected string to contain substring.\n  substring: ${
+          JSON.stringify(needle)
+        }\n  actual:    ${JSON.stringify(haystack)}`,
+    );
+  }
+}
+
 /** Assert that `fn` throws; optionally check the error type and message. */
 export function assertThrows(
   fn: () => unknown,

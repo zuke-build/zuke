@@ -2,22 +2,22 @@
 
 Guidance for working in this repository. Read this before making changes.
 
-Zuke is a code-first, strongly-typed build automation system for Deno/TypeScript
-(inspired by [NUKE](https://nuke.build/)).
+Zuke is a code-first, strongly-typed build automation system for
+Deno/TypeScript.
 
 ## Tech stack
 
-- **Runtime & toolchain:** [Deno](https://deno.com/) (2.x). All tooling —
-  test runner, formatter, linter, type-checker, coverage — is the built-in
-  `deno` CLI. No Node, npm, or external build tools.
+- **Runtime & toolchain:** [Deno](https://deno.com/) (2.x). All tooling — test
+  runner, formatter, linter, type-checker, coverage — is the built-in `deno`
+  CLI. No Node, npm, or external build tools.
 - **Language:** TypeScript, strict mode (Deno's default).
 - **Distribution:** [JSR](https://jsr.io/) as a workspace of four packages:
-  `@zuke/core` (exports `.`, `./shell`, `./tooling`), `@zuke/deno`,
-  `@zuke/npm`, `@zuke/cmd`. The npm org `@zuke-build` is reserved for future
-  npm distribution (1:1 name mapping).
-- **No runtime dependencies.** The library is dependency-free; tests use a
-  local assertion helper (`tests/_assert.ts`) rather than a third-party assert
-  library so the suite runs with zero network access.
+  `@zuke/core` (exports `.`, `./shell`, `./tooling`), `@zuke/deno`, `@zuke/npm`,
+  `@zuke/cmd`. The npm org `@zuke-build` is reserved for future npm distribution
+  (1:1 name mapping).
+- **No runtime dependencies.** The library is dependency-free; tests use a local
+  assertion helper (`tests/_assert.ts`) rather than a third-party assert library
+  so the suite runs with zero network access.
 
 ### TypeScript 7 / `tsgo`
 
@@ -44,11 +44,11 @@ update the `check` task and CI accordingly. Do not bolt on a parallel
    - The single sanctioned escape is a `// @ts-expect-error` **in a test** that
      deliberately exercises a runtime guard against type-unsafe input, with a
      comment explaining why. Do not use it in `src/`.
-2. **All linting, formatting, type-checking, and tests must always pass.**
-   Run `deno task ci` before committing; it must be green.
-3. **Keep test coverage at 95%+ (lines and branches) at all times.** Enforced
-   by `scripts/check-coverage.ts` in the `cov` task and in CI. New code needs
-   new tests in the same change.
+2. **All linting, formatting, type-checking, and tests must always pass.** Run
+   `deno task ci` before committing; it must be green.
+3. **Keep test coverage at 95%+ (lines and branches) at all times.** Enforced by
+   `scripts/check-coverage.ts` in the `cov` task and in CI. New code needs new
+   tests in the same change.
 4. **Document the public API.** Every exported symbol carries a JSDoc comment;
    match the existing density and tone when adding to it.
 5. **Tests are hermetic and fast.** No network, no reliance on ambient tools.
@@ -57,16 +57,16 @@ update the `check` task and CI accordingly. Do not bolt on a parallel
 
 ## Commands
 
-| Task | Command |
-|---|---|
-| Run tests | `deno task test` |
-| Coverage + gate (95%) | `deno task cov` |
-| Human-readable coverage table | `deno task cov:report` |
-| Type-check everything | `deno task check` |
-| Format / check formatting | `deno task fmt` / `deno task fmt:check` |
-| Lint | `deno task lint` |
-| Spell-check | `deno task spell` |
-| Full pre-commit / CI gate | `deno task ci` |
+| Task                          | Command                                 |
+| ----------------------------- | --------------------------------------- |
+| Run tests                     | `deno task test`                        |
+| Coverage + gate (95%)         | `deno task cov`                         |
+| Human-readable coverage table | `deno task cov:report`                  |
+| Type-check everything         | `deno task check`                       |
+| Format / check formatting     | `deno task fmt` / `deno task fmt:check` |
+| Lint                          | `deno task lint`                        |
+| Spell-check                   | `deno task spell`                       |
+| Full pre-commit / CI gate     | `deno task ci`                          |
 
 ## Repository layout
 
@@ -100,13 +100,13 @@ zuke.ts                   # Zuke's own build (runnable example)
 - **Tool wrappers** (`@zuke/deno`, `@zuke/npm`, `@zuke/cmd`) follow a
   settings-lambda style. Settings classes extend `ToolSettings` from
   `@zuke/core/tooling`; `buildArgs()` must stay pure (no I/O) so argv
-  construction is unit-testable. Execution reuses `Command` from `shell.ts`.
-  New wrapper packages are workspace siblings that depend only on core.
+  construction is unit-testable. Execution reuses `Command` from `shell.ts`. New
+  wrapper packages are workspace siblings that depend only on core.
 
 ## Good open-source practices to follow
 
-- **Small, focused changes** with clear, descriptive commit messages
-  (imperative mood; explain the *why*). Keep PRs reviewable.
+- **Small, focused changes** with clear, descriptive commit messages (imperative
+  mood; explain the _why_). Keep PRs reviewable.
 - **Conventional, semantic versioning** for releases; keep a changelog as the
   project grows.
 - **Keep code snippets out of commit message bodies.** release-please parses
