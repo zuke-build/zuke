@@ -28,6 +28,9 @@ raises a `ToolNotFoundError` that names the tool and the fix.
 | ---------------------- | -------------------------------------------------------------------------------------------------------------------- |
 | `@zuke/deno`           | `run`, `test`, `check`, `fmt`, `lint`, `cache`, `coverage`, `task`                                                   |
 | `@zuke/npm`            | `install`, `ci`, `run`, `exec`, `publish`, `version`                                                                 |
+| `@zuke/bun`            | `install`, `add`, `remove`, `run`, `x`, `test`                                                                       |
+| `@zuke/pnpm`           | `install`, `add`, `remove`, `run`, `dlx`, `publish`                                                                  |
+| `@zuke/yarn`           | `install`, `add`, `remove`, `run`, `dlx`                                                                             |
 | `@zuke/docker`         | `build`, `run`, `exec`, `push`, `pull`, `tag`, `login`, `images`, `ps`, `stop`, `start`, `rm`, `rmi`, `save`, `load` |
 | `@zuke/docker-compose` | `up`, `down`, `build`, `pull`, `push`, `run`, `exec`, `logs`, `ps`, `config`, `start`, `stop`, `restart`, `rm`       |
 | `@zuke/oxlint`         | `lint`                                                                                                               |

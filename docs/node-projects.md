@@ -77,3 +77,12 @@ if (import.meta.main) {
 Now `npm run build` runs the default pipeline, `npm run build -- test` runs one
 target, and `npm run build -- --list` / `-- graph` show what the build can do
 — no one has to learn Deno commands.
+
+## Other package managers
+
+The same pattern applies to the other JS package managers, each with its own
+wrapper: [`@zuke/bun`](../packages/bun) (`BunTasks` — also `bun test`),
+[`@zuke/pnpm`](../packages/pnpm) (`PnpmTasks`, with `--filter` for workspaces),
+and [`@zuke/yarn`](../packages/yarn) (`YarnTasks`, Classic and Berry). For
+example, `await PnpmTasks.install((s) => s.frozenLockfile())` or
+`await BunTasks.run((s) => s.script("build"))`.

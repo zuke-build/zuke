@@ -26,6 +26,30 @@
         { "type": "json", "path": "deno.json", "jsonpath": "$.version" }
       ]
     },
+    "packages/bun": {
+      "component": "bun",
+      "release-as": "0.1.0",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        { "type": "json", "path": "deno.json", "jsonpath": "$.version" }
+      ]
+    },
+    "packages/pnpm": {
+      "component": "pnpm",
+      "release-as": "0.1.0",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        { "type": "json", "path": "deno.json", "jsonpath": "$.version" }
+      ]
+    },
+    "packages/yarn": {
+      "component": "yarn",
+      "release-as": "0.1.0",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        { "type": "json", "path": "deno.json", "jsonpath": "$.version" }
+      ]
+    },
     "packages/cmd": {
       "component": "cmd",
       "changelog-path": "CHANGELOG.md",

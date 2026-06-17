@@ -1,0 +1,16 @@
+{
+  "name": "@zuke/yarn",
+  "version": "0.0.0",
+  "description": "Typed yarn CLI task wrappers for Zuke builds — install, add, remove, run, and dlx via an injection-free settings-lambda API.",
+  "exports": {
+    ".": "./mod.ts"
+  },
+  "imports": {
+    "@zuke/core": "jsr:@zuke/core@^0"
+  },
+  "publish": {
+    "exclude": [
+      "tests/"
+    ]
+  }
+}
