@@ -34,6 +34,8 @@ raises a `ToolNotFoundError` that names the tool and the fix.
 | `@zuke/docker`         | `build`, `run`, `exec`, `push`, `pull`, `tag`, `login`, `images`, `ps`, `stop`, `start`, `rm`, `rmi`, `save`, `load` |
 | `@zuke/docker-compose` | `up`, `down`, `build`, `pull`, `push`, `run`, `exec`, `logs`, `ps`, `config`, `start`, `stop`, `restart`, `rm`       |
 | `@zuke/kubectl`        | `apply`, `create`, `delete`, `get`, `describe`, `logs`, `exec`, `rollout`, `scale`, `setImage`, `patch`, `portForward`, `wait`, `top` |
+| `@zuke/helm`           | `install`, `upgrade`, `uninstall`, `template`, `lint`, `dependencyUpdate`, `repoAdd`, `package`                      |
+| `@zuke/kustomize`      | `build`, `editSetImage`                                                                                              |
 | `@zuke/oxlint`         | `lint`                                                                                                               |
 | `@zuke/eslint`         | `lint`                                                                                                               |
 | `@zuke/biome`          | `check`, `format`, `lint`, `ci`                                                                                      |

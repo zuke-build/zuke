@@ -1,0 +1,16 @@
+{
+  "name": "@zuke/kustomize",
+  "version": "0.0.0",
+  "description": "Typed Kustomize CLI task wrappers for Zuke builds — build and edit set image via an injection-free settings-lambda API.",
+  "exports": {
+    ".": "./mod.ts"
+  },
+  "imports": {
+    "@zuke/core": "jsr:@zuke/core@^0"
+  },
+  "publish": {
+    "exclude": [
+      "tests/"
+    ]
+  }
+}
