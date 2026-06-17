@@ -86,3 +86,10 @@ export {
   type TarEntry,
   untar,
 } from "./src/compression.ts";
+export {
+  type DownloadFn,
+  hostPlatform,
+  type InstallPlatform,
+  installRelease,
+  type InstallReleaseOptions,
+} from "./src/install.ts";

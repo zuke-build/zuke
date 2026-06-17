@@ -5,28 +5,28 @@
 `target()` returns a chainable `TargetBuilder`. Everything is optional except a
 body, which is required before the target can run.
 
-| Method                   | Signature                                   | Purpose                                                |
-| ------------------------ | ------------------------------------------- | ------------------------------------------------------ |
-| `.description(text)`     | `(s: string) => this`                       | Summary shown in `--list`.                             |
-| `.dependsOn(...targets)` | `(...t: Target[]) => this`                  | Hard prerequisites; run first, transitively.           |
-| `.executes(fn)`          | `(fn: () => void \| Promise<void>) => this` | The body. May be async.                                |
-| `.before(...targets)`    | `(...t: Target[]) => this`                  | Soft ordering: run before these _if both are planned_. |
-| `.after(...targets)`     | `(...t: Target[]) => this`                  | Soft ordering: run after these _if both are planned_.  |
-| `.triggers(...targets)`  | `(...t: Target[]) => this`                  | Pull these into the plan and run them _after_ this.    |
-| `.dependentFor(...targets)` | `(...t: Target[]) => this`               | Reverse of `dependsOn`: run this _before_ those.       |
-| `.inputs(...paths)`      | `(...p: PathLike[]) => this`                | Cache inputs: skip the target when these are unchanged. |
-| `.outputs(...paths)`     | `(...p: PathLike[]) => this`                | Cache outputs: a hit also requires these to still exist. |
-| `.onlyWhen(condition)`   | `(c: () => boolean \| Promise<boolean>) => this` | Run only when the condition holds, else skip.    |
-| `.requires(...params)`   | `(...p: Parameter[]) => this`               | Fail the target unless these parameters are set.       |
-| `.proceedAfterFailure()` | `() => this`                                | Keep the build going if this target fails.             |
-| `.always()`              | `() => this`                                | Run for cleanup even after the build has failed.       |
-| `.unlisted()`            | `() => this`                                | Hide the target from `--list`/`--help`.                |
-| `.cacheKey(fn)`          | `(fn: () => string \| Promise<string>) => this` | Extra (non-file) input to the cache fingerprint. |
-| `.produces(...paths)`    | `(...p: PathLike[]) => this`                | Declare artifact paths this target produces.           |
-| `.consumes(...targets)`  | `(...t: Target[]) => this`                  | Depend on targets and use their `produces` artifacts.  |
-| `.whenSkipped(behavior)` | `("run-dependencies" \| "skip-dependencies") => this` | On skip, also skip exclusive deps.    |
-| `.timeout(ms)`           | `(ms: number) => this`                      | Fail the body if it runs longer than `ms` (per attempt). |
-| `.retry(times, delayMs?)`| `(times: number, delayMs?: number) => this` | Retry the body on failure, optionally pausing between. |
+| Method                      | Signature                                             | Purpose                                                  |
+| --------------------------- | ----------------------------------------------------- | -------------------------------------------------------- |
+| `.description(text)`        | `(s: string) => this`                                 | Summary shown in `--list`.                               |
+| `.dependsOn(...targets)`    | `(...t: Target[]) => this`                            | Hard prerequisites; run first, transitively.             |
+| `.executes(fn)`             | `(fn: () => void \| Promise<void>) => this`           | The body. May be async.                                  |
+| `.before(...targets)`       | `(...t: Target[]) => this`                            | Soft ordering: run before these _if both are planned_.   |
+| `.after(...targets)`        | `(...t: Target[]) => this`                            | Soft ordering: run after these _if both are planned_.    |
+| `.triggers(...targets)`     | `(...t: Target[]) => this`                            | Pull these into the plan and run them _after_ this.      |
+| `.dependentFor(...targets)` | `(...t: Target[]) => this`                            | Reverse of `dependsOn`: run this _before_ those.         |
+| `.inputs(...paths)`         | `(...p: PathLike[]) => this`                          | Cache inputs: skip the target when these are unchanged.  |
+| `.outputs(...paths)`        | `(...p: PathLike[]) => this`                          | Cache outputs: a hit also requires these to still exist. |
+| `.onlyWhen(condition)`      | `(c: () => boolean \| Promise<boolean>) => this`      | Run only when the condition holds, else skip.            |
+| `.requires(...params)`      | `(...p: Parameter[]) => this`                         | Fail the target unless these parameters are set.         |
+| `.proceedAfterFailure()`    | `() => this`                                          | Keep the build going if this target fails.               |
+| `.always()`                 | `() => this`                                          | Run for cleanup even after the build has failed.         |
+| `.unlisted()`               | `() => this`                                          | Hide the target from `--list`/`--help`.                  |
+| `.cacheKey(fn)`             | `(fn: () => string \| Promise<string>) => this`       | Extra (non-file) input to the cache fingerprint.         |
+| `.produces(...paths)`       | `(...p: PathLike[]) => this`                          | Declare artifact paths this target produces.             |
+| `.consumes(...targets)`     | `(...t: Target[]) => this`                            | Depend on targets and use their `produces` artifacts.    |
+| `.whenSkipped(behavior)`    | `("run-dependencies" \| "skip-dependencies") => this` | On skip, also skip exclusive deps.                       |
+| `.timeout(ms)`              | `(ms: number) => this`                                | Fail the body if it runs longer than `ms` (per attempt). |
+| `.retry(times, delayMs?)`   | `(times: number, delayMs?: number) => this`           | Retry the body on failure, optionally pausing between.   |
 
 `dependsOn` pulls targets into the plan; `before`/`after` only reorder targets
 that are _already_ in the plan — they never pull new targets in.
@@ -55,7 +55,9 @@ checks = group();
 clean = target().executes(/* ... */);
 lint = target().dependsOn(this.clean).partOf(this.checks).executes(/* ... */);
 format = target().dependsOn(this.clean).partOf(this.checks).executes(/* ... */);
-typecheck = target().dependsOn(this.clean).partOf(this.checks).executes(/* ... */);
+typecheck = target().dependsOn(this.clean).partOf(this.checks).executes(
+  /* ... */
+);
 
 deploy = target()
   .dependsOn(this.checks) // waits for lint, format, and typecheck
@@ -64,16 +66,17 @@ deploy = target()
 
 Here `clean` runs first (all three depend on it), then `lint`/`format`/
 `typecheck` run together, then `deploy`. Grouping is a property of the members,
-so they batch whenever they run — no `--parallel` flag needed. Ungrouped
-targets stay serialized unless you opt the whole build into `--parallel`.
-Declare the group field above the targets that join it.
+so they batch whenever they run — no `--parallel` flag needed. Ungrouped targets
+stay serialized unless you opt the whole build into `--parallel`. Declare the
+group field above the targets that join it.
 
 ### Reusable components
 
 A **component** is just a function that returns a bundle of related targets.
 Assign it to a build field; discovery recurses into the bundle and names each
-target with a dotted path (`release.publish`), runnable as `zuke release.publish`
-and shown in the graph. Components compose, nest, and take options.
+target with a dotted path (`release.publish`), runnable as
+`zuke release.publish` and shown in the graph. Components compose, nest, and
+take options.
 
 ```ts
 // A shared, configurable component.
@@ -93,10 +96,10 @@ class MyBuild extends Build {
 }
 ```
 
-Targets reference each other across components via the field (`this.release.publish`),
-so declare a component field above anything that depends on it. Components can
-also declare [parameters](./parameters.md) — they're discovered under the same
-dotted path.
+Targets reference each other across components via the field
+(`this.release.publish`), so declare a component field above anything that
+depends on it. Components can also declare [parameters](./parameters.md) —
+they're discovered under the same dotted path.
 
 ### Incremental caching — `.inputs()` / `.outputs()`
 
@@ -247,6 +250,34 @@ use a fixed mtime, so output is reproducible.
 import { createTarGzip } from "jsr:@zuke/core";
 
 await createTarGzip(["dist/app.js", "README.md"], "artifact.tar.gz");
+```
+
+### Tool install — `installRelease()`
+
+Prepare an environment by fetching a CLI one of Zuke's wrappers drives, then
+point the wrapper at it. `installRelease({ name, url, destDir })` resolves a
+per-platform URL (via the `({ os, arch }) => string` callback and
+`hostPlatform()`), downloads it, and returns the installed binary's
+`AbsolutePath` — ready for `.toolPath(...)`. Set `archive: "tar.gz"` to unpack a
+tarball and take `binaryPath` from inside; the default `"raw"` installs the
+download as the binary itself. The `download` seam keeps it unit-testable, and
+on Windows the filename gains an `.exe` suffix. Zip archives are not yet
+supported, so this targets the Unix runners where most release tarballs live.
+
+```ts
+import { installRelease } from "jsr:@zuke/core";
+import { CmdTasks } from "jsr:@zuke/cmd";
+
+const arches = { x86_64: "amd64", aarch64: "arm64" } as const;
+const bin = await installRelease({
+  name: "helm",
+  destDir: ".zuke/bin",
+  archive: "tar.gz",
+  binaryPath: `${Deno.build.os}-${arches[Deno.build.arch]}/helm`,
+  url: ({ os, arch }) =>
+    `https://get.helm.sh/helm-v3.14.0-${os}-${arches[arch]}.tar.gz`,
+});
+await CmdTasks.exec(String(bin), (s) => s.args("version"));
 ```
 
 ### Host detection — `isCI()` / `ciHost()`
