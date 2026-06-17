@@ -74,7 +74,7 @@ Deno.test("graphData skips edges to undiscovered or unnamed dependencies", () =>
   assertEquals(data.edges, []);
 });
 
-Deno.test("cytoscapeElements renders synthetic ids, descriptions, and edges", () => {
+Deno.test("cytoscapeElements renders synthetic ids, descriptions, depth, and edges", () => {
   const data: GraphData = {
     nodes: [
       { name: "a", description: "first" },
@@ -83,10 +83,27 @@ Deno.test("cytoscapeElements renders synthetic ids, descriptions, and edges", ()
     edges: [["a", "c"]],
   };
   assertEquals(cytoscapeElements(data), [
-    { data: { id: "n0", label: "a", description: "first" }, classes: "target" },
-    { data: { id: "n1", label: "c" }, classes: "target" },
+    {
+      data: { id: "n0", label: "a", depth: 0, description: "first" },
+      classes: "target",
+    },
+    { data: { id: "n1", label: "c", depth: 1 }, classes: "target" },
     { data: { id: "e0", source: "n0", target: "n1" } },
   ]);
+});
+
+Deno.test("cytoscapeElements records the longest-path depth of each target", () => {
+  // Diamond: a → b, a → c, b → d, c → d. Depth is the longest chain, so d is 2.
+  const data: GraphData = {
+    nodes: ["a", "b", "c", "d"].map((name) => ({ name, description: "" })),
+    edges: [["a", "b"], ["a", "c"], ["b", "d"], ["c", "d"]],
+  };
+  const depth = Object.fromEntries(
+    cytoscapeElements(data)
+      .filter((e) => e.classes === "target")
+      .map((e) => [e.data.label, e.data.depth]),
+  );
+  assertEquals(depth, { a: 0, b: 1, c: 1, d: 2 });
 });
 
 Deno.test("cytoscapeElements renders a placeholder for an empty graph", () => {

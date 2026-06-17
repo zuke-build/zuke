@@ -74,6 +74,12 @@ export interface CyElementData {
   label?: string;
   /** The target's description, omitted when empty. */
   description?: string;
+  /**
+   * The target's dependency depth: the longest chain of `dependsOn` references
+   * leading to it (`0` for a target with no dependencies). The page maps depth
+   * onto a colour ramp so the graph reads from roots to leaves.
+   */
+  depth?: number;
   /** The compound parent's id, for targets inside a parallel group. */
   parent?: string;
   /** Edge source node id (the dependency that runs first). */
@@ -122,8 +128,27 @@ export function cytoscapeElements(data: GraphData): CyElement[] {
   data.nodes.forEach((n, i) => {
     id[n.name] = `n${i}`;
   });
+
+  // Longest-path depth per target: relax edges over the DAG until stable.
+  const depth: Record<string, number> = {};
+  for (const n of data.nodes) depth[n.name] = 0;
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const [from, to] of data.edges) {
+      if (depth[to] < depth[from] + 1) {
+        depth[to] = depth[from] + 1;
+        changed = true;
+      }
+    }
+  }
+
   data.nodes.forEach((n, i) => {
-    const d: CyElementData = { id: `n${i}`, label: n.name };
+    const d: CyElementData = {
+      id: `n${i}`,
+      label: n.name,
+      depth: depth[n.name],
+    };
     if (n.description !== "") d.description = n.description;
     const g = n.group;
     if (g !== undefined && g !== "") {
@@ -165,24 +190,23 @@ export function renderGraphHtml(
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>${title}</title>
 <style>
-  :root { color-scheme: light dark; }
+  :root { color-scheme: dark; }
   * { box-sizing: border-box; }
   html, body { height: 100%; }
-  body { margin: 0; display: flex; flex-direction: column; font: 14px/1.5 system-ui, -apple-system, sans-serif; color: #1a1a1a; background: #fafafa; }
-  header { display: flex; align-items: center; gap: 1rem; padding: .75rem 1rem; border-bottom: 1px solid #e2e2e2; background: #fff; z-index: 1; }
-  header h1 { font-size: 1rem; margin: 0; font-weight: 600; }
-  .count { color: #666; }
+  body { margin: 0; display: flex; flex-direction: column; font: 14px/1.5 ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace; color: #c8d3e0; background: #070b12; }
+  header { display: flex; align-items: center; gap: 1rem; padding: .75rem 1rem; border-bottom: 1px solid #161d2b; background: #0a0f1a; z-index: 1; }
+  header h1 { font-size: 1rem; margin: 0; font-weight: 700; color: #e6edf6; letter-spacing: .01em; }
+  .count { color: #5eead4; }
   .spacer { flex: 1; }
-  .hint { color: #666; }
-  button { font: inherit; padding: .35rem .8rem; border: 1px solid #cfcfcf; border-radius: 6px; background: #fff; cursor: pointer; }
-  button:hover { background: #f0f0f0; }
-  #graph { flex: 1; min-height: 0; }
-  @media (prefers-color-scheme: dark) {
-    body { color: #e6e6e6; background: #16181d; }
-    header { background: #1d2025; border-color: #2c2f36; }
-    .count, .hint { color: #9aa0aa; }
-    button { background: #23262c; border-color: #3a3e46; color: inherit; }
-    button:hover { background: #2c3037; }
+  .hint { color: #6b7689; }
+  button { font: inherit; padding: .35rem .8rem; border: 1px solid #243049; border-radius: 6px; background: #111827; color: #c8d3e0; cursor: pointer; }
+  button:hover { background: #182236; border-color: #34507e; }
+  #graph {
+    flex: 1; min-height: 0; background-color: #070b12;
+    background-image:
+      linear-gradient(rgba(125, 160, 220, 0.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(125, 160, 220, 0.05) 1px, transparent 1px);
+    background-size: 28px 28px;
   }
 </style>
 </head>
@@ -210,10 +234,18 @@ try {
 const ELEMENTS = ${elements};
 const COUNT = ${count};
 document.getElementById("count").textContent = COUNT + (COUNT === 1 ? " target" : " targets");
-const dark = matchMedia("(prefers-color-scheme: dark)").matches;
-const palette = dark
-  ? { node: "#23262c", nodeBorder: "#3a3e46", text: "#e6e6e6", edge: "#5b606b", group: "#1f2937", groupBorder: "#3a4658", groupText: "#9aa0aa", accent: "#6ea8fe" }
-  : { node: "#ffffff", nodeBorder: "#cfcfcf", text: "#1a1a1a", edge: "#b3b3b3", group: "#f1f5fb", groupBorder: "#c7d4e6", groupText: "#5a6b86", accent: "#3b82f6" };
+// Colour ramp walked by dependency depth: roots are teal, leaves are pink.
+const RAMP = ["#5eead4", "#60a5fa", "#a78bfa", "#f472b6"];
+let maxDepth = 0;
+for (const el of ELEMENTS) {
+  if (typeof el.data.depth === "number" && el.data.depth > maxDepth) maxDepth = el.data.depth;
+}
+function accentFor(depth) {
+  if (!(depth > 0) || maxDepth === 0) return RAMP[0];
+  const idx = Math.round((depth / maxDepth) * (RAMP.length - 1));
+  return RAMP[Math.min(idx, RAMP.length - 1)];
+}
+const MONO = "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
 const cy = cytoscape({
   container: document.getElementById("graph"),
   elements: ELEMENTS,
@@ -223,25 +255,50 @@ const cy = cytoscape({
     { selector: "node.target", style: {
       "label": "data(label)", "text-valign": "center", "text-halign": "center",
       "text-wrap": "wrap", "text-max-width": 160, "shape": "round-rectangle",
-      "width": "label", "height": "label", "padding": "12px",
-      "background-color": palette.node, "border-width": 1, "border-color": palette.nodeBorder,
-      "color": palette.text, "font-size": 13, "font-weight": 500,
+      "width": "label", "height": "label", "padding": "14px",
+      "font-family": MONO, "font-size": 13, "font-weight": 600,
+      "background-color": "#0e1626", "background-opacity": 0.95, "color": "#e8eef7",
+      "border-width": 1.5, "border-color": "#2b3a55",
+      "underlay-color": "#2b3a55", "underlay-opacity": 0.18, "underlay-padding": 7,
+      "underlay-shape": "round-rectangle",
+    } },
+    { selector: "node.target[accent]", style: {
+      "border-color": "data(accent)", "color": "#f2f6fc",
+      "underlay-color": "data(accent)", "underlay-opacity": 0.25,
     } },
     { selector: "node.group", style: {
       "label": "data(label)", "text-valign": "top", "text-halign": "center",
-      "text-margin-y": 6, "shape": "round-rectangle", "padding": "18px",
-      "background-color": palette.group, "background-opacity": dark ? 0.5 : 1,
-      "border-width": 1, "border-color": palette.groupBorder, "border-style": "dashed",
-      "color": palette.groupText, "font-size": 12, "font-weight": 600,
+      "text-margin-y": 8, "font-family": MONO, "shape": "round-rectangle", "padding": "22px",
+      "background-color": "#0c1320", "background-opacity": 0.55,
+      "border-width": 1, "border-color": "#243049", "border-style": "dashed",
+      "color": "#7f8ca3", "font-size": 12, "font-weight": 700,
     } },
     { selector: "edge", style: {
-      "width": 1.5, "line-color": palette.edge, "target-arrow-color": palette.edge,
-      "target-arrow-shape": "triangle", "curve-style": "bezier", "arrow-scale": 0.9,
+      "width": 2, "line-color": "#33415e", "opacity": 0.9,
+      "target-arrow-color": "#4a5b80", "target-arrow-shape": "triangle",
+      "curve-style": "bezier", "arrow-scale": 0.95,
     } },
-    { selector: ".active", style: { "border-width": 2.5, "border-color": palette.accent } },
-    { selector: ".faded", style: { "opacity": 0.12 } },
+    { selector: "edge[accent]", style: { "target-arrow-color": "data(accent)" } },
+    { selector: ".active", style: { "border-width": 3, "underlay-opacity": 0.45 } },
+    { selector: ".faded", style: { "opacity": 0.1 } },
   ],
   layout,
+});
+// Colour nodes by depth, then run a gradient down each edge (source → target).
+cy.batch(function () {
+  cy.nodes("node.target").forEach(function (n) {
+    n.data("accent", accentFor(n.data("depth")));
+  });
+  cy.edges().forEach(function (e) {
+    const a = e.source().data("accent") || RAMP[0];
+    const b = e.target().data("accent") || RAMP[RAMP.length - 1];
+    e.data("accent", b);
+    e.style({
+      "line-fill": "linear-gradient",
+      "line-gradient-stop-colors": a + " " + b,
+      "line-gradient-stop-positions": "0% 100%",
+    });
+  });
 });
 function reset() { cy.elements().removeClass("faded active"); }
 cy.on("tap", "node.target", function (evt) {

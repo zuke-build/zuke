@@ -23,10 +23,12 @@ interactive [Cytoscape](https://js.cytoscape.org/) diagram inside a
 self-contained HTML page, writes it to `<repo root>/.zuke/graph.html`, and opens
 it in your default browser. The repo root is located via the
 [`zuke.json`](./paths.md#repo-root-reporoot) config file (falling back to the
-current directory). The page is interactive: pan and zoom freely, **click a
-target** to highlight everything it connects to — its transitive dependencies
-and dependents — and click the background (or **Reset**) to clear the selection.
-Cytoscape loads from a pinned CDN, so the first view needs internet access.
+current directory). Nodes are colour-coded by dependency depth (roots through
+leaves) on a dark, glow-accented canvas. The page is interactive: pan and zoom
+freely, **click a target** to highlight everything it connects to — its
+transitive dependencies and dependents — and click the background (or **Reset**)
+to clear the selection. Cytoscape loads from a pinned CDN, so the first view
+needs internet access.
 
 Targets in a [`group()`](./authoring.md#group-and-partof) are drawn inside a
 labelled box (a Cytoscape compound node); the text listing tags them
