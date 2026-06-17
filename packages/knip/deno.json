@@ -1,0 +1,16 @@
+{
+  "name": "@zuke/knip",
+  "version": "0.0.0",
+  "description": "Typed Knip CLI task wrapper for Zuke builds — find unused files, dependencies, and exports via an injection-free settings-lambda API.",
+  "exports": {
+    ".": "./mod.ts"
+  },
+  "imports": {
+    "@zuke/core": "jsr:@zuke/core@^0"
+  },
+  "publish": {
+    "exclude": [
+      "tests/"
+    ]
+  }
+}

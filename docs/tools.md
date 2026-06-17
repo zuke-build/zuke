@@ -37,10 +37,12 @@ raises a `ToolNotFoundError` that names the tool and the fix.
 | `@zuke/oxlint`         | `lint`                                                                                                               |
 | `@zuke/eslint`         | `lint`                                                                                                               |
 | `@zuke/biome`          | `check`, `format`, `lint`, `ci`                                                                                      |
+| `@zuke/knip`           | `run`                                                                                                                |
 | `@zuke/cspell`         | `lint`                                                                                                               |
 | `@zuke/jest`           | `run`                                                                                                                |
 | `@zuke/vitest`         | `run`                                                                                                                |
 | `@zuke/playwright`     | `test`, `install`, `showReport`, `codegen`                                                                           |
+| `@zuke/cypress`        | `run`, `open`, `install`, `verify`, `info`                                                                           |
 | `@zuke/vite`           | `dev`, `build`, `preview`                                                                                            |
 | `@zuke/tsup`           | `build`                                                                                                              |
 | `@zuke/turbo`          | `run`, `prune`                                                                                                       |
