@@ -7,6 +7,13 @@ import {
 } from "../src/install.ts";
 import { createTarGzip } from "../src/compression.ts";
 
+/**
+ * The suffix `installRelease` adds to the installed filename for the host
+ * platform. Tests that install for the default (host) platform must expect it,
+ * since the Windows runner names the binary `<tool>.exe`.
+ */
+const EXE = Deno.build.os === "windows" ? ".exe" : "";
+
 /** A download seam that writes fixed bytes to `dest`, recording the URL it saw. */
 function fakeDownload(
   body: Uint8Array | string,
@@ -38,10 +45,10 @@ Deno.test("installRelease (raw) downloads the binary and returns its path", asyn
       url: ({ os, arch }) => `https://example.com/mytool-${os}-${arch}`,
       download: fakeDownload("#!/bin/sh\necho hi\n", seen),
     });
-    assertEquals(bin.name, "mytool");
+    assertEquals(bin.name, `mytool${EXE}`);
     // `bin.path` is normalised to forward slashes; the raw temp dir is not on
     // Windows, so assert the suffix rather than the full string.
-    assertEquals(bin.path.endsWith("/mytool"), true);
+    assertEquals(bin.path.endsWith(`/mytool${EXE}`), true);
     assertEquals(
       seen.url,
       `https://example.com/mytool-${Deno.build.os}-${Deno.build.arch}`,
@@ -67,7 +74,7 @@ Deno.test("installRelease (raw) creates a missing destination directory", async 
       url: () => "https://example.com/tool",
       download: fakeDownload("binary"),
     });
-    assertEquals(bin.path.endsWith("/nested/bin/tool"), true);
+    assertEquals(bin.path.endsWith(`/nested/bin/tool${EXE}`), true);
     assertEquals((await Deno.stat(String(bin))).isFile, true);
   } finally {
     await Deno.remove(root, { recursive: true });
@@ -87,7 +94,7 @@ Deno.test("installRelease (raw) resolves a relative destDir against cwd", async 
     });
     // The returned path is absolute (resolved against cwd) and the file is
     // really there. `bin.path` uses forward slashes on every platform.
-    assertEquals(bin.path.endsWith("/out/bin/rel"), true);
+    assertEquals(bin.path.endsWith(`/out/bin/rel${EXE}`), true);
     assertEquals(bin.path === "out/bin/rel", false); // not left relative
     assertEquals((await Deno.stat(String(bin))).isFile, true);
   } finally {
@@ -118,7 +125,7 @@ Deno.test("installRelease (tar.gz) unpacks and installs the inner binary", async
       url: () => "https://example.com/mytool.tar.gz",
       download: fakeDownload(bytes),
     });
-    assertEquals(bin.path.endsWith("/mytool"), true);
+    assertEquals(bin.path.endsWith(`/mytool${EXE}`), true);
     const contents = new TextDecoder().decode(await Deno.readFile(String(bin)));
     assertEquals(contents, "tarred-binary");
   } finally {
