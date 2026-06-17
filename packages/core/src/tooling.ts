@@ -185,3 +185,90 @@ export function runSettings<S extends ToolSettings>(
 ): Promise<CommandOutput> {
   return (configure ? configure(settings) : settings).run();
 }
+
+/** Prefix a flag name with `--` unless it already starts with a dash. */
+function dashed(name: string): string {
+  return name.startsWith("-") ? name : `--${name}`;
+}
+
+/**
+ * Fluent settings for a {@link defineTool} tool: build the argv with
+ * {@link DynamicToolSettings.arg}/{@link DynamicToolSettings.flag}/{@link
+ * DynamicToolSettings.option} (in call order), plus all the shared chainers
+ * (`cwd`, `env`, `noThrow`, `quiet`, `toolPath`, `args`).
+ */
+export class DynamicToolSettings extends ToolSettings {
+  readonly #tool: string;
+  readonly #argv: string[];
+
+  constructor(tool: string, initial: string[] = []) {
+    super();
+    this.#tool = tool;
+    this.#argv = [...initial];
+  }
+
+  protected override defaultTool(): string {
+    return this.#tool;
+  }
+
+  /** Append raw positional/argument tokens. */
+  arg(...values: Array<string | number>): this {
+    this.#argv.push(...values.map(String));
+    return this;
+  }
+
+  /** Append a boolean flag, e.g. `flag("verbose")` → `--verbose` (or `-v`). */
+  flag(name: string): this {
+    this.#argv.push(dashed(name));
+    return this;
+  }
+
+  /** Append a flag and its value as two tokens, e.g. `--output dist`. */
+  option(name: string, value: string | number): this {
+    this.#argv.push(dashed(name), String(value));
+    return this;
+  }
+
+  protected override buildArgs(): string[] {
+    return [...this.#argv];
+  }
+}
+
+/** A ready-to-run task for a {@link defineTool} tool. */
+export type ToolTask = (
+  configure?: Configure<DynamicToolSettings>,
+) => Promise<CommandOutput>;
+
+/** Options for {@link defineTool}. */
+export interface DefineToolOptions {
+  /** Leading subcommand token(s) prepended to every invocation. */
+  subcommand?: string | string[];
+}
+
+/**
+ * Define a fluent task for a CLI that has no dedicated `@zuke` wrapper. Returns
+ * a task that runs the tool, configured through a {@link DynamicToolSettings}
+ * lambda — the same settings-lambda style as the built-in wrappers, with
+ * `arg`/`flag`/`option` for argv and the shared `cwd`/`env`/`noThrow`/… chainers.
+ *
+ * ```ts
+ * import { defineTool } from "jsr:@zuke/core/tooling";
+ *
+ * const terraform = defineTool("terraform");
+ * await terraform((s) => s.arg("plan").option("out", "plan.tfplan"));
+ * // → terraform plan --out plan.tfplan
+ *
+ * const helmUpgrade = defineTool("helm", { subcommand: "upgrade" });
+ * await helmUpgrade((s) => s.arg("api", "./chart").flag("install"));
+ * // → helm upgrade api ./chart --install
+ * ```
+ */
+export function defineTool(
+  tool: string,
+  options: DefineToolOptions = {},
+): ToolTask {
+  const sub = options.subcommand;
+  const initial = sub === undefined ? [] : Array.isArray(sub) ? sub : [sub];
+  return (configure?: Configure<DynamicToolSettings>) =>
+    runSettings(new DynamicToolSettings(tool, initial), configure);
+}
