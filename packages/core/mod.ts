@@ -61,3 +61,4 @@ export {
   plan,
   validateGraph,
 } from "./src/graph.ts";
+export { glob, type GlobOptions, globToRegExp } from "./src/glob.ts";

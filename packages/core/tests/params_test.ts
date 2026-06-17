@@ -100,6 +100,35 @@ Deno.test("secret survives chaining and stringValue exposes the value", () => {
   assertEquals(parameter("x").stringValue_(), undefined); // unresolved
 });
 
+Deno.test("array parses a comma-separated list and defaults to []", () => {
+  const p = parameter("tags").array();
+  assertEquals(p.array_, true);
+  p.resolve_(undefined);
+  assertEquals(p.value, []);
+  p.resolve_("a, b ,c");
+  assertEquals(p.value, ["a", "b", "c"]);
+  // Blank entries are dropped.
+  p.resolve_("a,,b,");
+  assertEquals(p.value, ["a", "b"]);
+});
+
+Deno.test("array preserves env override and secret flags", () => {
+  const p = parameter("tags").array().env("TAGS").secret();
+  assertEquals([p.array_, p.envName_, p.secret_], [true, "TAGS", true]);
+});
+
+Deno.test("array parameters resolve through the CLI map (repeated flag joined)", () => {
+  class B extends Build {
+    tags = parameter("Tags").array();
+  }
+  const params = discoverParameters(new B());
+  // The CLI joins repeated flags with commas before resolution.
+  const errors = resolveParameters(params, { tags: "x,y" }, () => undefined);
+  assertEquals(errors, []);
+  const p = params.get("tags");
+  if (p instanceof Parameter) assertEquals(p.value, ["x", "y"]);
+});
+
 Deno.test("resolveParameters prompts for a missing required value", () => {
   class B extends Build {
     token = parameter("API token").required();
@@ -120,11 +149,23 @@ Deno.test("resolveParameters prompts for a missing required value", () => {
   if (p instanceof Parameter) assertEquals(p.value, "from-prompt");
 });
 
-Deno.test("flagName and envVarName convert camelCase", () => {
+Deno.test("flagName and envVarName convert camelCase and dotted paths", () => {
   assertEquals(flagName("environment"), "environment");
   assertEquals(flagName("targetEnv"), "target-env");
+  assertEquals(flagName("release.token"), "release-token");
   assertEquals(envVarName("environment"), "ENVIRONMENT");
   assertEquals(envVarName("targetEnv"), "TARGET_ENV");
+  assertEquals(envVarName("release.token"), "RELEASE_TOKEN");
+});
+
+Deno.test("discoverParameters recurses into component bundles", () => {
+  const component = () => ({ token: parameter("Token").required() });
+  class B extends Build {
+    release = component();
+  }
+  const params = discoverParameters(new B());
+  assertEquals([...params.keys()], ["release.token"]);
+  assertEquals(params.get("release.token")?.name_, "release.token");
 });
 
 class Demo extends Build {

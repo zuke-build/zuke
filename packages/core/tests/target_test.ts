@@ -3,6 +3,43 @@ import { Build, discoverGroups, discoverTargets } from "../src/build.ts";
 import { Group, group, target, TargetBuilder } from "../src/target.ts";
 import { parameter } from "../src/params.ts";
 
+Deno.test("discovery recurses into component bundles with dotted names", () => {
+  // A reusable component: a function returning a bundle of related targets.
+  const releasable = () => {
+    const pack = target().executes(() => {});
+    const publish = target().dependsOn(pack).executes(() => {});
+    return { pack, publish };
+  };
+  class B extends Build {
+    release = releasable();
+    deploy = target().dependsOn(this.release.publish).executes(() => {});
+  }
+  const b = new B();
+  const targets = discoverTargets(b);
+  assertEquals([...targets.keys()], [
+    "release.pack",
+    "release.publish",
+    "deploy",
+  ]);
+  assertEquals(b.release.pack.name_, "release.pack");
+  assertEquals(b.deploy.dependsOn_.map((t) => t.name_), ["release.publish"]);
+});
+
+Deno.test("discovery handles nested components and cyclic plain objects", () => {
+  const inner = () => ({ build: target().executes(() => {}) });
+  class B extends Build {
+    group = { ci: inner() }; // nested component bundle
+    plain = { note: "not a target" };
+  }
+  const b = new B();
+  // A self-referential plain object must not loop forever.
+  const cyclic: Record<string, unknown> = {};
+  cyclic.self = cyclic;
+  Object.assign(b, { cyclic });
+  const targets = discoverTargets(b);
+  assertEquals([...targets.keys()], ["group.ci.build"]);
+});
+
 Deno.test("discoverGroups binds each group to its property name", () => {
   class B extends Build {
     checks = group();
@@ -90,6 +127,20 @@ Deno.test("cacheKey, produces, consumes, always, whenSkipped record config", () 
   assertEquals(b.main.dependsOn_.map((t) => t.name_), ["dep"]); // consumes
   assertEquals(b.main.always_, true);
   assertEquals(b.main.skipDependencies_, true);
+});
+
+Deno.test("timeout and retry record their configuration, clamping inputs", () => {
+  const t = target().timeout(500).retry(3, 250).executes(() => {});
+  assertEquals(t.timeout_, 500);
+  assertEquals(t.retries_, 3);
+  assertEquals(t.retryDelay_, 250);
+
+  // Negative/fractional counts clamp to a sane non-negative integer; delay
+  // defaults to 0.
+  const u = target().retry(-2);
+  assertEquals([u.retries_, u.retryDelay_], [0, 0]);
+  const v = target().retry(2.9);
+  assertEquals(v.retries_, 2);
 });
 
 Deno.test("partOf ignores an undefined (forward-referenced) group", () => {

@@ -6,6 +6,7 @@
 | `zuke <target> --skip <dep>` | Run the target but skip the named dependency (repeatable).    |
 | `zuke <target> --parallel`   | Run independent targets concurrently (`--parallel=N` caps it). |
 | `zuke <target> --no-cache`   | Ignore the incremental cache; re-run every target.            |
+| `zuke <target> --dry-run`    | Print the plan without executing any target body.             |
 | `zuke --list` / `-l`         | List all targets with descriptions and dependencies.          |
 | `zuke graph`                 | Print the dependency graph (`target → deps`).                 |
 | `zuke graph --output=html`   | Render an interactive HTML graph into `.zuke/` and open it.   |
@@ -69,3 +70,11 @@ are cached: Zuke skips one (showing it `cached` in the summary) when its inputs
 are unchanged since the last successful run and its outputs still exist.
 Fingerprints live in `.zuke/cache.json`. `--no-cache` ignores the cache and
 re-runs everything.
+
+## Dry runs
+
+`--dry-run` resolves the plan and reports every target that **would** run —
+honouring `--skip` and each target's `onlyWhen` condition — without executing
+any body or reading/writing the cache. Each planned target prints a
+`(dry run — not executed)` line, and the summary reflects what would have run.
+Programmatic callers pass `{ dryRun: true }` to `execute`.

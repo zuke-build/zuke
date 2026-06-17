@@ -92,6 +92,12 @@ export class TargetBuilder {
   readonly produces_: string[] = [];
   /** When skipped by a condition, also skip dependencies (set by {@link whenSkipped}). */
   skipDependencies_ = false;
+  /** Per-attempt timeout in milliseconds, if set by {@link timeout}. */
+  timeout_?: number;
+  /** Number of extra attempts on failure, set by {@link retry}. */
+  retries_ = 0;
+  /** Delay between retry attempts in milliseconds. */
+  retryDelay_ = 0;
 
   /** Set the human-readable description shown in `zuke --list`. */
   description(text: string): this {
@@ -276,6 +282,23 @@ export class TargetBuilder {
    */
   whenSkipped(behavior: "run-dependencies" | "skip-dependencies"): this {
     this.skipDependencies_ = behavior === "skip-dependencies";
+    return this;
+  }
+
+  /** Fail the target if its body runs longer than `ms` milliseconds (per attempt). */
+  timeout(ms: number): this {
+    this.timeout_ = ms;
+    return this;
+  }
+
+  /**
+   * Retry the target body up to `times` more attempts on failure, optionally
+   * pausing `delayMs` between attempts. Combined with {@link timeout}, each
+   * attempt is bounded by the timeout.
+   */
+  retry(times: number, delayMs = 0): this {
+    this.retries_ = Math.max(0, Math.floor(times));
+    this.retryDelay_ = Math.max(0, delayMs);
     return this;
   }
 }

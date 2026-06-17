@@ -51,11 +51,29 @@ declaration:
 | `.required()` | must be supplied | non-optional (`T`) |
 | `.env("NAME")` | override the env var name | unchanged |
 | `.secret()` | mark the value sensitive | unchanged |
+| `.array()` | a comma-separated / repeatable list | `string[]` |
 
 `.number()` and `.boolean()` come first (they change the kind); `.options()`
 applies to strings. A required parameter with no value (and no default) fails
 the build before any target runs, with a message naming the flag and env var —
 unless it can be supplied interactively (below).
+
+## Lists
+
+`.array()` turns a string parameter into a list. On the command line, a comma
+separates values **or** the flag is repeated (the two are equivalent); blank
+entries are dropped, and an unsupplied list defaults to `[]`.
+
+```ts
+tags = parameter("Image tags").array();
+// deploy = target().executes(() => console.log(this.tags.value)); // string[]
+```
+
+```sh
+./zuke deploy --tags latest,canary      # ["latest", "canary"]
+./zuke deploy --tags latest --tags canary  # same result
+TAGS=latest,canary ./zuke deploy        # from the environment
+```
 
 ## Secrets
 

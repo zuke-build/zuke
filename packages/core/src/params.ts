@@ -29,6 +29,8 @@
  * @module
  */
 
+import { forEachField } from "./build.ts";
+
 /** The value kinds a parameter can hold. */
 export type ParamValue = string | number | boolean;
 
@@ -99,6 +101,8 @@ export interface AnyParameter {
   readonly hasFallback_: boolean;
   /** Whether the value is sensitive and should be masked in CI output. */
   readonly secret_: boolean;
+  /** Whether the value is a comma-separated / repeatable list (`.array()`). */
+  readonly array_: boolean;
   /** Resolve from a raw input (or `undefined` when none was supplied). */
   resolve_(raw: string | undefined): void;
   /** Whether the parameter resolved to a defined value (used by `.requires()`). */
@@ -108,7 +112,7 @@ export interface AnyParameter {
 }
 
 /** The constructor spec for a {@link Parameter}. */
-interface ParamSpec<K extends ParamValue, T extends K | undefined> {
+interface ParamSpec<K extends ParamValue, T extends K | K[] | undefined> {
   description?: string;
   kind: ParamKind;
   required: boolean;
@@ -117,6 +121,7 @@ interface ParamSpec<K extends ParamValue, T extends K | undefined> {
   parse: (raw: string) => T;
   fallback: Fallback<T>;
   secret?: boolean;
+  array?: boolean;
 }
 
 /**
@@ -130,7 +135,7 @@ interface ParamSpec<K extends ParamValue, T extends K | undefined> {
  */
 export class Parameter<
   K extends ParamValue = ParamValue,
-  T extends K | undefined = K | undefined,
+  T extends K | K[] | undefined = K | undefined,
 > implements AnyParameter {
   name_?: string;
   readonly description_?: string;
@@ -140,6 +145,7 @@ export class Parameter<
   readonly envName_?: string;
   readonly hasFallback_: boolean;
   readonly secret_: boolean;
+  readonly array_: boolean;
   readonly #parse: (raw: string) => T;
   readonly #fallback: Fallback<T>;
   #state: Resolved<T> = { ok: false };
@@ -150,7 +156,7 @@ export class Parameter<
    * guard only narrows the type — it lets `.default()`/`.required()` produce a
    * `(raw) => K` parser from this `(raw) => T` one without a cast.
    */
-  #definiteParse(): (raw: string) => K {
+  #definiteParse(this: Parameter<K, K | undefined>): (raw: string) => K {
     const parse = this.#parse;
     return (raw: string): K => {
       const value = parse(raw);
@@ -171,6 +177,7 @@ export class Parameter<
     this.#fallback = spec.fallback;
     this.hasFallback_ = spec.fallback.has;
     this.secret_ = spec.secret ?? false;
+    this.array_ = spec.array ?? false;
   }
 
   /** The resolved value. Throws if read before the build resolves parameters. */
@@ -205,6 +212,7 @@ export class Parameter<
       parse: this.#parse,
       fallback: this.#fallback,
       secret: true,
+      array: this.array_,
     });
   }
 
@@ -256,7 +264,7 @@ export class Parameter<
   }
 
   /** Provide a default, making `value` non-optional (`K`). */
-  default(value: K): Parameter<K, K> {
+  default(this: Parameter<K, K | undefined>, value: K): Parameter<K, K> {
     return new Parameter<K, K>({
       description: this.description_,
       kind: this.kind_,
@@ -270,7 +278,7 @@ export class Parameter<
   }
 
   /** Require a value, making `value` non-optional (`K`); errors if unsupplied. */
-  required(): Parameter<K, K> {
+  required(this: Parameter<K, K | undefined>): Parameter<K, K> {
     return new Parameter<K, K>({
       description: this.description_,
       kind: this.kind_,
@@ -294,6 +302,29 @@ export class Parameter<
       parse: this.#parse,
       fallback: this.#fallback,
       secret: this.secret_,
+      array: this.array_,
+    });
+  }
+
+  /**
+   * Accept a comma-separated list (or a repeated flag), exposing `value` as a
+   * `string[]`. `--tags a,b` and `--tags a --tags b` both yield `["a", "b"]`;
+   * blank entries are dropped. An unsupplied list parameter defaults to `[]`.
+   */
+  array(
+    this: Parameter<string, string | undefined>,
+  ): Parameter<string, string[]> {
+    return new Parameter<string, string[]>({
+      description: this.description_,
+      kind: "string",
+      required: false,
+      options: this.options_,
+      envName: this.envName_,
+      parse: (raw) =>
+        raw.split(",").map((s) => s.trim()).filter((s) => s !== ""),
+      fallback: { has: true, value: [] },
+      secret: this.secret_,
+      array: true,
     });
   }
 
@@ -328,29 +359,32 @@ export function parameter(
 }
 
 /**
- * Discover all parameters declared on a build instance: scan its own enumerable
- * properties for {@link Parameter} values, bind each its property name, and
- * return a name → parameter map preserving declaration order.
+ * Discover all parameters declared on a build instance: scan its fields
+ * (recursing into plain-object component bundles) for {@link Parameter} values,
+ * bind each its dotted property path, and return a name → parameter map
+ * preserving declaration order.
  */
 export function discoverParameters(build: object): Map<string, AnyParameter> {
   const params = new Map<string, AnyParameter>();
-  for (const [key, value] of Object.entries(build)) {
+  forEachField(build, (path, value) => {
     if (value instanceof Parameter) {
-      value.name_ = key;
-      params.set(key, value);
+      value.name_ = path;
+      params.set(path, value);
     }
-  }
+  });
   return params;
 }
 
-/** The CLI flag for a parameter: its property name in kebab-case. */
+/** The CLI flag for a parameter: its property path in kebab-case. */
 export function flagName(name: string): string {
-  return name.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
+  return name.replace(/([a-z0-9])([A-Z])/g, "$1-$2").replace(/\./g, "-")
+    .toLowerCase();
 }
 
-/** The environment variable for a parameter: its name in SCREAMING_SNAKE_CASE. */
+/** The environment variable for a parameter: its path in SCREAMING_SNAKE_CASE. */
 export function envVarName(name: string): string {
-  return name.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toUpperCase();
+  return name.replace(/([a-z0-9])([A-Z])/g, "$1_$2").replace(/\./g, "_")
+    .toUpperCase();
 }
 
 /**

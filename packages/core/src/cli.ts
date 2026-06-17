@@ -36,6 +36,8 @@ export interface ParamFlag {
   flag: string;
   /** Whether the parameter is a boolean (its flag takes no value). */
   boolean: boolean;
+  /** Whether the parameter is a list: repeated flags accumulate (comma-joined). */
+  array: boolean;
 }
 
 /** Parsed command-line arguments. */
@@ -55,6 +57,8 @@ export interface ParsedArgs {
   parallel?: boolean | number;
   /** Disable the incremental cache (`--no-cache`); undefined leaves it on. */
   cache?: boolean;
+  /** Print the plan without running any target bodies (`--dry-run`). */
+  dryRun: boolean;
   /** Raw parameter values from declared flags, keyed by property name. */
   values: Record<string, string>;
   help: boolean;
@@ -83,6 +87,7 @@ export function parseArgs(
     output: "text",
     open: true,
     values: {},
+    dryRun: false,
     help: false,
   };
   const byFlag = new Map<string, ParamFlag>();
@@ -96,6 +101,8 @@ export function parseArgs(
       parsed.open = false;
     } else if (arg === "--no-cache") {
       parsed.cache = false;
+    } else if (arg === "--dry-run") {
+      parsed.dryRun = true;
     } else if (arg === "--parallel") {
       parsed.parallel = true;
     } else if (arg.startsWith("--parallel=")) {
@@ -115,11 +122,15 @@ export function parseArgs(
       const flag = eq === -1 ? arg.slice(2) : arg.slice(2, eq);
       const pf = byFlag.get(flag);
       if (pf !== undefined) {
-        if (eq !== -1) parsed.values[pf.name] = arg.slice(eq + 1);
-        else if (pf.boolean) parsed.values[pf.name] = "true";
-        else {
-          const value = args[++i];
-          if (value !== undefined) parsed.values[pf.name] = value;
+        let value: string | undefined;
+        if (eq !== -1) value = arg.slice(eq + 1);
+        else if (pf.boolean) value = "true";
+        else value = args[++i];
+        if (value !== undefined) {
+          // Repeated list flags accumulate (comma-joined); others overwrite.
+          parsed.values[pf.name] = pf.array && pf.name in parsed.values
+            ? `${parsed.values[pf.name]},${value}`
+            : value;
         }
       }
       // Unknown flags are ignored.
@@ -149,6 +160,7 @@ Options:
   --parallel[=N]    Run independent targets concurrently (N = max in flight,
                     default = CPU count).
   --no-cache        Ignore the incremental cache; re-run every target.
+  --dry-run         Print the execution plan without running target bodies.
   --list, -l        List all targets with descriptions and dependencies.
   graph             Show the dependency graph. Default output is the terminal
                     adjacency listing; --output=html writes an interactive
@@ -247,6 +259,7 @@ export async function main(
     name,
     flag: flagName(name),
     boolean: p.kind_ === "boolean",
+    array: p.array_,
   }));
   const parsed = parseArgs(args, paramFlags);
 
@@ -299,6 +312,7 @@ export async function main(
     params: parsed.values,
     parallel: parsed.parallel,
     cache: parsed.cache,
+    dryRun: parsed.dryRun,
   });
   return result.ok ? 0 : 1;
 }

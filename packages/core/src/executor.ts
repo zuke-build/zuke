@@ -33,7 +33,7 @@ import {
 import { findConfigDir, pathExists } from "./config.ts";
 import { isCI } from "./host.ts";
 import { absolutePath } from "./path.ts";
-import type { TargetBuilder } from "./target.ts";
+import type { TargetBuilder, TargetFn } from "./target.ts";
 
 /** The artifact directory (under the repo root) for the cache store. */
 const ARTIFACT_DIR = ".zuke";
@@ -93,6 +93,12 @@ export interface ExecuteOptions {
     flag: string,
     description: string | undefined,
   ) => string | undefined;
+  /**
+   * Plan only: resolve and print every target that *would* run (honouring
+   * `--skip` and `onlyWhen` conditions) without executing any body or touching
+   * the cache (CLI `--dry-run`).
+   */
+  dryRun?: boolean;
   /**
    * Force GitHub Actions output formatting on or off. Auto-detected from the
    * `GITHUB_ACTIONS` environment variable when omitted.
@@ -383,11 +389,67 @@ interface RunOutcome {
   aborted: boolean;
 }
 
+/** Resolve after `ms` milliseconds. */
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Run a target body once, rejecting with a timeout error if it runs longer than
+ * `timeoutMs`. A timed-out body cannot be cancelled (JavaScript has no such
+ * primitive), so it keeps running in the background — but its result is ignored.
+ */
+function runWithTimeout(
+  fn: TargetFn,
+  timeoutMs: number | undefined,
+): Promise<void> {
+  const result = Promise.resolve().then(fn);
+  if (timeoutMs === undefined) return result;
+  return new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error(`timed out after ${timeoutMs}ms`)),
+      timeoutMs,
+    );
+    result.then(
+      () => {
+        clearTimeout(timer);
+        resolve();
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
+/**
+ * Run a target body, applying its {@link TargetBuilder.timeout} and
+ * {@link TargetBuilder.retry} settings: each attempt is bounded by the timeout,
+ * and a failure is retried (after an optional delay) up to the retry count
+ * before the last error propagates.
+ */
+async function runBody(t: TargetBuilder): Promise<void> {
+  const fn = t.fn_;
+  if (fn === undefined) return; // guarded by the caller
+  const attempts = t.retries_ + 1;
+  for (let attempt = 1;; attempt++) {
+    try {
+      await runWithTimeout(fn, t.timeout_);
+      return;
+    } catch (error) {
+      if (attempt >= attempts) throw error;
+      if (t.retryDelay_ > 0) await delay(t.retryDelay_);
+    }
+  }
+}
+
 /**
  * Run one target: honour its `onlyWhen` conditions and the incremental cache,
  * then (if it must run) open its section, run its body, and report pass/fail.
  * A condition that fails yields `skipped`; an up-to-date target yields `cached`
- * — both unblock dependents without executing the body.
+ * — both unblock dependents without executing the body. With `dryRun`, a target
+ * that would run is reported without executing its body or touching the cache.
  */
 async function runTarget(
   build: Build,
@@ -396,6 +458,7 @@ async function runTarget(
   t: TargetBuilder,
   opened: number,
   cache: BuildCache | undefined,
+  dryRun: boolean,
 ): Promise<TargetOutcome> {
   const name = t.name_ ?? "<unnamed>";
 
@@ -412,6 +475,16 @@ async function runTarget(
     openTarget(reporter, style, name, opened);
     failTarget(reporter, style, name, 0, error);
     return { status: "failed", ms: 0, error };
+  }
+
+  if (dryRun) {
+    openTarget(reporter, style, name, opened);
+    const note = paint(style.color, SGR.dim, "(dry run — not executed)");
+    reporter.info(
+      `${paint(style.color, SGR.cyan, ICON.passed)} ${name} ${note}`,
+    );
+    if (style.github) reporter.info("::endgroup::");
+    return { status: "passed", ms: 0 };
   }
 
   if (cache !== undefined && await cache.upToDate(t)) {
@@ -431,7 +504,7 @@ async function runTarget(
   }
 
   try {
-    await t.fn_();
+    await runBody(t);
     const ms = performance.now() - start;
     if (cache !== undefined) await cache.record(t);
     passTarget(reporter, style, name, ms);
@@ -484,6 +557,7 @@ async function runSequential(
   style: Style,
   skip: Set<string>,
   cache: BuildCache | undefined,
+  dryRun: boolean,
 ): Promise<RunOutcome> {
   const reports: TargetReport[] = [];
   const executed: string[] = [];
@@ -497,7 +571,15 @@ async function runSequential(
       reports.push({ name, status: "skipped", ms: 0 });
       continue;
     }
-    const outcome = await runTarget(build, reporter, style, t, opened, cache);
+    const outcome = await runTarget(
+      build,
+      reporter,
+      style,
+      t,
+      opened,
+      cache,
+      dryRun,
+    );
     await build.onTargetEnd(name, outcome.status);
     if (outcome.status === "passed" || outcome.status === "failed") opened++;
     reports.push({ name, status: outcome.status, ms: outcome.ms });
@@ -530,6 +612,7 @@ async function runScheduled(
   limit: number,
   canOverlap: (a: TargetBuilder, b: TargetBuilder) => boolean,
   cache: BuildCache | undefined,
+  dryRun: boolean,
 ): Promise<RunOutcome> {
   const outcomes = new Map<TargetBuilder, TargetOutcome>();
   const done = new Set<TargetBuilder>(); // passed/cached/skipped → unblocks dependents
@@ -565,31 +648,32 @@ async function runScheduled(
         started.add(t);
         runningSet.add(t);
         const buffer = bufferReporter();
-        runTarget(build, buffer.reporter, style, t, flushed, cache).then(
-          async (outcome) => {
-            await build.onTargetEnd(t.name_ ?? "<unnamed>", outcome.status);
-            // Only an executed target prints a block worth separating.
-            const printed = outcome.status === "passed" ||
-              outcome.status === "failed";
-            if (printed) {
-              if (!style.github && flushed > 0) reporter.info("");
-              buffer.flush(reporter);
-              flushed++;
-            }
-            outcomes.set(t, outcome);
-            runningSet.delete(t);
-            if (outcome.status === "failed") {
-              anyFailed = true;
-              failure ??= outcome.error;
-              // A lenient failure lets independent targets keep going; its
-              // own dependents stay blocked (never added to `done`).
-              if (!t.proceedAfterFailure_) halted = true;
-            } else {
-              done.add(t); // passed, cached, or condition-skipped
-            }
-            pump();
-          },
-        );
+        runTarget(build, buffer.reporter, style, t, flushed, cache, dryRun)
+          .then(
+            async (outcome) => {
+              await build.onTargetEnd(t.name_ ?? "<unnamed>", outcome.status);
+              // Only an executed target prints a block worth separating.
+              const printed = outcome.status === "passed" ||
+                outcome.status === "failed";
+              if (printed) {
+                if (!style.github && flushed > 0) reporter.info("");
+                buffer.flush(reporter);
+                flushed++;
+              }
+              outcomes.set(t, outcome);
+              runningSet.delete(t);
+              if (outcome.status === "failed") {
+                anyFailed = true;
+                failure ??= outcome.error;
+                // A lenient failure lets independent targets keep going; its
+                // own dependents stay blocked (never added to `done`).
+                if (!t.proceedAfterFailure_) halted = true;
+              } else {
+                done.add(t); // passed, cached, or condition-skipped
+              }
+              pump();
+            },
+          );
       }
       if (runningSet.size === 0) {
         for (const t of order) {
@@ -675,14 +759,24 @@ export async function execute(
   // `proceedAfterFailure` and `always` need the scheduler's per-target control,
   // so the simple sequential loop is only used when none of these apply.
   const scheduled = order.some((t) => t.proceedAfterFailure_ || t.always_);
-  const cache = await resolveCache(options.cache, order);
+  const dryRun = options.dryRun ?? false;
+  // A dry run never reads or writes the cache (no body runs to invalidate it).
+  const cache = dryRun ? undefined : await resolveCache(options.cache, order);
   const overallStart = performance.now();
 
   await build.onStart();
 
   let run: RunOutcome;
   if (!globalParallel && !grouped && !scheduled) {
-    run = await runSequential(build, order, reporter, style, skip, cache);
+    run = await runSequential(
+      build,
+      order,
+      reporter,
+      style,
+      skip,
+      cache,
+      dryRun,
+    );
   } else {
     // With `--parallel`, anything independent may overlap up to `limit`.
     // Otherwise only same-group members overlap (the rest stay serialized),
@@ -702,6 +796,7 @@ export async function execute(
       effectiveLimit,
       canOverlap,
       cache,
+      dryRun,
     );
   }
   if (cache !== undefined) await cache.save();

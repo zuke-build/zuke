@@ -4,10 +4,42 @@
  * Users extend `Build` and declare targets as instance properties. After the
  * subclass is constructed, {@link discoverTargets} introspects the instance's
  * own enumerable properties to find every {@link TargetBuilder} and bind it to
- * its property name.
+ * its property name. Discovery recurses into plain object fields, so a reusable
+ * **component** — a function returning a bundle of targets — contributes its
+ * targets under a dotted path (e.g. `release.publish`).
  */
 
 import { Group, TargetBuilder } from "./target.ts";
+
+/** Whether a value is a plain object (a component bundle), not a class instance. */
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false;
+  }
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+}
+
+/**
+ * Visit every field of a build, recursing into plain object fields (component
+ * bundles). Each field is reported with its dotted path (`a`, `a.b`, …).
+ */
+export function forEachField(
+  root: object,
+  visit: (path: string, value: unknown) => void,
+): void {
+  const seen = new WeakSet<object>();
+  const walk = (obj: object, prefix: string) => {
+    if (seen.has(obj)) return;
+    seen.add(obj);
+    for (const [key, value] of Object.entries(obj)) {
+      const path = prefix === "" ? key : `${prefix}.${key}`;
+      visit(path, value);
+      if (isPlainObject(value)) walk(value, path);
+    }
+  };
+  walk(root, "");
+}
 
 /** The outcome of a single target, reported in the summary and lifecycle hooks. */
 export type TargetStatus = "passed" | "failed" | "skipped" | "cached";
@@ -43,42 +75,42 @@ export class Build {
 /**
  * Discover all targets declared on a build instance.
  *
- * Scans the instance's own enumerable properties (the class fields) for
- * {@link TargetBuilder} values, assigns each its property name, and returns a
- * name → target map preserving declaration order.
+ * Scans the instance's fields (recursing into plain-object component bundles)
+ * for {@link TargetBuilder} values, assigns each its dotted property path, and
+ * returns a name → target map preserving declaration order.
  *
- * @throws if two properties somehow reference the same builder instance under
- *   different names (a programming error that would corrupt naming).
+ * @throws if two properties reference the same builder instance under different
+ *   names (a programming error that would corrupt naming).
  */
 export function discoverTargets(build: Build): Map<string, TargetBuilder> {
   const targets = new Map<string, TargetBuilder>();
-  for (const [key, value] of Object.entries(build)) {
+  forEachField(build, (path, value) => {
     if (value instanceof TargetBuilder) {
-      if (value.name_ !== undefined && value.name_ !== key) {
+      if (value.name_ !== undefined && value.name_ !== path) {
         throw new Error(
-          `Target instance is bound to two names: "${value.name_}" and "${key}". ` +
+          `Target instance is bound to two names: "${value.name_}" and "${path}". ` +
             `Each target() must be assigned to exactly one property.`,
         );
       }
-      value.name_ = key;
-      targets.set(key, value);
+      value.name_ = path;
+      targets.set(path, value);
     }
-  }
+  });
   return targets;
 }
 
 /**
  * Discover all parallel {@link Group} batches declared on a build instance,
- * binding each its property name (for labelling, e.g. in the graph). Groups
+ * binding each its property path (for labelling, e.g. in the graph). Groups
  * that are not assigned to a build property simply stay unnamed.
  */
 export function discoverGroups(build: Build): Map<string, Group> {
   const groups = new Map<string, Group>();
-  for (const [key, value] of Object.entries(build)) {
+  forEachField(build, (path, value) => {
     if (value instanceof Group) {
-      value.name_ = key;
-      groups.set(key, value);
+      value.name_ = path;
+      groups.set(path, value);
     }
-  }
+  });
   return groups;
 }

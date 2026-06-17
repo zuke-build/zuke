@@ -24,8 +24,8 @@ class Parameterised extends Build {
 }
 
 const greetFlags = [
-  { name: "environment", flag: "environment", boolean: false },
-  { name: "verbose", flag: "verbose", boolean: true },
+  { name: "environment", flag: "environment", boolean: false, array: false },
+  { name: "verbose", flag: "verbose", boolean: true, array: false },
 ];
 
 /** Run `fn` with `console.log`/`console.error` captured instead of printed. */
@@ -112,6 +112,22 @@ Deno.test("parseArgs reads the --parallel flag and count", () => {
   assertEquals(parseArgs(["build", "--parallel=4"]).parallel, 4);
   assertEquals(parseArgs(["build", "--parallel=bad"]).parallel, true);
   assertEquals(parseArgs(["build"]).parallel, undefined);
+});
+
+Deno.test("parseArgs reads --dry-run, defaulting to false", () => {
+  assertEquals(parseArgs(["build"]).dryRun, false);
+  assertEquals(parseArgs(["build", "--dry-run"]).dryRun, true);
+});
+
+Deno.test("parseArgs accumulates repeated list flags comma-joined", () => {
+  const flags = [
+    { name: "tags", flag: "tags", boolean: false, array: true },
+  ];
+  // Repeated flags join; scalar form and inline `=` both contribute.
+  const repeated = parseArgs(["--tags", "a", "--tags", "b", "--tags=c"], flags);
+  assertEquals(repeated.values, { tags: "a,b,c" });
+  // A single occurrence is unchanged.
+  assertEquals(parseArgs(["--tags", "solo"], flags).values, { tags: "solo" });
 });
 
 Deno.test("parseArgs collects repeatable --skip and keeps first positional", () => {
