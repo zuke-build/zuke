@@ -627,12 +627,27 @@
           "jsr:@zuke/core@0"
         ]
       },
+      "packages/playwright": {
+        "dependencies": [
+          "jsr:@zuke/core@0"
+        ]
+      },
       "packages/pnpm": {
         "dependencies": [
           "jsr:@zuke/core@0"
         ]
       },
       "packages/security": {
+        "dependencies": [
+          "jsr:@zuke/core@0"
+        ]
+      },
+      "packages/terraform": {
+        "dependencies": [
+          "jsr:@zuke/core@0"
+        ]
+      },
+      "packages/tofu": {
         "dependencies": [
           "jsr:@zuke/core@0"
         ]

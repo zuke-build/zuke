@@ -16,12 +16,15 @@ const PACKAGES = [
   "packages/cspell",
   "packages/jest",
   "packages/vitest",
+  "packages/playwright",
   "packages/tsx",
   "packages/tsgo",
   "packages/dprint",
   "packages/gcloud",
   "packages/git",
   "packages/gh",
+  "packages/terraform",
+  "packages/tofu",
   "packages/security",
 ];
 
