@@ -120,11 +120,23 @@ Deno.test("resolveParameters prompts for a missing required value", () => {
   if (p instanceof Parameter) assertEquals(p.value, "from-prompt");
 });
 
-Deno.test("flagName and envVarName convert camelCase", () => {
+Deno.test("flagName and envVarName convert camelCase and dotted paths", () => {
   assertEquals(flagName("environment"), "environment");
   assertEquals(flagName("targetEnv"), "target-env");
+  assertEquals(flagName("release.token"), "release-token");
   assertEquals(envVarName("environment"), "ENVIRONMENT");
   assertEquals(envVarName("targetEnv"), "TARGET_ENV");
+  assertEquals(envVarName("release.token"), "RELEASE_TOKEN");
+});
+
+Deno.test("discoverParameters recurses into component bundles", () => {
+  const component = () => ({ token: parameter("Token").required() });
+  class B extends Build {
+    release = component();
+  }
+  const params = discoverParameters(new B());
+  assertEquals([...params.keys()], ["release.token"]);
+  assertEquals(params.get("release.token")?.name_, "release.token");
 });
 
 class Demo extends Build {

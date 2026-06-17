@@ -66,6 +66,36 @@ so they batch whenever they run — no `--parallel` flag needed. Ungrouped
 targets stay serialized unless you opt the whole build into `--parallel`.
 Declare the group field above the targets that join it.
 
+### Reusable components
+
+A **component** is just a function that returns a bundle of related targets.
+Assign it to a build field; discovery recurses into the bundle and names each
+target with a dotted path (`release.publish`), runnable as `zuke release.publish`
+and shown in the graph. Components compose, nest, and take options.
+
+```ts
+// A shared, configurable component.
+function releasable(opts: { registry: string }) {
+  const pack = target().executes(/* ... */);
+  const publish = target()
+    .dependsOn(pack)
+    .executes(async () => {
+      await $`npm publish --registry ${opts.registry}`;
+    });
+  return { pack, publish };
+}
+
+class MyBuild extends Build {
+  release = releasable({ registry: "https://registry.npmjs.org" });
+  deploy = target().dependsOn(this.release.publish).executes(/* ... */);
+}
+```
+
+Targets reference each other across components via the field (`this.release.publish`),
+so declare a component field above anything that depends on it. Components can
+also declare [parameters](./parameters.md) — they're discovered under the same
+dotted path.
+
 ### Incremental caching — `.inputs()` / `.outputs()`
 
 A target that declares **inputs** becomes incremental: Zuke fingerprints those

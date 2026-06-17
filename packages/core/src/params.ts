@@ -29,6 +29,8 @@
  * @module
  */
 
+import { forEachField } from "./build.ts";
+
 /** The value kinds a parameter can hold. */
 export type ParamValue = string | number | boolean;
 
@@ -328,29 +330,32 @@ export function parameter(
 }
 
 /**
- * Discover all parameters declared on a build instance: scan its own enumerable
- * properties for {@link Parameter} values, bind each its property name, and
- * return a name → parameter map preserving declaration order.
+ * Discover all parameters declared on a build instance: scan its fields
+ * (recursing into plain-object component bundles) for {@link Parameter} values,
+ * bind each its dotted property path, and return a name → parameter map
+ * preserving declaration order.
  */
 export function discoverParameters(build: object): Map<string, AnyParameter> {
   const params = new Map<string, AnyParameter>();
-  for (const [key, value] of Object.entries(build)) {
+  forEachField(build, (path, value) => {
     if (value instanceof Parameter) {
-      value.name_ = key;
-      params.set(key, value);
+      value.name_ = path;
+      params.set(path, value);
     }
-  }
+  });
   return params;
 }
 
-/** The CLI flag for a parameter: its property name in kebab-case. */
+/** The CLI flag for a parameter: its property path in kebab-case. */
 export function flagName(name: string): string {
-  return name.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
+  return name.replace(/([a-z0-9])([A-Z])/g, "$1-$2").replace(/\./g, "-")
+    .toLowerCase();
 }
 
-/** The environment variable for a parameter: its name in SCREAMING_SNAKE_CASE. */
+/** The environment variable for a parameter: its path in SCREAMING_SNAKE_CASE. */
 export function envVarName(name: string): string {
-  return name.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toUpperCase();
+  return name.replace(/([a-z0-9])([A-Z])/g, "$1_$2").replace(/\./g, "_")
+    .toUpperCase();
 }
 
 /**

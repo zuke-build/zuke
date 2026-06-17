@@ -3,6 +3,43 @@ import { Build, discoverGroups, discoverTargets } from "../src/build.ts";
 import { Group, group, target, TargetBuilder } from "../src/target.ts";
 import { parameter } from "../src/params.ts";
 
+Deno.test("discovery recurses into component bundles with dotted names", () => {
+  // A reusable component: a function returning a bundle of related targets.
+  const releasable = () => {
+    const pack = target().executes(() => {});
+    const publish = target().dependsOn(pack).executes(() => {});
+    return { pack, publish };
+  };
+  class B extends Build {
+    release = releasable();
+    deploy = target().dependsOn(this.release.publish).executes(() => {});
+  }
+  const b = new B();
+  const targets = discoverTargets(b);
+  assertEquals([...targets.keys()], [
+    "release.pack",
+    "release.publish",
+    "deploy",
+  ]);
+  assertEquals(b.release.pack.name_, "release.pack");
+  assertEquals(b.deploy.dependsOn_.map((t) => t.name_), ["release.publish"]);
+});
+
+Deno.test("discovery handles nested components and cyclic plain objects", () => {
+  const inner = () => ({ build: target().executes(() => {}) });
+  class B extends Build {
+    group = { ci: inner() }; // nested component bundle
+    plain = { note: "not a target" };
+  }
+  const b = new B();
+  // A self-referential plain object must not loop forever.
+  const cyclic: Record<string, unknown> = {};
+  cyclic.self = cyclic;
+  Object.assign(b, { cyclic });
+  const targets = discoverTargets(b);
+  assertEquals([...targets.keys()], ["group.ci.build"]);
+});
+
 Deno.test("discoverGroups binds each group to its property name", () => {
   class B extends Build {
     checks = group();

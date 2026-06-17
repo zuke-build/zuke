@@ -942,6 +942,29 @@ Deno.test("execute prompts for a missing required parameter", async () => {
   assertEquals(seen, ["prompted"]);
 });
 
+Deno.test("targets from a reusable component run in dependency order", async () => {
+  const ran: string[] = [];
+  const releasable = () => {
+    const pack = target().executes(() => void ran.push("pack"));
+    const publish = target().dependsOn(pack).executes(() =>
+      void ran.push("publish")
+    );
+    return { pack, publish };
+  };
+  class B extends Build {
+    release = releasable();
+    deploy = target().dependsOn(this.release.publish).executes(() =>
+      void ran.push("deploy")
+    );
+  }
+  const b = new B();
+  const root = discoverTargets(b).get("deploy");
+  if (!root) throw new Error("no deploy target");
+  const result = await execute(b, root, { silent: true });
+  assertEquals(result.ok, true);
+  assertEquals(ran, ["pack", "publish", "deploy"]);
+});
+
 Deno.test("an unwritable job-summary file never fails the build", async () => {
   const dir = await Deno.makeTempDir(); // a directory is not writable as a file
   const { reporter } = recorder();
