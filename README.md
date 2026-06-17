@@ -27,8 +27,8 @@ order. Inspired by [NUKE](https://nuke.build/) for .NET.
   `jsr:@zuke/oxlint`, `jsr:@zuke/eslint`, `jsr:@zuke/biome`, `jsr:@zuke/knip`,
   `jsr:@zuke/cspell`, `jsr:@zuke/jest`, `jsr:@zuke/vitest`,
   `jsr:@zuke/playwright`, `jsr:@zuke/cypress`, `jsr:@zuke/vite`,
-  `jsr:@zuke/tsup`, `jsr:@zuke/turbo`, `jsr:@zuke/nx`, `jsr:@zuke/tsx`,
-  `jsr:@zuke/tsgo`, `jsr:@zuke/dprint`,
+  `jsr:@zuke/tsup`, `jsr:@zuke/turbo`, `jsr:@zuke/nx`, `jsr:@zuke/jsr`,
+  `jsr:@zuke/tsx`, `jsr:@zuke/tsgo`, `jsr:@zuke/dprint`,
   `jsr:@zuke/gcloud`, `jsr:@zuke/git`, `jsr:@zuke/gh`, `jsr:@zuke/terraform`,
   `jsr:@zuke/tofu`, `jsr:@zuke/security`, `jsr:@zuke/cmd` (raw shell via
   `jsr:@zuke/core/shell`)

@@ -25,6 +25,7 @@ const PACKAGES = [
   "packages/tsup",
   "packages/turbo",
   "packages/nx",
+  "packages/jsr",
   "packages/tsx",
   "packages/tsgo",
   "packages/dprint",
