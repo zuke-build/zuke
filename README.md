@@ -56,10 +56,10 @@ class MyBuild extends Build {
   (throw on failure, capture output) and is injection-safe.
 - **Small and explicit.** A tiny core: discover targets, build a graph, sort,
   run. No magic, no plugins to learn (yet).
-- **Code-first CI.** Declare your pipeline in the build with `cicd()` — even
-  `cicd()` with no arguments produces a working workflow — and Zuke generates
-  GitHub Actions, GitLab CI, or Azure Pipelines YAML, regenerating it whenever
-  the build runs (and verifying it on CI).
+- **Code-first CI.** Declare your pipeline in the build with
+  `cicd({ provider: "github" })` — the provider is the only required field — and
+  Zuke generates GitHub Actions, GitLab CI, or Azure Pipelines YAML,
+  regenerating it whenever the build runs (and verifying it on CI).
 
 ## Install
 

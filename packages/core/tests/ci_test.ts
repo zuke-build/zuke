@@ -141,14 +141,17 @@ Deno.test("explicit empty triggers render without an on/trigger block", () => {
   assertEquals(generateCi(bare, "azure").includes("trigger:"), false);
 });
 
-Deno.test("defaults: provider, name, triggers and job id fill in", () => {
+Deno.test("defaults: name, triggers and job id fill in", () => {
   // Only steps are given; everything else falls back to a meaningful default.
-  const yaml = generateCi({ jobs: [{ steps: [{ run: "deno task ci" }] }] });
+  const yaml = generateCi(
+    { jobs: [{ steps: [{ run: "deno task ci" }] }] },
+    "github",
+  );
   assertStringIncludes(yaml, "name: CI"); // default name
   assertStringIncludes(yaml, `"on":`); // default triggers present
   assertStringIncludes(yaml, "push:\n    branches:\n      - main"); // default branch
   assertStringIncludes(yaml, "pull_request:");
-  assertStringIncludes(yaml, "build:"); // default job id (github default provider)
+  assertStringIncludes(yaml, "build:"); // default job id
 });
 
 Deno.test("defaults: a default job id flows through every provider", () => {
@@ -163,7 +166,7 @@ Deno.test("defaults: a default job id flows through every provider", () => {
 
 Deno.test("defaults: jobs and steps fall back to a single build step", () => {
   // An empty pipeline still produces a complete, runnable workflow.
-  const yaml = generateCi();
+  const yaml = generateCi({}, "github");
   assertStringIncludes(yaml, "name: CI");
   assertStringIncludes(yaml, "build:"); // default job id
   assertStringIncludes(yaml, "run: ./zuke"); // default step runs the build
@@ -182,22 +185,28 @@ Deno.test("defaults: a job may omit steps and get the default step", () => {
   assertStringIncludes(yaml, "run: ./zuke");
 });
 
-Deno.test("cicd: with no spec declares the default workflow", () => {
-  const file = cicd();
+Deno.test("cicd: with only a provider declares the default workflow", () => {
+  const file = cicd({ provider: "github" });
   assertEquals(file.path, ".github/workflows/ci.yml");
   assertStringIncludes(file.render(), "run: ./zuke");
 });
 
-Deno.test("cicd: provider defaults to github and path follows the provider", () => {
+Deno.test("cicd: the path follows the provider unless overridden", () => {
   const pipeline: CiPipeline = { jobs: [{ steps: [{ run: "x" }] }] };
-  assertEquals(cicd({ pipeline }).path, ".github/workflows/ci.yml");
+  assertEquals(
+    cicd({ provider: "github", pipeline }).path,
+    ".github/workflows/ci.yml",
+  );
   assertEquals(cicd({ provider: "gitlab", pipeline }).path, ".gitlab-ci.yml");
   assertEquals(
     cicd({ provider: "azure", pipeline }).path,
     "azure-pipelines.yml",
   );
   // An explicit path overrides the convention.
-  assertEquals(cicd({ path: "custom.yml", pipeline }).path, "custom.yml");
+  assertEquals(
+    cicd({ provider: "github", path: "custom.yml", pipeline }).path,
+    "custom.yml",
+  );
 });
 
 // --- Declarative CI files: cicd(), discovery, and on-disk sync ---

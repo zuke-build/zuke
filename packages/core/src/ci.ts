@@ -106,9 +106,6 @@ const DEFAULT_NAME = "CI";
 /** The default job id when one is not given. */
 const DEFAULT_JOB_ID = "build";
 
-/** The default provider for {@link generateCi} and {@link cicd}. */
-const DEFAULT_PROVIDER: CiProvider = "github";
-
 /** Default triggers: push and pull request on `main`. */
 const DEFAULT_TRIGGERS: CiTriggers = { push: ["main"], pullRequest: ["main"] };
 
@@ -251,13 +248,13 @@ function azure(pipeline: CiPipeline): YamlValue {
 }
 
 /**
- * Render `pipeline` as the YAML configuration for `provider` (default
- * `"github"`): `.github/workflows/*.yml`, `.gitlab-ci.yml`, or
- * `azure-pipelines.yml`.
+ * Render `pipeline` as the YAML configuration for `provider`:
+ * `.github/workflows/*.yml`, `.gitlab-ci.yml`, or `azure-pipelines.yml`. The
+ * pipeline may be empty (`{}`) to accept every default.
  */
 export function generateCi(
-  pipeline: CiPipeline = {},
-  provider: CiProvider = DEFAULT_PROVIDER,
+  pipeline: CiPipeline,
+  provider: CiProvider,
 ): string {
   switch (provider) {
     case "github":
@@ -271,8 +268,8 @@ export function generateCi(
 
 /** A CI configuration file declared on a build: a pipeline bound to a path. */
 export interface CiFileSpec {
-  /** The provider to render for. Defaults to `"github"`. */
-  provider?: CiProvider;
+  /** The provider to render for — the one field you must choose. */
+  provider: CiProvider;
   /**
    * The output path (relative to the working directory). Defaults to the
    * provider's conventional location (`.github/workflows/ci.yml`,
@@ -295,8 +292,8 @@ export class CiFile {
   /** The pipeline this file renders. */
   readonly pipeline: CiPipeline;
 
-  constructor(spec: CiFileSpec = {}) {
-    this.provider = spec.provider ?? DEFAULT_PROVIDER;
+  constructor(spec: CiFileSpec) {
+    this.provider = spec.provider;
     this.path = spec.path ?? DEFAULT_PATHS[this.provider];
     this.pipeline = spec.pipeline ?? {};
   }
@@ -312,19 +309,19 @@ export class CiFile {
  * `generate-ci` command writes it on demand), so the committed configuration is
  * generated from code rather than hand-maintained.
  *
- * Everything is optional: `cicd()` declares a GitHub workflow at
- * `.github/workflows/ci.yml` that runs the build on push/PR to `main`. Override
- * only what you need.
+ * The provider is the only required field: `cicd({ provider: "github" })`
+ * declares a workflow at `.github/workflows/ci.yml` that runs the build on
+ * push/PR to `main`. Override only what else you need.
  *
  * ```ts
  * class MyBuild extends Build {
- *   ci = cicd(); // sensible default workflow
+ *   ci = cicd({ provider: "github" }); // sensible default workflow
  *   // …or customise:
  *   gitlab = cicd({ provider: "gitlab", pipeline: { jobs: [{ steps: [...] }] } });
  * }
  * ```
  */
-export function cicd(spec: CiFileSpec = {}): CiFile {
+export function cicd(spec: CiFileSpec): CiFile {
   return new CiFile(spec);
 }
 
