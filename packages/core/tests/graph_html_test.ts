@@ -3,11 +3,11 @@ import { Build, group, target } from "../mod.ts";
 import { discoverGroups, discoverTargets } from "../src/build.ts";
 import { TargetBuilder } from "../src/target.ts";
 import {
-  clientModel,
+  type CyElement,
+  cytoscapeElements,
   type GraphData,
   graphData,
   renderGraphHtml,
-  toMermaid,
 } from "../src/graph_html.ts";
 
 class Demo extends Build {
@@ -15,6 +15,11 @@ class Demo extends Build {
   build = target().description("Build").dependsOn(this.clean).executes(
     () => {},
   );
+}
+
+/** Find an element by id in a Cytoscape element list. */
+function byId(elements: CyElement[], id: string): CyElement | undefined {
+  return elements.find((e) => e.data.id === id);
 }
 
 Deno.test("graphData yields a node per target and an edge per dependency", () => {
@@ -26,7 +31,7 @@ Deno.test("graphData yields a node per target and an edge per dependency", () =>
   assertEquals(data.edges, [["clean", "build"]]);
 });
 
-Deno.test("graphData records group membership and toMermaid wraps it in a subgraph", () => {
+Deno.test("graphData records group membership and cytoscapeElements nests it in a compound node", () => {
   class Grouped extends Build {
     checks = group();
     clean = target().executes(() => {});
@@ -45,9 +50,15 @@ Deno.test("graphData records group membership and toMermaid wraps it in a subgra
   assertEquals(data.nodes.find((n) => n.name === "lint")?.group, "checks");
   assertEquals(data.nodes.find((n) => n.name === "clean")?.group, undefined);
 
-  const mermaid = toMermaid(data);
-  assertEquals(mermaid.includes('subgraph g0["checks"]'), true);
-  assertEquals(mermaid.includes("end"), true);
+  const elements = cytoscapeElements(data);
+  // The group becomes a compound parent box...
+  assertEquals(byId(elements, "g0")?.data.label, "checks");
+  assertEquals(byId(elements, "g0")?.classes, "group");
+  // ...and grouped targets reference it as their parent; ungrouped ones don't.
+  const lint = elements.find((e) => e.data.label === "lint");
+  const clean = elements.find((e) => e.data.label === "clean");
+  assertEquals(lint?.data.parent, "g0");
+  assertEquals(clean?.data.parent, undefined);
 });
 
 Deno.test("graphData skips edges to undiscovered or unnamed dependencies", () => {
@@ -63,45 +74,60 @@ Deno.test("graphData skips edges to undiscovered or unnamed dependencies", () =>
   assertEquals(data.edges, []);
 });
 
-Deno.test("toMermaid renders synthetic ids, edges, and escapes quotes", () => {
+Deno.test("cytoscapeElements renders synthetic ids, descriptions, depth, and edges", () => {
   const data: GraphData = {
-    nodes: [{ name: 'a"b', description: "" }, { name: "c", description: "" }],
-    edges: [['a"b', "c"]],
+    nodes: [
+      { name: "a", description: "first" },
+      { name: "c", description: "" },
+    ],
+    edges: [["a", "c"]],
   };
-  assertEquals(
-    toMermaid(data),
-    [
-      "flowchart TD",
-      '  n0["a&quot;b"]',
-      '  n1["c"]',
-      "  n0 --> n1",
-    ].join("\n"),
+  assertEquals(cytoscapeElements(data), [
+    {
+      data: { id: "n0", label: "a", depth: 0, description: "first" },
+      classes: "target",
+    },
+    { data: { id: "n1", label: "c", depth: 1 }, classes: "target" },
+    { data: { id: "e0", source: "n0", target: "n1" } },
+  ]);
+});
+
+Deno.test("cytoscapeElements records the longest-path depth of each target", () => {
+  // Diamond: a → b, a → c, b → d, c → d. Depth is the longest chain, so d is 2.
+  const data: GraphData = {
+    nodes: ["a", "b", "c", "d"].map((name) => ({ name, description: "" })),
+    edges: [["a", "b"], ["a", "c"], ["b", "d"], ["c", "d"]],
+  };
+  const depth = Object.fromEntries(
+    cytoscapeElements(data)
+      .filter((e) => e.classes === "target")
+      .map((e) => [e.data.label, e.data.depth]),
   );
+  assertEquals(depth, { a: 0, b: 1, c: 1, d: 2 });
 });
 
-Deno.test("toMermaid renders a placeholder for an empty graph", () => {
-  assertEquals(
-    toMermaid({ nodes: [], edges: [] }),
-    'flowchart TD\n  empty["No targets defined"]',
-  );
+Deno.test("cytoscapeElements renders a placeholder for an empty graph", () => {
+  assertEquals(cytoscapeElements({ nodes: [], edges: [] }), [
+    { data: { id: "empty", label: "No targets defined" }, classes: "target" },
+  ]);
 });
 
-Deno.test("clientModel records ids and both-direction adjacency", () => {
-  const model = clientModel(graphData(discoverTargets(new Demo())));
-  assertEquals(model.edges, [["n0", "n1"]]);
-  const clean = model.nodes[0];
-  const build = model.nodes[1];
-  assertEquals([clean.id, clean.dependents, clean.deps], ["n0", ["n1"], []]);
-  assertEquals([build.id, build.deps, build.dependents], ["n1", ["n0"], []]);
-});
-
-Deno.test("renderGraphHtml embeds the diagram, model, and CDN import", () => {
+Deno.test("renderGraphHtml embeds the elements and Cytoscape CDN import", () => {
   const html = renderGraphHtml(graphData(discoverTargets(new Demo())));
   assertEquals(html.startsWith("<!doctype html>"), true);
-  assertEquals(html.includes("cdn.jsdelivr.net/npm/mermaid@"), true);
-  assertEquals(html.includes("flowchart TD"), true);
-  assertEquals(html.includes('"name":"build"'), true);
+  assertEquals(html.includes("cdn.jsdelivr.net/npm/cytoscape@"), true);
+  assertEquals(html.includes("cytoscape-dagre@"), true);
+  assertEquals(html.includes('"label":"build"'), true);
   assertEquals(html.includes("Zuke build graph"), true);
+});
+
+Deno.test("renderGraphHtml includes the layout, edge, fit, and export controls", () => {
+  const html = renderGraphHtml(graphData(discoverTargets(new Demo())));
+  assertEquals(html.includes('id="dir"'), true);
+  assertEquals(html.includes('id="edge"'), true);
+  assertEquals(html.includes('id="fit"'), true);
+  assertEquals(html.includes('id="png"'), true);
+  assertEquals(html.includes("cy.png("), true);
 });
 
 Deno.test("renderGraphHtml accepts a custom title", () => {
