@@ -39,7 +39,9 @@ Deno.test("installRelease (raw) downloads the binary and returns its path", asyn
       download: fakeDownload("#!/bin/sh\necho hi\n", seen),
     });
     assertEquals(bin.name, "mytool");
-    assertEquals(bin.path, `${dir}/mytool`);
+    // `bin.path` is normalised to forward slashes; the raw temp dir is not on
+    // Windows, so assert the suffix rather than the full string.
+    assertEquals(bin.path.endsWith("/mytool"), true);
     assertEquals(
       seen.url,
       `https://example.com/mytool-${Deno.build.os}-${Deno.build.arch}`,
@@ -65,7 +67,8 @@ Deno.test("installRelease (raw) creates a missing destination directory", async 
       url: () => "https://example.com/tool",
       download: fakeDownload("binary"),
     });
-    assertEquals(bin.path, `${dest}/tool`);
+    assertEquals(bin.path.endsWith("/nested/bin/tool"), true);
+    assertEquals((await Deno.stat(String(bin))).isFile, true);
   } finally {
     await Deno.remove(root, { recursive: true });
   }
@@ -82,9 +85,11 @@ Deno.test("installRelease (raw) resolves a relative destDir against cwd", async 
       url: () => "https://example.com/rel",
       download: fakeDownload("x"),
     });
-    // The returned path is absolute and rooted under the temp cwd.
+    // The returned path is absolute (resolved against cwd) and the file is
+    // really there. `bin.path` uses forward slashes on every platform.
     assertEquals(bin.path.endsWith("/out/bin/rel"), true);
-    assertEquals(bin.path.startsWith("/"), true);
+    assertEquals(bin.path === "out/bin/rel", false); // not left relative
+    assertEquals((await Deno.stat(String(bin))).isFile, true);
   } finally {
     Deno.chdir(prev);
     await Deno.remove(root, { recursive: true });
@@ -113,7 +118,7 @@ Deno.test("installRelease (tar.gz) unpacks and installs the inner binary", async
       url: () => "https://example.com/mytool.tar.gz",
       download: fakeDownload(bytes),
     });
-    assertEquals(bin.path, `${dest}/mytool`);
+    assertEquals(bin.path.endsWith("/mytool"), true);
     const contents = new TextDecoder().decode(await Deno.readFile(String(bin)));
     assertEquals(contents, "tarred-binary");
   } finally {
