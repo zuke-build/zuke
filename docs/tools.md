@@ -33,6 +33,7 @@ raises a `ToolNotFoundError` that names the tool and the fix.
 | `@zuke/yarn`           | `install`, `add`, `remove`, `run`, `dlx`                                                                             |
 | `@zuke/docker`         | `build`, `run`, `exec`, `push`, `pull`, `tag`, `login`, `images`, `ps`, `stop`, `start`, `rm`, `rmi`, `save`, `load` |
 | `@zuke/docker-compose` | `up`, `down`, `build`, `pull`, `push`, `run`, `exec`, `logs`, `ps`, `config`, `start`, `stop`, `restart`, `rm`       |
+| `@zuke/kubectl`        | `apply`, `create`, `delete`, `get`, `describe`, `logs`, `exec`, `rollout`, `scale`, `setImage`, `patch`, `portForward`, `wait`, `top` |
 | `@zuke/oxlint`         | `lint`                                                                                                               |
 | `@zuke/eslint`         | `lint`                                                                                                               |
 | `@zuke/cspell`         | `lint`                                                                                                               |

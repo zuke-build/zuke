@@ -29,6 +29,7 @@ const PACKAGES = [
   "cli",
   "docker",
   "docker-compose",
+  "kubectl",
   "oxlint",
   "eslint",
   "cspell",

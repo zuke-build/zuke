@@ -9,6 +9,7 @@
   "packages/cli": "0.3.0",
   "packages/docker": "0.3.0",
   "packages/docker-compose": "0.3.0",
+  "packages/kubectl": "0.0.0",
   "packages/oxlint": "0.2.0",
   "packages/eslint": "0.2.0",
   "packages/cspell": "0.2.0",

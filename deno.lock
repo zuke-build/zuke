@@ -617,6 +617,11 @@
           "jsr:@zuke/core@0"
         ]
       },
+      "packages/kubectl": {
+        "dependencies": [
+          "jsr:@zuke/core@0"
+        ]
+      },
       "packages/npm": {
         "dependencies": [
           "jsr:@zuke/core@0"

@@ -1,0 +1,565 @@
+import {
+  assertEquals,
+  assertRejects,
+  assertThrows,
+} from "../../core/tests/_assert.ts";
+import { ToolNotFoundError, type ToolSettings } from "@zuke/core/tooling";
+import {
+  KubectlApplySettings,
+  KubectlCreateSettings,
+  KubectlDeleteSettings,
+  KubectlDescribeSettings,
+  KubectlExecSettings,
+  KubectlGetSettings,
+  KubectlLogsSettings,
+  KubectlPatchSettings,
+  KubectlPortForwardSettings,
+  KubectlRolloutSettings,
+  KubectlScaleSettings,
+  KubectlSetImageSettings,
+  KubectlTasks,
+  KubectlTopSettings,
+  KubectlWaitSettings,
+} from "../src/kubectl.ts";
+
+Deno.test("the default binary is kubectl", () => {
+  assertEquals(new KubectlApplySettings().file("x.yaml").argv()[0], "kubectl");
+});
+
+Deno.test("global flags (namespace, context, kubeconfig) apply to a subcommand", () => {
+  assertEquals(
+    new KubectlGetSettings()
+      .resource("pods")
+      .namespace("prod")
+      .context("staging")
+      .kubeconfig("~/.kube/config")
+      .argv()
+      .slice(1),
+    [
+      "get",
+      "--namespace",
+      "prod",
+      "--context",
+      "staging",
+      "--kubeconfig",
+      "~/.kube/config",
+      "pods",
+    ],
+  );
+});
+
+Deno.test("apply: requires file or kustomize; all options", () => {
+  assertThrows(
+    () => new KubectlApplySettings().argv(),
+    Error,
+    "KubectlTasks.apply: .file() or .kustomize() is required",
+  );
+  assertEquals(new KubectlApplySettings().file("a.yaml").argv().slice(1), [
+    "apply",
+    "-f",
+    "a.yaml",
+  ]);
+  assertEquals(
+    new KubectlApplySettings()
+      .file("a.yaml")
+      .file("b.yaml")
+      .kustomize("overlays/prod")
+      .recursive()
+      .prune()
+      .serverSide()
+      .dryRun()
+      .selector("app=api")
+      .force()
+      .argv()
+      .slice(1),
+    [
+      "apply",
+      "-f",
+      "a.yaml",
+      "-f",
+      "b.yaml",
+      "-k",
+      "overlays/prod",
+      "-R",
+      "--prune",
+      "--server-side",
+      "--dry-run=client",
+      "-l",
+      "app=api",
+      "--force",
+    ],
+  );
+  // dryRun accepts an explicit mode.
+  assertEquals(
+    new KubectlApplySettings().file("a.yaml").dryRun("server").argv().slice(1),
+    ["apply", "-f", "a.yaml", "--dry-run=server"],
+  );
+});
+
+Deno.test("create: bare and all options", () => {
+  assertEquals(new KubectlCreateSettings().argv().slice(1), ["create"]);
+  assertEquals(
+    new KubectlCreateSettings()
+      .file("ns.yaml")
+      .recursive()
+      .dryRun("client")
+      .output("yaml")
+      .saveConfig()
+      .argv()
+      .slice(1),
+    [
+      "create",
+      "-f",
+      "ns.yaml",
+      "-R",
+      "--dry-run=client",
+      "-o",
+      "yaml",
+      "--save-config",
+    ],
+  );
+});
+
+Deno.test("delete: requires file or resource; all options", () => {
+  assertThrows(
+    () => new KubectlDeleteSettings().argv(),
+    Error,
+    "KubectlTasks.delete: specify .file() or .resource(...)",
+  );
+  assertEquals(
+    new KubectlDeleteSettings()
+      .file("a.yaml")
+      .resource("pod", "web")
+      .selector("app=api")
+      .all()
+      .ignoreNotFound()
+      .force()
+      .gracePeriod(0)
+      .recursive()
+      .argv()
+      .slice(1),
+    [
+      "delete",
+      "-f",
+      "a.yaml",
+      "pod",
+      "web",
+      "-l",
+      "app=api",
+      "--all",
+      "--ignore-not-found",
+      "--force",
+      "--grace-period=0",
+      "-R",
+    ],
+  );
+});
+
+Deno.test("get: requires a resource; all options", () => {
+  assertThrows(
+    () => new KubectlGetSettings().argv(),
+    Error,
+    "KubectlTasks.get: specify a resource type",
+  );
+  assertEquals(
+    new KubectlGetSettings()
+      .resource("pods")
+      .output("wide")
+      .selector("app=api")
+      .fieldSelector("status.phase=Running")
+      .allNamespaces()
+      .watch()
+      .showLabels()
+      .argv()
+      .slice(1),
+    [
+      "get",
+      "pods",
+      "-o",
+      "wide",
+      "-l",
+      "app=api",
+      "--field-selector=status.phase=Running",
+      "-A",
+      "-w",
+      "--show-labels",
+    ],
+  );
+});
+
+Deno.test("describe: requires resource or selector; both forms", () => {
+  assertThrows(
+    () => new KubectlDescribeSettings().argv(),
+    Error,
+    "KubectlTasks.describe: specify .resource(...) or .selector()",
+  );
+  assertEquals(
+    new KubectlDescribeSettings().resource("deployment/api").argv().slice(1),
+    ["describe", "deployment/api"],
+  );
+  assertEquals(
+    new KubectlDescribeSettings().selector("app=api").argv().slice(1),
+    ["describe", "-l", "app=api"],
+  );
+});
+
+Deno.test("logs: requires resource or selector; all options", () => {
+  assertThrows(
+    () => new KubectlLogsSettings().argv(),
+    Error,
+    "KubectlTasks.logs: specify .resource() or .selector()",
+  );
+  assertEquals(
+    new KubectlLogsSettings()
+      .resource("web-0")
+      .container("api")
+      .follow()
+      .previous()
+      .tail(100)
+      .since("5m")
+      .allContainers()
+      .timestamps()
+      .argv()
+      .slice(1),
+    [
+      "logs",
+      "web-0",
+      "-c",
+      "api",
+      "-f",
+      "--previous",
+      "--tail=100",
+      "--since=5m",
+      "--all-containers",
+      "--timestamps",
+    ],
+  );
+  // Selector form needs no pod name.
+  assertEquals(
+    new KubectlLogsSettings().selector("app=api").argv().slice(1),
+    ["logs", "-l", "app=api"],
+  );
+});
+
+Deno.test("exec: requires resource and command; ordering with --", () => {
+  assertThrows(
+    () => new KubectlExecSettings().command("ls").argv(),
+    Error,
+    "KubectlTasks.exec: .resource() is required",
+  );
+  assertThrows(
+    () => new KubectlExecSettings().resource("web-0").argv(),
+    Error,
+    "KubectlTasks.exec: .command(...) is required",
+  );
+  assertEquals(
+    new KubectlExecSettings()
+      .resource("web-0")
+      .container("api")
+      .stdin()
+      .tty()
+      .command("sh", "-c", "echo hi")
+      .argv()
+      .slice(1),
+    ["exec", "-i", "-t", "-c", "api", "web-0", "--", "sh", "-c", "echo hi"],
+  );
+});
+
+Deno.test("rollout: requires action and resource; sub-actions and flags", () => {
+  assertThrows(
+    () => new KubectlRolloutSettings().resource("deployment/api").argv(),
+    Error,
+    "choose .status(), .restart(), .undo(), or .history()",
+  );
+  assertThrows(
+    () => new KubectlRolloutSettings().status().argv(),
+    Error,
+    "KubectlTasks.rollout: .resource() is required",
+  );
+  assertEquals(
+    new KubectlRolloutSettings()
+      .status()
+      .resource("deployment/api")
+      .timeout("120s")
+      .argv()
+      .slice(1),
+    ["rollout", "status", "deployment/api", "--timeout=120s"],
+  );
+  assertEquals(
+    new KubectlRolloutSettings()
+      .undo()
+      .resource("deployment/api")
+      .toRevision(3)
+      .argv()
+      .slice(1),
+    ["rollout", "undo", "deployment/api", "--to-revision=3"],
+  );
+  assertEquals(
+    new KubectlRolloutSettings().restart().resource("deployment/api").argv()
+      .slice(1),
+    ["rollout", "restart", "deployment/api"],
+  );
+  assertEquals(
+    new KubectlRolloutSettings().history().resource("deployment/api").argv()
+      .slice(1),
+    ["rollout", "history", "deployment/api"],
+  );
+});
+
+Deno.test("scale: requires replicas and a target; all options", () => {
+  assertThrows(
+    () => new KubectlScaleSettings().resource("deployment/api").argv(),
+    Error,
+    "KubectlTasks.scale: .replicas() is required",
+  );
+  assertThrows(
+    () => new KubectlScaleSettings().replicas(3).argv(),
+    Error,
+    "KubectlTasks.scale: specify .resource() or .file()",
+  );
+  assertEquals(
+    new KubectlScaleSettings()
+      .replicas(3)
+      .resource("deployment/api")
+      .currentReplicas(1)
+      .selector("app=api")
+      .all()
+      .argv()
+      .slice(1),
+    [
+      "scale",
+      "--replicas=3",
+      "--current-replicas=1",
+      "deployment/api",
+      "-l",
+      "app=api",
+      "--all",
+    ],
+  );
+  // File form.
+  assertEquals(
+    new KubectlScaleSettings().replicas(2).file("deploy.yaml").argv().slice(1),
+    ["scale", "--replicas=2", "-f", "deploy.yaml"],
+  );
+});
+
+Deno.test("setImage: requires resource and image; all options", () => {
+  assertThrows(
+    () => new KubectlSetImageSettings().image("api", "api:1").argv(),
+    Error,
+    "KubectlTasks.setImage: .resource() is required",
+  );
+  assertThrows(
+    () => new KubectlSetImageSettings().resource("deployment/api").argv(),
+    Error,
+    "KubectlTasks.setImage: at least one .image() is required",
+  );
+  assertEquals(
+    new KubectlSetImageSettings()
+      .resource("deployment/api")
+      .image("api", "api:1.4")
+      .image("sidecar", "proxy:2")
+      .selector("tier=web")
+      .all()
+      .argv()
+      .slice(1),
+    [
+      "set",
+      "image",
+      "deployment/api",
+      "api=api:1.4",
+      "sidecar=proxy:2",
+      "-l",
+      "tier=web",
+      "--all",
+    ],
+  );
+});
+
+Deno.test("patch: requires resource and patch; --type ordering", () => {
+  assertThrows(
+    () => new KubectlPatchSettings().patch("{}").argv(),
+    Error,
+    "KubectlTasks.patch: .resource() is required",
+  );
+  assertThrows(
+    () => new KubectlPatchSettings().resource("deployment/api").argv(),
+    Error,
+    "KubectlTasks.patch: .patch() is required",
+  );
+  assertEquals(
+    new KubectlPatchSettings()
+      .resource("deployment/api")
+      .type("merge")
+      .patch('{"spec":{"replicas":2}}')
+      .argv()
+      .slice(1),
+    [
+      "patch",
+      "deployment/api",
+      "--type",
+      "merge",
+      "-p",
+      '{"spec":{"replicas":2}}',
+    ],
+  );
+});
+
+Deno.test("portForward: requires resource and a port; --address ordering", () => {
+  assertThrows(
+    () => new KubectlPortForwardSettings().port("8080:80").argv(),
+    Error,
+    "KubectlTasks.portForward: .resource() is required",
+  );
+  assertThrows(
+    () => new KubectlPortForwardSettings().resource("svc/api").argv(),
+    Error,
+    "KubectlTasks.portForward: at least one .port() is required",
+  );
+  assertEquals(
+    new KubectlPortForwardSettings()
+      .resource("svc/api")
+      .address("0.0.0.0")
+      .port("8080:80")
+      .port("9090")
+      .argv()
+      .slice(1),
+    ["port-forward", "--address", "0.0.0.0", "svc/api", "8080:80", "9090"],
+  );
+});
+
+Deno.test("wait: requires a target and a condition; all options", () => {
+  assertThrows(
+    () => new KubectlWaitSettings().forCondition("delete").argv(),
+    Error,
+    "KubectlTasks.wait: specify .file() or .resource(...)",
+  );
+  assertThrows(
+    () => new KubectlWaitSettings().resource("pod/web").argv(),
+    Error,
+    "KubectlTasks.wait: .forCondition() is required",
+  );
+  assertEquals(
+    new KubectlWaitSettings()
+      .file("job.yaml")
+      .resource("pod/web")
+      .forCondition("condition=Ready")
+      .timeout("60s")
+      .selector("app=api")
+      .all()
+      .argv()
+      .slice(1),
+    [
+      "wait",
+      "-f",
+      "job.yaml",
+      "pod/web",
+      "--for=condition=Ready",
+      "--timeout=60s",
+      "-l",
+      "app=api",
+      "--all",
+    ],
+  );
+});
+
+Deno.test("top: requires pods or nodes; all options", () => {
+  assertThrows(
+    () => new KubectlTopSettings().argv(),
+    Error,
+    "KubectlTasks.top: choose .pods() or .nodes()",
+  );
+  assertEquals(
+    new KubectlTopSettings()
+      .pods()
+      .name("web-0")
+      .selector("app=api")
+      .containers()
+      .allNamespaces()
+      .argv()
+      .slice(1),
+    ["top", "pods", "web-0", "-l", "app=api", "--containers", "-A"],
+  );
+  assertEquals(
+    new KubectlTopSettings().nodes().argv().slice(1),
+    ["top", "nodes"],
+  );
+});
+
+/**
+ * Point a settings object at a guaranteed-missing binary with the shim
+ * fallback disabled, so each KubectlTasks function reaches execution WITHOUT
+ * ever invoking a real kubectl (tests must stay hermetic).
+ */
+const missing = <S extends ToolSettings>(s: S): S => {
+  s.os_ = "linux";
+  return s.toolPath("zuke-no-such-kubectl-xyz");
+};
+
+Deno.test("every KubectlTasks function reaches execution", async () => {
+  await assertRejects(
+    () => KubectlTasks.apply((s) => missing(s).file("a.yaml")),
+    ToolNotFoundError,
+  );
+  await assertRejects(() => KubectlTasks.create(missing), ToolNotFoundError);
+  await assertRejects(
+    () => KubectlTasks.delete((s) => missing(s).resource("pod", "web")),
+    ToolNotFoundError,
+  );
+  await assertRejects(
+    () => KubectlTasks.get((s) => missing(s).resource("pods")),
+    ToolNotFoundError,
+  );
+  await assertRejects(
+    () => KubectlTasks.describe((s) => missing(s).resource("pod/web")),
+    ToolNotFoundError,
+  );
+  await assertRejects(
+    () => KubectlTasks.logs((s) => missing(s).resource("web-0")),
+    ToolNotFoundError,
+  );
+  await assertRejects(
+    () => KubectlTasks.exec((s) => missing(s).resource("web-0").command("sh")),
+    ToolNotFoundError,
+  );
+  await assertRejects(
+    () =>
+      KubectlTasks.rollout((s) => missing(s).status().resource("deploy/api")),
+    ToolNotFoundError,
+  );
+  await assertRejects(
+    () =>
+      KubectlTasks.scale((s) => missing(s).replicas(2).resource("deploy/api")),
+    ToolNotFoundError,
+  );
+  await assertRejects(
+    () =>
+      KubectlTasks.setImage((s) =>
+        missing(s).resource("deploy/api").image("api", "api:1")
+      ),
+    ToolNotFoundError,
+  );
+  await assertRejects(
+    () =>
+      KubectlTasks.patch((s) => missing(s).resource("deploy/api").patch("{}")),
+    ToolNotFoundError,
+  );
+  await assertRejects(
+    () =>
+      KubectlTasks.portForward((s) =>
+        missing(s).resource("svc/api").port("80")
+      ),
+    ToolNotFoundError,
+  );
+  await assertRejects(
+    () =>
+      KubectlTasks.wait((s) =>
+        missing(s).resource("pod/web").forCondition("delete")
+      ),
+    ToolNotFoundError,
+  );
+  await assertRejects(
+    () => KubectlTasks.top((s) => missing(s).nodes()),
+    ToolNotFoundError,
+  );
+});
