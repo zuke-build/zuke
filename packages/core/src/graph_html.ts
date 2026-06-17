@@ -259,7 +259,7 @@ const cy = cytoscape({
       "font-family": MONO, "font-size": 13, "font-weight": 600,
       "background-color": "#0e1626", "background-opacity": 0.95, "color": "#e8eef7",
       "border-width": 1.5, "border-color": "#2b3a55",
-      "underlay-color": "#2b3a55", "underlay-opacity": 0.18, "underlay-padding": 7,
+      "underlay-color": "#2b3a55", "underlay-opacity": 0.18, "underlay-padding": 3,
       "underlay-shape": "round-rectangle",
     } },
     { selector: "node.target[accent]", style: {
@@ -279,7 +279,7 @@ const cy = cytoscape({
       "curve-style": "bezier", "arrow-scale": 0.95,
     } },
     { selector: "edge[accent]", style: { "target-arrow-color": "data(accent)" } },
-    { selector: ".active", style: { "border-width": 3, "underlay-opacity": 0.45 } },
+    { selector: ".active", style: { "border-width": 3, "underlay-padding": 5, "underlay-opacity": 0.45 } },
     { selector: ".faded", style: { "opacity": 0.1 } },
   ],
   layout,
