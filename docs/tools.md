@@ -36,10 +36,13 @@ raises a `ToolNotFoundError` that names the tool and the fix.
 | `@zuke/kubectl`        | `apply`, `create`, `delete`, `get`, `describe`, `logs`, `exec`, `rollout`, `scale`, `setImage`, `patch`, `portForward`, `wait`, `top` |
 | `@zuke/oxlint`         | `lint`                                                                                                               |
 | `@zuke/eslint`         | `lint`                                                                                                               |
+| `@zuke/biome`          | `check`, `format`, `lint`, `ci`                                                                                      |
 | `@zuke/cspell`         | `lint`                                                                                                               |
 | `@zuke/jest`           | `run`                                                                                                                |
 | `@zuke/vitest`         | `run`                                                                                                                |
 | `@zuke/playwright`     | `test`, `install`, `showReport`, `codegen`                                                                           |
+| `@zuke/vite`           | `dev`, `build`, `preview`                                                                                            |
+| `@zuke/tsup`           | `build`                                                                                                              |
 | `@zuke/tsx`            | `tsx`, `watch`                                                                                                       |
 | `@zuke/tsgo`           | `tsgo`                                                                                                               |
 | `@zuke/dprint`         | `fmt`, `check`                                                                                                      |

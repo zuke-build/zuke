@@ -130,6 +130,30 @@
         { "type": "json", "path": "deno.json", "jsonpath": "$.version" }
       ]
     },
+    "packages/biome": {
+      "component": "biome",
+      "release-as": "0.1.0",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        { "type": "json", "path": "deno.json", "jsonpath": "$.version" }
+      ]
+    },
+    "packages/vite": {
+      "component": "vite",
+      "release-as": "0.1.0",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        { "type": "json", "path": "deno.json", "jsonpath": "$.version" }
+      ]
+    },
+    "packages/tsup": {
+      "component": "tsup",
+      "release-as": "0.1.0",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        { "type": "json", "path": "deno.json", "jsonpath": "$.version" }
+      ]
+    },
     "packages/tsx": {
       "component": "tsx",
       "release-as": "0.1.0",
