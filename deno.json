@@ -20,6 +20,7 @@
     "packages/cypress",
     "packages/biome",
     "packages/knip",
+    "packages/jsr",
     "packages/vite",
     "packages/tsup",
     "packages/turbo",

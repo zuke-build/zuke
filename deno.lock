@@ -627,6 +627,11 @@
           "jsr:@zuke/core@0"
         ]
       },
+      "packages/jsr": {
+        "dependencies": [
+          "jsr:@zuke/core@0"
+        ]
+      },
       "packages/knip": {
         "dependencies": [
           "jsr:@zuke/core@0"

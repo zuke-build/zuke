@@ -47,6 +47,7 @@ raises a `ToolNotFoundError` that names the tool and the fix.
 | `@zuke/tsup`           | `build`                                                                                                              |
 | `@zuke/turbo`          | `run`, `prune`                                                                                                       |
 | `@zuke/nx`             | `run`, `runMany`, `affected`                                                                                         |
+| `@zuke/jsr`            | `publish`, `add`, `remove`                                                                                           |
 | `@zuke/tsx`            | `tsx`, `watch`                                                                                                       |
 | `@zuke/tsgo`           | `tsgo`                                                                                                               |
 | `@zuke/dprint`         | `fmt`, `check`                                                                                                      |

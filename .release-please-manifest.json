@@ -23,6 +23,7 @@
   "packages/tsup": "0.0.0",
   "packages/turbo": "0.0.0",
   "packages/nx": "0.0.0",
+  "packages/jsr": "0.0.0",
   "packages/tsx": "0.1.0",
   "packages/tsgo": "0.1.0",
   "packages/dprint": "0.1.0",
