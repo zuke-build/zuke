@@ -557,6 +557,11 @@
   },
   "workspace": {
     "members": {
+      "packages/biome": {
+        "dependencies": [
+          "jsr:@zuke/core@0"
+        ]
+      },
       "packages/bun": {
         "dependencies": [
           "jsr:@zuke/core@0"
@@ -662,7 +667,17 @@
           "jsr:@zuke/core@0"
         ]
       },
+      "packages/tsup": {
+        "dependencies": [
+          "jsr:@zuke/core@0"
+        ]
+      },
       "packages/tsx": {
+        "dependencies": [
+          "jsr:@zuke/core@0"
+        ]
+      },
+      "packages/vite": {
         "dependencies": [
           "jsr:@zuke/core@0"
         ]
