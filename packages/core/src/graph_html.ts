@@ -175,7 +175,9 @@ function embed(value: unknown): string {
  * Cytoscape from a pinned CDN, lays the diagram out with the dagre extension,
  * and wires tap handlers so selecting a target dims everything except the
  * targets it connects to (its transitive dependencies and dependents); tapping
- * the background resets.
+ * the background resets. Header controls switch the layout direction
+ * (vertical/horizontal) and edge style (curved/orthogonal), fit the graph to
+ * the viewport, and export it as a PNG.
  */
 export function renderGraphHtml(
   data: GraphData,
@@ -194,13 +196,14 @@ export function renderGraphHtml(
   * { box-sizing: border-box; }
   html, body { height: 100%; }
   body { margin: 0; display: flex; flex-direction: column; font: 14px/1.5 ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace; color: #c8d3e0; background: #070b12; }
-  header { display: flex; align-items: center; gap: 1rem; padding: .75rem 1rem; border-bottom: 1px solid #161d2b; background: #0a0f1a; z-index: 1; }
+  header { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem 1rem; padding: .75rem 1rem; border-bottom: 1px solid #161d2b; background: #0a0f1a; z-index: 1; }
   header h1 { font-size: 1rem; margin: 0; font-weight: 700; color: #e6edf6; letter-spacing: .01em; }
   .count { color: #5eead4; }
   .spacer { flex: 1; }
-  .hint { color: #6b7689; }
-  button { font: inherit; padding: .35rem .8rem; border: 1px solid #243049; border-radius: 6px; background: #111827; color: #c8d3e0; cursor: pointer; }
-  button:hover { background: #182236; border-color: #34507e; }
+  .ctl { display: inline-flex; align-items: center; gap: .4rem; color: #8d9ab0; font-size: .82rem; }
+  select, button { font: inherit; font-size: .85rem; padding: .35rem .6rem; border: 1px solid #243049; border-radius: 6px; background: #111827; color: #c8d3e0; cursor: pointer; }
+  select:hover, button:hover { background: #182236; border-color: #34507e; }
+  select:disabled { opacity: .5; cursor: not-allowed; }
   #graph {
     flex: 1; min-height: 0; background-color: #070b12;
     background-image:
@@ -215,21 +218,42 @@ export function renderGraphHtml(
   <h1>${title}</h1>
   <span class="count" id="count"></span>
   <span class="spacer"></span>
-  <span class="hint">Click a target to highlight what it connects to</span>
-  <button id="reset" type="button">Reset</button>
+  <label class="ctl">Layout
+    <select id="dir" title="Layout direction">
+      <option value="TB">Vertical</option>
+      <option value="LR">Horizontal</option>
+    </select>
+  </label>
+  <label class="ctl">Edges
+    <select id="edge" title="Edge style">
+      <option value="bezier">Curved</option>
+      <option value="taxi">Orthogonal</option>
+    </select>
+  </label>
+  <button id="fit" type="button" title="Fit the graph to the viewport">Fit</button>
+  <button id="png" type="button" title="Download the graph as a PNG image">PNG</button>
+  <button id="reset" type="button" title="Clear the current selection">Reset</button>
 </header>
 <main id="graph"></main>
 <script type="module">
 import cytoscape from "${CYTOSCAPE_CDN}";
 // Register the dagre layout if it loads; otherwise fall back to a built-in one
 // so the diagram still renders rather than blanking the page.
-let layout = { name: "breadthfirst", directed: true, spacingFactor: 1.15, padding: 30 };
+let dagreOk = false;
 try {
   const dagre = (await import("${CYTOSCAPE_DAGRE_CDN}")).default;
   cytoscape.use(dagre);
-  layout = { name: "dagre", rankDir: "TB", nodeSep: 36, rankSep: 56, edgeSep: 12, fit: true, padding: 30 };
+  dagreOk = true;
 } catch (err) {
   console.warn("Cytoscape dagre layout unavailable; using breadthfirst", err);
+}
+let curDir = "TB";
+let curEdge = "bezier";
+function layoutConfig(dir) {
+  if (dagreOk) {
+    return { name: "dagre", rankDir: dir, nodeSep: 36, rankSep: 56, edgeSep: 12, fit: true, padding: 30, animate: true, animationDuration: 300 };
+  }
+  return { name: "breadthfirst", directed: true, spacingFactor: 1.15, padding: 30, animate: true, animationDuration: 300 };
 }
 const ELEMENTS = ${elements};
 const COUNT = ${count};
@@ -282,7 +306,7 @@ const cy = cytoscape({
     { selector: ".active", style: { "border-width": 3, "underlay-padding": 5, "underlay-opacity": 0.45 } },
     { selector: ".faded", style: { "opacity": 0.1 } },
   ],
-  layout,
+  layout: layoutConfig(curDir),
 });
 // Colour nodes by depth, then run a gradient down each edge (source → target).
 cy.batch(function () {
@@ -310,6 +334,34 @@ cy.on("tap", "node.target", function (evt) {
   n.addClass("active");
 });
 cy.on("tap", function (evt) { if (evt.target === cy) reset(); });
+
+// Controls.
+function applyEdgeStyle() {
+  cy.edges().style({
+    "curve-style": curEdge === "taxi" ? "taxi" : "bezier",
+    "taxi-direction": curDir === "LR" ? "rightward" : "downward",
+    "taxi-turn": 20,
+  });
+}
+const dirSel = document.getElementById("dir");
+dirSel.disabled = !dagreOk; // breadthfirst ignores direction
+dirSel.addEventListener("change", function (e) {
+  curDir = e.target.value;
+  applyEdgeStyle();
+  cy.layout(layoutConfig(curDir)).run();
+});
+document.getElementById("edge").addEventListener("change", function (e) {
+  curEdge = e.target.value;
+  applyEdgeStyle();
+});
+document.getElementById("fit").addEventListener("click", function () { cy.fit(undefined, 30); });
+document.getElementById("png").addEventListener("click", function () {
+  const uri = cy.png({ full: true, scale: 2, bg: "#070b12" });
+  const a = document.createElement("a");
+  a.href = uri;
+  a.download = "zuke-graph.png";
+  a.click();
+});
 document.getElementById("reset").addEventListener("click", reset);
 </script>
 </body>

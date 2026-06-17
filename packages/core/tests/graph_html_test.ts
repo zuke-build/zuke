@@ -121,6 +121,15 @@ Deno.test("renderGraphHtml embeds the elements and Cytoscape CDN import", () => 
   assertEquals(html.includes("Zuke build graph"), true);
 });
 
+Deno.test("renderGraphHtml includes the layout, edge, fit, and export controls", () => {
+  const html = renderGraphHtml(graphData(discoverTargets(new Demo())));
+  assertEquals(html.includes('id="dir"'), true);
+  assertEquals(html.includes('id="edge"'), true);
+  assertEquals(html.includes('id="fit"'), true);
+  assertEquals(html.includes('id="png"'), true);
+  assertEquals(html.includes("cy.png("), true);
+});
+
 Deno.test("renderGraphHtml accepts a custom title", () => {
   const html = renderGraphHtml({ nodes: [], edges: [] }, "My Graph");
   assertEquals(html.includes("<title>My Graph</title>"), true);
