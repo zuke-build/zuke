@@ -200,6 +200,23 @@ honouring `--skip` and `onlyWhen` conditions — without executing any body or
 touching the [cache](#incremental-caching-inputs--outputs). Use it to preview a
 plan before committing to it.
 
+### Assertions — `assert()` / `assertExists()` / `fail()`
+
+Fail a target fast with a clear message when an expectation does not hold.
+`assert(condition, message?)` throws when the condition is falsy;
+`assertExists(value, message?)` throws on `null`/`undefined` and returns the
+value narrowed to its non-nullable type; `fail(message)` always throws. The
+async `assertFileExists(path)` / `assertDirectoryExists(path)` check the
+filesystem. All throw an `AssertionError`.
+
+```ts
+import { assert, assertExists, assertFileExists } from "jsr:@zuke/core";
+
+const token = assertExists(Deno.env.get("TOKEN"), "TOKEN is required");
+assert(this.environment.value !== "", "environment must be set");
+await assertFileExists("dist/app.js");
+```
+
 ### Host detection — `isCI()` / `ciHost()`
 
 `isCI()` and `ciHost()` (e.g. `"github-actions"`, `"gitlab-ci"`, `"local"`) let
