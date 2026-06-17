@@ -332,10 +332,11 @@ elsewhere, since GitLab and Azure check out the repo automatically. `runsOn` is
 interpreted per provider (a runner label, a Docker image, or a `vmImage`); when
 a matrix defines `os`, GitHub runs on it automatically.
 
-For one-off rendering without the build wiring, `generateCi(pipeline, provider)`
-returns the YAML string directly. Either way the emitted YAML quotes any scalar
-that would otherwise be misread (a bare `on`, a numeric-looking version), so the
-output is paste-ready.
+For one-off rendering without the build wiring,
+`generateCi(pipeline?, provider?)` returns the YAML string directly
+(`generateCi()` yields the default GitHub workflow). Either way the emitted YAML
+quotes any scalar that would otherwise be misread (a bare `on`, a
+numeric-looking version), so the output is paste-ready.
 
 ### Host detection — `isCI()` / `ciHost()`
 
