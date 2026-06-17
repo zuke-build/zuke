@@ -280,40 +280,55 @@ const bin = await installRelease({
 await CmdTasks.exec(String(bin), (s) => s.args("version"));
 ```
 
-### CI config generation — `generateCi()`
+### CI config generation — `cicd()` and `generate-ci`
 
-Describe a pipeline once as a provider-agnostic `CiPipeline` — triggers, jobs,
-an optional `matrix`, and steps — then render it for GitHub Actions, GitLab CI,
-or Azure Pipelines. A `run` step (a shell command) maps to every provider; a
-`uses` step (a GitHub Action) renders only for GitHub and is skipped elsewhere,
-since GitLab and Azure check out the repo automatically. `runsOn` is interpreted
-per provider (a runner label, a Docker image, or a `vmImage`); when a matrix
-defines `os`, GitHub runs on it automatically.
+Generate your CI configuration **from the build** instead of hand-maintaining
+YAML — the way NUKE does. Declare a pipeline as a build field with `cicd()`,
+binding a provider-agnostic `CiPipeline` to an output path. The file is then
+kept in sync with the definition: it is regenerated whenever you run the build,
+and `zuke generate-ci` writes it on demand.
 
 ```ts
-import { type CiPipeline, generateCi } from "jsr:@zuke/core";
+import { Build, cicd, target } from "jsr:@zuke/core";
 
-const pipeline: CiPipeline = {
-  name: "CI",
-  triggers: { push: ["main"], pullRequest: ["main"] },
-  jobs: [{
-    id: "test",
-    matrix: { os: ["ubuntu-latest", "macos-latest"] },
-    steps: [
-      { uses: "denoland/setup-deno@v2", with: { "deno-version": "v2.x" } },
-      { name: "Test", run: "deno task ci" },
-    ],
-  }],
-};
+class MyBuild extends Build {
+  ci = cicd({
+    provider: "github", // or "gitlab" / "azure"
+    path: ".github/workflows/ci.yml",
+    pipeline: {
+      name: "CI",
+      triggers: { push: ["main"], pullRequest: ["main"] },
+      jobs: [{
+        id: "test",
+        matrix: { os: ["ubuntu-latest", "macos-latest"] },
+        steps: [
+          { uses: "denoland/setup-deno@v2", with: { "deno-version": "v2.x" } },
+          { name: "Test", run: "deno task ci" },
+        ],
+      }],
+    },
+  });
 
-await Deno.writeTextFile(
-  ".github/workflows/ci.yml",
-  generateCi(pipeline, "github"), // or "gitlab" / "azure"
-);
+  test = target().executes(async () => {/* … */});
+}
 ```
 
-The emitted YAML quotes any scalar that would otherwise be misread (a bare `on`,
-a numeric-looking version), so the output is paste-ready.
+- **`zuke generate-ci`** writes every declared file (creating parent dirs).
+- **Running any target** regenerates the files too, so you can't forget to — and
+  on CI (`isCI()`), the run instead _verifies_ the committed files are current
+  and fails if they have drifted (use `zuke generate-ci --check` for a dedicated
+  gate). `--dry-run` skips regeneration.
+
+The model is a portable subset: a `run` step (a shell command) maps to every
+provider; a `uses` step (a GitHub Action) renders only for GitHub and is skipped
+elsewhere, since GitLab and Azure check out the repo automatically. `runsOn` is
+interpreted per provider (a runner label, a Docker image, or a `vmImage`); when
+a matrix defines `os`, GitHub runs on it automatically.
+
+For one-off rendering without the build wiring, `generateCi(pipeline, provider)`
+returns the YAML string directly. Either way the emitted YAML quotes any scalar
+that would otherwise be misread (a bare `on`, a numeric-looking version), so the
+output is paste-ready.
 
 ### Host detection — `isCI()` / `ciHost()`
 

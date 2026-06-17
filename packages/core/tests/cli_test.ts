@@ -1,5 +1,5 @@
-import { assertEquals } from "./_assert.ts";
-import { Build, group, target } from "../mod.ts";
+import { assertEquals, assertStringIncludes } from "./_assert.ts";
+import { Build, cicd, group, target } from "../mod.ts";
 import {
   formatGraph,
   formatHelp,
@@ -350,3 +350,118 @@ Deno.test("main honours --skip", async () => {
   assertEquals(code, 0);
   assertEquals(log, ["go"]);
 });
+
+// --- CI config generation (generate-ci command + on-run regeneration) ---
+
+/** A build that declares a GitHub Actions workflow file. */
+class CiBuild extends Build {
+  ci = cicd({
+    provider: "github",
+    path: ".github/workflows/zuke.yml",
+    pipeline: {
+      name: "CI",
+      triggers: { push: ["main"] },
+      jobs: [{ id: "test", steps: [{ run: "deno task ci" }] }],
+    },
+  });
+  build = target().executes(() => {});
+}
+
+/** Run `fn` with the process cwd set to a fresh temp dir, then clean up. */
+async function inTempDir(fn: (dir: string) => Promise<void>): Promise<void> {
+  const dir = await Deno.makeTempDir();
+  const prev = Deno.cwd();
+  Deno.chdir(dir);
+  try {
+    await fn(dir);
+  } finally {
+    Deno.chdir(prev);
+    await Deno.remove(dir, { recursive: true });
+  }
+}
+
+Deno.test("parseArgs recognises the generate-ci command and --check", () => {
+  const a = parseArgs(["generate-ci", "--check"]);
+  assertEquals(a.generateCi, true);
+  assertEquals(a.check, true);
+  assertEquals(a.target, undefined);
+});
+
+Deno.test("main: generate-ci writes the declared CI file", async () => {
+  await inTempDir(async (dir) => {
+    const { code, out } = await capture(() => main(CiBuild, ["generate-ci"]));
+    assertEquals(code, 0);
+    const content = await Deno.readTextFile(
+      `${dir}/.github/workflows/zuke.yml`,
+    );
+    assertStringIncludes(content, "name: CI");
+    assertEquals(out.some((l) => l.includes("Generated")), true);
+  });
+});
+
+Deno.test("main: generate-ci --check fails when the file is missing or stale", async () => {
+  await inTempDir(async () => {
+    const { code, err } = await capture(() =>
+      main(CiBuild, ["generate-ci", "--check"])
+    );
+    assertEquals(code, 1);
+    assertEquals(err.some((l) => l.includes("out of date")), true);
+  });
+});
+
+Deno.test("main: generate-ci reports when no CI config is declared", async () => {
+  const { code, out } = await capture(() => main(Demo, ["generate-ci"]));
+  assertEquals(code, 0);
+  assertEquals(out.some((l) => l.includes("No CI configuration")), true);
+});
+
+Deno.test("main: running a target keeps a current CI file in sync", async () => {
+  await inTempDir(async (dir) => {
+    // Pre-write the expected content so the on-run sync is a no-op regardless
+    // of whether the tests themselves run on CI (check) or locally (write).
+    const expected = new CiBuild().ci.render();
+    await Deno.mkdir(`${dir}/.github/workflows`, { recursive: true });
+    await Deno.writeTextFile(`${dir}/.github/workflows/zuke.yml`, expected);
+    const { code } = await capture(() => main(CiBuild, ["build"]));
+    assertEquals(code, 0);
+    assertEquals(
+      await Deno.readTextFile(`${dir}/.github/workflows/zuke.yml`),
+      expected,
+    );
+  });
+});
+
+Deno.test("main: running a target fails on CI when the CI file has drifted", async () => {
+  await inTempDir(async () => {
+    const prev = Deno.env.get("GITHUB_ACTIONS");
+    Deno.env.set("GITHUB_ACTIONS", "true"); // force isCI() → check mode
+    try {
+      const { code, err } = await capture(() => main(CiBuild, ["build"]));
+      assertEquals(code, 1); // file is missing → stale → build fails
+      assertEquals(err.some((l) => l.includes("out of date")), true);
+    } finally {
+      if (prev === undefined) Deno.env.delete("GITHUB_ACTIONS");
+      else Deno.env.set("GITHUB_ACTIONS", prev);
+    }
+  });
+});
+
+Deno.test("main: --dry-run does not regenerate CI files", async () => {
+  await inTempDir(async (dir) => {
+    const { code } = await capture(() => main(CiBuild, ["build", "--dry-run"]));
+    assertEquals(code, 0);
+    // Nothing was written: the workflow file does not exist.
+    await assertRejectsNotFound(`${dir}/.github/workflows/zuke.yml`);
+  });
+});
+
+/** Assert that reading `path` rejects because the file is absent. */
+async function assertRejectsNotFound(path: string): Promise<void> {
+  let missing = false;
+  try {
+    await Deno.readTextFile(path);
+  } catch (error) {
+    missing = error instanceof Deno.errors.NotFound;
+  }
+  assertEquals(missing, true);
+}

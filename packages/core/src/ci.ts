@@ -32,6 +32,7 @@
  */
 
 import { toYaml, type YamlValue } from "./yaml.ts";
+import { type Build, forEachField } from "./build.ts";
 
 /** The CI providers {@link generateCi} can target. */
 export type CiProvider = "github" | "gitlab" | "azure";
@@ -234,4 +235,133 @@ export function generateCi(
     case "azure":
       return toYaml(azure(pipeline));
   }
+}
+
+/** A CI configuration file declared on a build: a pipeline bound to a path. */
+export interface CiFileSpec {
+  /** The provider to render for. */
+  provider: CiProvider;
+  /**
+   * The output path (relative to the working directory), e.g.
+   * `.github/workflows/ci.yml`, `.gitlab-ci.yml`, or `azure-pipelines.yml`.
+   */
+  path: string;
+  /** The pipeline to render. */
+  pipeline: CiPipeline;
+}
+
+/**
+ * A declared CI file. Assign one (via {@link cicd}) to a build field and Zuke
+ * keeps the file on disk in sync with the definition when the build runs.
+ */
+export class CiFile {
+  constructor(
+    /** The provider, output path, and pipeline this file renders. */
+    readonly spec: CiFileSpec,
+  ) {}
+
+  /** The output path. */
+  get path(): string {
+    return this.spec.path;
+  }
+
+  /** Render the file's YAML content. */
+  render(): string {
+    return generateCi(this.spec.pipeline, this.spec.provider);
+  }
+}
+
+/**
+ * Declare a CI file as a build field. Running the build regenerates it (and the
+ * `generate-ci` command writes it on demand), so the committed configuration is
+ * generated from code rather than hand-maintained.
+ *
+ * ```ts
+ * class MyBuild extends Build {
+ *   ci = cicd({
+ *     provider: "github",
+ *     path: ".github/workflows/ci.yml",
+ *     pipeline: { name: "CI", triggers: { push: ["main"] }, jobs: [...] },
+ *   });
+ * }
+ * ```
+ */
+export function cicd(spec: CiFileSpec): CiFile {
+  return new CiFile(spec);
+}
+
+/** Find every {@link CiFile} declared on a build instance. */
+export function discoverCiFiles(build: Build): CiFile[] {
+  const files: CiFile[] = [];
+  forEachField(build, (_path, value) => {
+    if (value instanceof CiFile) files.push(value);
+  });
+  return files;
+}
+
+/** What {@link syncCiFiles} did to a file. */
+export type CiSyncStatus = "written" | "unchanged" | "stale";
+
+/** The outcome of syncing one {@link CiFile}. */
+export interface CiSyncResult {
+  /** The file's path. */
+  path: string;
+  /** Whether it was written, already current, or (in check mode) out of date. */
+  status: CiSyncStatus;
+}
+
+/** Filesystem seams for {@link syncCiFiles} (overridable for tests). */
+export interface CiSyncOptions {
+  /**
+   * Verify instead of write: report an out-of-date file as `stale` rather than
+   * overwriting it. Intended for CI, where committed config must match the build.
+   */
+  check?: boolean;
+  /** Read a file's contents, or `null` when it does not exist. */
+  read?: (path: string) => Promise<string | null>;
+  /** Write a file, creating parent directories as needed. */
+  write?: (path: string, content: string) => Promise<void>;
+}
+
+/** Default reader: the file's text, or `null` when it is absent. */
+async function readOrNull(path: string): Promise<string | null> {
+  try {
+    return await Deno.readTextFile(path);
+  } catch (error) {
+    if (error instanceof Deno.errors.NotFound) return null;
+    throw error;
+  }
+}
+
+/** Default writer: create the parent directory, then write the file. */
+async function writeFile(path: string, content: string): Promise<void> {
+  const slash = path.replace(/\\/g, "/").lastIndexOf("/");
+  if (slash !== -1) await Deno.mkdir(path.slice(0, slash), { recursive: true });
+  await Deno.writeTextFile(path, content);
+}
+
+/**
+ * Bring each declared {@link CiFile} on disk in line with its definition. By
+ * default a changed file is rewritten; in `check` mode it is reported `stale`
+ * instead (so CI can fail when the committed config has drifted).
+ */
+export async function syncCiFiles(
+  files: readonly CiFile[],
+  options: CiSyncOptions = {},
+): Promise<CiSyncResult[]> {
+  const read = options.read ?? readOrNull;
+  const write = options.write ?? writeFile;
+  const results: CiSyncResult[] = [];
+  for (const file of files) {
+    const content = file.render();
+    if (await read(file.path) === content) {
+      results.push({ path: file.path, status: "unchanged" });
+    } else if (options.check) {
+      results.push({ path: file.path, status: "stale" });
+    } else {
+      await write(file.path, content);
+      results.push({ path: file.path, status: "written" });
+    }
+  }
+  return results;
 }

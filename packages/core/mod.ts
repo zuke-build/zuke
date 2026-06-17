@@ -94,6 +94,9 @@ export {
   type InstallReleaseOptions,
 } from "./src/install.ts";
 export {
+  cicd,
+  CiFile,
+  type CiFileSpec,
   type CiJob,
   type CiPipeline,
   type CiProvider,

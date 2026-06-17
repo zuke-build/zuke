@@ -4,6 +4,8 @@
  */
 
 import { type Build, discoverGroups, discoverTargets } from "./build.ts";
+import { discoverCiFiles, syncCiFiles } from "./ci.ts";
+import { isCI } from "./host.ts";
 import { GraphError, validateGraph } from "./graph.ts";
 import { execute } from "./executor.ts";
 import {
@@ -19,6 +21,9 @@ const DEFAULT_TARGET = "default";
 
 /** The reserved positional command that renders the dependency graph. */
 const GRAPH_COMMAND = "graph";
+
+/** The reserved positional command that writes declared CI configuration. */
+const GENERATE_CI_COMMAND = "generate-ci";
 
 /** Output format for the `graph` command: a terminal listing or an HTML page. */
 export type GraphOutput = "text" | "html";
@@ -49,6 +54,10 @@ export interface ParsedArgs {
   list: boolean;
   /** The `graph` command was requested. */
   graph: boolean;
+  /** The `generate-ci` command was requested. */
+  generateCi: boolean;
+  /** Verify (rather than write) generated files (`--check`); fail if stale. */
+  check: boolean;
   /** Graph output format (`--output`); defaults to `text`. */
   output: GraphOutput;
   /** Open the HTML graph in a browser (default true; `--no-open` clears). */
@@ -84,6 +93,8 @@ export function parseArgs(
     skip: [],
     list: false,
     graph: false,
+    generateCi: false,
+    check: false,
     output: "text",
     open: true,
     values: {},
@@ -103,6 +114,8 @@ export function parseArgs(
       parsed.cache = false;
     } else if (arg === "--dry-run") {
       parsed.dryRun = true;
+    } else if (arg === "--check") {
+      parsed.check = true;
     } else if (arg === "--parallel") {
       parsed.parallel = true;
     } else if (arg.startsWith("--parallel=")) {
@@ -134,8 +147,11 @@ export function parseArgs(
         }
       }
       // Unknown flags are ignored.
-    } else if (parsed.target === undefined && !parsed.graph) {
+    } else if (
+      parsed.target === undefined && !parsed.graph && !parsed.generateCi
+    ) {
       if (arg === GRAPH_COMMAND) parsed.graph = true;
+      else if (arg === GENERATE_CI_COMMAND) parsed.generateCi = true;
       else parsed.target = arg;
     }
   }
@@ -153,6 +169,7 @@ Usage:
   deno run -A zuke.ts <target> [--skip <dep>] [--parallel[=N]]
   deno run -A zuke.ts --list
   deno run -A zuke.ts graph [--output=html] [--no-open]
+  deno run -A zuke.ts generate-ci [--check]
 
 Options:
   <target>          Run the target and its transitive dependencies.
@@ -165,6 +182,10 @@ Options:
   graph             Show the dependency graph. Default output is the terminal
                     adjacency listing; --output=html writes an interactive
                     page to .zuke/ and opens it in a browser.
+  generate-ci       Write the CI configuration files declared on the build
+                    (via cicd()). Running any target regenerates them too.
+  --check           With generate-ci, verify the files are current instead of
+                    writing them, failing if any has drifted (use on CI).
   --output <fmt>    Graph output format: text (default) or html.
   --no-open         With --output=html, do not open a browser.
   --<param> <val>   Set a declared build parameter (see Parameters below).
@@ -242,6 +263,42 @@ export function formatGraph(targets: Map<string, TargetBuilder>): string {
 }
 
 /**
+ * Generate (or, with `check`, verify) the CI files a build declares, logging
+ * what changed and returning a process exit code. This is the single code path
+ * shared by the `generate-ci` command and the automatic regeneration that runs
+ * with the build.
+ *
+ * @param quietWhenEmpty Stay silent when the build declares no CI files (used by
+ *   the implicit on-run hook); the explicit command reports it instead.
+ */
+export async function syncCiConfig(
+  build: Build,
+  options: { check?: boolean; quietWhenEmpty?: boolean } = {},
+): Promise<number> {
+  const files = discoverCiFiles(build);
+  if (files.length === 0) {
+    if (!options.quietWhenEmpty) {
+      console.log("No CI configuration is declared on this build.");
+    }
+    return 0;
+  }
+  const results = await syncCiFiles(files, { check: options.check });
+  const stale: string[] = [];
+  for (const { path, status } of results) {
+    if (status === "written") console.log(`Generated ${path}`);
+    else if (status === "stale") stale.push(path);
+  }
+  if (stale.length > 0) {
+    console.error(
+      `CI configuration is out of date: ${stale.join(", ")}.\n` +
+        `Run \`zuke generate-ci\` and commit the result.`,
+    );
+    return 1;
+  }
+  return 0;
+}
+
+/**
  * Drive a build to completion and resolve to a process exit code (0 success,
  * 1 failure). Does not call `Deno.exit`, so it is unit-testable; {@link run}
  * wraps it. Output goes through `console` unless `execute` options say otherwise.
@@ -289,6 +346,9 @@ export async function main(
     console.log(formatGraph(targets));
     return 0;
   }
+  if (parsed.generateCi) {
+    return await syncCiConfig(build, { check: parsed.check });
+  }
 
   let name = parsed.target;
   if (name === undefined) {
@@ -305,6 +365,17 @@ export async function main(
     console.error(`Unknown target: ${name}\n`);
     console.error(formatList(targets, params));
     return 1;
+  }
+
+  // Keep declared CI config in sync as part of running the build (NUKE-style):
+  // write changes locally, but only verify on CI so an ephemeral checkout is
+  // never dirtied — a drifted file fails the build there instead.
+  if (!parsed.dryRun) {
+    const ciCode = await syncCiConfig(build, {
+      check: isCI(),
+      quietWhenEmpty: true,
+    });
+    if (ciCode !== 0) return ciCode;
   }
 
   const result = await execute(build, root, {

@@ -1,5 +1,13 @@
 import { assertEquals, assertStringIncludes } from "./_assert.ts";
-import { type CiPipeline, generateCi } from "../src/ci.ts";
+import {
+  cicd,
+  type CiPipeline,
+  discoverCiFiles,
+  generateCi,
+  syncCiFiles,
+} from "../src/ci.ts";
+import { Build } from "../src/build.ts";
+import { target } from "../src/target.ts";
 
 /** A small pipeline exercised across providers. */
 const pipeline: CiPipeline = {
@@ -130,4 +138,115 @@ Deno.test("a pipeline with no triggers renders without an on/trigger block", () 
   assertStringIncludes(generateCi(bare, "github"), `"on": {}`);
   assertEquals(generateCi(bare, "gitlab").includes("workflow:"), false);
   assertEquals(generateCi(bare, "azure").includes("trigger:"), false);
+});
+
+// --- Declarative CI files: cicd(), discovery, and on-disk sync ---
+
+const filePipeline: CiPipeline = {
+  name: "CI",
+  triggers: { push: ["main"] },
+  jobs: [{ id: "test", steps: [{ run: "deno task ci" }] }],
+};
+
+Deno.test("cicd: path and render reflect the spec", () => {
+  const file = cicd({
+    provider: "github",
+    path: ".github/workflows/ci.yml",
+    pipeline: filePipeline,
+  });
+  assertEquals(file.path, ".github/workflows/ci.yml");
+  assertStringIncludes(file.render(), "name: CI");
+});
+
+Deno.test("discoverCiFiles collects every declared CI file", () => {
+  class WithCi extends Build {
+    gh = cicd({
+      provider: "github",
+      path: ".github/workflows/ci.yml",
+      pipeline: filePipeline,
+    });
+    gl = cicd({
+      provider: "gitlab",
+      path: ".gitlab-ci.yml",
+      pipeline: filePipeline,
+    });
+    build = target().executes(() => {});
+  }
+  const paths = discoverCiFiles(new WithCi()).map((f) => f.path).sort();
+  assertEquals(paths, [".github/workflows/ci.yml", ".gitlab-ci.yml"]);
+});
+
+Deno.test("discoverCiFiles returns nothing for a build without CI", () => {
+  class Bare extends Build {
+    build = target().executes(() => {});
+  }
+  assertEquals(discoverCiFiles(new Bare()), []);
+});
+
+Deno.test("syncCiFiles writes a changed file, then leaves a current one", async () => {
+  const store = new Map<string, string>();
+  const file = cicd({
+    provider: "github",
+    path: "ci.yml",
+    pipeline: filePipeline,
+  });
+  const opts = {
+    read: (p: string) => Promise.resolve(store.get(p) ?? null),
+    write: (p: string, c: string) => {
+      store.set(p, c);
+      return Promise.resolve();
+    },
+  };
+  const first = await syncCiFiles([file], opts);
+  assertEquals(first[0].status, "written");
+  assertEquals(store.get("ci.yml"), file.render());
+  const second = await syncCiFiles([file], opts);
+  assertEquals(second[0].status, "unchanged");
+});
+
+Deno.test("syncCiFiles in check mode reports a stale file without writing", async () => {
+  const file = cicd({
+    provider: "github",
+    path: "ci.yml",
+    pipeline: filePipeline,
+  });
+  let wrote = false;
+  const results = await syncCiFiles([file], {
+    check: true,
+    read: () => Promise.resolve("old content"),
+    write: () => {
+      wrote = true;
+      return Promise.resolve();
+    },
+  });
+  assertEquals(results[0].status, "stale");
+  assertEquals(wrote, false);
+});
+
+Deno.test("syncCiFiles in check mode passes when content already matches", async () => {
+  const file = cicd({
+    provider: "github",
+    path: "ci.yml",
+    pipeline: filePipeline,
+  });
+  const results = await syncCiFiles([file], {
+    check: true,
+    read: () => Promise.resolve(file.render()),
+  });
+  assertEquals(results[0].status, "unchanged");
+});
+
+Deno.test("syncCiFiles uses the real filesystem by default", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const path = `${dir}/.github/workflows/ci.yml`;
+    const file = cicd({ provider: "github", path, pipeline: filePipeline });
+    const first = await syncCiFiles([file]); // creates parent dirs and writes
+    assertEquals(first[0].status, "written");
+    assertEquals(await Deno.readTextFile(path), file.render());
+    const second = await syncCiFiles([file]);
+    assertEquals(second[0].status, "unchanged");
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
 });
