@@ -70,3 +70,10 @@ export {
   AssertionError,
   fail,
 } from "./src/assert.ts";
+export {
+  httpDownload,
+  HttpError,
+  httpJson,
+  type HttpOptions,
+  httpText,
+} from "./src/http.ts";
