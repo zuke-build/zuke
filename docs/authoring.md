@@ -217,6 +217,23 @@ assert(this.environment.value !== "", "environment must be set");
 await assertFileExists("dist/app.js");
 ```
 
+### HTTP — `httpDownload()` / `httpText()` / `httpJson()`
+
+Fetch over HTTP from a build script, built on the platform `fetch`.
+`httpDownload(url, dest)` streams a URL to a file; `httpText(url)` and
+`httpJson(url)` return the body. All accept `{ headers, fetch }` (the `fetch`
+seam makes them unit-testable) and throw an `HttpError` (carrying `.status`) on
+a non-2xx response.
+
+```ts
+import { httpDownload, httpJson } from "jsr:@zuke/core";
+
+await httpDownload("https://example.com/tool.tar.gz", ".zuke/tool.tar.gz");
+const release = await httpJson<{ tag_name: string }>(
+  "https://api.github.com/repos/zuke-build/zuke/releases/latest",
+);
+```
+
 ### Host detection — `isCI()` / `ciHost()`
 
 `isCI()` and `ciHost()` (e.g. `"github-actions"`, `"gitlab-ci"`, `"local"`) let
