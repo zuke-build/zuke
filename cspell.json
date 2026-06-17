@@ -4,8 +4,10 @@
   "useGitignore": true,
   "words": [
     "actionlint",
+    "bunx",
     "chainers",
     "chmods",
+    "dlx",
     "denoland",
     "Dependabot",
     "Dockerfiles",
@@ -31,6 +33,7 @@
     "oxlintrc",
     "pathspecs",
     "pedantic",
+    "pnpm",
     "pyflakes",
     "refspec",
     "sarif",

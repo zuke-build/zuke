@@ -557,6 +557,11 @@
   },
   "workspace": {
     "members": {
+      "packages/bun": {
+        "dependencies": [
+          "jsr:@zuke/core@0"
+        ]
+      },
       "packages/cmd": {
         "dependencies": [
           "jsr:@zuke/core@0"
@@ -622,6 +627,11 @@
           "jsr:@zuke/core@0"
         ]
       },
+      "packages/pnpm": {
+        "dependencies": [
+          "jsr:@zuke/core@0"
+        ]
+      },
       "packages/security": {
         "dependencies": [
           "jsr:@zuke/core@0"
@@ -638,6 +648,11 @@
         ]
       },
       "packages/vitest": {
+        "dependencies": [
+          "jsr:@zuke/core@0"
+        ]
+      },
+      "packages/yarn": {
         "dependencies": [
           "jsr:@zuke/core@0"
         ]
