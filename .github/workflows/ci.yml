@@ -1,8 +1,12 @@
 name: CI
 
 on:
+  # Run once per change: `pull_request` covers every PR branch, and `push`
+  # covers the post-merge commit on the default branch. Triggering `push` on
+  # all branches as well would double every PR run (a `push` and a
+  # `pull_request` job for the same commit) for no extra signal.
   push:
-    branches: ["**"]
+    branches: [master]
   pull_request:
 
 # Least privilege: CI only ever needs to read the repo. No secrets are used.
