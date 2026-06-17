@@ -70,8 +70,8 @@ export interface CiJob {
   matrix?: Record<string, Array<string | number>>;
   /** Environment variables for the job. */
   env?: Record<string, string>;
-  /** The steps to run, in order. */
-  steps: CiStep[];
+  /** The steps to run, in order. Defaults to a single step that runs the build. */
+  steps?: CiStep[];
 }
 
 /** When the pipeline runs. */
@@ -93,8 +93,8 @@ export interface CiPipeline {
    * object (`{}`) for a pipeline triggered only by external means.
    */
   triggers?: CiTriggers;
-  /** The jobs to run. */
-  jobs: CiJob[];
+  /** The jobs to run. Defaults to a single `build` job that runs the build. */
+  jobs?: CiJob[];
 }
 
 /** The default runner image used when a job does not set {@link CiJob.runsOn}. */
@@ -111,6 +111,15 @@ const DEFAULT_PROVIDER: CiProvider = "github";
 
 /** Default triggers: push and pull request on `main`. */
 const DEFAULT_TRIGGERS: CiTriggers = { push: ["main"], pullRequest: ["main"] };
+
+/**
+ * The default step: run the build through the `./zuke` launcher, which
+ * bootstraps Deno itself — so a single step needs no separate setup.
+ */
+const DEFAULT_STEPS: CiStep[] = [{ name: "Build", run: "./zuke" }];
+
+/** The default jobs: a single `build` job running the default steps. */
+const DEFAULT_JOBS: CiJob[] = [{ steps: DEFAULT_STEPS }];
 
 /** The conventional output path for each provider. */
 const DEFAULT_PATHS: Record<CiProvider, string> = {
@@ -139,9 +148,9 @@ function github(pipeline: CiPipeline): YamlValue {
   if (triggers.manual) on.workflow_dispatch = {};
 
   const jobs: Record<string, YamlValue> = {};
-  for (const job of pipeline.jobs) {
+  for (const job of pipeline.jobs ?? DEFAULT_JOBS) {
     const matrixOs = job.matrix !== undefined && "os" in job.matrix;
-    const steps = job.steps.map((step): YamlValue => ({
+    const steps = (job.steps ?? DEFAULT_STEPS).map((step): YamlValue => ({
       name: step.name,
       uses: step.uses,
       with: step.with,
@@ -175,14 +184,14 @@ function gitlab(pipeline: CiPipeline): YamlValue {
   if (rules.length > 0) config.workflow = { rules };
 
   config.stages = ["build"];
-  for (const job of pipeline.jobs) {
+  for (const job of pipeline.jobs ?? DEFAULT_JOBS) {
     config[job.id ?? DEFAULT_JOB_ID] = {
       stage: "build",
       image: job.runsOn,
       needs: job.needs,
       variables: job.env,
       parallel: job.matrix ? { matrix: [job.matrix] } : undefined,
-      script: runCommands(job.steps),
+      script: runCommands(job.steps ?? DEFAULT_STEPS),
     };
   }
   return config;
@@ -220,9 +229,9 @@ function azure(pipeline: CiPipeline): YamlValue {
   }
 
   const jobs: YamlValue[] = [];
-  for (const job of pipeline.jobs) {
+  for (const job of pipeline.jobs ?? DEFAULT_JOBS) {
     const steps: YamlValue[] = [];
-    for (const step of job.steps) {
+    for (const step of job.steps ?? DEFAULT_STEPS) {
       if (step.run !== undefined) {
         steps.push({ script: step.run, displayName: step.name });
       }
@@ -247,7 +256,7 @@ function azure(pipeline: CiPipeline): YamlValue {
  * `azure-pipelines.yml`.
  */
 export function generateCi(
-  pipeline: CiPipeline,
+  pipeline: CiPipeline = {},
   provider: CiProvider = DEFAULT_PROVIDER,
 ): string {
   switch (provider) {
@@ -270,8 +279,8 @@ export interface CiFileSpec {
    * `.gitlab-ci.yml`, or `azure-pipelines.yml`).
    */
   path?: string;
-  /** The pipeline to render. */
-  pipeline: CiPipeline;
+  /** The pipeline to render. Defaults to a single `build` job that runs the build. */
+  pipeline?: CiPipeline;
 }
 
 /**
@@ -286,10 +295,10 @@ export class CiFile {
   /** The pipeline this file renders. */
   readonly pipeline: CiPipeline;
 
-  constructor(spec: CiFileSpec) {
+  constructor(spec: CiFileSpec = {}) {
     this.provider = spec.provider ?? DEFAULT_PROVIDER;
     this.path = spec.path ?? DEFAULT_PATHS[this.provider];
-    this.pipeline = spec.pipeline;
+    this.pipeline = spec.pipeline ?? {};
   }
 
   /** Render the file's YAML content. */
@@ -303,17 +312,19 @@ export class CiFile {
  * `generate-ci` command writes it on demand), so the committed configuration is
  * generated from code rather than hand-maintained.
  *
+ * Everything is optional: `cicd()` declares a GitHub workflow at
+ * `.github/workflows/ci.yml` that runs the build on push/PR to `main`. Override
+ * only what you need.
+ *
  * ```ts
  * class MyBuild extends Build {
- *   ci = cicd({
- *     provider: "github",
- *     path: ".github/workflows/ci.yml",
- *     pipeline: { name: "CI", triggers: { push: ["main"] }, jobs: [...] },
- *   });
+ *   ci = cicd(); // sensible default workflow
+ *   // …or customise:
+ *   gitlab = cicd({ provider: "gitlab", pipeline: { jobs: [{ steps: [...] }] } });
  * }
  * ```
  */
-export function cicd(spec: CiFileSpec): CiFile {
+export function cicd(spec: CiFileSpec = {}): CiFile {
   return new CiFile(spec);
 }
 

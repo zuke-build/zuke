@@ -286,34 +286,38 @@ Generate your CI configuration **from the build** instead of hand-maintaining
 YAML. Declare a pipeline as a build field with `cicd()`, binding a
 provider-agnostic `CiPipeline` to an output path. The file is then kept in sync
 with the definition: it is regenerated whenever you run the build, and
-`zuke generate-ci` writes it on demand. Almost every field has a sensible
-default — `provider` is `github`, `path` follows the provider, the pipeline
-`name` is `CI`, triggers default to push/PR on `main`, and a job's `id` is
-`build` — so a minimal definition is just a job with steps.
+`zuke generate-ci` writes it on demand.
+
+Everything is optional. `cicd()` with no arguments declares a GitHub workflow at
+`.github/workflows/ci.yml` that, on push/PR to `main`, runs a single `build` job
+whose one step invokes the build through the `./zuke` launcher (which bootstraps
+Deno itself — no separate setup step). Override only what you need:
 
 ```ts
 import { Build, cicd, target } from "jsr:@zuke/core";
 
 class MyBuild extends Build {
-  ci = cicd({
-    provider: "github", // or "gitlab" / "azure"
-    path: ".github/workflows/ci.yml",
-    pipeline: {
-      name: "CI",
-      triggers: { push: ["main"], pullRequest: ["main"] },
-      jobs: [{
-        id: "test",
-        matrix: { os: ["ubuntu-latest", "macos-latest"] },
-        steps: [
-          { uses: "denoland/setup-deno@v2", with: { "deno-version": "v2.x" } },
-          { name: "Test", run: "deno task ci" },
-        ],
-      }],
-    },
-  });
+  ci = cicd(); // the default workflow — runs ./zuke on push/PR to main
 
   test = target().executes(async () => {/* … */});
 }
+```
+
+The defaults: `provider` is `github`, `path` follows the provider, the pipeline
+`name` is `CI`, `triggers` are push/PR on `main`, a job's `id` is `build`, its
+`runsOn` is `ubuntu-latest`, and its single step runs `./zuke`. Supply only the
+fields you want to change:
+
+```ts
+ci = cicd({
+  provider: "github", // or "gitlab" / "azure"
+  pipeline: {
+    jobs: [{
+      matrix: { os: ["ubuntu-latest", "macos-latest"] },
+      steps: [{ name: "Test", run: "./zuke test" }],
+    }],
+  },
+});
 ```
 
 - **`zuke generate-ci`** writes every declared file (creating parent dirs).

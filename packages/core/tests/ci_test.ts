@@ -161,6 +161,33 @@ Deno.test("defaults: a default job id flows through every provider", () => {
   assertStringIncludes(generateCi(pipeline, "azure"), "- job: build");
 });
 
+Deno.test("defaults: jobs and steps fall back to a single build step", () => {
+  // An empty pipeline still produces a complete, runnable workflow.
+  const yaml = generateCi();
+  assertStringIncludes(yaml, "name: CI");
+  assertStringIncludes(yaml, "build:"); // default job id
+  assertStringIncludes(yaml, "run: ./zuke"); // default step runs the build
+});
+
+Deno.test("defaults: the default job/step flow through every provider", () => {
+  const empty: CiPipeline = { triggers: {} };
+  assertStringIncludes(generateCi(empty, "github"), "run: ./zuke");
+  assertStringIncludes(generateCi(empty, "gitlab"), "- ./zuke");
+  assertStringIncludes(generateCi(empty, "azure"), "script: ./zuke");
+});
+
+Deno.test("defaults: a job may omit steps and get the default step", () => {
+  const yaml = generateCi({ triggers: {}, jobs: [{ id: "verify" }] }, "github");
+  assertStringIncludes(yaml, "verify:");
+  assertStringIncludes(yaml, "run: ./zuke");
+});
+
+Deno.test("cicd: with no spec declares the default workflow", () => {
+  const file = cicd();
+  assertEquals(file.path, ".github/workflows/ci.yml");
+  assertStringIncludes(file.render(), "run: ./zuke");
+});
+
 Deno.test("cicd: provider defaults to github and path follows the provider", () => {
   const pipeline: CiPipeline = { jobs: [{ steps: [{ run: "x" }] }] };
   assertEquals(cicd({ pipeline }).path, ".github/workflows/ci.yml");
