@@ -17,6 +17,8 @@
   "packages/vitest": "0.2.0",
   "packages/playwright": "0.1.0",
   "packages/biome": "0.0.0",
+  "packages/knip": "0.0.0",
+  "packages/cypress": "0.0.0",
   "packages/vite": "0.0.0",
   "packages/tsup": "0.0.0",
   "packages/turbo": "0.0.0",

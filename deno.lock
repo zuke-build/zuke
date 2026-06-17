@@ -577,6 +577,11 @@
           "jsr:@zuke/core@0"
         ]
       },
+      "packages/cypress": {
+        "dependencies": [
+          "jsr:@zuke/core@0"
+        ]
+      },
       "packages/deno": {
         "dependencies": [
           "jsr:@zuke/core@0"
@@ -618,6 +623,11 @@
         ]
       },
       "packages/jest": {
+        "dependencies": [
+          "jsr:@zuke/core@0"
+        ]
+      },
+      "packages/knip": {
         "dependencies": [
           "jsr:@zuke/core@0"
         ]
