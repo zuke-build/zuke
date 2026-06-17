@@ -34,6 +34,7 @@ import { findConfigDir, pathExists } from "./config.ts";
 import { isCI } from "./host.ts";
 import { absolutePath } from "./path.ts";
 import type { TargetBuilder, TargetFn } from "./target.ts";
+import type { Plugin } from "./plugin.ts";
 
 /** The artifact directory (under the repo root) for the cache store. */
 const ARTIFACT_DIR = ".zuke";
@@ -57,6 +58,11 @@ export interface ExecuteOptions {
   silent?: boolean;
   /** Custom reporter; overrides `silent`. */
   reporter?: Reporter;
+  /**
+   * Lifecycle observers invoked alongside the build's own hooks, in order.
+   * Lets third-party packages report/time/notify without subclassing the build.
+   */
+  plugins?: Plugin[];
   /** Target names to skip even if they appear in the plan (CLI `--skip`). */
   skip?: string[];
   /**
@@ -389,6 +395,40 @@ interface RunOutcome {
   aborted: boolean;
 }
 
+/**
+ * The merged lifecycle: the build's own hooks plus any registered plugins,
+ * invoked in order (build first, then each plugin). The run functions call
+ * through this so they need not know about plugins.
+ */
+interface Lifecycle {
+  start(): Promise<void>;
+  targetStart(name: string): Promise<void>;
+  targetEnd(name: string, status: TargetStatus): Promise<void>;
+  finish(result: BuildResult): Promise<void>;
+}
+
+/** Compose a build and its plugins into one {@link Lifecycle}. */
+function makeLifecycle(build: Build, plugins: Plugin[]): Lifecycle {
+  return {
+    async start() {
+      await build.onStart();
+      for (const p of plugins) await p.onStart?.();
+    },
+    async targetStart(name) {
+      await build.onTargetStart(name);
+      for (const p of plugins) await p.onTargetStart?.(name);
+    },
+    async targetEnd(name, status) {
+      await build.onTargetEnd(name, status);
+      for (const p of plugins) await p.onTargetEnd?.(name, status);
+    },
+    async finish(result) {
+      await build.onFinish(result);
+      for (const p of plugins) await p.onFinish?.(result);
+    },
+  };
+}
+
 /** Resolve after `ms` milliseconds. */
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -452,7 +492,7 @@ async function runBody(t: TargetBuilder): Promise<void> {
  * that would run is reported without executing its body or touching the cache.
  */
 async function runTarget(
-  build: Build,
+  life: Lifecycle,
   reporter: Reporter,
   style: Style,
   t: TargetBuilder,
@@ -492,7 +532,7 @@ async function runTarget(
   }
 
   openTarget(reporter, style, name, opened);
-  await build.onTargetStart(name);
+  await life.targetStart(name);
   const start = performance.now();
 
   if (!t.fn_) {
@@ -551,7 +591,7 @@ function bufferReporter(): {
 
 /** Sequentially run the plan, aborting (and skipping the rest) on first failure. */
 async function runSequential(
-  build: Build,
+  life: Lifecycle,
   order: TargetBuilder[],
   reporter: Reporter,
   style: Style,
@@ -572,7 +612,7 @@ async function runSequential(
       continue;
     }
     const outcome = await runTarget(
-      build,
+      life,
       reporter,
       style,
       t,
@@ -580,7 +620,7 @@ async function runSequential(
       cache,
       dryRun,
     );
-    await build.onTargetEnd(name, outcome.status);
+    await life.targetEnd(name, outcome.status);
     if (outcome.status === "passed" || outcome.status === "failed") opened++;
     reports.push({ name, status: outcome.status, ms: outcome.ms });
     if (outcome.status === "passed") executed.push(name);
@@ -603,7 +643,7 @@ async function runSequential(
  * stops new launches; in-flight targets settle and the rest are skipped.
  */
 async function runScheduled(
-  build: Build,
+  life: Lifecycle,
   order: TargetBuilder[],
   predecessors: Map<TargetBuilder, TargetBuilder[]>,
   reporter: Reporter,
@@ -648,10 +688,10 @@ async function runScheduled(
         started.add(t);
         runningSet.add(t);
         const buffer = bufferReporter();
-        runTarget(build, buffer.reporter, style, t, flushed, cache, dryRun)
+        runTarget(life, buffer.reporter, style, t, flushed, cache, dryRun)
           .then(
             async (outcome) => {
-              await build.onTargetEnd(t.name_ ?? "<unnamed>", outcome.status);
+              await life.targetEnd(t.name_ ?? "<unnamed>", outcome.status);
               // Only an executed target prints a block worth separating.
               const printed = outcome.status === "passed" ||
                 outcome.status === "failed";
@@ -771,12 +811,13 @@ export async function execute(
   const cache = dryRun ? undefined : await resolveCache(options.cache, order);
   const overallStart = performance.now();
 
-  await build.onStart();
+  const life = makeLifecycle(build, options.plugins ?? []);
+  await life.start();
 
   let run: RunOutcome;
   if (!globalParallel && !grouped && !scheduled) {
     run = await runSequential(
-      build,
+      life,
       order,
       reporter,
       style,
@@ -794,7 +835,7 @@ export async function execute(
       : (a: TargetBuilder, b: TargetBuilder) =>
         a.group_ !== undefined && a.group_ === b.group_;
     run = await runScheduled(
-      build,
+      life,
       order,
       predecessors,
       reporter,
@@ -817,7 +858,7 @@ export async function execute(
   if (style.github && writesToConsole) {
     writeJobSummary(run.reports, totalMs, result.ok);
   }
-  await build.onFinish(result);
+  await life.finish(result);
   return result;
 }
 

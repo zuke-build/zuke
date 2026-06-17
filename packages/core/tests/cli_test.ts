@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "./_assert.ts";
-import { Build, cicd, group, target } from "../mod.ts";
+import { Build, cicd, group, type Plugin, target } from "../mod.ts";
 import {
   formatGraph,
   formatHelp,
@@ -203,7 +203,7 @@ Deno.test("main --list and graph (text) return 0", async () => {
 Deno.test("main graph --output=html renders HTML via the injected host", async () => {
   const host = new FakeGraphHost("/repo", [`/repo/${CONFIG_FILE}`]);
   const { code } = await capture(() =>
-    main(Demo, ["graph", "--output=html", "--no-open"], host)
+    main(Demo, ["graph", "--output=html", "--no-open"], { graphHost: host })
   );
   assertEquals(code, 0);
   assertEquals(host.files.has("/repo/.zuke/graph.html"), true);
@@ -328,7 +328,7 @@ Deno.test("run() drives main and sets the process exit code", async () => {
   const origLog = console.log;
   console.log = () => {};
   try {
-    await run(Demo, ["--list"]);
+    await run(Demo, { args: ["--list"] });
   } catch (e) {
     if (!(e instanceof ExitSignal)) throw e;
   } finally {
@@ -465,3 +465,42 @@ async function assertRejectsNotFound(path: string): Promise<void> {
   }
   assertEquals(missing, true);
 }
+
+// --- Plugins via the CLI entry points ---
+
+Deno.test("main forwards plugins to the build lifecycle", async () => {
+  const seen: string[] = [];
+  const plugin: Plugin = {
+    onTargetEnd: (name, status) => void seen.push(`${name}:${status}`),
+  };
+  // Demo: `build` depends on `clean`, so both targets are observed.
+  const { code } = await capture(() =>
+    main(Demo, ["build"], { plugins: [plugin] })
+  );
+  assertEquals(code, 0);
+  assertEquals(seen.includes("clean:passed"), true);
+  assertEquals(seen.includes("build:passed"), true);
+});
+
+Deno.test("run forwards args and plugins to main", async () => {
+  const seen: string[] = [];
+  const plugin: Plugin = { onFinish: () => void seen.push("finished") };
+  const origExit = Deno.exit;
+  const origLog = console.log;
+  let code: number | undefined;
+  Deno.exit = (c?: number): never => {
+    code = c;
+    throw new ExitSignal();
+  };
+  console.log = () => {};
+  try {
+    await run(Demo, { args: ["build"], plugins: [plugin] });
+  } catch (e) {
+    if (!(e instanceof ExitSignal)) throw e;
+  } finally {
+    Deno.exit = origExit;
+    console.log = origLog;
+  }
+  assertEquals(code, 0);
+  assertEquals(seen, ["finished"]);
+});

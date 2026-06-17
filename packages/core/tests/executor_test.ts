@@ -31,6 +31,7 @@ import {
   type ExecuteOptions,
   type Reporter,
 } from "../src/executor.ts";
+import type { Plugin } from "../src/plugin.ts";
 
 const silent: ExecuteOptions = { silent: true };
 
@@ -1169,4 +1170,60 @@ Deno.test("retry gives up after the configured attempts (with delay)", async () 
   assertEquals(result.ok, false);
   assertEquals(attempts, 3); // 1 initial + 2 retries
   assertEquals(messageOf(result.error), "always fails");
+});
+
+// --- Plugins (lifecycle observers) ---
+
+Deno.test("execute runs plugin hooks alongside the build hooks, in order", async () => {
+  const events: string[] = [];
+  class B extends Build {
+    override onStart() {
+      events.push("build:start");
+    }
+    override onTargetStart(n: string) {
+      events.push(`build:ts:${n}`);
+    }
+    override onTargetEnd(n: string, s: TargetStatus) {
+      events.push(`build:te:${n}:${s}`);
+    }
+    override onFinish(r: BuildResult) {
+      events.push(`build:finish:${r.ok}`);
+    }
+    a = target().executes(() => {});
+  }
+  const plugin: Plugin = {
+    name: "spy",
+    onStart: () => void events.push("plugin:start"),
+    onTargetStart: (n) => void events.push(`plugin:ts:${n}`),
+    onTargetEnd: (n, s) => void events.push(`plugin:te:${n}:${s}`),
+    onFinish: (r) => void events.push(`plugin:finish:${r.ok}`),
+  };
+  const b = new B();
+  discoverTargets(b);
+  await execute(b, b.a, { silent: true, plugins: [plugin] });
+  assertEquals(events, [
+    "build:start",
+    "plugin:start",
+    "build:ts:a",
+    "plugin:ts:a",
+    "build:te:a:passed",
+    "plugin:te:a:passed",
+    "build:finish:true",
+    "plugin:finish:true",
+  ]);
+});
+
+Deno.test("execute supports multiple plugins and partial hook sets", async () => {
+  const calls: string[] = [];
+  class B extends Build {
+    a = target().executes(() => {});
+  }
+  // p1 implements only onTargetEnd; p2 only onFinish — the unimplemented hooks
+  // must be skipped without error.
+  const p1: Plugin = { onTargetEnd: (n, s) => void calls.push(`p1:${n}:${s}`) };
+  const p2: Plugin = { onFinish: () => void calls.push("p2:finish") };
+  const b = new B();
+  discoverTargets(b);
+  await execute(b, b.a, { silent: true, plugins: [p1, p2] });
+  assertEquals(calls, ["p1:a:passed", "p2:finish"]);
 });

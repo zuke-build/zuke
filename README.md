@@ -97,6 +97,8 @@ Full documentation lives in [`docs/`](./docs/):
   execution.
 - [Paths (`absolutePath`)](./docs/paths.md) — the fluent path type.
 - [Tools](./docs/tools.md) — the typed tool-wrapper packages and their tasks.
+- [Extending Zuke](./docs/extending.md) — the plugin contract: lifecycle
+  plugins, tool wrappers, and reusable target bundles.
 - [Using Zuke in a Node/npm project](./docs/node-projects.md) — drive a Node
   build with Deno.
 - [CLI reference](./docs/cli.md) — commands and flags.
