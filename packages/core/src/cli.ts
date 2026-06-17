@@ -367,9 +367,9 @@ export async function main(
     return 1;
   }
 
-  // Keep declared CI config in sync as part of running the build (NUKE-style):
-  // write changes locally, but only verify on CI so an ephemeral checkout is
-  // never dirtied — a drifted file fails the build there instead.
+  // Keep declared CI config in sync as part of running the build: write
+  // changes locally, but only verify on CI so an ephemeral checkout is never
+  // dirtied — a drifted file fails the build there instead.
   if (!parsed.dryRun) {
     const ciCode = await syncCiConfig(build, {
       check: isCI(),

@@ -54,8 +54,8 @@ export interface CiStep {
 
 /** A job: a named unit of work with steps, optionally fanned out by a matrix. */
 export interface CiJob {
-  /** Stable identifier, used as the job key and as a dependency target. */
-  id: string;
+  /** Stable identifier, used as the job key and as a dependency target. Defaults to `"build"`. */
+  id?: string;
   /** Human-readable job name. */
   name?: string;
   /**
@@ -86,9 +86,12 @@ export interface CiTriggers {
 
 /** A complete, provider-agnostic CI pipeline. */
 export interface CiPipeline {
-  /** The pipeline name. */
-  name: string;
-  /** When it runs. Omit for a pipeline triggered only by external means. */
+  /** The pipeline name. Defaults to `"CI"`. */
+  name?: string;
+  /**
+   * When it runs. Defaults to push and pull request on `main`; pass an empty
+   * object (`{}`) for a pipeline triggered only by external means.
+   */
   triggers?: CiTriggers;
   /** The jobs to run. */
   jobs: CiJob[];
@@ -96,6 +99,25 @@ export interface CiPipeline {
 
 /** The default runner image used when a job does not set {@link CiJob.runsOn}. */
 const DEFAULT_RUNNER = "ubuntu-latest";
+
+/** The default pipeline name. */
+const DEFAULT_NAME = "CI";
+
+/** The default job id when one is not given. */
+const DEFAULT_JOB_ID = "build";
+
+/** The default provider for {@link generateCi} and {@link cicd}. */
+const DEFAULT_PROVIDER: CiProvider = "github";
+
+/** Default triggers: push and pull request on `main`. */
+const DEFAULT_TRIGGERS: CiTriggers = { push: ["main"], pullRequest: ["main"] };
+
+/** The conventional output path for each provider. */
+const DEFAULT_PATHS: Record<CiProvider, string> = {
+  github: ".github/workflows/ci.yml",
+  gitlab: ".gitlab-ci.yml",
+  azure: "azure-pipelines.yml",
+};
 
 /** Collect the shell commands of a job's `run` steps, in order. */
 function runCommands(steps: CiStep[]): string[] {
@@ -108,7 +130,7 @@ function runCommands(steps: CiStep[]): string[] {
 
 /** Render a GitHub Actions workflow object. */
 function github(pipeline: CiPipeline): YamlValue {
-  const triggers = pipeline.triggers ?? {};
+  const triggers = pipeline.triggers ?? DEFAULT_TRIGGERS;
   const on: Record<string, YamlValue> = {};
   if (triggers.push) on.push = { branches: triggers.push };
   if (triggers.pullRequest) {
@@ -125,7 +147,7 @@ function github(pipeline: CiPipeline): YamlValue {
       with: step.with,
       run: step.run,
     }));
-    jobs[job.id] = {
+    jobs[job.id ?? DEFAULT_JOB_ID] = {
       name: job.name,
       "runs-on": matrixOs ? "${{ matrix.os }}" : (job.runsOn ?? DEFAULT_RUNNER),
       needs: job.needs,
@@ -134,12 +156,12 @@ function github(pipeline: CiPipeline): YamlValue {
       steps,
     };
   }
-  return { name: pipeline.name, on, jobs };
+  return { name: pipeline.name ?? DEFAULT_NAME, on, jobs };
 }
 
 /** Render a GitLab CI configuration object. */
 function gitlab(pipeline: CiPipeline): YamlValue {
-  const triggers = pipeline.triggers ?? {};
+  const triggers = pipeline.triggers ?? DEFAULT_TRIGGERS;
   const config: Record<string, YamlValue> = {};
 
   const rules: YamlValue[] = [];
@@ -154,7 +176,7 @@ function gitlab(pipeline: CiPipeline): YamlValue {
 
   config.stages = ["build"];
   for (const job of pipeline.jobs) {
-    config[job.id] = {
+    config[job.id ?? DEFAULT_JOB_ID] = {
       stage: "build",
       image: job.runsOn,
       needs: job.needs,
@@ -189,7 +211,7 @@ function azureMatrix(
 
 /** Render an Azure Pipelines object. */
 function azure(pipeline: CiPipeline): YamlValue {
-  const triggers = pipeline.triggers ?? {};
+  const triggers = pipeline.triggers ?? DEFAULT_TRIGGERS;
   const config: Record<string, YamlValue> = {};
   if (triggers.push) config.trigger = { branches: { include: triggers.push } };
   else if (triggers.manual) config.trigger = "none";
@@ -206,7 +228,7 @@ function azure(pipeline: CiPipeline): YamlValue {
       }
     }
     jobs.push({
-      job: job.id,
+      job: job.id ?? DEFAULT_JOB_ID,
       displayName: job.name,
       pool: { vmImage: job.runsOn ?? DEFAULT_RUNNER },
       dependsOn: job.needs,
@@ -220,12 +242,13 @@ function azure(pipeline: CiPipeline): YamlValue {
 }
 
 /**
- * Render `pipeline` as the YAML configuration for `provider`
- * (`.github/workflows/*.yml`, `.gitlab-ci.yml`, or `azure-pipelines.yml`).
+ * Render `pipeline` as the YAML configuration for `provider` (default
+ * `"github"`): `.github/workflows/*.yml`, `.gitlab-ci.yml`, or
+ * `azure-pipelines.yml`.
  */
 export function generateCi(
   pipeline: CiPipeline,
-  provider: CiProvider,
+  provider: CiProvider = DEFAULT_PROVIDER,
 ): string {
   switch (provider) {
     case "github":
@@ -239,13 +262,14 @@ export function generateCi(
 
 /** A CI configuration file declared on a build: a pipeline bound to a path. */
 export interface CiFileSpec {
-  /** The provider to render for. */
-  provider: CiProvider;
+  /** The provider to render for. Defaults to `"github"`. */
+  provider?: CiProvider;
   /**
-   * The output path (relative to the working directory), e.g.
-   * `.github/workflows/ci.yml`, `.gitlab-ci.yml`, or `azure-pipelines.yml`.
+   * The output path (relative to the working directory). Defaults to the
+   * provider's conventional location (`.github/workflows/ci.yml`,
+   * `.gitlab-ci.yml`, or `azure-pipelines.yml`).
    */
-  path: string;
+  path?: string;
   /** The pipeline to render. */
   pipeline: CiPipeline;
 }
@@ -255,19 +279,22 @@ export interface CiFileSpec {
  * keeps the file on disk in sync with the definition when the build runs.
  */
 export class CiFile {
-  constructor(
-    /** The provider, output path, and pipeline this file renders. */
-    readonly spec: CiFileSpec,
-  ) {}
-
+  /** The provider this file renders for. */
+  readonly provider: CiProvider;
   /** The output path. */
-  get path(): string {
-    return this.spec.path;
+  readonly path: string;
+  /** The pipeline this file renders. */
+  readonly pipeline: CiPipeline;
+
+  constructor(spec: CiFileSpec) {
+    this.provider = spec.provider ?? DEFAULT_PROVIDER;
+    this.path = spec.path ?? DEFAULT_PATHS[this.provider];
+    this.pipeline = spec.pipeline;
   }
 
   /** Render the file's YAML content. */
   render(): string {
-    return generateCi(this.spec.pipeline, this.spec.provider);
+    return generateCi(this.pipeline, this.provider);
   }
 }
 

@@ -283,10 +283,13 @@ await CmdTasks.exec(String(bin), (s) => s.args("version"));
 ### CI config generation — `cicd()` and `generate-ci`
 
 Generate your CI configuration **from the build** instead of hand-maintaining
-YAML — the way NUKE does. Declare a pipeline as a build field with `cicd()`,
-binding a provider-agnostic `CiPipeline` to an output path. The file is then
-kept in sync with the definition: it is regenerated whenever you run the build,
-and `zuke generate-ci` writes it on demand.
+YAML. Declare a pipeline as a build field with `cicd()`, binding a
+provider-agnostic `CiPipeline` to an output path. The file is then kept in sync
+with the definition: it is regenerated whenever you run the build, and
+`zuke generate-ci` writes it on demand. Almost every field has a sensible
+default — `provider` is `github`, `path` follows the provider, the pipeline
+`name` is `CI`, triggers default to push/PR on `main`, and a job's `id` is
+`build` — so a minimal definition is just a job with steps.
 
 ```ts
 import { Build, cicd, target } from "jsr:@zuke/core";

@@ -1,11 +1,11 @@
 /**
  * Ergonomic, immutable file paths for build scripts.
  *
- * TypeScript has no operator overloading, so Zuke cannot mimic NUKE's
- * `RootDirectory / "src" / "Project.csproj"` literally. {@link absolutePath}
- * gets as close as the language allows: the returned {@link AbsolutePath} is
- * **callable**, so appending segments reads almost like the original — and a
- * `.join(...)` method does the same thing explicitly.
+ * TypeScript has no operator overloading, so Zuke cannot offer a
+ * `RootDirectory / "src" / "Project.csproj"` path-join operator literally.
+ * {@link absolutePath} gets as close as the language allows: the returned
+ * {@link AbsolutePath} is **callable**, so appending segments reads almost like
+ * the original — and a `.join(...)` method does the same thing explicitly.
  *
  * ```ts
  * import { absolutePath } from "jsr:@zuke/core";
@@ -97,7 +97,7 @@ function extensionOf(name: string): string {
 }
 
 /**
- * An immutable, absolute filesystem path with a fluent, NUKE-inspired API.
+ * An immutable, absolute filesystem path with a fluent API.
  *
  * Build one with {@link absolutePath}. The value itself is **callable** —
  * `path(...segments)` returns a new path with those segments appended — and the

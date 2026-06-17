@@ -130,14 +130,47 @@ Deno.test("azure: a manual-only pipeline disables the CI trigger", () => {
   assertStringIncludes(yaml, "trigger: none");
 });
 
-Deno.test("a pipeline with no triggers renders without an on/trigger block", () => {
+Deno.test("explicit empty triggers render without an on/trigger block", () => {
   const bare: CiPipeline = {
     name: "CI",
+    triggers: {},
     jobs: [{ id: "a", steps: [{ run: "x" }] }],
   };
   assertStringIncludes(generateCi(bare, "github"), `"on": {}`);
   assertEquals(generateCi(bare, "gitlab").includes("workflow:"), false);
   assertEquals(generateCi(bare, "azure").includes("trigger:"), false);
+});
+
+Deno.test("defaults: provider, name, triggers and job id fill in", () => {
+  // Only steps are given; everything else falls back to a meaningful default.
+  const yaml = generateCi({ jobs: [{ steps: [{ run: "deno task ci" }] }] });
+  assertStringIncludes(yaml, "name: CI"); // default name
+  assertStringIncludes(yaml, `"on":`); // default triggers present
+  assertStringIncludes(yaml, "push:\n    branches:\n      - main"); // default branch
+  assertStringIncludes(yaml, "pull_request:");
+  assertStringIncludes(yaml, "build:"); // default job id (github default provider)
+});
+
+Deno.test("defaults: a default job id flows through every provider", () => {
+  const pipeline: CiPipeline = {
+    triggers: {},
+    jobs: [{ steps: [{ run: "x" }] }],
+  };
+  assertStringIncludes(generateCi(pipeline, "github"), "build:");
+  assertStringIncludes(generateCi(pipeline, "gitlab"), "build:");
+  assertStringIncludes(generateCi(pipeline, "azure"), "- job: build");
+});
+
+Deno.test("cicd: provider defaults to github and path follows the provider", () => {
+  const pipeline: CiPipeline = { jobs: [{ steps: [{ run: "x" }] }] };
+  assertEquals(cicd({ pipeline }).path, ".github/workflows/ci.yml");
+  assertEquals(cicd({ provider: "gitlab", pipeline }).path, ".gitlab-ci.yml");
+  assertEquals(
+    cicd({ provider: "azure", pipeline }).path,
+    "azure-pipelines.yml",
+  );
+  // An explicit path overrides the convention.
+  assertEquals(cicd({ path: "custom.yml", pipeline }).path, "custom.yml");
 });
 
 // --- Declarative CI files: cicd(), discovery, and on-disk sync ---
