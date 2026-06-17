@@ -129,6 +129,20 @@ Deno.test("cacheKey, produces, consumes, always, whenSkipped record config", () 
   assertEquals(b.main.skipDependencies_, true);
 });
 
+Deno.test("timeout and retry record their configuration, clamping inputs", () => {
+  const t = target().timeout(500).retry(3, 250).executes(() => {});
+  assertEquals(t.timeout_, 500);
+  assertEquals(t.retries_, 3);
+  assertEquals(t.retryDelay_, 250);
+
+  // Negative/fractional counts clamp to a sane non-negative integer; delay
+  // defaults to 0.
+  const u = target().retry(-2);
+  assertEquals([u.retries_, u.retryDelay_], [0, 0]);
+  const v = target().retry(2.9);
+  assertEquals(v.retries_, 2);
+});
+
 Deno.test("partOf ignores an undefined (forward-referenced) group", () => {
   const t = target();
   // @ts-expect-error exercising the runtime guard against an unbound reference

@@ -984,3 +984,144 @@ Deno.test("an unwritable job-summary file never fails the build", async () => {
     await Deno.remove(dir, { recursive: true });
   }
 });
+
+Deno.test("dry run reports the plan without executing bodies or cache", async () => {
+  const log: string[] = [];
+  const cache = new FakeCache();
+  class B extends Build {
+    clean = target().executes(() => void log.push("clean"));
+    build = target()
+      .dependsOn(this.clean)
+      .inputs("src")
+      .executes(() => void log.push("build"));
+  }
+  const b = new B();
+  discoverTargets(b);
+
+  const { lines, reporter } = recorder();
+  const result = await execute(b, b.build, {
+    reporter,
+    dryRun: true,
+    cache,
+  });
+  assertEquals(result.ok, true);
+  assertEquals(log, []); // no body ran
+  assertEquals(cache.recorded, []); // cache untouched
+  assertEquals(cache.saved, false);
+  assertEquals(result.executed, ["clean", "build"]); // both planned
+  assertEquals(lines.some((l) => l.includes("dry run")), true);
+});
+
+Deno.test("dry run still skips targets whose condition is false", async () => {
+  class B extends Build {
+    deploy = target()
+      .onlyWhen(() => false)
+      .executes(() => {});
+  }
+  const b = new B();
+  discoverTargets(b);
+
+  const result = await execute(b, b.deploy, { silent: true, dryRun: true });
+  assertEquals(result.ok, true);
+  assertEquals(result.executed, []); // skipped, not "executed"
+});
+
+Deno.test("timeout fails a body that runs too long", async () => {
+  class B extends Build {
+    slow = target()
+      .timeout(20)
+      .executes(() =>
+        new Promise<void>((resolve) => setTimeout(resolve, 1000))
+      );
+  }
+  const b = new B();
+  discoverTargets(b);
+
+  const result = await execute(b, b.slow, silent);
+  assertEquals(result.ok, false);
+  assertEquals(messageOf(result.error).includes("timed out"), true);
+});
+
+Deno.test("a fast body within the timeout passes", async () => {
+  let ran = false;
+  class B extends Build {
+    quick = target().timeout(1000).executes(() => void (ran = true));
+  }
+  const b = new B();
+  discoverTargets(b);
+
+  const result = await execute(b, b.quick, silent);
+  assertEquals(result.ok, true);
+  assertEquals(ran, true);
+});
+
+Deno.test("a body with a timeout that fails fast surfaces its own error", async () => {
+  class B extends Build {
+    boom = target()
+      .timeout(1000)
+      .executes(() => {
+        throw new Error("real error");
+      });
+  }
+  const b = new B();
+  discoverTargets(b);
+
+  const result = await execute(b, b.boom, silent);
+  assertEquals(result.ok, false);
+  assertEquals(messageOf(result.error), "real error"); // not a timeout
+});
+
+Deno.test("dry run closes the log group under GitHub Actions", async () => {
+  const { lines, reporter } = recorder();
+  class B extends Build {
+    work = target().executes(() => {});
+  }
+  const b = new B();
+  discoverTargets(b);
+
+  const result = await execute(b, b.work, {
+    reporter,
+    github: true,
+    dryRun: true,
+  });
+  assertEquals(result.ok, true);
+  assertEquals(lines.includes("::group::work"), true);
+  assertEquals(lines.includes("::endgroup::"), true);
+});
+
+Deno.test("retry re-runs a flaky body until it succeeds", async () => {
+  let attempts = 0;
+  class B extends Build {
+    flaky = target()
+      .retry(3)
+      .executes(() => {
+        attempts++;
+        if (attempts < 3) throw new Error("flaky");
+      });
+  }
+  const b = new B();
+  discoverTargets(b);
+
+  const result = await execute(b, b.flaky, silent);
+  assertEquals(result.ok, true);
+  assertEquals(attempts, 3);
+});
+
+Deno.test("retry gives up after the configured attempts (with delay)", async () => {
+  let attempts = 0;
+  class B extends Build {
+    doomed = target()
+      .retry(2, 1)
+      .executes(() => {
+        attempts++;
+        throw new Error("always fails");
+      });
+  }
+  const b = new B();
+  discoverTargets(b);
+
+  const result = await execute(b, b.doomed, silent);
+  assertEquals(result.ok, false);
+  assertEquals(attempts, 3); // 1 initial + 2 retries
+  assertEquals(messageOf(result.error), "always fails");
+});

@@ -25,6 +25,8 @@ body, which is required before the target can run.
 | `.produces(...paths)`    | `(...p: PathLike[]) => this`                | Declare artifact paths this target produces.           |
 | `.consumes(...targets)`  | `(...t: Target[]) => this`                  | Depend on targets and use their `produces` artifacts.  |
 | `.whenSkipped(behavior)` | `("run-dependencies" \| "skip-dependencies") => this` | On skip, also skip exclusive deps.    |
+| `.timeout(ms)`           | `(ms: number) => this`                      | Fail the body if it runs longer than `ms` (per attempt). |
+| `.retry(times, delayMs?)`| `(times: number, delayMs?: number) => this` | Retry the body on failure, optionally pausing between. |
 
 `dependsOn` pulls targets into the plan; `before`/`after` only reorder targets
 that are _already_ in the plan — they never pull new targets in.
@@ -157,6 +159,46 @@ deploy = target()
 - **`.whenSkipped("skip-dependencies")`** — when this target is skipped by a
   condition, also skip dependencies that no other target needs. Its condition is
   evaluated up front, so it must not rely on state produced during the run.
+- **`.timeout(ms)`** — fail the target if its body runs longer than `ms`
+  milliseconds. The bound is **per attempt**, so it combines with `.retry(...)`.
+  A timed-out body cannot be cancelled (JavaScript has no such primitive), so it
+  keeps running in the background — but its result is ignored.
+- **`.retry(times, delayMs?)`** — retry the body up to `times` more attempts on
+  failure, optionally pausing `delayMs` between attempts. The last error
+  propagates once the attempts are exhausted.
+
+```ts
+flaky = target()
+  .timeout(30_000) // each attempt may take up to 30s…
+  .retry(2, 1_000) // …retried twice, 1s apart, on failure
+  .executes(async () => {
+    await $`curl -fsSL https://example.com/health`;
+  });
+```
+
+### Globbing inputs — `glob()`
+
+`glob(pattern, { cwd? })` expands a pattern to the matching paths (relative to
+`cwd`, sorted for determinism). It is dependency-free, walks from the pattern's
+static prefix, and does not follow symlinked directories. Supported syntax: `*`
+(any run of non-`/`), `**` (any run including `/`), `?` (a single non-`/`), and
+brace alternation `{a,b}`.
+
+```ts
+import { glob } from "jsr:@zuke/core";
+
+format = target().executes(async () => {
+  const sources = await glob("src/**/*.ts");
+  await DenoTasks.fmt((s) => s.check().paths(...sources));
+});
+```
+
+### Dry runs — `--dry-run`
+
+`zuke <target> --dry-run` resolves and prints every target that **would** run —
+honouring `--skip` and `onlyWhen` conditions — without executing any body or
+touching the [cache](#incremental-caching-inputs--outputs). Use it to preview a
+plan before committing to it.
 
 ### Host detection — `isCI()` / `ciHost()`
 
