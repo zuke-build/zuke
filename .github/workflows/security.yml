@@ -9,7 +9,7 @@ on:
 
 # The scanners run as a Zuke build gate (./zuke security) and fail the job on
 # findings; results are in the job log. Code-level SARIF for the Security tab
-# comes from the CodeQL and Scorecard workflows.
+# comes from CodeQL's default setup and the Scorecard workflow.
 permissions:
   contents: read
 

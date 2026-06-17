@@ -58,8 +58,8 @@ What the project does to keep releases trustworthy:
   the build on findings. (The package also wraps osv-scanner, semgrep, and
   Trivy for consumers whose projects have lockfiles/manifests those tools
   support.) Code-level SARIF for the GitHub Security tab comes from CodeQL
-  (TypeScript) and OpenSSF Scorecard, which have no CLI to wrap and stay as
-  native actions.
+  (TypeScript), enabled through GitHub's default code-scanning setup, and from
+  OpenSSF Scorecard, which runs as a native action workflow.
 
 ### Known trade-offs
 
@@ -98,6 +98,9 @@ These cannot be set from files in the repo; configure them in GitHub settings:
   review, require CODEOWNER review, require status checks (CI, CodeQL) to pass,
   dismiss stale approvals on new commits, and disallow force-pushes.
 - **Restrict release-PR merges** to maintainers.
+- **Enable CodeQL code scanning (default setup)** with code quality. This is the
+  single source for CodeQL — do not also add an advanced CodeQL workflow file, or
+  the analysis runs twice.
 - **Enable secret scanning and push protection** (free for public repos).
 - **Require 2FA** for all maintainers, on both GitHub and JSR.
 - **Scope the JSR ↔ repo OIDC link** so publishing is allowed only from this
