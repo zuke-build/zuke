@@ -22,6 +22,20 @@ await GitTasks.run((s) => s.command("rev-parse", "--short", "HEAD"));
 Tasks: `init`, `clone`, `add`, `commit`, `status`, `checkout`, `branch`, `tag`,
 `push`, `pull`, `fetch`, and `run`.
 
+## Repository info — `gitInfo()`
+
+`gitInfo()` resolves the current repository's metadata for versioning and
+conditional steps: `branch`, `commit`/`shortCommit`, nearest `tag`, `dirty`
+flag, and `remoteUrl`. It throws outside a git repository; optional fields are
+`undefined` when absent. Pass `{ cwd }` to inspect another directory.
+
+```ts
+import { gitInfo } from "jsr:@zuke/git";
+
+const git = await gitInfo();
+console.log(`${git.branch} @ ${git.shortCommit}${git.dirty ? " (dirty)" : ""}`);
+```
+
 ## Paths
 
 Every path argument accepts either a string or an `AbsolutePath` from

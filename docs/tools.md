@@ -54,7 +54,7 @@ raises a `ToolNotFoundError` that names the tool and the fix.
 | `@zuke/tsgo`           | `tsgo`                                                                                                               |
 | `@zuke/dprint`         | `fmt`, `check`                                                                                                      |
 | `@zuke/gcloud`         | `run` (any command)                                                                                                 |
-| `@zuke/git`            | `init`, `clone`, `add`, `commit`, `status`, `checkout`, `branch`, `tag`, `push`, `pull`, `fetch`, `run`             |
+| `@zuke/git`            | `init`, `clone`, `add`, `commit`, `status`, `checkout`, `branch`, `tag`, `push`, `pull`, `fetch`, `run` (+ `gitInfo()` helper) |
 | `@zuke/gh`             | `run` (any command)                                                                                                 |
 | `@zuke/terraform`      | `init`, `validate`, `plan`, `apply`, `destroy`, `fmt`, `output`                                                      |
 | `@zuke/tofu`           | `init`, `validate`, `plan`, `apply`, `destroy`, `fmt`, `output`                                                      |
