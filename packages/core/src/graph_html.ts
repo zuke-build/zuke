@@ -18,9 +18,13 @@ import type { TargetBuilder } from "./target.ts";
 /** Pinned Cytoscape build loaded by the generated page (needs network to view). */
 const CYTOSCAPE_CDN =
   "https://cdn.jsdelivr.net/npm/cytoscape@3.30.3/dist/cytoscape.esm.min.mjs";
-/** Pinned dagre layout extension (bundles its own dagre via jsDelivr's `+esm`). */
-const CYTOSCAPE_DAGRE_CDN =
-  "https://cdn.jsdelivr.net/npm/cytoscape-dagre@2.5.0/+esm";
+/**
+ * Pinned dagre layout extension. Loaded from esm.sh, which bundles dagre's
+ * CommonJS dependency tree (including `graphlib`) correctly — jsDelivr's `+esm`
+ * transform leaves dagre's internal `require("graphlib")` undefined, so the
+ * extension throws on load there.
+ */
+const CYTOSCAPE_DAGRE_CDN = "https://esm.sh/cytoscape-dagre@2.5.0";
 
 /** A target in the visualised graph. */
 export interface GraphNode {
@@ -193,8 +197,16 @@ export function renderGraphHtml(
 <main id="graph"></main>
 <script type="module">
 import cytoscape from "${CYTOSCAPE_CDN}";
-import dagre from "${CYTOSCAPE_DAGRE_CDN}";
-cytoscape.use(dagre);
+// Register the dagre layout if it loads; otherwise fall back to a built-in one
+// so the diagram still renders rather than blanking the page.
+let layout = { name: "breadthfirst", directed: true, spacingFactor: 1.15, padding: 30 };
+try {
+  const dagre = (await import("${CYTOSCAPE_DAGRE_CDN}")).default;
+  cytoscape.use(dagre);
+  layout = { name: "dagre", rankDir: "TB", nodeSep: 36, rankSep: 56, edgeSep: 12, fit: true, padding: 30 };
+} catch (err) {
+  console.warn("Cytoscape dagre layout unavailable; using breadthfirst", err);
+}
 const ELEMENTS = ${elements};
 const COUNT = ${count};
 document.getElementById("count").textContent = COUNT + (COUNT === 1 ? " target" : " targets");
@@ -229,7 +241,7 @@ const cy = cytoscape({
     { selector: ".active", style: { "border-width": 2.5, "border-color": palette.accent } },
     { selector: ".faded", style: { "opacity": 0.12 } },
   ],
-  layout: { name: "dagre", rankDir: "TB", nodeSep: 36, rankSep: 56, edgeSep: 12, fit: true, padding: 30 },
+  layout,
 });
 function reset() { cy.elements().removeClass("faded active"); }
 cy.on("tap", "node.target", function (evt) {

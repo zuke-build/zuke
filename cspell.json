@@ -21,6 +21,7 @@
     "dagre",
     "exfiltrate",
     "gitleaks",
+    "graphlib",
     "Interpolatable",
     "jsdelivr",
     "jsonpath",
