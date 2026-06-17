@@ -21,6 +21,8 @@ const PACKAGES = [
   "packages/biome",
   "packages/vite",
   "packages/tsup",
+  "packages/turbo",
+  "packages/nx",
   "packages/tsx",
   "packages/tsgo",
   "packages/dprint",

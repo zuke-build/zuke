@@ -43,6 +43,8 @@ raises a `ToolNotFoundError` that names the tool and the fix.
 | `@zuke/playwright`     | `test`, `install`, `showReport`, `codegen`                                                                           |
 | `@zuke/vite`           | `dev`, `build`, `preview`                                                                                            |
 | `@zuke/tsup`           | `build`                                                                                                              |
+| `@zuke/turbo`          | `run`, `prune`                                                                                                       |
+| `@zuke/nx`             | `run`, `runMany`, `affected`                                                                                         |
 | `@zuke/tsx`            | `tsx`, `watch`                                                                                                       |
 | `@zuke/tsgo`           | `tsgo`                                                                                                               |
 | `@zuke/dprint`         | `fmt`, `check`                                                                                                      |
