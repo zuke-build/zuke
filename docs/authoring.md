@@ -280,6 +280,41 @@ const bin = await installRelease({
 await CmdTasks.exec(String(bin), (s) => s.args("version"));
 ```
 
+### CI config generation — `generateCi()`
+
+Describe a pipeline once as a provider-agnostic `CiPipeline` — triggers, jobs,
+an optional `matrix`, and steps — then render it for GitHub Actions, GitLab CI,
+or Azure Pipelines. A `run` step (a shell command) maps to every provider; a
+`uses` step (a GitHub Action) renders only for GitHub and is skipped elsewhere,
+since GitLab and Azure check out the repo automatically. `runsOn` is interpreted
+per provider (a runner label, a Docker image, or a `vmImage`); when a matrix
+defines `os`, GitHub runs on it automatically.
+
+```ts
+import { type CiPipeline, generateCi } from "jsr:@zuke/core";
+
+const pipeline: CiPipeline = {
+  name: "CI",
+  triggers: { push: ["main"], pullRequest: ["main"] },
+  jobs: [{
+    id: "test",
+    matrix: { os: ["ubuntu-latest", "macos-latest"] },
+    steps: [
+      { uses: "denoland/setup-deno@v2", with: { "deno-version": "v2.x" } },
+      { name: "Test", run: "deno task ci" },
+    ],
+  }],
+};
+
+await Deno.writeTextFile(
+  ".github/workflows/ci.yml",
+  generateCi(pipeline, "github"), // or "gitlab" / "azure"
+);
+```
+
+The emitted YAML quotes any scalar that would otherwise be misread (a bare `on`,
+a numeric-looking version), so the output is paste-ready.
+
 ### Host detection — `isCI()` / `ciHost()`
 
 `isCI()` and `ciHost()` (e.g. `"github-actions"`, `"gitlab-ci"`, `"local"`) let

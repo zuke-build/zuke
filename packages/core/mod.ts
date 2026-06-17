@@ -93,3 +93,11 @@ export {
   installRelease,
   type InstallReleaseOptions,
 } from "./src/install.ts";
+export {
+  type CiJob,
+  type CiPipeline,
+  type CiProvider,
+  type CiStep,
+  type CiTriggers,
+  generateCi,
+} from "./src/ci.ts";
