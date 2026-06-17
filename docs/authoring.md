@@ -234,6 +234,21 @@ const release = await httpJson<{ tag_name: string }>(
 );
 ```
 
+### Compression — `gzip()` / `tar()` / `createTarGzip()`
+
+Pack build artifacts without any dependency. `gzip(bytes)`/`gunzip(bytes)` wrap
+the platform `CompressionStream`; `tar(entries)`/`untar(archive)` read and write
+the POSIX `ustar` format in memory; and the file helpers
+`createTarGzip(files, dest, { cwd })` / `extractTarGzip(src, destDir)` produce
+and unpack `.tar.gz` archives. Entry names are limited to 100 bytes and archives
+use a fixed mtime, so output is reproducible.
+
+```ts
+import { createTarGzip } from "jsr:@zuke/core";
+
+await createTarGzip(["dist/app.js", "README.md"], "artifact.tar.gz");
+```
+
 ### Host detection — `isCI()` / `ciHost()`
 
 `isCI()` and `ciHost()` (e.g. `"github-actions"`, `"gitlab-ci"`, `"local"`) let
