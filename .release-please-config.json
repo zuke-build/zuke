@@ -239,7 +239,6 @@
     },
     "packages/dpdm": {
       "component": "dpdm",
-      "release-as": "0.1.0",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
         {
