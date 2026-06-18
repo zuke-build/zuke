@@ -9,8 +9,8 @@ By participating, you agree to abide by our
 
 > [!NOTE]
 > Zuke is pre-1.0 and evolving fast. APIs can change within `0.x`. If you are
-> planning a large change, please open an issue or discussion first so we can
-> agree on the direction before you invest the effort.
+> planning a large change, please open an issue first so we can agree on the
+> direction before you invest the effort.
 
 ## Prerequisites
 
@@ -94,8 +94,8 @@ the squash commit that [release-please](./RELEASING.md) parses.
 - Search [existing issues](https://github.com/zuke-build/zuke/issues) first.
 - For bugs, include a minimal reproduction, the Deno version, and what you
   expected versus what happened.
-- For ideas and open-ended questions, start a
-  [discussion](https://github.com/zuke-build/zuke/discussions).
+- For ideas and open-ended questions, open an
+  [issue](https://github.com/zuke-build/zuke/issues) with the relevant label.
 
 ## Security
 
