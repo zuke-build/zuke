@@ -31,7 +31,7 @@
   "packages/tsgo": "0.1.0",
   "packages/dprint": "0.1.0",
   "packages/gcloud": "0.1.0",
-  "packages/git": "0.1.0",
+  "packages/git": "0.2.0",
   "packages/gh": "0.1.0",
   "packages/terraform": "0.1.0",
   "packages/tofu": "0.1.0",
