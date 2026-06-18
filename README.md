@@ -249,13 +249,6 @@ Questions, ideas, or just want to say hi? Open a
 
 [![RepoStars](https://repostars.dev/api/embed?repo=zuke-build%2Fzuke&theme=dark)](https://repostars.dev/?repos=zuke-build%2Fzuke&theme=dark)
 
-<a href="https://star-history.com/#zuke-build/zuke&Date">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=zuke-build/zuke&type=Date&theme=dark" />
-    <img alt="Star history chart" src="https://api.star-history.com/svg?repos=zuke-build/zuke&type=Date" />
-  </picture>
-</a>
-
 If Zuke is useful to you, consider **starring the repo** — it helps others find
 the project. ⭐
 
