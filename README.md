@@ -243,13 +243,7 @@ Questions, ideas, or just want to say hi? Open a
 
 ## Activity
 
-[![Repobeats analytics](https://repobeats.axiom.co/api/embed/REPLACE_WITH_REPOBEATS_HASH.svg "Repobeats analytics image")](https://github.com/zuke-build/zuke/pulse)
-
-<!--
-  Repobeats needs a per-repo embed hash. Generate one (free) at
-  https://repobeats.axiom.co — sign in with GitHub, add `zuke-build/zuke`,
-  and replace `REPLACE_WITH_REPOBEATS_HASH` above with the hash it gives you.
--->
+[![Repobeats analytics](https://repobeats.axiom.co/api/embed/cfe0a93aaa851e719386dc9469ec91ee1b9cf0d0.svg "Repobeats analytics image")](https://github.com/zuke-build/zuke/pulse)
 
 ### Star history
 
