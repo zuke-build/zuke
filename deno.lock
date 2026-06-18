@@ -597,6 +597,11 @@
           "jsr:@zuke/core@0"
         ]
       },
+      "packages/dpdm": {
+        "dependencies": [
+          "jsr:@zuke/core@0"
+        ]
+      },
       "packages/dprint": {
         "dependencies": [
           "jsr:@zuke/core@0"
