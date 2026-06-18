@@ -20,6 +20,7 @@
   "packages/playwright": "0.1.0",
   "packages/biome": "0.1.0",
   "packages/knip": "0.1.0",
+  "packages/dpdm": "0.1.0",
   "packages/cypress": "0.1.0",
   "packages/vite": "0.1.0",
   "packages/tsup": "0.1.0",

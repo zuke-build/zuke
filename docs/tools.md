@@ -40,6 +40,7 @@ raises a `ToolNotFoundError` that names the tool and the fix.
 | `@zuke/eslint`         | `lint`                                                                                                               |
 | `@zuke/biome`          | `check`, `format`, `lint`, `ci`                                                                                      |
 | `@zuke/knip`           | `run`                                                                                                                |
+| `@zuke/dpdm`           | `analyze`                                                                                                            |
 | `@zuke/cspell`         | `lint`                                                                                                               |
 | `@zuke/jest`           | `run`                                                                                                                |
 | `@zuke/vitest`         | `run`                                                                                                                |

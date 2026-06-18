@@ -41,6 +41,7 @@ const PACKAGES = [
   "cypress",
   "biome",
   "knip",
+  "dpdm",
   "jsr",
   "vite",
   "tsup",

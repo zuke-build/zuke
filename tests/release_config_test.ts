@@ -23,6 +23,7 @@ const PACKAGES = [
   "packages/cypress",
   "packages/biome",
   "packages/knip",
+  "packages/dpdm",
   "packages/vite",
   "packages/tsup",
   "packages/turbo",
