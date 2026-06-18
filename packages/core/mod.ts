@@ -41,7 +41,8 @@ export {
   TargetBuilder,
   type TargetFn,
 } from "./src/target.ts";
-export { run } from "./src/cli.ts";
+export { run, type RunOptions } from "./src/cli.ts";
+export type { Plugin } from "./src/plugin.ts";
 export { execute, type ExecuteOptions, type Reporter } from "./src/executor.ts";
 export type { BuildCache } from "./src/cache.ts";
 export { type AbsolutePath, absolutePath, type PathLike } from "./src/path.ts";

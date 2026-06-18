@@ -15,6 +15,7 @@ import {
 } from "./graph_view.ts";
 import { type AnyParameter, discoverParameters, flagName } from "./params.ts";
 import type { TargetBuilder } from "./target.ts";
+import type { Plugin } from "./plugin.ts";
 
 /** Convention: a target literally named `default` runs when none is requested. */
 const DEFAULT_TARGET = "default";
@@ -298,6 +299,14 @@ export async function syncCiConfig(
   return 0;
 }
 
+/** Optional inputs for {@link main} beyond the build class and argv. */
+export interface MainOptions {
+  /** Host used to render and open the HTML graph (injected in tests). */
+  graphHost?: GraphHost;
+  /** Lifecycle observers to run alongside the build's own hooks. */
+  plugins?: Plugin[];
+}
+
 /**
  * Drive a build to completion and resolve to a process exit code (0 success,
  * 1 failure). Does not call `Deno.exit`, so it is unit-testable; {@link run}
@@ -306,8 +315,9 @@ export async function syncCiConfig(
 export async function main(
   BuildClass: new () => Build,
   args: string[],
-  graphHost: GraphHost = defaultGraphHost,
+  options: MainOptions = {},
 ): Promise<number> {
+  const graphHost = options.graphHost ?? defaultGraphHost;
   const build = new BuildClass();
   const targets = discoverTargets(build);
   const params = discoverParameters(build);
@@ -384,22 +394,35 @@ export async function main(
     parallel: parsed.parallel,
     cache: parsed.cache,
     dryRun: parsed.dryRun,
+    plugins: options.plugins,
   });
   return result.ok ? 0 : 1;
 }
 
+/** Options for {@link run}. */
+export interface RunOptions {
+  /** Command-line arguments. Defaults to `Deno.args`. */
+  args?: string[];
+  /** Lifecycle observers to run alongside the build's own hooks. */
+  plugins?: Plugin[];
+}
+
 /**
- * Public entry point. Instantiate the build, parse `Deno.args`, run, and set the
+ * Public entry point. Instantiate the build, parse arguments, run, and set the
  * process exit code.
  *
  * ```ts
- * if (import.meta.main) { await run(MyBuild); }
+ * if (import.meta.main) await run(MyBuild);
+ * // …with plugins:
+ * if (import.meta.main) await run(MyBuild, { plugins: [timing] });
  * ```
  */
 export async function run(
   BuildClass: new () => Build,
-  args: string[] = Deno.args,
+  options: RunOptions = {},
 ): Promise<void> {
-  const code = await main(BuildClass, args);
+  const code = await main(BuildClass, options.args ?? Deno.args, {
+    plugins: options.plugins,
+  });
   Deno.exit(code);
 }
