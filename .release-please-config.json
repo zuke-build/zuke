@@ -9,59 +9,88 @@
       "component": "core",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
-        { "type": "json", "path": "deno.json", "jsonpath": "$.version" }
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
       ]
     },
     "packages/deno": {
       "component": "deno",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
-        { "type": "json", "path": "deno.json", "jsonpath": "$.version" }
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
       ]
     },
     "packages/npm": {
       "component": "npm",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
-        { "type": "json", "path": "deno.json", "jsonpath": "$.version" }
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
       ]
     },
     "packages/bun": {
       "component": "bun",
-      "release-as": "0.1.0",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
-        { "type": "json", "path": "deno.json", "jsonpath": "$.version" }
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
       ]
     },
     "packages/pnpm": {
       "component": "pnpm",
-      "release-as": "0.1.0",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
-        { "type": "json", "path": "deno.json", "jsonpath": "$.version" }
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
       ]
     },
     "packages/yarn": {
       "component": "yarn",
-      "release-as": "0.1.0",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
-        { "type": "json", "path": "deno.json", "jsonpath": "$.version" }
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
       ]
     },
     "packages/cmd": {
       "component": "cmd",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
-        { "type": "json", "path": "deno.json", "jsonpath": "$.version" }
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
       ]
     },
     "packages/cli": {
       "component": "cli",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
-        { "type": "json", "path": "deno.json", "jsonpath": "$.version" },
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        },
         "src/version.ts"
       ]
     },
@@ -69,97 +98,143 @@
       "component": "docker",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
-        { "type": "json", "path": "deno.json", "jsonpath": "$.version" }
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
       ]
     },
     "packages/docker-compose": {
       "component": "docker-compose",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
-        { "type": "json", "path": "deno.json", "jsonpath": "$.version" }
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
       ]
     },
     "packages/kubectl": {
       "component": "kubectl",
-      "release-as": "0.1.0",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
-        { "type": "json", "path": "deno.json", "jsonpath": "$.version" }
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
       ]
     },
     "packages/helm": {
       "component": "helm",
-      "release-as": "0.1.0",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
-        { "type": "json", "path": "deno.json", "jsonpath": "$.version" }
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
       ]
     },
     "packages/kustomize": {
       "component": "kustomize",
-      "release-as": "0.1.0",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
-        { "type": "json", "path": "deno.json", "jsonpath": "$.version" }
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
       ]
     },
     "packages/oxlint": {
       "component": "oxlint",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
-        { "type": "json", "path": "deno.json", "jsonpath": "$.version" }
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
       ]
     },
     "packages/eslint": {
       "component": "eslint",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
-        { "type": "json", "path": "deno.json", "jsonpath": "$.version" }
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
       ]
     },
     "packages/cspell": {
       "component": "cspell",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
-        { "type": "json", "path": "deno.json", "jsonpath": "$.version" }
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
       ]
     },
     "packages/jest": {
       "component": "jest",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
-        { "type": "json", "path": "deno.json", "jsonpath": "$.version" }
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
       ]
     },
     "packages/vitest": {
       "component": "vitest",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
-        { "type": "json", "path": "deno.json", "jsonpath": "$.version" }
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
       ]
     },
     "packages/playwright": {
       "component": "playwright",
-      "release-as": "0.1.0",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
-        { "type": "json", "path": "deno.json", "jsonpath": "$.version" }
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
       ]
     },
     "packages/biome": {
       "component": "biome",
-      "release-as": "0.1.0",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
-        { "type": "json", "path": "deno.json", "jsonpath": "$.version" }
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
       ]
     },
     "packages/knip": {
       "component": "knip",
-      "release-as": "0.1.0",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
-        { "type": "json", "path": "deno.json", "jsonpath": "$.version" }
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
       ]
     },
     "packages/dpdm": {
@@ -167,126 +242,176 @@
       "release-as": "0.1.0",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
-        { "type": "json", "path": "deno.json", "jsonpath": "$.version" }
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
       ]
     },
     "packages/cypress": {
       "component": "cypress",
-      "release-as": "0.1.0",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
-        { "type": "json", "path": "deno.json", "jsonpath": "$.version" }
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
       ]
     },
     "packages/vite": {
       "component": "vite",
-      "release-as": "0.1.0",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
-        { "type": "json", "path": "deno.json", "jsonpath": "$.version" }
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
       ]
     },
     "packages/tsup": {
       "component": "tsup",
-      "release-as": "0.1.0",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
-        { "type": "json", "path": "deno.json", "jsonpath": "$.version" }
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
       ]
     },
     "packages/turbo": {
       "component": "turbo",
-      "release-as": "0.1.0",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
-        { "type": "json", "path": "deno.json", "jsonpath": "$.version" }
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
       ]
     },
     "packages/nx": {
       "component": "nx",
-      "release-as": "0.1.0",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
-        { "type": "json", "path": "deno.json", "jsonpath": "$.version" }
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
       ]
     },
     "packages/jsr": {
       "component": "jsr",
-      "release-as": "0.1.0",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
-        { "type": "json", "path": "deno.json", "jsonpath": "$.version" }
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
       ]
     },
     "packages/tsx": {
       "component": "tsx",
-      "release-as": "0.1.0",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
-        { "type": "json", "path": "deno.json", "jsonpath": "$.version" }
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
       ]
     },
     "packages/tsgo": {
       "component": "tsgo",
-      "release-as": "0.1.0",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
-        { "type": "json", "path": "deno.json", "jsonpath": "$.version" }
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
       ]
     },
     "packages/dprint": {
       "component": "dprint",
-      "release-as": "0.1.0",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
-        { "type": "json", "path": "deno.json", "jsonpath": "$.version" }
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
       ]
     },
     "packages/gcloud": {
       "component": "gcloud",
-      "release-as": "0.1.0",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
-        { "type": "json", "path": "deno.json", "jsonpath": "$.version" }
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
       ]
     },
     "packages/git": {
       "component": "git",
-      "release-as": "0.1.0",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
-        { "type": "json", "path": "deno.json", "jsonpath": "$.version" }
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
       ]
     },
     "packages/gh": {
       "component": "gh",
-      "release-as": "0.1.0",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
-        { "type": "json", "path": "deno.json", "jsonpath": "$.version" }
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
       ]
     },
     "packages/terraform": {
       "component": "terraform",
-      "release-as": "0.1.0",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
-        { "type": "json", "path": "deno.json", "jsonpath": "$.version" }
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
       ]
     },
     "packages/tofu": {
       "component": "tofu",
-      "release-as": "0.1.0",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
-        { "type": "json", "path": "deno.json", "jsonpath": "$.version" }
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
       ]
     },
     "packages/security": {
       "component": "security",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
-        { "type": "json", "path": "deno.json", "jsonpath": "$.version" }
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
       ]
     }
   }
