@@ -1,6 +1,6 @@
 {
   "name": "@zuke/biome",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Typed Biome CLI task wrappers for Zuke builds — check, format, lint, and ci via an injection-free settings-lambda API.",
   "exports": {
     ".": "./mod.ts"

@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.13.0](https://github.com/zuke-build/zuke/compare/core-v0.12.0...core-v0.13.0) (2026-06-18)
+
+
+### Features
+
+* **core:** add a Plugin lifecycle contract for extensions ([#81](https://github.com/zuke-build/zuke/issues/81)) ([eef7ddd](https://github.com/zuke-build/zuke/commit/eef7ddd2cf6e2ae04c035ef53074b01a56eb7d1b))
+* **core:** add assertion and control-flow helpers ([#72](https://github.com/zuke-build/zuke/issues/72)) ([fb32c2e](https://github.com/zuke-build/zuke/commit/fb32c2ee3db56619d35db886e1264ef760188637))
+* **core:** add defineTool() for user-defined fluent tool wrappers ([#77](https://github.com/zuke-build/zuke/issues/77)) ([ecb988e](https://github.com/zuke-build/zuke/commit/ecb988e1a76cce941473be8b9f40886cb765152e))
+* **core:** add gzip and tar/.tar.gz compression helpers ([#75](https://github.com/zuke-build/zuke/issues/75)) ([94583c7](https://github.com/zuke-build/zuke/commit/94583c7eeb2463f8fb070e04bf49d3c60ea90336))
+* **core:** add HTTP download/text/json helpers ([#73](https://github.com/zuke-build/zuke/issues/73)) ([99e4e87](https://github.com/zuke-build/zuke/commit/99e4e8720674a7a243c3e1a557346f77b7808e21))
+* **core:** add installRelease() to install release binaries ([#78](https://github.com/zuke-build/zuke/issues/78)) ([a7e371b](https://github.com/zuke-build/zuke/commit/a7e371b7456c39a6ee81f2f257d906bb9117cad8))
+* **core:** code-first CI config generation (GitHub, GitLab, Azure) ([#80](https://github.com/zuke-build/zuke/issues/80)) ([8c601ae](https://github.com/zuke-build/zuke/commit/8c601aea561798364d9e505c148c0edc5e969aa0))
+* **core:** render the build graph with Cytoscape instead of Mermaid ([#66](https://github.com/zuke-build/zuke/issues/66)) ([8fae4c0](https://github.com/zuke-build/zuke/commit/8fae4c074d216a616bbe3ad7cc2ba3f9b11b559b))
+
+
+### Bug Fixes
+
+* **core:** only write the GitHub job summary on a default-console run ([#74](https://github.com/zuke-build/zuke/issues/74)) ([b83f4c8](https://github.com/zuke-build/zuke/commit/b83f4c84b68d1eb5e24bc457694062c0602685c9))
+
 ## [0.12.0](https://github.com/zuke-build/zuke/compare/core-v0.11.0...core-v0.12.0) (2026-06-17)
 
 
