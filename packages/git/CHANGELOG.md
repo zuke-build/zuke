@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.0](https://github.com/zuke-build/zuke/compare/git-v0.1.0...git-v0.1.0) (2026-06-18)
+
+
+### Features
+
+* **git:** add gitInfo() for repository metadata ([#76](https://github.com/zuke-build/zuke/issues/76)) ([57e25b6](https://github.com/zuke-build/zuke/commit/57e25b6eef515449de1da5d780400dd3f5424700))
+
 ## 0.1.0 (2026-06-16)
 
 

@@ -1,6 +1,6 @@
 {
   "name": "@zuke/turbo",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Typed Turborepo CLI task wrappers for Zuke builds — run and prune via an injection-free settings-lambda API.",
   "exports": {
     ".": "./mod.ts"
