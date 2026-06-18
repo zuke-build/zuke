@@ -230,6 +230,7 @@ Questions, ideas, or just want to say hi? Open an
 [issue](https://github.com/zuke-build/zuke/issues), or reach out:
 
 <p align="center">
+  <a href="https://zuke.build"><img alt="Website" src="https://img.shields.io/badge/Website-zuke.build-000000?style=for-the-badge&logo=googlechrome&logoColor=white" /></a>
   <a href="mailto:contact@zuke.build"><img alt="Email" src="https://img.shields.io/badge/email-contact@zuke.build-8B89CC?style=for-the-badge&logo=protonmail&logoColor=white" /></a>
   <a href="https://todorov.bg"><img alt="Blog" src="https://img.shields.io/badge/Blog-todorov.bg-000000?style=for-the-badge&logo=rss&logoColor=white" /></a>
   <a href="https://twitter.com/totollygeek"><img alt="X" src="https://img.shields.io/badge/@totollygeek-000000?style=for-the-badge&logo=x&logoColor=white" /></a>
