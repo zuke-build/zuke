@@ -254,8 +254,6 @@ the project. ⭐
 
 ### Contributors
 
-Thanks goes to these wonderful people:
-
 <a href="https://github.com/zuke-build/zuke/graphs/contributors">
   <img alt="Contributors" src="https://contrib.rocks/image?repo=zuke-build/zuke" />
 </a>
