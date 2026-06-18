@@ -226,15 +226,14 @@ Zuke stands on the shoulders of giants:
 
 ## Community & contact
 
-Questions, ideas, or just want to say hi? Open a
-[discussion](https://github.com/zuke-build/zuke/discussions) or an
+Questions, ideas, or just want to say hi? Open an
 [issue](https://github.com/zuke-build/zuke/issues), or reach out:
 
 <p align="center">
   <a href="mailto:contact@zuke.build"><img alt="Email" src="https://img.shields.io/badge/email-contact@zuke.build-8B89CC?style=for-the-badge&logo=protonmail&logoColor=white" /></a>
   <a href="https://todorov.bg"><img alt="Blog" src="https://img.shields.io/badge/Blog-todorov.bg-000000?style=for-the-badge&logo=rss&logoColor=white" /></a>
   <a href="https://twitter.com/totollygeek"><img alt="X" src="https://img.shields.io/badge/@totollygeek-000000?style=for-the-badge&logo=x&logoColor=white" /></a>
-  <a href="https://www.linkedin.com/in/totollygeek"><img alt="LinkedIn" src="https://img.shields.io/badge/totollygeek-0A66C2?style=for-the-badge&logo=linkedin&logoColor=white" /></a>
+  <a href="https://www.linkedin.com/in/totollygeek"><img alt="LinkedIn" src="https://custom-icon-badges.demolab.com/badge/totollygeek-0A66C2?style=for-the-badge&logo=linkedin-white&logoColor=white" /></a>
   <a href="https://infosec.exchange/@totollygeek"><img alt="Mastodon" src="https://img.shields.io/badge/@totollygeek-6364FF?style=for-the-badge&logo=mastodon&logoColor=white" /></a>
   <a href="https://www.threads.net/@totollygeek"><img alt="Threads" src="https://img.shields.io/badge/@totollygeek-000000?style=for-the-badge&logo=threads&logoColor=white" /></a>
   <a href="https://bsky.app/profile/totollygeek.com"><img alt="Bluesky" src="https://img.shields.io/badge/totollygeek.com-0285FF?style=for-the-badge&logo=bluesky&logoColor=white" /></a>
@@ -253,6 +252,8 @@ If Zuke is useful to you, consider **starring the repo** — it helps others fin
 the project. ⭐
 
 ### Contributors
+
+Thanks goes to these wonderful people:
 
 <a href="https://github.com/zuke-build/zuke/graphs/contributors">
   <img alt="Contributors" src="https://contrib.rocks/image?repo=zuke-build/zuke" />
