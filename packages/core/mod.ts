@@ -63,6 +63,8 @@ export {
   validateGraph,
 } from "./src/graph.ts";
 export { glob, type GlobOptions, globToRegExp } from "./src/glob.ts";
+export { remove, type RemoveOptions } from "./src/fs.ts";
+export { manifestVersion, readVersion } from "./src/manifest.ts";
 export {
   assert,
   assertDirectoryExists,

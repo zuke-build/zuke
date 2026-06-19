@@ -300,6 +300,120 @@ export class DenoCoverageSettings extends DenoSettings {
   }
 }
 
+/** Settings for `deno install`. */
+export class DenoInstallSettings extends DenoPermissionSettings {
+  #global = false;
+  #force = false;
+  #root?: string;
+  #name?: string;
+  #module?: string;
+  #moduleArgs: string[] = [];
+
+  /** Install a global executable (`--global`/`-g`) instead of project deps. */
+  global(): this {
+    this.#global = true;
+    return this;
+  }
+
+  /** Overwrite an existing installation (`--force`/`-f`). */
+  force(): this {
+    this.#force = true;
+    return this;
+  }
+
+  /** Install root; the binary lands in `<root>/bin` (`--root`). */
+  root(path: PathLike): this {
+    this.#root = String(path);
+    return this;
+  }
+
+  /** Name the installed executable (`--name`/`-n`). */
+  name(value: string): this {
+    this.#name = value;
+    return this;
+  }
+
+  /** The module to install, e.g. `npm:cspell@9` (required for a global install). */
+  module(spec: string): this {
+    this.#module = spec;
+    return this;
+  }
+
+  /** Arguments baked into the generated launcher (after the module). */
+  moduleArgs(...args: Array<string | number>): this {
+    this.#moduleArgs.push(...args.map(String));
+    return this;
+  }
+
+  protected override buildArgs(): string[] {
+    const argv = ["install", ...this.permissionArgs];
+    if (this.#global) argv.push("--global");
+    if (this.#force) argv.push("--force");
+    if (this.#root !== undefined) argv.push("--root", this.#root);
+    if (this.#name !== undefined) argv.push("--name", this.#name);
+    if (this.#module !== undefined) argv.push(this.#module);
+    argv.push(...this.#moduleArgs);
+    return argv;
+  }
+}
+
+/** Settings for `deno publish`. */
+export class DenoPublishSettings extends DenoSettings {
+  #allowDirty = false;
+  #allowSlowTypes = false;
+  #noCheck = false;
+  #dryRun = false;
+  #config?: string;
+  #token?: string;
+
+  /** Publish even with an uncommitted working tree (`--allow-dirty`). */
+  allowDirty(): this {
+    this.#allowDirty = true;
+    return this;
+  }
+
+  /** Permit slow types in the published package (`--allow-slow-types`). */
+  allowSlowTypes(): this {
+    this.#allowSlowTypes = true;
+    return this;
+  }
+
+  /** Skip type-checking before publishing (`--no-check`). */
+  noCheck(): this {
+    this.#noCheck = true;
+    return this;
+  }
+
+  /** Validate without publishing (`--dry-run`). */
+  dryRun(): this {
+    this.#dryRun = true;
+    return this;
+  }
+
+  /** Use an explicit config file (`--config`). */
+  config(path: PathLike): this {
+    this.#config = String(path);
+    return this;
+  }
+
+  /** Authenticate with a token instead of interactive/OIDC auth (`--token`). */
+  token(value: string): this {
+    this.#token = value;
+    return this;
+  }
+
+  protected override buildArgs(): string[] {
+    const argv = ["publish"];
+    if (this.#allowDirty) argv.push("--allow-dirty");
+    if (this.#allowSlowTypes) argv.push("--allow-slow-types");
+    if (this.#noCheck) argv.push("--no-check");
+    if (this.#dryRun) argv.push("--dry-run");
+    if (this.#config !== undefined) argv.push("--config", this.#config);
+    if (this.#token !== undefined) argv.push("--token", this.#token);
+    return argv;
+  }
+}
+
 /** Settings for `deno task`. */
 export class DenoTaskSettings extends DenoSettings {
   #name?: string;
@@ -341,6 +455,10 @@ export interface DenoTasksApi {
   cache(configure?: Configure<DenoCacheSettings>): Promise<CommandOutput>;
   /** Report coverage: `deno coverage`. */
   coverage(configure?: Configure<DenoCoverageSettings>): Promise<CommandOutput>;
+  /** Install a script or executable: `deno install`. */
+  install(configure?: Configure<DenoInstallSettings>): Promise<CommandOutput>;
+  /** Publish a package to JSR: `deno publish`. */
+  publish(configure?: Configure<DenoPublishSettings>): Promise<CommandOutput>;
   /** Run a deno.json task: `deno task`. */
   task(configure?: Configure<DenoTaskSettings>): Promise<CommandOutput>;
 }
@@ -376,6 +494,14 @@ export const DenoTasks: DenoTasksApi = {
     configure?: Configure<DenoCoverageSettings>,
   ): Promise<CommandOutput> {
     return runSettings(new DenoCoverageSettings(), configure);
+  },
+  /** Install a script or executable: `deno install`. */
+  install(configure?: Configure<DenoInstallSettings>): Promise<CommandOutput> {
+    return runSettings(new DenoInstallSettings(), configure);
+  },
+  /** Publish a package to JSR: `deno publish`. */
+  publish(configure?: Configure<DenoPublishSettings>): Promise<CommandOutput> {
+    return runSettings(new DenoPublishSettings(), configure);
   },
   /** Run a deno.json task: `deno task`. */
   task(configure?: Configure<DenoTaskSettings>): Promise<CommandOutput> {

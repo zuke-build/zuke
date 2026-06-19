@@ -12,9 +12,16 @@
  *   deno task zuke --list    # show every target
  */
 
-import { Build, run, target } from "@zuke/core";
-import { CmdTasks } from "@zuke/cmd";
-import { DenoTasks } from "@zuke/deno";
+import { Build, manifestVersion, remove, run, target } from "@zuke/core";
+import { CommandTimeoutError } from "@zuke/core/shell";
+import { type DenoInstallSettings, DenoTasks } from "@zuke/deno";
+import { CspellTasks } from "@zuke/cspell";
+import { isPublished } from "@zuke/jsr";
+import {
+  type ReleasePleaseGithubReleaseSettings,
+  type ReleasePleaseReleasePrSettings,
+  ReleasePleaseTasks,
+} from "@zuke/release-please";
 import { SecurityTasks } from "@zuke/security";
 
 /** Workspace packages, in dependency order: core must publish before the rest. */
@@ -55,48 +62,32 @@ const PACKAGES = [
   "gh",
   "terraform",
   "tofu",
+  "release-please",
   "security",
 ];
 
-/** The `version` field of a package's `deno.json`, validated as a string. */
-function readVersion(value: unknown): string {
-  if (typeof value !== "object" || value === null) {
-    throw new Error("deno.json must be a JSON object.");
-  }
-  if (!("version" in value)) {
-    throw new Error('deno.json is missing a "version" field.');
-  }
-  if (typeof value.version !== "string") {
-    throw new Error('deno.json "version" must be a string.');
-  }
-  return value.version;
-}
+/**
+ * Where build-time CLIs are installed on demand. Gitignored (`/.zuke/`), so the
+ * install is a transient, per-run artifact.
+ */
+const TOOLS_ROOT = ".zuke/tools";
 
-/** The current version declared in `packages/<pkg>/deno.json`. */
-async function localVersion(pkg: string): Promise<string> {
-  const text = await Deno.readTextFile(`packages/${pkg}/deno.json`);
-  return readVersion(JSON.parse(text));
-}
-
-/** The set of version strings present in a JSR `meta.json` payload. */
-function publishedVersions(meta: unknown): Set<string> {
-  if (typeof meta !== "object" || meta === null) return new Set<string>();
-  if (!("versions" in meta)) return new Set<string>();
-  const versions = meta.versions;
-  if (typeof versions !== "object" || versions === null) {
-    return new Set<string>();
-  }
-  return new Set(Object.keys(versions));
-}
-
-/** Whether `@zuke/<pkg>@<version>` is already published on JSR. */
-async function isOnJsr(pkg: string, version: string): Promise<boolean> {
-  const res = await fetch(`https://jsr.io/@zuke/${pkg}/meta.json`);
-  if (!res.ok) {
-    await res.body?.cancel();
-    return false;
-  }
-  return publishedVersions(await res.json()).has(version);
+/**
+ * Install an npm-distributed CLI as a local executable under {@link TOOLS_ROOT}
+ * and return the path to its launcher. cspell and release-please ship only on
+ * npm, so the build provisions them with `deno install` rather than assuming a
+ * global binary — keeping the gate runnable without a separate setup step. The
+ * caller's `permit` lambda grants the launcher its permissions.
+ */
+async function installCli(
+  module: string,
+  name: string,
+  permit: (s: DenoInstallSettings) => DenoInstallSettings,
+): Promise<string> {
+  await DenoTasks.install((s) =>
+    permit(s.global().force().root(TOOLS_ROOT).name(name)).module(module)
+  );
+  return `${TOOLS_ROOT}/bin/${name}`;
 }
 
 /** How long to wait for one `deno publish` before treating it as stalled. */
@@ -107,31 +98,22 @@ const PUBLISH_TIMEOUT_MS = 180_000;
  * `deno publish` stalled past the timeout and was killed. JSR's post-upload
  * finalization (provenance) occasionally hangs *after* the upload completes, so
  * the caller re-checks JSR before deciding whether a `false` is fatal.
+ *
+ * `--allow-dirty`: release-please bumps `deno.json` versions on the release PR
+ * branch, so the merged tree should already be clean here. It is kept as a
+ * backstop; for the strongest "published == committed source" guarantee (which
+ * provenance otherwise gives) drop it once a real release confirms the publish
+ * tree is clean. See SECURITY.md.
  */
-async function publishWithTimeout(pkg: string): Promise<boolean> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), PUBLISH_TIMEOUT_MS);
-  const command = new Deno.Command(Deno.execPath(), {
-    // `--allow-dirty`: release-please bumps `deno.json` versions on the release
-    // PR branch, so the merged tree should already be clean here. It is kept as
-    // a backstop; for the strongest "published == committed source" guarantee
-    // (which provenance otherwise gives) drop it once a real release confirms
-    // the publish tree is clean. See SECURITY.md.
-    args: ["publish", "--allow-dirty"],
-    cwd: `packages/${pkg}`,
-    stdout: "inherit",
-    stderr: "inherit",
-    signal: controller.signal,
-  });
+async function publishPackage(pkg: string): Promise<boolean> {
   try {
-    const status = await command.spawn().status;
-    if (status.success) return true;
-    if (controller.signal.aborted) return false;
-    throw new Error(
-      `deno publish for @zuke/${pkg} exited with code ${status.code}.`,
+    await DenoTasks.publish((s) =>
+      s.allowDirty().cwd(`packages/${pkg}`).killAfter(PUBLISH_TIMEOUT_MS)
     );
-  } finally {
-    clearTimeout(timer);
+    return true;
+  } catch (error) {
+    if (error instanceof CommandTimeoutError) return false;
+    throw error;
   }
 }
 
@@ -139,7 +121,7 @@ class ZukeBuild extends Build {
   clean = target()
     .description("Remove build artifacts")
     .executes(async () => {
-      await CmdTasks.exec("rm", (s) => s.args("-rf", "dist"));
+      await remove("dist", { recursive: true });
     });
 
   restore = target()
@@ -164,9 +146,14 @@ class ZukeBuild extends Build {
   spell = target()
     .description("Spell-check the repository (cspell)")
     .executes(async () => {
-      const argv = ["run", "--allow-read", "--allow-env", "--allow-sys"];
-      argv.push("npm:cspell@9", "lint", "--no-progress", "**");
-      await CmdTasks.exec(Deno.execPath(), (s) => s.args(...argv));
+      const cspell = await installCli(
+        "npm:cspell@9",
+        "cspell",
+        (s) => s.allow("read").allow("env").allow("sys"),
+      );
+      await CspellTasks.lint((s) =>
+        s.toolPath(cspell).files("**").noProgress()
+      );
     });
 
   check = target()
@@ -189,12 +176,17 @@ class ZukeBuild extends Build {
     .description("Enforce the 95% coverage gate")
     .dependsOn(this.test)
     .executes(async () => {
-      const cov = ["coverage", "cov_profile", "--lcov"];
-      cov.push("--exclude=(tests|scripts)/", "--output=cov.lcov");
-      await CmdTasks.exec(Deno.execPath(), (s) => s.args(...cov));
-      const gate = ["run", "--allow-read", "scripts/check-coverage.ts"];
-      gate.push("cov.lcov", "95");
-      await CmdTasks.exec(Deno.execPath(), (s) => s.args(...gate));
+      await DenoTasks.coverage((s) =>
+        s.dir("cov_profile").lcov().exclude("(tests|scripts)/").output(
+          "cov.lcov",
+        )
+      );
+      await DenoTasks.run((s) =>
+        s.allow("read").script("scripts/check-coverage.ts").scriptArgs(
+          "cov.lcov",
+          "95",
+        )
+      );
     });
 
   ci = target()
@@ -244,43 +236,51 @@ class ZukeBuild extends Build {
           "release requires GITHUB_TOKEN and GITHUB_REPOSITORY in the env.",
         );
       }
-      const common = [
-        "--token",
-        token,
-        "--repo-url",
-        repo,
-        "--target-branch",
-        "master",
-        "--config-file",
-        ".release-please-config.json",
-        "--manifest-file",
-        ".release-please-manifest.json",
-      ];
-      const cli = ["run", "-A", "npm:release-please@16.18.0"];
-      for (const cmd of ["release-pr", "github-release"]) {
-        const argv = [...cli, cmd, ...common];
-        await CmdTasks.exec(Deno.execPath(), (s) => s.args(...argv));
-      }
+      const bin = await installCli(
+        "npm:release-please@16.18.0",
+        "release-please",
+        (s) => s.allowAll(),
+      );
+      // Both subcommands take the same connection/config flags. Apply them with
+      // a settings object already narrowed to its concrete type at each call.
+      const apply = (
+        s: ReleasePleaseReleasePrSettings | ReleasePleaseGithubReleaseSettings,
+      ) =>
+        s
+          .toolPath(bin)
+          .token(token)
+          .repoUrl(repo)
+          .targetBranch("master")
+          .configFile(".release-please-config.json")
+          .manifestFile(".release-please-manifest.json");
+      await ReleasePleaseTasks.releasePr((s) => {
+        apply(s);
+        return s;
+      });
+      await ReleasePleaseTasks.githubRelease((s) => {
+        apply(s);
+        return s;
+      });
     });
 
   publishJsr = target()
     .description("Publish new package versions to JSR, core first")
     .executes(async () => {
       for (const pkg of PACKAGES) {
-        const version = await localVersion(pkg);
+        const version = await manifestVersion(`packages/${pkg}/deno.json`);
         if (version === "0.0.0") {
           console.log(`@zuke/${pkg} has no released version yet.`);
           continue;
         }
-        if (await isOnJsr(pkg, version)) {
+        if (await isPublished(`@zuke/${pkg}`, version)) {
           console.log(`@zuke/${pkg}@${version} is already on JSR.`);
           continue;
         }
         console.log(`Publishing @zuke/${pkg}@${version} to JSR...`);
-        if (await publishWithTimeout(pkg)) continue;
+        if (await publishPackage(pkg)) continue;
         // Timed out: the upload usually lands before JSR's finalization hangs,
         // so a re-check tells us whether it actually published.
-        if (await isOnJsr(pkg, version)) {
+        if (await isPublished(`@zuke/${pkg}`, version)) {
           console.log(`@zuke/${pkg}@${version} uploaded (provenance stalled).`);
           continue;
         }

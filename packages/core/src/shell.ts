@@ -43,6 +43,23 @@ export class CommandError extends Error {
   }
 }
 
+/**
+ * Raised when a command is killed for exceeding its {@link Command.killAfter}
+ * budget. Thrown regardless of {@link Command.noThrow}, since a timeout is a
+ * distinct, exceptional outcome from a normal non-zero exit.
+ */
+export class CommandTimeoutError extends Error {
+  override name = "CommandTimeoutError";
+  constructor(
+    /** The command line that timed out (argv joined by spaces). */
+    readonly command: string,
+    /** The elapsed-time budget, in milliseconds, that was exceeded. */
+    readonly timeoutMs: number,
+  ) {
+    super(`Command timed out after ${timeoutMs}ms: ${command}`);
+  }
+}
+
 /** The resolved result of a command, available when awaiting a {@link Command}. */
 export class CommandOutput {
   constructor(
@@ -108,6 +125,7 @@ export class Command implements PromiseLike<CommandOutput> {
   #throwOnError = true;
   #quiet = false;
   #capturing = false;
+  #timeoutMs?: number;
   #result?: Promise<RunResult>;
 
   constructor(argv: string[]) {
@@ -138,6 +156,15 @@ export class Command implements PromiseLike<CommandOutput> {
     return this;
   }
 
+  /**
+   * Kill the process if it runs longer than `ms` milliseconds, raising a
+   * {@link CommandTimeoutError}. Fires even under {@link noThrow}.
+   */
+  killAfter(ms: number): this {
+    this.#timeoutMs = ms;
+    return this;
+  }
+
   /** The command line, for diagnostics. */
   get commandLine(): string {
     return this.#argv.join(" ");
@@ -152,24 +179,42 @@ export class Command implements PromiseLike<CommandOutput> {
     const [cmd, ...args] = this.#argv;
     if (!cmd) throw new Error("Cannot run an empty command.");
 
-    const child = new Deno.Command(cmd, {
-      args,
-      cwd: this.#cwd,
-      env: this.#env,
-      stdout: "piped",
-      stderr: "piped",
-    }).spawn();
+    // A timeout aborts the child via an AbortSignal; `timedOut` distinguishes
+    // that kill from an ordinary non-zero exit so we can raise a dedicated error.
+    const ms = this.#timeoutMs;
+    const controller = ms === undefined ? undefined : new AbortController();
+    let timedOut = false;
+    const timer = ms === undefined ? undefined : setTimeout(() => {
+      timedOut = true;
+      controller?.abort();
+    }, ms);
 
-    // When capturing programmatically, don't echo stdout to the terminal.
-    const streamStdout = !this.#quiet && !this.#capturing;
-    const streamStderr = !this.#quiet;
+    try {
+      const child = new Deno.Command(cmd, {
+        args,
+        cwd: this.#cwd,
+        env: this.#env,
+        stdout: "piped",
+        stderr: "piped",
+        signal: controller?.signal,
+      }).spawn();
 
-    const [stdout, stderr] = await Promise.all([
-      collect(child.stdout, streamStdout ? Deno.stdout : null),
-      collect(child.stderr, streamStderr ? Deno.stderr : null),
-    ]);
-    const status = await child.status;
-    return { code: status.code, stdout, stderr };
+      // When capturing programmatically, don't echo stdout to the terminal.
+      const streamStdout = !this.#quiet && !this.#capturing;
+      const streamStderr = !this.#quiet;
+
+      const [stdout, stderr] = await Promise.all([
+        collect(child.stdout, streamStdout ? Deno.stdout : null),
+        collect(child.stderr, streamStderr ? Deno.stderr : null),
+      ]);
+      const status = await child.status;
+      if (timedOut && ms !== undefined) {
+        throw new CommandTimeoutError(this.commandLine, ms);
+      }
+      return { code: status.code, stdout, stderr };
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+    }
   }
 
   #maybeThrow(r: RunResult): void {

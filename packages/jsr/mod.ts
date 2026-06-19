@@ -1,11 +1,14 @@
 /**
- * `@zuke/jsr` — typed `JsrTasks` wrappers for the [JSR](https://jsr.io) CLI, for
- * use in Zuke builds (publishing and managing JSR dependencies).
+ * `@zuke/jsr` — tools for the [JSR](https://jsr.io) registry in Zuke builds:
+ * typed `JsrTasks` wrappers for the `jsr` CLI (publish, add, remove), plus
+ * read-only registry queries to check which versions are already published.
  *
  * ```ts
- * import { JsrTasks } from "jsr:@zuke/jsr";
+ * import { isPublished, JsrTasks } from "jsr:@zuke/jsr";
  *
- * await JsrTasks.publish((s) => s.dryRun());
+ * if (!(await isPublished("@zuke/core", "0.13.0"))) {
+ *   await JsrTasks.publish((s) => s.allowDirty());
+ * }
  * await JsrTasks.add((s) => s.packages("@std/assert"));
  * ```
  *
@@ -19,3 +22,9 @@ export {
   JsrTasks,
   type JsrTasksApi,
 } from "./src/jsr.ts";
+export {
+  isPublished,
+  type JsrRegistryOptions,
+  jsrVersions,
+  publishedVersions,
+} from "./src/registry.ts";

@@ -682,6 +682,11 @@
           "jsr:@zuke/core@0"
         ]
       },
+      "packages/release-please": {
+        "dependencies": [
+          "jsr:@zuke/core@0"
+        ]
+      },
       "packages/security": {
         "dependencies": [
           "jsr:@zuke/core@0"

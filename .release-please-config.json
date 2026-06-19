@@ -402,6 +402,17 @@
         }
       ]
     },
+    "packages/release-please": {
+      "component": "release-please",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
+      ]
+    },
     "packages/security": {
       "component": "security",
       "changelog-path": "CHANGELOG.md",

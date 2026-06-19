@@ -35,5 +35,6 @@
   "packages/gh": "0.1.0",
   "packages/terraform": "0.1.0",
   "packages/tofu": "0.1.0",
+  "packages/release-please": "0.0.0",
   "packages/security": "0.2.0"
 }

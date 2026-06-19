@@ -81,6 +81,7 @@ export abstract class ToolSettings {
   #cwd?: string;
   #throwOnError = true;
   #quiet = false;
+  #timeoutMs?: number;
   #toolPath?: string;
   #extraArgs: string[] = [];
 
@@ -114,6 +115,15 @@ export abstract class ToolSettings {
     return this;
   }
 
+  /**
+   * Kill the tool if it runs longer than `ms` milliseconds, raising a
+   * `CommandTimeoutError`. Fires even under {@link noThrow}.
+   */
+  killAfter(ms: number): this {
+    this.#timeoutMs = ms;
+    return this;
+  }
+
   /** Override the binary to run (e.g. an absolute path to the tool). */
   toolPath(path: PathLike): this {
     this.#toolPath = String(path);
@@ -140,6 +150,7 @@ export abstract class ToolSettings {
     if (this.#cwd !== undefined) command.cwd(this.#cwd);
     if (!this.#throwOnError) command.noThrow();
     if (this.#quiet) command.quiet();
+    if (this.#timeoutMs !== undefined) command.killAfter(this.#timeoutMs);
     return command;
   }
 
