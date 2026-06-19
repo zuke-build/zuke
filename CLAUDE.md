@@ -54,6 +54,15 @@ update the `check` task and CI accordingly. Do not bolt on a parallel
 5. **Tests are hermetic and fast.** No network, no reliance on ambient tools.
    When a test needs a subprocess, invoke `Deno.execPath()` (the running
    `deno`), which is always present and shell-free.
+6. **Public API is task-shaped — no standalone utility functions.** A package
+   exposes its operations through a namespaced `*Tasks` object (`FileTasks`,
+   `DenoTasks`, `JsrTasks`, …), never as bare exported helper functions. CLI
+   wrappers build argv through the settings-lambda style (`ToolSettings` /
+   `buildArgs`); task groups that run no subprocess (e.g. `FileTasks`) take
+   direct arguments plus an options object. Group related operations under one
+   task object rather than adding a loose function to `mod.ts`, and keep
+   internal helpers unexported. (The framework primitives a build is defined
+   with — `Build`, `target`, `group`, `run` — are the deliberate exception.)
 
 ## Commands
 

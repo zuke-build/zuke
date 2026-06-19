@@ -12,7 +12,7 @@
  *   deno task zuke --list    # show every target
  */
 
-import { Build, manifestVersion, remove, run, target } from "@zuke/core";
+import { Build, FileTasks, run, target } from "@zuke/core";
 import { CommandTimeoutError } from "@zuke/core/shell";
 import { type DenoInstallSettings, DenoTasks } from "@zuke/deno";
 import { CspellTasks } from "@zuke/cspell";
@@ -90,6 +90,25 @@ async function installCli(
   return `${TOOLS_ROOT}/bin/${name}`;
 }
 
+/** Validate and return the `version` field of a parsed `deno.json`. */
+function readVersion(value: unknown): string {
+  if (typeof value !== "object" || value === null) {
+    throw new Error("deno.json must be a JSON object.");
+  }
+  if (!("version" in value)) {
+    throw new Error('deno.json is missing a "version" field.');
+  }
+  if (typeof value.version !== "string") {
+    throw new Error('deno.json "version" must be a string.');
+  }
+  return value.version;
+}
+
+/** The current version declared in `packages/<pkg>/deno.json`. */
+async function localVersion(pkg: string): Promise<string> {
+  return readVersion(await FileTasks.readJson(`packages/${pkg}/deno.json`));
+}
+
 /** How long to wait for one `deno publish` before treating it as stalled. */
 const PUBLISH_TIMEOUT_MS = 180_000;
 
@@ -121,7 +140,7 @@ class ZukeBuild extends Build {
   clean = target()
     .description("Remove build artifacts")
     .executes(async () => {
-      await remove("dist", { recursive: true });
+      await FileTasks.remove("dist", { recursive: true });
     });
 
   restore = target()
@@ -267,7 +286,7 @@ class ZukeBuild extends Build {
     .description("Publish new package versions to JSR, core first")
     .executes(async () => {
       for (const pkg of PACKAGES) {
-        const version = await manifestVersion(`packages/${pkg}/deno.json`);
+        const version = await localVersion(pkg);
         if (version === "0.0.0") {
           console.log(`@zuke/${pkg} has no released version yet.`);
           continue;
