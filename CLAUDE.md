@@ -63,6 +63,10 @@ update the `check` task and CI accordingly. Do not bolt on a parallel
    task object rather than adding a loose function to `mod.ts`, and keep
    internal helpers unexported. (The framework primitives a build is defined
    with — `Build`, `target`, `group`, `run` — are the deliberate exception.)
+7. **Mirror the real CLI.** Name a wrapper's task methods and settings after the
+   actual subcommands and flags they invoke — `CspellTasks.lint` runs `cspell
+   lint`, not a prettier alias like `check`. Staying close to the tool's own
+   vocabulary keeps the wrapper predictable for anyone who knows the CLI.
 
 ## Commands
 

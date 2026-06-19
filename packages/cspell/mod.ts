@@ -6,7 +6,7 @@
  *
  * ```ts
  * import { CspellTasks } from "jsr:@zuke/cspell";
- * await CspellTasks.check((s) => s.files("**").noProgress().showSuggestions());
+ * await CspellTasks.lint((s) => s.files("**").noProgress().showSuggestions());
  * ```
  *
  * @module

@@ -8,7 +8,7 @@ construction is injection-free.
 ```ts
 import { CspellTasks } from "jsr:@zuke/cspell";
 
-await CspellTasks.check((s) =>
+await CspellTasks.lint((s) =>
   s.files("**").config("cspell.json").noProgress().showSuggestions()
 );
 ```

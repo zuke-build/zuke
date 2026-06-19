@@ -177,7 +177,7 @@ class ZukeBuild extends Build {
         "cspell",
         (s) => s.allow("read").allow("env").allow("sys"),
       );
-      await CspellTasks.check((s) =>
+      await CspellTasks.lint((s) =>
         s.toolPath(cspell).files("**").noProgress()
       );
     });
