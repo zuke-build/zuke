@@ -90,6 +90,22 @@ async function installCli(
   return `${TOOLS_ROOT}/bin/${name}`;
 }
 
+/**
+ * `PATH` with the running Deno's directory prepended. The launcher that
+ * `deno install` writes for an npm package runs `exec deno …` by name, so an
+ * installed CLI only works when `deno` is resolvable on `PATH`. The ./zuke
+ * bootstrap may invoke Deno by absolute path without exporting it, so make it
+ * discoverable for the installed shims here.
+ */
+function pathWithDeno(): string {
+  const exe = Deno.execPath();
+  const sep = Deno.build.os === "windows" ? ";" : ":";
+  const cut = Math.max(exe.lastIndexOf("/"), exe.lastIndexOf("\\"));
+  const denoDir = cut >= 0 ? exe.slice(0, cut) : exe;
+  const current = Deno.env.get("PATH") ?? "";
+  return current.length > 0 ? `${denoDir}${sep}${current}` : denoDir;
+}
+
 /** Validate and return the `version` field of a parsed `deno.json`. */
 function readVersion(value: unknown): string {
   if (typeof value !== "object" || value === null) {
@@ -171,7 +187,8 @@ class ZukeBuild extends Build {
         (s) => s.allow("read").allow("env").allow("sys"),
       );
       await CspellTasks.lint((s) =>
-        s.toolPath(cspell).files("**").noProgress()
+        s.toolPath(cspell).env({ PATH: pathWithDeno() }).files("**")
+          .noProgress()
       );
     });
 
@@ -267,6 +284,7 @@ class ZukeBuild extends Build {
       ) =>
         s
           .toolPath(bin)
+          .env({ PATH: pathWithDeno() })
           .token(token)
           .repoUrl(repo)
           .targetBranch("master")
