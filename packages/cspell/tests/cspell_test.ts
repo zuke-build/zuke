@@ -52,6 +52,6 @@ const missing = <S extends ToolSettings>(s: S): S => {
   return s.toolPath("zz-no-such-cspell-zz");
 };
 
-Deno.test("CspellTasks.lint reaches execution", async () => {
-  await assertRejects(() => CspellTasks.lint(missing), ToolNotFoundError);
+Deno.test("CspellTasks.check reaches execution", async () => {
+  await assertRejects(() => CspellTasks.check(missing), ToolNotFoundError);
 });

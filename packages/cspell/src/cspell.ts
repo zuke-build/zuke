@@ -6,7 +6,7 @@
  *
  * ```ts
  * import { CspellTasks } from "jsr:@zuke/cspell";
- * await CspellTasks.lint((s) => s.files("**").noProgress().showSuggestions());
+ * await CspellTasks.check((s) => s.files("**").noProgress().showSuggestions());
  * ```
  *
  * Arguments stay a discrete argv array end-to-end — never a concatenated shell
@@ -153,12 +153,12 @@ export class CspellSettings extends ToolSettings {
 /** The shape of {@link CspellTasks}. */
 export interface CspellTasksApi {
   /** Spell-check with `cspell lint`. */
-  lint(configure?: Configure<CspellSettings>): Promise<CommandOutput>;
+  check(configure?: Configure<CspellSettings>): Promise<CommandOutput>;
 }
 
 /** Typed task functions for the `cspell` spell-checker. */
 export const CspellTasks: CspellTasksApi = {
-  lint(configure?: Configure<CspellSettings>): Promise<CommandOutput> {
+  check(configure?: Configure<CspellSettings>): Promise<CommandOutput> {
     return runSettings(new CspellSettings(), configure);
   },
 };

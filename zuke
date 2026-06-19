@@ -52,4 +52,9 @@ else
   deno_bin="$deno_install/bin/deno"
 fi
 
+# Put this Deno on PATH so CLIs the build provisions with `deno install` — whose
+# generated launchers invoke `deno` by name — can find it even when Deno was
+# bootstrapped to a non-PATH location (e.g. ~/.deno/bin).
+export PATH="$(dirname "$deno_bin"):$PATH"
+
 exec "$deno_bin" run -A zuke.ts "$@"

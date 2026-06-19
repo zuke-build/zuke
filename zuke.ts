@@ -12,7 +12,14 @@
  *   deno task zuke --list    # show every target
  */
 
-import { Build, FileTasks, run, target } from "@zuke/core";
+import {
+  type AbsolutePath,
+  Build,
+  FileTasks,
+  repoRoot,
+  run,
+  target,
+} from "@zuke/core";
 import { CommandTimeoutError } from "@zuke/core/shell";
 import { type DenoInstallSettings, DenoTasks } from "@zuke/deno";
 import { CspellTasks } from "@zuke/cspell";
@@ -70,40 +77,24 @@ const PACKAGES = [
  * Where build-time CLIs are installed on demand. Gitignored (`/.zuke/`), so the
  * install is a transient, per-run artifact.
  */
-const TOOLS_ROOT = ".zuke/tools";
+const TOOLS_ROOT: AbsolutePath = repoRoot(".zuke", "tools");
 
 /**
  * Install an npm-distributed CLI as a local executable under {@link TOOLS_ROOT}
- * and return the path to its launcher. cspell and release-please ship only on
- * npm, so the build provisions them with `deno install` rather than assuming a
- * global binary — keeping the gate runnable without a separate setup step. The
- * caller's `permit` lambda grants the launcher its permissions.
+ * and return the absolute path to its launcher. cspell and release-please ship
+ * only on npm, so the build provisions them with `deno install` rather than
+ * assuming a global binary — keeping the gate runnable without a separate setup
+ * step. The caller's `permit` lambda grants the launcher its permissions.
  */
 async function installCli(
   module: string,
   name: string,
   permit: (s: DenoInstallSettings) => DenoInstallSettings,
-): Promise<string> {
+): Promise<AbsolutePath> {
   await DenoTasks.install((s) =>
     permit(s.global().force().root(TOOLS_ROOT).name(name)).module(module)
   );
-  return `${TOOLS_ROOT}/bin/${name}`;
-}
-
-/**
- * `PATH` with the running Deno's directory prepended. The launcher that
- * `deno install` writes for an npm package runs `exec deno …` by name, so an
- * installed CLI only works when `deno` is resolvable on `PATH`. The ./zuke
- * bootstrap may invoke Deno by absolute path without exporting it, so make it
- * discoverable for the installed shims here.
- */
-function pathWithDeno(): string {
-  const exe = Deno.execPath();
-  const sep = Deno.build.os === "windows" ? ";" : ":";
-  const cut = Math.max(exe.lastIndexOf("/"), exe.lastIndexOf("\\"));
-  const denoDir = cut >= 0 ? exe.slice(0, cut) : exe;
-  const current = Deno.env.get("PATH") ?? "";
-  return current.length > 0 ? `${denoDir}${sep}${current}` : denoDir;
+  return TOOLS_ROOT("bin", name);
 }
 
 /** Validate and return the `version` field of a parsed `deno.json`. */
@@ -186,9 +177,8 @@ class ZukeBuild extends Build {
         "cspell",
         (s) => s.allow("read").allow("env").allow("sys"),
       );
-      await CspellTasks.lint((s) =>
-        s.toolPath(cspell).env({ PATH: pathWithDeno() }).files("**")
-          .noProgress()
+      await CspellTasks.check((s) =>
+        s.toolPath(cspell).files("**").noProgress()
       );
     });
 
@@ -284,7 +274,6 @@ class ZukeBuild extends Build {
       ) =>
         s
           .toolPath(bin)
-          .env({ PATH: pathWithDeno() })
           .token(token)
           .repoUrl(repo)
           .targetBranch("master")
