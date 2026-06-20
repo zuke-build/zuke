@@ -135,7 +135,7 @@ Deno.test("coverage: dir, --lcov, --output, --exclude", () => {
       .dir("cov_profile")
       .lcov()
       .output("cov.lcov")
-      .exclude("(tests|scripts)/")
+      .exclude("tests/")
       .argv()
       .slice(1),
     [
@@ -143,9 +143,23 @@ Deno.test("coverage: dir, --lcov, --output, --exclude", () => {
       "cov_profile",
       "--lcov",
       "--output=cov.lcov",
-      "--exclude=(tests|scripts)/",
+      "--exclude=tests/",
     ],
   );
+});
+
+Deno.test("coverage: a threshold forces --lcov and stays off the argv", () => {
+  const s = new DenoCoverageSettings().dir("cov_profile").threshold(95);
+  // The threshold is enforced by the task, not a `deno coverage` flag.
+  assertEquals(s.argv().slice(1), ["coverage", "cov_profile", "--lcov"]);
+  assertEquals(s.thresholds, { lines: 95, branches: 95 });
+});
+
+Deno.test("coverage: line and branch thresholds can differ", () => {
+  const s = new DenoCoverageSettings().linesThreshold(90).branchesThreshold(80);
+  assertEquals(s.thresholds, { lines: 90, branches: 80 });
+  assertEquals(s.outputPath, undefined);
+  assertEquals(s.argv().slice(1), ["coverage", "--lcov"]);
 });
 
 Deno.test("task: name required, then task args", () => {

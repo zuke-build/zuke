@@ -47,8 +47,9 @@ update the `check` task and CI accordingly. Do not bolt on a parallel
 2. **All linting, formatting, type-checking, and tests must always pass.** Run
    `deno task ci` before committing; it must be green.
 3. **Keep test coverage at 95%+ (lines and branches) at all times.** Enforced by
-   `scripts/check-coverage.ts` in the `cov` task and in CI. New code needs new
-   tests in the same change.
+   the coverage gate built into `DenoTasks.coverage` (a `.threshold()` parses the
+   lcov report and fails the build), wired up in the `cov` task / `zuke coverage`
+   target and in CI. New code needs new tests in the same change.
 4. **Document the public API.** Every exported symbol carries a JSDoc comment;
    match the existing density and tone when adding to it.
 5. **Tests are hermetic and fast.** No network, no reliance on ambient tools.
@@ -90,8 +91,6 @@ packages/
   deno/                   # @zuke/deno — DenoTasks
   npm/                    # @zuke/npm  — NpmTasks
   cmd/                    # @zuke/cmd  — CmdTasks (generic fallback)
-tests/coverage_test.ts    # tests for the root coverage gate script
-scripts/check-coverage.ts # coverage gate
 zuke.ts                   # Zuke's own build (runnable example)
 .github/workflows/ci.yml  # PR checks
 ```

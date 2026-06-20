@@ -203,15 +203,7 @@ class ZukeBuild extends Build {
     .dependsOn(this.test)
     .executes(async () => {
       await DenoTasks.coverage((s) =>
-        s.dir("cov_profile").lcov().exclude("(tests|scripts)/").output(
-          "cov.lcov",
-        )
-      );
-      await DenoTasks.run((s) =>
-        s.allow("read").script("scripts/check-coverage.ts").scriptArgs(
-          "cov.lcov",
-          "95",
-        )
+        s.dir("cov_profile").exclude("tests/").output("cov.lcov").threshold(95)
       );
     });
 

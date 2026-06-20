@@ -28,3 +28,7 @@ export {
   DenoTaskSettings,
   DenoTestSettings,
 } from "./src/deno.ts";
+export {
+  CoverageThresholdError,
+  type CoverageThresholds,
+} from "./src/coverage.ts";

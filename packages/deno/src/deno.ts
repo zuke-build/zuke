@@ -20,6 +20,7 @@ import {
   ToolSettings,
 } from "@zuke/core/tooling";
 import type { CommandOutput } from "@zuke/core/shell";
+import { type CoverageThresholds, enforceCoverage } from "./coverage.ts";
 
 /** A Deno permission domain, as used by `--allow-*` flags. */
 export type DenoPermission =
@@ -265,6 +266,8 @@ export class DenoCoverageSettings extends DenoSettings {
   #lcov = false;
   #output?: string;
   #exclude?: string;
+  #linesThreshold?: number;
+  #branchesThreshold?: number;
 
   /** The coverage profile directory to report on. */
   dir(path: PathLike): this {
@@ -290,10 +293,49 @@ export class DenoCoverageSettings extends DenoSettings {
     return this;
   }
 
+  /**
+   * Fail the gate if line coverage is below `percent`. `deno coverage` has no
+   * fail-under flag, so {@link DenoTasks.coverage} enforces this after parsing
+   * the lcov report (and forces `--lcov` so a report exists to parse).
+   */
+  linesThreshold(percent: number): this {
+    this.#linesThreshold = percent;
+    return this;
+  }
+
+  /** Fail the gate if branch coverage is below `percent` (see {@link linesThreshold}). */
+  branchesThreshold(percent: number): this {
+    this.#branchesThreshold = percent;
+    return this;
+  }
+
+  /** Fail the gate if either line or branch coverage is below `percent`. */
+  threshold(percent: number): this {
+    this.#linesThreshold = percent;
+    this.#branchesThreshold = percent;
+    return this;
+  }
+
+  /** The configured thresholds; read by {@link DenoTasks.coverage}. */
+  get thresholds(): CoverageThresholds {
+    return { lines: this.#linesThreshold, branches: this.#branchesThreshold };
+  }
+
+  /** The `--output` file path, if {@link output} was set; read by the task. */
+  get outputPath(): string | undefined {
+    return this.#output;
+  }
+
+  #hasThreshold(): boolean {
+    return this.#linesThreshold !== undefined ||
+      this.#branchesThreshold !== undefined;
+  }
+
   protected override buildArgs(): string[] {
     const argv = ["coverage"];
     if (this.#dir !== undefined) argv.push(this.#dir);
-    if (this.#lcov) argv.push("--lcov");
+    // A threshold needs an lcov report to parse, so force it on.
+    if (this.#lcov || this.#hasThreshold()) argv.push("--lcov");
     if (this.#output !== undefined) argv.push(`--output=${this.#output}`);
     if (this.#exclude !== undefined) argv.push(`--exclude=${this.#exclude}`);
     return argv;
@@ -489,11 +531,31 @@ export const DenoTasks: DenoTasksApi = {
   cache(configure?: Configure<DenoCacheSettings>): Promise<CommandOutput> {
     return runSettings(new DenoCacheSettings(), configure);
   },
-  /** Report coverage: `deno coverage`. */
-  coverage(
+  /**
+   * Report coverage: `deno coverage`. When a threshold is configured
+   * (`linesThreshold`/`branchesThreshold`/`threshold`), parse the lcov report
+   * and enforce it — raising a {@link CoverageThresholdError} on a shortfall
+   * unless `noThrow()` was set.
+   */
+  async coverage(
     configure?: Configure<DenoCoverageSettings>,
   ): Promise<CommandOutput> {
-    return runSettings(new DenoCoverageSettings(), configure);
+    const settings = new DenoCoverageSettings();
+    const s = configure ? configure(settings) : settings;
+    const { lines, branches } = s.thresholds;
+    if (lines === undefined && branches === undefined) {
+      return await s.run(); // plain `deno coverage`, no gate
+    }
+    // Read the lcov from the output file when one is set, else capture it from
+    // stdout (quietly, so the raw report doesn't flood the terminal).
+    const output = s.outputPath;
+    if (output === undefined) s.quiet();
+    const result = await s.run();
+    const lcov = output === undefined
+      ? result.stdout
+      : await Deno.readTextFile(output);
+    enforceCoverage(lcov, { lines, branches }, s.throwsOnError);
+    return result;
   },
   /** Install a script or executable: `deno install`. */
   install(configure?: Configure<DenoInstallSettings>): Promise<CommandOutput> {

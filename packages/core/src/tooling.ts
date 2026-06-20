@@ -109,6 +109,16 @@ export abstract class ToolSettings {
     return this;
   }
 
+  /**
+   * Whether a failure should throw — the default, or `false` after
+   * {@link noThrow}. A task that layers its own validation on top of the
+   * subprocess (e.g. a coverage-threshold gate) reads this to decide whether a
+   * gate failure throws or is merely reported.
+   */
+  get throwsOnError(): boolean {
+    return this.#throwOnError;
+  }
+
   /** Suppress live stdout/stderr streaming to the terminal. */
   quiet(): this {
     this.#quiet = true;
