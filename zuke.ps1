@@ -49,5 +49,10 @@ if (-not $deno) {
   $deno = Join-Path $env:DENO_INSTALL "bin\deno.exe"
 }
 
+# Put this Deno on PATH so CLIs the build provisions with `deno install` — whose
+# generated launchers invoke `deno` by name — can find it even when Deno was
+# bootstrapped to a non-PATH location.
+$env:PATH = (Split-Path -Parent $deno) + [IO.Path]::PathSeparator + $env:PATH
+
 & $deno run -A (Join-Path $scriptDir "zuke.ts") @args
 exit $LASTEXITCODE

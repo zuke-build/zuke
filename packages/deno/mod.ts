@@ -18,11 +18,17 @@ export {
   DenoCheckSettings,
   DenoCoverageSettings,
   DenoFmtSettings,
+  DenoInstallSettings,
   DenoLintSettings,
   type DenoPermission,
+  DenoPublishSettings,
   DenoRunSettings,
   DenoTasks,
   type DenoTasksApi,
   DenoTaskSettings,
   DenoTestSettings,
 } from "./src/deno.ts";
+export {
+  CoverageThresholdError,
+  type CoverageThresholds,
+} from "./src/coverage.ts";

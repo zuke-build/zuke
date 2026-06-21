@@ -12,7 +12,7 @@ import {
   ToolNotFoundError,
   ToolSettings,
 } from "../src/tooling.ts";
-import { CommandError } from "../src/shell.ts";
+import { CommandError, CommandTimeoutError } from "../src/shell.ts";
 
 /** Minimal concrete settings: runs `deno eval <script>` — hermetic. */
 class EvalSettings extends ToolSettings {
@@ -76,6 +76,18 @@ Deno.test("run() throws CommandError on non-zero exit", async () => {
     () => new EvalSettings().script("Deno.exit(3)").quiet().run(),
     CommandError,
     "exit 3",
+  );
+});
+
+Deno.test("killAfter() kills a slow tool run", async () => {
+  await assertRejects(
+    () =>
+      new EvalSettings()
+        .script("await new Promise((r) => setTimeout(r, 30000))")
+        .quiet()
+        .killAfter(100)
+        .run(),
+    CommandTimeoutError,
   );
 });
 

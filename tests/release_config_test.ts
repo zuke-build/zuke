@@ -37,6 +37,7 @@ const PACKAGES = [
   "packages/gh",
   "packages/terraform",
   "packages/tofu",
+  "packages/release-please",
   "packages/security",
 ];
 

@@ -36,14 +36,15 @@
     "packages/gh",
     "packages/terraform",
     "packages/tofu",
+    "packages/release-please",
     "packages/security"
   ],
   "tasks": {
     "zuke": "deno run -A zuke.ts",
     "test": "deno test -A --frozen",
-    "cov": "deno test -A --frozen --coverage=cov_profile && deno coverage cov_profile --lcov '--exclude=(tests|scripts)/' --output=cov.lcov && deno run --allow-read scripts/check-coverage.ts cov.lcov 95",
-    "cov:report": "deno coverage cov_profile '--exclude=(tests|scripts)/'",
-    "check": "deno check --frozen zuke.ts scripts/*.ts tests/*.ts packages/*/mod.ts packages/*/src/*.ts packages/*/tests/*.ts",
+    "cov": "deno run -A zuke.ts coverage",
+    "cov:report": "deno coverage cov_profile '--exclude=tests/'",
+    "check": "deno check --frozen zuke.ts tests/*.ts packages/*/mod.ts packages/*/src/*.ts packages/*/tests/*.ts",
     "fmt": "deno fmt",
     "fmt:check": "deno fmt --check",
     "lint": "deno lint",
@@ -53,7 +54,6 @@
   "fmt": {
     "include": [
       "zuke.ts",
-      "scripts/",
       "tests/",
       "packages/"
     ],
@@ -64,7 +64,6 @@
   "lint": {
     "include": [
       "zuke.ts",
-      "scripts/",
       "tests/",
       "packages/"
     ],

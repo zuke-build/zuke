@@ -47,13 +47,27 @@ update the `check` task and CI accordingly. Do not bolt on a parallel
 2. **All linting, formatting, type-checking, and tests must always pass.** Run
    `deno task ci` before committing; it must be green.
 3. **Keep test coverage at 95%+ (lines and branches) at all times.** Enforced by
-   `scripts/check-coverage.ts` in the `cov` task and in CI. New code needs new
-   tests in the same change.
+   the coverage gate built into `DenoTasks.coverage` (a `.threshold()` parses the
+   lcov report and fails the build), wired up in the `cov` task / `zuke coverage`
+   target and in CI. New code needs new tests in the same change.
 4. **Document the public API.** Every exported symbol carries a JSDoc comment;
    match the existing density and tone when adding to it.
 5. **Tests are hermetic and fast.** No network, no reliance on ambient tools.
    When a test needs a subprocess, invoke `Deno.execPath()` (the running
    `deno`), which is always present and shell-free.
+6. **Public API is task-shaped — no standalone utility functions.** A package
+   exposes its operations through a namespaced `*Tasks` object (`FileTasks`,
+   `DenoTasks`, `JsrTasks`, …), never as bare exported helper functions. CLI
+   wrappers build argv through the settings-lambda style (`ToolSettings` /
+   `buildArgs`); task groups that run no subprocess (e.g. `FileTasks`) take
+   direct arguments plus an options object. Group related operations under one
+   task object rather than adding a loose function to `mod.ts`, and keep
+   internal helpers unexported. (The framework primitives a build is defined
+   with — `Build`, `target`, `group`, `run` — are the deliberate exception.)
+7. **Mirror the real CLI.** Name a wrapper's task methods and settings after the
+   actual subcommands and flags they invoke — `CspellTasks.lint` runs `cspell
+   lint`, not a prettier alias like `check`. Staying close to the tool's own
+   vocabulary keeps the wrapper predictable for anyone who knows the CLI.
 
 ## Commands
 
@@ -77,8 +91,6 @@ packages/
   deno/                   # @zuke/deno — DenoTasks
   npm/                    # @zuke/npm  — NpmTasks
   cmd/                    # @zuke/cmd  — CmdTasks (generic fallback)
-tests/coverage_test.ts    # tests for the root coverage gate script
-scripts/check-coverage.ts # coverage gate
 zuke.ts                   # Zuke's own build (runnable example)
 .github/workflows/ci.yml  # PR checks
 ```

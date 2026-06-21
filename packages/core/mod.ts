@@ -64,6 +64,13 @@ export {
 } from "./src/graph.ts";
 export { glob, type GlobOptions, globToRegExp } from "./src/glob.ts";
 export {
+  type CopyOptions,
+  type CreateDirectoryOptions,
+  FileTasks,
+  type FileTasksApi,
+  type RemoveOptions,
+} from "./src/file.ts";
+export {
   assert,
   assertDirectoryExists,
   assertExists,

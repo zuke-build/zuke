@@ -1,5 +1,10 @@
 import { assertEquals, assertRejects } from "./_assert.ts";
-import { $, CommandError, tokenize } from "../src/shell.ts";
+import {
+  $,
+  CommandError,
+  CommandTimeoutError,
+  tokenize,
+} from "../src/shell.ts";
 
 // `deno` is guaranteed present (we are running under it) and shell-free, so it
 // makes a reliable, cross-platform subject for these tests.
@@ -112,4 +117,38 @@ Deno.test("$ awaited result exposes code/stdout and CommandOutput.text()", async
 
 Deno.test("$ on an empty command rejects", async () => {
   await assertRejects(() => $``.quiet(), Error, "empty command");
+});
+
+Deno.test("$ .killAfter() kills a slow process and throws", async () => {
+  const err = await assertRejects(
+    () =>
+      $`${DENO} eval ${"await new Promise((r) => setTimeout(r, 30000))"}`
+        .quiet()
+        .killAfter(100)
+        .then(),
+    CommandTimeoutError,
+  );
+  assertEquals(
+    err instanceof CommandTimeoutError && err.timeoutMs === 100,
+    true,
+  );
+});
+
+Deno.test("$ .killAfter() does not fire for a fast process", async () => {
+  const out = await $`${DENO} eval ${"console.log('quick')"}`
+    .killAfter(30000)
+    .text();
+  assertEquals(out, "quick");
+});
+
+Deno.test("$ .killAfter() fires even under .noThrow()", async () => {
+  await assertRejects(
+    () =>
+      $`${DENO} eval ${"await new Promise((r) => setTimeout(r, 30000))"}`
+        .quiet()
+        .noThrow()
+        .killAfter(100)
+        .then(),
+    CommandTimeoutError,
+  );
 });

@@ -81,6 +81,7 @@ export abstract class ToolSettings {
   #cwd?: string;
   #throwOnError = true;
   #quiet = false;
+  #timeoutMs?: number;
   #toolPath?: string;
   #extraArgs: string[] = [];
 
@@ -108,9 +109,28 @@ export abstract class ToolSettings {
     return this;
   }
 
+  /**
+   * Whether a failure should throw — the default, or `false` after
+   * {@link noThrow}. A task that layers its own validation on top of the
+   * subprocess (e.g. a coverage-threshold gate) reads this to decide whether a
+   * gate failure throws or is merely reported.
+   */
+  get throwsOnError(): boolean {
+    return this.#throwOnError;
+  }
+
   /** Suppress live stdout/stderr streaming to the terminal. */
   quiet(): this {
     this.#quiet = true;
+    return this;
+  }
+
+  /**
+   * Kill the tool if it runs longer than `ms` milliseconds, raising a
+   * `CommandTimeoutError`. Fires even under {@link noThrow}.
+   */
+  killAfter(ms: number): this {
+    this.#timeoutMs = ms;
     return this;
   }
 
@@ -140,6 +160,7 @@ export abstract class ToolSettings {
     if (this.#cwd !== undefined) command.cwd(this.#cwd);
     if (!this.#throwOnError) command.noThrow();
     if (this.#quiet) command.quiet();
+    if (this.#timeoutMs !== undefined) command.killAfter(this.#timeoutMs);
     return command;
   }
 

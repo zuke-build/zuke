@@ -9,7 +9,9 @@ import {
   DenoCheckSettings,
   DenoCoverageSettings,
   DenoFmtSettings,
+  DenoInstallSettings,
   DenoLintSettings,
+  DenoPublishSettings,
   DenoRunSettings,
   DenoTasks,
   DenoTaskSettings,
@@ -133,7 +135,7 @@ Deno.test("coverage: dir, --lcov, --output, --exclude", () => {
       .dir("cov_profile")
       .lcov()
       .output("cov.lcov")
-      .exclude("(tests|scripts)/")
+      .exclude("tests/")
       .argv()
       .slice(1),
     [
@@ -141,9 +143,23 @@ Deno.test("coverage: dir, --lcov, --output, --exclude", () => {
       "cov_profile",
       "--lcov",
       "--output=cov.lcov",
-      "--exclude=(tests|scripts)/",
+      "--exclude=tests/",
     ],
   );
+});
+
+Deno.test("coverage: a threshold forces --lcov and stays off the argv", () => {
+  const s = new DenoCoverageSettings().dir("cov_profile").threshold(95);
+  // The threshold is enforced by the task, not a `deno coverage` flag.
+  assertEquals(s.argv().slice(1), ["coverage", "cov_profile", "--lcov"]);
+  assertEquals(s.thresholds, { lines: 95, branches: 95 });
+});
+
+Deno.test("coverage: line and branch thresholds can differ", () => {
+  const s = new DenoCoverageSettings().linesThreshold(90).branchesThreshold(80);
+  assertEquals(s.thresholds, { lines: 90, branches: 80 });
+  assertEquals(s.outputPath, undefined);
+  assertEquals(s.argv().slice(1), ["coverage", "--lcov"]);
 });
 
 Deno.test("task: name required, then task args", () => {
@@ -187,6 +203,65 @@ Deno.test("DenoTasks.check executes against a real file", async () => {
   }
 });
 
+Deno.test("install: global executable from an npm module, with perms", () => {
+  const argv = new DenoInstallSettings()
+    .global()
+    .force()
+    .root(".zuke/tools")
+    .name("cspell")
+    .allow("read")
+    .allow("env")
+    .allow("sys")
+    .module("npm:cspell@9")
+    .moduleArgs("--version")
+    .argv()
+    .slice(1);
+  assertEquals(argv, [
+    "install",
+    "--allow-read",
+    "--allow-env",
+    "--allow-sys",
+    "--global",
+    "--force",
+    "--root",
+    ".zuke/tools",
+    "--name",
+    "cspell",
+    "npm:cspell@9",
+    "--version",
+  ]);
+});
+
+Deno.test("install: bare run is just the subcommand", () => {
+  assertEquals(new DenoInstallSettings().argv().slice(1), ["install"]);
+});
+
+Deno.test("publish: bare and all options", () => {
+  assertEquals(new DenoPublishSettings().argv().slice(1), ["publish"]);
+  assertEquals(
+    new DenoPublishSettings()
+      .allowDirty()
+      .allowSlowTypes()
+      .noCheck()
+      .dryRun()
+      .config("deno.json")
+      .token("xyz")
+      .argv()
+      .slice(1),
+    [
+      "publish",
+      "--allow-dirty",
+      "--allow-slow-types",
+      "--no-check",
+      "--dry-run",
+      "--config",
+      "deno.json",
+      "--token",
+      "xyz",
+    ],
+  );
+});
+
 /**
  * Point a settings object at a guaranteed-missing binary with the shim
  * fallback disabled, so the task function reaches execution without running
@@ -206,6 +281,11 @@ Deno.test("every remaining DenoTasks function reaches execution", async () => {
     ToolNotFoundError,
   );
   await assertRejects(() => DenoTasks.coverage(missing), ToolNotFoundError);
+  await assertRejects(
+    () => DenoTasks.install((s) => missing(s).module("npm:x")),
+    ToolNotFoundError,
+  );
+  await assertRejects(() => DenoTasks.publish(missing), ToolNotFoundError);
   await assertRejects(
     () => DenoTasks.task((s) => missing(s).name("x")),
     ToolNotFoundError,
