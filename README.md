@@ -16,11 +16,6 @@
   <a href="./CONTRIBUTING.md"><img alt="PRs welcome" src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" /></a>
 </p>
 
-> [!WARNING]
-> **Under heavy development — not production ready.** Zuke is pre-1.0 and
-> evolving fast. APIs across all `@zuke/*` packages can change without notice
-> within `0.x`. Pin exact versions and expect breakage until a `1.0` release.
-
 > [!NOTE]
 > **Largely AI-written.** Much of this project — code, tests, and docs — was
 > generated with AI assistance. Take it with a grain of salt: review before you
