@@ -577,6 +577,11 @@
           "jsr:@zuke/core@1"
         ]
       },
+      "packages/codex": {
+        "dependencies": [
+          "jsr:@zuke/core@1"
+        ]
+      },
       "packages/cspell": {
         "dependencies": [
           "jsr:@zuke/core@1"
@@ -618,6 +623,11 @@
         ]
       },
       "packages/gcloud": {
+        "dependencies": [
+          "jsr:@zuke/core@1"
+        ]
+      },
+      "packages/gemini": {
         "dependencies": [
           "jsr:@zuke/core@1"
         ]

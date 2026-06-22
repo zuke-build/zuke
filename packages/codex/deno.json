@@ -1,0 +1,16 @@
+{
+  "name": "@zuke/codex",
+  "version": "0.0.0",
+  "description": "Typed OpenAI Codex CLI task wrapper for Zuke builds — run prompts non-interactively with codex exec and manage MCP via an injection-free, settings-lambda API.",
+  "exports": {
+    ".": "./mod.ts"
+  },
+  "imports": {
+    "@zuke/core": "jsr:@zuke/core@^1"
+  },
+  "publish": {
+    "exclude": [
+      "tests/"
+    ]
+  }
+}
