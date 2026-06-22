@@ -4,6 +4,7 @@
   "useGitignore": true,
   "words": [
     "actionlint",
+    "asciinema",
     "cicd",
     "subclassing",
     "bunx",
@@ -106,7 +107,9 @@
     "cov.lcov",
     "/zuke",
     "/zuke.ps1",
+    "/CHANGELOG.md",
     "packages/*/CHANGELOG.md",
+    "assets/",
     ".github/workflows/",
     ".github/dependabot.yml",
     ".github/CODEOWNERS"
