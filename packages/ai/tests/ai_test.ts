@@ -364,14 +364,14 @@ Deno.test("base/staged diff is produced via the git exec seam, with effort", asy
 });
 
 Deno.test("the default diff source runs git via the shell (no network)", async () => {
-  // No .exec()/.text(): exercises the real `git diff --cached` path. The test
-  // tree has nothing staged, so the diff is empty and no fetch occurs.
+  // No .exec()/.text(): exercises the real `git diff --cached` path. Whatever
+  // the tree's staged state, the fake fetch keeps it off the network.
   const { fetch, calls } = recordFetch(claude({ score: 0, findings: [] }));
   await securityReviewer((r) =>
     r.provider("claude").apiKey("k").quiet().diff((d) => d.staged())
       .fetch(fetch)
   ).validate({ target: "t" });
-  assertEquals(calls.length, 0);
+  assertEquals(calls.every((c) => c.url.includes("api.anthropic.com")), true);
 });
 
 Deno.test("the findings table is printed when not quiet", async () => {
@@ -471,5 +471,33 @@ Deno.test("a thrown Error and a thrown non-Error both surface as AiReviewError",
       ).validate({ target: "t" }),
     AiReviewError,
     "weird",
+  );
+});
+
+Deno.test("failWhen scoreAbove gates on an explicit score threshold", async () => {
+  const { fetch } = recordFetch(claude({ score: 6, findings: [] }));
+  await assertRejects(
+    () =>
+      securityReviewer((r) =>
+        r.provider("claude").apiKey("k").quiet().diff((d) => d.text(DIFF))
+          .failWhen((g) => g.scoreAbove(5)).fetch(fetch)
+      ).validate({ target: "t" }),
+    AiReviewError,
+    "risk score 6 exceeds 5",
+  );
+});
+
+Deno.test("a null inside the response shape fails closed", async () => {
+  const { fetch } = recordFetch(
+    JSON.stringify({ content: [null], stop_reason: "end_turn" }),
+  );
+  await assertRejects(
+    () =>
+      securityReviewer((r) =>
+        r.provider("claude").apiKey("k").quiet().diff((d) => d.text(DIFF))
+          .fetch(fetch)
+      ).validate({ target: "t" }),
+    AiReviewError,
+    "could not read",
   );
 });

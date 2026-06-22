@@ -19,20 +19,22 @@
  * @module
  */
 
+export { AiReviewError } from "./src/errors.ts";
+export type {
+  Assessment,
+  AssessmentFinding,
+  AssessmentType,
+  Effort,
+  Provider,
+  Severity,
+} from "./src/types.ts";
+export { DiffSettings } from "./src/diff.ts";
+export { GateSettings } from "./src/gate.ts";
 export {
-  AiReviewError,
-  type Assessment,
-  type AssessmentFinding,
-  type AssessmentType,
   correctnessReviewer,
-  DiffSettings,
-  type Effort,
-  GateSettings,
   genericReviewer,
   licenseReviewer,
-  type Provider,
   Reviewer,
   secretsReviewer,
   securityReviewer,
-  type Severity,
-} from "./src/ai.ts";
+} from "./src/reviewer.ts";
