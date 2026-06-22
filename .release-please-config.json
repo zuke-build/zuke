@@ -8,7 +8,6 @@
     "packages/core": {
       "component": "core",
       "changelog-path": "CHANGELOG.md",
-      "release-as": "1.0.0",
       "extra-files": [
         {
           "type": "json",

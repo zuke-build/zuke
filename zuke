@@ -39,16 +39,36 @@ else
   fi
   export DENO_INSTALL="$deno_install"
   deno_version="${DENO_VERSION:-$DEFAULT_DENO_VERSION}"
-  if [ "$deno_version" = "latest" ]; then
-    curl -fsSL https://deno.land/install.sh | sh >/dev/null
-  else
+  if [ "$deno_version" != "latest" ]; then
     # install.sh expects a leading "v"; accept either form from DENO_VERSION.
     case "$deno_version" in
       v*) ;;
       *) deno_version="v$deno_version" ;;
     esac
-    curl -fsSL https://deno.land/install.sh | sh -s "$deno_version" >/dev/null
   fi
+
+  # The install fetches over the network, which is occasionally flaky (e.g. a
+  # transient 5xx from the CDN). Retry a few times with backoff so a blip
+  # doesn't fail the whole run.
+  install_deno() {
+    if [ "$deno_version" = "latest" ]; then
+      curl -fsSL https://deno.land/install.sh | sh >/dev/null
+    else
+      curl -fsSL https://deno.land/install.sh | sh -s "$deno_version" >/dev/null
+    fi
+  }
+  attempt=1
+  max_attempts=4
+  until install_deno; do
+    if [ "$attempt" -ge "$max_attempts" ]; then
+      echo "zuke: failed to install Deno after $max_attempts attempts." >&2
+      exit 1
+    fi
+    delay=$((attempt * 3))
+    echo "zuke: Deno install failed (attempt $attempt/$max_attempts); retrying in ${delay}s..." >&2
+    sleep "$delay"
+    attempt=$((attempt + 1))
+  done
   deno_bin="$deno_install/bin/deno"
 fi
 

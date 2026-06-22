@@ -45,7 +45,23 @@ if (-not $deno) {
     # install.ps1 reads $v as the version, without a leading "v".
     $v = ($denoVersion -replace '^v', '')
   }
-  Invoke-RestMethod https://deno.land/install.ps1 | Invoke-Expression
+  # The install fetches over the network, which is occasionally flaky (e.g. a
+  # transient 5xx from the CDN). Retry a few times with backoff so a blip
+  # doesn't fail the whole run.
+  $maxAttempts = 4
+  for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+    try {
+      Invoke-RestMethod https://deno.land/install.ps1 | Invoke-Expression
+      break
+    } catch {
+      if ($attempt -ge $maxAttempts) {
+        throw "zuke: failed to install Deno after $maxAttempts attempts: $_"
+      }
+      $delay = $attempt * 3
+      Write-Host "zuke: Deno install failed (attempt $attempt/$maxAttempts); retrying in ${delay}s..."
+      Start-Sleep -Seconds $delay
+    }
+  }
   $deno = Join-Path $env:DENO_INSTALL "bin\deno.exe"
 }
 
