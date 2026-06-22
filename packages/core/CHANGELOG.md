@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/zuke-build/zuke/compare/core-v1.0.0...core-v1.1.0) (2026-06-22)
+
+
+### Features
+
+* **core:** document AnnounceTasks and fix wrapper publishing ([#98](https://github.com/zuke-build/zuke/issues/98)) ([d656b69](https://github.com/zuke-build/zuke/commit/d656b69ff151d37c737a9a1b1d16a18f6b301829))
+
 ## [1.0.0](https://github.com/zuke-build/zuke/compare/core-v0.14.0...core-v1.0.0) (2026-06-22)
 
 
