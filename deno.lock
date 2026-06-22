@@ -559,182 +559,182 @@
     "members": {
       "packages/biome": {
         "dependencies": [
-          "jsr:@zuke/core@0"
+          "jsr:@zuke/core@*"
         ]
       },
       "packages/bun": {
         "dependencies": [
-          "jsr:@zuke/core@0"
+          "jsr:@zuke/core@*"
         ]
       },
       "packages/cmd": {
         "dependencies": [
-          "jsr:@zuke/core@0"
+          "jsr:@zuke/core@*"
         ]
       },
       "packages/cspell": {
         "dependencies": [
-          "jsr:@zuke/core@0"
+          "jsr:@zuke/core@*"
         ]
       },
       "packages/cypress": {
         "dependencies": [
-          "jsr:@zuke/core@0"
+          "jsr:@zuke/core@*"
         ]
       },
       "packages/deno": {
         "dependencies": [
-          "jsr:@zuke/core@0"
+          "jsr:@zuke/core@*"
         ]
       },
       "packages/docker": {
         "dependencies": [
-          "jsr:@zuke/core@0"
+          "jsr:@zuke/core@*"
         ]
       },
       "packages/docker-compose": {
         "dependencies": [
-          "jsr:@zuke/core@0"
+          "jsr:@zuke/core@*"
         ]
       },
       "packages/dpdm": {
         "dependencies": [
-          "jsr:@zuke/core@0"
+          "jsr:@zuke/core@*"
         ]
       },
       "packages/dprint": {
         "dependencies": [
-          "jsr:@zuke/core@0"
+          "jsr:@zuke/core@*"
         ]
       },
       "packages/eslint": {
         "dependencies": [
-          "jsr:@zuke/core@0"
+          "jsr:@zuke/core@*"
         ]
       },
       "packages/gcloud": {
         "dependencies": [
-          "jsr:@zuke/core@0"
+          "jsr:@zuke/core@*"
         ]
       },
       "packages/gh": {
         "dependencies": [
-          "jsr:@zuke/core@0"
+          "jsr:@zuke/core@*"
         ]
       },
       "packages/git": {
         "dependencies": [
-          "jsr:@zuke/core@0"
+          "jsr:@zuke/core@*"
         ]
       },
       "packages/helm": {
         "dependencies": [
-          "jsr:@zuke/core@0"
+          "jsr:@zuke/core@*"
         ]
       },
       "packages/jest": {
         "dependencies": [
-          "jsr:@zuke/core@0"
+          "jsr:@zuke/core@*"
         ]
       },
       "packages/jsr": {
         "dependencies": [
-          "jsr:@zuke/core@0"
+          "jsr:@zuke/core@*"
         ]
       },
       "packages/knip": {
         "dependencies": [
-          "jsr:@zuke/core@0"
+          "jsr:@zuke/core@*"
         ]
       },
       "packages/kubectl": {
         "dependencies": [
-          "jsr:@zuke/core@0"
+          "jsr:@zuke/core@*"
         ]
       },
       "packages/kustomize": {
         "dependencies": [
-          "jsr:@zuke/core@0"
+          "jsr:@zuke/core@*"
         ]
       },
       "packages/npm": {
         "dependencies": [
-          "jsr:@zuke/core@0"
+          "jsr:@zuke/core@*"
         ]
       },
       "packages/nx": {
         "dependencies": [
-          "jsr:@zuke/core@0"
+          "jsr:@zuke/core@*"
         ]
       },
       "packages/oxlint": {
         "dependencies": [
-          "jsr:@zuke/core@0"
+          "jsr:@zuke/core@*"
         ]
       },
       "packages/playwright": {
         "dependencies": [
-          "jsr:@zuke/core@0"
+          "jsr:@zuke/core@*"
         ]
       },
       "packages/pnpm": {
         "dependencies": [
-          "jsr:@zuke/core@0"
+          "jsr:@zuke/core@*"
         ]
       },
       "packages/release-please": {
         "dependencies": [
-          "jsr:@zuke/core@0"
+          "jsr:@zuke/core@*"
         ]
       },
       "packages/security": {
         "dependencies": [
-          "jsr:@zuke/core@0"
+          "jsr:@zuke/core@*"
         ]
       },
       "packages/terraform": {
         "dependencies": [
-          "jsr:@zuke/core@0"
+          "jsr:@zuke/core@*"
         ]
       },
       "packages/tofu": {
         "dependencies": [
-          "jsr:@zuke/core@0"
+          "jsr:@zuke/core@*"
         ]
       },
       "packages/tsgo": {
         "dependencies": [
-          "jsr:@zuke/core@0"
+          "jsr:@zuke/core@*"
         ]
       },
       "packages/tsup": {
         "dependencies": [
-          "jsr:@zuke/core@0"
+          "jsr:@zuke/core@*"
         ]
       },
       "packages/tsx": {
         "dependencies": [
-          "jsr:@zuke/core@0"
+          "jsr:@zuke/core@*"
         ]
       },
       "packages/turbo": {
         "dependencies": [
-          "jsr:@zuke/core@0"
+          "jsr:@zuke/core@*"
         ]
       },
       "packages/vite": {
         "dependencies": [
-          "jsr:@zuke/core@0"
+          "jsr:@zuke/core@*"
         ]
       },
       "packages/vitest": {
         "dependencies": [
-          "jsr:@zuke/core@0"
+          "jsr:@zuke/core@*"
         ]
       },
       "packages/yarn": {
         "dependencies": [
-          "jsr:@zuke/core@0"
+          "jsr:@zuke/core@*"
         ]
       }
     }
