@@ -11,8 +11,8 @@
  * `fetch`, with a `.fetch()` seam so they can be unit-tested without network
  * access.
  *
- * A webhook URL (or a Slack bot token) embeds the secret that authorises posting
- * to a channel, so it should come from a {@link "./params.ts" | secret
+ * A webhook URL (or a bot/access token) embeds the secret that authorises
+ * posting to a channel, so it should come from a {@link "./params.ts" | secret
  * parameter} rather than being hard-coded:
  *
  * ```ts
@@ -37,8 +37,10 @@
  * }
  * ```
  *
- * Slack also speaks bot tokens: `s.bot().token(t).channel("#builds")` posts
- * through the Web API (`chat.postMessage`) instead of a webhook.
+ * Each platform also speaks an API/bot mode instead of a webhook, opted into
+ * with `.bot()`: Slack `chat.postMessage` (`.token(t).channel(c)`), Discord's
+ * REST API (`.token(t).channel(c)`), and Microsoft Graph for Teams
+ * (`.token(t).team(id).channel(c)`).
  *
  * A non-2xx response throws an {@link HttpError} carrying the status; a
  * misconfigured settings object throws an {@link AnnounceError}.
@@ -184,15 +186,23 @@ function teamsPayload(ann: Announcement): Record<string, unknown> {
   return card;
 }
 
-/** POST a JSON payload to a webhook URL, throwing {@link HttpError} on non-2xx. */
+/**
+ * POST a JSON payload to `url`, optionally bearing an `Authorization` header,
+ * throwing {@link HttpError} on a non-2xx response.
+ */
 async function post(
   url: string,
   payload: Record<string, unknown>,
   doFetch?: typeof fetch,
+  authorization?: string,
 ): Promise<void> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (authorization !== undefined) headers.Authorization = authorization;
   const response = await (doFetch ?? fetch)(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify(payload),
   });
   // Drain the body so the connection can be reused/closed.
@@ -234,6 +244,64 @@ async function postSlackBot(
   }
 }
 
+/** Base URL of the Discord REST API. */
+const DISCORD_API = "https://discord.com/api/v10";
+
+/** The Discord REST endpoint for posting a message to a channel. */
+function discordMessagesUrl(channel: string): string {
+  return `${DISCORD_API}/channels/${channel}/messages`;
+}
+
+/** Base URL of the Microsoft Graph API. */
+const GRAPH_API = "https://graph.microsoft.com/v1.0";
+
+/** The Microsoft Graph endpoint for posting a message to a Teams channel. */
+function graphMessagesUrl(team: string, channel: string): string {
+  return `${GRAPH_API}/teams/${team}/channels/${channel}/messages`;
+}
+
+/** Escape the five characters that are unsafe in HTML text or attributes. */
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
+/**
+ * Build the Microsoft Graph payload for a Teams channel message, rendering the
+ * announcement as HTML (Graph has no MessageCard equivalent).
+ */
+function teamsGraphPayload(ann: Announcement): Record<string, unknown> {
+  const { emoji } = ACCENTS[ann.level];
+  const heading = ann.title !== undefined
+    ? `${emoji} ${escapeHtml(ann.title)}`
+    : emoji;
+  const parts = [
+    `<p><strong>${heading}</strong></p>`,
+    `<p>${escapeHtml(ann.text)}</p>`,
+  ];
+  if (ann.fields?.length) {
+    const items = ann.fields
+      .map((f) =>
+        `<li><strong>${escapeHtml(f.name)}:</strong> ${
+          escapeHtml(f.value)
+        }</li>`
+      )
+      .join("");
+    parts.push(`<ul>${items}</ul>`);
+  }
+  if (ann.link) {
+    parts.push(
+      `<p><a href="${escapeHtml(ann.link.url)}">${
+        escapeHtml(ann.link.text)
+      }</a></p>`,
+    );
+  }
+  return { body: { contentType: "html", content: parts.join("") } };
+}
+
 /**
  * Fluent settings shared by every announcement: the message content (a body, an
  * optional title, a {@link AnnouncementLevel | level}, repeatable detail fields
@@ -250,6 +318,9 @@ export abstract class AnnouncementSettings {
   protected username_?: string;
   protected webhookUrl_?: string;
   protected fetch_?: typeof fetch;
+  #bot = false;
+  protected token_?: string;
+  protected channel_?: string;
 
   /** Set the main message body. */
   text(text: string): this {
@@ -328,6 +399,31 @@ export abstract class AnnouncementSettings {
     return this;
   }
 
+  /**
+   * Post through the platform's API with a bot/access token instead of an
+   * incoming webhook. Pair with {@link token} and {@link channel}.
+   */
+  bot(): this {
+    this.#bot = true;
+    return this;
+  }
+
+  /**
+   * Set the bot/access token for {@link bot} mode (Slack `xoxb-…`, a Discord bot
+   * token, or a Microsoft Graph bearer token). Source it from a secret
+   * parameter; Zuke masks it in CI output. Implies {@link bot}.
+   */
+  token(token: string): this {
+    this.token_ = token;
+    return this;
+  }
+
+  /** Set the channel (id or name) to post to in {@link bot} mode. */
+  channel(channel: string): this {
+    this.channel_ = channel;
+    return this;
+  }
+
   /** The structured announcement assembled so far. */
   protected announcement(): Announcement {
     const ann: Announcement = { text: this.text_, level: this.level_ };
@@ -347,64 +443,57 @@ export abstract class AnnouncementSettings {
     return this.webhookUrl_;
   }
 
-  /** The platform-native JSON payload for this announcement. */
+  /** Whether the caller opted into bot mode via {@link bot} or {@link token}. */
+  protected botRequested(): boolean {
+    return this.#bot || this.token_ !== undefined;
+  }
+
+  /** The bot/access token, or an {@link AnnounceError} if one was never set. */
+  protected requireToken(): string {
+    if (this.token_ === undefined) {
+      throw new AnnounceError("bot mode needs a token; call .token(...)");
+    }
+    return this.token_;
+  }
+
+  /** The target channel, or an {@link AnnounceError} if one was never set. */
+  protected requireChannel(): string {
+    if (this.channel_ === undefined) {
+      throw new AnnounceError("bot mode needs a channel; call .channel(...)");
+    }
+    return this.channel_;
+  }
+
+  /** The platform-native JSON payload for a webhook post. */
   protected abstract payload(): Record<string, unknown>;
 
-  /** Send the announcement. Posts the {@link payload} to the webhook by default. */
+  /** Post through the platform's API in {@link bot} mode. */
+  protected abstract sendBot(): Promise<void>;
+
+  /**
+   * Send the announcement: through the platform's API when {@link bot} mode was
+   * requested, otherwise by posting the {@link payload} to the webhook.
+   */
   send(): Promise<void> {
-    return post(this.requireWebhook(), this.payload(), this.fetch_);
+    return this.botRequested()
+      ? this.sendBot()
+      : post(this.requireWebhook(), this.payload(), this.fetch_);
   }
 }
 
-/** Fluent settings for {@link AnnounceTasksApi.slack}, adding bot-token mode. */
+/**
+ * Fluent settings for {@link AnnounceTasksApi.slack}. Bot mode
+ * (`.bot().token(t).channel(c)`) posts through the Web API (`chat.postMessage`).
+ */
 export class SlackAnnouncementSettings extends AnnouncementSettings {
-  #bot = false;
-  #token?: string;
-  #channel?: string;
-
-  /**
-   * Post through the Slack Web API (`chat.postMessage`) with a bot token instead
-   * of an incoming webhook. Pair with {@link token} and {@link channel}.
-   */
-  bot(): this {
-    this.#bot = true;
-    return this;
-  }
-
-  /**
-   * Set the Slack bot token (`xoxb-…`) for bot mode. Source it from a secret
-   * parameter; Zuke masks it in CI output. Implies {@link bot}.
-   */
-  token(token: string): this {
-    this.#token = token;
-    return this;
-  }
-
-  /** Set the channel id or name to post to in bot mode. */
-  channel(channel: string): this {
-    this.#channel = channel;
-    return this;
-  }
-
   protected override payload(): Record<string, unknown> {
     return slackPayload(this.announcement(), this.username_);
   }
 
-  override send(): Promise<void> {
-    if (!this.#bot && this.#token === undefined) {
-      return super.send();
-    }
-    const token = this.#token;
-    if (token === undefined) {
-      throw new AnnounceError("bot mode needs a token; call .token(...)");
-    }
-    const channel = this.#channel;
-    if (channel === undefined) {
-      throw new AnnounceError("bot mode needs a channel; call .channel(...)");
-    }
+  protected override sendBot(): Promise<void> {
     return postSlackBot(
-      token,
-      channel,
+      this.requireToken(),
+      this.requireChannel(),
       this.announcement(),
       this.username_,
       this.fetch_,
@@ -412,17 +501,53 @@ export class SlackAnnouncementSettings extends AnnouncementSettings {
   }
 }
 
-/** Fluent settings for {@link AnnounceTasksApi.teams}. */
+/**
+ * Fluent settings for {@link AnnounceTasksApi.teams}. Bot mode
+ * (`.bot().token(t).team(id).channel(c)`) posts through Microsoft Graph with a
+ * bearer token.
+ */
 export class TeamsAnnouncementSettings extends AnnouncementSettings {
+  #team?: string;
+
+  /** Set the Teams team (group) id to post to in bot mode (Microsoft Graph). */
+  team(team: string): this {
+    this.#team = team;
+    return this;
+  }
+
   protected override payload(): Record<string, unknown> {
     return teamsPayload(this.announcement());
   }
+
+  protected override sendBot(): Promise<void> {
+    if (this.#team === undefined) {
+      throw new AnnounceError("bot mode needs a team; call .team(...)");
+    }
+    return post(
+      graphMessagesUrl(this.#team, this.requireChannel()),
+      teamsGraphPayload(this.announcement()),
+      this.fetch_,
+      `Bearer ${this.requireToken()}`,
+    );
+  }
 }
 
-/** Fluent settings for {@link AnnounceTasksApi.discord}. */
+/**
+ * Fluent settings for {@link AnnounceTasksApi.discord}. Bot mode
+ * (`.bot().token(t).channel(c)`) posts through the REST API with a bot token.
+ */
 export class DiscordAnnouncementSettings extends AnnouncementSettings {
   protected override payload(): Record<string, unknown> {
     return discordPayload(this.announcement(), this.username_);
+  }
+
+  protected override sendBot(): Promise<void> {
+    return post(
+      discordMessagesUrl(this.requireChannel()),
+      discordPayload(this.announcement()),
+      this.fetch_,
+      `Bot ${this.requireToken()}`,
+    );
   }
 }
 
@@ -445,13 +570,15 @@ export interface AnnounceTasksApi {
 
   /**
    * Announce to Microsoft Teams. Configure a {@link TeamsAnnouncementSettings}:
-   * set a `.webhook(url)` and the message content.
+   * set a `.webhook(url)` (or `.bot().token(t).team(id).channel(c)` to post
+   * through Microsoft Graph) and the message content.
    */
   teams(configure?: Configure<TeamsAnnouncementSettings>): Promise<void>;
 
   /**
    * Announce to Discord. Configure a {@link DiscordAnnouncementSettings}: set a
-   * `.webhook(url)` and the message content.
+   * `.webhook(url)` (or `.bot().token(t).channel(c)` to post through the REST
+   * API with a bot token) and the message content.
    */
   discord(configure?: Configure<DiscordAnnouncementSettings>): Promise<void>;
 }

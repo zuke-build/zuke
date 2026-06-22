@@ -277,11 +277,19 @@ class MyBuild extends Build {
 }
 ```
 
-Slack also speaks **bot tokens**: `.bot().token(t).channel(c)` posts through the
-Web API (`chat.postMessage`) instead of a webhook (setting `.token()` alone
-implies bot mode). The Web API answers `200` even on a logical failure, so Zuke
-checks the response and throws a `SlackApiError` (carrying Slack's `error` code,
-e.g. `channel_not_found`) when it reports `{ ok: false }`.
+Each platform also speaks an **API/bot mode** instead of a webhook, opted into
+with `.bot()` (setting `.token()` alone implies it):
+
+- **Slack** — `.token(t).channel(c)` posts through the Web API
+  (`chat.postMessage`). The Web API answers `200` even on a logical failure, so
+  Zuke checks the response and throws a `SlackApiError` (carrying Slack's
+  `error` code, e.g. `channel_not_found`) when it reports `{ ok: false }`.
+- **Discord** — `.token(t).channel(c)` posts through the REST API with a bot
+  token (`Authorization: Bot …`); `channel` is the channel id.
+- **Teams** — `.token(t).team(id).channel(c)` posts through Microsoft Graph with
+  a bearer access token, rendering the announcement as HTML.
+
+A non-2xx response throws an `HttpError` in every API mode.
 
 ```ts
 await AnnounceTasks.slack((s) =>
@@ -289,6 +297,19 @@ await AnnounceTasks.slack((s) =>
     .token(this.slackToken.value)
     .channel("#builds")
     .text("Published @acme/api@1.4.0")
+    .success()
+);
+
+await AnnounceTasks.discord((s) =>
+  s.token(this.discordToken.value).channel("123456789").text("Deployed")
+    .success()
+);
+
+await AnnounceTasks.teams((s) =>
+  s.token(this.graphToken.value)
+    .team("team-id")
+    .channel("19:abc@thread.tacv2")
+    .text("Deployed")
     .success()
 );
 ```

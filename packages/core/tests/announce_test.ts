@@ -281,3 +281,109 @@ Deno.test("slack bot mode throws HttpError on a non-2xx response", async () => {
     assertEquals(error.url, "https://slack.com/api/chat.postMessage");
   }
 });
+
+Deno.test("discord bot mode posts the embed to the REST channel endpoint", async () => {
+  const { fetch, calls } = fakeFetch(200, '{"id":"1"}');
+  await AnnounceTasks.discord((s) =>
+    s.fetch(fetch)
+      .bot()
+      .token("disc-123")
+      .channel("987654321")
+      .text("Build failed")
+      .failure()
+      .username("ignored") // bots post under their own identity
+  );
+  assertEquals(
+    calls[0].url,
+    "https://discord.com/api/v10/channels/987654321/messages",
+  );
+  assertEquals(calls[0].init?.headers, {
+    "Content-Type": "application/json",
+    Authorization: "Bot disc-123",
+  });
+  const [embed] = calls[0].body.embeds as Record<string, unknown>[];
+  assertEquals(embed.description, "❌ Build failed");
+  assertEquals(embed.color, 0xcc0000);
+  assertEquals("username" in calls[0].body, false); // not honoured in bot mode
+});
+
+Deno.test("discord bot mode throws HttpError on a non-2xx response", async () => {
+  const { fetch } = fakeFetch(403, '{"message":"Missing Access"}');
+  const error = await assertRejects(
+    () =>
+      AnnounceTasks.discord((s) =>
+        s.fetch(fetch).token("disc-1").channel("1").text("hi")
+      ),
+    HttpError,
+    "HTTP 403",
+  );
+  if (error instanceof HttpError) {
+    assertEquals(error.url, "https://discord.com/api/v10/channels/1/messages");
+  }
+});
+
+Deno.test("teams bot mode posts HTML to Microsoft Graph", async () => {
+  const { fetch, calls } = fakeFetch(201, '{"id":"1"}');
+  await AnnounceTasks.teams((s) =>
+    s.fetch(fetch)
+      .bot()
+      .token("graph-tok")
+      .team("team-id")
+      .channel("19:abc@thread.tacv2")
+      .title("Re<lease")
+      .text("Shipped A & B")
+      .success()
+      .field("Ver", "2&0")
+      .link("Notes", "https://x/?a=1&b=2")
+  );
+  assertEquals(
+    calls[0].url,
+    "https://graph.microsoft.com/v1.0/teams/team-id/channels/19:abc@thread.tacv2/messages",
+  );
+  assertEquals(calls[0].init?.headers, {
+    "Content-Type": "application/json",
+    Authorization: "Bearer graph-tok",
+  });
+  const graphBody = calls[0].body.body as Record<string, unknown>;
+  assertEquals(graphBody.contentType, "html");
+  assertEquals(
+    graphBody.content,
+    "<p><strong>✅ Re&lt;lease</strong></p>" +
+      "<p>Shipped A &amp; B</p>" +
+      "<ul><li><strong>Ver:</strong> 2&amp;0</li></ul>" +
+      '<p><a href="https://x/?a=1&amp;b=2">Notes</a></p>',
+  );
+});
+
+Deno.test("teams bot mode renders a minimal message without a heading title", async () => {
+  const { fetch, calls } = fakeFetch(201, '{"id":"1"}');
+  await AnnounceTasks.teams((s) =>
+    s.fetch(fetch).token("t").team("g").channel("c").text("Done")
+  );
+  const graphBody = calls[0].body.body as Record<string, unknown>;
+  assertEquals(graphBody.content, "<p><strong>ℹ️</strong></p><p>Done</p>");
+});
+
+Deno.test("teams bot mode requires a team", async () => {
+  await assertRejects(
+    () =>
+      AnnounceTasks.teams((s) => s.bot().token("t").channel("c").text("hi")),
+    AnnounceError,
+    "needs a team",
+  );
+});
+
+Deno.test("teams bot mode throws HttpError on a non-2xx response", async () => {
+  const { fetch } = fakeFetch(401, '{"error":"unauthorized"}');
+  const error = await assertRejects(
+    () =>
+      AnnounceTasks.teams((s) =>
+        s.fetch(fetch).token("t").team("g").channel("c").text("hi")
+      ),
+    HttpError,
+    "HTTP 401",
+  );
+  if (error instanceof HttpError) {
+    assertEquals(error.status, 401);
+  }
+});
