@@ -1,6 +1,6 @@
 import { assertEquals, assertRejects } from "./_assert.ts";
 import {
-  type Announcement,
+  AnnounceError,
   AnnounceTasks,
   SlackApiError,
 } from "../src/announce.ts";
@@ -27,11 +27,11 @@ function fakeFetch(
   return { fetch: impl, calls };
 }
 
-Deno.test("slack posts a JSON info card for a bare string message", async () => {
+Deno.test("slack posts a JSON info card for a minimal message", async () => {
   const { fetch, calls } = fakeFetch();
-  await AnnounceTasks.slack("https://hooks.slack.com/x", "Build passed", {
-    fetch,
-  });
+  await AnnounceTasks.slack((s) =>
+    s.fetch(fetch).webhook("https://hooks.slack.com/x").text("Build passed")
+  );
   assertEquals(calls[0].url, "https://hooks.slack.com/x");
   assertEquals(calls[0].init?.method, "POST");
   assertEquals(calls[0].init?.headers, { "Content-Type": "application/json" });
@@ -45,17 +45,16 @@ Deno.test("slack posts a JSON info card for a bare string message", async () => 
 
 Deno.test("slack renders title, success colour, fields, link and username", async () => {
   const { fetch, calls } = fakeFetch();
-  const message: Announcement = {
-    title: "Deploy",
-    text: "Shipped api@1.4.0",
-    level: "success",
-    fields: [{ name: "Service", value: "api" }],
-    link: { text: "Notes", url: "https://example.com/r" },
-  };
-  await AnnounceTasks.slack("https://hooks.slack.com/x", message, {
-    fetch,
-    username: "ci-bot",
-  });
+  await AnnounceTasks.slack((s) =>
+    s.fetch(fetch)
+      .webhook("https://hooks.slack.com/x")
+      .title("Deploy")
+      .text("Shipped api@1.4.0")
+      .success()
+      .field("Service", "api")
+      .link("Notes", "https://example.com/r")
+      .username("ci-bot")
+  );
   const [attachment] = calls[0].body.attachments as Record<string, unknown>[];
   assertEquals(attachment.color, "#2eb886"); // success
   assertEquals(attachment.title, "Deploy");
@@ -71,17 +70,16 @@ Deno.test("slack renders title, success colour, fields, link and username", asyn
 
 Deno.test("discord posts an embed with an integer colour", async () => {
   const { fetch, calls } = fakeFetch(204, null); // Discord replies 204, no body
-  const message: Announcement = {
-    title: "CI",
-    text: "Build failed",
-    level: "failure",
-    fields: [{ name: "Job", value: "test" }],
-    link: { text: "Logs", url: "https://example.com/l" },
-  };
-  await AnnounceTasks.discord("https://discord.com/api/webhooks/x", message, {
-    fetch,
-    username: "ci-bot",
-  });
+  await AnnounceTasks.discord((s) =>
+    s.fetch(fetch)
+      .webhook("https://discord.com/api/webhooks/x")
+      .title("CI")
+      .text("Build failed")
+      .failure()
+      .field("Job", "test")
+      .link("Logs", "https://example.com/l")
+      .username("ci-bot")
+  );
   const [embed] = calls[0].body.embeds as Record<string, unknown>[];
   assertEquals(embed.title, "CI");
   assertEquals(embed.color, 0xcc0000); // failure as a decimal integer
@@ -93,11 +91,21 @@ Deno.test("discord posts an embed with an integer colour", async () => {
   assertEquals(calls[0].body.username, "ci-bot");
 });
 
-Deno.test("discord omits optional fields for a bare string", async () => {
+Deno.test("the level shortcuts are interchangeable, last one wins", async () => {
   const { fetch, calls } = fakeFetch();
-  await AnnounceTasks.discord("https://discord.com/api/webhooks/x", "Hi", {
-    fetch,
-  });
+  await AnnounceTasks.slack((s) =>
+    s.fetch(fetch).webhook("https://hooks.slack.com/x").text("ok").failure()
+      .info()
+  );
+  const [attachment] = calls[0].body.attachments as Record<string, unknown>[];
+  assertEquals(attachment.color, "#2f81f7"); // .info() overrode .failure()
+});
+
+Deno.test("discord omits optional fields for a minimal message", async () => {
+  const { fetch, calls } = fakeFetch();
+  await AnnounceTasks.discord((s) =>
+    s.fetch(fetch).webhook("https://discord.com/api/webhooks/x").text("Hi")
+  );
   const [embed] = calls[0].body.embeds as Record<string, unknown>[];
   assertEquals(embed.description, "ℹ️ Hi");
   assertEquals(embed.color, 0x2f81f7);
@@ -108,17 +116,16 @@ Deno.test("discord omits optional fields for a bare string", async () => {
 
 Deno.test("teams posts a MessageCard with facts and an action", async () => {
   const { fetch, calls } = fakeFetch();
-  const message: Announcement = {
-    title: "Release",
-    text: "Published @zuke/core@2.0.0",
-    level: "warning",
-    fields: [{ name: "Version", value: "2.0.0" }],
-    link: { text: "Changelog", url: "https://example.com/c" },
-  };
-  await AnnounceTasks.teams("https://outlook.office.com/webhook/x", message, {
-    fetch,
-    username: "ignored", // Teams has no username field
-  });
+  await AnnounceTasks.teams((s) =>
+    s.fetch(fetch)
+      .webhook("https://outlook.office.com/webhook/x")
+      .title("Release")
+      .text("Published @zuke/core@2.0.0")
+      .warning()
+      .field("Version", "2.0.0")
+      .link("Changelog", "https://example.com/c")
+      .username("ignored") // Teams has no username field
+  );
   const card = calls[0].body;
   assertEquals(card["@type"], "MessageCard");
   assertEquals(card.themeColor, "daa038"); // warning, no leading '#'
@@ -138,9 +145,9 @@ Deno.test("teams posts a MessageCard with facts and an action", async () => {
 
 Deno.test("teams summary falls back to the text when there is no title", async () => {
   const { fetch, calls } = fakeFetch();
-  await AnnounceTasks.teams("https://outlook.office.com/webhook/x", "Done", {
-    fetch,
-  });
+  await AnnounceTasks.teams((s) =>
+    s.fetch(fetch).webhook("https://outlook.office.com/webhook/x").text("Done")
+  );
   const card = calls[0].body;
   assertEquals(card.summary, "Done");
   assertEquals("title" in card, false);
@@ -148,10 +155,21 @@ Deno.test("teams summary falls back to the text when there is no title", async (
   assertEquals("potentialAction" in card, false);
 });
 
+Deno.test("a missing webhook destination throws AnnounceError", async () => {
+  await assertRejects(
+    () => AnnounceTasks.teams((s) => s.text("orphan")),
+    AnnounceError,
+    "no destination",
+  );
+});
+
 Deno.test("a non-2xx webhook response throws HttpError carrying the status", async () => {
   const { fetch } = fakeFetch(400);
   const error = await assertRejects(
-    () => AnnounceTasks.slack("https://hooks.slack.com/bad", "x", { fetch }),
+    () =>
+      AnnounceTasks.slack((s) =>
+        s.fetch(fetch).webhook("https://hooks.slack.com/bad").text("x")
+      ),
     HttpError,
     "HTTP 400",
   );
@@ -161,18 +179,26 @@ Deno.test("a non-2xx webhook response throws HttpError carrying the status", asy
   }
 });
 
-Deno.test("slack bot-token mode posts to chat.postMessage with the channel", async () => {
+Deno.test("slack runs with no lambda (defaults) and reports the missing webhook", async () => {
+  await assertRejects(
+    () => AnnounceTasks.slack(),
+    AnnounceError,
+    "no destination",
+  );
+});
+
+Deno.test("slack bot mode posts to chat.postMessage with the channel", async () => {
   const { fetch, calls } = fakeFetch(200, '{"ok":true}');
-  const message: Announcement = {
-    text: "Build passed",
-    level: "success",
-    fields: [{ name: "Branch", value: "main" }],
-  };
-  await AnnounceTasks.slack("#builds", message, {
-    fetch,
-    token: "xoxb-123",
-    username: "ci-bot",
-  });
+  await AnnounceTasks.slack((s) =>
+    s.fetch(fetch)
+      .bot()
+      .token("xoxb-123")
+      .channel("#builds")
+      .text("Build passed")
+      .success()
+      .field("Branch", "main")
+      .username("ci-bot")
+  );
   assertEquals(calls[0].url, "https://slack.com/api/chat.postMessage");
   assertEquals(calls[0].init?.method, "POST");
   assertEquals(calls[0].init?.headers, {
@@ -186,10 +212,37 @@ Deno.test("slack bot-token mode posts to chat.postMessage with the channel", asy
   assertEquals(attachment.text, "✅ Build passed");
 });
 
-Deno.test("slack bot-token mode surfaces a Slack error code", async () => {
+Deno.test("slack bot mode is implied by setting a token", async () => {
+  const { fetch, calls } = fakeFetch(200, '{"ok":true}');
+  await AnnounceTasks.slack((s) =>
+    s.fetch(fetch).token("xoxb-9").channel("#x").text("hi")
+  );
+  assertEquals(calls[0].url, "https://slack.com/api/chat.postMessage");
+});
+
+Deno.test("slack bot mode requires a token", async () => {
+  await assertRejects(
+    () => AnnounceTasks.slack((s) => s.bot().channel("#x").text("hi")),
+    AnnounceError,
+    "needs a token",
+  );
+});
+
+Deno.test("slack bot mode requires a channel", async () => {
+  await assertRejects(
+    () => AnnounceTasks.slack((s) => s.bot().token("xoxb-1").text("hi")),
+    AnnounceError,
+    "needs a channel",
+  );
+});
+
+Deno.test("slack bot mode surfaces a Slack error code", async () => {
   const { fetch } = fakeFetch(200, '{"ok":false,"error":"channel_not_found"}');
   const error = await assertRejects(
-    () => AnnounceTasks.slack("#nope", "hi", { fetch, token: "xoxb-123" }),
+    () =>
+      AnnounceTasks.slack((s) =>
+        s.fetch(fetch).token("xoxb-1").channel("#nope").text("hi")
+      ),
     SlackApiError,
     "channel_not_found",
   );
@@ -198,10 +251,13 @@ Deno.test("slack bot-token mode surfaces a Slack error code", async () => {
   }
 });
 
-Deno.test("slack bot-token mode reports unknown_error when none is given", async () => {
+Deno.test("slack bot mode reports unknown_error when none is given", async () => {
   const { fetch } = fakeFetch(200, '{"ok":false}');
   const error = await assertRejects(
-    () => AnnounceTasks.slack("#nope", "hi", { fetch, token: "xoxb-123" }),
+    () =>
+      AnnounceTasks.slack((s) =>
+        s.fetch(fetch).token("xoxb-1").channel("#nope").text("hi")
+      ),
     SlackApiError,
     "unknown_error",
   );
@@ -210,10 +266,13 @@ Deno.test("slack bot-token mode reports unknown_error when none is given", async
   }
 });
 
-Deno.test("slack bot-token mode throws HttpError on a non-2xx response", async () => {
+Deno.test("slack bot mode throws HttpError on a non-2xx response", async () => {
   const { fetch } = fakeFetch(429, "rate limited");
   const error = await assertRejects(
-    () => AnnounceTasks.slack("#builds", "hi", { fetch, token: "xoxb-123" }),
+    () =>
+      AnnounceTasks.slack((s) =>
+        s.fetch(fetch).token("xoxb-1").channel("#builds").text("hi")
+      ),
     HttpError,
     "HTTP 429",
   );

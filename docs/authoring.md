@@ -240,14 +240,16 @@ const release = await httpJson<{ tag_name: string }>(
 ### Announcements — `AnnounceTasks.slack()` / `.teams()` / `.discord()`
 
 Post build status to a chat channel — "build passed", "package published",
-"service deployed" — via each platform's incoming webhook. The `AnnounceTasks`
-group is task-shaped like `FileTasks`: it runs no subprocess, so each method
-takes the webhook URL, the message, and an options object directly. A bare
-string is shorthand for an `"info"` announcement; an `Announcement` object adds
-a `title`, a `level` (`"success" | "failure" | "warning" | "info"`, driving the
-accent colour and icon), `fields`, and an action `link`. Each call POSTs the
-platform-native payload built on `fetch` (with a `fetch` seam for tests) and
-throws an `HttpError` on a non-2xx response.
+"service deployed" — via each platform's incoming webhook. `AnnounceTasks`
+follows the same **settings-lambda** shape as the tool wrappers, but runs no
+subprocess: each task takes `(s) => s.…` and configures a fluent settings
+object. Set the destination with `.webhook(url)` and the message with `.text()`,
+`.title()`, a level (`.success()` / `.failure()` / `.warning()` / `.info()`, or
+`.level(...)`), repeatable `.field(name, value)` details, and a
+`.link(text,
+url)` action. Each task POSTs the platform-native payload over
+`fetch` (override it with `.fetch()` in tests) and throws an `HttpError` on a
+non-2xx response.
 
 A webhook URL embeds the secret that authorises posting, so source it from a
 `parameter().secret()` build input rather than hard-coding it — Zuke masks the
@@ -263,36 +265,32 @@ class MyBuild extends Build {
     .requires(this.slack)
     .executes(async () => {
       // ... deploy ...
-      await AnnounceTasks.slack(this.slack.value, {
-        title: "Deploy",
-        text: "Shipped api@1.4.0 to production.",
-        level: "success",
-        fields: [{ name: "Service", value: "api" }],
-        link: { text: "Release notes", url: "https://example.com/r/1.4.0" },
-      });
+      await AnnounceTasks.slack((s) =>
+        s.webhook(this.slack.value)
+          .title("Deploy")
+          .text("Shipped api@1.4.0 to production.")
+          .success()
+          .field("Service", "api")
+          .link("Release notes", "https://example.com/r/1.4.0")
+      );
     });
 }
 ```
 
-Slack also speaks **bot tokens**: set `token` in the options to post through the
-Web API (`chat.postMessage`) instead of an incoming webhook — the first argument
-is then the channel id or name. The Web API answers `200` even on a logical
-failure, so Zuke checks the response and throws a `SlackApiError` (carrying
-Slack's `error` code, e.g. `channel_not_found`) when it reports `{ ok: false }`.
+Slack also speaks **bot tokens**: `.bot().token(t).channel(c)` posts through the
+Web API (`chat.postMessage`) instead of a webhook (setting `.token()` alone
+implies bot mode). The Web API answers `200` even on a logical failure, so Zuke
+checks the response and throws a `SlackApiError` (carrying Slack's `error` code,
+e.g. `channel_not_found`) when it reports `{ ok: false }`.
 
 ```ts
-class MyBuild extends Build {
-  slackToken = parameter("Slack bot token").secret().required();
-
-  notify = target()
-    .requires(this.slackToken)
-    .executes(async () => {
-      await AnnounceTasks.slack("#builds", "Published @acme/api@1.4.0", {
-        token: this.slackToken.value,
-        level: "success",
-      });
-    });
-}
+await AnnounceTasks.slack((s) =>
+  s.bot()
+    .token(this.slackToken.value)
+    .channel("#builds")
+    .text("Published @acme/api@1.4.0")
+    .success()
+);
 ```
 
 Announce a failure from `onFinish` to cover the whole pipeline:
@@ -300,10 +298,9 @@ Announce a failure from `onFinish` to cover the whole pipeline:
 ```ts
 override async onFinish(result) {
   if (!result.ok) {
-    await AnnounceTasks.discord(this.discord.value, {
-      text: "Build failed.",
-      level: "failure",
-    });
+    await AnnounceTasks.discord((s) =>
+      s.webhook(this.discord.value).text("Build failed.").failure()
+    );
   }
 }
 ```

@@ -86,15 +86,15 @@ export {
   httpText,
 } from "./src/http.ts";
 export {
-  type Announcement,
-  type AnnouncementField,
+  AnnounceError,
   type AnnouncementLevel,
-  type AnnouncementLink,
-  type AnnounceOptions,
+  AnnouncementSettings,
   AnnounceTasks,
   type AnnounceTasksApi,
-  type SlackAnnounceOptions,
+  DiscordAnnouncementSettings,
+  SlackAnnouncementSettings,
   SlackApiError,
+  TeamsAnnouncementSettings,
 } from "./src/announce.ts";
 export {
   createTarGzip,
