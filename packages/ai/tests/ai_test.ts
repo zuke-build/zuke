@@ -163,6 +163,52 @@ Deno.test("an API key is required", async () => {
   );
 });
 
+Deno.test("skipIfKeyMissing skips the review and announces it, without calling the API", async () => {
+  const { fetch, calls } = recordFetch(claude({ score: 9, findings: [] }));
+  const lines = await captured(() =>
+    securityReviewer((r) =>
+      r.provider("claude").apiKey("").skipIfKeyMissing()
+        .diff((d) => d.text(DIFF)).fetch(fetch)
+    ).validate({ target: "deploy" })
+  );
+  assertEquals(calls.length, 0); // no provider call when skipped
+  assertEquals(lines, ["[security review] skipped — no API key"]);
+});
+
+Deno.test("skipIfKeyMissing stays silent under quiet()", async () => {
+  const lines = await captured(() =>
+    securityReviewer((r) =>
+      r.provider("claude").apiKey("").skipIfKeyMissing().quiet()
+    )
+      .validate({ target: "deploy" })
+  );
+  assertEquals(lines, []);
+});
+
+Deno.test("a skipped review is noted in the GitHub Actions job summary", async () => {
+  const summaryFile = await Deno.makeTempFile();
+  const prev = Deno.env.get("GITHUB_STEP_SUMMARY");
+  Deno.env.set("GITHUB_STEP_SUMMARY", summaryFile);
+  const { log } = console;
+  console.log = () => {};
+  try {
+    await securityReviewer((r) =>
+      r.provider("claude").apiKey("").skipIfKeyMissing()
+    ).validate({ target: "deploy" });
+    const md = await Deno.readTextFile(summaryFile);
+    assertEquals(
+      md.includes("## ⏭️ security review — `deploy`"),
+      true,
+    );
+    assertEquals(md.includes("_Skipped — no API key._"), true);
+  } finally {
+    console.log = log;
+    if (prev === undefined) Deno.env.delete("GITHUB_STEP_SUMMARY");
+    else Deno.env.set("GITHUB_STEP_SUMMARY", prev);
+    await Deno.remove(summaryFile);
+  }
+});
+
 Deno.test("genericReviewer requires criteria, and includes it in the prompt", async () => {
   await assertRejects(
     () =>

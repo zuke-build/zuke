@@ -47,7 +47,11 @@ structured-output mode (Claude `output_config.format`, OpenAI strict
 `.model(...)`, `.effort(...)`, `.diff((d) => d.base("origin/main"))`,
 `.include(...)`/`.exclude(...)`, `.maxDiffTokens(n)`,
 `.failWhen((g) => g.scoreAbove(7) / g.severityAtLeast("high"))`,
-`.onError("fail" | "warn")`, `.quiet()`.
+`.onError("fail" | "warn")`, `.skipIfKeyMissing()`, `.quiet()`.
+
+`.skipIfKeyMissing()` skips the review instead of failing when the API key is
+absent — handy when the key is a CI-only secret — and announces the skip on the
+console and in the job summary so the gap is visible rather than silent.
 
 ## Structured output (schema enforcement)
 

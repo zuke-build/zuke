@@ -61,6 +61,20 @@ export function toMarkdown(
   return parts.join("\n");
 }
 
+/** The console line announcing a skipped review. */
+export function skipConsoleLine(name: string, reason: string): string {
+  return `[${name}] skipped — ${reason}`;
+}
+
+/** A Markdown section announcing a skipped review, for the job summary. */
+export function skipMarkdown(
+  name: string,
+  target: string,
+  reason: string,
+): string {
+  return `## ⏭️ ${name} — \`${target}\`\n\n_Skipped — ${cell(reason)}._\n`;
+}
+
 /**
  * Append `markdown` to the GitHub Actions job-summary file, if one is set.
  * Best-effort: a missing or unwritable file never fails the review.

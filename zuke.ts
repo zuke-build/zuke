@@ -251,8 +251,9 @@ class ZukeBuild extends Build {
     });
 
   // Dogfood @zuke/ai: review the diff for security issues. The key is an org
-  // secret (OPENAI_API_KEY) available in Actions; the target is skipped when it
-  // is absent (e.g. local runs). `onError("warn")` keeps an API hiccup from
+  // secret (OPENAI_API_KEY) available in Actions; `skipIfKeyMissing()` skips the
+  // review (announcing it on the console and in the summary) when the key is
+  // absent, e.g. on local runs. `onError("warn")` keeps an API hiccup from
   // breaking the build, and the assessment lands in the job summary.
   openaiKey = parameter("OpenAI API key for the AI security review")
     .secret()
@@ -262,6 +263,7 @@ class ZukeBuild extends Build {
     r
       .provider("openai")
       .apiKey(this.openaiKey)
+      .skipIfKeyMissing()
       .diff((d) => d.base(Deno.env.get("ZUKE_REVIEW_BASE") ?? "origin/master"))
       .maxDiffTokens(20000)
       .failWhen((g) => g.scoreAbove(8))
@@ -270,7 +272,6 @@ class ZukeBuild extends Build {
 
   review = target()
     .description("AI security review of the diff (writes to the job summary)")
-    .onlyWhen(() => this.openaiKey.isSet_())
     .validateBefore(this.securityReview)
     .executes(() => {});
 

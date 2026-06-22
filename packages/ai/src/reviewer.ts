@@ -21,7 +21,13 @@ import { type GateRule, GateSettings, gateTrips } from "./gate.ts";
 import { buildPrompt } from "./prompt.ts";
 import { callProvider, DEFAULT_MODELS, resolveKey } from "./provider.ts";
 import { emptyAssessment, parseAssessment } from "./assessment.ts";
-import { consoleLines, toMarkdown, writeStepSummary } from "./report.ts";
+import {
+  consoleLines,
+  skipConsoleLine,
+  skipMarkdown,
+  toMarkdown,
+  writeStepSummary,
+} from "./report.ts";
 
 /**
  * A fluent AI reviewer. Construct one via {@link securityReviewer} (and the
@@ -42,6 +48,7 @@ export class Reviewer implements Validation {
   #maxDiffTokens?: number;
   #gate: GateRule[] = [{ kind: "score", value: 7 }];
   #onError: "fail" | "warn" = "fail";
+  #skipIfKeyMissing = false;
   #quiet = false;
   #fetch?: typeof fetch;
   #exec?: (argv: string[]) => Promise<string>;
@@ -125,6 +132,16 @@ export class Reviewer implements Validation {
     return this;
   }
 
+  /**
+   * Skip the review (instead of failing) when the API key is missing — handy
+   * when the key is a CI-only secret. The skip is announced on the console and
+   * in the job summary so the gap is visible.
+   */
+  skipIfKeyMissing(): this {
+    this.#skipIfKeyMissing = true;
+    return this;
+  }
+
   /** Suppress the findings printout and the job-summary section. */
   quiet(): this {
     this.#quiet = true;
@@ -161,6 +178,16 @@ export class Reviewer implements Validation {
   }
 
   /**
+   * Announce a skipped review unless quiet — on the console, and (under GitHub
+   * Actions) as a Markdown note appended to the job summary.
+   */
+  #reportSkip(target: string, reason: string): void {
+    if (this.#quiet) return;
+    console.log(skipConsoleLine(this.name, reason));
+    writeStepSummary(skipMarkdown(this.name, target, reason));
+  }
+
+  /**
    * Run the review and gate the build. Throws an {@link AiReviewError} when the
    * gate trips (or on a configuration/API error with `onError: "fail"`).
    */
@@ -171,6 +198,10 @@ export class Reviewer implements Validation {
     }
     const key = resolveKey(this.#apiKey);
     if (key === "") {
+      if (this.#skipIfKeyMissing) {
+        this.#reportSkip(context.target, "no API key");
+        return;
+      }
       throw new AiReviewError("an API key is required; call .apiKey(...)");
     }
     if (this.#assessment === "generic" && this.#criteria === "") {

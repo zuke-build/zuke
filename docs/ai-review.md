@@ -80,6 +80,12 @@ and uses `nullable`. Both map to the same parsed result.
 (API error, refusal, unparsable response): `"fail"` (default) breaks the build
 fail-closed; `"warn"` logs and passes.
 
+`.skipIfKeyMissing()` handles the _absent key_ case separately: instead of
+failing with "an API key is required", the review is skipped and the skip is
+announced on the console and in the job summary. This keeps a reviewer that
+relies on a CI-only secret from breaking local runs (or forks that receive no
+secret), while still making the gap visible rather than silently passing.
+
 ## Scoping the diff and cost
 
 - `.diff((d) => d.base("origin/main"))` reviews the diff against a ref;
@@ -113,6 +119,7 @@ openaiKey = parameter("OpenAI API key for the AI security review")
 securityReview = securityReviewer((r) =>
   r.provider("openai")
     .apiKey(this.openaiKey)
+    .skipIfKeyMissing() // skip + announce when the key is absent (local runs)
     .diff((d) => d.base(Deno.env.get("ZUKE_REVIEW_BASE") ?? "origin/master"))
     .maxDiffTokens(20000)
     .failWhen((g) => g.scoreAbove(8))
@@ -120,12 +127,15 @@ securityReview = securityReviewer((r) =>
 );
 
 review = target()
-  .onlyWhen(() => this.openaiKey.isSet_()) // skip when no key (local runs)
   .validateBefore(this.securityReview)
   .executes(() => {});
 ```
 
-The [`ai-review.yml`](../.github/workflows/ai-review.yml) workflow runs
+`.skipIfKeyMissing()` replaces an `.onlyWhen(() => this.openaiKey.isSet_())`
+gate on the target: rather than the target vanishing silently when the key is
+absent, the reviewer runs, sees no key, and prints a "skipped — no API key"
+line (and a matching job-summary note). The
+[`ai-review.yml`](../.github/workflows/ai-review.yml) workflow runs
 `./zuke review` on pull requests (non-fork only, so the secret is never exposed
 to untrusted code), passing `OPENAI_API_KEY` and a `ZUKE_REVIEW_BASE` to diff
 against. The assessment lands in that run's job summary.
