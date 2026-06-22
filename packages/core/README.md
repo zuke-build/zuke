@@ -21,6 +21,11 @@ Also exports `jsr:@zuke/core/shell` (the injection-safe `$` runner) and
 
 See [Zuke](https://github.com/zuke-build/zuke#readme) for the full guide.
 
+## Stability
+
+From `1.0.0`, `@zuke/core` follows semantic versioning: breaking changes to the
+public API bump the major version, so you can depend on `^1` with confidence.
+
 ## Paths
 
 `@zuke/core` exports `absolutePath` and the `PathLike` type. Across the Zuke
