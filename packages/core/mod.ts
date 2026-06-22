@@ -93,6 +93,8 @@ export {
   type AnnounceOptions,
   AnnounceTasks,
   type AnnounceTasksApi,
+  type SlackAnnounceOptions,
+  SlackApiError,
 } from "./src/announce.ts";
 export {
   createTarGzip,

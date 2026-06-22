@@ -274,6 +274,27 @@ class MyBuild extends Build {
 }
 ```
 
+Slack also speaks **bot tokens**: set `token` in the options to post through the
+Web API (`chat.postMessage`) instead of an incoming webhook — the first argument
+is then the channel id or name. The Web API answers `200` even on a logical
+failure, so Zuke checks the response and throws a `SlackApiError` (carrying
+Slack's `error` code, e.g. `channel_not_found`) when it reports `{ ok: false }`.
+
+```ts
+class MyBuild extends Build {
+  slackToken = parameter("Slack bot token").secret().required();
+
+  notify = target()
+    .requires(this.slackToken)
+    .executes(async () => {
+      await AnnounceTasks.slack("#builds", "Published @acme/api@1.4.0", {
+        token: this.slackToken.value,
+        level: "success",
+      });
+    });
+}
+```
+
 Announce a failure from `onFinish` to cover the whole pipeline:
 
 ```ts

@@ -10,9 +10,13 @@
  * platform `fetch` with an injectable `fetch` seam so they can be unit-tested
  * without network access.
  *
- * A webhook URL embeds the secret that authorises posting to a channel, so it
- * should come from a {@link "./params.ts" | secret parameter} rather than being
- * hard-coded:
+ * Slack also supports a bot-token mode: set {@link SlackAnnounceOptions.token}
+ * to post through the Web API (`chat.postMessage`) and pass the channel as the
+ * first argument instead of a webhook URL.
+ *
+ * A webhook URL (or bot token) embeds the secret that authorises posting to a
+ * channel, so it should come from a {@link "./params.ts" | secret parameter}
+ * rather than being hard-coded:
  *
  * ```ts
  * import { AnnounceTasks, Build, parameter, target } from "jsr:@zuke/core";
@@ -93,6 +97,32 @@ export interface AnnounceOptions {
    * it to unit-test without network access.
    */
   fetch?: typeof fetch;
+}
+
+/** Options for {@link AnnounceTasksApi.slack}, adding bot-token mode. */
+export interface SlackAnnounceOptions extends AnnounceOptions {
+  /**
+   * A Slack bot token (`xoxb-…`). Set it to post through the Slack Web API
+   * (`chat.postMessage`) instead of an incoming webhook — the first argument is
+   * then the channel id or name to post to rather than a webhook URL. Source it
+   * from a secret parameter; Zuke masks it in CI output.
+   */
+  token?: string;
+}
+
+/**
+ * Raised when the Slack Web API accepts the request but reports a logical
+ * failure (`{ ok: false }`), carrying Slack's machine-readable error code (e.g.
+ * `channel_not_found`, `not_in_channel`, `invalid_auth`).
+ */
+export class SlackApiError extends Error {
+  override name = "SlackApiError";
+  constructor(
+    /** Slack's `error` code from the `chat.postMessage` response. */
+    readonly error: string,
+  ) {
+    super(`Slack chat.postMessage failed: ${error}`);
+  }
 }
 
 /** The accent (hex colour + icon) used to render each {@link AnnouncementLevel}. */
@@ -202,17 +232,56 @@ async function post(
   if (!response.ok) throw new HttpError(response.status, url);
 }
 
+/** The Slack Web API `chat.postMessage` endpoint. */
+const SLACK_POST_MESSAGE = "https://slack.com/api/chat.postMessage";
+
+/**
+ * Post via the Slack Web API (`chat.postMessage`) using a bot token. Unlike a
+ * webhook, the API answers `200` even on a logical failure, so the `ok` flag in
+ * the JSON body is checked and surfaced as a {@link SlackApiError}.
+ */
+async function postSlackBot(
+  token: string,
+  channel: string,
+  ann: Announcement,
+  options: SlackAnnounceOptions,
+): Promise<void> {
+  const doFetch = options.fetch ?? fetch;
+  const payload = { channel, ...slackPayload(ann, options) };
+  const response = await doFetch(SLACK_POST_MESSAGE, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    await response.body?.cancel();
+    throw new HttpError(response.status, SLACK_POST_MESSAGE);
+  }
+  const result: { ok?: boolean; error?: string } = await response.json();
+  if (result.ok !== true) {
+    throw new SlackApiError(result.error ?? "unknown_error");
+  }
+}
+
 /** The shape of {@link AnnounceTasks}. */
 export interface AnnounceTasksApi {
   /**
-   * Post `message` to a Slack channel via its incoming-webhook `webhookUrl`
-   * (the URL embeds the secret, so source it from a secret parameter). A bare
-   * string is shorthand for an `"info"` announcement.
+   * Post `message` to Slack. By default `destination` is an incoming-webhook URL
+   * (the URL embeds the secret, so source it from a secret parameter). Set
+   * {@link SlackAnnounceOptions.token} to post through the Web API
+   * (`chat.postMessage`) with a bot token instead — `destination` is then the
+   * channel id or name. A bare string is shorthand for an `"info"` announcement.
+   *
+   * @throws {HttpError} on a non-2xx HTTP response.
+   * @throws {SlackApiError} when the Web API reports `{ ok: false }` (bot mode).
    */
   slack(
-    webhookUrl: string,
+    destination: string,
     message: Announcement | string,
-    options?: AnnounceOptions,
+    options?: SlackAnnounceOptions,
   ): Promise<void>;
 
   /**
@@ -240,15 +309,15 @@ export interface AnnounceTasksApi {
 /** Announcement task functions for posting build status to chat platforms. */
 export const AnnounceTasks: AnnounceTasksApi = {
   slack(
-    webhookUrl: string,
+    destination: string,
     message: Announcement | string,
-    options: AnnounceOptions = {},
+    options: SlackAnnounceOptions = {},
   ): Promise<void> {
-    return post(
-      webhookUrl,
-      slackPayload(asAnnouncement(message), options),
-      options,
-    );
+    const ann = asAnnouncement(message);
+    if (options.token !== undefined) {
+      return postSlackBot(options.token, destination, ann, options);
+    }
+    return post(destination, slackPayload(ann, options), options);
   },
 
   teams(

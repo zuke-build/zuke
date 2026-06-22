@@ -1,5 +1,9 @@
 import { assertEquals, assertRejects } from "./_assert.ts";
-import { type Announcement, AnnounceTasks } from "../src/announce.ts";
+import {
+  type Announcement,
+  AnnounceTasks,
+  SlackApiError,
+} from "../src/announce.ts";
 import { HttpError } from "../src/http.ts";
 
 /** A recorded webhook call with its URL and parsed JSON body. */
@@ -154,5 +158,67 @@ Deno.test("a non-2xx webhook response throws HttpError carrying the status", asy
   if (error instanceof HttpError) {
     assertEquals(error.status, 400);
     assertEquals(error.url, "https://hooks.slack.com/bad");
+  }
+});
+
+Deno.test("slack bot-token mode posts to chat.postMessage with the channel", async () => {
+  const { fetch, calls } = fakeFetch(200, '{"ok":true}');
+  const message: Announcement = {
+    text: "Build passed",
+    level: "success",
+    fields: [{ name: "Branch", value: "main" }],
+  };
+  await AnnounceTasks.slack("#builds", message, {
+    fetch,
+    token: "xoxb-123",
+    username: "ci-bot",
+  });
+  assertEquals(calls[0].url, "https://slack.com/api/chat.postMessage");
+  assertEquals(calls[0].init?.method, "POST");
+  assertEquals(calls[0].init?.headers, {
+    "Content-Type": "application/json; charset=utf-8",
+    Authorization: "Bearer xoxb-123",
+  });
+  assertEquals(calls[0].body.channel, "#builds");
+  assertEquals(calls[0].body.username, "ci-bot");
+  const [attachment] = calls[0].body.attachments as Record<string, unknown>[];
+  assertEquals(attachment.color, "#2eb886");
+  assertEquals(attachment.text, "✅ Build passed");
+});
+
+Deno.test("slack bot-token mode surfaces a Slack error code", async () => {
+  const { fetch } = fakeFetch(200, '{"ok":false,"error":"channel_not_found"}');
+  const error = await assertRejects(
+    () => AnnounceTasks.slack("#nope", "hi", { fetch, token: "xoxb-123" }),
+    SlackApiError,
+    "channel_not_found",
+  );
+  if (error instanceof SlackApiError) {
+    assertEquals(error.error, "channel_not_found");
+  }
+});
+
+Deno.test("slack bot-token mode reports unknown_error when none is given", async () => {
+  const { fetch } = fakeFetch(200, '{"ok":false}');
+  const error = await assertRejects(
+    () => AnnounceTasks.slack("#nope", "hi", { fetch, token: "xoxb-123" }),
+    SlackApiError,
+    "unknown_error",
+  );
+  if (error instanceof SlackApiError) {
+    assertEquals(error.error, "unknown_error");
+  }
+});
+
+Deno.test("slack bot-token mode throws HttpError on a non-2xx response", async () => {
+  const { fetch } = fakeFetch(429, "rate limited");
+  const error = await assertRejects(
+    () => AnnounceTasks.slack("#builds", "hi", { fetch, token: "xoxb-123" }),
+    HttpError,
+    "HTTP 429",
+  );
+  if (error instanceof HttpError) {
+    assertEquals(error.status, 429);
+    assertEquals(error.url, "https://slack.com/api/chat.postMessage");
   }
 });
