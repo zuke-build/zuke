@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.0](https://github.com/zuke-build/zuke/compare/core-v0.14.0...core-v1.0.0) (2026-06-22)
+
+
+### Documentation
+
+* **core:** document semantic-versioning stability for 1.0.0 ([#91](https://github.com/zuke-build/zuke/issues/91)) ([c9bf2bf](https://github.com/zuke-build/zuke/commit/c9bf2bf172528eb3107d537cc4facc27ec81d9e6))
+
 ## [0.14.0](https://github.com/zuke-build/zuke/compare/core-v0.13.0...core-v0.14.0) (2026-06-21)
 
 
