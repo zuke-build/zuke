@@ -37,7 +37,10 @@ same fluent `Reviewer` and return a `Validation`.
 ## Providers
 
 `"claude"` (default model `claude-opus-4-8`), `"openai"`, and `"gemini"`. The
-API key comes from a `parameter().secret()` (masked in CI) or a string.
+API key comes from a `parameter().secret()` (masked in CI) or a string. The
+assessment JSON shape is enforced **server-side** via each provider's
+structured-output mode (Claude `output_config.format`, OpenAI strict
+`json_schema`, Gemini `responseSchema`), not merely requested in the prompt.
 
 ## Options (all optional, with defaults)
 

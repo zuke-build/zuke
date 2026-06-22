@@ -10,6 +10,7 @@ import type { AnyParameter } from "@zuke/core";
 import type { Effort, Provider } from "./types.ts";
 import { AiReviewError } from "./errors.ts";
 import { dig, expectString } from "./json.ts";
+import { ASSESSMENT_GEMINI_SCHEMA, ASSESSMENT_JSON_SCHEMA } from "./schema.ts";
 
 /** Default model per provider, used when `.model(...)` is not set. */
 export const DEFAULT_MODELS: Record<Provider, string> = {
@@ -52,15 +53,18 @@ export async function callProvider(
 ): Promise<string> {
   const doFetch = options.fetch ?? fetch;
   if (provider === "claude") {
+    // `output_config.format` enforces the JSON shape server-side.
+    const outputConfig: Record<string, unknown> = {
+      format: { type: "json_schema", schema: ASSESSMENT_JSON_SCHEMA },
+    };
+    if (options.effort !== undefined) outputConfig.effort = options.effort;
     const body: Record<string, unknown> = {
       model,
       max_tokens: 4096,
       system,
       messages: [{ role: "user", content: user }],
+      output_config: outputConfig,
     };
-    if (options.effort !== undefined) {
-      body.output_config = { effort: options.effort };
-    }
     const url = "https://api.anthropic.com/v1/messages";
     const response = await doFetch(url, {
       method: "POST",
@@ -92,7 +96,15 @@ export async function callProvider(
           { role: "system", content: system },
           { role: "user", content: user },
         ],
-        response_format: { type: "json_object" },
+        // Strict structured outputs enforce the JSON shape server-side.
+        response_format: {
+          type: "json_schema",
+          json_schema: {
+            name: "assessment",
+            strict: true,
+            schema: ASSESSMENT_JSON_SCHEMA,
+          },
+        },
       }),
     });
     await ensureOk(response, provider);
@@ -112,7 +124,11 @@ export async function callProvider(
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: system }] },
       contents: [{ role: "user", parts: [{ text: user }] }],
-      generationConfig: { responseMimeType: "application/json" },
+      // `responseSchema` enforces the JSON shape server-side.
+      generationConfig: {
+        responseMimeType: "application/json",
+        responseSchema: ASSESSMENT_GEMINI_SCHEMA,
+      },
     }),
   });
   await ensureOk(response, provider);

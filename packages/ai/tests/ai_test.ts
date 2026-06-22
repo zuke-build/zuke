@@ -89,6 +89,9 @@ Deno.test("security review passes below the threshold and calls Claude", async (
   assertEquals(body.model, "claude-opus-4-8"); // default model
   assertEquals(typeof body.system, "string");
   assertEquals(body.messages[0].content.includes("eval(input)"), true);
+  // The response schema is enforced server-side, not just in the prompt.
+  assertEquals(body.output_config.format.type, "json_schema");
+  assertEquals(body.output_config.format.schema.type, "object");
 });
 
 Deno.test("the build breaks when the risk score exceeds the threshold", async () => {
@@ -187,7 +190,9 @@ Deno.test("openai provider posts to chat/completions with a bearer token", async
   assertEquals(headers.authorization, "Bearer sk-oa");
   const body = JSON.parse(calls[0].body);
   assertEquals(body.model, "gpt-x");
-  assertEquals(body.response_format.type, "json_object");
+  assertEquals(body.response_format.type, "json_schema");
+  assertEquals(body.response_format.json_schema.strict, true);
+  assertEquals(body.response_format.json_schema.schema.type, "object");
 });
 
 Deno.test("gemini provider posts to generateContent with the key in the URL", async () => {
@@ -202,10 +207,10 @@ Deno.test("gemini provider posts to generateContent with the key in the URL", as
     ),
     true,
   );
-  assertEquals(
-    JSON.parse(calls[0].body).systemInstruction.parts[0].text.length > 0,
-    true,
-  );
+  const body = JSON.parse(calls[0].body);
+  assertEquals(body.systemInstruction.parts[0].text.length > 0, true);
+  assertEquals(body.generationConfig.responseMimeType, "application/json");
+  assertEquals(body.generationConfig.responseSchema.type, "object");
 });
 
 Deno.test("a non-2xx response fails closed, but onError warn passes", async () => {
