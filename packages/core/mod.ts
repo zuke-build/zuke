@@ -86,6 +86,17 @@ export {
   httpText,
 } from "./src/http.ts";
 export {
+  AnnounceError,
+  type AnnouncementLevel,
+  AnnouncementSettings,
+  AnnounceTasks,
+  type AnnounceTasksApi,
+  DiscordAnnouncementSettings,
+  SlackAnnouncementSettings,
+  SlackApiError,
+  TeamsAnnouncementSettings,
+} from "./src/announce.ts";
+export {
   createTarGzip,
   extractTarGzip,
   gunzip,
