@@ -47,9 +47,10 @@ update the `check` task and CI accordingly. Do not bolt on a parallel
 2. **All linting, formatting, type-checking, and tests must always pass.** Run
    `deno task ci` before committing; it must be green.
 3. **Keep test coverage at 95%+ (lines and branches) at all times.** Enforced by
-   the coverage gate built into `DenoTasks.coverage` (a `.threshold()` parses the
-   lcov report and fails the build), wired up in the `cov` task / `zuke coverage`
-   target and in CI. New code needs new tests in the same change.
+   the coverage gate built into `DenoTasks.coverage` (a `.threshold()` parses
+   the lcov report and fails the build), wired up in the `cov` task /
+   `zuke coverage` target and in CI. New code needs new tests in the same
+   change.
 4. **Document the public API.** Every exported symbol carries a JSDoc comment;
    match the existing density and tone when adding to it.
 5. **Tests are hermetic and fast.** No network, no reliance on ambient tools.
@@ -65,9 +66,11 @@ update the `check` task and CI accordingly. Do not bolt on a parallel
    internal helpers unexported. (The framework primitives a build is defined
    with — `Build`, `target`, `group`, `run` — are the deliberate exception.)
 7. **Mirror the real CLI.** Name a wrapper's task methods and settings after the
-   actual subcommands and flags they invoke — `CspellTasks.lint` runs `cspell
-   lint`, not a prettier alias like `check`. Staying close to the tool's own
-   vocabulary keeps the wrapper predictable for anyone who knows the CLI.
+   actual subcommands and flags they invoke — `CspellTasks.lint` runs
+   `cspell
+   lint`, not a prettier alias like `check`. Staying close to the
+   tool's own vocabulary keeps the wrapper predictable for anyone who knows the
+   CLI.
 
 ## Commands
 
@@ -121,6 +124,17 @@ zuke.ts                   # Zuke's own build (runnable example)
   mood; explain the _why_). Keep PRs reviewable.
 - **Conventional, semantic versioning** for releases; keep a changelog as the
   project grows.
+- **PR titles are the release trigger — make them conventional commits.** This
+  repo **always squash-merges**, so the squashed commit's subject is the PR
+  title, and that single subject is the only thing release-please parses for the
+  merge. A title that is not a conventional commit (e.g. `Add announce tasks`)
+  is silently ignored — no version is bumped and no release PR is cut. Title
+  every PR `type(scope): summary` so the squash carries the right artifact:
+  `feat(core): …` for a new feature (minor bump), `fix(deno): …` for a fix
+  (patch). The scope is cosmetic; release-please attributes the bump to a
+  package by the **files the PR changes** under `packages/<name>/`, so a PR that
+  should release a package must touch a file under that package's path with a
+  `feat`/`fix` title. (`docs`/`chore`/`refactor`/`test` titles never bump.)
 - **Keep code snippets out of commit message bodies.** release-please parses
   every merged commit with a strict conventional-commits parser, and a code
   fragment containing parentheses (e.g. an arrow function) makes it fail to
@@ -128,6 +142,13 @@ zuke.ts                   # Zuke's own build (runnable example)
   version is bumped. The repo squash-merges, so the squash body comes from the
   PR description/commits: put illustrative code in the PR discussion, and keep
   commit bodies to prose. See [`RELEASING.md`](RELEASING.md).
+- **A new package must be added everywhere.** Membership is declared in five
+  places that must stay in lock-step: the `deno.json` workspace,
+  `.release-please-config.json`, `.release-please-manifest.json`, the `PACKAGES`
+  array in `zuke.ts` (the JSR publish loop), and the list in
+  `tests/release_config_test.ts`. `tests/release_config_test.ts` enforces that
+  they agree — run it after adding a package. Omitting `zuke.ts` means the
+  package is released but never published.
 - **Update docs with code.** If behaviour changes, update `README.md`, JSDoc,
   and the spec/acceptance criteria in the same PR.
 - **No secrets or machine-specific paths** in the repo or commits. Don't commit

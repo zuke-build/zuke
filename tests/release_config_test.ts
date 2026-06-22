@@ -77,3 +77,28 @@ Deno.test("manifest versions match each package deno.json", async () => {
     );
   }
 });
+
+Deno.test("the deno workspace lists exactly the configured packages", async () => {
+  const root = await readJson("deno.json");
+  const workspace = root.workspace;
+  if (!Array.isArray(workspace)) {
+    throw new Error("deno.json workspace must be an array");
+  }
+  assertEquals(workspace.map(String).sort(), [...PACKAGES].sort());
+});
+
+Deno.test("the zuke.ts JSR publish list covers every workspace package", async () => {
+  // `publishJsr` only iterates this array, so a package missing here is silently
+  // never published — guard against that drift (it is what stranded the AI CLI
+  // wrappers on JSR).
+  const source = await Deno.readTextFile("zuke.ts");
+  const block = source.match(/const PACKAGES = \[([^\]]*)\]/);
+  if (block === null) {
+    throw new Error("could not find the PACKAGES array in zuke.ts");
+  }
+  const names = [...block[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+  assertEquals(
+    names.map((name) => `packages/${name}`).sort(),
+    [...PACKAGES].sort(),
+  );
+});
