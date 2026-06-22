@@ -40,6 +40,8 @@ export {
   target,
   TargetBuilder,
   type TargetFn,
+  type Validation,
+  type ValidationContext,
 } from "./src/target.ts";
 export { run, type RunOptions } from "./src/cli.ts";
 export type { Plugin } from "./src/plugin.ts";

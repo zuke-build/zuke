@@ -42,6 +42,7 @@ const PACKAGES = [
   "packages/tofu",
   "packages/release-please",
   "packages/security",
+  "packages/ai",
 ];
 
 async function readJson(path: string): Promise<Record<string, unknown>> {

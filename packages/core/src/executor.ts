@@ -544,7 +544,9 @@ async function runTarget(
   }
 
   try {
+    for (const v of t.validateBefore_) await v.validate({ target: name });
     await runBody(t);
+    for (const v of t.validateAfter_) await v.validate({ target: name });
     const ms = performance.now() - start;
     if (cache !== undefined) await cache.record(t);
     passTarget(reporter, style, name, ms);

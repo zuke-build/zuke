@@ -557,6 +557,11 @@
   },
   "workspace": {
     "members": {
+      "packages/ai": {
+        "dependencies": [
+          "jsr:@zuke/core@1"
+        ]
+      },
       "packages/biome": {
         "dependencies": [
           "jsr:@zuke/core@1"

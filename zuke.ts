@@ -74,6 +74,7 @@ const PACKAGES = [
   "tofu",
   "release-please",
   "security",
+  "ai",
 ];
 
 /**
