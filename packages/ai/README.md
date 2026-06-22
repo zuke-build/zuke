@@ -49,4 +49,27 @@ structured-output mode (Claude `output_config.format`, OpenAI strict
 `.failWhen((g) => g.scoreAbove(7) / g.severityAtLeast("high"))`,
 `.onError("fail" | "warn")`, `.quiet()`.
 
-See [Zuke](https://github.com/zuke-build/zuke#readme) for the full guide.
+## Structured output (schema enforcement)
+
+Asking the model for JSON in the prompt isn't enough — it can drift. Every
+request also carries the assessment JSON **schema**, so the shape is enforced by
+the provider's structured-output mode rather than merely requested:
+
+- **Claude** — `output_config.format` with the JSON schema.
+- **OpenAI** — `response_format: { type: "json_schema", strict: true }`.
+- **Gemini** — `generationConfig.responseSchema`.
+
+The prompt instruction stays as a backstop. Optional finding fields are nullable
+in the strict schema; the parser treats `null` as "absent".
+
+## GitHub Actions summary
+
+When a review runs under GitHub Actions, it appends a Markdown section — score,
+severity, and a findings table — to the job summary (`$GITHUB_STEP_SUMMARY`), so
+the assessment shows up on the run page even when the gate passes. It writes on
+gate failure too, just before breaking the build. `.quiet()` suppresses both the
+console printout and the summary section.
+
+See [Zuke](https://github.com/zuke-build/zuke#readme) and the
+[AI review guide](https://github.com/zuke-build/zuke/blob/master/docs/ai-review.md)
+for the full walkthrough.

@@ -16,11 +16,13 @@ import {
   type AbsolutePath,
   Build,
   FileTasks,
+  parameter,
   repoRoot,
   run,
   target,
 } from "@zuke/core";
 import { CommandTimeoutError } from "@zuke/core/shell";
+import { securityReviewer } from "@zuke/ai";
 import { type DenoInstallSettings, DenoTasks } from "@zuke/deno";
 import { CspellTasks } from "@zuke/cspell";
 import { isPublished } from "@zuke/jsr";
@@ -247,6 +249,30 @@ class ZukeBuild extends Build {
         );
       }
     });
+
+  // Dogfood @zuke/ai: review the diff for security issues. The key is an org
+  // secret (OPENAI_API_KEY) available in Actions; the target is skipped when it
+  // is absent (e.g. local runs). `onError("warn")` keeps an API hiccup from
+  // breaking the build, and the assessment lands in the job summary.
+  openaiKey = parameter("OpenAI API key for the AI security review")
+    .secret()
+    .env("OPENAI_API_KEY");
+
+  securityReview = securityReviewer((r) =>
+    r
+      .provider("openai")
+      .apiKey(this.openaiKey)
+      .diff((d) => d.base(Deno.env.get("ZUKE_REVIEW_BASE") ?? "origin/master"))
+      .maxDiffTokens(20000)
+      .failWhen((g) => g.scoreAbove(8))
+      .onError("warn")
+  );
+
+  review = target()
+    .description("AI security review of the diff (writes to the job summary)")
+    .onlyWhen(() => this.openaiKey.isSet_())
+    .validateBefore(this.securityReview)
+    .executes(() => {});
 
   release = target()
     .description("Maintain release PRs and GitHub releases (release-please)")

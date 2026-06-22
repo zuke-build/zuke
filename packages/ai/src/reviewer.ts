@@ -21,6 +21,7 @@ import { type GateRule, GateSettings, gateTrips } from "./gate.ts";
 import { buildPrompt } from "./prompt.ts";
 import { callProvider, DEFAULT_MODELS, resolveKey } from "./provider.ts";
 import { emptyAssessment, parseAssessment } from "./assessment.ts";
+import { consoleLines, toMarkdown, writeStepSummary } from "./report.ts";
 
 /**
  * A fluent AI reviewer. Construct one via {@link securityReviewer} (and the
@@ -124,7 +125,7 @@ export class Reviewer implements Validation {
     return this;
   }
 
-  /** Suppress the findings printout. */
+  /** Suppress the findings printout and the job-summary section. */
   quiet(): this {
     this.#quiet = true;
     return this;
@@ -149,19 +150,14 @@ export class Reviewer implements Validation {
     return await run(this.#diff.argv_());
   }
 
-  /** Print the assessment unless quiet. */
-  #print(assessment: Assessment): void {
+  /**
+   * Report the assessment unless quiet — to the console, and (under GitHub
+   * Actions) as a Markdown section appended to the job summary.
+   */
+  #report(assessment: Assessment, target: string): void {
     if (this.#quiet) return;
-    console.log(
-      `[${this.name}] score ${assessment.score}/10 (${assessment.severity}) — ${assessment.findings.length} finding(s)`,
-    );
-    for (const f of assessment.findings) {
-      const where = f.file !== undefined
-        ? ` (${f.file}${f.line !== undefined ? `:${f.line}` : ""})`
-        : "";
-      console.log(`  - [${f.severity}] ${f.title}${where}`);
-    }
-    if (assessment.summary !== "") console.log(`  ${assessment.summary}`);
+    for (const line of consoleLines(this.name, assessment)) console.log(line);
+    writeStepSummary(toMarkdown(this.name, target, assessment));
   }
 
   /**
@@ -189,7 +185,7 @@ export class Reviewer implements Validation {
       [...DEFAULT_EXCLUDES, ...this.#exclude],
     ).trim();
     if (diff === "") {
-      this.#print(emptyAssessment());
+      this.#report(emptyAssessment(), context.target);
       return;
     }
     if (this.#maxDiffTokens !== undefined) {
@@ -221,7 +217,7 @@ export class Reviewer implements Validation {
       throw error instanceof AiReviewError ? error : new AiReviewError(message);
     }
 
-    this.#print(assessment);
+    this.#report(assessment, context.target);
     const gate = gateTrips(assessment, this.#gate);
     if (gate.tripped) {
       throw new AiReviewError(

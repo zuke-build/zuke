@@ -57,10 +57,15 @@ function gemini(assessment: Partial<Assessment>): string {
   });
 }
 
-/** Capture `console.log`/`console.warn` output produced by `fn`. */
+/**
+ * Capture `console.log`/`console.warn` output produced by `fn`, with the
+ * Actions job-summary file unset so non-quiet reviews don't write a real one.
+ */
 async function captured(fn: () => Promise<void>): Promise<string[]> {
   const lines: string[] = [];
   const { log, warn } = console;
+  const summary = Deno.env.get("GITHUB_STEP_SUMMARY");
+  Deno.env.delete("GITHUB_STEP_SUMMARY");
   console.log = (...a: unknown[]) => void lines.push(a.join(" "));
   console.warn = (...a: unknown[]) => void lines.push(a.join(" "));
   try {
@@ -68,6 +73,7 @@ async function captured(fn: () => Promise<void>): Promise<string[]> {
   } finally {
     console.log = log;
     console.warn = warn;
+    if (summary !== undefined) Deno.env.set("GITHUB_STEP_SUMMARY", summary);
   }
   return lines;
 }
@@ -505,4 +511,72 @@ Deno.test("a null inside the response shape fails closed", async () => {
     AiReviewError,
     "could not read",
   );
+});
+
+Deno.test("the assessment is appended to the GitHub Actions job summary", async () => {
+  const summaryFile = await Deno.makeTempFile();
+  const prev = Deno.env.get("GITHUB_STEP_SUMMARY");
+  Deno.env.set("GITHUB_STEP_SUMMARY", summaryFile);
+  const { log } = console;
+  console.log = () => {};
+  try {
+    // With findings + a summary: renders the table, location, and pipe escape.
+    const a = recordFetch(
+      claude({
+        score: 4,
+        severity: "high",
+        summary: "two issues found",
+        findings: [
+          {
+            title: "sql | injection",
+            severity: "high",
+            file: "db.ts",
+            line: 9,
+          },
+          { title: "weak hash", severity: "low" },
+        ],
+      }),
+    );
+    await securityReviewer((r) =>
+      r.provider("claude").apiKey("k").diff((d) => d.text(DIFF)).fetch(a.fetch)
+    ).validate({ target: "deploy" });
+
+    // Clean run: no table, no quote.
+    const b = recordFetch(claude({ score: 0, findings: [] }));
+    await securityReviewer((r) =>
+      r.provider("claude").apiKey("k").diff((d) => d.text(DIFF)).fetch(b.fetch)
+    ).validate({ target: "deploy" });
+
+    const md = await Deno.readTextFile(summaryFile);
+    assertEquals(md.includes("## 🔎 security review — `deploy`"), true);
+    assertEquals(md.includes("**Score:** 4/10 · **Severity:** high"), true);
+    assertEquals(md.includes("| high | sql \\| injection | db.ts:9 |"), true);
+    assertEquals(md.includes("| low | weak hash | — |"), true);
+    assertEquals(md.includes("> two issues found"), true);
+    assertEquals(md.includes("**Score:** 0/10"), true);
+  } finally {
+    console.log = log;
+    if (prev === undefined) Deno.env.delete("GITHUB_STEP_SUMMARY");
+    else Deno.env.set("GITHUB_STEP_SUMMARY", prev);
+    await Deno.remove(summaryFile);
+  }
+});
+
+Deno.test("an unwritable job-summary file never fails the review", async () => {
+  const dir = await Deno.makeTempDir(); // a directory is not a writable file
+  const prev = Deno.env.get("GITHUB_STEP_SUMMARY");
+  Deno.env.set("GITHUB_STEP_SUMMARY", dir);
+  const { log } = console;
+  console.log = () => {};
+  try {
+    const { fetch } = recordFetch(claude({ score: 0, findings: [] }));
+    await securityReviewer((r) =>
+      r.provider("claude").apiKey("k").diff((d) => d.text(DIFF)).fetch(fetch)
+    ).validate({ target: "t" }); // resolves despite the unwritable summary
+  } finally {
+    console.log = log;
+    if (prev === undefined) Deno.env.delete("GITHUB_STEP_SUMMARY");
+    else Deno.env.set("GITHUB_STEP_SUMMARY", prev);
+    await Deno.remove(dir, { recursive: true });
+  }
 });

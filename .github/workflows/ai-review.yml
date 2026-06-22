@@ -1,0 +1,44 @@
+name: AI Review
+
+on:
+  pull_request:
+
+# This is the only workflow that uses the org-level OPENAI_API_KEY secret. It
+# still needs nothing beyond read access to the repository.
+permissions:
+  contents: read
+
+concurrency:
+  group: ai-review-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    name: AI security review
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Only run for branches in this repo, never forks: a fork PR must not be
+    # able to run its own code with the secret in scope (pwn-request). Fork PRs
+    # also receive no secrets, so the review would skip there anyway.
+    if: ${{ github.event.pull_request.head.repo.fork == false }}
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      # Fetch the base branch so the reviewer can diff against it (FETCH_HEAD).
+      - name: Fetch the base branch
+        run: git fetch --no-tags --depth=1 origin master
+
+      # The ./zuke launcher bootstraps Deno; `review` runs @zuke/ai over the diff
+      # and appends its assessment to the job summary.
+      - name: AI security review with Zuke
+        run: ./zuke review
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ZUKE_REVIEW_BASE: FETCH_HEAD
