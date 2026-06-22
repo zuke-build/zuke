@@ -35,6 +35,7 @@ const PACKAGES = [
   "packages/gcloud",
   "packages/git",
   "packages/gh",
+  "packages/claude",
   "packages/terraform",
   "packages/tofu",
   "packages/release-please",

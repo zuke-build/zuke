@@ -114,6 +114,7 @@ latest release on JSR.
 | [`@zuke/eslint`](https://jsr.io/@zuke/eslint) | [![JSR](https://jsr.io/badges/@zuke/eslint)](https://jsr.io/@zuke/eslint) [![JSR score](https://jsr.io/badges/@zuke/eslint/score)](https://jsr.io/@zuke/eslint) |
 | [`@zuke/gcloud`](https://jsr.io/@zuke/gcloud) | [![JSR](https://jsr.io/badges/@zuke/gcloud)](https://jsr.io/@zuke/gcloud) [![JSR score](https://jsr.io/badges/@zuke/gcloud/score)](https://jsr.io/@zuke/gcloud) |
 | [`@zuke/gh`](https://jsr.io/@zuke/gh) | [![JSR](https://jsr.io/badges/@zuke/gh)](https://jsr.io/@zuke/gh) [![JSR score](https://jsr.io/badges/@zuke/gh/score)](https://jsr.io/@zuke/gh) |
+| [`@zuke/claude`](https://jsr.io/@zuke/claude) | [![JSR](https://jsr.io/badges/@zuke/claude)](https://jsr.io/@zuke/claude) [![JSR score](https://jsr.io/badges/@zuke/claude/score)](https://jsr.io/@zuke/claude) |
 | [`@zuke/git`](https://jsr.io/@zuke/git) | [![JSR](https://jsr.io/badges/@zuke/git)](https://jsr.io/@zuke/git) [![JSR score](https://jsr.io/badges/@zuke/git/score)](https://jsr.io/@zuke/git) |
 | [`@zuke/helm`](https://jsr.io/@zuke/helm) | [![JSR](https://jsr.io/badges/@zuke/helm)](https://jsr.io/@zuke/helm) [![JSR score](https://jsr.io/badges/@zuke/helm/score)](https://jsr.io/@zuke/helm) |
 | [`@zuke/jest`](https://jsr.io/@zuke/jest) | [![JSR](https://jsr.io/badges/@zuke/jest)](https://jsr.io/@zuke/jest) [![JSR score](https://jsr.io/badges/@zuke/jest/score)](https://jsr.io/@zuke/jest) |

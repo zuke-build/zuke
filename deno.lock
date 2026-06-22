@@ -567,6 +567,11 @@
           "jsr:@zuke/core@1"
         ]
       },
+      "packages/claude": {
+        "dependencies": [
+          "jsr:@zuke/core@1"
+        ]
+      },
       "packages/cmd": {
         "dependencies": [
           "jsr:@zuke/core@1"

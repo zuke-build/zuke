@@ -380,6 +380,17 @@
         }
       ]
     },
+    "packages/claude": {
+      "component": "claude",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
+      ]
+    },
     "packages/terraform": {
       "component": "terraform",
       "changelog-path": "CHANGELOG.md",

@@ -1,0 +1,16 @@
+{
+  "name": "@zuke/claude",
+  "version": "0.0.0",
+  "description": "Typed Claude Code CLI task wrapper for Zuke builds — drive prompts non-interactively and manage MCP/config via an injection-free, settings-lambda API.",
+  "exports": {
+    ".": "./mod.ts"
+  },
+  "imports": {
+    "@zuke/core": "jsr:@zuke/core@^1"
+  },
+  "publish": {
+    "exclude": [
+      "tests/"
+    ]
+  }
+}
