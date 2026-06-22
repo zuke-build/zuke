@@ -16,10 +16,14 @@
   <a href="./CONTRIBUTING.md"><img alt="PRs welcome" src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" /></a>
 </p>
 
+<p align="center">
+  <img src="https://github.com/zuke-build/zuke/raw/master/assets/demo.svg" alt="Zuke in action: scaffold a build, list targets, run the gate" width="760" />
+</p>
+
 > [!NOTE]
-> **Largely AI-written.** Much of this project — code, tests, and docs — was
-> generated with AI assistance. Take it with a grain of salt: review before you
-> rely on it, and don't assume anything is battle-tested.
+> **Built with AI.** Much of Zuke — code, tests, and docs — was written with AI
+> assistance, then reviewed, type-checked, and tested in CI. Sharing how it was
+> made so you know what you're getting.
 
 Zuke lets you define builds as a **TypeScript class**. Each target is a class
 field declared with a fluent API; targets reference each other by `this.x` (not
