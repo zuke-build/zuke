@@ -89,56 +89,101 @@ Zuke ships as a JSR workspace: a tiny core plus a typed wrapper per tool. Every
 package is versioned and published independently — the badges below track the
 latest release on JSR.
 
-| Package | Version |
-| --- | --- |
-| [`@zuke/core`](https://jsr.io/@zuke/core) | [![JSR](https://jsr.io/badges/@zuke/core)](https://jsr.io/@zuke/core) [![JSR score](https://jsr.io/badges/@zuke/core/score)](https://jsr.io/@zuke/core) |
-| [`@zuke/cli`](https://jsr.io/@zuke/cli) | [![JSR](https://jsr.io/badges/@zuke/cli)](https://jsr.io/@zuke/cli) [![JSR score](https://jsr.io/badges/@zuke/cli/score)](https://jsr.io/@zuke/cli) |
-| [`@zuke/cmd`](https://jsr.io/@zuke/cmd) | [![JSR](https://jsr.io/badges/@zuke/cmd)](https://jsr.io/@zuke/cmd) [![JSR score](https://jsr.io/badges/@zuke/cmd/score)](https://jsr.io/@zuke/cmd) |
-| [`@zuke/deno`](https://jsr.io/@zuke/deno) | [![JSR](https://jsr.io/badges/@zuke/deno)](https://jsr.io/@zuke/deno) [![JSR score](https://jsr.io/badges/@zuke/deno/score)](https://jsr.io/@zuke/deno) |
-| [`@zuke/npm`](https://jsr.io/@zuke/npm) | [![JSR](https://jsr.io/badges/@zuke/npm)](https://jsr.io/@zuke/npm) [![JSR score](https://jsr.io/badges/@zuke/npm/score)](https://jsr.io/@zuke/npm) |
+| Package                                           | Version                                                                                                                                                                 |
+| ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`@zuke/core`](https://jsr.io/@zuke/core)         | [![JSR](https://jsr.io/badges/@zuke/core)](https://jsr.io/@zuke/core) [![JSR score](https://jsr.io/badges/@zuke/core/score)](https://jsr.io/@zuke/core)                 |
+| [`@zuke/cli`](https://jsr.io/@zuke/cli)           | [![JSR](https://jsr.io/badges/@zuke/cli)](https://jsr.io/@zuke/cli) [![JSR score](https://jsr.io/badges/@zuke/cli/score)](https://jsr.io/@zuke/cli)                     |
+| [`@zuke/cmd`](https://jsr.io/@zuke/cmd)           | [![JSR](https://jsr.io/badges/@zuke/cmd)](https://jsr.io/@zuke/cmd) [![JSR score](https://jsr.io/badges/@zuke/cmd/score)](https://jsr.io/@zuke/cmd)                     |
+| [`@zuke/deno`](https://jsr.io/@zuke/deno)         | [![JSR](https://jsr.io/badges/@zuke/deno)](https://jsr.io/@zuke/deno) [![JSR score](https://jsr.io/badges/@zuke/deno/score)](https://jsr.io/@zuke/deno)                 |
+| [`@zuke/npm`](https://jsr.io/@zuke/npm)           | [![JSR](https://jsr.io/badges/@zuke/npm)](https://jsr.io/@zuke/npm) [![JSR score](https://jsr.io/badges/@zuke/npm/score)](https://jsr.io/@zuke/npm)                     |
 | [`@zuke/security`](https://jsr.io/@zuke/security) | [![JSR](https://jsr.io/badges/@zuke/security)](https://jsr.io/@zuke/security) [![JSR score](https://jsr.io/badges/@zuke/security/score)](https://jsr.io/@zuke/security) |
 
 <details>
 <summary><strong>All tool wrappers</strong> (30+ packages)</summary>
 
-| Package | Version |
-| --- | --- |
-| [`@zuke/biome`](https://jsr.io/@zuke/biome) | [![JSR](https://jsr.io/badges/@zuke/biome)](https://jsr.io/@zuke/biome) [![JSR score](https://jsr.io/badges/@zuke/biome/score)](https://jsr.io/@zuke/biome) |
-| [`@zuke/bun`](https://jsr.io/@zuke/bun) | [![JSR](https://jsr.io/badges/@zuke/bun)](https://jsr.io/@zuke/bun) [![JSR score](https://jsr.io/badges/@zuke/bun/score)](https://jsr.io/@zuke/bun) |
-| [`@zuke/cypress`](https://jsr.io/@zuke/cypress) | [![JSR](https://jsr.io/badges/@zuke/cypress)](https://jsr.io/@zuke/cypress) [![JSR score](https://jsr.io/badges/@zuke/cypress/score)](https://jsr.io/@zuke/cypress) |
-| [`@zuke/cspell`](https://jsr.io/@zuke/cspell) | [![JSR](https://jsr.io/badges/@zuke/cspell)](https://jsr.io/@zuke/cspell) [![JSR score](https://jsr.io/badges/@zuke/cspell/score)](https://jsr.io/@zuke/cspell) |
-| [`@zuke/docker`](https://jsr.io/@zuke/docker) | [![JSR](https://jsr.io/badges/@zuke/docker)](https://jsr.io/@zuke/docker) [![JSR score](https://jsr.io/badges/@zuke/docker/score)](https://jsr.io/@zuke/docker) |
+| Package                                                       | Version                                                                                                                                                                                         |
+| ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`@zuke/biome`](https://jsr.io/@zuke/biome)                   | [![JSR](https://jsr.io/badges/@zuke/biome)](https://jsr.io/@zuke/biome) [![JSR score](https://jsr.io/badges/@zuke/biome/score)](https://jsr.io/@zuke/biome)                                     |
+| [`@zuke/bun`](https://jsr.io/@zuke/bun)                       | [![JSR](https://jsr.io/badges/@zuke/bun)](https://jsr.io/@zuke/bun) [![JSR score](https://jsr.io/badges/@zuke/bun/score)](https://jsr.io/@zuke/bun)                                             |
+| [`@zuke/cypress`](https://jsr.io/@zuke/cypress)               | [![JSR](https://jsr.io/badges/@zuke/cypress)](https://jsr.io/@zuke/cypress) [![JSR score](https://jsr.io/badges/@zuke/cypress/score)](https://jsr.io/@zuke/cypress)                             |
+| [`@zuke/cspell`](https://jsr.io/@zuke/cspell)                 | [![JSR](https://jsr.io/badges/@zuke/cspell)](https://jsr.io/@zuke/cspell) [![JSR score](https://jsr.io/badges/@zuke/cspell/score)](https://jsr.io/@zuke/cspell)                                 |
+| [`@zuke/docker`](https://jsr.io/@zuke/docker)                 | [![JSR](https://jsr.io/badges/@zuke/docker)](https://jsr.io/@zuke/docker) [![JSR score](https://jsr.io/badges/@zuke/docker/score)](https://jsr.io/@zuke/docker)                                 |
 | [`@zuke/docker-compose`](https://jsr.io/@zuke/docker-compose) | [![JSR](https://jsr.io/badges/@zuke/docker-compose)](https://jsr.io/@zuke/docker-compose) [![JSR score](https://jsr.io/badges/@zuke/docker-compose/score)](https://jsr.io/@zuke/docker-compose) |
-| [`@zuke/dpdm`](https://jsr.io/@zuke/dpdm) | [![JSR](https://jsr.io/badges/@zuke/dpdm)](https://jsr.io/@zuke/dpdm) [![JSR score](https://jsr.io/badges/@zuke/dpdm/score)](https://jsr.io/@zuke/dpdm) |
-| [`@zuke/dprint`](https://jsr.io/@zuke/dprint) | [![JSR](https://jsr.io/badges/@zuke/dprint)](https://jsr.io/@zuke/dprint) [![JSR score](https://jsr.io/badges/@zuke/dprint/score)](https://jsr.io/@zuke/dprint) |
-| [`@zuke/eslint`](https://jsr.io/@zuke/eslint) | [![JSR](https://jsr.io/badges/@zuke/eslint)](https://jsr.io/@zuke/eslint) [![JSR score](https://jsr.io/badges/@zuke/eslint/score)](https://jsr.io/@zuke/eslint) |
-| [`@zuke/gcloud`](https://jsr.io/@zuke/gcloud) | [![JSR](https://jsr.io/badges/@zuke/gcloud)](https://jsr.io/@zuke/gcloud) [![JSR score](https://jsr.io/badges/@zuke/gcloud/score)](https://jsr.io/@zuke/gcloud) |
-| [`@zuke/gh`](https://jsr.io/@zuke/gh) | [![JSR](https://jsr.io/badges/@zuke/gh)](https://jsr.io/@zuke/gh) [![JSR score](https://jsr.io/badges/@zuke/gh/score)](https://jsr.io/@zuke/gh) |
-| [`@zuke/claude`](https://jsr.io/@zuke/claude) | [![JSR](https://jsr.io/badges/@zuke/claude)](https://jsr.io/@zuke/claude) [![JSR score](https://jsr.io/badges/@zuke/claude/score)](https://jsr.io/@zuke/claude) |
-| [`@zuke/codex`](https://jsr.io/@zuke/codex) | [![JSR](https://jsr.io/badges/@zuke/codex)](https://jsr.io/@zuke/codex) [![JSR score](https://jsr.io/badges/@zuke/codex/score)](https://jsr.io/@zuke/codex) |
-| [`@zuke/gemini`](https://jsr.io/@zuke/gemini) | [![JSR](https://jsr.io/badges/@zuke/gemini)](https://jsr.io/@zuke/gemini) [![JSR score](https://jsr.io/badges/@zuke/gemini/score)](https://jsr.io/@zuke/gemini) |
-| [`@zuke/git`](https://jsr.io/@zuke/git) | [![JSR](https://jsr.io/badges/@zuke/git)](https://jsr.io/@zuke/git) [![JSR score](https://jsr.io/badges/@zuke/git/score)](https://jsr.io/@zuke/git) |
-| [`@zuke/helm`](https://jsr.io/@zuke/helm) | [![JSR](https://jsr.io/badges/@zuke/helm)](https://jsr.io/@zuke/helm) [![JSR score](https://jsr.io/badges/@zuke/helm/score)](https://jsr.io/@zuke/helm) |
-| [`@zuke/jest`](https://jsr.io/@zuke/jest) | [![JSR](https://jsr.io/badges/@zuke/jest)](https://jsr.io/@zuke/jest) [![JSR score](https://jsr.io/badges/@zuke/jest/score)](https://jsr.io/@zuke/jest) |
-| [`@zuke/jsr`](https://jsr.io/@zuke/jsr) | [![JSR](https://jsr.io/badges/@zuke/jsr)](https://jsr.io/@zuke/jsr) [![JSR score](https://jsr.io/badges/@zuke/jsr/score)](https://jsr.io/@zuke/jsr) |
-| [`@zuke/knip`](https://jsr.io/@zuke/knip) | [![JSR](https://jsr.io/badges/@zuke/knip)](https://jsr.io/@zuke/knip) [![JSR score](https://jsr.io/badges/@zuke/knip/score)](https://jsr.io/@zuke/knip) |
-| [`@zuke/kubectl`](https://jsr.io/@zuke/kubectl) | [![JSR](https://jsr.io/badges/@zuke/kubectl)](https://jsr.io/@zuke/kubectl) [![JSR score](https://jsr.io/badges/@zuke/kubectl/score)](https://jsr.io/@zuke/kubectl) |
-| [`@zuke/kustomize`](https://jsr.io/@zuke/kustomize) | [![JSR](https://jsr.io/badges/@zuke/kustomize)](https://jsr.io/@zuke/kustomize) [![JSR score](https://jsr.io/badges/@zuke/kustomize/score)](https://jsr.io/@zuke/kustomize) |
-| [`@zuke/nx`](https://jsr.io/@zuke/nx) | [![JSR](https://jsr.io/badges/@zuke/nx)](https://jsr.io/@zuke/nx) [![JSR score](https://jsr.io/badges/@zuke/nx/score)](https://jsr.io/@zuke/nx) |
-| [`@zuke/oxlint`](https://jsr.io/@zuke/oxlint) | [![JSR](https://jsr.io/badges/@zuke/oxlint)](https://jsr.io/@zuke/oxlint) [![JSR score](https://jsr.io/badges/@zuke/oxlint/score)](https://jsr.io/@zuke/oxlint) |
-| [`@zuke/playwright`](https://jsr.io/@zuke/playwright) | [![JSR](https://jsr.io/badges/@zuke/playwright)](https://jsr.io/@zuke/playwright) [![JSR score](https://jsr.io/badges/@zuke/playwright/score)](https://jsr.io/@zuke/playwright) |
-| [`@zuke/pnpm`](https://jsr.io/@zuke/pnpm) | [![JSR](https://jsr.io/badges/@zuke/pnpm)](https://jsr.io/@zuke/pnpm) [![JSR score](https://jsr.io/badges/@zuke/pnpm/score)](https://jsr.io/@zuke/pnpm) |
-| [`@zuke/terraform`](https://jsr.io/@zuke/terraform) | [![JSR](https://jsr.io/badges/@zuke/terraform)](https://jsr.io/@zuke/terraform) [![JSR score](https://jsr.io/badges/@zuke/terraform/score)](https://jsr.io/@zuke/terraform) |
-| [`@zuke/tofu`](https://jsr.io/@zuke/tofu) | [![JSR](https://jsr.io/badges/@zuke/tofu)](https://jsr.io/@zuke/tofu) [![JSR score](https://jsr.io/badges/@zuke/tofu/score)](https://jsr.io/@zuke/tofu) |
-| [`@zuke/tsgo`](https://jsr.io/@zuke/tsgo) | [![JSR](https://jsr.io/badges/@zuke/tsgo)](https://jsr.io/@zuke/tsgo) [![JSR score](https://jsr.io/badges/@zuke/tsgo/score)](https://jsr.io/@zuke/tsgo) |
-| [`@zuke/tsup`](https://jsr.io/@zuke/tsup) | [![JSR](https://jsr.io/badges/@zuke/tsup)](https://jsr.io/@zuke/tsup) [![JSR score](https://jsr.io/badges/@zuke/tsup/score)](https://jsr.io/@zuke/tsup) |
-| [`@zuke/tsx`](https://jsr.io/@zuke/tsx) | [![JSR](https://jsr.io/badges/@zuke/tsx)](https://jsr.io/@zuke/tsx) [![JSR score](https://jsr.io/badges/@zuke/tsx/score)](https://jsr.io/@zuke/tsx) |
-| [`@zuke/turbo`](https://jsr.io/@zuke/turbo) | [![JSR](https://jsr.io/badges/@zuke/turbo)](https://jsr.io/@zuke/turbo) [![JSR score](https://jsr.io/badges/@zuke/turbo/score)](https://jsr.io/@zuke/turbo) |
-| [`@zuke/vite`](https://jsr.io/@zuke/vite) | [![JSR](https://jsr.io/badges/@zuke/vite)](https://jsr.io/@zuke/vite) [![JSR score](https://jsr.io/badges/@zuke/vite/score)](https://jsr.io/@zuke/vite) |
-| [`@zuke/vitest`](https://jsr.io/@zuke/vitest) | [![JSR](https://jsr.io/badges/@zuke/vitest)](https://jsr.io/@zuke/vitest) [![JSR score](https://jsr.io/badges/@zuke/vitest/score)](https://jsr.io/@zuke/vitest) |
-| [`@zuke/yarn`](https://jsr.io/@zuke/yarn) | [![JSR](https://jsr.io/badges/@zuke/yarn)](https://jsr.io/@zuke/yarn) [![JSR score](https://jsr.io/badges/@zuke/yarn/score)](https://jsr.io/@zuke/yarn) |
+| [`@zuke/dpdm`](https://jsr.io/@zuke/dpdm)                     | [![JSR](https://jsr.io/badges/@zuke/dpdm)](https://jsr.io/@zuke/dpdm) [![JSR score](https://jsr.io/badges/@zuke/dpdm/score)](https://jsr.io/@zuke/dpdm)                                         |
+| [`@zuke/dprint`](https://jsr.io/@zuke/dprint)                 | [![JSR](https://jsr.io/badges/@zuke/dprint)](https://jsr.io/@zuke/dprint) [![JSR score](https://jsr.io/badges/@zuke/dprint/score)](https://jsr.io/@zuke/dprint)                                 |
+| [`@zuke/eslint`](https://jsr.io/@zuke/eslint)                 | [![JSR](https://jsr.io/badges/@zuke/eslint)](https://jsr.io/@zuke/eslint) [![JSR score](https://jsr.io/badges/@zuke/eslint/score)](https://jsr.io/@zuke/eslint)                                 |
+| [`@zuke/gcloud`](https://jsr.io/@zuke/gcloud)                 | [![JSR](https://jsr.io/badges/@zuke/gcloud)](https://jsr.io/@zuke/gcloud) [![JSR score](https://jsr.io/badges/@zuke/gcloud/score)](https://jsr.io/@zuke/gcloud)                                 |
+| [`@zuke/gh`](https://jsr.io/@zuke/gh)                         | [![JSR](https://jsr.io/badges/@zuke/gh)](https://jsr.io/@zuke/gh) [![JSR score](https://jsr.io/badges/@zuke/gh/score)](https://jsr.io/@zuke/gh)                                                 |
+| [`@zuke/claude`](https://jsr.io/@zuke/claude)                 | [![JSR](https://jsr.io/badges/@zuke/claude)](https://jsr.io/@zuke/claude) [![JSR score](https://jsr.io/badges/@zuke/claude/score)](https://jsr.io/@zuke/claude)                                 |
+| [`@zuke/codex`](https://jsr.io/@zuke/codex)                   | [![JSR](https://jsr.io/badges/@zuke/codex)](https://jsr.io/@zuke/codex) [![JSR score](https://jsr.io/badges/@zuke/codex/score)](https://jsr.io/@zuke/codex)                                     |
+| [`@zuke/gemini`](https://jsr.io/@zuke/gemini)                 | [![JSR](https://jsr.io/badges/@zuke/gemini)](https://jsr.io/@zuke/gemini) [![JSR score](https://jsr.io/badges/@zuke/gemini/score)](https://jsr.io/@zuke/gemini)                                 |
+| [`@zuke/git`](https://jsr.io/@zuke/git)                       | [![JSR](https://jsr.io/badges/@zuke/git)](https://jsr.io/@zuke/git) [![JSR score](https://jsr.io/badges/@zuke/git/score)](https://jsr.io/@zuke/git)                                             |
+| [`@zuke/helm`](https://jsr.io/@zuke/helm)                     | [![JSR](https://jsr.io/badges/@zuke/helm)](https://jsr.io/@zuke/helm) [![JSR score](https://jsr.io/badges/@zuke/helm/score)](https://jsr.io/@zuke/helm)                                         |
+| [`@zuke/jest`](https://jsr.io/@zuke/jest)                     | [![JSR](https://jsr.io/badges/@zuke/jest)](https://jsr.io/@zuke/jest) [![JSR score](https://jsr.io/badges/@zuke/jest/score)](https://jsr.io/@zuke/jest)                                         |
+| [`@zuke/jsr`](https://jsr.io/@zuke/jsr)                       | [![JSR](https://jsr.io/badges/@zuke/jsr)](https://jsr.io/@zuke/jsr) [![JSR score](https://jsr.io/badges/@zuke/jsr/score)](https://jsr.io/@zuke/jsr)                                             |
+| [`@zuke/knip`](https://jsr.io/@zuke/knip)                     | [![JSR](https://jsr.io/badges/@zuke/knip)](https://jsr.io/@zuke/knip) [![JSR score](https://jsr.io/badges/@zuke/knip/score)](https://jsr.io/@zuke/knip)                                         |
+| [`@zuke/kubectl`](https://jsr.io/@zuke/kubectl)               | [![JSR](https://jsr.io/badges/@zuke/kubectl)](https://jsr.io/@zuke/kubectl) [![JSR score](https://jsr.io/badges/@zuke/kubectl/score)](https://jsr.io/@zuke/kubectl)                             |
+| [`@zuke/kustomize`](https://jsr.io/@zuke/kustomize)           | [![JSR](https://jsr.io/badges/@zuke/kustomize)](https://jsr.io/@zuke/kustomize) [![JSR score](https://jsr.io/badges/@zuke/kustomize/score)](https://jsr.io/@zuke/kustomize)                     |
+| [`@zuke/nx`](https://jsr.io/@zuke/nx)                         | [![JSR](https://jsr.io/badges/@zuke/nx)](https://jsr.io/@zuke/nx) [![JSR score](https://jsr.io/badges/@zuke/nx/score)](https://jsr.io/@zuke/nx)                                                 |
+| [`@zuke/oxlint`](https://jsr.io/@zuke/oxlint)                 | [![JSR](https://jsr.io/badges/@zuke/oxlint)](https://jsr.io/@zuke/oxlint) [![JSR score](https://jsr.io/badges/@zuke/oxlint/score)](https://jsr.io/@zuke/oxlint)                                 |
+| [`@zuke/playwright`](https://jsr.io/@zuke/playwright)         | [![JSR](https://jsr.io/badges/@zuke/playwright)](https://jsr.io/@zuke/playwright) [![JSR score](https://jsr.io/badges/@zuke/playwright/score)](https://jsr.io/@zuke/playwright)                 |
+| [`@zuke/pnpm`](https://jsr.io/@zuke/pnpm)                     | [![JSR](https://jsr.io/badges/@zuke/pnpm)](https://jsr.io/@zuke/pnpm) [![JSR score](https://jsr.io/badges/@zuke/pnpm/score)](https://jsr.io/@zuke/pnpm)                                         |
+| [`@zuke/terraform`](https://jsr.io/@zuke/terraform)           | [![JSR](https://jsr.io/badges/@zuke/terraform)](https://jsr.io/@zuke/terraform) [![JSR score](https://jsr.io/badges/@zuke/terraform/score)](https://jsr.io/@zuke/terraform)                     |
+| [`@zuke/tofu`](https://jsr.io/@zuke/tofu)                     | [![JSR](https://jsr.io/badges/@zuke/tofu)](https://jsr.io/@zuke/tofu) [![JSR score](https://jsr.io/badges/@zuke/tofu/score)](https://jsr.io/@zuke/tofu)                                         |
+| [`@zuke/tsgo`](https://jsr.io/@zuke/tsgo)                     | [![JSR](https://jsr.io/badges/@zuke/tsgo)](https://jsr.io/@zuke/tsgo) [![JSR score](https://jsr.io/badges/@zuke/tsgo/score)](https://jsr.io/@zuke/tsgo)                                         |
+| [`@zuke/tsup`](https://jsr.io/@zuke/tsup)                     | [![JSR](https://jsr.io/badges/@zuke/tsup)](https://jsr.io/@zuke/tsup) [![JSR score](https://jsr.io/badges/@zuke/tsup/score)](https://jsr.io/@zuke/tsup)                                         |
+| [`@zuke/tsx`](https://jsr.io/@zuke/tsx)                       | [![JSR](https://jsr.io/badges/@zuke/tsx)](https://jsr.io/@zuke/tsx) [![JSR score](https://jsr.io/badges/@zuke/tsx/score)](https://jsr.io/@zuke/tsx)                                             |
+| [`@zuke/turbo`](https://jsr.io/@zuke/turbo)                   | [![JSR](https://jsr.io/badges/@zuke/turbo)](https://jsr.io/@zuke/turbo) [![JSR score](https://jsr.io/badges/@zuke/turbo/score)](https://jsr.io/@zuke/turbo)                                     |
+| [`@zuke/vite`](https://jsr.io/@zuke/vite)                     | [![JSR](https://jsr.io/badges/@zuke/vite)](https://jsr.io/@zuke/vite) [![JSR score](https://jsr.io/badges/@zuke/vite/score)](https://jsr.io/@zuke/vite)                                         |
+| [`@zuke/vitest`](https://jsr.io/@zuke/vitest)                 | [![JSR](https://jsr.io/badges/@zuke/vitest)](https://jsr.io/@zuke/vitest) [![JSR score](https://jsr.io/badges/@zuke/vitest/score)](https://jsr.io/@zuke/vitest)                                 |
+| [`@zuke/yarn`](https://jsr.io/@zuke/yarn)                     | [![JSR](https://jsr.io/badges/@zuke/yarn)](https://jsr.io/@zuke/yarn) [![JSR score](https://jsr.io/badges/@zuke/yarn/score)](https://jsr.io/@zuke/yarn)                                         |
 
 </details>
+
+## AI in your pipeline
+
+Zuke ships typed wrappers for the major AI coding CLIs, so you can fold a model
+into a build the same way you'd run a linter or a test — as a typed target with
+refactor-safe dependencies.
+
+| Package                                       | CLI                                                                   | Flagship task               |
+| --------------------------------------------- | --------------------------------------------------------------------- | --------------------------- |
+| [`@zuke/claude`](https://jsr.io/@zuke/claude) | [Claude Code](https://docs.claude.com/en/docs/claude-code) (`claude`) | `run` (headless `--print`)  |
+| [`@zuke/codex`](https://jsr.io/@zuke/codex)   | [OpenAI Codex](https://developers.openai.com/codex/cli) (`codex`)     | `exec` (headless)           |
+| [`@zuke/gemini`](https://jsr.io/@zuke/gemini) | [Gemini CLI](https://github.com/google-gemini/gemini-cli) (`gemini`)  | `run` (headless `--prompt`) |
+
+Each runs the CLI **non-interactively** so it fits CI: drive a prompt, pick a
+model, constrain the tool set, and capture the response (request JSON for
+machine-readable output). Arguments stay a discrete argv array end-to-end —
+never a concatenated shell string — so command construction is injection-free,
+and API keys ride through the shared `.env(...)` chainer, backed by a
+`parameter().secret()` build input that Zuke masks in CI output.
+
+```ts
+import { Build, parameter, target } from "jsr:@zuke/core";
+import { ClaudeTasks } from "jsr:@zuke/claude";
+
+class MyBuild extends Build {
+  apiKey = parameter("Anthropic API key").secret();
+
+  review = target()
+    .dependsOn(this.test)
+    .executes(async () => {
+      const out = await ClaudeTasks.run((s) =>
+        s.prompt("Review the staged diff for bugs in one paragraph")
+          .model("sonnet")
+          .allowedTools("Read", "Grep")
+          .outputFormat("json")
+          .env({ ANTHROPIC_API_KEY: this.apiKey.value })
+      );
+      console.log(out.stdout);
+    });
+}
+```
+
+The `mcp` (and `config`/`extensions`) tasks are flexible command builders for
+each CLI's matching subcommand group — handy for provisioning MCP servers in CI.
+See [Tools](./docs/tools.md) for the full task matrix.
 
 ## Documentation
 
