@@ -86,6 +86,15 @@ export {
   httpText,
 } from "./src/http.ts";
 export {
+  type Announcement,
+  type AnnouncementField,
+  type AnnouncementLevel,
+  type AnnouncementLink,
+  type AnnounceOptions,
+  AnnounceTasks,
+  type AnnounceTasksApi,
+} from "./src/announce.ts";
+export {
   createTarGzip,
   extractTarGzip,
   gunzip,

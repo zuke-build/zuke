@@ -237,6 +237,56 @@ const release = await httpJson<{ tag_name: string }>(
 );
 ```
 
+### Announcements — `AnnounceTasks.slack()` / `.teams()` / `.discord()`
+
+Post build status to a chat channel — "build passed", "package published",
+"service deployed" — via each platform's incoming webhook. The `AnnounceTasks`
+group is task-shaped like `FileTasks`: it runs no subprocess, so each method
+takes the webhook URL, the message, and an options object directly. A bare
+string is shorthand for an `"info"` announcement; an `Announcement` object adds
+a `title`, a `level` (`"success" | "failure" | "warning" | "info"`, driving the
+accent colour and icon), `fields`, and an action `link`. Each call POSTs the
+platform-native payload built on `fetch` (with a `fetch` seam for tests) and
+throws an `HttpError` on a non-2xx response.
+
+A webhook URL embeds the secret that authorises posting, so source it from a
+`parameter().secret()` build input rather than hard-coding it — Zuke masks the
+resolved value in CI output.
+
+```ts
+import { AnnounceTasks, Build, parameter, target } from "jsr:@zuke/core";
+
+class MyBuild extends Build {
+  slack = parameter("Slack incoming-webhook URL").secret().required();
+
+  deploy = target()
+    .requires(this.slack)
+    .executes(async () => {
+      // ... deploy ...
+      await AnnounceTasks.slack(this.slack.value, {
+        title: "Deploy",
+        text: "Shipped api@1.4.0 to production.",
+        level: "success",
+        fields: [{ name: "Service", value: "api" }],
+        link: { text: "Release notes", url: "https://example.com/r/1.4.0" },
+      });
+    });
+}
+```
+
+Announce a failure from `onFinish` to cover the whole pipeline:
+
+```ts
+override async onFinish(result) {
+  if (!result.ok) {
+    await AnnounceTasks.discord(this.discord.value, {
+      text: "Build failed.",
+      level: "failure",
+    });
+  }
+}
+```
+
 ### Compression — `gzip()` / `tar()` / `createTarGzip()`
 
 Pack build artifacts without any dependency. `gzip(bytes)`/`gunzip(bytes)` wrap
@@ -379,10 +429,10 @@ run(
 ```
 
 Instantiates the build, discovers targets, validates the graph, parses CLI
-arguments (`options.args`, defaulting to `Deno.args`), dispatches to the executor
-with any registered `options.plugins`, and calls `Deno.exit` with `0` on success
-or `1` on failure. This is the standard entry point at the bottom of `zuke.ts`.
-See [Extending Zuke](./extending.md) for the plugin contract.
+arguments (`options.args`, defaulting to `Deno.args`), dispatches to the
+executor with any registered `options.plugins`, and calls `Deno.exit` with `0`
+on success or `1` on failure. This is the standard entry point at the bottom of
+`zuke.ts`. See [Extending Zuke](./extending.md) for the plugin contract.
 
 ## Gotchas
 
