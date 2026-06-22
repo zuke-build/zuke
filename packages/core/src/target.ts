@@ -36,6 +36,26 @@ export type TargetFn = () => void | Promise<void>;
 /** A predicate gating whether a target runs; may be synchronous or async. */
 export type Condition = () => boolean | Promise<boolean>;
 
+/** Context passed to a {@link Validation} when it runs. */
+export interface ValidationContext {
+  /** The name of the target the validation is attached to. */
+  target: string;
+}
+
+/**
+ * A check plugged into a target with {@link TargetBuilder.validateBefore} or
+ * {@link TargetBuilder.validateAfter}. The target decides *when* it runs; the
+ * validation decides *what* it checks. Throw from {@link Validation.validate} to
+ * fail the target (and break the build). Implemented, for example, by the AI
+ * reviewers in `@zuke/ai`, but any object with a `validate` method qualifies.
+ */
+export interface Validation {
+  /** A name for diagnostics (optional). */
+  name?: string;
+  /** Run the check; throw to fail the target. May be async. */
+  validate(context: ValidationContext): void | Promise<void>;
+}
+
 /**
  * A parallel batch of targets, created with {@link group}. Targets join it via
  * {@link TargetBuilder.partOf}; its members run concurrently with one another
@@ -98,6 +118,10 @@ export class TargetBuilder {
   retries_ = 0;
   /** Delay between retry attempts in milliseconds. */
   retryDelay_ = 0;
+  /** Validations run before the body (set by {@link validateBefore}). */
+  readonly validateBefore_: Validation[] = [];
+  /** Validations run after the body (set by {@link validateAfter}). */
+  readonly validateAfter_: Validation[] = [];
 
   /** Set the human-readable description shown in `zuke --list`. */
   description(text: string): this {
@@ -299,6 +323,32 @@ export class TargetBuilder {
   retry(times: number, delayMs = 0): this {
     this.retries_ = Math.max(0, Math.floor(times));
     this.retryDelay_ = Math.max(0, delayMs);
+    return this;
+  }
+
+  /**
+   * Run one or more {@link Validation}s *before* the target body. Each runs in
+   * declaration order; the first to throw fails the target and the body never
+   * runs. Repeatable. A cached/skipped target runs no validations.
+   *
+   * ```ts
+   * deploy = target()
+   *   .validateBefore(this.securityReview) // gate before deploying
+   *   .executes(...);
+   * ```
+   */
+  validateBefore(...validations: Validation[]): this {
+    this.validateBefore_.push(...validations);
+    return this;
+  }
+
+  /**
+   * Run one or more {@link Validation}s *after* the target body completes
+   * successfully. Each runs in declaration order; the first to throw fails the
+   * target. Repeatable.
+   */
+  validateAfter(...validations: Validation[]): this {
+    this.validateAfter_.push(...validations);
     return this;
   }
 }

@@ -71,6 +71,14 @@ update the `check` task and CI accordingly. Do not bolt on a parallel
    lint`, not a prettier alias like `check`. Staying close to the
    tool's own vocabulary keeps the wrapper predictable for anyone who knows the
    CLI.
+8. **One domain per file — never the whole implementation in one module.** Split
+   a package's source into small, cohesive files by class and concern (types,
+   errors, each fluent settings class, the transport/provider layer, parsing,
+   the orchestrator), and re-export the public surface from `mod.ts`. A single
+   file accreting every class and helper is a smell — break it up as it grows,
+   not later. Prefer reusing core primitives (`FileTasks`,
+   `glob`/`globToRegExp`, the `$`/`Command` shell, the HTTP helpers) over
+   re-implementing them in a package.
 
 ## Commands
 

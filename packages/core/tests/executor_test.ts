@@ -1227,3 +1227,72 @@ Deno.test("execute supports multiple plugins and partial hook sets", async () =>
   await execute(b, b.a, { silent: true, plugins: [p1, p2] });
   assertEquals(calls, ["p1:a:passed", "p2:finish"]);
 });
+
+Deno.test("validateBefore runs before the body; validateAfter runs after", async () => {
+  const log: string[] = [];
+  class B extends Build {
+    work = target()
+      .validateBefore({ validate: () => void log.push("before") })
+      .validateAfter({ validate: () => void log.push("after") })
+      .executes(() => void log.push("body"));
+  }
+  const b = new B();
+  discoverTargets(b);
+  const result = await execute(b, b.work, silent);
+  assertEquals(result.ok, true);
+  assertEquals(log, ["before", "body", "after"]);
+});
+
+Deno.test("a throwing validateBefore fails the target and skips the body", async () => {
+  let bodyRan = false;
+  class B extends Build {
+    work = target()
+      .validateBefore({
+        validate: (ctx) => {
+          throw new Error(`gate on ${ctx.target}`);
+        },
+      })
+      .executes(() => void (bodyRan = true));
+  }
+  const b = new B();
+  discoverTargets(b);
+  const result = await execute(b, b.work, silent);
+  assertEquals(result.ok, false);
+  assertEquals(bodyRan, false);
+  assertEquals(messageOf(result.error).includes("gate on work"), true);
+});
+
+Deno.test("a throwing validateAfter fails the target after the body ran", async () => {
+  let bodyRan = false;
+  class B extends Build {
+    work = target()
+      .executes(() => void (bodyRan = true))
+      .validateAfter({
+        validate: () => {
+          throw new Error("post-check failed");
+        },
+      });
+  }
+  const b = new B();
+  discoverTargets(b);
+  const result = await execute(b, b.work, silent);
+  assertEquals(result.ok, false);
+  assertEquals(bodyRan, true);
+  assertEquals(messageOf(result.error).includes("post-check failed"), true);
+});
+
+Deno.test("a cached target runs no validations", async () => {
+  let validated = false;
+  class B extends Build {
+    work = target()
+      .validateBefore({ validate: () => void (validated = true) })
+      .executes(() => {});
+  }
+  const b = new B();
+  discoverTargets(b);
+  const cache = new FakeCache();
+  cache.fresh.add("work");
+  const result = await execute(b, b.work, { silent: true, cache });
+  assertEquals(result.ok, true);
+  assertEquals(validated, false);
+});

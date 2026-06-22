@@ -27,6 +27,8 @@ body, which is required before the target can run.
 | `.whenSkipped(behavior)`    | `("run-dependencies" \| "skip-dependencies") => this` | On skip, also skip exclusive deps.                       |
 | `.timeout(ms)`              | `(ms: number) => this`                                | Fail the body if it runs longer than `ms` (per attempt). |
 | `.retry(times, delayMs?)`   | `(times: number, delayMs?: number) => this`           | Retry the body on failure, optionally pausing between.   |
+| `.validateBefore(...v)`     | `(...v: Validation[]) => this`                        | Run checks before the body; a throw skips it and fails.  |
+| `.validateAfter(...v)`      | `(...v: Validation[]) => this`                        | Run checks after a successful body; a throw fails it.    |
 
 `dependsOn` pulls targets into the plan; `before`/`after` only reorder targets
 that are _already_ in the plan — they never pull new targets in.
@@ -40,6 +42,30 @@ lint = target()
     await DenoTasks.lint();
   });
 ```
+
+### Validations — `.validateBefore()` / `.validateAfter()`
+
+A **`Validation`** is any object with a `validate(ctx)` method; plug it into a
+target to run a check before or after the body. A throw fails the target (and
+breaks the build) — the target decides _when_ the check runs, the validation
+decides _what_ it checks. `validateBefore` runs its checks before the body (a
+throw skips the body); `validateAfter` runs them after a successful body. Both
+are repeatable and order-preserving, and a cached/skipped target runs neither.
+
+```ts
+const noSecrets: Validation = {
+  name: "no-secrets",
+  validate: async () => {/* scan the diff; throw on a hit */},
+};
+
+deploy = target()
+  .validateBefore(noSecrets) // gate before deploying
+  .executes(async () => {/* … */});
+```
+
+[`@zuke/ai`](https://jsr.io/@zuke/ai) ships AI reviewers
+(`securityReviewer(...)`, …) that implement `Validation` — define one fluently
+and attach it the same way to gate the build on a model-assessed security score.
 
 ### `group()` and `.partOf()`
 
