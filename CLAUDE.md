@@ -159,6 +159,12 @@ zuke.ts                   # Zuke's own build (runnable example)
   package is released but never published.
 - **Update docs with code.** If behaviour changes, update `README.md`, JSDoc,
   and the spec/acceptance criteria in the same PR.
+- **Always read the reviewer comments on every PR.** This repo runs AI reviewers
+  (`@zuke/ai`) that post their assessments as PR comments (and human reviewers
+  do too). Before considering a PR done — and again after each push — fetch and
+  read every review comment on it (the AI-review bot comments included), and
+  address or explicitly respond to each finding. Don't rely on the checks being
+  green alone; a passing gate can still carry comments worth acting on.
 - **No secrets or machine-specific paths** in the repo or commits. Don't commit
   coverage artifacts (`cov_profile/`, `cov.lcov`) — they're git-ignored.
 - **Deterministic output.** Topological order is declaration-stable; keep it

@@ -151,8 +151,7 @@ openaiKey = parameter("OpenAI API key for the AI security review")
   .env("OPENAI_API_KEY");
 
 securityReview = securityReviewer((r) =>
-  r.provider("openai")
-    .model("gpt-4.1") // better-calibrated than the gpt-4o default
+  r.provider("openai") // default model: gpt-5.4-mini
     .apiKey(this.openaiKey)
     .skipIfKeyMissing() // skip + announce when the key is absent (local runs)
     .comment() // upsert the assessment onto the PR (uses GITHUB_TOKEN)
