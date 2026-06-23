@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/zuke-build/zuke/compare/core-v1.1.0...core-v1.2.0) (2026-06-23)
+
+
+### Features
+
+* add @zuke/ai code-review package and target validations ([#100](https://github.com/zuke-build/zuke/issues/100)) ([710c2be](https://github.com/zuke-build/zuke/commit/710c2be15d5eb9c91d71b89e695b6a4ce7edb645))
+
 ## [1.1.0](https://github.com/zuke-build/zuke/compare/core-v1.0.0...core-v1.1.0) (2026-06-22)
 
 
