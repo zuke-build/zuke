@@ -1,0 +1,8 @@
+# Force LF line endings on generated and text-mode files so a Windows clone
+# (where git's autocrlf may convert LF→CRLF) matches the always-LF output of
+# Zuke's generators (CI workflows, JSON config). Belt-and-suspenders alongside
+# the line-ending-tolerant comparison in `syncCiFiles`.
+* text=auto eol=lf
+*.yml      text eol=lf
+*.yaml     text eol=lf
+*.json     text eol=lf

@@ -450,7 +450,10 @@ export async function syncCiFiles(
   const results: CiSyncResult[] = [];
   for (const file of files) {
     const content = file.render();
-    if (await read(file.path) === content) {
+    // Normalise CRLF→LF on read so a Windows checkout (where git's autocrlf
+    // converts line endings) compares equal to the always-LF rendered output.
+    const onDisk = await read(file.path);
+    if (onDisk !== null && onDisk.replace(/\r\n/g, "\n") === content) {
       results.push({ path: file.path, status: "unchanged" });
     } else if (options.check) {
       results.push({ path: file.path, status: "stale" });
