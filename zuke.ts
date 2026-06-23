@@ -32,12 +32,13 @@ import {
   ReleasePleaseTasks,
 } from "@zuke/release-please";
 import { SecurityTasks } from "@zuke/security";
-import { checkApiDocs, writeApiDocs } from "./scripts/api_docs.ts";
+import { type ApiDocsOptions, DocsTasks } from "@zuke/docs";
 
 /** Workspace packages, in dependency order: core must publish before the rest. */
 const PACKAGES = [
   "core",
   "deno",
+  "docs",
   "npm",
   "bun",
   "pnpm",
@@ -79,6 +80,33 @@ const PACKAGES = [
   "security",
   "ai",
 ];
+
+/** Project framing for the generated API docs (`@zuke/docs`). */
+const DOCS_OPTIONS: ApiDocsOptions = {
+  regenerateCommand: "./zuke apiDocs",
+  project: {
+    title: "Zuke",
+    summary:
+      "Code-first, strongly-typed build automation for Deno/TypeScript. Define " +
+      "a build by extending `Build`; declare targets with the `target()` fluent " +
+      "builder, wiring dependencies as `this.<field>` references (not strings) " +
+      "for compile-time safety. Every external tool has a typed `*Tasks` wrapper " +
+      "in a settings-lambda style — never shell out by hand.",
+    install: "deno run -A jsr:@zuke/cli setup",
+    example: [
+      'import { Build, run, target } from "jsr:@zuke/core";',
+      'import { DenoTasks } from "jsr:@zuke/deno";',
+      "",
+      "class CI extends Build {",
+      "  lint = target().executes(() => DenoTasks.lint());",
+      "  test = target().dependsOn(this.lint)",
+      "    .executes(() => DenoTasks.test((s) => s.allowAll()));",
+      "}",
+      "",
+      "await run(CI);",
+    ].join("\n"),
+  },
+};
 
 /**
  * Where build-time CLIs are installed on demand. Gitignored (`/.zuke/`), so the
@@ -219,7 +247,7 @@ class ZukeBuild extends Build {
       "Generate agent-readable API docs (llms.txt, llms-full.txt, READMEs)",
     )
     .executes(async () => {
-      const written = await writeApiDocs(PACKAGES);
+      const written = await DocsTasks.apiDocs(PACKAGES, DOCS_OPTIONS);
       console.log(
         written.length === 0
           ? "API docs already up to date."
@@ -230,7 +258,7 @@ class ZukeBuild extends Build {
   apiDocsCheck = target()
     .description("Verify the generated API docs are current")
     .executes(async () => {
-      const stale = await checkApiDocs(PACKAGES);
+      const stale = await DocsTasks.checkApiDocs(PACKAGES, DOCS_OPTIONS);
       if (stale.length > 0) {
         throw new Error(
           `API docs are out of date:\n  ${stale.join("\n  ")}\n` +

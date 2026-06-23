@@ -3,6 +3,7 @@
     "packages/core",
     "packages/cmd",
     "packages/deno",
+    "packages/docs",
     "packages/npm",
     "packages/bun",
     "packages/pnpm",
@@ -58,7 +59,6 @@
   "fmt": {
     "include": [
       "zuke.ts",
-      "scripts/",
       "tests/",
       "packages/"
     ],
@@ -69,7 +69,6 @@
   "lint": {
     "include": [
       "zuke.ts",
-      "scripts/",
       "tests/",
       "packages/"
     ],

@@ -1,18 +1,14 @@
 # Zuke
 
-> Code-first, strongly-typed build automation for Deno/TypeScript. Define a
-> build by extending `Build`; declare targets with the `target()` fluent
-> builder, wiring dependencies as `this.<field>` references (not strings) for
-> compile-time safety. Every external tool has a typed `*Tasks` wrapper in a
-> settings-lambda style — never shell out by hand.
+> Code-first, strongly-typed build automation for Deno/TypeScript. Define a build by extending `Build`; declare targets with the `target()` fluent builder, wiring dependencies as `this.<field>` references (not strings) for compile-time safety. Every external tool has a typed `*Tasks` wrapper in a settings-lambda style — never shell out by hand.
 
 ## Get the exact API — do not guess
 
 - Whole typed surface of every package, in one file: [llms-full.txt](./llms-full.txt)
-- A single wrapper's API on the command line: `deno doc jsr:@zuke/<package>`
-- Scaffold a project (writes `zuke.ts` + launchers): `deno run -A jsr:@zuke/cli setup`
+- A single package's API on the command line: `deno doc jsr:@zuke/<package>`
+- Scaffold/install: `deno run -A jsr:@zuke/cli setup`
 
-## Canonical build
+## Example
 
 ```ts
 import { Build, run, target } from "jsr:@zuke/core";
@@ -20,17 +16,18 @@ import { DenoTasks } from "jsr:@zuke/deno";
 
 class CI extends Build {
   lint = target().executes(() => DenoTasks.lint());
-  test = target().dependsOn(this.lint) // a reference, not the string "lint"
+  test = target().dependsOn(this.lint)
     .executes(() => DenoTasks.test((s) => s.allowAll()));
 }
 
-await run(CI); // runs only when this file is the entry point — no guard needed
+await run(CI);
 ```
 
 ## Packages
 
 - [@zuke/core](https://jsr.io/@zuke/core) — a code-first, strongly-typed build automation system for Deno
 - [@zuke/deno](https://jsr.io/@zuke/deno) — typed `DenoTasks` wrappers for the `deno` CLI, for use in
+- [@zuke/docs](https://jsr.io/@zuke/docs) — typed tasks for generating and verifying API documentation
 - [@zuke/npm](https://jsr.io/@zuke/npm) — typed `NpmTasks` wrappers for the `npm` CLI, for use in Zuke
 - [@zuke/bun](https://jsr.io/@zuke/bun) — typed `BunTasks` wrappers for the `bun` CLI, for use in Zuke
 - [@zuke/pnpm](https://jsr.io/@zuke/pnpm) — typed `PnpmTasks` wrappers for the `pnpm` CLI, for use in Zuke

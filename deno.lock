@@ -612,6 +612,11 @@
           "jsr:@zuke/core@1"
         ]
       },
+      "packages/docs": {
+        "dependencies": [
+          "jsr:@zuke/core@1"
+        ]
+      },
       "packages/dpdm": {
         "dependencies": [
           "jsr:@zuke/core@1"
