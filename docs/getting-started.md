@@ -93,9 +93,7 @@ class MyBuild extends Build {
   default = target().dependsOn(this.test).executes(() => {});
 }
 
-if (import.meta.main) {
-  await run(MyBuild);
-}
+await run(MyBuild);
 ```
 
 ```sh

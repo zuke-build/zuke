@@ -16,7 +16,7 @@
  *   onTargetEnd: (target, status) => console.log(`${target}: ${status}`),
  * };
  *
- * if (import.meta.main) await run(MyBuild, { plugins: [timing] });
+ * await run(MyBuild, { plugins: [timing] });
  * ```
  *
  * @module

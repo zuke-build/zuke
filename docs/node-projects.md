@@ -59,9 +59,7 @@ class AppBuild extends Build {
     .executes(() => {});
 }
 
-if (import.meta.main) {
-  await run(AppBuild);
-}
+await run(AppBuild);
 ```
 
 4. Bridge it for npm-centric contributors — in `package.json`:

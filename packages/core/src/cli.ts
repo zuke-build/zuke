@@ -5,6 +5,7 @@
 
 import { type Build, discoverGroups, discoverTargets } from "./build.ts";
 import { discoverCiFiles, syncCiFiles } from "./ci.ts";
+import { isEntryModule } from "./entry.ts";
 import { isCI } from "./host.ts";
 import { GraphError, validateGraph } from "./graph.ts";
 import { execute } from "./executor.ts";
@@ -411,16 +412,23 @@ export interface RunOptions {
  * Public entry point. Instantiate the build, parse arguments, run, and set the
  * process exit code.
  *
+ * Call it at the bottom of your build file — no `import.meta.main` guard
+ * needed. `run` acts only when its module is the program's entry point; when
+ * the file is imported instead (for example under test) it does nothing.
+ *
  * ```ts
- * if (import.meta.main) await run(MyBuild);
+ * await run(MyBuild);
  * // …with plugins:
- * if (import.meta.main) await run(MyBuild, { plugins: [timing] });
+ * await run(MyBuild, { plugins: [timing] });
  * ```
  */
 export async function run(
   BuildClass: new () => Build,
   options: RunOptions = {},
 ): Promise<void> {
+  // Run only when this build's module is the one Deno was started with, so the
+  // caller needn't write `if (import.meta.main)`. Imported elsewhere, no-op.
+  if (!isEntryModule(new Error().stack ?? "", import.meta.url)) return;
   const code = await main(BuildClass, options.args ?? Deno.args, {
     plugins: options.plugins,
   });

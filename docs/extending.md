@@ -24,7 +24,7 @@ const timing: Plugin = {
   onFinish: (result) => console.log(`done: ${result.ok ? "ok" : "failed"}`),
 };
 
-if (import.meta.main) await run(MyBuild, { plugins: [timing] });
+await run(MyBuild, { plugins: [timing] });
 ```
 
 | Hook                       | When it runs                                          |

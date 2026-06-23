@@ -15,7 +15,7 @@
  *     .executes(async () => { await $`deno test -A`; });
  * }
  *
- * if (import.meta.main) { await run(MyBuild); }
+ * await run(MyBuild);
  * ```
  *
  * The shell helper `$` lives in the `./shell` submodule

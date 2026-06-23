@@ -32,9 +32,7 @@ class ${name} extends Build {
     .executes(() => {});
 }
 
-if (import.meta.main) {
-  await run(${name});
-}
+await run(${name});
 `;
 }
 

@@ -25,7 +25,7 @@ class Pipeline extends Build {
     .executes(async () => {/* … */});
 }
 
-if (import.meta.main) await run(Pipeline);
+await run(Pipeline);
 ```
 
 ## Reviewers
