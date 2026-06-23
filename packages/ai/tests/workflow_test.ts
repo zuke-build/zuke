@@ -1,6 +1,7 @@
 import {
   assertEquals,
   assertStringIncludes,
+  assertThrows,
 } from "../../core/tests/_assert.ts";
 import { Build, discoverParameters, parameter, target } from "@zuke/core";
 import {
@@ -124,6 +125,47 @@ Deno.test("baseBranch, target, name, path, and timeoutMinutes override the defau
   assertStringIncludes(yaml, "run: ./zuke audit");
   assertStringIncludes(yaml, '"git fetch --no-tags --depth=1 origin main"');
   assertStringIncludes(yaml, "timeout-minutes: 30");
+});
+
+Deno.test("an unsafe baseBranch is rejected before it reaches the command", () => {
+  const rev = securityReviewer((r) => r.provider("openai").apiKey("k"));
+  assertThrows(
+    () => aiReviewWorkflow({ reviewers: [rev], baseBranch: "main; rm -rf /" }),
+    Error,
+    "baseBranch",
+  );
+  // Whitespace alone is enough to break the single-token git argument.
+  assertThrows(
+    () => aiReviewWorkflow({ reviewers: [rev], baseBranch: "a b" }),
+    Error,
+    "not a valid",
+  );
+});
+
+Deno.test("an unsafe target is rejected before it reaches the command", () => {
+  const rev = securityReviewer((r) => r.provider("openai").apiKey("k"));
+  assertThrows(
+    () => aiReviewWorkflow({ reviewers: [rev], target: "review && curl evil" }),
+    Error,
+    "target",
+  );
+});
+
+Deno.test("slashes and dots in a branch name are accepted", () => {
+  class B extends Build {
+    key = parameter("Key").secret().env("K");
+    rev = securityReviewer((r) => r.provider("openai").apiKey(this.key));
+    wf = aiReviewWorkflow({
+      reviewers: [this.rev],
+      baseBranch: "release/2.0.x",
+    });
+  }
+  const b = new B();
+  discoverParameters(b);
+  assertStringIncludes(
+    b.wf.render(),
+    "origin release/2.0.x",
+  );
 });
 
 Deno.test("a custom .githubToken(param) is wired by that parameter's env var", () => {
