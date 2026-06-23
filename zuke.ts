@@ -262,6 +262,7 @@ class ZukeBuild extends Build {
   securityReview = securityReviewer((r) =>
     r
       .provider("openai")
+      .model("gpt-4.1")
       .apiKey(this.openaiKey)
       .skipIfKeyMissing()
       .comment() // upsert the assessment onto the PR (uses GITHUB_TOKEN)
