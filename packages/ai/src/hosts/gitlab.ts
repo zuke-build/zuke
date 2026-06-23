@@ -1,0 +1,129 @@
+/**
+ * Post the review as a GitLab merge-request note. Runs against the v4 REST API
+ * (`CI_API_V4_URL`) and upserts a single per-reviewer note matched by a hidden
+ * marker.
+ *
+ * GitLab's CI `$CI_JOB_TOKEN` can't create MR notes — you need a personal or
+ * group access token with the `api` scope; export it as `GITLAB_TOKEN` (or
+ * pass `.commentToken(myToken)`).
+ *
+ * @module
+ */
+
+import { AiReviewError } from "../errors.ts";
+import { dig } from "../json.ts";
+import {
+  commentBody,
+  commentMarker,
+  type EnvReader,
+  type ReviewHost,
+} from "./types.ts";
+
+/** The default GitLab API root used when `CI_API_V4_URL` is absent. */
+const DEFAULT_API = "https://gitlab.com/api/v4";
+
+/** Everything needed to comment on a merge request. */
+export interface GitlabContext {
+  /** A token with `api` scope (typically `GITLAB_TOKEN`). */
+  token: string;
+  /** API base, e.g. `https://gitlab.com/api/v4` — honours `CI_API_V4_URL`. */
+  api: string;
+  /** Numeric project id (`CI_PROJECT_ID`). */
+  projectId: string;
+  /** MR IID (project-scoped iid, `CI_MERGE_REQUEST_IID`). */
+  mrIid: string;
+}
+
+/**
+ * Resolve the GitLab context from the ambient environment and a token. Returns
+ * `undefined` when any piece is missing — e.g. a pipeline triggered by a push
+ * rather than a merge request.
+ */
+export function resolveGitlabContext(
+  token: string,
+  env: EnvReader,
+): GitlabContext | undefined {
+  if (token === "") return undefined;
+  const projectId = env("CI_PROJECT_ID");
+  const mrIid = env("CI_MERGE_REQUEST_IID");
+  if (projectId === undefined || projectId === "") return undefined;
+  if (mrIid === undefined || mrIid === "") return undefined;
+  const api = env("CI_API_V4_URL") ?? DEFAULT_API;
+  return { token, api: api.replace(/\/+$/, ""), projectId, mrIid };
+}
+
+/** The request headers for a GitLab REST call. */
+function headers(token: string): Record<string, string> {
+  return {
+    "PRIVATE-TOKEN": token,
+    "accept": "application/json",
+    "content-type": "application/json",
+    "user-agent": "zuke-ai",
+  };
+}
+
+/** Throw an {@link AiReviewError} for a non-2xx GitLab response. */
+async function ensureOk(response: Response): Promise<void> {
+  if (!response.ok) {
+    await response.body?.cancel();
+    throw new AiReviewError(`GitLab API error: HTTP ${response.status}`);
+  }
+}
+
+/** The id of an existing note carrying `marker`, or `undefined`. */
+async function findNote(
+  context: GitlabContext,
+  marker: string,
+  doFetch: typeof fetch,
+): Promise<number | undefined> {
+  const url = `${context.api}/projects/${context.projectId}` +
+    `/merge_requests/${context.mrIid}/notes?per_page=100&sort=desc`;
+  const response = await doFetch(url, { headers: headers(context.token) });
+  await ensureOk(response);
+  const data: unknown = await response.json();
+  if (!Array.isArray(data)) return undefined;
+  for (const item of data) {
+    const body = dig(item, "body");
+    const id = dig(item, "id");
+    if (
+      typeof body === "string" && body.includes(marker) &&
+      typeof id === "number"
+    ) {
+      return id;
+    }
+  }
+  return undefined;
+}
+
+/** Upsert the per-reviewer note: PUT to update, POST to create. */
+export async function upsertMergeRequestNote(
+  context: GitlabContext,
+  name: string,
+  markdown: string,
+  doFetch: typeof fetch = fetch,
+): Promise<void> {
+  const marker = commentMarker(name);
+  const body = commentBody(name, markdown);
+  const root = `${context.api}/projects/${context.projectId}` +
+    `/merge_requests/${context.mrIid}/notes`;
+  const existing = await findNote(context, marker, doFetch);
+  const url = existing === undefined ? root : `${root}/${existing}`;
+  const response = await doFetch(url, {
+    method: existing === undefined ? "POST" : "PUT",
+    headers: headers(context.token),
+    body: JSON.stringify({ body }),
+  });
+  await ensureOk(response);
+}
+
+/** The GitLab CI implementation of {@link ReviewHost}. */
+export const gitlabHost: ReviewHost = {
+  label: "GitLab",
+  defaultTokenEnv: "GITLAB_TOKEN",
+  prepare(token, env) {
+    const context = resolveGitlabContext(token, env);
+    if (context === undefined) return undefined;
+    return (name, markdown, doFetch) =>
+      upsertMergeRequestNote(context, name, markdown, doFetch);
+  },
+};

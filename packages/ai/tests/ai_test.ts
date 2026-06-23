@@ -865,7 +865,11 @@ Deno.test("token usage is included in the job-summary markdown", async () => {
 
 Deno.test("comment() posts the assessment to the pull request", async () => {
   await withEnv(
-    { GITHUB_REPOSITORY: "zuke-build/zuke", GITHUB_REF: "refs/pull/42/merge" },
+    {
+      GITHUB_ACTIONS: "true",
+      GITHUB_REPOSITORY: "zuke-build/zuke",
+      GITHUB_REF: "refs/pull/42/merge",
+    },
     async () => {
       const { fetch, calls } = routedFetch({
         provider: claude({ score: 1, findings: [] }),
@@ -896,6 +900,7 @@ Deno.test("comment() posts the assessment to the pull request", async () => {
 Deno.test("comment() uses GITHUB_TOKEN and updates the existing comment", async () => {
   await withEnv(
     {
+      GITHUB_ACTIONS: "true",
       GITHUB_REPOSITORY: "zuke-build/zuke",
       GITHUB_REF: "refs/pull/42/merge",
       GITHUB_TOKEN: "env-token",
@@ -925,25 +930,36 @@ Deno.test("comment() uses GITHUB_TOKEN and updates the existing comment", async 
   );
 });
 
-Deno.test("comment() warns and skips when there is no PR context", async () => {
-  await withEnv({ GITHUB_REF: "refs/heads/master" }, async () => {
-    const { fetch, calls } = routedFetch({
-      provider: claude({ score: 0, findings: [] }),
-    });
-    const lines = await captured(() =>
-      securityReviewer((r) =>
-        r.provider("claude").apiKey("k").comment().githubToken("tkn")
-          .diff((d) => d.text(DIFF)).fetch(fetch)
-      ).validate({ target: "deploy" })
-    );
-    assertEquals(calls.some((c) => c.url.includes("api.github.com")), false);
-    assertEquals(lines.some((l) => l.includes("no PR context")), true);
-  });
+Deno.test("comment() warns and skips on GitHub without a PR ref", async () => {
+  // Active CI host detected (GITHUB_ACTIONS=true), but the ref is a branch, not a PR.
+  await withEnv(
+    { GITHUB_ACTIONS: "true", GITHUB_REF: "refs/heads/master" },
+    async () => {
+      const { fetch, calls } = routedFetch({
+        provider: claude({ score: 0, findings: [] }),
+      });
+      const lines = await captured(() =>
+        securityReviewer((r) =>
+          r.provider("claude").apiKey("k").comment().githubToken("tkn")
+            .diff((d) => d.text(DIFF)).fetch(fetch)
+        ).validate({ target: "deploy" })
+      );
+      assertEquals(calls.some((c) => c.url.includes("api.github.com")), false);
+      assertEquals(
+        lines.some((l) => l.includes("no GitHub PR context")),
+        true,
+      );
+    },
+  );
 });
 
 Deno.test("a failed PR comment never breaks the review", async () => {
   await withEnv(
-    { GITHUB_REPOSITORY: "zuke-build/zuke", GITHUB_REF: "refs/pull/42/merge" },
+    {
+      GITHUB_ACTIONS: "true",
+      GITHUB_REPOSITORY: "zuke-build/zuke",
+      GITHUB_REF: "refs/pull/42/merge",
+    },
     async () => {
       const { fetch } = routedFetch({
         provider: claude({ score: 0, findings: [] }),

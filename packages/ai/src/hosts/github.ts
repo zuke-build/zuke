@@ -1,19 +1,23 @@
 /**
- * Posting a review to a pull request as a comment. Runs against the GitHub REST
- * API with the workflow token, and upserts a single per-reviewer comment (keyed
- * by a hidden marker) so re-runs update in place instead of piling up.
+ * Post the review as a GitHub pull-request comment. Runs against the REST API
+ * with `pull-requests: write` and upserts a single per-reviewer comment
+ * (matched by a hidden marker) so re-runs update in place.
  *
  * @module
  */
 
-import { AiReviewError } from "./errors.ts";
-import { dig } from "./json.ts";
+import { AiReviewError } from "../errors.ts";
+import { dig } from "../json.ts";
+import {
+  commentBody,
+  commentMarker,
+  type EnvReader,
+  readEnv,
+  type ReviewHost,
+} from "./types.ts";
 
 /** The GitHub REST API origin. */
 const API = "https://api.github.com";
-
-/** Attribution header prepended to every PR comment. */
-const HEADER = "🤖 **[Zuke](https://zuke.build) AI review**";
 
 /** Everything needed to comment on a pull request. */
 export interface GithubContext {
@@ -27,15 +31,6 @@ export interface GithubContext {
   pull: number;
 }
 
-/** Read an env var, tolerating an absent `--allow-env` permission. */
-export function readEnv(key: string): string | undefined {
-  try {
-    return Deno.env.get(key);
-  } catch {
-    return undefined;
-  }
-}
-
 /** Parse a `refs/pull/<n>/merge` ref into its pull-request number. */
 function pullFromRef(ref: string | undefined): number | undefined {
   const match = (ref ?? "").match(/^refs\/pull\/(\d+)\/merge$/);
@@ -44,12 +39,12 @@ function pullFromRef(ref: string | undefined): number | undefined {
 
 /**
  * Resolve the GitHub context from the ambient environment and a token. Returns
- * `undefined` (rather than throwing) when any piece is missing — commenting is a
- * best-effort side effect, so a local run without a PR simply skips it.
+ * `undefined` when any piece is missing — commenting is best-effort, so a local
+ * run without a PR simply skips it.
  */
 export function resolveGithubContext(
   token: string,
-  env: (key: string) => string | undefined = readEnv,
+  env: EnvReader = readEnv,
 ): GithubContext | undefined {
   if (token === "") return undefined;
   const repo = env("GITHUB_REPOSITORY"); // "owner/repo"
@@ -111,9 +106,8 @@ async function findComment(
 }
 
 /**
- * Upsert the per-reviewer comment on the pull request: patch the existing one if
- * present (matched by the hidden `name` marker), otherwise create it. The marker
- * is invisible in rendered Markdown but lets a re-run find its own comment.
+ * Upsert the per-reviewer comment on the pull request: patch the existing one
+ * if present (matched by the hidden `name` marker), otherwise create it.
  */
 export async function upsertPrComment(
   context: GithubContext,
@@ -121,8 +115,8 @@ export async function upsertPrComment(
   markdown: string,
   doFetch: typeof fetch = fetch,
 ): Promise<void> {
-  const marker = `<!-- zuke-ai-review:${name} -->`;
-  const body = `${marker}\n${HEADER}\n\n${markdown}`;
+  const marker = commentMarker(name);
+  const body = commentBody(name, markdown);
   const repo = `${API}/repos/${context.owner}/${context.repo}`;
   const existing = await findComment(context, marker, doFetch);
   const url = existing === undefined
@@ -135,3 +129,15 @@ export async function upsertPrComment(
   });
   await ensureOk(response);
 }
+
+/** The GitHub Actions implementation of {@link ReviewHost}. */
+export const githubHost: ReviewHost = {
+  label: "GitHub",
+  defaultTokenEnv: "GITHUB_TOKEN",
+  prepare(token, env) {
+    const context = resolveGithubContext(token, env);
+    if (context === undefined) return undefined;
+    return (name, markdown, doFetch) =>
+      upsertPrComment(context, name, markdown, doFetch);
+  },
+};
