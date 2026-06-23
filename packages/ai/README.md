@@ -49,12 +49,19 @@ structured-output mode (Claude `output_config.format`, OpenAI strict
 `.model(...)`, `.effort(...)`, `.diff((d) => d.base("origin/main"))`,
 `.include(...)`/`.exclude(...)`, `.maxDiffTokens(n)`,
 `.failWhen((g) => g.scoreAbove(7) / g.severityAtLeast("high"))`,
-`.onError("fail" | "warn")`, `.skipIfKeyMissing()`, `.comment()`,
-`.githubToken(...)`, `.quiet()`.
+`.onError("fail" | "warn")`, `.retry({ attempts: 3 })`, `.skipIfKeyMissing()`,
+`.comment()`, `.githubToken(...)`, `.quiet()`.
 
 `.skipIfKeyMissing()` skips the review instead of failing when the API key is
 absent — handy when the key is a CI-only secret — and announces the skip on the
 console and in the job summary so the gap is visible rather than silent.
+
+`.retry(...)` controls transient-failure retries (`HTTP 408/429/500/502/503/504`
+and network errors). The default is **on** — three attempts with exponential
+backoff (1s, 2s, …) and `Retry-After` honoured. Pass `{ attempts: 5 }` to retry
+more aggressively, `{ attempts: 1 }` to disable. Helps absorb provider hiccups —
+notably Gemini's frequent 503 "model overloaded" responses — without skipping or
+failing the review.
 
 ## Pull-request comment
 

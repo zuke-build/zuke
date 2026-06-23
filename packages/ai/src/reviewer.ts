@@ -35,6 +35,7 @@ import {
   writeStepSummary,
 } from "./report.ts";
 import { readEnv, resolveGithubContext, upsertPrComment } from "./github.ts";
+import type { RetryOptions } from "./retry.ts";
 
 /**
  * A fluent AI reviewer. Construct one via {@link securityReviewer} (and the
@@ -58,6 +59,7 @@ export class Reviewer implements Validation {
   #skipIfKeyMissing = false;
   #comment = false;
   #githubToken?: AnyParameter | string;
+  #retry?: RetryOptions;
   #quiet = false;
   #fetch?: typeof fetch;
   #exec?: (argv: string[]) => Promise<string>;
@@ -143,6 +145,17 @@ export class Reviewer implements Validation {
    */
   onError(mode: "fail" | "warn"): this {
     this.#onError = mode;
+    return this;
+  }
+
+  /**
+   * Retry the provider call on transient failures (`HTTP 408/429/500/502/503/
+   * 504` and network errors). The default is on — three attempts with
+   * exponential backoff and `Retry-After` honoured. Pass an object to override:
+   * `{ attempts: 5 }` to retry more, or `{ attempts: 1 }` to disable.
+   */
+  retry(options: RetryOptions = {}): this {
+    this.#retry = options;
     return this;
   }
 
@@ -290,7 +303,7 @@ export class Reviewer implements Validation {
         this.#model ?? DEFAULT_MODELS[provider],
         system,
         user,
-        { effort: this.#effort, fetch: this.#fetch },
+        { effort: this.#effort, fetch: this.#fetch, retry: this.#retry },
       );
       assessment = parseAssessment(result.text);
       usage = result.usage;

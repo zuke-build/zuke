@@ -705,6 +705,40 @@ Deno.test("an unwritable job-summary file never fails the review", async () => {
   }
 });
 
+Deno.test("a transient 503 from the provider is retried, then the review passes", async () => {
+  // A scripted fetch that returns 503 once, then the assessment.
+  let i = 0;
+  const responses: Response[] = [
+    new Response("overloaded", { status: 503 }),
+    new Response(claude({ score: 0, findings: [] }), { status: 200 }),
+  ];
+  const scripted =
+    ((_input: string | URL | Request, _init?: RequestInit) =>
+      Promise.resolve(responses[i++])) as typeof fetch;
+  await captured(() =>
+    securityReviewer((r) =>
+      r.provider("claude").apiKey("k").diff((d) => d.text(DIFF))
+        .fetch(scripted)
+        .retry({ baseDelayMs: 0 }) // skip the real backoff in tests
+    ).validate({ target: "t" })
+  );
+  assertEquals(i, 2); // first call hit 503, second succeeded
+});
+
+Deno.test("retry({ attempts: 1 }) disables retries — a 503 surfaces immediately", async () => {
+  const { fetch } = recordFetch("", 503);
+  const lines = await captured(() =>
+    securityReviewer((r) =>
+      r.provider("claude").apiKey("k").diff((d) => d.text(DIFF)).fetch(fetch)
+        .retry({ attempts: 1 }).onError("warn")
+    ).validate({ target: "t" })
+  );
+  assertEquals(
+    lines.some((l) => l.includes("claude API error: HTTP 503")),
+    true,
+  );
+});
+
 Deno.test("token usage from the provider is shown in the output", async () => {
   const { fetch } = recordFetch(
     claudeWithUsage({ score: 1, findings: [] }, {

@@ -86,6 +86,37 @@ announced on the console and in the job summary. This keeps a reviewer that
 relies on a CI-only secret from breaking local runs (or forks that receive no
 secret), while still making the gap visible rather than silently passing.
 
+## Surviving transient provider failures
+
+Provider APIs routinely return short-lived `503 Service Unavailable` (model
+overloaded — common on Gemini) and `429 Too Many Requests` (rate-limited). A
+review that hits one of these would skip otherwise — even though a second
+attempt seconds later would succeed.
+
+`.retry(...)` wraps the provider call in **retry-with-exponential-backoff** on a
+small allowlist of statuses that mean "try again shortly" (`408`, `429`, `500`,
+`502`, `503`, `504`) plus thrown network errors (DNS, TCP, TLS). It honours a
+server-supplied `Retry-After` header within a 30 s cap, and gives up on anything
+non-retryable (a `401` config error, a refusal, bad JSON) without sleeping.
+Defaults: **3 attempts** total, base backoff 1 s, doubling.
+
+```ts
+// On by default; override only when you want different behaviour.
+securityReviewer((r) =>
+  r.provider("gemini").apiKey(this.key)
+    .retry({ attempts: 5 })          // more aggressive — five tries total
+);
+
+genericReviewer((r) =>
+  r.provider("openai").apiKey(this.key)
+    .retry({ attempts: 1 })          // disable retries
+);
+```
+
+A retry exhausted-but-still-failing call surfaces through the usual `onError`
+contract (`"fail"` breaks the build, `"warn"` logs and passes), so a stubborn
+outage isn't a silent skip either.
+
 ## Scoping the diff and cost
 
 - `.diff((d) => d.base("origin/main"))` reviews the diff against a ref;
