@@ -3,8 +3,9 @@ name: AI Review
 on:
   pull_request:
 
-# This is the only workflow that uses the org-level OPENAI_API_KEY secret.
-# `pull-requests: write` lets the reviewer upsert its assessment as a PR comment.
+# This is the only workflow that uses the org-level OPENAI_API_KEY and
+# GEMINI_API_KEY secrets. `pull-requests: write` lets the reviewers upsert their
+# assessments as PR comments.
 permissions:
   contents: read
   pull-requests: write
@@ -15,12 +16,12 @@ concurrency:
 
 jobs:
   review:
-    name: AI security review
+    name: AI review
     runs-on: ubuntu-latest
     timeout-minutes: 15
     # Only run for branches in this repo, never forks: a fork PR must not be
-    # able to run its own code with the secret in scope (pwn-request). Fork PRs
-    # also receive no secrets, so the review would skip there anyway.
+    # able to run its own code with the secrets in scope (pwn-request). Fork PRs
+    # also receive no secrets, so the reviews would skip there anyway.
     if: ${{ github.event.pull_request.head.repo.fork == false }}
     steps:
       - name: Harden the runner
@@ -36,11 +37,13 @@ jobs:
       - name: Fetch the base branch
         run: git fetch --no-tags --depth=1 origin master
 
-      # The ./zuke launcher bootstraps Deno; `review` runs @zuke/ai over the diff,
-      # appends its assessment to the job summary, and upserts a PR comment.
-      - name: AI security review with Zuke
+      # The ./zuke launcher bootstraps Deno; `review` runs @zuke/ai over the diff
+      # (security + code-quality reviewers), appends each assessment to the job
+      # summary, and upserts a PR comment per reviewer.
+      - name: AI review with Zuke
         run: ./zuke review
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ZUKE_REVIEW_BASE: FETCH_HEAD

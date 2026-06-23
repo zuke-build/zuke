@@ -22,7 +22,7 @@ import {
   target,
 } from "@zuke/core";
 import { CommandTimeoutError } from "@zuke/core/shell";
-import { securityReviewer } from "@zuke/ai";
+import { genericReviewer, securityReviewer } from "@zuke/ai";
 import { type DenoInstallSettings, DenoTasks } from "@zuke/deno";
 import { CspellTasks } from "@zuke/cspell";
 import { isPublished } from "@zuke/jsr";
@@ -250,11 +250,13 @@ class ZukeBuild extends Build {
       }
     });
 
-  // Dogfood @zuke/ai: review the diff for security issues. The key is an org
-  // secret (OPENAI_API_KEY) available in Actions; `skipIfKeyMissing()` skips the
-  // review (announcing it on the console and in the summary) when the key is
-  // absent, e.g. on local runs. `onError("warn")` keeps an API hiccup from
-  // breaking the build, and the assessment lands in the job summary.
+  // Dogfood @zuke/ai: two reviewers on different providers gate the `review`
+  // target — an OpenAI security scan and a Gemini code-quality review. The keys
+  // are org secrets (OPENAI_API_KEY / GEMINI_API_KEY) available in Actions;
+  // `skipIfKeyMissing()` skips a review (announcing it on the console and in the
+  // summary) when its key is absent, e.g. on local runs. `onError("warn")` keeps
+  // an API hiccup from breaking the build, and each assessment lands in the job
+  // summary and as a PR comment.
   openaiKey = parameter("OpenAI API key for the AI security review")
     .secret()
     .env("OPENAI_API_KEY");
@@ -272,9 +274,34 @@ class ZukeBuild extends Build {
       .onError("warn")
   );
 
+  // A second reviewer on a different provider (Gemini), to showcase two AI
+  // providers gating the same target. This one is a general code-quality review
+  // with explicit criteria rather than a security scan.
+  geminiKey = parameter("Gemini API key for the AI code-quality review")
+    .secret()
+    .env("GEMINI_API_KEY");
+
+  generalReview = genericReviewer((r) =>
+    r
+      .provider("gemini")
+      .apiKey(this.geminiKey)
+      .skipIfKeyMissing()
+      .comment() // a separate PR comment, keyed by the reviewer name
+      .criteria(
+        "Review the diff for code quality and maintainability: clear naming, " +
+          "cohesive small modules, adequate tests and docs for new behaviour, " +
+          "and adherence to the project's strict, dependency-free TypeScript " +
+          "conventions (no `any`, no `as`, task-shaped public API).",
+      )
+      .diff((d) => d.base(Deno.env.get("ZUKE_REVIEW_BASE") ?? "origin/master"))
+      .maxDiffTokens(20000)
+      .failWhen((g) => g.scoreAbove(8))
+      .onError("warn")
+  );
+
   review = target()
-    .description("AI security review of the diff (writes to the job summary)")
-    .validateBefore(this.securityReview)
+    .description("AI review of the diff (security + code quality)")
+    .validateBefore(this.securityReview, this.generalReview)
     .executes(() => {});
 
   release = target()

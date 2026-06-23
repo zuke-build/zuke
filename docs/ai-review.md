@@ -141,8 +141,9 @@ informational — it never affects the gate.
 
 ## Worked example: Zuke reviews itself
 
-Zuke's own build runs a security review on every internal PR. In
-[`zuke.ts`](../zuke.ts):
+Zuke's own build gates the `review` target with **two reviewers on different
+providers** on every internal PR — an OpenAI security scan and a Gemini
+code-quality review — to show how providers compose. In [`zuke.ts`](../zuke.ts):
 
 ```ts
 openaiKey = parameter("OpenAI API key for the AI security review")
@@ -161,17 +162,38 @@ securityReview = securityReviewer((r) =>
     .onError("warn")
 );
 
+geminiKey = parameter("Gemini API key for the AI code-quality review")
+  .secret()
+  .env("GEMINI_API_KEY");
+
+generalReview = genericReviewer((r) =>
+  r.provider("gemini")
+    .apiKey(this.geminiKey)
+    .skipIfKeyMissing()
+    .comment() // a separate PR comment, keyed by the reviewer name
+    .criteria("Review the diff for code quality and maintainability: …")
+    .diff((d) => d.base(Deno.env.get("ZUKE_REVIEW_BASE") ?? "origin/master"))
+    .maxDiffTokens(20000)
+    .failWhen((g) => g.scoreAbove(8))
+    .onError("warn")
+);
+
 review = target()
-  .validateBefore(this.securityReview)
+  .validateBefore(this.securityReview, this.generalReview)
   .executes(() => {});
 ```
 
+`.validateBefore(...)` takes both reviewers, so each runs before the (empty)
+body and gates the target independently. Because the PR comment is keyed by the
+reviewer name, the two land as **separate comments** ("security review" and
+"generic review") rather than overwriting each other.
+
 `.skipIfKeyMissing()` replaces an `.onlyWhen(() => this.openaiKey.isSet_())`
-gate on the target: rather than the target vanishing silently when the key is
+gate on the target: rather than the target vanishing silently when a key is
 absent, the reviewer runs, sees no key, and prints a "skipped — no API key"
 line (and a matching job-summary note). The
 [`ai-review.yml`](../.github/workflows/ai-review.yml) workflow runs
-`./zuke review` on pull requests (non-fork only, so the secret is never exposed
-to untrusted code), passing `OPENAI_API_KEY`, the `GITHUB_TOKEN` (for the
-comment), and a `ZUKE_REVIEW_BASE` to diff against. The assessment lands in that
-run's job summary and as an upserted comment on the PR.
+`./zuke review` on pull requests (non-fork only, so the secrets are never
+exposed to untrusted code), passing `OPENAI_API_KEY`, `GEMINI_API_KEY`, the
+`GITHUB_TOKEN` (for the comments), and a `ZUKE_REVIEW_BASE` to diff against.
+Each assessment lands in that run's job summary and as an upserted PR comment.
