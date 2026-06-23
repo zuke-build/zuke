@@ -32,11 +32,13 @@ import {
   ReleasePleaseTasks,
 } from "@zuke/release-please";
 import { SecurityTasks } from "@zuke/security";
+import { type ApiDocsOptions, DocsTasks, type PackageDoc } from "@zuke/docs";
 
 /** Workspace packages, in dependency order: core must publish before the rest. */
 const PACKAGES = [
   "core",
   "deno",
+  "docs",
   "npm",
   "bun",
   "pnpm",
@@ -78,6 +80,52 @@ const PACKAGES = [
   "security",
   "ai",
 ];
+
+/** Project framing for the generated API docs (`@zuke/docs`). */
+const DOCS_OPTIONS: ApiDocsOptions = {
+  regenerateCommand: "./zuke apiDocs",
+  project: {
+    title: "Zuke",
+    summary:
+      "Code-first, strongly-typed build automation for Deno/TypeScript. Define " +
+      "a build by extending `Build`; declare targets with the `target()` fluent " +
+      "builder, wiring dependencies as `this.<field>` references (not strings) " +
+      "for compile-time safety. Every external tool has a typed `*Tasks` wrapper " +
+      "in a settings-lambda style — never shell out by hand.",
+    install: "deno run -A jsr:@zuke/cli setup",
+    example: [
+      'import { Build, run, target } from "jsr:@zuke/core";',
+      'import { DenoTasks } from "jsr:@zuke/deno";',
+      "",
+      "class CI extends Build {",
+      "  lint = target().executes(() => DenoTasks.lint());",
+      "  test = target().dependsOn(this.lint)",
+      "    .executes(() => DenoTasks.test((s) => s.allowAll()));",
+      "}",
+      "",
+      "await run(CI);",
+    ].join("\n"),
+    guidance: [
+      "A single package's API on the command line: " +
+      "`deno doc jsr:@zuke/<package>`",
+    ],
+  },
+};
+
+/**
+ * Produce each package's API documentation text with `deno doc` (from
+ * `@zuke/deno`), so `@zuke/docs` can consume it without running `deno` itself.
+ */
+async function collectPackageDocs(): Promise<PackageDoc[]> {
+  const docs: PackageDoc[] = [];
+  for (const dir of PACKAGES) {
+    const { stdout } = await DenoTasks.doc((s) =>
+      s.paths(`packages/${dir}/mod.ts`).env({ NO_COLOR: "1" }).quiet()
+    );
+    docs.push({ name: `@zuke/${dir}`, dir, doc: stdout });
+  }
+  return docs;
+}
 
 /**
  * Where build-time CLIs are installed on demand. Gitignored (`/.zuke/`), so the
@@ -213,9 +261,46 @@ class ZukeBuild extends Build {
       );
     });
 
+  apiDocs = target()
+    .description(
+      "Generate agent-readable API docs (llms.txt, llms-full.txt, READMEs)",
+    )
+    .executes(async () => {
+      const written = await DocsTasks.apiDocs(
+        await collectPackageDocs(),
+        DOCS_OPTIONS,
+      );
+      console.log(
+        written.length === 0
+          ? "API docs already up to date."
+          : `Regenerated ${written.length} file(s):\n  ${written.join("\n  ")}`,
+      );
+    });
+
+  apiDocsCheck = target()
+    .description("Verify the generated API docs are current")
+    .executes(async () => {
+      const stale = await DocsTasks.checkApiDocs(
+        await collectPackageDocs(),
+        DOCS_OPTIONS,
+      );
+      if (stale.length > 0) {
+        throw new Error(
+          `API docs are out of date:\n  ${stale.join("\n  ")}\n` +
+            "Run `./zuke apiDocs` and commit the result.",
+        );
+      }
+    });
+
   ci = target()
     .description("Full pre-commit / CI gate")
-    .dependsOn(this.format, this.lint, this.spell, this.coverage)
+    .dependsOn(
+      this.format,
+      this.lint,
+      this.spell,
+      this.coverage,
+      this.apiDocsCheck,
+    )
     .executes(() => {});
 
   // Supply-chain scanning, dogfooding @zuke/security. Kept out of `ci` so the

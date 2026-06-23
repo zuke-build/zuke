@@ -3,6 +3,7 @@
     "packages/core",
     "packages/cmd",
     "packages/deno",
+    "packages/docs",
     "packages/npm",
     "packages/bun",
     "packages/pnpm",

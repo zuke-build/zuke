@@ -89,12 +89,19 @@ Zuke ships as a JSR workspace: a tiny core plus a typed wrapper per tool. Every
 package is versioned and published independently — the badges below track the
 latest release on JSR.
 
+> **Looking for the exact API (humans and agents)?** Don't guess and don't shell
+> out — every tool is a typed wrapper. The complete, typed surface of every
+> package is in [`llms-full.txt`](./llms-full.txt) (one file), summarised in
+> [`llms.txt`](./llms.txt); for a single package run
+> `deno doc jsr:@zuke/<package>`. See also [`AGENTS.md`](./AGENTS.md).
+
 | Package                                           | Version                                                                                                                                                                 |
 | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [`@zuke/core`](https://jsr.io/@zuke/core)         | [![JSR](https://jsr.io/badges/@zuke/core)](https://jsr.io/@zuke/core) [![JSR score](https://jsr.io/badges/@zuke/core/score)](https://jsr.io/@zuke/core)                 |
 | [`@zuke/cli`](https://jsr.io/@zuke/cli)           | [![JSR](https://jsr.io/badges/@zuke/cli)](https://jsr.io/@zuke/cli) [![JSR score](https://jsr.io/badges/@zuke/cli/score)](https://jsr.io/@zuke/cli)                     |
 | [`@zuke/cmd`](https://jsr.io/@zuke/cmd)           | [![JSR](https://jsr.io/badges/@zuke/cmd)](https://jsr.io/@zuke/cmd) [![JSR score](https://jsr.io/badges/@zuke/cmd/score)](https://jsr.io/@zuke/cmd)                     |
 | [`@zuke/deno`](https://jsr.io/@zuke/deno)         | [![JSR](https://jsr.io/badges/@zuke/deno)](https://jsr.io/@zuke/deno) [![JSR score](https://jsr.io/badges/@zuke/deno/score)](https://jsr.io/@zuke/deno)                 |
+| [`@zuke/docs`](https://jsr.io/@zuke/docs)         | [![JSR](https://jsr.io/badges/@zuke/docs)](https://jsr.io/@zuke/docs) [![JSR score](https://jsr.io/badges/@zuke/docs/score)](https://jsr.io/@zuke/docs)                 |
 | [`@zuke/npm`](https://jsr.io/@zuke/npm)           | [![JSR](https://jsr.io/badges/@zuke/npm)](https://jsr.io/@zuke/npm) [![JSR score](https://jsr.io/badges/@zuke/npm/score)](https://jsr.io/@zuke/npm)                     |
 | [`@zuke/security`](https://jsr.io/@zuke/security) | [![JSR](https://jsr.io/badges/@zuke/security)](https://jsr.io/@zuke/security) [![JSR score](https://jsr.io/badges/@zuke/security/score)](https://jsr.io/@zuke/security) |
 

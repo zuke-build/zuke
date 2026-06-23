@@ -1,0 +1,70 @@
+# Zuke
+
+> Code-first, strongly-typed build automation for Deno/TypeScript. Define a build by extending `Build`; declare targets with the `target()` fluent builder, wiring dependencies as `this.<field>` references (not strings) for compile-time safety. Every external tool has a typed `*Tasks` wrapper in a settings-lambda style — never shell out by hand.
+
+## Get the exact API — do not guess
+
+- Whole typed surface of every package, in one file: [llms-full.txt](./llms-full.txt)
+- Scaffold/install: `deno run -A jsr:@zuke/cli setup`
+- A single package's API on the command line: `deno doc jsr:@zuke/<package>`
+
+## Example
+
+```ts
+import { Build, run, target } from "jsr:@zuke/core";
+import { DenoTasks } from "jsr:@zuke/deno";
+
+class CI extends Build {
+  lint = target().executes(() => DenoTasks.lint());
+  test = target().dependsOn(this.lint)
+    .executes(() => DenoTasks.test((s) => s.allowAll()));
+}
+
+await run(CI);
+```
+
+## Packages
+
+- [@zuke/core](https://jsr.io/@zuke/core) — a code-first, strongly-typed build automation system for Deno
+- [@zuke/deno](https://jsr.io/@zuke/deno) — typed `DenoTasks` wrappers for the `deno` CLI, for use in
+- [@zuke/docs](https://jsr.io/@zuke/docs) — typed tasks that turn already-generated API documentation into
+- [@zuke/npm](https://jsr.io/@zuke/npm) — typed `NpmTasks` wrappers for the `npm` CLI, for use in Zuke
+- [@zuke/bun](https://jsr.io/@zuke/bun) — typed `BunTasks` wrappers for the `bun` CLI, for use in Zuke
+- [@zuke/pnpm](https://jsr.io/@zuke/pnpm) — typed `PnpmTasks` wrappers for the `pnpm` CLI, for use in Zuke
+- [@zuke/yarn](https://jsr.io/@zuke/yarn) — typed `YarnTasks` wrappers for the `yarn` CLI, for use in Zuke
+- [@zuke/cmd](https://jsr.io/@zuke/cmd) — generic command execution for Zuke builds: the fallback for
+- [@zuke/cli](https://jsr.io/@zuke/cli) — the `zuke` command. Install it globally with
+- [@zuke/docker](https://jsr.io/@zuke/docker) — typed `docker` CLI task wrappers for Zuke builds
+- [@zuke/docker-compose](https://jsr.io/@zuke/docker-compose) — typed Docker Compose task wrappers for Zuke builds
+- [@zuke/kubectl](https://jsr.io/@zuke/kubectl) — typed `kubectl` CLI task wrappers for Zuke builds, for
+- [@zuke/helm](https://jsr.io/@zuke/helm) — typed `HelmTasks` wrappers for the Helm (https://helm.sh) CLI,
+- [@zuke/kustomize](https://jsr.io/@zuke/kustomize) — typed `KustomizeTasks` wrappers for the
+- [@zuke/oxlint](https://jsr.io/@zuke/oxlint) — typed `oxlint` task wrappers for Zuke builds
+- [@zuke/eslint](https://jsr.io/@zuke/eslint) — typed `eslint` task wrappers for Zuke builds
+- [@zuke/cspell](https://jsr.io/@zuke/cspell) — typed `cspell` task wrappers for Zuke builds
+- [@zuke/jest](https://jsr.io/@zuke/jest) — typed `jest` task wrappers for Zuke builds
+- [@zuke/vitest](https://jsr.io/@zuke/vitest) — typed `vitest` task wrappers for Zuke builds
+- [@zuke/playwright](https://jsr.io/@zuke/playwright) — typed `PlaywrightTasks` wrappers for the Playwright CLI,
+- [@zuke/cypress](https://jsr.io/@zuke/cypress) — typed `CypressTasks` wrappers for the
+- [@zuke/biome](https://jsr.io/@zuke/biome) — typed `BiomeTasks` wrappers for the Biome (https://biomejs.dev)
+- [@zuke/knip](https://jsr.io/@zuke/knip) — a typed `KnipTasks` wrapper for the Knip (https://knip.dev)
+- [@zuke/dpdm](https://jsr.io/@zuke/dpdm) — a typed `DpdmTasks` wrapper for the
+- [@zuke/jsr](https://jsr.io/@zuke/jsr) — tools for the JSR (https://jsr.io) registry in Zuke builds:
+- [@zuke/vite](https://jsr.io/@zuke/vite) — typed `ViteTasks` wrappers for the Vite (https://vitejs.dev)
+- [@zuke/tsup](https://jsr.io/@zuke/tsup) — a typed `TsupTasks` wrapper for the
+- [@zuke/turbo](https://jsr.io/@zuke/turbo) — typed `TurboTasks` wrappers for the
+- [@zuke/nx](https://jsr.io/@zuke/nx) — typed `NxTasks` wrappers for the Nx (https://nx.dev) CLI, for
+- [@zuke/tsx](https://jsr.io/@zuke/tsx) — typed `tsx` task wrappers for Zuke builds
+- [@zuke/tsgo](https://jsr.io/@zuke/tsgo) — typed `tsgo` task wrappers for Zuke builds
+- [@zuke/dprint](https://jsr.io/@zuke/dprint) — typed `dprint` task wrappers for Zuke builds
+- [@zuke/gcloud](https://jsr.io/@zuke/gcloud) — a typed `gcloud` (Google Cloud SDK) task wrapper for Zuke
+- [@zuke/git](https://jsr.io/@zuke/git) — typed `git` task wrappers for Zuke builds
+- [@zuke/gh](https://jsr.io/@zuke/gh) — a typed `gh` (GitHub CLI) task wrapper for Zuke builds
+- [@zuke/claude](https://jsr.io/@zuke/claude) — a typed Claude Code (https://docs.claude.com/en/docs/claude-code)
+- [@zuke/codex](https://jsr.io/@zuke/codex) — a typed OpenAI Codex (https://developers.openai.com/codex/cli)
+- [@zuke/gemini](https://jsr.io/@zuke/gemini) — a typed Gemini CLI (https://github.com/google-gemini/gemini-cli)
+- [@zuke/terraform](https://jsr.io/@zuke/terraform) — typed `TerraformTasks` wrappers for the `terraform` CLI,
+- [@zuke/tofu](https://jsr.io/@zuke/tofu) — typed `TofuTasks` wrappers for the OpenTofu CLI (`tofu`), for
+- [@zuke/release-please](https://jsr.io/@zuke/release-please) — typed `ReleasePleaseTasks` wrappers for the
+- [@zuke/security](https://jsr.io/@zuke/security) — typed task wrappers for free, open-source security scanners
+- [@zuke/ai](https://jsr.io/@zuke/ai) — AI-powered code review for Zuke builds

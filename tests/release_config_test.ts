@@ -3,6 +3,7 @@ import { assertEquals } from "../packages/core/tests/_assert.ts";
 const PACKAGES = [
   "packages/core",
   "packages/deno",
+  "packages/docs",
   "packages/npm",
   "packages/bun",
   "packages/pnpm",

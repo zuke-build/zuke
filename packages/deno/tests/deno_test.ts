@@ -8,6 +8,7 @@ import {
   DenoCacheSettings,
   DenoCheckSettings,
   DenoCoverageSettings,
+  DenoDocSettings,
   DenoFmtSettings,
   DenoInstallSettings,
   DenoLintSettings,
@@ -114,6 +115,54 @@ Deno.test("lint: optional --fix and paths", () => {
   assertEquals(
     new DenoLintSettings().fix().paths("src/").argv().slice(1),
     ["lint", "--fix", "src/"],
+  );
+});
+
+Deno.test("doc: bare invocation is just `doc`", () => {
+  assertEquals(new DenoDocSettings().argv().slice(1), ["doc"]);
+});
+
+Deno.test("doc: flags precede the source paths", () => {
+  assertEquals(
+    new DenoDocSettings()
+      .json()
+      .private()
+      .filter("MyClass.method")
+      .paths("mod.ts", "src/extra.ts")
+      .argv()
+      .slice(1),
+    [
+      "doc",
+      "--json",
+      "--private",
+      "--filter",
+      "MyClass.method",
+      "mod.ts",
+      "src/extra.ts",
+    ],
+  );
+});
+
+Deno.test("doc: HTML output options", () => {
+  assertEquals(
+    new DenoDocSettings()
+      .html()
+      .name("My Lib")
+      .output("docs/")
+      .lint()
+      .paths("mod.ts")
+      .argv()
+      .slice(1),
+    [
+      "doc",
+      "--html",
+      "--name",
+      "My Lib",
+      "--output",
+      "docs/",
+      "--lint",
+      "mod.ts",
+    ],
   );
 });
 

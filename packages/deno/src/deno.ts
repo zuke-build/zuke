@@ -230,6 +230,64 @@ export class DenoLintSettings extends DenoSettings {
   }
 }
 
+/** Settings for `deno doc`. */
+export class DenoDocSettings extends DenoSettings {
+  #paths: string[] = [];
+  #flags: string[] = [];
+
+  /** The source files (entry points) to document. */
+  paths(...paths: PathLike[]): this {
+    this.#paths.push(...paths.map(String));
+    return this;
+  }
+
+  /** Output the documentation as JSON (`--json`). */
+  json(): this {
+    this.#flags.push("--json");
+    return this;
+  }
+
+  /** Generate static HTML documentation (`--html`). */
+  html(): this {
+    this.#flags.push("--html");
+    return this;
+  }
+
+  /** Title for the generated HTML documentation (`--name`). */
+  name(title: string): this {
+    this.#flags.push("--name", title);
+    return this;
+  }
+
+  /** Output directory for HTML documentation (`--output`). */
+  output(dir: PathLike): this {
+    this.#flags.push("--output", String(dir));
+    return this;
+  }
+
+  /** Include private and internal symbols (`--private`). */
+  private(): this {
+    this.#flags.push("--private");
+    return this;
+  }
+
+  /** Document only the symbol at this dot-separated path (`--filter`). */
+  filter(symbol: string): this {
+    this.#flags.push("--filter", symbol);
+    return this;
+  }
+
+  /** Report documentation diagnostics rather than rendering docs (`--lint`). */
+  lint(): this {
+    this.#flags.push("--lint");
+    return this;
+  }
+
+  protected override buildArgs(): string[] {
+    return ["doc", ...this.#flags, ...this.#paths];
+  }
+}
+
 /** Settings for `deno cache`. */
 export class DenoCacheSettings extends DenoSettings {
   #reload = false;
@@ -493,6 +551,8 @@ export interface DenoTasksApi {
   fmt(configure?: Configure<DenoFmtSettings>): Promise<CommandOutput>;
   /** Lint files: `deno lint`. */
   lint(configure?: Configure<DenoLintSettings>): Promise<CommandOutput>;
+  /** Generate documentation: `deno doc`. */
+  doc(configure?: Configure<DenoDocSettings>): Promise<CommandOutput>;
   /** Warm the module cache: `deno cache`. */
   cache(configure?: Configure<DenoCacheSettings>): Promise<CommandOutput>;
   /** Report coverage: `deno coverage`. */
@@ -526,6 +586,10 @@ export const DenoTasks: DenoTasksApi = {
   /** Lint files: `deno lint`. */
   lint(configure?: Configure<DenoLintSettings>): Promise<CommandOutput> {
     return runSettings(new DenoLintSettings(), configure);
+  },
+  /** Generate documentation: `deno doc`. */
+  doc(configure?: Configure<DenoDocSettings>): Promise<CommandOutput> {
+    return runSettings(new DenoDocSettings(), configure);
   },
   /** Warm the module cache: `deno cache`. */
   cache(configure?: Configure<DenoCacheSettings>): Promise<CommandOutput> {

@@ -114,3 +114,273 @@ console printout and the summary section.
 See [Zuke](https://github.com/zuke-build/zuke#readme) and the
 [AI review guide](https://github.com/zuke-build/zuke/blob/master/docs/ai-review.md)
 for the full walkthrough.
+
+<!-- ZUKE:API:START -->
+
+## API
+
+<details>
+<summary>Full typed API — generated from <code>deno doc</code></summary>
+
+````text
+`@zuke/ai` — AI-powered code review for Zuke builds.
+
+Define a reviewer fluently and plug it into a target as a {@link
+"jsr:@zuke/core".Validation} with `.validateBefore(...)` / `.validateAfter(...)`.
+Only the provider and API key are required; everything else is defaulted.
+
+```ts
+import { Build, parameter, target } from "jsr:@zuke/core";
+import { securityReviewer } from "jsr:@zuke/ai";
+
+class Pipeline extends Build {
+  key = parameter("Anthropic API key").secret().required();
+  security = securityReviewer((r) => r.provider("claude").apiKey(this.key));
+  deploy = target().validateBefore(this.security).executes(async () => {});
+}
+```
+@module
+
+function aiReviewWorkflow(spec: AiReviewWorkflowSpec): CiFile
+  Declare a generated AI-review workflow on the build. The returned
+  {@link CiFile} is automatically discovered by `discoverCiFiles` and kept on
+  disk by `syncCiFiles`. Default `host: "github"`; pass `"gitlab"` or
+  `"azure"` to target those hosts.
+
+  ```ts
+  class Pipeline extends Build {
+    openaiKey = parameter("OpenAI key").secret().env("OPENAI_API_KEY");
+    review = securityReviewer((r) =>
+      r.provider("openai").apiKey(this.openaiKey).comment()
+    );
+    reviewTarget = target().validateBefore(this.review).executes(() => {});
+    ghWorkflow = aiReviewWorkflow({ reviewers: [this.review] });
+    glWorkflow = aiReviewWorkflow({ host: "gitlab", reviewers: [this.review] });
+  }
+  ```
+
+function correctnessReviewer(configure?: Configure<Reviewer>): Reviewer
+  A reviewer that scores the diff for correctness bugs and regressions.
+
+function genericReviewer(configure?: Configure<Reviewer>): Reviewer
+  A general-purpose reviewer scored on code quality and maintainability. Pair
+  with `.criteria(...)` to add project-specific notes (idioms, conventions, a
+  coding-style document); the built-in rubric is sufficient without them.
+
+function licenseReviewer(configure?: Configure<Reviewer>): Reviewer
+  A reviewer that scores the diff for license and compliance risk.
+
+function secretsReviewer(configure?: Configure<Reviewer>): Reviewer
+  A reviewer that scans the diff for leaked secrets and credentials.
+
+function securityReviewer(configure?: Configure<Reviewer>): Reviewer
+  A reviewer that scores the diff for security vulnerabilities.
+
+class AiReviewError extends Error
+  Raised when a reviewer is misconfigured, the API fails, or the gate trips.
+
+  constructor(message: string)
+  override name: string
+
+class DiffSettings
+  Fluent diff source configuration passed to {@link "./reviewer.ts".Reviewer.diff}.
+
+  base_?: string
+  staged_: boolean
+  text_?: string
+  base(ref: string): this
+    Review the diff against `ref` (e.g. `"origin/main"`).
+  staged(): this
+    Review the staged changes (`git diff --cached`).
+  text(diff: string): this
+    Review a diff supplied directly, bypassing `git` (useful in tests).
+  argv_(): string[]
+    The `git` argv this diff source resolves to.
+
+class GateSettings
+  Fluent gate configuration passed to {@link "./reviewer.ts".Reviewer.failWhen}.
+
+  readonly rules_: GateRule[]
+  scoreAbove(value: number): this
+    Fail when the assessed risk score is strictly above `value` (0–10).
+  severityAtLeast(value: Severity): this
+    Fail when the overall severity is at least `value`.
+
+class Reviewer implements Validation
+  A fluent AI reviewer. Construct one via {@link securityReviewer} (and the
+  sibling factories), configure it, and attach it to a target with
+  `.validateBefore(...)` / `.validateAfter(...)`. `.provider(...)` and
+  `.apiKey(...)` are required; everything else has a default.
+
+  constructor(assessment: AssessmentType)
+  name: string
+    A name for diagnostics — `"<assessment> review"`.
+  get provider_(): Provider | undefined
+    The model provider, once `.provider(...)` has been called.
+  get apiKey_(): AnyParameter | string | undefined
+    The configured API key (a parameter — for its env var — or a literal).
+  get commentEnabled_(): boolean
+    Whether `.comment()` is set — i.e. this reviewer posts to the PR.
+  get commentToken_(): AnyParameter | string | undefined
+    The configured comment-posting token, if `.commentToken(...)` was called.
+  provider(provider: Provider): this
+    Set the model provider (required).
+  apiKey(apiKey: AnyParameter | string): this
+    Set the API key, from a secret parameter or a literal string (required).
+  model(model: string): this
+    Override the model (default: the provider's recommended model).
+  effort(effort: Effort): this
+    Set the thinking-effort hint (honoured by Claude; ignored elsewhere).
+  criteria(criteria: string): this
+    Optional project-specific notes appended above the diff in the user prompt
+    — framing that fine-tunes the built-in rubric (e.g. "strict TypeScript,
+    no `any`/`as`"). Works for every reviewer; the assessment's own system
+    prompt already covers what to look for, so this is purely additive.
+  diff(configure: Configure<DiffSettings>): this
+    Configure the diff source (default: the working-tree diff, `git diff`).
+  include(...globs: string[]): this
+    Only review files matching these globs (default: all files).
+  exclude(...globs: string[]): this
+    Exclude files matching these globs (in addition to lockfiles).
+  maxDiffTokens(tokens: number): this
+    Cap the diff at roughly this many tokens, truncating the rest.
+  failWhen(configure: Configure<GateSettings>): this
+    Choose the gate that breaks the build (default: score above 7).
+  onError(mode: "fail" | "warn"): this
+    What to do when the review itself fails (API error, refusal, bad JSON):
+    `"fail"` breaks the build (default), `"warn"` logs and passes.
+  retry(options: RetryOptions): this
+    Retry the provider call on transient failures (`HTTP 408/429/500/502/503/ 504` and network errors). The default is on — three attempts with
+    exponential backoff and `Retry-After` honoured. Pass an object to override:
+    `{ attempts: 5 }` to retry more, or `{ attempts: 1 }` to disable.
+  skipIfKeyMissing(): this
+    Skip the review (instead of failing) when the API key is missing — handy
+    when the key is a CI-only secret. The skip is announced on the console and
+    in the job summary so the gap is visible.
+  comment(): this
+    Also post the review to the pull/merge request as a comment. Works on
+    every supported CI host — GitHub Actions, GitLab CI, Azure Pipelines,
+    Bitbucket Pipelines — dispatched at runtime by {@link detectCiHost}. A
+    single comment per reviewer is kept up to date across re-runs. A no-op
+    outside a PR context (e.g. local runs). On each host the workflow must
+    grant the right scope: GitHub `pull-requests: write`, GitLab a token with
+    the `api` scope, Azure `System.AccessToken`, Bitbucket an app password.
+  commentToken(token: AnyParameter | string): this
+    The token used to post the PR/MR comment. Defaults to the active host's
+    conventional env var: `GITHUB_TOKEN` (GitHub), `GITLAB_TOKEN` (GitLab),
+    `SYSTEM_ACCESSTOKEN` (Azure), `BITBUCKET_TOKEN` (Bitbucket).
+  githubToken(token: AnyParameter | string): this
+    Backwards-compatible alias for {@link commentToken}.
+  quiet(): this
+    Suppress the findings printout and the job-summary section.
+  fetch(impl: typeof fetch): this
+    The `fetch` implementation for the API call (test seam).
+  exec(run: (argv: string[]) => Promise<string>): this
+    The `git` runner used to produce the diff (test seam).
+  async validate(context: ValidationContext): Promise<void>
+    Run the review and gate the build. Throws an {@link AiReviewError} when the
+    gate trips (or on a configuration/API error with `onError: "fail"`).
+
+interface AiReviewWorkflowSpec
+  What to generate — only `reviewers` is required.
+
+  reviewers: readonly Reviewer[]
+    The reviewers whose key env vars and `.comment()` setting drive the
+    generated workflow. Each reviewer's `.apiKey(param)` parameter becomes an
+    `env:` entry (or its host equivalent) that maps the secret in; any
+    reviewer with `.comment()` causes the workflow to grant the right
+    commenting scope and pass the host's token env var.
+  host?: CiProvider
+    The CI host the workflow targets. Defaults to `"github"`. Use `"gitlab"`,
+    `"azure"`, or `"bitbucket"` to generate the equivalent for those hosts.
+  target?: string
+    The build target the workflow runs. Defaults to `"review"`.
+  baseBranch?: string
+    The base branch the diff is taken against (used by the GitHub workflow's
+    fetch step). Defaults to `"master"`.
+  path?: string
+    Output path. Defaults to the host's conventional location.
+  name?: string
+    Workflow name shown in the host's UI. Defaults to `"AI Review"`.
+  timeoutMinutes?: number
+    Per-job timeout in minutes. Defaults to 15.
+
+interface Assessment
+  The structured result of a review.
+
+  score: number
+    Overall risk score, `0` (none) to `10` (severe).
+  severity: Severity
+    The overall severity.
+  summary: string
+    A one-line summary of the assessment.
+  findings: AssessmentFinding[]
+    The individual findings.
+
+interface AssessmentFinding
+  A single issue reported by the model.
+
+  title: string
+    A short title for the issue.
+  severity: Severity
+    The issue's severity.
+  file?: string
+    The file the issue is in, if the model attributed one.
+  line?: number
+    The line the issue is at, if the model attributed one.
+  detail?: string
+    A longer explanation, if provided.
+
+interface RetryInfo
+  What happened before a retry, for {@link RetryOptions.onRetry}.
+
+  attempt: number
+    The attempt that just failed (1-based).
+  attempts: number
+    The total number of attempts that will be made.
+  delayMs: number
+    How long the helper will wait before the next attempt, in milliseconds.
+  reason: string
+    Why the attempt failed — e.g. `"HTTP 503"` or `"timed out after 60000ms"`.
+
+interface RetryOptions
+  Configurable knobs for {@link retryingFetch}.
+
+  attempts?: number
+    Total attempts (first try + retries). Defaults to {@link DEFAULT_ATTEMPTS}.
+  baseDelayMs?: number
+    Backoff for the first retry; doubles each subsequent retry.
+  timeoutMs?: number
+    Per-attempt timeout in milliseconds (default 60s). `0` disables it.
+  onRetry?: (info: RetryInfo) => void
+    Invoked before each retry, so a caller can report progress.
+  sleep?: (ms: number) => Promise<void>
+    Sleep seam — overridden in tests so retries don't take real time.
+
+interface Usage
+  Token counts a provider reported for a review call, when the response carries
+  them. Each field is optional because not every provider reports every count.
+
+  inputTokens?: number
+    Tokens in the prompt / input.
+  outputTokens?: number
+    Tokens in the model's output / completion.
+  totalTokens?: number
+    Total tokens, reported by the provider or derived from input + output.
+
+type AssessmentType = "generic" | "security" | "secrets" | "correctness" | "license"
+  The kind of review an assessment performs.
+
+type Effort = "low" | "medium" | "high" | "xhigh" | "max"
+  The thinking-depth hint passed to providers that support it (Claude).
+
+type Provider = "claude" | "openai" | "gemini"
+  A supported model provider.
+
+type Severity = "none" | "low" | "medium" | "high" | "critical"
+  A severity level, ordered `none` < `low` < `medium` < `high` < `critical`.
+````
+
+</details>
+
+<!-- ZUKE:API:END -->

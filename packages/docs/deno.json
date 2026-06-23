@@ -1,0 +1,16 @@
+{
+  "name": "@zuke/docs",
+  "version": "0.1.0",
+  "description": "Typed Zuke tasks that generate and verify API documentation — turn `deno doc` into an llms.txt index, a full reference, and per-package README API blocks, with a check task to gate them in CI.",
+  "exports": {
+    ".": "./mod.ts"
+  },
+  "imports": {
+    "@zuke/core": "jsr:@zuke/core@^1"
+  },
+  "publish": {
+    "exclude": [
+      "tests/"
+    ]
+  }
+}
