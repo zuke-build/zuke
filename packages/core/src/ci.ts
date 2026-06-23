@@ -50,6 +50,8 @@ export interface CiStep {
   uses?: string;
   /** Inputs for a {@link uses} Action (GitHub only). */
   with?: Record<string, string>;
+  /** Environment variables for this step (GitHub only). */
+  env?: Record<string, string>;
 }
 
 /** A job: a named unit of work with steps, optionally fanned out by a matrix. */
@@ -70,18 +72,39 @@ export interface CiJob {
   matrix?: Record<string, Array<string | number>>;
   /** Environment variables for the job. */
   env?: Record<string, string>;
+  /**
+   * A condition gating the job. A raw provider expression: GitHub `if:`, Azure
+   * `condition:`. Ignored on GitLab. Use it to e.g. skip forked pull requests.
+   */
+  if?: string;
+  /** Fail the job if it runs longer than this many minutes. */
+  timeoutMinutes?: number;
   /** The steps to run, in order. Defaults to a single step that runs the build. */
   steps?: CiStep[];
 }
 
 /** When the pipeline runs. */
 export interface CiTriggers {
-  /** Branches whose pushes trigger the pipeline. */
+  /**
+   * Branches whose pushes trigger the pipeline. An empty array means every
+   * branch (no filter); omit the field to disable the push trigger.
+   */
   push?: string[];
-  /** Branches whose pull/merge requests trigger the pipeline. */
+  /**
+   * Branches whose pull/merge requests trigger the pipeline. An empty array
+   * means every branch (no filter); omit the field to disable the trigger.
+   */
   pullRequest?: string[];
   /** Allow manual runs (workflow dispatch / web). */
   manual?: boolean;
+}
+
+/** A concurrency group: at most one run per group, optionally cancelling the prior one. */
+export interface CiConcurrency {
+  /** The group key (often interpolated, e.g. `ci-${{ github.ref }}`). */
+  group: string;
+  /** Cancel an in-progress run in the same group when a new one starts. */
+  cancelInProgress?: boolean;
 }
 
 /** A complete, provider-agnostic CI pipeline. */
@@ -93,6 +116,13 @@ export interface CiPipeline {
    * object (`{}`) for a pipeline triggered only by external means.
    */
   triggers?: CiTriggers;
+  /**
+   * Workflow-level token permissions (GitHub only), e.g.
+   * `{ contents: "read", "pull-requests": "write" }`. Ignored elsewhere.
+   */
+  permissions?: Record<string, string>;
+  /** Limit concurrent runs (GitHub only). Ignored elsewhere. */
+  concurrency?: CiConcurrency;
   /** The jobs to run. Defaults to a single `build` job that runs the build. */
   jobs?: CiJob[];
 }
@@ -134,15 +164,30 @@ function runCommands(steps: CiStep[]): string[] {
   return commands;
 }
 
+/**
+ * A GitHub trigger filter: `{ branches: [...] }` for a non-empty branch list,
+ * or `{}` (no filter — every branch) for an empty one.
+ */
+function githubTrigger(branches: string[]): YamlValue {
+  return branches.length > 0 ? { branches } : {};
+}
+
 /** Render a GitHub Actions workflow object. */
 function github(pipeline: CiPipeline): YamlValue {
   const triggers = pipeline.triggers ?? DEFAULT_TRIGGERS;
   const on: Record<string, YamlValue> = {};
-  if (triggers.push) on.push = { branches: triggers.push };
+  if (triggers.push) on.push = githubTrigger(triggers.push);
   if (triggers.pullRequest) {
-    on.pull_request = { branches: triggers.pullRequest };
+    on.pull_request = githubTrigger(triggers.pullRequest);
   }
   if (triggers.manual) on.workflow_dispatch = {};
+
+  const concurrency = pipeline.concurrency
+    ? {
+      group: pipeline.concurrency.group,
+      "cancel-in-progress": pipeline.concurrency.cancelInProgress,
+    }
+    : undefined;
 
   const jobs: Record<string, YamlValue> = {};
   for (const job of pipeline.jobs ?? DEFAULT_JOBS) {
@@ -152,17 +197,26 @@ function github(pipeline: CiPipeline): YamlValue {
       uses: step.uses,
       with: step.with,
       run: step.run,
+      env: step.env,
     }));
     jobs[job.id ?? DEFAULT_JOB_ID] = {
       name: job.name,
       "runs-on": matrixOs ? "${{ matrix.os }}" : (job.runsOn ?? DEFAULT_RUNNER),
       needs: job.needs,
+      if: job.if,
+      "timeout-minutes": job.timeoutMinutes,
       strategy: job.matrix ? { matrix: job.matrix } : undefined,
       env: job.env,
       steps,
     };
   }
-  return { name: pipeline.name ?? DEFAULT_NAME, on, jobs };
+  return {
+    name: pipeline.name ?? DEFAULT_NAME,
+    on,
+    permissions: pipeline.permissions,
+    concurrency,
+    jobs,
+  };
 }
 
 /** Render a GitLab CI configuration object. */
@@ -187,6 +241,7 @@ function gitlab(pipeline: CiPipeline): YamlValue {
       image: job.runsOn,
       needs: job.needs,
       variables: job.env,
+      timeout: job.timeoutMinutes ? `${job.timeoutMinutes} minutes` : undefined,
       parallel: job.matrix ? { matrix: [job.matrix] } : undefined,
       script: runCommands(job.steps ?? DEFAULT_STEPS),
     };
@@ -219,10 +274,14 @@ function azureMatrix(
 function azure(pipeline: CiPipeline): YamlValue {
   const triggers = pipeline.triggers ?? DEFAULT_TRIGGERS;
   const config: Record<string, YamlValue> = {};
-  if (triggers.push) config.trigger = { branches: { include: triggers.push } };
-  else if (triggers.manual) config.trigger = "none";
+  // An empty branch array means "every branch" — Azure spells that `*`.
+  const include = (branches: string[]) =>
+    branches.length > 0 ? branches : ["*"];
+  if (triggers.push) {
+    config.trigger = { branches: { include: include(triggers.push) } };
+  } else if (triggers.manual) config.trigger = "none";
   if (triggers.pullRequest) {
-    config.pr = { branches: { include: triggers.pullRequest } };
+    config.pr = { branches: { include: include(triggers.pullRequest) } };
   }
 
   const jobs: YamlValue[] = [];
@@ -238,6 +297,8 @@ function azure(pipeline: CiPipeline): YamlValue {
       displayName: job.name,
       pool: { vmImage: job.runsOn ?? DEFAULT_RUNNER },
       dependsOn: job.needs,
+      condition: job.if,
+      timeoutInMinutes: job.timeoutMinutes,
       strategy: job.matrix ? { matrix: azureMatrix(job.matrix) } : undefined,
       variables: job.env,
       steps,
