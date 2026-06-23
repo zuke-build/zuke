@@ -52,6 +52,7 @@ export { CONFIG_FILE, repoRoot } from "./src/config.ts";
 export {
   type AnyParameter,
   discoverParameters,
+  envVarName,
   Parameter,
   parameter,
   ParameterError,

@@ -22,7 +22,7 @@ import {
   target,
 } from "@zuke/core";
 import { CommandTimeoutError } from "@zuke/core/shell";
-import { genericReviewer, securityReviewer } from "@zuke/ai";
+import { aiReviewWorkflow, genericReviewer, securityReviewer } from "@zuke/ai";
 import { type DenoInstallSettings, DenoTasks } from "@zuke/deno";
 import { CspellTasks } from "@zuke/cspell";
 import { isPublished } from "@zuke/jsr";
@@ -303,6 +303,15 @@ class ZukeBuild extends Build {
     .description("AI review of the diff (security + code quality)")
     .validateBefore(this.securityReview, this.generalReview)
     .executes(() => {});
+
+  // Generate `.github/workflows/ai-review.yml` from the reviewers above —
+  // their key env vars become the workflow's `env:` block, and `.comment()`
+  // on either pulls in `pull-requests: write` and `GITHUB_TOKEN`. The
+  // committed YAML is regenerated whenever the build runs, and CI verifies
+  // it is current.
+  aiReviewYaml = aiReviewWorkflow({
+    reviewers: [this.securityReview, this.generalReview],
+  });
 
   release = target()
     .description("Maintain release PRs and GitHub releases (release-please)")
