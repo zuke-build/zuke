@@ -27,7 +27,7 @@ class Deploy extends Build {
   });
 }
 
-if (import.meta.main) await run(Deploy);
+await run(Deploy);
 ```
 
 ```sh

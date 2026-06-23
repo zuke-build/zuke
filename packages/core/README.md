@@ -13,7 +13,7 @@ class MyBuild extends Build {
     .executes(() => console.log("Hello from Zuke!"));
 }
 
-if (import.meta.main) await run(MyBuild);
+await run(MyBuild);
 ```
 
 Also exports `jsr:@zuke/core/shell` (the injection-safe `$` runner) and

@@ -393,6 +393,4 @@ class ZukeBuild extends Build {
     .executes(() => {});
 }
 
-if (import.meta.main) {
-  await run(ZukeBuild);
-}
+await run(ZukeBuild);

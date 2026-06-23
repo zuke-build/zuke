@@ -338,6 +338,36 @@ Deno.test("run() drives main and sets the process exit code", async () => {
   assertEquals(captured, 0);
 });
 
+Deno.test("run() is a no-op when its module isn't the program entry", async () => {
+  // Simulate the build file being imported (e.g. under test) rather than run
+  // directly: point Deno.mainModule at a different module than this caller.
+  const origExit = Deno.exit;
+  const mainDesc = Object.getOwnPropertyDescriptor(Deno, "mainModule");
+  let exited = false;
+  let ran = false;
+  Deno.exit = (_code?: number): never => {
+    exited = true;
+    throw new ExitSignal();
+  };
+  Object.defineProperty(Deno, "mainModule", {
+    value: "file:///somewhere/else.ts",
+    configurable: true,
+  });
+  class Demo2 extends Build {
+    go = target().executes(() => void (ran = true));
+  }
+  try {
+    await run(Demo2, { args: ["go"] });
+  } finally {
+    Deno.exit = origExit;
+    if (mainDesc !== undefined) {
+      Object.defineProperty(Deno, "mainModule", mainDesc);
+    }
+  }
+  assertEquals(exited, false);
+  assertEquals(ran, false);
+});
+
 Deno.test("main honours --skip", async () => {
   const log: string[] = [];
   class Tracked extends Build {
