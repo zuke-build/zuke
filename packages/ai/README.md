@@ -50,7 +50,7 @@ structured-output mode (Claude `output_config.format`, OpenAI strict
 `.include(...)`/`.exclude(...)`, `.maxDiffTokens(n)`,
 `.failWhen((g) => g.scoreAbove(7) / g.severityAtLeast("high"))`,
 `.onError("fail" | "warn")`, `.retry({ attempts: 3 })`, `.skipIfKeyMissing()`,
-`.comment()`, `.githubToken(...)`, `.quiet()`.
+`.comment()`, `.commentToken(...)`, `.quiet()`.
 
 `.skipIfKeyMissing()` skips the review instead of failing when the API key is
 absent — handy when the key is a CI-only secret — and announces the skip on the
@@ -68,21 +68,19 @@ Each review prints a **start line** echoing its settings (provider/model, gate)
 and a **notice on every retry**, so a slow run reads as progress rather than a
 hang. `.quiet()` suppresses all reviewer output.
 
-## Pull-request comment
+## Pull-request comment (multi-host)
 
-`.comment()` also posts the assessment to the pull request (GitHub Actions),
-under a **"🤖 Zuke AI review"** header that links back to the project. It keeps
-**one comment per reviewer up to date** across re-runs — matched by a hidden
-marker, so a new push edits the comment in place instead of piling up. It needs
-a token with `pull-requests: write` (the workflow `GITHUB_TOKEN` by default, or
-`.githubToken(...)`), and is a no-op outside a GitHub PR context (e.g. local
-runs). The grant in the workflow:
+`.comment()` posts the assessment to the pull/merge request on whichever CI host
+the build is running on — **GitHub Actions, GitLab CI, Azure Pipelines, or
+Bitbucket Pipelines** — under a `🤖 Zuke AI review` header. It keeps **one
+comment per reviewer up to date** across re-runs, matched by a hidden marker.
 
-```yaml
-permissions:
-  contents: read
-  pull-requests: write
-```
+The token defaults to each host's conventional env var (`GITHUB_TOKEN`,
+`GITLAB_TOKEN`, `SYSTEM_ACCESSTOKEN`, `BITBUCKET_TOKEN`); override with
+`.commentToken(param | string)`. Outside a PR context (local runs, branch
+pushes) the comment is skipped with a notice — a failed post never breaks the
+build. On GitHub Actions, grant `pull-requests: write` in the workflow (or use
+`aiReviewWorkflow(...)`, which does it for you).
 
 ## Token usage
 

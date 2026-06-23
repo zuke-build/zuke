@@ -41,7 +41,7 @@ import {
   toMarkdown,
   writeStepSummary,
 } from "./report.ts";
-import { readEnv, resolveGithubContext, upsertPrComment } from "./github.ts";
+import { detectReviewHost, readEnv } from "./hosts.ts";
 import type { RetryInfo, RetryOptions } from "./retry.ts";
 
 /**
@@ -65,7 +65,7 @@ export class Reviewer implements Validation {
   #onError: "fail" | "warn" = "fail";
   #skipIfKeyMissing = false;
   #comment = false;
-  #githubToken?: AnyParameter | string;
+  #commentToken?: AnyParameter | string;
   #retry?: RetryOptions;
   #quiet = false;
   #fetch?: typeof fetch;
@@ -94,9 +94,9 @@ export class Reviewer implements Validation {
     return this.#comment;
   }
 
-  /** The configured GitHub token, if `.githubToken(...)` was called. */
-  get githubToken_(): AnyParameter | string | undefined {
-    return this.#githubToken;
+  /** The configured comment-posting token, if `.commentToken(...)` was called. */
+  get commentToken_(): AnyParameter | string | undefined {
+    return this.#commentToken;
   }
 
   /** Set the model provider (required). */
@@ -197,10 +197,13 @@ export class Reviewer implements Validation {
   }
 
   /**
-   * Also post the review to the pull request as a comment (GitHub Actions). A
-   * single comment per reviewer is kept up to date across re-runs. Needs a token
-   * with `pull-requests: write` — the workflow `GITHUB_TOKEN` by default, or one
-   * set with {@link githubToken}. A no-op outside a GitHub PR context.
+   * Also post the review to the pull/merge request as a comment. Works on
+   * every supported CI host — GitHub Actions, GitLab CI, Azure Pipelines,
+   * Bitbucket Pipelines — dispatched at runtime by {@link detectCiHost}. A
+   * single comment per reviewer is kept up to date across re-runs. A no-op
+   * outside a PR context (e.g. local runs). On each host the workflow must
+   * grant the right scope: GitHub `pull-requests: write`, GitLab a token with
+   * the `api` scope, Azure `System.AccessToken`, Bitbucket an app password.
    */
   comment(): this {
     this.#comment = true;
@@ -208,11 +211,18 @@ export class Reviewer implements Validation {
   }
 
   /**
-   * The token used to post the PR comment (default: the `GITHUB_TOKEN` env var).
+   * The token used to post the PR/MR comment. Defaults to the active host's
+   * conventional env var: `GITHUB_TOKEN` (GitHub), `GITLAB_TOKEN` (GitLab),
+   * `SYSTEM_ACCESSTOKEN` (Azure), `BITBUCKET_TOKEN` (Bitbucket).
    */
-  githubToken(token: AnyParameter | string): this {
-    this.#githubToken = token;
+  commentToken(token: AnyParameter | string): this {
+    this.#commentToken = token;
     return this;
+  }
+
+  /** Backwards-compatible alias for {@link commentToken}. */
+  githubToken(token: AnyParameter | string): this {
+    return this.commentToken(token);
   }
 
   /** Suppress the findings printout and the job-summary section. */
@@ -269,16 +279,25 @@ export class Reviewer implements Validation {
   async #publish(markdown: string): Promise<void> {
     writeStepSummary(markdown);
     if (!this.#comment) return;
-    const token = this.#githubToken !== undefined
-      ? resolveKey(this.#githubToken)
-      : readEnv("GITHUB_TOKEN") ?? "";
-    const context = resolveGithubContext(token);
-    if (context === undefined) {
-      console.warn(`[${this.name}] no PR context — skipping comment`);
+    const host = detectReviewHost();
+    if (host === undefined) {
+      console.warn(
+        `[${this.name}] no PR-comment host detected — skipping comment`,
+      );
+      return;
+    }
+    const token = this.#commentToken !== undefined
+      ? resolveKey(this.#commentToken)
+      : readEnv(host.defaultTokenEnv) ?? "";
+    const upsert = host.prepare(token, readEnv);
+    if (upsert === undefined) {
+      console.warn(
+        `[${this.name}] no ${host.label} PR context — skipping comment`,
+      );
       return;
     }
     try {
-      await upsertPrComment(context, this.name, markdown, this.#fetch ?? fetch);
+      await upsert(this.name, markdown, this.#fetch ?? fetch);
     } catch (error) {
       // Best-effort: a failed comment must never break the build.
       const message = error instanceof Error ? error.message : String(error);

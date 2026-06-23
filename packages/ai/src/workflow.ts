@@ -109,7 +109,7 @@ class AiReviewWorkflow extends CiFile {
       }
       if (reviewer.commentEnabled_) {
         needsPrWrite = true;
-        const token = reviewer.githubToken_;
+        const token = reviewer.commentToken_;
         if (token === undefined) {
           env.GITHUB_TOKEN = "${{ secrets.GITHUB_TOKEN }}";
         } else if (typeof token === "object") {

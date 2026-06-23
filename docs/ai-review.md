@@ -154,27 +154,33 @@ findings table) to `$GITHUB_STEP_SUMMARY`, so the assessment appears on the run
 page whether the gate passes or fails (it writes just before breaking the build
 on a failure). `.quiet()` suppresses both the console output and the summary.
 
-## Pull-request comment
+## Pull-request comment (multi-host)
 
-`.comment()` additionally posts the assessment onto the pull request, under a
-**"🤖 Zuke AI review"** header linking back to the project. Rather than adding a
-new comment every run, it **upserts a single comment per reviewer**: the body
-carries a hidden marker (`<!-- zuke-ai-review:<name> -->`), so a re-run finds its
-previous comment and edits it in place. Different reviewers (e.g. a security
-and a secrets review) keep separate comments because the marker includes the
-reviewer name.
+`.comment()` additionally posts the assessment onto the pull/merge request,
+under a **"🤖 Zuke AI review"** header linking back to the project. Rather than
+adding a new comment every run, it **upserts a single comment per reviewer**:
+the body carries a hidden marker (`<!-- zuke-ai-review:<name> -->`), so a
+re-run finds its previous comment and edits it in place. Different reviewers
+(e.g. a security and a secrets review) keep separate comments because the
+marker includes the reviewer name.
 
-It uses a token with `pull-requests: write` — the workflow's `GITHUB_TOKEN` by
-default, or one you pass with `.githubToken(param | string)`. Outside a GitHub PR
-context (no `GITHUB_REPOSITORY` / `refs/pull/<n>/merge` ref, e.g. a local run) it
-logs a notice and does nothing. A failed post never breaks the build — it is a
-best-effort side effect, like the summary. The workflow must grant the scope:
+Which API gets called is decided at runtime by [`detectCiHost()`](authoring.md):
 
-```yaml
-permissions:
-  contents: read
-  pull-requests: write
-```
+| Host | API used | Default token env | Workflow scope to grant |
+| --- | --- | --- | --- |
+| **GitHub Actions** | issue/PR comments | `GITHUB_TOKEN` | `pull-requests: write` |
+| **GitLab CI** | merge-request notes | `GITLAB_TOKEN` | personal/group token with `api` scope (the job token can't post notes) |
+| **Azure Pipelines** | PR comment threads | `SYSTEM_ACCESSTOKEN` | `System.AccessToken` mapped into env |
+| **Bitbucket Pipelines** | PR comments | `BITBUCKET_TOKEN` | app password or workspace access token |
+
+Override the token explicitly with `.commentToken(param | string)` (or, for
+backwards compatibility, the GitHub-only alias `.githubToken(...)`). Outside a
+PR context (a local run, or a branch push rather than a PR/MR pipeline) the
+review skips the comment with a notice — a failed post never breaks the build,
+it's a best-effort side effect like the summary.
+
+For GitHub Actions, the generator below also adds `pull-requests: write` to the
+workflow permissions automatically when any reviewer has `.comment()` set.
 
 ## Token usage
 
