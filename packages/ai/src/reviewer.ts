@@ -94,7 +94,12 @@ export class Reviewer implements Validation {
     return this;
   }
 
-  /** The rubric for a {@link genericReviewer} (required for generic reviews). */
+  /**
+   * Optional project-specific notes appended above the diff in the user prompt
+   * — framing that fine-tunes the built-in rubric (e.g. "strict TypeScript,
+   * no `any`/`as`"). Works for every reviewer; the assessment's own system
+   * prompt already covers what to look for, so this is purely additive.
+   */
   criteria(criteria: string): this {
     this.#criteria = criteria;
     return this;
@@ -258,12 +263,6 @@ export class Reviewer implements Validation {
       }
       throw new AiReviewError("an API key is required; call .apiKey(...)");
     }
-    if (this.#assessment === "generic" && this.#criteria === "") {
-      throw new AiReviewError(
-        "genericReviewer needs review criteria; call .criteria(...)",
-      );
-    }
-
     let diff = filterDiff(
       await this.#resolveDiff(),
       this.#include,
@@ -324,8 +323,9 @@ function makeReviewer(
 }
 
 /**
- * A general-purpose reviewer. Requires `.criteria(...)` describing what to
- * assess and how to score it, in addition to `.provider(...)`/`.apiKey(...)`.
+ * A general-purpose reviewer scored on code quality and maintainability. Pair
+ * with `.criteria(...)` to add project-specific notes (idioms, conventions, a
+ * coding-style document); the built-in rubric is sufficient without them.
  */
 export function genericReviewer(configure?: Configure<Reviewer>): Reviewer {
   return makeReviewer("generic", configure);

@@ -15,8 +15,8 @@ import { ASSESSMENT_GEMINI_SCHEMA, ASSESSMENT_JSON_SCHEMA } from "./schema.ts";
 /** Default model per provider, used when `.model(...)` is not set. */
 export const DEFAULT_MODELS: Record<Provider, string> = {
   claude: "claude-opus-4-8",
-  openai: "gpt-4o",
-  gemini: "gemini-1.5-pro",
+  openai: "gpt-5.4-mini",
+  gemini: "gemini-3.5-flash",
 };
 
 /** Options threaded through {@link callProvider}. */

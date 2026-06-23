@@ -271,24 +271,40 @@ Deno.test("a skipped review is noted in the GitHub Actions job summary", async (
   }
 });
 
-Deno.test("genericReviewer requires criteria, and includes it in the prompt", async () => {
-  await assertRejects(
-    () =>
-      genericReviewer((r) => r.provider("claude").apiKey("k"))
-        .validate({ target: "t" }),
-    AiReviewError,
-    "needs review criteria",
-  );
-
+Deno.test("genericReviewer runs without explicit criteria using its built-in rubric", async () => {
   const { fetch, calls } = recordFetch(claude({ score: 0, findings: [] }));
   await genericReviewer((r) =>
     r.provider("claude").apiKey("k").quiet()
-      .criteria("Flag missing tests.").diff((d) => d.text(DIFF)).fetch(fetch)
+      .diff((d) => d.text(DIFF)).fetch(fetch)
   ).validate({ target: "t" });
+  const body = JSON.parse(calls[0].body);
+  // The default subject is in the system prompt.
   assertEquals(
-    JSON.parse(calls[0].body).messages[0].content.includes(
-      "Flag missing tests.",
-    ),
+    body.system.includes("code quality and maintainability"),
+    true,
+  );
+  // With no criteria, the user prompt carries the diff alone — no project notes.
+  assertEquals(
+    body.messages[0].content.includes("Additional project notes"),
+    false,
+  );
+});
+
+Deno.test(".criteria(...) appends project notes above the diff in the user prompt", async () => {
+  // It works for any reviewer, not just generic — here, the security one.
+  const { fetch, calls } = recordFetch(claude({ score: 0, findings: [] }));
+  await securityReviewer((r) =>
+    r.provider("claude").apiKey("k").quiet()
+      .criteria("Strict TypeScript: no `any`, no `as`.")
+      .diff((d) => d.text(DIFF)).fetch(fetch)
+  ).validate({ target: "t" });
+  const user = JSON.parse(calls[0].body).messages[0].content;
+  assertEquals(user.includes("Additional project notes:"), true);
+  assertEquals(user.includes("Strict TypeScript: no `any`, no `as`."), true);
+  // The criteria sits *above* the diff section.
+  assertEquals(
+    user.indexOf("Additional project notes:") <
+      user.indexOf("Unified diff to review:"),
     true,
   );
 });
@@ -317,7 +333,7 @@ Deno.test("gemini provider posts to generateContent with the key in the URL", as
   ).validate({ target: "t" });
   assertEquals(
     calls[0].url.startsWith(
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=g-key",
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=g-key",
     ),
     true,
   );

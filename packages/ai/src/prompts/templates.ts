@@ -32,10 +32,15 @@ export function systemPrompt(subject: string): string {
   ].join("\n");
 }
 
-/** The user prompt: optional review criteria followed by the diff to review. */
+/**
+ * The user prompt: optional project-specific notes that refine the system-
+ * prompt rubric, followed by the diff to review. The notes are framing for the
+ * reviewer (e.g. "this is a strict, dependency-free TypeScript codebase"), not
+ * the full criteria — those live in the system prompt for the assessment.
+ */
 export function userPrompt(diff: string, criteria?: string): string {
   const preamble = criteria !== undefined
-    ? `Review criteria:\n${criteria}\n\n`
+    ? `Additional project notes:\n${criteria}\n\n`
     : "";
   return `${preamble}Unified diff to review:\n\n${diff}`;
 }

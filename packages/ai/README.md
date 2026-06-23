@@ -30,9 +30,11 @@ if (import.meta.main) await run(Pipeline);
 
 ## Reviewers
 
-`genericReviewer` (needs `.criteria(...)`), `securityReviewer`,
+`genericReviewer` (code quality / maintainability), `securityReviewer`,
 `secretsReviewer`, `correctnessReviewer`, and `licenseReviewer` — all share the
-same fluent `Reviewer` and return a `Validation`.
+same fluent `Reviewer` and return a `Validation`. Each has a built-in rubric in
+its system prompt; `.criteria("…")` is optional fine-tuning that adds
+project-specific notes (e.g. "strict TypeScript, no `any`") above the diff.
 
 ## Providers
 
