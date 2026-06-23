@@ -35,7 +35,7 @@ import { toYaml, type YamlValue } from "./yaml.ts";
 import { type Build, forEachField } from "./build.ts";
 
 /** The CI providers {@link generateCi} can target. */
-export type CiProvider = "github" | "gitlab" | "azure";
+export type CiProvider = "github" | "gitlab" | "azure" | "bitbucket";
 
 /** A single step in a job. */
 export interface CiStep {
@@ -50,7 +50,11 @@ export interface CiStep {
   uses?: string;
   /** Inputs for a {@link uses} Action (GitHub only). */
   with?: Record<string, string>;
-  /** Environment variables for this step (GitHub only). */
+  /**
+   * Environment variables for this step. Rendered as `env:` on GitHub Actions
+   * and on Azure Pipelines `script` steps; ignored on GitLab (which sources
+   * variables from project settings, not the job YAML).
+   */
   env?: Record<string, string>;
 }
 
@@ -153,6 +157,7 @@ const DEFAULT_PATHS: Record<CiProvider, string> = {
   github: ".github/workflows/ci.yml",
   gitlab: ".gitlab-ci.yml",
   azure: "azure-pipelines.yml",
+  bitbucket: "bitbucket-pipelines.yml",
 };
 
 /** Collect the shell commands of a job's `run` steps, in order. */
@@ -289,7 +294,11 @@ function azure(pipeline: CiPipeline): YamlValue {
     const steps: YamlValue[] = [];
     for (const step of job.steps ?? DEFAULT_STEPS) {
       if (step.run !== undefined) {
-        steps.push({ script: step.run, displayName: step.name });
+        steps.push({
+          script: step.run,
+          displayName: step.name,
+          env: step.env,
+        });
       }
     }
     jobs.push({
@@ -309,9 +318,55 @@ function azure(pipeline: CiPipeline): YamlValue {
 }
 
 /**
+ * Render a Bitbucket Pipelines object. Bitbucket's model is a set of trigger
+ * sections (`pull-requests`, `branches`, `default`, `custom`) each holding an
+ * ordered list of steps; there's no job DAG, no matrix, and no per-step env in
+ * the YAML (repository/workspace variables flow in as env automatically), so
+ * `needs`, `matrix`, `if`, and step `env` are ignored here.
+ */
+function bitbucket(pipeline: CiPipeline): YamlValue {
+  const triggers = pipeline.triggers ?? DEFAULT_TRIGGERS;
+  const steps: YamlValue[] = [];
+  for (const job of pipeline.jobs ?? DEFAULT_JOBS) {
+    steps.push({
+      step: {
+        name: job.name,
+        image: job.runsOn,
+        "max-time": job.timeoutMinutes,
+        script: runCommands(job.steps ?? DEFAULT_STEPS),
+      },
+    });
+  }
+  // An empty branch array means "every branch" — Bitbucket spells that `**`.
+  const patterns = (branches: string[]) =>
+    branches.length > 0 ? branches : ["**"];
+
+  const pipelines: Record<string, YamlValue> = {};
+  if (triggers.pullRequest) {
+    const prs: Record<string, YamlValue> = {};
+    for (const p of patterns(triggers.pullRequest)) prs[p] = steps;
+    pipelines["pull-requests"] = prs;
+  }
+  if (triggers.push) {
+    if (triggers.push.length > 0) {
+      const branches: Record<string, YamlValue> = {};
+      for (const b of triggers.push) branches[b] = steps;
+      pipelines.branches = branches;
+    } else {
+      pipelines.default = steps; // runs on every push
+    }
+  }
+  if (triggers.manual) pipelines.custom = { "ai-review": steps };
+  // Each step carries its own `image` (from `runsOn`); a step without one falls
+  // back to Bitbucket's default image.
+  return { pipelines };
+}
+
+/**
  * Render `pipeline` as the YAML configuration for `provider`:
- * `.github/workflows/*.yml`, `.gitlab-ci.yml`, or `azure-pipelines.yml`. The
- * pipeline may be empty (`{}`) to accept every default.
+ * `.github/workflows/*.yml`, `.gitlab-ci.yml`, `azure-pipelines.yml`, or
+ * `bitbucket-pipelines.yml`. The pipeline may be empty (`{}`) to accept every
+ * default.
  */
 export function generateCi(
   pipeline: CiPipeline,
@@ -324,6 +379,8 @@ export function generateCi(
       return toYaml(gitlab(pipeline));
     case "azure":
       return toYaml(azure(pipeline));
+    case "bitbucket":
+      return toYaml(bitbucket(pipeline));
   }
 }
 

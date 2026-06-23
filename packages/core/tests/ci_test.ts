@@ -119,6 +119,60 @@ Deno.test("azure: condition, timeout, and unfiltered pr branches render", () => 
   assertStringIncludes(yaml, "timeoutInMinutes: 15");
 });
 
+Deno.test("azure: a step's env block renders alongside its script", () => {
+  const yaml = generateCi({
+    jobs: [{
+      id: "review",
+      steps: [{ run: "./zuke review", env: { KEY: "$(KEY)" } }],
+    }],
+  }, "azure");
+  // Azure secrets aren't exposed by default — the env block is what wires them.
+  assertStringIncludes(yaml, "- script: ./zuke review");
+  assertStringIncludes(yaml, "env:\n          KEY:");
+});
+
+Deno.test("bitbucket: a PR pipeline maps to pull-requests with a step list", () => {
+  const yaml = generateCi({
+    triggers: { pullRequest: [] }, // every branch → "**"
+    jobs: [{
+      id: "review",
+      name: "AI review",
+      runsOn: "denoland/deno:latest",
+      timeoutMinutes: 15,
+      steps: [{ run: "./zuke review" }],
+    }],
+  }, "bitbucket");
+  assertStringIncludes(yaml, "pipelines:\n  pull-requests:");
+  assertStringIncludes(yaml, '"**":'); // unfiltered branch pattern
+  assertStringIncludes(yaml, "- step:");
+  assertStringIncludes(yaml, "name: AI review");
+  assertStringIncludes(yaml, 'image: "denoland/deno:latest"');
+  assertStringIncludes(yaml, "max-time: 15");
+  assertStringIncludes(yaml, "script:\n            - ./zuke review");
+});
+
+Deno.test("bitbucket: push triggers map to branches, empty push to default", () => {
+  const named = generateCi({
+    triggers: { push: ["main"] },
+    jobs: [{ id: "a", steps: [{ run: "x" }] }],
+  }, "bitbucket");
+  assertStringIncludes(named, "branches:\n    main:");
+
+  const def = generateCi({
+    triggers: { push: [] }, // every branch → default section
+    jobs: [{ id: "a", steps: [{ run: "x" }] }],
+  }, "bitbucket");
+  assertStringIncludes(def, "pipelines:\n  default:");
+});
+
+Deno.test("bitbucket: a manual-only pipeline becomes a custom trigger", () => {
+  const yaml = generateCi({
+    triggers: { manual: true },
+    jobs: [{ id: "a", steps: [{ run: "x" }] }],
+  }, "bitbucket");
+  assertStringIncludes(yaml, "custom:\n    ai-review:");
+});
+
 Deno.test("gitlab: workflow rules, stages, image, parallel matrix, script", () => {
   const yaml = generateCi(pipeline, "gitlab");
   assertStringIncludes(yaml, "workflow:\n  rules:");
@@ -262,6 +316,10 @@ Deno.test("cicd: the path follows the provider unless overridden", () => {
   assertEquals(
     cicd({ provider: "azure", pipeline }).path,
     "azure-pipelines.yml",
+  );
+  assertEquals(
+    cicd({ provider: "bitbucket", pipeline }).path,
+    "bitbucket-pipelines.yml",
   );
   // An explicit path overrides the convention.
   assertEquals(
