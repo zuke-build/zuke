@@ -103,6 +103,13 @@ Deno.test("upsertPrComment creates a new comment when none exists", async () => 
     body.body.includes("<!-- zuke-ai-review:security review -->"),
     true,
   );
+  // The comment is attributed to Zuke.
+  assertEquals(
+    body.body.includes(
+      "🤖 **[Zuke](https://github.com/zuke-build/zuke) AI review**",
+    ),
+    true,
+  );
   assertEquals(body.body.includes("## body"), true);
 });
 

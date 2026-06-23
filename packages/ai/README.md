@@ -56,12 +56,13 @@ console and in the job summary so the gap is visible rather than silent.
 
 ## Pull-request comment
 
-`.comment()` also posts the assessment to the pull request (GitHub Actions). It
-keeps **one comment per reviewer up to date** across re-runs — matched by a
-hidden marker, so a new push edits the comment in place instead of piling up. It
-needs a token with `pull-requests: write` (the workflow `GITHUB_TOKEN` by
-default, or `.githubToken(...)`), and is a no-op outside a GitHub PR context
-(e.g. local runs). The grant in the workflow:
+`.comment()` also posts the assessment to the pull request (GitHub Actions),
+under a **"🤖 Zuke AI review"** header that links back to the project. It keeps
+**one comment per reviewer up to date** across re-runs — matched by a hidden
+marker, so a new push edits the comment in place instead of piling up. It needs
+a token with `pull-requests: write` (the workflow `GITHUB_TOKEN` by default, or
+`.githubToken(...)`), and is a no-op outside a GitHub PR context (e.g. local
+runs). The grant in the workflow:
 
 ```yaml
 permissions:

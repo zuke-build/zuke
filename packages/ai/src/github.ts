@@ -12,6 +12,9 @@ import { dig } from "./json.ts";
 /** The GitHub REST API origin. */
 const API = "https://api.github.com";
 
+/** Attribution header prepended to every PR comment. */
+const HEADER = "🤖 **[Zuke](https://github.com/zuke-build/zuke) AI review**";
+
 /** Everything needed to comment on a pull request. */
 export interface GithubContext {
   /** A token with `pull-requests: write` (the Actions `GITHUB_TOKEN`). */
@@ -119,7 +122,7 @@ export async function upsertPrComment(
   doFetch: typeof fetch = fetch,
 ): Promise<void> {
   const marker = `<!-- zuke-ai-review:${name} -->`;
-  const body = `${marker}\n${markdown}`;
+  const body = `${marker}\n${HEADER}\n\n${markdown}`;
   const repo = `${API}/repos/${context.owner}/${context.repo}`;
   const existing = await findComment(context, marker, doFetch);
   const url = existing === undefined

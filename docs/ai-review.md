@@ -108,10 +108,11 @@ on a failure). `.quiet()` suppresses both the console output and the summary.
 
 ## Pull-request comment
 
-`.comment()` additionally posts the assessment onto the pull request. Rather than
-adding a new comment every run, it **upserts a single comment per reviewer**: the
-body carries a hidden marker (`<!-- zuke-ai-review:<name> -->`), so a re-run finds
-its previous comment and edits it in place. Different reviewers (e.g. a security
+`.comment()` additionally posts the assessment onto the pull request, under a
+**"🤖 Zuke AI review"** header linking back to the project. Rather than adding a
+new comment every run, it **upserts a single comment per reviewer**: the body
+carries a hidden marker (`<!-- zuke-ai-review:<name> -->`), so a re-run finds its
+previous comment and edits it in place. Different reviewers (e.g. a security
 and a secrets review) keep separate comments because the marker includes the
 reviewer name.
 
