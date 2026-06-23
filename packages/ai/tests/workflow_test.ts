@@ -269,3 +269,49 @@ Deno.test("azure: no reviewer uses .comment() → no SYSTEM_ACCESSTOKEN mapping"
   assertStringIncludes(yaml, 'ANTHROPIC_API_KEY: "$(ANTHROPIC_API_KEY)"');
   assertEquals(yaml.includes("SYSTEM_ACCESSTOKEN"), false);
 });
+
+// ─── Bitbucket Pipelines ─────────────────────────────────────────────────────
+
+Deno.test("bitbucket: defaults to bitbucket-pipelines.yml with a pull-requests step", () => {
+  class B extends Build {
+    key = parameter("OpenAI key").secret().env("OPENAI_API_KEY");
+    rev = securityReviewer((r) =>
+      r.provider("openai").apiKey(this.key).comment()
+    );
+    wf = aiReviewWorkflow({ host: "bitbucket", reviewers: [this.rev] });
+  }
+  const b = new B();
+  discoverParameters(b);
+  // Bitbucket has no include — the file must be at the repo root.
+  assertEquals(b.wf.path, "bitbucket-pipelines.yml");
+  assertEquals(b.wf.provider, "bitbucket");
+
+  const yaml = b.wf.render();
+  assertStringIncludes(yaml, "pipelines:\n  pull-requests:");
+  assertStringIncludes(yaml, '"**":'); // every branch's PRs
+  assertStringIncludes(yaml, "- step:");
+  assertStringIncludes(yaml, "name: AI review");
+  assertStringIncludes(yaml, 'image: "denoland/deno:latest"');
+  assertStringIncludes(yaml, "max-time: 15");
+  assertStringIncludes(yaml, "- ./zuke review");
+  // Like GitLab, repo variables flow in automatically — no env block.
+  assertEquals(yaml.includes("OPENAI_API_KEY"), false);
+});
+
+Deno.test("bitbucket: target and timeoutMinutes overrides apply", () => {
+  class B extends Build {
+    key = parameter("Key").secret().env("K");
+    rev = securityReviewer((r) => r.provider("openai").apiKey(this.key));
+    wf = aiReviewWorkflow({
+      host: "bitbucket",
+      reviewers: [this.rev],
+      target: "audit",
+      timeoutMinutes: 30,
+    });
+  }
+  const b = new B();
+  discoverParameters(b);
+  const yaml = b.wf.render();
+  assertStringIncludes(yaml, "- ./zuke audit");
+  assertStringIncludes(yaml, "max-time: 30");
+});

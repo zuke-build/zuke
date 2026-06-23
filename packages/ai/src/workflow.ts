@@ -17,6 +17,10 @@
  *     template. Defaults: `pipelines/ai-review.azure-pipelines.yml`. Each
  *     reviewer's secret is wired into the script step's `env:` block (Azure
  *     does not expose pipeline secrets as env vars by default).
+ *   - **Bitbucket Pipelines** — a `bitbucket-pipelines.yml` whose
+ *     `pull-requests` section runs the review. Repository/workspace variables
+ *     flow into the step automatically, so no env block is emitted. Bitbucket
+ *     has no `include`, so the file lives at the repo root.
  *
  * @module
  */
@@ -46,10 +50,12 @@ const DEFAULT_PATHS: Record<CiProvider, string> = {
   // includes/templates from their main pipeline so we never clobber it.
   gitlab: ".gitlab/ai-review.gitlab-ci.yml",
   azure: "pipelines/ai-review.azure-pipelines.yml",
+  // Bitbucket has no `include` mechanism — the file must be at the repo root.
+  bitbucket: "bitbucket-pipelines.yml",
 };
 
 /** The Docker image used for the GitLab job — the official Deno image. */
-const GITLAB_IMAGE = "denoland/deno:latest";
+const DENO_IMAGE = "denoland/deno:latest";
 
 /** The conventional workflow name shown in each host's UI. */
 const DEFAULT_NAME = "AI Review";
@@ -74,8 +80,8 @@ export interface AiReviewWorkflowSpec {
    */
   reviewers: readonly Reviewer[];
   /**
-   * The CI host the workflow targets. Defaults to `"github"`. Use `"gitlab"`
-   * or `"azure"` to generate the equivalent snippet for those hosts.
+   * The CI host the workflow targets. Defaults to `"github"`. Use `"gitlab"`,
+   * `"azure"`, or `"bitbucket"` to generate the equivalent for those hosts.
    */
   host?: CiProvider;
   /** The build target the workflow runs. Defaults to `"review"`. */
@@ -164,6 +170,8 @@ class AiReviewWorkflow extends CiFile {
         return this.#gitlab();
       case "azure":
         return this.#azure();
+      case "bitbucket":
+        return this.#bitbucket();
     }
   }
 
@@ -233,7 +241,29 @@ class AiReviewWorkflow extends CiFile {
       jobs: [{
         id: "review",
         name: "AI review",
-        runsOn: GITLAB_IMAGE,
+        runsOn: DENO_IMAGE,
+        timeoutMinutes: this.#spec.timeoutMinutes ?? DEFAULT_TIMEOUT_MINUTES,
+        steps: [{ name: "AI review with Zuke", run: `./zuke ${target}` }],
+      }],
+    };
+  }
+
+  /**
+   * Bitbucket Pipelines: a `bitbucket-pipelines.yml` whose `pull-requests`
+   * section runs the review on the Deno image. Like GitLab, repository and
+   * workspace variables flow into the step as env automatically, so no `env:`
+   * block is emitted — set the API keys and `BITBUCKET_TOKEN` in repository
+   * settings. Bitbucket has no `include`, so this must live at the repo root.
+   */
+  #bitbucket(): CiPipeline {
+    const target = this.#spec.target ?? DEFAULT_TARGET;
+    return {
+      name: this.#spec.name ?? DEFAULT_NAME,
+      triggers: { pullRequest: [] }, // every branch's PRs
+      jobs: [{
+        id: "review",
+        name: "AI review",
+        runsOn: DENO_IMAGE, // the official Deno image works on Bitbucket too
         timeoutMinutes: this.#spec.timeoutMinutes ?? DEFAULT_TIMEOUT_MINUTES,
         steps: [{ name: "AI review with Zuke", run: `./zuke ${target}` }],
       }],
