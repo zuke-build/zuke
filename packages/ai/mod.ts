@@ -40,3 +40,4 @@ export {
   secretsReviewer,
   securityReviewer,
 } from "./src/reviewer.ts";
+export { aiReviewWorkflow, type AiReviewWorkflowSpec } from "./src/workflow.ts";

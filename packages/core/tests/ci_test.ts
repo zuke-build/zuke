@@ -366,6 +366,22 @@ Deno.test("syncCiFiles in check mode passes when content already matches", async
   assertEquals(results[0].status, "unchanged");
 });
 
+Deno.test("syncCiFiles tolerates a CRLF working copy (Windows checkout)", async () => {
+  // Simulate a Windows checkout where git's autocrlf has converted LF→CRLF;
+  // the rendered output is always LF, so a naive comparison would mismatch.
+  const file = cicd({
+    provider: "github",
+    path: "ci.yml",
+    pipeline: filePipeline,
+  });
+  const crlf = file.render().replace(/\n/g, "\r\n");
+  const results = await syncCiFiles([file], {
+    check: true,
+    read: () => Promise.resolve(crlf),
+  });
+  assertEquals(results[0].status, "unchanged");
+});
+
 Deno.test("syncCiFiles uses the real filesystem by default", async () => {
   const dir = await Deno.makeTempDir();
   try {

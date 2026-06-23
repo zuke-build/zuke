@@ -187,6 +187,38 @@ verbatim when present, or derived from input + output (Claude) otherwise. Only
 the counts a provider actually returns are shown, so this is purely
 informational — it never affects the gate.
 
+## Generating the workflow
+
+Maintaining `.github/workflows/ai-review.yml` by hand is a chore — it has to
+stay in sync with every reviewer's secret env var, with `pull-requests: write`
+when any reviewer uses `.comment()`, with the right harden-runner +
+checkout pins, with the fork-gating `if`. `aiReviewWorkflow({...})` does it for
+you: declare it on the build and Zuke writes a [`CiFile`](authoring.md#cicd)
+that the standard `cicd` sync keeps current.
+
+```ts
+import { aiReviewWorkflow, securityReviewer } from "jsr:@zuke/ai";
+
+class Pipeline extends Build {
+  openaiKey = parameter("OpenAI key").secret().env("OPENAI_API_KEY");
+  security = securityReviewer((r) =>
+    r.provider("openai").apiKey(this.openaiKey).comment()
+  );
+  review = target().validateBefore(this.security).executes(() => {});
+
+  // Generates `.github/workflows/ai-review.yml` from the reviewers above —
+  // wires their API-key env vars in, grants `pull-requests: write` and passes
+  // `GITHUB_TOKEN` when any reviewer uses `.comment()`, fork-gates the job.
+  reviewWorkflow = aiReviewWorkflow({ reviewers: [this.security] });
+}
+```
+
+Override what you need: `target` (default `"review"`), `baseBranch` (default
+`"master"`), `name`, `path`, `timeoutMinutes`. A reviewer that uses
+`.githubToken(param)` swaps its parameter's env var in for the default
+`GITHUB_TOKEN`; a reviewer constructed with a literal-string `.apiKey("…")` is
+skipped from the workflow env (the generator can't infer a secret name).
+
 ## Worked example: Zuke reviews itself
 
 Zuke's own build gates the `review` target with **two reviewers on different

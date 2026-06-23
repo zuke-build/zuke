@@ -79,6 +79,26 @@ export class Reviewer implements Validation {
     this.name = `${assessment} review`;
   }
 
+  /** The model provider, once `.provider(...)` has been called. */
+  get provider_(): Provider | undefined {
+    return this.#provider;
+  }
+
+  /** The configured API key (a parameter — for its env var — or a literal). */
+  get apiKey_(): AnyParameter | string | undefined {
+    return this.#apiKey;
+  }
+
+  /** Whether `.comment()` is set — i.e. this reviewer posts to the PR. */
+  get commentEnabled_(): boolean {
+    return this.#comment;
+  }
+
+  /** The configured GitHub token, if `.githubToken(...)` was called. */
+  get githubToken_(): AnyParameter | string | undefined {
+    return this.#githubToken;
+  }
+
   /** Set the model provider (required). */
   provider(provider: Provider): this {
     this.#provider = provider;
