@@ -10,16 +10,20 @@ import type { AssessmentType } from "./types.ts";
 import { SUBJECTS } from "./prompts/subjects.ts";
 import { systemPrompt, userPrompt } from "./prompts/templates.ts";
 
-/** Assemble the system + user prompt for an assessment. */
+/**
+ * Assemble the system + user prompt for an assessment. The subject of the
+ * review (security, code quality, …) is fixed in the system prompt by the
+ * assessment kind; `criteria` is optional **project-specific fine-tuning** that
+ * is appended to the user prompt above the diff. Any reviewer may pass it; the
+ * default subject already gives the model what it needs to score without it.
+ */
 export function buildPrompt(
   assessment: AssessmentType,
   criteria: string,
   diff: string,
 ): { system: string; user: string } {
-  const generic = assessment === "generic";
-  const subject = generic ? "the criteria below" : SUBJECTS[assessment];
   return {
-    system: systemPrompt(subject),
-    user: userPrompt(diff, generic ? criteria : undefined),
+    system: systemPrompt(SUBJECTS[assessment]),
+    user: userPrompt(diff, criteria === "" ? undefined : criteria),
   };
 }

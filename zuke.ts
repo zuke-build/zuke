@@ -287,11 +287,12 @@ class ZukeBuild extends Build {
       .apiKey(this.geminiKey)
       .skipIfKeyMissing()
       .comment() // a separate PR comment, keyed by the reviewer name
+      // The built-in rubric already covers clarity, cohesion, tests, and docs;
+      // `.criteria(...)` adds just the project-specific conventions on top.
       .criteria(
-        "Review the diff for code quality and maintainability: clear naming, " +
-          "cohesive small modules, adequate tests and docs for new behaviour, " +
-          "and adherence to the project's strict, dependency-free TypeScript " +
-          "conventions (no `any`, no `as`, task-shaped public API).",
+        "This is a strict, dependency-free TypeScript codebase on Deno: no " +
+          "`any`, no `as` or non-null assertions, and the public API is shaped " +
+          "as namespaced `*Tasks` objects rather than loose exported functions.",
       )
       .diff((d) => d.base(Deno.env.get("ZUKE_REVIEW_BASE") ?? "origin/master"))
       .maxDiffTokens(20000)

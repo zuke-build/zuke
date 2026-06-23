@@ -45,7 +45,7 @@ All share the same fluent `Reviewer` and return a `Validation`:
 | `secretsReviewer` | leaked secrets/credentials | — |
 | `correctnessReviewer` | bugs and likely regressions | — |
 | `licenseReviewer` | license / dependency-compliance risk | — |
-| `genericReviewer` | whatever you describe | requires `.criteria("…")` |
+| `genericReviewer` | code quality and maintainability | — |
 
 ## Providers and credentials
 
@@ -171,7 +171,9 @@ generalReview = genericReviewer((r) =>
     .apiKey(this.geminiKey)
     .skipIfKeyMissing()
     .comment() // a separate PR comment, keyed by the reviewer name
-    .criteria("Review the diff for code quality and maintainability: …")
+    // The built-in rubric covers code quality/maintainability already;
+    // `.criteria(...)` is optional fine-tuning with project-specific notes.
+    .criteria("Strict TypeScript on Deno: no `any`, no `as`; task-shaped API.")
     .diff((d) => d.base(Deno.env.get("ZUKE_REVIEW_BASE") ?? "origin/master"))
     .maxDiffTokens(20000)
     .failWhen((g) => g.scoreAbove(8))
