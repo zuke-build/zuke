@@ -9,7 +9,13 @@
 import type { AnyParameter, Validation, ValidationContext } from "@zuke/core";
 import type { Configure } from "@zuke/core/tooling";
 import { Command } from "@zuke/core/shell";
-import type { Assessment, AssessmentType, Effort, Provider } from "./types.ts";
+import type {
+  Assessment,
+  AssessmentType,
+  Effort,
+  Provider,
+  Usage,
+} from "./types.ts";
 import { AiReviewError } from "./errors.ts";
 import {
   DEFAULT_EXCLUDES,
@@ -28,6 +34,7 @@ import {
   toMarkdown,
   writeStepSummary,
 } from "./report.ts";
+import { readEnv, resolveGithubContext, upsertPrComment } from "./github.ts";
 
 /**
  * A fluent AI reviewer. Construct one via {@link securityReviewer} (and the
@@ -49,6 +56,8 @@ export class Reviewer implements Validation {
   #gate: GateRule[] = [{ kind: "score", value: 7 }];
   #onError: "fail" | "warn" = "fail";
   #skipIfKeyMissing = false;
+  #comment = false;
+  #githubToken?: AnyParameter | string;
   #quiet = false;
   #fetch?: typeof fetch;
   #exec?: (argv: string[]) => Promise<string>;
@@ -142,6 +151,25 @@ export class Reviewer implements Validation {
     return this;
   }
 
+  /**
+   * Also post the review to the pull request as a comment (GitHub Actions). A
+   * single comment per reviewer is kept up to date across re-runs. Needs a token
+   * with `pull-requests: write` — the workflow `GITHUB_TOKEN` by default, or one
+   * set with {@link githubToken}. A no-op outside a GitHub PR context.
+   */
+  comment(): this {
+    this.#comment = true;
+    return this;
+  }
+
+  /**
+   * The token used to post the PR comment (default: the `GITHUB_TOKEN` env var).
+   */
+  githubToken(token: AnyParameter | string): this {
+    this.#githubToken = token;
+    return this;
+  }
+
   /** Suppress the findings printout and the job-summary section. */
   quiet(): this {
     this.#quiet = true;
@@ -168,23 +196,49 @@ export class Reviewer implements Validation {
   }
 
   /**
-   * Report the assessment unless quiet — to the console, and (under GitHub
-   * Actions) as a Markdown section appended to the job summary.
+   * Report the assessment unless quiet — to the console, the job summary, and
+   * (when `.comment()` is set) the pull request.
    */
-  #report(assessment: Assessment, target: string): void {
+  async #report(
+    assessment: Assessment,
+    target: string,
+    usage?: Usage,
+  ): Promise<void> {
     if (this.#quiet) return;
-    for (const line of consoleLines(this.name, assessment)) console.log(line);
-    writeStepSummary(toMarkdown(this.name, target, assessment));
+    const lines = consoleLines(this.name, assessment, usage);
+    for (const line of lines) console.log(line);
+    await this.#publish(toMarkdown(this.name, target, assessment, usage));
   }
 
   /**
-   * Announce a skipped review unless quiet — on the console, and (under GitHub
-   * Actions) as a Markdown note appended to the job summary.
+   * Announce a skipped review unless quiet — on the console, the job summary,
+   * and (when `.comment()` is set) the pull request.
    */
-  #reportSkip(target: string, reason: string): void {
+  async #reportSkip(target: string, reason: string): Promise<void> {
     if (this.#quiet) return;
     console.log(skipConsoleLine(this.name, reason));
-    writeStepSummary(skipMarkdown(this.name, target, reason));
+    await this.#publish(skipMarkdown(this.name, target, reason));
+  }
+
+  /** Append `markdown` to the job summary and, if enabled, the PR comment. */
+  async #publish(markdown: string): Promise<void> {
+    writeStepSummary(markdown);
+    if (!this.#comment) return;
+    const token = this.#githubToken !== undefined
+      ? resolveKey(this.#githubToken)
+      : readEnv("GITHUB_TOKEN") ?? "";
+    const context = resolveGithubContext(token);
+    if (context === undefined) {
+      console.warn(`[${this.name}] no PR context — skipping comment`);
+      return;
+    }
+    try {
+      await upsertPrComment(context, this.name, markdown, this.#fetch ?? fetch);
+    } catch (error) {
+      // Best-effort: a failed comment must never break the build.
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(`[${this.name}] could not post PR comment: ${message}`);
+    }
   }
 
   /**
@@ -199,7 +253,7 @@ export class Reviewer implements Validation {
     const key = resolveKey(this.#apiKey);
     if (key === "") {
       if (this.#skipIfKeyMissing) {
-        this.#reportSkip(context.target, "no API key");
+        await this.#reportSkip(context.target, "no API key");
         return;
       }
       throw new AiReviewError("an API key is required; call .apiKey(...)");
@@ -216,7 +270,7 @@ export class Reviewer implements Validation {
       [...DEFAULT_EXCLUDES, ...this.#exclude],
     ).trim();
     if (diff === "") {
-      this.#report(emptyAssessment(), context.target);
+      await this.#report(emptyAssessment(), context.target);
       return;
     }
     if (this.#maxDiffTokens !== undefined) {
@@ -229,8 +283,9 @@ export class Reviewer implements Validation {
       diff,
     );
     let assessment: Assessment;
+    let usage: Usage | undefined;
     try {
-      const text = await callProvider(
+      const result = await callProvider(
         provider,
         key,
         this.#model ?? DEFAULT_MODELS[provider],
@@ -238,7 +293,8 @@ export class Reviewer implements Validation {
         user,
         { effort: this.#effort, fetch: this.#fetch },
       );
-      assessment = parseAssessment(text);
+      assessment = parseAssessment(result.text);
+      usage = result.usage;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       if (this.#onError === "warn") {
@@ -248,7 +304,7 @@ export class Reviewer implements Validation {
       throw error instanceof AiReviewError ? error : new AiReviewError(message);
     }
 
-    this.#report(assessment, context.target);
+    await this.#report(assessment, context.target, usage);
     const gate = gateTrips(assessment, this.#gate);
     if (gate.tripped) {
       throw new AiReviewError(

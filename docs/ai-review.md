@@ -106,6 +106,38 @@ findings table) to `$GITHUB_STEP_SUMMARY`, so the assessment appears on the run
 page whether the gate passes or fails (it writes just before breaking the build
 on a failure). `.quiet()` suppresses both the console output and the summary.
 
+## Pull-request comment
+
+`.comment()` additionally posts the assessment onto the pull request. Rather than
+adding a new comment every run, it **upserts a single comment per reviewer**: the
+body carries a hidden marker (`<!-- zuke-ai-review:<name> -->`), so a re-run finds
+its previous comment and edits it in place. Different reviewers (e.g. a security
+and a secrets review) keep separate comments because the marker includes the
+reviewer name.
+
+It uses a token with `pull-requests: write` — the workflow's `GITHUB_TOKEN` by
+default, or one you pass with `.githubToken(param | string)`. Outside a GitHub PR
+context (no `GITHUB_REPOSITORY` / `refs/pull/<n>/merge` ref, e.g. a local run) it
+logs a notice and does nothing. A failed post never breaks the build — it is a
+best-effort side effect, like the summary. The workflow must grant the scope:
+
+```yaml
+permissions:
+  contents: read
+  pull-requests: write
+```
+
+## Token usage
+
+If the provider's response reports token counts, the review prints them as a
+footer — `tokens: 1234 in · 567 out · 1801 total` on the console, and a
+`**Tokens:** …` line in the summary and PR comment. The counts are read from each
+provider's own shape (Claude `usage.input_tokens` / `output_tokens`, OpenAI
+`usage.*_tokens`, Gemini `usageMetadata.*TokenCount`); the total is taken
+verbatim when present, or derived from input + output (Claude) otherwise. Only
+the counts a provider actually returns are shown, so this is purely
+informational — it never affects the gate.
+
 ## Worked example: Zuke reviews itself
 
 Zuke's own build runs a security review on every internal PR. In
@@ -120,6 +152,7 @@ securityReview = securityReviewer((r) =>
   r.provider("openai")
     .apiKey(this.openaiKey)
     .skipIfKeyMissing() // skip + announce when the key is absent (local runs)
+    .comment() // upsert the assessment onto the PR (uses GITHUB_TOKEN)
     .diff((d) => d.base(Deno.env.get("ZUKE_REVIEW_BASE") ?? "origin/master"))
     .maxDiffTokens(20000)
     .failWhen((g) => g.scoreAbove(8))
@@ -137,5 +170,6 @@ absent, the reviewer runs, sees no key, and prints a "skipped — no API key"
 line (and a matching job-summary note). The
 [`ai-review.yml`](../.github/workflows/ai-review.yml) workflow runs
 `./zuke review` on pull requests (non-fork only, so the secret is never exposed
-to untrusted code), passing `OPENAI_API_KEY` and a `ZUKE_REVIEW_BASE` to diff
-against. The assessment lands in that run's job summary.
+to untrusted code), passing `OPENAI_API_KEY`, the `GITHUB_TOKEN` (for the
+comment), and a `ZUKE_REVIEW_BASE` to diff against. The assessment lands in that
+run's job summary and as an upserted comment on the PR.

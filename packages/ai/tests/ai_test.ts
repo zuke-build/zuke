@@ -57,6 +57,68 @@ function gemini(assessment: Partial<Assessment>): string {
   });
 }
 
+/** A Claude response carrying token usage. */
+function claudeWithUsage(
+  assessment: Partial<Assessment>,
+  usage: Record<string, number>,
+): string {
+  return JSON.stringify({
+    content: [{ type: "text", text: JSON.stringify(assessment) }],
+    stop_reason: "end_turn",
+    usage,
+  });
+}
+
+/**
+ * A fake `fetch` that routes by host: GitHub URLs get the comment API (the GET
+ * lists `comments`, writes return `{}`, all at `githubStatus`); everything else
+ * gets `provider`. Records each call.
+ */
+function routedFetch(opts: {
+  provider: string;
+  comments?: unknown[];
+  githubStatus?: number;
+}): { fetch: typeof fetch; calls: Call[] } {
+  const calls: Call[] = [];
+  const impl = ((input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    calls.push({
+      url,
+      init,
+      body: typeof init?.body === "string" ? init.body : "",
+    });
+    if (url.includes("api.github.com")) {
+      const status = opts.githubStatus ?? 200;
+      const payload = (init?.method ?? "GET") === "GET"
+        ? JSON.stringify(opts.comments ?? [])
+        : "{}";
+      return Promise.resolve(new Response(payload, { status }));
+    }
+    return Promise.resolve(new Response(opts.provider, { status: 200 }));
+  }) as typeof fetch;
+  return { fetch: impl, calls };
+}
+
+/** Run `fn` with the given env vars set, restoring the prior values after. */
+async function withEnv(
+  vars: Record<string, string>,
+  fn: () => Promise<void>,
+): Promise<void> {
+  const prior = new Map<string, string | undefined>();
+  for (const [key, value] of Object.entries(vars)) {
+    prior.set(key, Deno.env.get(key));
+    Deno.env.set(key, value);
+  }
+  try {
+    await fn();
+  } finally {
+    for (const [key, value] of prior) {
+      if (value === undefined) Deno.env.delete(key);
+      else Deno.env.set(key, value);
+    }
+  }
+}
+
 /**
  * Capture `console.log`/`console.warn` output produced by `fn`, with the
  * Actions job-summary file unset so non-quiet reviews don't write a real one.
@@ -625,4 +687,196 @@ Deno.test("an unwritable job-summary file never fails the review", async () => {
     else Deno.env.set("GITHUB_STEP_SUMMARY", prev);
     await Deno.remove(dir, { recursive: true });
   }
+});
+
+Deno.test("token usage from the provider is shown in the output", async () => {
+  const { fetch } = recordFetch(
+    claudeWithUsage({ score: 1, findings: [] }, {
+      input_tokens: 1000,
+      output_tokens: 200,
+    }),
+  );
+  const lines = await captured(() =>
+    securityReviewer((r) =>
+      r.provider("claude").apiKey("k").diff((d) => d.text(DIFF)).fetch(fetch)
+    ).validate({ target: "t" })
+  );
+  // Claude reports no total; it is derived from input + output.
+  assertEquals(
+    lines.includes("  tokens: 1000 in · 200 out · 1200 total"),
+    true,
+  );
+});
+
+Deno.test("partial usage renders only the reported counts", async () => {
+  // Only an input count: no output, and no total to derive.
+  const { fetch } = recordFetch(
+    claudeWithUsage({ score: 0, findings: [] }, { input_tokens: 42 }),
+  );
+  const lines = await captured(() =>
+    securityReviewer((r) =>
+      r.provider("claude").apiKey("k").diff((d) => d.text(DIFF)).fetch(fetch)
+    ).validate({ target: "t" })
+  );
+  assertEquals(lines.includes("  tokens: 42 in"), true);
+});
+
+Deno.test("token usage is read from the openai and gemini response shapes", async () => {
+  const oa = recordFetch(JSON.stringify({
+    choices: [{
+      message: { content: JSON.stringify({ score: 0, findings: [] }) },
+    }],
+    usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+  }));
+  let lines = await captured(() =>
+    securityReviewer((r) =>
+      r.provider("openai").apiKey("k").diff((d) => d.text(DIFF)).fetch(oa.fetch)
+    ).validate({ target: "t" })
+  );
+  assertEquals(lines.includes("  tokens: 10 in · 5 out · 15 total"), true);
+
+  const gm = recordFetch(JSON.stringify({
+    candidates: [{
+      content: {
+        parts: [{ text: JSON.stringify({ score: 0, findings: [] }) }],
+      },
+    }],
+    usageMetadata: {
+      promptTokenCount: 7,
+      candidatesTokenCount: 3,
+      totalTokenCount: 10,
+    },
+  }));
+  lines = await captured(() =>
+    licenseReviewer((r) =>
+      r.provider("gemini").apiKey("k").diff((d) => d.text(DIFF)).fetch(gm.fetch)
+    ).validate({ target: "t" })
+  );
+  assertEquals(lines.includes("  tokens: 7 in · 3 out · 10 total"), true);
+});
+
+Deno.test("token usage is included in the job-summary markdown", async () => {
+  const summaryFile = await Deno.makeTempFile();
+  const prev = Deno.env.get("GITHUB_STEP_SUMMARY");
+  Deno.env.set("GITHUB_STEP_SUMMARY", summaryFile);
+  const { log } = console;
+  console.log = () => {};
+  try {
+    const { fetch } = recordFetch(
+      claudeWithUsage({ score: 0, findings: [] }, {
+        input_tokens: 100,
+        output_tokens: 20,
+      }),
+    );
+    await securityReviewer((r) =>
+      r.provider("claude").apiKey("k").diff((d) => d.text(DIFF)).fetch(fetch)
+    ).validate({ target: "deploy" });
+    const md = await Deno.readTextFile(summaryFile);
+    assertEquals(md.includes("**Tokens:** 100 in · 20 out · 120 total"), true);
+  } finally {
+    console.log = log;
+    if (prev === undefined) Deno.env.delete("GITHUB_STEP_SUMMARY");
+    else Deno.env.set("GITHUB_STEP_SUMMARY", prev);
+    await Deno.remove(summaryFile);
+  }
+});
+
+Deno.test("comment() posts the assessment to the pull request", async () => {
+  await withEnv(
+    { GITHUB_REPOSITORY: "zuke-build/zuke", GITHUB_REF: "refs/pull/42/merge" },
+    async () => {
+      const { fetch, calls } = routedFetch({
+        provider: claude({ score: 1, findings: [] }),
+        comments: [],
+      });
+      await captured(() =>
+        securityReviewer((r) =>
+          r.provider("claude").apiKey("k").comment().githubToken("tkn")
+            .diff((d) => d.text(DIFF)).fetch(fetch)
+        ).validate({ target: "deploy" })
+      );
+      const posts = calls.filter((c) =>
+        c.url.includes("api.github.com") && c.init?.method === "POST"
+      );
+      assertEquals(posts.length, 1);
+      assertEquals(
+        posts[0].url,
+        "https://api.github.com/repos/zuke-build/zuke/issues/42/comments",
+      );
+      assertEquals(
+        JSON.parse(posts[0].body).body.includes("## 🔎 security review"),
+        true,
+      );
+    },
+  );
+});
+
+Deno.test("comment() uses GITHUB_TOKEN and updates the existing comment", async () => {
+  await withEnv(
+    {
+      GITHUB_REPOSITORY: "zuke-build/zuke",
+      GITHUB_REF: "refs/pull/42/merge",
+      GITHUB_TOKEN: "env-token",
+    },
+    async () => {
+      const { fetch, calls } = routedFetch({
+        provider: claude({ score: 1, findings: [] }),
+        comments: [
+          { id: 5, body: "<!-- zuke-ai-review:security review -->\nold" },
+        ],
+      });
+      await captured(() =>
+        securityReviewer((r) =>
+          r.provider("claude").apiKey("k").comment()
+            .diff((d) => d.text(DIFF)).fetch(fetch)
+        ).validate({ target: "deploy" })
+      );
+      const writes = calls.filter((c) => c.init?.method === "PATCH");
+      assertEquals(writes.length, 1);
+      assertEquals(
+        writes[0].url,
+        "https://api.github.com/repos/zuke-build/zuke/issues/comments/5",
+      );
+      const headers = writes[0].init?.headers as Record<string, string>;
+      assertEquals(headers.authorization, "Bearer env-token");
+    },
+  );
+});
+
+Deno.test("comment() warns and skips when there is no PR context", async () => {
+  await withEnv({ GITHUB_REF: "refs/heads/master" }, async () => {
+    const { fetch, calls } = routedFetch({
+      provider: claude({ score: 0, findings: [] }),
+    });
+    const lines = await captured(() =>
+      securityReviewer((r) =>
+        r.provider("claude").apiKey("k").comment().githubToken("tkn")
+          .diff((d) => d.text(DIFF)).fetch(fetch)
+      ).validate({ target: "deploy" })
+    );
+    assertEquals(calls.some((c) => c.url.includes("api.github.com")), false);
+    assertEquals(lines.some((l) => l.includes("no PR context")), true);
+  });
+});
+
+Deno.test("a failed PR comment never breaks the review", async () => {
+  await withEnv(
+    { GITHUB_REPOSITORY: "zuke-build/zuke", GITHUB_REF: "refs/pull/42/merge" },
+    async () => {
+      const { fetch } = routedFetch({
+        provider: claude({ score: 0, findings: [] }),
+        githubStatus: 500,
+      });
+      const lines = await captured(() =>
+        securityReviewer((r) =>
+          r.provider("claude").apiKey("k").comment().githubToken("tkn")
+            .diff((d) => d.text(DIFF)).fetch(fetch)
+        ).validate({ target: "deploy" })
+      ); // resolves despite the 500
+      assertEquals(
+        lines.some((l) => l.includes("could not post PR comment")),
+        true,
+      );
+    },
+  );
 });

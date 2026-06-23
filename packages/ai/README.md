@@ -47,11 +47,35 @@ structured-output mode (Claude `output_config.format`, OpenAI strict
 `.model(...)`, `.effort(...)`, `.diff((d) => d.base("origin/main"))`,
 `.include(...)`/`.exclude(...)`, `.maxDiffTokens(n)`,
 `.failWhen((g) => g.scoreAbove(7) / g.severityAtLeast("high"))`,
-`.onError("fail" | "warn")`, `.skipIfKeyMissing()`, `.quiet()`.
+`.onError("fail" | "warn")`, `.skipIfKeyMissing()`, `.comment()`,
+`.githubToken(...)`, `.quiet()`.
 
 `.skipIfKeyMissing()` skips the review instead of failing when the API key is
 absent — handy when the key is a CI-only secret — and announces the skip on the
 console and in the job summary so the gap is visible rather than silent.
+
+## Pull-request comment
+
+`.comment()` also posts the assessment to the pull request (GitHub Actions). It
+keeps **one comment per reviewer up to date** across re-runs — matched by a
+hidden marker, so a new push edits the comment in place instead of piling up. It
+needs a token with `pull-requests: write` (the workflow `GITHUB_TOKEN` by
+default, or `.githubToken(...)`), and is a no-op outside a GitHub PR context
+(e.g. local runs). The grant in the workflow:
+
+```yaml
+permissions:
+  contents: read
+  pull-requests: write
+```
+
+## Token usage
+
+When the provider's response carries token counts, the assessment footer reports
+them — on the console (`tokens: 1234 in · 567 out · 1801 total`) and in the job
+summary / PR comment (`**Tokens:** …`). Claude's total is derived from input +
+output; OpenAI and Gemini report it directly. Only the counts a provider
+actually returns are shown.
 
 ## Structured output (schema enforcement)
 

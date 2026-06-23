@@ -5,12 +5,25 @@
  * @module
  */
 
-import type { Assessment } from "./types.ts";
+import type { Assessment, Usage } from "./types.ts";
 
 /** The location suffix for a finding (`file:line`, `file`, or empty). */
 function location(file?: string, line?: number): string {
   if (file === undefined) return "";
   return line !== undefined ? `${file}:${line}` : file;
+}
+
+/**
+ * A human token-usage line (`123 in · 45 out · 168 total`), or `undefined` when
+ * the provider reported no counts.
+ */
+export function formatUsage(usage?: Usage): string | undefined {
+  if (usage === undefined) return undefined;
+  const parts: string[] = [];
+  if (usage.inputTokens !== undefined) parts.push(`${usage.inputTokens} in`);
+  if (usage.outputTokens !== undefined) parts.push(`${usage.outputTokens} out`);
+  if (usage.totalTokens !== undefined) parts.push(`${usage.totalTokens} total`);
+  return parts.length > 0 ? parts.join(" · ") : undefined;
 }
 
 /** Escape `|` so a value is safe inside a Markdown table cell. */
@@ -19,7 +32,11 @@ function cell(value: string): string {
 }
 
 /** The console lines for an assessment. */
-export function consoleLines(name: string, assessment: Assessment): string[] {
+export function consoleLines(
+  name: string,
+  assessment: Assessment,
+  usage?: Usage,
+): string[] {
   const lines = [
     `[${name}] score ${assessment.score}/10 (${assessment.severity}) — ${assessment.findings.length} finding(s)`,
   ];
@@ -30,6 +47,8 @@ export function consoleLines(name: string, assessment: Assessment): string[] {
     );
   }
   if (assessment.summary !== "") lines.push(`  ${assessment.summary}`);
+  const tokens = formatUsage(usage);
+  if (tokens !== undefined) lines.push(`  tokens: ${tokens}`);
   return lines;
 }
 
@@ -38,11 +57,14 @@ export function toMarkdown(
   name: string,
   target: string,
   assessment: Assessment,
+  usage?: Usage,
 ): string {
+  const tokens = formatUsage(usage);
   const parts = [
     `## 🔎 ${name} — \`${target}\``,
     "",
     `**Score:** ${assessment.score}/10 · **Severity:** ${assessment.severity} · ${assessment.findings.length} finding(s)`,
+    ...(tokens !== undefined ? ["", `**Tokens:** ${tokens}`] : []),
     "",
   ];
   if (assessment.findings.length > 0) {

@@ -3,10 +3,11 @@ name: AI Review
 on:
   pull_request:
 
-# This is the only workflow that uses the org-level OPENAI_API_KEY secret. It
-# still needs nothing beyond read access to the repository.
+# This is the only workflow that uses the org-level OPENAI_API_KEY secret.
+# `pull-requests: write` lets the reviewer upsert its assessment as a PR comment.
 permissions:
   contents: read
+  pull-requests: write
 
 concurrency:
   group: ai-review-${{ github.workflow }}-${{ github.ref }}
@@ -35,10 +36,11 @@ jobs:
       - name: Fetch the base branch
         run: git fetch --no-tags --depth=1 origin master
 
-      # The ./zuke launcher bootstraps Deno; `review` runs @zuke/ai over the diff
-      # and appends its assessment to the job summary.
+      # The ./zuke launcher bootstraps Deno; `review` runs @zuke/ai over the diff,
+      # appends its assessment to the job summary, and upserts a PR comment.
       - name: AI security review with Zuke
         run: ./zuke review
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ZUKE_REVIEW_BASE: FETCH_HEAD

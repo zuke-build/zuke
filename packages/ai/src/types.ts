@@ -47,3 +47,16 @@ export interface Assessment {
   /** The individual findings. */
   findings: AssessmentFinding[];
 }
+
+/**
+ * Token counts a provider reported for a review call, when the response carries
+ * them. Each field is optional because not every provider reports every count.
+ */
+export interface Usage {
+  /** Tokens in the prompt / input. */
+  inputTokens?: number;
+  /** Tokens in the model's output / completion. */
+  outputTokens?: number;
+  /** Total tokens, reported by the provider or derived from input + output. */
+  totalTokens?: number;
+}

@@ -7,7 +7,7 @@
  */
 
 import type { AnyParameter } from "@zuke/core";
-import type { Effort, Provider } from "./types.ts";
+import type { Effort, Provider, Usage } from "./types.ts";
 import { AiReviewError } from "./errors.ts";
 import { dig, expectString } from "./json.ts";
 import { ASSESSMENT_GEMINI_SCHEMA, ASSESSMENT_JSON_SCHEMA } from "./schema.ts";
@@ -23,6 +23,68 @@ export const DEFAULT_MODELS: Record<Provider, string> = {
 export interface CallOptions {
   effort?: Effort;
   fetch?: typeof fetch;
+}
+
+/** A provider's raw text plus the token usage it reported, if any. */
+export interface ProviderResult {
+  /** The model's raw text content. */
+  text: string;
+  /** Token counts from the response, when the provider reported them. */
+  usage?: Usage;
+}
+
+/** A finite number, or `undefined` for anything else. */
+function num(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
+}
+
+/**
+ * Assemble a {@link Usage} from input/output/total counts, deriving the total
+ * from input + output when the provider omits it. Returns `undefined` when no
+ * count is present so callers can tell "not reported" from "zero".
+ */
+function buildUsage(
+  input: number | undefined,
+  output: number | undefined,
+  total: number | undefined,
+): Usage | undefined {
+  const resolvedTotal = total ??
+    (input !== undefined && output !== undefined ? input + output : undefined);
+  if (
+    input === undefined && output === undefined && resolvedTotal === undefined
+  ) {
+    return undefined;
+  }
+  return {
+    ...(input !== undefined ? { inputTokens: input } : {}),
+    ...(output !== undefined ? { outputTokens: output } : {}),
+    ...(resolvedTotal !== undefined ? { totalTokens: resolvedTotal } : {}),
+  };
+}
+
+/** Read the token usage from a provider response, normalising field names. */
+function readUsage(data: unknown, provider: Provider): Usage | undefined {
+  if (provider === "claude") {
+    return buildUsage(
+      num(dig(data, "usage", "input_tokens")),
+      num(dig(data, "usage", "output_tokens")),
+      undefined,
+    );
+  }
+  if (provider === "openai") {
+    return buildUsage(
+      num(dig(data, "usage", "prompt_tokens")),
+      num(dig(data, "usage", "completion_tokens")),
+      num(dig(data, "usage", "total_tokens")),
+    );
+  }
+  return buildUsage(
+    num(dig(data, "usageMetadata", "promptTokenCount")),
+    num(dig(data, "usageMetadata", "candidatesTokenCount")),
+    num(dig(data, "usageMetadata", "totalTokenCount")),
+  );
 }
 
 /** Resolve the API key from a parameter or literal string. */
@@ -42,7 +104,7 @@ async function ensureOk(response: Response, provider: Provider): Promise<void> {
   }
 }
 
-/** POST the prompt to the provider and return the raw text content. */
+/** POST the prompt to the provider and return its text and token usage. */
 export async function callProvider(
   provider: Provider,
   key: string,
@@ -50,7 +112,7 @@ export async function callProvider(
   system: string,
   user: string,
   options: CallOptions,
-): Promise<string> {
+): Promise<ProviderResult> {
   const doFetch = options.fetch ?? fetch;
   if (provider === "claude") {
     // `output_config.format` enforces the JSON shape server-side.
@@ -80,7 +142,13 @@ export async function callProvider(
     if (dig(data, "stop_reason") === "refusal") {
       throw new AiReviewError("the model refused the request");
     }
-    return expectString(dig(data, "content", 0, "text"), "the Claude response");
+    return {
+      text: expectString(
+        dig(data, "content", 0, "text"),
+        "the Claude response",
+      ),
+      usage: readUsage(data, provider),
+    };
   }
   if (provider === "openai") {
     const url = "https://api.openai.com/v1/chat/completions";
@@ -109,10 +177,13 @@ export async function callProvider(
     });
     await ensureOk(response, provider);
     const data: unknown = await response.json();
-    return expectString(
-      dig(data, "choices", 0, "message", "content"),
-      "the OpenAI response",
-    );
+    return {
+      text: expectString(
+        dig(data, "choices", 0, "message", "content"),
+        "the OpenAI response",
+      ),
+      usage: readUsage(data, provider),
+    };
   }
   const url =
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${
@@ -133,8 +204,11 @@ export async function callProvider(
   });
   await ensureOk(response, provider);
   const data: unknown = await response.json();
-  return expectString(
-    dig(data, "candidates", 0, "content", "parts", 0, "text"),
-    "the Gemini response",
-  );
+  return {
+    text: expectString(
+      dig(data, "candidates", 0, "content", "parts", 0, "text"),
+      "the Gemini response",
+    ),
+    usage: readUsage(data, provider),
+  };
 }
