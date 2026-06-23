@@ -188,7 +188,7 @@ Deno.test("a target without a body fails fast", async () => {
   assertEquals(messageOf(result.error).includes("no body"), true);
 });
 
-Deno.test("plain mode prints start/success banners and a summary", async () => {
+Deno.test("plain mode prints a ruled header, success footer, and summary table", async () => {
   const { lines, reporter } = recorder();
   class B extends Build {
     work = target().executes(() => {});
@@ -197,15 +197,21 @@ Deno.test("plain mode prints start/success banners and a summary", async () => {
   discoverTargets(b);
 
   await execute(b, b.work, { reporter, github: false });
-  assertEquals(lines[0], "▶ work");
-  assertEquals(lines[1].startsWith("✔ work ("), true);
-  const summary = lines[lines.length - 1];
-  assertEquals(summary.includes("Build summary:"), true);
-  assertEquals(summary.includes("SUCCESS"), true);
-  assertEquals(summary.includes("1/1 targets"), true);
+  // Stacked ═ rules frame the target name (top rule, name, bottom rule).
+  assertEquals(lines[0].startsWith("═"), true);
+  assertEquals(lines[1], "work");
+  assertEquals(lines[2].startsWith("═"), true);
+  // The success footer uses the "succeeded in" phrasing.
+  assertEquals(lines.some((l) => l.startsWith("✔ work succeeded in ")), true);
+  // The summary block is title + ruled table + Total + closing line.
+  assertEquals(lines.some((l) => l === "Build Summary"), true);
+  assertEquals(lines.some((l) => l.startsWith("Target")), true);
+  assertEquals(lines.some((l) => l.startsWith("Total")), true);
+  const closing = lines[lines.length - 1];
+  assertEquals(closing.startsWith("✔ Build succeeded — 1/1 targets in "), true);
 });
 
-Deno.test("plain mode reports a failure banner and summary", async () => {
+Deno.test("plain mode reports a failure footer and names the culprit at the end", async () => {
   const { lines, reporter } = recorder();
   class B extends Build {
     boom = target().executes(() => {
@@ -216,9 +222,14 @@ Deno.test("plain mode reports a failure banner and summary", async () => {
   discoverTargets(b);
 
   await execute(b, b.boom, { reporter, github: false });
-  assertEquals(lines.some((l) => l.startsWith("✘ boom (")), true);
-  assertEquals(lines.includes("nope"), true);
-  assertEquals(lines[lines.length - 1].includes("FAILED"), true);
+  assertEquals(lines.some((l) => l.startsWith("✘ boom failed in ")), true);
+  // The error message is indented under the failure footer.
+  assertEquals(lines.some((l) => l === "  nope"), true);
+  const closing = lines[lines.length - 1];
+  assertEquals(
+    closing.startsWith("✘ Build failed — 'boom' failed after "),
+    true,
+  );
 });
 
 Deno.test("a non-Error throw is reported via String coercion", async () => {
@@ -234,7 +245,7 @@ Deno.test("a non-Error throw is reported via String coercion", async () => {
   const result = await execute(b, b.boom, { reporter, github: false });
   assertEquals(result.ok, false);
   assertEquals(result.error, "string failure");
-  assertEquals(lines.includes("string failure"), true);
+  assertEquals(lines.includes("  string failure"), true);
 });
 
 Deno.test("github mode wraps each target in a collapsible group", async () => {
@@ -249,7 +260,7 @@ Deno.test("github mode wraps each target in a collapsible group", async () => {
     await execute(b, b.work, { reporter, github: true });
   });
   assertEquals(lines[0], "::group::work");
-  assertEquals(lines.some((l) => l.startsWith("✔ work (")), true);
+  assertEquals(lines.some((l) => l.startsWith("✔ work succeeded in ")), true);
   assertEquals(lines.includes("::endgroup::"), true);
 });
 
@@ -274,7 +285,7 @@ Deno.test("github mode emits an ::error annotation on failure", async () => {
   assertEquals(lines.some((l) => l.includes("boom failed: nope")), true);
 });
 
-Deno.test("summary lists skipped targets and counts", async () => {
+Deno.test("summary table lists skipped and succeeded rows with the count", async () => {
   const { lines, reporter } = recorder();
   class B extends Build {
     setup = target().executes(() => {});
@@ -284,14 +295,20 @@ Deno.test("summary lists skipped targets and counts", async () => {
   discoverTargets(b);
 
   await execute(b, b.main, { reporter, github: false, skip: ["setup"] });
-  const summary = lines[lines.length - 1];
-  assertEquals(summary.includes("⊘ setup"), true);
-  assertEquals(summary.includes("skipped"), true);
-  assertEquals(summary.includes("✔ main"), true);
-  assertEquals(summary.includes("1/2 targets"), true);
+  // The table carries a Skipped row for setup and a Succeeded row for main.
+  assertEquals(
+    lines.some((l) => l.startsWith("setup") && l.includes("Skipped")),
+    true,
+  );
+  assertEquals(
+    lines.some((l) => l.startsWith("main") && l.includes("Succeeded")),
+    true,
+  );
+  const closing = lines[lines.length - 1];
+  assertEquals(closing.startsWith("✔ Build succeeded — 1/2 targets in "), true);
 });
 
-Deno.test("targets after a failure are marked skipped in the summary", async () => {
+Deno.test("targets after a failure are marked skipped in the summary table", async () => {
   const { lines, reporter } = recorder();
   class B extends Build {
     first = target().executes(() => {});
@@ -304,11 +321,23 @@ Deno.test("targets after a failure are marked skipped in the summary", async () 
   discoverTargets(b);
 
   await execute(b, b.last, { reporter, github: false });
-  const summary = lines[lines.length - 1];
-  assertEquals(summary.includes("✔ first"), true);
-  assertEquals(summary.includes("✘ boom"), true);
-  assertEquals(summary.includes("⊘ last"), true);
-  assertEquals(summary.includes("FAILED"), true);
+  assertEquals(
+    lines.some((l) => l.startsWith("first") && l.includes("Succeeded")),
+    true,
+  );
+  assertEquals(
+    lines.some((l) => l.startsWith("boom") && l.includes("Failed")),
+    true,
+  );
+  assertEquals(
+    lines.some((l) => l.startsWith("last") && l.includes("Skipped")),
+    true,
+  );
+  const closing = lines[lines.length - 1];
+  assertEquals(
+    closing.startsWith("✘ Build failed — 'boom' failed after "),
+    true,
+  );
 });
 
 Deno.test("auto-detects GitHub Actions from the environment", async () => {
@@ -329,7 +358,9 @@ Deno.test("auto-detects GitHub Actions from the environment", async () => {
     await withEnv("GITHUB_ACTIONS", undefined, async () => {
       await execute(b, b.work, { reporter });
     });
-    assertEquals(lines[0], "▶ work");
+    // Outside GitHub Actions, the plain-mode ruled header opens the section.
+    assertEquals(lines[0].startsWith("═"), true);
+    assertEquals(lines[1], "work");
   });
 });
 
@@ -353,7 +384,8 @@ Deno.test("github mode appends a Markdown job summary (default console)", async 
     const md = await Deno.readTextFile(tmp);
     assertEquals(md.includes("Zuke build"), true);
     assertEquals(md.includes("| Target | Result | Time |"), true);
-    assertEquals(md.includes("| a | ✔ passed |"), true);
+    assertEquals(md.includes("| a | ✔ Succeeded |"), true);
+    assertEquals(md.includes("| **Total** |"), true);
   } finally {
     await Deno.remove(tmp);
   }
@@ -409,8 +441,8 @@ Deno.test("falls back to the console reporter when none is given", async () => {
     console.log = realLog;
     console.error = realError;
   }
-  assertEquals(captured.some((l) => l.includes("SUCCESS")), true);
-  assertEquals(captured.some((l) => l.includes("FAILED")), true);
+  assertEquals(captured.some((l) => l.includes("Build succeeded")), true);
+  assertEquals(captured.some((l) => l.includes("Build failed")), true);
 });
 
 Deno.test("colour mode wraps output in ANSI codes", async () => {
@@ -422,8 +454,10 @@ Deno.test("colour mode wraps output in ANSI codes", async () => {
   discoverTargets(b);
 
   await execute(b, b.work, { reporter, github: false, color: true });
+  // The top rule is painted (dim), as is the bold cyan target name.
   assertEquals(lines[0].includes("\x1b["), true);
-  assertEquals(lines[0].includes("▶ work"), true);
+  assertEquals(lines[1].includes("\x1b["), true);
+  assertEquals(lines[1].includes("work"), true);
   assertEquals(lines[lines.length - 1].includes("\x1b["), true);
 });
 
@@ -437,8 +471,15 @@ Deno.test("plain mode separates consecutive targets with a blank line", async ()
   discoverTargets(build);
 
   await execute(build, build.b, { reporter, github: false, color: false });
-  assertEquals(lines[0], "▶ a"); // no leading blank before the first target
-  assertEquals(lines[lines.indexOf("▶ b") - 1], ""); // blank before the second
+  // No leading blank before the first target's top rule.
+  assertEquals(lines[0].startsWith("═"), true);
+  assertEquals(lines[1], "a");
+  // A blank separates the two target blocks.
+  const bNameAt = lines.indexOf("b");
+  assertEquals(bNameAt > 0, true);
+  // The "b" line is the second of three header lines; its preceding "═"
+  // separator opens the second block, and the blank sits before that.
+  assertEquals(lines[bNameAt - 2], ""); // blank → top rule → "b"
 });
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -592,10 +633,14 @@ Deno.test("parallel buffers each target's block (plain and github)", async () =>
     parallel: 4,
   });
   assertEquals(result.ok, false);
-  assertEquals(plain.lines.some((l) => l.startsWith("▶ a")), true);
-  assertEquals(plain.lines.includes("nope"), true);
+  // Each target's three-line ruled header sits adjacent to its footer.
+  assertEquals(plain.lines.includes("a"), true);
+  assertEquals(plain.lines.includes("  nope"), true);
   assertEquals(plain.lines.includes(""), true); // blank separator between blocks
-  assertEquals(plain.lines[plain.lines.length - 1].includes("FAILED"), true);
+  assertEquals(
+    plain.lines[plain.lines.length - 1].includes("Build failed"),
+    true,
+  );
 
   // GitHub: buffering keeps each ::group:: contiguous with its body/endgroup.
   const gh = recorder();
@@ -608,7 +653,7 @@ Deno.test("parallel buffers each target's block (plain and github)", async () =>
   });
   const open = gh.lines.indexOf("::group::a");
   assertEquals(open >= 0, true);
-  assertEquals(gh.lines[open + 1].startsWith("✔ a ("), true);
+  assertEquals(gh.lines[open + 1].startsWith("✔ a succeeded in "), true);
   assertEquals(gh.lines[open + 2], "::endgroup::");
 });
 
@@ -753,10 +798,13 @@ Deno.test("a cached target is skipped and counted as succeeded", async () => {
   assertEquals(result.ok, true);
   assertEquals(ran, []); // body not run
   assertEquals(cache.saved, true);
-  const summary = lines[lines.length - 1];
-  assertEquals(summary.includes("⊙ build"), true);
-  assertEquals(summary.includes("cached"), true);
-  assertEquals(summary.includes("1/1 targets"), true);
+  // The table carries a Cached row, and the cached target counts toward the total.
+  assertEquals(
+    lines.some((l) => l.startsWith("build") && l.includes("Cached")),
+    true,
+  );
+  const closing = lines[lines.length - 1];
+  assertEquals(closing.startsWith("✔ Build succeeded — 1/1 targets in "), true);
 });
 
 Deno.test("a stale target runs and records its fingerprint", async () => {

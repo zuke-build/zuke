@@ -2,14 +2,11 @@
  * The executor: resolves a plan, runs each target body in order, reports
  * pass/fail with timing, and aborts on the first failure.
  *
- * Output adapts to where the build runs. Under GitHub Actions each target is
- * wrapped in a collapsible log group (`::group::`/`::endgroup::`) with an
- * `::error::` annotation on failure and a Markdown table appended to the job
- * summary. In a terminal, targets are separated by blank lines and coloured
- * (bold headers, green/red/dim status) when stdout is a TTY and `NO_COLOR` is
- * unset; piped output stays plain. Either way a per-target summary — each
- * target's status and duration, plus the total — is printed when the build
- * finishes.
+ * Visual rendering — colour, the ruled per-target headers, the end-of-build
+ * summary table, the GitHub Actions `::group::` commands, and the Markdown
+ * job-summary file — lives in `./report.ts`. The executor only decides what to
+ * run and feeds the renderer; this module owns orchestration, parameter
+ * resolution, caching, lifecycle hooks, and the sequential/parallel scheduler.
  *
  * Sequencing and de-duplication are handled by {@link plan} — the returned
  * order already contains each target exactly once, so diamond dependencies run
@@ -35,6 +32,17 @@ import { isCI } from "./host.ts";
 import { absolutePath } from "./path.ts";
 import type { TargetBuilder, TargetFn } from "./target.ts";
 import type { Plugin } from "./plugin.ts";
+import {
+  detectWidth,
+  jobSummaryMarkdown,
+  type Style,
+  summaryBlock,
+  targetDryRunFooter,
+  targetFailFooter,
+  targetHeader,
+  targetPassFooter,
+  type TargetReport,
+} from "./report.ts";
 
 /** The artifact directory (under the repo root) for the cache store. */
 const ARTIFACT_DIR = ".zuke";
@@ -115,40 +123,6 @@ export interface ExecuteOptions {
    * outside GitHub Actions) when omitted; off by default with a custom reporter.
    */
   color?: boolean;
-}
-
-interface TargetReport {
-  name: string;
-  status: TargetStatus;
-  ms: number;
-}
-
-const ICON: Record<TargetStatus, string> = {
-  passed: "✔",
-  failed: "✘",
-  skipped: "⊘",
-  cached: "⊙",
-};
-
-/** ANSI select-graphic-rendition codes used for terminal colour. */
-const SGR = {
-  reset: "\x1b[0m",
-  bold: "\x1b[1m",
-  dim: "\x1b[2m",
-  red: "\x1b[31m",
-  green: "\x1b[32m",
-  cyan: "\x1b[36m",
-};
-
-/** How a run renders its output. */
-interface Style {
-  github: boolean;
-  color: boolean;
-}
-
-/** Wrap text in ANSI codes when colour is enabled, otherwise return it as-is. */
-function paint(color: boolean, codes: string, text: string): string {
-  return color ? `${codes}${text}${SGR.reset}` : text;
 }
 
 /** Whether the build is running inside a GitHub Actions runner. */
@@ -238,19 +212,15 @@ function autoColor(): boolean {
 
 /** Resolve the output style from the options and the detected environment. */
 function resolveStyle(options: ExecuteOptions, github: boolean): Style {
-  if (options.color !== undefined) return { github, color: options.color };
-  if (github || options.reporter !== undefined) return { github, color: false };
-  return { github, color: autoColor() };
-}
-
-/** Format a duration in milliseconds as `1.2s`. */
-function formatDuration(ms: number): string {
-  return `${(ms / 1000).toFixed(1)}s`;
+  const color = options.color ??
+    (github || options.reporter !== undefined ? false : autoColor());
+  return { github, color, width: detectWidth() };
 }
 
 /**
  * Open a target's section — a collapsible group under GitHub Actions, or a
- * blank-line-separated bold header in a terminal.
+ * ruled header in a terminal, separated from the previous block by a blank
+ * line.
  */
 function openTarget(
   r: Reporter,
@@ -258,12 +228,8 @@ function openTarget(
   name: string,
   opened: number,
 ): void {
-  if (style.github) {
-    r.info(`::group::${name}`);
-    return;
-  }
-  if (opened > 0) r.info("");
-  r.info(paint(style.color, SGR.bold + SGR.cyan, `▶ ${name}`));
+  if (!style.github && opened > 0) r.info("");
+  for (const line of targetHeader(style, name)) r.info(line);
 }
 
 /** Close a target's section after it succeeded. */
@@ -273,10 +239,7 @@ function passTarget(
   name: string,
   ms: number,
 ): void {
-  const icon = paint(style.color, SGR.green, ICON.passed);
-  const time = paint(style.color, SGR.dim, `(${formatDuration(ms)})`);
-  r.info(`${icon} ${name} ${time}`);
-  if (style.github) r.info("::endgroup::");
+  for (const line of targetPassFooter(style, name, ms)) r.info(line);
 }
 
 /** Close a target's section after it failed and surface the error. */
@@ -287,62 +250,12 @@ function failTarget(
   ms: number,
   error: unknown,
 ): void {
-  const message = error instanceof Error ? error.message : String(error);
-  r.error(
-    paint(
-      style.color,
-      SGR.red,
-      `${ICON.failed} ${name} (${formatDuration(ms)})`,
-    ),
-  );
-  r.error(paint(style.color, SGR.red, message));
-  if (style.github) {
-    r.info("::endgroup::");
-    r.error(`::error title=${name}::${name} failed: ${message}`);
-  }
+  const { info, error: err } = targetFailFooter(style, name, ms, error);
+  for (const line of info) r.info(line);
+  for (const line of err) r.error(line);
 }
 
-const ROW_COLOR: Record<TargetStatus, string> = {
-  passed: SGR.green,
-  failed: SGR.red,
-  skipped: SGR.dim,
-  cached: SGR.cyan,
-};
-
-/** Render the end-of-build summary block. */
-function summaryBlock(
-  style: Style,
-  reports: TargetReport[],
-  totalMs: number,
-  ok: boolean,
-): string {
-  const width = reports.reduce((w, x) => Math.max(w, x.name.length), 0);
-  const rows = reports.map((x) => {
-    const icon = paint(style.color, ROW_COLOR[x.status], ICON[x.status]);
-    const ran = x.status === "passed" || x.status === "failed";
-    const right = ran ? formatDuration(x.ms) : x.status;
-    return `  ${icon} ${x.name.padEnd(width)}  ${right}`;
-  });
-  const succeeded =
-    reports.filter((x) => x.status === "passed" || x.status === "cached")
-      .length;
-  const banner = paint(
-    style.color,
-    SGR.bold + (ok ? SGR.green : SGR.red),
-    `${ok ? ICON.passed : ICON.failed} ${ok ? "SUCCESS" : "FAILED"} — ` +
-      `${succeeded}/${reports.length} targets in ${formatDuration(totalMs)}`,
-  );
-  return [
-    "",
-    paint(style.color, SGR.bold, "Build summary:"),
-    ...rows,
-    "",
-    banner,
-  ]
-    .join("\n");
-}
-
-/** Append a Markdown summary to the GitHub Actions job-summary file, if set. */
+/** Append the Markdown job-summary table to `GITHUB_STEP_SUMMARY`, if set. */
 function writeJobSummary(
   reports: TargetReport[],
   totalMs: number,
@@ -355,26 +268,8 @@ function writeJobSummary(
     return;
   }
   if (path === undefined || path === "") return;
-
-  const succeeded =
-    reports.filter((x) => x.status === "passed" || x.status === "cached")
-      .length;
-  const rows = reports.map((x) => {
-    const ran = x.status === "passed" || x.status === "failed";
-    const time = ran ? formatDuration(x.ms) : "—";
-    return `| ${x.name} | ${ICON[x.status]} ${x.status} | ${time} |`;
-  });
-  const markdown = [
-    `## ${ok ? "✅" : "❌"} Zuke build — ${succeeded}/${reports.length} ` +
-    `targets in ${formatDuration(totalMs)}`,
-    "",
-    "| Target | Result | Time |",
-    "| --- | --- | --- |",
-    ...rows,
-    "",
-  ].join("\n");
   try {
-    Deno.writeTextFileSync(path, markdown, { append: true });
+    Deno.writeTextFileSync(path, jobSummaryMarkdown(reports, totalMs, ok));
   } catch {
     // Best-effort: an unwritable summary file must never fail the build.
   }
@@ -519,11 +414,7 @@ async function runTarget(
 
   if (dryRun) {
     openTarget(reporter, style, name, opened);
-    const note = paint(style.color, SGR.dim, "(dry run — not executed)");
-    reporter.info(
-      `${paint(style.color, SGR.cyan, ICON.passed)} ${name} ${note}`,
-    );
-    if (style.github) reporter.info("::endgroup::");
+    for (const line of targetDryRunFooter(style, name)) reporter.info(line);
     return { status: "passed", ms: 0 };
   }
 
@@ -856,7 +747,9 @@ export async function execute(
     : { ok: true, executed: run.executed };
 
   const totalMs = performance.now() - overallStart;
-  reporter.info(summaryBlock(style, run.reports, totalMs, result.ok));
+  for (const line of summaryBlock(style, run.reports, totalMs, result.ok)) {
+    reporter.info(line);
+  }
   if (style.github && writesToConsole) {
     writeJobSummary(run.reports, totalMs, result.ok);
   }
