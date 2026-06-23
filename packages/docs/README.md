@@ -1,47 +1,40 @@
 # @zuke/docs
 
-Typed [Zuke](https://github.com/zuke-build/zuke#readme) tasks that generate and
-verify API documentation for a JSR-style workspace — so neither humans nor
-agents have to guess a package's API.
+Typed [Zuke](https://github.com/zuke-build/zuke#readme) tasks that turn
+already-generated API documentation into agent-friendly artifacts — so neither
+humans nor agents have to guess a package's API.
 
-From one source of truth (`deno doc`), `DocsTasks.apiDocs(...)` produces:
+You hand it each package's documentation text (for a Deno workspace, the output
+of `deno doc`); `DocsTasks.apiDocs(...)` renders:
 
 - an **`llms.txt`** index (the [llmstxt.org](https://llmstxt.org) convention),
-- a complete **`llms-full.txt`** reference — the whole typed surface in one
-  file,
-- a generated **`## API`** block in each package README (what renders on the
-  package's JSR page).
+- a complete **`llms-full.txt`** reference — the whole surface in one file,
+- a generated **`## API`** block in each package README.
 
 `DocsTasks.checkApiDocs(...)` recomputes the same artifacts and returns the ones
 that are stale on disk — wire it into your build's CI gate to fail on drift.
 
+This package **runs no subprocess and depends only on `@zuke/core`** — it does
+not run `deno` and does not reference `@zuke/deno`. Pair it with whatever
+produces your doc text: `@zuke/deno`'s `DenoTasks.doc`, a checked-in file, or
+any other source.
+
 ```ts
-import { Build, run, target } from "jsr:@zuke/core";
-import { DocsTasks } from "jsr:@zuke/docs";
+import { DocsTasks, type PackageDoc } from "jsr:@zuke/docs";
+import { DenoTasks } from "jsr:@zuke/deno";
 
-const PACKAGES = ["core", "deno"];
-const OPTIONS = { scope: "@acme" };
-
-class Build_ extends Build {
-  docs = target()
-    .description("Regenerate API docs")
-    .executes(() => DocsTasks.apiDocs(PACKAGES, OPTIONS));
-
-  docsCheck = target()
-    .description("Fail if API docs are stale")
-    .executes(async () => {
-      const stale = await DocsTasks.checkApiDocs(PACKAGES, OPTIONS);
-      if (stale.length > 0) {
-        throw new Error(`Stale docs: ${stale.join(", ")} — run the docs task.`);
-      }
-    });
+// Produce the doc text however you like — here, via @zuke/deno:
+const docs: PackageDoc[] = [];
+for (const dir of ["core", "deno"]) {
+  const { stdout } = await DenoTasks.doc((s) =>
+    s.paths(`packages/${dir}/mod.ts`).env({ NO_COLOR: "1" }).quiet()
+  );
+  docs.push({ name: `@acme/${dir}`, dir, doc: stdout });
 }
 
-await run(Build_);
+// Consume it — no deno here:
+await DocsTasks.apiDocs(docs, { project: { title: "Acme", summary: "…" } });
 ```
-
-Subprocesses (`deno doc`, `deno fmt`) run through the core `$` shell using
-`Deno.execPath()` — the running `deno` — so there is no dependency on `PATH`.
 
 <!-- ZUKE:API:START -->
 
@@ -51,28 +44,28 @@ Subprocesses (`deno doc`, `deno fmt`) run through the core `$` shell using
 <summary>Full typed API — generated from <code>deno doc</code></summary>
 
 ````text
-`@zuke/docs` — typed tasks for generating and verifying API documentation
-across a Zuke (or any JSR-style) workspace, from a single source of truth:
-`deno doc`.
+`@zuke/docs` — typed tasks that turn already-generated API documentation into
+agent-friendly artifacts, so neither humans nor agents have to guess an API.
 
-{@link DocsTasks.apiDocs} turns each package's `deno doc` into three
-artifacts so neither humans nor agents have to guess an API:
+You supply each package's documentation text (for a Deno workspace, the
+output of `deno doc`); this package renders it into three things:
 
 - an `llms.txt` index (the llmstxt.org convention),
-- a complete `llms-full.txt` reference (the whole typed surface in one file),
+- a complete `llms-full.txt` reference (the whole surface in one file),
 - a generated `## API` block in every package README.
 
-{@link DocsTasks.checkApiDocs} recomputes the same artifacts and reports any
-that are stale on disk — run it in CI to fail when the docs drift from code.
+It runs no subprocess and depends only on `@zuke/core`, so it works without
+`deno` on `PATH` and without the `@zuke/deno` package — pair it with whatever
+produces your doc text (`@zuke/deno`'s `DenoTasks.doc`, a checked-in file, …).
 
 ```ts
 import { DocsTasks } from "jsr:@zuke/docs";
 
-// In a build target:
-await DocsTasks.apiDocs(["core", "deno"], { scope: "@acme" });
+const docs = [{ name: "@acme/core", dir: "core", doc: denoDocText }];
+await DocsTasks.apiDocs(docs, { project: { title: "Acme", summary: "…" } });
 
 // In the CI gate:
-const stale = await DocsTasks.checkApiDocs(["core", "deno"], { scope: "@acme" });
+const stale = await DocsTasks.checkApiDocs(docs);
 if (stale.length > 0) throw new Error(`Stale docs: ${stale.join(", ")}`);
 ```
 @module
@@ -85,8 +78,6 @@ interface ApiDocsOptions
 
   packagesDir?: string
     Directory holding the package subdirectories. Default `"packages"`.
-  scope?: string
-    JSR scope used for package names and links. Default `"@zuke"`.
   jsrBaseUrl?: string
     Base URL for package documentation links. Default `"https://jsr.io"`.
   index?: string
@@ -96,20 +87,32 @@ interface ApiDocsOptions
   readmes?: boolean
     Inject a generated `## API` block into each package README. Default `true`.
   project?: ProjectInfo
-    Project framing for the index. Falls back to the scope and a generic blurb.
+    Project framing for the index. Falls back to a generic blurb.
   regenerateCommand?: string
     Command shown in "regenerate with …" notes. Default `"deno task docs"`.
 
 interface DocsTasksApi
   The shape of {@link DocsTasks}.
 
-  apiDocs(packages: string[], options?: ApiDocsOptions): Promise<string[]>
-    Generate the index, the full reference, and (unless disabled) each package
-    README's API block, writing only the files whose content changed. Returns
-    the repo-relative paths written.
-  checkApiDocs(packages: string[], options?: ApiDocsOptions): Promise<string[]>
+  apiDocs(docs: PackageDoc[], options?: ApiDocsOptions): Promise<string[]>
+    From the supplied per-package docs, generate the index, the full reference,
+    and (unless disabled) each package README's API block, writing only the
+    files whose content changed. Returns the paths written.
+  checkApiDocs(docs: PackageDoc[], options?: ApiDocsOptions): Promise<string[]>
     Recompute every artifact and return the paths that are out of date on disk
     (empty when everything is current). Writes nothing.
+
+interface PackageDoc
+  One package's already-generated documentation, fed into the tasks.
+
+  name: string
+    The published name, e.g. `@zuke/deno`.
+  dir: string
+    The directory under `packagesDir` whose README receives the API block.
+  doc: string
+    The package's API documentation text — typically the output of
+    `deno doc <entry>` (machine-specific `Defined in …` lines are stripped for
+    you). Produced by the caller, so this package never has to run `deno`.
 
 interface ProjectInfo
   Project framing rendered into the `llms.txt` index.
@@ -122,6 +125,8 @@ interface ProjectInfo
     An optional canonical code example, fenced under an "Example" heading.
   install?: string
     An optional install/scaffold command, shown in the "do not guess" list.
+  guidance?: string[]
+    Extra bullet lines appended to the "do not guess" list.
 ````
 
 </details>

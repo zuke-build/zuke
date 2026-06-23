@@ -3,46 +3,40 @@ import {
   assertStringIncludes,
 } from "../../core/tests/_assert.ts";
 import { DocsTasks } from "../src/tasks.ts";
-import type { ApiDocsOptions } from "../src/types.ts";
+import type { ApiDocsOptions, PackageDoc } from "../src/types.ts";
 
-const FOO_MOD = `/**
- * \`@example/foo\` — a documented module.
- * @module
- */
+// Doc text as `deno doc` would produce it — including a machine-path line to
+// exercise cleaning. bar has no em dash (summary fallback) and no README.
+const DOCS: PackageDoc[] = [
+  {
+    name: "@example/foo",
+    dir: "foo",
+    doc: [
+      "`@example/foo` — a documented module.",
+      "",
+      "Defined in file:///tmp/anywhere/packages/foo/mod.ts:2:1",
+      "",
+      "function add(a: number, b: number): number",
+      "  Add two numbers.",
+    ].join("\n"),
+  },
+  {
+    name: "@example/bar",
+    dir: "bar",
+    doc: "A module without a dash.\n\nfunction sub(): number\n  Subtract.",
+  },
+];
 
-/** Add two numbers. */
-export function add(a: number, b: number): number {
-  return a + b;
-}
-`;
-
-// bar has no README, and a module doc with no em dash (exercises the summary
-// fallback and the "create a README from scratch" path).
-const BAR_MOD = `/**
- * A module without a dash.
- * @module
- */
-
-/** Subtract two numbers. */
-export function sub(a: number, b: number): number {
-  return a - b;
-}
-`;
-
-/** A throwaway workspace with two fixture packages. */
 async function fixture(): Promise<{ root: string; options: ApiDocsOptions }> {
   const root = await Deno.makeTempDir({ prefix: "zuke-docs-test-" });
   await Deno.mkdir(`${root}/packages/foo`, { recursive: true });
-  await Deno.mkdir(`${root}/packages/bar`, { recursive: true });
-  await Deno.writeTextFile(`${root}/packages/foo/mod.ts`, FOO_MOD);
+  await Deno.mkdir(`${root}/packages/bar`, { recursive: true }); // exists, no README
   await Deno.writeTextFile(
     `${root}/packages/foo/README.md`,
     "# @example/foo\n\nIntro.\n",
   );
-  await Deno.writeTextFile(`${root}/packages/bar/mod.ts`, BAR_MOD);
   const options: ApiDocsOptions = {
     packagesDir: `${root}/packages`,
-    scope: "@example",
     index: `${root}/llms.txt`,
     full: `${root}/llms-full.txt`,
     regenerateCommand: "./build docs",
@@ -59,7 +53,7 @@ async function fixture(): Promise<{ root: string; options: ApiDocsOptions }> {
 Deno.test("apiDocs generates the index, reference, and README blocks", async () => {
   const { root, options } = await fixture();
   try {
-    const written = await DocsTasks.apiDocs(["foo", "bar"], options);
+    const written = await DocsTasks.apiDocs(DOCS, options);
     assertEquals(written.includes(`${root}/llms.txt`), true);
     assertEquals(written.includes(`${root}/llms-full.txt`), true);
     assertEquals(written.includes(`${root}/packages/foo/README.md`), true);
@@ -90,7 +84,7 @@ Deno.test("apiDocs generates the index, reference, and README blocks", async () 
     // bar had no README — one is created from the default heading
     const barReadme = await Deno.readTextFile(`${root}/packages/bar/README.md`);
     assertStringIncludes(barReadme, "# @example/bar");
-    assertStringIncludes(barReadme, "Subtract two numbers.");
+    assertStringIncludes(barReadme, "Subtract.");
   } finally {
     await Deno.remove(root, { recursive: true });
   }
@@ -99,14 +93,13 @@ Deno.test("apiDocs generates the index, reference, and README blocks", async () 
 Deno.test("checkApiDocs reports clean, then stale after a manual edit", async () => {
   const { root, options } = await fixture();
   try {
-    await DocsTasks.apiDocs(["foo"], options);
-    assertEquals(await DocsTasks.checkApiDocs(["foo"], options), []);
+    await DocsTasks.apiDocs(DOCS, options);
+    assertEquals(await DocsTasks.checkApiDocs(DOCS, options), []);
     // a second generation writes nothing (idempotent — exercises the replace path)
-    assertEquals(await DocsTasks.apiDocs(["foo"], options), []);
-    // tamper with the index → it shows up as stale
+    assertEquals(await DocsTasks.apiDocs(DOCS, options), []);
     await Deno.writeTextFile(`${root}/llms.txt`, "stale\n");
     assertEquals(
-      await DocsTasks.checkApiDocs(["foo"], options),
+      await DocsTasks.checkApiDocs(DOCS, options),
       [`${root}/llms.txt`],
     );
   } finally {
@@ -117,7 +110,7 @@ Deno.test("checkApiDocs reports clean, then stale after a manual edit", async ()
 Deno.test("readmes:false generates only the index and reference", async () => {
   const { root, options } = await fixture();
   try {
-    const written = await DocsTasks.apiDocs(["foo"], {
+    const written = await DocsTasks.apiDocs(DOCS, {
       ...options,
       readmes: false,
     });

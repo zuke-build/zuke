@@ -1,31 +1,36 @@
 /**
- * `@zuke/docs` — typed tasks for generating and verifying API documentation
- * across a Zuke (or any JSR-style) workspace, from a single source of truth:
- * `deno doc`.
+ * `@zuke/docs` — typed tasks that turn already-generated API documentation into
+ * agent-friendly artifacts, so neither humans nor agents have to guess an API.
  *
- * {@link DocsTasks.apiDocs} turns each package's `deno doc` into three
- * artifacts so neither humans nor agents have to guess an API:
+ * You supply each package's documentation text (for a Deno workspace, the
+ * output of `deno doc`); this package renders it into three things:
  *
  *  - an `llms.txt` index (the llmstxt.org convention),
- *  - a complete `llms-full.txt` reference (the whole typed surface in one file),
+ *  - a complete `llms-full.txt` reference (the whole surface in one file),
  *  - a generated `## API` block in every package README.
  *
- * {@link DocsTasks.checkApiDocs} recomputes the same artifacts and reports any
- * that are stale on disk — run it in CI to fail when the docs drift from code.
+ * It runs no subprocess and depends only on `@zuke/core`, so it works without
+ * `deno` on `PATH` and without the `@zuke/deno` package — pair it with whatever
+ * produces your doc text (`@zuke/deno`'s `DenoTasks.doc`, a checked-in file, …).
  *
  * ```ts
  * import { DocsTasks } from "jsr:@zuke/docs";
  *
- * // In a build target:
- * await DocsTasks.apiDocs(["core", "deno"], { scope: "@acme" });
+ * const docs = [{ name: "@acme/core", dir: "core", doc: denoDocText }];
+ * await DocsTasks.apiDocs(docs, { project: { title: "Acme", summary: "…" } });
  *
  * // In the CI gate:
- * const stale = await DocsTasks.checkApiDocs(["core", "deno"], { scope: "@acme" });
+ * const stale = await DocsTasks.checkApiDocs(docs);
  * if (stale.length > 0) throw new Error(`Stale docs: ${stale.join(", ")}`);
  * ```
  *
  * @module
  */
 
-export type { ApiDocsOptions, DocsTasksApi, ProjectInfo } from "./src/types.ts";
+export type {
+  ApiDocsOptions,
+  DocsTasksApi,
+  PackageDoc,
+  ProjectInfo,
+} from "./src/types.ts";
 export { DocsTasks } from "./src/tasks.ts";

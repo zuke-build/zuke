@@ -197,6 +197,8 @@ interface DenoTasksApi
     Format files: `deno fmt`.
   lint(configure?: Configure<DenoLintSettings>): Promise<CommandOutput>
     Lint files: `deno lint`.
+  doc(configure?: Configure<DenoDocSettings>): Promise<CommandOutput>
+    Generate documentation: `deno doc`.
   cache(configure?: Configure<DenoCacheSettings>): Promise<CommandOutput>
     Warm the module cache: `deno cache`.
   coverage(configure?: Configure<DenoCoverageSettings>): Promise<CommandOutput>

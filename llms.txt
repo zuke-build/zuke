@@ -5,8 +5,8 @@
 ## Get the exact API — do not guess
 
 - Whole typed surface of every package, in one file: [llms-full.txt](./llms-full.txt)
-- A single package's API on the command line: `deno doc jsr:@zuke/<package>`
 - Scaffold/install: `deno run -A jsr:@zuke/cli setup`
+- A single package's API on the command line: `deno doc jsr:@zuke/<package>`
 
 ## Example
 
@@ -27,7 +27,7 @@ await run(CI);
 
 - [@zuke/core](https://jsr.io/@zuke/core) — a code-first, strongly-typed build automation system for Deno
 - [@zuke/deno](https://jsr.io/@zuke/deno) — typed `DenoTasks` wrappers for the `deno` CLI, for use in
-- [@zuke/docs](https://jsr.io/@zuke/docs) — typed tasks for generating and verifying API documentation
+- [@zuke/docs](https://jsr.io/@zuke/docs) — typed tasks that turn already-generated API documentation into
 - [@zuke/npm](https://jsr.io/@zuke/npm) — typed `NpmTasks` wrappers for the `npm` CLI, for use in Zuke
 - [@zuke/bun](https://jsr.io/@zuke/bun) — typed `BunTasks` wrappers for the `bun` CLI, for use in Zuke
 - [@zuke/pnpm](https://jsr.io/@zuke/pnpm) — typed `PnpmTasks` wrappers for the `pnpm` CLI, for use in Zuke

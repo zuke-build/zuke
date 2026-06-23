@@ -32,7 +32,7 @@ import {
   ReleasePleaseTasks,
 } from "@zuke/release-please";
 import { SecurityTasks } from "@zuke/security";
-import { type ApiDocsOptions, DocsTasks } from "@zuke/docs";
+import { type ApiDocsOptions, DocsTasks, type PackageDoc } from "@zuke/docs";
 
 /** Workspace packages, in dependency order: core must publish before the rest. */
 const PACKAGES = [
@@ -105,8 +105,27 @@ const DOCS_OPTIONS: ApiDocsOptions = {
       "",
       "await run(CI);",
     ].join("\n"),
+    guidance: [
+      "A single package's API on the command line: " +
+      "`deno doc jsr:@zuke/<package>`",
+    ],
   },
 };
+
+/**
+ * Produce each package's API documentation text with `deno doc` (from
+ * `@zuke/deno`), so `@zuke/docs` can consume it without running `deno` itself.
+ */
+async function collectPackageDocs(): Promise<PackageDoc[]> {
+  const docs: PackageDoc[] = [];
+  for (const dir of PACKAGES) {
+    const { stdout } = await DenoTasks.doc((s) =>
+      s.paths(`packages/${dir}/mod.ts`).env({ NO_COLOR: "1" }).quiet()
+    );
+    docs.push({ name: `@zuke/${dir}`, dir, doc: stdout });
+  }
+  return docs;
+}
 
 /**
  * Where build-time CLIs are installed on demand. Gitignored (`/.zuke/`), so the
@@ -247,7 +266,10 @@ class ZukeBuild extends Build {
       "Generate agent-readable API docs (llms.txt, llms-full.txt, READMEs)",
     )
     .executes(async () => {
-      const written = await DocsTasks.apiDocs(PACKAGES, DOCS_OPTIONS);
+      const written = await DocsTasks.apiDocs(
+        await collectPackageDocs(),
+        DOCS_OPTIONS,
+      );
       console.log(
         written.length === 0
           ? "API docs already up to date."
@@ -258,7 +280,10 @@ class ZukeBuild extends Build {
   apiDocsCheck = target()
     .description("Verify the generated API docs are current")
     .executes(async () => {
-      const stale = await DocsTasks.checkApiDocs(PACKAGES, DOCS_OPTIONS);
+      const stale = await DocsTasks.checkApiDocs(
+        await collectPackageDocs(),
+        DOCS_OPTIONS,
+      );
       if (stale.length > 0) {
         throw new Error(
           `API docs are out of date:\n  ${stale.join("\n  ")}\n` +
