@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/zuke-build/zuke/compare/core-v1.2.0...core-v1.3.0) (2026-06-23)
+
+
+### Features
+
+* **core:** richer console output and end-of-build summary ([#103](https://github.com/zuke-build/zuke/issues/103)) ([404076f](https://github.com/zuke-build/zuke/commit/404076f2e32aca73644a44fb01faba82f3a8abae))
+
 ## [1.2.0](https://github.com/zuke-build/zuke/compare/core-v1.1.0...core-v1.2.0) (2026-06-23)
 
 
