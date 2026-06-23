@@ -58,6 +58,67 @@ Deno.test("github: a job without an os matrix uses runsOn or the default", () =>
   assertStringIncludes(yaml, "runs-on: ubuntu-latest");
 });
 
+Deno.test("github: permissions, concurrency, job if/timeout, and step env render", () => {
+  const yaml = generateCi({
+    name: "AI Review",
+    triggers: { pullRequest: [] }, // every branch — no filter
+    permissions: { contents: "read", "pull-requests": "write" },
+    concurrency: { group: "ai-${{ github.ref }}", cancelInProgress: true },
+    jobs: [{
+      id: "review",
+      if: "${{ github.event.pull_request.head.repo.fork == false }}",
+      timeoutMinutes: 15,
+      steps: [{
+        name: "Review",
+        run: "./zuke review",
+        env: { OPENAI_API_KEY: "${{ secrets.OPENAI_API_KEY }}" },
+      }],
+    }],
+  }, "github");
+  // An empty pull_request branch list emits an unfiltered trigger.
+  assertStringIncludes(yaml, "pull_request: {}");
+  assertStringIncludes(yaml, "permissions:\n  contents: read");
+  assertStringIncludes(yaml, "pull-requests: write");
+  assertStringIncludes(yaml, "concurrency:\n  group:");
+  assertStringIncludes(yaml, "cancel-in-progress: true");
+  assertStringIncludes(yaml, 'if: "${{ github.event.pull_request');
+  assertStringIncludes(yaml, "timeout-minutes: 15");
+  assertStringIncludes(yaml, "env:\n          OPENAI_API_KEY:");
+});
+
+Deno.test("github: an empty push branch list is an unfiltered push trigger", () => {
+  const yaml = generateCi({ triggers: { push: [] } }, "github");
+  assertStringIncludes(yaml, "push: {}");
+});
+
+Deno.test("gitlab: a job timeout renders; if and step env are ignored", () => {
+  const yaml = generateCi({
+    jobs: [{
+      id: "review",
+      if: "should-be-ignored",
+      timeoutMinutes: 15,
+      steps: [{ run: "./zuke review", env: { K: "v" } }],
+    }],
+  }, "gitlab");
+  assertStringIncludes(yaml, "timeout: 15 minutes");
+  assertEquals(yaml.includes("should-be-ignored"), false);
+});
+
+Deno.test("azure: condition, timeout, and unfiltered pr branches render", () => {
+  const yaml = generateCi({
+    triggers: { pullRequest: [] },
+    jobs: [{
+      id: "review",
+      if: "eq(1,1)",
+      timeoutMinutes: 15,
+      steps: [{ run: "x" }],
+    }],
+  }, "azure");
+  assertStringIncludes(yaml, 'pr:\n  branches:\n    include:\n      - "*"');
+  assertStringIncludes(yaml, 'condition: "eq(1,1)"'); // parens force quoting
+  assertStringIncludes(yaml, "timeoutInMinutes: 15");
+});
+
 Deno.test("gitlab: workflow rules, stages, image, parallel matrix, script", () => {
   const yaml = generateCi(pipeline, "gitlab");
   assertStringIncludes(yaml, "workflow:\n  rules:");

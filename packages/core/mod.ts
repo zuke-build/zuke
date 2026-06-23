@@ -31,7 +31,7 @@ export {
   discoverTargets,
   type TargetStatus,
 } from "./src/build.ts";
-export { ciHost, isCI } from "./src/host.ts";
+export { type CiHost, ciHost, detectCiHost, isCI } from "./src/host.ts";
 export {
   type Condition,
   Group,
@@ -116,6 +116,7 @@ export {
 } from "./src/install.ts";
 export {
   cicd,
+  type CiConcurrency,
   CiFile,
   type CiFileSpec,
   type CiJob,
