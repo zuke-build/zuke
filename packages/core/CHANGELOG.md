@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.4.0](https://github.com/zuke-build/zuke/compare/core-v1.3.0...core-v1.4.0) (2026-06-23)
+
+
+### Features
+
+* **ai:** generate the AI-review workflow for GitLab, Azure and Bitbucket too ([#111](https://github.com/zuke-build/zuke/issues/111)) ([9a8996b](https://github.com/zuke-build/zuke/commit/9a8996bbfac73ad485514d9feead172ab28b50e2))
+* **ai:** generate the AI-review workflow from declared reviewers ([#109](https://github.com/zuke-build/zuke/issues/109)) ([df94a1c](https://github.com/zuke-build/zuke/commit/df94a1c2aac786edee11d582bb9174a9dccf0829))
+* **core:** typed CI-host detection and richer CI workflow model ([#107](https://github.com/zuke-build/zuke/issues/107)) ([4df69dc](https://github.com/zuke-build/zuke/commit/4df69dc68d62b733b14f4121f2252f2630413510))
+
 ## [1.3.0](https://github.com/zuke-build/zuke/compare/core-v1.2.0...core-v1.3.0) (2026-06-23)
 
 

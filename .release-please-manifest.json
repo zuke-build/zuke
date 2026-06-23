@@ -1,5 +1,5 @@
 {
-  "packages/core": "1.3.0",
+  "packages/core": "1.4.0",
   "packages/deno": "0.4.0",
   "packages/npm": "0.2.0",
   "packages/bun": "0.1.0",
@@ -40,5 +40,5 @@
   "packages/tofu": "0.1.0",
   "packages/release-please": "1.0.0",
   "packages/security": "0.2.0",
-  "packages/ai": "1.0.0"
+  "packages/ai": "1.1.0"
 }
