@@ -32,3 +32,98 @@ await GeminiTasks.run((s) =>
   s.prompt("Review the diff").env({ GEMINI_API_KEY: this.apiKey.value })
 );
 ```
+
+<!-- ZUKE:API:START -->
+
+## API
+
+<details>
+<summary>Full typed API — generated from <code>deno doc</code></summary>
+
+````text
+`@zuke/gemini` — a typed Gemini CLI (https://github.com/google-gemini/gemini-cli)
+(`gemini`) task wrapper for Zuke builds.
+
+Drive a prompt non-interactively with `run` and manage MCP servers and
+extensions with the `mcp`/`extensions` builders — all in the settings-lambda
+style shared by every Zuke tool wrapper.
+
+```ts
+import { GeminiTasks } from "jsr:@zuke/gemini";
+
+await GeminiTasks.run((s) =>
+  s.prompt("Draft a release note for the staged diff").model("gemini-2.5-pro")
+);
+```
+@module
+
+const GeminiTasks: GeminiTasksApi
+  Typed task functions for the Gemini CLI.
+
+class GeminiExtensionsSettings extends GeminiCommandSettings
+  Settings for a `gemini extensions …` invocation (manage extensions).
+
+  override protected group(): string
+
+class GeminiMcpSettings extends GeminiCommandSettings
+  Settings for a `gemini mcp …` invocation (manage MCP servers).
+
+  override protected group(): string
+
+class GeminiRunSettings extends ToolSettings
+  Settings for a non-interactive `gemini --prompt` run — the build-friendly
+  way to send a single prompt and capture the response.
+
+  override protected defaultTool(): string
+  prompt(text: string): this
+    The prompt to run non-interactively (`--prompt`). Required.
+  model(id: string): this
+    Pin the model, e.g. `model("gemini-2.5-pro")` (`--model`).
+  sandbox(): this
+    Run tools inside a sandbox (`--sandbox`).
+  sandboxImage(image: string): this
+    Container image to use for the sandbox (`--sandbox-image`).
+  allFiles(): this
+    Include all files in the context (`--all-files`).
+  yolo(): this
+    Automatically approve all tool calls (`--yolo`).
+  approvalMode(mode: GeminiApprovalMode): this
+    How tool calls are approved (`--approval-mode`).
+  includeDirectories(...dirs: string[]): this
+    Add directories to the workspace context (`--include-directories`). Repeatable.
+  extensions(...names: string[]): this
+    Restrict to these extensions (`--extensions`). Repeatable.
+  allowedTools(...names: string[]): this
+    Allow only these tools (`--allowed-tools`). Repeatable.
+  allowedMcpServerNames(...names: string[]): this
+    Allow only these MCP servers (`--allowed-mcp-server-names`). Repeatable.
+  outputFormat(format: GeminiOutputFormat): this
+    Shape of the printed response (`--output-format`).
+  debug(): this
+    Emit debug output (`--debug`).
+  checkpointing(): this
+    Enable checkpointing of file edits (`--checkpointing`).
+  showMemoryUsage(): this
+    Report memory usage in the status bar (`--show-memory-usage`).
+  override protected buildArgs(): string[]
+
+interface GeminiTasksApi
+  The shape of {@link GeminiTasks}.
+
+  run(configure?: Configure<GeminiRunSettings>): Promise<CommandOutput>
+    Run a prompt non-interactively (`gemini --prompt`).
+  mcp(configure?: Configure<GeminiMcpSettings>): Promise<CommandOutput>
+    Manage MCP servers (`gemini mcp …`).
+  extensions(configure?: Configure<GeminiExtensionsSettings>): Promise<CommandOutput>
+    Manage extensions (`gemini extensions …`).
+
+type GeminiApprovalMode = "default" | "auto_edit" | "yolo" | "plan"
+  Approval mode for tool calls (`--approval-mode`).
+
+type GeminiOutputFormat = "text" | "json" | "stream-json"
+  Output format for a non-interactive run (`--output-format`).
+````
+
+</details>
+
+<!-- ZUKE:API:END -->

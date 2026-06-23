@@ -21,3 +21,55 @@ await TsxTasks.watch((s) => s.script("src/main.ts").noClearScreen());
 
 Every path argument accepts either a string or an `AbsolutePath` from
 `@zuke/core`, so a path built with `absolutePath` can be passed in directly.
+
+<!-- ZUKE:API:START -->
+
+## API
+
+<details>
+<summary>Full typed API — generated from <code>deno doc</code></summary>
+
+````text
+`@zuke/tsx` — typed `tsx` task wrappers for Zuke builds.
+
+Configure a fluent settings object in a lambda; the task builds the argv and
+runs it. The task names mirror the CLI: `tsx` runs an entry point and `watch`
+re-runs it on changes.
+
+```ts
+import { TsxTasks } from "jsr:@zuke/tsx";
+await TsxTasks.tsx((s) => s.script("src/main.ts").tsconfig("tsconfig.json"));
+```
+@module
+
+const TsxTasks: TsxTasksApi
+  Typed task functions for the `tsx` TypeScript runner.
+
+class TsxSettings extends TsxCommonSettings
+  Settings for `tsx <file>`.
+
+  override protected buildArgs(): string[]
+
+class TsxWatchSettings extends TsxCommonSettings
+  Settings for `tsx watch <file>`.
+
+  noClearScreen(): this
+    Keep prior output between reruns (`--clear-screen=false`).
+  include(...paths: PathLike[]): this
+    Additional paths to watch (`--include`); repeatable.
+  exclude(...paths: PathLike[]): this
+    Paths to ignore while watching (`--exclude`); repeatable.
+  override protected buildArgs(): string[]
+
+interface TsxTasksApi
+  The shape of {@link TsxTasks}.
+
+  tsx(configure?: Configure<TsxSettings>): Promise<CommandOutput>
+    Run a TypeScript entry point: `tsx <file>`.
+  watch(configure?: Configure<TsxWatchSettings>): Promise<CommandOutput>
+    Re-run an entry point on changes: `tsx watch <file>`.
+````
+
+</details>
+
+<!-- ZUKE:API:END -->

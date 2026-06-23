@@ -58,6 +58,7 @@
   "fmt": {
     "include": [
       "zuke.ts",
+      "scripts/",
       "tests/",
       "packages/"
     ],
@@ -68,6 +69,7 @@
   "lint": {
     "include": [
       "zuke.ts",
+      "scripts/",
       "tests/",
       "packages/"
     ],

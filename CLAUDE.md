@@ -5,6 +5,55 @@ Guidance for working in this repository. Read this before making changes.
 Zuke is a code-first, strongly-typed build automation system for
 Deno/TypeScript.
 
+> This file is also published as `AGENTS.md` (a symlink) so it is the single
+> source of truth for both humans and agents.
+
+## Using Zuke — the API, without guessing
+
+If you are wiring Zuke into a project, **do not guess the API and do not fall
+back to `Deno.Command`/shell.** Every operation has a typed wrapper, and the
+exact signatures are published — read them:
+
+- **One file with the whole typed surface of every package:**
+  [`llms-full.txt`](./llms-full.txt) at the repo root. [`llms.txt`](./llms.txt)
+  is the short index.
+- **A single wrapper on the command line:** `deno doc jsr:@zuke/<package>`
+  (e.g. `deno doc jsr:@zuke/deno`).
+- **On each package's JSR page / README:** a generated `## API` section.
+
+The mental model:
+
+- A build is a class that **extends `Build`**. Each **target is a class field**
+  built with `target()`: `.description(...)`, `.dependsOn(...)`,
+  `.executes(async () => { … })`.
+- **Dependencies are `this.<field>` references, not strings** — `dependsOn(this.lint)`,
+  never `dependsOn("lint")` — so renames and typos are compile-time errors. A
+  target may only depend on siblings **declared above it** (fields initialise
+  top-to-bottom).
+- Make the file runnable with **`await run(MyBuild)`** at the bottom — no
+  `if (import.meta.main)` guard; `run` no-ops when the module is imported.
+- **Every external tool is a namespaced `*Tasks` object** (`DenoTasks`,
+  `NpmTasks`, `DockerTasks`, `GitTasks`, …) configured with a **settings
+  lambda** that mirrors the real CLI's flags:
+
+  ```ts
+  import { Build, run, target } from "jsr:@zuke/core";
+  import { DenoTasks } from "jsr:@zuke/deno";
+
+  class CI extends Build {
+    lint = target().executes(() => DenoTasks.lint());
+    test = target().dependsOn(this.lint)
+      .executes(() => DenoTasks.test((s) => s.allowAll().coverage("cov_profile")));
+  }
+
+  await run(CI);
+  ```
+
+These three artifacts (`llms.txt`, `llms-full.txt`, and every package's README
+`## API` block) are **generated** from `deno doc` by `./zuke apiDocs`, and CI
+fails (`./zuke apiDocsCheck`) if they drift — so any change to a public API must
+regenerate them in the same PR.
+
 ## Tech stack
 
 - **Runtime & toolchain:** [Deno](https://deno.com/) (2.x). All tooling — test

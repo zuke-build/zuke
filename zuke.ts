@@ -32,6 +32,7 @@ import {
   ReleasePleaseTasks,
 } from "@zuke/release-please";
 import { SecurityTasks } from "@zuke/security";
+import { checkApiDocs, writeApiDocs } from "./scripts/api_docs.ts";
 
 /** Workspace packages, in dependency order: core must publish before the rest. */
 const PACKAGES = [
@@ -213,9 +214,40 @@ class ZukeBuild extends Build {
       );
     });
 
+  apiDocs = target()
+    .description(
+      "Generate agent-readable API docs (llms.txt, llms-full.txt, READMEs)",
+    )
+    .executes(async () => {
+      const written = await writeApiDocs(PACKAGES);
+      console.log(
+        written.length === 0
+          ? "API docs already up to date."
+          : `Regenerated ${written.length} file(s):\n  ${written.join("\n  ")}`,
+      );
+    });
+
+  apiDocsCheck = target()
+    .description("Verify the generated API docs are current")
+    .executes(async () => {
+      const stale = await checkApiDocs(PACKAGES);
+      if (stale.length > 0) {
+        throw new Error(
+          `API docs are out of date:\n  ${stale.join("\n  ")}\n` +
+            "Run `./zuke apiDocs` and commit the result.",
+        );
+      }
+    });
+
   ci = target()
     .description("Full pre-commit / CI gate")
-    .dependsOn(this.format, this.lint, this.spell, this.coverage)
+    .dependsOn(
+      this.format,
+      this.lint,
+      this.spell,
+      this.coverage,
+      this.apiDocsCheck,
+    )
     .executes(() => {});
 
   // Supply-chain scanning, dogfooding @zuke/security. Kept out of `ci` so the

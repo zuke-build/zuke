@@ -89,6 +89,12 @@ Zuke ships as a JSR workspace: a tiny core plus a typed wrapper per tool. Every
 package is versioned and published independently — the badges below track the
 latest release on JSR.
 
+> **Looking for the exact API (humans and agents)?** Don't guess and don't shell
+> out — every tool is a typed wrapper. The complete, typed surface of every
+> package is in [`llms-full.txt`](./llms-full.txt) (one file), summarised in
+> [`llms.txt`](./llms.txt); for a single package run
+> `deno doc jsr:@zuke/<package>`. See also [`AGENTS.md`](./AGENTS.md).
+
 | Package                                           | Version                                                                                                                                                                 |
 | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [`@zuke/core`](https://jsr.io/@zuke/core)         | [![JSR](https://jsr.io/badges/@zuke/core)](https://jsr.io/@zuke/core) [![JSR score](https://jsr.io/badges/@zuke/core/score)](https://jsr.io/@zuke/core)                 |

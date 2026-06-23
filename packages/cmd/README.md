@@ -14,3 +14,42 @@ await CmdTasks.exec("git", (s) => s.args("rev-parse", "HEAD"));
 
 Every path argument accepts either a string or an `AbsolutePath` from
 `@zuke/core`, so a path built with `absolutePath` can be passed in directly.
+
+<!-- ZUKE:API:START -->
+
+## API
+
+<details>
+<summary>Full typed API — generated from <code>deno doc</code></summary>
+
+````text
+`@zuke/cmd` — generic command execution for Zuke builds: the fallback for
+tools that have no dedicated wrapper package.
+
+```ts
+import { CmdTasks } from "jsr:@zuke/cmd";
+
+await CmdTasks.exec("git", (s) => s.args("rev-parse", "HEAD"));
+```
+@module
+
+const CmdTasks: CmdTasksApi
+  Task functions for running arbitrary tools.
+
+class CmdSettings extends ToolSettings
+  Settings for a generic command: the tool name plus raw arguments.
+
+  constructor(tool: PathLike)
+  override protected defaultTool(): string
+  override protected buildArgs(): string[]
+
+interface CmdTasksApi
+  The shape of {@link CmdTasks}.
+
+  exec(tool: PathLike, configure?: Configure<CmdSettings>): Promise<CommandOutput>
+    Run `tool` with the configured settings.
+````
+
+</details>
+
+<!-- ZUKE:API:END -->
