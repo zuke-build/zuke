@@ -1,7 +1,7 @@
 {
   "name": "@zuke/docs",
   "version": "0.1.0",
-  "description": "Typed Zuke tasks that generate and verify API documentation — turn `deno doc` into an llms.txt index, a full reference, and per-package README API blocks, with a check task to gate them in CI.",
+  "description": "Typed Zuke tasks that render already-generated API docs (e.g. `deno doc` output) into an llms.txt index, an llms-full.txt reference, and per-package README API blocks — plus a check task to gate them in CI. Pure: runs no subprocess and depends only on @zuke/core.",
   "exports": {
     ".": "./mod.ts"
   },
