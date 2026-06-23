@@ -49,12 +49,24 @@ structured-output mode (Claude `output_config.format`, OpenAI strict
 `.model(...)`, `.effort(...)`, `.diff((d) => d.base("origin/main"))`,
 `.include(...)`/`.exclude(...)`, `.maxDiffTokens(n)`,
 `.failWhen((g) => g.scoreAbove(7) / g.severityAtLeast("high"))`,
-`.onError("fail" | "warn")`, `.skipIfKeyMissing()`, `.comment()`,
-`.githubToken(...)`, `.quiet()`.
+`.onError("fail" | "warn")`, `.retry({ attempts: 3 })`, `.skipIfKeyMissing()`,
+`.comment()`, `.githubToken(...)`, `.quiet()`.
 
 `.skipIfKeyMissing()` skips the review instead of failing when the API key is
 absent — handy when the key is a CI-only secret — and announces the skip on the
 console and in the job summary so the gap is visible rather than silent.
+
+`.retry(...)` controls transient-failure retries (`HTTP 408/429/500/502/503/504`
+and network errors) and a per-attempt timeout. The default is **on** — three
+attempts with exponential backoff (1s, 2s, …), `Retry-After` honoured, and a 60s
+timeout per attempt so a stuck connection can't hang the build. Pass
+`{ attempts: 5 }` to retry more, `{ attempts: 1 }` to disable,
+`{ timeoutMs: 0 }` to drop the timeout. Helps absorb provider hiccups — notably
+Gemini's frequent 503 "model overloaded" responses.
+
+Each review prints a **start line** echoing its settings (provider/model, gate)
+and a **notice on every retry**, so a slow run reads as progress rather than a
+hang. `.quiet()` suppresses all reviewer output.
 
 ## Pull-request comment
 

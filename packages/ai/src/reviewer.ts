@@ -23,18 +23,26 @@ import {
   filterDiff,
   truncate,
 } from "./diff.ts";
-import { type GateRule, GateSettings, gateTrips } from "./gate.ts";
+import {
+  describeGate,
+  type GateRule,
+  GateSettings,
+  gateTrips,
+} from "./gate.ts";
 import { buildPrompt } from "./prompt.ts";
 import { callProvider, DEFAULT_MODELS, resolveKey } from "./provider.ts";
 import { emptyAssessment, parseAssessment } from "./assessment.ts";
 import {
   consoleLines,
+  retryLine,
+  reviewStartLine,
   skipConsoleLine,
   skipMarkdown,
   toMarkdown,
   writeStepSummary,
 } from "./report.ts";
 import { readEnv, resolveGithubContext, upsertPrComment } from "./github.ts";
+import type { RetryInfo, RetryOptions } from "./retry.ts";
 
 /**
  * A fluent AI reviewer. Construct one via {@link securityReviewer} (and the
@@ -58,6 +66,7 @@ export class Reviewer implements Validation {
   #skipIfKeyMissing = false;
   #comment = false;
   #githubToken?: AnyParameter | string;
+  #retry?: RetryOptions;
   #quiet = false;
   #fetch?: typeof fetch;
   #exec?: (argv: string[]) => Promise<string>;
@@ -143,6 +152,17 @@ export class Reviewer implements Validation {
    */
   onError(mode: "fail" | "warn"): this {
     this.#onError = mode;
+    return this;
+  }
+
+  /**
+   * Retry the provider call on transient failures (`HTTP 408/429/500/502/503/
+   * 504` and network errors). The default is on — three attempts with
+   * exponential backoff and `Retry-After` honoured. Pass an object to override:
+   * `{ attempts: 5 }` to retry more, or `{ attempts: 1 }` to disable.
+   */
+  retry(options: RetryOptions = {}): this {
+    this.#retry = options;
     return this;
   }
 
@@ -263,6 +283,17 @@ export class Reviewer implements Validation {
       }
       throw new AiReviewError("an API key is required; call .apiKey(...)");
     }
+    const model = this.#model ?? DEFAULT_MODELS[provider];
+    if (!this.#quiet) {
+      console.log(reviewStartLine(this.name, {
+        target: context.target,
+        provider,
+        model,
+        gate: describeGate(this.#gate),
+        comment: this.#comment,
+      }));
+    }
+
     let diff = filterDiff(
       await this.#resolveDiff(),
       this.#include,
@@ -281,16 +312,23 @@ export class Reviewer implements Validation {
       this.#criteria,
       diff,
     );
+    // Announce each retry (unless quiet) so a slow run looks like progress.
+    const retry = {
+      ...this.#retry,
+      onRetry: this.#quiet ? undefined : (info: RetryInfo) => {
+        console.warn(retryLine(this.name, info));
+      },
+    };
     let assessment: Assessment;
     let usage: Usage | undefined;
     try {
       const result = await callProvider(
         provider,
         key,
-        this.#model ?? DEFAULT_MODELS[provider],
+        model,
         system,
         user,
-        { effort: this.#effort, fetch: this.#fetch },
+        { effort: this.#effort, fetch: this.#fetch, retry },
       );
       assessment = parseAssessment(result.text);
       usage = result.usage;

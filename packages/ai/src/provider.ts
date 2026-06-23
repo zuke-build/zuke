@@ -10,6 +10,7 @@ import type { AnyParameter } from "@zuke/core";
 import type { Effort, Provider, Usage } from "./types.ts";
 import { AiReviewError } from "./errors.ts";
 import { dig, expectString } from "./json.ts";
+import { retryingFetch, type RetryOptions } from "./retry.ts";
 import { ASSESSMENT_GEMINI_SCHEMA, ASSESSMENT_JSON_SCHEMA } from "./schema.ts";
 
 /** Default model per provider, used when `.model(...)` is not set. */
@@ -23,6 +24,8 @@ export const DEFAULT_MODELS: Record<Provider, string> = {
 export interface CallOptions {
   effort?: Effort;
   fetch?: typeof fetch;
+  /** Retry-on-transient-failure knobs (see {@link RetryOptions}). */
+  retry?: RetryOptions;
 }
 
 /** A provider's raw text plus the token usage it reported, if any. */
@@ -128,7 +131,7 @@ export async function callProvider(
       output_config: outputConfig,
     };
     const url = "https://api.anthropic.com/v1/messages";
-    const response = await doFetch(url, {
+    const response = await retryingFetch(doFetch, url, {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -136,7 +139,7 @@ export async function callProvider(
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify(body),
-    });
+    }, options.retry);
     await ensureOk(response, provider);
     const data: unknown = await response.json();
     if (dig(data, "stop_reason") === "refusal") {
@@ -152,7 +155,7 @@ export async function callProvider(
   }
   if (provider === "openai") {
     const url = "https://api.openai.com/v1/chat/completions";
-    const response = await doFetch(url, {
+    const response = await retryingFetch(doFetch, url, {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -174,7 +177,7 @@ export async function callProvider(
           },
         },
       }),
-    });
+    }, options.retry);
     await ensureOk(response, provider);
     const data: unknown = await response.json();
     return {
@@ -189,7 +192,7 @@ export async function callProvider(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${
       encodeURIComponent(key)
     }`;
-  const response = await doFetch(url, {
+  const response = await retryingFetch(doFetch, url, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
@@ -201,7 +204,7 @@ export async function callProvider(
         responseSchema: ASSESSMENT_GEMINI_SCHEMA,
       },
     }),
-  });
+  }, options.retry);
   await ensureOk(response, provider);
   const data: unknown = await response.json();
   return {

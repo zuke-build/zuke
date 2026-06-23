@@ -31,6 +31,7 @@ export type {
 } from "./src/types.ts";
 export { DiffSettings } from "./src/diff.ts";
 export { GateSettings } from "./src/gate.ts";
+export type { RetryInfo, RetryOptions } from "./src/retry.ts";
 export {
   correctnessReviewer,
   genericReviewer,
