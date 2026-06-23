@@ -333,7 +333,7 @@ Deno.test("gemini provider posts to generateContent with the key in the URL", as
   ).validate({ target: "t" });
   assertEquals(
     calls[0].url.startsWith(
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=g-key",
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=g-key",
     ),
     true,
   );
