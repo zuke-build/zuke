@@ -27,6 +27,7 @@ export type {
   Effort,
   Provider,
   Severity,
+  Usage,
 } from "./src/types.ts";
 export { DiffSettings } from "./src/diff.ts";
 export { GateSettings } from "./src/gate.ts";
