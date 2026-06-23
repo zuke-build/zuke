@@ -99,6 +99,26 @@ export interface AiReviewWorkflowSpec {
   timeoutMinutes?: number;
 }
 
+/**
+ * A branch or target name safe to interpolate into a generated shell command:
+ * letters, digits, and `._/+-`. This forbids whitespace and every shell
+ * metacharacter, so a value baked into a `git fetch …` or `./zuke …` line can
+ * never broaden into a second command. Matches the characters git permits in a
+ * ref name.
+ */
+const SAFE_REF = /^[A-Za-z0-9][A-Za-z0-9._/+-]*$/;
+
+/** Reject a branch/target name that isn't shell-safe, with a friendly error. */
+function assertSafeRef(value: string, field: string): void {
+  if (!SAFE_REF.test(value)) {
+    throw new Error(
+      `aiReviewWorkflow: ${field} ${JSON.stringify(value)} is not a valid ` +
+        `branch/target name — use only letters, digits, and \`._/+-\` so it ` +
+        `is safe to interpolate into the generated command.`,
+    );
+  }
+}
+
 /** Resolve the env var name for a parameter — honours `.env(...)` overrides. */
 function envOf(param: AnyParameter): string | undefined {
   if (param.envName_ !== undefined) return param.envName_;
@@ -154,6 +174,12 @@ class AiReviewWorkflow extends CiFile {
   constructor(spec: AiReviewWorkflowSpec) {
     const host = spec.host ?? "github";
     super({ provider: host, path: spec.path ?? DEFAULT_PATHS[host] });
+    // Both are interpolated into shell commands in the generated YAML; reject
+    // anything that isn't a plain branch/target name up front.
+    if (spec.baseBranch !== undefined) {
+      assertSafeRef(spec.baseBranch, "baseBranch");
+    }
+    if (spec.target !== undefined) assertSafeRef(spec.target, "target");
     this.#spec = spec;
   }
 
