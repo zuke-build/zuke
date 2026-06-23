@@ -116,7 +116,7 @@ Deno.test("a thrown fetch (network error) is retried, then surfaces an AiReviewE
         sleep,
       }),
     AiReviewError,
-    "network error after 2 attempt(s): connection reset",
+    "request failed after 2 attempt(s): connection reset",
   );
   assertEquals(f.calls, 2);
   assertEquals(sleeps, [5]); // one backoff between the two attempts
@@ -135,4 +135,48 @@ Deno.test("a thrown fetch followed by a success returns the success", async () =
     { baseDelayMs: 5, sleep },
   );
   assertEquals(response.status, 200);
+});
+
+Deno.test("onRetry reports each retry — its status, the attempt count, and the delay", async () => {
+  const { sleep } = recordSleep();
+  const f = scriptedFetch(
+    new Response("", { status: 503 }),
+    new TypeError("connection reset"),
+    new Response("ok", { status: 200 }),
+  );
+  const seen: string[] = [];
+  await retryingFetch(f.fetch, "https://api.example/x", { method: "POST" }, {
+    attempts: 3,
+    baseDelayMs: 10,
+    sleep,
+    onRetry: (info) =>
+      seen.push(
+        `${info.attempt}/${info.attempts} ${info.reason} ${info.delayMs}`,
+      ),
+  });
+  // One notice per failed attempt, with the failure reason and backoff.
+  assertEquals(seen, ["1/3 HTTP 503 10", "2/3 connection reset 20"]);
+});
+
+Deno.test("a hung request is aborted by the per-attempt timeout and surfaces as a timeout", async () => {
+  const { sleep } = recordSleep();
+  // A fetch that never resolves on its own — it only settles when aborted.
+  const hang =
+    ((_url: string | URL | Request, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () =>
+          reject(
+            new DOMException("aborted", "TimeoutError"),
+          ));
+      })) as typeof fetch;
+  await assertRejects(
+    () =>
+      retryingFetch(hang, "https://api.example/x", { method: "POST" }, {
+        attempts: 1,
+        timeoutMs: 5, // fires quickly; the cleared timer leaves no leak
+        sleep,
+      }),
+    AiReviewError,
+    "timed out after 5ms",
+  );
 });

@@ -29,6 +29,14 @@ export class GateSettings {
   }
 }
 
+/** A short human description of the gate rules, e.g. `score>8` or `severity≥high`. */
+export function describeGate(rules: GateRule[]): string {
+  if (rules.length === 0) return "none";
+  return rules
+    .map((r) => r.kind === "score" ? `score>${r.value}` : `severity≥${r.value}`)
+    .join(", ");
+}
+
 /** Whether an assessment trips the gate, and the human-readable reason. */
 export function gateTrips(
   assessment: Assessment,

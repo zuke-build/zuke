@@ -23,19 +23,26 @@ import {
   filterDiff,
   truncate,
 } from "./diff.ts";
-import { type GateRule, GateSettings, gateTrips } from "./gate.ts";
+import {
+  describeGate,
+  type GateRule,
+  GateSettings,
+  gateTrips,
+} from "./gate.ts";
 import { buildPrompt } from "./prompt.ts";
 import { callProvider, DEFAULT_MODELS, resolveKey } from "./provider.ts";
 import { emptyAssessment, parseAssessment } from "./assessment.ts";
 import {
   consoleLines,
+  retryLine,
+  reviewStartLine,
   skipConsoleLine,
   skipMarkdown,
   toMarkdown,
   writeStepSummary,
 } from "./report.ts";
 import { readEnv, resolveGithubContext, upsertPrComment } from "./github.ts";
-import type { RetryOptions } from "./retry.ts";
+import type { RetryInfo, RetryOptions } from "./retry.ts";
 
 /**
  * A fluent AI reviewer. Construct one via {@link securityReviewer} (and the
@@ -276,6 +283,17 @@ export class Reviewer implements Validation {
       }
       throw new AiReviewError("an API key is required; call .apiKey(...)");
     }
+    const model = this.#model ?? DEFAULT_MODELS[provider];
+    if (!this.#quiet) {
+      console.log(reviewStartLine(this.name, {
+        target: context.target,
+        provider,
+        model,
+        gate: describeGate(this.#gate),
+        comment: this.#comment,
+      }));
+    }
+
     let diff = filterDiff(
       await this.#resolveDiff(),
       this.#include,
@@ -294,16 +312,23 @@ export class Reviewer implements Validation {
       this.#criteria,
       diff,
     );
+    // Announce each retry (unless quiet) so a slow run looks like progress.
+    const retry = {
+      ...this.#retry,
+      onRetry: this.#quiet ? undefined : (info: RetryInfo) => {
+        console.warn(retryLine(this.name, info));
+      },
+    };
     let assessment: Assessment;
     let usage: Usage | undefined;
     try {
       const result = await callProvider(
         provider,
         key,
-        this.#model ?? DEFAULT_MODELS[provider],
+        model,
         system,
         user,
-        { effort: this.#effort, fetch: this.#fetch, retry: this.#retry },
+        { effort: this.#effort, fetch: this.#fetch, retry },
       );
       assessment = parseAssessment(result.text);
       usage = result.usage;

@@ -5,7 +5,40 @@
  * @module
  */
 
-import type { Assessment, Usage } from "./types.ts";
+import type { Assessment, Provider, Usage } from "./types.ts";
+import type { RetryInfo } from "./retry.ts";
+
+/** The settings echoed when a review starts, so the run shows what it's doing. */
+export interface ReviewStart {
+  /** The target being validated. */
+  target: string;
+  /** The model provider. */
+  provider: Provider;
+  /** The resolved model name. */
+  model: string;
+  /** A short description of the gate, e.g. `score>8`. */
+  gate: string;
+  /** Whether the assessment is also posted as a PR comment. */
+  comment: boolean;
+}
+
+/**
+ * The line announcing a review is starting, echoing its key settings so a slow
+ * run reads as work-in-progress rather than a hang. For example:
+ * `[security review] reviewing "deploy" — openai/gpt-5.4-mini · gate score>8 · comment`.
+ */
+export function reviewStartLine(name: string, start: ReviewStart): string {
+  const bits = [`${start.provider}/${start.model}`, `gate ${start.gate}`];
+  if (start.comment) bits.push("comment");
+  return `[${name}] reviewing "${start.target}" — ${bits.join(" · ")}`;
+}
+
+/** The line announcing a retry after a transient failure. */
+export function retryLine(name: string, info: RetryInfo): string {
+  const delay = `${(info.delayMs / 1000).toFixed(1)}s`;
+  return `[${name}] attempt ${info.attempt}/${info.attempts} failed ` +
+    `(${info.reason}) — retrying in ${delay}`;
+}
 
 /** The location suffix for a finding (`file:line`, `file`, or empty). */
 function location(file?: string, line?: number): string {

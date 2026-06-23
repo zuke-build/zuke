@@ -715,7 +715,7 @@ Deno.test("a transient 503 from the provider is retried, then the review passes"
   const scripted =
     ((_input: string | URL | Request, _init?: RequestInit) =>
       Promise.resolve(responses[i++])) as typeof fetch;
-  await captured(() =>
+  const lines = await captured(() =>
     securityReviewer((r) =>
       r.provider("claude").apiKey("k").diff((d) => d.text(DIFF))
         .fetch(scripted)
@@ -723,6 +723,38 @@ Deno.test("a transient 503 from the provider is retried, then the review passes"
     ).validate({ target: "t" })
   );
   assertEquals(i, 2); // first call hit 503, second succeeded
+  // The run announces itself and the retry, so it doesn't look like a hang.
+  assertEquals(
+    lines.some((l) =>
+      l.startsWith('[security review] reviewing "t" — claude/claude-opus-4-8')
+    ),
+    true,
+  );
+  assertEquals(
+    lines.some((l) =>
+      l.includes("attempt 1/3 failed (HTTP 503) — retrying in")
+    ),
+    true,
+  );
+});
+
+Deno.test("the start line echoes provider, model, gate, and comment settings", async () => {
+  const { fetch } = recordFetch(claude({ score: 0, findings: [] }));
+  const lines = await captured(() =>
+    securityReviewer((r) =>
+      r.provider("claude").apiKey("k").model("claude-x").diff((d) =>
+        d.text(DIFF)
+      )
+        .failWhen((g) => g.scoreAbove(8)).fetch(fetch)
+    ).validate({ target: "deploy" })
+  );
+  assertEquals(
+    lines.some((l) =>
+      l ===
+        '[security review] reviewing "deploy" — claude/claude-x · gate score>8'
+    ),
+    true,
+  );
 });
 
 Deno.test("retry({ attempts: 1 }) disables retries — a 503 surfaces immediately", async () => {

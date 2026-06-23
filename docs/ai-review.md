@@ -100,6 +100,23 @@ server-supplied `Retry-After` header within a 30 s cap, and gives up on anything
 non-retryable (a `401` config error, a refusal, bad JSON) without sleeping.
 Defaults: **3 attempts** total, base backoff 1 s, doubling.
 
+Each attempt is also bounded by a **per-attempt timeout** (default 60 s), so a
+stuck connection can't hang the build forever — a timed-out attempt is aborted
+and counts as a transient failure (so it's retried). Set `{ timeoutMs: 0 }` to
+disable it.
+
+### Progress output
+
+So a slow run reads as work-in-progress rather than a hang, each review prints a
+start line echoing its settings, and a notice on every retry:
+
+```
+[security review] reviewing "review" — openai/gpt-5.4-mini · gate score>8 · comment
+[security review] attempt 1/3 failed (HTTP 503) — retrying in 1.0s
+```
+
+`.quiet()` suppresses both, along with the rest of the reviewer's output.
+
 ```ts
 // On by default; override only when you want different behaviour.
 securityReviewer((r) =>
