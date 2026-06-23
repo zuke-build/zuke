@@ -50,7 +50,11 @@ export interface CiStep {
   uses?: string;
   /** Inputs for a {@link uses} Action (GitHub only). */
   with?: Record<string, string>;
-  /** Environment variables for this step (GitHub only). */
+  /**
+   * Environment variables for this step. Rendered as `env:` on GitHub Actions
+   * and on Azure Pipelines `script` steps; ignored on GitLab (which sources
+   * variables from project settings, not the job YAML).
+   */
   env?: Record<string, string>;
 }
 
@@ -289,7 +293,11 @@ function azure(pipeline: CiPipeline): YamlValue {
     const steps: YamlValue[] = [];
     for (const step of job.steps ?? DEFAULT_STEPS) {
       if (step.run !== undefined) {
-        steps.push({ script: step.run, displayName: step.name });
+        steps.push({
+          script: step.run,
+          displayName: step.name,
+          env: step.env,
+        });
       }
     }
     jobs.push({

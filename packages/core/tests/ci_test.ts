@@ -119,6 +119,18 @@ Deno.test("azure: condition, timeout, and unfiltered pr branches render", () => 
   assertStringIncludes(yaml, "timeoutInMinutes: 15");
 });
 
+Deno.test("azure: a step's env block renders alongside its script", () => {
+  const yaml = generateCi({
+    jobs: [{
+      id: "review",
+      steps: [{ run: "./zuke review", env: { KEY: "$(KEY)" } }],
+    }],
+  }, "azure");
+  // Azure secrets aren't exposed by default — the env block is what wires them.
+  assertStringIncludes(yaml, "- script: ./zuke review");
+  assertStringIncludes(yaml, "env:\n          KEY:");
+});
+
 Deno.test("gitlab: workflow rules, stages, image, parallel matrix, script", () => {
   const yaml = generateCi(pipeline, "gitlab");
   assertStringIncludes(yaml, "workflow:\n  rules:");

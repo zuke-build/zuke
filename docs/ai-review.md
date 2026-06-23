@@ -221,9 +221,32 @@ class Pipeline extends Build {
 
 Override what you need: `target` (default `"review"`), `baseBranch` (default
 `"master"`), `name`, `path`, `timeoutMinutes`. A reviewer that uses
-`.githubToken(param)` swaps its parameter's env var in for the default
-`GITHUB_TOKEN`; a reviewer constructed with a literal-string `.apiKey("…")` is
-skipped from the workflow env (the generator can't infer a secret name).
+`.commentToken(param)` swaps its parameter's env var in for the host's default
+token; a reviewer constructed with a literal-string `.apiKey("…")` is skipped
+from the workflow env (the generator can't infer a secret name).
+
+### Multi-host
+
+`host` defaults to `"github"`; pass `"gitlab"` or `"azure"` to generate the
+equivalent for those providers — matching the cross-platform PR commenting
+above. Output shape per host:
+
+| `host` | Default path | What's generated |
+| --- | --- | --- |
+| `"github"` | `.github/workflows/ai-review.yml` | Full workflow — fork-gated, harden-runner + pinned checkout, base-branch fetch, `pull-requests: write` if any reviewer comments. |
+| `"gitlab"` | `.gitlab/ai-review.gitlab-ci.yml` | Merge-request-only job snippet on `denoland/deno:latest`. **Include from your `.gitlab-ci.yml`** (`include: { local: '.gitlab/ai-review.gitlab-ci.yml' }`). GitLab project-level CI variables flow into the job automatically — no `variables:` block emitted. |
+| `"azure"` | `pipelines/ai-review.azure-pipelines.yml` | PR-only job snippet. Each reviewer's secret is wired into the script step's `env:` block as `$(NAME)` (Azure doesn't expose pipeline secrets as env vars by default); `SYSTEM_ACCESSTOKEN` is added when any reviewer uses `.comment()`. **Use as a template** from your main pipeline. |
+
+```ts
+// Declare one per host you care about — they share the same reviewers.
+ghReview = aiReviewWorkflow({ reviewers: [this.security] });
+glReview = aiReviewWorkflow({ host: "gitlab", reviewers: [this.security] });
+azReview = aiReviewWorkflow({ host: "azure", reviewers: [this.security] });
+```
+
+Bitbucket Pipelines isn't generated yet (the core `CiProvider` model doesn't
+cover Bitbucket); for Bitbucket, write the workflow by hand and rely on
+`.comment()` for cross-platform commenting — which already supports it.
 
 ## Worked example: Zuke reviews itself
 

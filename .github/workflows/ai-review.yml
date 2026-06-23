@@ -27,6 +27,6 @@ jobs:
         run: ./zuke review
         env:
           OPENAI_API_KEY: "${{ secrets.OPENAI_API_KEY }}"
-          GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
           GEMINI_API_KEY: "${{ secrets.GEMINI_API_KEY }}"
+          GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
           ZUKE_REVIEW_BASE: FETCH_HEAD
