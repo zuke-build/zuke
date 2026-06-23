@@ -13,7 +13,7 @@ import { dig } from "./json.ts";
 const API = "https://api.github.com";
 
 /** Attribution header prepended to every PR comment. */
-const HEADER = "🤖 **[Zuke](https://github.com/zuke-build/zuke) AI review**";
+const HEADER = "🤖 **[Zuke](https://zuke.build) AI review**";
 
 /** Everything needed to comment on a pull request. */
 export interface GithubContext {
