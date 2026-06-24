@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/zuke-build/zuke/compare/cli-v0.3.0...cli-v0.4.0) (2026-06-23)
+
+
+### Features
+
+* **core:** make run() entry-aware so builds drop the import.meta.main guard ([#114](https://github.com/zuke-build/zuke/issues/114)) ([a9dac17](https://github.com/zuke-build/zuke/commit/a9dac1728ea1de5f6d5abfc8400e57b41bc1d9a7))
+
 ## [0.3.0](https://github.com/zuke-build/zuke/compare/cli-v0.2.0...cli-v0.3.0) (2026-06-16)
 
 
