@@ -40,8 +40,8 @@ import type { Reviewer } from "./reviewer.ts";
 const HARDEN_RUNNER =
   "step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411";
 
-/** SHA-pinned `actions/checkout` (v6.0.3). */
-const CHECKOUT = "actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10";
+/** SHA-pinned `actions/checkout` (v7.0.0). */
+const CHECKOUT = "actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0";
 
 /** Default output paths per host — see {@link AiReviewWorkflowSpec}. */
 const DEFAULT_PATHS: Record<CiProvider, string> = {
