@@ -1,0 +1,24 @@
+{
+  "name": "zuke",
+  "owner": {
+    "name": "Zuke",
+    "email": "contact@zuke.build",
+    "url": "https://zuke.build"
+  },
+  "plugins": [
+    {
+      "name": "zuke",
+      "source": "./plugins/zuke",
+      "description": "Agent skills for Zuke — scaffold Zuke into a project (zuke-setup) and write or edit a zuke.ts build (zuke-write-build).",
+      "version": "0.1.0",
+      "author": {
+        "name": "Zuke",
+        "email": "contact@zuke.build",
+        "url": "https://zuke.build"
+      },
+      "homepage": "https://zuke.build",
+      "license": "MIT",
+      "keywords": ["zuke", "build", "deno", "typescript", "skills"]
+    }
+  ]
+}

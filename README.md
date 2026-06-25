@@ -192,6 +192,37 @@ The `mcp` (and `config`/`extensions`) tasks are flexible command builders for
 each CLI's matching subcommand group — handy for provisioning MCP servers in CI.
 See [Tools](./docs/tools.md) for the full task matrix.
 
+## Agent skills
+
+Zuke ships **agent skills** so AI coding assistants set up and author builds the
+right way — using the typed `*Tasks` wrappers instead of guessing the API or
+shelling out. Two skills, authored once as portable
+[`SKILL.md`](https://agentskills.io) folders under [`skills/`](./skills):
+
+| Skill | Use it to |
+| ----------------- | ----------------------------------------------------------- |
+| `zuke-setup` | Scaffold Zuke into a project (`zuke setup`, the `./zuke` launcher, a first build). |
+| `zuke-write-build` | Write or edit a `zuke.ts` — add targets, wire dependencies, call tool wrappers, generate CI. |
+
+### Claude Code
+
+The skills are packaged as a Claude Code plugin distributed from this repo's
+marketplace. In Claude Code:
+
+```text
+/plugin marketplace add zuke-build/zuke
+/plugin install zuke@zuke
+```
+
+That makes `zuke-setup` and `zuke-write-build` available — they trigger
+automatically when you ask Claude to add Zuke to a project or write a build, and
+can be invoked explicitly as `/zuke:zuke-setup` and `/zuke:zuke-write-build`.
+
+> The `SKILL.md` content is harness-agnostic (the open
+> [Agent Skills](https://agentskills.io) standard); the Claude marketplace is
+> just one adapter over the shared `skills/` source. Installation for other
+> harnesses (Codex, OpenCode, …) is coming later.
+
 ## Documentation
 
 Full documentation lives in [`docs/`](./docs/):
