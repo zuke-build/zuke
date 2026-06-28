@@ -253,10 +253,11 @@ export class Reviewer implements Validation {
   }
 
   /**
-   * Attach a shared {@link Budget} that caps token (and optionally USD) spend.
-   * Pass the same budget to several reviewers and a fixer to bound the whole
-   * build's AI cost: once the cap is reached, further reviews are skipped (not
-   * failed) with a note, rather than running up the bill.
+   * Attach a shared {@link Budget} that caps spend by an exact **token** count
+   * (a USD cap is opt-in, computed from prices you supply to the budget). Pass
+   * the same budget to several reviewers and a fixer to bound the whole build:
+   * once the cap is reached, further reviews are skipped (not failed) with a
+   * note, rather than running up the bill.
    */
   budget(budget: Budget): this {
     this.#budget = budget;

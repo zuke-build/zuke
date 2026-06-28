@@ -317,10 +317,11 @@ export class AiFixer implements Remediation {
   }
 
   /**
-   * Attach a shared {@link Budget} that caps token (and optionally USD) spend.
-   * Once the cap is reached the fixer skips the model call (and reports it)
-   * rather than running up the bill; share one budget across reviewers and
-   * fixers to bound a whole build's AI cost.
+   * Attach a shared {@link Budget} that caps spend by an exact **token** count
+   * (a USD cap is opt-in, computed from prices you supply to the budget). Once
+   * the cap is reached the fixer skips the model call (and reports it) rather
+   * than running up the bill; share one budget across reviewers and fixers to
+   * bound a whole build.
    */
   budget(budget: Budget): this {
     this.#budget = budget;

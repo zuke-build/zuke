@@ -5827,10 +5827,11 @@ class AiFixer implements Remediation
   env(reader: EnvReader): this
     The environment reader used to detect CI and the comment host (test seam).
   budget(budget: Budget): this
-    Attach a shared {@link Budget} that caps token (and optionally USD) spend.
-    Once the cap is reached the fixer skips the model call (and reports it)
-    rather than running up the bill; share one budget across reviewers and
-    fixers to bound a whole build's AI cost.
+    Attach a shared {@link Budget} that caps spend by an exact token count
+    (a USD cap is opt-in, computed from prices you supply to the budget). Once
+    the cap is reached the fixer skips the model call (and reports it) rather
+    than running up the bill; share one budget across reviewers and fixers to
+    bound a whole build.
   cache(cache: AiCache): this
     Reuse a prior fix for an identical failure (same provider, model, and
     prompt) instead of calling the API again — see {@link AiCache}. Helpful when
@@ -5981,10 +5982,11 @@ class Reviewer implements Validation
   exec(run: (argv: string[]) => Promise<string>): this
     The `git` runner used to produce the diff (test seam).
   budget(budget: Budget): this
-    Attach a shared {@link Budget} that caps token (and optionally USD) spend.
-    Pass the same budget to several reviewers and a fixer to bound the whole
-    build's AI cost: once the cap is reached, further reviews are skipped (not
-    failed) with a note, rather than running up the bill.
+    Attach a shared {@link Budget} that caps spend by an exact token count
+    (a USD cap is opt-in, computed from prices you supply to the budget). Pass
+    the same budget to several reviewers and a fixer to bound the whole build:
+    once the cap is reached, further reviews are skipped (not failed) with a
+    note, rather than running up the bill.
   cache(cache: AiCache): this
     Reuse a prior model response for an identical review (same provider, model,
     and prompt) instead of calling the API again — see {@link AiCache}. A cache
