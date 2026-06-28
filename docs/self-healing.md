@@ -183,7 +183,7 @@ import { budget } from "jsr:@zuke/ai";
 
 class CI extends Build {
   key = parameter("OpenAI API key").secret();
-  ai = budget((b) => b.maxTokens(200_000).maxCost(1.0)); // 200k tokens or $1
+  ai = budget((b) => b.maxTokens(200_000)); // exact token cap
 
   lint = target().executes(() => DenoTasks.lint())
     .recoverWith(aiFixer((f) => f.provider("openai").apiKey(this.key).budget(this.ai)));
@@ -192,9 +192,21 @@ class CI extends Build {
 }
 ```
 
-USD estimates use a built-in per-model price table; override or extend it with
-`.prices({ "gpt-5.4-mini": { input: 0.4, output: 1.6 } })` (USD per 1M tokens).
-A model with no known price still counts toward the **token** cap.
+Token counts come straight from the provider's reported usage, so `.maxTokens(n)`
+is an **exact** cap that never goes stale. **No prices ship** — provider pricing
+changes too often for a baked-in table to stay correct. A USD cap is opt-in: give
+the budget your own current rates and it estimates cost from them.
+
+```ts
+budget((b) =>
+  b.maxTokens(200_000)
+    .prices({ "gpt-5.4-mini": { input: 0.4, output: 1.6 } }) // USD per 1M tokens
+    .maxCost(1.0) // only enforced for models you've priced above
+);
+```
+
+A model with no supplied price still counts toward the **token** cap — only its
+cost is left out, and a cost cap is enforced only once a priced call is recorded.
 
 ### Fix / response cache
 

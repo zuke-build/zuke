@@ -5671,12 +5671,6 @@ function suppressions(configure?: Configure<Suppressions>): Suppressions
   file and inline fingerprints can be set inline — e.g.
   `suppressions((s) => s.file(".zuke/suppress.json").add("abc"))`.
 
-const DEFAULT_PRICES: Record<string, ModelPrice>
-  Default USD-per-1,000,000-token prices keyed by model id. These are
-  approximate published list prices and are meant as a sensible default — pass
-  your own table to {@link Budget.prices} to override or extend them (e.g. for
-  a negotiated rate or a model not listed here).
-
 class AgentFixer implements Remediation
   A fluent agent fixer. Construct one via {@link agentFixer} with a runner, and
   attach it to a target with `.recoverWith(...)`. Diagnose/report defaults are
@@ -5862,9 +5856,14 @@ class Budget
   maxTokens(total: number): this
     Cap total tokens (input + output across all recorded calls).
   maxCost(usd: number): this
-    Cap estimated USD cost. Requires the call's model to have a known price.
+    Cap estimated USD cost. Only takes effect for models you've priced via
+    {@link prices} — no prices ship by default — so the estimate uses your own
+    current rates. Pair it with {@link maxTokens} for a guaranteed hard cap.
   prices(table: Record<string, ModelPrice>): this
-    Override/extend the price table (merged over DEFAULT_PRICES), keyed by model id.
+    Supply per-model prices (USD per 1,000,000 tokens, keyed by model id) so a
+    {@link maxCost} cap and the cost estimate can be computed. Merges across
+    calls. Nothing is priced until you call this — provider pricing changes too
+    often to bake a table in, so the rates here are yours to keep current.
   exhausted_(): boolean
     INTERNAL: whether a configured cap has already been reached.
   record_(usage: Usage | undefined, model: string): void

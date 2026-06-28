@@ -9,11 +9,15 @@
  * stop once a cap is reached, so a runaway loop or an unexpectedly expensive
  * model can't burn the whole bill.
  *
- * Prices live in {@link DEFAULT_PRICES} (USD per 1,000,000 tokens, keyed by
- * model id) and are approximate; override or extend them per-budget with
- * {@link Budget.prices}. A model with no known price still contributes to the
- * token totals — only its cost is left out, and a cost cap is only enforced
- * once at least one priced call has been recorded.
+ * No prices are shipped — provider pricing changes too often for a hardcoded
+ * table to stay correct. The reliable cap is therefore {@link Budget.maxTokens}
+ * (token counts come straight from the provider's reported {@link Usage}, so
+ * they never go stale). A USD cap ({@link Budget.maxCost}) is opt-in: it only
+ * works for models you price yourself via {@link Budget.prices}, so the dollar
+ * figures are always your own current rates rather than our stale guesses. A
+ * model with no supplied price still contributes to the token totals — only its
+ * cost is left out, and a cost cap is only enforced once at least one priced
+ * call has been recorded.
  *
  * @module
  */
@@ -42,18 +46,6 @@ export interface BudgetSpend {
   /** Estimated USD cost, when at least one recorded call had a known price. */
   cost?: number;
 }
-
-/**
- * Default USD-per-1,000,000-token prices keyed by model id. These are
- * approximate published list prices and are meant as a sensible default — pass
- * your own table to {@link Budget.prices} to override or extend them (e.g. for
- * a negotiated rate or a model not listed here).
- */
-export const DEFAULT_PRICES: Record<string, ModelPrice> = {
-  "claude-opus-4-8": { input: 15, output: 75 },
-  "gpt-5.4-mini": { input: 0.4, output: 1.6 },
-  "gemini-3.5-flash": { input: 0.3, output: 1.2 },
-};
 
 /** Tokens per priced unit — prices are quoted per 1,000,000 tokens. */
 const TOKENS_PER_UNIT = 1_000_000;
@@ -106,7 +98,7 @@ export class Budget {
   private maxTokens__?: number;
   /** The estimated-cost cap in USD, or `undefined` when no cost cap is set. */
   private maxCost__?: number;
-  /** Per-budget price overrides, merged over {@link DEFAULT_PRICES}. */
+  /** User-supplied per-model prices (none by default), set via {@link prices}. */
   private priceOverrides_: Record<string, ModelPrice> = {};
 
   /** Cap total tokens (input + output across all recorded calls). */
@@ -115,24 +107,32 @@ export class Budget {
     return this;
   }
 
-  /** Cap estimated USD cost. Requires the call's model to have a known price. */
+  /**
+   * Cap estimated USD cost. Only takes effect for models you've priced via
+   * {@link prices} — no prices ship by default — so the estimate uses your own
+   * current rates. Pair it with {@link maxTokens} for a guaranteed hard cap.
+   */
   maxCost(usd: number): this {
     this.maxCost__ = usd;
     return this;
   }
 
-  /** Override/extend the price table (merged over DEFAULT_PRICES), keyed by model id. */
+  /**
+   * Supply per-model prices (USD per 1,000,000 tokens, keyed by model id) so a
+   * {@link maxCost} cap and the cost estimate can be computed. Merges across
+   * calls. Nothing is priced until you call this — provider pricing changes too
+   * often to bake a table in, so the rates here are yours to keep current.
+   */
   prices(table: Record<string, ModelPrice>): this {
     this.priceOverrides_ = { ...this.priceOverrides_, ...table };
     return this;
   }
 
-  /** The effective price for a model, or `undefined` when none is known. */
+  /** The supplied price for a model, or `undefined` when none was given. */
   private priceFor_(model: string): ModelPrice | undefined {
     if (Object.hasOwn(this.priceOverrides_, model)) {
       return this.priceOverrides_[model];
     }
-    if (Object.hasOwn(DEFAULT_PRICES, model)) return DEFAULT_PRICES[model];
     return undefined;
   }
 

@@ -6,12 +6,17 @@ import {
   Budget,
   budget,
   type BudgetSpend,
-  DEFAULT_PRICES,
   type ModelPrice,
 } from "../src/budget.ts";
 
-/** The default Claude model, which has a known price in DEFAULT_PRICES. */
+/** A model id used throughout; prices are supplied per-test via PRICES. */
 const CLAUDE = "claude-opus-4-8";
+
+/** Sample user-supplied prices (USD per 1M tokens) — no prices ship by default. */
+const PRICES: Record<string, ModelPrice> = {
+  "claude-opus-4-8": { input: 15, output: 75 },
+  "gemini-3.5-flash": { input: 0.3, output: 1.2 },
+};
 
 Deno.test("a fresh budget with no caps is never exhausted", () => {
   const b = new Budget();
@@ -30,8 +35,8 @@ Deno.test("a token cap exhausts at or above the cap, not just under it", () => {
 });
 
 Deno.test("a cost cap exhausts once a priced call crosses it", () => {
-  // claude-opus-4-8 input is $15/1M tokens, so 1M input tokens = $15.
-  const b = budget((x) => x.maxCost(10));
+  // With a supplied $15/1M input price, 1M input tokens = $15.
+  const b = budget((x) => x.maxCost(10).prices(PRICES));
   b.record_({ inputTokens: 500_000 }, CLAUDE); // $7.50, under the cap
   assertEquals(b.exhausted_(), false);
   b.record_({ inputTokens: 500_000 }, CLAUDE); // now $15.00, over the cap
@@ -47,14 +52,14 @@ Deno.test("a cost cap is ignored while no priced call has been recorded", () => 
   assertEquals(spend.cost, undefined);
 });
 
-Deno.test(".prices() overrides a default and adds a new model", () => {
-  const override: Record<string, ModelPrice> = {
-    [CLAUDE]: { input: 1, output: 1 }, // override the default
-    "custom-model": { input: 2, output: 4 }, // add a new one
+Deno.test(".prices() sets prices for several models", () => {
+  const table: Record<string, ModelPrice> = {
+    [CLAUDE]: { input: 1, output: 1 },
+    "custom-model": { input: 2, output: 4 },
   };
-  const b = budget((x) => x.prices(override));
+  const b = budget((x) => x.prices(table));
   b.record_({ inputTokens: 1_000_000, outputTokens: 1_000_000 }, CLAUDE);
-  // With the override: 1M*$1 + 1M*$1 = $2, not the default $15+$75.
+  // 1M*$1 + 1M*$1 = $2.
   assertEquals(b.spend_().cost, 2);
   b.record_(
     { inputTokens: 1_000_000, outputTokens: 1_000_000 },
@@ -74,7 +79,7 @@ Deno.test(".prices() merges across calls rather than replacing", () => {
 });
 
 Deno.test("record_ tolerates undefined usage and still counts the call", () => {
-  const b = new Budget();
+  const b = new Budget().prices(PRICES);
   b.record_(undefined, CLAUDE);
   const spend = b.spend_();
   assertEquals(spend.calls, 1);
@@ -131,7 +136,7 @@ Deno.test("remainingTokens_ clamps at zero once the cap is overshot", () => {
 });
 
 Deno.test("spend_ snapshots every accumulated field", () => {
-  const b = new Budget();
+  const b = new Budget().prices(PRICES);
   b.record_({ inputTokens: 10, outputTokens: 5 }, CLAUDE);
   b.record_({ inputTokens: 20, outputTokens: 10 }, CLAUDE);
   const spend: BudgetSpend = b.spend_();
@@ -143,7 +148,7 @@ Deno.test("spend_ snapshots every accumulated field", () => {
 });
 
 Deno.test("describe_ shows totals, cost, and both caps when priced and capped", () => {
-  const b = budget((x) => x.maxTokens(10_000).maxCost(1));
+  const b = budget((x) => x.maxTokens(10_000).maxCost(1).prices(PRICES));
   b.record_({ inputTokens: 1_234 }, CLAUDE);
   const text = b.describe_();
   assertStringIncludes(text, "1,234 tokens"); // thousands separator
@@ -170,7 +175,7 @@ Deno.test("describe_ shows just the total when uncapped", () => {
 });
 
 Deno.test("describe_ uses up to four decimals for sub-cent costs", () => {
-  const b = new Budget();
+  const b = new Budget().prices(PRICES);
   // A few thousand cheap tokens lands well under a cent.
   b.record_({ inputTokens: 1_000 }, "gemini-3.5-flash"); // $0.0003
   const text = b.describe_();
@@ -178,7 +183,7 @@ Deno.test("describe_ uses up to four decimals for sub-cent costs", () => {
 });
 
 Deno.test("describe_ shows a cost cap on its own when no token cap is set", () => {
-  const b = budget((x) => x.maxCost(2.5));
+  const b = budget((x) => x.maxCost(2.5).prices(PRICES));
   b.record_({ inputTokens: 1_000 }, CLAUDE);
   const text = b.describe_();
   assertStringIncludes(text, "of $2.50");
@@ -196,8 +201,12 @@ Deno.test("budget() applies the configure lambda and returns the same instance",
   assertEquals(b.remainingTokens_(), 5);
 });
 
-Deno.test("DEFAULT_PRICES carries the documented baseline models", () => {
-  assertEquals(DEFAULT_PRICES[CLAUDE], { input: 15, output: 75 });
-  assertEquals(DEFAULT_PRICES["gpt-5.4-mini"], { input: 0.4, output: 1.6 });
-  assertEquals(DEFAULT_PRICES["gemini-3.5-flash"], { input: 0.3, output: 1.2 });
+Deno.test("no prices are configured by default, so cost stays unknown", () => {
+  const b = new Budget();
+  // The default models are NOT priced out of the box — supply your own.
+  b.record_({ inputTokens: 1_000_000, outputTokens: 1_000_000 }, CLAUDE);
+  assertEquals(b.spend_().cost, undefined);
+  // A cost cap can't fire without a supplied price, even on a huge spend.
+  b.maxCost(0.000001);
+  assertEquals(b.exhausted_(), false);
 });
