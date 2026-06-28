@@ -40,6 +40,15 @@ export type {
 export { DiffSettings } from "./src/diff.ts";
 export { GateSettings } from "./src/gate.ts";
 export type { RetryInfo, RetryOptions } from "./src/retry.ts";
+export { Budget, budget, DEFAULT_PRICES } from "./src/budget.ts";
+export type { BudgetSpend, ModelPrice } from "./src/budget.ts";
+export { AiCache, aiCache } from "./src/cache.ts";
+export type { CacheEntry, CacheStore } from "./src/cache.ts";
+export {
+  findingFingerprint,
+  Suppressions,
+  suppressions,
+} from "./src/suppress.ts";
 export {
   correctnessReviewer,
   genericReviewer,
