@@ -39,11 +39,6 @@ import {
 import { SecurityTasks } from "@zuke/security";
 import { type ApiDocsOptions, DocsTasks, type PackageDoc } from "@zuke/docs";
 
-// NOTE: intentional lint violation (no-unused-vars) to exercise the self-healing
-// aiFixer on this test PR. Remove this line once the fixer's behaviour has been
-// observed — this commit is meant to be reverted, not merged.
-const INTENTIONAL_LINT_BREAK = "remove me";
-
 /** Workspace packages, in dependency order: core must publish before the rest. */
 const PACKAGES = [
   "core",
