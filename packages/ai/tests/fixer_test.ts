@@ -3,7 +3,7 @@ import { CommandError } from "@zuke/core/shell";
 import { AiFixer, aiFixer, type Fix } from "../mod.ts";
 import { checkEdits, DEFAULT_FIX_EXCLUDES } from "../src/apply.ts";
 import { parseFix } from "../src/fix.ts";
-import { readTextOrUndefined } from "../src/fixer.ts";
+import { readTextOrUndefined } from "../src/context.ts";
 import { commitAndPush } from "../src/commit.ts";
 import { fixMarkdown } from "../src/fix_report.ts";
 import type { RemediationContext } from "@zuke/core";
