@@ -241,9 +241,9 @@ class ZukeBuild extends Build {
         f
           .provider("openai")
           .apiKey(this.openaiKey)
-          .diff((d) =>
-            d.base(Deno.env.get("ZUKE_REVIEW_BASE") ?? "origin/master")
-          )
+          // Fetch the PR base branch itself (auto-detected from the CI env) for
+          // diff context — no manual `git fetch` step in the workflow.
+          .diff((d) => d.fetchBase())
       ),
     )
     .executes(async () => {

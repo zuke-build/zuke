@@ -408,6 +408,91 @@ Deno.test("the working-tree diff is gathered via git for context", async () => {
   assertEquals(calls[0].body.includes("diff --git a/y b/y"), true);
 });
 
+Deno.test("fetchBase fetches the PR base branch itself for diff context", async () => {
+  const { fetch, calls } = recordFetch(claudeFix(ONE_EDIT));
+  const git: string[][] = [];
+  const fixer = aiFixer((f) => f.provider("claude").apiKey("k"))
+    .conventions("")
+    .diff((d) => d.fetchBase())
+    .env((n) => n === "GITHUB_BASE_REF" ? "master" : undefined)
+    .exec((argv) => {
+      git.push(argv);
+      return Promise.resolve(
+        argv[1] === "diff" ? "diff --git a/z b/z\n+base context" : "",
+      );
+    })
+    .fetch(fetch).quiet();
+  await fixer.remediate(CTX);
+  assertEquals(git[0], [
+    "git",
+    "fetch",
+    "--no-tags",
+    "--depth=1",
+    "origin",
+    "master",
+  ]);
+  assertEquals(git[1], ["git", "diff", "FETCH_HEAD"]);
+  assertEquals(calls[0].body.includes("base context"), true);
+});
+
+Deno.test("fetchBase honours an explicit branch and remote", async () => {
+  const { fetch } = recordFetch(claudeFix(ONE_EDIT));
+  const git: string[][] = [];
+  const fixer = aiFixer((f) => f.provider("claude").apiKey("k"))
+    .conventions("")
+    .diff((d) => d.fetchBase("develop", "upstream"))
+    .env(() => undefined)
+    .exec((argv) => {
+      git.push(argv);
+      return Promise.resolve("");
+    })
+    .fetch(fetch).quiet();
+  await fixer.remediate(CTX);
+  assertEquals(git[0], [
+    "git",
+    "fetch",
+    "--no-tags",
+    "--depth=1",
+    "upstream",
+    "develop",
+  ]);
+});
+
+Deno.test("a failed base fetch falls back to the working-tree diff", async () => {
+  const { fetch } = recordFetch(claudeFix(ONE_EDIT));
+  const git: string[][] = [];
+  const fixer = aiFixer((f) => f.provider("claude").apiKey("k"))
+    .conventions("")
+    .diff((d) => d.fetchBase("master"))
+    .env(() => undefined)
+    .exec((argv) => {
+      git.push(argv);
+      if (argv[1] === "fetch") return Promise.reject(new Error("no network"));
+      return Promise.resolve("");
+    })
+    .fetch(fetch).quiet();
+  const result = await fixer.remediate(CTX);
+  assertEquals(result.retry, false);
+  assertEquals(git.some((a) => a[1] === "diff" && a.length === 2), true);
+});
+
+Deno.test("fetchBase with no resolvable base skips the fetch", async () => {
+  const { fetch } = recordFetch(claudeFix(ONE_EDIT));
+  const git: string[][] = [];
+  const fixer = aiFixer((f) => f.provider("claude").apiKey("k"))
+    .conventions("")
+    .diff((d) => d.fetchBase())
+    .env(() => undefined)
+    .exec((argv) => {
+      git.push(argv);
+      return Promise.resolve("");
+    })
+    .fetch(fetch).quiet();
+  await fixer.remediate(CTX);
+  assertEquals(git.some((a) => a[1] === "fetch"), false);
+  assertEquals(git.some((a) => a[1] === "diff" && a.length === 2), true);
+});
+
 Deno.test("a git failure while gathering the diff is tolerated", async () => {
   const { fetch } = recordFetch(claudeFix(ONE_EDIT));
   const fixer = aiFixer((f) => f.provider("claude").apiKey("k"))

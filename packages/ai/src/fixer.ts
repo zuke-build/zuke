@@ -332,8 +332,30 @@ export class AiFixer implements Remediation {
   /** Resolve the context diff, tolerating a missing repo (returns ""). */
   async #resolveDiff(): Promise<string> {
     if (this.#diff.text_ !== undefined) return this.#diff.text_;
+    const run = this.#git();
+    // When `.fetchBase()` is set, fetch the base branch ourselves (auto-detecting
+    // it from the CI env when unspecified) so no manual `git fetch` step is
+    // needed; fall back to the working-tree diff if the fetch can't be done.
+    if (this.#diff.fetchRequested_) {
+      const branch = this.#diff.fetchBranch_ ?? this.#env("GITHUB_BASE_REF");
+      if (branch !== undefined && branch !== "") {
+        try {
+          await run([
+            "git",
+            "fetch",
+            "--no-tags",
+            "--depth=1",
+            this.#diff.fetchRemote_,
+            branch,
+          ]);
+          return await run(["git", "diff", "FETCH_HEAD"]);
+        } catch {
+          // Offline, not a PR, or the ref is unavailable — fall through.
+        }
+      }
+    }
     try {
-      return await this.#git()(this.#diff.argv_());
+      return await run(this.#diff.argv_());
     } catch {
       return "";
     }

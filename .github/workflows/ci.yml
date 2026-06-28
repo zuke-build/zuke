@@ -40,24 +40,19 @@ jobs:
         with:
           persist-credentials: false
 
-      # Make the base branch available so the lint fixer can diff the PR for
-      # context (ZUKE_REVIEW_BASE points at it).
-      - name: Fetch the base branch
-        run: git fetch --no-tags --depth=1 origin master
-
       # No "set up Deno" step: the ./zuke launcher bootstraps Deno, pinned to a
       # known version by default (override with DENO_VERSION). Running through
       # the launcher keeps CI exercising the same entry point everyone else uses.
       #
       # OPENAI_API_KEY powers the lint target's self-healing fixer: on a lint
       # failure it posts the diagnosis (and an inline suggestion) to the PR. The
-      # key is optional — without it the fixer skips and lint just fails.
+      # key is optional — without it the fixer skips and lint just fails. The
+      # fixer fetches the PR base branch itself for diff context (no manual step).
       - name: Run the full gate with Zuke
         run: ./zuke ci
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ZUKE_REVIEW_BASE: FETCH_HEAD
 
   test-os:
     name: Tests (${{ matrix.os }})
