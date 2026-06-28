@@ -657,6 +657,11 @@
           "jsr:@zuke/core@1"
         ]
       },
+      "packages/husky": {
+        "dependencies": [
+          "jsr:@zuke/core@1"
+        ]
+      },
       "packages/jest": {
         "dependencies": [
           "jsr:@zuke/core@1"
@@ -682,12 +687,27 @@
           "jsr:@zuke/core@1"
         ]
       },
+      "packages/nest": {
+        "dependencies": [
+          "jsr:@zuke/core@1"
+        ]
+      },
+      "packages/node": {
+        "dependencies": [
+          "jsr:@zuke/core@1"
+        ]
+      },
       "packages/npm": {
         "dependencies": [
           "jsr:@zuke/core@1"
         ]
       },
       "packages/nx": {
+        "dependencies": [
+          "jsr:@zuke/core@1"
+        ]
+      },
+      "packages/openapi-ts": {
         "dependencies": [
           "jsr:@zuke/core@1"
         ]
@@ -723,6 +743,16 @@
         ]
       },
       "packages/tofu": {
+        "dependencies": [
+          "jsr:@zuke/core@1"
+        ]
+      },
+      "packages/tsc": {
+        "dependencies": [
+          "jsr:@zuke/core@1"
+        ]
+      },
+      "packages/tsdown": {
         "dependencies": [
           "jsr:@zuke/core@1"
         ]

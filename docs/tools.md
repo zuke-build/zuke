@@ -53,6 +53,12 @@ raises a `ToolNotFoundError` that names the tool and the fix.
 | `@zuke/jsr`            | `publish`, `add`, `remove`                                                                                           |
 | `@zuke/tsx`            | `tsx`, `watch`                                                                                                       |
 | `@zuke/tsgo`           | `tsgo`                                                                                                               |
+| `@zuke/tsc`            | `tsc`, `build`                                                                                                       |
+| `@zuke/tsdown`         | `build`, `migrate`                                                                                                   |
+| `@zuke/nest`           | `new`, `generate`, `build`, `start`, `info`                                                                          |
+| `@zuke/openapi-ts`     | `generate`                                                                                                           |
+| `@zuke/husky`          | `init`, `install`                                                                                                    |
+| `@zuke/node`           | `run`, `eval`, `test`                                                                                                |
 | `@zuke/dprint`         | `fmt`, `check`                                                                                                      |
 | `@zuke/gcloud`         | `run` (any command)                                                                                                 |
 | `@zuke/git`            | `init`, `clone`, `add`, `commit`, `status`, `checkout`, `branch`, `tag`, `push`, `pull`, `fetch`, `run` (+ `gitInfo()` helper) |

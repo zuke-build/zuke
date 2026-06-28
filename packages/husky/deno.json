@@ -1,0 +1,16 @@
+{
+  "name": "@zuke/husky",
+  "version": "0.1.0",
+  "description": "Typed husky task wrappers for Zuke builds — initialise and install Git hooks with husky v9+ via an injection-free settings-lambda API.",
+  "exports": {
+    ".": "./mod.ts"
+  },
+  "imports": {
+    "@zuke/core": "jsr:@zuke/core@^1"
+  },
+  "publish": {
+    "exclude": [
+      "tests/"
+    ]
+  }
+}

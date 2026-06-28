@@ -56,6 +56,12 @@ await run(CI);
 - [@zuke/nx](https://jsr.io/@zuke/nx) — typed `NxTasks` wrappers for the Nx (https://nx.dev) CLI, for
 - [@zuke/tsx](https://jsr.io/@zuke/tsx) — typed `tsx` task wrappers for Zuke builds
 - [@zuke/tsgo](https://jsr.io/@zuke/tsgo) — typed `tsgo` task wrappers for Zuke builds
+- [@zuke/tsc](https://jsr.io/@zuke/tsc) — typed `tsc` task wrappers for Zuke builds
+- [@zuke/tsdown](https://jsr.io/@zuke/tsdown) — a typed `TsdownTasks` wrapper for the
+- [@zuke/nest](https://jsr.io/@zuke/nest) — typed NestJS CLI (`nest`) task wrappers for Zuke builds
+- [@zuke/openapi-ts](https://jsr.io/@zuke/openapi-ts) — typed `openapi-ts` task wrappers for Zuke builds
+- [@zuke/husky](https://jsr.io/@zuke/husky) — typed `husky` task wrappers for Zuke builds
+- [@zuke/node](https://jsr.io/@zuke/node) — typed Node.js task wrappers for Zuke builds
 - [@zuke/dprint](https://jsr.io/@zuke/dprint) — typed `dprint` task wrappers for Zuke builds
 - [@zuke/gcloud](https://jsr.io/@zuke/gcloud) — a typed `gcloud` (Google Cloud SDK) task wrapper for Zuke
 - [@zuke/git](https://jsr.io/@zuke/git) — typed `git` task wrappers for Zuke builds
