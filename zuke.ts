@@ -231,16 +231,22 @@ class ZukeBuild extends Build {
 
   lint = target()
     .description("Lint the workspace (deno lint)")
-    // Self-heal lint failures with @zuke/ai. On a failing `deno lint`, the fixer
-    // sends the error output and the PR diff to OpenAI and posts a diagnosis
-    // plus a proposed patch as a PR comment and job summary — its safe default,
-    // which writes no files. A missing key (e.g. local runs) is skipped cleanly,
-    // and the lint failure still stands.
+    // Self-heal lint failures with @zuke/ai, dogfooding the full loop: on a
+    // failing `deno lint` the fixer applies the fix, commits and pushes it to
+    // the PR branch, re-runs lint to verify, and — because it auto-fixed —
+    // posts an overview comment of what it changed (with the code) plus the job
+    // summary. A missing key (e.g. local runs, or fork PRs where the secret is
+    // withheld) is skipped cleanly and the lint failure still stands. The CI
+    // workflow grants this job `contents: write` so the push can land.
     .recoverWith(
       aiFixer((f) =>
         f
           .provider("openai")
           .apiKey(this.openaiKey)
+          .autoApply()
+          .allowCI()
+          .commitFixes()
+          .allowPaths("packages/**", "tests/**", "zuke.ts")
           // Fetch the PR base branch itself (auto-detected from the CI env) for
           // diff context — no manual `git fetch` step in the workflow.
           .diff((d) => d.fetchBase())

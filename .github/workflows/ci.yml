@@ -22,11 +22,13 @@ jobs:
   quality:
     name: Build & verify with Zuke
     runs-on: ubuntu-latest
-    # Read the repo, and comment on the PR for the lint self-healing fixer. The
-    # OpenAI key is a same-repo secret, so on fork PRs it is absent and the fixer
-    # simply skips — CI still runs read-only.
+    # The lint self-healing fixer auto-applies the fix and pushes it to the PR
+    # branch, so this job needs `contents: write` (the push) and
+    # `pull-requests: write` (the comment). The OpenAI key is a same-repo secret,
+    # so on fork PRs it is absent and the token is read-only — the fixer skips
+    # and CI runs without writing anything.
     permissions:
-      contents: read
+      contents: write
       pull-requests: write
     steps:
       # Audit (and optionally block) outbound network from the runner, so a
@@ -36,18 +38,24 @@ jobs:
         with:
           egress-policy: audit
 
+      # persist-credentials keeps the token in git config so the lint fixer can
+      # push its commit. For a same-repo PR, check out the head branch (not the
+      # detached merge ref) so the push targets it; for a fork PR (or a push),
+      # fall back to the default checkout — the fixer can't and won't push there.
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          persist-credentials: false
+          persist-credentials: true
+          ref: ${{ (github.event.pull_request.head.repo.full_name == github.repository) && github.head_ref || '' }}
 
       # No "set up Deno" step: the ./zuke launcher bootstraps Deno, pinned to a
       # known version by default (override with DENO_VERSION). Running through
       # the launcher keeps CI exercising the same entry point everyone else uses.
       #
       # OPENAI_API_KEY powers the lint target's self-healing fixer: on a lint
-      # failure it posts the diagnosis (and an inline suggestion) to the PR. The
-      # key is optional — without it the fixer skips and lint just fails. The
-      # fixer fetches the PR base branch itself for diff context (no manual step).
+      # failure it fixes the file, commits and pushes to the PR branch, and posts
+      # an overview comment of what it changed. The key is optional — without it
+      # the fixer skips and lint just fails. The fixer fetches the PR base branch
+      # itself for diff context (no manual step).
       - name: Run the full gate with Zuke
         run: ./zuke ci
         env:
