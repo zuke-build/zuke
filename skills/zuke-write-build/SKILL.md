@@ -78,3 +78,9 @@ Before calling any task or settings method, confirm the real shape:
   as `this.x.value`, gated with `.requires(this.x)`.
 - **Code-first CI:** `cicd({ provider: "github" })` generates and verifies the
   workflow YAML from the build.
+- **AI review & self-healing (`@zuke/ai`):** gate a target on a structured LLM
+  review of the diff (`securityReviewer(...)` etc. via `.validateBefore`), or
+  attach `aiFixer(...)` with `.recoverWith(...)` so a failing target is diagnosed
+  and (opt-in) auto-fixed, with a committable PR suggestion. Override
+  `recoverWith()` on the build to apply one fixer to every target. See the
+  cheatsheet's AI section.

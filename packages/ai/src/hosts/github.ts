@@ -62,7 +62,7 @@ export function resolveGithubContext(
 }
 
 /** The request headers for a GitHub REST call. */
-function headers(token: string): Record<string, string> {
+export function githubHeaders(token: string): Record<string, string> {
   return {
     "authorization": `Bearer ${token}`,
     "accept": "application/vnd.github+json",
@@ -73,7 +73,7 @@ function headers(token: string): Record<string, string> {
 }
 
 /** Throw an {@link AiReviewError} for a non-2xx GitHub response. */
-async function ensureOk(response: Response): Promise<void> {
+export async function ensureGithubOk(response: Response): Promise<void> {
   if (!response.ok) {
     await response.body?.cancel();
     throw new AiReviewError(`GitHub API error: HTTP ${response.status}`);
@@ -88,8 +88,10 @@ async function findComment(
 ): Promise<number | undefined> {
   const url =
     `${API}/repos/${context.owner}/${context.repo}/issues/${context.pull}/comments?per_page=100`;
-  const response = await doFetch(url, { headers: headers(context.token) });
-  await ensureOk(response);
+  const response = await doFetch(url, {
+    headers: githubHeaders(context.token),
+  });
+  await ensureGithubOk(response);
   const data: unknown = await response.json();
   if (!Array.isArray(data)) return undefined;
   for (const item of data) {
@@ -124,10 +126,10 @@ export async function upsertPrComment(
     : `${repo}/issues/comments/${existing}`;
   const response = await doFetch(url, {
     method: existing === undefined ? "POST" : "PATCH",
-    headers: headers(context.token),
+    headers: githubHeaders(context.token),
     body: JSON.stringify({ body }),
   });
-  await ensureOk(response);
+  await ensureGithubOk(response);
 }
 
 /** The GitHub Actions implementation of {@link ReviewHost}. */

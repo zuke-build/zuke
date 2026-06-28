@@ -56,6 +56,49 @@ export interface Validation {
   validate(context: ValidationContext): void | Promise<void>;
 }
 
+/** Context passed to a {@link Remediation} after a target body fails. */
+export interface RemediationContext {
+  /** The name of the failed target. */
+  target: string;
+  /** The 1-based recovery attempt (the body has already failed `attempt` times). */
+  attempt: number;
+  /**
+   * The failure being remediated. When a target fails through the shell this is
+   * a `CommandError` carrying the failed command and its captured `stderr`.
+   */
+  error: unknown;
+}
+
+/** The outcome of one {@link Remediation} attempt. */
+export interface RemediationResult {
+  /**
+   * Re-run the target body after this remediation? `true` asks the executor to
+   * retry (the remediation changed something — e.g. applied a fix); `false`
+   * leaves the failure standing (e.g. a diagnose-only remediation that only
+   * explained the failure).
+   */
+  retry: boolean;
+  /** A one-line description of what was diagnosed or done, for diagnostics. */
+  summary?: string;
+}
+
+/**
+ * A recovery step plugged into a target with {@link TargetBuilder.recoverWith}.
+ * It runs **only after the target body fails**, receives the failure, and may
+ * attempt to repair it — returning `{ retry: true }` to ask the executor to
+ * re-run the body (the real build command is the verifier). Implemented, for
+ * example, by the AI fixer in `@zuke/ai`, but any object with a `remediate`
+ * method qualifies.
+ */
+export interface Remediation {
+  /** A name for diagnostics (optional). */
+  name?: string;
+  /** Inspect (and optionally repair) the failure; report whether to retry. */
+  remediate(
+    context: RemediationContext,
+  ): RemediationResult | Promise<RemediationResult>;
+}
+
 /**
  * A parallel batch of targets, created with {@link group}. Targets join it via
  * {@link TargetBuilder.partOf}; its members run concurrently with one another
@@ -122,6 +165,10 @@ export class TargetBuilder {
   readonly validateBefore_: Validation[] = [];
   /** Validations run after the body (set by {@link validateAfter}). */
   readonly validateAfter_: Validation[] = [];
+  /** Remediations run after the body fails (set by {@link recoverWith}). */
+  readonly recoverWith_: Remediation[] = [];
+  /** Max fix-then-rerun cycles when the body fails (set by {@link recoverAttempts}). */
+  recoverAttempts_ = 1;
 
   /** Set the human-readable description shown in `zuke --list`. */
   description(text: string): this {
@@ -349,6 +396,34 @@ export class TargetBuilder {
    */
   validateAfter(...validations: Validation[]): this {
     this.validateAfter_.push(...validations);
+    return this;
+  }
+
+  /**
+   * Attach one or more {@link Remediation}s that run **only if the body fails**.
+   * Each is given the failure; if any returns `{ retry: true }`, the executor
+   * re-runs the body and, when it now passes, the target succeeds. This is the
+   * hook the AI fixer in `@zuke/ai` uses for self-healing builds. Repeatable.
+   *
+   * ```ts
+   * test = target()
+   *   .executes(() => DenoTasks.test((s) => s.allowAll()))
+   *   .recoverWith(aiFixer((f) => f.provider("claude").apiKey(this.key)));
+   * ```
+   */
+  recoverWith(...remediations: Remediation[]): this {
+    this.recoverWith_.push(...remediations);
+    return this;
+  }
+
+  /**
+   * The maximum number of fix-then-rerun cycles attempted when the body fails
+   * and {@link recoverWith} remediations are configured (default 1). Each cycle
+   * runs every remediation, then re-runs the body once; the count bounds how
+   * many times that repeats before the failure is final. Clamped to at least 1.
+   */
+  recoverAttempts(times: number): this {
+    this.recoverAttempts_ = Math.max(1, Math.floor(times));
     return this;
   }
 }

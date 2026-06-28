@@ -9,7 +9,8 @@ on:
     branches: [master]
   pull_request:
 
-# Least privilege: CI only ever needs to read the repo. No secrets are used.
+# Default to read-only; the quality job opts into pull-requests:write below for
+# the lint self-healing comment. The cross-OS test job stays secret-free.
 permissions:
   contents: read
 
@@ -21,6 +22,12 @@ jobs:
   quality:
     name: Build & verify with Zuke
     runs-on: ubuntu-latest
+    # Read the repo, and comment on the PR for the lint self-healing fixer. The
+    # OpenAI key is a same-repo secret, so on fork PRs it is absent and the fixer
+    # simply skips — CI still runs read-only.
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       # Audit (and optionally block) outbound network from the runner, so a
       # compromised dependency can't exfiltrate or reach an unexpected host.
@@ -36,8 +43,16 @@ jobs:
       # No "set up Deno" step: the ./zuke launcher bootstraps Deno, pinned to a
       # known version by default (override with DENO_VERSION). Running through
       # the launcher keeps CI exercising the same entry point everyone else uses.
+      #
+      # OPENAI_API_KEY powers the lint target's self-healing fixer: on a lint
+      # failure it posts the diagnosis (and an inline suggestion) to the PR. The
+      # key is optional — without it the fixer skips and lint just fails. The
+      # fixer fetches the PR base branch itself for diff context (no manual step).
       - name: Run the full gate with Zuke
         run: ./zuke ci
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   test-os:
     name: Tests (${{ matrix.os }})

@@ -30,7 +30,7 @@ import {
 import { findConfigDir, pathExists } from "./config.ts";
 import { isCI } from "./host.ts";
 import { absolutePath } from "./path.ts";
-import type { TargetBuilder, TargetFn } from "./target.ts";
+import type { Remediation, TargetBuilder, TargetFn } from "./target.ts";
 import type { Plugin } from "./plugin.ts";
 import {
   detectWidth,
@@ -269,7 +269,13 @@ function writeJobSummary(
   }
   if (path === undefined || path === "") return;
   try {
-    Deno.writeTextFileSync(path, jobSummaryMarkdown(reports, totalMs, ok));
+    // Append, not overwrite: validations like the AI reviewers/fixer write their
+    // own sections to this same file during the run, and overwriting here would
+    // wipe them. GitHub provisions a fresh summary file per step, so a single
+    // run's appends never accumulate across steps.
+    Deno.writeTextFileSync(path, jobSummaryMarkdown(reports, totalMs, ok), {
+      append: true,
+    });
   } catch {
     // Best-effort: an unwritable summary file must never fail the build.
   }
@@ -380,6 +386,54 @@ async function runBody(t: TargetBuilder): Promise<void> {
 }
 
 /**
+ * Run the target body, and if it fails, hand the failure to each configured
+ * {@link TargetBuilder.recoverWith} remediation in turn. When any remediation
+ * asks to retry, the body is re-run; this repeats up to
+ * {@link TargetBuilder.recoverAttempts} times. The body finally passing resolves
+ * normally; otherwise the last failure propagates. A remediation that throws is
+ * treated as "could not heal" — it never masks the original build failure.
+ */
+async function runBodyWithRecovery(
+  t: TargetBuilder,
+  name: string,
+  globalRecovery: Remediation[],
+): Promise<void> {
+  try {
+    await runBody(t);
+    return;
+  } catch (error) {
+    // A target's own remediations run first, then any build-level ones.
+    const remediations = [...t.recoverWith_, ...globalRecovery];
+    if (remediations.length === 0) throw error;
+    let lastError = error;
+    for (let attempt = 1; attempt <= t.recoverAttempts_; attempt++) {
+      let willRetry = false;
+      for (const r of remediations) {
+        try {
+          const result = await r.remediate({
+            target: name,
+            attempt,
+            error: lastError,
+          });
+          if (result.retry) willRetry = true;
+        } catch {
+          // A throwing remediation counts as "could not heal"; keep the build
+          // error intact rather than surfacing the remediation's own failure.
+        }
+      }
+      if (!willRetry) break;
+      try {
+        await runBody(t);
+        return;
+      } catch (retryError) {
+        lastError = retryError;
+      }
+    }
+    throw lastError;
+  }
+}
+
+/**
  * Run one target: honour its `onlyWhen` conditions and the incremental cache,
  * then (if it must run) open its section, run its body, and report pass/fail.
  * A condition that fails yields `skipped`; an up-to-date target yields `cached`
@@ -394,6 +448,7 @@ async function runTarget(
   opened: number,
   cache: BuildCache | undefined,
   dryRun: boolean,
+  globalRecovery: Remediation[],
 ): Promise<TargetOutcome> {
   const name = t.name_ ?? "<unnamed>";
 
@@ -436,7 +491,7 @@ async function runTarget(
 
   try {
     for (const v of t.validateBefore_) await v.validate({ target: name });
-    await runBody(t);
+    await runBodyWithRecovery(t, name, globalRecovery);
     for (const v of t.validateAfter_) await v.validate({ target: name });
     const ms = performance.now() - start;
     if (cache !== undefined) await cache.record(t);
@@ -491,6 +546,7 @@ async function runSequential(
   skip: Set<string>,
   cache: BuildCache | undefined,
   dryRun: boolean,
+  globalRecovery: Remediation[],
 ): Promise<RunOutcome> {
   const reports: TargetReport[] = [];
   const executed: string[] = [];
@@ -512,6 +568,7 @@ async function runSequential(
       opened,
       cache,
       dryRun,
+      globalRecovery,
     );
     await life.targetEnd(name, outcome.status);
     if (outcome.status === "passed" || outcome.status === "failed") opened++;
@@ -546,6 +603,7 @@ async function runScheduled(
   canOverlap: (a: TargetBuilder, b: TargetBuilder) => boolean,
   cache: BuildCache | undefined,
   dryRun: boolean,
+  globalRecovery: Remediation[],
 ): Promise<RunOutcome> {
   const outcomes = new Map<TargetBuilder, TargetOutcome>();
   const done = new Set<TargetBuilder>(); // passed/cached/skipped → unblocks dependents
@@ -581,7 +639,16 @@ async function runScheduled(
         started.add(t);
         runningSet.add(t);
         const buffer = bufferReporter();
-        runTarget(life, buffer.reporter, style, t, flushed, cache, dryRun)
+        runTarget(
+          life,
+          buffer.reporter,
+          style,
+          t,
+          flushed,
+          cache,
+          dryRun,
+          globalRecovery,
+        )
           .then(
             async (outcome) => {
               await life.targetEnd(t.name_ ?? "<unnamed>", outcome.status);
@@ -707,6 +774,10 @@ export async function execute(
   const life = makeLifecycle(build, options.plugins ?? []);
   await life.start();
 
+  // Build-level remediations apply to every target (after each target's own),
+  // resolved once before the run.
+  const globalRecovery = dryRun ? [] : build.recoverWith();
+
   let run: RunOutcome;
   if (!globalParallel && !grouped && !scheduled) {
     run = await runSequential(
@@ -717,6 +788,7 @@ export async function execute(
       skip,
       cache,
       dryRun,
+      globalRecovery,
     );
   } else {
     // With `--parallel`, anything independent may overlap up to `limit`.
@@ -738,6 +810,7 @@ export async function execute(
       canOverlap,
       cache,
       dryRun,
+      globalRecovery,
     );
   }
   if (cache !== undefined) await cache.save();

@@ -431,6 +431,22 @@ class Build
     Called just before a target's body executes (not for skipped/cached).
   onTargetEnd(_name: string, _status: TargetStatus): void | Promise<void>
     Called after each target settles, with its final status.
+  recoverWith(): Remediation[]
+    Remediations applied to every target, running after each target's own
+    {@link "./target.ts".TargetBuilder.recoverWith} when its body fails. Override
+    to attach a global AI fixer once instead of repeating it per target; the
+    default is none. Both styles compose — a target's own remediations run
+    first, then these.
+
+    ```ts
+    class CI extends Build {
+      key = parameter("OpenAI API key").secret();
+      override recoverWith() {
+        return [aiFixer((f) => f.provider("openai").apiKey(this.key))];
+      }
+      lint = target().executes(() => DenoTasks.lint()); // healed globally
+    }
+    ```
 
 class CiFile
   A declared CI file. Assign one (via {@link cicd}) to a build field and Zuke
@@ -590,6 +606,10 @@ class TargetBuilder
     Validations run before the body (set by {@link validateBefore}).
   readonly validateAfter_: Validation[]
     Validations run after the body (set by {@link validateAfter}).
+  readonly recoverWith_: Remediation[]
+    Remediations run after the body fails (set by {@link recoverWith}).
+  recoverAttempts_: number
+    Max fix-then-rerun cycles when the body fails (set by {@link recoverAttempts}).
   description(text: string): this
     Set the human-readable description shown in `zuke --list`.
   dependsOn(...targets: Array<TargetBuilder | Group>): this
@@ -687,6 +707,22 @@ class TargetBuilder
     Run one or more {@link Validation}s after the target body completes
     successfully. Each runs in declaration order; the first to throw fails the
     target. Repeatable.
+  recoverWith(...remediations: Remediation[]): this
+    Attach one or more {@link Remediation}s that run only if the body fails.
+    Each is given the failure; if any returns `{ retry: true }`, the executor
+    re-runs the body and, when it now passes, the target succeeds. This is the
+    hook the AI fixer in `@zuke/ai` uses for self-healing builds. Repeatable.
+
+    ```ts
+    test = target()
+      .executes(() => DenoTasks.test((s) => s.allowAll()))
+      .recoverWith(aiFixer((f) => f.provider("claude").apiKey(this.key)));
+    ```
+  recoverAttempts(times: number): this
+    The maximum number of fix-then-rerun cycles attempted when the body fails
+    and {@link recoverWith} remediations are configured (default 1). Each cycle
+    runs every remediation, then re-runs the body once; the count bounds how
+    many times that repeats before the failure is final. Clamped to at least 1.
 
 class TeamsAnnouncementSettings extends AnnouncementSettings
   Fluent settings for {@link AnnounceTasksApi.teams}. Bot mode
@@ -1031,6 +1067,41 @@ interface Plugin
     Called after each target settles, with its final status.
   onFinish?(result: BuildResult): void | Promise<void>
     Called once after the run completes (success or failure).
+
+interface Remediation
+  A recovery step plugged into a target with {@link TargetBuilder.recoverWith}.
+  It runs only after the target body fails, receives the failure, and may
+  attempt to repair it — returning `{ retry: true }` to ask the executor to
+  re-run the body (the real build command is the verifier). Implemented, for
+  example, by the AI fixer in `@zuke/ai`, but any object with a `remediate`
+  method qualifies.
+
+  name?: string
+    A name for diagnostics (optional).
+  remediate(context: RemediationContext): RemediationResult | Promise<RemediationResult>
+    Inspect (and optionally repair) the failure; report whether to retry.
+
+interface RemediationContext
+  Context passed to a {@link Remediation} after a target body fails.
+
+  target: string
+    The name of the failed target.
+  attempt: number
+    The 1-based recovery attempt (the body has already failed `attempt` times).
+  error: unknown
+    The failure being remediated. When a target fails through the shell this is
+    a `CommandError` carrying the failed command and its captured `stderr`.
+
+interface RemediationResult
+  The outcome of one {@link Remediation} attempt.
+
+  retry: boolean
+    Re-run the target body after this remediation? `true` asks the executor to
+    retry (the remediation changed something — e.g. applied a fix); `false`
+    leaves the failure standing (e.g. a diagnose-only remediation that only
+    explained the failure).
+  summary?: string
+    A one-line description of what was diagnosed or done, for diagnostics.
 
 interface RemoveOptions
   Options for {@link FileTasksApi.remove}.

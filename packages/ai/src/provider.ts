@@ -26,6 +26,17 @@ export interface CallOptions {
   fetch?: typeof fetch;
   /** Retry-on-transient-failure knobs (see {@link RetryOptions}). */
   retry?: RetryOptions;
+  /**
+   * The structured-output schema to enforce. Defaults to the review
+   * {@link ASSESSMENT_JSON_SCHEMA}; the fixer passes its own `Fix` schema. The
+   * `gemini` variant is the OpenAPI-subset dialect Gemini's `responseSchema`
+   * expects (no `additionalProperties`, `nullable` for optionals).
+   */
+  schema?: { json: Record<string, unknown>; gemini: Record<string, unknown> };
+  /** Name for OpenAI's `json_schema` (cosmetic). Defaults to `"assessment"`. */
+  schemaName?: string;
+  /** Max output tokens to request. Defaults to 4096. */
+  maxTokens?: number;
 }
 
 /** A provider's raw text plus the token usage it reported, if any. */
@@ -117,15 +128,19 @@ export async function callProvider(
   options: CallOptions,
 ): Promise<ProviderResult> {
   const doFetch = options.fetch ?? fetch;
+  const jsonSchema = options.schema?.json ?? ASSESSMENT_JSON_SCHEMA;
+  const geminiSchema = options.schema?.gemini ?? ASSESSMENT_GEMINI_SCHEMA;
+  const schemaName = options.schemaName ?? "assessment";
+  const maxTokens = options.maxTokens ?? 4096;
   if (provider === "claude") {
     // `output_config.format` enforces the JSON shape server-side.
     const outputConfig: Record<string, unknown> = {
-      format: { type: "json_schema", schema: ASSESSMENT_JSON_SCHEMA },
+      format: { type: "json_schema", schema: jsonSchema },
     };
     if (options.effort !== undefined) outputConfig.effort = options.effort;
     const body: Record<string, unknown> = {
       model,
-      max_tokens: 4096,
+      max_tokens: maxTokens,
       system,
       messages: [{ role: "user", content: user }],
       output_config: outputConfig,
@@ -171,9 +186,9 @@ export async function callProvider(
         response_format: {
           type: "json_schema",
           json_schema: {
-            name: "assessment",
+            name: schemaName,
             strict: true,
-            schema: ASSESSMENT_JSON_SCHEMA,
+            schema: jsonSchema,
           },
         },
       }),
@@ -201,7 +216,7 @@ export async function callProvider(
       // `responseSchema` enforces the JSON shape server-side.
       generationConfig: {
         responseMimeType: "application/json",
-        responseSchema: ASSESSMENT_GEMINI_SCHEMA,
+        responseSchema: geminiSchema,
       },
     }),
   }, options.retry);

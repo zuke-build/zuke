@@ -391,6 +391,38 @@ Deno.test("github mode appends a Markdown job summary (default console)", async 
   }
 });
 
+Deno.test("the job summary is appended, preserving content written during the run", async () => {
+  class B extends Build {
+    // A validation writes its own summary section before the body, the way the
+    // AI reviewers/fixer do; the build table must not overwrite it.
+    work = target()
+      .validateBefore({
+        validate: () => {
+          const path = Deno.env.get("GITHUB_STEP_SUMMARY");
+          if (path !== undefined) {
+            Deno.writeTextFileSync(path, "## AI section\n", { append: true });
+          }
+        },
+      })
+      .executes(() => {});
+  }
+  const build = new B();
+  discoverTargets(build);
+  const tmp = await Deno.makeTempFile();
+  try {
+    await withEnv("GITHUB_STEP_SUMMARY", tmp, async () => {
+      await withSilencedConsole(() =>
+        execute(build, build.work, { github: true })
+      );
+    });
+    const md = await Deno.readTextFile(tmp);
+    assertEquals(md.includes("## AI section"), true); // not wiped
+    assertEquals(md.includes("Zuke build"), true); // table appended after
+  } finally {
+    await Deno.remove(tmp);
+  }
+});
+
 Deno.test("the job summary is NOT written when output is redirected or silent", async () => {
   const { reporter } = recorder();
   class B extends Build {
@@ -1343,4 +1375,177 @@ Deno.test("a cached target runs no validations", async () => {
   const result = await execute(b, b.work, { silent: true, cache });
   assertEquals(result.ok, true);
   assertEquals(validated, false);
+});
+
+Deno.test("recoverWith heals a failing body on the first attempt", async () => {
+  const log: string[] = [];
+  let pass = false;
+  class B extends Build {
+    work = target()
+      .recoverWith({
+        remediate: (ctx) => {
+          log.push(`fix ${ctx.target} attempt ${ctx.attempt}`);
+          pass = true;
+          return { retry: true };
+        },
+      })
+      .executes(() => {
+        log.push("body");
+        if (!pass) throw new Error("boom");
+      });
+  }
+  const b = new B();
+  discoverTargets(b);
+  const result = await execute(b, b.work, silent);
+  assertEquals(result.ok, true);
+  assertEquals(log, ["body", "fix work attempt 1", "body"]);
+});
+
+Deno.test("a remediation that declines to retry leaves the failure standing", async () => {
+  let attempts = 0;
+  class B extends Build {
+    work = target()
+      .recoverWith({
+        remediate: () => ({ retry: false, summary: "explained" }),
+      })
+      .executes(() => {
+        attempts++;
+        throw new Error("still broken");
+      });
+  }
+  const b = new B();
+  discoverTargets(b);
+  const result = await execute(b, b.work, silent);
+  assertEquals(result.ok, false);
+  assertEquals(attempts, 1); // body never re-run
+  assertEquals(messageOf(result.error).includes("still broken"), true);
+});
+
+Deno.test("recoverAttempts bounds the fix-then-rerun cycles", async () => {
+  let bodyRuns = 0;
+  let fixes = 0;
+  class B extends Build {
+    work = target()
+      .recoverWith({
+        remediate: () => {
+          fixes++;
+          return { retry: true };
+        },
+      })
+      .recoverAttempts(3)
+      .executes(() => {
+        bodyRuns++;
+        throw new Error("never fixed");
+      });
+  }
+  const b = new B();
+  discoverTargets(b);
+  const result = await execute(b, b.work, silent);
+  assertEquals(result.ok, false);
+  assertEquals(fixes, 3); // one remediation per attempt
+  assertEquals(bodyRuns, 4); // initial run + one re-run per attempt
+});
+
+Deno.test("recovery heals on a later attempt", async () => {
+  let bodyRuns = 0;
+  class B extends Build {
+    work = target()
+      .recoverWith({ remediate: () => ({ retry: true }) })
+      .recoverAttempts(3)
+      .executes(() => {
+        bodyRuns++;
+        if (bodyRuns < 3) throw new Error("not yet");
+      });
+  }
+  const b = new B();
+  discoverTargets(b);
+  const result = await execute(b, b.work, silent);
+  assertEquals(result.ok, true);
+  assertEquals(bodyRuns, 3);
+});
+
+Deno.test("a throwing remediation never masks the build failure", async () => {
+  class B extends Build {
+    work = target()
+      .recoverWith({
+        remediate: () => {
+          throw new Error("fixer crashed");
+        },
+      })
+      .executes(() => {
+        throw new Error("original failure");
+      });
+  }
+  const b = new B();
+  discoverTargets(b);
+  const result = await execute(b, b.work, silent);
+  assertEquals(result.ok, false);
+  assertEquals(messageOf(result.error).includes("original failure"), true);
+});
+
+Deno.test("a build-level recoverWith heals a target with no per-target one", async () => {
+  let pass = false;
+  const fixer = {
+    remediate: () => {
+      pass = true;
+      return { retry: true };
+    },
+  };
+  class B extends Build {
+    override recoverWith() {
+      return [fixer];
+    }
+    work = target().executes(() => {
+      if (!pass) throw new Error("boom");
+    });
+  }
+  const b = new B();
+  discoverTargets(b);
+  const result = await execute(b, b.work, silent);
+  assertEquals(result.ok, true);
+});
+
+Deno.test("per-target recoverWith runs before the build-level one", async () => {
+  const order: string[] = [];
+  let healed = false;
+  class B extends Build {
+    override recoverWith() {
+      return [{
+        remediate: () => {
+          order.push("global");
+          healed = true;
+          return { retry: true };
+        },
+      }];
+    }
+    work = target()
+      .recoverWith({
+        remediate: () => {
+          order.push("target");
+          return { retry: false };
+        },
+      })
+      .executes(() => {
+        if (!healed) throw new Error("boom");
+      });
+  }
+  const b = new B();
+  discoverTargets(b);
+  const result = await execute(b, b.work, silent);
+  assertEquals(result.ok, true);
+  assertEquals(order, ["target", "global"]); // target's own first, then global
+});
+
+Deno.test("recoverWith only runs after a body failure, not on success", async () => {
+  let fixed = false;
+  class B extends Build {
+    work = target()
+      .recoverWith({ remediate: () => ({ retry: fixed = true }) })
+      .executes(() => {});
+  }
+  const b = new B();
+  discoverTargets(b);
+  const result = await execute(b, b.work, silent);
+  assertEquals(result.ok, true);
+  assertEquals(fixed, false);
 });

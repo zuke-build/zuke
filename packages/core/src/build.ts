@@ -9,7 +9,7 @@
  * targets under a dotted path (e.g. `release.publish`).
  */
 
-import { Group, TargetBuilder } from "./target.ts";
+import { Group, type Remediation, TargetBuilder } from "./target.ts";
 
 /** Whether a value is a plain object (a component bundle), not a class instance. */
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -70,6 +70,27 @@ export class Build {
 
   /** Called after each target settles, with its final status. */
   onTargetEnd(_name: string, _status: TargetStatus): void | Promise<void> {}
+
+  /**
+   * Remediations applied to **every** target, running after each target's own
+   * {@link "./target.ts".TargetBuilder.recoverWith} when its body fails. Override
+   * to attach a global AI fixer once instead of repeating it per target; the
+   * default is none. Both styles compose — a target's own remediations run
+   * first, then these.
+   *
+   * ```ts
+   * class CI extends Build {
+   *   key = parameter("OpenAI API key").secret();
+   *   override recoverWith() {
+   *     return [aiFixer((f) => f.provider("openai").apiKey(this.key))];
+   *   }
+   *   lint = target().executes(() => DenoTasks.lint()); // healed globally
+   * }
+   * ```
+   */
+  recoverWith(): Remediation[] {
+    return [];
+  }
 }
 
 /**

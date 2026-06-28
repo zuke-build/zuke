@@ -51,6 +51,9 @@ export class DiffSettings {
   base_?: string;
   staged_ = false;
   text_?: string;
+  fetchRequested_ = false;
+  fetchRemote_ = "origin";
+  fetchBranch_?: string;
 
   /** Review the diff against `ref` (e.g. `"origin/main"`). */
   base(ref: string): this {
@@ -67,6 +70,21 @@ export class DiffSettings {
   /** Review a diff supplied directly, bypassing `git` (useful in tests). */
   text(diff: string): this {
     this.text_ = diff;
+    return this;
+  }
+
+  /**
+   * Fetch the base branch (a shallow, tag-less `git fetch`) before diffing, and
+   * diff against it — so CI needs no manual `git fetch` step. With no `branch`,
+   * the base is auto-detected from the CI environment (GitHub's `GITHUB_BASE_REF`
+   * — the pull request's base branch). Honoured by the {@link
+   * "./fixer.ts".AiFixer}; if the fetch fails it falls back to the working-tree
+   * diff.
+   */
+  fetchBase(branch?: string, remote = "origin"): this {
+    this.fetchRequested_ = true;
+    this.fetchBranch_ = branch;
+    this.fetchRemote_ = remote;
     return this;
   }
 

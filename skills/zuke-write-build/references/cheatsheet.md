@@ -26,6 +26,7 @@ Everything is optional except a body (`.executes`).
 | `.always()` | Run even after the build failed (cleanup/teardown). |
 | `.unlisted()` | Hide from `--list`/`--help`; still runnable by name. |
 | `.validateBefore(...v)` / `.validateAfter(...v)` | Run `Validation` checks around the body; a throw fails the target. |
+| `.recoverWith(...r)` / `.recoverAttempts(n)` | Run `Remediation`s if the body fails (self-healing); re-run when one asks to. See AI section. |
 | `.partOf(group)` | Join a parallel batch (see `group()`). |
 | `.produces(...p)` / `.consumes(...t)` | Declare and consume artifact paths. |
 
@@ -98,12 +99,60 @@ the full task list and settings methods of each):
 | `@zuke/jest`, `@zuke/vitest`, `@zuke/playwright`, `@zuke/cypress` | `*Tasks` | test runners |
 | `@zuke/kubectl`, `@zuke/helm`, `@zuke/terraform`, `@zuke/tofu`, `@zuke/gcloud` | `*Tasks` | infra/deploy |
 | `@zuke/claude`, `@zuke/codex`, `@zuke/gemini` | `ClaudeTasks`, ... | headless AI CLIs |
+| `@zuke/ai` | `securityReviewer`, ..., `aiFixer` | AI review gates + self-healing (see below) |
 
 ```ts
 await DenoTasks.test((s) => s.allowAll().coverage("cov_profile"));
 await DenoTasks.fmt((s) => s.check().paths("mod.ts"));
 await CmdTasks.exec("my-tool", (s) => s.args("--flag", "value")); // no wrapper? use cmd
 ```
+
+## AI review & self-healing — `@zuke/ai`
+
+A model becomes part of the build graph two ways. Only the provider
+(`"claude"` | `"openai"` | `"gemini"`) and an API key (pass a `parameter().secret()`)
+are required; everything else is defaulted.
+
+**Review gate** — a reviewer is a `Validation`; attach with `.validateBefore` /
+`.validateAfter`. It scores the diff and breaks the build past a threshold.
+
+```ts
+import { securityReviewer } from "jsr:@zuke/ai";
+
+key = parameter("OpenAI API key").secret();
+review = securityReviewer((r) =>
+  r.provider("openai").apiKey(this.key).failWhen((g) => g.scoreAbove(8))
+);
+deploy = target().validateBefore(this.review).executes(() => {/* ... */});
+```
+
+Factories: `securityReviewer`, `secretsReviewer`, `correctnessReviewer`,
+`licenseReviewer`, `genericReviewer`.
+
+**Self-healing** — `aiFixer` is a `Remediation`; attach with `.recoverWith(...)`.
+On a failing body it diagnoses the failure and (safe default) posts the
+diagnosis + a committable, Copilot-style inline suggestion to the PR — writing
+no files. The build re-runs the real command to verify any applied fix.
+
+```ts
+import { aiFixer } from "jsr:@zuke/ai";
+
+// Per target:
+test = target()
+  .executes(() => DenoTasks.test((s) => s.allowAll()))
+  .recoverWith(aiFixer((f) => f.provider("openai").apiKey(this.key)));
+
+// Or globally — override recoverWith() to attach a fixer to EVERY target:
+override recoverWith() {
+  return [aiFixer((f) => f.provider("openai").apiKey(this.key))];
+}
+```
+
+Both compose: a target's own `.recoverWith(...)` runs first, then the build-level
+`recoverWith()`. Opt into changes with `.autoApply()` (path allowlist, file cap,
+local-only unless `.allowCI()`) and `.commitFixes()`; `.diff((d) => d.fetchBase())`
+fetches the PR base branch for context so CI needs no manual `git fetch`. Keys
+ride through `parameter().secret()`, which Zuke masks in CI output.
 
 ## Helpers from `@zuke/core`
 

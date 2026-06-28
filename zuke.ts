@@ -22,7 +22,12 @@ import {
   target,
 } from "@zuke/core";
 import { CommandTimeoutError } from "@zuke/core/shell";
-import { aiReviewWorkflow, genericReviewer, securityReviewer } from "@zuke/ai";
+import {
+  aiFixer,
+  aiReviewWorkflow,
+  genericReviewer,
+  securityReviewer,
+} from "@zuke/ai";
 import { type DenoInstallSettings, DenoTasks } from "@zuke/deno";
 import { CspellTasks } from "@zuke/cspell";
 import { isPublished } from "@zuke/jsr";
@@ -217,8 +222,30 @@ class ZukeBuild extends Build {
       await DenoTasks.fmt((s) => s.check());
     });
 
+  // The OpenAI key (org secret OPENAI_API_KEY) is shared by the AI security
+  // review below and the lint self-healing fixer here. Declared above `lint`
+  // because a target field can only reference siblings declared above it.
+  openaiKey = parameter("OpenAI API key for the AI review and lint fixer")
+    .secret()
+    .env("OPENAI_API_KEY");
+
   lint = target()
     .description("Lint the workspace (deno lint)")
+    // Self-heal lint failures with @zuke/ai. On a failing `deno lint`, the fixer
+    // sends the error output and the PR diff to OpenAI and posts a diagnosis
+    // plus a proposed patch as a PR comment and job summary — its safe default,
+    // which writes no files. A missing key (e.g. local runs) is skipped cleanly,
+    // and the lint failure still stands.
+    .recoverWith(
+      aiFixer((f) =>
+        f
+          .provider("openai")
+          .apiKey(this.openaiKey)
+          // Fetch the PR base branch itself (auto-detected from the CI env) for
+          // diff context — no manual `git fetch` step in the workflow.
+          .diff((d) => d.fetchBase())
+      ),
+    )
     .executes(async () => {
       await DenoTasks.lint();
     });
@@ -247,8 +274,14 @@ class ZukeBuild extends Build {
     .description("Run the test suite with coverage")
     .dependsOn(this.check)
     .executes(async () => {
+      // Blank GITHUB_STEP_SUMMARY for the test subprocess: tests that exercise
+      // the job-summary and AI-reviewer/fixer code paths would otherwise append
+      // to the real Actions summary, polluting it. The parent `./zuke ci` run
+      // keeps the env var and still writes the build table and any fixer section.
       await DenoTasks.test((s) =>
-        s.allowAll().coverage("cov_profile").args("--frozen")
+        s.allowAll().coverage("cov_profile").args("--frozen").env({
+          GITHUB_STEP_SUMMARY: "",
+        })
       );
     });
 
@@ -341,11 +374,8 @@ class ZukeBuild extends Build {
   // `skipIfKeyMissing()` skips a review (announcing it on the console and in the
   // summary) when its key is absent, e.g. on local runs. `onError("warn")` keeps
   // an API hiccup from breaking the build, and each assessment lands in the job
-  // summary and as a PR comment.
-  openaiKey = parameter("OpenAI API key for the AI security review")
-    .secret()
-    .env("OPENAI_API_KEY");
-
+  // summary and as a PR comment. The `openaiKey` parameter is declared above,
+  // beside the `lint` target that shares it.
   securityReview = securityReviewer((r) =>
     r
       .provider("openai")

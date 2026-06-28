@@ -141,6 +141,16 @@ class Pipeline extends Build {
 ```
 @module
 
+function aiFixer(configure?: Configure<AiFixer>): AiFixer
+  Construct an {@link AiFixer} and apply the configuration lambda. Plug the
+  result into a target with `.recoverWith(...)`:
+
+  ```ts
+  test = target()
+    .executes(() => DenoTasks.test((s) => s.allowAll()))
+    .recoverWith(aiFixer((f) => f.provider("claude").apiKey(this.key)));
+  ```
+
 function aiReviewWorkflow(spec: AiReviewWorkflowSpec): CiFile
   Declare a generated AI-review workflow on the build. The returned
   {@link CiFile} is automatically discovered by `discoverCiFiles` and kept on
@@ -176,6 +186,88 @@ function secretsReviewer(configure?: Configure<Reviewer>): Reviewer
 function securityReviewer(configure?: Configure<Reviewer>): Reviewer
   A reviewer that scores the diff for security vulnerabilities.
 
+class AiFixer implements Remediation
+  A fluent AI fixer. Construct one via {@link aiFixer}, configure it, and attach
+  it to a target with `.recoverWith(...)`. Only `.provider(...)` and
+  `.apiKey(...)` are required; everything else defaults.
+
+  name: string
+    A name for diagnostics — `"AI fix"`.
+  provider(provider: Provider): this
+    Set the model provider (required).
+  apiKey(apiKey: AnyParameter | string): this
+    Set the API key, from a secret parameter or a literal string (required).
+  model(model: string): this
+    Override the model (default: the provider's recommended model).
+  effort(effort: Effort): this
+    Set the thinking-effort hint (honoured by Claude; ignored elsewhere).
+  criteria(criteria: string): this
+    Project-specific notes appended to the prompt (idioms, constraints).
+  conventions(text: string): this
+    Supply the project conventions text directly, instead of letting the fixer
+    read `CLAUDE.md`/`AGENTS.md`. Pass an empty string to send none.
+  diff(configure: Configure<DiffSettings>): this
+    Configure the diff source used for context (default: the working tree).
+  include(...globs: string[]): this
+    Only include diff sections matching these globs in the prompt context.
+  exclude(...globs: string[]): this
+    Exclude diff sections matching these globs from the prompt context.
+  maxDiffTokens(tokens: number): this
+    Cap the context diff at roughly this many tokens (default 16000).
+  autoApply(): this
+    Apply the proposed fix to the working tree and ask the executor to re-run
+    the target. Off by default (the fixer only diagnoses). Writes are confined
+    by {@link allowPaths}, the built-in exclusions, and {@link maxEdits}, and
+    are refused on CI unless {@link allowCI} is set.
+  allowPaths(...globs: string[]): this
+    Restrict applied edits to paths matching these globs (default: all).
+  excludePaths(...globs: string[]): this
+    Exclude paths matching these globs from edits, on top of the built-ins.
+  maxEdits(count: number): this
+    Cap how many files a single applied fix may touch (default 10).
+  allowCI(): this
+    Permit auto-apply (and committing) on CI; off by default.
+  commitFixes(): this
+    After applying a fix, stage it, commit it, and push to the current branch —
+    so a healed pull request carries the fix as a commit. Implies
+    {@link autoApply}. Requires a checkout that can push (a non-detached branch
+    with credentials); a failed push is reported, not fatal.
+  commitMessage(message: string): this
+    Override the commit subject used by {@link commitFixes}.
+  noPush(): this
+    Commit the fix but do not push it (leave it staged in a local commit).
+  comment(): this
+    Also post the diagnosis/fix as a PR comment (on by default).
+  noComment(): this
+    Do not post a PR comment (the job summary is still written).
+  suggest(): this
+    On GitHub, post each code location as an inline review comment with a
+    committable `suggestion` block (the Copilot-style suggestion) instead
+    of a single overview comment. On by default; a no-op off GitHub or when the
+    model reports no specific locations, where the overview comment is used.
+  noSuggest(): this
+    Post a single overview comment instead of inline GitHub suggestions.
+  commentToken(token: AnyParameter | string): this
+    The token used to post the PR comment (defaults to the host's env var).
+  retry(options: RetryOptions): this
+    Retry the provider call on transient failures (see {@link RetryOptions}).
+  quiet(): this
+    Suppress the console printout (the summary/comment are still written).
+  fetch(impl: typeof fetch): this
+    The `fetch` implementation for the API call (test seam).
+  exec(run: (argv: string[]) => Promise<string>): this
+    The `git` runner used for the diff and commit (test seam).
+  write(impl: (path: string, content: string) => Promise<void>): this
+    The file writer used when applying edits (test seam).
+  readFile(impl: (path: string) => Promise<string | undefined>): this
+    The convention-file reader (test seam).
+  env(reader: EnvReader): this
+    The environment reader used to detect CI and the comment host (test seam).
+  async remediate(context: RemediationContext): Promise<RemediationResult>
+    Diagnose the failure and, when permitted, apply (and commit) the fix. Always
+    reports; returns `{ retry: true }` only when it changed the working tree so
+    the executor re-runs the target as the verifier.
+
 class AiReviewError extends Error
   Raised when a reviewer is misconfigured, the API fails, or the gate trips.
 
@@ -188,12 +280,22 @@ class DiffSettings
   base_?: string
   staged_: boolean
   text_?: string
+  fetchRequested_: boolean
+  fetchRemote_: string
+  fetchBranch_?: string
   base(ref: string): this
     Review the diff against `ref` (e.g. `"origin/main"`).
   staged(): this
     Review the staged changes (`git diff --cached`).
   text(diff: string): this
     Review a diff supplied directly, bypassing `git` (useful in tests).
+  fetchBase(branch?: string, remote: string): this
+    Fetch the base branch (a shallow, tag-less `git fetch`) before diffing, and
+    diff against it — so CI needs no manual `git fetch` step. With no `branch`,
+    the base is auto-detected from the CI environment (GitHub's `GITHUB_BASE_REF`
+    — the pull request's base branch). Honoured by the {@link
+    "./fixer.ts".AiFixer}; if the fetch fails it falls back to the working-tree
+    diff.
   argv_(): string[]
     The `git` argv this diff source resolves to.
 
@@ -331,6 +433,44 @@ interface AssessmentFinding
   detail?: string
     A longer explanation, if provided.
 
+interface FileEdit
+  A whole-file edit: the complete new contents of one file.
+
+  path: string
+    Repository-relative path of the file to write.
+  content: string
+    The complete new contents of the file (not a patch).
+
+interface Fix
+  The structured result of a fix attempt.
+
+  diagnosis: string
+    A one-line explanation of what failed and why.
+  rootCause: string
+    The underlying root cause the fix addresses.
+  confidence: Confidence
+    The model's confidence that the edits resolve the failure.
+  locations: FixLocation[]
+    The specific code locations the fix targets, with verbatim source.
+  edits: FileEdit[]
+    The whole-file edits that, applied together, should fix the failure.
+
+interface FixLocation
+  A specific code location the fix targets: the exact offending source quoted
+  verbatim, its file and line(s), and the suggested replacement. Rendered as a
+  diff in the report so the comment shows real code, not just prose.
+
+  file: string
+    Repository-relative path of the file.
+  line: number
+    The 1-based line where the offending code starts.
+  endLine?: number
+    The 1-based line where it ends, when it spans more than one line.
+  code: string
+    The exact offending source line(s), quoted verbatim.
+  suggestion?: string
+    The suggested replacement for {@link code} (empty means delete it).
+
 interface RetryInfo
   What happened before a retry, for {@link RetryOptions.onRetry}.
 
@@ -370,6 +510,9 @@ interface Usage
 
 type AssessmentType = "generic" | "security" | "secrets" | "correctness" | "license"
   The kind of review an assessment performs.
+
+type Confidence = "low" | "medium" | "high"
+  The model's confidence that a fix is correct.
 
 type Effort = "low" | "medium" | "high" | "xhigh" | "max"
   The thinking-depth hint passed to providers that support it (Claude).
