@@ -269,7 +269,13 @@ function writeJobSummary(
   }
   if (path === undefined || path === "") return;
   try {
-    Deno.writeTextFileSync(path, jobSummaryMarkdown(reports, totalMs, ok));
+    // Append, not overwrite: validations like the AI reviewers/fixer write their
+    // own sections to this same file during the run, and overwriting here would
+    // wipe them. GitHub provisions a fresh summary file per step, so a single
+    // run's appends never accumulate across steps.
+    Deno.writeTextFileSync(path, jobSummaryMarkdown(reports, totalMs, ok), {
+      append: true,
+    });
   } catch {
     // Best-effort: an unwritable summary file must never fail the build.
   }

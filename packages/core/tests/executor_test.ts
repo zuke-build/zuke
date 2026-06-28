@@ -391,6 +391,38 @@ Deno.test("github mode appends a Markdown job summary (default console)", async 
   }
 });
 
+Deno.test("the job summary is appended, preserving content written during the run", async () => {
+  class B extends Build {
+    // A validation writes its own summary section before the body, the way the
+    // AI reviewers/fixer do; the build table must not overwrite it.
+    work = target()
+      .validateBefore({
+        validate: () => {
+          const path = Deno.env.get("GITHUB_STEP_SUMMARY");
+          if (path !== undefined) {
+            Deno.writeTextFileSync(path, "## AI section\n", { append: true });
+          }
+        },
+      })
+      .executes(() => {});
+  }
+  const build = new B();
+  discoverTargets(build);
+  const tmp = await Deno.makeTempFile();
+  try {
+    await withEnv("GITHUB_STEP_SUMMARY", tmp, async () => {
+      await withSilencedConsole(() =>
+        execute(build, build.work, { github: true })
+      );
+    });
+    const md = await Deno.readTextFile(tmp);
+    assertEquals(md.includes("## AI section"), true); // not wiped
+    assertEquals(md.includes("Zuke build"), true); // table appended after
+  } finally {
+    await Deno.remove(tmp);
+  }
+});
+
 Deno.test("the job summary is NOT written when output is redirected or silent", async () => {
   const { reporter } = recorder();
   class B extends Build {
