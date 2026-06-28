@@ -1,0 +1,92 @@
+/**
+ * Applying a {@link "./fix.ts".Fix}'s edits to the working tree, behind safety
+ * guards: a path allowlist, a set of always-excluded paths, and a cap on the
+ * number of files touched. Edits are validated as a set first — if any single
+ * edit is disallowed, nothing is written (no partial application).
+ *
+ * @module
+ */
+
+import { globToRegExp } from "@zuke/core";
+import type { FileEdit } from "./fix.ts";
+import { AiReviewError } from "./errors.ts";
+
+/**
+ * Paths a fix may never write, regardless of the allowlist: lockfiles, the git
+ * directory, CI workflow definitions, key material, and env files.
+ */
+export const DEFAULT_FIX_EXCLUDES: string[] = [
+  "**/*.lock",
+  ".git/**",
+  "**/.github/workflows/**",
+  "**/*.pem",
+  "**/.env",
+  "**/.env.*",
+];
+
+/** The guards governing which edits may be written, and how many. */
+export interface ApplyGuards {
+  /** Allowlist globs an edit's path must match (default: everything). */
+  allow: string[];
+  /** Extra globs to exclude, on top of {@link DEFAULT_FIX_EXCLUDES}. */
+  exclude: string[];
+  /** Maximum number of files a single fix may touch. */
+  maxEdits: number;
+}
+
+/** Whether `path` matches any of the glob `patterns`. */
+function matchesAny(patterns: string[], path: string): boolean {
+  return patterns.some((p) => globToRegExp(p).test(path));
+}
+
+/** Normalise an edit path to a clean, repo-relative form, or reject it. */
+function normalizePath(path: string): string {
+  const trimmed = path.replace(/^\.\//, "");
+  if (trimmed.startsWith("/") || trimmed.split("/").includes("..")) {
+    throw new AiReviewError(`refusing to write outside the repo: ${path}`);
+  }
+  return trimmed;
+}
+
+/**
+ * Validate the full edit set against the guards, throwing an
+ * {@link AiReviewError} naming the first violation. Returns the normalised
+ * paths in order when every edit is allowed.
+ */
+export function checkEdits(edits: FileEdit[], guards: ApplyGuards): string[] {
+  if (edits.length > guards.maxEdits) {
+    throw new AiReviewError(
+      `fix touches ${edits.length} files, over the limit of ${guards.maxEdits}`,
+    );
+  }
+  const excludes = [...DEFAULT_FIX_EXCLUDES, ...guards.exclude];
+  const allow = guards.allow.length > 0 ? guards.allow : ["**"];
+  return edits.map((edit) => {
+    const path = normalizePath(edit.path);
+    if (matchesAny(excludes, path)) {
+      throw new AiReviewError(`refusing to write an excluded path: ${path}`);
+    }
+    if (!matchesAny(allow, path)) {
+      throw new AiReviewError(`path is outside the allowlist: ${path}`);
+    }
+    return path;
+  });
+}
+
+/**
+ * Validate and apply the edits, writing each file's full new contents. Returns
+ * the list of written paths. Throws (writing nothing) when any edit violates a
+ * guard. The `write` seam is overridable for tests.
+ */
+export async function applyEdits(
+  edits: FileEdit[],
+  guards: ApplyGuards,
+  write: (path: string, content: string) => Promise<void> = (p, c) =>
+    Deno.writeTextFile(p, c),
+): Promise<string[]> {
+  const paths = checkEdits(edits, guards);
+  for (let i = 0; i < edits.length; i++) {
+    await write(paths[i], edits[i].content);
+  }
+  return paths;
+}

@@ -380,6 +380,51 @@ async function runBody(t: TargetBuilder): Promise<void> {
 }
 
 /**
+ * Run the target body, and if it fails, hand the failure to each configured
+ * {@link TargetBuilder.recoverWith} remediation in turn. When any remediation
+ * asks to retry, the body is re-run; this repeats up to
+ * {@link TargetBuilder.recoverAttempts} times. The body finally passing resolves
+ * normally; otherwise the last failure propagates. A remediation that throws is
+ * treated as "could not heal" — it never masks the original build failure.
+ */
+async function runBodyWithRecovery(
+  t: TargetBuilder,
+  name: string,
+): Promise<void> {
+  try {
+    await runBody(t);
+    return;
+  } catch (error) {
+    if (t.recoverWith_.length === 0) throw error;
+    let lastError = error;
+    for (let attempt = 1; attempt <= t.recoverAttempts_; attempt++) {
+      let willRetry = false;
+      for (const r of t.recoverWith_) {
+        try {
+          const result = await r.remediate({
+            target: name,
+            attempt,
+            error: lastError,
+          });
+          if (result.retry) willRetry = true;
+        } catch {
+          // A throwing remediation counts as "could not heal"; keep the build
+          // error intact rather than surfacing the remediation's own failure.
+        }
+      }
+      if (!willRetry) break;
+      try {
+        await runBody(t);
+        return;
+      } catch (retryError) {
+        lastError = retryError;
+      }
+    }
+    throw lastError;
+  }
+}
+
+/**
  * Run one target: honour its `onlyWhen` conditions and the incremental cache,
  * then (if it must run) open its section, run its body, and report pass/fail.
  * A condition that fails yields `skipped`; an up-to-date target yields `cached`
@@ -436,7 +481,7 @@ async function runTarget(
 
   try {
     for (const v of t.validateBefore_) await v.validate({ target: name });
-    await runBody(t);
+    await runBodyWithRecovery(t, name);
     for (const v of t.validateAfter_) await v.validate({ target: name });
     const ms = performance.now() - start;
     if (cache !== undefined) await cache.record(t);

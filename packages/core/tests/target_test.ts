@@ -202,3 +202,17 @@ Deno.test("discovery rejects a target bound to two names", () => {
   }
   assertThrows(() => discoverTargets(new B()), Error, "two names");
 });
+
+Deno.test("recoverWith records remediations; recoverAttempts defaults to 1", () => {
+  const a = { remediate: () => ({ retry: false }) };
+  const b = { remediate: () => ({ retry: true }) };
+  const t = target().recoverWith(a).recoverWith(b);
+  assertEquals(t.recoverWith_, [a, b]);
+  assertEquals(t.recoverAttempts_, 1);
+});
+
+Deno.test("recoverAttempts clamps to at least 1 and floors fractions", () => {
+  assertEquals(target().recoverAttempts(0).recoverAttempts_, 1);
+  assertEquals(target().recoverAttempts(-5).recoverAttempts_, 1);
+  assertEquals(target().recoverAttempts(2.9).recoverAttempts_, 2);
+});
