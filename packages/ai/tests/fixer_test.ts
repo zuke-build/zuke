@@ -309,14 +309,18 @@ Deno.test("checkEdits enforces the allowlist, exclusions, traversal, and the cap
     threw = true;
   }
   assertEquals(threw, true);
-  // Path traversal — POSIX, Windows backslashes, and drive/UNC absolutes.
+  // Path traversal — POSIX, Windows backslashes, drive/UNC absolutes, and `..`
+  // that escapes the repo root even after resolving in-repo segments.
   for (
     const hostile of [
       "../etc/passwd",
       "..\\..\\evil.ts",
       "src\\..\\..\\evil.ts",
+      "a/b/../../../etc/passwd",
       "C:\\Windows\\system32",
       "\\\\server\\share\\x",
+      "", // empty
+      "./.", // resolves to nothing
     ]
   ) {
     let rejected = false;
@@ -331,6 +335,15 @@ Deno.test("checkEdits enforces the allowlist, exclusions, traversal, and the cap
     }
     assertEquals(rejected, true);
   }
+  // In-repo `..` and `.` are resolved (canonicalised), not rejected.
+  assertEquals(
+    checkEdits([{ path: "packages/a/../b/./c.ts", content: "" }], {
+      allow: ["**"],
+      exclude: [],
+      maxEdits: 5,
+    }),
+    ["packages/b/c.ts"],
+  );
   // Over the file cap.
   threw = false;
   try {

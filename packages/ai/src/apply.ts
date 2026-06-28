@@ -40,22 +40,38 @@ function matchesAny(patterns: string[], path: string): boolean {
 }
 
 /**
- * Normalise an edit path to a clean, repo-relative form, or reject it. Windows
- * back-slashes are unified to `/` first so the traversal guards can't be
- * bypassed with `..\..\` or a `C:\`/UNC path on Windows.
+ * Canonicalise an edit path to a clean, repo-relative form, or reject it.
+ * Back-slashes are unified to `/` first (so Windows `..\..\` / `C:\` / UNC paths
+ * can't bypass the guards), then `.`/`..` segments are fully resolved: an
+ * absolute path, a Windows drive, or any `..` that escapes the repo root is
+ * rejected outright rather than written.
  */
 function normalizePath(path: string): string {
   const unified = path.replaceAll("\\", "/");
-  const trimmed = unified.replace(/^\.\//, "");
   if (
-    trimmed === "" ||
-    trimmed.startsWith("/") || // POSIX-absolute, or a `\\…` UNC path
-    /^[A-Za-z]:/.test(trimmed) || // a Windows drive (e.g. `C:\…`)
-    trimmed.split("/").includes("..") // any parent-directory segment
+    unified === "" ||
+    unified.startsWith("/") || // POSIX-absolute, or a `\\…` UNC path
+    /^[A-Za-z]:/.test(unified) // a Windows drive (e.g. `C:\…`)
   ) {
     throw new AiReviewError(`refusing to write outside the repo: ${path}`);
   }
-  return trimmed;
+  const segments: string[] = [];
+  for (const segment of unified.split("/")) {
+    if (segment === "" || segment === ".") continue;
+    if (segment === "..") {
+      // A `..` with nothing to pop would resolve above the repo root.
+      if (segments.length === 0) {
+        throw new AiReviewError(`refusing to write outside the repo: ${path}`);
+      }
+      segments.pop();
+      continue;
+    }
+    segments.push(segment);
+  }
+  if (segments.length === 0) {
+    throw new AiReviewError(`refusing to write outside the repo: ${path}`);
+  }
+  return segments.join("/");
 }
 
 /**
