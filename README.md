@@ -201,12 +201,16 @@ model a first-class citizen of the build graph, two ways:
   assessment (score, severity, findings), writes it to the job summary and the
   pull request, and **breaks the build** when the risk crosses a threshold you
   choose. The output is a typed verdict, not a blob of prose.
-- **Self-healing builds** — attach `aiFixer` to any target with
-  `.recoverWith(...)`. When the target fails, the fixer diagnoses the failure
-  from the error output and the diff and posts a **committable, Copilot-style
-  inline suggestion** to the PR. Opt into `.autoApply()` / `.commitFixes()` and
-  it fixes the working tree, commits, and **re-runs the real command to
-  verify** — a fix only counts when the build actually goes green.
+- **Self-healing builds** — attach a fixer to any target with
+  `.recoverWith(...)`. When the target fails, `aiFixer` diagnoses it from the
+  error output and the diff and (diagnose-only default) posts a **committable,
+  Copilot-style inline suggestion** to the PR. Opt into `.autoApply()` /
+  `.commitFixes()` and it fixes the working tree, commits, and **re-runs the
+  real command to verify** — a fix only counts when the build actually goes
+  green — posting an overview of what it changed instead of a suggestion.
+- **Agent delegation** — for open-ended fixes, `agentFixer` hands the failure to
+  a coding agent you inject (Claude Code, Codex, Gemini CLI) which edits files
+  itself; one generic fixer, agent chosen at the call site.
 
 ```ts
 test = target()
@@ -215,6 +219,7 @@ test = target()
   .recoverWith(aiFixer((f) => f.provider("openai").apiKey(this.key)));
 ```
 
+Apply a fixer to **every** target by overriding `recoverWith()` on the build.
 Safe by default (provider + key only): the fixer writes no files and just
 diagnoses. Edits are gated behind a path allowlist, a file cap, and local-only
 defaults, and nothing is committed unless you ask. See
@@ -228,9 +233,9 @@ right way — using the typed `*Tasks` wrappers instead of guessing the API or
 shelling out. Two skills, authored once as portable
 [`SKILL.md`](https://agentskills.io) folders under [`skills/`](./skills):
 
-| Skill | Use it to |
-| ----------------- | ----------------------------------------------------------- |
-| `zuke-setup` | Scaffold Zuke into a project (`zuke setup`, the `./zuke` launcher, a first build). |
+| Skill              | Use it to                                                                                    |
+| ------------------ | -------------------------------------------------------------------------------------------- |
+| `zuke-setup`       | Scaffold Zuke into a project (`zuke setup`, the `./zuke` launcher, a first build).           |
 | `zuke-write-build` | Write or edit a `zuke.ts` — add targets, wire dependencies, call tool wrappers, generate CI. |
 
 ### Claude Code
