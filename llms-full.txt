@@ -5108,6 +5108,13 @@ class AiFixer implements Remediation
     Also post the diagnosis/fix as a PR comment (on by default).
   noComment(): this
     Do not post a PR comment (the job summary is still written).
+  suggest(): this
+    On GitHub, post each code location as an inline review comment with a
+    committable `suggestion` block (the Copilot-style suggestion) instead
+    of a single overview comment. On by default; a no-op off GitHub or when the
+    model reports no specific locations, where the overview comment is used.
+  noSuggest(): this
+    Post a single overview comment instead of inline GitHub suggestions.
   commentToken(token: AnyParameter | string): this
     The token used to post the PR comment (defaults to the host's env var).
   retry(options: RetryOptions): this
@@ -5296,13 +5303,31 @@ interface Fix
   The structured result of a fix attempt.
 
   diagnosis: string
-    A plain-English explanation of what failed and why.
+    A one-line explanation of what failed and why.
   rootCause: string
     The underlying root cause the fix addresses.
   confidence: Confidence
     The model's confidence that the edits resolve the failure.
+  locations: FixLocation[]
+    The specific code locations the fix targets, with verbatim source.
   edits: FileEdit[]
     The whole-file edits that, applied together, should fix the failure.
+
+interface FixLocation
+  A specific code location the fix targets: the exact offending source quoted
+  verbatim, its file and line(s), and the suggested replacement. Rendered as a
+  diff in the report so the comment shows real code, not just prose.
+
+  file: string
+    Repository-relative path of the file.
+  line: number
+    The 1-based line where the offending code starts.
+  endLine?: number
+    The 1-based line where it ends, when it spans more than one line.
+  code: string
+    The exact offending source line(s), quoted verbatim.
+  suggestion?: string
+    The suggested replacement for {@link code} (empty means delete it).
 
 interface RetryInfo
   What happened before a retry, for {@link RetryOptions.onRetry}.

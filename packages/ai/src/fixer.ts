@@ -22,8 +22,10 @@ import {
 import type { Configure } from "@zuke/core/tooling";
 import { Command, CommandError } from "@zuke/core/shell";
 import type { Effort, Provider, Usage } from "./types.ts";
-import { type Fix, parseFix } from "./fix.ts";
+import { type Fix, type FixLocation, parseFix } from "./fix.ts";
 import { FIX_GEMINI_SCHEMA, FIX_JSON_SCHEMA } from "./fix_schema.ts";
+import { resolveGithubContext } from "./hosts/github.ts";
+import { postSuggestions } from "./hosts/github_review.ts";
 import {
   DEFAULT_EXCLUDES,
   DiffSettings,
@@ -57,6 +59,19 @@ export async function readTextOrUndefined(
   } catch {
     return undefined;
   }
+}
+
+/**
+ * The body of an inline review comment for one location: the diagnosis plus a
+ * committable `suggestion` block. An empty suggestion produces an empty
+ * block, which GitHub renders as a deletion of the targeted lines.
+ */
+function suggestionBody(diagnosis: string, loc: FixLocation): string {
+  const suggestion = loc.suggestion ?? "";
+  const block = suggestion === ""
+    ? ["```suggestion", "```"]
+    : ["```suggestion", suggestion, "```"];
+  return [diagnosis, "", ...block].join("\n");
 }
 
 /** Extract the failed command and its output from a target's error. */
@@ -97,6 +112,7 @@ export class AiFixer implements Remediation {
   #commitMessage?: string;
   #push = true;
   #comment = true;
+  #suggest = true;
   #commentToken?: AnyParameter | string;
   #retry?: RetryOptions;
   #quiet = false;
@@ -243,6 +259,23 @@ export class AiFixer implements Remediation {
     return this;
   }
 
+  /**
+   * On GitHub, post each code location as an inline review comment with a
+   * committable `suggestion` block (the Copilot-style suggestion) instead
+   * of a single overview comment. On by default; a no-op off GitHub or when the
+   * model reports no specific locations, where the overview comment is used.
+   */
+  suggest(): this {
+    this.#suggest = true;
+    return this;
+  }
+
+  /** Post a single overview comment instead of inline GitHub suggestions. */
+  noSuggest(): this {
+    this.#suggest = false;
+    return this;
+  }
+
   /** The token used to post the PR comment (defaults to the host's env var). */
   commentToken(token: AnyParameter | string): this {
     this.#commentToken = token;
@@ -319,26 +352,67 @@ export class AiFixer implements Remediation {
     return undefined;
   }
 
-  /** Report the fix to the console, the job summary, and (if on) the PR. */
+  /**
+   * Report the fix to the console and the job summary, then post to the PR: as
+   * Copilot-style committable inline suggestions on GitHub when there are code
+   * locations, otherwise as a single overview comment.
+   */
   async #report(target: string, report: FixReport): Promise<void> {
     if (!this.#quiet) {
       for (const line of fixConsoleLines(this.name, target, report)) {
         console.log(line);
       }
     }
-    await this.#publish(fixMarkdown(this.name, target, report));
+    const markdown = fixMarkdown(this.name, target, report);
+    writeStepSummary(markdown);
+    if (!this.#comment) return;
+    if (this.#suggest && await this.#postSuggestions(report)) return;
+    await this.#postIssueComment(markdown);
   }
 
   /** Announce a skipped fix on the console, summary, and (if on) the PR. */
   async #reportSkip(target: string, reason: string): Promise<void> {
     if (!this.#quiet) console.log(fixSkipConsoleLine(this.name, reason));
-    await this.#publish(fixSkipMarkdown(this.name, target, reason));
+    const markdown = fixSkipMarkdown(this.name, target, reason);
+    writeStepSummary(markdown);
+    if (this.#comment) await this.#postIssueComment(markdown);
   }
 
-  /** Append `markdown` to the job summary and, if enabled, the PR comment. */
-  async #publish(markdown: string): Promise<void> {
-    writeStepSummary(markdown);
-    if (!this.#comment) return;
+  /**
+   * Post each code location as a GitHub inline review comment with a committable
+   * `suggestion` block. Returns whether at least one was posted (so the
+   * overview comment can be skipped). A no-op off GitHub or without locations.
+   */
+  async #postSuggestions(report: FixReport): Promise<boolean> {
+    if (detectCiHost(this.#env) !== "github") return false;
+    if (report.locations.length === 0) return false;
+    const token = this.#commentToken !== undefined
+      ? resolveKey(this.#commentToken)
+      : this.#env("GITHUB_TOKEN") ?? "";
+    const context = resolveGithubContext(token, this.#env);
+    if (context === undefined) return false;
+    const suggestions = report.locations.map((loc) => ({
+      path: loc.file,
+      line: loc.endLine ?? loc.line,
+      startLine: loc.line,
+      body: suggestionBody(report.diagnosis, loc),
+      key: `${loc.file}:${loc.line}`,
+    }));
+    try {
+      return (await postSuggestions(
+        context,
+        suggestions,
+        this.#fetch ?? fetch,
+      )) > 0;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(`[${this.name}] could not post suggestions: ${message}`);
+      return false;
+    }
+  }
+
+  /** Upsert the single overview comment via the active CI host. */
+  async #postIssueComment(markdown: string): Promise<void> {
     const host = detectReviewHost(this.#env);
     if (host === undefined) return;
     const token = this.#commentToken !== undefined

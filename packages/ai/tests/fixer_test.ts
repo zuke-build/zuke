@@ -5,6 +5,7 @@ import { checkEdits, DEFAULT_FIX_EXCLUDES } from "../src/apply.ts";
 import { parseFix } from "../src/fix.ts";
 import { readTextOrUndefined } from "../src/fixer.ts";
 import { commitAndPush } from "../src/commit.ts";
+import { fixMarkdown } from "../src/fix_report.ts";
 import type { RemediationContext } from "@zuke/core";
 
 /** A recorded fetch call. */
@@ -460,8 +461,8 @@ Deno.test("every fluent setter is chainable", () => {
       .criteria("strict").conventions("rules").include("src/**")
       .exclude("**/*.md").maxDiffTokens(100).autoApply().allowPaths("src/**")
       .excludePaths("dist/**").maxEdits(3).allowCI().commitFixes()
-      .commitMessage("m").noPush().comment().noComment().commentToken("t")
-      .retry({ attempts: 1 }).quiet()
+      .commitMessage("m").noPush().comment().noComment().suggest().noSuggest()
+      .commentToken("t").retry({ attempts: 1 }).quiet()
   );
   assertEquals(f instanceof AiFixer, true);
 });
@@ -529,6 +530,174 @@ Deno.test("criteria are passed through to the prompt", async () => {
     .quiet();
   await fixer.remediate(CTX);
   assertEquals(calls[0].body.includes("NO ANY"), true);
+});
+
+const FIX_WITH_LOC: Partial<Fix> = {
+  diagnosis: "Remove the unused constant.",
+  rootCause: "INTENTIONAL_LINT_BREAK is never used.",
+  confidence: "high",
+  locations: [{
+    file: "zuke.ts",
+    line: 42,
+    endLine: 45,
+    code: 'const INTENTIONAL_LINT_BREAK = "remove me";',
+    suggestion: "",
+  }],
+  edits: [{ path: "zuke.ts", content: "// fixed\n" }],
+};
+
+/** A fetch routing GitHub PR-detail, review-comment, and provider calls. */
+function suggestFetch(fixBody: string): { fetch: typeof fetch; calls: Call[] } {
+  const calls: Call[] = [];
+  const impl = ((input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    const method = init?.method ?? "GET";
+    calls.push({ url, body: typeof init?.body === "string" ? init.body : "" });
+    if (url.includes("api.github.com")) {
+      if (url.includes("/comments")) {
+        return Promise.resolve(
+          new Response(method === "GET" ? "[]" : "{}", {
+            status: method === "GET" ? 200 : 201,
+          }),
+        );
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify({ head: { sha: "abc123" } }), {
+          status: 200,
+        }),
+      );
+    }
+    return Promise.resolve(new Response(fixBody, { status: 200 }));
+  }) as typeof fetch;
+  return { fetch: impl, calls };
+}
+
+Deno.test("on GitHub with locations, posts inline suggestions, not an overview comment", async () => {
+  const { fetch, calls } = suggestFetch(claudeFix(FIX_WITH_LOC));
+  const prEnv: Record<string, string> = {
+    GITHUB_ACTIONS: "true",
+    GITHUB_REPOSITORY: "o/r",
+    GITHUB_REF: "refs/pull/7/merge",
+    GITHUB_TOKEN: "tok",
+  };
+  const fixer = aiFixer((f) => f.provider("claude").apiKey("k"))
+    .conventions("").diff((d) => d.text("")).env((n) => prEnv[n]).fetch(fetch)
+    .quiet();
+  await fixer.remediate(CTX);
+  const reviewPost = calls.find((c) => c.url.endsWith("/pulls/7/comments"));
+  if (reviewPost === undefined) throw new Error("no review comment posted");
+  assertEquals(reviewPost.body.includes("```suggestion"), true);
+  assertEquals(JSON.parse(reviewPost.body).start_line, 42);
+  // The overview issue comment is skipped when suggestions are posted.
+  assertEquals(calls.some((c) => c.url.includes("/issues/")), false);
+});
+
+Deno.test("noSuggest falls back to the overview comment on GitHub", async () => {
+  const { fetch, calls } = suggestFetch(claudeFix(FIX_WITH_LOC));
+  const prEnv: Record<string, string> = {
+    GITHUB_ACTIONS: "true",
+    GITHUB_REPOSITORY: "o/r",
+    GITHUB_REF: "refs/pull/7/merge",
+    GITHUB_TOKEN: "tok",
+  };
+  const fixer = aiFixer((f) => f.provider("claude").apiKey("k").noSuggest())
+    .conventions("").diff((d) => d.text("")).env((n) => prEnv[n]).fetch(fetch)
+    .quiet();
+  await fixer.remediate(CTX);
+  assertEquals(calls.some((c) => c.url.includes("/issues/")), true);
+  assertEquals(calls.some((c) => c.url.endsWith("/pulls/7/comments")), false);
+});
+
+Deno.test("parseFix reads locations with verbatim code and line numbers", () => {
+  const fix = parseFix(JSON.stringify({
+    diagnosis: "d",
+    rootCause: "r",
+    confidence: "high",
+    locations: [
+      { file: "a.ts", line: 10, endLine: 12, code: "x", suggestion: "y" },
+      { file: "b.ts", line: 3, code: "z" },
+      { file: "", line: 1, code: "bad" }, // empty file → dropped
+      { file: "c.ts", code: "no line" }, // missing line → dropped
+    ],
+    edits: [],
+  }));
+  assertEquals(fix.locations, [
+    { file: "a.ts", line: 10, endLine: 12, code: "x", suggestion: "y" },
+    { file: "b.ts", line: 3, code: "z" },
+  ]);
+});
+
+Deno.test("fixMarkdown renders each location as a file:line diff block", () => {
+  const md = fixMarkdown("AI fix", "lint", {
+    diagnosis: "Remove it.",
+    rootCause: "unused",
+    confidence: "high",
+    locations: [{
+      file: "zuke.ts",
+      line: 42,
+      endLine: 45,
+      code: "const X = 1;",
+    }],
+    files: ["zuke.ts"],
+    action: "diagnosed",
+  });
+  assertEquals(md.includes("#### `zuke.ts:42-45`"), true);
+  assertEquals(md.includes("```diff"), true);
+  assertEquals(md.includes("-const X = 1;"), true);
+});
+
+Deno.test("a single-line location with a replacement renders + and - lines", () => {
+  const md = fixMarkdown("AI fix", "lint", {
+    diagnosis: "Use const.",
+    rootCause: "let",
+    confidence: "medium",
+    locations: [{
+      file: "a.ts",
+      line: 7,
+      code: "let x = 1;",
+      suggestion: "const x = 1;",
+    }],
+    files: ["a.ts"],
+    action: "diagnosed",
+    usage: { inputTokens: 1, outputTokens: 2, totalTokens: 3 },
+  });
+  assertEquals(md.includes("#### `a.ts:7`"), true); // single line: no range
+  assertEquals(md.includes("-let x = 1;"), true);
+  assertEquals(md.includes("+const x = 1;"), true);
+  assertEquals(md.includes("**Tokens:**"), true);
+});
+
+Deno.test("a thrown suggestion post is caught and falls back to the overview", async () => {
+  const prEnv: Record<string, string> = {
+    GITHUB_ACTIONS: "true",
+    GITHUB_REPOSITORY: "o/r",
+    GITHUB_REF: "refs/pull/7/merge",
+    GITHUB_TOKEN: "tok",
+  };
+  const calls: string[] = [];
+  const impl = ((input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    calls.push(url);
+    if (url.includes("api.github.com")) {
+      // The PR-detail fetch (for the head sha) throws; the issue-comment GET/POST succeeds.
+      if (!url.includes("/comments")) {
+        return Promise.reject(new Error("network"));
+      }
+      const method = init?.method ?? "GET";
+      return Promise.resolve(
+        new Response(method === "GET" ? "[]" : "{}", { status: 200 }),
+      );
+    }
+    return Promise.resolve(
+      new Response(claudeFix(FIX_WITH_LOC), { status: 200 }),
+    );
+  }) as typeof fetch;
+  const fixer = aiFixer((f) => f.provider("claude").apiKey("k"))
+    .conventions("").diff((d) => d.text("")).env((n) => prEnv[n]).fetch(impl)
+    .quiet();
+  await fixer.remediate(CTX);
+  // Suggestion posting threw → fell back to the overview issue comment.
+  assertEquals(calls.some((u) => u.includes("/issues/")), true);
 });
 
 Deno.test("parseFix tolerates a non-array edits field", () => {

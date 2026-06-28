@@ -30,7 +30,7 @@ export type {
   Usage,
 } from "./src/types.ts";
 export { AiFixer, aiFixer } from "./src/fixer.ts";
-export type { Confidence, FileEdit, Fix } from "./src/fix.ts";
+export type { Confidence, FileEdit, Fix, FixLocation } from "./src/fix.ts";
 export { DiffSettings } from "./src/diff.ts";
 export { GateSettings } from "./src/gate.ts";
 export type { RetryInfo, RetryOptions } from "./src/retry.ts";

@@ -21,6 +21,21 @@ export const FIX_JSON_SCHEMA: Record<string, unknown> = {
     diagnosis: { type: "string" },
     rootCause: { type: "string" },
     confidence: { type: "string", enum: CONFIDENCE },
+    locations: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          file: { type: "string" },
+          line: { type: "integer" },
+          endLine: { type: ["integer", "null"] },
+          code: { type: "string" },
+          suggestion: { type: ["string", "null"] },
+        },
+        required: ["file", "line", "endLine", "code", "suggestion"],
+      },
+    },
     edits: {
       type: "array",
       items: {
@@ -34,7 +49,7 @@ export const FIX_JSON_SCHEMA: Record<string, unknown> = {
       },
     },
   },
-  required: ["diagnosis", "rootCause", "confidence", "edits"],
+  required: ["diagnosis", "rootCause", "confidence", "locations", "edits"],
 };
 
 /**
@@ -47,6 +62,20 @@ export const FIX_GEMINI_SCHEMA: Record<string, unknown> = {
     diagnosis: { type: "string" },
     rootCause: { type: "string" },
     confidence: { type: "string", enum: CONFIDENCE },
+    locations: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          file: { type: "string" },
+          line: { type: "integer" },
+          endLine: { type: "integer", nullable: true },
+          code: { type: "string" },
+          suggestion: { type: "string", nullable: true },
+        },
+        required: ["file", "line", "code"],
+      },
+    },
     edits: {
       type: "array",
       items: {
@@ -59,5 +88,5 @@ export const FIX_GEMINI_SCHEMA: Record<string, unknown> = {
       },
     },
   },
-  required: ["diagnosis", "rootCause", "confidence", "edits"],
+  required: ["diagnosis", "rootCause", "confidence", "locations", "edits"],
 };

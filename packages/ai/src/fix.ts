@@ -21,14 +21,34 @@ export interface FileEdit {
   content: string;
 }
 
+/**
+ * A specific code location the fix targets: the exact offending source quoted
+ * verbatim, its file and line(s), and the suggested replacement. Rendered as a
+ * diff in the report so the comment shows real code, not just prose.
+ */
+export interface FixLocation {
+  /** Repository-relative path of the file. */
+  file: string;
+  /** The 1-based line where the offending code starts. */
+  line: number;
+  /** The 1-based line where it ends, when it spans more than one line. */
+  endLine?: number;
+  /** The exact offending source line(s), quoted verbatim. */
+  code: string;
+  /** The suggested replacement for {@link code} (empty means delete it). */
+  suggestion?: string;
+}
+
 /** The structured result of a fix attempt. */
 export interface Fix {
-  /** A plain-English explanation of what failed and why. */
+  /** A one-line explanation of what failed and why. */
   diagnosis: string;
   /** The underlying root cause the fix addresses. */
   rootCause: string;
   /** The model's confidence that the edits resolve the failure. */
   confidence: Confidence;
+  /** The specific code locations the fix targets, with verbatim source. */
+  locations: FixLocation[];
   /** The whole-file edits that, applied together, should fix the failure. */
   edits: FileEdit[];
 }
@@ -52,6 +72,33 @@ function toEdits(value: unknown): FileEdit[] {
     }
   }
   return edits;
+}
+
+/** Build the location list from an unknown `locations` value. */
+function toLocations(value: unknown): FixLocation[] {
+  if (!Array.isArray(value)) return [];
+  const locations: FixLocation[] = [];
+  for (const item of value) {
+    const file = dig(item, "file");
+    const line = dig(item, "line");
+    const code = dig(item, "code");
+    if (
+      typeof file !== "string" || file === "" ||
+      typeof line !== "number" || typeof code !== "string"
+    ) {
+      continue;
+    }
+    const endLine = dig(item, "endLine");
+    const suggestion = dig(item, "suggestion");
+    locations.push({
+      file,
+      line,
+      code,
+      ...(typeof endLine === "number" ? { endLine } : {}),
+      ...(typeof suggestion === "string" ? { suggestion } : {}),
+    });
+  }
+  return locations;
 }
 
 /** Strip Markdown code fences and isolate the JSON object in a response. */
@@ -79,6 +126,7 @@ export function parseFix(text: string): Fix {
     diagnosis: typeof diagnosis === "string" ? diagnosis : "",
     rootCause: typeof rootCause === "string" ? rootCause : "",
     confidence: toConfidence(dig(raw, "confidence")),
+    locations: toLocations(dig(raw, "locations")),
     edits: toEdits(dig(raw, "edits")),
   };
 }

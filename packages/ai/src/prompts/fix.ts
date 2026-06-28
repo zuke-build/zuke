@@ -34,9 +34,13 @@ export function fixSystemPrompt(): string {
     `- Never edit lockfiles, CI workflow files, or generated artifacts. Never weaken or delete tests to force a pass; fix the underlying cause.`,
     `- If you cannot determine a safe, confident fix, return an empty "edits" array and explain why in the diagnosis.`,
     ``,
+    `Point to the exact code. For every problem, add a "locations" entry: the file, the 1-based line number(s) from the error output and diff, the OFFENDING SOURCE quoted VERBATIM (copy the exact characters, indentation included — do not paraphrase), and the suggested replacement ("suggestion": "" means delete those lines). Keep "diagnosis" to a single short sentence; the locations carry the detail.`,
+    ``,
     `Respond with ONLY a JSON object — no prose, no Markdown, no code fences — matching: ` +
-    `{"diagnosis": <one or two sentences, plain English>, "rootCause": <the underlying cause>, ` +
-    `"confidence": <"low"|"medium"|"high">, "edits": [{"path": <repo-relative path>, "content": <full new file contents>}]}.`,
+    `{"diagnosis": <one short sentence>, "rootCause": <one short sentence>, ` +
+    `"confidence": <"low"|"medium"|"high">, ` +
+    `"locations": [{"file": <repo-relative path>, "line": <integer>, "endLine": <integer or null>, "code": <exact offending source, verbatim>, "suggestion": <replacement source, or "" to delete>}], ` +
+    `"edits": [{"path": <repo-relative path>, "content": <full new file contents>}]}.`,
   ].join("\n");
 }
 
