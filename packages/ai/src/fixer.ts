@@ -20,7 +20,7 @@ import {
   type RemediationResult,
 } from "@zuke/core";
 import type { Configure } from "@zuke/core/tooling";
-import { Command, CommandError } from "@zuke/core/shell";
+import { Command } from "@zuke/core/shell";
 import type { Effort, Provider, Usage } from "./types.ts";
 import { type Fix, type FixLocation, parseFix } from "./fix.ts";
 import { FIX_GEMINI_SCHEMA, FIX_JSON_SCHEMA } from "./fix_schema.ts";
@@ -44,22 +44,14 @@ import {
   fixSkipMarkdown,
 } from "./fix_report.ts";
 import { retryLine, writeStepSummary } from "./report.ts";
-import { detectReviewHost, type EnvReader, readEnv } from "./hosts.ts";
+import { type EnvReader, readEnv } from "./hosts.ts";
+import {
+  describeError,
+  readTextOrUndefined,
+  resolveConventions,
+} from "./context.ts";
+import { postComment } from "./comment.ts";
 import type { RetryInfo, RetryOptions } from "./retry.ts";
-
-/** The files a fixer reads, in order, for project conventions. */
-const CONVENTION_FILES = ["CLAUDE.md", "AGENTS.md"];
-
-/** Read a text file, returning `undefined` when it cannot be read. */
-export async function readTextOrUndefined(
-  path: string,
-): Promise<string | undefined> {
-  try {
-    return await Deno.readTextFile(path);
-  } catch {
-    return undefined;
-  }
-}
 
 /**
  * The body of an inline review comment for one location: the diagnosis plus a
@@ -81,19 +73,6 @@ function suggestionBody(diagnosis: string, loc: FixLocation): string {
  */
 function safeGitArg(value: string): boolean {
   return value !== "" && !value.startsWith("-");
-}
-
-/** Extract the failed command and its output from a target's error. */
-function describeError(error: unknown): { command?: string; output: string } {
-  if (error instanceof CommandError) {
-    const output = error.stderr.trim();
-    return {
-      command: error.command,
-      output: output === "" ? error.message : output,
-    };
-  }
-  if (error instanceof Error) return { output: error.message };
-  return { output: String(error) };
 }
 
 /**
@@ -365,22 +344,19 @@ export class AiFixer implements Remediation {
   }
 
   /** Read project conventions: the explicit text, or the first file found. */
-  async #resolveConventions(): Promise<string | undefined> {
-    if (this.#conventions !== undefined) {
-      return this.#conventions === "" ? undefined : this.#conventions;
-    }
-    const read = this.#readFile ?? readTextOrUndefined;
-    for (const file of CONVENTION_FILES) {
-      const text = await read(file);
-      if (text !== undefined && text !== "") return text;
-    }
-    return undefined;
+  #resolveConventions(): Promise<string | undefined> {
+    return resolveConventions(
+      this.#conventions,
+      this.#readFile ?? readTextOrUndefined,
+    );
   }
 
   /**
-   * Report the fix to the console and the job summary, then post to the PR: as
-   * Copilot-style committable inline suggestions on GitHub when there are code
-   * locations, otherwise as a single overview comment.
+   * Report the fix to the console and the job summary, then post to the PR.
+   * When the fix is only *proposed* (diagnose-only), post Copilot-style
+   * committable inline suggestions so the human can apply them. When it was
+   * *applied* (`autoApply`), suggesting the same change is contradictory — post
+   * a single overview comment showing what was fixed (with the code) instead.
    */
   async #report(target: string, report: FixReport): Promise<void> {
     if (!this.#quiet) {
@@ -391,7 +367,11 @@ export class AiFixer implements Remediation {
     const markdown = fixMarkdown(this.name, target, report);
     writeStepSummary(markdown);
     if (!this.#comment) return;
-    if (this.#suggest && await this.#postSuggestions(report)) return;
+    if (
+      this.#suggest && !this.#autoApply && await this.#postSuggestions(report)
+    ) {
+      return;
+    }
     await this.#postIssueComment(markdown);
   }
 
@@ -437,20 +417,12 @@ export class AiFixer implements Remediation {
   }
 
   /** Upsert the single overview comment via the active CI host. */
-  async #postIssueComment(markdown: string): Promise<void> {
-    const host = detectReviewHost(this.#env);
-    if (host === undefined) return;
-    const token = this.#commentToken !== undefined
-      ? resolveKey(this.#commentToken)
-      : this.#env(host.defaultTokenEnv) ?? "";
-    const upsert = host.prepare(token, this.#env);
-    if (upsert === undefined) return;
-    try {
-      await upsert(this.name, markdown, this.#fetch ?? fetch);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.warn(`[${this.name}] could not post PR comment: ${message}`);
-    }
+  #postIssueComment(markdown: string): Promise<void> {
+    return postComment(this.name, markdown, {
+      commentToken: this.#commentToken,
+      env: this.#env,
+      fetch: this.#fetch,
+    });
   }
 
   /** The commit subject for an applied fix. */

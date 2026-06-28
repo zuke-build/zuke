@@ -80,14 +80,19 @@ test = target()
 
 ### Copilot-style inline suggestions
 
-On GitHub, the fixer posts each problem as an **inline review comment with a
-committable `suggestion` block** — anchored to the exact `file:line` in the
-diff, deduplicated across re-runs, and skipped gracefully if a line isn't in the
-diff. Off GitHub (or when the model reports no specific locations) it falls back
-to a single overview comment. The structured fix carries per-problem locations
-(file, line, the verbatim offending code, and the replacement), so the comment
-shows real code, not prose. Use `.noSuggest()` to force the overview comment
-instead.
+When the fix is **only proposed** (diagnose-only — the default), the fixer posts
+each problem on GitHub as an **inline review comment with a committable
+`suggestion` block**, anchored to the exact `file:line`, deduplicated across
+re-runs, and skipped gracefully if a line isn't in the diff. The structured fix
+carries per-problem locations (file, line, the verbatim offending code, and the
+replacement), so the comment shows real code, not prose.
+
+When the fix is **applied** (`.autoApply()`), a committable suggestion would be
+contradictory — the change is already made — so the fixer posts a **single
+overview comment showing what it fixed (with the code diff)** instead. Off
+GitHub, or when the model reports no specific locations, it also falls back to
+the overview comment. Use `.noSuggest()` to force the overview comment even in
+diagnose mode.
 
 ### Applying and committing fixes
 
@@ -115,6 +120,42 @@ aiFixer((f) =>
 
 A fix is **never auto-committed** unless you opt in, and the post-apply re-run
 is always the gate: a bad edit fails the build instead of landing silently.
+
+## Delegating to a coding agent — `agentFixer`
+
+`aiFixer` makes one structured API call and applies the edits itself. For
+open-ended failures, `agentFixer` instead hands the failure to a **coding agent**
+you inject — Claude Code, Codex, or the Gemini CLI — which reads and edits files
+autonomously; the executor then re-runs the target to verify. There's one
+generic fixer, not one per agent: you pick the agent at the call site.
+
+```ts
+import { agentFixer } from "jsr:@zuke/ai";
+import { ClaudeTasks } from "jsr:@zuke/claude";
+
+test = target()
+  .executes(() => DenoTasks.test((s) => s.allowAll()))
+  .recoverWith(
+    agentFixer((ctx) =>
+      // ctx.prompt is assembled from the failure; ctx also has the raw
+      // target/command/output if you'd rather build your own.
+      ClaudeTasks.run((s) => s.prompt(ctx.prompt).permissionMode("acceptEdits"))
+    ),
+  );
+```
+
+Any runner that takes the context and returns works — `CodexTasks.exec`,
+`GeminiTasks.run`, or a custom function. Because the agent edits files directly,
+`agentFixer` is **gated to local runs by default** (`.allowCI()` to opt in). It
+reuses the same `.comment()` / `.commentToken()` / `.criteria()` /
+`.conventions()` knobs as `aiFixer`, and mirrors the same propose-vs-apply rule:
+
+- **`.suggest()` (propose)** — render the agent's `git diff` as **committable
+  inline suggestions** on the PR and leave the build failed for the human to
+  apply. Suggestions only ever appear in this not-auto-fixing mode.
+- **`.commitFixes()` (apply)** — stage *all* of the agent's changes, commit, and
+  push (no commit if it changed nothing), then re-run the target to verify, and
+  post an **overview comment** of what it did. Takes precedence over `.suggest()`.
 
 ## Diff context without a CI step
 

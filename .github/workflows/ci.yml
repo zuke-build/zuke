@@ -22,32 +22,58 @@ jobs:
   quality:
     name: Build & verify with Zuke
     runs-on: ubuntu-latest
-    # Read the repo, and comment on the PR for the lint self-healing fixer. The
-    # OpenAI key is a same-repo secret, so on fork PRs it is absent and the fixer
-    # simply skips — CI still runs read-only.
+    # The lint self-healing fixer auto-applies the fix and pushes it to the PR
+    # branch, so this job needs `contents: write` (the push) and
+    # `pull-requests: write` (the comment). The OpenAI key is a same-repo secret,
+    # so on fork PRs it is absent and the token is read-only — the fixer skips
+    # and CI runs without writing anything.
     permissions:
-      contents: read
+      contents: write
       pull-requests: write
     steps:
-      # Audit (and optionally block) outbound network from the runner, so a
-      # compromised dependency can't exfiltrate or reach an unexpected host.
+      # This job carries live secrets (OPENAI_API_KEY) and a write-scoped token
+      # while it executes build code, so block egress to everything except the
+      # hosts the build legitimately needs. Even if untrusted code in `./zuke ci`
+      # reads a token from the environment, it cannot POST it to an attacker host
+      # — the connection is dropped. The allowlist is derived from the source:
+      # Deno bootstrap (deno.land + the release CDN), module resolution (jsr.io
+      # and registry.npmjs.org for the npm: cspell tooling), the OpenAI API
+      # (provider.ts), and the GitHub API / git push for the
+      # fixer's comment and commit. Add a host here if a run reports it blocked.
       - name: Harden the runner
         uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
         with:
-          egress-policy: audit
+          egress-policy: block
+          allowed-endpoints: >
+            deno.land:443
+            dl.deno.land:443
+            jsr.io:443
+            registry.npmjs.org:443
+            api.openai.com:443
+            api.github.com:443
+            github.com:443
+            codeload.github.com:443
+            objects.githubusercontent.com:443
+            release-assets.githubusercontent.com:443
 
+      # persist-credentials keeps the token in git config so the lint fixer can
+      # push its commit. For a same-repo PR, check out the head branch (not the
+      # detached merge ref) so the push targets it; for a fork PR (or a push),
+      # fall back to the default checkout — the fixer can't and won't push there.
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          persist-credentials: false
+          persist-credentials: true
+          ref: ${{ (github.event.pull_request.head.repo.full_name == github.repository) && github.head_ref || '' }}
 
       # No "set up Deno" step: the ./zuke launcher bootstraps Deno, pinned to a
       # known version by default (override with DENO_VERSION). Running through
       # the launcher keeps CI exercising the same entry point everyone else uses.
       #
       # OPENAI_API_KEY powers the lint target's self-healing fixer: on a lint
-      # failure it posts the diagnosis (and an inline suggestion) to the PR. The
-      # key is optional — without it the fixer skips and lint just fails. The
-      # fixer fetches the PR base branch itself for diff context (no manual step).
+      # failure it fixes the file, commits and pushes to the PR branch, and posts
+      # an overview comment of what it changed. The key is optional — without it
+      # the fixer skips and lint just fails. The fixer fetches the PR base branch
+      # itself for diff context (no manual step).
       - name: Run the full gate with Zuke
         run: ./zuke ci
         env:

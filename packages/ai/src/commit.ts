@@ -35,3 +35,29 @@ export async function commitAndPush(options: CommitOptions): Promise<void> {
     await options.run(["git", "push"]);
   }
 }
+
+/** How to commit (and optionally push) every change in the working tree. */
+export interface CommitAllOptions {
+  /** The commit message subject. */
+  message: string;
+  /** Push to the current branch after committing (default true). */
+  push?: boolean;
+  /** The git runner. */
+  run: GitRunner;
+}
+
+/**
+ * Stage **all** working-tree changes, commit them, and (unless `push` is false)
+ * push. Used by the agent fixer, which lets the agent edit arbitrary files, so
+ * the changed set isn't known ahead of time. A no-op when the working tree is
+ * clean (the agent made no change), so it never creates an empty commit.
+ */
+export async function commitAll(options: CommitAllOptions): Promise<void> {
+  await options.run(["git", "add", "-A"]);
+  const status = await options.run(["git", "status", "--porcelain"]);
+  if (status.trim() === "") return; // the agent changed nothing
+  await options.run(["git", "commit", "-m", options.message]);
+  if (options.push !== false) {
+    await options.run(["git", "push"]);
+  }
+}
