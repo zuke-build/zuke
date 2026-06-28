@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.0](https://github.com/zuke-build/zuke/compare/core-v1.5.0...core-v1.6.0) (2026-06-28)
+
+
+### Features
+
+* self-healing builds — recoverWith primitive and aiFixer ([#122](https://github.com/zuke-build/zuke/issues/122)) ([ad6b54a](https://github.com/zuke-build/zuke/commit/ad6b54a1b9a3602a927b08acbc37ea2af6aa0966))
+
 ## [1.5.0](https://github.com/zuke-build/zuke/compare/core-v1.4.0...core-v1.5.0) (2026-06-23)
 
 
