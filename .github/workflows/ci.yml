@@ -31,12 +31,28 @@ jobs:
       contents: write
       pull-requests: write
     steps:
-      # Audit (and optionally block) outbound network from the runner, so a
-      # compromised dependency can't exfiltrate or reach an unexpected host.
+      # This job carries live secrets (OPENAI_API_KEY) and a write-scoped token
+      # while it executes build code, so block egress to everything except the
+      # hosts the build legitimately needs. Even if untrusted code in `./zuke ci`
+      # reads a token from the environment, it cannot POST it to an attacker host
+      # — the connection is dropped. The allowlist is derived from the source:
+      # Deno bootstrap (deno.land + the release CDN), JSR resolution (jsr.io),
+      # the OpenAI API (provider.ts), and the GitHub API / git push for the
+      # fixer's comment and commit. Add a host here if a run reports it blocked.
       - name: Harden the runner
         uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
         with:
-          egress-policy: audit
+          egress-policy: block
+          allowed-endpoints: >
+            deno.land:443
+            dl.deno.land:443
+            jsr.io:443
+            api.openai.com:443
+            api.github.com:443
+            github.com:443
+            codeload.github.com:443
+            objects.githubusercontent.com:443
+            release-assets.githubusercontent.com:443
 
       # persist-credentials keeps the token in git config so the lint fixer can
       # push its commit. For a same-repo PR, check out the head branch (not the
