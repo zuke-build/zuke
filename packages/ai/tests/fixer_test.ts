@@ -458,6 +458,24 @@ Deno.test("fetchBase honours an explicit branch and remote", async () => {
   ]);
 });
 
+Deno.test("an option-like base branch is rejected, not fetched (no arg injection)", async () => {
+  const { fetch } = recordFetch(claudeFix(ONE_EDIT));
+  const git: string[][] = [];
+  const fixer = aiFixer((f) => f.provider("claude").apiKey("k"))
+    .conventions("")
+    .diff((d) => d.fetchBase())
+    // A hostile GITHUB_BASE_REF that looks like a git option.
+    .env((n) => n === "GITHUB_BASE_REF" ? "--upload-pack=evil" : undefined)
+    .exec((argv) => {
+      git.push(argv);
+      return Promise.resolve("");
+    })
+    .fetch(fetch).quiet();
+  await fixer.remediate(CTX);
+  assertEquals(git.some((a) => a[1] === "fetch"), false); // never fetched
+  assertEquals(git.some((a) => a[1] === "diff" && a.length === 2), true);
+});
+
 Deno.test("a failed base fetch falls back to the working-tree diff", async () => {
   const { fetch } = recordFetch(claudeFix(ONE_EDIT));
   const git: string[][] = [];

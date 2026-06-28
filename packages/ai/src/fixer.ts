@@ -74,6 +74,15 @@ function suggestionBody(diagnosis: string, loc: FixLocation): string {
   return [diagnosis, "", ...block].join("\n");
 }
 
+/**
+ * Whether a value is safe to pass as a positional `git` argument: non-empty and
+ * not option-like (a leading `-` could be misread as a flag — e.g. an injected
+ * `--upload-pack=...` — so such values are rejected rather than fetched).
+ */
+function safeGitArg(value: string): boolean {
+  return value !== "" && !value.startsWith("-");
+}
+
 /** Extract the failed command and its output from a target's error. */
 function describeError(error: unknown): { command?: string; output: string } {
   if (error instanceof CommandError) {
@@ -338,16 +347,10 @@ export class AiFixer implements Remediation {
     // needed; fall back to the working-tree diff if the fetch can't be done.
     if (this.#diff.fetchRequested_) {
       const branch = this.#diff.fetchBranch_ ?? this.#env("GITHUB_BASE_REF");
-      if (branch !== undefined && branch !== "") {
+      const remote = this.#diff.fetchRemote_;
+      if (branch !== undefined && safeGitArg(branch) && safeGitArg(remote)) {
         try {
-          await run([
-            "git",
-            "fetch",
-            "--no-tags",
-            "--depth=1",
-            this.#diff.fetchRemote_,
-            branch,
-          ]);
+          await run(["git", "fetch", "--no-tags", "--depth=1", remote, branch]);
           return await run(["git", "diff", "FETCH_HEAD"]);
         } catch {
           // Offline, not a PR, or the ref is unavailable — fall through.
