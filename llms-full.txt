@@ -5085,6 +5085,12 @@ class AgentFixer implements Remediation
     A name for diagnostics — `"agent fix"`.
   allowCI(): this
     Permit the agent to run (and edit files) on CI; off by default.
+  suggest(): this
+    Propose the agent's changes as committable inline `suggestion`s on the
+    pull request (from its `git diff`) instead of committing them. The build
+    stays failed — the human applies the suggestions to fix it. Mutually
+    exclusive with {@link commitFixes} (suggest takes precedence). GitHub only;
+    elsewhere it falls back to the overview comment.
   commitFixes(): this
     After the agent runs, stage all its changes, commit, and push to the current
     branch so a healed PR carries the fix. Requires a checkout that can push; a

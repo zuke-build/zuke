@@ -183,6 +183,94 @@ Deno.test("the agent's stdout is captured and posted as a PR comment", async () 
   assertEquals(posted, true);
 });
 
+Deno.test("suggest mode posts the agent's diff as inline suggestions, no commit, no retry", async () => {
+  const prEnv: Record<string, string> = {
+    GITHUB_ACTIONS: "true",
+    GITHUB_REPOSITORY: "o/r",
+    GITHUB_REF: "refs/pull/7/merge",
+    GITHUB_TOKEN: "tok",
+  };
+  const diff = [
+    "diff --git a/zuke.ts b/zuke.ts",
+    "--- a/zuke.ts",
+    "+++ b/zuke.ts",
+    "@@ -45,1 +45,1 @@",
+    '-const X = "remove me";',
+    '+const _X = "remove me";',
+  ].join("\n");
+  const git: string[][] = [];
+  const calls: { url: string; body: string }[] = [];
+  const impl = ((input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    const method = init?.method ?? "GET";
+    calls.push({ url, body: typeof init?.body === "string" ? init.body : "" });
+    if (url.includes("/comments")) {
+      return Promise.resolve(
+        new Response(method === "GET" ? "[]" : "{}", { status: 200 }),
+      );
+    }
+    return Promise.resolve(
+      new Response(JSON.stringify({ head: { sha: "abc123" } }), {
+        status: 200,
+      }),
+    );
+  }) as typeof fetch;
+  const fixer = agentFixer(() => Promise.resolve())
+    .allowCI().suggest().conventions("").readFile(() =>
+      Promise.resolve(undefined)
+    )
+    .env((n) => prEnv[n])
+    .exec((argv) => {
+      git.push(argv);
+      return Promise.resolve(argv[1] === "diff" ? diff : "");
+    })
+    .fetch(impl).quiet();
+  const result = await fixer.remediate(CTX);
+  assertEquals(result.retry, false); // proposal mode — build stays failed
+  // It read the agent's diff and never committed.
+  assertEquals(git.some((a) => a[1] === "diff"), true);
+  assertEquals(git.some((a) => a[1] === "commit"), false);
+  // A review comment with a suggestion block was posted.
+  const posted = calls.some((c) =>
+    c.url.endsWith("/pulls/7/comments") && c.body.includes("```suggestion")
+  );
+  assertEquals(posted, true);
+});
+
+Deno.test("suggest mode off GitHub reports no committable suggestions", async () => {
+  const r = recorder();
+  const fixer = agentFixer(r.run, (f) => f.suggest())
+    .conventions("").env(() => undefined).readFile(() =>
+      Promise.resolve(undefined)
+    )
+    .exec(() => Promise.resolve("")).quiet();
+  const result = await fixer.remediate(CTX);
+  assertEquals(result.retry, false);
+  assertEquals(r.calls.length, 1); // the agent still ran
+});
+
+Deno.test("suggest mode tolerates a git diff failure", async () => {
+  const prEnv: Record<string, string> = {
+    GITHUB_ACTIONS: "true",
+    GITHUB_REPOSITORY: "o/r",
+    GITHUB_REF: "refs/pull/7/merge",
+    GITHUB_TOKEN: "tok",
+  };
+  const fixer = agentFixer(() => Promise.resolve())
+    .allowCI().suggest().conventions("").readFile(() =>
+      Promise.resolve(undefined)
+    )
+    .env((n) => prEnv[n])
+    .exec((argv) =>
+      argv[1] === "diff"
+        ? Promise.reject(new Error("no HEAD"))
+        : Promise.resolve("")
+    )
+    .noComment().quiet();
+  const result = await fixer.remediate(CTX);
+  assertEquals(result.retry, false);
+});
+
 Deno.test("noComment writes no PR comment", async () => {
   const prEnv: Record<string, string> = {
     GITHUB_ACTIONS: "true",

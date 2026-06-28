@@ -352,9 +352,11 @@ export class AiFixer implements Remediation {
   }
 
   /**
-   * Report the fix to the console and the job summary, then post to the PR: as
-   * Copilot-style committable inline suggestions on GitHub when there are code
-   * locations, otherwise as a single overview comment.
+   * Report the fix to the console and the job summary, then post to the PR.
+   * When the fix is only *proposed* (diagnose-only), post Copilot-style
+   * committable inline suggestions so the human can apply them. When it was
+   * *applied* (`autoApply`), suggesting the same change is contradictory — post
+   * a single overview comment showing what was fixed (with the code) instead.
    */
   async #report(target: string, report: FixReport): Promise<void> {
     if (!this.#quiet) {
@@ -365,7 +367,11 @@ export class AiFixer implements Remediation {
     const markdown = fixMarkdown(this.name, target, report);
     writeStepSummary(markdown);
     if (!this.#comment) return;
-    if (this.#suggest && await this.#postSuggestions(report)) return;
+    if (
+      this.#suggest && !this.#autoApply && await this.#postSuggestions(report)
+    ) {
+      return;
+    }
     await this.#postIssueComment(markdown);
   }
 

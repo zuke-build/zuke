@@ -43,6 +43,10 @@ import { commitAll, type GitRunner } from "./commit.ts";
 import { writeStepSummary } from "./report.ts";
 import { postComment } from "./comment.ts";
 import { type EnvReader, readEnv } from "./hosts.ts";
+import { resolveKey } from "./provider.ts";
+import { resolveGithubContext } from "./hosts/github.ts";
+import { postSuggestions } from "./hosts/github_review.ts";
+import { diffToSuggestions } from "./diff_suggest.ts";
 
 /** The failure context handed to an {@link AgentRunner}, plus a ready prompt. */
 export interface AgentContext {
@@ -122,6 +126,7 @@ function agentMarkdown(
 export class AgentFixer implements Remediation {
   readonly #run: AgentRunner;
   #onlyLocal = true;
+  #suggest = false;
   #commitFixes = false;
   #commitMessage?: string;
   #push = true;
@@ -145,6 +150,18 @@ export class AgentFixer implements Remediation {
   /** Permit the agent to run (and edit files) on CI; off by default. */
   allowCI(): this {
     this.#onlyLocal = false;
+    return this;
+  }
+
+  /**
+   * Propose the agent's changes as **committable inline `suggestion`s** on the
+   * pull request (from its `git diff`) instead of committing them. The build
+   * stays failed — the human applies the suggestions to fix it. Mutually
+   * exclusive with {@link commitFixes} (suggest takes precedence). GitHub only;
+   * elsewhere it falls back to the overview comment.
+   */
+  suggest(): this {
+    this.#suggest = true;
     return this;
   }
 
@@ -238,6 +255,38 @@ export class AgentFixer implements Remediation {
     return this.#exec ?? ((argv) => new Command(argv).text());
   }
 
+  /**
+   * Post the agent's working-tree changes (`git diff HEAD`) as committable
+   * inline suggestions on the PR. Returns the number posted; a no-op off GitHub,
+   * without a PR context, or when the agent produced no committable hunks.
+   */
+  async #postSuggestions(target: string): Promise<number> {
+    if (detectCiHost(this.#env) !== "github") return 0;
+    let diff: string;
+    try {
+      diff = await this.#git()(["git", "diff", "HEAD"]);
+    } catch {
+      return 0;
+    }
+    const suggestions = diffToSuggestions(
+      diff,
+      `Proposed by the agent fix for \`${target}\`.`,
+    );
+    if (suggestions.length === 0) return 0;
+    const token = this.#commentToken !== undefined
+      ? resolveKey(this.#commentToken)
+      : this.#env("GITHUB_TOKEN") ?? "";
+    const context = resolveGithubContext(token, this.#env);
+    if (context === undefined) return 0;
+    try {
+      return await postSuggestions(context, suggestions, this.#fetch ?? fetch);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(`[${this.name}] could not post suggestions: ${message}`);
+      return 0;
+    }
+  }
+
   /** Report what the agent did to the console, the job summary, and the PR. */
   async #report(target: string, action: string, output: string): Promise<void> {
     if (!this.#quiet) console.log(`[${this.name}] "${target}" — ${action}`);
@@ -295,6 +344,19 @@ export class AgentFixer implements Remediation {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.warn(`[${this.name}] agent run failed: ${message}`);
+      return { retry: false };
+    }
+
+    // Suggest mode: render the agent's changes as committable inline
+    // suggestions and leave the build failed — the human applies them. Only
+    // when not auto-fixing; `.commitFixes()` (auto-fix) takes precedence and
+    // reports an overview of what it committed instead.
+    if (this.#suggest && !this.#commitFixes) {
+      const posted = await this.#postSuggestions(context.target);
+      const action = posted > 0
+        ? `ran the agent and proposed ${posted} inline suggestion(s) — apply them to fix`
+        : "ran the agent (no committable suggestions produced)";
+      await this.#report(context.target, action, agentOutput);
       return { retry: false };
     }
 

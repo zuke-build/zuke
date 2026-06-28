@@ -718,6 +718,27 @@ Deno.test("on GitHub with locations, posts inline suggestions, not an overview c
   assertEquals(calls.some((c) => c.url.includes("/issues/")), false);
 });
 
+Deno.test("autoApply posts an overview comment with the code, not inline suggestions", async () => {
+  const { fetch, calls } = suggestFetch(claudeFix(FIX_WITH_LOC));
+  const prEnv: Record<string, string> = {
+    GITHUB_ACTIONS: "true",
+    GITHUB_REPOSITORY: "o/r",
+    GITHUB_REF: "refs/pull/7/merge",
+    GITHUB_TOKEN: "tok",
+  };
+  const fixer = aiFixer((f) =>
+    f.provider("claude").apiKey("k").autoApply().allowCI()
+  )
+    .conventions("").diff((d) => d.text("")).env((n) => prEnv[n])
+    .write(() => Promise.resolve()) // apply the fix
+    .fetch(fetch).quiet();
+  await fixer.remediate(CTX);
+  // Applied → overview issue comment (with the file:line code diff), never
+  // inline review-comment suggestions.
+  assertEquals(calls.some((c) => c.url.includes("/issues/")), true);
+  assertEquals(calls.some((c) => c.url.endsWith("/pulls/7/comments")), false);
+});
+
 Deno.test("noSuggest falls back to the overview comment on GitHub", async () => {
   const { fetch, calls } = suggestFetch(claudeFix(FIX_WITH_LOC));
   const prEnv: Record<string, string> = {
