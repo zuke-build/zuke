@@ -192,6 +192,35 @@ The `mcp` (and `config`/`extensions`) tasks are flexible command builders for
 each CLI's matching subcommand group — handy for provisioning MCP servers in CI.
 See [Tools](./docs/tools.md) for the full task matrix.
 
+### AI review and self-healing (`@zuke/ai`)
+
+Beyond driving the coding CLIs, [`@zuke/ai`](https://jsr.io/@zuke/ai) makes a
+model a first-class citizen of the build graph, two ways:
+
+- **AI code review** — a reviewer reads the diff, returns a _structured_
+  assessment (score, severity, findings), writes it to the job summary and the
+  pull request, and **breaks the build** when the risk crosses a threshold you
+  choose. The output is a typed verdict, not a blob of prose.
+- **Self-healing builds** — attach `aiFixer` to any target with
+  `.recoverWith(...)`. When the target fails, the fixer diagnoses the failure
+  from the error output and the diff and posts a **committable, Copilot-style
+  inline suggestion** to the PR. Opt into `.autoApply()` / `.commitFixes()` and
+  it fixes the working tree, commits, and **re-runs the real command to
+  verify** — a fix only counts when the build actually goes green.
+
+```ts
+test = target()
+  .executes(() => DenoTasks.test((s) => s.allowAll()))
+  // On failure: diagnose, post a committable suggestion, optionally heal.
+  .recoverWith(aiFixer((f) => f.provider("openai").apiKey(this.key)));
+```
+
+Safe by default (provider + key only): the fixer writes no files and just
+diagnoses. Edits are gated behind a path allowlist, a file cap, and local-only
+defaults, and nothing is committed unless you ask. See
+[AI code review](./docs/ai-review.md) and
+[Self-healing builds](./docs/self-healing.md).
+
 ## Agent skills
 
 Zuke ships **agent skills** so AI coding assistants set up and author builds the
@@ -239,6 +268,10 @@ Full documentation lives in [`docs/`](./docs/):
   execution.
 - [Paths (`absolutePath`)](./docs/paths.md) — the fluent path type.
 - [Tools](./docs/tools.md) — the typed tool-wrapper packages and their tasks.
+- [AI code review](./docs/ai-review.md) — gate the build on a structured LLM
+  assessment of the diff (`@zuke/ai`).
+- [Self-healing builds](./docs/self-healing.md) — diagnose and fix failing
+  targets with `recoverWith` and `aiFixer`, including Copilot-style suggestions.
 - [Extending Zuke](./docs/extending.md) — the plugin contract: lifecycle
   plugins, tool wrappers, and reusable target bundles.
 - [Using Zuke in a Node/npm project](./docs/node-projects.md) — drive a Node
