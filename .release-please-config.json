@@ -358,6 +358,17 @@
         }
       ]
     },
+    "packages/tsc-alias": {
+      "component": "tsc-alias",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
+      ]
+    },
     "packages/tsdown": {
       "component": "tsdown",
       "changelog-path": "CHANGELOG.md",
@@ -382,6 +393,17 @@
     },
     "packages/openapi-ts": {
       "component": "openapi-ts",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
+      ]
+    },
+    "packages/orval": {
+      "component": "orval",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
         {

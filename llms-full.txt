@@ -3962,6 +3962,62 @@ interface TscTasksApi
     Run a project-references build with `tsc --build`.
 
 ========================================================================
+# @zuke/tsc-alias
+========================================================================
+
+`@zuke/tsc-alias` — typed `tsc-alias` task wrappers for Zuke builds.
+
+`tsc-alias` rewrites TypeScript path aliases (the `paths` mapping in
+`tsconfig.json`) into relative imports in the compiled output, so the emitted
+JavaScript runs without a path resolver. Configure a fluent settings object in
+a lambda; the task builds the argv and runs it.
+
+```ts
+import { TscAliasTasks } from "jsr:@zuke/tsc-alias";
+await TscAliasTasks.run((s) => s.project("tsconfig.json").resolveFullPaths());
+```
+@module
+
+const TscAliasTasks: TscAliasTasksApi
+  Typed task functions for the `tsc-alias` path-alias rewriter.
+
+class TscAliasRunSettings extends ToolSettings
+  Settings for a `tsc-alias` run.
+
+  override protected defaultTool(): string
+  project(path: PathLike): this
+    Path to the `tsconfig.json` to read aliases from (`-p`/`--project`).
+  watch(): this
+    Re-run on file changes (`--watch`).
+  outDir(path: PathLike): this
+    Output directory of the compiled files to rewrite (`--outDir`).
+  declarationDir(path: PathLike): this
+    Output directory of the emitted declaration files (`--declarationDir`).
+  resolveFullPaths(): this
+    Attempt to fully resolve alias paths, including extensions (`--resolveFullPaths`).
+  resolveFullExtension(ext: string): this
+    Extension to append when resolving full paths, e.g. `.js` (`--resolveFullExtension`).
+  replacers(...files: PathLike[]): this
+    Additional replacer module file(s); repeatable (`-f`/`--replacers`).
+  dir(path: PathLike): this
+    Base directory to resolve relative paths against (`--dir`).
+  fileExtensions(list: string): this
+    Comma-separated list of file extensions to process (`--fileExtensions`).
+  verbose(): this
+    Print verbose output (`--verbose`).
+  debug(): this
+    Print debug output (`--debug`).
+  silent(): this
+    Suppress all output (`--silent`).
+  override protected buildArgs(): string[]
+
+interface TscAliasTasksApi
+  The shape of {@link TscAliasTasks}.
+
+  run(configure?: Configure<TscAliasRunSettings>): Promise<CommandOutput>
+    Rewrite TypeScript path aliases in compiled output with `tsc-alias`.
+
+========================================================================
 # @zuke/tsdown
 ========================================================================
 
@@ -4207,6 +4263,56 @@ interface OpenapiTsTasksApi
     Generate a type-safe API client from an OpenAPI spec with `openapi-ts`.
 
 ========================================================================
+# @zuke/orval
+========================================================================
+
+`@zuke/orval` — typed `orval` task wrappers for Zuke builds.
+
+`orval` is an OpenAPI client and mock generator (https://orval.dev). It reads
+an OpenAPI specification and generates a type-safe TypeScript client and
+optional mocks. Configure a fluent settings object in a lambda; the task
+builds the argv and runs it.
+
+```ts
+import { OrvalTasks } from "jsr:@zuke/orval";
+await OrvalTasks.generate((s) => s.config("orval.config.ts").clean());
+```
+@module
+
+const OrvalTasks: OrvalTasksApi
+  Typed task functions for the `orval` OpenAPI client and mock generator.
+
+class OrvalGenerateSettings extends ToolSettings
+  Settings for an `orval` generation run.
+
+  override protected defaultTool(): string
+  config(value: PathLike): this
+    Configuration file to load settings from (`-c`/`--config`).
+  project(value: string): this
+    Run only the named project from the config (`-p`/`--project`).
+  input(value: PathLike): this
+    OpenAPI specification to read — a file path or URL (`-i`/`--input`).
+  output(value: PathLike): this
+    Directory the generated client is written to (`-o`/`--output`).
+  watch(): this
+    Regenerate on changes to the specification (`-w`/`--watch`).
+  clean(): this
+    Remove previously generated files before writing (`--clean`).
+  prettier(): this
+    Format the generated output with Prettier (`--prettier`).
+  biome(): this
+    Format the generated output with Biome (`--biome`).
+  mock(): this
+    Generate mocks alongside the client (`--mock`).
+  override protected buildArgs(): string[]
+
+interface OrvalTasksApi
+  The shape of {@link OrvalTasks}.
+
+  generate(configure?: Configure<OrvalGenerateSettings>): Promise<CommandOutput>
+    Generate a TypeScript API client and mocks from an OpenAPI spec with `orval`.
+
+========================================================================
 # @zuke/husky
 ========================================================================
 
@@ -4317,6 +4423,15 @@ class NodeRunSettings extends NodeSettings
     Set the V8 old-space memory limit in MiB (`--max-old-space-size=<n>`).
   override protected buildArgs(): string[]
 
+class NodeStartSettings extends NodeSettings
+  Settings for `node --run <script>` (run a `package.json` script).
+
+  script(name: string): this
+    The `package.json` script to run (`node --run <name>`). Defaults to
+    `"start"`. Node's `--run` is intentionally minimal — it does not forward
+    extra arguments — so this setting carries only the script name.
+  override protected buildArgs(): string[]
+
 class NodeTestSettings extends NodeSettings
   Settings for `node --test [paths] [flags]`.
 
@@ -4341,6 +4456,8 @@ interface NodeTasksApi
 
   run(configure?: Configure<NodeRunSettings>): Promise<CommandOutput>
     Run a script: `node [options] <script> [args]`.
+  start(configure?: Configure<NodeStartSettings>): Promise<CommandOutput>
+    Run a `package.json` script: `node --run <name>` (defaults to `start`).
   eval(configure?: Configure<NodeEvalSettings>): Promise<CommandOutput>
     Evaluate inline code: `node --eval <code>`.
   test(configure?: Configure<NodeTestSettings>): Promise<CommandOutput>

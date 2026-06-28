@@ -6,12 +6,15 @@
  *
  * The task names mirror common `node` invocations: {@link NodeTasks.run}
  * executes a script (`node [options] <script> [args]`),
- * {@link NodeTasks.eval} evaluates inline code (`node --eval <code>`), and
- * {@link NodeTasks.test} runs the built-in test runner (`node --test`).
+ * {@link NodeTasks.start} runs a `package.json` script via Node's own
+ * `--run` flag (`node --run <name>`), {@link NodeTasks.eval} evaluates inline
+ * code (`node --eval <code>`), and {@link NodeTasks.test} runs the built-in
+ * test runner (`node --test`).
  *
  * ```ts
  * import { NodeTasks } from "jsr:@zuke/node";
  * await NodeTasks.run((s) => s.script("server.js").enableSourceMaps());
+ * await NodeTasks.start(); // node --run start
  * await NodeTasks.eval((s) => s.code("console.log(process.version)"));
  * await NodeTasks.test((s) => s.paths("test/").experimentalTestCoverage());
  * ```
@@ -264,10 +267,31 @@ export class NodeTestSettings extends NodeSettings {
   }
 }
 
+/** Settings for `node --run <script>` (run a `package.json` script). */
+export class NodeStartSettings extends NodeSettings {
+  #script = "start";
+
+  /**
+   * The `package.json` script to run (`node --run <name>`). Defaults to
+   * `"start"`. Node's `--run` is intentionally minimal — it does not forward
+   * extra arguments — so this setting carries only the script name.
+   */
+  script(name: string): this {
+    this.#script = name;
+    return this;
+  }
+
+  protected override buildArgs(): string[] {
+    return ["--run", this.#script];
+  }
+}
+
 /** The shape of {@link NodeTasks}. */
 export interface NodeTasksApi {
   /** Run a script: `node [options] <script> [args]`. */
   run(configure?: Configure<NodeRunSettings>): Promise<CommandOutput>;
+  /** Run a `package.json` script: `node --run <name>` (defaults to `start`). */
+  start(configure?: Configure<NodeStartSettings>): Promise<CommandOutput>;
   /** Evaluate inline code: `node --eval <code>`. */
   eval(configure?: Configure<NodeEvalSettings>): Promise<CommandOutput>;
   /** Run the built-in test runner: `node --test`. */
@@ -279,6 +303,10 @@ export const NodeTasks: NodeTasksApi = {
   /** Run a script: `node [options] <script> [args]`. */
   run(configure?: Configure<NodeRunSettings>): Promise<CommandOutput> {
     return runSettings(new NodeRunSettings(), configure);
+  },
+  /** Run a `package.json` script: `node --run <name>` (defaults to `start`). */
+  start(configure?: Configure<NodeStartSettings>): Promise<CommandOutput> {
+    return runSettings(new NodeStartSettings(), configure);
   },
   /** Evaluate inline code: `node --eval <code>`. */
   eval(configure?: Configure<NodeEvalSettings>): Promise<CommandOutput> {

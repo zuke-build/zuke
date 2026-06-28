@@ -712,6 +712,11 @@
           "jsr:@zuke/core@1"
         ]
       },
+      "packages/orval": {
+        "dependencies": [
+          "jsr:@zuke/core@1"
+        ]
+      },
       "packages/oxlint": {
         "dependencies": [
           "jsr:@zuke/core@1"
@@ -748,6 +753,11 @@
         ]
       },
       "packages/tsc": {
+        "dependencies": [
+          "jsr:@zuke/core@1"
+        ]
+      },
+      "packages/tsc-alias": {
         "dependencies": [
           "jsr:@zuke/core@1"
         ]

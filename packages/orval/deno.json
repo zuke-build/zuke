@@ -1,0 +1,16 @@
+{
+  "name": "@zuke/orval",
+  "version": "0.1.0",
+  "description": "Typed orval task wrappers for Zuke builds — generate TypeScript API clients and mocks from an OpenAPI spec via an injection-free settings-lambda API.",
+  "exports": {
+    ".": "./mod.ts"
+  },
+  "imports": {
+    "@zuke/core": "jsr:@zuke/core@^1"
+  },
+  "publish": {
+    "exclude": [
+      "tests/"
+    ]
+  }
+}

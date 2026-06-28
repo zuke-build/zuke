@@ -90,6 +90,8 @@
     "treeshake",
     "webpack",
     "openapi",
+    "orval",
+    "petstore",
     "nestjs",
     "heyapi",
     "typicode",

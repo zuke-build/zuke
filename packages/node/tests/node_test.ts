@@ -7,6 +7,7 @@ import { ToolNotFoundError, type ToolSettings } from "@zuke/core/tooling";
 import {
   NodeEvalSettings,
   NodeRunSettings,
+  NodeStartSettings,
   NodeTasks,
   NodeTestSettings,
 } from "../src/node.ts";
@@ -69,6 +70,18 @@ Deno.test("run with only a script", () => {
 
 Deno.test("run requires a script", () => {
   assertThrows(() => new NodeRunSettings().argv(), Error, ".script()");
+});
+
+Deno.test("start defaults to the start script", () => {
+  assertEquals(new NodeStartSettings().argv(), ["node", "--run", "start"]);
+});
+
+Deno.test("start runs the named package.json script", () => {
+  assertEquals(new NodeStartSettings().script("dev").argv(), [
+    "node",
+    "--run",
+    "dev",
+  ]);
 });
 
 Deno.test("eval renders every option and uses --eval by default", () => {
@@ -134,6 +147,13 @@ const missing = <S extends ToolSettings>(s: S): S => {
 Deno.test("NodeTasks.run reaches execution", async () => {
   await assertRejects(
     () => NodeTasks.run((s) => missing(s).script("main.js")),
+    ToolNotFoundError,
+  );
+});
+
+Deno.test("NodeTasks.start reaches execution", async () => {
+  await assertRejects(
+    () => NodeTasks.start((s) => missing(s)),
     ToolNotFoundError,
   );
 });
