@@ -116,6 +116,37 @@ aiFixer((f) =>
 A fix is **never auto-committed** unless you opt in, and the post-apply re-run
 is always the gate: a bad edit fails the build instead of landing silently.
 
+## Delegating to a coding agent — `agentFixer`
+
+`aiFixer` makes one structured API call and applies the edits itself. For
+open-ended failures, `agentFixer` instead hands the failure to a **coding agent**
+you inject — Claude Code, Codex, or the Gemini CLI — which reads and edits files
+autonomously; the executor then re-runs the target to verify. There's one
+generic fixer, not one per agent: you pick the agent at the call site.
+
+```ts
+import { agentFixer } from "jsr:@zuke/ai";
+import { ClaudeTasks } from "jsr:@zuke/claude";
+
+test = target()
+  .executes(() => DenoTasks.test((s) => s.allowAll()))
+  .recoverWith(
+    agentFixer((ctx) =>
+      // ctx.prompt is assembled from the failure; ctx also has the raw
+      // target/command/output if you'd rather build your own.
+      ClaudeTasks.run((s) => s.prompt(ctx.prompt).permissionMode("acceptEdits"))
+    ),
+  );
+```
+
+Any runner that takes the context and returns works — `CodexTasks.exec`,
+`GeminiTasks.run`, or a custom function. Because the agent edits files directly,
+`agentFixer` is **gated to local runs by default** (`.allowCI()` to opt in), and
+`.commitFixes()` stages *all* of the agent's changes, commits, and pushes (it
+makes no commit if the agent changed nothing). It reuses the same `.comment()` /
+`.commentToken()` / `.criteria()` / `.conventions()` / `.noPush()` knobs as
+`aiFixer`; the agent's output becomes the PR comment and job-summary note.
+
 ## Diff context without a CI step
 
 For good diagnoses the fixer wants the PR diff. `.diff((d) => d.fetchBase())`

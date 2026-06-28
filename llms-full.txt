@@ -5025,6 +5025,10 @@ class Pipeline extends Build {
 ```
 @module
 
+function agentFixer(run: AgentRunner, configure?: Configure<AgentFixer>): AgentFixer
+  Construct an {@link AgentFixer} from an {@link AgentRunner} and apply the
+  configuration lambda. Plug the result into a target with `.recoverWith(...)`.
+
 function aiFixer(configure?: Configure<AiFixer>): AiFixer
   Construct an {@link AiFixer} and apply the configuration lambda. Plug the
   result into a target with `.recoverWith(...)`:
@@ -5069,6 +5073,51 @@ function secretsReviewer(configure?: Configure<Reviewer>): Reviewer
 
 function securityReviewer(configure?: Configure<Reviewer>): Reviewer
   A reviewer that scores the diff for security vulnerabilities.
+
+class AgentFixer implements Remediation
+  A fluent agent fixer. Construct one via {@link agentFixer} with a runner, and
+  attach it to a target with `.recoverWith(...)`. Diagnose/report defaults are
+  on; file changes happen through the agent, gated to local runs unless
+  `.allowCI()`.
+
+  constructor(run: AgentRunner)
+  name: string
+    A name for diagnostics — `"agent fix"`.
+  allowCI(): this
+    Permit the agent to run (and edit files) on CI; off by default.
+  commitFixes(): this
+    After the agent runs, stage all its changes, commit, and push to the current
+    branch so a healed PR carries the fix. Requires a checkout that can push; a
+    failed push is reported, not fatal.
+  commitMessage(message: string): this
+    Override the commit subject used by {@link commitFixes}.
+  noPush(): this
+    Commit the fix but do not push it.
+  comment(): this
+    Also post what the agent did as a PR comment (on by default).
+  noComment(): this
+    Do not post a PR comment (the job summary is still written).
+  commentToken(token: AnyParameter | string): this
+    The token used to post the PR comment (defaults to the host's env var).
+  criteria(criteria: string): this
+    Project-specific notes appended to the agent's prompt.
+  conventions(text: string): this
+    Supply the project conventions text directly instead of reading
+    `CLAUDE.md`/`AGENTS.md`. Pass an empty string to send none.
+  quiet(): this
+    Suppress the console printout (the summary/comment are still written).
+  env(reader: EnvReader): this
+    The environment reader used to detect CI and the comment host (test seam).
+  exec(run: (argv: string[]) => Promise<string>): this
+    The `git` runner used for committing (test seam).
+  readFile(impl: (path: string) => Promise<string | undefined>): this
+    The convention-file reader (test seam).
+  fetch(impl: typeof fetch): this
+    The `fetch` implementation used to post the PR comment (test seam).
+  async remediate(context: RemediationContext): Promise<RemediationResult>
+    Run the agent against the failure, optionally commit its changes, and ask
+    the executor to re-run the target as the verifier. Skips (no retry) on CI
+    unless {@link allowCI} is set, or if the agent run itself fails.
 
 class AiFixer implements Remediation
   A fluent AI fixer. Construct one via {@link aiFixer}, configure it, and attach
@@ -5267,6 +5316,22 @@ class Reviewer implements Validation
     Run the review and gate the build. Throws an {@link AiReviewError} when the
     gate trips (or on a configuration/API error with `onError: "fail"`).
 
+interface AgentContext
+  The failure context handed to an {@link AgentRunner}, plus a ready prompt.
+
+  target: string
+    The name of the failed target.
+  attempt: number
+    The 1-based recovery attempt.
+  command?: string
+    The command line that failed, if known.
+  output: string
+    The captured error output (stderr, or the error message).
+  conventions?: string
+    Project conventions (CLAUDE.md / AGENTS.md), if found.
+  prompt: string
+    A ready-to-use prompt assembled from the fields above.
+
 interface AiReviewWorkflowSpec
   What to generate — only `reviewers` is required.
 
@@ -5391,6 +5456,15 @@ interface Usage
     Tokens in the model's output / completion.
   totalTokens?: number
     Total tokens, reported by the provider or derived from input + output.
+
+type AgentResult = CommandOutput | string | void
+  What an {@link AgentRunner} may resolve to: a {@link CommandOutput} (its
+  stdout is captured for the report), a string, or nothing.
+
+type AgentRunner = (context: AgentContext) => Promise<AgentResult> | AgentResult
+  Runs the coding agent against the assembled {@link AgentContext}. The agent is
+  expected to edit files in place; the executor then re-runs the target. Throw
+  (or let the underlying command throw) to signal the agent could not run.
 
 type AssessmentType = "generic" | "security" | "secrets" | "correctness" | "license"
   The kind of review an assessment performs.

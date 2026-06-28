@@ -154,6 +154,24 @@ local-only unless `.allowCI()`) and `.commitFixes()`; `.diff((d) => d.fetchBase(
 fetches the PR base branch for context so CI needs no manual `git fetch`. Keys
 ride through `parameter().secret()`, which Zuke masks in CI output.
 
+**Delegate to a coding agent** — `agentFixer(runner)` is a `Remediation` that
+hands the failure to a coding agent you inject (`@zuke/claude`, `@zuke/codex`,
+`@zuke/gemini`) which edits files itself, then re-runs the target to verify. One
+generic fixer, agent chosen at the call site; local-only unless `.allowCI()`.
+
+```ts
+import { agentFixer } from "jsr:@zuke/ai";
+import { ClaudeTasks } from "jsr:@zuke/claude";
+
+test = target()
+  .executes(() => DenoTasks.test((s) => s.allowAll()))
+  .recoverWith(
+    agentFixer((ctx) =>
+      ClaudeTasks.run((s) => s.prompt(ctx.prompt).permissionMode("acceptEdits"))
+    ),
+  );
+```
+
 ## Helpers from `@zuke/core`
 
 - `glob(pattern, { cwd? })` — expand a glob to sorted paths.

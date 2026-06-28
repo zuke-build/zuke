@@ -31,6 +31,12 @@ export type {
 } from "./src/types.ts";
 export { AiFixer, aiFixer } from "./src/fixer.ts";
 export type { Confidence, FileEdit, Fix, FixLocation } from "./src/fix.ts";
+export { AgentFixer, agentFixer } from "./src/agent_fixer.ts";
+export type {
+  AgentContext,
+  AgentResult,
+  AgentRunner,
+} from "./src/agent_fixer.ts";
 export { DiffSettings } from "./src/diff.ts";
 export { GateSettings } from "./src/gate.ts";
 export type { RetryInfo, RetryOptions } from "./src/retry.ts";
