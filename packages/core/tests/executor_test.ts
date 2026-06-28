@@ -1483,6 +1483,59 @@ Deno.test("a throwing remediation never masks the build failure", async () => {
   assertEquals(messageOf(result.error).includes("original failure"), true);
 });
 
+Deno.test("a build-level recoverWith heals a target with no per-target one", async () => {
+  let pass = false;
+  const fixer = {
+    remediate: () => {
+      pass = true;
+      return { retry: true };
+    },
+  };
+  class B extends Build {
+    override recoverWith() {
+      return [fixer];
+    }
+    work = target().executes(() => {
+      if (!pass) throw new Error("boom");
+    });
+  }
+  const b = new B();
+  discoverTargets(b);
+  const result = await execute(b, b.work, silent);
+  assertEquals(result.ok, true);
+});
+
+Deno.test("per-target recoverWith runs before the build-level one", async () => {
+  const order: string[] = [];
+  let healed = false;
+  class B extends Build {
+    override recoverWith() {
+      return [{
+        remediate: () => {
+          order.push("global");
+          healed = true;
+          return { retry: true };
+        },
+      }];
+    }
+    work = target()
+      .recoverWith({
+        remediate: () => {
+          order.push("target");
+          return { retry: false };
+        },
+      })
+      .executes(() => {
+        if (!healed) throw new Error("boom");
+      });
+  }
+  const b = new B();
+  discoverTargets(b);
+  const result = await execute(b, b.work, silent);
+  assertEquals(result.ok, true);
+  assertEquals(order, ["target", "global"]); // target's own first, then global
+});
+
 Deno.test("recoverWith only runs after a body failure, not on success", async () => {
   let fixed = false;
   class B extends Build {

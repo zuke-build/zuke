@@ -30,7 +30,7 @@ import {
 import { findConfigDir, pathExists } from "./config.ts";
 import { isCI } from "./host.ts";
 import { absolutePath } from "./path.ts";
-import type { TargetBuilder, TargetFn } from "./target.ts";
+import type { Remediation, TargetBuilder, TargetFn } from "./target.ts";
 import type { Plugin } from "./plugin.ts";
 import {
   detectWidth,
@@ -396,16 +396,19 @@ async function runBody(t: TargetBuilder): Promise<void> {
 async function runBodyWithRecovery(
   t: TargetBuilder,
   name: string,
+  globalRecovery: Remediation[],
 ): Promise<void> {
   try {
     await runBody(t);
     return;
   } catch (error) {
-    if (t.recoverWith_.length === 0) throw error;
+    // A target's own remediations run first, then any build-level ones.
+    const remediations = [...t.recoverWith_, ...globalRecovery];
+    if (remediations.length === 0) throw error;
     let lastError = error;
     for (let attempt = 1; attempt <= t.recoverAttempts_; attempt++) {
       let willRetry = false;
-      for (const r of t.recoverWith_) {
+      for (const r of remediations) {
         try {
           const result = await r.remediate({
             target: name,
@@ -445,6 +448,7 @@ async function runTarget(
   opened: number,
   cache: BuildCache | undefined,
   dryRun: boolean,
+  globalRecovery: Remediation[],
 ): Promise<TargetOutcome> {
   const name = t.name_ ?? "<unnamed>";
 
@@ -487,7 +491,7 @@ async function runTarget(
 
   try {
     for (const v of t.validateBefore_) await v.validate({ target: name });
-    await runBodyWithRecovery(t, name);
+    await runBodyWithRecovery(t, name, globalRecovery);
     for (const v of t.validateAfter_) await v.validate({ target: name });
     const ms = performance.now() - start;
     if (cache !== undefined) await cache.record(t);
@@ -542,6 +546,7 @@ async function runSequential(
   skip: Set<string>,
   cache: BuildCache | undefined,
   dryRun: boolean,
+  globalRecovery: Remediation[],
 ): Promise<RunOutcome> {
   const reports: TargetReport[] = [];
   const executed: string[] = [];
@@ -563,6 +568,7 @@ async function runSequential(
       opened,
       cache,
       dryRun,
+      globalRecovery,
     );
     await life.targetEnd(name, outcome.status);
     if (outcome.status === "passed" || outcome.status === "failed") opened++;
@@ -597,6 +603,7 @@ async function runScheduled(
   canOverlap: (a: TargetBuilder, b: TargetBuilder) => boolean,
   cache: BuildCache | undefined,
   dryRun: boolean,
+  globalRecovery: Remediation[],
 ): Promise<RunOutcome> {
   const outcomes = new Map<TargetBuilder, TargetOutcome>();
   const done = new Set<TargetBuilder>(); // passed/cached/skipped → unblocks dependents
@@ -632,7 +639,16 @@ async function runScheduled(
         started.add(t);
         runningSet.add(t);
         const buffer = bufferReporter();
-        runTarget(life, buffer.reporter, style, t, flushed, cache, dryRun)
+        runTarget(
+          life,
+          buffer.reporter,
+          style,
+          t,
+          flushed,
+          cache,
+          dryRun,
+          globalRecovery,
+        )
           .then(
             async (outcome) => {
               await life.targetEnd(t.name_ ?? "<unnamed>", outcome.status);
@@ -758,6 +774,10 @@ export async function execute(
   const life = makeLifecycle(build, options.plugins ?? []);
   await life.start();
 
+  // Build-level remediations apply to every target (after each target's own),
+  // resolved once before the run.
+  const globalRecovery = dryRun ? [] : build.recoverWith();
+
   let run: RunOutcome;
   if (!globalParallel && !grouped && !scheduled) {
     run = await runSequential(
@@ -768,6 +788,7 @@ export async function execute(
       skip,
       cache,
       dryRun,
+      globalRecovery,
     );
   } else {
     // With `--parallel`, anything independent may overlap up to `limit`.
@@ -789,6 +810,7 @@ export async function execute(
       canOverlap,
       cache,
       dryRun,
+      globalRecovery,
     );
   }
   if (cache !== undefined) await cache.save();

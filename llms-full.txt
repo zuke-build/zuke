@@ -377,6 +377,22 @@ class Build
     Called just before a target's body executes (not for skipped/cached).
   onTargetEnd(_name: string, _status: TargetStatus): void | Promise<void>
     Called after each target settles, with its final status.
+  recoverWith(): Remediation[]
+    Remediations applied to every target, running after each target's own
+    {@link "./target.ts".TargetBuilder.recoverWith} when its body fails. Override
+    to attach a global AI fixer once instead of repeating it per target; the
+    default is none. Both styles compose — a target's own remediations run
+    first, then these.
+
+    ```ts
+    class CI extends Build {
+      key = parameter("OpenAI API key").secret();
+      override recoverWith() {
+        return [aiFixer((f) => f.provider("openai").apiKey(this.key))];
+      }
+      lint = target().executes(() => DenoTasks.lint()); // healed globally
+    }
+    ```
 
 class CiFile
   A declared CI file. Assign one (via {@link cicd}) to a build field and Zuke
