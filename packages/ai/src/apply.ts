@@ -39,10 +39,20 @@ function matchesAny(patterns: string[], path: string): boolean {
   return patterns.some((p) => globToRegExp(p).test(path));
 }
 
-/** Normalise an edit path to a clean, repo-relative form, or reject it. */
+/**
+ * Normalise an edit path to a clean, repo-relative form, or reject it. Windows
+ * back-slashes are unified to `/` first so the traversal guards can't be
+ * bypassed with `..\..\` or a `C:\`/UNC path on Windows.
+ */
 function normalizePath(path: string): string {
-  const trimmed = path.replace(/^\.\//, "");
-  if (trimmed.startsWith("/") || trimmed.split("/").includes("..")) {
+  const unified = path.replaceAll("\\", "/");
+  const trimmed = unified.replace(/^\.\//, "");
+  if (
+    trimmed === "" ||
+    trimmed.startsWith("/") || // POSIX-absolute, or a `\\…` UNC path
+    /^[A-Za-z]:/.test(trimmed) || // a Windows drive (e.g. `C:\…`)
+    trimmed.split("/").includes("..") // any parent-directory segment
+  ) {
     throw new AiReviewError(`refusing to write outside the repo: ${path}`);
   }
   return trimmed;

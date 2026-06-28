@@ -309,18 +309,28 @@ Deno.test("checkEdits enforces the allowlist, exclusions, traversal, and the cap
     threw = true;
   }
   assertEquals(threw, true);
-  // Path traversal.
-  threw = false;
-  try {
-    checkEdits([{ path: "../etc/passwd", content: "" }], {
-      allow: ["**"],
-      exclude: [],
-      maxEdits: 5,
-    });
-  } catch {
-    threw = true;
+  // Path traversal — POSIX, Windows backslashes, and drive/UNC absolutes.
+  for (
+    const hostile of [
+      "../etc/passwd",
+      "..\\..\\evil.ts",
+      "src\\..\\..\\evil.ts",
+      "C:\\Windows\\system32",
+      "\\\\server\\share\\x",
+    ]
+  ) {
+    let rejected = false;
+    try {
+      checkEdits([{ path: hostile, content: "" }], {
+        allow: ["**"],
+        exclude: [],
+        maxEdits: 5,
+      });
+    } catch {
+      rejected = true;
+    }
+    assertEquals(rejected, true);
   }
-  assertEquals(threw, true);
   // Over the file cap.
   threw = false;
   try {
