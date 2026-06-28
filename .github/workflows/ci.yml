@@ -36,8 +36,9 @@ jobs:
       # hosts the build legitimately needs. Even if untrusted code in `./zuke ci`
       # reads a token from the environment, it cannot POST it to an attacker host
       # — the connection is dropped. The allowlist is derived from the source:
-      # Deno bootstrap (deno.land + the release CDN), JSR resolution (jsr.io),
-      # the OpenAI API (provider.ts), and the GitHub API / git push for the
+      # Deno bootstrap (deno.land + the release CDN), module resolution (jsr.io
+      # and registry.npmjs.org for the npm: cspell tooling), the OpenAI API
+      # (provider.ts), and the GitHub API / git push for the
       # fixer's comment and commit. Add a host here if a run reports it blocked.
       - name: Harden the runner
         uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
@@ -47,6 +48,7 @@ jobs:
             deno.land:443
             dl.deno.land:443
             jsr.io:443
+            registry.npmjs.org:443
             api.openai.com:443
             api.github.com:443
             github.com:443
