@@ -43,11 +43,32 @@ await run(CI);
 Any object with a `remediate` method qualifies, so `recoverWith` is not
 AI-specific (a deterministic "run `deno fmt`, then retry" remediation is valid).
 
+### Per-target or global
+
+Attach a fixer to one target with `.recoverWith(...)`, or override
+`recoverWith()` on the **build** to apply it to **every** target at once — both
+styles compose, with a target's own remediations running before the build-level
+ones:
+
+```ts
+class CI extends Build {
+  key = parameter("OpenAI API key").secret();
+
+  // Applies to every target below, no per-target wiring needed.
+  override recoverWith() {
+    return [aiFixer((f) => f.provider("openai").apiKey(this.key))];
+  }
+
+  lint = target().executes(() => DenoTasks.lint());
+  test = target().executes(() => DenoTasks.test((s) => s.allowAll()));
+}
+```
+
 ## `aiFixer` — safe by default
 
-With only a provider and key, `aiFixer` is **diagnose-only**: it sends the failed
-command, its output, the diff, and your project conventions (`CLAUDE.md` /
-`AGENTS.md`) to the model, parses a **structured fix**, and reports — without
+With only a provider and key, `aiFixer` is **diagnose-only**: it sends the
+failed command, its output, the diff, and your project conventions (`CLAUDE.md`
+/ `AGENTS.md`) to the model, parses a **structured fix**, and reports — without
 touching any files. The diagnosis lands in the GitHub Actions job summary and on
 the pull request.
 
@@ -60,12 +81,13 @@ test = target()
 ### Copilot-style inline suggestions
 
 On GitHub, the fixer posts each problem as an **inline review comment with a
-committable `suggestion` block** — anchored to the exact `file:line` in the diff,
-deduplicated across re-runs, and skipped gracefully if a line isn't in the diff.
-Off GitHub (or when the model reports no specific locations) it falls back to a
-single overview comment. The structured fix carries per-problem locations (file,
-line, the verbatim offending code, and the replacement), so the comment shows
-real code, not prose. Use `.noSuggest()` to force the overview comment instead.
+committable `suggestion` block** — anchored to the exact `file:line` in the
+diff, deduplicated across re-runs, and skipped gracefully if a line isn't in the
+diff. Off GitHub (or when the model reports no specific locations) it falls back
+to a single overview comment. The structured fix carries per-problem locations
+(file, line, the verbatim offending code, and the replacement), so the comment
+shows real code, not prose. Use `.noSuggest()` to force the overview comment
+instead.
 
 ### Applying and committing fixes
 
@@ -74,25 +96,25 @@ Escalate from diagnosis to action, behind explicit guards:
 ```ts
 aiFixer((f) =>
   f.provider("openai").apiKey(this.key)
-    .autoApply()                         // write the fix to the working tree
+    .autoApply() // write the fix to the working tree
     .allowPaths("packages/**", "src/**") // allowlist; lockfiles/.git/workflows excluded
-    .maxEdits(5)                         // blast-radius cap
-    .allowCI()                          // default is local-only; opt in for CI
-    .commitFixes()                      // stage, commit, and push to the PR branch
+    .maxEdits(5) // blast-radius cap
+    .allowCI() // default is local-only; opt in for CI
+    .commitFixes() // stage, commit, and push to the PR branch
 );
 ```
 
-| Setting | Effect |
-| --- | --- |
-| `.autoApply()` | Write the proposed fix to the working tree and re-run the target. Off by default. |
-| `.allowPaths(...globs)` | Restrict applied edits to matching paths (lockfiles, `.git`, CI workflows, and key material are always excluded). |
-| `.maxEdits(n)` | Cap how many files one fix may touch. |
-| `.allowCI()` | Permit auto-apply/commit on CI (local-only by default). |
-| `.commitFixes()` | Stage, commit, and push the fix so a healed PR carries it. Implies `.autoApply()`. |
-| `.noPush()` / `.commitMessage(...)` | Tune the commit. |
+| Setting                             | Effect                                                                                                            |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `.autoApply()`                      | Write the proposed fix to the working tree and re-run the target. Off by default.                                 |
+| `.allowPaths(...globs)`             | Restrict applied edits to matching paths (lockfiles, `.git`, CI workflows, and key material are always excluded). |
+| `.maxEdits(n)`                      | Cap how many files one fix may touch.                                                                             |
+| `.allowCI()`                        | Permit auto-apply/commit on CI (local-only by default).                                                           |
+| `.commitFixes()`                    | Stage, commit, and push the fix so a healed PR carries it. Implies `.autoApply()`.                                |
+| `.noPush()` / `.commitMessage(...)` | Tune the commit.                                                                                                  |
 
-A fix is **never auto-committed** unless you opt in, and the post-apply re-run is
-always the gate: a bad edit fails the build instead of landing silently.
+A fix is **never auto-committed** unless you opt in, and the post-apply re-run
+is always the gate: a bad edit fails the build instead of landing silently.
 
 ## Diff context without a CI step
 
@@ -105,8 +127,8 @@ fetch can't run, the fixer falls back to the working-tree diff.
 ## Other knobs
 
 - `.model(...)`, `.effort(...)` — pick the model and thinking depth.
-- `.criteria(...)` / `.conventions(...)` — add or override the project notes sent
-  to the model.
+- `.criteria(...)` / `.conventions(...)` — add or override the project notes
+  sent to the model.
 - `.comment()` / `.noComment()` — toggle PR posting (the job summary is always
   written).
 - `.maxDiffTokens(n)`, `.retry({ ... })`, `.quiet()` — budget, transient-failure
