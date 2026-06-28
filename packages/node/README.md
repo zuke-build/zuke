@@ -88,15 +88,6 @@ class NodeRunSettings extends NodeSettings
     Set the V8 old-space memory limit in MiB (`--max-old-space-size=<n>`).
   override protected buildArgs(): string[]
 
-class NodeStartSettings extends NodeSettings
-  Settings for `node --run <script>` (run a `package.json` script).
-
-  script(name: string): this
-    The `package.json` script to run (`node --run <name>`). Defaults to
-    `"start"`. Node's `--run` is intentionally minimal — it does not forward
-    extra arguments — so this setting carries only the script name.
-  override protected buildArgs(): string[]
-
 class NodeTestSettings extends NodeSettings
   Settings for `node --test [paths] [flags]`.
 
@@ -121,8 +112,6 @@ interface NodeTasksApi
 
   run(configure?: Configure<NodeRunSettings>): Promise<CommandOutput>
     Run a script: `node [options] <script> [args]`.
-  start(configure?: Configure<NodeStartSettings>): Promise<CommandOutput>
-    Run a `package.json` script: `node --run <name>` (defaults to `start`).
   eval(configure?: Configure<NodeEvalSettings>): Promise<CommandOutput>
     Evaluate inline code: `node --eval <code>`.
   test(configure?: Configure<NodeTestSettings>): Promise<CommandOutput>
