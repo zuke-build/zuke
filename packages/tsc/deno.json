@@ -1,0 +1,16 @@
+{
+  "name": "@zuke/tsc",
+  "version": "0.1.0",
+  "description": "Typed tsc task wrappers for Zuke builds — type-check, compile, and run project-reference builds with the TypeScript compiler via an injection-free settings-lambda API.",
+  "exports": {
+    ".": "./mod.ts"
+  },
+  "imports": {
+    "@zuke/core": "jsr:@zuke/core@^1"
+  },
+  "publish": {
+    "exclude": [
+      "tests/"
+    ]
+  }
+}

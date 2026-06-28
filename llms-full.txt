@@ -3945,6 +3945,585 @@ interface TsgoTasksApi
     Type-check (or compile) with `tsgo`.
 
 ========================================================================
+# @zuke/tsc
+========================================================================
+
+`@zuke/tsc` — typed `tsc` task wrappers for Zuke builds.
+
+`tsc` is the TypeScript compiler. Configure a fluent settings object in a
+lambda; the task builds the argv and runs it. Two tasks are exposed: a
+standard {@link TscTasks.tsc} compile/type-check and a
+{@link TscTasks.build} project-references build (`tsc --build`).
+
+```ts
+import { TscTasks } from "jsr:@zuke/tsc";
+await TscTasks.tsc((s) => s.project("tsconfig.json").noEmit());
+await TscTasks.build((s) => s.projects("packages/a", "packages/b"));
+```
+@module
+
+const TscTasks: TscTasksApi
+  Typed task functions for the `tsc` TypeScript compiler.
+
+abstract class TscBaseSettings extends ToolSettings
+  Shared base for `tsc` settings; resolves the `tsc` binary.
+
+  override protected defaultTool(): string
+
+class TscBuildSettings extends TscBaseSettings
+  Settings for a `tsc --build` project-references run.
+
+  projects(...values: PathLike[]): this
+    Project config files or directories to build (positional); repeatable.
+  clean(): this
+    Delete the outputs of all projects (`--clean`).
+  force(): this
+    Build all projects, even those that appear up to date (`--force`).
+  dry(): this
+    Show what would be built without building it (`--dry`).
+  watch(): this
+    Rebuild projects on file changes (`--watch`).
+  verbose(): this
+    Print verbose logging about the build (`--verbose`).
+  incremental(): this
+    Reuse prior build information for faster rebuilds (`--incremental`).
+  override protected buildArgs(): string[]
+
+class TscSettings extends TscBaseSettings
+  Settings for a standard `tsc` run.
+
+  paths(...values: PathLike[]): this
+    Source files to compile (positional); repeatable.
+  project(path: PathLike): this
+    Compile the project at the given config or directory (`-p`/`--project`).
+  noEmit(): this
+    Type-check without emitting output (`--noEmit`).
+  outDir(path: PathLike): this
+    Directory for emitted files (`--outDir`).
+  declaration(): this
+    Generate `.d.ts` declaration files (`--declaration`).
+  emitDeclarationOnly(): this
+    Emit declarations only, no JavaScript (`--emitDeclarationOnly`).
+  incremental(): this
+    Reuse prior build information for faster rebuilds (`--incremental`).
+  watch(): this
+    Recompile on file changes (`--watch`).
+  strict(): this
+    Enable all strict type-checking options (`--strict`).
+  pretty(): this
+    Colourise and format diagnostics (`--pretty`).
+  listFiles(): this
+    Print the names of files included in the compilation (`--listFiles`).
+  skipLibCheck(): this
+    Skip type-checking of declaration files (`--skipLibCheck`).
+  noEmitOnError(): this
+    Do not emit output if any errors are reported (`--noEmitOnError`).
+  target(value: string): this
+    Target ECMAScript version, e.g. `es2022` (`--target`).
+  module(value: string): this
+    Module system, e.g. `esnext`, `nodenext` (`--module`).
+  override protected buildArgs(): string[]
+
+interface TscTasksApi
+  The shape of {@link TscTasks}.
+
+  tsc(configure?: Configure<TscSettings>): Promise<CommandOutput>
+    Type-check (or compile) with `tsc`.
+  build(configure?: Configure<TscBuildSettings>): Promise<CommandOutput>
+    Run a project-references build with `tsc --build`.
+
+========================================================================
+# @zuke/tsc-alias
+========================================================================
+
+`@zuke/tsc-alias` — typed `tsc-alias` task wrappers for Zuke builds.
+
+`tsc-alias` rewrites TypeScript path aliases (the `paths` mapping in
+`tsconfig.json`) into relative imports in the compiled output, so the emitted
+JavaScript runs without a path resolver. Configure a fluent settings object in
+a lambda; the task builds the argv and runs it.
+
+```ts
+import { TscAliasTasks } from "jsr:@zuke/tsc-alias";
+await TscAliasTasks.run((s) => s.project("tsconfig.json").resolveFullPaths());
+```
+@module
+
+const TscAliasTasks: TscAliasTasksApi
+  Typed task functions for the `tsc-alias` path-alias rewriter.
+
+class TscAliasRunSettings extends ToolSettings
+  Settings for a `tsc-alias` run.
+
+  override protected defaultTool(): string
+  project(path: PathLike): this
+    Path to the `tsconfig.json` to read aliases from (`-p`/`--project`).
+  watch(): this
+    Re-run on file changes (`--watch`).
+  outDir(path: PathLike): this
+    Output directory of the compiled files to rewrite (`--outDir`).
+  declarationDir(path: PathLike): this
+    Output directory of the emitted declaration files (`--declarationDir`).
+  resolveFullPaths(): this
+    Attempt to fully resolve alias paths, including extensions (`--resolveFullPaths`).
+  resolveFullExtension(ext: string): this
+    Extension to append when resolving full paths, e.g. `.js` (`--resolveFullExtension`).
+  replacers(...files: PathLike[]): this
+    Additional replacer module file(s); repeatable (`-f`/`--replacers`).
+  dir(path: PathLike): this
+    Base directory to resolve relative paths against (`--dir`).
+  fileExtensions(list: string): this
+    Comma-separated list of file extensions to process (`--fileExtensions`).
+  verbose(): this
+    Print verbose output (`--verbose`).
+  debug(): this
+    Print debug output (`--debug`).
+  silent(): this
+    Suppress all output (`--silent`).
+  override protected buildArgs(): string[]
+
+interface TscAliasTasksApi
+  The shape of {@link TscAliasTasks}.
+
+  run(configure?: Configure<TscAliasRunSettings>): Promise<CommandOutput>
+    Rewrite TypeScript path aliases in compiled output with `tsc-alias`.
+
+========================================================================
+# @zuke/tsdown
+========================================================================
+
+`@zuke/tsdown` — a typed `TsdownTasks` wrapper for the
+tsdown (https://tsdown.dev) bundler, for use in Zuke builds.
+
+```ts
+import { TsdownTasks } from "jsr:@zuke/tsdown";
+
+await TsdownTasks.build((s) =>
+  s.entry("src/index.ts").format("esm", "cjs").dts().minify().clean()
+);
+```
+@module
+
+const TsdownTasks: TsdownTasksApi
+  Typed task functions for the `tsdown` bundler.
+
+class TsdownBuildSettings extends ToolSettings
+  Settings for a `tsdown` bundle run (`tsdown [entries] [flags]`).
+
+  override protected defaultTool(): string
+  entry(...paths: PathLike[]): this
+    Entry point(s) to bundle (positional); repeatable.
+  format(...formats: TsdownFormat[]): this
+    Output format(s), joined into `--format` (e.g. `esm,cjs`).
+  dts(): this
+    Emit TypeScript declaration files (`--dts`).
+  minify(): this
+    Minify the output (`--minify`).
+  sourcemap(): this
+    Emit source maps (`--sourcemap`).
+  clean(): this
+    Clean the output directory before building (`--clean`).
+  watch(): this
+    Rebuild on change (`--watch`).
+  outDir(path: PathLike): this
+    Output directory (`--out-dir`).
+  target(value: string): this
+    Compilation target, e.g. `es2022` or `node18` (`--target`).
+  tsconfig(path: PathLike): this
+    Path to a tsconfig file (`--tsconfig`).
+  config(path: PathLike): this
+    Path to a tsdown config file (`--config`).
+  platform(value: string): this
+    Target platform, e.g. `node`, `browser`, or `neutral` (`--platform`).
+  treeshake(): this
+    Enable tree-shaking of the output (`--treeshake`).
+  override protected buildArgs(): string[]
+
+class TsdownMigrateSettings extends ToolSettings
+  Settings for a `tsdown migrate` run (`tsdown migrate [flags]`).
+
+  override protected defaultTool(): string
+  from(value: string): this
+    The tool to migrate from, e.g. `tsup` (`--from`).
+  dryRun(): this
+    Preview the migration without writing any files (`--dry-run`).
+  override protected buildArgs(): string[]
+
+interface TsdownTasksApi
+  The shape of {@link TsdownTasks}.
+
+  build(configure?: Configure<TsdownBuildSettings>): Promise<CommandOutput>
+    Bundle the entry points: `tsdown`.
+  migrate(configure?: Configure<TsdownMigrateSettings>): Promise<CommandOutput>
+    Migrate an existing project to tsdown: `tsdown migrate`.
+
+type TsdownFormat = "esm" | "cjs" | "iife" | "umd"
+  An output format accepted by tsdown's `--format`.
+
+========================================================================
+# @zuke/nest
+========================================================================
+
+`@zuke/nest` — typed NestJS CLI (`nest`) task wrappers for Zuke builds.
+
+Wraps the `@nestjs/cli` (https://docs.nestjs.com) `nest` command in the same
+settings-lambda style as the other Zuke tool wrappers: configure a fluent
+settings object in a lambda; the task builds the argv and runs it.
+
+```ts
+import { NestTasks } from "jsr:@zuke/nest";
+await NestTasks.generate((s) => s.schematic("service").name("users"));
+await NestTasks.build((s) => s.webpack());
+```
+@module
+
+const NestTasks: NestTasksApi
+  Typed task functions for the NestJS CLI (`nest`).
+
+class NestBuildSettings extends NestSettings
+  Settings for `nest build` — compile a NestJS application.
+
+  app(value: string): this
+    The application/project to build (positional, optional).
+  config(path: PathLike): this
+    Path to the Nest CLI configuration file (`--config <p>`).
+  path(path: PathLike): this
+    Path to the `tsconfig` file (`--path <p>`).
+  watch(): this
+    Rebuild on file changes (`--watch`).
+  webpack(): this
+    Use the webpack builder (`--webpack`).
+  tsc(): this
+    Use the `tsc` builder (`--tsc`).
+  builder(value: string): this
+    Builder to use, e.g. `tsc`/`webpack`/`swc` (`--builder <v>`).
+  preserveWatchOutput(): this
+    Keep prior console output between watch rebuilds (`--preserveWatchOutput`).
+  override protected subcommandArgs(): string[]
+
+class NestGenerateSettings extends NestSettings
+  Settings for `nest generate` — generate code from a schematic.
+
+  schematic(value: string): this
+    The schematic to generate, e.g. `module`/`service` (positional, required).
+  name(value: string): this
+    The name passed to the schematic (positional, optional).
+  project(value: string): this
+    Target project in a monorepo (`--project <v>`).
+  collection(value: string): this
+    Schematics collection to use (`--collection <v>`).
+  flat(): this
+    Generate files without a dedicated directory (`--flat`).
+  spec(): this
+    Force generation of a spec file (`--spec`).
+  noSpec(): this
+    Disable generation of a spec file (`--no-spec`).
+  skipImport(): this
+    Skip importing the generated element into its module (`--skip-import`).
+  dryRun(): this
+    Report what would be generated without writing files (`--dry-run`).
+  override protected subcommandArgs(): string[]
+
+class NestInfoSettings extends NestSettings
+  Settings for `nest info` — print Nest CLI and project information.
+
+  override protected subcommandArgs(): string[]
+
+class NestNewSettings extends NestSettings
+  Settings for `nest new` — scaffold a new NestJS application.
+
+  name(value: string): this
+    The application name (positional, required).
+  directory(path: PathLike): this
+    Generate into this directory (`--directory <p>`).
+  skipInstall(): this
+    Skip package installation (`--skip-install`).
+  skipGit(): this
+    Skip git repository initialization (`--skip-git`).
+  strict(): this
+    Enable TypeScript strict mode in the generated project (`--strict`).
+  dryRun(): this
+    Report what would be generated without writing files (`--dry-run`).
+  packageManager(value: string): this
+    Package manager to use, e.g. `npm`/`yarn`/`pnpm` (`--package-manager <v>`).
+  language(value: string): this
+    Programming language, e.g. `ts`/`js` (`--language <v>`).
+  override protected subcommandArgs(): string[]
+
+class NestStartSettings extends NestSettings
+  Settings for `nest start` — build and run a NestJS application.
+
+  app(value: string): this
+    The application/project to start (positional, optional).
+  config(path: PathLike): this
+    Path to the Nest CLI configuration file (`--config <p>`).
+  path(path: PathLike): this
+    Path to the `tsconfig` file (`--path <p>`).
+  watch(): this
+    Rebuild and restart on file changes (`--watch`).
+  debug(): this
+    Start in debug mode (`--debug`).
+  preserveWatchOutput(): this
+    Keep prior console output between watch rebuilds (`--preserveWatchOutput`).
+  exec(value: string): this
+    Binary used to run the compiled output (`--exec <v>`).
+  builder(value: string): this
+    Builder to use, e.g. `tsc`/`webpack`/`swc` (`--builder <v>`).
+  override protected subcommandArgs(): string[]
+
+interface NestTasksApi
+  The shape of {@link NestTasks}.
+
+  new(configure?: Configure<NestNewSettings>): Promise<CommandOutput>
+    Scaffold a new application: `nest new`.
+  generate(configure?: Configure<NestGenerateSettings>): Promise<CommandOutput>
+    Generate code from a schematic: `nest generate`.
+  build(configure?: Configure<NestBuildSettings>): Promise<CommandOutput>
+    Compile an application: `nest build`.
+  start(configure?: Configure<NestStartSettings>): Promise<CommandOutput>
+    Build and run an application: `nest start`.
+  info(configure?: Configure<NestInfoSettings>): Promise<CommandOutput>
+    Print CLI and project information: `nest info`.
+
+========================================================================
+# @zuke/openapi-ts
+========================================================================
+
+`@zuke/openapi-ts` — typed `openapi-ts` task wrappers for Zuke builds.
+
+`openapi-ts` is the Hey API (https://heyapi.dev) code generator
+(`@hey-api/openapi-ts`): it turns an OpenAPI specification into a type-safe
+client. Configure a fluent settings object in a lambda; the task builds the
+argv and runs it.
+
+```ts
+import { OpenapiTsTasks } from "jsr:@zuke/openapi-ts";
+await OpenapiTsTasks.generate((s) =>
+  s.input("openapi.yaml").output("src/client")
+);
+```
+@module
+
+const OpenapiTsTasks: OpenapiTsTasksApi
+  Typed task functions for the Hey API `openapi-ts` code generator.
+
+class OpenapiTsGenerateSettings extends ToolSettings
+  Settings for an `openapi-ts` generation run.
+
+  override protected defaultTool(): string
+  input(value: PathLike): this
+    OpenAPI specification to read — a file path or URL (`--input`).
+  output(value: PathLike): this
+    Directory the generated client is written to (`--output`).
+  client(value: string): this
+    HTTP client to generate for, e.g. `@hey-api/client-fetch` (`--client`).
+  file(value: PathLike): this
+    Configuration file to load settings from (`--file`).
+  dryRun(): this
+    Print the planned output without writing any files (`--dry-run`).
+  watch(): this
+    Regenerate on changes to the specification (`--watch`).
+  silent(): this
+    Suppress informational logging (`--silent`).
+  override protected buildArgs(): string[]
+
+interface OpenapiTsTasksApi
+  The shape of {@link OpenapiTsTasks}.
+
+  generate(configure?: Configure<OpenapiTsGenerateSettings>): Promise<CommandOutput>
+    Generate a type-safe API client from an OpenAPI spec with `openapi-ts`.
+
+========================================================================
+# @zuke/orval
+========================================================================
+
+`@zuke/orval` — typed `orval` task wrappers for Zuke builds.
+
+`orval` is an OpenAPI client and mock generator (https://orval.dev). It reads
+an OpenAPI specification and generates a type-safe TypeScript client and
+optional mocks. Configure a fluent settings object in a lambda; the task
+builds the argv and runs it.
+
+```ts
+import { OrvalTasks } from "jsr:@zuke/orval";
+await OrvalTasks.generate((s) => s.config("orval.config.ts").clean());
+```
+@module
+
+const OrvalTasks: OrvalTasksApi
+  Typed task functions for the `orval` OpenAPI client and mock generator.
+
+class OrvalGenerateSettings extends ToolSettings
+  Settings for an `orval` generation run.
+
+  override protected defaultTool(): string
+  config(value: PathLike): this
+    Configuration file to load settings from (`-c`/`--config`).
+  project(value: string): this
+    Run only the named project from the config (`-p`/`--project`).
+  input(value: PathLike): this
+    OpenAPI specification to read — a file path or URL (`-i`/`--input`).
+  output(value: PathLike): this
+    Directory the generated client is written to (`-o`/`--output`).
+  watch(): this
+    Regenerate on changes to the specification (`-w`/`--watch`).
+  clean(): this
+    Remove previously generated files before writing (`--clean`).
+  prettier(): this
+    Format the generated output with Prettier (`--prettier`).
+  biome(): this
+    Format the generated output with Biome (`--biome`).
+  mock(): this
+    Generate mocks alongside the client (`--mock`).
+  override protected buildArgs(): string[]
+
+interface OrvalTasksApi
+  The shape of {@link OrvalTasks}.
+
+  generate(configure?: Configure<OrvalGenerateSettings>): Promise<CommandOutput>
+    Generate a TypeScript API client and mocks from an OpenAPI spec with `orval`.
+
+========================================================================
+# @zuke/husky
+========================================================================
+
+`@zuke/husky` — typed `husky` task wrappers for Zuke builds.
+
+`husky` (https://typicode.github.io/husky) manages Git hooks. Configure a
+fluent settings object in a lambda; the task builds the argv and runs it.
+
+```ts
+import { HuskyTasks } from "jsr:@zuke/husky";
+await HuskyTasks.init();
+await HuskyTasks.install();
+```
+@module
+
+const HuskyTasks: HuskyTasksApi
+  Typed task functions for the `husky` Git-hooks tool.
+
+class HuskyInitSettings extends HuskySettings
+  Settings for `husky init [dir]` — scaffold husky in a project: create the
+  hooks directory, add a sample `pre-commit` hook, and wire up the `prepare`
+  script. This is the canonical husky v9 setup command.
+
+  dir(path: PathLike): this
+    The hooks directory to initialise (positional; defaults to `.husky`).
+  override protected subcommandArgs(): string[]
+
+class HuskyInstallSettings extends HuskySettings
+  Settings for installing Git hooks by invoking `husky [dir]` bare.
+
+  husky v9 removed the old `install` subcommand: running `husky` with no
+  subcommand is what installs the hooks (an optional directory may follow).
+  This task therefore emits the bare `husky` invocation — its default argv is
+  just `["husky"]`, not `["husky", "install"]`.
+
+  dir(path: PathLike): this
+    The hooks directory to install into (positional; defaults to `.husky`).
+  override protected subcommandArgs(): string[]
+
+interface HuskyTasksApi
+  The shape of {@link HuskyTasks}.
+
+  init(configure?: Configure<HuskyInitSettings>): Promise<CommandOutput>
+    Scaffold husky in a project: `husky init [dir]`.
+  install(configure?: Configure<HuskyInstallSettings>): Promise<CommandOutput>
+    Install Git hooks via the bare `husky [dir]` invocation (husky v9 removed
+    the `install` subcommand).
+
+========================================================================
+# @zuke/node
+========================================================================
+
+`@zuke/node` — typed Node.js task wrappers for Zuke builds.
+
+Configure a fluent settings object in a lambda; the task builds the argv and
+runs it. The task names mirror common `node` invocations: `run` executes a
+script, `eval` evaluates inline code, and `test` runs the built-in test
+runner.
+
+```ts
+import { NodeTasks } from "jsr:@zuke/node";
+await NodeTasks.run((s) => s.script("server.js").enableSourceMaps());
+```
+@module
+
+const NodeTasks: NodeTasksApi
+  Typed task functions for the Node.js runtime `node`.
+
+class NodeEvalSettings extends NodeSettings
+  Settings for `node [options] --eval <code>`.
+
+  code(source: string): this
+    The JavaScript source to evaluate (required).
+  requireModule(...modules: string[]): this
+    Preload a CommonJS module before evaluating (`--require <m>`); repeatable.
+  importModule(...modules: string[]): this
+    Preload an ES module before evaluating (`--import <m>`); repeatable.
+  print(): this
+    Print the result of the evaluated code (`--print` instead of `--eval`).
+  override protected buildArgs(): string[]
+
+class NodeRunSettings extends NodeSettings
+  Settings for `node [options] <script> [args]`.
+
+  script(path: PathLike): this
+    The script to execute (required).
+  scriptArgs(...args: Array<string | number>): this
+    Arguments passed to the script (after the script path).
+  requireModule(...modules: string[]): this
+    Preload a CommonJS module before the script (`--require <m>`); repeatable.
+  importModule(...modules: string[]): this
+    Preload an ES module before the script (`--import <m>`); repeatable.
+  conditions(...names: string[]): this
+    Custom export conditions to resolve (`--conditions <c>`); repeatable.
+  envFile(path: PathLike): this
+    Load environment variables from a file (`--env-file=<p>`).
+  watch(): this
+    Restart the process on file changes (`--watch`).
+  watchPath(...paths: PathLike[]): this
+    Additional paths to watch (`--watch-path <p>`); repeatable.
+  enableSourceMaps(): this
+    Enable Source Map V3 support for stack traces (`--enable-source-maps`).
+  inspect(): this
+    Activate the inspector (`--inspect`).
+  inspectBrk(): this
+    Activate the inspector and break before user code starts (`--inspect-brk`).
+  maxOldSpaceSize(megabytes: number): this
+    Set the V8 old-space memory limit in MiB (`--max-old-space-size=<n>`).
+  override protected buildArgs(): string[]
+
+class NodeTestSettings extends NodeSettings
+  Settings for `node --test [paths] [flags]`.
+
+  paths(...values: PathLike[]): this
+    Test files or directories to run (positional); repeatable.
+  testNamePattern(value: string): this
+    Run only tests whose name matches the pattern (`--test-name-pattern <v>`).
+  testReporter(value: string): this
+    Select the test reporter (`--test-reporter <v>`).
+  testConcurrency(value: number): this
+    Maximum number of test files to run concurrently (`--test-concurrency <n>`).
+  only(): this
+    Run only tests marked with the `only` option (`--test-only`).
+  watch(): this
+    Re-run tests on file changes (`--watch`).
+  experimentalTestCoverage(): this
+    Collect and report test coverage (`--experimental-test-coverage`).
+  override protected buildArgs(): string[]
+
+interface NodeTasksApi
+  The shape of {@link NodeTasks}.
+
+  run(configure?: Configure<NodeRunSettings>): Promise<CommandOutput>
+    Run a script: `node [options] <script> [args]`.
+  eval(configure?: Configure<NodeEvalSettings>): Promise<CommandOutput>
+    Evaluate inline code: `node --eval <code>`.
+  test(configure?: Configure<NodeTestSettings>): Promise<CommandOutput>
+    Run the built-in test runner: `node --test`.
+
+========================================================================
 # @zuke/dprint
 ========================================================================
 

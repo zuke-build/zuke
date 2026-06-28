@@ -1,0 +1,16 @@
+{
+  "name": "@zuke/openapi-ts",
+  "version": "0.1.0",
+  "description": "Typed openapi-ts task wrappers for Zuke builds — generate type-safe API clients from OpenAPI specs with Hey API via an injection-free settings-lambda API.",
+  "exports": {
+    ".": "./mod.ts"
+  },
+  "imports": {
+    "@zuke/core": "jsr:@zuke/core@^1"
+  },
+  "publish": {
+    "exclude": [
+      "tests/"
+    ]
+  }
+}
