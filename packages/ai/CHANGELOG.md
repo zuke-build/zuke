@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.3.0](https://github.com/zuke-build/zuke/compare/ai-v1.2.0...ai-v1.3.0) (2026-06-28)
+
+
+### Features
+
+* **ai:** agent-delegation fixer (agentFixer) and propose-vs-apply reporting ([#125](https://github.com/zuke-build/zuke/issues/125)) ([82d3311](https://github.com/zuke-build/zuke/commit/82d3311a9dc8cf50cbae2ebb864e4f441b575a57))
+* self-healing builds — recoverWith primitive and aiFixer ([#122](https://github.com/zuke-build/zuke/issues/122)) ([ad6b54a](https://github.com/zuke-build/zuke/commit/ad6b54a1b9a3602a927b08acbc37ea2af6aa0966))
+
 ## [1.2.0](https://github.com/zuke-build/zuke/compare/ai-v1.1.0...ai-v1.2.0) (2026-06-23)
 
 
