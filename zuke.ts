@@ -279,8 +279,14 @@ class ZukeBuild extends Build {
     .description("Run the test suite with coverage")
     .dependsOn(this.check)
     .executes(async () => {
+      // Blank GITHUB_STEP_SUMMARY for the test subprocess: tests that exercise
+      // the job-summary and AI-reviewer/fixer code paths would otherwise append
+      // to the real Actions summary, polluting it. The parent `./zuke ci` run
+      // keeps the env var and still writes the build table and any fixer section.
       await DenoTasks.test((s) =>
-        s.allowAll().coverage("cov_profile").args("--frozen")
+        s.allowAll().coverage("cov_profile").args("--frozen").env({
+          GITHUB_STEP_SUMMARY: "",
+        })
       );
     });
 

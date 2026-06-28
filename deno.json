@@ -46,7 +46,7 @@
   ],
   "tasks": {
     "zuke": "deno run -A zuke.ts",
-    "test": "deno test -A --frozen",
+    "test": "GITHUB_STEP_SUMMARY= deno test -A --frozen",
     "cov": "deno run -A zuke.ts coverage",
     "cov:report": "deno coverage cov_profile '--exclude=tests/'",
     "check": "deno check --frozen zuke.ts tests/*.ts packages/*/mod.ts packages/*/src/*.ts packages/*/tests/*.ts",
