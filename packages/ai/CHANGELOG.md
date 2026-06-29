@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.4.0](https://github.com/zuke-build/zuke/compare/ai-v1.3.0...ai-v1.4.0) (2026-06-29)
+
+
+### Features
+
+* **ai:** make suppressed findings auditable in the review report ([#129](https://github.com/zuke-build/zuke/issues/129)) ([aea4b8b](https://github.com/zuke-build/zuke/commit/aea4b8b09317f00fc65f68953d4f64851812b175))
+* **ai:** token/cost budgets, response caching, and learned false-positive suppression ([#126](https://github.com/zuke-build/zuke/issues/126)) ([c8ba51f](https://github.com/zuke-build/zuke/commit/c8ba51fca1e46baada43542a3929d9f6545e30cc))
+
 ## [1.3.0](https://github.com/zuke-build/zuke/compare/ai-v1.2.0...ai-v1.3.0) (2026-06-28)
 
 
