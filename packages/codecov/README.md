@@ -16,9 +16,22 @@ await CodecovTasks.upload((s) =>
 );
 ```
 
-The Codecov CLI is published as the `codecov-cli` package (the `codecovcli`
-binary). Install it in CI before the upload — e.g. `pipx install codecov-cli` —
-or point the wrapper at a downloaded binary with `.toolPath(...)`.
+The wrapper drives the `codecovcli` binary. In a Zuke build you don't need a
+global install: fetch Codecov's standalone CLI with `installRelease` (from
+`@zuke/core`) and hand the path to `.toolPath(...)` — the build owns its own
+tooling, no separate CI step required.
+
+```ts
+import { installRelease } from "jsr:@zuke/core";
+
+// Codecov publishes a standalone binary per platform (linux/macos/windows).
+const bin = await installRelease({
+  name: "codecov",
+  destDir: ".zuke/tools",
+  url: () => "https://cli.codecov.io/latest/linux/codecov",
+});
+await CodecovTasks.upload((s) => s.toolPath(bin).files("cov.lcov"));
+```
 
 <!-- ZUKE:API:START -->
 
