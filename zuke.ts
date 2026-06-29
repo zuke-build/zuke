@@ -150,6 +150,14 @@ async function collectPackageDocs(): Promise<PackageDoc[]> {
 const TOOLS_ROOT: AbsolutePath = repoRoot(".zuke", "tools");
 
 /**
+ * The pinned Codecov CLI version `coverageUpload` downloads. Pinned (never
+ * `latest`) so the build is reproducible and fetches a fixed artifact rather
+ * than a moving target; bump it deliberately. Codecov serves versioned binaries
+ * at `cli.codecov.io/v<semver>/<platform>/codecov`.
+ */
+const CODECOV_CLI_VERSION = "v11.2.8";
+
+/**
  * Install an npm-distributed CLI as a local executable under {@link TOOLS_ROOT}
  * and return the absolute path to its launcher. cspell and release-please ship
  * only on npm, so the build provisions them with `deno install` rather than
@@ -332,7 +340,8 @@ class ZukeBuild extends Build {
         console.log("CODECOV_TOKEN not set — skipping the Codecov upload.");
         return;
       }
-      // Codecov ships a standalone CLI binary per platform; fetch it on demand.
+      // Codecov ships a standalone CLI binary per platform; fetch the pinned
+      // version on demand (over HTTPS, from Codecov's own CDN).
       const bin = await installRelease({
         name: "codecov",
         destDir: TOOLS_ROOT,
@@ -343,7 +352,7 @@ class ZukeBuild extends Build {
             ? "windows"
             : "linux";
           const file = os === "windows" ? "codecov.exe" : "codecov";
-          return `https://cli.codecov.io/latest/${platform}/${file}`;
+          return `https://cli.codecov.io/${CODECOV_CLI_VERSION}/${platform}/${file}`;
         },
       });
       // The token rides through the masked `.env(...)` chainer, never argv;

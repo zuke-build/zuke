@@ -28,7 +28,7 @@ import { installRelease } from "jsr:@zuke/core";
 const bin = await installRelease({
   name: "codecov",
   destDir: ".zuke/tools",
-  url: () => "https://cli.codecov.io/latest/linux/codecov",
+  url: () => "https://cli.codecov.io/v11.2.8/linux/codecov",
 });
 await CodecovTasks.upload((s) => s.toolPath(bin).files("cov.lcov"));
 ```
