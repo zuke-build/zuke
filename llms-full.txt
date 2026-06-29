@@ -5608,6 +5608,10 @@ function agentFixer(run: AgentRunner, configure?: Configure<AgentFixer>): AgentF
   Construct an {@link AgentFixer} from an {@link AgentRunner} and apply the
   configuration lambda. Plug the result into a target with `.recoverWith(...)`.
 
+function aiCache(configure?: Configure<AiCache>): AiCache
+  Construct an {@link AiCache}, applying an optional configure lambda so it can
+  be set up inline — e.g. `aiCache((c) => c.dir(".cache").ttl(3600))`.
+
 function aiFixer(configure?: Configure<AiFixer>): AiFixer
   Construct an {@link AiFixer} and apply the configuration lambda. Plug the
   result into a target with `.recoverWith(...)`:
@@ -5636,8 +5640,17 @@ function aiReviewWorkflow(spec: AiReviewWorkflowSpec): CiFile
   }
   ```
 
+function budget(configure?: Configure<Budget>): Budget
+  Construct a {@link Budget}, applying an optional configure lambda so caps can
+  be set inline — e.g. `budget((b) => b.maxTokens(100_000).maxCost(1))`.
+
 function correctnessReviewer(configure?: Configure<Reviewer>): Reviewer
   A reviewer that scores the diff for correctness bugs and regressions.
+
+function findingFingerprint(assessment: AssessmentType, finding: AssessmentFinding): string
+  A stable fingerprint for a finding: hash of the assessment kind, the
+  normalised title (trimmed, lowercased, whitespace collapsed), and the file.
+  Independent of line number so a finding keeps its id as code shifts.
 
 function genericReviewer(configure?: Configure<Reviewer>): Reviewer
   A general-purpose reviewer scored on code quality and maintainability. Pair
@@ -5652,6 +5665,11 @@ function secretsReviewer(configure?: Configure<Reviewer>): Reviewer
 
 function securityReviewer(configure?: Configure<Reviewer>): Reviewer
   A reviewer that scores the diff for security vulnerabilities.
+
+function suppressions(configure?: Configure<Suppressions>): Suppressions
+  Construct a {@link Suppressions}, applying an optional configure lambda so the
+  file and inline fingerprints can be set inline — e.g.
+  `suppressions((s) => s.file(".zuke/suppress.json").add("abc"))`.
 
 class AgentFixer implements Remediation
   A fluent agent fixer. Construct one via {@link agentFixer} with a runner, and
@@ -5703,6 +5721,33 @@ class AgentFixer implements Remediation
     Run the agent against the failure, optionally commit its changes, and ask
     the executor to re-run the target as the verifier. Skips (no retry) on CI
     unless {@link allowCI} is set, or if the agent run itself fails.
+
+class AiCache
+  A best-effort cache of AI provider responses, keyed by a {@link stableHash} of
+  each call's salient parts and persisted through a {@link CacheStore} (the
+  default writes JSON files under {@link AiCache.dir}). Configure it inline with
+  {@link aiCache}: set the {@link AiCache.dir}, the {@link AiCache.ttl}, or
+  {@link AiCache.disable} it entirely, then read with {@link AiCache.get_} and
+  write with {@link AiCache.put_}.
+
+  dir(path: string): this
+    Directory for the default file store (default ".zuke/ai-cache").
+  ttl(seconds: number): this
+    Entries older than this many seconds are ignored (default 604800 = 7 days; 0 = never expire).
+  disable(): this
+    Turn the cache off programmatically ({@link get_} misses, {@link put_} is a no-op).
+  store(custom: CacheStore): this
+    Inject a custom backing store (test seam; overrides the file store).
+  now(clock: () => number): this
+    Clock seam for `createdAt` and TTL checks (default `Date.now`).
+  enabled_(): boolean
+    INTERNAL: whether the cache is active.
+  key_(parts: string[]): string
+    INTERNAL: derive a stable key from the given parts.
+  async get_(key: string): Promise<CacheEntry | undefined>
+    INTERNAL: fetch a live (non-expired) entry, or `undefined`.
+  async put_(key: string, text: string, usage?: Usage): Promise<void>
+    INTERNAL: store a response under `key`.
 
 class AiFixer implements Remediation
   A fluent AI fixer. Construct one via {@link aiFixer}, configure it, and attach
@@ -5781,6 +5826,17 @@ class AiFixer implements Remediation
     The convention-file reader (test seam).
   env(reader: EnvReader): this
     The environment reader used to detect CI and the comment host (test seam).
+  budget(budget: Budget): this
+    Attach a shared {@link Budget} that caps spend by an exact token count
+    (a USD cap is opt-in, computed from prices you supply to the budget). Once
+    the cap is reached the fixer skips the model call (and reports it) rather
+    than running up the bill; share one budget across reviewers and fixers to
+    bound a whole build.
+  cache(cache: AiCache): this
+    Reuse a prior fix for an identical failure (same provider, model, and
+    prompt) instead of calling the API again — see {@link AiCache}. Helpful when
+    the same failure recurs across CI re-runs; a hit does not draw down the
+    {@link budget}.
   async remediate(context: RemediationContext): Promise<RemediationResult>
     Diagnose the failure and, when permitted, apply (and commit) the fix. Always
     reports; returns `{ retry: true }` only when it changed the working tree so
@@ -5791,6 +5847,34 @@ class AiReviewError extends Error
 
   constructor(message: string)
   override name: string
+
+class Budget
+  A running token and cost budget for AI provider calls. Build one with
+  {@link budget}, set caps with the fluent setters, then fold each call's usage
+  in with {@link Budget.record_} and gate further calls on
+  {@link Budget.exhausted_}.
+
+  maxTokens(total: number): this
+    Cap total tokens (input + output across all recorded calls).
+  maxCost(usd: number): this
+    Cap estimated USD cost. Only takes effect for models you've priced via
+    {@link prices} — no prices ship by default — so the estimate uses your own
+    current rates. Pair it with {@link maxTokens} for a guaranteed hard cap.
+  prices(table: Record<string, ModelPrice>): this
+    Supply per-model prices (USD per 1,000,000 tokens, keyed by model id) so a
+    {@link maxCost} cap and the cost estimate can be computed. Merges across
+    calls. Nothing is priced until you call this — provider pricing changes too
+    often to bake a table in, so the rates here are yours to keep current.
+  exhausted_(): boolean
+    INTERNAL: whether a configured cap has already been reached.
+  record_(usage: Usage | undefined, model: string): void
+    INTERNAL: fold one provider call's usage into the running totals.
+  spend_(): BudgetSpend
+    INTERNAL: a snapshot of consumption so far.
+  remainingTokens_(): number | undefined
+    INTERNAL: remaining tokens before the cap, or undefined when no token cap.
+  describe_(): string
+    INTERNAL: a one-line human summary, e.g. "1,234 tokens (~$0.01) of 10,000 / $1.00".
 
 class DiffSettings
   Fluent diff source configuration passed to {@link "./reviewer.ts".Reviewer.diff}.
@@ -5897,9 +5981,38 @@ class Reviewer implements Validation
     The `fetch` implementation for the API call (test seam).
   exec(run: (argv: string[]) => Promise<string>): this
     The `git` runner used to produce the diff (test seam).
+  budget(budget: Budget): this
+    Attach a shared {@link Budget} that caps spend by an exact token count
+    (a USD cap is opt-in, computed from prices you supply to the budget). Pass
+    the same budget to several reviewers and a fixer to bound the whole build:
+    once the cap is reached, further reviews are skipped (not failed) with a
+    note, rather than running up the bill.
+  cache(cache: AiCache): this
+    Reuse a prior model response for an identical review (same provider, model,
+    and prompt) instead of calling the API again — see {@link AiCache}. A cache
+    hit costs nothing and does not draw down the {@link budget}.
+  suppress(suppressions: Suppressions): this
+    Hide findings whose stable ID is in a {@link Suppressions} list — a learned
+    set of dismissed false positives. Every finding is fingerprinted and its ID
+    surfaced in the report, so dismissing one is a copy-paste into the list.
   async validate(context: ValidationContext): Promise<void>
     Run the review and gate the build. Throws an {@link AiReviewError} when the
     gate trips (or on a configuration/API error with `onError: "fail"`).
+
+class Suppressions
+  A file-backed set of suppressed finding fingerprints. The effective set is
+  the union of the fingerprints read from {@link Suppressions.file} and any
+  added inline with {@link Suppressions.add}; the reviewer drops a finding whose
+  {@link findingFingerprint} is in that set.
+
+  file(path: string): this
+    Path of the JSON suppress list (default ".zuke/ai-suppress.json").
+  add(...fingerprints: string[]): this
+    Add fingerprints inline (in addition to any from the file).
+  reader(read: (path: string) => Promise<string | undefined>): this
+    Reader seam for the suppress file (default reads from disk, missing -> undefined).
+  async load_(): Promise<Set<string>>
+    INTERNAL: the effective set of suppressed fingerprints (file ∪ inline).
 
 interface AgentContext
   The failure context handed to an {@link AgentRunner}, plus a ready prompt.
@@ -5960,12 +6073,48 @@ interface AssessmentFinding
     A short title for the issue.
   severity: Severity
     The issue's severity.
+  id?: string
+    A stable fingerprint for the finding, assigned by the reviewer (see
+    {@link "./suppress.ts".findingFingerprint}). Copy it into the suppress
+    list to dismiss a recurring false positive.
   file?: string
     The file the issue is in, if the model attributed one.
   line?: number
     The line the issue is at, if the model attributed one.
   detail?: string
     A longer explanation, if provided.
+
+interface BudgetSpend
+  A snapshot of what a {@link Budget} has consumed so far.
+
+  calls: number
+    How many provider calls were recorded.
+  inputTokens: number
+    Total input (prompt) tokens across all recorded calls.
+  outputTokens: number
+    Total output (completion) tokens across all recorded calls.
+  totalTokens: number
+    Total tokens (input + output) across all recorded calls.
+  cost?: number
+    Estimated USD cost, when at least one recorded call had a known price.
+
+interface CacheEntry
+  A cached provider response.
+
+  text: string
+    The model's raw text response.
+  usage?: Usage
+    Token usage reported for the original call, if any.
+  createdAt: number
+    Epoch milliseconds when the entry was written (for TTL).
+
+interface CacheStore
+  A pluggable backing store for the cache (the default is file-backed).
+
+  get(key: string): Promise<CacheEntry | undefined>
+    Fetch the entry stored under `key`, or `undefined` when absent.
+  set(key: string, entry: CacheEntry): Promise<void>
+    Store `entry` under `key`, replacing any prior value.
 
 interface FileEdit
   A whole-file edit: the complete new contents of one file.
@@ -6004,6 +6153,14 @@ interface FixLocation
     The exact offending source line(s), quoted verbatim.
   suggestion?: string
     The suggested replacement for {@link code} (empty means delete it).
+
+interface ModelPrice
+  Per-model price in USD per 1,000,000 tokens.
+
+  input: number
+    USD per 1,000,000 input (prompt) tokens.
+  output: number
+    USD per 1,000,000 output (completion) tokens.
 
 interface RetryInfo
   What happened before a retry, for {@link RetryOptions.onRetry}.

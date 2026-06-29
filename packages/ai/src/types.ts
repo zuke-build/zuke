@@ -28,6 +28,12 @@ export interface AssessmentFinding {
   title: string;
   /** The issue's severity. */
   severity: Severity;
+  /**
+   * A stable fingerprint for the finding, assigned by the reviewer (see
+   * {@link "./suppress.ts".findingFingerprint}). Copy it into the suppress
+   * list to dismiss a recurring false positive.
+   */
+  id?: string;
   /** The file the issue is in, if the model attributed one. */
   file?: string;
   /** The line the issue is at, if the model attributed one. */

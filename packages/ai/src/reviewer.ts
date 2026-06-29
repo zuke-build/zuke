@@ -14,6 +14,7 @@ import type {
   AssessmentType,
   Effort,
   Provider,
+  Severity,
   Usage,
 } from "./types.ts";
 import { AiReviewError } from "./errors.ts";
@@ -34,6 +35,7 @@ import { callProvider, DEFAULT_MODELS, resolveKey } from "./provider.ts";
 import { emptyAssessment, parseAssessment } from "./assessment.ts";
 import {
   consoleLines,
+  type ReportExtras,
   retryLine,
   reviewStartLine,
   skipConsoleLine,
@@ -43,6 +45,10 @@ import {
 } from "./report.ts";
 import { detectReviewHost, readEnv } from "./hosts.ts";
 import type { RetryInfo, RetryOptions } from "./retry.ts";
+import type { Budget } from "./budget.ts";
+import type { AiCache } from "./cache.ts";
+import { findingFingerprint, type Suppressions } from "./suppress.ts";
+import { rank } from "./severity.ts";
 
 /**
  * A fluent AI reviewer. Construct one via {@link securityReviewer} (and the
@@ -70,6 +76,9 @@ export class Reviewer implements Validation {
   #quiet = false;
   #fetch?: typeof fetch;
   #exec?: (argv: string[]) => Promise<string>;
+  #budget?: Budget;
+  #cache?: AiCache;
+  #suppress?: Suppressions;
 
   /** A name for diagnostics — `"<assessment> review"`. */
   name: string;
@@ -243,6 +252,38 @@ export class Reviewer implements Validation {
     return this;
   }
 
+  /**
+   * Attach a shared {@link Budget} that caps spend by an exact **token** count
+   * (a USD cap is opt-in, computed from prices you supply to the budget). Pass
+   * the same budget to several reviewers and a fixer to bound the whole build:
+   * once the cap is reached, further reviews are skipped (not failed) with a
+   * note, rather than running up the bill.
+   */
+  budget(budget: Budget): this {
+    this.#budget = budget;
+    return this;
+  }
+
+  /**
+   * Reuse a prior model response for an identical review (same provider, model,
+   * and prompt) instead of calling the API again — see {@link AiCache}. A cache
+   * hit costs nothing and does not draw down the {@link budget}.
+   */
+  cache(cache: AiCache): this {
+    this.#cache = cache;
+    return this;
+  }
+
+  /**
+   * Hide findings whose stable ID is in a {@link Suppressions} list — a learned
+   * set of dismissed false positives. Every finding is fingerprinted and its ID
+   * surfaced in the report, so dismissing one is a copy-paste into the list.
+   */
+  suppress(suppressions: Suppressions): this {
+    this.#suppress = suppressions;
+    return this;
+  }
+
   /** Resolve the diff text from the configured source. */
   async #resolveDiff(): Promise<string> {
     if (this.#diff.text_ !== undefined) return this.#diff.text_;
@@ -258,11 +299,48 @@ export class Reviewer implements Validation {
     assessment: Assessment,
     target: string,
     usage?: Usage,
+    extras: ReportExtras = {},
   ): Promise<void> {
     if (this.#quiet) return;
-    const lines = consoleLines(this.name, assessment, usage);
+    const lines = consoleLines(this.name, assessment, usage, extras);
     for (const line of lines) console.log(line);
-    await this.#publish(toMarkdown(this.name, target, assessment, usage));
+    await this.#publish(
+      toMarkdown(this.name, target, assessment, usage, extras),
+    );
+  }
+
+  /**
+   * Fingerprint every finding (so its ID shows in the report) and, when a
+   * suppress list is attached, drop the dismissed ones. Returns how many were
+   * suppressed. When suppression empties the findings, the score and severity
+   * are cleared so the gate sees a clean assessment.
+   */
+  async #applySuppression(assessment: Assessment): Promise<number> {
+    for (const finding of assessment.findings) {
+      finding.id = findingFingerprint(this.#assessment, finding);
+    }
+    if (this.#suppress === undefined) return 0;
+    const suppressed = await this.#suppress.load_();
+    if (suppressed.size === 0) return 0;
+    const kept = assessment.findings.filter((finding) => {
+      const id = finding.id;
+      return id === undefined || !suppressed.has(id);
+    });
+    const count = assessment.findings.length - kept.length;
+    if (count === 0) return 0;
+    assessment.findings = kept;
+    if (kept.length === 0) {
+      assessment.score = 0;
+      assessment.severity = "none";
+    } else {
+      // Suppression can only lower the bar: recompute severity from what's left.
+      let highest: Severity = "none";
+      for (const finding of kept) {
+        if (rank(finding.severity) > rank(highest)) highest = finding.severity;
+      }
+      assessment.severity = highest;
+    }
+    return count;
   }
 
   /**
@@ -358,29 +436,62 @@ export class Reviewer implements Validation {
         console.warn(retryLine(this.name, info));
       },
     };
+    // Cost cache: an identical review (same provider, model, and prompt) reuses
+    // the prior response instead of paying for another call.
+    const cacheKey = this.#cache?.enabled_()
+      ? this.#cache.key_([provider, model, system, user])
+      : undefined;
+    const cached = cacheKey !== undefined
+      ? await this.#cache?.get_(cacheKey)
+      : undefined;
+
     let assessment: Assessment;
     let usage: Usage | undefined;
-    try {
-      const result = await callProvider(
-        provider,
-        key,
-        model,
-        system,
-        user,
-        { effort: this.#effort, fetch: this.#fetch, retry },
+    let fromCache = false;
+    if (cached !== undefined) {
+      assessment = parseAssessment(cached.text);
+      usage = cached.usage;
+      fromCache = true;
+    } else if (this.#budget?.exhausted_()) {
+      await this.#reportSkip(
+        context.target,
+        `AI budget exhausted — ${this.#budget.describe_()}`,
       );
-      assessment = parseAssessment(result.text);
-      usage = result.usage;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      if (this.#onError === "warn") {
-        console.warn(`[${this.name}] skipped: ${message}`);
-        return;
+      return;
+    } else {
+      try {
+        const result = await callProvider(
+          provider,
+          key,
+          model,
+          system,
+          user,
+          { effort: this.#effort, fetch: this.#fetch, retry },
+        );
+        assessment = parseAssessment(result.text);
+        usage = result.usage;
+        this.#budget?.record_(usage, model);
+        if (cacheKey !== undefined) {
+          await this.#cache?.put_(cacheKey, result.text, usage);
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (this.#onError === "warn") {
+          console.warn(`[${this.name}] skipped: ${message}`);
+          return;
+        }
+        throw error instanceof AiReviewError
+          ? error
+          : new AiReviewError(message);
       }
-      throw error instanceof AiReviewError ? error : new AiReviewError(message);
     }
 
-    await this.#report(assessment, context.target, usage);
+    const suppressed = await this.#applySuppression(assessment);
+    await this.#report(assessment, context.target, usage, {
+      suppressed,
+      fromCache,
+      budget: this.#budget?.describe_(),
+    });
     const gate = gateTrips(assessment, this.#gate);
     if (gate.tripped) {
       throw new AiReviewError(

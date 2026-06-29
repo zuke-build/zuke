@@ -219,6 +219,11 @@ model a first-class citizen of the build graph, two ways:
 - **Agent delegation** — for open-ended fixes, `agentFixer` hands the failure to
   a coding agent you inject (Claude Code, Codex, Gemini CLI) which edits files
   itself; one generic fixer, agent chosen at the call site.
+- **Cost controls** — a shared `budget(...)` caps spend across every reviewer and
+  fixer by an exact **token** count (no stale price tables; a USD cap is opt-in
+  with your own rates), `aiCache(...)` reuses a prior response for an identical
+  call, and `suppressions(...)` lets you dismiss a false positive by its stable
+  ID so it never fails the build again.
 
 ```ts
 test = target()

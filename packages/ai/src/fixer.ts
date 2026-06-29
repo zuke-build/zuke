@@ -52,6 +52,8 @@ import {
 } from "./context.ts";
 import { postComment } from "./comment.ts";
 import type { RetryInfo, RetryOptions } from "./retry.ts";
+import type { Budget } from "./budget.ts";
+import type { AiCache } from "./cache.ts";
 
 /**
  * The body of an inline review comment for one location: the diagnosis plus a
@@ -109,6 +111,8 @@ export class AiFixer implements Remediation {
   #write?: (path: string, content: string) => Promise<void>;
   #readFile?: (path: string) => Promise<string | undefined>;
   #env: EnvReader = readEnv;
+  #budget?: Budget;
+  #cache?: AiCache;
 
   /** A name for diagnostics — `"AI fix"`. */
   name = "AI fix";
@@ -312,6 +316,29 @@ export class AiFixer implements Remediation {
     return this;
   }
 
+  /**
+   * Attach a shared {@link Budget} that caps spend by an exact **token** count
+   * (a USD cap is opt-in, computed from prices you supply to the budget). Once
+   * the cap is reached the fixer skips the model call (and reports it) rather
+   * than running up the bill; share one budget across reviewers and fixers to
+   * bound a whole build.
+   */
+  budget(budget: Budget): this {
+    this.#budget = budget;
+    return this;
+  }
+
+  /**
+   * Reuse a prior fix for an identical failure (same provider, model, and
+   * prompt) instead of calling the API again — see {@link AiCache}. Helpful when
+   * the same failure recurs across CI re-runs; a hit does not draw down the
+   * {@link budget}.
+   */
+  cache(cache: AiCache): this {
+    this.#cache = cache;
+    return this;
+  }
+
   /** The git runner: the configured seam, or the real shell `Command`. */
   #git(): GitRunner {
     return this.#exec ?? ((argv) => new Command(argv).text());
@@ -475,23 +502,47 @@ export class AiFixer implements Remediation {
       },
     };
 
+    // Cost cache: an identical failure (same provider, model, and prompt) reuses
+    // the prior fix instead of paying for another call.
+    const cacheKey = this.#cache?.enabled_()
+      ? this.#cache.key_([provider, model, system, user])
+      : undefined;
+    const cached = cacheKey !== undefined
+      ? await this.#cache?.get_(cacheKey)
+      : undefined;
+
     let fix: Fix;
     let usage: Usage | undefined;
-    try {
-      const result = await callProvider(provider, key, model, system, user, {
-        effort: this.#effort,
-        fetch: this.#fetch,
-        retry,
-        schema: { json: FIX_JSON_SCHEMA, gemini: FIX_GEMINI_SCHEMA },
-        schemaName: "fix",
-        maxTokens: 8192,
-      });
-      fix = parseFix(result.text);
-      usage = result.usage;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.warn(`[${this.name}] could not produce a fix: ${message}`);
+    if (cached !== undefined) {
+      fix = parseFix(cached.text);
+      usage = cached.usage;
+    } else if (this.#budget?.exhausted_()) {
+      await this.#reportSkip(
+        context.target,
+        `AI budget exhausted — ${this.#budget.describe_()}`,
+      );
       return { retry: false };
+    } else {
+      try {
+        const result = await callProvider(provider, key, model, system, user, {
+          effort: this.#effort,
+          fetch: this.#fetch,
+          retry,
+          schema: { json: FIX_JSON_SCHEMA, gemini: FIX_GEMINI_SCHEMA },
+          schemaName: "fix",
+          maxTokens: 8192,
+        });
+        fix = parseFix(result.text);
+        usage = result.usage;
+        this.#budget?.record_(usage, model);
+        if (cacheKey !== undefined) {
+          await this.#cache?.put_(cacheKey, result.text, usage);
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.warn(`[${this.name}] could not produce a fix: ${message}`);
+        return { retry: false };
+      }
     }
 
     const ci = detectCiHost(this.#env) !== "local";

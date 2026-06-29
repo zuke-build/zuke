@@ -165,6 +165,84 @@ environment (GitHub's `GITHUB_BASE_REF`) — so your workflow needs no manual
 `git fetch` step. Pass a branch (`.fetchBase("main")`) to be explicit; if the
 fetch can't run, the fixer falls back to the working-tree diff.
 
+## Cost controls and learning
+
+Three opt-in primitives bound what the AI costs and teach it what to ignore.
+They are shared objects you construct once and hand to any number of reviewers
+and fixers.
+
+### Token / cost budget
+
+`budget(...)` caps spend across **every** reviewer and fixer it is attached to.
+Each call folds its reported token usage into the running total; once a cap is
+reached, the next AI step is **skipped (not failed)** with a note, rather than
+running up the bill.
+
+```ts
+import { budget } from "jsr:@zuke/ai";
+
+class CI extends Build {
+  key = parameter("OpenAI API key").secret();
+  ai = budget((b) => b.maxTokens(200_000)); // exact token cap
+
+  lint = target().executes(() => DenoTasks.lint())
+    .recoverWith(aiFixer((f) => f.provider("openai").apiKey(this.key).budget(this.ai)));
+  test = target().executes(() => DenoTasks.test((s) => s.allowAll()))
+    .recoverWith(aiFixer((f) => f.provider("openai").apiKey(this.key).budget(this.ai)));
+}
+```
+
+Token counts come straight from the provider's reported usage, so `.maxTokens(n)`
+is an **exact** cap that never goes stale. **No prices ship** — provider pricing
+changes too often for a baked-in table to stay correct. A USD cap is opt-in: give
+the budget your own current rates and it estimates cost from them.
+
+```ts
+budget((b) =>
+  b.maxTokens(200_000)
+    .prices({ "gpt-5.4-mini": { input: 0.4, output: 1.6 } }) // USD per 1M tokens
+    .maxCost(1.0) // only enforced for models you've priced above
+);
+```
+
+A model with no supplied price still counts toward the **token** cap — only its
+cost is left out, and a cost cap is enforced only once a priced call is recorded.
+
+### Fix / response cache
+
+`aiCache(...)` reuses a prior model response for an **identical** call (same
+provider, model, and prompt) instead of paying for another one — handy when the
+same failure recurs across CI re-runs. A cache hit costs nothing and does not
+draw down the budget.
+
+```ts
+import { aiCache } from "jsr:@zuke/ai";
+
+const cache = aiCache((c) => c.dir(".zuke/ai-cache").ttl(86_400)); // 1-day TTL
+aiFixer((f) => f.provider("openai").apiKey(this.key).cache(cache));
+```
+
+### Learned false-positive suppression (review)
+
+`suppressions(...)` hides reviewer findings whose **stable ID** you've dismissed.
+Every finding is fingerprinted and its ID surfaced in the report and PR comment,
+so silencing a recurring false positive is a copy-paste of that ID into the
+suppress list (`.zuke/ai-suppress.json`, a JSON array of IDs):
+
+```ts
+import { suppressions } from "jsr:@zuke/ai";
+
+securityReviewer((r) =>
+  r.provider("openai").apiKey(this.key)
+    .suppress(suppressions((s) => s.file(".zuke/ai-suppress.json")))
+);
+```
+
+When suppression empties a finding list, the score and severity are cleared so
+the gate sees a clean assessment; a partial suppression lowers the overall
+severity to whatever remains. (Suppression is review-only — a fixer applies a
+whole fix, not individual findings.)
+
 ## Other knobs
 
 - `.model(...)`, `.effort(...)` — pick the model and thinking depth.

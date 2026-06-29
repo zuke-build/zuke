@@ -146,6 +146,13 @@ outage isn't a silent skip either.
   cost for depth.
 - Cache the gate at the target level (`.cacheKey(headSha)`) so it doesn't re-run
   — or re-pay — when the diff is unchanged.
+- `.budget(budget(...))` caps spend by an exact token count across all reviewers
+  and fixers sharing it (a USD cap is opt-in, from prices you supply);
+  `.cache(aiCache(...))` reuses a prior verdict for an identical review. Once the
+  budget is spent, the review is skipped (not failed) with a note. See
+  [Cost controls and learning](./self-healing.md#cost-controls-and-learning).
+- `.suppress(suppressions(...))` hides findings you've dismissed as false
+  positives, matched by the stable ID shown next to each finding in the report.
 
 ## GitHub Actions summary
 
