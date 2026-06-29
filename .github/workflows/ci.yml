@@ -38,8 +38,10 @@ jobs:
       # — the connection is dropped. The allowlist is derived from the source:
       # Deno bootstrap (deno.land + the release CDN), module resolution (jsr.io
       # and registry.npmjs.org for the npm: cspell tooling), the OpenAI API
-      # (provider.ts), and the GitHub API / git push for the
-      # fixer's comment and commit. Add a host here if a run reports it blocked.
+      # (provider.ts), the GitHub API / git push for the fixer's comment and
+      # commit, and the Codecov CLI (cli.codecov.io to fetch the binary; the
+      # codecov API and the GCS bucket it streams cov.lcov to) for the
+      # coverageUpload target. Add a host here if a run reports it blocked.
       - name: Harden the runner
         uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
         with:
@@ -55,6 +57,10 @@ jobs:
             codeload.github.com:443
             objects.githubusercontent.com:443
             release-assets.githubusercontent.com:443
+            cli.codecov.io:443
+            api.codecov.io:443
+            ingest.codecov.io:443
+            storage.googleapis.com:443
 
       # persist-credentials keeps the token in git config so the lint fixer can
       # push its commit. For a same-repo PR, check out the head branch (not the
@@ -74,11 +80,17 @@ jobs:
       # an overview comment of what it changed. The key is optional — without it
       # the fixer skips and lint just fails. The fixer fetches the PR base branch
       # itself for diff context (no manual step).
+      #
+      # CODECOV_TOKEN powers the gate's coverageUpload target: `./zuke ci`
+      # downloads the Codecov CLI itself and uploads cov.lcov — no separate CI
+      # step. The token is a masked secret build input; absent on fork PRs, where
+      # the upload skips.
       - name: Run the full gate with Zuke
         run: ./zuke ci
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
   test-os:
     name: Tests (${{ matrix.os }})

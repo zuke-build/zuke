@@ -44,6 +44,7 @@ const PACKAGES = [
   "packages/gcloud",
   "packages/git",
   "packages/gh",
+  "packages/codecov",
   "packages/claude",
   "packages/codex",
   "packages/gemini",

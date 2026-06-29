@@ -16,6 +16,7 @@ import {
   type AbsolutePath,
   Build,
   FileTasks,
+  installRelease,
   parameter,
   repoRoot,
   run,
@@ -30,6 +31,7 @@ import {
 } from "@zuke/ai";
 import { type DenoInstallSettings, DenoTasks } from "@zuke/deno";
 import { CspellTasks } from "@zuke/cspell";
+import { CodecovTasks } from "@zuke/codecov";
 import { isPublished } from "@zuke/jsr";
 import {
   type ReleasePleaseGithubReleaseSettings,
@@ -84,6 +86,7 @@ const PACKAGES = [
   "gcloud",
   "git",
   "gh",
+  "codecov",
   "claude",
   "codex",
   "gemini",
@@ -145,6 +148,14 @@ async function collectPackageDocs(): Promise<PackageDoc[]> {
  * install is a transient, per-run artifact.
  */
 const TOOLS_ROOT: AbsolutePath = repoRoot(".zuke", "tools");
+
+/**
+ * The pinned Codecov CLI version `coverageUpload` downloads. Pinned (never
+ * `latest`) so the build is reproducible and fetches a fixed artifact rather
+ * than a moving target; bump it deliberately. Codecov serves versioned binaries
+ * at `cli.codecov.io/v<semver>/<platform>/codecov`.
+ */
+const CODECOV_CLI_VERSION = "v11.2.8";
 
 /**
  * Install an npm-distributed CLI as a local executable under {@link TOOLS_ROOT}
@@ -308,6 +319,54 @@ class ZukeBuild extends Build {
       );
     });
 
+  // The Codecov upload token, as a masked secret build input. `.secret()` makes
+  // Zuke emit a `::add-mask::` for the value, so it never leaks into CI logs.
+  // It is optional: absent on local runs and fork PRs, where the upload skips.
+  codecovToken = parameter("Codecov upload token")
+    .secret()
+    .env("CODECOV_TOKEN");
+
+  // Publish the coverage report to Codecov, dogfooding @zuke/codecov. True to
+  // Zuke's model, the build owns its own tooling: it downloads the Codecov CLI
+  // with `installRelease` (no global install, no extra CI step) and points the
+  // wrapper at it. Depends on `coverage`, so it has a fresh `cov.lcov`. Skips
+  // with a message when the token is absent (local runs, fork PRs).
+  coverageUpload = target()
+    .description("Upload the coverage report to Codecov")
+    .dependsOn(this.coverage)
+    .executes(async () => {
+      const token = this.codecovToken.value;
+      if (token === undefined || token === "") {
+        console.log("CODECOV_TOKEN not set — skipping the Codecov upload.");
+        return;
+      }
+      // Codecov ships a standalone CLI binary per platform; fetch the pinned
+      // version on demand (over HTTPS, from Codecov's own CDN).
+      const bin = await installRelease({
+        name: "codecov",
+        destDir: TOOLS_ROOT,
+        url: ({ os }) => {
+          const platform = os === "darwin"
+            ? "macos"
+            : os === "windows"
+            ? "windows"
+            : "linux";
+          const file = os === "windows" ? "codecov.exe" : "codecov";
+          return `https://cli.codecov.io/${CODECOV_CLI_VERSION}/${platform}/${file}`;
+        },
+      });
+      // The token rides through the masked `.env(...)` chainer, never argv;
+      // fail-on-error makes a failed upload loud.
+      await CodecovTasks.upload((s) =>
+        s
+          .toolPath(bin)
+          .files("cov.lcov")
+          .slug("zuke-build/zuke")
+          .failOnError()
+          .env({ CODECOV_TOKEN: token })
+      );
+    });
+
   apiDocs = target()
     .description(
       "Generate agent-readable API docs (llms.txt, llms-full.txt, READMEs)",
@@ -346,6 +405,7 @@ class ZukeBuild extends Build {
       this.lint,
       this.spell,
       this.coverage,
+      this.coverageUpload,
       this.apiDocsCheck,
     )
     .executes(() => {});

@@ -582,6 +582,11 @@
           "jsr:@zuke/core@1"
         ]
       },
+      "packages/codecov": {
+        "dependencies": [
+          "jsr:@zuke/core@1"
+        ]
+      },
       "packages/codex": {
         "dependencies": [
           "jsr:@zuke/core@1"

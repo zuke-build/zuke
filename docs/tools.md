@@ -65,6 +65,7 @@ raises a `ToolNotFoundError` that names the tool and the fix.
 | `@zuke/gcloud`         | `run` (any command)                                                                                                 |
 | `@zuke/git`            | `init`, `clone`, `add`, `commit`, `status`, `checkout`, `branch`, `tag`, `push`, `pull`, `fetch`, `run` (+ `gitInfo()` helper) |
 | `@zuke/gh`             | `run` (any command)                                                                                                 |
+| `@zuke/codecov`        | `upload` (`codecovcli upload-process`)                                                                              |
 | `@zuke/claude`         | `run` (headless prompt), `mcp`, `config`, `update`                                                                  |
 | `@zuke/codex`          | `exec` (headless prompt), `mcp`                                                                                      |
 | `@zuke/gemini`         | `run` (headless prompt), `mcp`, `extensions`                                                                        |
