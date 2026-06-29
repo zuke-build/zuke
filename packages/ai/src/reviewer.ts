@@ -11,6 +11,7 @@ import type { Configure } from "@zuke/core/tooling";
 import { Command } from "@zuke/core/shell";
 import type {
   Assessment,
+  AssessmentFinding,
   AssessmentType,
   Effort,
   Provider,
@@ -311,23 +312,28 @@ export class Reviewer implements Validation {
 
   /**
    * Fingerprint every finding (so its ID shows in the report) and, when a
-   * suppress list is attached, drop the dismissed ones. Returns how many were
-   * suppressed. When suppression empties the findings, the score and severity
-   * are cleared so the gate sees a clean assessment.
+   * suppress list is attached, drop the dismissed ones. Returns the suppressed
+   * findings (so the report can list them — suppression mutes the gate, it does
+   * not erase the record). When suppression empties the findings, the score and
+   * severity are cleared so the gate sees a clean assessment.
    */
-  async #applySuppression(assessment: Assessment): Promise<number> {
+  async #applySuppression(
+    assessment: Assessment,
+  ): Promise<AssessmentFinding[]> {
     for (const finding of assessment.findings) {
       finding.id = findingFingerprint(this.#assessment, finding);
     }
-    if (this.#suppress === undefined) return 0;
+    if (this.#suppress === undefined) return [];
     const suppressed = await this.#suppress.load_();
-    if (suppressed.size === 0) return 0;
-    const kept = assessment.findings.filter((finding) => {
+    if (suppressed.size === 0) return [];
+    const kept: AssessmentFinding[] = [];
+    const dropped: AssessmentFinding[] = [];
+    for (const finding of assessment.findings) {
       const id = finding.id;
-      return id === undefined || !suppressed.has(id);
-    });
-    const count = assessment.findings.length - kept.length;
-    if (count === 0) return 0;
+      if (id !== undefined && suppressed.has(id)) dropped.push(finding);
+      else kept.push(finding);
+    }
+    if (dropped.length === 0) return [];
     assessment.findings = kept;
     if (kept.length === 0) {
       assessment.score = 0;
@@ -340,7 +346,7 @@ export class Reviewer implements Validation {
       }
       assessment.severity = highest;
     }
-    return count;
+    return dropped;
   }
 
   /**
@@ -488,7 +494,8 @@ export class Reviewer implements Validation {
 
     const suppressed = await this.#applySuppression(assessment);
     await this.#report(assessment, context.target, usage, {
-      suppressed,
+      suppressed: suppressed.length,
+      suppressedFindings: suppressed,
       fromCache,
       budget: this.#budget?.describe_(),
     });

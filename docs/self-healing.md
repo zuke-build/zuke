@@ -243,6 +243,13 @@ the gate sees a clean assessment; a partial suppression lowers the overall
 severity to whatever remains. (Suppression is review-only — a fixer applies a
 whole fix, not individual findings.)
 
+**Suppression is auditable, not silent.** A suppressed finding still appears in
+the report and PR comment under a **Suppressed (not gating)** section — with its
+severity, location, and ID — it just no longer counts toward the gate. So
+suppression mutes the build break without burying the finding: a reviewer
+reading the PR can always see what was dismissed (and that nothing serious is
+being hidden behind the suppress list).
+
 ## Other knobs
 
 - `.model(...)`, `.effort(...)` — pick the model and thinking depth.
