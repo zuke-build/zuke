@@ -14,7 +14,6 @@
   <a href="https://jsr.io/@zuke/core"><img alt="JSR score" src="https://jsr.io/badges/@zuke/core/score" /></a>
   <a href="./LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-yellow.svg" /></a>
   <a href="https://deno.com/"><img alt="Built for Deno" src="https://img.shields.io/badge/Deno-2.x-000?logo=deno&logoColor=white" /></a>
-  <a href="./CONTRIBUTING.md"><img alt="PRs welcome" src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" /></a>
 </p>
 
 <p align="center">
