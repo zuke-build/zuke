@@ -106,3 +106,60 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: ./zuke.ps1 test
+
+  coverage:
+    name: Coverage → Codecov
+    runs-on: ubuntu-latest
+    # Deliberately isolated from the `quality` job: this is the only job that
+    # carries the Codecov upload token, and it holds no write-scoped token and
+    # no provider keys. Keeping the third-party uploader (and its Codecov/GCS/
+    # PyPI egress) out of the privileged job preserves that job's minimal,
+    # locked-down surface. The trade-off is a second test run to produce the
+    # coverage report — acceptable, and consistent with the cross-OS matrix.
+    permissions:
+      contents: read
+    steps:
+      # Egress allowlist: Deno bootstrap (deno.land + the release CDN), module
+      # resolution (jsr.io), installing the Codecov CLI from PyPI, and the
+      # Codecov upload itself (its API plus the GCS bucket it streams reports
+      # to). Add a host here if a run reports it blocked.
+      - name: Harden the runner
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            deno.land:443
+            dl.deno.land:443
+            jsr.io:443
+            github.com:443
+            codeload.github.com:443
+            objects.githubusercontent.com:443
+            release-assets.githubusercontent.com:443
+            pypi.org:443
+            files.pythonhosted.org:443
+            api.codecov.io:443
+            ingest.codecov.io:443
+            cli.codecov.io:443
+            storage.googleapis.com:443
+            keybase.io:443
+
+      # Full history so the Codecov CLI can resolve the commit and its parents.
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      # The Codecov CLI ships as the `codecov-cli` PyPI package (the `codecovcli`
+      # binary the @zuke/codecov wrapper invokes). pipx is preinstalled on the
+      # GitHub Ubuntu runner.
+      - name: Install the Codecov CLI
+        run: pipx install codecov-cli
+
+      # `coverageUpload` depends on `coverage`, so this produces cov.lcov (via
+      # the test run + gate) and then uploads it. CODECOV_TOKEN rides through the
+      # environment — never argv. On a fork PR the secret is absent and the
+      # target skips the upload instead of failing.
+      - name: Produce coverage and upload to Codecov
+        run: ./zuke coverageUpload
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}

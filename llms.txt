@@ -68,6 +68,7 @@ await run(CI);
 - [@zuke/gcloud](https://jsr.io/@zuke/gcloud) — a typed `gcloud` (Google Cloud SDK) task wrapper for Zuke
 - [@zuke/git](https://jsr.io/@zuke/git) — typed `git` task wrappers for Zuke builds
 - [@zuke/gh](https://jsr.io/@zuke/gh) — a typed `gh` (GitHub CLI) task wrapper for Zuke builds
+- [@zuke/codecov](https://jsr.io/@zuke/codecov) — a typed Codecov CLI (`codecovcli`) task wrapper for Zuke
 - [@zuke/claude](https://jsr.io/@zuke/claude) — a typed Claude Code (https://docs.claude.com/en/docs/claude-code)
 - [@zuke/codex](https://jsr.io/@zuke/codex) — a typed OpenAI Codex (https://developers.openai.com/codex/cli)
 - [@zuke/gemini](https://jsr.io/@zuke/gemini) — a typed Gemini CLI (https://github.com/google-gemini/gemini-cli)

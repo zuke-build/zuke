@@ -30,6 +30,7 @@ import {
 } from "@zuke/ai";
 import { type DenoInstallSettings, DenoTasks } from "@zuke/deno";
 import { CspellTasks } from "@zuke/cspell";
+import { CodecovTasks } from "@zuke/codecov";
 import { isPublished } from "@zuke/jsr";
 import {
   type ReleasePleaseGithubReleaseSettings,
@@ -84,6 +85,7 @@ const PACKAGES = [
   "gcloud",
   "git",
   "gh",
+  "codecov",
   "claude",
   "codex",
   "gemini",
@@ -305,6 +307,28 @@ class ZukeBuild extends Build {
     .executes(async () => {
       await DenoTasks.coverage((s) =>
         s.dir("cov_profile").exclude("tests/").output("cov.lcov").threshold(95)
+      );
+    });
+
+  // Publish the coverage report to Codecov, dogfooding @zuke/codecov. Kept out
+  // of `ci` so the core gate stays runnable offline and without the Codecov CLI
+  // installed; the dedicated coverage workflow installs `codecovcli` and runs
+  // this target with CODECOV_TOKEN in the env. Depends on `coverage`, so a bare
+  // `./zuke coverageUpload` produces `cov.lcov` first. Skips with a message when
+  // the token is absent (local runs, fork PRs) so it never breaks the build.
+  coverageUpload = target()
+    .description("Upload the coverage report to Codecov")
+    .dependsOn(this.coverage)
+    .executes(async () => {
+      const token = Deno.env.get("CODECOV_TOKEN");
+      if (token === undefined || token === "") {
+        console.log("CODECOV_TOKEN not set — skipping the Codecov upload.");
+        return;
+      }
+      // The token rides through the inherited env (never argv): `codecovcli`
+      // reads CODECOV_TOKEN itself. fail-on-error makes a failed upload loud.
+      await CodecovTasks.upload((s) =>
+        s.files("cov.lcov").slug("zuke-build/zuke").failOnError()
       );
     });
 
