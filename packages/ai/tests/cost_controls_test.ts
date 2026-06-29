@@ -213,6 +213,11 @@ Deno.test("a finding whose id is suppressed is dropped from the review", async (
   );
   assertEquals(lines.some((l) => l.includes("suppressed 1 finding(s)")), true);
   assertEquals(lines.some((l) => l.includes("— 1 finding(s)")), true);
+  // The hidden finding is still listed (auditable), not silently erased.
+  assertEquals(
+    lines.some((l) => l.includes("suppressed: [low] weak hash")),
+    true,
+  );
 });
 
 Deno.test("suppressing every finding clears the score and passes the gate", async () => {
@@ -310,6 +315,57 @@ Deno.test("toMarkdown omits the dismiss hint when no finding has an id", () => {
     findings: [{ title: "x", severity: "low" }],
   });
   assertEquals(md.includes("Dismiss a false positive"), false);
+});
+
+Deno.test("toMarkdown lists suppressed findings in an auditable section", () => {
+  const md = toMarkdown(
+    "security review",
+    "t",
+    { score: 0, severity: "none", summary: "", findings: [] },
+    undefined,
+    {
+      suppressed: 1,
+      suppressedFindings: [
+        {
+          title: "sql | injection",
+          severity: "high",
+          file: "db.ts",
+          line: 9,
+          id: "abc1",
+        },
+      ],
+    },
+  );
+  assertEquals(md.includes("**Suppressed (not gating):**"), true);
+  // The hidden finding is shown with its ID and the pipe escaped in the cell.
+  assertEquals(
+    md.includes("| high | sql \\| injection | db.ts:9 | abc1 |"),
+    true,
+  );
+});
+
+Deno.test("consoleLines lists each suppressed finding under the count", () => {
+  const lines = consoleLines(
+    "r",
+    { score: 0, severity: "none", summary: "", findings: [] },
+    undefined,
+    {
+      suppressed: 1,
+      suppressedFindings: [
+        {
+          title: "weak hash",
+          severity: "high",
+          file: "db.ts",
+          line: 9,
+          id: "abc1",
+        },
+      ],
+    },
+  );
+  assertEquals(
+    lines.includes("    suppressed: [high] weak hash (db.ts:9) · abc1"),
+    true,
+  );
 });
 
 // ----- Fixer ---------------------------------------------------------------

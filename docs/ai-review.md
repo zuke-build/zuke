@@ -152,7 +152,9 @@ outage isn't a silent skip either.
   budget is spent, the review is skipped (not failed) with a note. See
   [Cost controls and learning](./self-healing.md#cost-controls-and-learning).
 - `.suppress(suppressions(...))` hides findings you've dismissed as false
-  positives, matched by the stable ID shown next to each finding in the report.
+  positives, matched by the stable ID shown next to each finding in the report. A
+  suppressed finding is still listed (under "Suppressed (not gating)") so the
+  dismissal is auditable — it mutes the gate, it never silently buries a finding.
 
 ## GitHub Actions summary
 

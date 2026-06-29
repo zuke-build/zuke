@@ -5,7 +5,12 @@
  * @module
  */
 
-import type { Assessment, Provider, Usage } from "./types.ts";
+import type {
+  Assessment,
+  AssessmentFinding,
+  Provider,
+  Usage,
+} from "./types.ts";
 import type { RetryInfo } from "./retry.ts";
 
 /** The settings echoed when a review starts, so the run shows what it's doing. */
@@ -71,6 +76,11 @@ function cell(value: string): string {
 export interface ReportExtras {
   /** Number of findings hidden by the suppress list, when any. */
   suppressed?: number;
+  /**
+   * The findings the suppress list hid, listed in the report so suppression is
+   * auditable — it mutes the gate, it does not silently erase the record.
+   */
+  suppressedFindings?: AssessmentFinding[];
   /** Whether the response was served from the cache (no API call was made). */
   fromCache?: boolean;
   /** A one-line budget summary (see {@link "./budget.ts".Budget.describe_}). */
@@ -101,6 +111,15 @@ export function consoleLines(
   if (extras.suppressed) {
     lines.push(
       `  suppressed ${extras.suppressed} finding(s) via the suppress list`,
+    );
+  }
+  for (const f of extras.suppressedFindings ?? []) {
+    const where = location(f.file, f.line);
+    const id = f.id !== undefined ? ` · ${f.id}` : "";
+    lines.push(
+      `    suppressed: [${f.severity}] ${f.title}${
+        where === "" ? "" : ` (${where})`
+      }${id}`,
     );
   }
   if (extras.budget !== undefined) lines.push(`  budget: ${extras.budget}`);
@@ -144,10 +163,36 @@ export function toMarkdown(
     parts.push("");
     parts.push(...idHint(assessment.findings));
   }
+  parts.push(...suppressedSection(extras.suppressedFindings ?? []));
   if (assessment.summary !== "") {
     parts.push(`> ${cell(assessment.summary)}`, "");
   }
   return parts.join("\n");
+}
+
+/**
+ * A table of the findings the suppress list hid, so a reviewer can see exactly
+ * what was muted (and its ID) rather than a bare count — suppression must never
+ * silently bury a finding. Empty when nothing was suppressed.
+ */
+function suppressedSection(findings: AssessmentFinding[]): string[] {
+  if (findings.length === 0) return [];
+  const parts = [
+    "**Suppressed (not gating):**",
+    "",
+    "| Severity | Finding | Location | ID |",
+    "| --- | --- | --- | --- |",
+  ];
+  for (const f of findings) {
+    const where = location(f.file, f.line);
+    parts.push(
+      `| ${f.severity} | ${cell(f.title)} | ${where === "" ? "—" : where} | ${
+        f.id ?? "—"
+      } |`,
+    );
+  }
+  parts.push("");
+  return parts;
 }
 
 /**
