@@ -55,7 +55,7 @@
 [5.73,"o","    .executes(() => DenoTasks.test((s) => s.allowAll()));\r\n"]
 [5.78,"o","}\r\n"]
 [5.83,"o","\r\n"]
-[5.88,"o","\u001b[90mif\u001b[0m (import.meta.main) \u001b[90mawait\u001b[0m run(Pipeline);\r\n"]
+[5.88, "o", "\u001b[90mawait\u001b[0m run(Pipeline);\r\n"]
 [6.78,"o","\u001b[32m❯\u001b[0m "]
 [7.23,"o","."]
 [7.27,"o","/"]
