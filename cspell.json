@@ -16,6 +16,7 @@
     "codegen",
     "codecov",
     "codecovcli",
+    "gcov",
     "lcov",
     "dlx",
     "denoland",
