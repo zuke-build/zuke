@@ -1,0 +1,89 @@
+name: Bug report
+description: Report something in Zuke that isn't working as documented.
+title: "bug: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug! A minimal reproduction is the
+        single most useful thing you can give us.
+
+        Before you start, please
+        [search existing issues](https://github.com/zuke-build/zuke/issues?q=is%3Aissue)
+        to avoid duplicates. **Do not report security vulnerabilities here** —
+        follow the private process in
+        [SECURITY.md](https://github.com/zuke-build/zuke/blob/master/SECURITY.md).
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Pre-flight checklist
+      options:
+        - label: I searched existing issues and did not find a duplicate.
+          required: true
+        - label: This is a bug, not a security vulnerability or a usage question.
+          required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear and concise description of the bug.
+      placeholder: Running `zuke test` fails to resolve a dependency that is declared above its dependent.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+      description: What did you expect to happen instead?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: >
+        The smallest build file and commands that reproduce the problem. Paste a
+        self-contained `zuke.ts` (or snippet) and the exact command you ran.
+        Code blocks here are automatically formatted, so no backticks are needed.
+      render: typescript
+    validations:
+      required: true
+  - type: input
+    id: package
+    attributes:
+      label: Affected package(s)
+      description: Which `@zuke/*` package(s) are involved, with versions if known.
+      placeholder: "@zuke/core 0.x, @zuke/deno 0.x"
+    validations:
+      required: true
+  - type: input
+    id: deno-version
+    attributes:
+      label: Deno version
+      description: Output of `deno --version`.
+      placeholder: "deno 2.x.x"
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: "macOS 14, Ubuntu 24.04, Windows 11, …"
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs or output
+      description: Any error output, stack traces, or `--list`/`graph` output. Automatically formatted as code.
+      render: shell
+    validations:
+      required: false
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Anything else that helps us understand the problem.
+    validations:
+      required: false

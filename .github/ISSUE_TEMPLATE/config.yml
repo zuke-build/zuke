@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/zuke-build/zuke/security/advisories/new
+    about: Do not file security issues publicly. Use private vulnerability reporting — see SECURITY.md.
+  - name: Documentation & API reference
+    url: https://github.com/zuke-build/zuke/blob/master/llms-full.txt
+    about: The full typed surface of every package, plus each package's README API section.
+  - name: Contributing guide
+    url: https://github.com/zuke-build/zuke/blob/master/CONTRIBUTING.md
+    about: How to set up, run the gate, and open a good pull request.
