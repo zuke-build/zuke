@@ -1,0 +1,63 @@
+name: CodeQL
+
+# Static analysis (SAST) via GitHub's CodeQL. This is the *advanced* (workflow)
+# setup rather than the repository's "default setup": OpenSSF Scorecard's SAST
+# check only credits CodeQL when it finds a `github/codeql-action` workflow in
+# the repo, so running it from a committed workflow is what makes the analysis
+# visible to Scorecard (and keeps the configuration reviewable in-tree).
+#
+# NOTE: GitHub does not allow advanced and default CodeQL setup to coexist.
+# Disable "CodeQL default setup" under Settings → Code security → Code scanning
+# before merging, or this workflow's analyses will conflict with it.
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  schedule:
+    # Weekly, offset from the other security crons so they don't all fire at once.
+    - cron: "27 4 * * 1"
+
+# Default to read-only; the analyze job opts into security-events:write below to
+# upload its SARIF results to the Security tab.
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze (javascript-typescript)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      # Required for all workflows.
+      security-events: write
+      # Only required for workflows in private repositories; harmless when public.
+      actions: read
+      contents: read
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      # Zuke is pure TypeScript with no compile step, so CodeQL's interpreted
+      # analysis needs no build — `build-mode: none` scans the source directly.
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
+        with:
+          languages: javascript-typescript
+          build-mode: none
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
+        with:
+          category: "/language:javascript-typescript"
