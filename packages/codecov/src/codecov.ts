@@ -37,6 +37,7 @@ export class CodecovUploadSettings extends ToolSettings {
   #networkRootFolder?: string;
   #reportType?: string;
   #disableSearch = false;
+  #handleNoReportsFound = false;
   #failOnError = false;
   #dryRun = false;
 
@@ -128,6 +129,12 @@ export class CodecovUploadSettings extends ToolSettings {
     return this;
   }
 
+  /** Succeed instead of erroring when no reports are found (`--handle-no-reports-found`). */
+  handleNoReportsFound(): this {
+    this.#handleNoReportsFound = true;
+    return this;
+  }
+
   /** Exit non-zero when the upload fails (`--fail-on-error`). */
   failOnError(): this {
     this.#failOnError = true;
@@ -162,6 +169,7 @@ export class CodecovUploadSettings extends ToolSettings {
     for (const flag of this.#flags) argv.push("--flag", flag);
     for (const plugin of this.#plugins) argv.push("--plugin", plugin);
     if (this.#disableSearch) argv.push("--disable-search");
+    if (this.#handleNoReportsFound) argv.push("--handle-no-reports-found");
     if (this.#failOnError) argv.push("--fail-on-error");
     if (this.#dryRun) argv.push("--dry-run");
     return argv;
