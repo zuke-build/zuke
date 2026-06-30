@@ -1,8 +1,8 @@
 /**
  * Shell-completion script generation for the `completions` command.
  *
- * `zuke completions <bash|zsh|fish>` prints a completion script for the chosen
- * shell that completes the build's target names, the reserved commands
+ * `zuke completions print <bash|zsh|fish>` prints a completion script for the
+ * chosen shell that completes the build's target names, the reserved commands
  * (`graph`, `generate-ci`, `completions`), the built-in option flags, and any
  * declared build parameters. The script is a static snapshot of the build it
  * was generated from, so regenerate it (and re-source it) when targets change —

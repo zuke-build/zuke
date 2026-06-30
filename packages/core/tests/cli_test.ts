@@ -93,36 +93,30 @@ Deno.test("parseArgs defaults graph to false, output to text, open to true", () 
   ]);
 });
 
-Deno.test("parseArgs recognises the completions command and its shell", () => {
-  const withShell = parseArgs(["completions", "zsh"]);
-  assertEquals([withShell.completions, withShell.shell, withShell.target], [
-    true,
-    "zsh",
+Deno.test("parseArgs reads the completions sub-action and shell", () => {
+  const print = parseArgs(["completions", "print", "zsh"]);
+  assertEquals(
+    [print.completions, print.completionsAction, print.shell, print.target],
+    [true, "print", "zsh", undefined],
+  );
+
+  const install = parseArgs(["completions", "install", "fish"]);
+  assertEquals([install.completionsAction, install.shell], ["install", "fish"]);
+
+  // The first positional is always the sub-action, so a bare shell lands there
+  // (an invalid action) and main() reports the misuse.
+  const bareShell = parseArgs(["completions", "bash"]);
+  assertEquals([bareShell.completionsAction, bareShell.shell], [
+    "bash",
     undefined,
   ]);
 
-  // The command without a shell leaves `shell` undefined for main() to report.
+  // No sub-action at all.
   const bare = parseArgs(["completions"]);
-  assertEquals([bare.completions, bare.shell], [true, undefined]);
+  assertEquals([bare.completions, bare.completionsAction], [true, undefined]);
 
   // Defaults when the command is absent.
   assertEquals(parseArgs(["build"]).completions, false);
-});
-
-Deno.test("parseArgs recognises the completions install sub-action", () => {
-  const install = parseArgs(["completions", "install", "fish"]);
-  assertEquals([install.completions, install.install, install.shell], [
-    true,
-    true,
-    "fish",
-  ]);
-
-  // `install` with no shell is still recognised; main() reports the misuse.
-  const bare = parseArgs(["completions", "install"]);
-  assertEquals([bare.install, bare.shell], [true, undefined]);
-
-  // Without the sub-action, the first positional is the shell as before.
-  assertEquals(parseArgs(["completions", "bash"]).install, false);
 });
 
 Deno.test("every reserved command is honoured by the parser and help", () => {
@@ -245,20 +239,29 @@ Deno.test("main --list and graph (text) return 0", async () => {
   assertEquals(graph.out.join("\n").includes("Dependency graph:"), true);
 });
 
-Deno.test("main completions prints a script for a valid shell", async () => {
+Deno.test("main completions print writes a script for a valid shell", async () => {
   const { code, out } = await capture(() =>
-    main(Demo, ["completions", "bash"])
+    main(Demo, ["completions", "print", "bash"])
   );
   assertEquals(code, 0);
   assertStringIncludes(out.join("\n"), "complete -F _zuke_complete zuke");
 });
 
-Deno.test("main completions errors without a valid shell", async () => {
+Deno.test("main completions errors without a valid sub-action or shell", async () => {
+  // No sub-action.
   const missing = await capture(() => main(Demo, ["completions"]));
   assertEquals(missing.code, 1);
   assertStringIncludes(missing.err.join("\n"), "Usage: zuke completions");
 
-  const bad = await capture(() => main(Demo, ["completions", "powershell"]));
+  // A bare shell with no sub-action is rejected (no implicit "print").
+  const noAction = await capture(() => main(Demo, ["completions", "bash"]));
+  assertEquals(noAction.code, 1);
+  assertStringIncludes(noAction.err.join("\n"), "<install|print>");
+
+  // Valid sub-action, unknown shell.
+  const bad = await capture(() =>
+    main(Demo, ["completions", "print", "powershell"])
+  );
   assertEquals(bad.code, 1);
   assertStringIncludes(bad.err.join("\n"), "Usage: zuke completions");
 });
