@@ -10,6 +10,7 @@
 | `zuke --list` / `-l`         | List all targets with descriptions and dependencies.          |
 | `zuke graph`                 | Print the dependency graph (`target → deps`).                 |
 | `zuke graph --output=html`   | Render an interactive HTML graph into `.zuke/` and open it.   |
+| `zuke completions <shell>`   | Print a shell-completion script (`bash`, `zsh`, or `fish`).   |
 | `zuke --help` / `-h`         | Usage.                                                        |
 | `zuke` (no target)           | Run the `default` target if defined, else print `--list`.     |
 
@@ -47,6 +48,33 @@ name.
 exits `1`. A final summary lists every target's status and duration plus the
 total. Under GitHub Actions, targets become collapsible log groups, failures
 emit `::error::` annotations, and the summary is written to the job summary.
+
+## `zuke completions`
+
+`zuke completions <bash|zsh|fish>` prints a completion script for the chosen
+shell to stdout. The script completes the build's target names, the reserved
+commands (`graph`, `generate-ci`, `completions`), the built-in option flags, and
+any declared [parameters](./parameters.md) as `--flag` candidates. Unlisted
+targets (`.unlisted()`) stay hidden, just as they are in `--list`.
+
+Source it for the current shell, or install it permanently:
+
+```sh
+# bash — current shell, or append to ~/.bashrc
+source <(zuke completions bash)
+
+# zsh — current shell, or write to a file named _zuke on your $fpath
+source <(zuke completions zsh)
+
+# fish — current shell, or save to ~/.config/fish/completions/zuke.fish
+zuke completions fish | source
+```
+
+The script is a static snapshot of the build it was generated from, so
+regenerate and re-source it when you add, rename, or remove targets — the same
+model as `deno completions`. Asking for an unknown shell prints a usage line and
+exits `1`. `completions` is a reserved command name: a target called
+`completions` can't be run by name.
 
 ## Parallel execution
 

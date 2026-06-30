@@ -17,6 +17,11 @@ import {
 import { type AnyParameter, discoverParameters, flagName } from "./params.ts";
 import type { TargetBuilder } from "./target.ts";
 import type { Plugin } from "./plugin.ts";
+import {
+  COMPLETION_SHELLS,
+  formatCompletions,
+  isCompletionShell,
+} from "./completions.ts";
 
 /** Convention: a target literally named `default` runs when none is requested. */
 const DEFAULT_TARGET = "default";
@@ -26,6 +31,9 @@ const GRAPH_COMMAND = "graph";
 
 /** The reserved positional command that writes declared CI configuration. */
 const GENERATE_CI_COMMAND = "generate-ci";
+
+/** The reserved positional command that prints a shell-completion script. */
+const COMPLETIONS_COMMAND = "completions";
 
 /** Output format for the `graph` command: a terminal listing or an HTML page. */
 export type GraphOutput = "text" | "html";
@@ -58,6 +66,10 @@ export interface ParsedArgs {
   graph: boolean;
   /** The `generate-ci` command was requested. */
   generateCi: boolean;
+  /** The `completions` command was requested. */
+  completions: boolean;
+  /** The shell argument to `completions` (the positional after the command). */
+  shell?: string;
   /** Verify (rather than write) generated files (`--check`); fail if stale. */
   check: boolean;
   /** Graph output format (`--output`); defaults to `text`. */
@@ -96,6 +108,7 @@ export function parseArgs(
     list: false,
     graph: false,
     generateCi: false,
+    completions: false,
     check: false,
     output: "text",
     open: true,
@@ -149,11 +162,16 @@ export function parseArgs(
         }
       }
       // Unknown flags are ignored.
+    } else if (parsed.completions && parsed.shell === undefined) {
+      // The first positional after `completions` names the shell.
+      parsed.shell = arg;
     } else if (
-      parsed.target === undefined && !parsed.graph && !parsed.generateCi
+      parsed.target === undefined && !parsed.graph && !parsed.generateCi &&
+      !parsed.completions
     ) {
       if (arg === GRAPH_COMMAND) parsed.graph = true;
       else if (arg === GENERATE_CI_COMMAND) parsed.generateCi = true;
+      else if (arg === COMPLETIONS_COMMAND) parsed.completions = true;
       else parsed.target = arg;
     }
   }
@@ -172,6 +190,7 @@ Usage:
   deno run -A zuke.ts --list
   deno run -A zuke.ts graph [--output=html] [--no-open]
   deno run -A zuke.ts generate-ci [--check]
+  deno run -A zuke.ts completions <bash|zsh|fish>
 
 Options:
   <target>          Run the target and its transitive dependencies.
@@ -186,6 +205,9 @@ Options:
                     page to .zuke/ and opens it in a browser.
   generate-ci       Write the CI configuration files declared on the build
                     (via cicd()). Running any target regenerates them too.
+  completions       Print a shell-completion script for bash, zsh, or fish that
+                    completes target names, commands, and flags. Source it, e.g.
+                    source <(deno run -A zuke.ts completions bash).
   --check           With generate-ci, verify the files are current instead of
                     writing them, failing if any has drifted (use on CI).
   --output <fmt>    Graph output format: text (default) or html.
@@ -355,6 +377,16 @@ export async function main(
       return await graphCommand(targets, { open: parsed.open }, graphHost);
     }
     console.log(formatGraph(targets));
+    return 0;
+  }
+  if (parsed.completions) {
+    const shell = parsed.shell;
+    if (shell === undefined || !isCompletionShell(shell)) {
+      const shells = COMPLETION_SHELLS.join("|");
+      console.error(`Usage: zuke completions <${shells}>`);
+      return 1;
+    }
+    console.log(formatCompletions(shell, targets, params));
     return 0;
   }
   if (parsed.generateCi) {

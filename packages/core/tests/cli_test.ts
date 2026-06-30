@@ -92,6 +92,22 @@ Deno.test("parseArgs defaults graph to false, output to text, open to true", () 
   ]);
 });
 
+Deno.test("parseArgs recognises the completions command and its shell", () => {
+  const withShell = parseArgs(["completions", "zsh"]);
+  assertEquals([withShell.completions, withShell.shell, withShell.target], [
+    true,
+    "zsh",
+    undefined,
+  ]);
+
+  // The command without a shell leaves `shell` undefined for main() to report.
+  const bare = parseArgs(["completions"]);
+  assertEquals([bare.completions, bare.shell], [true, undefined]);
+
+  // Defaults when the command is absent.
+  assertEquals(parseArgs(["build"]).completions, false);
+});
+
 Deno.test("parseArgs collects declared parameter flags", () => {
   const valued = parseArgs(
     ["greet", "--environment", "prod", "--verbose"],
@@ -198,6 +214,24 @@ Deno.test("main --list and graph (text) return 0", async () => {
   const graph = await capture(() => main(Demo, ["graph"]));
   assertEquals(graph.code, 0);
   assertEquals(graph.out.join("\n").includes("Dependency graph:"), true);
+});
+
+Deno.test("main completions prints a script for a valid shell", async () => {
+  const { code, out } = await capture(() =>
+    main(Demo, ["completions", "bash"])
+  );
+  assertEquals(code, 0);
+  assertStringIncludes(out.join("\n"), "complete -F _zuke_complete zuke");
+});
+
+Deno.test("main completions errors without a valid shell", async () => {
+  const missing = await capture(() => main(Demo, ["completions"]));
+  assertEquals(missing.code, 1);
+  assertStringIncludes(missing.err.join("\n"), "Usage: zuke completions");
+
+  const bad = await capture(() => main(Demo, ["completions", "powershell"]));
+  assertEquals(bad.code, 1);
+  assertStringIncludes(bad.err.join("\n"), "Usage: zuke completions");
 });
 
 Deno.test("main graph --output=html renders HTML via the injected host", async () => {
