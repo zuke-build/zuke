@@ -47,6 +47,14 @@ export {
   type ValidationContext,
 } from "./src/target.ts";
 export { run, type RunOptions } from "./src/cli.ts";
+export {
+  type CliCommandInfo,
+  type CliDescription,
+  type CliFlagInfo,
+  type CliParameterInfo,
+  type CliTargetInfo,
+  describeCli,
+} from "./src/describe.ts";
 export type { Plugin } from "./src/plugin.ts";
 export { execute, type ExecuteOptions, type Reporter } from "./src/executor.ts";
 export type { BuildCache } from "./src/cache.ts";

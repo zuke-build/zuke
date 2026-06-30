@@ -15,6 +15,7 @@
 import {
   type AbsolutePath,
   Build,
+  describeCli,
   FileTasks,
   installRelease,
   parameter,
@@ -39,7 +40,12 @@ import {
   ReleasePleaseTasks,
 } from "@zuke/release-please";
 import { SecurityTasks } from "@zuke/security";
-import { type ApiDocsOptions, DocsTasks, type PackageDoc } from "@zuke/docs";
+import {
+  type ApiDocsOptions,
+  DocsTasks,
+  type PackageDoc,
+  type ProjectInfo,
+} from "@zuke/docs";
 
 /** Workspace packages, in dependency order: core must publish before the rest. */
 const PACKAGES = [
@@ -98,35 +104,79 @@ const PACKAGES = [
 ];
 
 /** Project framing for the generated API docs (`@zuke/docs`). */
+const DOCS_PROJECT: ProjectInfo = {
+  title: "Zuke",
+  summary:
+    "Code-first, strongly-typed build automation for Deno/TypeScript. Define " +
+    "a build by extending `Build`; declare targets with the `target()` fluent " +
+    "builder, wiring dependencies as `this.<field>` references (not strings) " +
+    "for compile-time safety. Every external tool has a typed `*Tasks` wrapper " +
+    "in a settings-lambda style — never shell out by hand.",
+  install: "deno run -A jsr:@zuke/cli setup",
+  example: [
+    'import { Build, run, target } from "jsr:@zuke/core";',
+    'import { DenoTasks } from "jsr:@zuke/deno";',
+    "",
+    "class CI extends Build {",
+    "  lint = target().executes(() => DenoTasks.lint());",
+    "  test = target().dependsOn(this.lint)",
+    "    .executes(() => DenoTasks.test((s) => s.allowAll()));",
+    "}",
+    "",
+    "await run(CI);",
+  ].join("\n"),
+  guidance: [
+    "A single package's API on the command line: " +
+    "`deno doc jsr:@zuke/<package>`",
+  ],
+};
+
 const DOCS_OPTIONS: ApiDocsOptions = {
   regenerateCommand: "./zuke apiDocs",
-  project: {
-    title: "Zuke",
-    summary:
-      "Code-first, strongly-typed build automation for Deno/TypeScript. Define " +
-      "a build by extending `Build`; declare targets with the `target()` fluent " +
-      "builder, wiring dependencies as `this.<field>` references (not strings) " +
-      "for compile-time safety. Every external tool has a typed `*Tasks` wrapper " +
-      "in a settings-lambda style — never shell out by hand.",
-    install: "deno run -A jsr:@zuke/cli setup",
-    example: [
-      'import { Build, run, target } from "jsr:@zuke/core";',
-      'import { DenoTasks } from "jsr:@zuke/deno";',
-      "",
-      "class CI extends Build {",
-      "  lint = target().executes(() => DenoTasks.lint());",
-      "  test = target().dependsOn(this.lint)",
-      "    .executes(() => DenoTasks.test((s) => s.allowAll()));",
-      "}",
-      "",
-      "await run(CI);",
-    ].join("\n"),
-    guidance: [
-      "A single package's API on the command line: " +
-      "`deno doc jsr:@zuke/<package>`",
-    ],
-  },
+  project: DOCS_PROJECT,
 };
+
+/**
+ * Render the `## CLI` block for the generated index from the build's own
+ * command/flag registry (via `describeCli`), so the agent docs describe the
+ * `zuke` command — not just the importable API — and never drift from the CLI.
+ */
+function cliReference(): string {
+  const { commands, flags } = describeCli(new ZukeBuild());
+  const bullets = (
+    items: ReadonlyArray<{ name: string; description: string }>,
+  ) => items.map((i) => `- \`${i.name}\` — ${i.description}`);
+  return [
+    "Run a build with the `zuke` command — `deno run -A zuke.ts <target>` (or",
+    "the `./zuke` launcher). The CLI is self-describing:",
+    "",
+    "```sh",
+    "zuke <target> [--skip <dep>] [--parallel[=N]]    # run a target and its deps",
+    "zuke --list [--json]                             # list targets (JSON: full surface)",
+    "zuke graph [--output=html]                       # dependency graph",
+    "zuke generate-ci [--check]                       # write declared CI files",
+    "zuke completions <print|install> <bash|zsh|fish> # shell completion",
+    "```",
+    "",
+    "`zuke --help` prints the usage grammar plus the build's live targets and",
+    "parameters; `zuke --list --json` emits the whole surface for tools.",
+    "",
+    "Reserved commands:",
+    "",
+    ...bullets(commands),
+    "",
+    "Option flags:",
+    "",
+    ...bullets(flags),
+    "",
+    "Full reference: [docs/cli.md](./docs/cli.md).",
+  ].join("\n");
+}
+
+/** {@link DOCS_OPTIONS} with the freshly rendered CLI block injected. */
+function docsOptions(): ApiDocsOptions {
+  return { ...DOCS_OPTIONS, project: { ...DOCS_PROJECT, cli: cliReference() } };
+}
 
 /**
  * Produce each package's API documentation text with `deno doc` (from
@@ -374,7 +424,7 @@ class ZukeBuild extends Build {
     .executes(async () => {
       const written = await DocsTasks.apiDocs(
         await collectPackageDocs(),
-        DOCS_OPTIONS,
+        docsOptions(),
       );
       console.log(
         written.length === 0
@@ -388,7 +438,7 @@ class ZukeBuild extends Build {
     .executes(async () => {
       const stale = await DocsTasks.checkApiDocs(
         await collectPackageDocs(),
-        DOCS_OPTIONS,
+        docsOptions(),
       );
       if (stale.length > 0) {
         throw new Error(

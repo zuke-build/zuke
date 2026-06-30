@@ -93,6 +93,24 @@ Deno.test("parseArgs defaults graph to false, output to text, open to true", () 
   ]);
 });
 
+Deno.test("parseArgs reads the --json flag, defaulting to false", () => {
+  assertEquals(parseArgs(["build"]).json, false);
+  assertEquals(parseArgs(["--list", "--json"]).json, true);
+  assertEquals(parseArgs(["--json"]).json, true);
+});
+
+Deno.test("main --json prints the build surface as JSON", async () => {
+  const { code, out } = await capture(() => main(Demo, ["--list", "--json"]));
+  assertEquals(code, 0);
+  const surface = JSON.parse(out.join("\n"));
+  assertEquals(surface.targets.map((t: { name: string }) => t.name), [
+    "clean",
+    "build",
+  ]);
+  assertEquals(surface.commands.length > 0, true);
+  assertEquals(surface.flags.length > 0, true);
+});
+
 Deno.test("parseArgs reads the completions sub-action and shell", () => {
   const print = parseArgs(["completions", "print", "zsh"]);
   assertEquals(

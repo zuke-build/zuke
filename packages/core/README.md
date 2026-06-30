@@ -153,6 +153,18 @@ async function createTarGzip(files: PathLike[], dest: PathLike, options: { cwd?:
   Read `files` (relative to `cwd`), pack them into a tar archive named by their
   path relative to `cwd`, gzip it, and write the result to `dest`.
 
+function describeCli(build: Build): CliDescription
+  Describe a build's full CLI surface — reserved commands, option flags, targets
+  (with descriptions and dependencies), and declared parameters — as a plain
+  object ready for JSON. This is the same data `zuke --list --json` prints, made
+  available to tooling and agents that introspect a build in code.
+
+  ```ts
+  import { describeCli } from "jsr:@zuke/core";
+  const surface = describeCli(new MyBuild());
+  console.log(surface.targets.map((t) => t.name));
+  ```
+
 function detectCiHost(env: (name: string) => string | undefined): CiHost
   Detect the CI host from the environment. Recognises GitHub Actions
   (`GITHUB_ACTIONS`), GitLab CI (`GITLAB_CI`), Azure Pipelines (`TF_BUILD`), and
@@ -918,6 +930,64 @@ interface CiTriggers
     means every branch (no filter); omit the field to disable the trigger.
   manual?: boolean
     Allow manual runs (workflow dispatch / web).
+
+interface CliCommandInfo
+  A reserved command (`graph`, `generate-ci`, `completions`).
+
+  readonly name: string
+    The command word.
+  readonly description: string
+    One-line summary.
+
+interface CliDescription
+  A build's full CLI surface, suitable for JSON serialization.
+
+  readonly commands: CliCommandInfo[]
+    The reserved positional commands.
+  readonly flags: CliFlagInfo[]
+    The built-in option flags.
+  readonly targets: CliTargetInfo[]
+    The build's targets, in declaration order.
+  readonly parameters: CliParameterInfo[]
+    The build's declared parameters, in declaration order.
+
+interface CliFlagInfo
+  A built-in option flag.
+
+  readonly name: string
+    The flag, with leading dashes.
+  readonly description: string
+    One-line summary.
+
+interface CliParameterInfo
+  A parameter declared on the build.
+
+  readonly flag: string
+    The CLI flag (without leading dashes), e.g. `environment`.
+  readonly description: string
+    The parameter's description, or `""` when none was set.
+  readonly required: boolean
+    Whether a value is required.
+  readonly boolean: boolean
+    Whether the flag is a value-less boolean.
+  readonly array: boolean
+    Whether repeated flags accumulate into a list.
+  readonly options: string[]
+    The allowed values, when the parameter is constrained to a set.
+
+interface CliTargetInfo
+  A target declared on the build.
+
+  readonly name: string
+    The target's name (its field name on the build).
+  readonly description: string
+    The target's description, or `""` when none was set.
+  readonly dependsOn: string[]
+    The names of its direct dependencies, in declaration order.
+  readonly default: boolean
+    Whether this is the conventional `default` target.
+  readonly unlisted: boolean
+    Whether the target is hidden from `--list` (still runnable by name).
 
 interface CopyOptions
   Options for {@link FileTasksApi.copy}.

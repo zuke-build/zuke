@@ -111,6 +111,9 @@ export function buildIndex(
   if (project.example !== undefined) {
     lines.push("", "## Example", "", "```ts", project.example, "```");
   }
+  if (project.cli !== undefined) {
+    lines.push("", "## CLI", "", project.cli);
+  }
   lines.push("", "## Packages", "");
   for (const e of entries) {
     lines.push(`- [${e.name}](${options.jsrBaseUrl}/${e.name}) — ${e.summary}`);

@@ -25,6 +25,7 @@ import {
 } from "./completions.ts";
 import {
   COMPLETIONS_COMMAND,
+  DEFAULT_TARGET,
   GENERATE_CI_COMMAND,
   GRAPH_COMMAND,
 } from "./cli_spec.ts";
@@ -32,9 +33,7 @@ import {
   installCompletions,
   type InstallOptions,
 } from "./completions_install.ts";
-
-/** Convention: a target literally named `default` runs when none is requested. */
-const DEFAULT_TARGET = "default";
+import { describeBuildSurface } from "./describe.ts";
 
 /** `completions` sub-action: print the script to stdout. */
 const PRINT_SUBCOMMAND = "print";
@@ -69,6 +68,8 @@ export interface ParsedArgs {
   /** Dependencies to skip (`--skip <dep>`, repeatable). */
   skip: string[];
   list: boolean;
+  /** Emit the build surface as JSON (`--json`) instead of human text. */
+  json: boolean;
   /** The `graph` command was requested. */
   graph: boolean;
   /** The `generate-ci` command was requested. */
@@ -115,6 +116,7 @@ export function parseArgs(
   const parsed: ParsedArgs = {
     skip: [],
     list: false,
+    json: false,
     graph: false,
     generateCi: false,
     completions: false,
@@ -132,6 +134,8 @@ export function parseArgs(
     const arg = args[i];
     if (arg === "--list" || arg === "-l") {
       parsed.list = true;
+    } else if (arg === "--json") {
+      parsed.json = true;
     } else if (arg === "--no-open") {
       parsed.open = false;
     } else if (arg === "--no-cache") {
@@ -201,7 +205,7 @@ const USAGE = `zuke — code-first build automation
 
 Usage:
   deno run -A zuke.ts <target> [--skip <dep>] [--parallel[=N]]
-  deno run -A zuke.ts --list
+  deno run -A zuke.ts --list [--json]
   deno run -A zuke.ts graph [--output=html] [--no-open]
   deno run -A zuke.ts generate-ci [--check]
   deno run -A zuke.ts completions <install|print> <bash|zsh|fish>
@@ -214,6 +218,8 @@ Options:
   --no-cache        Ignore the incremental cache; re-run every target.
   --dry-run         Print the execution plan without running target bodies.
   --list, -l        List all targets with descriptions and dependencies.
+  --json            With --list, print the build surface (commands, flags,
+                    targets, parameters) as JSON for tools and agents.
   graph             Show the dependency graph. Default output is the terminal
                     adjacency listing; --output=html writes an interactive
                     page to .zuke/ and opens it in a browser.
@@ -422,6 +428,11 @@ export async function main(
     throw error;
   }
 
+  if (parsed.json) {
+    const surface = describeBuildSurface(targets, params);
+    console.log(JSON.stringify(surface, null, 2));
+    return 0;
+  }
   if (parsed.list) {
     console.log(formatList(targets, params));
     return 0;

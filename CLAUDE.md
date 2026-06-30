@@ -26,10 +26,12 @@ exact signatures are published — read them:
   `completions <print|install> <shell>`) and flag, **plus the current build's
   targets — with descriptions and dependencies — and its parameters.** So an
   agent asked to set up or run a build discovers the real command surface live
-  instead of guessing; `zuke --list` is the targets-only view. The written
-  reference is [`docs/cli.md`](./docs/cli.md). (These CLI commands are not in
-  `llms-full.txt`, which documents the importable `*Tasks` API, not the `zuke`
-  command.)
+  instead of guessing; `zuke --list` is the targets-only view and
+  `zuke --list --json` emits the whole surface (commands, flags, targets,
+  parameters) as JSON for tools. The written reference is
+  [`docs/cli.md`](./docs/cli.md), and [`llms.txt`](./llms.txt) carries a
+  generated `## CLI` section; the same data is available in code via the
+  exported `describeCli(build)`.
 
 The mental model:
 
