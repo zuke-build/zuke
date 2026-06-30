@@ -25,6 +25,7 @@ Deno.test("codecov: every setting renders in a deterministic order", () => {
     .flags("unit", "integration")
     .plugins("noop")
     .disableSearch()
+    .handleNoReportsFound()
     .failOnError()
     .dryRun()
     .argv();
@@ -62,6 +63,7 @@ Deno.test("codecov: every setting renders in a deterministic order", () => {
     "--plugin",
     "noop",
     "--disable-search",
+    "--handle-no-reports-found",
     "--fail-on-error",
     "--dry-run",
   ]);

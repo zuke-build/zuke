@@ -4927,6 +4927,8 @@ class CodecovUploadSettings extends ToolSettings
     Report kind: `coverage` (default) or `test_results` (`--report-type`).
   disableSearch(): this
     Upload only the named files, skipping the auto-search (`--disable-search`).
+  handleNoReportsFound(): this
+    Succeed instead of erroring when no reports are found (`--handle-no-reports-found`).
   failOnError(): this
     Exit non-zero when the upload fails (`--fail-on-error`).
   dryRun(): this
