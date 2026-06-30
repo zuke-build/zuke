@@ -31,6 +31,7 @@ motivation, not just the mechanics. -->
 - [ ] Public API changes were regenerated with `./zuke apiDocs` (`llms.txt`, `llms-full.txt`, package README `## API`).
 - [ ] No `any`, no `as` casts or `!` non-null assertions in `src/` (narrow with type guards instead).
 - [ ] A new package was wired into all five places (see [CONTRIBUTING](../blob/master/CONTRIBUTING.md)), if applicable.
+- [ ] The code is written using AI assisted coding.
 
 <!-- Keep illustrative code in this description, not in commit message bodies:
 release-please's strict parser can drop a commit whose body contains code with
