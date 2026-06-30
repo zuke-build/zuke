@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.0](https://github.com/zuke-build/zuke/compare/core-v1.6.0...core-v1.7.0) (2026-06-30)
+
+
+### Features
+
+* **core:** add a completions command for shell completion ([#135](https://github.com/zuke-build/zuke/issues/135)) ([54e7500](https://github.com/zuke-build/zuke/commit/54e7500016b9735e3a2db6042ad20ca97e8fbc20))
+
 ## [1.6.0](https://github.com/zuke-build/zuke/compare/core-v1.5.0...core-v1.6.0) (2026-06-28)
 
 

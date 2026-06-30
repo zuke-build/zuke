@@ -1,5 +1,5 @@
 {
-  "packages/core": "1.6.0",
+  "packages/core": "1.7.0",
   "packages/deno": "0.5.0",
   "packages/docs": "0.2.0",
   "packages/npm": "0.2.0",
@@ -42,7 +42,7 @@
   "packages/gcloud": "0.1.0",
   "packages/git": "0.2.0",
   "packages/gh": "0.1.0",
-  "packages/codecov": "0.0.0",
+  "packages/codecov": "1.0.0",
   "packages/claude": "1.0.0",
   "packages/codex": "1.0.0",
   "packages/gemini": "1.0.0",
