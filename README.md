@@ -71,8 +71,8 @@ You need [Deno](https://deno.com/) installed. The fastest start is the
 
 ```sh
 deno install -A -g -n zuke jsr:@zuke/cli   # once
-zuke setup                                  # in your project
-./zuke                                      # run the build
+zuke setup                                 # in your project
+./zuke                                     # run the build
 ```
 
 See **[Getting started](./docs/getting-started.md)** for the full walkthrough
