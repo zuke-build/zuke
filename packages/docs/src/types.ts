@@ -31,6 +31,13 @@ export interface ProjectInfo {
   install?: string;
   /** Extra bullet lines appended to the "do not guess" list. */
   guidance?: string[];
+  /**
+   * An optional pre-rendered markdown block describing the `zuke` command
+   * surface, rendered under a `## CLI` heading in the index. The caller builds
+   * it (e.g. from the build's command/flag registry) so this package stays
+   * agnostic about CLI specifics.
+   */
+  cli?: string;
 }
 
 /** Options accepted by {@link DocsTasks.apiDocs} and {@link DocsTasks.checkApiDocs}. */

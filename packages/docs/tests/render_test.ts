@@ -90,6 +90,7 @@ Deno.test("buildIndex renders title, blockquote, example, install, guidance, lin
       example: "const x = 1;",
       install: "deno add jsr:@acme/cli",
       guidance: ["A single package: `deno doc jsr:@acme/<package>`"],
+      cli: "Run `acme <target>`.",
     },
   });
   const index = buildIndex([FOO], opts);
@@ -98,6 +99,8 @@ Deno.test("buildIndex renders title, blockquote, example, install, guidance, lin
   assertStringIncludes(index, "> Line two.");
   assertStringIncludes(index, "## Example");
   assertStringIncludes(index, "const x = 1;");
+  assertStringIncludes(index, "## CLI");
+  assertStringIncludes(index, "Run `acme <target>`.");
   assertStringIncludes(index, "Scaffold/install: `deno add jsr:@acme/cli`");
   assertStringIncludes(
     index,
@@ -118,6 +121,7 @@ Deno.test("buildIndex omits the optional example, install, and guidance", () => 
   const index = buildIndex([FOO], opts);
   assertEquals(/## Example/.test(index), false);
   assertEquals(/Scaffold\/install/.test(index), false);
+  assertEquals(/## CLI/.test(index), false);
 });
 
 Deno.test("buildReference renders the header and one section per package", () => {

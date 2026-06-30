@@ -9,6 +9,9 @@
  * @module
  */
 
+/** Convention: a target literally named `default` runs when none is requested. */
+export const DEFAULT_TARGET = "default";
+
 /** A reserved positional command: a CLI word that is not a target name. */
 export interface ReservedCommand {
   /** The literal command word typed on the command line. */
@@ -47,6 +50,10 @@ export interface BuiltinFlag {
 /** Every built-in option flag, in completion order. */
 export const BUILTIN_FLAGS: readonly BuiltinFlag[] = [
   { name: "--list", description: "List all targets with descriptions" },
+  {
+    name: "--json",
+    description: "Print the build surface (commands, flags, targets) as JSON",
+  },
   { name: "--skip", description: "Skip the named dependency" },
   { name: "--parallel", description: "Run independent targets concurrently" },
   { name: "--no-cache", description: "Ignore the incremental cache" },

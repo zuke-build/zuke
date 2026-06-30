@@ -23,6 +23,43 @@ class CI extends Build {
 await run(CI);
 ```
 
+## CLI
+
+Run a build with the `zuke` command — `deno run -A zuke.ts <target>` (or
+the `./zuke` launcher). The CLI is self-describing:
+
+```sh
+zuke <target> [--skip <dep>] [--parallel[=N]]    # run a target and its deps
+zuke --list [--json]                             # list targets (JSON: full surface)
+zuke graph [--output=html]                       # dependency graph
+zuke generate-ci [--check]                       # write declared CI files
+zuke completions <print|install> <bash|zsh|fish> # shell completion
+```
+
+`zuke --help` prints the usage grammar plus the build's live targets and
+parameters; `zuke --list --json` emits the whole surface for tools.
+
+Reserved commands:
+
+- `graph` — Show the dependency graph
+- `generate-ci` — Write declared CI configuration files
+- `completions` — Print a shell-completion script
+
+Option flags:
+
+- `--list` — List all targets with descriptions
+- `--json` — Print the build surface (commands, flags, targets) as JSON
+- `--skip` — Skip the named dependency
+- `--parallel` — Run independent targets concurrently
+- `--no-cache` — Ignore the incremental cache
+- `--dry-run` — Print the plan without running targets
+- `--output` — Graph output format: text or html
+- `--no-open` — With --output=html, do not open a browser
+- `--check` — With generate-ci, verify files are current
+- `--help` — Show usage
+
+Full reference: [docs/cli.md](./docs/cli.md).
+
 ## Packages
 
 - [@zuke/core](https://jsr.io/@zuke/core) — a code-first, strongly-typed build automation system for Deno

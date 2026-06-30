@@ -20,6 +20,18 @@ exact signatures are published — read them:
 - **A single wrapper on the command line:** `deno doc jsr:@zuke/<package>`
   (e.g. `deno doc jsr:@zuke/deno`).
 - **On each package's JSR page / README:** a generated `## API` section.
+- **The CLI surface — commands, flags, and a build's actual targets:** run
+  `zuke --help` (or `deno run -A zuke.ts --help`). It prints the usage grammar,
+  every reserved command (`graph`, `generate-ci`,
+  `completions <print|install> <shell>`) and flag, **plus the current build's
+  targets — with descriptions and dependencies — and its parameters.** So an
+  agent asked to set up or run a build discovers the real command surface live
+  instead of guessing; `zuke --list` is the targets-only view and
+  `zuke --list --json` emits the whole surface (commands, flags, targets,
+  parameters) as JSON for tools. The written reference is
+  [`docs/cli.md`](./docs/cli.md), and [`llms.txt`](./llms.txt) carries a
+  generated `## CLI` section; the same data is available in code via the
+  exported `describeCli(build)`.
 
 The mental model:
 
