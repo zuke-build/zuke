@@ -1,5 +1,40 @@
-import { assertEquals, assertRejects } from "./_assert.ts";
+import { assertEquals, assertRejects, assertThrows } from "./_assert.ts";
 import { FileTasks } from "../src/file.ts";
+
+/** Run `fn` with HOME/USERPROFILE set to `values`, restoring them afterwards. */
+function withHomeEnv(
+  values: { HOME?: string; USERPROFILE?: string },
+  fn: () => void,
+): void {
+  const saved = {
+    HOME: Deno.env.get("HOME"),
+    USERPROFILE: Deno.env.get("USERPROFILE"),
+  };
+  const apply = (name: "HOME" | "USERPROFILE", value: string | undefined) =>
+    value === undefined ? Deno.env.delete(name) : Deno.env.set(name, value);
+  try {
+    apply("HOME", values.HOME);
+    apply("USERPROFILE", values.USERPROFILE);
+    fn();
+  } finally {
+    apply("HOME", saved.HOME);
+    apply("USERPROFILE", saved.USERPROFILE);
+  }
+}
+
+Deno.test("homeDirectory reads HOME, then USERPROFILE, else throws", () => {
+  withHomeEnv({ HOME: "/home/zuke" }, () => {
+    assertEquals(FileTasks.homeDirectory(), "/home/zuke");
+  });
+  // Falls back to USERPROFILE when HOME is unset (Windows).
+  withHomeEnv({ HOME: undefined, USERPROFILE: "C:\\Users\\zuke" }, () => {
+    assertEquals(FileTasks.homeDirectory(), "C:\\Users\\zuke");
+  });
+  // Neither set: a clear failure rather than an undefined path.
+  withHomeEnv({ HOME: undefined, USERPROFILE: undefined }, () => {
+    assertThrows(() => FileTasks.homeDirectory(), Error, "home directory");
+  });
+});
 
 /** Run `fn` against a fresh temp directory, cleaned up afterwards. */
 async function withTemp(fn: (dir: string) => Promise<void>): Promise<void> {

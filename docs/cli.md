@@ -10,6 +10,8 @@
 | `zuke --list` / `-l`         | List all targets with descriptions and dependencies.          |
 | `zuke graph`                 | Print the dependency graph (`target → deps`).                 |
 | `zuke graph --output=html`   | Render an interactive HTML graph into `.zuke/` and open it.   |
+| `zuke completions print <shell>` | Print a shell-completion script (`bash`, `zsh`, or `fish`). |
+| `zuke completions install <shell>` | Write the script and wire it into the shell's startup. |
 | `zuke --help` / `-h`         | Usage.                                                        |
 | `zuke` (no target)           | Run the `default` target if defined, else print `--list`.     |
 
@@ -47,6 +49,52 @@ name.
 exits `1`. A final summary lists every target's status and duration plus the
 total. Under GitHub Actions, targets become collapsible log groups, failures
 emit `::error::` annotations, and the summary is written to the job summary.
+
+## `zuke completions`
+
+`zuke completions` takes an explicit sub-action — `print` or `install` — then a
+shell (`bash`, `zsh`, or `fish`). `print` writes the completion script to
+stdout; the script completes the build's target names, the reserved commands
+(`graph`, `generate-ci`, `completions`), the built-in option flags, and any
+declared [parameters](./parameters.md) as `--flag` candidates. Unlisted targets
+(`.unlisted()`) stay hidden, just as they are in `--list`.
+
+Source the printed script for the current shell:
+
+```sh
+# bash — current shell, or append to ~/.bashrc
+source <(zuke completions print bash)
+
+# zsh — current shell, or write to a file named _zuke on your $fpath
+source <(zuke completions print zsh)
+
+# fish — current shell, or save to ~/.config/fish/completions/zuke.fish
+zuke completions print fish | source
+```
+
+The script is a static snapshot of the build it was generated from, so
+regenerate and re-source it when you add, rename, or remove targets — the same
+model as `deno completions`. A missing or unknown sub-action or shell prints a
+usage line and exits `1`. `completions` is a reserved command name: a target
+called `completions` can't be run by name.
+
+### Installing
+
+`zuke completions install <shell>` does the wiring for you: it writes the script
+to a file under your config directory and makes the shell load it on the next
+start — no manual `source` step.
+
+- **bash** → writes `~/.config/zuke/completions/zuke.bash` and appends a `source`
+  line to `~/.bashrc`.
+- **zsh** → writes `~/.config/zuke/completions/zuke.zsh` and appends a `source`
+  line to `~/.zshrc`.
+- **fish** → writes `~/.config/fish/completions/zuke.fish`, which fish loads
+  automatically (no rc edit).
+
+The config directory honours `$XDG_CONFIG_HOME`. Installing is idempotent: if the
+rc file already sources the script, it is left untouched. The reserved commands
+and option flags offered by completion come from a single registry shared with
+the parser and `--help`, so they never drift out of sync.
 
 ## Parallel execution
 

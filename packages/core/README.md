@@ -980,6 +980,11 @@ interface FileTasksApi
 
   exists(path: PathLike): Promise<boolean>
     Whether `path` exists.
+  homeDirectory(): string
+    The current user's home directory, read from `$HOME` (falling back to
+    `$USERPROFILE` on Windows). Throws a clear error when neither is set or
+    environment access is unavailable, so callers get a path or a useful
+    failure — never an `undefined` to thread through.
   createDirectory(path: PathLike, options?: CreateDirectoryOptions): Promise<void>
     Create the directory at `path`. Creates parents by default
     ({@link CreateDirectoryOptions.recursive}); a recursive create is a no-op

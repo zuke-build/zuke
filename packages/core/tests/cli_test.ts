@@ -12,6 +12,7 @@ import { discoverGroups, discoverTargets } from "../src/build.ts";
 import { FakeGraphHost } from "./_fakes.ts";
 import { CONFIG_FILE } from "../src/config.ts";
 import { parameter } from "../src/params.ts";
+import { BUILTIN_FLAGS, RESERVED_COMMANDS } from "../src/cli_spec.ts";
 
 /** A build with declared parameters, for the parameter-aware CLI tests. */
 class Parameterised extends Build {
@@ -90,6 +91,44 @@ Deno.test("parseArgs defaults graph to false, output to text, open to true", () 
     "text",
     true,
   ]);
+});
+
+Deno.test("parseArgs reads the completions sub-action and shell", () => {
+  const print = parseArgs(["completions", "print", "zsh"]);
+  assertEquals(
+    [print.completions, print.completionsAction, print.shell, print.target],
+    [true, "print", "zsh", undefined],
+  );
+
+  const install = parseArgs(["completions", "install", "fish"]);
+  assertEquals([install.completionsAction, install.shell], ["install", "fish"]);
+
+  // The first positional is always the sub-action, so a bare shell lands there
+  // (an invalid action) and main() reports the misuse.
+  const bareShell = parseArgs(["completions", "bash"]);
+  assertEquals([bareShell.completionsAction, bareShell.shell], [
+    "bash",
+    undefined,
+  ]);
+
+  // No sub-action at all.
+  const bare = parseArgs(["completions"]);
+  assertEquals([bare.completions, bare.completionsAction], [true, undefined]);
+
+  // Defaults when the command is absent.
+  assertEquals(parseArgs(["build"]).completions, false);
+});
+
+Deno.test("every reserved command is honoured by the parser and help", () => {
+  const targets = discoverTargets(new Demo());
+  const help = formatHelp(targets);
+  for (const command of RESERVED_COMMANDS) {
+    // The registry and the parser agree: a reserved command is never a target.
+    assertEquals(parseArgs([command.name]).target, undefined);
+    // …and it is documented, so a new command can't be added without help.
+    assertStringIncludes(help, command.name);
+  }
+  for (const flag of BUILTIN_FLAGS) assertStringIncludes(help, flag.name);
 });
 
 Deno.test("parseArgs collects declared parameter flags", () => {
@@ -198,6 +237,81 @@ Deno.test("main --list and graph (text) return 0", async () => {
   const graph = await capture(() => main(Demo, ["graph"]));
   assertEquals(graph.code, 0);
   assertEquals(graph.out.join("\n").includes("Dependency graph:"), true);
+});
+
+Deno.test("main completions print writes a script for a valid shell", async () => {
+  const { code, out } = await capture(() =>
+    main(Demo, ["completions", "print", "bash"])
+  );
+  assertEquals(code, 0);
+  assertStringIncludes(out.join("\n"), "complete -F _zuke_complete zuke");
+});
+
+Deno.test("main completions errors without a valid sub-action or shell", async () => {
+  // No sub-action.
+  const missing = await capture(() => main(Demo, ["completions"]));
+  assertEquals(missing.code, 1);
+  assertStringIncludes(missing.err.join("\n"), "Usage: zuke completions");
+
+  // A bare shell with no sub-action is rejected (no implicit "print").
+  const noAction = await capture(() => main(Demo, ["completions", "bash"]));
+  assertEquals(noAction.code, 1);
+  assertStringIncludes(noAction.err.join("\n"), "<install|print>");
+
+  // Valid sub-action, unknown shell.
+  const bad = await capture(() =>
+    main(Demo, ["completions", "print", "powershell"])
+  );
+  assertEquals(bad.code, 1);
+  assertStringIncludes(bad.err.join("\n"), "Usage: zuke completions");
+});
+
+Deno.test("main completions install wires up each shell and is idempotent", async () => {
+  const home = await Deno.makeTempDir();
+  try {
+    const install = (shell: string) =>
+      capture(() =>
+        main(Demo, ["completions", "install", shell], {
+          // Ignore the runner's real XDG_CONFIG_HOME so paths are deterministic.
+          installOptions: { home, env: () => undefined },
+        })
+      );
+
+    const first = await install("bash");
+    assertEquals(first.code, 0);
+    assertStringIncludes(first.out.join("\n"), "Added a source line");
+
+    // Re-running is a no-op on the rc file.
+    const again = await install("bash");
+    assertStringIncludes(again.out.join("\n"), "already sources it");
+
+    // fish auto-loads from its completions dir, so no rc line is added.
+    const fish = await install("fish");
+    assertStringIncludes(fish.out.join("\n"), "Open a new shell");
+
+    const script = await Deno.readTextFile(
+      `${home}/.config/zuke/completions/zuke.bash`,
+    );
+    assertStringIncludes(script, "_zuke_complete");
+  } finally {
+    await Deno.remove(home, { recursive: true });
+  }
+});
+
+Deno.test("main completions install reports a failure as exit 1", async () => {
+  // A regular file standing in for the home dir makes directory creation fail.
+  const file = await Deno.makeTempFile();
+  try {
+    const { code, err } = await capture(() =>
+      main(Demo, ["completions", "install", "zsh"], {
+        installOptions: { home: file, env: () => undefined },
+      })
+    );
+    assertEquals(code, 1);
+    assertEquals(err.length > 0, true);
+  } finally {
+    await Deno.remove(file);
+  }
 });
 
 Deno.test("main graph --output=html renders HTML via the injected host", async () => {
