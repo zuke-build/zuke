@@ -95,7 +95,10 @@ async function ensureSourced(
   rcPath: string,
   scriptPath: string,
 ): Promise<boolean> {
-  const sourceLine = `source "${scriptPath}"`;
+  // Single-quote the path so nothing in it (a `$`, backtick, or quote that an
+  // oddly-set HOME/XDG_CONFIG_HOME could introduce) is interpreted when the rc
+  // file is sourced; a literal `'` becomes `'\''`.
+  const sourceLine = `source '${scriptPath.replaceAll("'", "'\\''")}'`;
   const existing = (await FileTasks.exists(rcPath))
     ? await FileTasks.readText(rcPath)
     : "";

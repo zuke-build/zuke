@@ -272,7 +272,8 @@ Deno.test("main completions install wires up each shell and is idempotent", asyn
     const install = (shell: string) =>
       capture(() =>
         main(Demo, ["completions", "install", shell], {
-          installOptions: { home },
+          // Ignore the runner's real XDG_CONFIG_HOME so paths are deterministic.
+          installOptions: { home, env: () => undefined },
         })
       );
 
@@ -303,7 +304,7 @@ Deno.test("main completions install reports a failure as exit 1", async () => {
   try {
     const { code, err } = await capture(() =>
       main(Demo, ["completions", "install", "zsh"], {
-        installOptions: { home: file },
+        installOptions: { home: file, env: () => undefined },
       })
     );
     assertEquals(code, 1);

@@ -11,6 +11,13 @@ class Sample extends Build {
 const targets = discoverTargets(new Sample());
 const params = discoverParameters(new Sample());
 
+/**
+ * An env reader that reports everything as unset, so tests are isolated from
+ * the runner's real `XDG_CONFIG_HOME` and the config dir defaults to
+ * `<home>/.config`.
+ */
+const isolatedEnv = () => undefined;
+
 /** Run `fn` against a fresh temp directory used as the home dir. */
 async function withHome(fn: (home: string) => Promise<void>): Promise<void> {
   const home = await Deno.makeTempDir();
@@ -23,7 +30,10 @@ async function withHome(fn: (home: string) => Promise<void>): Promise<void> {
 
 Deno.test("install bash writes the script and sources it from .bashrc", async () => {
   await withHome(async (home) => {
-    const result = await installCompletions("bash", targets, params, { home });
+    const result = await installCompletions("bash", targets, params, {
+      home,
+      env: isolatedEnv,
+    });
     assertEquals(result.shell, "bash");
     assertEquals(result.alreadySourced, false);
     assertEquals(
@@ -35,20 +45,26 @@ Deno.test("install bash writes the script and sources it from .bashrc", async ()
     const script = await Deno.readTextFile(result.scriptPath);
     assertStringIncludes(script, "complete -F _zuke_complete zuke");
     const rc = await Deno.readTextFile(`${home}/.bashrc`);
-    assertStringIncludes(rc, `source "${result.scriptPath}"`);
+    assertStringIncludes(rc, `source '${result.scriptPath}'`);
     assertStringIncludes(rc, "# zuke shell completion");
   });
 });
 
 Deno.test("install is idempotent — the rc is sourced once", async () => {
   await withHome(async (home) => {
-    const first = await installCompletions("zsh", targets, params, { home });
+    const first = await installCompletions("zsh", targets, params, {
+      home,
+      env: isolatedEnv,
+    });
     assertEquals(first.alreadySourced, false);
-    const second = await installCompletions("zsh", targets, params, { home });
+    const second = await installCompletions("zsh", targets, params, {
+      home,
+      env: isolatedEnv,
+    });
     assertEquals(second.alreadySourced, true);
 
     const rc = await Deno.readTextFile(`${home}/.zshrc`);
-    const line = `source "${first.scriptPath}"`;
+    const line = `source '${first.scriptPath}'`;
     const occurrences = rc.split(line).length - 1;
     assertEquals(occurrences, 1);
   });
@@ -57,16 +73,22 @@ Deno.test("install is idempotent — the rc is sourced once", async () => {
 Deno.test("install preserves existing rc content and appends", async () => {
   await withHome(async (home) => {
     await Deno.writeTextFile(`${home}/.bashrc`, "export FOO=1");
-    const result = await installCompletions("bash", targets, params, { home });
+    const result = await installCompletions("bash", targets, params, {
+      home,
+      env: isolatedEnv,
+    });
     const rc = await Deno.readTextFile(`${home}/.bashrc`);
     assertStringIncludes(rc, "export FOO=1");
-    assertStringIncludes(rc, `source "${result.scriptPath}"`);
+    assertStringIncludes(rc, `source '${result.scriptPath}'`);
   });
 });
 
 Deno.test("install fish drops a file in the completions dir, no rc edit", async () => {
   await withHome(async (home) => {
-    const result = await installCompletions("fish", targets, params, { home });
+    const result = await installCompletions("fish", targets, params, {
+      home,
+      env: isolatedEnv,
+    });
     assertEquals(result.rcPath, undefined);
     assertEquals(result.alreadySourced, false);
     assertEquals(
@@ -86,5 +108,20 @@ Deno.test("install honours XDG_CONFIG_HOME for the script location", async () =>
       env: (name) => (name === "XDG_CONFIG_HOME" ? xdg : undefined),
     });
     assertEquals(result.scriptPath, `${xdg}/zuke/completions/zuke.bash`);
+  });
+});
+
+Deno.test("install single-quotes the sourced path so it can't be interpreted", async () => {
+  await withHome(async (home) => {
+    // A config dir carrying shell metacharacters must not break out of the rc
+    // line: the whole path is single-quoted and any embedded `'` is escaped.
+    const configHome = `${home}/o'brien$(touch pwned)`;
+    const result = await installCompletions("bash", targets, params, {
+      home,
+      configHome,
+    });
+    const rc = await Deno.readTextFile(`${home}/.bashrc`);
+    const escaped = result.scriptPath.replaceAll("'", "'\\''");
+    assertStringIncludes(rc, `source '${escaped}'`);
   });
 });
