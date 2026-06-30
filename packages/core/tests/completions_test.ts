@@ -7,6 +7,7 @@ import {
   formatCompletions,
   isCompletionShell,
 } from "../src/completions.ts";
+import { BUILTIN_FLAGS, RESERVED_COMMANDS } from "../src/cli_spec.ts";
 
 /**
  * A build exercising every completion concern: a listed target, a target with
@@ -94,4 +95,18 @@ Deno.test("formatCompletions defaults to no parameters", () => {
   const script = formatCompletions("bash", targets);
   assertStringIncludes(script, "--list");
   assertEquals(script.includes("--dry-mode"), false);
+});
+
+Deno.test("every shared command and flag is completed (no drift)", () => {
+  // Completion derives its command/flag set from cli_spec, so adding one there
+  // surfaces it here automatically — nothing to keep in sync by hand.
+  for (const shell of COMPLETION_SHELLS) {
+    const script = formatCompletions(shell, targets, params);
+    for (const c of RESERVED_COMMANDS) assertStringIncludes(script, c.name);
+    // fish renders `--list` as `-l list`, so match on the dash-stripped name,
+    // which is present in every shell's script.
+    for (const f of BUILTIN_FLAGS) {
+      assertStringIncludes(script, f.name.replace(/^--/, ""));
+    }
+  }
 });

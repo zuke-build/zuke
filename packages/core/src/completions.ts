@@ -8,7 +8,9 @@
  * was generated from, so regenerate it (and re-source it) when targets change —
  * the same model as `deno completions`.
  *
- * Only the parsing helpers are internal; {@link formatCompletions} and the
+ * The reserved commands and built-in flags it completes come from the shared
+ * `cli_spec.ts` registry, so the parser, the help, and completion never drift.
+ * Only the rendering helpers are internal; {@link formatCompletions} and the
  * shell-name guard are consumed by the CLI in `cli.ts`.
  *
  * @module
@@ -16,6 +18,7 @@
 
 import type { TargetBuilder } from "./target.ts";
 import { type AnyParameter, flagName } from "./params.ts";
+import { BUILTIN_FLAGS, RESERVED_COMMANDS } from "./cli_spec.ts";
 
 /** The shells for which a completion script can be emitted. */
 export const COMPLETION_SHELLS = ["bash", "zsh", "fish"] as const;
@@ -33,35 +36,6 @@ interface Candidate {
   readonly name: string;
   readonly description: string;
 }
-
-/**
- * The reserved positional commands offered alongside target names. `--list` is
- * a flag (in {@link BUILTIN_FLAGS}) rather than a command, so it is omitted.
- */
-const COMMANDS: readonly Candidate[] = [
-  { name: "graph", description: "Show the dependency graph" },
-  { name: "generate-ci", description: "Write declared CI configuration files" },
-  { name: "completions", description: "Print a shell-completion script" },
-];
-
-/** The built-in option flags, in their long form, with a one-line description. */
-const BUILTIN_FLAGS: readonly Candidate[] = [
-  { name: "--list", description: "List all targets with descriptions" },
-  { name: "--skip", description: "Skip the named dependency" },
-  { name: "--parallel", description: "Run independent targets concurrently" },
-  { name: "--no-cache", description: "Ignore the incremental cache" },
-  { name: "--dry-run", description: "Print the plan without running targets" },
-  { name: "--output", description: "Graph output format: text or html" },
-  {
-    name: "--no-open",
-    description: "With --output=html, do not open a browser",
-  },
-  {
-    name: "--check",
-    description: "With generate-ci, verify files are current",
-  },
-  { name: "--help", description: "Show usage" },
-];
 
 /** Collapse runs of whitespace to single spaces so a description fits one line. */
 function oneLine(text: string): string {
@@ -118,7 +92,7 @@ function bashScript(
 ): string {
   const words = [
     ...targetCandidates(targets),
-    ...COMMANDS,
+    ...RESERVED_COMMANDS,
     ...flagCandidates(params),
   ].map((c) => c.name).join(" ");
   return [
@@ -154,7 +128,7 @@ function zshScript(
     "# Enable for the current shell:  source <(zuke completions zsh)",
     "_zuke() {",
     ...zshGroup("targets", "target", targetCandidates(targets)),
-    ...zshGroup("commands", "command", [...COMMANDS]),
+    ...zshGroup("commands", "command", [...RESERVED_COMMANDS]),
     ...zshGroup("options", "option", flagCandidates(params)),
     "}",
     // Loaded from $fpath, the `#compdef` line registers it; sourced directly
@@ -180,7 +154,7 @@ function fishScript(
     "complete -c zuke -f",
   ];
   // Targets and commands are first-argument subcommands.
-  for (const c of [...targetCandidates(targets), ...COMMANDS]) {
+  for (const c of [...targetCandidates(targets), ...RESERVED_COMMANDS]) {
     const doc = fishQuote(c.description);
     lines.push(
       `complete -c zuke -n __fish_use_subcommand -a ${c.name} -d ${doc}`,

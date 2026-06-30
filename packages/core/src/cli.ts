@@ -19,21 +19,25 @@ import type { TargetBuilder } from "./target.ts";
 import type { Plugin } from "./plugin.ts";
 import {
   COMPLETION_SHELLS,
+  type CompletionShell,
   formatCompletions,
   isCompletionShell,
 } from "./completions.ts";
+import {
+  COMPLETIONS_COMMAND,
+  GENERATE_CI_COMMAND,
+  GRAPH_COMMAND,
+} from "./cli_spec.ts";
+import {
+  installCompletions,
+  type InstallOptions,
+} from "./completions_install.ts";
 
 /** Convention: a target literally named `default` runs when none is requested. */
 const DEFAULT_TARGET = "default";
 
-/** The reserved positional command that renders the dependency graph. */
-const GRAPH_COMMAND = "graph";
-
-/** The reserved positional command that writes declared CI configuration. */
-const GENERATE_CI_COMMAND = "generate-ci";
-
-/** The reserved positional command that prints a shell-completion script. */
-const COMPLETIONS_COMMAND = "completions";
+/** The `completions` sub-action that installs the script instead of printing it. */
+const INSTALL_SUBCOMMAND = "install";
 
 /** Output format for the `graph` command: a terminal listing or an HTML page. */
 export type GraphOutput = "text" | "html";
@@ -68,6 +72,8 @@ export interface ParsedArgs {
   generateCi: boolean;
   /** The `completions` command was requested. */
   completions: boolean;
+  /** The `completions install` sub-action: write and wire up the script. */
+  install: boolean;
   /** The shell argument to `completions` (the positional after the command). */
   shell?: string;
   /** Verify (rather than write) generated files (`--check`); fail if stale. */
@@ -109,6 +115,7 @@ export function parseArgs(
     graph: false,
     generateCi: false,
     completions: false,
+    install: false,
     check: false,
     output: "text",
     open: true,
@@ -163,8 +170,10 @@ export function parseArgs(
       }
       // Unknown flags are ignored.
     } else if (parsed.completions && parsed.shell === undefined) {
-      // The first positional after `completions` names the shell.
-      parsed.shell = arg;
+      // After `completions`, an `install` sub-action may precede the shell;
+      // any other first positional is the shell name itself.
+      if (arg === INSTALL_SUBCOMMAND && !parsed.install) parsed.install = true;
+      else parsed.shell = arg;
     } else if (
       parsed.target === undefined && !parsed.graph && !parsed.generateCi &&
       !parsed.completions
@@ -190,7 +199,7 @@ Usage:
   deno run -A zuke.ts --list
   deno run -A zuke.ts graph [--output=html] [--no-open]
   deno run -A zuke.ts generate-ci [--check]
-  deno run -A zuke.ts completions <bash|zsh|fish>
+  deno run -A zuke.ts completions [install] <bash|zsh|fish>
 
 Options:
   <target>          Run the target and its transitive dependencies.
@@ -207,7 +216,9 @@ Options:
                     (via cicd()). Running any target regenerates them too.
   completions       Print a shell-completion script for bash, zsh, or fish that
                     completes target names, commands, and flags. Source it, e.g.
-                    source <(deno run -A zuke.ts completions bash).
+                    source <(deno run -A zuke.ts completions bash). Add the
+                    'install' sub-action to write the script and wire it into
+                    your shell's startup automatically.
   --check           With generate-ci, verify the files are current instead of
                     writing them, failing if any has drifted (use on CI).
   --output <fmt>    Graph output format: text (default) or html.
@@ -328,6 +339,43 @@ export interface MainOptions {
   graphHost?: GraphHost;
   /** Lifecycle observers to run alongside the build's own hooks. */
   plugins?: Plugin[];
+  /** Overrides for `completions install` (home/config dir), injected in tests. */
+  installOptions?: InstallOptions;
+}
+
+/**
+ * Install the completion script for `shell` and report what changed, returning
+ * a process exit code. Wraps {@link installCompletions} with friendly output
+ * and turns a failure (e.g. no home directory) into a clean exit 1.
+ */
+async function installCompletionScript(
+  shell: CompletionShell,
+  targets: Map<string, TargetBuilder>,
+  params: Map<string, AnyParameter>,
+  options: MainOptions,
+): Promise<number> {
+  try {
+    const result = await installCompletions(
+      shell,
+      targets,
+      params,
+      options.installOptions,
+    );
+    console.log(`Installed ${result.shell} completion to ${result.scriptPath}`);
+    if (result.rcPath === undefined) {
+      console.log("Open a new shell (or restart fish) to load it.");
+    } else if (result.alreadySourced) {
+      console.log(`${result.rcPath} already sources it — nothing to change.`);
+    } else {
+      console.log(
+        `Added a source line to ${result.rcPath}; open a new shell to use it.`,
+      );
+    }
+    return 0;
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    return 1;
+  }
 }
 
 /**
@@ -383,8 +431,11 @@ export async function main(
     const shell = parsed.shell;
     if (shell === undefined || !isCompletionShell(shell)) {
       const shells = COMPLETION_SHELLS.join("|");
-      console.error(`Usage: zuke completions <${shells}>`);
+      console.error(`Usage: zuke completions [install] <${shells}>`);
       return 1;
+    }
+    if (parsed.install) {
+      return await installCompletionScript(shell, targets, params, options);
     }
     console.log(formatCompletions(shell, targets, params));
     return 0;

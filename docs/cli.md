@@ -11,6 +11,7 @@
 | `zuke graph`                 | Print the dependency graph (`target → deps`).                 |
 | `zuke graph --output=html`   | Render an interactive HTML graph into `.zuke/` and open it.   |
 | `zuke completions <shell>`   | Print a shell-completion script (`bash`, `zsh`, or `fish`).   |
+| `zuke completions install <shell>` | Write the script and wire it into the shell's startup. |
 | `zuke --help` / `-h`         | Usage.                                                        |
 | `zuke` (no target)           | Run the `default` target if defined, else print `--list`.     |
 
@@ -75,6 +76,24 @@ regenerate and re-source it when you add, rename, or remove targets — the same
 model as `deno completions`. Asking for an unknown shell prints a usage line and
 exits `1`. `completions` is a reserved command name: a target called
 `completions` can't be run by name.
+
+### Installing
+
+`zuke completions install <shell>` does the wiring for you: it writes the script
+to a file under your config directory and makes the shell load it on the next
+start — no manual `source` step.
+
+- **bash** → writes `~/.config/zuke/completions/zuke.bash` and appends a `source`
+  line to `~/.bashrc`.
+- **zsh** → writes `~/.config/zuke/completions/zuke.zsh` and appends a `source`
+  line to `~/.zshrc`.
+- **fish** → writes `~/.config/fish/completions/zuke.fish`, which fish loads
+  automatically (no rc edit).
+
+The config directory honours `$XDG_CONFIG_HOME`. Installing is idempotent: if the
+rc file already sources the script, it is left untouched. The reserved commands
+and option flags offered by completion come from a single registry shared with
+the parser and `--help`, so they never drift out of sync.
 
 ## Parallel execution
 

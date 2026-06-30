@@ -39,6 +39,15 @@ export interface CopyOptions {
   overwrite?: boolean;
 }
 
+/** Read an environment variable, treating missing env access as unset. */
+function readEnv(name: string): string | undefined {
+  try {
+    return Deno.env.get(name);
+  } catch {
+    return undefined;
+  }
+}
+
 /** Whether a filesystem entry exists; a `NotFound` maps to `false`. */
 async function entryExists(path: string): Promise<boolean> {
   try {
@@ -80,6 +89,14 @@ async function copyEntry(
 export interface FileTasksApi {
   /** Whether `path` exists. */
   exists(path: PathLike): Promise<boolean>;
+
+  /**
+   * The current user's home directory, read from `$HOME` (falling back to
+   * `$USERPROFILE` on Windows). Throws a clear error when neither is set or
+   * environment access is unavailable, so callers get a path or a useful
+   * failure — never an `undefined` to thread through.
+   */
+  homeDirectory(): string;
 
   /**
    * Create the directory at `path`. Creates parents by default
@@ -134,6 +151,17 @@ export interface FileTasksApi {
 export const FileTasks: FileTasksApi = {
   exists(path: PathLike): Promise<boolean> {
     return entryExists(String(path));
+  },
+
+  homeDirectory(): string {
+    const home = readEnv("HOME") ?? readEnv("USERPROFILE");
+    if (home === undefined || home === "") {
+      throw new Error(
+        "Cannot determine the home directory: neither HOME nor USERPROFILE " +
+          "is set.",
+      );
+    }
+    return home;
   },
 
   async createDirectory(

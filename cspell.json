@@ -17,6 +17,7 @@
     "powershell",
     "subcommand",
     "subcommands",
+    "USERPROFILE",
     "zsh",
     "subclassing",
     "bunx",
