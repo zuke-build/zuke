@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.8.0](https://github.com/zuke-build/zuke/compare/core-v1.7.0...core-v1.8.0) (2026-06-30)
+
+
+### Features
+
+* **core:** make the CLI surface discoverable to tools and agents ([#136](https://github.com/zuke-build/zuke/issues/136)) ([abaa7d4](https://github.com/zuke-build/zuke/commit/abaa7d42ad2e753f626a74f14bdf09dacc4de706))
+
 ## [1.7.0](https://github.com/zuke-build/zuke/compare/core-v1.6.0...core-v1.7.0) (2026-06-30)
 
 
