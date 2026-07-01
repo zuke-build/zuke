@@ -295,6 +295,9 @@ const CONFIG_FILE: "zuke.json"
 const FileTasks: FileTasksApi
   Filesystem task functions for build scripts.
 
+const defaultRenderer: Renderer
+  The built-in renderer: Zuke's ruled headers and summary table.
+
 class AnnounceError extends Error
   Raised when an announcement is run before it is fully configured.
 
@@ -990,6 +993,10 @@ interface ExecuteOptions
   color?: boolean
     Force ANSI colour on or off. Auto-detected (a TTY with `NO_COLOR` unset,
     outside GitHub Actions) when omitted; off by default with a custom reporter.
+  renderer?: Renderer
+    Renderer for the per-target banners and the end-of-build summary. Defaults
+    to Zuke's built-in {@link defaultRenderer}; `@zuke/console` exports an
+    alternative a build can inject to restyle its output.
 
 interface FileTasksApi
   The shape of {@link FileTasks}.
@@ -1130,6 +1137,25 @@ interface RemoveOptions
   recursive?: boolean
     Remove a directory and its contents recursively, like `rm -r`.
 
+interface Renderer
+  How the executor renders a build's output. Each method is pure — it returns
+  the lines to print rather than writing them — so a custom renderer stays
+  unit-testable and the executor keeps control of the output streams.
+
+  targetHeader(style: Style, name: string): string[]
+    The banner that opens a target's section (a `::group::` under Actions).
+  targetPassFooter(style: Style, name: string, ms: number): string[]
+    The footer printed after a target body succeeds.
+  targetFailFooter(style: Style, name: string, ms: number, error: unknown): { info: string[]; error: string[]; }
+    The footer printed after a target body fails, split into `info` (stdout)
+    and `error` (stderr) so the caller can fan the lines out correctly.
+  targetDryRunFooter(style: Style, name: string): string[]
+    The footer printed for a dry-run target that was never executed.
+  summaryBlock(style: Style, reports: TargetReport[], totalMs: number, ok: boolean): string[]
+    The end-of-build summary block: the aligned table and closing verdict.
+  jobSummaryMarkdown(reports: TargetReport[], totalMs: number, ok: boolean): string
+    The GitHub Actions job-summary Markdown mirroring the terminal summary.
+
 interface Reporter
   Sink for executor output, defaulting to the console. Overridable in tests.
 
@@ -1143,6 +1169,20 @@ interface RunOptions
     Command-line arguments. Defaults to `Deno.args`.
   plugins?: Plugin[]
     Lifecycle observers to run alongside the build's own hooks.
+  renderer?: Renderer
+    Renderer for the per-target banners and end-of-build summary. Defaults to
+    Zuke's built-in look; inject `consoleRenderer` from `@zuke/console` (or a
+    custom {@link Renderer}) to restyle a build's output.
+
+interface Style
+  How a run renders its output.
+
+  github: boolean
+    Wrap target output in `::group::`/`::endgroup::` and emit `::error::`.
+  color: boolean
+    Emit ANSI colour codes (off when piped, under `NO_COLOR`, or in CI).
+  width: number
+    Width of horizontal rules and boxes, in characters.
 
 interface TarEntry
   A single file entry within a tar archive.
@@ -1151,6 +1191,13 @@ interface TarEntry
     The entry's path inside the archive (≤ 100 bytes).
   data: Uint8Array
     The file contents.
+
+interface TargetReport
+  One row of the end-of-build summary.
+
+  name: string
+  status: TargetStatus
+  ms: number
 
 interface Validation
   A check plugged into a target with {@link TargetBuilder.validateBefore} or
@@ -1905,6 +1952,102 @@ interface CmdTasksApi
 
   exec(tool: PathLike, configure?: Configure<CmdSettings>): Promise<CommandOutput>
     Run `tool` with the configured settings.
+
+========================================================================
+# @zuke/console
+========================================================================
+
+`@zuke/console` — task-shaped console output for Zuke builds, so a build never
+reaches for `console.log`. A levelled logger (NUKE-style), Spectre.Console-style
+markup and a semantic theme, and the primitives Zuke draws its own output with
+(`line`, `rule`, `box`, `table`, target `header`/`summary`).
+
+```ts
+import { ConsoleTasks as Log } from "jsr:@zuke/console";
+
+Log.rule("Deploy");
+Log.info("pushing [bold]core@1.2.0[/]");
+Log.success("published 4 packages");
+```
+
+A build can also route the executor's own banners through this package:
+
+```ts
+import { run } from "jsr:@zuke/core";
+import { consoleRenderer } from "jsr:@zuke/console";
+
+await run(MyBuild, { renderer: consoleRenderer });
+```
+@module
+
+function createConsoleRenderer(theme: Theme): Renderer
+  Build a {@link Renderer} that draws target headers with `theme`'s palette.
+
+const ConsoleTasks: ConsoleTasksApi
+  Task-shaped console output. A single namespaced object (like `FileTasks`)
+  rather than loose helpers: logging methods, structural primitives, and
+  configuration all hang off `ConsoleTasks`.
+
+const consoleRenderer: Renderer
+  The default console renderer, using {@link defaultTheme}.
+
+const defaultTheme: Theme
+  The default palette — a conventional terminal colour scheme.
+
+interface ConsoleOptions
+  Options accepted when reconfiguring {@link ConsoleTasks}.
+
+  level?: LogLevel
+    The minimum severity to print.
+  sink?: Sink
+    Where rendered lines go (default: stdout/stderr).
+  theme?: Theme
+    A custom colour palette.
+  color?: boolean
+    Force ANSI colour on or off (default: auto-detected).
+  width?: number
+    Force the rule/box width (default: the terminal width).
+  github?: boolean
+    Force GitHub Actions output formatting (default: auto-detected).
+
+interface ErrorOptions
+  Options for {@link ConsoleTasks.error}.
+
+  error?: unknown
+    An error whose message is appended as a dimmed detail line.
+
+interface RuleOptions extends LineOptions
+  Options for {@link ConsoleTasks.rule}.
+
+interface Sink
+  A destination for rendered lines. Overridable to capture output in tests.
+
+  out(line: string): void
+    Write a line to standard output.
+  err(line: string): void
+    Write a line to standard error.
+
+interface Theme
+  The colour palette. Each semantic token maps to the ANSI styles applied to
+  text (or markup) tagged with that name.
+
+  info: StyleName[]
+    Informational messages.
+  success: StyleName[]
+    Success/completion messages.
+  warn: StyleName[]
+    Warnings.
+  error: StyleName[]
+    Errors and failures.
+  debug: StyleName[]
+    Debug diagnostics.
+  trace: StyleName[]
+    The most verbose trace output.
+  muted: StyleName[]
+    De-emphasised, secondary text.
+
+type LogLevel = "trace" | "debug" | "info" | "warn" | "error" | "silent"
+  A severity threshold. Messages below the active level are suppressed.
 
 ========================================================================
 # @zuke/cli

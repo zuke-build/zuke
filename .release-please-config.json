@@ -93,6 +93,17 @@
         }
       ]
     },
+    "packages/console": {
+      "component": "console",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
+      ]
+    },
     "packages/cli": {
       "component": "cli",
       "changelog-path": "CHANGELOG.md",

@@ -9,6 +9,7 @@ const PACKAGES = [
   "packages/pnpm",
   "packages/yarn",
   "packages/cmd",
+  "packages/console",
   "packages/cli",
   "packages/docker",
   "packages/docker-compose",

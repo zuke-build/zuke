@@ -32,17 +32,8 @@ import { isCI } from "./host.ts";
 import { absolutePath } from "./path.ts";
 import type { Remediation, TargetBuilder, TargetFn } from "./target.ts";
 import type { Plugin } from "./plugin.ts";
-import {
-  detectWidth,
-  jobSummaryMarkdown,
-  type Style,
-  summaryBlock,
-  targetDryRunFooter,
-  targetFailFooter,
-  targetHeader,
-  targetPassFooter,
-  type TargetReport,
-} from "./report.ts";
+import { detectWidth, type Style, type TargetReport } from "./report.ts";
+import { defaultRenderer, type Renderer } from "./renderer.ts";
 
 /** The artifact directory (under the repo root) for the cache store. */
 const ARTIFACT_DIR = ".zuke";
@@ -123,6 +114,12 @@ export interface ExecuteOptions {
    * outside GitHub Actions) when omitted; off by default with a custom reporter.
    */
   color?: boolean;
+  /**
+   * Renderer for the per-target banners and the end-of-build summary. Defaults
+   * to Zuke's built-in {@link defaultRenderer}; `@zuke/console` exports an
+   * alternative a build can inject to restyle its output.
+   */
+  renderer?: Renderer;
 }
 
 /** Whether the build is running inside a GitHub Actions runner. */
@@ -224,39 +221,48 @@ function resolveStyle(options: ExecuteOptions, github: boolean): Style {
  */
 function openTarget(
   r: Reporter,
+  renderer: Renderer,
   style: Style,
   name: string,
   opened: number,
 ): void {
   if (!style.github && opened > 0) r.info("");
-  for (const line of targetHeader(style, name)) r.info(line);
+  for (const line of renderer.targetHeader(style, name)) r.info(line);
 }
 
 /** Close a target's section after it succeeded. */
 function passTarget(
   r: Reporter,
+  renderer: Renderer,
   style: Style,
   name: string,
   ms: number,
 ): void {
-  for (const line of targetPassFooter(style, name, ms)) r.info(line);
+  for (const line of renderer.targetPassFooter(style, name, ms)) r.info(line);
 }
 
 /** Close a target's section after it failed and surface the error. */
 function failTarget(
   r: Reporter,
+  renderer: Renderer,
   style: Style,
   name: string,
   ms: number,
   error: unknown,
 ): void {
-  const { info, error: err } = targetFailFooter(style, name, ms, error);
+  const { info, error: err } = renderer.targetFailFooter(
+    style,
+    name,
+    ms,
+    error,
+  );
   for (const line of info) r.info(line);
   for (const line of err) r.error(line);
 }
 
 /** Append the Markdown job-summary table to `GITHUB_STEP_SUMMARY`, if set. */
 function writeJobSummary(
+  renderer: Renderer,
   reports: TargetReport[],
   totalMs: number,
   ok: boolean,
@@ -273,9 +279,11 @@ function writeJobSummary(
     // own sections to this same file during the run, and overwriting here would
     // wipe them. GitHub provisions a fresh summary file per step, so a single
     // run's appends never accumulate across steps.
-    Deno.writeTextFileSync(path, jobSummaryMarkdown(reports, totalMs, ok), {
-      append: true,
-    });
+    Deno.writeTextFileSync(
+      path,
+      renderer.jobSummaryMarkdown(reports, totalMs, ok),
+      { append: true },
+    );
   } catch {
     // Best-effort: an unwritable summary file must never fail the build.
   }
@@ -443,6 +451,7 @@ async function runBodyWithRecovery(
 async function runTarget(
   life: Lifecycle,
   reporter: Reporter,
+  renderer: Renderer,
   style: Style,
   t: TargetBuilder,
   opened: number,
@@ -462,14 +471,16 @@ async function runTarget(
     const error = new Error(
       `Target "${name}" requires parameter(s) that are not set: ${names}.`,
     );
-    openTarget(reporter, style, name, opened);
-    failTarget(reporter, style, name, 0, error);
+    openTarget(reporter, renderer, style, name, opened);
+    failTarget(reporter, renderer, style, name, 0, error);
     return { status: "failed", ms: 0, error };
   }
 
   if (dryRun) {
-    openTarget(reporter, style, name, opened);
-    for (const line of targetDryRunFooter(style, name)) reporter.info(line);
+    openTarget(reporter, renderer, style, name, opened);
+    for (const line of renderer.targetDryRunFooter(style, name)) {
+      reporter.info(line);
+    }
     return { status: "passed", ms: 0 };
   }
 
@@ -477,7 +488,7 @@ async function runTarget(
     return { status: "cached", ms: 0 };
   }
 
-  openTarget(reporter, style, name, opened);
+  openTarget(reporter, renderer, style, name, opened);
   await life.targetStart(name);
   const start = performance.now();
 
@@ -485,7 +496,7 @@ async function runTarget(
     const error = new Error(
       `Target "${name}" has no body — call .executes(...) before running.`,
     );
-    failTarget(reporter, style, name, 0, error);
+    failTarget(reporter, renderer, style, name, 0, error);
     return { status: "failed", ms: 0, error };
   }
 
@@ -495,11 +506,11 @@ async function runTarget(
     for (const v of t.validateAfter_) await v.validate({ target: name });
     const ms = performance.now() - start;
     if (cache !== undefined) await cache.record(t);
-    passTarget(reporter, style, name, ms);
+    passTarget(reporter, renderer, style, name, ms);
     return { status: "passed", ms };
   } catch (error) {
     const ms = performance.now() - start;
-    failTarget(reporter, style, name, ms, error);
+    failTarget(reporter, renderer, style, name, ms, error);
     return { status: "failed", ms, error };
   }
 }
@@ -542,6 +553,7 @@ async function runSequential(
   life: Lifecycle,
   order: TargetBuilder[],
   reporter: Reporter,
+  renderer: Renderer,
   style: Style,
   skip: Set<string>,
   cache: BuildCache | undefined,
@@ -563,6 +575,7 @@ async function runSequential(
     const outcome = await runTarget(
       life,
       reporter,
+      renderer,
       style,
       t,
       opened,
@@ -597,6 +610,7 @@ async function runScheduled(
   order: TargetBuilder[],
   predecessors: Map<TargetBuilder, TargetBuilder[]>,
   reporter: Reporter,
+  renderer: Renderer,
   style: Style,
   skip: Set<string>,
   limit: number,
@@ -642,6 +656,7 @@ async function runScheduled(
         runTarget(
           life,
           buffer.reporter,
+          renderer,
           style,
           t,
           flushed,
@@ -724,6 +739,7 @@ export async function execute(
   const writesToConsole = options.reporter === undefined && !options.silent;
   const github = options.github ?? inGitHubActions();
   const style = resolveStyle(options, github);
+  const renderer = options.renderer ?? defaultRenderer;
   const skip = new Set(options.skip ?? []);
 
   // Resolve declared parameters (CLI value → environment → default) before any
@@ -784,6 +800,7 @@ export async function execute(
       life,
       order,
       reporter,
+      renderer,
       style,
       skip,
       cache,
@@ -804,6 +821,7 @@ export async function execute(
       order,
       predecessors,
       reporter,
+      renderer,
       style,
       skip,
       effectiveLimit,
@@ -820,11 +838,13 @@ export async function execute(
     : { ok: true, executed: run.executed };
 
   const totalMs = performance.now() - overallStart;
-  for (const line of summaryBlock(style, run.reports, totalMs, result.ok)) {
+  for (
+    const line of renderer.summaryBlock(style, run.reports, totalMs, result.ok)
+  ) {
     reporter.info(line);
   }
   if (style.github && writesToConsole) {
-    writeJobSummary(run.reports, totalMs, result.ok);
+    writeJobSummary(renderer, run.reports, totalMs, result.ok);
   }
   await life.finish(result);
   return result;

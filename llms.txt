@@ -70,6 +70,7 @@ Full reference: [docs/cli.md](./docs/cli.md).
 - [@zuke/pnpm](https://jsr.io/@zuke/pnpm) — typed `PnpmTasks` wrappers for the `pnpm` CLI, for use in Zuke
 - [@zuke/yarn](https://jsr.io/@zuke/yarn) — typed `YarnTasks` wrappers for the `yarn` CLI, for use in Zuke
 - [@zuke/cmd](https://jsr.io/@zuke/cmd) — generic command execution for Zuke builds: the fallback for
+- [@zuke/console](https://jsr.io/@zuke/console) — task-shaped console output for Zuke builds, so a build never
 - [@zuke/cli](https://jsr.io/@zuke/cli) — the `zuke` command. Install it globally with
 - [@zuke/docker](https://jsr.io/@zuke/docker) — typed `docker` CLI task wrappers for Zuke builds
 - [@zuke/docker-compose](https://jsr.io/@zuke/docker-compose) — typed Docker Compose task wrappers for Zuke builds
