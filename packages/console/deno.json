@@ -1,12 +1,12 @@
 {
   "name": "@zuke/console",
   "version": "1.0.0",
-  "description": "Task-shaped console output for Zuke builds — a levelled logger, Spectre.Console-style markup and themes, and the line/box/table primitives Zuke draws its own output with.",
+  "description": "Task-shaped console output for Zuke builds — a levelled logger, inline style markup with a semantic theme, and line/box/table primitives, so builds never reach for console.log.",
   "exports": {
     ".": "./mod.ts"
   },
   "imports": {
-    "@zuke/core": "jsr:@zuke/core@^1"
+    "@zuke/core": "jsr:@zuke/core@^1.9.0"
   },
   "publish": {
     "exclude": [

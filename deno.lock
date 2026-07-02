@@ -594,7 +594,7 @@
       },
       "packages/console": {
         "dependencies": [
-          "jsr:@zuke/core@1"
+          "jsr:@zuke/core@^1.9.0"
         ]
       },
       "packages/cspell": {
