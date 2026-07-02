@@ -354,7 +354,7 @@ Zuke stands on the shoulders of giants:
   **[Matthias Koch](https://github.com/matkoch)** — the code-first,
   strongly-typed build model that inspired Zuke. If you build for .NET, use
   NUKE; Zuke is an homage to its ideas in the Deno/TypeScript world.
-- **[Spectre.Console](https://spectreconsole.net/)** — the .NET console library
+- **[Spectre.Console](https://spectreconsole.net/)** and its creator **[Patrik Svensson](https://github.com/patriksvensson)** — the .NET console library
   whose markup, themes, and rich widgets (rules, panels, tables) inspired the
   output model of `@zuke/console`.
 - **[Deno](https://deno.com/)** — the runtime and toolchain (test runner,
