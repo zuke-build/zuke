@@ -48,7 +48,7 @@ Deno.test("stripAnsi and visibleWidth ignore colour codes", () => {
 Deno.test("pad aligns left and right, and never truncates", () => {
   assertEquals(pad("a", 4), "a   ");
   assertEquals(pad("a", 4, "right"), "   a");
-  assertEquals(pad("toolong", 3), "toolong");
+  assertEquals(pad("overflow", 3), "overflow");
   // Padding is measured on visible text, so painted cells still align.
   assertEquals(visibleWidth(pad(`${SGR.red}a${SGR.reset}`, 4)), 4);
 });
