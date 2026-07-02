@@ -32,6 +32,15 @@ Tags nest and restore the surrounding style; a literal bracket is doubled
 the active {@link Theme}, and `NO_COLOR` / a non-TTY / CI turn colour off
 automatically.
 
+To drop arbitrary or untrusted text into a message — a file path, a captured
+error, user input — wrap it in `ConsoleTasks.escape(...)` so its `[`/`]` render
+literally instead of being parsed as tags (like Spectre.Console's
+`Markup.Escape`):
+
+```ts
+Log.info(`found ${Log.escape(userInput)} in ${Log.escape(path)}`);
+```
+
 ## Primitives — the same ones Zuke draws with
 
 `ConsoleTasks.line()`, `.rule("Title")`, `.box(text, { title })`, and
@@ -127,6 +136,49 @@ interface ConsoleOptions
     Force the rule/box width (default: the terminal width).
   github?: boolean
     Force GitHub Actions output formatting (default: auto-detected).
+
+interface ConsoleTasksApi
+  The shape of {@link ConsoleTasks}.
+
+  info(message: string): void
+    Log an informational message (markup-aware).
+  log(message: string): void
+    Alias for {@link ConsoleTasksApi.info}.
+  success(message: string): void
+    Log a success/completion message.
+  warn(message: string): void
+    Log a warning (a `::warning::` annotation under GitHub Actions).
+  error(message: string, options?: ErrorOptions): void
+    Log an error, optionally appending a thrown value's message.
+  debug(message: string): void
+    Log a debug diagnostic (shown only at `debug`/`trace` level).
+  trace(message: string): void
+    Log the most verbose trace output (shown only at `trace` level).
+  escape(text: string): string
+    Escape `[`/`]` in `text` so it renders literally rather than as markup —
+    for embedding arbitrary or untrusted strings in a message.
+  line(options?: LineOptions): void
+    Print a horizontal rule spanning the width.
+  rule(title?: string, options?: RuleOptions): void
+    Print a rule, optionally with a centred title.
+  box(content: string | string[], options?: BoxOptions): void
+    Print a bordered panel around `content` (markup-aware).
+  table(columns: TableColumn[], rows: string[][], options?: TableOptions): void
+    Print an aligned table; header and cell text may contain markup.
+  header(name: string): void
+    Print the ruled banner Zuke opens a target's section with.
+  summary(reports: TargetReport[], totalMs: number, ok: boolean): void
+    Print the end-of-build summary table and closing verdict.
+  group(name: string): void
+    Open a collapsible group; close it with {@link ConsoleTasksApi.endGroup}.
+  endGroup(): void
+    Close the group opened by {@link ConsoleTasksApi.group}.
+  configure(options: ConsoleOptions): void
+    Reconfigure logging (level, sink, theme, colour, width, Actions mode).
+  level(): LogLevel
+    The active minimum severity.
+  reset(): void
+    Reset all configuration to defaults (level re-seeded from the env).
 
 interface ErrorOptions
   Options for {@link ConsoleTasks.error}.

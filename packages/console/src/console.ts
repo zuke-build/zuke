@@ -42,7 +42,7 @@ import {
   type Theme,
   themeTags,
 } from "./theme.ts";
-import { renderMarkup } from "./markup.ts";
+import { escapeMarkup, renderMarkup } from "./markup.ts";
 
 /** A destination for rendered lines. Overridable to capture output in tests. */
 export interface Sink {
@@ -227,6 +227,11 @@ export interface ConsoleTasksApi {
   debug(message: string): void;
   /** Log the most verbose trace output (shown only at `trace` level). */
   trace(message: string): void;
+  /**
+   * Escape `[`/`]` in `text` so it renders literally rather than as markup —
+   * for embedding arbitrary or untrusted strings in a message.
+   */
+  escape(text: string): string;
   /** Print a horizontal rule spanning the width. */
   line(options?: LineOptions): void;
   /** Print a rule, optionally with a centred title. */
@@ -291,6 +296,13 @@ export const ConsoleTasks: ConsoleTasksApi = {
   /** Log the most verbose trace output (shown only at `trace` level). */
   trace(message: string): void {
     logAt("trace", LEVEL_MARKS.trace, message);
+  },
+  /**
+   * Escape `[`/`]` in `text` so it renders literally rather than as markup —
+   * for embedding arbitrary or untrusted strings in a message.
+   */
+  escape(text: string): string {
+    return escapeMarkup(text);
   },
 
   /** Print a horizontal rule spanning the width. */

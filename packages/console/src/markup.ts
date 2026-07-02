@@ -22,6 +22,20 @@ export interface MarkupOptions {
   tags?: Record<string, StyleName[]>;
 }
 
+/**
+ * Escape `[` and `]` in `text` (by doubling them) so it renders as literal
+ * text inside markup rather than being parsed as tags. Use it to embed
+ * arbitrary or untrusted strings — a file path, a captured error, user input —
+ * without their brackets being mistaken for style tags.
+ *
+ * ```ts
+ * `found ${escapeMarkup(path)} tags` // "[id]" stays "[id]", not a style
+ * ```
+ */
+export function escapeMarkup(text: string): string {
+  return text.replaceAll("[", "[[").replaceAll("]", "]]");
+}
+
 /** Resolve a tag name to its escape codes via theme tags, then raw styles. */
 function codesFor(name: string, tags?: Record<string, StyleName[]>): string {
   const mapped = tags?.[name];

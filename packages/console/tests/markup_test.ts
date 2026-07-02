@@ -1,4 +1,4 @@
-import { renderMarkup } from "../src/markup.ts";
+import { escapeMarkup, renderMarkup } from "../src/markup.ts";
 import { SGR } from "@zuke/core/render";
 import {
   assertEquals,
@@ -59,4 +59,13 @@ Deno.test("renderMarkup closes an unbalanced tag at the end", () => {
   assertStringIncludes(renderMarkup("[red]hi", { color: true }), SGR.reset);
   // A stray close with nothing open is ignored.
   assertEquals(renderMarkup("hi[/]", { color: true }), "hi");
+});
+
+Deno.test("escapeMarkup doubles brackets so they survive rendering", () => {
+  assertEquals(escapeMarkup("a [b] c"), "a [[b]] c");
+  assertEquals(escapeMarkup("no brackets"), "no brackets");
+  // Round-trip: escaped text renders back to its literal self, tags inert.
+  const raw = "path[0] = [red]";
+  assertEquals(renderMarkup(escapeMarkup(raw), { color: true }), raw);
+  assertEquals(renderMarkup(escapeMarkup(raw), { color: false }), raw);
 });

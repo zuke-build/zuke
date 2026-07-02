@@ -27,6 +27,7 @@
 export {
   type ConsoleOptions,
   ConsoleTasks,
+  type ConsoleTasksApi,
   type ErrorOptions,
   type RuleOptions,
   type Sink,

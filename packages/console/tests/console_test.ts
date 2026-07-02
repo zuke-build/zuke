@@ -219,6 +219,13 @@ Deno.test("the default sink writes to the console", () => {
   ConsoleTasks.reset();
 });
 
+Deno.test("escape lets untrusted text render literally", () => {
+  const { out } = capture();
+  ConsoleTasks.info(`opening ${ConsoleTasks.escape("[red] file")}`);
+  assertEquals(out, ["ℹ opening [red] file"]);
+  ConsoleTasks.reset();
+});
+
 Deno.test("reset restores the default level", () => {
   capture({ level: "error" });
   assertEquals(ConsoleTasks.level(), "error");
