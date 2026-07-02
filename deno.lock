@@ -592,6 +592,11 @@
           "jsr:@zuke/core@1"
         ]
       },
+      "packages/console": {
+        "dependencies": [
+          "jsr:@zuke/core@1"
+        ]
+      },
       "packages/cspell": {
         "dependencies": [
           "jsr:@zuke/core@1"

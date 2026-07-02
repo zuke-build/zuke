@@ -5,7 +5,8 @@
   "exports": {
     ".": "./mod.ts",
     "./shell": "./src/shell.ts",
-    "./tooling": "./src/tooling.ts"
+    "./tooling": "./src/tooling.ts",
+    "./render": "./src/render.ts"
   },
   "publish": {
     "exclude": [

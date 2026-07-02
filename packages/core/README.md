@@ -349,6 +349,9 @@ const CONFIG_FILE: "zuke.json"
 const FileTasks: FileTasksApi
   Filesystem task functions for build scripts.
 
+const defaultRenderer: Renderer
+  The built-in renderer: Zuke's ruled headers and summary table.
+
 class AnnounceError extends Error
   Raised when an announcement is run before it is fully configured.
 
@@ -1044,6 +1047,10 @@ interface ExecuteOptions
   color?: boolean
     Force ANSI colour on or off. Auto-detected (a TTY with `NO_COLOR` unset,
     outside GitHub Actions) when omitted; off by default with a custom reporter.
+  renderer?: Renderer
+    Renderer for the per-target banners and the end-of-build summary. Defaults
+    to Zuke's built-in {@link defaultRenderer}; `@zuke/console` exports an
+    alternative a build can inject to restyle its output.
 
 interface FileTasksApi
   The shape of {@link FileTasks}.
@@ -1184,6 +1191,25 @@ interface RemoveOptions
   recursive?: boolean
     Remove a directory and its contents recursively, like `rm -r`.
 
+interface Renderer
+  How the executor renders a build's output. Each method is pure — it returns
+  the lines to print rather than writing them — so a custom renderer stays
+  unit-testable and the executor keeps control of the output streams.
+
+  targetHeader(style: Style, name: string): string[]
+    The banner that opens a target's section (a `::group::` under Actions).
+  targetPassFooter(style: Style, name: string, ms: number): string[]
+    The footer printed after a target body succeeds.
+  targetFailFooter(style: Style, name: string, ms: number, error: unknown): { info: string[]; error: string[]; }
+    The footer printed after a target body fails, split into `info` (stdout)
+    and `error` (stderr) so the caller can fan the lines out correctly.
+  targetDryRunFooter(style: Style, name: string): string[]
+    The footer printed for a dry-run target that was never executed.
+  summaryBlock(style: Style, reports: TargetReport[], totalMs: number, ok: boolean): string[]
+    The end-of-build summary block: the aligned table and closing verdict.
+  jobSummaryMarkdown(reports: TargetReport[], totalMs: number, ok: boolean): string
+    The GitHub Actions job-summary Markdown mirroring the terminal summary.
+
 interface Reporter
   Sink for executor output, defaulting to the console. Overridable in tests.
 
@@ -1197,6 +1223,20 @@ interface RunOptions
     Command-line arguments. Defaults to `Deno.args`.
   plugins?: Plugin[]
     Lifecycle observers to run alongside the build's own hooks.
+  renderer?: Renderer
+    Renderer for the per-target banners and end-of-build summary. Defaults to
+    Zuke's built-in look; inject `consoleRenderer` from `@zuke/console` (or a
+    custom {@link Renderer}) to restyle a build's output.
+
+interface Style
+  How a run renders its output.
+
+  github: boolean
+    Wrap target output in `::group::`/`::endgroup::` and emit `::error::`.
+  color: boolean
+    Emit ANSI colour codes (off when piped, under `NO_COLOR`, or in CI).
+  width: number
+    Width of horizontal rules and boxes, in characters.
 
 interface TarEntry
   A single file entry within a tar archive.
@@ -1205,6 +1245,13 @@ interface TarEntry
     The entry's path inside the archive (≤ 100 bytes).
   data: Uint8Array
     The file contents.
+
+interface TargetReport
+  One row of the end-of-build summary.
+
+  name: string
+  status: TargetStatus
+  ms: number
 
 interface Validation
   A check plugged into a target with {@link TargetBuilder.validateBefore} or

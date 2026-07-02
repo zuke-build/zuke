@@ -11,17 +11,9 @@
  */
 
 import type { TargetStatus } from "./build.ts";
+import { formatDuration, line, paint, SGR, type Style } from "./render.ts";
 
-/** ANSI select-graphic-rendition codes used for terminal colour. */
-const SGR = {
-  reset: "\x1b[0m",
-  bold: "\x1b[1m",
-  dim: "\x1b[2m",
-  red: "\x1b[31m",
-  green: "\x1b[32m",
-  yellow: "\x1b[33m",
-  cyan: "\x1b[36m",
-} as const;
+export { detectWidth, formatDuration, type Style } from "./render.ts";
 
 /** Per-status icon shown in headers, footers, and summary rows. */
 export const ICON: Record<TargetStatus, string> = {
@@ -47,52 +39,11 @@ const STATUS_COLOR: Record<TargetStatus, string> = {
   cached: SGR.cyan,
 };
 
-/** How a run renders its output. */
-export interface Style {
-  /** Wrap target output in `::group::`/`::endgroup::` and emit `::error::`. */
-  github: boolean;
-  /** Emit ANSI colour codes (off when piped, under `NO_COLOR`, or in CI). */
-  color: boolean;
-  /** Width of the horizontal rule, in characters. */
-  width: number;
-}
-
 /** One row of the end-of-build summary. */
 export interface TargetReport {
   name: string;
   status: TargetStatus;
   ms: number;
-}
-
-/** Default rule width used when the terminal size can't be detected. */
-const DEFAULT_WIDTH = 80;
-
-/** Minimum rule width — narrower terminals look broken with our headers. */
-const MIN_WIDTH = 40;
-
-/** Wrap text in ANSI codes when colour is enabled, otherwise return it as-is. */
-function paint(color: boolean, codes: string, text: string): string {
-  return color ? `${codes}${text}${SGR.reset}` : text;
-}
-
-/** Format a duration in milliseconds as `1.2s`. */
-export function formatDuration(ms: number): string {
-  return `${(ms / 1000).toFixed(1)}s`;
-}
-
-/** Read the terminal width if available, otherwise the default. */
-export function detectWidth(): number {
-  try {
-    const size = Deno.consoleSize();
-    return Math.max(MIN_WIDTH, Math.min(size.columns, DEFAULT_WIDTH));
-  } catch {
-    return DEFAULT_WIDTH;
-  }
-}
-
-/** A horizontal rule, dimmed in colour mode. */
-function rule(style: Style): string {
-  return paint(style.color, SGR.dim, "═".repeat(style.width));
 }
 
 /**
@@ -103,7 +54,7 @@ function rule(style: Style): string {
  */
 export function targetHeader(style: Style, name: string): string[] {
   if (style.github) return [`::group::${name}`];
-  const top = rule(style);
+  const top = line(style);
   const label = paint(style.color, SGR.bold + SGR.cyan, name);
   return [top, label, top];
 }

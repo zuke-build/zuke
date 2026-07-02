@@ -24,6 +24,7 @@ import {
   target,
 } from "@zuke/core";
 import { CommandTimeoutError } from "@zuke/core/shell";
+import { consoleRenderer, ConsoleTasks } from "@zuke/console";
 import {
   aiFixer,
   aiReviewWorkflow,
@@ -57,6 +58,7 @@ const PACKAGES = [
   "pnpm",
   "yarn",
   "cmd",
+  "console",
   "cli",
   "docker",
   "docker-compose",
@@ -387,7 +389,9 @@ class ZukeBuild extends Build {
     .executes(async () => {
       const token = this.codecovToken.value;
       if (token === undefined || token === "") {
-        console.log("CODECOV_TOKEN not set — skipping the Codecov upload.");
+        ConsoleTasks.warn(
+          "CODECOV_TOKEN not set — skipping the Codecov upload.",
+        );
         return;
       }
       // Codecov ships a standalone CLI binary per platform; fetch the pinned
@@ -426,7 +430,7 @@ class ZukeBuild extends Build {
         await collectPackageDocs(),
         docsOptions(),
       );
-      console.log(
+      ConsoleTasks.info(
         written.length === 0
           ? "API docs already up to date."
           : `Regenerated ${written.length} file(s):\n  ${written.join("\n  ")}`,
@@ -595,19 +599,21 @@ class ZukeBuild extends Build {
       for (const pkg of PACKAGES) {
         const version = await localVersion(pkg);
         if (version === "0.0.0") {
-          console.log(`@zuke/${pkg} has no released version yet.`);
+          ConsoleTasks.info(`@zuke/${pkg} has no released version yet.`);
           continue;
         }
         if (await isPublished(`@zuke/${pkg}`, version)) {
-          console.log(`@zuke/${pkg}@${version} is already on JSR.`);
+          ConsoleTasks.info(`@zuke/${pkg}@${version} is already on JSR.`);
           continue;
         }
-        console.log(`Publishing @zuke/${pkg}@${version} to JSR...`);
+        ConsoleTasks.info(`Publishing @zuke/${pkg}@${version} to JSR...`);
         if (await publishPackage(pkg)) continue;
         // Timed out: the upload usually lands before JSR's finalization hangs,
         // so a re-check tells us whether it actually published.
         if (await isPublished(`@zuke/${pkg}`, version)) {
-          console.log(`@zuke/${pkg}@${version} uploaded (provenance stalled).`);
+          ConsoleTasks.success(
+            `@zuke/${pkg}@${version} uploaded (provenance stalled).`,
+          );
           continue;
         }
         throw new Error(
@@ -632,4 +638,4 @@ class ZukeBuild extends Build {
     .executes(() => {});
 }
 
-await run(ZukeBuild);
+await run(ZukeBuild, { renderer: consoleRenderer });

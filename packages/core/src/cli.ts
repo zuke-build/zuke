@@ -9,6 +9,7 @@ import { isEntryModule } from "./entry.ts";
 import { isCI } from "./host.ts";
 import { GraphError, validateGraph } from "./graph.ts";
 import { execute } from "./executor.ts";
+import type { Renderer } from "./renderer.ts";
 import {
   defaultGraphHost,
   graphCommand,
@@ -353,6 +354,8 @@ export interface MainOptions {
   plugins?: Plugin[];
   /** Overrides for `completions install` (home/config dir), injected in tests. */
   installOptions?: InstallOptions;
+  /** Renderer for the build's banners and summary (see {@link RunOptions}). */
+  renderer?: Renderer;
 }
 
 /**
@@ -499,6 +502,7 @@ export async function main(
     cache: parsed.cache,
     dryRun: parsed.dryRun,
     plugins: options.plugins,
+    renderer: options.renderer,
   });
   return result.ok ? 0 : 1;
 }
@@ -509,6 +513,12 @@ export interface RunOptions {
   args?: string[];
   /** Lifecycle observers to run alongside the build's own hooks. */
   plugins?: Plugin[];
+  /**
+   * Renderer for the per-target banners and end-of-build summary. Defaults to
+   * Zuke's built-in look; inject `consoleRenderer` from `@zuke/console` (or a
+   * custom {@link Renderer}) to restyle a build's output.
+   */
+  renderer?: Renderer;
 }
 
 /**
@@ -534,6 +544,7 @@ export async function run(
   if (!isEntryModule(new Error().stack ?? "", import.meta.url)) return;
   const code = await main(BuildClass, options.args ?? Deno.args, {
     plugins: options.plugins,
+    renderer: options.renderer,
   });
   Deno.exit(code);
 }

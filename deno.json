@@ -2,6 +2,7 @@
   "workspace": [
     "packages/core",
     "packages/cmd",
+    "packages/console",
     "packages/deno",
     "packages/docs",
     "packages/npm",

@@ -57,6 +57,12 @@ export {
 } from "./src/describe.ts";
 export type { Plugin } from "./src/plugin.ts";
 export { execute, type ExecuteOptions, type Reporter } from "./src/executor.ts";
+export {
+  defaultRenderer,
+  type Renderer,
+  type TargetReport,
+} from "./src/renderer.ts";
+export type { Style } from "./src/render.ts";
 export type { BuildCache } from "./src/cache.ts";
 export { type AbsolutePath, absolutePath, type PathLike } from "./src/path.ts";
 export { CONFIG_FILE, repoRoot } from "./src/config.ts";
