@@ -1,6 +1,6 @@
 {
   "name": "@zuke/console",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "description": "Task-shaped console output for Zuke builds — a levelled logger, Spectre.Console-style markup and themes, and the line/box/table primitives Zuke draws its own output with.",
   "exports": {
     ".": "./mod.ts"

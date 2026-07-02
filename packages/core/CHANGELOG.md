@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.9.0](https://github.com/zuke-build/zuke/compare/core-v1.8.0...core-v1.9.0) (2026-07-02)
+
+
+### Features
+
+* **console:** add ConsoleTasks and themed console output ([#138](https://github.com/zuke-build/zuke/issues/138)) ([0476516](https://github.com/zuke-build/zuke/commit/04765167994418014647d214b11d270e6359ef5f))
+
 ## [1.8.0](https://github.com/zuke-build/zuke/compare/core-v1.7.0...core-v1.8.0) (2026-06-30)
 
 
