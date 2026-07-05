@@ -10,3 +10,4 @@
 - [Using Zuke in a Node/npm project](./node-projects.md) — drive a Node build with Deno.
 - [CLI reference](./cli.md) — commands and flags.
 - [Programmatic API](./programmatic-api.md) — drive Zuke from your own code.
+- [Telemetry (design proposal)](./telemetry.md) — the plan for anonymous, opt-in usage telemetry; nothing is collected today.
