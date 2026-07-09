@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.1](https://github.com/zuke-build/zuke/compare/ai-v1.4.0...ai-v1.4.1) (2026-07-09)
+
+
+### Bug Fixes
+
+* **ai:** sync harden-runner pin with generated ai-review.yml ([#144](https://github.com/zuke-build/zuke/issues/144)) ([22e8afc](https://github.com/zuke-build/zuke/commit/22e8afce1d396a11deadfe4804e1ce6af39e2931))
+
 ## [1.4.0](https://github.com/zuke-build/zuke/compare/ai-v1.3.0...ai-v1.4.0) (2026-06-29)
 
 
