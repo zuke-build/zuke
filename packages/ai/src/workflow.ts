@@ -36,9 +36,9 @@ import {
 } from "@zuke/core";
 import type { Reviewer } from "./reviewer.ts";
 
-/** SHA-pinned `step-security/harden-runner` (v2.19.4). */
+/** SHA-pinned `step-security/harden-runner` (v2.20.0). */
 const HARDEN_RUNNER =
-  "step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411";
+  "step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920";
 
 /** SHA-pinned `actions/checkout` (v7.0.0). */
 const CHECKOUT = "actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0";
