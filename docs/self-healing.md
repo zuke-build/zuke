@@ -222,6 +222,10 @@ const cache = aiCache((c) => c.dir(".zuke/ai-cache").ttl(86_400)); // 1-day TTL
 aiFixer((f) => f.provider("openai").apiKey(this.key).cache(cache));
 ```
 
+The TTL defaults to 7 days (`0` never expires) and the store is best-effort — see
+[Caching → AI response cache](./caching.md#ai-response-cache) for the full
+behaviour, the `.disable()`/`.store()` knobs, and custom stores.
+
 ### Learned false-positive suppression (review)
 
 `suppressions(...)` hides reviewer findings whose **stable ID** you've dismissed.

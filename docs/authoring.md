@@ -29,6 +29,8 @@ body, which is required before the target can run.
 | `.retry(times, delayMs?)`   | `(times: number, delayMs?: number) => this`           | Retry the body on failure, optionally pausing between.   |
 | `.validateBefore(...v)`     | `(...v: Validation[]) => this`                        | Run checks before the body; a throw skips it and fails.  |
 | `.validateAfter(...v)`      | `(...v: Validation[]) => this`                        | Run checks after a successful body; a throw fails it.    |
+| `.recoverWith(...r)`        | `(...r: Remediation[]) => this`                       | On failure, hand it to a remediation that can re-run the body ([self-healing](./self-healing.md)). |
+| `.recoverAttempts(n)`       | `(n: number) => this`                                 | Bound how many fix-then-rerun cycles are tried (default 1). |
 
 `dependsOn` pulls targets into the plan; `before`/`after` only reorder targets
 that are _already_ in the plan — they never pull new targets in.
@@ -145,9 +147,14 @@ compile = target()
 ```
 
 Fingerprints live in `<repo root>/.zuke/cache.json` (git-ignored). A target with
-no inputs always runs. Pass `--no-cache` (or `execute(..., { cache: false })`)
-to ignore the cache and rebuild everything. A skipped/cached target counts as
-satisfied, so its dependents still run.
+no inputs (and no cache keys) always runs. Pass `--no-cache` (or
+`execute(..., { cache: false })`) to ignore the cache and rebuild everything. A
+skipped/cached target counts as satisfied, so its dependents still run.
+
+See the dedicated **[Caching](./caching.md)** page for the full picture — the
+fingerprint algorithm, how adding or removing a file invalidates a target, the
+`.cacheKey()` non-file input, the store's corrupt-file tolerance, and the
+separate AI response cache.
 
 ### Conditional execution — `.onlyWhen()`
 
@@ -222,6 +229,10 @@ format = target().executes(async () => {
 });
 ```
 
+To match a pattern without touching the filesystem, `globToRegExp(pattern)`
+compiles the same syntax to a `RegExp` — handy for filtering an in-memory list
+of paths.
+
 ### Dry runs — `--dry-run`
 
 `zuke <target> --dry-run` resolves and prints every target that **would** run —
@@ -244,6 +255,48 @@ import { assert, assertExists, assertFileExists } from "jsr:@zuke/core";
 const token = assertExists(Deno.env.get("TOKEN"), "TOKEN is required");
 assert(this.environment.value !== "", "environment must be set");
 await assertFileExists("dist/app.js");
+```
+
+### Filesystem — `FileTasks`
+
+`FileTasks` groups the filesystem operations a `clean`/`package` target reaches
+for — create, clean, remove, copy, move a path, and read/write its contents — as
+a namespaced task object in the same shape as the [tool wrappers](./tools.md).
+Unlike the CLI wrappers it runs no subprocess, so each method takes direct
+arguments rather than a settings-lambda. Paths are [`PathLike`](./paths.md), so an
+`absolutePath(...)` or a plain string both work.
+
+```ts
+import { FileTasks } from "jsr:@zuke/core";
+
+await FileTasks.cleanDirectory("dist"); // empty it if it exists
+await FileTasks.createDirectory("dist/assets"); // mkdir -p
+await FileTasks.copy("static", "dist/static"); // recursive
+```
+
+| Method | Purpose |
+| --- | --- |
+| `exists(path)` | Whether `path` exists. |
+| `createDirectory(path, { recursive? })` | Create a directory; parents by default (`recursive: true`). A recursive create over an existing directory is a no-op. |
+| `cleanDirectory(path)` | Empty a directory, leaving it in place. A no-op if `path` is missing (it is _not_ created). |
+| `remove(path, { recursive? })` | Delete `path`, tolerating a missing target like `rm -f`. Returns `true` if something was removed, `false` if it was already absent. Pass `recursive: true` to remove a non-empty directory. |
+| `copy(source, dest, { overwrite? })` | Copy a file or directory tree (recursive). `overwrite` defaults to `true`. |
+| `move(source, dest)` | Move (rename) a path. |
+| `readText(path)` | Read a file's UTF-8 content. |
+| `writeText(path, content)` | Write a file, creating or truncating it. |
+| `readJson<T>(path)` | Read and `JSON.parse` a file, typed as `T`. |
+| `homeDirectory()` | The current user's home directory (`$HOME`, or `$USERPROFILE` on Windows); throws a clear error if neither is set. |
+
+The mutating operations are deliberately **missing-target-tolerant**, so the
+common `clean`/`package` sequence stays idempotent: `cleanDirectory` and
+`remove` no-op on an absent path instead of throwing, and a recursive
+`createDirectory` is safe to call repeatedly.
+
+```ts
+clean = target().executes(async () => {
+  await FileTasks.remove("dist", { recursive: true }); // gone or already gone
+  await FileTasks.createDirectory("dist");
+});
 ```
 
 ### HTTP — `httpDownload()` / `httpText()` / `httpJson()`
