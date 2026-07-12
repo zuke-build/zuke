@@ -283,6 +283,8 @@ Full documentation lives in [`docs/`](./docs/):
   vars (`parameter()`, `this.x.value`).
 - [Authoring API](./docs/authoring.md) — `target()`, `Build`, `run()`,
   code-first CI generation (`cicd()`), and gotchas.
+- [Caching](./docs/caching.md) — the incremental build cache
+  (`.inputs()`/`.outputs()`) and the AI response cache (`aiCache`).
 - [Shell wrapper (`$`)](./docs/shell.md) — ergonomic, injection-safe process
   execution.
 - [Paths (`absolutePath`)](./docs/paths.md) — the fluent path type.
