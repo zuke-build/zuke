@@ -125,6 +125,56 @@ unchanged since the last successful run and its outputs still exist.
 Fingerprints live in `.zuke/cache.json`. `--no-cache` ignores the cache and
 re-runs everything.
 
+## Remote cache
+
+The incremental cache is local. A **remote cache** shares a target's built
+[`.outputs()`](./authoring.md#incremental-caching-inputs--outputs) across
+machines: on a local miss, Zuke **restores** the outputs from the store instead
+of rebuilding them; after a successful run it **uploads** them for the next
+machine. It applies to targets that declare both `inputs` and `outputs`, and is
+keyed by the same input fingerprint the local cache uses. A store outage is
+never fatal — Zuke logs a warning and falls back to a local rebuild.
+
+Two dependency-free backends ship, behind one `RemoteCacheStore` interface:
+
+- **`FileSystemCacheStore`** — a shared or mounted directory (an NFS mount, a CI
+  volume). Archives are `<dir>/<key>.tar.gz`.
+- **`HttpCacheStore`** — `GET`/`PUT <url>/<key>` with an optional bearer token.
+  Works with any object store or cache server behind a URL (an S3/GCS/R2 bucket,
+  or a self-hosted endpoint).
+
+Declare one in code with a typed `remoteCache()` override:
+
+```ts
+import { Build, HttpCacheStore, parameter, target } from "jsr:@zuke/core";
+
+class CI extends Build {
+  cacheToken = parameter("Cache auth token").secret().env("CACHE_TOKEN");
+  override remoteCache() {
+    return new HttpCacheStore({
+      url: "https://cache.example.com",
+      token: this.cacheToken.value,
+    });
+  }
+  build = target().inputs("src").outputs("dist").executes(/* … */);
+}
+```
+
+Or configure it from the environment (no build-file change) — handy for CI:
+
+```sh
+ZUKE_REMOTE_CACHE_URL=https://cache.example.com ZUKE_REMOTE_CACHE_TOKEN=… ./zuke ci
+ZUKE_REMOTE_CACHE_DIR=/mnt/zuke-cache ./zuke ci     # filesystem backend
+```
+
+Precedence is: an explicit `execute({ remoteCache })` option, then the build's
+`remoteCache()` override, then the `ZUKE_REMOTE_CACHE_*` environment variables.
+`--no-remote-cache` uses the local cache only for a run; `--no-cache` disables
+both.
+
+> **Note:** archive entry names use the POSIX `ustar` format (a 100-byte path
+> limit), so extremely deep output paths are rejected with a clear error.
+
 ## Affected targets
 
 `--affected` restricts a run to the targets that a set of file changes can reach

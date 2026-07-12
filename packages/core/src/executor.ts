@@ -33,6 +33,7 @@ import {
   affectedTargets,
   gitChangedFiles,
 } from "./affected.ts";
+import { type RemoteCacheStore, resolveRemoteStore } from "./remote_cache.ts";
 import { isCI } from "./host.ts";
 import { absolutePath } from "./path.ts";
 import type { Remediation, TargetBuilder, TargetFn } from "./target.ts";
@@ -82,6 +83,15 @@ export interface ExecuteOptions {
    * BuildCache} may be supplied directly (used in tests).
    */
   cache?: boolean | BuildCache;
+  /**
+   * A {@link RemoteCacheStore} that shares target {@link TargetBuilder.outputs}
+   * across machines: a local cache miss restores outputs from it, and a
+   * successful run uploads them. `false` disables it (CLI `--no-remote-cache`).
+   * When omitted, the build's `remoteCache()` override is used, falling back to
+   * the `ZUKE_REMOTE_CACHE_*` environment variables. Ignored when `cache` is a
+   * supplied {@link BuildCache} or is `false`.
+   */
+  remoteCache?: RemoteCacheStore | false;
   /**
    * Raw parameter values from the command line, keyed by parameter (property)
    * name. Each declared {@link Parameter} is resolved from this map, then the
@@ -760,10 +770,11 @@ export async function execute(
   // target runs, so a target body can read `this.param.value`. A missing
   // required parameter or an invalid value fails the build before it starts.
   const params = discoverParameters(build);
+  const readEnv = options.readEnv ?? defaultReadEnv;
   const paramErrors = resolveParameters(
     params,
     options.params ?? {},
-    options.readEnv ?? defaultReadEnv,
+    readEnv,
     options.prompt ?? defaultPrompt,
   );
   if (paramErrors.length > 0) {
@@ -794,18 +805,14 @@ export async function execute(
   // targets still unblock their dependents (their prior outputs are assumed
   // current), so an affected target downstream of an unaffected one still runs.
   if (options.affected !== undefined) {
+    const base = options.affected.base ?? "HEAD";
     const changedFiles = options.affected.changedFiles ?? gitChangedFiles;
-    const changed = await changedFiles(options.affected.base ?? "HEAD");
-    const affected = affectedTargets(order, changed);
+    const affected = affectedTargets(order, await changedFiles(base));
     for (const t of order) {
       if (!affected.has(t)) skip.add(t.name_ ?? "<unnamed>");
     }
     if (affected.size === 0) {
-      reporter.info(
-        `No targets affected by changes since ${
-          options.affected.base ?? "HEAD"
-        }.`,
-      );
+      reporter.info(`No targets affected by changes since ${base}.`);
     }
   }
 
@@ -817,7 +824,14 @@ export async function execute(
   const scheduled = order.some((t) => t.proceedAfterFailure_ || t.always_);
   const dryRun = options.dryRun ?? false;
   // A dry run never reads or writes the cache (no body runs to invalidate it).
-  const cache = dryRun ? undefined : await resolveCache(options.cache, order);
+  const cache = dryRun ? undefined : await resolveCache(
+    options.cache,
+    order,
+    build,
+    options.remoteCache,
+    readEnv,
+    reporter,
+  );
   const overallStart = performance.now();
 
   const life = makeLifecycle(build, options.plugins ?? []);
@@ -886,16 +900,26 @@ export async function execute(
 /**
  * Resolve the incremental cache for a run: `false` disables it, a supplied
  * {@link BuildCache} is used directly, and otherwise a `.zuke/cache.json`-backed
- * cache is opened — but only when at least one target declares inputs.
+ * cache is opened — but only when at least one target declares inputs. A remote
+ * output store is wired in when one is configured (see
+ * {@link resolveRemoteStore}).
  */
 async function resolveCache(
   option: boolean | BuildCache | undefined,
   order: TargetBuilder[],
+  build: Build,
+  remoteOption: RemoteCacheStore | false | undefined,
+  readEnv: (name: string) => string | undefined,
+  reporter: Reporter,
 ): Promise<BuildCache | undefined> {
   if (option === false) return undefined;
   if (typeof option === "object") return option;
   if (!order.some(isCacheable)) return undefined;
   const root = findConfigDir(Deno.cwd(), pathExists) ?? Deno.cwd();
   const storePath = absolutePath(root)(ARTIFACT_DIR, CACHE_FILE).path;
-  return await openCache(storePath, defaultCacheHost);
+  const remote = resolveRemoteStore(remoteOption, build.remoteCache(), readEnv);
+  return await openCache(storePath, defaultCacheHost, {
+    remote,
+    warn: (message) => reporter.info(message),
+  });
 }

@@ -1,4 +1,4 @@
-import { assertEquals } from "./_assert.ts";
+import { assertEquals, assertStringIncludes } from "./_assert.ts";
 import { target } from "../src/target.ts";
 import {
   type CacheHost,
@@ -6,8 +6,14 @@ import {
   fingerprint,
   openCache,
 } from "../src/cache.ts";
+import {
+  archiveOutputs,
+  remoteCacheKey,
+  type RemoteCacheStore,
+} from "../src/remote_cache.ts";
 
 const enc = (text: string) => new TextEncoder().encode(text);
+const dec = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
 
 /** An in-memory {@link CacheHost} for hermetic cache tests. */
 class MemHost implements CacheHost {
@@ -25,6 +31,10 @@ class MemHost implements CacheHost {
   }
   readDir(path: string): Promise<string[]> {
     return Promise.resolve(this.dirs.get(path) ?? []);
+  }
+  writeFile(path: string, bytes: Uint8Array): Promise<void> {
+    this.files.set(path, bytes);
+    return Promise.resolve();
   }
   readStore(path: string): Promise<string | null> {
     return Promise.resolve(this.stores.get(path) ?? null);
@@ -156,4 +166,141 @@ Deno.test("a corrupt or non-object store is treated as empty", async () => {
   host.stores.set(STORE, '{"build": 42}');
   const mixed = await openCache(STORE, host);
   assertEquals(await mixed.upToDate(t), false);
+});
+
+/** A recording in-memory {@link RemoteCacheStore}. */
+class MemStore implements RemoteCacheStore {
+  readonly map = new Map<string, Uint8Array>();
+  readonly gets: string[] = [];
+  readonly puts: string[] = [];
+  failGet = false;
+  failPut = false;
+  get(key: string): Promise<Uint8Array | null> {
+    this.gets.push(key);
+    if (this.failGet) return Promise.reject(new Error("network down"));
+    return Promise.resolve(this.map.get(key) ?? null);
+  }
+  put(key: string, artifact: Uint8Array): Promise<void> {
+    this.puts.push(key);
+    if (this.failPut) return Promise.reject(new Error("network down"));
+    this.map.set(key, artifact);
+    return Promise.resolve();
+  }
+}
+
+/** A cacheable target with one input and one output directory, named `build`. */
+function buildTarget(): ReturnType<typeof target> {
+  const t = target().inputs("in.txt").outputs("dist");
+  t.name_ = "build";
+  return t;
+}
+
+Deno.test("the remote store restores outputs on a local miss", async () => {
+  const host = new MemHost();
+  host.files.set("in.txt", enc("v1"));
+  host.dirs.set("dist", ["app.js"]);
+  host.files.set("dist/app.js", enc("built"));
+  const t = buildTarget();
+
+  // Pre-seed the store with an archive keyed by the current fingerprint, then
+  // simulate a fresh checkout by dropping the local output.
+  const fp = await fingerprint(t, host);
+  const store = new MemStore();
+  store.map.set(
+    remoteCacheKey("build", fp),
+    await archiveOutputs(["dist"], host),
+  );
+  host.dirs.delete("dist");
+  host.files.delete("dist/app.js");
+
+  const cache = await openCache(STORE, host, { remote: store });
+  assertEquals(await cache.upToDate(t), true); // restored, counts as a hit
+  assertEquals(store.gets, [remoteCacheKey("build", fp)]);
+  assertEquals(dec(host.files.get("dist/app.js") ?? enc("")), "built"); // written back
+});
+
+Deno.test("a successful run uploads outputs to the remote store", async () => {
+  const host = new MemHost();
+  host.files.set("in.txt", enc("v1"));
+  host.dirs.set("dist", ["app.js"]);
+  host.files.set("dist/app.js", enc("built"));
+  const t = buildTarget();
+  const store = new MemStore();
+
+  const cache = await openCache(STORE, host, { remote: store });
+  await cache.record(t);
+  const fp = await fingerprint(t, host);
+  assertEquals(store.puts, [remoteCacheKey("build", fp)]);
+  assertEquals(store.map.has(remoteCacheKey("build", fp)), true);
+});
+
+Deno.test("outputs just restored are not re-uploaded", async () => {
+  const host = new MemHost();
+  host.files.set("in.txt", enc("v1"));
+  host.dirs.set("dist", ["app.js"]);
+  host.files.set("dist/app.js", enc("built"));
+  const t = buildTarget();
+  const fp = await fingerprint(t, host);
+  const store = new MemStore();
+  store.map.set(
+    remoteCacheKey("build", fp),
+    await archiveOutputs(["dist"], host),
+  );
+  host.dirs.delete("dist");
+  host.files.delete("dist/app.js");
+
+  const cache = await openCache(STORE, host, { remote: store });
+  await cache.upToDate(t); // restores
+  await cache.record(t); // should not upload again
+  assertEquals(store.puts, []);
+});
+
+Deno.test("a remote lookup failure warns and falls back to a rebuild", async () => {
+  const host = new MemHost();
+  host.files.set("in.txt", enc("v1"));
+  host.dirs.set("dist", ["app.js"]);
+  host.files.set("dist/app.js", enc("built"));
+  const t = buildTarget();
+  const store = new MemStore();
+  store.failGet = true;
+  const warnings: string[] = [];
+
+  const cache = await openCache(STORE, host, {
+    remote: store,
+    warn: (m) => warnings.push(m),
+  });
+  assertEquals(await cache.upToDate(t), false); // rebuild rather than fail
+  assertStringIncludes(warnings.join("\n"), "lookup");
+});
+
+Deno.test("a remote upload failure warns but never fails the build", async () => {
+  const host = new MemHost();
+  host.files.set("in.txt", enc("v1"));
+  host.dirs.set("dist", ["app.js"]);
+  host.files.set("dist/app.js", enc("built"));
+  const t = buildTarget();
+  const store = new MemStore();
+  store.failPut = true;
+  const warnings: string[] = [];
+
+  const cache = await openCache(STORE, host, {
+    remote: store,
+    warn: (m) => warnings.push(m),
+  });
+  await cache.record(t); // resolves despite the upload error
+  assertStringIncludes(warnings.join("\n"), "upload");
+});
+
+Deno.test("targets without outputs never touch the remote store", async () => {
+  const host = new MemHost();
+  host.files.set("in.txt", enc("v1"));
+  const t = target().inputs("in.txt"); // no outputs
+  t.name_ = "lint";
+  const store = new MemStore();
+
+  const cache = await openCache(STORE, host, { remote: store });
+  assertEquals(await cache.upToDate(t), false);
+  await cache.record(t);
+  assertEquals(store.gets, []);
+  assertEquals(store.puts, []);
 });

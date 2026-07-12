@@ -116,6 +116,9 @@ function affectedTargets(order: readonly TargetBuilder[], changed: readonly stri
   affected), when a dependency is affected, or when an affected target triggers
   it.
 
+async function archiveOutputs(outputs: readonly string[], host: OutputHost): Promise<Uint8Array>
+  Archive a target's `outputs` into a gzipped tar of their current contents.
+
 function assert(condition: unknown, message: string): asserts condition
   Assert that `condition` is truthy, narrowing it for the rest of the scope.
   Throws an {@link AssertionError} with `message` otherwise.
@@ -202,6 +205,12 @@ function discoverTargets(build: Build): Map<string, TargetBuilder>
   @throws
       if two properties reference the same builder instance under different
       names (a programming error that would corrupt naming).
+
+function envCacheStore(readEnv: (name: string) => string | undefined): RemoteCacheStore | undefined
+  Resolve a {@link RemoteCacheStore} from the environment, or `undefined` when
+  none is configured. `ZUKE_REMOTE_CACHE_URL` (with an optional
+  `ZUKE_REMOTE_CACHE_TOKEN`) selects an {@link HttpCacheStore}; otherwise
+  `ZUKE_REMOTE_CACHE_DIR` selects a {@link FileSystemCacheStore}.
 
 function envVarName(name: string): string
   The environment variable for a parameter: its path in SCREAMING_SNAKE_CASE.
@@ -310,6 +319,10 @@ function plan(root: TargetBuilder): TargetBuilder[]
       if the planned graph contains a cycle (which can happen
       via soft edges even when the hard graph is acyclic).
 
+function remoteCacheKey(name: string, fingerprint: string): string
+  The store key for a target's outputs: its name and input `fingerprint`. The
+  name is sanitised so the key is safe as a filename and a URL path segment.
+
 function repoRoot(...segments: string[]): AbsolutePath
   The absolute path of the repository root — the directory containing
   {@link CONFIG_FILE} — with any `segments` appended. The returned value is an
@@ -326,6 +339,16 @@ function repoRoot(...segments: string[]): AbsolutePath
 
   @throws
       if no {@link CONFIG_FILE} is found in the cwd or any ancestor.
+
+function resolveRemoteStore(option: RemoteCacheStore | false | undefined, declared: RemoteCacheStore | undefined, readEnv: (name: string) => string | undefined): RemoteCacheStore | undefined
+  Pick the remote store for a run by precedence: an explicit `option` wins
+  (`false` disables the remote cache entirely), then a `declared` store (a
+  build's `remoteCache()` override), then the {@link envCacheStore} environment
+  fallback.
+
+async function restoreOutputs(artifact: Uint8Array, host: OutputHost): Promise<string[]>
+  Restore the files in `artifact` (a gzipped tar produced by
+  {@link archiveOutputs}) to disk, returning the paths written.
 
 async function run(BuildClass: new () => Build, options: RunOptions): Promise<void>
   Public entry point. Instantiate the build, parse arguments, run, and set the
@@ -478,6 +501,22 @@ class Build
       lint = target().executes(() => DenoTasks.lint()); // healed globally
     }
     ```
+  remoteCache(): RemoteCacheStore | undefined
+    The {@link "./remote_cache.ts".RemoteCacheStore} that shares target
+    {@link "./target.ts".TargetBuilder.outputs} across machines. Override to
+    declare one in code; the default is none, and — unless overridden — the
+    executor falls back to {@link "./remote_cache.ts".envCacheStore} (the
+    `ZUKE_REMOTE_CACHE_*` environment variables). Applies to targets that
+    declare both `inputs` and `outputs`.
+
+    ```ts
+    class CI extends Build {
+      override remoteCache() {
+        return new HttpCacheStore({ url: this.cacheUrl.value, token: this.cacheToken.value });
+      }
+      build = target().inputs("src").outputs("dist").executes(...);
+    }
+    ```
 
 class CiFile
   A declared CI file. Assign one (via {@link cicd}) to a build field and Zuke
@@ -500,6 +539,17 @@ class DiscordAnnouncementSettings extends AnnouncementSettings
   override protected payload(): Record<string, unknown>
   override protected sendBot(): Promise<void>
 
+class FileSystemCacheStore implements RemoteCacheStore
+  A {@link RemoteCacheStore} backed by a shared or mounted directory.
+
+  constructor(dir: string)
+
+    @param dir
+        The directory archives are read from and written to.
+
+  get(key: string): Promise<Uint8Array | null>
+  async put(key: string, artifact: Uint8Array): Promise<void>
+
 class GraphError extends Error
   Raised when the build graph is invalid (cycle or unknown dependency).
 
@@ -516,6 +566,16 @@ class Group
     Members that declared themselves part of this group, in declaration order.
   name_?: string
     Property name, assigned during discovery. Undefined until then.
+
+class HttpCacheStore implements RemoteCacheStore
+  A {@link RemoteCacheStore} backed by HTTP: `GET <url>/<key>` fetches an
+  artifact (a `404` means a miss) and `PUT <url>/<key>` stores one. Works with
+  any object store or cache server that speaks plain HTTP GET/PUT — an S3, GCS,
+  or R2 bucket behind a URL, or a self-hosted cache endpoint.
+
+  constructor(options: HttpCacheStoreOptions)
+  async get(key: string): Promise<Uint8Array | null>
+  async put(key: string, artifact: Uint8Array): Promise<void>
 
 class HttpError extends Error
   Raised when an HTTP request returns a non-2xx status.
@@ -1049,6 +1109,13 @@ interface ExecuteOptions
     are unchanged since the last successful run (and whose outputs still exist).
     Defaults to on; pass `false` to disable (CLI `--no-cache`). A {@link
     BuildCache} may be supplied directly (used in tests).
+  remoteCache?: RemoteCacheStore | false
+    A {@link RemoteCacheStore} that shares target {@link TargetBuilder.outputs}
+    across machines: a local cache miss restores outputs from it, and a
+    successful run uploads them. `false` disables it (CLI `--no-remote-cache`).
+    When omitted, the build's `remoteCache()` override is used, falling back to
+    the `ZUKE_REMOTE_CACHE_*` environment variables. Ignored when `cache` is a
+    supplied {@link BuildCache} or is `false`.
   params?: Record<string, string>
     Raw parameter values from the command line, keyed by parameter (property)
     name. Each declared {@link Parameter} is resolved from this map, then the
@@ -1127,6 +1194,16 @@ interface GlobOptions
   cwd?: string
     Directory to resolve the pattern against (default: `Deno.cwd()`).
 
+interface HttpCacheStoreOptions
+  Configuration for an {@link HttpCacheStore}.
+
+  url: string
+    The base URL keys are appended to (any trailing slash is ignored).
+  token?: string
+    A bearer token sent as `Authorization: Bearer <token>`, if set.
+  fetch?: typeof fetch
+    The `fetch` implementation; defaults to the global. Overridable for tests.
+
 interface HttpOptions
   Options shared by the HTTP helpers.
 
@@ -1165,6 +1242,28 @@ interface InstallReleaseOptions
   download?: DownloadFn
     The download implementation. Defaults to {@link httpDownload}; override it
     to unit-test without network access.
+
+interface OpenCacheOptions
+  Optional extras for {@link openCache}: a remote store and a warning sink.
+
+  remote?: RemoteCacheStore
+    A {@link RemoteCacheStore} to restore outputs from (on a local miss) and
+    upload them to (after a successful run). Applies only to targets that
+    declare {@link TargetBuilder.outputs}.
+  warn?: (message: string) => void
+    Report a non-fatal remote-cache error (a get/put failure never fails the build).
+
+interface OutputHost
+  Filesystem effects used to archive and restore a target's outputs.
+
+  readFile(path: string): Promise<Uint8Array | null>
+    File contents, or `null` if the path does not exist.
+  stat(path: string): Promise<{ isDirectory: boolean; } | null>
+    Whether a path exists and is a directory, or `null` if it is missing.
+  readDir(path: string): Promise<string[]>
+    The entry names within a directory.
+  writeFile(path: string, bytes: Uint8Array): Promise<void>
+    Write a file, creating parent directories as needed.
 
 interface Plugin
   A lifecycle observer. Every hook is optional; implement only the ones you
@@ -1215,6 +1314,17 @@ interface RemediationResult
     explained the failure).
   summary?: string
     A one-line description of what was diagnosed or done, for diagnostics.
+
+interface RemoteCacheStore
+  A content-addressed store for archived target outputs, keyed by
+  {@link remoteCacheKey}. Both operations are best-effort from the build's
+  point of view: the executor never fails a build because the store is
+  unreachable — it just rebuilds and, where it can, re-uploads.
+
+  get(key: string): Promise<Uint8Array | null>
+    Fetch the archived outputs stored under `key`, or `null` if there are none.
+  put(key: string, artifact: Uint8Array): Promise<void>
+    Store `artifact` (a gzipped tar of a target's outputs) under `key`.
 
 interface RemoveOptions
   Options for {@link FileTasksApi.remove}.

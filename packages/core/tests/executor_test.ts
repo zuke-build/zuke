@@ -7,6 +7,7 @@ import {
 } from "../src/build.ts";
 import { group, target } from "../src/target.ts";
 import type { BuildCache } from "../src/cache.ts";
+import type { RemoteCacheStore } from "../src/remote_cache.ts";
 import { parameter } from "../src/params.ts";
 
 /** An in-memory {@link BuildCache} for executor caching tests. */
@@ -1548,4 +1549,61 @@ Deno.test("recoverWith only runs after a body failure, not on success", async ()
   const result = await execute(b, b.work, silent);
   assertEquals(result.ok, true);
   assertEquals(fixed, false);
+});
+
+/** A recording in-memory {@link RemoteCacheStore} for executor tests. */
+class MemStore implements RemoteCacheStore {
+  readonly map = new Map<string, Uint8Array>();
+  readonly puts: string[] = [];
+  get(key: string): Promise<Uint8Array | null> {
+    return Promise.resolve(this.map.get(key) ?? null);
+  }
+  put(key: string, artifact: Uint8Array): Promise<void> {
+    this.puts.push(key);
+    this.map.set(key, artifact);
+    return Promise.resolve();
+  }
+}
+
+Deno.test("execute uploads to and restores from a remote cache store", async () => {
+  const dir = await Deno.makeTempDir();
+  const original = Deno.cwd();
+  try {
+    await Deno.writeTextFile(`${dir}/zuke.json`, "{}\n");
+    await Deno.writeTextFile(`${dir}/input.txt`, "v1");
+    await Deno.mkdir(`${dir}/out`);
+    await Deno.writeTextFile(`${dir}/out/app.js`, "built");
+    Deno.chdir(dir);
+    const store = new MemStore();
+
+    class B extends Build {
+      build = target().inputs("input.txt").outputs("out").executes(() => {});
+    }
+    const first = new B();
+    discoverTargets(first);
+    await execute(first, first.build, { silent: true, remoteCache: store });
+    assertEquals(store.puts.length, 1); // outputs uploaded after the run
+
+    // Simulate a fresh checkout: drop the local cache and outputs, keep the store.
+    await Deno.remove(`${dir}/.zuke`, { recursive: true });
+    await Deno.remove(`${dir}/out`, { recursive: true });
+    let ran = false;
+    class B2 extends Build {
+      build = target().inputs("input.txt").outputs("out").executes(() => {
+        ran = true;
+      });
+    }
+    const second = new B2();
+    discoverTargets(second);
+    const result = await execute(second, second.build, {
+      silent: true,
+      remoteCache: store,
+    });
+    assertEquals(ran, false); // restored from the store, body skipped
+    assertEquals(await Deno.readTextFile(`${dir}/out/app.js`), "built");
+    assertEquals(result.ok, true);
+  } finally {
+    Deno.chdir(original);
+    await Deno.remove(dir, { recursive: true });
+  }
 });

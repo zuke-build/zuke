@@ -185,14 +185,12 @@ Deno.test("execute --affected reports when nothing is affected", async () => {
   const result = await execute(b, b.b, {
     reporter,
     cache: false,
-    affected: {
-      base: "x",
-      changedFiles: () => Promise.resolve(["unrelated/z"]),
-    },
+    // No base → defaults to HEAD; changedFiles injected so no git is needed.
+    affected: { changedFiles: () => Promise.resolve(["unrelated/z"]) },
   });
   assertEquals(result.executed, []);
   assertStringIncludes(
     lines.join("\n"),
-    "No targets affected by changes since x.",
+    "No targets affected by changes since HEAD.",
   );
 });

@@ -69,7 +69,19 @@ export {
   type TargetReport,
 } from "./src/renderer.ts";
 export type { Style } from "./src/render.ts";
-export type { BuildCache } from "./src/cache.ts";
+export type { BuildCache, OpenCacheOptions } from "./src/cache.ts";
+export {
+  archiveOutputs,
+  envCacheStore,
+  FileSystemCacheStore,
+  HttpCacheStore,
+  type HttpCacheStoreOptions,
+  type OutputHost,
+  remoteCacheKey,
+  type RemoteCacheStore,
+  resolveRemoteStore,
+  restoreOutputs,
+} from "./src/remote_cache.ts";
 export { type AbsolutePath, absolutePath, type PathLike } from "./src/path.ts";
 export { CONFIG_FILE, repoRoot } from "./src/config.ts";
 export {

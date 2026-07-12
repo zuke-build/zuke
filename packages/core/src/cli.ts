@@ -91,6 +91,8 @@ export interface ParsedArgs {
   parallel?: boolean | number;
   /** Disable the incremental cache (`--no-cache`); undefined leaves it on. */
   cache?: boolean;
+  /** Disable only the remote cache store (`--no-remote-cache`); undefined leaves it on. */
+  remoteCache?: boolean;
   /** Restrict the run to targets affected since a git base (`--affected[=<base>]`). */
   affected: boolean;
   /** The git base revision for `--affected` (the `=<base>` value); undefined uses the default. */
@@ -146,6 +148,8 @@ export function parseArgs(
       parsed.open = false;
     } else if (arg === "--no-cache") {
       parsed.cache = false;
+    } else if (arg === "--no-remote-cache") {
+      parsed.remoteCache = false;
     } else if (arg === "--affected") {
       parsed.affected = true;
     } else if (arg.startsWith("--affected=")) {
@@ -227,6 +231,8 @@ Options:
   --parallel[=N]    Run independent targets concurrently (N = max in flight,
                     default = CPU count).
   --no-cache        Ignore the incremental cache; re-run every target.
+  --no-remote-cache Use the local cache only; do not restore from or upload to
+                    the configured remote cache store.
   --affected[=<base>]
                     Run only targets affected by files changed since <base>
                     (a git revision; default HEAD). A target is affected when a
@@ -515,6 +521,7 @@ export async function main(
     params: parsed.values,
     parallel: parsed.parallel,
     cache: parsed.cache,
+    remoteCache: parsed.remoteCache === false ? false : undefined,
     affected: parsed.affected ? { base: parsed.affectedBase } : undefined,
     dryRun: parsed.dryRun,
     plugins: options.plugins,

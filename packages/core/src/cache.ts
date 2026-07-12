@@ -14,18 +14,23 @@
  */
 
 import type { TargetBuilder } from "./target.ts";
+import {
+  archiveOutputs,
+  type OutputHost,
+  remoteCacheKey,
+  type RemoteCacheStore,
+  restoreOutputs,
+} from "./remote_cache.ts";
 
 /** The cache store file name within the `.zuke/` artifact directory. */
 export const CACHE_FILE = "cache.json";
 
-/** Injected filesystem effects, so {@link openCache} is unit-testable. */
-export interface CacheHost {
-  /** File contents, or `null` if the path does not exist. */
-  readFile(path: string): Promise<Uint8Array | null>;
-  /** Whether a path exists and is a directory, or `null` if it is missing. */
-  stat(path: string): Promise<{ isDirectory: boolean } | null>;
-  /** The entry names within a directory. */
-  readDir(path: string): Promise<string[]>;
+/**
+ * Injected filesystem effects, so {@link openCache} is unit-testable. Extends
+ * {@link OutputHost} (read/write files for remote output archiving) with the
+ * cache-store read/write used by the local fingerprint store.
+ */
+export interface CacheHost extends OutputHost {
   /** The cache store text, or `null` if it does not exist yet. */
   readStore(path: string): Promise<string | null>;
   /** Write the cache store text, creating parent directories. */
@@ -55,6 +60,11 @@ export const defaultCacheHost: CacheHost = {
     const names: string[] = [];
     for await (const entry of Deno.readDir(path)) names.push(entry.name);
     return names;
+  },
+  async writeFile(path: string, bytes: Uint8Array): Promise<void> {
+    const slash = path.replace(/\\/g, "/").lastIndexOf("/");
+    if (slash > 0) await Deno.mkdir(path.slice(0, slash), { recursive: true });
+    await Deno.writeFile(path, bytes);
   },
   async readStore(path: string): Promise<string | null> {
     try {
@@ -158,33 +168,86 @@ function parseStore(text: string | null): Record<string, string> {
   }
 }
 
-/** Filesystem-backed {@link BuildCache}. */
+/** Extract a message from an unknown thrown value without casting. */
+function messageOf(value: unknown): string {
+  return value instanceof Error ? value.message : String(value);
+}
+
+/** Optional extras for {@link openCache}: a remote store and a warning sink. */
+export interface OpenCacheOptions {
+  /**
+   * A {@link RemoteCacheStore} to restore outputs from (on a local miss) and
+   * upload them to (after a successful run). Applies only to targets that
+   * declare {@link TargetBuilder.outputs}.
+   */
+  remote?: RemoteCacheStore;
+  /** Report a non-fatal remote-cache error (a get/put failure never fails the build). */
+  warn?: (message: string) => void;
+}
+
+/** Filesystem-backed {@link BuildCache}, optionally backed by a remote store. */
 class FsCache implements BuildCache {
   readonly #host: CacheHost;
   readonly #storePath: string;
   readonly #store: Record<string, string>;
   readonly #computed = new Map<TargetBuilder, string>();
+  readonly #restored = new Set<TargetBuilder>();
+  readonly #remote?: RemoteCacheStore;
+  readonly #warn?: (message: string) => void;
   #dirty = false;
 
   constructor(
     host: CacheHost,
     storePath: string,
     store: Record<string, string>,
+    options: OpenCacheOptions = {},
   ) {
     this.#host = host;
     this.#storePath = storePath;
     this.#store = store;
+    this.#remote = options.remote;
+    this.#warn = options.warn;
   }
 
-  async upToDate(target: TargetBuilder): Promise<boolean> {
-    if (!isCacheable(target)) return false;
-    const fp = await fingerprint(target, this.#host);
-    this.#computed.set(target, fp);
-    if (this.#store[target.name_ ?? ""] !== fp) return false;
+  /** Whether every declared output of `target` still exists on disk. */
+  async #outputsExist(target: TargetBuilder): Promise<boolean> {
     for (const output of target.outputs_) {
       if (await this.#host.stat(output) === null) return false;
     }
     return true;
+  }
+
+  async upToDate(target: TargetBuilder): Promise<boolean> {
+    if (!isCacheable(target)) return false;
+    const name = target.name_ ?? "";
+    const fp = await fingerprint(target, this.#host);
+    this.#computed.set(target, fp);
+    if (this.#store[name] === fp && await this.#outputsExist(target)) {
+      return true;
+    }
+
+    // A local miss on a target that produces outputs: try to restore them from
+    // the remote store. A store error is non-fatal — fall through to a rebuild.
+    if (this.#remote !== undefined && target.outputs_.length > 0) {
+      const key = remoteCacheKey(name, fp);
+      let artifact: Uint8Array | null = null;
+      try {
+        artifact = await this.#remote.get(key);
+      } catch (error) {
+        this.#warn?.(
+          `remote cache lookup for "${name}" failed: ${messageOf(error)}`,
+        );
+        return false;
+      }
+      if (artifact !== null) {
+        await restoreOutputs(artifact, this.#host);
+        this.#store[name] = fp;
+        this.#dirty = true;
+        this.#restored.add(target);
+        return true;
+      }
+    }
+    return false;
   }
 
   async record(target: TargetBuilder): Promise<void> {
@@ -195,6 +258,21 @@ class FsCache implements BuildCache {
     if (this.#store[name] !== fp) {
       this.#store[name] = fp;
       this.#dirty = true;
+    }
+    // Upload the freshly built outputs — unless we just restored them from the
+    // store, in which case they are already there. Upload errors are non-fatal.
+    if (
+      this.#remote !== undefined && target.outputs_.length > 0 &&
+      !this.#restored.has(target)
+    ) {
+      try {
+        const artifact = await archiveOutputs(target.outputs_, this.#host);
+        await this.#remote.put(remoteCacheKey(name, fp), artifact);
+      } catch (error) {
+        this.#warn?.(
+          `remote cache upload for "${name}" failed: ${messageOf(error)}`,
+        );
+      }
     }
   }
 
@@ -209,12 +287,15 @@ class FsCache implements BuildCache {
 
 /**
  * Open the incremental cache stored at `storePath`, loading any existing
- * fingerprints. Filesystem access goes through `host`.
+ * fingerprints. Filesystem access goes through `host`; pass a
+ * {@link OpenCacheOptions.remote} store to also restore and upload target
+ * outputs across machines.
  */
 export async function openCache(
   storePath: string,
   host: CacheHost = defaultCacheHost,
+  options: OpenCacheOptions = {},
 ): Promise<BuildCache> {
   const store = parseStore(await host.readStore(storePath));
-  return new FsCache(host, storePath, store);
+  return new FsCache(host, storePath, store, options);
 }
