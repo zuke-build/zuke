@@ -1,19 +1,20 @@
 # CLI reference
 
-| Command                      | Behaviour                                                     |
-| ---------------------------- | ------------------------------------------------------------- |
-| `zuke <target>`              | Run the target and all its transitive dependencies, in order. |
-| `zuke <target> --skip <dep>` | Run the target but skip the named dependency (repeatable).    |
-| `zuke <target> --parallel`   | Run independent targets concurrently (`--parallel=N` caps it). |
-| `zuke <target> --no-cache`   | Ignore the incremental cache; re-run every target.            |
-| `zuke <target> --dry-run`    | Print the plan without executing any target body.             |
-| `zuke --list` / `-l`         | List all targets with descriptions and dependencies.          |
-| `zuke graph`                 | Print the dependency graph (`target → deps`).                 |
-| `zuke graph --output=html`   | Render an interactive HTML graph into `.zuke/` and open it.   |
-| `zuke completions print <shell>` | Print a shell-completion script (`bash`, `zsh`, or `fish`). |
-| `zuke completions install <shell>` | Write the script and wire it into the shell's startup. |
-| `zuke --help` / `-h`         | Usage.                                                        |
-| `zuke` (no target)           | Run the `default` target if defined, else print `--list`.     |
+| Command                             | Behaviour                                                      |
+| ----------------------------------- | -------------------------------------------------------------- |
+| `zuke <target>`                     | Run the target and all its transitive dependencies, in order.  |
+| `zuke <target> --skip <dep>`        | Run the target but skip the named dependency (repeatable).     |
+| `zuke <target> --parallel`          | Run independent targets concurrently (`--parallel=N` caps it). |
+| `zuke <target> --no-cache`          | Ignore the incremental cache; re-run every target.             |
+| `zuke <target> --affected[=<base>]` | Run only targets affected by files changed since a git base.   |
+| `zuke <target> --dry-run`           | Print the plan without executing any target body.              |
+| `zuke --list` / `-l`                | List all targets with descriptions and dependencies.           |
+| `zuke graph`                        | Print the dependency graph (`target → deps`).                  |
+| `zuke graph --output=html`          | Render an interactive HTML graph into `.zuke/` and open it.    |
+| `zuke completions print <shell>`    | Print a shell-completion script (`bash`, `zsh`, or `fish`).    |
+| `zuke completions install <shell>`  | Write the script and wire it into the shell's startup.         |
+| `zuke --help` / `-h`                | Usage.                                                         |
+| `zuke` (no target)                  | Run the `default` target if defined, else print `--list`.      |
 
 (Read `zuke` as `deno run -A zuke.ts` until the launcher binary ships.)
 
@@ -36,10 +37,10 @@ Targets in a [`group()`](./authoring.md#group-and-partof) are drawn inside a
 labelled box (a Cytoscape compound node); the text listing tags them
 `[group: name]`.
 
-| Option          | Behaviour                                                   |
-| --------------- | ----------------------------------------------------------- |
-| `--output=html` | Render the interactive HTML page instead of terminal text.  |
-| `--no-open`     | With `--output=html`, write the file without opening it.    |
+| Option          | Behaviour                                                  |
+| --------------- | ---------------------------------------------------------- |
+| `--output=html` | Render the interactive HTML page instead of terminal text. |
+| `--no-open`     | With `--output=html`, write the file without opening it.   |
 
 `graph` is a reserved command name: a target called `graph` can't be run by
 name.
@@ -84,43 +85,68 @@ called `completions` can't be run by name.
 to a file under your config directory and makes the shell load it on the next
 start — no manual `source` step.
 
-- **bash** → writes `~/.config/zuke/completions/zuke.bash` and appends a `source`
-  line to `~/.bashrc`.
+- **bash** → writes `~/.config/zuke/completions/zuke.bash` and appends a
+  `source` line to `~/.bashrc`.
 - **zsh** → writes `~/.config/zuke/completions/zuke.zsh` and appends a `source`
   line to `~/.zshrc`.
 - **fish** → writes `~/.config/fish/completions/zuke.fish`, which fish loads
   automatically (no rc edit).
 
-The config directory honours `$XDG_CONFIG_HOME`. Installing is idempotent: if the
-rc file already sources the script, it is left untouched. The reserved commands
-and option flags offered by completion come from a single registry shared with
-the parser and `--help`, so they never drift out of sync.
+The config directory honours `$XDG_CONFIG_HOME`. Installing is idempotent: if
+the rc file already sources the script, it is left untouched. The reserved
+commands and option flags offered by completion come from a single registry
+shared with the parser and `--help`, so they never drift out of sync.
 
 ## Parallel execution
 
-By default targets run one at a time in a deterministic order. `--parallel`
-runs independent targets concurrently while still completing every dependency
-before its dependents; `--parallel=N` caps the number in flight (the default is
-the host's CPU count). Each target's banner block is buffered and flushed as a
-unit, so concurrent runs don't interleave their headers (a target's own
-subprocess output may still interleave, as with `make -j`). The first failure
-stops new launches; targets already running finish, and the rest are reported
-as skipped. The build summary stays in declaration order regardless.
+By default targets run one at a time in a deterministic order. `--parallel` runs
+independent targets concurrently while still completing every dependency before
+its dependents; `--parallel=N` caps the number in flight (the default is the
+host's CPU count). Each target's banner block is buffered and flushed as a unit,
+so concurrent runs don't interleave their headers (a target's own subprocess
+output may still interleave, as with `make -j`). The first failure stops new
+launches; targets already running finish, and the rest are reported as skipped.
+The build summary stays in declaration order regardless.
 
-Programmatic callers get the same behaviour via `execute(build, target, { parallel: true })`
-(or a number) — see the [programmatic API](./programmatic-api.md).
+Programmatic callers get the same behaviour via
+`execute(build, target, { parallel: true })` (or a number) — see the
+[programmatic API](./programmatic-api.md).
 
-For parallelism scoped to specific targets rather than the whole build, put
-them in a [`group()`](./authoring.md#group-and-partof) with `.partOf(...)` — the
+For parallelism scoped to specific targets rather than the whole build, put them
+in a [`group()`](./authoring.md#group-and-partof) with `.partOf(...)` — the
 group's members run concurrently even without `--parallel`.
 
 ## Incremental builds
 
-Targets that declare [`.inputs()`](./authoring.md#incremental-caching-inputs--outputs)
-are cached: Zuke skips one (showing it `cached` in the summary) when its inputs
-are unchanged since the last successful run and its outputs still exist.
+Targets that declare
+[`.inputs()`](./authoring.md#incremental-caching-inputs--outputs) are cached:
+Zuke skips one (showing it `cached` in the summary) when its inputs are
+unchanged since the last successful run and its outputs still exist.
 Fingerprints live in `.zuke/cache.json`. `--no-cache` ignores the cache and
 re-runs everything.
+
+## Affected targets
+
+`--affected` restricts a run to the targets that a set of file changes can reach
+— the monorepo-scale complement to the incremental cache. Zuke asks git for the
+files changed since a base revision and keeps only the **affected** targets; the
+rest are skipped (their prior outputs are assumed current, so a skipped
+dependency still unblocks its dependents).
+
+```sh
+zuke ci --affected                 # vs HEAD (uncommitted changes)
+zuke ci --affected=origin/main     # vs a base branch — the usual CI form
+```
+
+A target is affected when a changed file falls inside one of its declared
+[`.inputs()`](./authoring.md#incremental-caching-inputs--outputs), **or** when
+any of its dependencies is affected (affectedness flows downstream along
+`dependsOn` and `triggers`). A target that declares **no** inputs can't be
+proven unaffected, so it is always run — declare `inputs` on the targets you
+want `--affected` to be able to skip. The base defaults to `HEAD`; pass
+`--affected=<ref>` for any git revision (e.g. `origin/main`, a tag, or `main...`
+for a merge-base comparison). Programmatic callers pass `{ affected: { base } }`
+to `execute`, optionally with a `changedFiles` seam in place of git.
 
 ## Dry runs
 

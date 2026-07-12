@@ -52,6 +52,16 @@ function absolutePath(first: string, ...rest: string[]): AbsolutePath
   @param rest
       Additional segments to append.
 
+function affectedTargets(order: readonly TargetBuilder[], changed: readonly string[]): Set<TargetBuilder>
+  Compute the set of targets in `order` affected by the given `changed` files.
+
+  `order` must be a valid execution order (dependencies before dependents, as
+  produced by {@link plan}/{@link planGraph}) so each target's dependencies are
+  already decided when it is visited. A target is affected when its own inputs
+  cover a changed file, when it declares no inputs (unprovable — treated as
+  affected), when a dependency is affected, or when an affected target triggers
+  it.
+
 function assert(condition: unknown, message: string): asserts condition
   Assert that `condition` is truthy, narrowing it for the rest of the scope.
   Throws an {@link AssertionError} with `message` otherwise.
@@ -173,6 +183,12 @@ function generateCi(pipeline: CiPipeline, provider: CiProvider): string
   `.github/workflows/*.yml`, `.gitlab-ci.yml`, `azure-pipelines.yml`, or
   `bitbucket-pipelines.yml`. The pipeline may be empty (`{}`) to accept every
   default.
+
+async function gitChangedFiles(base: string, run: (args: string[]) => Promise<string>): Promise<string[]>
+  List the files changed since `base` (default `HEAD`) via git: tracked changes
+  versus `base` plus untracked files not covered by `.gitignore`. `run` invokes
+  git and returns stdout (defaults to a real `git` subprocess); override it to
+  test without a repository.
 
 async function glob(pattern: string, options: GlobOptions): Promise<string[]>
   Expand a glob pattern to the matching paths, relative to `cwd`, sorted for
@@ -725,6 +741,14 @@ interface AbsolutePath
   toString(): string
     The normalised path string.
 
+interface AffectedOptions
+  Configure {@link ExecuteOptions.affected}: the base revision and diff seam.
+
+  base?: string
+    The git revision to diff against. Defaults to `HEAD` (uncommitted changes).
+  changedFiles?: ChangedFilesFn
+    How to list changed files. Defaults to {@link gitChangedFiles}.
+
 interface AnnounceTasksApi
   The shape of {@link AnnounceTasks}.
 
@@ -987,6 +1011,13 @@ interface ExecuteOptions
     Plan only: resolve and print every target that would run (honouring
     `--skip` and `onlyWhen` conditions) without executing any body or touching
     the cache (CLI `--dry-run`).
+  affected?: AffectedOptions
+    Restrict the run to the targets affected by files changed since a base git
+    revision (CLI `--affected[=<base>]`). A target is affected when a changed
+    file falls inside its declared {@link TargetBuilder.inputs} or a dependency
+    is affected; a target that declares no inputs is always considered affected.
+    Unaffected targets are skipped. The base revision defaults to `HEAD`; supply
+    `changedFiles` to inject the diff (used in tests).
   github?: boolean
     Force GitHub Actions output formatting on or off. Auto-detected from the
     `GITHUB_ACTIONS` environment variable when omitted.
@@ -1220,6 +1251,12 @@ interface ValidationContext
 type AnnouncementLevel = "success" | "failure" | "warning" | "info"
   The outcome an announcement conveys. It drives the accent colour and the icon
   prepended to the message; defaults to `"info"`.
+
+type ChangedFilesFn = (base: string) => Promise<string[]>
+  Lists the files changed since `base` (a git revision), each path relative to
+  the repository root. The seam behind {@link ExecuteOptions.affected}; defaults
+  to {@link gitChangedFiles} and is overridable so the affected plan can be
+  tested without a real git repository.
 
 type CiHost = "github" | "gitlab" | "azure" | "bitbucket" | "local"
   The CI host a build is running on, or `"local"` when not on CI. The names

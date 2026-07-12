@@ -28,6 +28,11 @@ import {
   openCache,
 } from "./cache.ts";
 import { findConfigDir, pathExists } from "./config.ts";
+import {
+  type AffectedOptions,
+  affectedTargets,
+  gitChangedFiles,
+} from "./affected.ts";
 import { isCI } from "./host.ts";
 import { absolutePath } from "./path.ts";
 import type { Remediation, TargetBuilder, TargetFn } from "./target.ts";
@@ -104,6 +109,15 @@ export interface ExecuteOptions {
    * the cache (CLI `--dry-run`).
    */
   dryRun?: boolean;
+  /**
+   * Restrict the run to the targets affected by files changed since a base git
+   * revision (CLI `--affected[=<base>]`). A target is affected when a changed
+   * file falls inside its declared {@link TargetBuilder.inputs} or a dependency
+   * is affected; a target that declares no inputs is always considered affected.
+   * Unaffected targets are skipped. The base revision defaults to `HEAD`; supply
+   * `changedFiles` to inject the diff (used in tests).
+   */
+  affected?: AffectedOptions;
   /**
    * Force GitHub Actions output formatting on or off. Auto-detected from the
    * `GITHUB_ACTIONS` environment variable when omitted.
@@ -775,6 +789,25 @@ export async function execute(
   // Evaluate up-front conditions for `whenSkipped("skip-dependencies")` targets
   // and skip them plus any dependencies that nothing else needs.
   for (const name of await conditionSkips(root, order)) skip.add(name);
+
+  // With `--affected`, skip every planned target a change cannot reach. Skipped
+  // targets still unblock their dependents (their prior outputs are assumed
+  // current), so an affected target downstream of an unaffected one still runs.
+  if (options.affected !== undefined) {
+    const changedFiles = options.affected.changedFiles ?? gitChangedFiles;
+    const changed = await changedFiles(options.affected.base ?? "HEAD");
+    const affected = affectedTargets(order, changed);
+    for (const t of order) {
+      if (!affected.has(t)) skip.add(t.name_ ?? "<unnamed>");
+    }
+    if (affected.size === 0) {
+      reporter.info(
+        `No targets affected by changes since ${
+          options.affected.base ?? "HEAD"
+        }.`,
+      );
+    }
+  }
 
   const limit = resolveConcurrency(options.parallel);
   const globalParallel = limit > 1;

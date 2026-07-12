@@ -56,6 +56,12 @@ export {
   describeCli,
 } from "./src/describe.ts";
 export type { Plugin } from "./src/plugin.ts";
+export {
+  type AffectedOptions,
+  affectedTargets,
+  type ChangedFilesFn,
+  gitChangedFiles,
+} from "./src/affected.ts";
 export { execute, type ExecuteOptions, type Reporter } from "./src/executor.ts";
 export {
   defaultRenderer,
