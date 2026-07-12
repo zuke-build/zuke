@@ -32,7 +32,8 @@
  */
 
 import { toYaml, type YamlValue } from "./yaml.ts";
-import { type Build, forEachField } from "./build.ts";
+import { type Build, discoverTargets, forEachField } from "./build.ts";
+import type { TargetBuilder } from "./target.ts";
 
 /** The CI providers {@link generateCi} can target. */
 export type CiProvider = "github" | "gitlab" | "azure" | "bitbucket";
@@ -384,6 +385,94 @@ export function generateCi(
   }
 }
 
+/**
+ * Options for {@link fanOutPipeline}: how a build's targets become parallel CI
+ * jobs.
+ */
+export interface FanOutOptions {
+  /**
+   * The command a job runs for its target, given the target name. Defaults to
+   * the `./zuke <target>` launcher (which bootstraps Deno). Each job runs only
+   * its own target; its dependencies run in their own jobs and are shared via
+   * the {@link "./remote_cache.ts" | remote cache}, so pair fan-out with one.
+   */
+  command?: (target: string) => string;
+  /**
+   * Steps prepended to every job — checkout, tool setup, cache restore. Defaults
+   * to a single `actions/checkout` (rendered on GitHub; GitLab and Azure check
+   * out automatically). Provide `env` for `ZUKE_REMOTE_CACHE_*` here or via
+   * {@link env}.
+   */
+  setupSteps?: CiStep[];
+  /** The runner for every job (see {@link CiJob.runsOn}). */
+  runsOn?: string;
+  /** Include targets hidden from `--list` via `.unlisted()`. Defaults to false. */
+  includeUnlisted?: boolean;
+  /** Environment variables set on every job (e.g. the remote-cache config). */
+  env?: Record<string, string>;
+}
+
+/** The default per-job setup: check out the repo (GitHub only; others auto-checkout). */
+const DEFAULT_SETUP_STEPS: CiStep[] = [{ uses: "actions/checkout@v4" }];
+
+/** A CI-safe job id derived from a (possibly dotted) target name. */
+function jobId(name: string): string {
+  return name.replace(/[^A-Za-z0-9_-]/g, "-");
+}
+
+/**
+ * Expand a build's target graph into a **fanned-out** pipeline: one CI job per
+ * runnable target, wired together with `needs:` edges that mirror the targets'
+ * `dependsOn` dependencies — so independent targets run in parallel and a
+ * target's job waits for its prerequisites. Each job runs just its own target;
+ * upstream outputs are shared through the {@link "./remote_cache.ts" | remote
+ * cache}, so configure one (e.g. `ZUKE_REMOTE_CACHE_*` on the jobs) to avoid
+ * rebuilding dependencies in every job.
+ *
+ * `base` contributes the pipeline-level fields (name, triggers, permissions,
+ * concurrency); its `jobs` are ignored in favour of the generated ones. Targets
+ * with no body, and (unless {@link FanOutOptions.includeUnlisted}) `unlisted`
+ * targets, are omitted, and `needs` edges to omitted targets are dropped.
+ */
+export function fanOutPipeline(
+  targets: Map<string, TargetBuilder>,
+  base: CiPipeline = {},
+  options: FanOutOptions = {},
+): CiPipeline {
+  const command = options.command ?? ((target) => `./zuke ${target}`);
+  const setup = options.setupSteps ?? DEFAULT_SETUP_STEPS;
+  const included = new Map<string, TargetBuilder>();
+  for (const [name, t] of targets) {
+    if (t.fn_ === undefined) continue; // nothing to run
+    if (t.unlisted_ && !options.includeUnlisted) continue;
+    included.set(name, t);
+  }
+
+  const jobs: CiJob[] = [];
+  for (const [name, t] of included) {
+    const needs = t.dependsOn_
+      .map((d) => d.name_)
+      .filter((n): n is string => n !== undefined && included.has(n))
+      .map(jobId);
+    jobs.push({
+      id: jobId(name),
+      name: t.description_ ?? name,
+      runsOn: options.runsOn,
+      needs: needs.length > 0 ? needs : undefined,
+      env: options.env,
+      steps: [...setup, { name: `Run ${name}`, run: command(name) }],
+    });
+  }
+
+  return {
+    name: base.name,
+    triggers: base.triggers,
+    permissions: base.permissions,
+    concurrency: base.concurrency,
+    jobs,
+  };
+}
+
 /** A CI configuration file declared on a build: a pipeline bound to a path. */
 export interface CiFileSpec {
   /** The provider to render for — the one field you must choose. */
@@ -396,6 +485,13 @@ export interface CiFileSpec {
   path?: string;
   /** The pipeline to render. Defaults to a single `build` job that runs the build. */
   pipeline?: CiPipeline;
+  /**
+   * Fan the build's targets out into one CI job per target, wired by their
+   * dependencies (see {@link fanOutPipeline}). `true` uses the defaults; pass
+   * {@link FanOutOptions} to customise. When set, {@link pipeline} supplies the
+   * pipeline-level fields (name, triggers, …) and its `jobs` are ignored.
+   */
+  fanOut?: boolean | FanOutOptions;
 }
 
 /**
@@ -407,16 +503,30 @@ export class CiFile {
   readonly provider: CiProvider;
   /** The output path. */
   readonly path: string;
-  /** The pipeline this file renders. */
+  /** The base pipeline (pipeline-level fields, and the jobs unless fanning out). */
   readonly pipeline: CiPipeline;
+  /** Fan-out options, when this file expands the build's targets into jobs. */
+  readonly fanOut?: FanOutOptions;
 
   constructor(spec: CiFileSpec) {
     this.provider = spec.provider;
     this.path = spec.path ?? DEFAULT_PATHS[this.provider];
     this.pipeline = spec.pipeline ?? {};
+    if (spec.fanOut === true) this.fanOut = {};
+    else if (spec.fanOut) this.fanOut = spec.fanOut;
   }
 
-  /** Render the file's YAML content. */
+  /**
+   * The pipeline this file renders. With fan-out, the build's `targets` are
+   * expanded into one job per target; otherwise the declared {@link pipeline}.
+   */
+  pipelineFor(targets: Map<string, TargetBuilder>): CiPipeline {
+    return this.fanOut === undefined
+      ? this.pipeline
+      : fanOutPipeline(targets, this.pipeline, this.fanOut);
+  }
+
+  /** Render the file's YAML content (the base pipeline; fan-out is resolved at discovery). */
   render(): string {
     return generateCi(this.pipeline, this.provider);
   }
@@ -443,13 +553,25 @@ export function cicd(spec: CiFileSpec): CiFile {
   return new CiFile(spec);
 }
 
-/** Find every {@link CiFile} declared on a build instance. */
+/**
+ * Find every {@link CiFile} declared on a build instance. A fan-out file is
+ * resolved here — its jobs are expanded from the build's targets — so the
+ * returned files render the same whether they fan out or not.
+ */
 export function discoverCiFiles(build: Build): CiFile[] {
-  const files: CiFile[] = [];
+  const found: CiFile[] = [];
   forEachField(build, (_path, value) => {
-    if (value instanceof CiFile) files.push(value);
+    if (value instanceof CiFile) found.push(value);
   });
-  return files;
+  if (!found.some((f) => f.fanOut !== undefined)) return found;
+  const targets = discoverTargets(build);
+  return found.map((f) =>
+    f.fanOut === undefined ? f : new CiFile({
+      provider: f.provider,
+      path: f.path,
+      pipeline: f.pipelineFor(targets),
+    })
+  );
 }
 
 /** What {@link syncCiFiles} did to a file. */

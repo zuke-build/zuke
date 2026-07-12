@@ -181,6 +181,20 @@ async function extractTarGzip(src: PathLike, destDir: PathLike): Promise<void>
 function fail(message: string): never
   Throw an {@link AssertionError} with `message`. Never returns.
 
+function fanOutPipeline(targets: Map<string, TargetBuilder>, base: CiPipeline, options: FanOutOptions): CiPipeline
+  Expand a build's target graph into a fanned-out pipeline: one CI job per
+  runnable target, wired together with `needs:` edges that mirror the targets'
+  `dependsOn` dependencies — so independent targets run in parallel and a
+  target's job waits for its prerequisites. Each job runs just its own target;
+  upstream outputs are shared through the {@link "./remote_cache.ts" | remote
+  cache}, so configure one (e.g. `ZUKE_REMOTE_CACHE_*` on the jobs) to avoid
+  rebuilding dependencies in every job.
+
+  `base` contributes the pipeline-level fields (name, triggers, permissions,
+  concurrency); its `jobs` are ignored in favour of the generated ones. Targets
+  with no body, and (unless {@link FanOutOptions.includeUnlisted}) `unlisted`
+  targets, are omitted, and `needs` edges to omitted targets are dropped.
+
 function findCycle(targets: Map<string, TargetBuilder>): string[] | null
   Detect a cycle in the hard-dependency (`dependsOn`) graph across all targets.
 
@@ -474,9 +488,14 @@ class CiFile
   readonly path: string
     The output path.
   readonly pipeline: CiPipeline
-    The pipeline this file renders.
+    The base pipeline (pipeline-level fields, and the jobs unless fanning out).
+  readonly fanOut?: FanOutOptions
+    Fan-out options, when this file expands the build's targets into jobs.
+  pipelineFor(targets: Map<string, TargetBuilder>): CiPipeline
+    The pipeline this file renders. With fan-out, the build's `targets` are
+    expanded into one job per target; otherwise the declared {@link pipeline}.
   render(): string
-    Render the file's YAML content.
+    Render the file's YAML content (the base pipeline; fan-out is resolved at discovery).
 
 class DiscordAnnouncementSettings extends AnnouncementSettings
   Fluent settings for {@link AnnounceTasksApi.discord}. Bot mode
@@ -893,6 +912,11 @@ interface CiFileSpec
     `.gitlab-ci.yml`, or `azure-pipelines.yml`).
   pipeline?: CiPipeline
     The pipeline to render. Defaults to a single `build` job that runs the build.
+  fanOut?: boolean | FanOutOptions
+    Fan the build's targets out into one CI job per target, wired by their
+    dependencies (see {@link fanOutPipeline}). `true` uses the defaults; pass
+    {@link FanOutOptions} to customise. When set, {@link pipeline} supplies the
+    pipeline-level fields (name, triggers, …) and its `jobs` are ignored.
 
 interface CiJob
   A job: a named unit of work with steps, optionally fanned out by a matrix.
@@ -1095,6 +1119,27 @@ interface ExecuteOptions
     Renderer for the per-target banners and the end-of-build summary. Defaults
     to Zuke's built-in {@link defaultRenderer}; `@zuke/console` exports an
     alternative a build can inject to restyle its output.
+
+interface FanOutOptions
+  Options for {@link fanOutPipeline}: how a build's targets become parallel CI
+  jobs.
+
+  command?: (target: string) => string
+    The command a job runs for its target, given the target name. Defaults to
+    the `./zuke <target>` launcher (which bootstraps Deno). Each job runs only
+    its own target; its dependencies run in their own jobs and are shared via
+    the {@link "./remote_cache.ts" | remote cache}, so pair fan-out with one.
+  setupSteps?: CiStep[]
+    Steps prepended to every job — checkout, tool setup, cache restore. Defaults
+    to a single `actions/checkout` (rendered on GitHub; GitLab and Azure check
+    out automatically). Provide `env` for `ZUKE_REMOTE_CACHE_*` here or via
+    {@link env}.
+  runsOn?: string
+    The runner for every job (see {@link CiJob.runsOn}).
+  includeUnlisted?: boolean
+    Include targets hidden from `--list` via `.unlisted()`. Defaults to false.
+  env?: Record<string, string>
+    Environment variables set on every job (e.g. the remote-cache config).
 
 interface FileTasksApi
   The shape of {@link FileTasks}.

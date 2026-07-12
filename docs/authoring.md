@@ -442,6 +442,41 @@ ci = cicd({
   and fails if they have drifted (use `zuke generate-ci --check` for a dedicated
   gate). `--dry-run` skips regeneration.
 
+#### Fanned-out jobs — one CI job per target
+
+Instead of one job that runs the whole build, `fanOut` turns **each target into
+its own CI job**, wired together with `needs:` edges that mirror the targets'
+`dependsOn`. Independent targets then run in parallel on the CI provider, and
+the build's own dependency graph shapes the workflow — something a hand-written
+YAML can't stay in sync with.
+
+```ts
+class CI extends Build {
+  lint = target().inputs("src").outputs("dist/lint").executes(/* … */);
+  test = target().dependsOn(this.lint).inputs("src").executes(/* … */);
+  build = target().dependsOn(this.lint).inputs("src").outputs("dist").executes(
+    /* … */
+  );
+
+  ci = cicd({
+    provider: "github",
+    fanOut: { env: { ZUKE_REMOTE_CACHE_DIR: "/mnt/zuke-cache" } },
+  });
+}
+```
+
+This emits a `lint` job and `test`/`build` jobs that each declare
+`needs: [lint]`, so they wait for `lint` and then run concurrently. Each job
+runs only its own target (`./zuke <target>`); its dependencies run in their own
+jobs, so pair fan-out with the [remote cache](./cli.md#remote-cache) (configured
+here via `env`) to restore their outputs instead of rebuilding them. Pass
+`fanOut: true` for the defaults, or `FanOutOptions` to set the per-job
+`command`, `setupSteps` (default: a checkout), `runsOn`, `env`, or
+`includeUnlisted`. The `pipeline` field still supplies the workflow-level
+`name`, `triggers`, `permissions`, and `concurrency`. Targets with no body, and
+`unlisted` ones, are omitted. `fanOutPipeline(targets, base, options)` exposes
+the same expansion directly.
+
 The model is a portable subset: a `run` step (a shell command) maps to every
 provider; a `uses` step (a GitHub Action) renders only for GitHub and is skipped
 elsewhere, since GitLab and Azure check out the repo automatically. `runsOn` is

@@ -160,5 +160,7 @@ export {
   type CiProvider,
   type CiStep,
   type CiTriggers,
+  type FanOutOptions,
+  fanOutPipeline,
   generateCi,
 } from "./src/ci.ts";
