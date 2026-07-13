@@ -385,8 +385,12 @@ Deno.test("execute redacts a secret leaked in a target's failure message", async
   const build = new Deploy();
   const root = discoverTargets(build).get("deploy");
   if (!root) throw new Error("no deploy target");
+  // github:false isolates this from the ambient CI env — the point is the
+  // platform-independent reporter redaction, not the GitHub `::add-mask::`
+  // directive (which intentionally carries the real value; covered separately).
   const result = await execute(build, root, {
     reporter,
+    github: false,
     readEnv: () => undefined,
   });
   assertEquals(result.ok, false);
@@ -409,6 +413,7 @@ Deno.test("execute redacts a secret's invalid value from the parameter error", a
   if (!root) throw new Error("no deploy target");
   const result = await execute(build, root, {
     reporter,
+    github: false,
     readEnv: () => undefined,
   });
   assertEquals(result.ok, false);
