@@ -14,7 +14,9 @@ import { Build, execSecret, parameter, run, target } from "jsr:@zuke/core";
 class Deploy extends Build {
   token = parameter("Deploy token")
     .secret()
-    .from(execSecret((s) => s.command("op").arg("read", "op://vault/deploy/token")));
+    .from(
+      execSecret((s) => s.command("op").arg("read", "op://vault/deploy/token")),
+    );
 
   deploy = target().executes(async () => {
     await fetch("https://api.example.com/deploy", {
@@ -27,8 +29,8 @@ await run(Deploy);
 ```
 
 A secret is still an ordinary [parameter](./parameters.md): it has a flag and an
-environment variable, it can be `.required()`, `.number()`, and so on. `.secret()`
-adds redaction; `.from(...)` adds a run-time provider.
+environment variable, it can be `.required()`, `.number()`, and so on.
+`.secret()` adds redaction; `.from(...)` adds a run-time provider.
 
 ## Marking a value secret
 
@@ -57,7 +59,7 @@ wrapping the executor's reporter, so it does not depend on running under a CI
 host that happens to mask logs.
 
 It does **not** reach inside a subprocess a target spawns: if a command a target
-runs echoes the secret to *its own* stdout/stderr, that output streams straight
+runs echoes the secret to _its own_ stdout/stderr, that output streams straight
 to the terminal without passing through Zuke's reporter. Two mitigations apply:
 
 - Under GitHub Actions, the `::add-mask::` directive Zuke emits makes the runner
@@ -67,9 +69,9 @@ to the terminal without passing through Zuke's reporter. Two mitigations apply:
 
 ## Secret sources
 
-A **source** resolves a secret's value on demand. Attach one with `.from(source)`.
-Zuke ships two dependency-free source builders; both shell out to a tool you
-already trust rather than bundling a provider SDK.
+A **source** resolves a secret's value on demand. Attach one with
+`.from(source)`. Zuke ships two dependency-free source builders; both shell out
+to a tool you already trust rather than bundling a provider SDK.
 
 ### `execSecret` — run a command, take its stdout
 
@@ -98,13 +100,13 @@ The command runs quietly (its output is captured, never streamed to the
 terminal), and its standard output becomes the value. A non-zero exit fails the
 build with a `SecretError` naming the command and its exit code.
 
-| `ExecSecretSettings` method | Effect |
-| --- | --- |
-| `.command(binary)` | the executable to run (**required**) |
-| `.arg(...values)` | append one or more arguments (repeatable) |
-| `.env(record)` | extra environment variables for the process |
-| `.cwd(path)` | working directory for the process |
-| `.trim(on = true)` | trim surrounding whitespace from stdout (default on) |
+| `ExecSecretSettings` method | Effect                                               |
+| --------------------------- | ---------------------------------------------------- |
+| `.command(binary)`          | the executable to run (**required**)                 |
+| `.arg(...values)`           | append one or more arguments (repeatable)            |
+| `.env(record)`              | extra environment variables for the process          |
+| `.cwd(path)`                | working directory for the process                    |
+| `.trim(on = true)`          | trim surrounding whitespace from stdout (default on) |
 
 Turn `.trim(false)` on for a whitespace-sensitive value (rare — most tokens are
 a single line and trimming the trailing newline is what you want).
@@ -120,10 +122,10 @@ import { fileSecret } from "jsr:@zuke/core";
 .from(fileSecret((s) => s.path("/run/secrets/registry_password")))
 ```
 
-| `FileSecretSettings` method | Effect |
-| --- | --- |
-| `.path(path)` | the file to read (**required**) |
-| `.trim(on = true)` | trim surrounding whitespace (default on) |
+| `FileSecretSettings` method | Effect                                   |
+| --------------------------- | ---------------------------------------- |
+| `.path(path)`               | the file to read (**required**)          |
+| `.trim(on = true)`          | trim surrounding whitespace (default on) |
 
 A missing or unreadable file fails the build with a `SecretError` naming the
 path.
@@ -159,9 +161,17 @@ Invalid or missing parameters:
 ```
 
 `SecretError` is exported for handling in programmatic use. The value returned
-by a source is registered for redaction **before** it is parsed, so even a
-parse error on a malformed secret (e.g. a `.secret().number()` whose source
-returns a non-number) is masked rather than echoed.
+by a source is registered for redaction **before** it is parsed, so even a parse
+error on a malformed secret (e.g. a `.secret().number()` whose source returns a
+non-number) is masked rather than echoed.
+
+The failure message deliberately includes the source's own output — a command's
+exit code and trimmed stderr, or the file-read error — so a misconfigured source
+is debuggable from the log. A source whose value never resolved has nothing
+registered for redaction, so **this one message is not masked**: choose a source
+command that reports failures on stderr without echoing the secret itself
+(secret managers such as `op`, `vault`, and `gcloud` do). This is the same
+boundary as any subprocess a target spawns.
 
 ## A complete example
 
@@ -179,7 +189,9 @@ class Release extends Build {
   // From 1Password locally; from the REGISTRY_TOKEN env var in CI.
   registryToken = parameter("Container registry token")
     .secret()
-    .from(execSecret((s) => s.command("op").arg("read", "op://ci/registry/token")));
+    .from(
+      execSecret((s) => s.command("op").arg("read", "op://ci/registry/token")),
+    );
 
   // A cluster token mounted into the deploy job as a file.
   clusterToken = parameter("Cluster token")
@@ -207,4 +219,5 @@ await run(Release);
   [`packages/core/README.md`](../packages/core/README.md) and
   [`llms-full.txt`](../llms-full.txt).
 - Parameters in general: [Parameters](./parameters.md).
-- Installing the CLIs a source shells out to: [Installing tools](./installing-tools.md).
+- Installing the CLIs a source shells out to:
+  [Installing tools](./installing-tools.md).
