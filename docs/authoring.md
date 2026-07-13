@@ -420,76 +420,32 @@ import { createTarGzip } from "jsr:@zuke/core";
 await createTarGzip(["dist/app.js", "README.md"], "artifact.tar.gz");
 ```
 
-### Tool install — `installRelease()`
+### Installing tools — `installRelease()` / `toolchain()`
 
-Prepare an environment by fetching a CLI one of Zuke's wrappers drives, then
-point the wrapper at it. `installRelease({ name, url, destDir })` resolves a
-per-platform URL (via the `({ os, arch }) => string` callback and
-`hostPlatform()`), downloads it, and returns the installed binary's
-`AbsolutePath` — ready for `.toolPath(...)`. Set `archive: "tar.gz"` to unpack a
-tarball and take `binaryPath` from inside; the default `"raw"` installs the
-download as the binary itself. The `download` seam keeps it unit-testable, and
-on Windows the filename gains an `.exe` suffix. Zip archives are not yet
-supported, so this targets the Unix runners where most release tarballs live.
-
-Pass a **`checksum`** (the SHA-256 that release pages publish — the `.tar.gz`'s
-hash for an archive, or the binary's for `"raw"`) to make the install both
-**verified** and **cached**: the download is checked against it — a mismatch
-throws and nothing is installed — and a prior install whose checksum matches is
-reused without downloading again. Omit it and the tool is fetched every run and
-left unverified, so pin a checksum for a hermetic, tamper-evident build.
+A build can **fetch the CLIs it drives** instead of assuming they're on `PATH`:
+`installRelease()` downloads a single tool (pinned and verified with a
+`checksum`, then cached), and `toolchain()` declares a whole set of them in one
+place. The installed `AbsolutePath` goes straight to a wrapper's
+`.toolPath(...)`.
 
 ```ts
-import { installRelease } from "jsr:@zuke/core";
-import { CmdTasks } from "jsr:@zuke/cmd";
-
-const arches = { x86_64: "amd64", aarch64: "arm64" } as const;
 const bin = await installRelease({
   name: "helm",
   destDir: ".zuke/bin",
   archive: "tar.gz",
-  binaryPath: `${Deno.build.os}-${arches[Deno.build.arch]}/helm`,
+  binaryPath: `${Deno.build.os}-amd64/helm`,
   checksum: "f43e1c3…", // verify + cache
-  url: ({ os, arch }) =>
-    `https://get.helm.sh/helm-v3.14.0-${os}-${arches[arch]}.tar.gz`,
+  url: ({ arch }) =>
+    `https://get.helm.sh/helm-v3.15.2-linux-${
+      arch === "aarch64" ? "arm64" : "amd64"
+    }.tar.gz`,
 });
-await CmdTasks.exec(String(bin), (s) => s.args("version"));
 ```
 
-### Pinned toolchains — `toolchain()`
-
-When a build needs several tools, `toolchain()` declares them all in one place
-so the build file fully describes the environment it needs — no "install these
-first" prose in a README, and nothing assumed to be on `PATH`. Add tools with
-`.tool(spec)` (each an `installRelease` spec), then `install()` fetches them all
-concurrently — pinned, checksum-verified, and cached — and returns a
-`Map<name, AbsolutePath>` to hand to each wrapper's `.toolPath(...)`. Tools land
-in `.zuke/tools` by default (override per-call with `destDir`, or per-tool on
-the spec).
-
-```ts
-import { Build, target, toolchain } from "jsr:@zuke/core";
-import { HelmTasks } from "jsr:@zuke/helm";
-import { KubectlTasks } from "jsr:@zuke/kubectl";
-
-class Deploy extends Build {
-  tools = toolchain((t) =>
-    t
-      .tool({ name: "helm", archive: "tar.gz", checksum: "…", url: helmUrl })
-      .tool({ name: "kubectl", checksum: "…", url: kubectlUrl })
-  );
-
-  deploy = target().executes(async () => {
-    const bin = await this.tools.install();
-    await HelmTasks.version((s) => s.toolPath(bin.get("helm")));
-    await KubectlTasks.version((s) => s.toolPath(bin.get("kubectl")));
-  });
-}
-```
-
-Because a matching checksum is a cache hit, re-running `install()` (locally or
-on CI) is a no-op once the tools are present — declaring a toolchain doesn't
-slow a build down.
+See **[Installing tools](./installing-tools.md)** for the full guide —
+verification and caching, `toolchain()` bundles, cross-platform URL resolution,
+CI patterns, security, and troubleshooting — and **[Tools](./tools.md)** for the
+wrappers that drive them.
 
 ### CI config generation — `cicd()` and `generate-ci`
 
