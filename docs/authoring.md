@@ -430,17 +430,19 @@ in one place. The installed `AbsolutePath` goes straight to a wrapper's
 `.toolPath(...)`.
 
 ```ts
+// Helm spells macOS "darwin" and uses amd64/arm64 — `osLabel`/`archLabel` map
+// Zuke's platform to that naming, no `os === …` ternary needed.
+const p = hostPlatform();
+const os = p.osLabel({ macos: "darwin" });
+const arch = p.archLabel({ x86_64: "amd64", aarch64: "arm64" });
+
 const bin = await ToolTasks.install((s) =>
   s
     .name("helm")
     .archive("tar.gz")
-    .binaryPath(`${Deno.build.os}-amd64/helm`)
+    .binaryPath(`${os}-${arch}/helm`)
     .checksum("f43e1c3…") // verify + cache
-    .url(({ arch }) =>
-      `https://get.helm.sh/helm-v3.15.2-linux-${
-        arch === "aarch64" ? "arm64" : "amd64"
-      }.tar.gz`
-    )
+    .url(() => `https://get.helm.sh/helm-v3.15.2-${os}-${arch}.tar.gz`)
 );
 ```
 
@@ -543,10 +545,26 @@ returns the YAML string directly (pass an empty pipeline,
 YAML quotes any scalar that would otherwise be misread (a bare `on`, a
 numeric-looking version), so the output is paste-ready.
 
-### Host detection — `isCI()` / `ciHost()`
+### Host detection — `isCI()` / `ciHost()` / `operatingSystem()`
 
 `isCI()` and `ciHost()` (e.g. `"github-actions"`, `"gitlab-ci"`, `"local"`) let
-a build branch on where it runs — e.g. `deploy.onlyWhen(() => isCI())`.
+a build branch on _where_ it runs — e.g. `deploy.onlyWhen(() => isCI())`.
+
+`operatingSystem()` answers _what_ it runs on: the `OperatingSystem` union
+`"linux" | "macos" | "windows"`, normalised from `Deno.build.os` so you branch
+on `"macos"` rather than the raw `"darwin"` (other Unixes report as `"linux"`).
+`hostPlatform()` returns the same OS plus the `Architecture` and the
+`osLabel`/`archLabel` helpers used to build
+[tool download URLs](./installing-tools.md#cross-platform-url-resolution).
+
+```ts
+import { hostPlatform, operatingSystem } from "jsr:@zuke/core";
+
+publish = target().onlyWhen(() => operatingSystem() === "linux").executes(
+  /* … */
+);
+const cpu = hostPlatform().archLabel({ x86_64: "amd64", aarch64: "arm64" });
+```
 
 ### `Build`
 
