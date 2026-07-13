@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.10.0](https://github.com/zuke-build/zuke/compare/core-v1.9.0...core-v1.10.0) (2026-07-13)
+
+
+### Features
+
+* **core:** distributed caching, affected-target execution, and CI job fan-out ([#148](https://github.com/zuke-build/zuke/issues/148)) ([2c7e1fe](https://github.com/zuke-build/zuke/commit/2c7e1feff4742c7cce3fc4392cd9de6f487e0a53))
+
 ## [1.9.0](https://github.com/zuke-build/zuke/compare/core-v1.8.0...core-v1.9.0) (2026-07-02)
 
 
