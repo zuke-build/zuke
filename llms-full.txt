@@ -241,8 +241,16 @@ async function gunzip(data: Uint8Array): Promise<Uint8Array>
 async function gzip(data: Uint8Array): Promise<Uint8Array>
   Gzip-compress `data` using the platform `CompressionStream`.
 
-function hostPlatform(): InstallPlatform
-  The current host's {@link InstallPlatform} (from `Deno.build`).
+function hostPlatform(): Platform
+  The current host's {@link Platform} (from `Deno.build`) — the analogue of
+  {@link "./host.ts".isCI} for "what machine am I running on". Use its
+  `osLabel`/`archLabel` helpers to build a per-platform download URL.
+
+  ```ts
+  const p = hostPlatform();
+  const dir = p.osLabel({ darwin: "macos" });   // "macos" on a Mac, else "linux"/"windows"
+  const cpu = p.archLabel({ x86_64: "amd64", aarch64: "arm64" });
+  ```
 
 async function httpDownload(url: string, dest: PathLike, options: HttpOptions): Promise<void>
   Download `url` to `dest`, streaming the response body to the file. Creates or
@@ -832,7 +840,7 @@ class ToolInstallSettings
 
   name_?: string
     The tool name, and the installed filename. Set by {@link name}.
-  url_?: (platform: InstallPlatform) => string
+  url_?: (platform: Platform) => string
     Resolves the per-platform download URL. Set by {@link url}.
   destDir_?: PathLike
     Install directory (overrides the toolchain's). Set by {@link destDir}.
@@ -840,7 +848,7 @@ class ToolInstallSettings
     Download format. Set by {@link archive}.
   binaryPath_?: string
     The binary's path within a `tar.gz`. Set by {@link binaryPath}.
-  checksum_?: string | ((platform: InstallPlatform) => string)
+  checksum_?: string | ((platform: Platform) => string)
     Expected SHA-256 (or a per-platform resolver). Set by {@link checksum}.
   platform_?: InstallPlatform
     The platform to resolve for. Set by {@link platform}.
@@ -848,15 +856,15 @@ class ToolInstallSettings
     The download implementation. Set by {@link download}.
   name(name: string): this
     The tool name; also the installed binary's filename (`.exe` on Windows).
-  url(resolve: (platform: InstallPlatform) => string): this
-    Resolve the download URL for the target {@link InstallPlatform}.
+  url(resolve: (platform: Platform) => string): this
+    Resolve the download URL for the target {@link Platform}.
   destDir(dir: PathLike): this
     The directory to install the binary into (created if missing).
   archive(format: "raw" | "tar.gz"): this
     Treat the download as a `"tar.gz"` (default `"raw"`, the bare binary).
   binaryPath(path: string): this
     For a `tar.gz`, the binary's path within the archive (defaults to the name).
-  checksum(sha256: string | ((platform: InstallPlatform) => string)): this
+  checksum(sha256: string | ((platform: Platform) => string)): this
     The expected SHA-256 (hex) of the downloaded artifact — verifies and caches
     the install. Pass a `({ os, arch }) => string` resolver to pin it per
     platform (see {@link InstallReleaseOptions.checksum}).
@@ -1297,7 +1305,7 @@ interface HttpOptions
     override it to unit-test without network access.
 
 interface InstallPlatform
-  The host identity used to resolve a platform-specific download URL.
+  The raw host identity: the operating system and CPU architecture.
 
   os: typeof Deno.build.os
     The operating system, as reported by `Deno.build.os`.
@@ -1309,8 +1317,8 @@ interface InstallReleaseOptions
 
   name: string
     The tool name; also the installed binary's filename (`.exe` on Windows).
-  url: (platform: InstallPlatform) => string
-    Resolve the download URL for the target {@link InstallPlatform}.
+  url: (platform: Platform) => string
+    Resolve the download URL for the target {@link Platform}.
   destDir: PathLike
     The directory to install the binary into (created if missing).
   archive?: "raw" | "tar.gz"
@@ -1325,7 +1333,7 @@ interface InstallReleaseOptions
   download?: DownloadFn
     The download implementation. Defaults to {@link httpDownload}; override it
     to unit-test without network access.
-  checksum?: string | ((platform: InstallPlatform) => string)
+  checksum?: string | ((platform: Platform) => string)
     The expected SHA-256 (hex) of the downloaded artifact — the `.tar.gz`
     for an archive, or the binary itself for a `"raw"` download; this is what
     release pages publish as the checksum. When set, the download is verified
@@ -1335,9 +1343,8 @@ interface InstallReleaseOptions
     every time and not verified.
 
     Because {@link url} resolves a different artifact per platform, each has its
-    own hash — so pass a resolver `({ os, arch }) => string` (like `url`) to pin
-    a checksum per platform, or a plain string when a single artifact is
-    installed.
+    own hash — so pass a resolver `(platform) => string` (like `url`) to pin a
+    checksum per platform, or a plain string when a single artifact is installed.
 
 interface OpenCacheOptions
   Optional extras for {@link openCache}: a remote store and a warning sink.
@@ -1360,6 +1367,19 @@ interface OutputHost
     The entry names within a directory.
   writeFile(path: string, bytes: Uint8Array): Promise<void>
     Write a file, creating parent directories as needed.
+
+interface Platform extends InstallPlatform
+  A platform with helpers to name it the way a tool's downloads do. `osLabel`
+  and `archLabel` map the raw `os`/`arch` to a tool's own naming, falling back
+  to the raw value for anything not in the alias map — so a `url` callback reads
+  `p.osLabel({ darwin: "macos" })` instead of a hand-written `os === …` ternary.
+  This is what the {@link InstallReleaseOptions.url} and
+  {@link InstallReleaseOptions.checksum} callbacks receive.
+
+  osLabel(aliases?: Partial<Record<typeof Deno.build.os, string>>): string
+    The OS named for downloads: `aliases[os]`, else the raw {@link InstallPlatform.os}.
+  archLabel(aliases?: Partial<Record<typeof Deno.build.arch, string>>): string
+    The arch named for downloads: `aliases[arch]`, else the raw {@link InstallPlatform.arch}.
 
 interface Plugin
   A lifecycle observer. Every hook is optional; implement only the ones you

@@ -47,14 +47,10 @@ const bin = await ToolTasks.install((s) =>
   s
     .name("codecov")
     .destDir(".zuke/bin")
-    .url(({ os }) => {
-      const platform = os === "darwin"
-        ? "macos"
-        : os === "windows"
-        ? "windows"
-        : "linux";
-      return `https://cli.codecov.io/latest/${platform}/codecov`;
-    })
+    // `p.osLabel({ darwin: "macos" })` → "macos" on a Mac, else the raw os.
+    .url((p) =>
+      `https://cli.codecov.io/latest/${p.osLabel({ darwin: "macos" })}/codecov`
+    )
 );
 await CmdTasks.exec(String(bin), (s) => s.args("--version"));
 ```
@@ -235,23 +231,41 @@ catalog and `defineTool`.
 
 ## Cross-platform URL resolution
 
-The `.url(...)` (and `.platform(...)`) callback receives an `InstallPlatform`:
+The `.url(...)` (and `.checksum(...)`) callback receives a `Platform` — the raw
+`os`/`arch`, plus `osLabel`/`archLabel` helpers so you don't hand-write an
+`os === "darwin" ? …` ternary:
 
 ```ts
-interface InstallPlatform {
+interface Platform {
   os: typeof Deno.build.os; // "linux" | "darwin" | "windows" | …
   arch: typeof Deno.build.arch; // "x86_64" | "aarch64"
+  osLabel(aliases?: Partial<Record<os, string>>): string;
+  archLabel(aliases?: Partial<Record<arch, string>>): string;
 }
 ```
 
-By default it reflects the host (`hostPlatform()`); set `.platform(...)` to
-resolve a foreign one (e.g. to pre-stage a Linux binary from a Mac). Most tools
-name their artifacts with their own conventions, so map Zuke's values to theirs:
+Most tools name their artifacts with their own conventions.
+`osLabel`/`archLabel` map the current os/arch to a tool's naming, **falling back
+to the raw value** for anything not aliased — so you only list the differences:
 
 ```ts
-const os = { darwin: "darwin", linux: "linux", windows: "windows" } as const;
-const arch = { x86_64: "amd64", aarch64: "arm64" } as const;
-s.url((p) => `https://example.com/tool-${os[p.os]}-${arch[p.arch]}.tar.gz`);
+// helm-v3.15.2-linux-arm64.tar.gz, etc.
+s.url((p) =>
+  `https://get.helm.sh/helm-v3.15.2-${p.osLabel()}-${
+    p.archLabel({ x86_64: "amd64", aarch64: "arm64" })
+  }.tar.gz`
+);
+```
+
+By default the callback reflects the host; set `.platform({ os, arch })` to
+resolve a foreign one (e.g. to pre-stage a Linux binary from a Mac). Outside a
+callback, **`hostPlatform()`** returns the same `Platform` for the running
+machine — the counterpart of `isCI()` for "what am I running on":
+
+```ts
+import { hostPlatform } from "jsr:@zuke/core";
+
+const dir = hostPlatform().osLabel({ darwin: "macos" }); // "macos" on a Mac
 ```
 
 ## On CI

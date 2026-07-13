@@ -149,6 +149,7 @@ export {
   type InstallPlatform,
   installRelease,
   type InstallReleaseOptions,
+  type Platform,
 } from "./src/install.ts";
 export {
   DEFAULT_TOOLS_DIR,

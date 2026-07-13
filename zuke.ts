@@ -392,13 +392,9 @@ class ZukeBuild extends Build {
         .name("codecov")
         .destDir(TOOLS_ROOT)
         // Codecov ships a standalone CLI binary per platform, on its own CDN.
-        .url(({ os }) => {
-          const platform = os === "darwin"
-            ? "macos"
-            : os === "windows"
-            ? "windows"
-            : "linux";
-          const file = os === "windows" ? "codecov.exe" : "codecov";
+        .url((p) => {
+          const platform = p.osLabel({ darwin: "macos" });
+          const file = `codecov${p.os === "windows" ? ".exe" : ""}`;
           return `https://cli.codecov.io/${CODECOV_CLI_VERSION}/${platform}/${file}`;
         })
     )

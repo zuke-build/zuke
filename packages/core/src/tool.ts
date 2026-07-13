@@ -40,6 +40,7 @@ import {
   type InstallPlatform,
   installRelease,
   type InstallReleaseOptions,
+  type Platform,
 } from "./install.ts";
 import type { Configure } from "./tooling.ts";
 
@@ -56,7 +57,7 @@ export class ToolInstallSettings {
   /** The tool name, and the installed filename. Set by {@link name}. */
   name_?: string;
   /** Resolves the per-platform download URL. Set by {@link url}. */
-  url_?: (platform: InstallPlatform) => string;
+  url_?: (platform: Platform) => string;
   /** Install directory (overrides the toolchain's). Set by {@link destDir}. */
   destDir_?: PathLike;
   /** Download format. Set by {@link archive}. */
@@ -64,7 +65,7 @@ export class ToolInstallSettings {
   /** The binary's path within a `tar.gz`. Set by {@link binaryPath}. */
   binaryPath_?: string;
   /** Expected SHA-256 (or a per-platform resolver). Set by {@link checksum}. */
-  checksum_?: string | ((platform: InstallPlatform) => string);
+  checksum_?: string | ((platform: Platform) => string);
   /** The platform to resolve for. Set by {@link platform}. */
   platform_?: InstallPlatform;
   /** The download implementation. Set by {@link download}. */
@@ -76,8 +77,8 @@ export class ToolInstallSettings {
     return this;
   }
 
-  /** Resolve the download URL for the target {@link InstallPlatform}. */
-  url(resolve: (platform: InstallPlatform) => string): this {
+  /** Resolve the download URL for the target {@link Platform}. */
+  url(resolve: (platform: Platform) => string): this {
     this.url_ = resolve;
     return this;
   }
@@ -105,7 +106,7 @@ export class ToolInstallSettings {
    * the install. Pass a `({ os, arch }) => string` resolver to pin it per
    * platform (see {@link InstallReleaseOptions.checksum}).
    */
-  checksum(sha256: string | ((platform: InstallPlatform) => string)): this {
+  checksum(sha256: string | ((platform: Platform) => string)): this {
     this.checksum_ = sha256;
     return this;
   }

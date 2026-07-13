@@ -4,6 +4,7 @@ import {
   hostPlatform,
   type InstallPlatform,
   installRelease,
+  type Platform,
 } from "../src/install.ts";
 import { createTarGzip } from "../src/compression.ts";
 
@@ -28,11 +29,38 @@ function fakeDownload(
   };
 }
 
-Deno.test("hostPlatform reflects Deno.build", () => {
-  assertEquals(hostPlatform(), {
-    os: Deno.build.os,
-    arch: Deno.build.arch,
-  });
+Deno.test("hostPlatform reflects Deno.build and labels the os/arch", () => {
+  const p = hostPlatform();
+  assertEquals(p.os, Deno.build.os);
+  assertEquals(p.arch, Deno.build.arch);
+  // A label with no alias falls back to the raw value…
+  assertEquals(p.osLabel(), Deno.build.os);
+  assertEquals(p.archLabel(), Deno.build.arch);
+  // …and an alias for the current os/arch is applied.
+  assertEquals(p.osLabel({ [Deno.build.os]: "mapped" }), "mapped");
+  assertEquals(p.archLabel({ [Deno.build.arch]: "mapped" }), "mapped");
+});
+
+Deno.test("the url callback receives a labelled Platform", async () => {
+  const dir = await Deno.makeTempDir();
+  const seen: { url?: string } = {};
+  try {
+    // A foreign platform so the labels are deterministic regardless of host.
+    const bin = await installRelease({
+      name: "labelled",
+      destDir: dir,
+      platform: { os: "darwin", arch: "aarch64" },
+      url: (p) =>
+        `https://example.com/${p.osLabel({ darwin: "macos" })}-${
+          p.archLabel({ aarch64: "arm64" })
+        }`,
+      download: fakeDownload("x", seen),
+    });
+    assertEquals(seen.url, "https://example.com/macos-arm64");
+    assertEquals(bin.name, "labelled"); // darwin → no .exe
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
 });
 
 Deno.test("installRelease (raw) downloads the binary and returns its path", async () => {
@@ -374,7 +402,7 @@ Deno.test("installRelease resolves a per-platform checksum from the platform", a
   try {
     const body = "arm64-binary";
     const sum = await sha256Hex(body);
-    let seen: InstallPlatform | undefined;
+    let seen: Platform | undefined;
     const bin = await installRelease({
       name: "pinned",
       destDir: dir,
@@ -386,7 +414,8 @@ Deno.test("installRelease resolves a per-platform checksum from the platform", a
         return sum; // pinned for this platform
       },
     });
-    assertEquals(seen, { os: "linux", arch: "aarch64" }); // resolver saw the platform
+    assertEquals(seen?.os, "linux"); // resolver saw the platform
+    assertEquals(seen?.arch, "aarch64");
     assertEquals(await exists(String(bin)), true); // resolved checksum verified + installed
   } finally {
     await Deno.remove(dir, { recursive: true });

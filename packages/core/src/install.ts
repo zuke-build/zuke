@@ -54,7 +54,7 @@ async function readFileOrNull(path: string): Promise<Uint8Array | null> {
   }
 }
 
-/** The host identity used to resolve a platform-specific download URL. */
+/** The raw host identity: the operating system and CPU architecture. */
 export interface InstallPlatform {
   /** The operating system, as reported by `Deno.build.os`. */
   os: typeof Deno.build.os;
@@ -62,9 +62,44 @@ export interface InstallPlatform {
   arch: typeof Deno.build.arch;
 }
 
-/** The current host's {@link InstallPlatform} (from `Deno.build`). */
-export function hostPlatform(): InstallPlatform {
-  return { os: Deno.build.os, arch: Deno.build.arch };
+/**
+ * A platform with helpers to name it the way a tool's downloads do. `osLabel`
+ * and `archLabel` map the raw `os`/`arch` to a tool's own naming, falling back
+ * to the raw value for anything not in the alias map — so a `url` callback reads
+ * `p.osLabel({ darwin: "macos" })` instead of a hand-written `os === …` ternary.
+ * This is what the {@link InstallReleaseOptions.url} and
+ * {@link InstallReleaseOptions.checksum} callbacks receive.
+ */
+export interface Platform extends InstallPlatform {
+  /** The OS named for downloads: `aliases[os]`, else the raw {@link InstallPlatform.os}. */
+  osLabel(aliases?: Partial<Record<typeof Deno.build.os, string>>): string;
+  /** The arch named for downloads: `aliases[arch]`, else the raw {@link InstallPlatform.arch}. */
+  archLabel(aliases?: Partial<Record<typeof Deno.build.arch, string>>): string;
+}
+
+/** Enrich a raw `{ os, arch }` into a {@link Platform} with naming helpers. */
+function platformOf(data: InstallPlatform): Platform {
+  return {
+    os: data.os,
+    arch: data.arch,
+    osLabel: (aliases) => aliases?.[data.os] ?? data.os,
+    archLabel: (aliases) => aliases?.[data.arch] ?? data.arch,
+  };
+}
+
+/**
+ * The current host's {@link Platform} (from `Deno.build`) — the analogue of
+ * {@link "./host.ts".isCI} for "what machine am I running on". Use its
+ * `osLabel`/`archLabel` helpers to build a per-platform download URL.
+ *
+ * ```ts
+ * const p = hostPlatform();
+ * const dir = p.osLabel({ darwin: "macos" });   // "macos" on a Mac, else "linux"/"windows"
+ * const cpu = p.archLabel({ x86_64: "amd64", aarch64: "arm64" });
+ * ```
+ */
+export function hostPlatform(): Platform {
+  return platformOf({ os: Deno.build.os, arch: Deno.build.arch });
 }
 
 /** A download function: fetch `url` into the file at `dest`. */
@@ -74,8 +109,8 @@ export type DownloadFn = (url: string, dest: PathLike) => Promise<void>;
 export interface InstallReleaseOptions {
   /** The tool name; also the installed binary's filename (`.exe` on Windows). */
   name: string;
-  /** Resolve the download URL for the target {@link InstallPlatform}. */
-  url: (platform: InstallPlatform) => string;
+  /** Resolve the download URL for the target {@link Platform}. */
+  url: (platform: Platform) => string;
   /** The directory to install the binary into (created if missing). */
   destDir: PathLike;
   /**
@@ -108,11 +143,10 @@ export interface InstallReleaseOptions {
    * every time and not verified.
    *
    * Because {@link url} resolves a different artifact per platform, each has its
-   * own hash — so pass a resolver `({ os, arch }) => string` (like `url`) to pin
-   * a checksum per platform, or a plain string when a single artifact is
-   * installed.
+   * own hash — so pass a resolver `(platform) => string` (like `url`) to pin a
+   * checksum per platform, or a plain string when a single artifact is installed.
    */
-  checksum?: string | ((platform: InstallPlatform) => string);
+  checksum?: string | ((platform: Platform) => string);
 }
 
 /** The marker file recording the verified checksum of an installed tool. */
@@ -143,7 +177,7 @@ async function cachedInstall(
  */
 function resolveChecksum(
   checksum: InstallReleaseOptions["checksum"],
-  platform: InstallPlatform,
+  platform: Platform,
 ): string | undefined {
   if (checksum === undefined) return undefined;
   const value = typeof checksum === "function" ? checksum(platform) : checksum;
@@ -193,7 +227,9 @@ function resolveDir(dir: string): AbsolutePath {
 export async function installRelease(
   options: InstallReleaseOptions,
 ): Promise<AbsolutePath> {
-  const platform = options.platform ?? hostPlatform();
+  const platform = options.platform !== undefined
+    ? platformOf(options.platform)
+    : hostPlatform();
   const download = options.download ?? httpDownload;
   const checksum = resolveChecksum(options.checksum, platform);
 
