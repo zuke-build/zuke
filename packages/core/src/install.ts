@@ -34,6 +34,11 @@
 import { httpDownload } from "./http.ts";
 import { extractTarGzip } from "./compression.ts";
 import { type AbsolutePath, absolutePath, type PathLike } from "./path.ts";
+import {
+  type Architecture,
+  type OperatingSystem,
+  operatingSystem,
+} from "./host.ts";
 
 /** Hex SHA-256 of raw bytes, via the built-in Web Crypto API (no dependency). */
 async function sha256(bytes: Uint8Array): Promise<string> {
@@ -54,30 +59,31 @@ async function readFileOrNull(path: string): Promise<Uint8Array | null> {
   }
 }
 
-/** The raw host identity: the operating system and CPU architecture. */
+/** The host identity: a Zuke {@link OperatingSystem} and {@link Architecture}. */
 export interface InstallPlatform {
-  /** The operating system, as reported by `Deno.build.os`. */
-  os: typeof Deno.build.os;
-  /** The CPU architecture, as reported by `Deno.build.arch`. */
-  arch: typeof Deno.build.arch;
+  /** The operating system (normalised: `macos`, not `darwin`). */
+  os: OperatingSystem;
+  /** The CPU architecture. */
+  arch: Architecture;
 }
 
 /**
  * A platform with helpers to name it the way a tool's downloads do. `osLabel`
- * and `archLabel` map the raw `os`/`arch` to a tool's own naming, falling back
- * to the raw value for anything not in the alias map — so a `url` callback reads
- * `p.osLabel({ darwin: "macos" })` instead of a hand-written `os === …` ternary.
- * This is what the {@link InstallReleaseOptions.url} and
- * {@link InstallReleaseOptions.checksum} callbacks receive.
+ * and `archLabel` map the `os`/`arch` to a tool's own naming, falling back to
+ * the value itself for anything not in the alias map — so a `url` callback reads
+ * `p.osLabel({ macos: "darwin" })` (for a tool that spells macOS "darwin")
+ * instead of a hand-written `os === …` ternary. This is what the
+ * {@link InstallReleaseOptions.url} and {@link InstallReleaseOptions.checksum}
+ * callbacks receive.
  */
 export interface Platform extends InstallPlatform {
-  /** The OS named for downloads: `aliases[os]`, else the raw {@link InstallPlatform.os}. */
-  osLabel(aliases?: Partial<Record<typeof Deno.build.os, string>>): string;
-  /** The arch named for downloads: `aliases[arch]`, else the raw {@link InstallPlatform.arch}. */
-  archLabel(aliases?: Partial<Record<typeof Deno.build.arch, string>>): string;
+  /** The OS named for downloads: `aliases[os]`, else the {@link InstallPlatform.os} itself. */
+  osLabel(aliases?: Partial<Record<OperatingSystem, string>>): string;
+  /** The arch named for downloads: `aliases[arch]`, else the {@link InstallPlatform.arch} itself. */
+  archLabel(aliases?: Partial<Record<Architecture, string>>): string;
 }
 
-/** Enrich a raw `{ os, arch }` into a {@link Platform} with naming helpers. */
+/** Enrich `{ os, arch }` into a {@link Platform} with naming helpers. */
 function platformOf(data: InstallPlatform): Platform {
   return {
     os: data.os,
@@ -88,18 +94,19 @@ function platformOf(data: InstallPlatform): Platform {
 }
 
 /**
- * The current host's {@link Platform} (from `Deno.build`) — the analogue of
- * {@link "./host.ts".isCI} for "what machine am I running on". Use its
- * `osLabel`/`archLabel` helpers to build a per-platform download URL.
+ * The current host's {@link Platform} (from `Deno.build`, with the OS
+ * normalised) — the analogue of {@link "./host.ts".isCI} for "what machine am I
+ * running on". Its `os` is a Zuke {@link OperatingSystem} (`macos`, not
+ * `darwin`); use the `osLabel`/`archLabel` helpers to name it for a download URL.
  *
  * ```ts
  * const p = hostPlatform();
- * const dir = p.osLabel({ darwin: "macos" });   // "macos" on a Mac, else "linux"/"windows"
+ * p.os;                                          // "linux" | "macos" | "windows"
  * const cpu = p.archLabel({ x86_64: "amd64", aarch64: "arm64" });
  * ```
  */
 export function hostPlatform(): Platform {
-  return platformOf({ os: Deno.build.os, arch: Deno.build.arch });
+  return platformOf({ os: operatingSystem(), arch: Deno.build.arch });
 }
 
 /** A download function: fetch `url` into the file at `dest`. */

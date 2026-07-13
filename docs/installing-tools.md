@@ -47,10 +47,8 @@ const bin = await ToolTasks.install((s) =>
   s
     .name("codecov")
     .destDir(".zuke/bin")
-    // `p.osLabel({ darwin: "macos" })` → "macos" on a Mac, else the raw os.
-    .url((p) =>
-      `https://cli.codecov.io/latest/${p.osLabel({ darwin: "macos" })}/codecov`
-    )
+    // `p.os` is "linux" | "macos" | "windows" — exactly Codecov's dir names.
+    .url((p) => `https://cli.codecov.io/latest/${p.os}/codecov`)
 );
 await CmdTasks.exec(String(bin), (s) => s.args("--version"));
 ```
@@ -121,7 +119,7 @@ for a quick spike, but pin one for anything real.
 > const sums: Record<string, string> = {
 >   "linux-x86_64": "…",
 >   "linux-aarch64": "…",
->   "darwin-aarch64": "…",
+>   "macos-aarch64": "…",
 > };
 > await ToolTasks.install((s) =>
 >   s.name("helm").url(helmUrl).checksum(({ os, arch }) => sums[`${os}-${arch}`])
@@ -231,27 +229,32 @@ catalog and `defineTool`.
 
 ## Cross-platform URL resolution
 
-The `.url(...)` (and `.checksum(...)`) callback receives a `Platform` — the raw
-`os`/`arch`, plus `osLabel`/`archLabel` helpers so you don't hand-write an
-`os === "darwin" ? …` ternary:
+The `.url(...)` (and `.checksum(...)`) callback receives a `Platform`. Its `os`
+is a **Zuke `OperatingSystem`** — the union `"linux" | "macos" | "windows"`,
+normalised from Deno's raw values (`darwin` → `macos`) — so the common case
+needs no mapping at all. `osLabel`/`archLabel` remain for tools that spell
+things differently, and there's no `os === "darwin" ? …` ternary in sight:
 
 ```ts
+type OperatingSystem = "linux" | "macos" | "windows";
+type Architecture = "x86_64" | "aarch64";
+
 interface Platform {
-  os: typeof Deno.build.os; // "linux" | "darwin" | "windows" | …
-  arch: typeof Deno.build.arch; // "x86_64" | "aarch64"
-  osLabel(aliases?: Partial<Record<os, string>>): string;
-  archLabel(aliases?: Partial<Record<arch, string>>): string;
+  os: OperatingSystem;
+  arch: Architecture;
+  osLabel(aliases?: Partial<Record<OperatingSystem, string>>): string;
+  archLabel(aliases?: Partial<Record<Architecture, string>>): string;
 }
 ```
 
-Most tools name their artifacts with their own conventions.
-`osLabel`/`archLabel` map the current os/arch to a tool's naming, **falling back
-to the raw value** for anything not aliased — so you only list the differences:
+`osLabel`/`archLabel` map the os/arch to a tool's naming, **falling back to the
+value itself** for anything not aliased — so you only list the differences.
+Helm, for example, spells macOS `darwin` and uses `amd64`/`arm64`:
 
 ```ts
-// helm-v3.15.2-linux-arm64.tar.gz, etc.
+// helm-v3.15.2-darwin-arm64.tar.gz on an Apple Silicon Mac, etc.
 s.url((p) =>
-  `https://get.helm.sh/helm-v3.15.2-${p.osLabel()}-${
+  `https://get.helm.sh/helm-v3.15.2-${p.osLabel({ macos: "darwin" })}-${
     p.archLabel({ x86_64: "amd64", aarch64: "arm64" })
   }.tar.gz`
 );
@@ -260,12 +263,14 @@ s.url((p) =>
 By default the callback reflects the host; set `.platform({ os, arch })` to
 resolve a foreign one (e.g. to pre-stage a Linux binary from a Mac). Outside a
 callback, **`hostPlatform()`** returns the same `Platform` for the running
-machine — the counterpart of `isCI()` for "what am I running on":
+machine, and **`operatingSystem()`** returns just the OS union — the
+counterparts of `isCI()` for "what am I running on":
 
 ```ts
-import { hostPlatform } from "jsr:@zuke/core";
+import { hostPlatform, operatingSystem } from "jsr:@zuke/core";
 
-const dir = hostPlatform().osLabel({ darwin: "macos" }); // "macos" on a Mac
+if (operatingSystem() === "macos") { /* … */ }
+const cpu = hostPlatform().archLabel({ x86_64: "amd64", aarch64: "arm64" });
 ```
 
 ## On CI

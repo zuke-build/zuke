@@ -296,13 +296,14 @@ async function gzip(data: Uint8Array): Promise<Uint8Array>
   Gzip-compress `data` using the platform `CompressionStream`.
 
 function hostPlatform(): Platform
-  The current host's {@link Platform} (from `Deno.build`) — the analogue of
-  {@link "./host.ts".isCI} for "what machine am I running on". Use its
-  `osLabel`/`archLabel` helpers to build a per-platform download URL.
+  The current host's {@link Platform} (from `Deno.build`, with the OS
+  normalised) — the analogue of {@link "./host.ts".isCI} for "what machine am I
+  running on". Its `os` is a Zuke {@link OperatingSystem} (`macos`, not
+  `darwin`); use the `osLabel`/`archLabel` helpers to name it for a download URL.
 
   ```ts
   const p = hostPlatform();
-  const dir = p.osLabel({ darwin: "macos" });   // "macos" on a Mac, else "linux"/"windows"
+  p.os;                                          // "linux" | "macos" | "windows"
   const cpu = p.archLabel({ x86_64: "amd64", aarch64: "arm64" });
   ```
 
@@ -327,6 +328,18 @@ async function installRelease(options: InstallReleaseOptions): Promise<AbsoluteP
 
 function isCI(): boolean
   Whether the build appears to be running in a CI environment.
+
+function operatingSystem(os: typeof Deno.build.os): OperatingSystem
+  The operating system as a Zuke {@link OperatingSystem}: `darwin` becomes
+  `macos`, `windows` stays `windows`, and every other Unix (`linux`, the BSDs,
+  `solaris`, …) is reported as `linux`. Pass a raw `Deno.build.os` value to
+  normalise it; defaults to the running host — the platform analogue of
+  {@link isCI}.
+
+  ```ts
+  import { operatingSystem } from "jsr:@zuke/core";
+  if (operatingSystem() === "macos") { ... }
+  ```
 
 function parameter(description?: string): Parameter<string, string | undefined>
   Create a new build parameter (a `string` by default). Configure it fluently:
@@ -1359,12 +1372,12 @@ interface HttpOptions
     override it to unit-test without network access.
 
 interface InstallPlatform
-  The raw host identity: the operating system and CPU architecture.
+  The host identity: a Zuke {@link OperatingSystem} and {@link Architecture}.
 
-  os: typeof Deno.build.os
-    The operating system, as reported by `Deno.build.os`.
-  arch: typeof Deno.build.arch
-    The CPU architecture, as reported by `Deno.build.arch`.
+  os: OperatingSystem
+    The operating system (normalised: `macos`, not `darwin`).
+  arch: Architecture
+    The CPU architecture.
 
 interface InstallReleaseOptions
   Options for {@link installRelease}.
@@ -1424,16 +1437,17 @@ interface OutputHost
 
 interface Platform extends InstallPlatform
   A platform with helpers to name it the way a tool's downloads do. `osLabel`
-  and `archLabel` map the raw `os`/`arch` to a tool's own naming, falling back
-  to the raw value for anything not in the alias map — so a `url` callback reads
-  `p.osLabel({ darwin: "macos" })` instead of a hand-written `os === …` ternary.
-  This is what the {@link InstallReleaseOptions.url} and
-  {@link InstallReleaseOptions.checksum} callbacks receive.
+  and `archLabel` map the `os`/`arch` to a tool's own naming, falling back to
+  the value itself for anything not in the alias map — so a `url` callback reads
+  `p.osLabel({ macos: "darwin" })` (for a tool that spells macOS "darwin")
+  instead of a hand-written `os === …` ternary. This is what the
+  {@link InstallReleaseOptions.url} and {@link InstallReleaseOptions.checksum}
+  callbacks receive.
 
-  osLabel(aliases?: Partial<Record<typeof Deno.build.os, string>>): string
-    The OS named for downloads: `aliases[os]`, else the raw {@link InstallPlatform.os}.
-  archLabel(aliases?: Partial<Record<typeof Deno.build.arch, string>>): string
-    The arch named for downloads: `aliases[arch]`, else the raw {@link InstallPlatform.arch}.
+  osLabel(aliases?: Partial<Record<OperatingSystem, string>>): string
+    The OS named for downloads: `aliases[os]`, else the {@link InstallPlatform.os} itself.
+  archLabel(aliases?: Partial<Record<Architecture, string>>): string
+    The arch named for downloads: `aliases[arch]`, else the {@link InstallPlatform.arch} itself.
 
 interface Plugin
   A lifecycle observer. Every hook is optional; implement only the ones you
@@ -1602,6 +1616,9 @@ type AnnouncementLevel = "success" | "failure" | "warning" | "info"
   The outcome an announcement conveys. It drives the accent colour and the icon
   prepended to the message; defaults to `"info"`.
 
+type Architecture = "x86_64" | "aarch64"
+  The CPU architectures Zuke recognises.
+
 type ChangedFilesFn = (base: string) => Promise<string[]>
   Lists the files changed since `base` (a git revision), each path relative to
   the repository root. The seam behind {@link ExecuteOptions.affected}; defaults
@@ -1621,6 +1638,11 @@ type Condition = () => boolean | Promise<boolean>
 
 type DownloadFn = (url: string, dest: PathLike) => Promise<void>
   A download function: fetch `url` into the file at `dest`.
+
+type OperatingSystem = "linux" | "macos" | "windows"
+  The operating systems Zuke recognises — Deno's raw `Deno.build.os` values
+  normalised to a friendly set (notably `darwin` → `macos`). Used across the
+  ecosystem so builds branch on `"macos"` rather than the surprising `"darwin"`.
 
 type ParamValue = string | number | boolean
   The value kinds a parameter can hold.

@@ -6,6 +6,7 @@ import {
   installRelease,
   type Platform,
 } from "../src/install.ts";
+import { operatingSystem } from "../src/host.ts";
 import { createTarGzip } from "../src/compression.ts";
 
 /**
@@ -29,19 +30,19 @@ function fakeDownload(
   };
 }
 
-Deno.test("hostPlatform reflects Deno.build and labels the os/arch", () => {
+Deno.test("hostPlatform reports a normalised os and labels the os/arch", () => {
   const p = hostPlatform();
-  assertEquals(p.os, Deno.build.os);
+  assertEquals(p.os, operatingSystem()); // "macos", not "darwin"
   assertEquals(p.arch, Deno.build.arch);
-  // A label with no alias falls back to the raw value…
-  assertEquals(p.osLabel(), Deno.build.os);
+  // A label with no alias falls back to the value itself…
+  assertEquals(p.osLabel(), operatingSystem());
   assertEquals(p.archLabel(), Deno.build.arch);
   // …and an alias for the current os/arch is applied.
-  assertEquals(p.osLabel({ [Deno.build.os]: "mapped" }), "mapped");
+  assertEquals(p.osLabel({ [operatingSystem()]: "mapped" }), "mapped");
   assertEquals(p.archLabel({ [Deno.build.arch]: "mapped" }), "mapped");
 });
 
-Deno.test("the url callback receives a labelled Platform", async () => {
+Deno.test("the url callback receives a normalised, labelled Platform", async () => {
   const dir = await Deno.makeTempDir();
   const seen: { url?: string } = {};
   try {
@@ -49,15 +50,16 @@ Deno.test("the url callback receives a labelled Platform", async () => {
     const bin = await installRelease({
       name: "labelled",
       destDir: dir,
-      platform: { os: "darwin", arch: "aarch64" },
+      platform: { os: "macos", arch: "aarch64" },
+      // macOS-as-"darwin" is a common tool convention; arch remaps too.
       url: (p) =>
-        `https://example.com/${p.osLabel({ darwin: "macos" })}-${
+        `https://example.com/${p.osLabel({ macos: "darwin" })}-${
           p.archLabel({ aarch64: "arm64" })
         }`,
       download: fakeDownload("x", seen),
     });
-    assertEquals(seen.url, "https://example.com/macos-arm64");
-    assertEquals(bin.name, "labelled"); // darwin → no .exe
+    assertEquals(seen.url, "https://example.com/darwin-arm64");
+    assertEquals(bin.name, "labelled"); // macos → no .exe
   } finally {
     await Deno.remove(dir, { recursive: true });
   }

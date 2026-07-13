@@ -74,3 +74,38 @@ export function ciHost(): string {
 export function isCI(): boolean {
   return ciHost() !== "local";
 }
+
+/**
+ * The operating systems Zuke recognises — Deno's raw `Deno.build.os` values
+ * normalised to a friendly set (notably `darwin` → `macos`). Used across the
+ * ecosystem so builds branch on `"macos"` rather than the surprising `"darwin"`.
+ */
+export type OperatingSystem = "linux" | "macos" | "windows";
+
+/** The CPU architectures Zuke recognises. */
+export type Architecture = "x86_64" | "aarch64";
+
+/**
+ * The operating system as a Zuke {@link OperatingSystem}: `darwin` becomes
+ * `macos`, `windows` stays `windows`, and every other Unix (`linux`, the BSDs,
+ * `solaris`, …) is reported as `linux`. Pass a raw `Deno.build.os` value to
+ * normalise it; defaults to the running host — the platform analogue of
+ * {@link isCI}.
+ *
+ * ```ts
+ * import { operatingSystem } from "jsr:@zuke/core";
+ * if (operatingSystem() === "macos") { ... }
+ * ```
+ */
+export function operatingSystem(
+  os: typeof Deno.build.os = Deno.build.os,
+): OperatingSystem {
+  switch (os) {
+    case "darwin":
+      return "macos";
+    case "windows":
+      return "windows";
+    default:
+      return "linux";
+  }
+}

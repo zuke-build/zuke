@@ -31,7 +31,15 @@ export {
   discoverTargets,
   type TargetStatus,
 } from "./src/build.ts";
-export { type CiHost, ciHost, detectCiHost, isCI } from "./src/host.ts";
+export {
+  type Architecture,
+  type CiHost,
+  ciHost,
+  detectCiHost,
+  isCI,
+  type OperatingSystem,
+  operatingSystem,
+} from "./src/host.ts";
 export {
   type Condition,
   Group,
