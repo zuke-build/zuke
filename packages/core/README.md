@@ -215,6 +215,16 @@ function envCacheStore(readEnv: (name: string) => string | undefined): RemoteCac
 function envVarName(name: string): string
   The environment variable for a parameter: its path in SCREAMING_SNAKE_CASE.
 
+function execSecret(configure: Configure<ExecSecretSettings>): SecretSource
+  A {@link SecretSource} that runs a command and takes its standard output as
+  the secret value. Configure it through an {@link ExecSecretSettings} lambda.
+
+  ```ts
+  parameter("Vault token").secret().from(
+    execSecret((s) => s.command("vault").arg("kv", "get", "-field=token", "secret/ci")),
+  );
+  ```
+
 async function execute(build: Build, root: TargetBuilder, options: ExecuteOptions): Promise<BuildResult>
   Execute the requested target and its transitive dependencies.
 
@@ -248,6 +258,17 @@ function fanOutPipeline(targets: Map<string, TargetBuilder>, base: CiPipeline, o
   concurrency); its `jobs` are ignored in favour of the generated ones. Targets
   with no body, and (unless {@link FanOutOptions.includeUnlisted}) `unlisted`
   targets, are omitted, and `needs` edges to omitted targets are dropped.
+
+function fileSecret(configure: Configure<FileSecretSettings>): SecretSource
+  A {@link SecretSource} that reads a file and takes its content as the secret
+  value — for a mounted Kubernetes/Docker secret or a CI-provided file.
+  Configure it through a {@link FileSecretSettings} lambda.
+
+  ```ts
+  parameter("Registry password").secret().from(
+    fileSecret((s) => s.path("/run/secrets/registry_password")),
+  );
+  ```
 
 function findCycle(targets: Map<string, TargetBuilder>): string[] | null
   Detect a cycle in the hard-dependency (`dependsOn`) graph across all targets.
@@ -445,6 +466,9 @@ const DEFAULT_TOOLS_DIR: ".zuke/tools"
 const FileTasks: FileTasksApi
   Filesystem task functions for build scripts.
 
+const REDACTED: "[redacted]"
+  The placeholder a {@link Redactor} substitutes for each secret value.
+
 const ToolTasks: ToolTasksApi
   Provision external CLIs from a build. `ToolTasks.install((s) => …)` fetches a
   single tool; group several with {@link toolchain}.
@@ -605,6 +629,42 @@ class DiscordAnnouncementSettings extends AnnouncementSettings
   override protected payload(): Record<string, unknown>
   override protected sendBot(): Promise<void>
 
+class ExecSecretSettings
+  Fluent settings for {@link execSecret}: a command whose standard output is
+  the secret. Configure the binary with {@link ExecSecretSettings.command},
+  arguments with {@link ExecSecretSettings.arg}, and optionally the environment
+  and working directory. Output is trimmed of surrounding whitespace unless
+  {@link ExecSecretSettings.trim} is turned off (some values are
+  whitespace-sensitive).
+
+  command(binary: PathLike): this
+    The binary to run (e.g. `op`, `vault`, `gcloud`). Required.
+  arg(...values: Array<string | number | AbsolutePath>): this
+    Append one or more arguments to the command.
+  env(record: Record<string, string>): this
+    Merge additional environment variables for the process.
+  cwd(path: PathLike): this
+    Set the working directory for the process.
+  trim(on: boolean): this
+    Whether to trim surrounding whitespace from stdout (default `true`).
+  async resolve_(): Promise<string>
+    Run the command and return its captured stdout as the secret. Streaming is
+    suppressed (`quiet`) so the value is never echoed to the terminal, and a
+    non-zero exit throws a {@link SecretError} naming the command.
+
+class FileSecretSettings
+  Fluent settings for {@link fileSecret}: read a secret from a file. Set the
+  path with {@link FileSecretSettings.path}; the content is trimmed of
+  surrounding whitespace unless {@link FileSecretSettings.trim} is turned off.
+
+  path(path: PathLike): this
+    The file to read the secret from. Required.
+  trim(on: boolean): this
+    Whether to trim surrounding whitespace from the content (default `true`).
+  async resolve_(): Promise<string>
+    Read the file and return its content as the secret. A missing or
+    unreadable file throws a {@link SecretError} naming the path.
+
 class FileSystemCacheStore implements RemoteCacheStore
   A {@link RemoteCacheStore} backed by a shared or mounted directory.
 
@@ -676,12 +736,21 @@ class Parameter<K extends ParamValue = ParamValue, T extends K | K[] | undefined
   readonly hasFallback_: boolean
   readonly secret_: boolean
   readonly array_: boolean
+  readonly source_?: SecretSource
   get value(): T
     The resolved value. Throws if read before the build resolves parameters.
   isSet_(): boolean
   stringValue_(): string | undefined
   secret(): Parameter<K, T>
-    Mark the value as sensitive, so it is masked in CI output (`::add-mask::`).
+    Mark the value as sensitive: it is masked in CI output (`::add-mask::`) and
+    redacted from all of Zuke's reporter output. Pair with {@link Parameter.from}
+    to resolve the value from a secret manager rather than the environment.
+  from(source: SecretSource): Parameter<K, T>
+    Resolve the value from a {@link SecretSource} (see {@link execSecret} /
+    {@link fileSecret}) when neither a `--flag` nor an environment variable
+    supplied one — the source is a fallback provider, consulted before the
+    declared default. Typically paired with {@link Parameter.secret} so the
+    resolved value is redacted.
   number(this: Parameter<string, string | undefined>): Parameter<number, number | undefined>
     Parse the value as a number (e.g. `--workers 4`).
   boolean(this: Parameter<string, string | undefined>): Parameter<boolean, boolean>
@@ -702,6 +771,25 @@ class Parameter<K extends ParamValue = ParamValue, T extends K | K[] | undefined
 
 class ParameterError extends Error
   Raised when a parameter value is invalid or read before resolution.
+
+  override name: string
+
+class Redactor
+  Collects secret values and masks them in text. Register a value with
+  {@link Redactor.add} and rewrite a line with {@link Redactor.redact}; empty
+  strings are ignored (they would match everywhere) and duplicates are recorded
+  once. Longer secrets are applied first so a secret that contains another is
+  masked whole rather than partially.
+
+  add(value: string): void
+    Register a secret value to mask. Ignores empty strings and duplicates.
+  redact(line: string): string
+    Replace every registered secret in `line` with {@link REDACTED}.
+  get size(): number
+    The number of distinct secret values registered.
+
+class SecretError extends Error
+  Raised when a {@link SecretSource} cannot produce a value.
 
   override name: string
 
@@ -1032,6 +1120,8 @@ interface AnyParameter
     Whether the value is sensitive and should be masked in CI output.
   readonly array_: boolean
     Whether the value is a comma-separated / repeatable list (`.array()`).
+  readonly source_?: SecretSource
+    A provider that resolves the value when no flag/env supplied one.
   resolve_(raw: string | undefined): void
     Resolve from a raw input (or `undefined` when none was supplied).
   isSet_(): boolean
@@ -1552,6 +1642,15 @@ interface RunOptions
     Renderer for the per-target banners and end-of-build summary. Defaults to
     Zuke's built-in look; inject `consoleRenderer` from `@zuke/console` (or a
     custom {@link Renderer}) to restyle a build's output.
+
+interface SecretSource
+  A provider that resolves a secret's value on demand. Built by
+  {@link execSecret} or {@link fileSecret} and attached to a parameter with
+  `.from(source)`; the framework calls {@link SecretSource.resolve} during
+  parameter resolution.
+
+  resolve(): Promise<string>
+    Produce the secret value, or throw {@link SecretError} on failure.
 
 interface Style
   How a run renders its output.

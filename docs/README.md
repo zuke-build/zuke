@@ -7,6 +7,8 @@
 - [Authoring API](./authoring.md) — `target()`, `Build`, `run()`, and gotchas.
 - [Parameters](./parameters.md) — typed build inputs from flags, env, or
   defaults.
+- [Secrets](./secrets.md) — source secret values from a manager with
+  `.from(...)`, and the guaranteed redaction of every secret from output.
 - [Caching](./caching.md) — the incremental build cache, the remote
   (cross-machine) cache, and the AI response cache.
 - [Shell wrapper (`$`)](./shell.md) — ergonomic, injection-safe process

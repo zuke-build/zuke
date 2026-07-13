@@ -30,6 +30,8 @@
  */
 
 import { forEachField } from "./build.ts";
+import type { Redactor } from "./redact.ts";
+import type { SecretSource } from "./secret.ts";
 
 /** The value kinds a parameter can hold. */
 export type ParamValue = string | number | boolean;
@@ -103,6 +105,8 @@ export interface AnyParameter {
   readonly secret_: boolean;
   /** Whether the value is a comma-separated / repeatable list (`.array()`). */
   readonly array_: boolean;
+  /** A provider that resolves the value when no flag/env supplied one. */
+  readonly source_?: SecretSource;
   /** Resolve from a raw input (or `undefined` when none was supplied). */
   resolve_(raw: string | undefined): void;
   /** Whether the parameter resolved to a defined value (used by `.requires()`). */
@@ -122,6 +126,7 @@ interface ParamSpec<K extends ParamValue, T extends K | K[] | undefined> {
   fallback: Fallback<T>;
   secret?: boolean;
   array?: boolean;
+  source?: SecretSource;
 }
 
 /**
@@ -146,6 +151,7 @@ export class Parameter<
   readonly hasFallback_: boolean;
   readonly secret_: boolean;
   readonly array_: boolean;
+  readonly source_?: SecretSource;
   readonly #parse: (raw: string) => T;
   readonly #fallback: Fallback<T>;
   #state: Resolved<T> = { ok: false };
@@ -178,6 +184,7 @@ export class Parameter<
     this.hasFallback_ = spec.fallback.has;
     this.secret_ = spec.secret ?? false;
     this.array_ = spec.array ?? false;
+    this.source_ = spec.source;
   }
 
   /** The resolved value. Throws if read before the build resolves parameters. */
@@ -201,7 +208,11 @@ export class Parameter<
       : undefined;
   }
 
-  /** Mark the value as sensitive, so it is masked in CI output (`::add-mask::`). */
+  /**
+   * Mark the value as sensitive: it is masked in CI output (`::add-mask::`) and
+   * redacted from all of Zuke's reporter output. Pair with {@link Parameter.from}
+   * to resolve the value from a secret manager rather than the environment.
+   */
   secret(): Parameter<K, T> {
     return new Parameter<K, T>({
       description: this.description_,
@@ -213,6 +224,29 @@ export class Parameter<
       fallback: this.#fallback,
       secret: true,
       array: this.array_,
+      source: this.source_,
+    });
+  }
+
+  /**
+   * Resolve the value from a {@link SecretSource} (see {@link execSecret} /
+   * {@link fileSecret}) when neither a `--flag` nor an environment variable
+   * supplied one — the source is a fallback provider, consulted before the
+   * declared default. Typically paired with {@link Parameter.secret} so the
+   * resolved value is redacted.
+   */
+  from(source: SecretSource): Parameter<K, T> {
+    return new Parameter<K, T>({
+      description: this.description_,
+      kind: this.kind_,
+      required: this.required_,
+      options: this.options_,
+      envName: this.envName_,
+      parse: this.#parse,
+      fallback: this.#fallback,
+      secret: this.secret_,
+      array: this.array_,
+      source,
     });
   }
 
@@ -228,6 +262,7 @@ export class Parameter<
       parse: parseNumber,
       fallback: { has: true, value: undefined },
       secret: this.secret_,
+      source: this.source_,
     });
   }
 
@@ -243,6 +278,7 @@ export class Parameter<
       parse: parseBoolean,
       fallback: { has: true, value: false },
       secret: this.secret_,
+      source: this.source_,
     });
   }
 
@@ -260,6 +296,7 @@ export class Parameter<
       parse: makeStringParser(values),
       fallback: this.#fallback,
       secret: this.secret_,
+      source: this.source_,
     });
   }
 
@@ -274,6 +311,7 @@ export class Parameter<
       parse: this.#definiteParse(),
       fallback: { has: true, value },
       secret: this.secret_,
+      source: this.source_,
     });
   }
 
@@ -288,6 +326,7 @@ export class Parameter<
       parse: this.#definiteParse(),
       fallback: { has: false },
       secret: this.secret_,
+      source: this.source_,
     });
   }
 
@@ -303,6 +342,7 @@ export class Parameter<
       fallback: this.#fallback,
       secret: this.secret_,
       array: this.array_,
+      source: this.source_,
     });
   }
 
@@ -325,6 +365,7 @@ export class Parameter<
       fallback: { has: true, value: [] },
       secret: this.secret_,
       array: true,
+      source: this.source_,
     });
   }
 
@@ -392,12 +433,19 @@ export function envVarName(name: string): string {
  * environment, applying defaults. Returns a list of human-readable errors for
  * missing-required or invalid values; empty means success.
  *
+ * Resolution precedence is CLI value, then environment variable, then a
+ * declared {@link Parameter.from} secret source, then the declared default. A
+ * secret parameter's raw value is registered with the optional {@link Redactor}
+ * as soon as it is obtained — before parsing — so even a parse error cannot
+ * echo it.
+ *
  * @param params Discovered parameters.
  * @param cliValues Raw values parsed from the command line, keyed by name.
  * @param readEnv Reads an environment variable by name.
  * @param prompt Optional: ask for a missing required value (interactive input).
+ * @param redactor Optional: collects secret raw values for output masking.
  */
-export function resolveParameters(
+export async function resolveParameters(
   params: Map<string, AnyParameter>,
   cliValues: Record<string, string>,
   readEnv: (name: string) => string | undefined,
@@ -405,7 +453,8 @@ export function resolveParameters(
     flag: string,
     description: string | undefined,
   ) => string | undefined,
-): string[] {
+  redactor?: Redactor,
+): Promise<string[]> {
   const errors: string[] = [];
   for (const [name, param] of params) {
     const envName = param.envName_ ?? envVarName(name);
@@ -414,6 +463,21 @@ export function resolveParameters(
     if (raw === undefined && param.required_ && !param.hasFallback_ && prompt) {
       const answer = prompt(flagName(name), param.description_);
       if (answer !== undefined && answer !== "") raw = answer;
+    }
+    // Fall back to a secret source when nothing else supplied a value.
+    if (raw === undefined && param.source_ !== undefined) {
+      try {
+        raw = await param.source_.resolve();
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        errors.push(`--${flagName(name)}: ${message}`);
+        continue;
+      }
+    }
+    // Register a secret's raw value for redaction before it is parsed, so a
+    // parse error below is masked too.
+    if (redactor && param.secret_ && raw !== undefined && raw !== "") {
+      redactor.add(raw);
     }
     try {
       param.resolve_(raw);
