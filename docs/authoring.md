@@ -420,26 +420,28 @@ import { createTarGzip } from "jsr:@zuke/core";
 await createTarGzip(["dist/app.js", "README.md"], "artifact.tar.gz");
 ```
 
-### Installing tools — `installRelease()` / `toolchain()`
+### Installing tools — `ToolTasks.install()` / `toolchain()`
 
-A build can **fetch the CLIs it drives** instead of assuming they're on `PATH`:
-`installRelease()` downloads a single tool (pinned and verified with a
-`checksum`, then cached), and `toolchain()` declares a whole set of them in one
-place. The installed `AbsolutePath` goes straight to a wrapper's
+A build can **fetch the CLIs it drives** instead of assuming they're on `PATH`,
+in the same fluent settings-lambda style as the tool wrappers.
+`ToolTasks.install((s) => …)` downloads a single tool (pinned and verified with
+a `.checksum(...)`, then cached), and `toolchain()` declares a whole set of them
+in one place. The installed `AbsolutePath` goes straight to a wrapper's
 `.toolPath(...)`.
 
 ```ts
-const bin = await installRelease({
-  name: "helm",
-  destDir: ".zuke/bin",
-  archive: "tar.gz",
-  binaryPath: `${Deno.build.os}-amd64/helm`,
-  checksum: "f43e1c3…", // verify + cache
-  url: ({ arch }) =>
-    `https://get.helm.sh/helm-v3.15.2-linux-${
-      arch === "aarch64" ? "arm64" : "amd64"
-    }.tar.gz`,
-});
+const bin = await ToolTasks.install((s) =>
+  s
+    .name("helm")
+    .archive("tar.gz")
+    .binaryPath(`${Deno.build.os}-amd64/helm`)
+    .checksum("f43e1c3…") // verify + cache
+    .url(({ arch }) =>
+      `https://get.helm.sh/helm-v3.15.2-linux-${
+        arch === "aarch64" ? "arm64" : "amd64"
+      }.tar.gz`
+    )
+);
 ```
 
 See **[Installing tools](./installing-tools.md)** for the full guide —

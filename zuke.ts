@@ -384,23 +384,24 @@ class ZukeBuild extends Build {
   // its path for a wrapper's `.toolPath(...)`. Codecov publishes a rolling
   // artifact per version, so no `checksum` is pinned here; when a tool ships a
   // stable per-platform hash, add
-  // `checksum: ({ os, arch }) => sums[`${os}-${arch}`]` to verify and cache it
+  // `.checksum(({ os, arch }) => sums[`${os}-${arch}`])` to verify and cache it
   // (see docs/installing-tools.md).
   tools = toolchain((t) =>
-    t.tool({
-      name: "codecov",
-      destDir: TOOLS_ROOT,
-      // Codecov ships a standalone CLI binary per platform, on its own CDN.
-      url: ({ os }) => {
-        const platform = os === "darwin"
-          ? "macos"
-          : os === "windows"
-          ? "windows"
-          : "linux";
-        const file = os === "windows" ? "codecov.exe" : "codecov";
-        return `https://cli.codecov.io/${CODECOV_CLI_VERSION}/${platform}/${file}`;
-      },
-    })
+    t.tool((s) =>
+      s
+        .name("codecov")
+        .destDir(TOOLS_ROOT)
+        // Codecov ships a standalone CLI binary per platform, on its own CDN.
+        .url(({ os }) => {
+          const platform = os === "darwin"
+            ? "macos"
+            : os === "windows"
+            ? "windows"
+            : "linux";
+          const file = os === "windows" ? "codecov.exe" : "codecov";
+          return `https://cli.codecov.io/${CODECOV_CLI_VERSION}/${platform}/${file}`;
+        })
+    )
   );
 
   // Publish the coverage report to Codecov, dogfooding @zuke/codecov. True to

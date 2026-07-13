@@ -155,8 +155,10 @@ export {
   Toolchain,
   toolchain,
   type ToolchainInstallOptions,
-  type ToolSpec,
-} from "./src/toolchain.ts";
+  ToolInstallSettings,
+  ToolTasks,
+  type ToolTasksApi,
+} from "./src/tool.ts";
 export {
   cicd,
   type CiConcurrency,
