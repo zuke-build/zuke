@@ -175,6 +175,14 @@ both.
 > **Note:** archive entry names use the POSIX `ustar` format (a 100-byte path
 > limit), so extremely deep output paths are rejected with a clear error.
 
+**Security.** The store URL and token are trusted configuration — outputs are
+uploaded there and archives are extracted from it — so point them only at a
+cache you control (a secret parameter or env var, not a hard-coded value), and
+on CI restrict egress to the cache host so an overridden URL can't exfiltrate
+artifacts. Restore is hardened against a poisoned store: an archive entry with
+an absolute path or one containing `..` is rejected before any file is written,
+so nothing lands outside the workspace.
+
 ## Affected targets
 
 `--affected` restricts a run to the targets that a set of file changes can reach

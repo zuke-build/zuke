@@ -88,15 +88,42 @@ export async function archiveOutputs(
 }
 
 /**
+ * Reject an archive entry whose name would escape the workspace — an absolute
+ * path or one containing a `..` segment. A remote store is only as trustworthy
+ * as whoever can write to it, so a poisoned or malicious archive must never be
+ * able to place files outside the current directory (a "zip slip").
+ */
+function assertSafeEntryName(name: string): void {
+  const normalized = name.replace(/\\/g, "/");
+  if (normalized.startsWith("/") || /^[A-Za-z]:/.test(normalized)) {
+    throw new Error(
+      `remote cache: refusing to restore an absolute path from an archive: "${name}".`,
+    );
+  }
+  if (normalized.split("/").some((segment) => segment === "..")) {
+    throw new Error(
+      `remote cache: refusing to restore a path that escapes the workspace: "${name}".`,
+    );
+  }
+}
+
+/**
  * Restore the files in `artifact` (a gzipped tar produced by
- * {@link archiveOutputs}) to disk, returning the paths written.
+ * {@link archiveOutputs}) to disk, returning the paths written. Entry names are
+ * validated first: an absolute path or one escaping the workspace (`..`) is
+ * rejected before anything is written, so a malicious archive can't plant files
+ * outside the current directory.
  */
 export async function restoreOutputs(
   artifact: Uint8Array,
   host: OutputHost,
 ): Promise<string[]> {
+  const entries = untar(await gunzip(artifact));
+  // Validate every entry up front so a bad name aborts the whole restore
+  // instead of leaving a half-written, partially-trusted output tree.
+  for (const entry of entries) assertSafeEntryName(entry.name);
   const written: string[] = [];
-  for (const entry of untar(await gunzip(artifact))) {
+  for (const entry of entries) {
     await host.writeFile(entry.name, entry.data);
     written.push(entry.name);
   }
@@ -160,6 +187,14 @@ export interface HttpCacheStoreOptions {
  * artifact (a `404` means a miss) and `PUT <url>/<key>` stores one. Works with
  * any object store or cache server that speaks plain HTTP GET/PUT — an S3, GCS,
  * or R2 bucket behind a URL, or a self-hosted cache endpoint.
+ *
+ * **Security.** The `url` (and `token`) are *trusted configuration*: outputs are
+ * uploaded to that host and archives are extracted from it, so point it only at
+ * a cache you control, and prefer a {@link "./params.ts" | secret parameter} or
+ * an environment variable over a hard-coded value. On CI, restrict egress to
+ * the cache host so a misconfigured or overridden URL can't exfiltrate
+ * artifacts. Restored archives are always confined to the workspace (see
+ * {@link restoreOutputs}), so a poisoned store cannot write outside it.
  */
 export class HttpCacheStore implements RemoteCacheStore {
   readonly #base: string;

@@ -110,6 +110,19 @@ Deno.test("gitChangedFiles defaults the base to HEAD", async () => {
   assertEquals(calls[0][2], "HEAD");
 });
 
+Deno.test("gitChangedFiles rejects a base that git would read as an option", async () => {
+  let ran = false;
+  const run = (): Promise<string> => {
+    ran = true;
+    return Promise.resolve("");
+  };
+  const err = await assertRejects(() =>
+    gitChangedFiles("--output=/tmp/pwn", run)
+  );
+  assertStringIncludes(err.message, "must not start with");
+  assertEquals(ran, false); // rejected before git ran
+});
+
 Deno.test("runGitProcess returns stdout of a successful process", async () => {
   // Stand in the running `deno` for `git` (always present, shell-free).
   const out = await runGitProcess(

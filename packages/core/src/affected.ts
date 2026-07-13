@@ -137,6 +137,16 @@ export async function gitChangedFiles(
   base = "HEAD",
   run: (args: string[]) => Promise<string> = runGitProcess,
 ): Promise<string[]> {
+  // The base is passed to git as an argument, not through a shell, so there is
+  // no shell-injection surface — but a value beginning with "-" would be read
+  // as a git *option* (e.g. `--output=…` writes the diff to a file). A real
+  // revision never starts with "-", so reject one that does.
+  if (base.startsWith("-")) {
+    throw new Error(
+      `invalid git base revision "${base}": a revision must not start with "-" ` +
+        `(git would read it as an option, not a commit).`,
+    );
+  }
   const diff = await run(["diff", "--name-only", base, "--"]);
   const untracked = await run(["ls-files", "--others", "--exclude-standard"]);
   return [...new Set([...lines(diff), ...lines(untracked)])];

@@ -1,4 +1,8 @@
-import { assertEquals, assertRejects } from "./_assert.ts";
+import {
+  assertEquals,
+  assertRejects,
+  assertStringIncludes,
+} from "./_assert.ts";
 import {
   archiveOutputs,
   envCacheStore,
@@ -11,6 +15,7 @@ import {
   restoreOutputs,
 } from "../src/remote_cache.ts";
 import { HttpError } from "../src/http.ts";
+import { gzip, tar } from "../src/compression.ts";
 
 const enc = (text: string) => new TextEncoder().encode(text);
 const dec = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
@@ -54,6 +59,22 @@ Deno.test("archiveOutputs/restoreOutputs round-trip files and directories", asyn
   assertEquals(dec(out.files.get("dist/app.js") ?? enc("")), "built");
   assertEquals(dec(out.files.get("dist/assets/logo.svg") ?? enc("")), "<svg/>");
   assertEquals(dec(out.files.get("README.md") ?? enc("")), "readme");
+});
+
+Deno.test("restoreOutputs refuses archive entries that escape the workspace", async () => {
+  const out = new MemFs();
+  // A ".." entry would land outside the current directory.
+  const escaping = await gzip(tar([{ name: "../evil.sh", data: enc("x") }]));
+  const escapeErr = await assertRejects(() => restoreOutputs(escaping, out));
+  assertStringIncludes(escapeErr.message, "escapes the workspace");
+
+  // An absolute path would ignore the workspace entirely.
+  const absolute = await gzip(tar([{ name: "/etc/evil", data: enc("x") }]));
+  const absErr = await assertRejects(() => restoreOutputs(absolute, out));
+  assertStringIncludes(absErr.message, "absolute path");
+
+  // Nothing was written for either malicious archive.
+  assertEquals(out.files.size, 0);
 });
 
 Deno.test("archiveOutputs skips a declared output that is missing", async () => {

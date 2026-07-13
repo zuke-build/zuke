@@ -362,7 +362,10 @@ function resolveRemoteStore(option: RemoteCacheStore | false | undefined, declar
 
 async function restoreOutputs(artifact: Uint8Array, host: OutputHost): Promise<string[]>
   Restore the files in `artifact` (a gzipped tar produced by
-  {@link archiveOutputs}) to disk, returning the paths written.
+  {@link archiveOutputs}) to disk, returning the paths written. Entry names are
+  validated first: an absolute path or one escaping the workspace (`..`) is
+  rejected before anything is written, so a malicious archive can't plant files
+  outside the current directory.
 
 async function run(BuildClass: new () => Build, options: RunOptions): Promise<void>
   Public entry point. Instantiate the build, parse arguments, run, and set the
@@ -591,6 +594,14 @@ class HttpCacheStore implements RemoteCacheStore
   artifact (a `404` means a miss) and `PUT <url>/<key>` stores one. Works with
   any object store or cache server that speaks plain HTTP GET/PUT — an S3, GCS,
   or R2 bucket behind a URL, or a self-hosted cache endpoint.
+
+  Security. The `url` (and `token`) are trusted configuration: outputs are
+  uploaded to that host and archives are extracted from it, so point it only at
+  a cache you control, and prefer a {@link "./params.ts" | secret parameter} or
+  an environment variable over a hard-coded value. On CI, restrict egress to
+  the cache host so a misconfigured or overridden URL can't exfiltrate
+  artifacts. Restored archives are always confined to the workspace (see
+  {@link restoreOutputs}), so a poisoned store cannot write outside it.
 
   constructor(options: HttpCacheStoreOptions)
   async get(key: string): Promise<Uint8Array | null>
