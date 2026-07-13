@@ -97,11 +97,13 @@ publish — and it does three jobs at once:
    and leaves nothing behind (a `raw` binary that fails is removed). A value
    that isn't a 64-character hex SHA-256 is rejected up front with a clear
    error, before any download.
-3. **Caches** the install: the verified checksum is written to a sidecar marker
-   (`<destDir>/<name>.sha256`), so a later run whose pin matches the marker (and
-   whose binary still exists) is a **cache hit that skips the download
-   entirely**. Bumping the checksum for a new version is a natural miss that
-   re-fetches and rewrites the marker.
+3. **Caches** the install: a sidecar marker (`<destDir>/<name>.install.json`)
+   records the checksum and the installed binary's own hash. A later run is a
+   **cache hit that skips the download** only when the pin matches _and_ the
+   binary on disk still hashes to what was installed — so a swapped or corrupted
+   binary (e.g. in a cache directory shared across trust boundaries) is
+   re-downloaded and re-verified, never silently reused. Bumping the checksum
+   for a new version is a natural miss that re-fetches.
 
 What the checksum covers depends on the format: for `"tar.gz"` it's the SHA-256
 of the **archive** (what projects list in their `checksums.txt`/`sha256sum`
@@ -133,7 +135,7 @@ for a quick spike, but pin one for anything real.
 Everything lands under the `.destDir(...)` you choose — conventionally
 `.zuke/bin` for a one-off and `.zuke/tools` (the default) for a
 [`toolchain()`](#toolchain--many-tools). The `.zuke/` directory is git-ignored,
-so installed binaries and their `.sha256` markers are never committed.
+so installed binaries and their `.install.json` markers are never committed.
 
 ## `toolchain()` — many tools
 

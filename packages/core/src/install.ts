@@ -158,21 +158,66 @@ export interface InstallReleaseOptions {
 
 /** The marker file recording the verified checksum of an installed tool. */
 function markerPath(target: AbsolutePath): string {
-  return `${String(target)}.sha256`;
+  return `${String(target)}.install.json`;
+}
+
+/** A cached install's recorded provenance, stored beside the binary. */
+interface InstallMarker {
+  /** The declared download checksum this install satisfied — the version key. */
+  checksum: string;
+  /** SHA-256 of the installed binary, re-checked on reuse to detect tampering. */
+  binary: string;
+}
+
+/** Parse a marker file's JSON, or `null` if it is absent or malformed. */
+function parseMarker(text: string | null): InstallMarker | null {
+  if (text === null) return null;
+  try {
+    const parsed: unknown = JSON.parse(text);
+    if (
+      typeof parsed === "object" && parsed !== null &&
+      "checksum" in parsed && typeof parsed.checksum === "string" &&
+      "binary" in parsed && typeof parsed.binary === "string"
+    ) {
+      return { checksum: parsed.checksum, binary: parsed.binary };
+    }
+  } catch {
+    // A corrupt marker is treated as no marker — the tool just re-installs.
+  }
+  return null;
 }
 
 /**
- * Whether `target` is already installed and verified against `checksum`: the
- * binary exists and the sidecar marker records the same checksum.
+ * Whether `target` is a valid cache hit for `checksum`. The recorded install
+ * must have satisfied the same checksum (so a version bump misses), **and** the
+ * binary on disk must still hash to what was installed — so a swapped or
+ * corrupted binary in a shared cache directory is re-downloaded, never silently
+ * reused.
  */
 async function cachedInstall(
   target: AbsolutePath,
   checksum: string,
 ): Promise<boolean> {
   const recorded = await readFileOrNull(markerPath(target));
-  if (recorded === null) return false;
-  if (new TextDecoder().decode(recorded).trim() !== checksum) return false;
-  return await readFileOrNull(String(target)) !== null;
+  const marker = parseMarker(
+    recorded === null ? null : new TextDecoder().decode(recorded),
+  );
+  if (marker === null || marker.checksum !== checksum) return false;
+  const binary = await readFileOrNull(String(target));
+  if (binary === null) return false;
+  return await sha256(binary) === marker.binary;
+}
+
+/** Record a verified install so {@link cachedInstall} can re-check it later. */
+async function writeMarker(
+  target: AbsolutePath,
+  checksum: string,
+): Promise<void> {
+  const binary = await sha256(await Deno.readFile(String(target)));
+  await Deno.writeTextFile(
+    markerPath(target),
+    `${JSON.stringify({ checksum, binary })}\n`,
+  );
 }
 
 /**
@@ -294,9 +339,8 @@ export async function installRelease(
   }
 
   if (!onWindows) await Deno.chmod(String(target), 0o755);
-  // Record the verified checksum so a later run can skip the download.
-  if (checksum !== undefined) {
-    await Deno.writeTextFile(markerPath(target), `${checksum}\n`);
-  }
+  // Record the checksum and the installed binary's own hash, so a later run can
+  // skip the download only when the binary on disk still matches.
+  if (checksum !== undefined) await writeMarker(target, checksum);
   return target;
 }

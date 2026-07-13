@@ -280,7 +280,7 @@ Deno.test("installRelease verifies a matching checksum and records a marker", as
       checksum: await sha256Hex(body),
     });
     assertEquals(await exists(String(bin)), true);
-    assertEquals(await exists(`${String(bin)}.sha256`), true); // marker written
+    assertEquals(await exists(`${String(bin)}.install.json`), true); // marker written
   } finally {
     await Deno.remove(dir, { recursive: true });
   }
@@ -325,6 +325,61 @@ Deno.test("installRelease reuses a cached install without downloading again", as
     const second = await installRelease(spec);
     assertEquals(calls, 1); // second call is a cache hit
     assertEquals(String(first), String(second));
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("installRelease re-downloads when the cached binary was tampered with", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const body = "trusted-binary";
+    let calls = 0;
+    const counting: DownloadFn = async (_url, dest) => {
+      calls++;
+      await Deno.writeFile(String(dest), new TextEncoder().encode(body));
+    };
+    const spec = {
+      name: "guarded",
+      destDir: dir,
+      url: () => "https://example.com/guarded",
+      download: counting,
+      checksum: await sha256Hex(body),
+    };
+    const bin = await installRelease(spec);
+    // Swap the installed binary while leaving the marker intact.
+    await Deno.writeTextFile(String(bin), "evil-binary");
+    await installRelease(spec);
+    assertEquals(calls, 2); // the on-disk binary no longer matches → re-fetched
+    assertEquals(
+      new TextDecoder().decode(await Deno.readFile(String(bin))),
+      body, // the trusted binary was restored
+    );
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("installRelease re-downloads when the cache marker is corrupt", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const body = "payload";
+    let calls = 0;
+    const counting: DownloadFn = async (_url, dest) => {
+      calls++;
+      await Deno.writeFile(String(dest), new TextEncoder().encode(body));
+    };
+    const spec = {
+      name: "corrupt",
+      destDir: dir,
+      url: () => "https://example.com/corrupt",
+      download: counting,
+      checksum: await sha256Hex(body),
+    };
+    const bin = await installRelease(spec);
+    await Deno.writeTextFile(`${String(bin)}.install.json`, "not json{"); // corrupt marker
+    await installRelease(spec);
+    assertEquals(calls, 2); // an unreadable marker is treated as a miss
   } finally {
     await Deno.remove(dir, { recursive: true });
   }
