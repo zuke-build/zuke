@@ -5,32 +5,32 @@
 `target()` returns a chainable `TargetBuilder`. Everything is optional except a
 body, which is required before the target can run.
 
-| Method                      | Signature                                             | Purpose                                                  |
-| --------------------------- | ----------------------------------------------------- | -------------------------------------------------------- |
-| `.description(text)`        | `(s: string) => this`                                 | Summary shown in `--list`.                               |
-| `.dependsOn(...targets)`    | `(...t: Target[]) => this`                            | Hard prerequisites; run first, transitively.             |
-| `.executes(fn)`             | `(fn: () => void \| Promise<void>) => this`           | The body. May be async.                                  |
-| `.before(...targets)`       | `(...t: Target[]) => this`                            | Soft ordering: run before these _if both are planned_.   |
-| `.after(...targets)`        | `(...t: Target[]) => this`                            | Soft ordering: run after these _if both are planned_.    |
-| `.triggers(...targets)`     | `(...t: Target[]) => this`                            | Pull these into the plan and run them _after_ this.      |
-| `.dependentFor(...targets)` | `(...t: Target[]) => this`                            | Reverse of `dependsOn`: run this _before_ those.         |
-| `.inputs(...paths)`         | `(...p: PathLike[]) => this`                          | Cache inputs: skip the target when these are unchanged.  |
-| `.outputs(...paths)`        | `(...p: PathLike[]) => this`                          | Cache outputs: a hit also requires these to still exist. |
-| `.onlyWhen(condition)`      | `(c: () => boolean \| Promise<boolean>) => this`      | Run only when the condition holds, else skip.            |
-| `.requires(...params)`      | `(...p: Parameter[]) => this`                         | Fail the target unless these parameters are set.         |
-| `.proceedAfterFailure()`    | `() => this`                                          | Keep the build going if this target fails.               |
-| `.always()`                 | `() => this`                                          | Run for cleanup even after the build has failed.         |
-| `.unlisted()`               | `() => this`                                          | Hide the target from `--list`/`--help`.                  |
-| `.cacheKey(fn)`             | `(fn: () => string \| Promise<string>) => this`       | Extra (non-file) input to the cache fingerprint.         |
-| `.produces(...paths)`       | `(...p: PathLike[]) => this`                          | Declare artifact paths this target produces.             |
-| `.consumes(...targets)`     | `(...t: Target[]) => this`                            | Depend on targets and use their `produces` artifacts.    |
-| `.whenSkipped(behavior)`    | `("run-dependencies" \| "skip-dependencies") => this` | On skip, also skip exclusive deps.                       |
-| `.timeout(ms)`              | `(ms: number) => this`                                | Fail the body if it runs longer than `ms` (per attempt). |
-| `.retry(times, delayMs?)`   | `(times: number, delayMs?: number) => this`           | Retry the body on failure, optionally pausing between.   |
-| `.validateBefore(...v)`     | `(...v: Validation[]) => this`                        | Run checks before the body; a throw skips it and fails.  |
-| `.validateAfter(...v)`      | `(...v: Validation[]) => this`                        | Run checks after a successful body; a throw fails it.    |
+| Method                      | Signature                                             | Purpose                                                                                            |
+| --------------------------- | ----------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `.description(text)`        | `(s: string) => this`                                 | Summary shown in `--list`.                                                                         |
+| `.dependsOn(...targets)`    | `(...t: Target[]) => this`                            | Hard prerequisites; run first, transitively.                                                       |
+| `.executes(fn)`             | `(fn: () => void \| Promise<void>) => this`           | The body. May be async.                                                                            |
+| `.before(...targets)`       | `(...t: Target[]) => this`                            | Soft ordering: run before these _if both are planned_.                                             |
+| `.after(...targets)`        | `(...t: Target[]) => this`                            | Soft ordering: run after these _if both are planned_.                                              |
+| `.triggers(...targets)`     | `(...t: Target[]) => this`                            | Pull these into the plan and run them _after_ this.                                                |
+| `.dependentFor(...targets)` | `(...t: Target[]) => this`                            | Reverse of `dependsOn`: run this _before_ those.                                                   |
+| `.inputs(...paths)`         | `(...p: PathLike[]) => this`                          | Cache inputs: skip the target when these are unchanged.                                            |
+| `.outputs(...paths)`        | `(...p: PathLike[]) => this`                          | Cache outputs: a hit also requires these to still exist.                                           |
+| `.onlyWhen(condition)`      | `(c: () => boolean \| Promise<boolean>) => this`      | Run only when the condition holds, else skip.                                                      |
+| `.requires(...params)`      | `(...p: Parameter[]) => this`                         | Fail the target unless these parameters are set.                                                   |
+| `.proceedAfterFailure()`    | `() => this`                                          | Keep the build going if this target fails.                                                         |
+| `.always()`                 | `() => this`                                          | Run for cleanup even after the build has failed.                                                   |
+| `.unlisted()`               | `() => this`                                          | Hide the target from `--list`/`--help`.                                                            |
+| `.cacheKey(fn)`             | `(fn: () => string \| Promise<string>) => this`       | Extra (non-file) input to the cache fingerprint.                                                   |
+| `.produces(...paths)`       | `(...p: PathLike[]) => this`                          | Declare artifact paths this target produces.                                                       |
+| `.consumes(...targets)`     | `(...t: Target[]) => this`                            | Depend on targets and use their `produces` artifacts.                                              |
+| `.whenSkipped(behavior)`    | `("run-dependencies" \| "skip-dependencies") => this` | On skip, also skip exclusive deps.                                                                 |
+| `.timeout(ms)`              | `(ms: number) => this`                                | Fail the body if it runs longer than `ms` (per attempt).                                           |
+| `.retry(times, delayMs?)`   | `(times: number, delayMs?: number) => this`           | Retry the body on failure, optionally pausing between.                                             |
+| `.validateBefore(...v)`     | `(...v: Validation[]) => this`                        | Run checks before the body; a throw skips it and fails.                                            |
+| `.validateAfter(...v)`      | `(...v: Validation[]) => this`                        | Run checks after a successful body; a throw fails it.                                              |
 | `.recoverWith(...r)`        | `(...r: Remediation[]) => this`                       | On failure, hand it to a remediation that can re-run the body ([self-healing](./self-healing.md)). |
-| `.recoverAttempts(n)`       | `(n: number) => this`                                 | Bound how many fix-then-rerun cycles are tried (default 1). |
+| `.recoverAttempts(n)`       | `(n: number) => this`                                 | Bound how many fix-then-rerun cycles are tried (default 1).                                        |
 
 `dependsOn` pulls targets into the plan; `before`/`after` only reorder targets
 that are _already_ in the plan — they never pull new targets in.
@@ -263,8 +263,8 @@ await assertFileExists("dist/app.js");
 for — create, clean, remove, copy, move a path, and read/write its contents — as
 a namespaced task object in the same shape as the [tool wrappers](./tools.md).
 Unlike the CLI wrappers it runs no subprocess, so each method takes direct
-arguments rather than a settings-lambda. Paths are [`PathLike`](./paths.md), so an
-`absolutePath(...)` or a plain string both work.
+arguments rather than a settings-lambda. Paths are [`PathLike`](./paths.md), so
+an `absolutePath(...)` or a plain string both work.
 
 ```ts
 import { FileTasks } from "jsr:@zuke/core";
@@ -274,18 +274,18 @@ await FileTasks.createDirectory("dist/assets"); // mkdir -p
 await FileTasks.copy("static", "dist/static"); // recursive
 ```
 
-| Method | Purpose |
-| --- | --- |
-| `exists(path)` | Whether `path` exists. |
-| `createDirectory(path, { recursive? })` | Create a directory; parents by default (`recursive: true`). A recursive create over an existing directory is a no-op. |
-| `cleanDirectory(path)` | Empty a directory, leaving it in place. A no-op if `path` is missing (it is _not_ created). |
-| `remove(path, { recursive? })` | Delete `path`, tolerating a missing target like `rm -f`. Returns `true` if something was removed, `false` if it was already absent. Pass `recursive: true` to remove a non-empty directory. |
-| `copy(source, dest, { overwrite? })` | Copy a file or directory tree (recursive). `overwrite` defaults to `true`. |
-| `move(source, dest)` | Move (rename) a path. |
-| `readText(path)` | Read a file's UTF-8 content. |
-| `writeText(path, content)` | Write a file, creating or truncating it. |
-| `readJson<T>(path)` | Read and `JSON.parse` a file, typed as `T`. |
-| `homeDirectory()` | The current user's home directory (`$HOME`, or `$USERPROFILE` on Windows); throws a clear error if neither is set. |
+| Method                                  | Purpose                                                                                                                                                                                     |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `exists(path)`                          | Whether `path` exists.                                                                                                                                                                      |
+| `createDirectory(path, { recursive? })` | Create a directory; parents by default (`recursive: true`). A recursive create over an existing directory is a no-op.                                                                       |
+| `cleanDirectory(path)`                  | Empty a directory, leaving it in place. A no-op if `path` is missing (it is _not_ created).                                                                                                 |
+| `remove(path, { recursive? })`          | Delete `path`, tolerating a missing target like `rm -f`. Returns `true` if something was removed, `false` if it was already absent. Pass `recursive: true` to remove a non-empty directory. |
+| `copy(source, dest, { overwrite? })`    | Copy a file or directory tree (recursive). `overwrite` defaults to `true`.                                                                                                                  |
+| `move(source, dest)`                    | Move (rename) a path.                                                                                                                                                                       |
+| `readText(path)`                        | Read a file's UTF-8 content.                                                                                                                                                                |
+| `writeText(path, content)`              | Write a file, creating or truncating it.                                                                                                                                                    |
+| `readJson<T>(path)`                     | Read and `JSON.parse` a file, typed as `T`.                                                                                                                                                 |
+| `homeDirectory()`                       | The current user's home directory (`$HOME`, or `$USERPROFILE` on Windows); throws a clear error if neither is set.                                                                          |
 
 The mutating operations are deliberately **missing-target-tolerant**, so the
 common `clean`/`package` sequence stays idempotent: `cleanDirectory` and
@@ -420,33 +420,36 @@ import { createTarGzip } from "jsr:@zuke/core";
 await createTarGzip(["dist/app.js", "README.md"], "artifact.tar.gz");
 ```
 
-### Tool install — `installRelease()`
+### Installing tools — `ToolTasks.install()` / `toolchain()`
 
-Prepare an environment by fetching a CLI one of Zuke's wrappers drives, then
-point the wrapper at it. `installRelease({ name, url, destDir })` resolves a
-per-platform URL (via the `({ os, arch }) => string` callback and
-`hostPlatform()`), downloads it, and returns the installed binary's
-`AbsolutePath` — ready for `.toolPath(...)`. Set `archive: "tar.gz"` to unpack a
-tarball and take `binaryPath` from inside; the default `"raw"` installs the
-download as the binary itself. The `download` seam keeps it unit-testable, and
-on Windows the filename gains an `.exe` suffix. Zip archives are not yet
-supported, so this targets the Unix runners where most release tarballs live.
+A build can **fetch the CLIs it drives** instead of assuming they're on `PATH`,
+in the same fluent settings-lambda style as the tool wrappers.
+`ToolTasks.install((s) => …)` downloads a single tool (pinned and verified with
+a `.checksum(...)`, then cached), and `toolchain()` declares a whole set of them
+in one place. The installed `AbsolutePath` goes straight to a wrapper's
+`.toolPath(...)`.
 
 ```ts
-import { installRelease } from "jsr:@zuke/core";
-import { CmdTasks } from "jsr:@zuke/cmd";
+// Helm spells macOS "darwin" and uses amd64/arm64 — `osLabel`/`archLabel` map
+// Zuke's platform to that naming, no `os === …` ternary needed.
+const p = hostPlatform();
+const os = p.osLabel({ macos: "darwin" });
+const arch = p.archLabel({ x86_64: "amd64", aarch64: "arm64" });
 
-const arches = { x86_64: "amd64", aarch64: "arm64" } as const;
-const bin = await installRelease({
-  name: "helm",
-  destDir: ".zuke/bin",
-  archive: "tar.gz",
-  binaryPath: `${Deno.build.os}-${arches[Deno.build.arch]}/helm`,
-  url: ({ os, arch }) =>
-    `https://get.helm.sh/helm-v3.14.0-${os}-${arches[arch]}.tar.gz`,
-});
-await CmdTasks.exec(String(bin), (s) => s.args("version"));
+const bin = await ToolTasks.install((s) =>
+  s
+    .name("helm")
+    .archive("tar.gz")
+    .binaryPath(`${os}-${arch}/helm`)
+    .checksum("f43e1c3…") // verify + cache
+    .url(() => `https://get.helm.sh/helm-v3.15.2-${os}-${arch}.tar.gz`)
+);
 ```
+
+See **[Installing tools](./installing-tools.md)** for the full guide —
+verification and caching, `toolchain()` bundles, cross-platform URL resolution,
+CI patterns, security, and troubleshooting — and **[Tools](./tools.md)** for the
+wrappers that drive them.
 
 ### CI config generation — `cicd()` and `generate-ci`
 
@@ -542,10 +545,26 @@ returns the YAML string directly (pass an empty pipeline,
 YAML quotes any scalar that would otherwise be misread (a bare `on`, a
 numeric-looking version), so the output is paste-ready.
 
-### Host detection — `isCI()` / `ciHost()`
+### Host detection — `isCI()` / `ciHost()` / `operatingSystem()`
 
 `isCI()` and `ciHost()` (e.g. `"github-actions"`, `"gitlab-ci"`, `"local"`) let
-a build branch on where it runs — e.g. `deploy.onlyWhen(() => isCI())`.
+a build branch on _where_ it runs — e.g. `deploy.onlyWhen(() => isCI())`.
+
+`operatingSystem()` answers _what_ it runs on: the `OperatingSystem` union
+`"linux" | "macos" | "windows"`, normalised from `Deno.build.os` so you branch
+on `"macos"` rather than the raw `"darwin"` (other Unixes report as `"linux"`).
+`hostPlatform()` returns the same OS plus the `Architecture` and the
+`osLabel`/`archLabel` helpers used to build
+[tool download URLs](./installing-tools.md#cross-platform-url-resolution).
+
+```ts
+import { hostPlatform, operatingSystem } from "jsr:@zuke/core";
+
+publish = target().onlyWhen(() => operatingSystem() === "linux").executes(
+  /* … */
+);
+const cpu = hostPlatform().archLabel({ x86_64: "amd64", aarch64: "arm64" });
+```
 
 ### `Build`
 

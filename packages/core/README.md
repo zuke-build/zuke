@@ -295,8 +295,17 @@ async function gunzip(data: Uint8Array): Promise<Uint8Array>
 async function gzip(data: Uint8Array): Promise<Uint8Array>
   Gzip-compress `data` using the platform `CompressionStream`.
 
-function hostPlatform(): InstallPlatform
-  The current host's {@link InstallPlatform} (from `Deno.build`).
+function hostPlatform(): Platform
+  The current host's {@link Platform} (from `Deno.build`, with the OS
+  normalised) — the analogue of {@link "./host.ts".isCI} for "what machine am I
+  running on". Its `os` is a Zuke {@link OperatingSystem} (`macos`, not
+  `darwin`); use the `osLabel`/`archLabel` helpers to name it for a download URL.
+
+  ```ts
+  const p = hostPlatform();
+  p.os;                                          // "linux" | "macos" | "windows"
+  const cpu = p.archLabel({ x86_64: "amd64", aarch64: "arm64" });
+  ```
 
 async function httpDownload(url: string, dest: PathLike, options: HttpOptions): Promise<void>
   Download `url` to `dest`, streaming the response body to the file. Creates or
@@ -312,8 +321,25 @@ async function installRelease(options: InstallReleaseOptions): Promise<AbsoluteP
   Download and install a release binary, returning its {@link AbsolutePath}.
   The path is ready to hand to a wrapper's `.toolPath(...)` (or `CmdTasks`).
 
+  With a {@link InstallReleaseOptions.checksum}, the download is verified before
+  anything is installed, and a matching prior install is reused without
+  downloading again — so pinning a checksum makes the install both hermetic
+  (tamper-evident) and cached.
+
 function isCI(): boolean
   Whether the build appears to be running in a CI environment.
+
+function operatingSystem(os: typeof Deno.build.os): OperatingSystem
+  The operating system as a Zuke {@link OperatingSystem}: `darwin` becomes
+  `macos`, `windows` stays `windows`, and every other Unix (`linux`, the BSDs,
+  `solaris`, …) is reported as `linux`. Pass a raw `Deno.build.os` value to
+  normalise it; defaults to the running host — the platform analogue of
+  {@link isCI}.
+
+  ```ts
+  import { operatingSystem } from "jsr:@zuke/core";
+  if (operatingSystem() === "macos") { ... }
+  ```
 
 function parameter(description?: string): Parameter<string, string | undefined>
   Create a new build parameter (a `string` by default). Configure it fluently:
@@ -387,6 +413,17 @@ function tar(entries: TarEntry[]): Uint8Array
 function target(): TargetBuilder
   Create a new, empty target builder.
 
+function toolchain(configure?: (t: Toolchain) => void): Toolchain
+  Create a {@link Toolchain}. Configure it inline with a callback, or chain
+  {@link Toolchain.tool} on the returned instance.
+
+  ```ts
+  const tools = toolchain((t) =>
+    t.tool((s) => s.name("helm").url(helmUrl))
+     .tool((s) => s.name("kubectl").url(kubectlUrl))
+  );
+  ```
+
 function untar(archive: Uint8Array): TarEntry[]
   Extract the entries from a `ustar` archive (regular files only).
 
@@ -402,8 +439,15 @@ const AnnounceTasks: AnnounceTasksApi
 const CONFIG_FILE: "zuke.json"
   The Zuke config file name; its presence marks a repository root.
 
+const DEFAULT_TOOLS_DIR: ".zuke/tools"
+  The default directory a {@link Toolchain} (and {@link ToolTasks}) installs into.
+
 const FileTasks: FileTasksApi
   Filesystem task functions for build scripts.
+
+const ToolTasks: ToolTasksApi
+  Provision external CLIs from a build. `ToolTasks.install((s) => …)` fetches a
+  single tool; group several with {@link toolchain}.
 
 const defaultRenderer: Renderer
   The built-in renderer: Zuke's ruled headers and summary table.
@@ -855,6 +899,64 @@ class TeamsAnnouncementSettings extends AnnouncementSettings
   override protected payload(): Record<string, unknown>
   override protected sendBot(): Promise<void>
 
+class ToolInstallSettings
+  Fluent settings for installing a release tool. Configure it in a
+  settings-lambda (`(s) => s.name(...).url(...)`), the same shape as Zuke's tool
+  wrappers. `name` and `url` are required; everything else is optional and
+  mirrors {@link InstallReleaseOptions}.
+
+  name_?: string
+    The tool name, and the installed filename. Set by {@link name}.
+  url_?: (platform: Platform) => string
+    Resolves the per-platform download URL. Set by {@link url}.
+  destDir_?: PathLike
+    Install directory (overrides the toolchain's). Set by {@link destDir}.
+  archive_?: "raw" | "tar.gz"
+    Download format. Set by {@link archive}.
+  binaryPath_?: string
+    The binary's path within a `tar.gz`. Set by {@link binaryPath}.
+  checksum_?: string | ((platform: Platform) => string)
+    Expected SHA-256 (or a per-platform resolver). Set by {@link checksum}.
+  platform_?: InstallPlatform
+    The platform to resolve for. Set by {@link platform}.
+  download_?: DownloadFn
+    The download implementation. Set by {@link download}.
+  name(name: string): this
+    The tool name; also the installed binary's filename (`.exe` on Windows).
+  url(resolve: (platform: Platform) => string): this
+    Resolve the download URL for the target {@link Platform}.
+  destDir(dir: PathLike): this
+    The directory to install the binary into (created if missing).
+  archive(format: "raw" | "tar.gz"): this
+    Treat the download as a `"tar.gz"` (default `"raw"`, the bare binary).
+  binaryPath(path: string): this
+    For a `tar.gz`, the binary's path within the archive (defaults to the name).
+  checksum(sha256: string | ((platform: Platform) => string)): this
+    The expected SHA-256 (hex) of the downloaded artifact — verifies and caches
+    the install. Pass a `({ os, arch }) => string` resolver to pin it per
+    platform (see {@link InstallReleaseOptions.checksum}).
+  platform(platform: InstallPlatform): this
+    Resolve for a specific platform instead of the host (a foreign install).
+  download(fn: DownloadFn): this
+    Override the downloader (defaults to an HTTPS download; a test seam).
+  options_(fallbackDestDir: PathLike): InstallReleaseOptions
+    Build the {@link InstallReleaseOptions}, using `fallbackDestDir` when no
+    {@link destDir} was set. Throws if a required field is missing.
+
+class Toolchain
+  A declared set of external tools. Add tools with {@link Toolchain.tool} (a
+  {@link ToolInstallSettings} lambda) and fetch them all with
+  {@link Toolchain.install}. Build one with {@link toolchain}.
+
+  tool(configure: Configure<ToolInstallSettings>): this
+    Add a tool, configured through a settings-lambda. Chainable.
+  get tools(): readonly ToolInstallSettings[]
+    The configured tools, in declaration order.
+  async install(options: ToolchainInstallOptions): Promise<Map<string, AbsolutePath>>
+    Install every declared tool concurrently — reusing a cached copy where a
+    pinned checksum matches — and return a map of tool name to installed
+    {@link AbsolutePath}.
+
 interface AbsolutePath
   An immutable, absolute filesystem path with a fluent API.
 
@@ -1270,20 +1372,20 @@ interface HttpOptions
     override it to unit-test without network access.
 
 interface InstallPlatform
-  The host identity used to resolve a platform-specific download URL.
+  The host identity: a Zuke {@link OperatingSystem} and {@link Architecture}.
 
-  os: typeof Deno.build.os
-    The operating system, as reported by `Deno.build.os`.
-  arch: typeof Deno.build.arch
-    The CPU architecture, as reported by `Deno.build.arch`.
+  os: OperatingSystem
+    The operating system (normalised: `macos`, not `darwin`).
+  arch: Architecture
+    The CPU architecture.
 
 interface InstallReleaseOptions
   Options for {@link installRelease}.
 
   name: string
     The tool name; also the installed binary's filename (`.exe` on Windows).
-  url: (platform: InstallPlatform) => string
-    Resolve the download URL for the target {@link InstallPlatform}.
+  url: (platform: Platform) => string
+    Resolve the download URL for the target {@link Platform}.
   destDir: PathLike
     The directory to install the binary into (created if missing).
   archive?: "raw" | "tar.gz"
@@ -1298,6 +1400,18 @@ interface InstallReleaseOptions
   download?: DownloadFn
     The download implementation. Defaults to {@link httpDownload}; override it
     to unit-test without network access.
+  checksum?: string | ((platform: Platform) => string)
+    The expected SHA-256 (hex) of the downloaded artifact — the `.tar.gz`
+    for an archive, or the binary itself for a `"raw"` download; this is what
+    release pages publish as the checksum. When set, the download is verified
+    against it (a mismatch throws and nothing is installed) and the checksum
+    doubles as a cache key: a prior install whose recorded checksum matches
+    is reused without downloading again. Omit it and the tool is downloaded
+    every time and not verified.
+
+    Because {@link url} resolves a different artifact per platform, each has its
+    own hash — so pass a resolver `(platform) => string` (like `url`) to pin a
+    checksum per platform, or a plain string when a single artifact is installed.
 
 interface OpenCacheOptions
   Optional extras for {@link openCache}: a remote store and a warning sink.
@@ -1320,6 +1434,20 @@ interface OutputHost
     The entry names within a directory.
   writeFile(path: string, bytes: Uint8Array): Promise<void>
     Write a file, creating parent directories as needed.
+
+interface Platform extends InstallPlatform
+  A platform with helpers to name it the way a tool's downloads do. `osLabel`
+  and `archLabel` map the `os`/`arch` to a tool's own naming, falling back to
+  the value itself for anything not in the alias map — so a `url` callback reads
+  `p.osLabel({ macos: "darwin" })` (for a tool that spells macOS "darwin")
+  instead of a hand-written `os === …` ternary. This is what the
+  {@link InstallReleaseOptions.url} and {@link InstallReleaseOptions.checksum}
+  callbacks receive.
+
+  osLabel(aliases?: Partial<Record<OperatingSystem, string>>): string
+    The OS named for downloads: `aliases[os]`, else the {@link InstallPlatform.os} itself.
+  archLabel(aliases?: Partial<Record<Architecture, string>>): string
+    The arch named for downloads: `aliases[arch]`, else the {@link InstallPlatform.arch} itself.
 
 interface Plugin
   A lifecycle observer. Every hook is optional; implement only the ones you
@@ -1450,6 +1578,22 @@ interface TargetReport
   status: TargetStatus
   ms: number
 
+interface ToolTasksApi
+  The task surface of {@link ToolTasks}.
+
+  install(configure: Configure<ToolInstallSettings>): Promise<AbsolutePath>
+    Install a single release tool, configured through a
+    {@link ToolInstallSettings} lambda, and resolve to its installed path.
+    Defaults the install directory to `.zuke/tools`.
+
+interface ToolchainInstallOptions
+  Options for {@link Toolchain.install}.
+
+  destDir?: PathLike
+    Where tools without their own `destDir` install. Defaults to `.zuke/tools`.
+  download?: DownloadFn
+    The download implementation for every tool (defaults per {@link installRelease}).
+
 interface Validation
   A check plugged into a target with {@link TargetBuilder.validateBefore} or
   {@link TargetBuilder.validateAfter}. The target decides when it runs; the
@@ -1472,6 +1616,9 @@ type AnnouncementLevel = "success" | "failure" | "warning" | "info"
   The outcome an announcement conveys. It drives the accent colour and the icon
   prepended to the message; defaults to `"info"`.
 
+type Architecture = "x86_64" | "aarch64"
+  The CPU architectures Zuke recognises.
+
 type ChangedFilesFn = (base: string) => Promise<string[]>
   Lists the files changed since `base` (a git revision), each path relative to
   the repository root. The seam behind {@link ExecuteOptions.affected}; defaults
@@ -1491,6 +1638,11 @@ type Condition = () => boolean | Promise<boolean>
 
 type DownloadFn = (url: string, dest: PathLike) => Promise<void>
   A download function: fetch `url` into the file at `dest`.
+
+type OperatingSystem = "linux" | "macos" | "windows"
+  The operating systems Zuke recognises — Deno's raw `Deno.build.os` values
+  normalised to a friendly set (notably `darwin` → `macos`). Used across the
+  ecosystem so builds branch on `"macos"` rather than the surprising `"darwin"`.
 
 type ParamValue = string | number | boolean
   The value kinds a parameter can hold.

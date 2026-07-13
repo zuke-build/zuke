@@ -13,6 +13,8 @@
   execution.
 - [Paths (`absolutePath`)](./paths.md) — the fluent path type.
 - [Tools](./tools.md) — the typed tool-wrapper packages and their tasks.
+- [Installing tools](./installing-tools.md) — fetch pinned, checksum-verified
+  CLIs from a build with `installRelease()` and `toolchain()`.
 - [Extending Zuke](./extending.md) — the plugin contract: lifecycle plugins,
   tool wrappers, and reusable target bundles.
 - [AI review](./ai-review.md) — model-assessed review gates as build

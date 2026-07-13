@@ -1,5 +1,11 @@
 import { assertEquals } from "./_assert.ts";
-import { type CiHost, ciHost, detectCiHost, isCI } from "../src/host.ts";
+import {
+  type CiHost,
+  ciHost,
+  detectCiHost,
+  isCI,
+  operatingSystem,
+} from "../src/host.ts";
 
 /** All CI-host env signals, for clearing the ambient environment in a test. */
 const HOST_VARS = [
@@ -94,4 +100,16 @@ Deno.test("ciHost maps hosts to their long names; isCI follows", async () => {
     assertEquals(ciHost(), "local");
     assertEquals(isCI(), false);
   });
+});
+
+Deno.test("operatingSystem normalises Deno's os names to a friendly union", () => {
+  assertEquals(operatingSystem("darwin"), "macos"); // the key normalisation
+  assertEquals(operatingSystem("windows"), "windows");
+  assertEquals(operatingSystem("linux"), "linux");
+  // Other Unixes bucket under linux.
+  assertEquals(operatingSystem("freebsd"), "linux");
+  assertEquals(operatingSystem("android"), "linux");
+  // Defaults to the running host.
+  const host = operatingSystem();
+  assertEquals(["linux", "macos", "windows"].includes(host), true);
 });

@@ -17,11 +17,11 @@ import {
   Build,
   describeCli,
   FileTasks,
-  installRelease,
   parameter,
   repoRoot,
   run,
   target,
+  toolchain,
 } from "@zuke/core";
 import { CommandTimeoutError } from "@zuke/core/shell";
 import { consoleRenderer, ConsoleTasks } from "@zuke/console";
@@ -378,11 +378,34 @@ class ZukeBuild extends Build {
     .secret()
     .env("CODECOV_TOKEN");
 
+  // The build's external CLIs, declared with `toolchain()` so the build file
+  // describes the environment it needs — dogfooding the toolchain provisioner.
+  // `install()` fetches each on demand (concurrently), caches it, and returns
+  // its path for a wrapper's `.toolPath(...)`. Codecov publishes a rolling
+  // artifact per version, so no `checksum` is pinned here; when a tool ships a
+  // stable per-platform hash, add
+  // `.checksum(({ os, arch }) => sums[`${os}-${arch}`])` to verify and cache it
+  // (see docs/installing-tools.md).
+  tools = toolchain((t) =>
+    t.tool((s) =>
+      s
+        .name("codecov")
+        .destDir(TOOLS_ROOT)
+        // Codecov ships a standalone CLI binary per platform, on its own CDN.
+        // Its directory names (macos/linux/windows) are exactly Zuke's `os`.
+        .url((p) =>
+          `https://cli.codecov.io/${CODECOV_CLI_VERSION}/${p.os}/codecov${
+            p.os === "windows" ? ".exe" : ""
+          }`
+        )
+    )
+  );
+
   // Publish the coverage report to Codecov, dogfooding @zuke/codecov. True to
-  // Zuke's model, the build owns its own tooling: it downloads the Codecov CLI
-  // with `installRelease` (no global install, no extra CI step) and points the
-  // wrapper at it. Depends on `coverage`, so it has a fresh `cov.lcov`. Skips
-  // with a message when the token is absent (local runs, fork PRs).
+  // Zuke's model, the build owns its own tooling: it provisions the Codecov CLI
+  // from the `tools` toolchain above (no global install, no extra CI step) and
+  // points the wrapper at it. Depends on `coverage`, so it has a fresh
+  // `cov.lcov`. Skips with a message when the token is absent (local, fork PRs).
   coverageUpload = target()
     .description("Upload the coverage report to Codecov")
     .dependsOn(this.coverage)
@@ -394,21 +417,11 @@ class ZukeBuild extends Build {
         );
         return;
       }
-      // Codecov ships a standalone CLI binary per platform; fetch the pinned
-      // version on demand (over HTTPS, from Codecov's own CDN).
-      const bin = await installRelease({
-        name: "codecov",
-        destDir: TOOLS_ROOT,
-        url: ({ os }) => {
-          const platform = os === "darwin"
-            ? "macos"
-            : os === "windows"
-            ? "windows"
-            : "linux";
-          const file = os === "windows" ? "codecov.exe" : "codecov";
-          return `https://cli.codecov.io/${CODECOV_CLI_VERSION}/${platform}/${file}`;
-        },
-      });
+      // Provision the CLI from the declared toolchain (fetched on demand).
+      const bin = (await this.tools.install()).get("codecov");
+      if (bin === undefined) {
+        throw new Error("codecov was not provisioned by the toolchain.");
+      }
       // The token rides through the masked `.env(...)` chainer, never argv;
       // fail-on-error makes a failed upload loud.
       await CodecovTasks.upload((s) =>

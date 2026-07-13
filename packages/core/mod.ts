@@ -31,7 +31,15 @@ export {
   discoverTargets,
   type TargetStatus,
 } from "./src/build.ts";
-export { type CiHost, ciHost, detectCiHost, isCI } from "./src/host.ts";
+export {
+  type Architecture,
+  type CiHost,
+  ciHost,
+  detectCiHost,
+  isCI,
+  type OperatingSystem,
+  operatingSystem,
+} from "./src/host.ts";
 export {
   type Condition,
   Group,
@@ -149,7 +157,17 @@ export {
   type InstallPlatform,
   installRelease,
   type InstallReleaseOptions,
+  type Platform,
 } from "./src/install.ts";
+export {
+  DEFAULT_TOOLS_DIR,
+  Toolchain,
+  toolchain,
+  type ToolchainInstallOptions,
+  ToolInstallSettings,
+  ToolTasks,
+  type ToolTasksApi,
+} from "./src/tool.ts";
 export {
   cicd,
   type CiConcurrency,

@@ -4,7 +4,9 @@ import {
   hostPlatform,
   type InstallPlatform,
   installRelease,
+  type Platform,
 } from "../src/install.ts";
+import { operatingSystem } from "../src/host.ts";
 import { createTarGzip } from "../src/compression.ts";
 
 /**
@@ -28,11 +30,39 @@ function fakeDownload(
   };
 }
 
-Deno.test("hostPlatform reflects Deno.build", () => {
-  assertEquals(hostPlatform(), {
-    os: Deno.build.os,
-    arch: Deno.build.arch,
-  });
+Deno.test("hostPlatform reports a normalised os and labels the os/arch", () => {
+  const p = hostPlatform();
+  assertEquals(p.os, operatingSystem()); // "macos", not "darwin"
+  assertEquals(p.arch, Deno.build.arch);
+  // A label with no alias falls back to the value itself…
+  assertEquals(p.osLabel(), operatingSystem());
+  assertEquals(p.archLabel(), Deno.build.arch);
+  // …and an alias for the current os/arch is applied.
+  assertEquals(p.osLabel({ [operatingSystem()]: "mapped" }), "mapped");
+  assertEquals(p.archLabel({ [Deno.build.arch]: "mapped" }), "mapped");
+});
+
+Deno.test("the url callback receives a normalised, labelled Platform", async () => {
+  const dir = await Deno.makeTempDir();
+  const seen: { url?: string } = {};
+  try {
+    // A foreign platform so the labels are deterministic regardless of host.
+    const bin = await installRelease({
+      name: "labelled",
+      destDir: dir,
+      platform: { os: "macos", arch: "aarch64" },
+      // macOS-as-"darwin" is a common tool convention; arch remaps too.
+      url: (p) =>
+        `https://example.com/${p.osLabel({ macos: "darwin" })}-${
+          p.archLabel({ aarch64: "arm64" })
+        }`,
+      download: fakeDownload("x", seen),
+    });
+    assertEquals(seen.url, "https://example.com/darwin-arm64");
+    assertEquals(bin.name, "labelled"); // macos → no .exe
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
 });
 
 Deno.test("installRelease (raw) downloads the binary and returns its path", async () => {
@@ -49,9 +79,10 @@ Deno.test("installRelease (raw) downloads the binary and returns its path", asyn
     // `bin.path` is normalised to forward slashes; the raw temp dir is not on
     // Windows, so assert the suffix rather than the full string.
     assertEquals(bin.path.endsWith(`/mytool${EXE}`), true);
+    // The callback receives the normalised os (macos, not darwin).
     assertEquals(
       seen.url,
-      `https://example.com/mytool-${Deno.build.os}-${Deno.build.arch}`,
+      `https://example.com/mytool-${operatingSystem()}-${Deno.build.arch}`,
     );
     const contents = new TextDecoder().decode(await Deno.readFile(String(bin)));
     assertEquals(contents.includes("echo hi"), true);
@@ -210,5 +241,285 @@ Deno.test("installRelease cleans up its scratch dir even when extraction fails",
     );
   } finally {
     await Deno.remove(root, { recursive: true });
+  }
+});
+
+/** Hex SHA-256 of bytes or text, matching installRelease's own hashing. */
+async function sha256Hex(input: Uint8Array | string): Promise<string> {
+  const bytes = typeof input === "string"
+    ? new TextEncoder().encode(input)
+    : input;
+  const digest = await crypto.subtle.digest("SHA-256", new Uint8Array(bytes));
+  return Array.from(
+    new Uint8Array(digest),
+    (b) => b.toString(16).padStart(2, "0"),
+  )
+    .join("");
+}
+
+/** Whether a path exists on disk. */
+async function exists(path: string): Promise<boolean> {
+  try {
+    await Deno.lstat(path);
+    return true;
+  } catch (error) {
+    if (error instanceof Deno.errors.NotFound) return false;
+    throw error;
+  }
+}
+
+Deno.test("installRelease verifies a matching checksum and records a marker", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const body = "#!/bin/sh\necho hi\n";
+    const bin = await installRelease({
+      name: "verified",
+      destDir: dir,
+      url: () => "https://example.com/verified",
+      download: fakeDownload(body),
+      checksum: await sha256Hex(body),
+    });
+    assertEquals(await exists(String(bin)), true);
+    assertEquals(await exists(`${String(bin)}.install.json`), true); // marker written
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("installRelease rejects a checksum mismatch and installs nothing", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const error = await assertRejects(() =>
+      installRelease({
+        name: "tampered",
+        destDir: dir,
+        url: () => "https://example.com/tampered",
+        download: fakeDownload("real bytes"),
+        checksum: "0".repeat(64), // definitely wrong
+      })
+    );
+    assertEquals(error.message.includes("checksum mismatch"), true);
+    assertEquals(await exists(`${dir}/tampered${EXE}`), false); // no unverified binary left behind
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("installRelease reuses a cached install without downloading again", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const body = "binary";
+    let calls = 0;
+    const counting: DownloadFn = async (_url, dest) => {
+      calls++;
+      await Deno.writeFile(String(dest), new TextEncoder().encode(body));
+    };
+    const spec = {
+      name: "cached",
+      destDir: dir,
+      url: () => "https://example.com/cached",
+      download: counting,
+      checksum: await sha256Hex(body),
+    };
+    const first = await installRelease(spec);
+    const second = await installRelease(spec);
+    assertEquals(calls, 1); // second call is a cache hit
+    assertEquals(String(first), String(second));
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("installRelease re-downloads when the cached binary was tampered with", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const body = "trusted-binary";
+    let calls = 0;
+    const counting: DownloadFn = async (_url, dest) => {
+      calls++;
+      await Deno.writeFile(String(dest), new TextEncoder().encode(body));
+    };
+    const spec = {
+      name: "guarded",
+      destDir: dir,
+      url: () => "https://example.com/guarded",
+      download: counting,
+      checksum: await sha256Hex(body),
+    };
+    const bin = await installRelease(spec);
+    // Swap the installed binary while leaving the marker intact.
+    await Deno.writeTextFile(String(bin), "evil-binary");
+    await installRelease(spec);
+    assertEquals(calls, 2); // the on-disk binary no longer matches → re-fetched
+    assertEquals(
+      new TextDecoder().decode(await Deno.readFile(String(bin))),
+      body, // the trusted binary was restored
+    );
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("installRelease re-downloads when the cache marker is corrupt", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const body = "payload";
+    let calls = 0;
+    const counting: DownloadFn = async (_url, dest) => {
+      calls++;
+      await Deno.writeFile(String(dest), new TextEncoder().encode(body));
+    };
+    const spec = {
+      name: "corrupt",
+      destDir: dir,
+      url: () => "https://example.com/corrupt",
+      download: counting,
+      checksum: await sha256Hex(body),
+    };
+    const bin = await installRelease(spec);
+    await Deno.writeTextFile(`${String(bin)}.install.json`, "not json{"); // corrupt marker
+    await installRelease(spec);
+    assertEquals(calls, 2); // an unreadable marker is treated as a miss
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("installRelease re-downloads when the pinned checksum changes", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    let calls = 0;
+    const versioned = (body: string): DownloadFn => async (_url, dest) => {
+      calls++;
+      await Deno.writeFile(String(dest), new TextEncoder().encode(body));
+    };
+    await installRelease({
+      name: "bump",
+      destDir: dir,
+      url: () => "u",
+      download: versioned("v1"),
+      checksum: await sha256Hex("v1"),
+    });
+    await installRelease({
+      name: "bump",
+      destDir: dir,
+      url: () => "u",
+      download: versioned("v2"),
+      checksum: await sha256Hex("v2"), // different pin → not a cache hit
+    });
+    assertEquals(calls, 2);
+    assertEquals(
+      new TextDecoder().decode(await Deno.readFile(`${dir}/bump${EXE}`)),
+      "v2",
+    );
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("installRelease (tar.gz) verifies the archive checksum", async () => {
+  const dir = await Deno.makeTempDir();
+  const src = await Deno.makeTempDir();
+  try {
+    await Deno.writeTextFile(`${src}/tool`, "#!/bin/sh\n");
+    await createTarGzip(["tool"], `${src}/archive.tar.gz`, { cwd: src });
+    const archive = await Deno.readFile(`${src}/archive.tar.gz`);
+    const download: DownloadFn = async (_url, dest) => {
+      await Deno.writeFile(String(dest), archive);
+    };
+
+    const bin = await installRelease({
+      name: "tool",
+      destDir: dir,
+      archive: "tar.gz",
+      url: () => "https://example.com/archive.tar.gz",
+      download,
+      checksum: await sha256Hex(archive),
+    });
+    assertEquals(await exists(String(bin)), true);
+
+    const bad = await assertRejects(() =>
+      installRelease({
+        name: "tool2",
+        destDir: dir,
+        archive: "tar.gz",
+        url: () => "https://example.com/archive.tar.gz",
+        download,
+        checksum: "1".repeat(64),
+      })
+    );
+    assertEquals(bad.message.includes("checksum mismatch"), true);
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+    await Deno.remove(src, { recursive: true });
+  }
+});
+
+Deno.test("installRelease resolves a per-platform checksum from the platform", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const body = "arm64-binary";
+    const sum = await sha256Hex(body);
+    let seen: Platform | undefined;
+    const bin = await installRelease({
+      name: "pinned",
+      destDir: dir,
+      platform: { os: "linux", arch: "aarch64" },
+      url: ({ arch }) => `https://example.com/${arch}`,
+      download: fakeDownload(body),
+      checksum: (platform) => {
+        seen = platform;
+        return sum; // pinned for this platform
+      },
+    });
+    assertEquals(seen?.os, "linux"); // resolver saw the platform
+    assertEquals(seen?.arch, "aarch64");
+    assertEquals(await exists(String(bin)), true); // resolved checksum verified + installed
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("installRelease rejects a malformed checksum before downloading", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    let downloaded = false;
+    const err = await assertRejects(() =>
+      installRelease({
+        name: "bad",
+        destDir: dir,
+        url: () => "https://example.com/bad",
+        download: async (_url, dest) => {
+          downloaded = true;
+          await Deno.writeFile(String(dest), new Uint8Array());
+        },
+        checksum: "not-a-valid-sha256", // wrong length / non-hex
+      })
+    );
+    assertEquals(err.message.includes("invalid checksum"), true);
+    assertEquals(downloaded, false); // rejected before any network access
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("installRelease reports a clear error when a resolver has no checksum for the platform", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const sums: Record<string, string> = {}; // this platform isn't mapped
+    const err = await assertRejects(() =>
+      installRelease({
+        name: "unmapped",
+        destDir: dir,
+        platform: { os: "linux", arch: "x86_64" },
+        url: () => "https://example.com/unmapped",
+        download: fakeDownload("x"),
+        checksum: ({ os, arch }) => sums[`${os}-${arch}`],
+      })
+    );
+    assertEquals(err.message.includes("invalid checksum"), true);
+    assertEquals(err.message.includes("linux/x86_64"), true); // names the platform
+  } finally {
+    await Deno.remove(dir, { recursive: true });
   }
 });
