@@ -151,6 +151,13 @@ export {
   type InstallReleaseOptions,
 } from "./src/install.ts";
 export {
+  DEFAULT_TOOLS_DIR,
+  Toolchain,
+  toolchain,
+  type ToolchainInstallOptions,
+  type ToolSpec,
+} from "./src/toolchain.ts";
+export {
   cicd,
   type CiConcurrency,
   CiFile,

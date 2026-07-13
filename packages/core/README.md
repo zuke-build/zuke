@@ -312,6 +312,11 @@ async function installRelease(options: InstallReleaseOptions): Promise<AbsoluteP
   Download and install a release binary, returning its {@link AbsolutePath}.
   The path is ready to hand to a wrapper's `.toolPath(...)` (or `CmdTasks`).
 
+  With a {@link InstallReleaseOptions.checksum}, the download is verified before
+  anything is installed, and a matching prior install is reused without
+  downloading again — so pinning a checksum makes the install both hermetic
+  (tamper-evident) and cached.
+
 function isCI(): boolean
   Whether the build appears to be running in a CI environment.
 
@@ -387,6 +392,14 @@ function tar(entries: TarEntry[]): Uint8Array
 function target(): TargetBuilder
   Create a new, empty target builder.
 
+function toolchain(configure?: (t: Toolchain) => void): Toolchain
+  Create a {@link Toolchain}. Configure it inline with a callback, or chain
+  {@link Toolchain.tool} on the returned instance.
+
+  ```ts
+  const tools = toolchain((t) => t.tool(helmSpec).tool(kubectlSpec));
+  ```
+
 function untar(archive: Uint8Array): TarEntry[]
   Extract the entries from a `ustar` archive (regular files only).
 
@@ -401,6 +414,9 @@ const AnnounceTasks: AnnounceTasksApi
 
 const CONFIG_FILE: "zuke.json"
   The Zuke config file name; its presence marks a repository root.
+
+const DEFAULT_TOOLS_DIR: ".zuke/tools"
+  The default directory a {@link Toolchain} installs tools into.
 
 const FileTasks: FileTasksApi
   Filesystem task functions for build scripts.
@@ -855,6 +871,19 @@ class TeamsAnnouncementSettings extends AnnouncementSettings
   override protected payload(): Record<string, unknown>
   override protected sendBot(): Promise<void>
 
+class Toolchain
+  A declared set of external tools. Add tools with {@link Toolchain.tool} and
+  fetch them all with {@link Toolchain.install}. Build one with {@link toolchain}.
+
+  tool(spec: ToolSpec): this
+    Add a tool to the set. Chainable.
+  get tools(): readonly ToolSpec[]
+    The declared tools, in declaration order.
+  async install(options: ToolchainInstallOptions): Promise<Map<string, AbsolutePath>>
+    Install every declared tool concurrently — reusing a cached copy where a
+    pinned checksum matches — and return a map of tool name to its installed
+    {@link AbsolutePath}.
+
 interface AbsolutePath
   An immutable, absolute filesystem path with a fluent API.
 
@@ -1298,6 +1327,14 @@ interface InstallReleaseOptions
   download?: DownloadFn
     The download implementation. Defaults to {@link httpDownload}; override it
     to unit-test without network access.
+  checksum?: string
+    The expected SHA-256 (lowercase hex) of the downloaded artifact — the
+    `.tar.gz` for an archive, or the binary itself for a `"raw"` download; this
+    is what release pages publish as the checksum. When set, the download is
+    verified against it (a mismatch throws and nothing is installed) and the
+    checksum doubles as a cache key: a prior install whose recorded checksum
+    matches is reused without downloading again. Omit it and the tool is
+    downloaded every time and not verified.
 
 interface OpenCacheOptions
   Optional extras for {@link openCache}: a remote store and a warning sink.
@@ -1450,6 +1487,14 @@ interface TargetReport
   status: TargetStatus
   ms: number
 
+interface ToolchainInstallOptions
+  Options for {@link Toolchain.install}.
+
+  destDir?: PathLike
+    Where tools without their own `destDir` are installed. Defaults to `.zuke/tools`.
+  download?: DownloadFn
+    The download implementation for every tool (defaults per {@link installRelease}).
+
 interface Validation
   A check plugged into a target with {@link TargetBuilder.validateBefore} or
   {@link TargetBuilder.validateAfter}. The target decides when it runs; the
@@ -1509,6 +1554,11 @@ type TargetFn = () => void | Promise<void>
 
 type TargetStatus = "passed" | "failed" | "skipped" | "cached"
   The outcome of a single target, reported in the summary and lifecycle hooks.
+
+type ToolSpec = Omit<InstallReleaseOptions, "destDir" | "download"> & { destDir?: PathLike; }
+  One tool in a {@link Toolchain}: an {@link installRelease} spec whose
+  `destDir` and `download` are supplied by {@link Toolchain.install} (a per-tool
+  `destDir` may still override the toolchain's).
 ````
 
 </details>

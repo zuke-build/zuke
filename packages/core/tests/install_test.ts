@@ -212,3 +212,159 @@ Deno.test("installRelease cleans up its scratch dir even when extraction fails",
     await Deno.remove(root, { recursive: true });
   }
 });
+
+/** Hex SHA-256 of bytes or text, matching installRelease's own hashing. */
+async function sha256Hex(input: Uint8Array | string): Promise<string> {
+  const bytes = typeof input === "string"
+    ? new TextEncoder().encode(input)
+    : input;
+  const digest = await crypto.subtle.digest("SHA-256", new Uint8Array(bytes));
+  return Array.from(
+    new Uint8Array(digest),
+    (b) => b.toString(16).padStart(2, "0"),
+  )
+    .join("");
+}
+
+/** Whether a path exists on disk. */
+async function exists(path: string): Promise<boolean> {
+  try {
+    await Deno.lstat(path);
+    return true;
+  } catch (error) {
+    if (error instanceof Deno.errors.NotFound) return false;
+    throw error;
+  }
+}
+
+Deno.test("installRelease verifies a matching checksum and records a marker", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const body = "#!/bin/sh\necho hi\n";
+    const bin = await installRelease({
+      name: "verified",
+      destDir: dir,
+      url: () => "https://example.com/verified",
+      download: fakeDownload(body),
+      checksum: await sha256Hex(body),
+    });
+    assertEquals(await exists(String(bin)), true);
+    assertEquals(await exists(`${String(bin)}.sha256`), true); // marker written
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("installRelease rejects a checksum mismatch and installs nothing", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const error = await assertRejects(() =>
+      installRelease({
+        name: "tampered",
+        destDir: dir,
+        url: () => "https://example.com/tampered",
+        download: fakeDownload("real bytes"),
+        checksum: "0".repeat(64), // definitely wrong
+      })
+    );
+    assertEquals(error.message.includes("checksum mismatch"), true);
+    assertEquals(await exists(`${dir}/tampered${EXE}`), false); // no unverified binary left behind
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("installRelease reuses a cached install without downloading again", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const body = "binary";
+    let calls = 0;
+    const counting: DownloadFn = async (_url, dest) => {
+      calls++;
+      await Deno.writeFile(String(dest), new TextEncoder().encode(body));
+    };
+    const spec = {
+      name: "cached",
+      destDir: dir,
+      url: () => "https://example.com/cached",
+      download: counting,
+      checksum: await sha256Hex(body),
+    };
+    const first = await installRelease(spec);
+    const second = await installRelease(spec);
+    assertEquals(calls, 1); // second call is a cache hit
+    assertEquals(String(first), String(second));
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("installRelease re-downloads when the pinned checksum changes", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    let calls = 0;
+    const versioned = (body: string): DownloadFn => async (_url, dest) => {
+      calls++;
+      await Deno.writeFile(String(dest), new TextEncoder().encode(body));
+    };
+    await installRelease({
+      name: "bump",
+      destDir: dir,
+      url: () => "u",
+      download: versioned("v1"),
+      checksum: await sha256Hex("v1"),
+    });
+    await installRelease({
+      name: "bump",
+      destDir: dir,
+      url: () => "u",
+      download: versioned("v2"),
+      checksum: await sha256Hex("v2"), // different pin → not a cache hit
+    });
+    assertEquals(calls, 2);
+    assertEquals(
+      new TextDecoder().decode(await Deno.readFile(`${dir}/bump${EXE}`)),
+      "v2",
+    );
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("installRelease (tar.gz) verifies the archive checksum", async () => {
+  const dir = await Deno.makeTempDir();
+  const src = await Deno.makeTempDir();
+  try {
+    await Deno.writeTextFile(`${src}/tool`, "#!/bin/sh\n");
+    await createTarGzip(["tool"], `${src}/archive.tar.gz`, { cwd: src });
+    const archive = await Deno.readFile(`${src}/archive.tar.gz`);
+    const download: DownloadFn = async (_url, dest) => {
+      await Deno.writeFile(String(dest), archive);
+    };
+
+    const bin = await installRelease({
+      name: "tool",
+      destDir: dir,
+      archive: "tar.gz",
+      url: () => "https://example.com/archive.tar.gz",
+      download,
+      checksum: await sha256Hex(archive),
+    });
+    assertEquals(await exists(String(bin)), true);
+
+    const bad = await assertRejects(() =>
+      installRelease({
+        name: "tool2",
+        destDir: dir,
+        archive: "tar.gz",
+        url: () => "https://example.com/archive.tar.gz",
+        download,
+        checksum: "1".repeat(64),
+      })
+    );
+    assertEquals(bad.message.includes("checksum mismatch"), true);
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+    await Deno.remove(src, { recursive: true });
+  }
+});
