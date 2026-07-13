@@ -275,13 +275,14 @@ steps:
 
 ## Troubleshooting
 
-| Symptom                                                 | Likely cause & fix                                                                                                                                                                                            |
-| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `checksum mismatch … expected X, got Y`                 | The pin doesn't match the downloaded bytes. Confirm you used the hash for **this platform's** artifact (they differ per OS/arch), and that the version in the URL matches the version the checksum came from. |
-| The install "works" but the tool is a different version | No `checksum`, so a stale cached binary from a previous `destDir` may be in use — pin a checksum (the version bump becomes a cache miss) or clear `.zuke/`.                                                   |
-| `No such file` when copying from a `tar.gz`             | `binaryPath` doesn't match the archive layout. Unpack the tarball locally to see where the binary sits (e.g. `linux-amd64/helm`).                                                                             |
-| Zip download fails to unpack                            | Only `raw` and `tar.gz` are supported today. For a `.zip`-only release, download the raw binary if one is published, or unpack it yourself in the target.                                                     |
-| Wrapper still reports the tool missing                  | Pass the returned path to `.toolPath(String(bin))` — without it, the wrapper looks on `PATH`.                                                                                                                 |
+| Symptom                                                  | Likely cause & fix                                                                                                                                                                                                    |
+| -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `checksum mismatch … expected X, got Y`                  | The pin doesn't match the downloaded bytes. Confirm you used the hash for **this platform's** artifact (they differ per OS/arch), and that the version in the URL matches the version the checksum came from.         |
+| `invalid checksum … expected a 64-character hex SHA-256` | The `checksum` isn't a well-formed SHA-256 — a typo, a truncated value, a different algorithm, or a per-platform resolver that returned nothing for the current OS/arch. Supply the 64-hex SHA-256 for this platform. |
+| The install "works" but the tool is a different version  | No `checksum`, so a stale cached binary from a previous `destDir` may be in use — pin a checksum (the version bump becomes a cache miss) or clear `.zuke/`.                                                           |
+| `No such file` when copying from a `tar.gz`              | `binaryPath` doesn't match the archive layout. Unpack the tarball locally to see where the binary sits (e.g. `linux-amd64/helm`).                                                                                     |
+| Zip download fails to unpack                             | Only `raw` and `tar.gz` are supported today. For a `.zip`-only release, download the raw binary if one is published, or unpack it yourself in the target.                                                             |
+| Wrapper still reports the tool missing                   | Pass the returned path to `.toolPath(String(bin))` — without it, the wrapper looks on `PATH`.                                                                                                                         |
 
 ## API reference
 

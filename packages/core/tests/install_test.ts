@@ -392,3 +392,47 @@ Deno.test("installRelease resolves a per-platform checksum from the platform", a
     await Deno.remove(dir, { recursive: true });
   }
 });
+
+Deno.test("installRelease rejects a malformed checksum before downloading", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    let downloaded = false;
+    const err = await assertRejects(() =>
+      installRelease({
+        name: "bad",
+        destDir: dir,
+        url: () => "https://example.com/bad",
+        download: async (_url, dest) => {
+          downloaded = true;
+          await Deno.writeFile(String(dest), new Uint8Array());
+        },
+        checksum: "not-a-valid-sha256", // wrong length / non-hex
+      })
+    );
+    assertEquals(err.message.includes("invalid checksum"), true);
+    assertEquals(downloaded, false); // rejected before any network access
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("installRelease reports a clear error when a resolver has no checksum for the platform", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const sums: Record<string, string> = {}; // this platform isn't mapped
+    const err = await assertRejects(() =>
+      installRelease({
+        name: "unmapped",
+        destDir: dir,
+        platform: { os: "linux", arch: "x86_64" },
+        url: () => "https://example.com/unmapped",
+        download: fakeDownload("x"),
+        checksum: ({ os, arch }) => sums[`${os}-${arch}`],
+      })
+    );
+    assertEquals(err.message.includes("invalid checksum"), true);
+    assertEquals(err.message.includes("linux/x86_64"), true); // names the platform
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});

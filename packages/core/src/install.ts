@@ -134,13 +134,28 @@ async function cachedInstall(
   return await readFileOrNull(String(target)) !== null;
 }
 
-/** Resolve the expected checksum for `platform` (a literal or a resolver), lowercased. */
+/**
+ * Resolve the expected checksum for `platform` (a literal or a resolver) and
+ * validate its shape. `installRelease` only computes SHA-256, so a checksum that
+ * isn't 64 hex characters could never match — reject it up front with an
+ * actionable message rather than a confusing "mismatch" (or, for a resolver that
+ * returns nothing for the platform, a bare `TypeError`).
+ */
 function resolveChecksum(
   checksum: InstallReleaseOptions["checksum"],
   platform: InstallPlatform,
 ): string | undefined {
   if (checksum === undefined) return undefined;
   const value = typeof checksum === "function" ? checksum(platform) : checksum;
+  if (typeof value !== "string" || !/^[0-9a-fA-F]{64}$/.test(value)) {
+    throw new Error(
+      `invalid checksum for ${platform.os}/${platform.arch}: expected a ` +
+        `64-character hex SHA-256, got ${
+          JSON.stringify(value)
+        }. Use the SHA-256 ` +
+        `the tool's release publishes for this platform.`,
+    );
+  }
   return value.toLowerCase();
 }
 
