@@ -79,9 +79,10 @@ Deno.test("installRelease (raw) downloads the binary and returns its path", asyn
     // `bin.path` is normalised to forward slashes; the raw temp dir is not on
     // Windows, so assert the suffix rather than the full string.
     assertEquals(bin.path.endsWith(`/mytool${EXE}`), true);
+    // The callback receives the normalised os (macos, not darwin).
     assertEquals(
       seen.url,
-      `https://example.com/mytool-${Deno.build.os}-${Deno.build.arch}`,
+      `https://example.com/mytool-${operatingSystem()}-${Deno.build.arch}`,
     );
     const contents = new TextDecoder().decode(await Deno.readFile(String(bin)));
     assertEquals(contents.includes("echo hi"), true);
