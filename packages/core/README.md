@@ -106,6 +106,19 @@ function absolutePath(first: string, ...rest: string[]): AbsolutePath
   @param rest
       Additional segments to append.
 
+function affectedTargets(order: readonly TargetBuilder[], changed: readonly string[]): Set<TargetBuilder>
+  Compute the set of targets in `order` affected by the given `changed` files.
+
+  `order` must be a valid execution order (dependencies before dependents, as
+  produced by {@link plan}/{@link planGraph}) so each target's dependencies are
+  already decided when it is visited. A target is affected when its own inputs
+  cover a changed file, when it declares no inputs (unprovable — treated as
+  affected), when a dependency is affected, or when an affected target triggers
+  it.
+
+async function archiveOutputs(outputs: readonly string[], host: OutputHost): Promise<Uint8Array>
+  Archive a target's `outputs` into a gzipped tar of their current contents.
+
 function assert(condition: unknown, message: string): asserts condition
   Assert that `condition` is truthy, narrowing it for the rest of the scope.
   Throws an {@link AssertionError} with `message` otherwise.
@@ -193,6 +206,12 @@ function discoverTargets(build: Build): Map<string, TargetBuilder>
       if two properties reference the same builder instance under different
       names (a programming error that would corrupt naming).
 
+function envCacheStore(readEnv: (name: string) => string | undefined): RemoteCacheStore | undefined
+  Resolve a {@link RemoteCacheStore} from the environment, or `undefined` when
+  none is configured. `ZUKE_REMOTE_CACHE_URL` (with an optional
+  `ZUKE_REMOTE_CACHE_TOKEN`) selects an {@link HttpCacheStore}; otherwise
+  `ZUKE_REMOTE_CACHE_DIR` selects a {@link FileSystemCacheStore}.
+
 function envVarName(name: string): string
   The environment variable for a parameter: its path in SCREAMING_SNAKE_CASE.
 
@@ -216,6 +235,20 @@ async function extractTarGzip(src: PathLike, destDir: PathLike): Promise<void>
 function fail(message: string): never
   Throw an {@link AssertionError} with `message`. Never returns.
 
+function fanOutPipeline(targets: Map<string, TargetBuilder>, base: CiPipeline, options: FanOutOptions): CiPipeline
+  Expand a build's target graph into a fanned-out pipeline: one CI job per
+  runnable target, wired together with `needs:` edges that mirror the targets'
+  `dependsOn` dependencies — so independent targets run in parallel and a
+  target's job waits for its prerequisites. Each job runs just its own target;
+  upstream outputs are shared through the {@link "./remote_cache.ts" | remote
+  cache}, so configure one (e.g. `ZUKE_REMOTE_CACHE_*` on the jobs) to avoid
+  rebuilding dependencies in every job.
+
+  `base` contributes the pipeline-level fields (name, triggers, permissions,
+  concurrency); its `jobs` are ignored in favour of the generated ones. Targets
+  with no body, and (unless {@link FanOutOptions.includeUnlisted}) `unlisted`
+  targets, are omitted, and `needs` edges to omitted targets are dropped.
+
 function findCycle(targets: Map<string, TargetBuilder>): string[] | null
   Detect a cycle in the hard-dependency (`dependsOn`) graph across all targets.
 
@@ -227,6 +260,12 @@ function generateCi(pipeline: CiPipeline, provider: CiProvider): string
   `.github/workflows/*.yml`, `.gitlab-ci.yml`, `azure-pipelines.yml`, or
   `bitbucket-pipelines.yml`. The pipeline may be empty (`{}`) to accept every
   default.
+
+async function gitChangedFiles(base: string, run: (args: string[]) => Promise<string>): Promise<string[]>
+  List the files changed since `base` (default `HEAD`) via git: tracked changes
+  versus `base` plus untracked files not covered by `.gitignore`. `run` invokes
+  git and returns stdout (defaults to a real `git` subprocess); override it to
+  test without a repository.
 
 async function glob(pattern: string, options: GlobOptions): Promise<string[]>
   Expand a glob pattern to the matching paths, relative to `cwd`, sorted for
@@ -294,6 +333,10 @@ function plan(root: TargetBuilder): TargetBuilder[]
       if the planned graph contains a cycle (which can happen
       via soft edges even when the hard graph is acyclic).
 
+function remoteCacheKey(name: string, fingerprint: string): string
+  The store key for a target's outputs: its name and input `fingerprint`. The
+  name is sanitised so the key is safe as a filename and a URL path segment.
+
 function repoRoot(...segments: string[]): AbsolutePath
   The absolute path of the repository root — the directory containing
   {@link CONFIG_FILE} — with any `segments` appended. The returned value is an
@@ -310,6 +353,19 @@ function repoRoot(...segments: string[]): AbsolutePath
 
   @throws
       if no {@link CONFIG_FILE} is found in the cwd or any ancestor.
+
+function resolveRemoteStore(option: RemoteCacheStore | false | undefined, declared: RemoteCacheStore | undefined, readEnv: (name: string) => string | undefined): RemoteCacheStore | undefined
+  Pick the remote store for a run by precedence: an explicit `option` wins
+  (`false` disables the remote cache entirely), then a `declared` store (a
+  build's `remoteCache()` override), then the {@link envCacheStore} environment
+  fallback.
+
+async function restoreOutputs(artifact: Uint8Array, host: OutputHost): Promise<string[]>
+  Restore the files in `artifact` (a gzipped tar produced by
+  {@link archiveOutputs}) to disk, returning the paths written. Entry names are
+  validated first: an absolute path or one escaping the workspace (`..`) is
+  rejected before anything is written, so a malicious archive can't plant files
+  outside the current directory.
 
 async function run(BuildClass: new () => Build, options: RunOptions): Promise<void>
   Public entry point. Instantiate the build, parse arguments, run, and set the
@@ -462,6 +518,22 @@ class Build
       lint = target().executes(() => DenoTasks.lint()); // healed globally
     }
     ```
+  remoteCache(): RemoteCacheStore | undefined
+    The {@link "./remote_cache.ts".RemoteCacheStore} that shares target
+    {@link "./target.ts".TargetBuilder.outputs} across machines. Override to
+    declare one in code; the default is none, and — unless overridden — the
+    executor falls back to {@link "./remote_cache.ts".envCacheStore} (the
+    `ZUKE_REMOTE_CACHE_*` environment variables). Applies to targets that
+    declare both `inputs` and `outputs`.
+
+    ```ts
+    class CI extends Build {
+      override remoteCache() {
+        return new HttpCacheStore({ url: this.cacheUrl.value, token: this.cacheToken.value });
+      }
+      build = target().inputs("src").outputs("dist").executes(...);
+    }
+    ```
 
 class CiFile
   A declared CI file. Assign one (via {@link cicd}) to a build field and Zuke
@@ -473,9 +545,14 @@ class CiFile
   readonly path: string
     The output path.
   readonly pipeline: CiPipeline
-    The pipeline this file renders.
+    The base pipeline (pipeline-level fields, and the jobs unless fanning out).
+  readonly fanOut?: FanOutOptions
+    Fan-out options, when this file expands the build's targets into jobs.
+  pipelineFor(targets: Map<string, TargetBuilder>): CiPipeline
+    The pipeline this file renders. With fan-out, the build's `targets` are
+    expanded into one job per target; otherwise the declared {@link pipeline}.
   render(): string
-    Render the file's YAML content.
+    Render the file's YAML content (the base pipeline; fan-out is resolved at discovery).
 
 class DiscordAnnouncementSettings extends AnnouncementSettings
   Fluent settings for {@link AnnounceTasksApi.discord}. Bot mode
@@ -483,6 +560,17 @@ class DiscordAnnouncementSettings extends AnnouncementSettings
 
   override protected payload(): Record<string, unknown>
   override protected sendBot(): Promise<void>
+
+class FileSystemCacheStore implements RemoteCacheStore
+  A {@link RemoteCacheStore} backed by a shared or mounted directory.
+
+  constructor(dir: string)
+
+    @param dir
+        The directory archives are read from and written to.
+
+  get(key: string): Promise<Uint8Array | null>
+  async put(key: string, artifact: Uint8Array): Promise<void>
 
 class GraphError extends Error
   Raised when the build graph is invalid (cycle or unknown dependency).
@@ -500,6 +588,24 @@ class Group
     Members that declared themselves part of this group, in declaration order.
   name_?: string
     Property name, assigned during discovery. Undefined until then.
+
+class HttpCacheStore implements RemoteCacheStore
+  A {@link RemoteCacheStore} backed by HTTP: `GET <url>/<key>` fetches an
+  artifact (a `404` means a miss) and `PUT <url>/<key>` stores one. Works with
+  any object store or cache server that speaks plain HTTP GET/PUT — an S3, GCS,
+  or R2 bucket behind a URL, or a self-hosted cache endpoint.
+
+  Security. The `url` (and `token`) are trusted configuration: outputs are
+  uploaded to that host and archives are extracted from it, so point it only at
+  a cache you control, and prefer a {@link "./params.ts" | secret parameter} or
+  an environment variable over a hard-coded value. On CI, restrict egress to
+  the cache host so a misconfigured or overridden URL can't exfiltrate
+  artifacts. Restored archives are always confined to the workspace (see
+  {@link restoreOutputs}), so a poisoned store cannot write outside it.
+
+  constructor(options: HttpCacheStoreOptions)
+  async get(key: string): Promise<Uint8Array | null>
+  async put(key: string, artifact: Uint8Array): Promise<void>
 
 class HttpError extends Error
   Raised when an HTTP request returns a non-2xx status.
@@ -779,6 +885,14 @@ interface AbsolutePath
   toString(): string
     The normalised path string.
 
+interface AffectedOptions
+  Configure {@link ExecuteOptions.affected}: the base revision and diff seam.
+
+  base?: string
+    The git revision to diff against. Defaults to `HEAD` (uncommitted changes).
+  changedFiles?: ChangedFilesFn
+    How to list changed files. Defaults to {@link gitChangedFiles}.
+
 interface AnnounceTasksApi
   The shape of {@link AnnounceTasks}.
 
@@ -863,6 +977,11 @@ interface CiFileSpec
     `.gitlab-ci.yml`, or `azure-pipelines.yml`).
   pipeline?: CiPipeline
     The pipeline to render. Defaults to a single `build` job that runs the build.
+  fanOut?: boolean | FanOutOptions
+    Fan the build's targets out into one CI job per target, wired by their
+    dependencies (see {@link fanOutPipeline}). `true` uses the defaults; pass
+    {@link FanOutOptions} to customise. When set, {@link pipeline} supplies the
+    pipeline-level fields (name, triggers, …) and its `jobs` are ignored.
 
 interface CiJob
   A job: a named unit of work with steps, optionally fanned out by a matrix.
@@ -1025,6 +1144,13 @@ interface ExecuteOptions
     are unchanged since the last successful run (and whose outputs still exist).
     Defaults to on; pass `false` to disable (CLI `--no-cache`). A {@link
     BuildCache} may be supplied directly (used in tests).
+  remoteCache?: RemoteCacheStore | false
+    A {@link RemoteCacheStore} that shares target {@link TargetBuilder.outputs}
+    across machines: a local cache miss restores outputs from it, and a
+    successful run uploads them. `false` disables it (CLI `--no-remote-cache`).
+    When omitted, the build's `remoteCache()` override is used, falling back to
+    the `ZUKE_REMOTE_CACHE_*` environment variables. Ignored when `cache` is a
+    supplied {@link BuildCache} or is `false`.
   params?: Record<string, string>
     Raw parameter values from the command line, keyed by parameter (property)
     name. Each declared {@link Parameter} is resolved from this map, then the
@@ -1041,6 +1167,13 @@ interface ExecuteOptions
     Plan only: resolve and print every target that would run (honouring
     `--skip` and `onlyWhen` conditions) without executing any body or touching
     the cache (CLI `--dry-run`).
+  affected?: AffectedOptions
+    Restrict the run to the targets affected by files changed since a base git
+    revision (CLI `--affected[=<base>]`). A target is affected when a changed
+    file falls inside its declared {@link TargetBuilder.inputs} or a dependency
+    is affected; a target that declares no inputs is always considered affected.
+    Unaffected targets are skipped. The base revision defaults to `HEAD`; supply
+    `changedFiles` to inject the diff (used in tests).
   github?: boolean
     Force GitHub Actions output formatting on or off. Auto-detected from the
     `GITHUB_ACTIONS` environment variable when omitted.
@@ -1051,6 +1184,27 @@ interface ExecuteOptions
     Renderer for the per-target banners and the end-of-build summary. Defaults
     to Zuke's built-in {@link defaultRenderer}; `@zuke/console` exports an
     alternative a build can inject to restyle its output.
+
+interface FanOutOptions
+  Options for {@link fanOutPipeline}: how a build's targets become parallel CI
+  jobs.
+
+  command?: (target: string) => string
+    The command a job runs for its target, given the target name. Defaults to
+    the `./zuke <target>` launcher (which bootstraps Deno). Each job runs only
+    its own target; its dependencies run in their own jobs and are shared via
+    the {@link "./remote_cache.ts" | remote cache}, so pair fan-out with one.
+  setupSteps?: CiStep[]
+    Steps prepended to every job — checkout, tool setup, cache restore. Defaults
+    to a single `actions/checkout` (rendered on GitHub; GitLab and Azure check
+    out automatically). Provide `env` for `ZUKE_REMOTE_CACHE_*` here or via
+    {@link env}.
+  runsOn?: string
+    The runner for every job (see {@link CiJob.runsOn}).
+  includeUnlisted?: boolean
+    Include targets hidden from `--list` via `.unlisted()`. Defaults to false.
+  env?: Record<string, string>
+    Environment variables set on every job (e.g. the remote-cache config).
 
 interface FileTasksApi
   The shape of {@link FileTasks}.
@@ -1096,6 +1250,16 @@ interface GlobOptions
   cwd?: string
     Directory to resolve the pattern against (default: `Deno.cwd()`).
 
+interface HttpCacheStoreOptions
+  Configuration for an {@link HttpCacheStore}.
+
+  url: string
+    The base URL keys are appended to (any trailing slash is ignored).
+  token?: string
+    A bearer token sent as `Authorization: Bearer <token>`, if set.
+  fetch?: typeof fetch
+    The `fetch` implementation; defaults to the global. Overridable for tests.
+
 interface HttpOptions
   Options shared by the HTTP helpers.
 
@@ -1134,6 +1298,28 @@ interface InstallReleaseOptions
   download?: DownloadFn
     The download implementation. Defaults to {@link httpDownload}; override it
     to unit-test without network access.
+
+interface OpenCacheOptions
+  Optional extras for {@link openCache}: a remote store and a warning sink.
+
+  remote?: RemoteCacheStore
+    A {@link RemoteCacheStore} to restore outputs from (on a local miss) and
+    upload them to (after a successful run). Applies only to targets that
+    declare {@link TargetBuilder.outputs}.
+  warn?: (message: string) => void
+    Report a non-fatal remote-cache error (a get/put failure never fails the build).
+
+interface OutputHost
+  Filesystem effects used to archive and restore a target's outputs.
+
+  readFile(path: string): Promise<Uint8Array | null>
+    File contents, or `null` if the path does not exist.
+  stat(path: string): Promise<{ isDirectory: boolean; } | null>
+    Whether a path exists and is a directory, or `null` if it is missing.
+  readDir(path: string): Promise<string[]>
+    The entry names within a directory.
+  writeFile(path: string, bytes: Uint8Array): Promise<void>
+    Write a file, creating parent directories as needed.
 
 interface Plugin
   A lifecycle observer. Every hook is optional; implement only the ones you
@@ -1184,6 +1370,17 @@ interface RemediationResult
     explained the failure).
   summary?: string
     A one-line description of what was diagnosed or done, for diagnostics.
+
+interface RemoteCacheStore
+  A content-addressed store for archived target outputs, keyed by
+  {@link remoteCacheKey}. Both operations are best-effort from the build's
+  point of view: the executor never fails a build because the store is
+  unreachable — it just rebuilds and, where it can, re-uploads.
+
+  get(key: string): Promise<Uint8Array | null>
+    Fetch the archived outputs stored under `key`, or `null` if there are none.
+  put(key: string, artifact: Uint8Array): Promise<void>
+    Store `artifact` (a gzipped tar of a target's outputs) under `key`.
 
 interface RemoveOptions
   Options for {@link FileTasksApi.remove}.
@@ -1274,6 +1471,12 @@ interface ValidationContext
 type AnnouncementLevel = "success" | "failure" | "warning" | "info"
   The outcome an announcement conveys. It drives the accent colour and the icon
   prepended to the message; defaults to `"info"`.
+
+type ChangedFilesFn = (base: string) => Promise<string[]>
+  Lists the files changed since `base` (a git revision), each path relative to
+  the repository root. The seam behind {@link ExecuteOptions.affected}; defaults
+  to {@link gitChangedFiles} and is overridable so the affected plan can be
+  tested without a real git repository.
 
 type CiHost = "github" | "gitlab" | "azure" | "bitbucket" | "local"
   The CI host a build is running on, or `"local"` when not on CI. The names

@@ -52,6 +52,8 @@ Option flags:
 - `--skip` — Skip the named dependency
 - `--parallel` — Run independent targets concurrently
 - `--no-cache` — Ignore the incremental cache
+- `--no-remote-cache` — Use the local cache only; skip the remote cache store
+- `--affected` — Run only targets affected by changes since a git base
 - `--dry-run` — Print the plan without running targets
 - `--output` — Graph output format: text or html
 - `--no-open` — With --output=html, do not open a browser

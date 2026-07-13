@@ -57,6 +57,14 @@ export const BUILTIN_FLAGS: readonly BuiltinFlag[] = [
   { name: "--skip", description: "Skip the named dependency" },
   { name: "--parallel", description: "Run independent targets concurrently" },
   { name: "--no-cache", description: "Ignore the incremental cache" },
+  {
+    name: "--no-remote-cache",
+    description: "Use the local cache only; skip the remote cache store",
+  },
+  {
+    name: "--affected",
+    description: "Run only targets affected by changes since a git base",
+  },
   { name: "--dry-run", description: "Print the plan without running targets" },
   { name: "--output", description: "Graph output format: text or html" },
   {

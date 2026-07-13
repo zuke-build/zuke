@@ -176,6 +176,20 @@ Deno.test("parseArgs reads --dry-run, defaulting to false", () => {
   assertEquals(parseArgs(["build", "--dry-run"]).dryRun, true);
 });
 
+Deno.test("parseArgs reads --affected with an optional base", () => {
+  assertEquals(parseArgs(["build"]).affected, false);
+  assertEquals(parseArgs(["build", "--affected"]).affected, true);
+  assertEquals(parseArgs(["build", "--affected"]).affectedBase, undefined);
+  const based = parseArgs(["build", "--affected=origin/main"]);
+  assertEquals(based.affected, true);
+  assertEquals(based.affectedBase, "origin/main");
+});
+
+Deno.test("parseArgs reads --no-remote-cache, defaulting to undefined", () => {
+  assertEquals(parseArgs(["build"]).remoteCache, undefined);
+  assertEquals(parseArgs(["build", "--no-remote-cache"]).remoteCache, false);
+});
+
 Deno.test("parseArgs accumulates repeated list flags comma-joined", () => {
   const flags = [
     { name: "tags", flag: "tags", boolean: false, array: true },

@@ -56,6 +56,12 @@ export {
   describeCli,
 } from "./src/describe.ts";
 export type { Plugin } from "./src/plugin.ts";
+export {
+  type AffectedOptions,
+  affectedTargets,
+  type ChangedFilesFn,
+  gitChangedFiles,
+} from "./src/affected.ts";
 export { execute, type ExecuteOptions, type Reporter } from "./src/executor.ts";
 export {
   defaultRenderer,
@@ -63,7 +69,19 @@ export {
   type TargetReport,
 } from "./src/renderer.ts";
 export type { Style } from "./src/render.ts";
-export type { BuildCache } from "./src/cache.ts";
+export type { BuildCache, OpenCacheOptions } from "./src/cache.ts";
+export {
+  archiveOutputs,
+  envCacheStore,
+  FileSystemCacheStore,
+  HttpCacheStore,
+  type HttpCacheStoreOptions,
+  type OutputHost,
+  remoteCacheKey,
+  type RemoteCacheStore,
+  resolveRemoteStore,
+  restoreOutputs,
+} from "./src/remote_cache.ts";
 export { type AbsolutePath, absolutePath, type PathLike } from "./src/path.ts";
 export { CONFIG_FILE, repoRoot } from "./src/config.ts";
 export {
@@ -142,5 +160,7 @@ export {
   type CiProvider,
   type CiStep,
   type CiTriggers,
+  type FanOutOptions,
+  fanOutPipeline,
   generateCi,
 } from "./src/ci.ts";

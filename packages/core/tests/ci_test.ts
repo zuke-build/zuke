@@ -1,12 +1,14 @@
 import { assertEquals, assertStringIncludes } from "./_assert.ts";
 import {
   cicd,
+  CiFile,
   type CiPipeline,
   discoverCiFiles,
+  fanOutPipeline,
   generateCi,
   syncCiFiles,
 } from "../src/ci.ts";
-import { Build } from "../src/build.ts";
+import { Build, discoverTargets } from "../src/build.ts";
 import { target } from "../src/target.ts";
 
 /** A small pipeline exercised across providers. */
@@ -453,4 +455,134 @@ Deno.test("syncCiFiles uses the real filesystem by default", async () => {
   } finally {
     await Deno.remove(dir, { recursive: true });
   }
+});
+
+/** A small build whose targets exercise the fan-out. */
+class FanBuild extends Build {
+  lint = target().description("Lint").executes(() => {});
+  test = target().dependsOn(this.lint).executes(() => {});
+  build = target().dependsOn(this.lint).executes(() => {});
+  hidden = target().unlisted().executes(() => {});
+  empty = target().description("no body"); // not runnable
+}
+
+Deno.test("fanOutPipeline makes one job per runnable target, wired by dependencies", () => {
+  const targets = discoverTargets(new FanBuild());
+  const pipeline = fanOutPipeline(targets);
+  const jobs = pipeline.jobs ?? [];
+  const ids = jobs.map((j) => j.id);
+  // lint/test/build only: `hidden` is unlisted and `empty` has no body.
+  assertEquals(ids, ["lint", "test", "build"]);
+
+  const test = jobs.find((j) => j.id === "test");
+  assertEquals(test?.needs, ["lint"]); // mirrors dependsOn
+  assertEquals(test?.steps?.at(-1)?.run, "./zuke test"); // default launcher command
+  assertEquals(test?.steps?.[0]?.uses, "actions/checkout@v4"); // default setup
+
+  const lint = jobs.find((j) => j.id === "lint");
+  assertEquals(lint?.needs, undefined); // no dependencies → no needs
+  assertEquals(lint?.name, "Lint"); // description becomes the job name
+});
+
+Deno.test("fanOutPipeline honours includeUnlisted and drops needs to omitted jobs", () => {
+  const targets = discoverTargets(new FanBuild());
+  const pipeline = fanOutPipeline(targets, {}, { includeUnlisted: true });
+  const ids = (pipeline.jobs ?? []).map((j) => j.id);
+  assertEquals(ids.includes("hidden"), true);
+});
+
+Deno.test("fanOutPipeline drops needs edges to excluded targets", () => {
+  class B extends Build {
+    hiddenDep = target().unlisted().executes(() => {});
+    app = target().dependsOn(this.hiddenDep).executes(() => {});
+  }
+  const pipeline = fanOutPipeline(discoverTargets(new B()));
+  const app = (pipeline.jobs ?? []).find((j) => j.id === "app");
+  assertEquals(app?.needs, undefined); // the only dep was excluded
+});
+
+Deno.test("fanOutPipeline applies command, runsOn, env, and setup overrides", () => {
+  const targets = discoverTargets(new FanBuild());
+  const pipeline = fanOutPipeline(targets, {}, {
+    command: (t) => `make ${t}`,
+    runsOn: "self-hosted",
+    env: { KEY: "v" },
+    setupSteps: [{ name: "Prep", run: "echo prep" }],
+  });
+  const lint = (pipeline.jobs ?? []).find((j) => j.id === "lint");
+  assertEquals(lint?.runsOn, "self-hosted");
+  assertEquals(lint?.env, { KEY: "v" });
+  assertEquals(lint?.steps?.[0]?.run, "echo prep");
+  assertEquals(lint?.steps?.at(-1)?.run, "make lint");
+});
+
+Deno.test("fanOutPipeline carries base pipeline fields and ignores base jobs", () => {
+  const targets = discoverTargets(new FanBuild());
+  const pipeline = fanOutPipeline(targets, {
+    name: "My CI",
+    triggers: { push: ["release"] },
+    permissions: { contents: "read" },
+    concurrency: { group: "g", cancelInProgress: true },
+    jobs: [{ id: "ignored", steps: [{ run: "nope" }] }],
+  });
+  assertEquals(pipeline.name, "My CI");
+  assertEquals(pipeline.triggers?.push, ["release"]);
+  assertEquals(pipeline.permissions, { contents: "read" });
+  assertEquals(pipeline.concurrency?.group, "g");
+  assertEquals((pipeline.jobs ?? []).some((j) => j.id === "ignored"), false);
+});
+
+Deno.test("fanOutPipeline sanitises dotted component target names into job ids", () => {
+  const release = { publish: target().dependsOn().executes(() => {}) };
+  class B extends Build {
+    release = release;
+    deploy = target().dependsOn(release.publish).executes(() => {});
+  }
+  const pipeline = fanOutPipeline(discoverTargets(new B()));
+  const ids = (pipeline.jobs ?? []).map((j) => j.id);
+  assertEquals(ids.includes("release-publish"), true); // dot → dash
+  const deploy = (pipeline.jobs ?? []).find((j) => j.id === "deploy");
+  assertEquals(deploy?.needs, ["release-publish"]);
+});
+
+Deno.test("cicd fanOut expands into a per-target workflow via discoverCiFiles", () => {
+  class WithFanOut extends Build {
+    lint = target().executes(() => {});
+    test = target().dependsOn(this.lint).executes(() => {});
+    ci = cicd({
+      provider: "github",
+      fanOut: true,
+      pipeline: { name: "Fanned" },
+    });
+  }
+  const files = discoverCiFiles(new WithFanOut());
+  assertEquals(files.length, 1);
+  const yaml = files[0].render();
+  assertStringIncludes(yaml, "name: Fanned");
+  assertStringIncludes(yaml, "run: ./zuke lint");
+  assertStringIncludes(yaml, "run: ./zuke test");
+  assertStringIncludes(yaml, "needs:");
+});
+
+Deno.test("a non-fan-out cicd file is unaffected by discovery resolution", () => {
+  class Plain extends Build {
+    build = target().executes(() => {});
+    ci = cicd({ provider: "github", pipeline: { name: "Plain" } });
+  }
+  const yaml = discoverCiFiles(new Plain())[0].render();
+  assertStringIncludes(yaml, "name: Plain");
+});
+
+Deno.test("CiFile.pipelineFor returns the base pipeline when not fanning out", () => {
+  const file = new CiFile({ provider: "github", pipeline: { name: "Base" } });
+  assertEquals(file.pipelineFor(new Map()).name, "Base");
+});
+
+Deno.test("cicd accepts fan-out options directly", () => {
+  class B extends Build {
+    lint = target().executes(() => {});
+    ci = cicd({ provider: "github", fanOut: { runsOn: "self-hosted" } });
+  }
+  const yaml = discoverCiFiles(new B())[0].render();
+  assertStringIncludes(yaml, "runs-on: self-hosted");
 });

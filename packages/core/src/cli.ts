@@ -91,6 +91,12 @@ export interface ParsedArgs {
   parallel?: boolean | number;
   /** Disable the incremental cache (`--no-cache`); undefined leaves it on. */
   cache?: boolean;
+  /** Disable only the remote cache store (`--no-remote-cache`); undefined leaves it on. */
+  remoteCache?: boolean;
+  /** Restrict the run to targets affected since a git base (`--affected[=<base>]`). */
+  affected: boolean;
+  /** The git base revision for `--affected` (the `=<base>` value); undefined uses the default. */
+  affectedBase?: string;
   /** Print the plan without running any target bodies (`--dry-run`). */
   dryRun: boolean;
   /** Raw parameter values from declared flags, keyed by property name. */
@@ -125,6 +131,7 @@ export function parseArgs(
     output: "text",
     open: true,
     values: {},
+    affected: false,
     dryRun: false,
     help: false,
   };
@@ -141,6 +148,13 @@ export function parseArgs(
       parsed.open = false;
     } else if (arg === "--no-cache") {
       parsed.cache = false;
+    } else if (arg === "--no-remote-cache") {
+      parsed.remoteCache = false;
+    } else if (arg === "--affected") {
+      parsed.affected = true;
+    } else if (arg.startsWith("--affected=")) {
+      parsed.affected = true;
+      parsed.affectedBase = arg.slice("--affected=".length);
     } else if (arg === "--dry-run") {
       parsed.dryRun = true;
     } else if (arg === "--check") {
@@ -205,7 +219,7 @@ function depNames(t: TargetBuilder): string[] {
 const USAGE = `zuke — code-first build automation
 
 Usage:
-  deno run -A zuke.ts <target> [--skip <dep>] [--parallel[=N]]
+  deno run -A zuke.ts <target> [--skip <dep>] [--parallel[=N]] [--affected[=<base>]]
   deno run -A zuke.ts --list [--json]
   deno run -A zuke.ts graph [--output=html] [--no-open]
   deno run -A zuke.ts generate-ci [--check]
@@ -217,6 +231,13 @@ Options:
   --parallel[=N]    Run independent targets concurrently (N = max in flight,
                     default = CPU count).
   --no-cache        Ignore the incremental cache; re-run every target.
+  --no-remote-cache Use the local cache only; do not restore from or upload to
+                    the configured remote cache store.
+  --affected[=<base>]
+                    Run only targets affected by files changed since <base>
+                    (a git revision; default HEAD). A target is affected when a
+                    changed file is under its declared inputs or a dependency is
+                    affected; targets with no declared inputs always run.
   --dry-run         Print the execution plan without running target bodies.
   --list, -l        List all targets with descriptions and dependencies.
   --json            With --list, print the build surface (commands, flags,
@@ -500,6 +521,8 @@ export async function main(
     params: parsed.values,
     parallel: parsed.parallel,
     cache: parsed.cache,
+    remoteCache: parsed.remoteCache === false ? false : undefined,
+    affected: parsed.affected ? { base: parsed.affectedBase } : undefined,
     dryRun: parsed.dryRun,
     plugins: options.plugins,
     renderer: options.renderer,

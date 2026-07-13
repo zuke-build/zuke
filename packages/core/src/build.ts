@@ -10,6 +10,7 @@
  */
 
 import { Group, type Remediation, TargetBuilder } from "./target.ts";
+import type { RemoteCacheStore } from "./remote_cache.ts";
 
 /** Whether a value is a plain object (a component bundle), not a class instance. */
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -90,6 +91,27 @@ export class Build {
    */
   recoverWith(): Remediation[] {
     return [];
+  }
+
+  /**
+   * The {@link "./remote_cache.ts".RemoteCacheStore} that shares target
+   * {@link "./target.ts".TargetBuilder.outputs} across machines. Override to
+   * declare one in code; the default is none, and — unless overridden — the
+   * executor falls back to {@link "./remote_cache.ts".envCacheStore} (the
+   * `ZUKE_REMOTE_CACHE_*` environment variables). Applies to targets that
+   * declare both `inputs` and `outputs`.
+   *
+   * ```ts
+   * class CI extends Build {
+   *   override remoteCache() {
+   *     return new HttpCacheStore({ url: this.cacheUrl.value, token: this.cacheToken.value });
+   *   }
+   *   build = target().inputs("src").outputs("dist").executes(...);
+   * }
+   * ```
+   */
+  remoteCache(): RemoteCacheStore | undefined {
+    return undefined;
   }
 }
 
