@@ -99,15 +99,20 @@ export interface InstallReleaseOptions {
    */
   download?: DownloadFn;
   /**
-   * The expected **SHA-256** (lowercase hex) of the downloaded artifact — the
-   * `.tar.gz` for an archive, or the binary itself for a `"raw"` download; this
-   * is what release pages publish as the checksum. When set, the download is
-   * verified against it (a mismatch throws and nothing is installed) and the
-   * checksum doubles as a **cache key**: a prior install whose recorded checksum
-   * matches is reused without downloading again. Omit it and the tool is
-   * downloaded every time and not verified.
+   * The expected **SHA-256** (hex) of the downloaded artifact — the `.tar.gz`
+   * for an archive, or the binary itself for a `"raw"` download; this is what
+   * release pages publish as the checksum. When set, the download is verified
+   * against it (a mismatch throws and nothing is installed) and the checksum
+   * doubles as a **cache key**: a prior install whose recorded checksum matches
+   * is reused without downloading again. Omit it and the tool is downloaded
+   * every time and not verified.
+   *
+   * Because {@link url} resolves a different artifact per platform, each has its
+   * own hash — so pass a resolver `({ os, arch }) => string` (like `url`) to pin
+   * a checksum per platform, or a plain string when a single artifact is
+   * installed.
    */
-  checksum?: string;
+  checksum?: string | ((platform: InstallPlatform) => string);
 }
 
 /** The marker file recording the verified checksum of an installed tool. */
@@ -127,6 +132,16 @@ async function cachedInstall(
   if (recorded === null) return false;
   if (new TextDecoder().decode(recorded).trim() !== checksum) return false;
   return await readFileOrNull(String(target)) !== null;
+}
+
+/** Resolve the expected checksum for `platform` (a literal or a resolver), lowercased. */
+function resolveChecksum(
+  checksum: InstallReleaseOptions["checksum"],
+  platform: InstallPlatform,
+): string | undefined {
+  if (checksum === undefined) return undefined;
+  const value = typeof checksum === "function" ? checksum(platform) : checksum;
+  return value.toLowerCase();
 }
 
 /** Verify `bytes` hash to `checksum`, throwing a descriptive error otherwise. */
@@ -165,7 +180,7 @@ export async function installRelease(
 ): Promise<AbsolutePath> {
   const platform = options.platform ?? hostPlatform();
   const download = options.download ?? httpDownload;
-  const checksum = options.checksum?.toLowerCase();
+  const checksum = resolveChecksum(options.checksum, platform);
 
   const dir = resolveDir(String(options.destDir));
   const onWindows = platform.os === "windows";

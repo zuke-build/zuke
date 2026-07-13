@@ -368,3 +368,27 @@ Deno.test("installRelease (tar.gz) verifies the archive checksum", async () => {
     await Deno.remove(src, { recursive: true });
   }
 });
+
+Deno.test("installRelease resolves a per-platform checksum from the platform", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const body = "arm64-binary";
+    const sum = await sha256Hex(body);
+    let seen: InstallPlatform | undefined;
+    const bin = await installRelease({
+      name: "pinned",
+      destDir: dir,
+      platform: { os: "linux", arch: "aarch64" },
+      url: ({ arch }) => `https://example.com/${arch}`,
+      download: fakeDownload(body),
+      checksum: (platform) => {
+        seen = platform;
+        return sum; // pinned for this platform
+      },
+    });
+    assertEquals(seen, { os: "linux", arch: "aarch64" }); // resolver saw the platform
+    assertEquals(await exists(String(bin)), true); // resolved checksum verified + installed
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});

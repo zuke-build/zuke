@@ -59,16 +59,16 @@ await CmdTasks.exec(String(bin), (s) => s.args("--version"));
 
 ### Options
 
-| Field        | Type                           | Purpose                                                                                               |
-| ------------ | ------------------------------ | ----------------------------------------------------------------------------------------------------- |
-| `name`       | `string`                       | The tool name, and the installed filename (`.exe` is appended on Windows).                            |
-| `url`        | `(platform) => string`         | Resolve the download URL for the target platform (see [platforms](#cross-platform-url-resolution)).   |
-| `destDir`    | `PathLike`                     | Directory to install into (created if missing). Relative paths resolve against the working directory. |
-| `archive`    | `"raw"` \| `"tar.gz"`          | `"raw"` (default) treats the download as the binary; `"tar.gz"` unpacks it.                           |
-| `binaryPath` | `string`                       | For a `tar.gz`, the binary's path _inside_ the archive. Defaults to `name`.                           |
-| `checksum`   | `string`                       | Expected SHA-256 of the download — [verifies and caches](#pinning-verification-and-caching).          |
-| `platform`   | `InstallPlatform`              | Resolve the URL for a specific `{ os, arch }` instead of the host.                                    |
-| `download`   | `(url, dest) => Promise<void>` | Override the downloader (defaults to `httpDownload`); mainly a test seam.                             |
+| Field        | Type                             | Purpose                                                                                                                                                            |
+| ------------ | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `name`       | `string`                         | The tool name, and the installed filename (`.exe` is appended on Windows).                                                                                         |
+| `url`        | `(platform) => string`           | Resolve the download URL for the target platform (see [platforms](#cross-platform-url-resolution)).                                                                |
+| `destDir`    | `PathLike`                       | Directory to install into (created if missing). Relative paths resolve against the working directory.                                                              |
+| `archive`    | `"raw"` \| `"tar.gz"`            | `"raw"` (default) treats the download as the binary; `"tar.gz"` unpacks it.                                                                                        |
+| `binaryPath` | `string`                         | For a `tar.gz`, the binary's path _inside_ the archive. Defaults to `name`.                                                                                        |
+| `checksum`   | `string \| (platform) => string` | Expected SHA-256 of the download — [verifies and caches](#pinning-verification-and-caching). A resolver pins it [per platform](#pinning-verification-and-caching). |
+| `platform`   | `InstallPlatform`                | Resolve the URL for a specific `{ os, arch }` instead of the host.                                                                                                 |
+| `download`   | `(url, dest) => Promise<void>`   | Override the downloader (defaults to `httpDownload`); mainly a test seam.                                                                                          |
 
 ### Raw binaries vs. tarballs
 
@@ -113,12 +113,11 @@ Without a `checksum`, the tool is downloaded every run and left unverified —
 fine for a quick spike, but pin one for anything real.
 
 > **Checksums are per-artifact, so they're per-platform.** `url` resolves a
-> _different_ download for each OS/arch, and each has its own hash. If your
-> build runs on more than one platform, select the checksum the same way you
-> select the URL:
+> _different_ download for each OS/arch, and each has its own hash. When a build
+> runs on more than one platform, pass `checksum` a resolver — just like `url` —
+> so the right hash is picked for whatever's downloaded:
 >
 > ```ts
-> const key = `${Deno.build.os}-${Deno.build.arch}`;
 > const sums: Record<string, string> = {
 >   "linux-x86_64": "…",
 >   "linux-aarch64": "…",
@@ -126,10 +125,12 @@ fine for a quick spike, but pin one for anything real.
 > };
 > await installRelease({
 >   name: "helm",
->   checksum: sums[key],
+>   checksum: ({ os, arch }) => sums[`${os}-${arch}`],
 >   url: helmUrl, /* … */
 > });
 > ```
+>
+> A plain `string` is the shorthand when a single artifact is installed.
 
 ### Where installed tools live
 

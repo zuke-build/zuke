@@ -1273,14 +1273,19 @@ interface InstallReleaseOptions
   download?: DownloadFn
     The download implementation. Defaults to {@link httpDownload}; override it
     to unit-test without network access.
-  checksum?: string
-    The expected SHA-256 (lowercase hex) of the downloaded artifact — the
-    `.tar.gz` for an archive, or the binary itself for a `"raw"` download; this
-    is what release pages publish as the checksum. When set, the download is
-    verified against it (a mismatch throws and nothing is installed) and the
-    checksum doubles as a cache key: a prior install whose recorded checksum
-    matches is reused without downloading again. Omit it and the tool is
-    downloaded every time and not verified.
+  checksum?: string | ((platform: InstallPlatform) => string)
+    The expected SHA-256 (hex) of the downloaded artifact — the `.tar.gz`
+    for an archive, or the binary itself for a `"raw"` download; this is what
+    release pages publish as the checksum. When set, the download is verified
+    against it (a mismatch throws and nothing is installed) and the checksum
+    doubles as a cache key: a prior install whose recorded checksum matches
+    is reused without downloading again. Omit it and the tool is downloaded
+    every time and not verified.
+
+    Because {@link url} resolves a different artifact per platform, each has its
+    own hash — so pass a resolver `({ os, arch }) => string` (like `url`) to pin
+    a checksum per platform, or a plain string when a single artifact is
+    installed.
 
 interface OpenCacheOptions
   Optional extras for {@link openCache}: a remote store and a warning sink.
