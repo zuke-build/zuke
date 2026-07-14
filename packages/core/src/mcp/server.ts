@@ -94,6 +94,11 @@ function textResult(text: string, isError = false): Record<string, unknown> {
   return { content: [{ type: "text", text }], isError };
 }
 
+/** Whether a JSON value is a plain object (a string-keyed record). */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 /** Whether a JSON value is a scalar a parameter can accept. */
 function isScalar(value: unknown): value is string | number | boolean {
   const t = typeof value;
@@ -245,18 +250,14 @@ export class McpServer {
     id: string | number | null,
     params: unknown,
   ): Promise<JsonRpcResponse> {
-    if (typeof params !== "object" || params === null || !("name" in params)) {
+    if (!isRecord(params) || !("name" in params)) {
       return err(id, INVALID_PARAMS, "tools/call requires a tool name");
     }
     const name = params.name;
     if (typeof name !== "string") {
       return err(id, INVALID_PARAMS, "tool name must be a string");
     }
-    const args =
-      "arguments" in params && typeof params.arguments === "object" &&
-        params.arguments !== null
-        ? params.arguments as Record<string, unknown>
-        : {};
+    const args = isRecord(params.arguments) ? params.arguments : {};
 
     if (name === "list_targets") {
       return ok(id, textResult(this.#describe().targets));
