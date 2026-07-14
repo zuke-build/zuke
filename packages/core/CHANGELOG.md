@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.11.0](https://github.com/zuke-build/zuke/compare/core-v1.10.0...core-v1.11.0) (2026-07-14)
+
+
+### Features
+
+* **core:** source secrets from a manager and redact them from output ([#153](https://github.com/zuke-build/zuke/issues/153)) ([b644687](https://github.com/zuke-build/zuke/commit/b64468785420d21d45658cac4d9a6756369f7759))
+* **core:** verified, cached toolchain provisioning ([#151](https://github.com/zuke-build/zuke/issues/151)) ([a16a01b](https://github.com/zuke-build/zuke/commit/a16a01bbdf29723ced76d165eb873f8047ca240a))
+
 ## [1.10.0](https://github.com/zuke-build/zuke/compare/core-v1.9.0...core-v1.10.0) (2026-07-13)
 
 
