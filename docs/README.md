@@ -9,6 +9,8 @@
   defaults.
 - [Secrets](./secrets.md) — source secret values from a manager with
   `.from(...)`, and the guaranteed redaction of every secret from output.
+- [Service targets](./services.md) — `service()` for long-lived processes (a dev
+  server, a database) kept running while dependents execute, then torn down.
 - [Caching](./caching.md) — the incremental build cache, the remote
   (cross-machine) cache, and the AI response cache.
 - [Shell wrapper (`$`)](./shell.md) — ergonomic, injection-safe process

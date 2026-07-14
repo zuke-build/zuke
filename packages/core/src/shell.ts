@@ -74,6 +74,45 @@ export class CommandOutput {
   }
 }
 
+/**
+ * A long-lived process started with {@link Command.spawn} — the handle a
+ * {@link https://jsr.io/@zuke/core service} keeps alive. Unlike awaiting a
+ * {@link Command}, spawning does not wait for the process to exit; call
+ * {@link SpawnedProcess.stop} to terminate it (which is also the default
+ * service teardown). Its stdout/stderr are inherited so the process's own
+ * output is visible.
+ */
+export class SpawnedProcess {
+  readonly #child: Deno.ChildProcess;
+
+  constructor(child: Deno.ChildProcess, readonly commandLine: string) {
+    this.#child = child;
+  }
+
+  /** The operating-system process id. */
+  get pid(): number {
+    return this.#child.pid;
+  }
+
+  /** Resolves when the process exits (with its status). */
+  get status(): Promise<Deno.CommandStatus> {
+    return this.#child.status;
+  }
+
+  /**
+   * Terminate the process (default `SIGTERM`) and wait for it to exit. A
+   * process that has already exited is treated as stopped.
+   */
+  async stop(signal: Deno.Signal = "SIGTERM"): Promise<void> {
+    try {
+      this.#child.kill(signal);
+    } catch {
+      // Already exited: nothing to signal.
+    }
+    await this.#child.status;
+  }
+}
+
 interface RunResult {
   code: number;
   stdout: string;
@@ -259,6 +298,26 @@ export class Command implements PromiseLike<CommandOutput> {
   async code(): Promise<number> {
     const r = await this.#run();
     return r.code;
+  }
+
+  /**
+   * Start the command as a long-lived process **without** waiting for it to
+   * exit, returning a {@link SpawnedProcess} handle. Use this for a service —
+   * a dev server, a database, `docker compose up` — that must keep running
+   * while other targets execute; stop it with {@link SpawnedProcess.stop}.
+   * stdout/stderr are inherited so the process's output is visible.
+   */
+  spawn(): SpawnedProcess {
+    const [cmd, ...args] = this.#argv;
+    if (!cmd) throw new Error("Cannot spawn an empty command.");
+    const child = new Deno.Command(cmd, {
+      args,
+      cwd: this.#cwd,
+      env: this.#env,
+      stdout: "inherit",
+      stderr: "inherit",
+    }).spawn();
+    return new SpawnedProcess(child, this.commandLine);
   }
 }
 
