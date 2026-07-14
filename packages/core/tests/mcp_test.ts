@@ -143,6 +143,27 @@ Deno.test("running a target executes it and returns the captured output", async 
   assertStringIncludes(out.text, "succeeded");
 });
 
+Deno.test("a run redacts secret values from the captured output", async () => {
+  class Secretive extends Build {
+    // A secret sourced at run time; its value must never reach the client.
+    token = parameter("API token").secret().from({
+      resolve: () => Promise.resolve("s3cr3t-token-xyz"),
+    });
+    leak = target().executes(() => {
+      // A failure that embeds the secret in its message.
+      throw new Error(`auth failed for ${this.token.value}`);
+    });
+  }
+  const server = new McpServer(new Secretive(), { allowRun: true });
+  const res = await server.handleMessage(
+    req("tools/call", { name: "run:leak" }),
+  );
+  const out = callText(res?.result);
+  assertEquals(out.isError, true);
+  assertStringIncludes(out.text, "[redacted]");
+  assertEquals(out.text.includes("s3cr3t-token-xyz"), false);
+});
+
 Deno.test("a run missing a required parameter fails through the result", async () => {
   const server = new McpServer(new Demo(), { allowRun: true });
   // environment is required and unset in the (hermetic) environment.
