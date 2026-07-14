@@ -29,6 +29,9 @@ export const GENERATE_CI_COMMAND = "generate-ci";
 /** The `completions` command: print a shell-completion script. */
 export const COMPLETIONS_COMMAND = "completions";
 
+/** The `mcp` command: run an MCP server over the build (for AI agents). */
+export const MCP_COMMAND = "mcp";
+
 /** Every reserved command, in help and completion order. */
 export const RESERVED_COMMANDS: readonly ReservedCommand[] = [
   { name: GRAPH_COMMAND, description: "Show the dependency graph" },
@@ -37,6 +40,10 @@ export const RESERVED_COMMANDS: readonly ReservedCommand[] = [
     description: "Write declared CI configuration files",
   },
   { name: COMPLETIONS_COMMAND, description: "Print a shell-completion script" },
+  {
+    name: MCP_COMMAND,
+    description: "Run an MCP server over the build (for AI agents)",
+  },
 ];
 
 /** A built-in option flag (its long form), surfaced in help and completion. */
@@ -74,6 +81,10 @@ export const BUILTIN_FLAGS: readonly BuiltinFlag[] = [
   {
     name: "--check",
     description: "With generate-ci, verify files are current",
+  },
+  {
+    name: "--allow-run",
+    description: "With mcp, let agents execute targets (not just inspect)",
   },
   { name: "--help", description: "Show usage" },
 ];

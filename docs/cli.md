@@ -13,6 +13,7 @@
 | `zuke graph --output=html`          | Render an interactive HTML graph into `.zuke/` and open it.    |
 | `zuke completions print <shell>`    | Print a shell-completion script (`bash`, `zsh`, or `fish`).    |
 | `zuke completions install <shell>`  | Write the script and wire it into the shell's startup.         |
+| `zuke mcp [--allow-run]`            | Run an MCP server over the build for AI agents ([details](./mcp.md)). |
 | `zuke --help` / `-h`                | Usage.                                                         |
 | `zuke` (no target)                  | Run the `default` target if defined, else print `--list`.      |
 
@@ -56,7 +57,7 @@ emit `::error::` annotations, and the summary is written to the job summary.
 `zuke completions` takes an explicit sub-action — `print` or `install` — then a
 shell (`bash`, `zsh`, or `fish`). `print` writes the completion script to
 stdout; the script completes the build's target names, the reserved commands
-(`graph`, `generate-ci`, `completions`), the built-in option flags, and any
+(`graph`, `generate-ci`, `completions`, `mcp`), the built-in option flags, and any
 declared [parameters](./parameters.md) as `--flag` candidates. Unlisted targets
 (`.unlisted()`) stay hidden, just as they are in `--list`.
 
@@ -96,6 +97,15 @@ The config directory honours `$XDG_CONFIG_HOME`. Installing is idempotent: if
 the rc file already sources the script, it is left untouched. The reserved
 commands and option flags offered by completion come from a single registry
 shared with the parser and `--help`, so they never drift out of sync.
+
+## `zuke mcp`
+
+Runs a [Model Context Protocol](https://modelcontextprotocol.io) server over the
+build on stdio, so an AI agent can operate the pipeline through typed tool calls
+instead of guessing shell commands. It exposes read tools (`list_targets`,
+`describe_build`, `graph`) and — only with `--allow-run` — one `run:<target>`
+tool per target, whose input schema is derived from the build's parameters.
+`mcp` is a reserved command name. See the full guide: [MCP server](./mcp.md).
 
 ## Parallel execution
 

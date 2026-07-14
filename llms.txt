@@ -44,6 +44,7 @@ Reserved commands:
 - `graph` — Show the dependency graph
 - `generate-ci` — Write declared CI configuration files
 - `completions` — Print a shell-completion script
+- `mcp` — Run an MCP server over the build (for AI agents)
 
 Option flags:
 
@@ -58,6 +59,7 @@ Option flags:
 - `--output` — Graph output format: text or html
 - `--no-open` — With --output=html, do not open a browser
 - `--check` — With generate-ci, verify files are current
+- `--allow-run` — With mcp, let agents execute targets (not just inspect)
 - `--help` — Show usage
 
 Full reference: [docs/cli.md](./docs/cli.md).

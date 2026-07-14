@@ -29,7 +29,9 @@ import {
   DEFAULT_TARGET,
   GENERATE_CI_COMMAND,
   GRAPH_COMMAND,
+  MCP_COMMAND,
 } from "./cli_spec.ts";
+import { serveMcp } from "./mcp/command.ts";
 import {
   installCompletions,
   type InstallOptions,
@@ -77,6 +79,10 @@ export interface ParsedArgs {
   generateCi: boolean;
   /** The `completions` command was requested. */
   completions: boolean;
+  /** The `mcp` command was requested (run an MCP server over the build). */
+  mcp: boolean;
+  /** Allow `mcp` to execute targets, not just inspect them (`--allow-run`). */
+  allowRun: boolean;
   /** The `completions` sub-action (`install` or `print`); the first positional. */
   completionsAction?: string;
   /** The shell argument to `completions` (the positional after the sub-action). */
@@ -127,6 +133,8 @@ export function parseArgs(
     graph: false,
     generateCi: false,
     completions: false,
+    mcp: false,
+    allowRun: false,
     check: false,
     output: "text",
     open: true,
@@ -159,6 +167,8 @@ export function parseArgs(
       parsed.dryRun = true;
     } else if (arg === "--check") {
       parsed.check = true;
+    } else if (arg === "--allow-run") {
+      parsed.allowRun = true;
     } else if (arg === "--parallel") {
       parsed.parallel = true;
     } else if (arg.startsWith("--parallel=")) {
@@ -200,11 +210,12 @@ export function parseArgs(
       parsed.shell = arg;
     } else if (
       parsed.target === undefined && !parsed.graph && !parsed.generateCi &&
-      !parsed.completions
+      !parsed.completions && !parsed.mcp
     ) {
       if (arg === GRAPH_COMMAND) parsed.graph = true;
       else if (arg === GENERATE_CI_COMMAND) parsed.generateCi = true;
       else if (arg === COMPLETIONS_COMMAND) parsed.completions = true;
+      else if (arg === MCP_COMMAND) parsed.mcp = true;
       else parsed.target = arg;
     }
   }
@@ -224,6 +235,7 @@ Usage:
   deno run -A zuke.ts graph [--output=html] [--no-open]
   deno run -A zuke.ts generate-ci [--check]
   deno run -A zuke.ts completions <install|print> <bash|zsh|fish>
+  deno run -A zuke.ts mcp [--allow-run]
 
 Options:
   <target>          Run the target and its transitive dependencies.
@@ -257,6 +269,12 @@ Options:
                     writing them, failing if any has drifted (use on CI).
   --output <fmt>    Graph output format: text (default) or html.
   --no-open         With --output=html, do not open a browser.
+  mcp               Run an MCP server over the build on stdio, exposing its
+                    targets to AI agents as typed tools. Read-only by default
+                    (inspect the targets, parameters, and graph); add
+                    --allow-run to let agents execute targets too.
+  --allow-run       With mcp, allow agents to execute targets, not just
+                    inspect them.
   --<param> <val>   Set a declared build parameter (see Parameters below).
   --help, -h        Show this help.`;
 
@@ -486,6 +504,9 @@ export async function main(
   }
   if (parsed.generateCi) {
     return await syncCiConfig(build, { check: parsed.check });
+  }
+  if (parsed.mcp) {
+    return await serveMcp(build, { allowRun: parsed.allowRun });
   }
 
   let name = parsed.target;
