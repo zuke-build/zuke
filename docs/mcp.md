@@ -10,7 +10,7 @@ invocations.
 
 It's a natural extension of what Zuke already does: it publishes `llms.txt`, a
 `--list --json` self-description, and shell completions from a single registry.
-MCP is the *live* counterpart — the same build surface, callable.
+MCP is the _live_ counterpart — the same build surface, callable.
 
 The server is **dependency-free** (Zuke ships no MCP SDK): it speaks
 newline-delimited JSON-RPC 2.0 on stdio, the standard MCP local transport.
@@ -43,20 +43,20 @@ targets).
 
 Read tools are always available:
 
-| Tool | Returns |
-| --- | --- |
-| `list_targets` | Every target with its description and dependencies. |
+| Tool             | Returns                                                                                      |
+| ---------------- | -------------------------------------------------------------------------------------------- |
+| `list_targets`   | Every target with its description and dependencies.                                          |
 | `describe_build` | The full build surface — commands, flags, targets, parameters (the `--list --json` payload). |
-| `graph` | Each target and the targets it depends on. |
+| `graph`          | Each target and the targets it depends on.                                                   |
 
 With `--allow-run`, the server also exposes one **`run:<target>`** tool per
 target. Its input schema is built from the build's declared parameters — a
-`required` parameter is required, `.options(...)` becomes an `enum`, a `.number()`
-is typed as a number — plus a `dryRun` flag that plans without executing. These
-tools carry MCP's `destructiveHint` annotation so a client can prompt before
-running. A run resolves parameters exactly like the CLI (MCP argument → the
-environment → the declared default) and returns the target's captured output
-with a pass/fail marker.
+`required` parameter is required, `.options(...)` becomes an `enum`, a
+`.number()` is typed as a number — plus a `dryRun` flag that plans without
+executing. These tools carry MCP's `destructiveHint` annotation so a client can
+prompt before running. A run resolves parameters exactly like the CLI (MCP
+argument → the environment → the declared default) and returns the target's
+captured output with a pass/fail marker.
 
 ```jsonc
 // tools/call
@@ -65,11 +65,21 @@ with a pass/fail marker.
 
 ## Safety
 
+**Trust model.** The server has no network endpoint. It speaks only over the
+stdin/stdout of a process the client launches, so its trust boundary is the
+local machine: anyone who can start `zuke mcp` already has a shell there and
+could run `deno run -A zuke.ts <target>` directly. The server therefore grants
+no capability beyond what launching it already implies — there is nothing to
+authenticate, because there is no remote party. Treat it like any other local
+developer tool: don't wire an untrusted client to it.
+
 Running a target executes real build code, so execution is **off by default**: a
-freshly-connected agent can only *inspect* the build. Add `--allow-run`
+freshly-connected agent can only _inspect_ the build. Add `--allow-run`
 deliberately — for an environment where you want the agent to drive the
 pipeline. Without it, the `run:` tools are not advertised at all, and a direct
-`run:` call is refused with a message pointing at the flag.
+`run:` call is refused with a message pointing at the flag. When enabled, run
+tools carry MCP's `destructiveHint`, so a well-behaved client can prompt before
+each execution.
 
 Secret values stay protected: a run's output is captured through the same
 reporter pipeline as the console, so `parameter().secret()` values are
@@ -82,6 +92,6 @@ reporter pipeline as the console, so `parameter().secret()` values are
   `protocolVersion`), `notifications/initialized` (no reply), `ping`,
   `tools/list`, and `tools/call`. Unknown requests get a JSON-RPC
   `-32601 Method not found`; notifications never get a reply.
-- **Errors:** a bad *tool* call (unknown tool, unknown target, a failed run) is
-  reported through the tool result (`isError: true`) so the model sees it, rather
-  than as a transport-level error — matching the MCP convention.
+- **Errors:** a bad _tool_ call (unknown tool, unknown target, a failed run) is
+  reported through the tool result (`isError: true`) so the model sees it,
+  rather than as a transport-level error — matching the MCP convention.
