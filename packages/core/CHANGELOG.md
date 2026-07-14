@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.12.0](https://github.com/zuke-build/zuke/compare/core-v1.11.0...core-v1.12.0) (2026-07-14)
+
+
+### Features
+
+* **core:** add zuke mcp, an MCP server over the build ([#154](https://github.com/zuke-build/zuke/issues/154)) ([f9fbc5e](https://github.com/zuke-build/zuke/commit/f9fbc5e3d438216ed9296659d8e3cfa2107a2a19))
+
 ## [1.11.0](https://github.com/zuke-build/zuke/compare/core-v1.10.0...core-v1.11.0) (2026-07-14)
 
 
