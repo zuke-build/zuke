@@ -19,6 +19,8 @@
   CLIs from a build with `installRelease()` and `toolchain()`.
 - [Extending Zuke](./extending.md) — the plugin contract: lifecycle plugins,
   tool wrappers, and reusable target bundles.
+- [MCP server](./mcp.md) — `zuke mcp` exposes the build to AI agents as typed
+  tools over the Model Context Protocol.
 - [AI review](./ai-review.md) — model-assessed review gates as build
   validations.
 - [Self-healing builds](./self-healing.md) — hand a failure to an AI fixer that
