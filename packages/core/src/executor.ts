@@ -35,6 +35,7 @@ import {
 } from "./affected.ts";
 import { type RemoteCacheStore, resolveRemoteStore } from "./remote_cache.ts";
 import { isCI } from "./host.ts";
+import { Redactor } from "./redact.ts";
 import { absolutePath } from "./path.ts";
 import type { Remediation, TargetBuilder, TargetFn } from "./target.ts";
 import type { Plugin } from "./plugin.ts";
@@ -56,6 +57,14 @@ const consoleReporter: Reporter = {
 };
 
 const silentReporter: Reporter = { info: () => {}, error: () => {} };
+
+/** Wrap a reporter so every line is passed through the {@link Redactor} first. */
+function redactingReporter(inner: Reporter, redactor: Redactor): Reporter {
+  return {
+    info: (line) => inner.info(redactor.redact(line)),
+    error: (line) => inner.error(redactor.redact(line)),
+  };
+}
 
 /** Options for {@link execute}. */
 export interface ExecuteOptions {
@@ -752,8 +761,14 @@ export async function execute(
   root: TargetBuilder,
   options: ExecuteOptions = {},
 ): Promise<BuildResult> {
-  const reporter = options.reporter ??
+  const baseReporter = options.reporter ??
     (options.silent ? silentReporter : consoleReporter);
+  // Every line Zuke prints passes through the redactor, which masks the
+  // resolved value of each `secret` parameter. The redactor is populated during
+  // parameter resolution below; since nothing meaningful is reported before
+  // then, wrapping the reporter up-front is safe.
+  const redactor = new Redactor();
+  const reporter = redactingReporter(baseReporter, redactor);
   // The GitHub job summary is a real-world output side effect (it appends to a
   // shared file named by GITHUB_STEP_SUMMARY). Only write it when output goes to
   // the default console — i.e. neither silenced nor redirected to a custom
@@ -771,12 +786,32 @@ export async function execute(
   // required parameter or an invalid value fails the build before it starts.
   const params = discoverParameters(build);
   const readEnv = options.readEnv ?? defaultReadEnv;
-  const paramErrors = resolveParameters(
+  const paramErrors = await resolveParameters(
     params,
     options.params ?? {},
     readEnv,
     options.prompt ?? defaultPrompt,
+    redactor,
   );
+  // Register each secret's final parsed value too — its raw form was already
+  // added during resolution, but a source that trims or a parser that
+  // normalises could yield a slightly different printed string.
+  for (const p of params.values()) {
+    if (!p.secret_) continue;
+    const value = p.stringValue_();
+    if (value !== undefined && value !== "") redactor.add(value);
+  }
+  // Under GitHub Actions, also emit `::add-mask::` with the real value so the
+  // runner masks it in its own logs. This goes through the base reporter, which
+  // is not wrapped in the redactor — a masked directive would hide nothing.
+  if (style.github) {
+    for (const p of params.values()) {
+      const value = p.secret_ ? p.stringValue_() : undefined;
+      if (value !== undefined && value !== "") {
+        baseReporter.info(`::add-mask::${value}`);
+      }
+    }
+  }
   if (paramErrors.length > 0) {
     reporter.error("Invalid or missing parameters:");
     for (const message of paramErrors) reporter.error(`  ${message}`);
@@ -785,15 +820,6 @@ export async function execute(
       executed: [],
       error: new ParameterError(paramErrors.join("; ")),
     };
-  }
-  // Under GitHub Actions, mask resolved secret values so they don't leak.
-  if (style.github) {
-    for (const p of params.values()) {
-      const value = p.secret_ ? p.stringValue_() : undefined;
-      if (value !== undefined && value !== "") {
-        reporter.info(`::add-mask::${value}`);
-      }
-    }
   }
 
   const { order, predecessors } = planGraph(root);

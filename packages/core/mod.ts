@@ -102,6 +102,15 @@ export {
   type ParamValue,
 } from "./src/params.ts";
 export {
+  execSecret,
+  ExecSecretSettings,
+  fileSecret,
+  FileSecretSettings,
+  SecretError,
+  type SecretSource,
+} from "./src/secret.ts";
+export { REDACTED, Redactor } from "./src/redact.ts";
+export {
   executionSet,
   findCycle,
   GraphError,

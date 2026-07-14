@@ -1,7 +1,7 @@
-import { assertEquals, assertThrows } from "./_assert.ts";
+import { assertEquals, assertStringIncludes, assertThrows } from "./_assert.ts";
 import { Build, target } from "../mod.ts";
 import { discoverTargets } from "../src/build.ts";
-import { execute } from "../src/executor.ts";
+import { execute, type Reporter } from "../src/executor.ts";
 import {
   type AnyParameter,
   discoverParameters,
@@ -12,6 +12,30 @@ import {
   ParameterError,
   resolveParameters,
 } from "../src/params.ts";
+import { REDACTED, Redactor } from "../src/redact.ts";
+import type { SecretSource } from "../src/secret.ts";
+
+/** A canned secret source that yields a fixed value, for hermetic tests. */
+function fixedSource(value: string): SecretSource {
+  return { resolve: () => Promise.resolve(value) };
+}
+
+/** A secret source that always fails, for the error path. */
+function failingSource(message: string): SecretSource {
+  return { resolve: () => Promise.reject(new Error(message)) };
+}
+
+/** A reporter that records every line it is given. */
+function recordingReporter(): { reporter: Reporter; lines: string[] } {
+  const lines: string[] = [];
+  return {
+    lines,
+    reporter: {
+      info: (line) => void lines.push(line),
+      error: (line) => void lines.push(line),
+    },
+  };
+}
 
 Deno.test("a fresh parameter is an optional string", () => {
   const p = parameter("desc");
@@ -117,24 +141,28 @@ Deno.test("array preserves env override and secret flags", () => {
   assertEquals([p.array_, p.envName_, p.secret_], [true, "TAGS", true]);
 });
 
-Deno.test("array parameters resolve through the CLI map (repeated flag joined)", () => {
+Deno.test("array parameters resolve through the CLI map (repeated flag joined)", async () => {
   class B extends Build {
     tags = parameter("Tags").array();
   }
   const params = discoverParameters(new B());
   // The CLI joins repeated flags with commas before resolution.
-  const errors = resolveParameters(params, { tags: "x,y" }, () => undefined);
+  const errors = await resolveParameters(
+    params,
+    { tags: "x,y" },
+    () => undefined,
+  );
   assertEquals(errors, []);
   const p = params.get("tags");
   if (p instanceof Parameter) assertEquals(p.value, ["x", "y"]);
 });
 
-Deno.test("resolveParameters prompts for a missing required value", () => {
+Deno.test("resolveParameters prompts for a missing required value", async () => {
   class B extends Build {
     token = parameter("API token").required();
   }
   const params = discoverParameters(new B());
-  const errors = resolveParameters(
+  const errors = await resolveParameters(
     params,
     {},
     () => undefined,
@@ -181,10 +209,10 @@ Deno.test("discoverParameters names and collects parameters", () => {
   assertEquals(params.get("environment")?.name_, "environment");
 });
 
-Deno.test("resolveParameters: CLI beats env beats default", () => {
+Deno.test("resolveParameters: CLI beats env beats default", async () => {
   const params = discoverParameters(new Demo());
   const env = (name: string) => (name === "WORKERS" ? "8" : undefined);
-  const errors = resolveParameters(params, { environment: "prod" }, env);
+  const errors = await resolveParameters(params, { environment: "prod" }, env);
   assertEquals(errors, []);
   const get = (n: string): AnyParameter => {
     const p = params.get(n);
@@ -200,9 +228,9 @@ Deno.test("resolveParameters: CLI beats env beats default", () => {
   if (verbose instanceof Parameter) assertEquals(verbose.value, false); // default
 });
 
-Deno.test("resolveParameters reports missing required and invalid values", () => {
+Deno.test("resolveParameters reports missing required and invalid values", async () => {
   const params = discoverParameters(new Demo());
-  const errors = resolveParameters(
+  const errors = await resolveParameters(
     params,
     { workers: "lots" },
     () => undefined,
@@ -269,4 +297,149 @@ Deno.test("execute fails before running when a required parameter is missing", a
   assertEquals(result.ok, false);
   assertEquals(ran, false);
   assertEquals(result.error instanceof ParameterError, true);
+});
+
+Deno.test("a secret source resolves the value when no flag/env supplied one", async () => {
+  class B extends Build {
+    token = parameter("Token").secret().from(fixedSource("from-source"));
+  }
+  const params = discoverParameters(new B());
+  const errors = await resolveParameters(params, {}, () => undefined);
+  assertEquals(errors, []);
+  const p = params.get("token");
+  if (p instanceof Parameter) assertEquals(p.value, "from-source");
+});
+
+Deno.test("a flag and env both beat a secret source", async () => {
+  class B extends Build {
+    token = parameter("Token").secret().from(fixedSource("from-source"));
+  }
+  // CLI wins.
+  const viaCli = discoverParameters(new B());
+  await resolveParameters(viaCli, { token: "from-cli" }, () => undefined);
+  const cli = viaCli.get("token");
+  if (cli instanceof Parameter) assertEquals(cli.value, "from-cli");
+  // Env wins over the source too.
+  const viaEnv = discoverParameters(new B());
+  await resolveParameters(
+    viaEnv,
+    {},
+    (name) => (name === "TOKEN" ? "from-env" : undefined),
+  );
+  const env = viaEnv.get("token");
+  if (env instanceof Parameter) assertEquals(env.value, "from-env");
+});
+
+Deno.test("a failing secret source is reported as a parameter error", async () => {
+  class B extends Build {
+    token = parameter("Token").secret().from(failingSource("vault is sealed"));
+  }
+  const params = discoverParameters(new B());
+  const errors = await resolveParameters(params, {}, () => undefined);
+  assertEquals(errors.length, 1);
+  assertStringIncludes(errors[0], "--token: vault is sealed");
+});
+
+Deno.test("from() preserves the source across further configuration", async () => {
+  // Order-independent: whether .secret() or .from() comes first, and after a
+  // kind change, the source survives.
+  class B extends Build {
+    a = parameter("A").from(fixedSource("11")).secret().number();
+    b = parameter("B").secret().from(fixedSource("later"));
+  }
+  const params = discoverParameters(new B());
+  await resolveParameters(params, {}, () => undefined);
+  const a = params.get("a");
+  if (a instanceof Parameter) assertEquals(a.value, 11);
+  const b = params.get("b");
+  if (b instanceof Parameter) assertEquals(b.value, "later");
+});
+
+Deno.test("resolveParameters registers a secret's raw value with the redactor", async () => {
+  class B extends Build {
+    token = parameter("Token").secret().from(fixedSource("top-secret"));
+    plain = parameter("Plain").default("visible");
+  }
+  const params = discoverParameters(new B());
+  const redactor = new Redactor();
+  await resolveParameters(params, {}, () => undefined, undefined, redactor);
+  assertEquals(redactor.size, 1); // only the secret was registered
+  assertEquals(
+    redactor.redact("using top-secret and visible"),
+    `using ${REDACTED} and visible`,
+  );
+});
+
+Deno.test("execute redacts a secret leaked in a target's failure message", async () => {
+  const { reporter, lines } = recordingReporter();
+  class Deploy extends Build {
+    token = parameter("Token").secret().from(fixedSource("hunter2xyz"));
+    deploy = target()
+      .description("deploy")
+      .executes(() => {
+        // A failure that echoes the secret in its message must be masked when
+        // the executor reports the failure through its reporter.
+        throw new Error(`auth rejected token ${this.token.value}`);
+      });
+  }
+  const build = new Deploy();
+  const root = discoverTargets(build).get("deploy");
+  if (!root) throw new Error("no deploy target");
+  // github:false isolates this from the ambient CI env — the point is the
+  // platform-independent reporter redaction, not the GitHub `::add-mask::`
+  // directive (which intentionally carries the real value; covered separately).
+  const result = await execute(build, root, {
+    reporter,
+    github: false,
+    readEnv: () => undefined,
+  });
+  assertEquals(result.ok, false);
+  const joined = lines.join("\n");
+  assertStringIncludes(joined, REDACTED);
+  assertEquals(joined.includes("hunter2xyz"), false);
+});
+
+Deno.test("execute redacts a secret's invalid value from the parameter error", async () => {
+  const { reporter, lines } = recordingReporter();
+  class Deploy extends Build {
+    // A source that yields a non-numeric value fails to parse; the error must
+    // not echo the raw secret.
+    port = parameter("Port").secret().from(fixedSource("s3cr3t-not-a-number"))
+      .number();
+    deploy = target().executes(() => {});
+  }
+  const build = new Deploy();
+  const root = discoverTargets(build).get("deploy");
+  if (!root) throw new Error("no deploy target");
+  const result = await execute(build, root, {
+    reporter,
+    github: false,
+    readEnv: () => undefined,
+  });
+  assertEquals(result.ok, false);
+  const joined = lines.join("\n");
+  assertEquals(joined.includes("s3cr3t-not-a-number"), false);
+  assertStringIncludes(joined, REDACTED);
+});
+
+Deno.test("execute emits ::add-mask:: with the real value under GitHub", async () => {
+  const { reporter, lines } = recordingReporter();
+  class Deploy extends Build {
+    token = parameter("Token").secret().from(fixedSource("real-value-123"));
+    deploy = target().executes(() => {});
+  }
+  const build = new Deploy();
+  const root = discoverTargets(build).get("deploy");
+  if (!root) throw new Error("no deploy target");
+  await execute(build, root, {
+    reporter,
+    github: true,
+    readEnv: () => undefined,
+  });
+  // The add-mask directive carries the true value so the runner can mask it;
+  // redacting it would defeat the purpose.
+  assertEquals(
+    lines.some((l) => l === "::add-mask::real-value-123"),
+    true,
+  );
 });

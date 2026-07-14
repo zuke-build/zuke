@@ -7,7 +7,8 @@ precedence):
 
 1. a command-line flag — `--environment production` or `--environment=production`
 2. an environment variable — `ENVIRONMENT`
-3. the declared default
+3. a [secret source](./secrets.md) declared with `.from(...)`
+4. the declared default
 
 ```ts
 import { Build, parameter, run, target } from "jsr:@zuke/core";
@@ -50,7 +51,8 @@ declaration:
 | `.default(v)` | provide a default | non-optional (`T`) |
 | `.required()` | must be supplied | non-optional (`T`) |
 | `.env("NAME")` | override the env var name | unchanged |
-| `.secret()` | mark the value sensitive | unchanged |
+| `.secret()` | mark the value sensitive (masked everywhere) | unchanged |
+| `.from(source)` | resolve from a [secret manager](./secrets.md) | unchanged |
 | `.array()` | a comma-separated / repeatable list | `string[]` |
 
 `.number()` and `.boolean()` come first (they change the kind); `.options()`
@@ -77,12 +79,28 @@ TAGS=latest,canary ./zuke deploy        # from the environment
 
 ## Secrets
 
-`.secret()` marks a value sensitive. Under GitHub Actions, Zuke emits an
-`::add-mask::` for the resolved value so it is redacted from the logs.
+`.secret()` marks a value sensitive. Its resolved value is **redacted from all
+of Zuke's output** — every banner, target status, summary, and error message —
+and, under GitHub Actions, Zuke also emits an `::add-mask::` so the runner masks
+it in its own logs.
 
 ```ts
 token = parameter("Deploy token").secret().required();
 ```
+
+Pair `.secret()` with `.from(source)` to fetch the value from a secret manager
+(1Password, Vault, a mounted file, …) instead of the environment:
+
+```ts
+import { execSecret } from "jsr:@zuke/core";
+
+token = parameter("Deploy token")
+  .secret()
+  .from(execSecret((s) => s.command("op").arg("read", "op://vault/deploy/token")));
+```
+
+The [Secrets guide](./secrets.md) covers sources, resolution precedence, and the
+exact redaction guarantee (and its boundary) in full.
 
 ## Interactive input
 

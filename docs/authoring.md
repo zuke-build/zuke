@@ -331,8 +331,9 @@ url)` action. Each task POSTs the platform-native payload over
 non-2xx response.
 
 A webhook URL embeds the secret that authorises posting, so source it from a
-`parameter().secret()` build input rather than hard-coding it — Zuke masks the
-resolved value in CI output.
+`parameter().secret()` build input rather than hard-coding it — Zuke redacts the
+resolved value from all of its output, and can pull it from a secret manager
+with `.from(...)` (see [Secrets](./secrets.md)).
 
 ```ts
 import { AnnounceTasks, Build, parameter, target } from "jsr:@zuke/core";
