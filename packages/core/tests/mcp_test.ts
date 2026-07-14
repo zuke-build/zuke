@@ -187,6 +187,45 @@ Deno.test("an unknown target or tool is surfaced through the result, not the tra
   assertStringIncludes(unknownTool.text, "Unknown tool");
 });
 
+Deno.test("a run rejects a non-scalar argument instead of coercing it", async () => {
+  const server = new McpServer(new Demo(), { allowRun: true });
+  const res = await server.handleMessage(
+    req("tools/call", {
+      name: "run:build",
+      // An object where a scalar is expected must be refused, not stringified.
+      arguments: { environment: { injected: true } },
+    }),
+  );
+  const out = callText(res?.result);
+  assertEquals(out.isError, true);
+  assertStringIncludes(out.text, "Invalid argument type");
+  assertStringIncludes(out.text, "environment");
+});
+
+Deno.test("a run accepts a list argument for an array parameter", async () => {
+  class WithTags extends Build {
+    tags = parameter("Image tags").array();
+    ship = target().executes(() => {});
+  }
+  const server = new McpServer(new WithTags(), { allowRun: true });
+  const res = await server.handleMessage(
+    req("tools/call", {
+      name: "run:ship",
+      arguments: { tags: ["latest", "canary"] },
+    }),
+  );
+  // The list is accepted (joined like a repeated flag) and the run succeeds.
+  assertEquals(callText(res?.result).isError, false);
+  // A list for a non-array parameter, or a nested non-scalar, is rejected.
+  const bad = await server.handleMessage(
+    req("tools/call", {
+      name: "run:ship",
+      arguments: { tags: [{ nested: 1 }] },
+    }),
+  );
+  assertEquals(callText(bad?.result).isError, true);
+});
+
 Deno.test("tools/call validates its parameters", async () => {
   const server = new McpServer(new Demo());
   const res = await server.handleMessage(req("tools/call", {}));
@@ -268,6 +307,22 @@ Deno.test("serveStdio frames messages and answers each request", async () => {
   const out = messages();
   assertEquals(out.length, 1); // only the request got a reply
   assertEquals((out[0] as { id: number }).id, 1);
+});
+
+Deno.test("serveStdio processes a final line the stream never terminated", async () => {
+  const seen: unknown[] = [];
+  const { output, messages } = capturingWriter();
+  await serveStdio(
+    (message) => {
+      seen.push(message);
+      return Promise.resolve({ jsonrpc: "2.0", id: 1, result: {} });
+    },
+    // No trailing newline — the last message must still be handled.
+    streamOf('{"jsonrpc":"2.0","id":1,"method":"ping"}'),
+    output,
+  );
+  assertEquals(seen.length, 1);
+  assertEquals(messages().length, 1);
 });
 
 Deno.test("serveStdio answers an unparseable line with a parse error", async () => {

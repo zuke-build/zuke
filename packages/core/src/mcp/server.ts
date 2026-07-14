@@ -94,6 +94,26 @@ function textResult(text: string, isError = false): Record<string, unknown> {
   return { content: [{ type: "text", text }], isError };
 }
 
+/** Whether a JSON value is a scalar a parameter can accept. */
+function isScalar(value: unknown): value is string | number | boolean {
+  const t = typeof value;
+  return t === "string" || t === "number" || t === "boolean";
+}
+
+/**
+ * Coerce a JSON argument to the string a parameter parses, or `null` when the
+ * value's shape is invalid (an object, `null`, or a non-scalar/list mismatch).
+ * An array parameter accepts a list of scalars (joined like a repeated flag);
+ * every other parameter accepts a single scalar.
+ */
+function coerceArg(value: unknown, isArray: boolean): string | null {
+  if (Array.isArray(value)) {
+    if (!isArray || !value.every(isScalar)) return null;
+    return value.map(String).join(",");
+  }
+  return isScalar(value) ? String(value) : null;
+}
+
 /**
  * An MCP server bound to a build. Construct it once, then feed each incoming
  * JSON-RPC message to {@link McpServer.handleMessage}.
@@ -293,10 +313,30 @@ export class McpServer {
       return ok(id, textResult(`Unknown target: ${targetName}`, true));
     }
     const dryRun = args.dryRun === true;
+    // Coerce each supplied argument to the string form the parameter layer
+    // parses (the same path as a CLI flag), rejecting non-scalar JSON so a
+    // stray object/array can't be smuggled in as `[object Object]`. The
+    // parameter parsers then validate the string content (number, boolean,
+    // allowed options), surfacing an invalid value as a build failure.
     const values: Record<string, string> = {};
-    for (const paramName of this.#params.keys()) {
+    const badArgs: string[] = [];
+    for (const [paramName, param] of this.#params) {
       const value = args[paramName];
-      if (value !== undefined) values[paramName] = String(value);
+      if (value === undefined) continue;
+      const coerced = coerceArg(value, param.array_);
+      if (coerced === null) badArgs.push(paramName);
+      else values[paramName] = coerced;
+    }
+    if (badArgs.length > 0) {
+      return ok(
+        id,
+        textResult(
+          `Invalid argument type for: ${badArgs.join(", ")}. Each parameter ` +
+            "accepts a string, number, or boolean (an array parameter also " +
+            "accepts a list of them).",
+          true,
+        ),
+      );
     }
     const buffer = bufferingReporter();
     // Parameters resolve like the CLI: MCP arguments beat the environment beats

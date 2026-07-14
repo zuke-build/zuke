@@ -88,24 +88,32 @@ export async function serveStdio(
   const send = (response: JsonRpcResponse): Promise<number> =>
     output.write(encoder.encode(`${JSON.stringify(response)}\n`));
 
+  const handleLine = async (raw: string): Promise<void> => {
+    const line = raw.trim();
+    if (line === "") return;
+    let message: unknown;
+    try {
+      message = JSON.parse(line);
+    } catch {
+      await send(err(null, PARSE_ERROR, "Parse error"));
+      return;
+    }
+    const response = await handle(message);
+    if (response !== null) await send(response);
+  };
+
   let buffer = "";
   for await (const chunk of input) {
     buffer += decoder.decode(chunk, { stream: true });
     let newline = buffer.indexOf("\n");
     while (newline !== -1) {
-      const line = buffer.slice(0, newline).trim();
+      await handleLine(buffer.slice(0, newline));
       buffer = buffer.slice(newline + 1);
       newline = buffer.indexOf("\n");
-      if (line === "") continue;
-      let message: unknown;
-      try {
-        message = JSON.parse(line);
-      } catch {
-        await send(err(null, PARSE_ERROR, "Parse error"));
-        continue;
-      }
-      const response = await handle(message);
-      if (response !== null) await send(response);
     }
   }
+  // Flush any pending multi-byte character and process a final line that the
+  // stream ended without terminating, so no message is silently dropped.
+  buffer += decoder.decode();
+  await handleLine(buffer);
 }
