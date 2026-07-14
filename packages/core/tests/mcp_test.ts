@@ -40,12 +40,21 @@ Deno.test("initialize echoes the client's protocol version and names the server"
     req("initialize", { protocolVersion: "2024-11-05" }),
   );
   const result = res?.result as Record<string, unknown>;
+  // A supported version is echoed back.
   assertEquals(result.protocolVersion, "2024-11-05");
   assertEquals((result.serverInfo as { name: string }).name, "zuke");
-  // With no version supplied, it falls back to the server's newest.
+  // With no version supplied, it answers with the server's newest.
   const res2 = await server.handleMessage(req("initialize", {}));
   assertEquals(
     (res2?.result as Record<string, unknown>).protocolVersion,
+    PROTOCOL_VERSION,
+  );
+  // An unsupported version is NOT reflected back; the server offers its newest.
+  const res3 = await server.handleMessage(
+    req("initialize", { protocolVersion: "1999-01-01" }),
+  );
+  assertEquals(
+    (res3?.result as Record<string, unknown>).protocolVersion,
     PROTOCOL_VERSION,
   );
 });

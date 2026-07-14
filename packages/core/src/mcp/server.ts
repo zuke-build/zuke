@@ -31,8 +31,19 @@ import {
   ok,
 } from "./jsonrpc.ts";
 
+/**
+ * The MCP protocol versions this server implements, newest first. The server's
+ * method surface (`initialize`, `tools/list`, `tools/call`, `ping`) is common
+ * to all of them; {@link PROTOCOL_VERSION} is the newest.
+ */
+export const SUPPORTED_PROTOCOL_VERSIONS: readonly string[] = [
+  "2025-06-18",
+  "2025-03-26",
+  "2024-11-05",
+];
+
 /** The newest MCP protocol version this server implements. */
-export const PROTOCOL_VERSION = "2025-06-18";
+export const PROTOCOL_VERSION = SUPPORTED_PROTOCOL_VERSIONS[0];
 
 /** The `run:` prefix that names a per-target execution tool. */
 const RUN_PREFIX = "run:";
@@ -231,15 +242,24 @@ export class McpServer {
     }
   }
 
-  /** The `initialize` result: echo the client's protocol version when given. */
+  /**
+   * The `initialize` result. Negotiate the protocol version per the MCP spec:
+   * echo the client's requested version only when this server implements it,
+   * otherwise answer with the server's newest supported version (the client
+   * then proceeds or disconnects). An unknown or malformed request never
+   * reflects an unsupported version back.
+   */
   #initialize(params: unknown): Record<string, unknown> {
-    const requested = typeof params === "object" && params !== null &&
-        "protocolVersion" in params &&
+    const requested = isRecord(params) &&
         typeof params.protocolVersion === "string"
       ? params.protocolVersion
+      : undefined;
+    const protocolVersion = requested !== undefined &&
+        SUPPORTED_PROTOCOL_VERSIONS.includes(requested)
+      ? requested
       : PROTOCOL_VERSION;
     return {
-      protocolVersion: requested,
+      protocolVersion,
       capabilities: { tools: { listChanged: false } },
       serverInfo: { name: "zuke", version: this.#version },
     };
