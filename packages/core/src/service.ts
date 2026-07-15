@@ -216,19 +216,7 @@ export class ServiceRegistry {
  * ```
  */
 export async function tcpReachable(address: string): Promise<boolean> {
-  const colon = address.lastIndexOf(":");
-  if (colon === -1) {
-    throw new ServiceError(
-      `tcpReachable needs a "host:port" address, got "${address}".`,
-    );
-  }
-  const hostname = address.slice(0, colon) || "localhost";
-  const port = Number(address.slice(colon + 1));
-  if (!Number.isInteger(port) || port <= 0 || port > 65535) {
-    throw new ServiceError(
-      `tcpReachable needs a valid port, got "${address.slice(colon + 1)}".`,
-    );
-  }
+  const { hostname, port } = parseAddress(address);
   try {
     const conn = await Deno.connect({ hostname, port });
     conn.close();
@@ -236,4 +224,37 @@ export async function tcpReachable(address: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/**
+ * Split a `host:port` address, or a bracketed IPv6 `[::1]:port`, into its parts.
+ * An empty host defaults to `localhost`. Throws {@link ServiceError} on a
+ * missing port or an out-of-range one.
+ */
+function parseAddress(address: string): { hostname: string; port: number } {
+  const bad = (detail: string): never => {
+    throw new ServiceError(
+      `tcpReachable needs a "host:port" address: ${detail}.`,
+    );
+  };
+  let hostname: string;
+  let portText: string;
+  if (address.startsWith("[")) {
+    // Bracketed IPv6, e.g. "[::1]:8080" — the colons inside the brackets are
+    // part of the address, so split on the "]:" that follows them.
+    const end = address.indexOf("]");
+    if (end === -1 || address[end + 1] !== ":") bad(`"${address}"`);
+    hostname = address.slice(1, end);
+    portText = address.slice(end + 2);
+  } else {
+    const colon = address.lastIndexOf(":");
+    if (colon === -1) bad(`"${address}" has no port`);
+    hostname = address.slice(0, colon) || "localhost";
+    portText = address.slice(colon + 1);
+  }
+  const port = Number(portText);
+  if (!Number.isInteger(port) || port <= 0 || port > 65535) {
+    bad(`invalid port "${portText}"`);
+  }
+  return { hostname, port };
 }

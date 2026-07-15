@@ -100,14 +100,35 @@ export class SpawnedProcess {
   }
 
   /**
-   * Terminate the process (default `SIGTERM`) and wait for it to exit. A
-   * process that has already exited is treated as stopped.
+   * Terminate the process and wait for it to exit. Sends `signal` (default
+   * `SIGTERM`); if the process has not exited within `graceMs` (default 5s), it
+   * escalates to `SIGKILL` so a process that ignores `SIGTERM` cannot hang
+   * teardown. A process that has already exited is treated as stopped.
    */
-  async stop(signal: Deno.Signal = "SIGTERM"): Promise<void> {
+  async stop(
+    signal: Deno.Signal = "SIGTERM",
+    graceMs = 5000,
+  ): Promise<void> {
     try {
       this.#child.kill(signal);
     } catch {
-      // Already exited: nothing to signal.
+      return; // Already exited: nothing to signal.
+    }
+    // Race the process's exit against a grace timer; escalate to SIGKILL if the
+    // timer wins. The timer is always cleared so it never leaks.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const graceExpired = new Promise<boolean>((resolve) => {
+      timer = setTimeout(() => resolve(true), graceMs);
+    });
+    const exited = this.#child.status.then(() => false);
+    const shouldKill = await Promise.race([exited, graceExpired]);
+    if (timer !== undefined) clearTimeout(timer);
+    if (shouldKill) {
+      try {
+        this.#child.kill("SIGKILL");
+      } catch {
+        // Raced to exit between the timeout and the kill.
+      }
     }
     await this.#child.status;
   }

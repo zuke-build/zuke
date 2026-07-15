@@ -100,19 +100,29 @@ Deno.test("tcpReachable reports whether a port is accepting connections", async 
   const listener = Deno.listen({ hostname: "127.0.0.1", port: 0 });
   const port = listener.addr.transport === "tcp" ? listener.addr.port : 0;
   assertEquals(await tcpReachable(`127.0.0.1:${port}`), true);
-  // An empty host defaults to localhost.
-  assertEquals(await tcpReachable(`:${port}`), true);
   listener.close();
   assertEquals(await tcpReachable(`127.0.0.1:${port}`), false);
+  // An empty host defaults to localhost; nothing is listening now, so this is
+  // false regardless of whether localhost resolves to IPv4 or IPv6.
+  assertEquals(await tcpReachable(`:${port}`), false);
+});
+
+Deno.test("tcpReachable parses a bracketed IPv6 address", async () => {
+  // Port 1 is not listening, so this is false — but it exercises the
+  // "[host]:port" split (a bare lastIndexOf(':') would mangle the address).
+  assertEquals(await tcpReachable("[::1]:1"), false);
 });
 
 Deno.test("tcpReachable validates the address", async () => {
-  await assertRejects(() => tcpReachable("host"), ServiceError, "host:port");
+  await assertRejects(() => tcpReachable("host"), ServiceError, "no port");
   await assertRejects(
     () => tcpReachable("host:nope"),
     ServiceError,
-    "valid port",
+    "invalid port",
   );
+  // A malformed bracketed address is rejected too.
+  await assertRejects(() => tcpReachable("[::1"), ServiceError, "host:port");
+  await assertRejects(() => tcpReachable("[::1]x"), ServiceError, "host:port");
 });
 
 // --- Command.spawn / SpawnedProcess ---
@@ -125,6 +135,24 @@ Deno.test("Command.spawn starts a process that stop() terminates", async () => {
   await proc.stop();
   const status = await proc.status;
   assertEquals(status.success, false); // terminated by signal
+});
+
+Deno.test({
+  name: "stop() escalates to SIGKILL when SIGTERM is ignored",
+  // On Windows SIGTERM maps to TerminateProcess and cannot be ignored, so the
+  // escalation path is unreachable there.
+  ignore: Deno.build.os === "windows",
+  fn: async () => {
+    const bin = Deno.execPath();
+    // Ignore SIGTERM, then hang — only SIGKILL can end it.
+    const script =
+      "Deno.addSignalListener('SIGTERM', () => {}); await new Promise(() => {});";
+    const proc = $`${bin} eval ${script}`.spawn();
+    await new Promise((r) => setTimeout(r, 300)); // let the handler install
+    await proc.stop("SIGTERM", 150); // SIGTERM ignored → SIGKILL after 150ms
+    const status = await proc.status;
+    assertEquals(status.success, false);
+  },
 });
 
 Deno.test("spawn rejects an empty command", () => {
