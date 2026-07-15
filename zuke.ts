@@ -30,6 +30,7 @@ import {
   aiReviewWorkflow,
   genericReviewer,
   securityReviewer,
+  suppressions,
 } from "@zuke/ai";
 import { type DenoInstallSettings, DenoTasks } from "@zuke/deno";
 import { CspellTasks } from "@zuke/cspell";
@@ -525,6 +526,12 @@ class ZukeBuild extends Build {
       .comment() // upsert the assessment onto the PR (uses GITHUB_TOKEN)
       .diff((d) => d.base(Deno.env.get("ZUKE_REVIEW_BASE") ?? "origin/master"))
       .maxDiffTokens(20000)
+      // Dismissed false positives, kept auditable under "Suppressed": a build's
+      // own readiness probe / tcpReachable run build-author code that connects
+      // to an address the author typed — no more capability than any other line
+      // in the build file, and no untrusted input. (IDs are opaque fingerprints.)
+      // cspell:ignore myee
+      .suppress(suppressions((s) => s.add("1g3myee", "1mwn3kn")))
       .failWhen((g) => g.scoreAbove(8))
       .onError("warn")
   );
