@@ -6745,12 +6745,6 @@ class Budget
 class DiffSettings
   Fluent diff source configuration passed to {@link "./reviewer.ts".Reviewer.diff}.
 
-  base_?: string
-  staged_: boolean
-  text_?: string
-  fetchRequested_: boolean
-  fetchRemote_: string
-  fetchBranch_?: string
   base(ref: string): this
     Review the diff against `ref` (e.g. `"origin/main"`).
   staged(): this
@@ -6764,17 +6758,23 @@ class DiffSettings
     — the pull request's base branch). Honoured by the {@link
     "./fixer.ts".AiFixer}; if the fetch fails it falls back to the working-tree
     diff.
+  text_(): string | undefined
+    The literal diff text supplied via {@link DiffSettings.text}, if any.
+  fetch_(): DiffFetch | undefined
+    The base-branch fetch requested via {@link DiffSettings.fetchBase}, or
+    `undefined` when none was requested.
   argv_(): string[]
     The `git` argv this diff source resolves to.
 
 class GateSettings
   Fluent gate configuration passed to {@link "./reviewer.ts".Reviewer.failWhen}.
 
-  readonly rules_: GateRule[]
   scoreAbove(value: number): this
     Fail when the assessed risk score is strictly above `value` (0–10).
   severityAtLeast(value: Severity): this
     Fail when the overall severity is at least `value`.
+  rules_(): GateRule[]
+    The configured gate rules, in the order they were added.
 
 class Reviewer implements Validation
   A fluent AI reviewer. Construct one via {@link securityReviewer} (and the
@@ -6981,6 +6981,15 @@ interface CacheStore
     Fetch the entry stored under `key`, or `undefined` when absent.
   set(key: string, entry: CacheEntry): Promise<void>
     Store `entry` under `key`, replacing any prior value.
+
+interface DiffFetch
+  The base-branch fetch a {@link DiffSettings.fetchBase} requested — the remote
+  to fetch from and the branch (auto-detected from CI when unset).
+
+  readonly branch?: string
+    The branch to fetch, or `undefined` to auto-detect it from the CI env.
+  readonly remote: string
+    The remote to fetch from (default `"origin"`).
 
 interface FileEdit
   A whole-file edit: the complete new contents of one file.

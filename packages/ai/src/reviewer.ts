@@ -172,7 +172,7 @@ export class Reviewer implements Validation {
   failWhen(configure: Configure<GateSettings>): this {
     const settings = new GateSettings();
     configure(settings);
-    this.#gate = settings.rules_;
+    this.#gate = settings.rules_();
     return this;
   }
 
@@ -287,7 +287,8 @@ export class Reviewer implements Validation {
 
   /** Resolve the diff text from the configured source. */
   async #resolveDiff(): Promise<string> {
-    if (this.#diff.text_ !== undefined) return this.#diff.text_;
+    const text = this.#diff.text_();
+    if (text !== undefined) return text;
     const run = this.#exec ?? ((argv: string[]) => new Command(argv).text());
     return await run(this.#diff.argv_());
   }
