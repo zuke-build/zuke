@@ -61,6 +61,22 @@ Deno.test("a service that never becomes ready fails and is torn down", async () 
   assertEquals(stopped, true);
 });
 
+Deno.test("a hung readiness probe is still bounded by the timeout", async () => {
+  let stopped = false;
+  await assertRejects(
+    () =>
+      service()
+        .start(() => ({ stop: () => void (stopped = true) }))
+        // A probe that never resolves must not stall past the timeout.
+        .readyWhen(() => new Promise<boolean>(() => {}))
+        .readyTimeout(50)
+        .launch_("api"),
+    ServiceError,
+    "not ready within 50ms",
+  );
+  assertEquals(stopped, true);
+});
+
 Deno.test("a custom stop overrides the handle's own stop", async () => {
   let handleStopped = false;
   let customStopped = false;

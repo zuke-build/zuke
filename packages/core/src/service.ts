@@ -66,6 +66,29 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** Returned by {@link within} when the deadline elapses before the promise settles. */
+const TIMED_OUT = Symbol("timed-out");
+
+/**
+ * Resolve `promise`, or {@link TIMED_OUT} if `ms` elapses first. The timer is
+ * always cleared, so a promise that settles first leaks nothing; a promise that
+ * never settles is simply abandoned (its result is no longer awaited).
+ */
+async function within<T>(
+  promise: Promise<T>,
+  ms: number,
+): Promise<T | typeof TIMED_OUT> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<typeof TIMED_OUT>((resolve) => {
+    timer = setTimeout(() => resolve(TIMED_OUT), ms);
+  });
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
 /** A message from an unknown thrown value, without casting. */
 function messageOf(value: unknown): string {
   return value instanceof Error ? value.message : String(value);
@@ -140,18 +163,26 @@ export class ServiceBuilder extends TargetBuilder {
     return { name, stop: () => this.#teardown(handle) };
   }
 
-  /** Poll {@link ServiceBuilder.readyWhen} until it passes or times out. */
+  /**
+   * Poll {@link ServiceBuilder.readyWhen} until it passes or the timeout
+   * elapses. Each probe call is itself bounded by the remaining budget, so the
+   * timeout holds even if a predicate hangs and never resolves.
+   */
   async #waitReady(name: string): Promise<void> {
     if (this.#ready === undefined) return;
+    const probe = this.#ready;
     const deadline = performance.now() + this.#readyTimeoutMs;
+    const notReady = () =>
+      new ServiceError(
+        `Service "${name}" was not ready within ${this.#readyTimeoutMs}ms.`,
+      );
     while (true) {
-      if (await this.#ready()) return;
-      if (performance.now() >= deadline) {
-        throw new ServiceError(
-          `Service "${name}" was not ready within ${this.#readyTimeoutMs}ms.`,
-        );
-      }
-      await delay(this.#pollIntervalMs);
+      const remaining = deadline - performance.now();
+      if (remaining <= 0) throw notReady();
+      const result = await within(Promise.resolve(probe()), remaining);
+      if (result === TIMED_OUT) throw notReady();
+      if (result) return;
+      await delay(Math.min(this.#pollIntervalMs, deadline - performance.now()));
     }
   }
 
