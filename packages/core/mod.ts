@@ -111,6 +111,17 @@ export {
 } from "./src/secret.ts";
 export { REDACTED, Redactor } from "./src/redact.ts";
 export {
+  DEFAULT_POLL_INTERVAL_MS,
+  DEFAULT_READY_TIMEOUT_MS,
+  type RunningService,
+  service,
+  ServiceBuilder,
+  ServiceError,
+  type ServiceHandle,
+  ServiceRegistry,
+  tcpReachable,
+} from "./src/service.ts";
+export {
   executionSet,
   findCycle,
   GraphError,

@@ -35,6 +35,7 @@ import {
 } from "./affected.ts";
 import { type RemoteCacheStore, resolveRemoteStore } from "./remote_cache.ts";
 import { isCI } from "./host.ts";
+import { ServiceBuilder, ServiceRegistry } from "./service.ts";
 import { Redactor } from "./redact.ts";
 import { absolutePath } from "./path.ts";
 import type { Remediation, TargetBuilder, TargetFn } from "./target.ts";
@@ -491,6 +492,7 @@ async function runTarget(
   cache: BuildCache | undefined,
   dryRun: boolean,
   globalRecovery: Remediation[],
+  services: ServiceRegistry,
 ): Promise<TargetOutcome> {
   const name = t.name_ ?? "<unnamed>";
 
@@ -515,6 +517,25 @@ async function runTarget(
       reporter.info(line);
     }
     return { status: "passed", ms: 0 };
+  }
+
+  // A service starts a long-lived process and stays up while its dependents
+  // run; the registry stops it during teardown. It has no cacheable body and no
+  // `.executes` — so it is handled before the cache and body paths below.
+  if (t instanceof ServiceBuilder) {
+    openTarget(reporter, renderer, style, name, opened);
+    await life.targetStart(name);
+    const start = performance.now();
+    try {
+      services.register(await t.launch_(name));
+      const ms = performance.now() - start;
+      passTarget(reporter, renderer, style, name, ms);
+      return { status: "passed", ms };
+    } catch (error) {
+      const ms = performance.now() - start;
+      failTarget(reporter, renderer, style, name, ms, error);
+      return { status: "failed", ms, error };
+    }
   }
 
   if (cache !== undefined && await cache.upToDate(t)) {
@@ -592,6 +613,7 @@ async function runSequential(
   cache: BuildCache | undefined,
   dryRun: boolean,
   globalRecovery: Remediation[],
+  services: ServiceRegistry,
 ): Promise<RunOutcome> {
   const reports: TargetReport[] = [];
   const executed: string[] = [];
@@ -615,6 +637,7 @@ async function runSequential(
       cache,
       dryRun,
       globalRecovery,
+      services,
     );
     await life.targetEnd(name, outcome.status);
     if (outcome.status === "passed" || outcome.status === "failed") opened++;
@@ -651,6 +674,7 @@ async function runScheduled(
   cache: BuildCache | undefined,
   dryRun: boolean,
   globalRecovery: Remediation[],
+  services: ServiceRegistry,
 ): Promise<RunOutcome> {
   const outcomes = new Map<TargetBuilder, TargetOutcome>();
   const done = new Set<TargetBuilder>(); // passed/cached/skipped → unblocks dependents
@@ -696,6 +720,7 @@ async function runScheduled(
           cache,
           dryRun,
           globalRecovery,
+          services,
         )
           .then(
             async (outcome) => {
@@ -867,20 +892,24 @@ export async function execute(
   // resolved once before the run.
   const globalRecovery = dryRun ? [] : build.recoverWith();
 
-  let run: RunOutcome;
-  if (!globalParallel && !grouped && !scheduled) {
-    run = await runSequential(
-      life,
-      order,
-      reporter,
-      renderer,
-      style,
-      skip,
-      cache,
-      dryRun,
-      globalRecovery,
-    );
-  } else {
+  // Services started during the run are held here and torn down in reverse
+  // order once it finishes — in a `finally`, so a failure never leaks a process.
+  const services = new ServiceRegistry();
+  const runPlan = (): Promise<RunOutcome> => {
+    if (!globalParallel && !grouped && !scheduled) {
+      return runSequential(
+        life,
+        order,
+        reporter,
+        renderer,
+        style,
+        skip,
+        cache,
+        dryRun,
+        globalRecovery,
+        services,
+      );
+    }
     // With `--parallel`, anything independent may overlap up to `limit`.
     // Otherwise only same-group members overlap (the rest stay serialized),
     // bounded by the CPU count.
@@ -889,7 +918,7 @@ export async function execute(
       ? () => true
       : (a: TargetBuilder, b: TargetBuilder) =>
         a.group_ !== undefined && a.group_ === b.group_;
-    run = await runScheduled(
+    return runScheduled(
       life,
       order,
       predecessors,
@@ -902,7 +931,17 @@ export async function execute(
       cache,
       dryRun,
       globalRecovery,
+      services,
     );
+  };
+
+  let run: RunOutcome;
+  try {
+    run = await runPlan();
+  } finally {
+    if (services.size > 0) {
+      await services.stopAll((line) => reporter.info(line));
+    }
   }
   if (cache !== undefined) await cache.save();
 

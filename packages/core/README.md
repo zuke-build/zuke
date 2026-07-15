@@ -428,11 +428,26 @@ async function run(BuildClass: new () => Build, options: RunOptions): Promise<vo
   await run(MyBuild, { plugins: [timing] });
   ```
 
+function service(): ServiceBuilder
+  Create a service target — a long-lived process kept running while its
+  dependents execute. Configure it with {@link ServiceBuilder.start} /
+  {@link ServiceBuilder.readyWhen} and depend on it from a {@link target}.
+
 function tar(entries: TarEntry[]): Uint8Array
   Create a `ustar` archive from the given entries (in order).
 
 function target(): TargetBuilder
   Create a new, empty target builder.
+
+async function tcpReachable(address: string): Promise<boolean>
+  Whether a TCP `host:port` is accepting connections — the usual readiness
+  probe for a server. Resolves `true` once a connection succeeds (it is closed
+  immediately), `false` while the port is still refused/unreachable, so it
+  plugs straight into {@link ServiceBuilder.readyWhen}.
+
+  ```ts
+  .readyWhen(() => tcpReachable("localhost:5432"))
+  ```
 
 function toolchain(configure?: (t: Toolchain) => void): Toolchain
   Create a {@link Toolchain}. Configure it inline with a callback, or chain
@@ -459,6 +474,12 @@ const AnnounceTasks: AnnounceTasksApi
 
 const CONFIG_FILE: "zuke.json"
   The Zuke config file name; its presence marks a repository root.
+
+const DEFAULT_POLL_INTERVAL_MS: 200
+  How often {@link ServiceBuilder.readyWhen} is polled while waiting.
+
+const DEFAULT_READY_TIMEOUT_MS: 30000
+  The default time a service is given to become ready before it fails.
 
 const DEFAULT_TOOLS_DIR: ".zuke/tools"
   The default directory a {@link Toolchain} (and {@link ToolTasks}) installs into.
@@ -792,6 +813,49 @@ class SecretError extends Error
   Raised when a {@link SecretSource} cannot produce a value.
 
   override name: string
+
+class ServiceBuilder extends TargetBuilder
+  A long-lived {@link target}. Configure how it starts ({@link
+  ServiceBuilder.start}), how to tell it is ready ({@link
+  ServiceBuilder.readyWhen}), and — when the started handle is not
+  self-stopping — how it stops ({@link ServiceBuilder.stop}). It inherits the
+  ordering methods (`dependsOn`, `before`, `after`, `description`) from
+  {@link TargetBuilder}; a service has no `.executes` body.
+
+  start(fn: () => ServiceHandle | Promise<ServiceHandle>): this
+    How to start the process. Return a {@link ServiceHandle} (e.g.
+    `$\`…`.spawn()`) so the service can be stopped on teardown; provide a
+    custom {@link ServiceBuilder.stop} if the handle is not self-stopping.
+  readyWhen(fn: () => boolean | Promise<boolean>): this
+    A readiness probe, polled until it returns `true` (or the timeout is hit).
+    Without one, the service is considered ready the moment it starts. See
+    {@link tcpReachable} for the common "is the port accepting connections?".
+  readyTimeout(ms: number): this
+    Override how long to wait for {@link ServiceBuilder.readyWhen} (default 30s).
+  stop(fn: (handle: ServiceHandle) => void | Promise<void>): this
+    Custom teardown, given the handle {@link ServiceBuilder.start} returned.
+  async launch_(name: string): Promise<RunningService>
+    INTERNAL: start the service and wait until it is ready, returning a handle
+    the executor stops on teardown. Throws {@link ServiceError} if no start was
+    configured, or if the service does not become ready in time (the
+    just-started process is stopped first so it is not leaked).
+
+class ServiceError extends Error
+  Raised when a service cannot start or does not become ready in time.
+
+  override name: string
+
+class ServiceRegistry
+  Holds the services started during a run and stops them in reverse order on
+  teardown. Stopping never throws — a failure to stop one service is reported
+  and the rest are still stopped.
+
+  register(running: RunningService): void
+    Record a started service to stop later.
+  get size(): number
+    The number of services currently held.
+  async stopAll(report: (line: string) => void): Promise<void>
+    Stop every registered service, newest first, reporting each outcome.
 
 class SlackAnnouncementSettings extends AnnouncementSettings
   Fluent settings for {@link AnnounceTasksApi.slack}. Bot mode
@@ -1643,6 +1707,14 @@ interface RunOptions
     Zuke's built-in look; inject `consoleRenderer` from `@zuke/console` (or a
     custom {@link Renderer}) to restyle a build's output.
 
+interface RunningService
+  A started service the executor holds until it tears it down.
+
+  readonly name: string
+    The service's target name, for diagnostics.
+  stop(): Promise<void>
+    Stop the service; never rejects (failures are the registry's concern).
+
 interface SecretSource
   A provider that resolves a secret's value on demand. Built by
   {@link execSecret} or {@link fileSecret} and attached to a parameter with
@@ -1651,6 +1723,15 @@ interface SecretSource
 
   resolve(): Promise<string>
     Produce the secret value, or throw {@link SecretError} on failure.
+
+interface ServiceHandle
+  A running service — whatever {@link ServiceBuilder.start} returns. Its
+  {@link ServiceHandle.stop} tears it down; a {@link
+  https://jsr.io/@zuke/core SpawnedProcess} is one, so
+  `.start(() => $\`…`.spawn())` needs no explicit stop.
+
+  stop(): void | Promise<void>
+    Terminate the service. Called on teardown unless `.stop()` overrides it.
 
 interface Style
   How a run renders its output.
