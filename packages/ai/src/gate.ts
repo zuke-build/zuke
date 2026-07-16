@@ -14,18 +14,23 @@ export type GateRule =
 
 /** Fluent gate configuration passed to {@link "./reviewer.ts".Reviewer.failWhen}. */
 export class GateSettings {
-  readonly rules_: GateRule[] = [];
+  readonly #rules: GateRule[] = [];
 
   /** Fail when the assessed risk score is strictly above `value` (0–10). */
   scoreAbove(value: number): this {
-    this.rules_.push({ kind: "score", value });
+    this.#rules.push({ kind: "score", value });
     return this;
   }
 
   /** Fail when the overall severity is at least `value`. */
   severityAtLeast(value: Severity): this {
-    this.rules_.push({ kind: "severity", value });
+    this.#rules.push({ kind: "severity", value });
     return this;
+  }
+
+  /** The configured gate rules, in the order they were added. */
+  rules_(): GateRule[] {
+    return this.#rules;
   }
 }
 

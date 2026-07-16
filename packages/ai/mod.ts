@@ -37,7 +37,7 @@ export type {
   AgentResult,
   AgentRunner,
 } from "./src/agent_fixer.ts";
-export { DiffSettings } from "./src/diff.ts";
+export { type DiffFetch, DiffSettings } from "./src/diff.ts";
 export { GateSettings } from "./src/gate.ts";
 export type { RetryInfo, RetryOptions } from "./src/retry.ts";
 export { Budget, budget } from "./src/budget.ts";
