@@ -106,6 +106,24 @@ Deno.test("translateCommand flags shell-specific commands as TODO", () => {
   }
 });
 
+Deno.test("translateCommand keeps a newline from breaking out of the TODO comment", () => {
+  // A command whose text spans lines must stay on one `//` comment line.
+  const items = translateCommand("cat x | grep y\nmalicious()");
+  assertEquals(items.length, 1);
+  assertEquals(items[0].runnable, false);
+  assertEquals(items[0].code.includes("\n"), false);
+  assertStringIncludes(items[0].code, "cat x | grep y malicious()");
+});
+
+Deno.test("generateBuild escapes an unusual task name in the description", () => {
+  // A name with a quote/newline is emitted through a string literal, so it
+  // cannot break out of the generated source.
+  const out = generateBuild("B", [
+    { name: 'weird"\nname', command: "echo hi", deps: [] },
+  ]);
+  assertStringIncludes(out, String.raw`imported: weird\"\nname`);
+});
+
 Deno.test("translateCommand keeps quoted arguments together", () => {
   const items = translateCommand(`prettier --write "src/**/*.ts"`);
   assertEquals(

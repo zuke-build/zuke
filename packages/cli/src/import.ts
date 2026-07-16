@@ -160,8 +160,11 @@ export function translateCommand(command: string): BodyItem[] {
     const segment = raw.trim();
     if (segment === "") continue;
     if (needsShell(segment)) {
+      // Collapse whitespace so an embedded newline cannot break the raw command
+      // out of its single-line `//` comment in the generated source.
+      const oneLine = segment.replace(/\s+/g, " ").trim();
       items.push({
-        code: `// TODO: translate this shell command: ${segment}`,
+        code: `// TODO: translate this shell command: ${oneLine}`,
         runnable: false,
       });
       continue;
