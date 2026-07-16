@@ -203,7 +203,7 @@ export interface SetupResult {
 }
 
 /** Join a directory and file name without pulling in path utilities. */
-function joinPath(dir: string, name: string): string {
+export function joinPath(dir: string, name: string): string {
   return dir === "." ? name : `${dir}/${name}`;
 }
 

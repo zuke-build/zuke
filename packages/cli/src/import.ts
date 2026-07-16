@@ -19,6 +19,7 @@
 
 import {
   isRecord,
+  joinPath,
   runSetup,
   type SetupHost,
   type SetupResult,
@@ -437,9 +438,7 @@ export async function runImport(
     : SOURCE_FILES.filter((c) => c.source === options.from);
 
   for (const candidate of candidates) {
-    const path = options.dir === "."
-      ? candidate.file
-      : `${options.dir}/${candidate.file}`;
+    const path = joinPath(options.dir, candidate.file);
     if (!(await host.exists(path))) continue;
     const tasks = candidate.parse(await host.readText(path));
     host.log(
