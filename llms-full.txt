@@ -2644,11 +2644,20 @@ async function main(args: string[], host: SetupHost, prompter: Prompter): Promis
   The CLI entry point. Returns a process exit code; `host`/`prompter` are
   injectable for testing.
 
+function parseImportFlags(args: string[]): ImportFlags
+  Parse the argument list following `zuke import`.
+
 function parseSetupFlags(args: string[]): SetupFlags
   Parse the argument list following `zuke setup`.
 
 const defaultPrompter: Prompter
   The real {@link Prompter}, backed by Deno's `prompt`/`confirm`.
+
+interface ImportFlags extends SetupFlags
+  Flags accepted by `zuke import` — the setup flags plus `--from`.
+
+  from?: ImportSource
+    Force a source (`package.json` or `makefile`); auto-detected when unset.
 
 interface Prompter
   The interactive surface, injectable so the wizard is testable without a TTY.
