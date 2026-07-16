@@ -1,2 +1,2 @@
 /** The `@zuke/cli` version. Kept in sync with deno.json by release-please. */
-export const VERSION = "0.4.0"; // x-release-please-version
+export const VERSION = "0.5.0"; // x-release-please-version

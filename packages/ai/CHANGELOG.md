@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.2](https://github.com/zuke-build/zuke/compare/ai-v1.4.1...ai-v1.4.2) (2026-07-16)
+
+
+### Bug Fixes
+
+* **ai:** make internal settings fields private to complete the API docs ([#158](https://github.com/zuke-build/zuke/issues/158)) ([9daaeec](https://github.com/zuke-build/zuke/commit/9daaeeca4b308f0cb599dbcc7c56afaeccb047b5))
+
 ## [1.4.1](https://github.com/zuke-build/zuke/compare/ai-v1.4.0...ai-v1.4.1) (2026-07-09)
 
 

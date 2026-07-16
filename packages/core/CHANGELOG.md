@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.13.0](https://github.com/zuke-build/zuke/compare/core-v1.12.0...core-v1.13.0) (2026-07-16)
+
+
+### Features
+
+* **core:** add service() targets for long-lived processes ([#156](https://github.com/zuke-build/zuke/issues/156)) ([ead5a5c](https://github.com/zuke-build/zuke/commit/ead5a5c1f44364323c8d78cc7fae203b7d031dc7))
+
 ## [1.12.0](https://github.com/zuke-build/zuke/compare/core-v1.11.0...core-v1.12.0) (2026-07-14)
 
 
