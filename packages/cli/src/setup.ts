@@ -178,6 +178,11 @@ export interface SetupOptions {
   force: boolean;
   /** Build class name for the starter `zuke.ts`. */
   name: string;
+  /**
+   * The `zuke.ts` contents to write. Defaults to {@link starterBuild}; `zuke
+   * import` passes a build generated from an existing project's tasks instead.
+   */
+  buildContent?: string;
 }
 
 /** What happened to one scaffolded file. */
@@ -222,7 +227,10 @@ export async function runSetup(
   const files: FileResult[] = [];
 
   const scaffold: readonly ScaffoldFile[] = [
-    { name: "zuke.ts", content: starterBuild(options.name) },
+    {
+      name: "zuke.ts",
+      content: options.buildContent ?? starterBuild(options.name),
+    },
     { name: "zuke", content: launcherBash(), mode: 0o755 },
     { name: "zuke.ps1", content: launcherPwsh() },
     { name: "zuke.json", content: starterConfig(options.name) },

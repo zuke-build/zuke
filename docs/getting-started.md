@@ -27,6 +27,25 @@ zuke setup                                  # in your project
 Without installing, the same wizard runs via `deno run -A jsr:@zuke/cli setup`
 (flags: `--dir <path>`, `--name <Class>`, `--force`, `--yes`).
 
+## Migrate an existing project with `zuke import`
+
+Already have `package.json` scripts or a `Makefile`? `zuke import` reads them and
+generates a `zuke.ts` with a target per task — a working starting point you then
+refine into typed wrappers, instead of a blank page:
+
+```sh
+zuke import                 # auto-detects package.json, then a Makefile
+zuke import --from makefile  # or pin the source
+```
+
+Each script/target becomes a `target()`; a command maps to `CmdTasks.exec(...)`,
+an `&&` chain becomes sequential steps, a `package.json` `run` delegation (or a
+Makefile prerequisite) becomes `.dependsOn(...)`, and a command too shell-specific
+to translate (pipes, redirects, env assignments) is preserved behind a `// TODO`
+so the file still compiles and the tricky bits are flagged. It also scaffolds the
+launchers and `deno.json`, exactly like `zuke setup`. Flags: `--from
+<package.json|makefile>`, plus the same `--dir`, `--name`, `--force`, `--yes`.
+
 ## Run it yourself
 
 Or just create a `zuke.ts` in your project root and run it with Deno:
