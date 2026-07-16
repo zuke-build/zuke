@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/zuke-build/zuke/compare/cli-v0.4.0...cli-v0.5.0) (2026-07-16)
+
+
+### Features
+
+* **cli:** add zuke import to scaffold a build from package.json or a Makefile ([#159](https://github.com/zuke-build/zuke/issues/159)) ([5fa7605](https://github.com/zuke-build/zuke/commit/5fa7605004451822f6c2576981dd681d1c68d3d7))
+
 ## [0.4.0](https://github.com/zuke-build/zuke/compare/cli-v0.3.0...cli-v0.4.0) (2026-06-23)
 
 
