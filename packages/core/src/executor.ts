@@ -48,6 +48,7 @@ import {
 } from "./target.ts";
 import type { Configure } from "./tooling.ts";
 import type {
+  RunRecord,
   SignalRecord,
   WaitDisposition,
   WaitState,
@@ -208,6 +209,24 @@ export interface ExecuteOptions {
    * to `ZUKE_ACTOR`, then the CI actor, then `"anonymous"`.
    */
   actor?: string;
+  /**
+   * Continue a suspended run instead of starting a fresh one. Set by
+   * {@link "./resume.ts".resumeRun} after it has transitioned the run to
+   * `running`; carries the existing record, its store version, and the targets
+   * already succeeded (which are not re-run). Not for direct use — call
+   * `resumeRun`.
+   */
+  resume?: ResumeState;
+}
+
+/** The continuation state {@link resumeRun} hands to {@link execute} on a resume. */
+export interface ResumeState {
+  /** The run being continued (already transitioned to `running`). */
+  record: RunRecord;
+  /** Its current store version, for the writer to continue from. */
+  version: string;
+  /** Names of targets recorded `succeeded` — seeded as done, never re-run. */
+  done: ReadonlySet<string>;
 }
 
 /** Whether the build is running inside a GitHub Actions runner. */
@@ -411,6 +430,8 @@ interface RunEnv {
   runUrl?: string;
   /** External signals received so far, exposed to bodies via `ctx.signals`. */
   signals: ReadonlyMap<string, SignalRecord>;
+  /** On a resume, target names already succeeded — seeded done, never re-run. */
+  done?: ReadonlySet<string>;
 }
 
 /** A failure's message, or `undefined` when there was none — for the state record. */
@@ -950,13 +971,21 @@ async function runScheduled(
   let halted = false; // a non-lenient failure → stop launching new targets
   let flushed = 0;
 
-  // `--skip` targets count as completed so their dependents can still run.
+  // `--skip` targets, and targets already succeeded on a resumed run, count as
+  // completed so their dependents can still run.
   for (const t of order) {
-    if (skip.has(t.name_ ?? "<unnamed>")) {
+    const name = t.name_ ?? "<unnamed>";
+    if (skip.has(name)) {
       outcomes.set(t, { status: "skipped", ms: 0 });
       done.add(t);
       started.add(t);
-      void env.writer?.markTargetSettled(t.name_ ?? "<unnamed>", "skipped");
+      void env.writer?.markTargetSettled(name, "skipped");
+    } else if (env.done?.has(name)) {
+      // Succeeded in the prior (suspended) run: unblock dependents, don't re-run,
+      // and leave its recorded `succeeded` untouched.
+      outcomes.set(t, { status: "cached", ms: 0 });
+      done.add(t);
+      started.add(t);
     }
   }
 
@@ -1167,9 +1196,10 @@ export async function execute(
   const grouped = order.some((t) => t.group_ !== undefined);
   // `proceedAfterFailure` and `always` need the scheduler's per-target control,
   // so the simple sequential loop is only used when none of these apply.
-  const scheduled = order.some((t) =>
-    t.proceedAfterFailure_ || t.always_ || t.waitsFor_ !== undefined
-  );
+  const scheduled = options.resume !== undefined ||
+    order.some((t) =>
+      t.proceedAfterFailure_ || t.always_ || t.waitsFor_ !== undefined
+    );
   const dryRun = options.dryRun ?? false;
   // A dry run never reads or writes the cache (no body runs to invalidate it).
   const cache = dryRun ? undefined : await resolveCache(
@@ -1193,7 +1223,7 @@ export async function execute(
   // aborts when the caller's `options.signal` does; its signal is handed to
   // every target's context and installed as the shell's ambient signal, so a
   // cancelled run terminates in-flight `$` child processes.
-  const runId = crypto.randomUUID();
+  const runId = options.resume ? options.resume.record.id : crypto.randomUUID();
   const runController = new AbortController();
   const onCancel = () => runController.abort();
   if (options.signal !== undefined) {
@@ -1242,8 +1272,19 @@ export async function execute(
   const actor = resolveActor(options.actor, readEnv);
   const runUrl = ciRunUrl(readEnv);
   const nowIso = () => new Date().toISOString();
+  const warn = (message: string) => reporter.info(message);
   const writer = stateStore === undefined
     ? undefined
+    : options.resume !== undefined
+    // A resume continues the existing record (already transitioned to running).
+    ? RunStateWriter.adopt(
+      stateStore,
+      options.resume.record,
+      options.resume.version,
+      nowIso,
+      redactor,
+      warn,
+    )
     : await RunStateWriter.open(
       stateStore,
       buildRunRecord({
@@ -1257,7 +1298,7 @@ export async function execute(
       }),
       nowIso,
       redactor,
-      (message) => reporter.info(message),
+      warn,
     );
   const env: RunEnv = {
     runId,
@@ -1267,6 +1308,7 @@ export async function execute(
     actor,
     runUrl,
     signals: writer ? writer.signals() : new Map<string, SignalRecord>(),
+    done: options.resume?.done,
   };
 
   // Services started during the run are held here and torn down in reverse

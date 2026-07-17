@@ -219,6 +219,10 @@ class Deploy extends Build {
 - Needs a state store (a build with `.waitsFor()` enables `.zuke/runs` by
   default). A resume is a fresh process, so **only `ctx.state`/`ctx.signals`
   cross the boundary**. See `docs/orchestration.md`.
+- Continue a suspended run with `zuke resume <id> --signal <name> [--data <json>]`
+  (or `zuke resume --check [<id>]` for predicate waits/timeouts). Resumption is
+  **exactly-once** (concurrent resumers get `AlreadyResumedError`) and re-runs
+  only the not-yet-succeeded targets; `--force-graph` overrides a changed graph.
 
 ## Parameters — typed build inputs
 

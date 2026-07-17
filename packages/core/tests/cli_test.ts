@@ -184,6 +184,28 @@ Deno.test("parseArgs reads --state and --actor", () => {
   assertEquals(parseArgs(["build", "--actor=bob"]).actor, "bob");
 });
 
+Deno.test("parseArgs reads resume with its run id, signal, data, and flags", () => {
+  const p = parseArgs([
+    "resume",
+    "run-9",
+    "--signal",
+    "approved",
+    "--data",
+    '{"by":"qa"}',
+    "--force-graph",
+  ]);
+  assertEquals(p.resume, true);
+  assertEquals(p.resumeRunId, "run-9");
+  assertEquals(p.signal, "approved");
+  assertEquals(p.data, '{"by":"qa"}');
+  assertEquals(p.forceGraph, true);
+
+  const check = parseArgs(["resume", "--check"]);
+  assertEquals(check.resume, true);
+  assertEquals(check.check, true);
+  assertEquals(check.resumeRunId, undefined);
+});
+
 Deno.test("parseArgs reads --affected with an optional base", () => {
   assertEquals(parseArgs(["build"]).affected, false);
   assertEquals(parseArgs(["build", "--affected"]).affected, true);
@@ -687,4 +709,13 @@ Deno.test("run forwards args and plugins to main", async () => {
   }
   assertEquals(code, 0);
   assertEquals(seen, ["finished"]);
+});
+
+Deno.test("main: resume rejects an oversized --data payload", async () => {
+  const huge = JSON.stringify({ blob: "x".repeat(70_000) });
+  const { code, err } = await capture(() =>
+    main(Demo, ["resume", "run-x", "--data", huge])
+  );
+  assertEquals(code, 1);
+  assertEquals(err.join("\n").includes("too large"), true);
 });

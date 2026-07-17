@@ -7,9 +7,8 @@ later, possibly days later and in a different process. Zuke models this as a
 state is saved to the [state store](./state.md), and it is resumed when the
 event happens.
 
-> This page covers the **suspend** half — declaring a wait and what happens when
-> a run parks on it. Resuming a suspended run (`zuke resume`) lands in the next
-> release; the run's state is fully persisted in the meantime.
+The lifecycle has two halves: a run **suspends** at a wait, and is later
+**resumed** — see [Resuming a suspended run](#resuming-a-suspended-run) below.
 
 ## Declaring a wait — `.waitsFor()`
 
@@ -77,6 +76,45 @@ A satisfied trigger, by contrast, passes straight through: the gate is
 Because a wait must be resumable, **it requires a state store** — a build that
 uses `.waitsFor()` turns on the `.zuke/runs` filesystem store by default (like
 locks). Declaring a wait with state disabled fails with a friendly error.
+
+## Resuming a suspended run
+
+Deliver the awaited event with `zuke resume`:
+
+```sh
+# Satisfy an externalSignal wait, with an optional JSON payload:
+zuke resume <run-id> --signal testing-approved --data '{"by":"qa"}'
+
+# Re-check predicate (resumeWhen) waits and enforce timeouts — the cron/webhook
+# entry point; sweeps every suspended run when no id is given:
+zuke resume --check [<run-id>]
+```
+
+Resuming:
+
+1. **Delivers the signal** (if any) into the record and transitions the run
+   `suspended → running` with a **compare-and-swap, so exactly one resumer
+   wins**. A loser gets a clean `AlreadyResumedError` (`run X was already
+   resumed by …`) and exits non-zero — safe to run the same resume from a
+   retrying cron.
+2. **Re-instantiates the build**, re-resolves parameters from the record (CLI
+   may override non-secret ones; secrets re-resolve from the environment), and
+   **verifies the graph still matches** the suspended run — a changed graph
+   (added/removed/re-wired targets) is a hard error unless you pass
+   `--force-graph`.
+3. **Re-runs only what hadn't succeeded.** Targets recorded `succeeded` are
+   seeded as done and skipped; the wait re-evaluates its trigger (now
+   satisfied) and the run continues — possibly suspending again at a later wait.
+
+Programmatically, `resumeRun(build, { runId, signal, data })` and
+`resumeCheck(build, { runId? })` do the same.
+
+### Timeouts
+
+A wait past its `timeout` deadline **times out** instead of resuming: the target
+is failed and the run fails, its recorded `onTimeout` disposition preserved.
+Running a compensation target on timeout (rather than just failing) arrives with
+the cancellation milestone.
 
 ## State is the only thing that crosses the boundary
 
