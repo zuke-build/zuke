@@ -73,6 +73,14 @@ export const BUILTIN_FLAGS: readonly BuiltinFlag[] = [
     description: "Run only targets affected by changes since a git base",
   },
   { name: "--dry-run", description: "Print the plan without running targets" },
+  {
+    name: "--state",
+    description: "Persist durable run state to .zuke/runs",
+  },
+  {
+    name: "--actor",
+    description: "Attribute the run to <name> in its state record",
+  },
   { name: "--output", description: "Graph output format: text or html" },
   {
     name: "--no-open",

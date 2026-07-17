@@ -8,6 +8,8 @@
 | `zuke <target> --no-cache`          | Ignore the incremental cache; re-run every target.             |
 | `zuke <target> --affected[=<base>]` | Run only targets affected by files changed since a git base.   |
 | `zuke <target> --dry-run`           | Print the plan without executing any target body.              |
+| `zuke <target> --state`             | Persist [durable run state](./state.md) under `.zuke/runs`.    |
+| `zuke <target> --actor <name>`      | Attribute the run to `<name>` in its state record.            |
 | `zuke --list` / `-l`                | List all targets with descriptions and dependencies.           |
 | `zuke graph`                        | Print the dependency graph (`target → deps`).                  |
 | `zuke graph --output=html`          | Render an interactive HTML graph into `.zuke/` and open it.    |
@@ -223,3 +225,15 @@ honouring `--skip` and each target's `onlyWhen` condition — without executing
 any body or reading/writing the cache. Each planned target prints a
 `(dry run — not executed)` line, and the summary reflects what would have run.
 Programmatic callers pass `{ dryRun: true }` to `execute`.
+
+## Durable run state
+
+`--state` persists a versioned record of the run — its status, the graph it ran,
+resolved non-secret parameters, and per-target progress — under `.zuke/runs`, so
+it can be reconstructed after the process exits. `--actor <name>` labels who ran
+it (else `ZUKE_ACTOR`, the CI actor, or `"anonymous"`). Both are no-ops if a
+store is already configured via `ZUKE_STATE_URL` / `ZUKE_STATE_DIR` or the
+build's `stateStore()` override. A plain run with none of these writes nothing.
+See [Durable run state](./state.md) for the record shape, `ctx.state`, the
+pluggable backends, and the [HTTP API](./state-api.md) for hosting a production
+store.

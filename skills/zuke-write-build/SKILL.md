@@ -78,10 +78,22 @@ Before calling any task or settings method, confirm the real shape:
   depended on like a target, but with a `.start(...)` / `.readyWhen(...)`
   lifecycle instead of `.executes(...)`; the executor starts it, waits until
   ready, then stops it in a `finally` so it never leaks. See the cheatsheet.
+- **Target context & cancellation:** a body may take a context —
+  `.executes((ctx) => …)` — with `ctx.runId`, `ctx.target`, `ctx.signal` (an
+  `AbortSignal` fired when the run is cancelled; a plain `` $`…` `` in the body
+  is `SIGTERM`'d automatically), `ctx.state`, and `ctx.dryRun`. Zero-argument
+  bodies keep working unchanged. Cancel a run programmatically by passing
+  `{ signal }` to `execute`. See the cheatsheet.
 - **Caching:** `.inputs(...)` / `.outputs(...)` make a target incremental. Add a
   **remote store** to share results across machines (fresh CI, teammates);
   `--affected` runs only targets changed since a git base; `--no-cache` /
   `--no-remote-cache` bypass them.
+- **Durable run state:** persist a run's status and per-target metadata to a
+  pluggable `StateStore` so it survives the process — turn it on with `--state`,
+  `ZUKE_STATE_DIR` / `ZUKE_STATE_URL`, or `override stateStore()`. In a body,
+  `ctx.state.set({ … })` / `ctx.state.get()` records per-target metadata (JSON,
+  **never secrets** — secret parameters and redacted values are excluded). See
+  the cheatsheet.
 - **Typed inputs:** `parameter("...")` (with `.secret()` / `.required()`), read
   as `this.x.value`, gated with `.requires(this.x)`.
 - **Secrets from a manager:** `parameter(...).secret().from(source)` sources a

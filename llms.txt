@@ -56,6 +56,8 @@ Option flags:
 - `--no-remote-cache` — Use the local cache only; skip the remote cache store
 - `--affected` — Run only targets affected by changes since a git base
 - `--dry-run` — Print the plan without running targets
+- `--state` — Persist durable run state to .zuke/runs
+- `--actor` — Attribute the run to <name> in its state record
 - `--output` — Graph output format: text or html
 - `--no-open` — With --output=html, do not open a browser
 - `--check` — With generate-ci, verify files are current

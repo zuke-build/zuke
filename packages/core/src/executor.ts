@@ -40,6 +40,10 @@ import { Redactor } from "./redact.ts";
 import { absolutePath } from "./path.ts";
 import type { Remediation, TargetBuilder, TargetContext } from "./target.ts";
 import { withAmbientSignal } from "./ambient_signal.ts";
+import { defaultStateHost, type StateStore } from "./state/store.ts";
+import { resolveStateStore } from "./state/resolve.ts";
+import { buildRunRecord, resolveActor } from "./state/record.ts";
+import { inMemoryStateHandle, RunStateWriter } from "./state/writer.ts";
 import type { Plugin } from "./plugin.ts";
 import { detectWidth, type Style, type TargetReport } from "./report.ts";
 import { defaultRenderer, type Renderer } from "./renderer.ts";
@@ -165,6 +169,25 @@ export interface ExecuteOptions {
    * graph-level cancellation/compensation is a later milestone.
    */
   signal?: AbortSignal;
+  /**
+   * Durable run state (see {@link "./state/store.ts".StateStore}). A supplied
+   * store is used directly; `false` disables state entirely. When omitted, the
+   * build's `stateStore()` override is used, falling back to `ZUKE_STATE_URL` /
+   * `ZUKE_STATE_DIR`, and finally — only when {@link state} is set — a
+   * filesystem store under `<root>/.zuke/runs`.
+   */
+  stateStore?: StateStore | false;
+  /**
+   * Opt a plain build into durable state (CLI `--state`): fall back to a
+   * `.zuke/runs` filesystem store when nothing else is configured. Ignored when
+   * a store is resolved from {@link stateStore}, the build, or the environment.
+   */
+  state?: boolean;
+  /**
+   * Who to attribute the run to in its state record (CLI `--actor`). Falls back
+   * to `ZUKE_ACTOR`, then the CI actor, then `"anonymous"`.
+   */
+  actor?: string;
 }
 
 /** Whether the build is running inside a GitHub Actions runner. */
@@ -350,6 +373,23 @@ interface RunOutcome {
 }
 
 /**
+ * Per-run values threaded to the schedulers and each target: the run id, the
+ * cancellation signal handed to every {@link TargetContext}, and the optional
+ * durable-state writer that records transitions.
+ */
+interface RunEnv {
+  runId: string;
+  signal: AbortSignal;
+  writer?: RunStateWriter;
+}
+
+/** A failure's message, or `undefined` when there was none — for the state record. */
+function errorMessage(error: unknown): string | undefined {
+  if (error === undefined) return undefined;
+  return error instanceof Error ? error.message : String(error);
+}
+
+/**
  * The merged lifecycle: the build's own hooks plus any registered plugins,
  * invoked in order (build first, then each plugin). The run functions call
  * through this so they need not know about plugins.
@@ -505,8 +545,7 @@ async function runTarget(
   dryRun: boolean,
   globalRecovery: Remediation[],
   services: ServiceRegistry,
-  runId: string,
-  runSignal: AbortSignal,
+  env: RunEnv,
 ): Promise<TargetOutcome> {
   const name = t.name_ ?? "<unnamed>";
 
@@ -539,6 +578,7 @@ async function runTarget(
   if (t instanceof ServiceBuilder) {
     openTarget(reporter, renderer, style, name, opened);
     await life.targetStart(name);
+    void env.writer?.markTargetRunning(name);
     const start = performance.now();
     try {
       services.register(await t.launch_(name));
@@ -558,6 +598,7 @@ async function runTarget(
 
   openTarget(reporter, renderer, style, name, opened);
   await life.targetStart(name);
+  void env.writer?.markTargetRunning(name);
   const start = performance.now();
 
   if (!t.fn_) {
@@ -568,7 +609,13 @@ async function runTarget(
     return { status: "failed", ms: 0, error };
   }
 
-  const ctx: TargetContext = { runId, target: name, signal: runSignal, dryRun };
+  const ctx: TargetContext = {
+    runId: env.runId,
+    target: name,
+    signal: env.signal,
+    state: env.writer ? env.writer.stateHandle(name) : inMemoryStateHandle(),
+    dryRun,
+  };
   try {
     for (const v of t.validateBefore_) await v.validate({ target: name });
     await runBodyWithRecovery(t, name, globalRecovery, ctx);
@@ -629,8 +676,7 @@ async function runSequential(
   dryRun: boolean,
   globalRecovery: Remediation[],
   services: ServiceRegistry,
-  runId: string,
-  runSignal: AbortSignal,
+  env: RunEnv,
 ): Promise<RunOutcome> {
   const reports: TargetReport[] = [];
   const executed: string[] = [];
@@ -642,6 +688,7 @@ async function runSequential(
     const name = t.name_ ?? "<unnamed>";
     if (skip.has(name) || aborted) {
       reports.push({ name, status: "skipped", ms: 0 });
+      void env.writer?.markTargetSettled(name, "skipped");
       continue;
     }
     const outcome = await runTarget(
@@ -655,10 +702,14 @@ async function runSequential(
       dryRun,
       globalRecovery,
       services,
-      runId,
-      runSignal,
+      env,
     );
     await life.targetEnd(name, outcome.status);
+    void env.writer?.markTargetSettled(
+      name,
+      outcome.status,
+      errorMessage(outcome.error),
+    );
     if (outcome.status === "passed" || outcome.status === "failed") opened++;
     reports.push({ name, status: outcome.status, ms: outcome.ms });
     if (outcome.status === "passed") executed.push(name);
@@ -694,8 +745,7 @@ async function runScheduled(
   dryRun: boolean,
   globalRecovery: Remediation[],
   services: ServiceRegistry,
-  runId: string,
-  runSignal: AbortSignal,
+  env: RunEnv,
 ): Promise<RunOutcome> {
   const outcomes = new Map<TargetBuilder, TargetOutcome>();
   const done = new Set<TargetBuilder>(); // passed/cached/skipped → unblocks dependents
@@ -712,6 +762,7 @@ async function runScheduled(
       outcomes.set(t, { status: "skipped", ms: 0 });
       done.add(t);
       started.add(t);
+      void env.writer?.markTargetSettled(t.name_ ?? "<unnamed>", "skipped");
     }
   }
 
@@ -742,12 +793,16 @@ async function runScheduled(
           dryRun,
           globalRecovery,
           services,
-          runId,
-          runSignal,
+          env,
         )
           .then(
             async (outcome) => {
               await life.targetEnd(t.name_ ?? "<unnamed>", outcome.status);
+              void env.writer?.markTargetSettled(
+                t.name_ ?? "<unnamed>",
+                outcome.status,
+                errorMessage(outcome.error),
+              );
               // Only an executed target prints a block worth separating.
               const printed = outcome.status === "passed" ||
                 outcome.status === "failed";
@@ -776,6 +831,10 @@ async function runScheduled(
           if (!started.has(t)) {
             outcomes.set(t, { status: "skipped", ms: 0 });
             started.add(t);
+            void env.writer?.markTargetSettled(
+              t.name_ ?? "<unnamed>",
+              "skipped",
+            );
           }
         }
         resolve();
@@ -927,6 +986,42 @@ export async function execute(
     else options.signal.addEventListener("abort", onCancel, { once: true });
   }
 
+  // Resolve the durable state store (if any) and open a writer that records the
+  // run and its per-target transitions. Never for a dry run — no body executes,
+  // so there is no run to persist. State writes are best-effort: a store hiccup
+  // is reported, never fatal (see RunStateWriter).
+  const stateStore = dryRun ? undefined : resolveStateStore(
+    options.stateStore,
+    build.stateStore(),
+    {
+      readEnv,
+      host: defaultStateHost,
+      defaultDir: absolutePath(
+        findConfigDir(Deno.cwd(), pathExists) ?? Deno.cwd(),
+      )(ARTIFACT_DIR, "runs").path,
+      enableDefault: options.state ?? false,
+    },
+  );
+  const nowIso = () => new Date().toISOString();
+  const writer = stateStore === undefined
+    ? undefined
+    : await RunStateWriter.open(
+      stateStore,
+      buildRunRecord({
+        runId,
+        build: build.constructor.name,
+        rootTarget: root.name_ ?? "<unnamed>",
+        actor: resolveActor(options.actor, readEnv),
+        now: nowIso(),
+        order,
+        params: params.values(),
+      }),
+      nowIso,
+      redactor,
+      (message) => reporter.info(message),
+    );
+  const env: RunEnv = { runId, signal: runController.signal, writer };
+
   // Services started during the run are held here and torn down in reverse
   // order once it finishes — in a `finally`, so a failure never leaks a process.
   const services = new ServiceRegistry();
@@ -943,8 +1038,7 @@ export async function execute(
         dryRun,
         globalRecovery,
         services,
-        runId,
-        runController.signal,
+        env,
       );
     }
     // With `--parallel`, anything independent may overlap up to `limit`.
@@ -969,8 +1063,7 @@ export async function execute(
       dryRun,
       globalRecovery,
       services,
-      runId,
-      runController.signal,
+      env,
     );
   };
 
@@ -993,6 +1086,10 @@ export async function execute(
   const result: BuildResult = run.aborted
     ? { ok: false, executed: run.executed, error: run.failure }
     : { ok: true, executed: run.executed };
+
+  // Record the run's terminal status. Awaiting this drains the writer's queue,
+  // so every per-target transition has landed by the time the run returns.
+  await writer?.markRunFinished(result.ok);
 
   const totalMs = performance.now() - overallStart;
   for (

@@ -5,6 +5,8 @@
 - [Core concepts](./concepts.md) — the build/target/graph model and execution
   semantics.
 - [Authoring API](./authoring.md) — `target()`, `Build`, `run()`, and gotchas.
+- [Run context & cancellation](./run-context.md) — the `TargetContext` a body
+  receives (`runId`, `signal`, `state`), and cancelling a run.
 - [Parameters](./parameters.md) — typed build inputs from flags, env, or
   defaults.
 - [Secrets](./secrets.md) — source secret values from a manager with
@@ -13,6 +15,10 @@
   server, a database) kept running while dependents execute, then torn down.
 - [Caching](./caching.md) — the incremental build cache, the remote
   (cross-machine) cache, and the AI response cache.
+- [Durable run state](./state.md) — persist a run's status and per-target
+  metadata to a pluggable store, and read it back after the process exits.
+- [State HTTP API](./state-api.md) — the REST contract for hosting a production
+  state backend.
 - [Shell wrapper (`$`)](./shell.md) — ergonomic, injection-safe process
   execution.
 - [Paths (`absolutePath`)](./paths.md) — the fluent path type.

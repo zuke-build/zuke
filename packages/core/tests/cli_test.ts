@@ -176,6 +176,14 @@ Deno.test("parseArgs reads --dry-run, defaulting to false", () => {
   assertEquals(parseArgs(["build", "--dry-run"]).dryRun, true);
 });
 
+Deno.test("parseArgs reads --state and --actor", () => {
+  assertEquals(parseArgs(["build"]).state, false);
+  assertEquals(parseArgs(["build"]).actor, undefined);
+  assertEquals(parseArgs(["build", "--state"]).state, true);
+  assertEquals(parseArgs(["build", "--actor", "alice"]).actor, "alice");
+  assertEquals(parseArgs(["build", "--actor=bob"]).actor, "bob");
+});
+
 Deno.test("parseArgs reads --affected with an optional base", () => {
   assertEquals(parseArgs(["build"]).affected, false);
   assertEquals(parseArgs(["build", "--affected"]).affected, true);
