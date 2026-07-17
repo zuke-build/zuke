@@ -29,7 +29,8 @@ class Deploy extends Build {
     .waitsFor((s) =>
       s.on(externalSignal("testing-approved"))
         .timeout("72h")
-        .onTimeout(() => this.rollback));
+        .onTimeout(() => this.rollback)
+    );
 
   promoteToProd = target()
     .dependsOn(this.awaitTesting)
@@ -53,10 +54,10 @@ class Deploy extends Build {
     each resume, so a cron or webhook drives it.
 - **`s.timeout("72h")`** — an optional deadline. Its purpose and enforcement
   (running `onTimeout`) arrive with the resume half.
-- **`s.onTimeout(() => this.rollback)`** — what a timed-out wait does: a **thunk**
-  returning a sibling compensation target, or `"fail"` / `"cancel-run"`. A thunk
-  because the compensation is usually declared *below* the waiting target, and
-  fields initialise top-to-bottom.
+- **`s.onTimeout(() => this.rollback)`** — what a timed-out wait does: a
+  **thunk** returning a sibling compensation target, or `"fail"` /
+  `"cancel-run"`. A thunk because the compensation is usually declared _below_
+  the waiting target, and fields initialise top-to-bottom.
 
 ## What suspend does
 
@@ -94,17 +95,18 @@ Resuming:
 
 1. **Delivers the signal** (if any) into the record and transitions the run
    `suspended → running` with a **compare-and-swap, so exactly one resumer
-   wins**. A loser gets a clean `AlreadyResumedError` (`run X was already
-   resumed by …`) and exits non-zero — safe to run the same resume from a
-   retrying cron.
+   wins**. A loser gets a clean `AlreadyResumedError`
+   (`run X was already
+   resumed by …`) and exits non-zero — safe to run the
+   same resume from a retrying cron.
 2. **Re-instantiates the build**, re-resolves parameters from the record (CLI
    may override non-secret ones; secrets re-resolve from the environment), and
    **verifies the graph still matches** the suspended run — a changed graph
    (added/removed/re-wired targets) is a hard error unless you pass
    `--force-graph`.
 3. **Re-runs only what hadn't succeeded.** Targets recorded `succeeded` are
-   seeded as done and skipped; the wait re-evaluates its trigger (now
-   satisfied) and the run continues — possibly suspending again at a later wait.
+   seeded as done and skipped; the wait re-evaluates its trigger (now satisfied)
+   and the run continues — possibly suspending again at a later wait.
 
 Programmatically, `resumeRun(build, { runId, signal, data })` and
 `resumeCheck(build, { runId? })` do the same.
@@ -119,9 +121,57 @@ the cancellation milestone.
 ## State is the only thing that crosses the boundary
 
 A resume is a **fresh process**: the in-memory world of the suspending run is
-gone. Anything a later target needs must be in the durable record —
-`ctx.state` (per-target metadata) and `ctx.signals` (delivered payloads). This
-is the mental model to build around: persist what matters, read it back on the
-other side.
+gone. Anything a later target needs must be in the durable record — `ctx.state`
+(per-target metadata) and `ctx.signals` (delivered payloads). This is the mental
+model to build around: persist what matters, read it back on the other side.
 
 See [Durable run state](./state.md) for the record shape and `ctx.state`.
+
+## Fan-out over a list — `.forEach()`
+
+`.forEach()` runs the **same pipeline over a runtime list** — deploy N repos,
+migrate N tenants — with per-item failure isolation and bounded concurrency,
+without hand-writing a target per item.
+
+```ts
+class CD extends Build {
+  repos = parameter("services to deploy").array().required();
+
+  deployBatch = target().forEach(
+    () => this.repos.value, // items: a thunk, read when the target runs
+    (repo) => ({ // factory: an ordered pipeline of sub-targets per item
+      checks: target().executes(() => checkDeployable(repo)),
+      fork: target().executes(() => forkImage(repo)),
+      deploy: target().executes((ctx) => applyToSit(repo, ctx)),
+    }),
+    (s) => s.concurrency(3).continueOnItemFailure(),
+  );
+}
+```
+
+- **`items`** is a thunk, evaluated when the target runs, so it can read
+  `this.<param>.value` (parameters resolve first). Its element type is inferred
+  and flows into the factory.
+- **`factory`** returns an ordered record of sub-targets for one item. Each
+  stage implicitly depends on the one declared before it, so an item's stages
+  run **in order** (`checks` → `fork` → `deploy`). Each is a full target — it
+  can use `ctx`, `ctx.state`, `.timeout()`, `.retry()`, and the rest.
+- **Execution is the pipeline model:** items run **concurrently** (up to
+  `concurrency`, default the CPU count), each item's stages **sequentially**.
+  There is no barrier between items — a fast item finishes while a slow one is
+  still on its first stage.
+- **`continueOnItemFailure()`** isolates a failure: one item's failed stage
+  skips that item's later stages but lets the other items finish. Without it,
+  the first failure stops the batch. Either way, the fan-out target **fails if
+  any item failed** (unless you also mark it `.proceedAfterFailure()`).
+
+Sub-targets are materialised at run time, named `deployBatch[<item>].<stage>`,
+and are **first-class**: each gets its own row in the summary and its own entry
+in the [run record](./state.md) (so `zuke runs show` reports per-item verdicts).
+Static views — `zuke --list`, `zuke graph` — show only the one fan-out node
+(annotated `[fan-out]`), since the sub-targets exist only while the build runs.
+
+Runtime lists pair naturally with [array parameters](./parameters.md#lists):
+`.options("api", "web").array()` validates each element, and `.number().array()`
+yields a `number[]` — so the batch's inputs are typed and checked before it
+runs.

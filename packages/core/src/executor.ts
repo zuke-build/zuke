@@ -39,6 +39,8 @@ import { ServiceBuilder, ServiceRegistry } from "./service.ts";
 import { Redactor } from "./redact.ts";
 import { absolutePath } from "./path.ts";
 import {
+  ForEachSettings,
+  type ForEachSpec,
   LockSettings,
   type OnTimeout,
   type Remediation,
@@ -401,6 +403,12 @@ interface TargetOutcome {
   status: TargetStatus;
   ms: number;
   error?: unknown;
+  /**
+   * For a `.forEach(...)` fan-out target, the reports of its materialised
+   * sub-targets, surfaced into the build summary and run record beneath the
+   * parent row. Undefined for an ordinary target.
+   */
+  children?: TargetReport[];
 }
 
 /** What a run (sequential or parallel) produced, fed into the shared summary. */
@@ -767,6 +775,26 @@ async function runTarget(
     }
   }
 
+  // A `.forEach(...)` target fans out into a per-item pipeline of sub-targets,
+  // driven by a nested scheduler. It has no body of its own, so it is handled
+  // before the cache and body paths (like a service).
+  if (t.forEach_ !== undefined) {
+    return await runForEachTarget(
+      t,
+      t.forEach_,
+      life,
+      reporter,
+      renderer,
+      style,
+      opened,
+      cache,
+      dryRun,
+      globalRecovery,
+      services,
+      env,
+    );
+  }
+
   if (cache !== undefined && await cache.upToDate(t)) {
     return { status: "cached", ms: 0 };
   }
@@ -843,6 +871,91 @@ async function runTarget(
     // the backstop for a killed process.
     if (lock !== null) await lock.release();
   }
+}
+
+/**
+ * Run a `.forEach(...)` fan-out target: materialise a pipeline of sub-targets
+ * per item (named `parent[key].stage`, each stage depending on the previous),
+ * then drive them all with the shared {@link runScheduled} machinery — items
+ * concurrent up to the configured limit, each item's stages sequential. With
+ * `continueOnItemFailure`, sub-targets are lenient so a failed item does not
+ * halt its siblings; the fan-out target still fails if any item did. The
+ * sub-targets' reports come back as {@link TargetOutcome.children} for the
+ * summary, and each is recorded in the run's state under its own name.
+ */
+async function runForEachTarget(
+  t: TargetBuilder,
+  spec: ForEachSpec,
+  life: Lifecycle,
+  reporter: Reporter,
+  renderer: Renderer,
+  style: Style,
+  opened: number,
+  cache: BuildCache | undefined,
+  dryRun: boolean,
+  globalRecovery: Remediation[],
+  services: ServiceRegistry,
+  env: RunEnv,
+): Promise<TargetOutcome> {
+  const name = t.name_ ?? "<unnamed>";
+  const settings = spec.configure
+    ? spec.configure(new ForEachSettings())
+    : new ForEachSettings();
+  const items = spec.materialize();
+
+  // Materialise each item's stages into named, chained sub-targets.
+  const order: TargetBuilder[] = [];
+  const predecessors = new Map<TargetBuilder, TargetBuilder[]>();
+  for (const { key, stages } of items) {
+    let prev: TargetBuilder | undefined;
+    for (const [stage, sub] of Object.entries(stages)) {
+      sub.name_ = `${name}[${key}].${stage}`;
+      // Isolating item failures means a failed stage stays lenient: its
+      // siblings keep running, only this item's later stages are blocked.
+      if (settings.continueOnItemFailure_) sub.proceedAfterFailure_ = true;
+      const deps = prev === undefined ? [] : [prev];
+      if (prev !== undefined) sub.dependsOn_.push(prev);
+      order.push(sub);
+      predecessors.set(sub, deps);
+      prev = sub;
+    }
+  }
+
+  openTarget(reporter, renderer, style, name, opened);
+  await life.targetStart(name);
+  void env.writer?.markTargetRunning(name);
+  reporter.info(
+    items.length === 0
+      ? `${name}: fan-out over 0 items — nothing to run.`
+      : `${name}: fan-out over ${items.length} item(s).`,
+  );
+  const start = performance.now();
+  const run = await runScheduled(
+    life,
+    order,
+    predecessors,
+    reporter,
+    renderer,
+    style,
+    new Set(),
+    settings.concurrency_ ?? cpuCount(),
+    () => true, // items and stages overlap; predecessors enforce per-item order
+    cache,
+    dryRun,
+    globalRecovery,
+    services,
+    env,
+  );
+  const ms = performance.now() - start;
+  if (run.aborted) {
+    const failed = run.reports.filter((r) => r.status === "failed").length;
+    const error = run.failure ??
+      new Error(`${name}: ${failed} sub-target(s) failed.`);
+    failTarget(reporter, renderer, style, name, ms, error);
+    return { status: "failed", ms, error, children: run.reports };
+  }
+  passTarget(reporter, renderer, style, name, ms);
+  return { status: "passed", ms, children: run.reports };
 }
 
 /** Resolve the concurrency limit; 1 means sequential. */
@@ -926,6 +1039,8 @@ async function runSequential(
     );
     if (outcome.status === "passed" || outcome.status === "failed") opened++;
     reports.push({ name, status: outcome.status, ms: outcome.ms });
+    // A fan-out target's sub-targets appear as their own rows beneath it.
+    if (outcome.children !== undefined) reports.push(...outcome.children);
     if (outcome.status === "passed") executed.push(name);
     else if (outcome.status === "failed") {
       failure = outcome.error;
@@ -1085,6 +1200,8 @@ async function runScheduled(
     const name = t.name_ ?? "<unnamed>";
     const outcome = outcomes.get(t) ?? { status: "skipped", ms: 0 };
     reports.push({ name, status: outcome.status, ms: outcome.ms });
+    // A fan-out target's sub-targets appear as their own rows beneath it.
+    if (outcome.children !== undefined) reports.push(...outcome.children);
     if (outcome.status === "passed") executed.push(name);
   }
   return {

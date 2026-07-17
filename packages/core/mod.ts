@@ -42,6 +42,10 @@ export {
 } from "./src/host.ts";
 export {
   type Condition,
+  type ForEachFactory,
+  type ForEachItem,
+  ForEachSettings,
+  type ForEachSpec,
   Group,
   group,
   type JsonValue,

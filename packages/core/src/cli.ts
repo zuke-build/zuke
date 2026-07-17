@@ -417,8 +417,9 @@ function renderTargets(targets: Map<string, TargetBuilder>): string {
   for (const [name, t] of targets) {
     const deps = depNames(t);
     const desc = t.description_ ?? "";
+    const fanOut = t.forEach_ !== undefined ? "  [fan-out]" : "";
     const suffix = deps.length ? `  (depends on: ${deps.join(", ")})` : "";
-    lines.push(`  ${name.padEnd(width)}  ${desc}${suffix}`);
+    lines.push(`  ${name.padEnd(width)}  ${desc}${fanOut}${suffix}`);
   }
   return lines.join("\n");
 }
@@ -451,8 +452,9 @@ export function formatGraph(targets: Map<string, TargetBuilder>): string {
     const group = t.group_?.name_ !== undefined
       ? `  [group: ${t.group_.name_}]`
       : "";
+    const fanOut = t.forEach_ !== undefined ? "  [fan-out]" : "";
     const arrow = deps.length ? ` → ${deps.join(", ")}` : "";
-    lines.push(`  ${name}${arrow}${group}`);
+    lines.push(`  ${name}${arrow}${group}${fanOut}`);
   }
   return lines.join("\n");
 }

@@ -8,29 +8,30 @@ summary, not the source of truth.
 
 Everything is optional except a body (`.executes`).
 
-| Method                                           | Purpose                                                                                           |
-| ------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
-| `.description(text)`                             | Summary shown in `--list`.                                                                        |
-| `.dependsOn(...t)`                               | Hard prerequisites; run first, transitively. Pass `this.<field>`.                                 |
-| `.executes(fn)`                                  | The body. Sync or async. **Required.** `fn` may take a `TargetContext` (`(ctx) => …`); see below. |
-| `.before(...t)` / `.after(...t)`                 | Soft ordering — only reorders targets already in the plan; never pulls new ones in.               |
-| `.triggers(...t)`                                | Pull targets into the plan and run them _after_ this one.                                         |
-| `.dependentFor(...t)`                            | Reverse of `dependsOn`: make this a prerequisite of others.                                       |
-| `.inputs(...p)` / `.outputs(...p)`               | Incremental cache: skip when inputs unchanged and outputs exist.                                  |
-| `.cacheKey(fn)`                                  | Add a non-file value (version, git sha, param) to the cache fingerprint.                          |
-| `.onlyWhen(cond)`                                | Run only when the (possibly async) predicate holds, else skip.                                    |
-| `.requires(...params)`                           | Fail unless the listed parameters resolved to a value.                                            |
-| `.retry(times, delayMs?)`                        | Retry the body on failure.                                                                        |
-| `.timeout(ms)`                                   | Fail the body if it runs longer than `ms` (per attempt).                                          |
-| `.lock((s) => s.lockKey(...).withTtl(...))`      | Hold a cross-run lock while running; a second run wanting the key fails. See below.               |
-| `.waitsFor((s) => s.on(externalSignal(...)))`    | Gate (no body): suspend the run until an external event; resume later. See below.                 |
-| `.proceedAfterFailure()`                         | Keep the build going if this target fails.                                                        |
-| `.always()`                                      | Run even after the build failed (cleanup/teardown).                                               |
-| `.unlisted()`                                    | Hide from `--list`/`--help`; still runnable by name.                                              |
-| `.validateBefore(...v)` / `.validateAfter(...v)` | Run `Validation` checks around the body; a throw fails the target.                                |
-| `.recoverWith(...r)` / `.recoverAttempts(n)`     | Run `Remediation`s if the body fails (self-healing); re-run when one asks to. See AI section.     |
-| `.partOf(group)`                                 | Join a parallel batch (see `group()`).                                                            |
-| `.produces(...p)` / `.consumes(...t)`            | Declare and consume artifact paths.                                                               |
+| Method                                                                                                   | Purpose                                                                                           |
+| -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `.description(text)`                                                                                     | Summary shown in `--list`.                                                                        |
+| `.dependsOn(...t)`                                                                                       | Hard prerequisites; run first, transitively. Pass `this.<field>`.                                 |
+| `.executes(fn)`                                                                                          | The body. Sync or async. **Required.** `fn` may take a `TargetContext` (`(ctx) => …`); see below. |
+| `.before(...t)` / `.after(...t)`                                                                         | Soft ordering — only reorders targets already in the plan; never pulls new ones in.               |
+| `.triggers(...t)`                                                                                        | Pull targets into the plan and run them _after_ this one.                                         |
+| `.dependentFor(...t)`                                                                                    | Reverse of `dependsOn`: make this a prerequisite of others.                                       |
+| `.inputs(...p)` / `.outputs(...p)`                                                                       | Incremental cache: skip when inputs unchanged and outputs exist.                                  |
+| `.cacheKey(fn)`                                                                                          | Add a non-file value (version, git sha, param) to the cache fingerprint.                          |
+| `.onlyWhen(cond)`                                                                                        | Run only when the (possibly async) predicate holds, else skip.                                    |
+| `.requires(...params)`                                                                                   | Fail unless the listed parameters resolved to a value.                                            |
+| `.retry(times, delayMs?)`                                                                                | Retry the body on failure.                                                                        |
+| `.timeout(ms)`                                                                                           | Fail the body if it runs longer than `ms` (per attempt).                                          |
+| `.lock((s) => s.lockKey(...).withTtl(...))`                                                              | Hold a cross-run lock while running; a second run wanting the key fails. See below.               |
+| `.waitsFor((s) => s.on(externalSignal(...)))`                                                            | Gate (no body): suspend the run until an external event; resume later. See below.                 |
+| `.forEach(() => items, (item) => ({stage: target()…}), (s) => s.concurrency(3).continueOnItemFailure())` | Fan out a pipeline over a runtime list: items concurrent, stages sequential per item. See below.  |
+| `.proceedAfterFailure()`                                                                                 | Keep the build going if this target fails.                                                        |
+| `.always()`                                                                                              | Run even after the build failed (cleanup/teardown).                                               |
+| `.unlisted()`                                                                                            | Hide from `--list`/`--help`; still runnable by name.                                              |
+| `.validateBefore(...v)` / `.validateAfter(...v)`                                                         | Run `Validation` checks around the body; a throw fails the target.                                |
+| `.recoverWith(...r)` / `.recoverAttempts(n)`                                                             | Run `Remediation`s if the body fails (self-healing); re-run when one asks to. See AI section.     |
+| `.partOf(group)`                                                                                         | Join a parallel batch (see `group()`).                                                            |
+| `.produces(...p)` / `.consumes(...t)`                                                                    | Declare and consume artifact paths.                                                               |
 
 ## `group()` — parallel batches
 
@@ -231,6 +232,41 @@ class Deploy extends Build {
   **exactly-once** (concurrent resumers get `AlreadyResumedError`) and re-runs
   only the not-yet-succeeded targets; `--force-graph` overrides a changed graph.
 
+## Fan-out over a list — `.forEach()`
+
+Run the same pipeline over a runtime list, with per-item isolation and bounded
+concurrency:
+
+```ts
+import { Build, parameter, target } from "jsr:@zuke/core";
+
+class CD extends Build {
+  repos = parameter("services").array().required();
+
+  deployBatch = target().forEach(
+    () => this.repos.value, // items: thunk, read when the target runs
+    (repo) => ({ // ordered pipeline per item (each stage depends on the prev)
+      checks: target().executes(() => checkDeployable(repo)),
+      deploy: target().executes((ctx) => applyToSit(repo, ctx)),
+    }),
+    (s) => s.concurrency(3).continueOnItemFailure(),
+  );
+}
+```
+
+- Items run **concurrently** (up to `.concurrency(n)`, default CPU count); each
+  item's stages run **sequentially** — the pipeline model, no barrier between
+  items.
+- `.continueOnItemFailure()` isolates a failed item (its later stages skip, the
+  others finish); otherwise the first failure stops the batch. Either way the
+  fan-out target fails if any item did.
+- Sub-targets are materialised at run time (`deployBatch[<item>].<stage>`), each
+  a first-class row in the summary and the [run record](#durable-run-state) (so
+  `zuke runs show` reports per-item verdicts). `--list`/`graph` show the one
+  node, annotated `[fan-out]`.
+- Pairs with array params: `.options(...).array()` / `.number().array()` type
+  and validate the list before the batch runs.
+
 ## Parameters — typed build inputs
 
 ```ts
@@ -248,6 +284,10 @@ class MyBuild extends Build {
 ```
 
 Secrets are masked in CI output. Read a resolved value with `this.x.value`.
+
+Lists: `.array()` (comma-separated or repeated flag → `[]`-default array) comes
+last and composes — `.options("a", "b").array()` validates each element, and
+`.number().array()` yields a `number[]`.
 
 ### Secrets from a manager — `.from(source)`
 

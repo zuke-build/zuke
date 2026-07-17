@@ -128,6 +128,80 @@ export class WaitSettings {
 }
 
 /**
+ * Fluent configuration for {@link TargetBuilder.forEach}, in the settings-lambda
+ * style: `.forEach(items, factory, (s) => s.concurrency(3).continueOnItemFailure())`.
+ * Sets the {@link ForEachSettings.concurrency | concurrency} cap and whether one
+ * item's failure isolates it or stops the whole batch.
+ */
+export class ForEachSettings {
+  /** Max item pipelines in flight at once; set by {@link concurrency}. */
+  concurrency_?: number;
+  /** Isolate a failed item from its siblings; set by {@link continueOnItemFailure}. */
+  continueOnItemFailure_ = false;
+
+  /**
+   * Cap how many item pipelines run concurrently (default: the host CPU count).
+   * Clamped to at least 1; `1` runs items one at a time.
+   */
+  concurrency(limit: number): this {
+    this.concurrency_ = Math.max(1, Math.floor(limit));
+    return this;
+  }
+
+  /**
+   * Keep running the other items when one item's pipeline fails (the failed
+   * item's later stages are still skipped). The fan-out target still fails at
+   * the end if any item failed. Without this, the first item failure stops the
+   * batch — the default.
+   */
+  continueOnItemFailure(on = true): this {
+    this.continueOnItemFailure_ = on;
+    return this;
+  }
+}
+
+/**
+ * Builds one item's ordered pipeline of sub-targets for {@link TargetBuilder.forEach}.
+ * The returned record's keys are stage names and its values are targets; each
+ * stage implicitly depends on the one declared before it, so an item's stages
+ * run in insertion order.
+ */
+export type ForEachFactory<Item> = (
+  item: Item,
+  index: number,
+) => Record<string, TargetBuilder>;
+
+/** One materialised fan-out item: a unique label plus its pipeline stages. */
+export interface ForEachItem {
+  /** A label unique within the fan-out, used to name the item's sub-targets. */
+  key: string;
+  /** The item's ordered pipeline stages, keyed by stage name. */
+  stages: Record<string, TargetBuilder>;
+}
+
+/**
+ * The internal fan-out spec stored by {@link TargetBuilder.forEach}. Its
+ * {@link ForEachSpec.materialize} closure captures the item type, so the runtime
+ * list and factory are erased to concrete {@link ForEachItem}s the executor can
+ * run without knowing the item type.
+ */
+export interface ForEachSpec {
+  /** Produce the per-item sub-target pipelines from the runtime list. */
+  materialize: () => ForEachItem[];
+  /** Optional fan-out settings (concurrency, per-item failure isolation). */
+  configure?: Configure<ForEachSettings>;
+}
+
+/** A stable label for a fan-out item: the value itself if scalar, else its index. */
+function itemKey(item: unknown, index: number): string {
+  if (typeof item === "string") return item;
+  if (typeof item === "number" || typeof item === "boolean") {
+    return String(item);
+  }
+  return String(index);
+}
+
+/**
  * A JSON-serialisable value — the only thing that may be persisted in a
  * target's {@link TargetStateHandle}, since run state is stored as JSON.
  */
@@ -335,6 +409,8 @@ export class TargetBuilder {
   lock_?: Configure<LockSettings>;
   /** External-event wait settings lambda, set by {@link waitsFor} and run when reached. */
   waitsFor_?: Configure<WaitSettings>;
+  /** Fan-out spec, set by {@link forEach}: materialises per-item sub-target pipelines. */
+  forEach_?: ForEachSpec;
 
   /** Set the human-readable description shown in `zuke --list`. */
   description(text: string): this {
@@ -640,6 +716,56 @@ export class TargetBuilder {
    */
   waitsFor(configure: Configure<WaitSettings>): this {
     this.waitsFor_ = configure;
+    return this;
+  }
+
+  /**
+   * Fan out over a **runtime list**: for each item, build an ordered pipeline of
+   * sub-targets and run them with per-item failure isolation and bounded
+   * concurrency. `items` is a thunk (evaluated when the target runs, so it can
+   * read `this.<param>.value`); `factory` returns a record of sub-targets per
+   * item, each implicitly depending on the one before it. Items run
+   * concurrently, each item's stages sequentially — the pipeline model.
+   *
+   * The sub-targets are materialised at run time (named
+   * `parent[item].stage`) — `--list`/`graph` show only the one fan-out node —
+   * and each is a first-class target with its own status in the summary and the
+   * run record. The fan-out target fails if any item's pipeline fails.
+   *
+   * ```ts
+   * deployBatch = target()
+   *   .forEach(
+   *     () => this.repos.value, // string[]
+   *     (repo) => ({
+   *       checks: target().executes(() => checkDeployable(repo)),
+   *       deploy: target().executes((ctx) => applyToSit(repo, ctx)),
+   *     }),
+   *     (s) => s.concurrency(3).continueOnItemFailure(),
+   *   );
+   * ```
+   */
+  forEach<Item>(
+    items: () => readonly Item[],
+    factory: ForEachFactory<Item>,
+    configure?: Configure<ForEachSettings>,
+  ): this {
+    this.forEach_ = {
+      // Capture the item type entirely: the closure yields concrete
+      // ForEachItems (string keys, TargetBuilder stages), so no `Item` escapes
+      // into the non-generic stored spec.
+      materialize: () => {
+        const seen = new Map<string, number>();
+        return items().map((item, index) => {
+          const base = itemKey(item, index);
+          const count = seen.get(base) ?? 0;
+          seen.set(base, count + 1);
+          // Disambiguate duplicate keys so sub-target names stay unique.
+          const key = count === 0 ? base : `${base}#${index}`;
+          return { key, stages: factory(item, index) };
+        });
+      },
+      configure,
+    };
     return this;
   }
 }
