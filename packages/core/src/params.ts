@@ -37,7 +37,7 @@ import type { SecretSource } from "./secret.ts";
 export type ParamValue = string | number | boolean;
 
 /** A parameter's runtime kind tag. */
-type ParamKind = "string" | "number" | "boolean";
+export type ParamKind = "string" | "number" | "boolean";
 
 /** Internal resolved state: a value is present only once `ok` is true. */
 type Resolved<T> = { readonly ok: true; readonly value: T } | {
@@ -51,6 +51,7 @@ type Fallback<T> = { readonly has: true; readonly value: T } | {
 
 /** Raised when a parameter value is invalid or read before resolution. */
 export class ParameterError extends Error {
+  /** The error name. */
   override name = "ParameterError";
 }
 
@@ -142,15 +143,25 @@ export class Parameter<
   K extends ParamValue = ParamValue,
   T extends K | K[] | undefined = K | undefined,
 > implements AnyParameter {
+  /** Property name, assigned during discovery. Undefined until then. */
   name_?: string;
+  /** Human-readable description shown in `--help`/`--list`. */
   readonly description_?: string;
+  /** The runtime value kind. */
   readonly kind_: ParamKind;
+  /** Whether a value must be supplied (no default). */
   readonly required_: boolean;
+  /** The allowed string choices, if restricted with {@link Parameter.options}. */
   readonly options_?: readonly string[];
+  /** An explicit environment variable name override. */
   readonly envName_?: string;
+  /** Whether the parameter has a declared default value. */
   readonly hasFallback_: boolean;
+  /** Whether the value is sensitive and should be masked in CI output. */
   readonly secret_: boolean;
+  /** Whether the value is a comma-separated / repeatable list (`.array()`). */
   readonly array_: boolean;
+  /** A provider that resolves the value when no flag/env supplied one. */
   readonly source_?: SecretSource;
   readonly #parse: (raw: string) => T;
   readonly #fallback: Fallback<T>;
@@ -173,6 +184,7 @@ export class Parameter<
     };
   }
 
+  /** Build a parameter from its resolved constructor spec. */
   constructor(spec: ParamSpec<K, T>) {
     this.description_ = spec.description;
     this.kind_ = spec.kind;
@@ -198,10 +210,12 @@ export class Parameter<
     return this.#state.value;
   }
 
+  /** Whether the parameter resolved to a defined value (used by `.requires()`). */
   isSet_(): boolean {
     return this.#state.ok && this.#state.value !== undefined;
   }
 
+  /** The resolved value as a string, or `undefined` if unset (for masking). */
   stringValue_(): string | undefined {
     return this.#state.ok && this.#state.value !== undefined
       ? String(this.#state.value)
@@ -369,6 +383,7 @@ export class Parameter<
     });
   }
 
+  /** Resolve from a raw input (or `undefined` when none was supplied). */
   resolve_(raw: string | undefined): void {
     if (raw !== undefined) {
       this.#state = { ok: true, value: this.#parse(raw) };

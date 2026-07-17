@@ -84,6 +84,7 @@ export class Reviewer implements Validation {
   /** A name for diagnostics — `"<assessment> review"`. */
   name: string;
 
+  /** Create the reviewer for the given assessment type. */
   constructor(assessment: AssessmentType) {
     this.#assessment = assessment;
     this.name = `${assessment} review`;

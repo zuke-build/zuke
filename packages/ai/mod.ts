@@ -39,6 +39,8 @@ export type {
 } from "./src/agent_fixer.ts";
 export { type DiffFetch, DiffSettings } from "./src/diff.ts";
 export { GateSettings } from "./src/gate.ts";
+export type { GateRule } from "./src/gate.ts";
+export type { EnvReader } from "./src/hosts.ts";
 export type { RetryInfo, RetryOptions } from "./src/retry.ts";
 export { Budget, budget } from "./src/budget.ts";
 export type { BudgetSpend, ModelPrice } from "./src/budget.ts";

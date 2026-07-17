@@ -38,6 +38,7 @@ import type { Configure } from "./tooling.ts";
 
 /** Raised when a {@link SecretSource} cannot produce a value. */
 export class SecretError extends Error {
+  /** The error name. */
   override name = "SecretError";
 }
 

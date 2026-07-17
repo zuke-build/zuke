@@ -26,7 +26,9 @@ export type { PathLike };
 
 /** Raised when a tool's binary cannot be found on the system. */
 export class ToolNotFoundError extends Error {
+  /** The error name. */
   override name = "ToolNotFoundError";
+  /** Build the error naming the tool binary that could not be found. */
   constructor(
     /** The binary that could not be resolved. */
     readonly tool: string,
@@ -222,12 +224,14 @@ export class DynamicToolSettings extends ToolSettings {
   readonly #tool: string;
   readonly #argv: string[];
 
+  /** Build settings for `tool`, seeded with any `initial` subcommand tokens. */
   constructor(tool: string, initial: string[] = []) {
     super();
     this.#tool = tool;
     this.#argv = [...initial];
   }
 
+  /** The configured tool binary. */
   protected override defaultTool(): string {
     return this.#tool;
   }
@@ -250,6 +254,7 @@ export class DynamicToolSettings extends ToolSettings {
     return this;
   }
 
+  /** The argv assembled from the `arg`/`flag`/`option` calls, in order. */
   protected override buildArgs(): string[] {
     return [...this.#argv];
   }

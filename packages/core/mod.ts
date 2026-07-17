@@ -99,6 +99,7 @@ export {
   Parameter,
   parameter,
   ParameterError,
+  type ParamKind,
   type ParamValue,
 } from "./src/params.ts";
 export {
@@ -153,7 +154,10 @@ export {
 } from "./src/http.ts";
 export {
   AnnounceError,
+  type Announcement,
+  type AnnouncementField,
   type AnnouncementLevel,
+  type AnnouncementLink,
   AnnouncementSettings,
   AnnounceTasks,
   type AnnounceTasksApi,

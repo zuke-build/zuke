@@ -14,6 +14,9 @@ import { defaultHost, runSetup, type SetupHost } from "./src/setup.ts";
 import { type ImportSource, runImport } from "./src/import.ts";
 import { VERSION } from "./src/version.ts";
 
+export type { SetupHost } from "./src/setup.ts";
+export type { ImportSource } from "./src/import.ts";
+
 /**
  * The interactive surface, injectable so the wizard is testable without a TTY.
  */

@@ -508,6 +508,7 @@ export class CiFile {
   /** Fan-out options, when this file expands the build's targets into jobs. */
   readonly fanOut?: FanOutOptions;
 
+  /** Build the CI file from its spec, filling in the provider's default path. */
   constructor(spec: CiFileSpec) {
     this.provider = spec.provider;
     this.path = spec.path ?? DEFAULT_PATHS[this.provider];
