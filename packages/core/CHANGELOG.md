@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.14.0](https://github.com/zuke-build/zuke/compare/core-v1.13.0...core-v1.14.0) (2026-07-17)
+
+
+### Features
+
+* **core:** document all public API symbols to raise JSR score ([#163](https://github.com/zuke-build/zuke/issues/163)) ([6e21b1b](https://github.com/zuke-build/zuke/commit/6e21b1bf312e39faac95473e34c87eeee7398eef))
+
 ## [1.13.0](https://github.com/zuke-build/zuke/compare/core-v1.12.0...core-v1.13.0) (2026-07-16)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/zuke-build/zuke/compare/cli-v0.5.0...cli-v0.6.0) (2026-07-17)
+
+
+### Features
+
+* **core:** document all public API symbols to raise JSR score ([#163](https://github.com/zuke-build/zuke/issues/163)) ([6e21b1b](https://github.com/zuke-build/zuke/commit/6e21b1bf312e39faac95473e34c87eeee7398eef))
+
 ## [0.5.0](https://github.com/zuke-build/zuke/compare/cli-v0.4.0...cli-v0.5.0) (2026-07-16)
 
 
