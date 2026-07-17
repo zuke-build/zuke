@@ -21,7 +21,9 @@ import type { PathLike } from "./path.ts";
 
 /** Raised when an HTTP request returns a non-2xx status. */
 export class HttpError extends Error {
+  /** The error name. */
   override name = "HttpError";
+  /** Build the error from the failing response's status and URL. */
   constructor(
     /** The HTTP status code of the failing response. */
     readonly status: number,

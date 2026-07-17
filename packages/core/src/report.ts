@@ -41,8 +41,11 @@ const STATUS_COLOR: Record<TargetStatus, string> = {
 
 /** One row of the end-of-build summary. */
 export interface TargetReport {
+  /** The target's name. */
   name: string;
+  /** The target's terminal status. */
   status: TargetStatus;
+  /** The target's wall-clock duration in milliseconds. */
   ms: number;
 }
 

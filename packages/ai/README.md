@@ -215,6 +215,7 @@ class AgentFixer implements Remediation
   `.allowCI()`.
 
   constructor(run: AgentRunner)
+    Create the fixer with the agent runner that performs the edits.
   name: string
     A name for diagnostics — `"agent fix"`.
   allowCI(): this
@@ -383,7 +384,9 @@ class AiReviewError extends Error
   Raised when a reviewer is misconfigured, the API fails, or the gate trips.
 
   constructor(message: string)
+    Create the error with a message.
   override name: string
+    The error name.
 
 class Budget
   A running token and cost budget for AI provider calls. Build one with
@@ -454,6 +457,7 @@ class Reviewer implements Validation
   `.apiKey(...)` are required; everything else has a default.
 
   constructor(assessment: AssessmentType)
+    Create the reviewer for the given assessment type.
   name: string
     A name for diagnostics — `"<assessment> review"`.
   get provider_(): Provider | undefined
@@ -762,6 +766,12 @@ type Confidence = "low" | "medium" | "high"
 
 type Effort = "low" | "medium" | "high" | "xhigh" | "max"
   The thinking-depth hint passed to providers that support it (Claude).
+
+type EnvReader = (name: string) => string | undefined
+  Read an environment variable, tolerating an absent `--allow-env` permission.
+
+type GateRule = { kind: "score"; value: number; } | { kind: "severity"; value: Severity; }
+  A configured rule for {@link "./reviewer.ts".Reviewer.failWhen}.
 
 type Provider = "claude" | "openai" | "gemini"
   A supported model provider.

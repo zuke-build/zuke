@@ -143,7 +143,11 @@ export function remoteCacheKey(name: string, fingerprint: string): string {
 export class FileSystemCacheStore implements RemoteCacheStore {
   readonly #dir: string;
 
-  /** @param dir The directory archives are read from and written to. */
+  /**
+   * Build the store over a directory.
+   *
+   * @param dir The directory archives are read from and written to.
+   */
   constructor(dir: string) {
     this.#dir = dir;
   }
@@ -152,10 +156,12 @@ export class FileSystemCacheStore implements RemoteCacheStore {
     return `${this.#dir}/${key}.tar.gz`;
   }
 
+  /** Fetch the archived outputs stored under `key`, or `null` if there are none. */
   get(key: string): Promise<Uint8Array | null> {
     return readFileOrNull(this.#path(key));
   }
 
+  /** Store `artifact` (a gzipped tar of a target's outputs) under `key`. */
   async put(key: string, artifact: Uint8Array): Promise<void> {
     await Deno.mkdir(this.#dir, { recursive: true });
     await Deno.writeFile(this.#path(key), artifact);
@@ -201,6 +207,7 @@ export class HttpCacheStore implements RemoteCacheStore {
   readonly #token?: string;
   readonly #fetch: typeof fetch;
 
+  /** Build the store from its URL, optional token, and `fetch` seam. */
   constructor(options: HttpCacheStoreOptions) {
     this.#base = options.url.replace(/\/+$/, "");
     this.#token = options.token;
@@ -219,6 +226,7 @@ export class HttpCacheStore implements RemoteCacheStore {
     return headers;
   }
 
+  /** Fetch the archived outputs stored under `key`, or `null` if there are none. */
   async get(key: string): Promise<Uint8Array | null> {
     const url = this.#url(key);
     const response = await this.#fetch(url, { headers: this.#headers() });
@@ -233,6 +241,7 @@ export class HttpCacheStore implements RemoteCacheStore {
     return new Uint8Array(await response.arrayBuffer());
   }
 
+  /** Store `artifact` (a gzipped tar of a target's outputs) under `key`. */
   async put(key: string, artifact: Uint8Array): Promise<void> {
     const url = this.#url(key);
     const response = await this.#fetch(url, {

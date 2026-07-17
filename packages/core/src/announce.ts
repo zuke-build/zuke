@@ -58,29 +58,40 @@ import type { Configure } from "./tooling.ts";
 export type AnnouncementLevel = "success" | "failure" | "warning" | "info";
 
 /** A labelled detail rendered beside the message (e.g. a version or environment). */
-interface AnnouncementField {
+export interface AnnouncementField {
+  /** The field's label. */
   name: string;
+  /** The field's value. */
   value: string;
 }
 
 /** A clickable action rendered with the announcement (e.g. a link to a release). */
-interface AnnouncementLink {
+export interface AnnouncementLink {
+  /** The link's visible text. */
   text: string;
+  /** The link's target URL. */
   url: string;
 }
 
 /** A structured announcement assembled by an {@link AnnouncementSettings}. */
-interface Announcement {
+export interface Announcement {
+  /** The main message body. */
   text: string;
+  /** An optional heading rendered above the message. */
   title?: string;
+  /** The outcome level driving the accent colour and icon. */
   level: AnnouncementLevel;
+  /** Labelled details rendered beside the message. */
   fields?: AnnouncementField[];
+  /** A clickable action rendered with the announcement. */
   link?: AnnouncementLink;
 }
 
 /** Raised when an announcement is run before it is fully configured. */
 export class AnnounceError extends Error {
+  /** The error name. */
   override name = "AnnounceError";
+  /** Build the error with an explanatory message. */
   constructor(message: string) {
     super(message);
   }
@@ -92,7 +103,9 @@ export class AnnounceError extends Error {
  * `channel_not_found`, `not_in_channel`, `invalid_auth`).
  */
 export class SlackApiError extends Error {
+  /** The error name. */
   override name = "SlackApiError";
+  /** Build the error from Slack's machine-readable error code. */
   constructor(
     /** Slack's `error` code from the `chat.postMessage` response. */
     readonly error: string,
@@ -310,16 +323,26 @@ function teamsGraphPayload(ann: Announcement): Record<string, unknown> {
  * platform-specific configuration and render the payload.
  */
 export abstract class AnnouncementSettings {
+  /** The main message body. */
   protected text_ = "";
+  /** An optional heading shown above the body. */
   protected title_?: string;
+  /** The outcome level driving the accent colour and icon. */
   protected level_: AnnouncementLevel = "info";
+  /** Repeatable labelled detail fields. */
   protected readonly fields_: AnnouncementField[] = [];
+  /** An optional action link rendered with the announcement. */
   protected link_?: AnnouncementLink;
+  /** An optional display name for the sender. */
   protected username_?: string;
+  /** The webhook destination URL. */
   protected webhookUrl_?: string;
+  /** A `fetch` seam injected by tests. */
   protected fetch_?: typeof fetch;
   #bot = false;
+  /** An API/bot-mode token, when opted in with `.bot()`. */
   protected token_?: string;
+  /** The target channel in API/bot mode. */
   protected channel_?: string;
 
   /** Set the main message body. */
@@ -486,10 +509,12 @@ export abstract class AnnouncementSettings {
  * (`.bot().token(t).channel(c)`) posts through the Web API (`chat.postMessage`).
  */
 export class SlackAnnouncementSettings extends AnnouncementSettings {
+  /** Render the Slack webhook payload. */
   protected override payload(): Record<string, unknown> {
     return slackPayload(this.announcement(), this.username_);
   }
 
+  /** Post the announcement through the Slack Web API in bot mode. */
   protected override sendBot(): Promise<void> {
     return postSlackBot(
       this.requireToken(),
@@ -515,10 +540,12 @@ export class TeamsAnnouncementSettings extends AnnouncementSettings {
     return this;
   }
 
+  /** Render the Teams webhook payload. */
   protected override payload(): Record<string, unknown> {
     return teamsPayload(this.announcement());
   }
 
+  /** Post the announcement through Microsoft Graph in bot mode. */
   protected override sendBot(): Promise<void> {
     if (this.#team === undefined) {
       throw new AnnounceError("bot mode needs a team; call .team(...)");
@@ -537,10 +564,12 @@ export class TeamsAnnouncementSettings extends AnnouncementSettings {
  * (`.bot().token(t).channel(c)`) posts through the REST API with a bot token.
  */
 export class DiscordAnnouncementSettings extends AnnouncementSettings {
+  /** Render the Discord webhook payload. */
   protected override payload(): Record<string, unknown> {
     return discordPayload(this.announcement(), this.username_);
   }
 
+  /** Post the announcement through the Discord REST API in bot mode. */
   protected override sendBot(): Promise<void> {
     return post(
       discordMessagesUrl(this.requireChannel()),

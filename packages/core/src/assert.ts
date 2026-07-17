@@ -20,6 +20,7 @@ import type { PathLike } from "./path.ts";
 
 /** Raised by the assertion helpers when an expectation fails. */
 export class AssertionError extends Error {
+  /** The error name. */
   override name = "AssertionError";
 }
 

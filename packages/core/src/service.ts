@@ -39,6 +39,7 @@ export const DEFAULT_POLL_INTERVAL_MS = 200;
 
 /** Raised when a service cannot start or does not become ready in time. */
 export class ServiceError extends Error {
+  /** The error name. */
   override name = "ServiceError";
 }
 

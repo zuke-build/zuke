@@ -65,6 +65,23 @@ interface SetupFlags
     Build class name for the starter `zuke.ts`.
   dir?: string
     Directory to scaffold into (defaults to the current directory).
+
+interface SetupHost
+  Injected side effects, so {@link runSetup} is unit-testable.
+
+  exists(path: string): Promise<boolean>
+    Whether a path exists.
+  readText(path: string): Promise<string>
+    Read a file as UTF-8 text.
+  writeText(path: string, content: string): Promise<void>
+    Write UTF-8 text to a file, creating or truncating it.
+  chmod(path: string, mode: number): Promise<void>
+    Set a file's permission bits (may be unsupported on some platforms).
+  log(message: string): void
+    Emit a line of progress output.
+
+type ImportSource = "package.json" | "Makefile"
+  The kinds of project `zuke import` can read.
 ````
 
 </details>

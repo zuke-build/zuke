@@ -501,7 +501,9 @@ class AnnounceError extends Error
   Raised when an announcement is run before it is fully configured.
 
   constructor(message: string)
+    Build the error with an explanatory message.
   override name: string
+    The error name.
 
 abstract class AnnouncementSettings
   Fluent settings shared by every announcement: the message content (a body, an
@@ -511,15 +513,25 @@ abstract class AnnouncementSettings
   platform-specific configuration and render the payload.
 
   protected text_: string
+    The main message body.
   protected title_?: string
+    An optional heading shown above the body.
   protected level_: AnnouncementLevel
+    The outcome level driving the accent colour and icon.
   protected readonly fields_: AnnouncementField[]
+    Repeatable labelled detail fields.
   protected link_?: AnnouncementLink
+    An optional action link rendered with the announcement.
   protected username_?: string
+    An optional display name for the sender.
   protected webhookUrl_?: string
+    The webhook destination URL.
   protected fetch_?: typeof fetch
+    A `fetch` seam injected by tests.
   protected token_?: string
+    An API/bot-mode token, when opted in with `.bot()`.
   protected channel_?: string
+    The target channel in API/bot mode.
   text(text: string): this
     Set the main message body.
   title(title: string): this
@@ -578,6 +590,7 @@ class AssertionError extends Error
   Raised by the assertion helpers when an expectation fails.
 
   override name: string
+    The error name.
 
 class Build
   Base class for user-defined builds. Provides no targets of its own; subclasses
@@ -629,6 +642,7 @@ class CiFile
   keeps the file on disk in sync with the definition when the build runs.
 
   constructor(spec: CiFileSpec)
+    Build the CI file from its spec, filling in the provider's default path.
   readonly provider: CiProvider
     The provider this file renders for.
   readonly path: string
@@ -648,7 +662,9 @@ class DiscordAnnouncementSettings extends AnnouncementSettings
   (`.bot().token(t).channel(c)`) posts through the REST API with a bot token.
 
   override protected payload(): Record<string, unknown>
+    Render the Discord webhook payload.
   override protected sendBot(): Promise<void>
+    Post the announcement through the Discord REST API in bot mode.
 
 class ExecSecretSettings
   Fluent settings for {@link execSecret}: a command whose standard output is
@@ -690,17 +706,21 @@ class FileSystemCacheStore implements RemoteCacheStore
   A {@link RemoteCacheStore} backed by a shared or mounted directory.
 
   constructor(dir: string)
+    Build the store over a directory.
 
     @param dir
         The directory archives are read from and written to.
 
   get(key: string): Promise<Uint8Array | null>
+    Fetch the archived outputs stored under `key`, or `null` if there are none.
   async put(key: string, artifact: Uint8Array): Promise<void>
+    Store `artifact` (a gzipped tar of a target's outputs) under `key`.
 
 class GraphError extends Error
   Raised when the build graph is invalid (cycle or unknown dependency).
 
   override name: string
+    The error name.
 
 class Group
   A parallel batch of targets, created with {@link group}. Targets join it via
@@ -729,14 +749,19 @@ class HttpCacheStore implements RemoteCacheStore
   {@link restoreOutputs}), so a poisoned store cannot write outside it.
 
   constructor(options: HttpCacheStoreOptions)
+    Build the store from its URL, optional token, and `fetch` seam.
   async get(key: string): Promise<Uint8Array | null>
+    Fetch the archived outputs stored under `key`, or `null` if there are none.
   async put(key: string, artifact: Uint8Array): Promise<void>
+    Store `artifact` (a gzipped tar of a target's outputs) under `key`.
 
 class HttpError extends Error
   Raised when an HTTP request returns a non-2xx status.
 
   constructor(readonly status: number, readonly url: string)
+    Build the error from the failing response's status and URL.
   override name: string
+    The error name.
 
 class Parameter<K extends ParamValue = ParamValue, T extends K | K[] | undefined = K | undefined> implements AnyParameter
   A typed build parameter. Declare one with {@link parameter} and configure it
@@ -748,20 +773,33 @@ class Parameter<K extends ParamValue = ParamValue, T extends K | K[] | undefined
   `K` for required/defaulted parameters and `K | undefined` for optional ones.
 
   constructor(spec: ParamSpec<K, T>)
+    Build a parameter from its resolved constructor spec.
   name_?: string
+    Property name, assigned during discovery. Undefined until then.
   readonly description_?: string
+    Human-readable description shown in `--help`/`--list`.
   readonly kind_: ParamKind
+    The runtime value kind.
   readonly required_: boolean
+    Whether a value must be supplied (no default).
   readonly options_?: readonly string[]
+    The allowed string choices, if restricted with {@link Parameter.options}.
   readonly envName_?: string
+    An explicit environment variable name override.
   readonly hasFallback_: boolean
+    Whether the parameter has a declared default value.
   readonly secret_: boolean
+    Whether the value is sensitive and should be masked in CI output.
   readonly array_: boolean
+    Whether the value is a comma-separated / repeatable list (`.array()`).
   readonly source_?: SecretSource
+    A provider that resolves the value when no flag/env supplied one.
   get value(): T
     The resolved value. Throws if read before the build resolves parameters.
   isSet_(): boolean
+    Whether the parameter resolved to a defined value (used by `.requires()`).
   stringValue_(): string | undefined
+    The resolved value as a string, or `undefined` if unset (for masking).
   secret(): Parameter<K, T>
     Mark the value as sensitive: it is masked in CI output (`::add-mask::`) and
     redacted from all of Zuke's reporter output. Pair with {@link Parameter.from}
@@ -789,11 +827,13 @@ class Parameter<K extends ParamValue = ParamValue, T extends K | K[] | undefined
     `string[]`. `--tags a,b` and `--tags a --tags b` both yield `["a", "b"]`;
     blank entries are dropped. An unsupplied list parameter defaults to `[]`.
   resolve_(raw: string | undefined): void
+    Resolve from a raw input (or `undefined` when none was supplied).
 
 class ParameterError extends Error
   Raised when a parameter value is invalid or read before resolution.
 
   override name: string
+    The error name.
 
 class Redactor
   Collects secret values and masks them in text. Register a value with
@@ -813,6 +853,7 @@ class SecretError extends Error
   Raised when a {@link SecretSource} cannot produce a value.
 
   override name: string
+    The error name.
 
 class ServiceBuilder extends TargetBuilder
   A long-lived {@link target}. Configure how it starts ({@link
@@ -844,6 +885,7 @@ class ServiceError extends Error
   Raised when a service cannot start or does not become ready in time.
 
   override name: string
+    The error name.
 
 class ServiceRegistry
   Holds the services started during a run and stops them in reverse order on
@@ -862,7 +904,9 @@ class SlackAnnouncementSettings extends AnnouncementSettings
   (`.bot().token(t).channel(c)`) posts through the Web API (`chat.postMessage`).
 
   override protected payload(): Record<string, unknown>
+    Render the Slack webhook payload.
   override protected sendBot(): Promise<void>
+    Post the announcement through the Slack Web API in bot mode.
 
 class SlackApiError extends Error
   Raised when the Slack Web API accepts the request but reports a logical
@@ -870,7 +914,9 @@ class SlackApiError extends Error
   `channel_not_found`, `not_in_channel`, `invalid_auth`).
 
   constructor(readonly error: string)
+    Build the error from Slack's machine-readable error code.
   override name: string
+    The error name.
 
 class TargetBuilder
   The fluent builder returned by {@link target}. All configuration methods are
@@ -1049,7 +1095,9 @@ class TeamsAnnouncementSettings extends AnnouncementSettings
   team(team: string): this
     Set the Teams team (group) id to post to in bot mode (Microsoft Graph).
   override protected payload(): Record<string, unknown>
+    Render the Teams webhook payload.
   override protected sendBot(): Promise<void>
+    Post the announcement through Microsoft Graph in bot mode.
 
 class ToolInstallSettings
   Fluent settings for installing a release tool. Configure it in a
@@ -1162,6 +1210,36 @@ interface AnnounceTasksApi
     Announce to Discord. Configure a {@link DiscordAnnouncementSettings}: set a
     `.webhook(url)` (or `.bot().token(t).channel(c)` to post through the REST
     API with a bot token) and the message content.
+
+interface Announcement
+  A structured announcement assembled by an {@link AnnouncementSettings}.
+
+  text: string
+    The main message body.
+  title?: string
+    An optional heading rendered above the message.
+  level: AnnouncementLevel
+    The outcome level driving the accent colour and icon.
+  fields?: AnnouncementField[]
+    Labelled details rendered beside the message.
+  link?: AnnouncementLink
+    A clickable action rendered with the announcement.
+
+interface AnnouncementField
+  A labelled detail rendered beside the message (e.g. a version or environment).
+
+  name: string
+    The field's label.
+  value: string
+    The field's value.
+
+interface AnnouncementLink
+  A clickable action rendered with the announcement (e.g. a link to a release).
+
+  text: string
+    The link's visible text.
+  url: string
+    The link's target URL.
 
 interface AnyParameter
   The non-generic view of a parameter, used by discovery and resolution.
@@ -1693,7 +1771,9 @@ interface Reporter
   Sink for executor output, defaulting to the console. Overridable in tests.
 
   info(line: string): void
+    Write an informational line.
   error(line: string): void
+    Write an error line.
 
 interface RunOptions
   Options for {@link run}.
@@ -1755,8 +1835,11 @@ interface TargetReport
   One row of the end-of-build summary.
 
   name: string
+    The target's name.
   status: TargetStatus
+    The target's terminal status.
   ms: number
+    The target's wall-clock duration in milliseconds.
 
 interface ToolTasksApi
   The task surface of {@link ToolTasks}.
@@ -1823,6 +1906,9 @@ type OperatingSystem = "linux" | "macos" | "windows"
   The operating systems Zuke recognises — Deno's raw `Deno.build.os` values
   normalised to a friendly set (notably `darwin` → `macos`). Used across the
   ecosystem so builds branch on `"macos"` rather than the surprising `"darwin"`.
+
+type ParamKind = "string" | "number" | "boolean"
+  A parameter's runtime kind tag.
 
 type ParamValue = string | number | boolean
   The value kinds a parameter can hold.

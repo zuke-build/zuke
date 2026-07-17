@@ -48,7 +48,9 @@ const ARTIFACT_DIR = ".zuke";
 
 /** Sink for executor output, defaulting to the console. Overridable in tests. */
 export interface Reporter {
+  /** Write an informational line. */
   info(line: string): void;
+  /** Write an error line. */
   error(line: string): void;
 }
 

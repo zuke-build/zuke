@@ -143,6 +143,7 @@ export class AgentFixer implements Remediation {
   /** A name for diagnostics — `"agent fix"`. */
   name = "agent fix";
 
+  /** Create the fixer with the agent runner that performs the edits. */
   constructor(run: AgentRunner) {
     this.#run = run;
   }

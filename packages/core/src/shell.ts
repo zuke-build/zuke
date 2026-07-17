@@ -27,7 +27,9 @@ export type Interpolatable =
 
 /** Raised when a command exits non-zero and throwing was not suppressed. */
 export class CommandError extends Error {
+  /** The error name. */
   override name = "CommandError";
+  /** Build the error from the failed command line, exit code, and stderr. */
   constructor(
     /** The command line that failed (argv joined by spaces). */
     readonly command: string,
@@ -49,7 +51,9 @@ export class CommandError extends Error {
  * distinct, exceptional outcome from a normal non-zero exit.
  */
 export class CommandTimeoutError extends Error {
+  /** The error name. */
   override name = "CommandTimeoutError";
+  /** Build the error from the command line and the elapsed-time budget. */
   constructor(
     /** The command line that timed out (argv joined by spaces). */
     readonly command: string,
@@ -62,9 +66,13 @@ export class CommandTimeoutError extends Error {
 
 /** The resolved result of a command, available when awaiting a {@link Command}. */
 export class CommandOutput {
+  /** Build the output from the process exit code and captured streams. */
   constructor(
+    /** The process exit code. */
     readonly code: number,
+    /** Captured standard output. */
     readonly stdout: string,
+    /** Captured standard error. */
     readonly stderr: string,
   ) {}
 
@@ -85,6 +93,7 @@ export class CommandOutput {
 export class SpawnedProcess {
   readonly #child: Deno.ChildProcess;
 
+  /** Wrap a spawned child process and the command line that started it. */
   constructor(child: Deno.ChildProcess, readonly commandLine: string) {
     this.#child = child;
   }
@@ -188,6 +197,7 @@ export class Command implements PromiseLike<CommandOutput> {
   #timeoutMs?: number;
   #result?: Promise<RunResult>;
 
+  /** Build a command from a discrete argv array (binary first). */
   constructor(argv: string[]) {
     this.#argv = argv;
   }

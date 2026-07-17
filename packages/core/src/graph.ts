@@ -15,6 +15,7 @@ import type { TargetBuilder } from "./target.ts";
 
 /** Raised when the build graph is invalid (cycle or unknown dependency). */
 export class GraphError extends Error {
+  /** The error name. */
   override name = "GraphError";
 }
 
