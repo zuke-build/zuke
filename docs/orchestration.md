@@ -168,8 +168,13 @@ class CD extends Build {
 Sub-targets are materialised at run time, named `deployBatch[<item>].<stage>`,
 and are **first-class**: each gets its own row in the summary and its own entry
 in the [run record](./state.md) (so `zuke runs show` reports per-item verdicts).
-Static views — `zuke --list`, `zuke graph` — show only the one fan-out node
-(annotated `[fan-out]`), since the sub-targets exist only while the build runs.
+The item key is a scalar item's own value (else its index), so it becomes part
+of the target name in output and the record — **fan out over non-secret
+identifiers** (repo names, tenant ids), never over `.secret()` values, which are
+meant for parameters (they are excluded from the record) rather than as loop
+keys. Static views — `zuke --list`, `zuke graph` — show only the one fan-out
+node (annotated `[fan-out]`), since the sub-targets exist only while the build
+runs.
 
 Runtime lists pair naturally with [array parameters](./parameters.md#lists):
 `.options("api", "web").array()` validates each element, and `.number().array()`

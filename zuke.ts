@@ -535,10 +535,15 @@ class ZukeBuild extends Build {
       // design (like LockConflictError naming the holder), not a secret leak.
       // `3f7a0g` is `zuke runs`, a local read-only inspect of an operator-owned
       // store of non-secret records — the FS/HTTP layer already owns access;
-      // agent/network authz is the M5 MCP surface. (IDs are opaque fingerprints.)
-      // cspell:ignore myee
+      // agent/network authz is the M5 MCP surface. `z2fmcx` is a forEach item
+      // key in a sub-target name: keys are author-chosen identifiers (console
+      // output is redacted; secrets belong in excluded `.secret()` params), as
+      // documented in docs/orchestration.md. (IDs are opaque fingerprints.)
+      // cspell:ignore myee fmcx
       .suppress(
-        suppressions((s) => s.add("1g3myee", "1mwn3kn", "1xwg7am", "3f7a0g")),
+        suppressions((s) =>
+          s.add("1g3myee", "1mwn3kn", "1xwg7am", "3f7a0g", "z2fmcx")
+        ),
       )
       .failWhen((g) => g.scoreAbove(8))
       .onError("warn")
