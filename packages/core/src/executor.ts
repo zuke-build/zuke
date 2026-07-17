@@ -38,12 +38,19 @@ import { isCI } from "./host.ts";
 import { ServiceBuilder, ServiceRegistry } from "./service.ts";
 import { Redactor } from "./redact.ts";
 import { absolutePath } from "./path.ts";
-import type { Remediation, TargetBuilder, TargetContext } from "./target.ts";
+import {
+  LockSettings,
+  type Remediation,
+  type TargetBuilder,
+  type TargetContext,
+} from "./target.ts";
 import { withAmbientSignal } from "./ambient_signal.ts";
 import { defaultStateHost, type StateStore } from "./state/store.ts";
 import { resolveStateStore } from "./state/resolve.ts";
-import { buildRunRecord, resolveActor } from "./state/record.ts";
+import { buildRunRecord, ciRunUrl, resolveActor } from "./state/record.ts";
 import { inMemoryStateHandle, RunStateWriter } from "./state/writer.ts";
+import { LockConflictError, type LockHolder } from "./state/lock.ts";
+import { parseDuration } from "./duration.ts";
 import type { Plugin } from "./plugin.ts";
 import { detectWidth, type Style, type TargetReport } from "./report.ts";
 import { defaultRenderer, type Renderer } from "./renderer.ts";
@@ -381,12 +388,97 @@ interface RunEnv {
   runId: string;
   signal: AbortSignal;
   writer?: RunStateWriter;
+  /** The resolved state store, if any — needed to acquire cross-run locks. */
+  store?: StateStore;
+  /** The run's actor, stamped on a lock holder. */
+  actor: string;
+  /** A link to this run (CI job), stamped on a lock holder when known. */
+  runUrl?: string;
 }
 
 /** A failure's message, or `undefined` when there was none — for the state record. */
 function errorMessage(error: unknown): string | undefined {
   if (error === undefined) return undefined;
   return error instanceof Error ? error.message : String(error);
+}
+
+/** A held cross-run lock: `release` clears its heartbeat and frees it. */
+interface HeldLock {
+  release(): Promise<void>;
+}
+
+/** The default conflict guidance when a target declares no `onConflict`. */
+function defaultConflictGuidance(key: string, holder: LockHolder): string {
+  const url = holder.runUrl === undefined ? "" : ` — ${holder.runUrl}`;
+  return `Lock "${key}" is held by ${holder.actor} (run ${holder.runId}) ` +
+    `since ${holder.since}${url}. Wait for that run to finish, or stop it, ` +
+    `then retry.`;
+}
+
+/**
+ * Acquire a target's cross-run lock, if it declares one. Returns `null` when it
+ * declares no lock, or a {@link HeldLock} once acquired. Throws a
+ * {@link LockConflictError} when another run holds it, or a friendly error when
+ * a lock is declared but no store is configured.
+ */
+async function acquireTargetLock(
+  t: TargetBuilder,
+  env: RunEnv,
+): Promise<HeldLock | null> {
+  const configure = t.lock_;
+  if (configure === undefined) return null;
+  // Run the settings lambda now — after parameters have resolved — so a key
+  // built from `this.<param>.value` sees the final value.
+  const settings = configure(new LockSettings());
+  const name = t.name_ ?? "?";
+  const key = settings.key_;
+  if (key === undefined) {
+    throw new Error(
+      `Target "${name}" .lock(...) set no key — call s.lockKey(...) or s.key(...).`,
+    );
+  }
+  const store = env.store;
+  if (store === undefined) {
+    throw new Error(
+      `Target "${name}" declares .lock("${key}") but no state store is ` +
+        `configured — a lock needs one. Pass --state, set ZUKE_STATE_DIR / ` +
+        `ZUKE_STATE_URL, or override stateStore().`,
+    );
+  }
+  if (settings.ttl_ === undefined) {
+    throw new Error(
+      `Target "${name}" .lock("${key}") set no TTL — call s.withTtl(...).`,
+    );
+  }
+  const ttlMs = parseDuration(settings.ttl_);
+  const holder: LockHolder = {
+    actor: env.actor,
+    runId: env.runId,
+    since: new Date().toISOString(),
+  };
+  if (env.runUrl !== undefined) holder.runUrl = env.runUrl;
+
+  const result = await store.acquireLock(key, holder, ttlMs);
+  if (!result.ok) {
+    const guidance = settings.onConflict_
+      ? settings.onConflict_(result.holder)
+      : defaultConflictGuidance(key, result.holder);
+    throw new LockConflictError(result.holder, guidance);
+  }
+
+  const token = result.token;
+  // Renew at half the TTL so a long body keeps its short-TTL lock; cleared on
+  // release. The interval is unref'd so it never keeps the process alive.
+  const heartbeat = setInterval(() => {
+    void store.renewLock(key, token, ttlMs);
+  }, Math.max(1000, Math.floor(ttlMs / 2)));
+  Deno.unrefTimer(heartbeat);
+  return {
+    release: async () => {
+      clearInterval(heartbeat);
+      await store.releaseLock(key, token);
+    },
+  };
 }
 
 /**
@@ -616,6 +708,18 @@ async function runTarget(
     state: env.writer ? env.writer.stateHandle(name) : inMemoryStateHandle(),
     dryRun,
   };
+
+  // Acquire the target's cross-run lock (if any) before the body. A conflict —
+  // or a lock declared with no store — fails the target with the guidance.
+  let lock: HeldLock | null;
+  try {
+    lock = await acquireTargetLock(t, env);
+  } catch (error) {
+    const ms = performance.now() - start;
+    failTarget(reporter, renderer, style, name, ms, error);
+    return { status: "failed", ms, error };
+  }
+
   try {
     for (const v of t.validateBefore_) await v.validate({ target: name });
     await runBodyWithRecovery(t, name, globalRecovery, ctx);
@@ -628,6 +732,10 @@ async function runTarget(
     const ms = performance.now() - start;
     failTarget(reporter, renderer, style, name, ms, error);
     return { status: "failed", ms, error };
+  } finally {
+    // Release on every path — success, failure, cancellation. The TTL is only
+    // the backstop for a killed process.
+    if (lock !== null) await lock.release();
   }
 }
 
@@ -990,6 +1098,10 @@ export async function execute(
   // run and its per-target transitions. Never for a dry run — no body executes,
   // so there is no run to persist. State writes are best-effort: a store hiccup
   // is reported, never fatal (see RunStateWriter).
+  // A build that uses a durable feature (a cross-run lock; later, waits and
+  // compensations) turns the filesystem store on by default, so state "just
+  // works" without --state. Plain builds still opt in explicitly.
+  const usesDurableFeature = order.some((t) => t.lock_ !== undefined);
   const stateStore = dryRun ? undefined : resolveStateStore(
     options.stateStore,
     build.stateStore(),
@@ -999,9 +1111,11 @@ export async function execute(
       defaultDir: absolutePath(
         findConfigDir(Deno.cwd(), pathExists) ?? Deno.cwd(),
       )(ARTIFACT_DIR, "runs").path,
-      enableDefault: options.state ?? false,
+      enableDefault: (options.state ?? false) || usesDurableFeature,
     },
   );
+  const actor = resolveActor(options.actor, readEnv);
+  const runUrl = ciRunUrl(readEnv);
   const nowIso = () => new Date().toISOString();
   const writer = stateStore === undefined
     ? undefined
@@ -1011,7 +1125,7 @@ export async function execute(
         runId,
         build: build.constructor.name,
         rootTarget: root.name_ ?? "<unnamed>",
-        actor: resolveActor(options.actor, readEnv),
+        actor,
         now: nowIso(),
         order,
         params: params.values(),
@@ -1020,7 +1134,14 @@ export async function execute(
       redactor,
       (message) => reporter.info(message),
     );
-  const env: RunEnv = { runId, signal: runController.signal, writer };
+  const env: RunEnv = {
+    runId,
+    signal: runController.signal,
+    writer,
+    store: stateStore,
+    actor,
+    runUrl,
+  };
 
   // Services started during the run are held here and torn down in reverse
   // order once it finishes — in a `finally`, so a failure never leaks a process.

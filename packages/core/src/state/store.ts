@@ -14,11 +14,20 @@
  */
 
 import type { RunQuery, RunRecord, RunSummary } from "./types.ts";
+import type { LockHolder } from "./lock.ts";
 
 /** The result of a {@link StateStore.putRun} compare-and-swap write. */
 export type PutResult =
   | { ok: true; version: string }
   | { ok: false; conflict: true };
+
+/**
+ * The result of {@link StateStore.acquireLock}: a `token` proving ownership, or
+ * the current `holder` when the lock is already held.
+ */
+export type LockResult =
+  | { ok: true; token: string }
+  | { ok: false; holder: LockHolder };
 
 /**
  * Pluggable persistence for run records. `version` is an opaque token (an ETag
@@ -40,6 +49,24 @@ export interface StateStore {
   ): Promise<PutResult>;
   /** List runs matching `query`, newest first (by `createdAt`, then `id`). */
   listRuns(query: RunQuery): Promise<RunSummary[]>;
+  /**
+   * Atomically acquire the lock `key` for `holder`, expiring after `ttlMs`. An
+   * expired lock is taken over. Returns a `token` on success, or the current
+   * holder when the lock is live.
+   */
+  acquireLock(
+    key: string,
+    holder: LockHolder,
+    ttlMs: number,
+  ): Promise<LockResult>;
+  /**
+   * Extend the lock `key` held under `token` by another `ttlMs`. Returns `false`
+   * if the token no longer owns it (expired and taken over), so a heartbeat can
+   * detect a lost lock.
+   */
+  renewLock(key: string, token: string, ttlMs: number): Promise<boolean>;
+  /** Release the lock `key` if still held under `token`; a no-op otherwise. */
+  releaseLock(key: string, token: string): Promise<void>;
 }
 
 /**
@@ -65,6 +92,8 @@ export interface StateHost {
   listDir(path: string): Promise<string[]>;
   /** Create a directory and any missing parents. */
   mkdirp(path: string): Promise<void>;
+  /** The current time in epoch milliseconds — the clock for lock expiry (injectable for tests). */
+  now(): number;
 }
 
 /** The real, `Deno`-backed {@link StateHost}. */
@@ -114,5 +143,8 @@ export const defaultStateHost: StateHost = {
   },
   async mkdirp(path: string): Promise<void> {
     await Deno.mkdir(path, { recursive: true });
+  },
+  now(): number {
+    return Date.now();
   },
 };

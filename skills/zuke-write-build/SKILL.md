@@ -94,6 +94,13 @@ Before calling any task or settings method, confirm the real shape:
   `ctx.state.set({ … })` / `ctx.state.get()` records per-target metadata (JSON,
   **never secrets** — secret parameters and redacted values are excluded). See
   the cheatsheet.
+- **Cross-run locks:** `.lock((s) => s.lockKey(...).withTtl("4h"))` — a settings
+  lambda — gives a target an exclusive claim across runs/machines; a second run
+  wanting the same key fails with a `LockConflictError` naming the holder. The
+  lambda runs after params resolve, so the key can read `this.<param>.value`.
+  The lock releases when the target settles and expires after the TTL if the
+  holder is killed. Needs a state store (a build with `.lock()` enables the
+  filesystem store by default). See the cheatsheet.
 - **Typed inputs:** `parameter("...")` (with `.secret()` / `.required()`), read
   as `this.x.value`, gated with `.requires(this.x)`.
 - **Secrets from a manager:** `parameter(...).secret().from(source)` sources a

@@ -22,6 +22,7 @@ Everything is optional except a body (`.executes`).
 | `.requires(...params)` | Fail unless the listed parameters resolved to a value. |
 | `.retry(times, delayMs?)` | Retry the body on failure. |
 | `.timeout(ms)` | Fail the body if it runs longer than `ms` (per attempt). |
+| `.lock((s) => s.lockKey(...).withTtl(...))` | Hold a cross-run lock while running; a second run wanting the key fails. See below. |
 | `.proceedAfterFailure()` | Keep the build going if this target fails. |
 | `.always()` | Run even after the build failed (cleanup/teardown). |
 | `.unlisted()` | Hide from `--list`/`--help`; still runnable by name. |
@@ -153,6 +154,36 @@ class CD extends Build {
 - **Never put secrets in `ctx.state`** — it is stored as plain JSON. Secret
   parameters are excluded from the record and state values are run through the
   redactor, but treat state as a non-secret channel. See `docs/state.md`.
+
+## Cross-run locks
+
+`.lock((s) => …)` takes a **settings lambda** (like the tool wrappers) and
+claims an exclusive resource across runs and machines. A second run that wants
+the same key **fails** with a `LockConflictError` (naming the holder) — it does
+not queue.
+
+```ts
+import { Build, target } from "jsr:@zuke/core";
+
+class CD extends Build {
+  repo = parameter("service");
+  promote = target()
+    .lock((s) =>
+      s.lockKey("deploy", this.repo.value) // sanitised composite key
+        .withTtl("4h") // renewed while running; expires this long after a kill -9
+        .onConflict((h) => `${this.repo.value} held by ${h.actor} (run ${h.runId}).`))
+    .executes(async (ctx) => {/* … */});
+}
+```
+
+- `s.lockKey(...parts)` sanitises and joins a composite key; `s.key(literal)`
+  sets one directly. The lambda runs after params resolve, so the key can read
+  `this.<param>.value`.
+- Released when the target settles (success, failure, cancellation); `ttl` is
+  only the backstop for a killed holder.
+- Needs a state store — a build using `.lock()` enables the `.zuke/runs`
+  filesystem store by default; use the HTTP backend to share locks across
+  machines. See `docs/locks.md`.
 
 ## Parameters — typed build inputs
 

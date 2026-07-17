@@ -27,9 +27,17 @@ import {
 } from "../src/state/record.ts";
 import { inMemoryStateHandle, RunStateWriter } from "../src/state/writer.ts";
 import { Redactor } from "../src/redact.ts";
-import { target } from "../src/target.ts";
+import { LockSettings, target } from "../src/target.ts";
 import { Build, discoverTargets } from "../src/build.ts";
 import { discoverParameters, parameter } from "../src/params.ts";
+import { parseDuration } from "../src/duration.ts";
+import {
+  LockConflictError,
+  lockKey,
+  parseLockHolder,
+  parseLockRecord,
+  stringifyLockRecord,
+} from "../src/state/lock.ts";
 
 /** A minimal, valid run record for tests. */
 function sampleRecord(overrides: Partial<RunRecord> = {}): RunRecord {
@@ -88,6 +96,11 @@ class FakeStateHost implements StateHost {
   }
   mkdirp(): Promise<void> {
     return Promise.resolve();
+  }
+  /** A controllable clock for lock-TTL tests; advance it with `time`. */
+  time = 1_000_000;
+  now(): number {
+    return this.time;
   }
 }
 
@@ -592,6 +605,16 @@ class MemStore implements StateStore {
     this.version += 1;
     return Promise.resolve({ ok: true, version: String(this.version) });
   }
+  // Locks are exercised against the real backends, not this run-only fake.
+  acquireLock(): Promise<never> {
+    throw new Error("MemStore: acquireLock is unused in these tests");
+  }
+  renewLock(): Promise<never> {
+    throw new Error("MemStore: renewLock is unused in these tests");
+  }
+  releaseLock(): Promise<never> {
+    throw new Error("MemStore: releaseLock is unused in these tests");
+  }
 }
 
 Deno.test("RunStateWriter records transitions and redacted state", async () => {
@@ -718,5 +741,223 @@ Deno.test("FileSystemStateStore errors when a lock is permanently held", async (
     () => store.putRun(sampleRecord(), null),
     Error,
     "could not acquire",
+  );
+});
+
+// ---------------------------------------------------------------- duration
+
+Deno.test("parseDuration parses units and passes numbers through", () => {
+  assertEquals(parseDuration("500ms"), 500);
+  assertEquals(parseDuration("90s"), 90_000);
+  assertEquals(parseDuration("30m"), 1_800_000);
+  assertEquals(parseDuration("4h"), 14_400_000);
+  assertEquals(parseDuration("1.5h"), 5_400_000);
+  assertEquals(parseDuration("1d"), 86_400_000);
+  assertEquals(parseDuration(1234), 1234);
+});
+
+Deno.test("parseDuration rejects nonsense", () => {
+  assertThrows(() => parseDuration("soon"), Error, "invalid duration");
+  assertThrows(() => parseDuration("10x"), Error, "invalid duration");
+  assertThrows(() => parseDuration(-5), Error, "non-negative");
+});
+
+// ---------------------------------------------------------------- lock types
+
+Deno.test("LockSettings collects key, ttl, and onConflict fluently", () => {
+  const render = (h: { actor: string }) => `held by ${h.actor}`;
+  const composed = new LockSettings().lockKey("deploy", "x").withTtl("4h")
+    .onConflict(render);
+  assertEquals(composed.key_, "deploy-x");
+  assertEquals(composed.ttl_, "4h");
+  assertEquals(composed.onConflict_, render);
+  // .key() sets a literal key.
+  assertEquals(new LockSettings().key("raw").key_, "raw");
+});
+
+Deno.test("lockKey sanitises and joins parts", () => {
+  assertEquals(lockKey("deploy", "expense-service"), "deploy-expense-service");
+  assertEquals(lockKey("deploy", "a/b:c"), "deploy-a_b_c");
+  assertEquals(lockKey("", "x"), "x"); // empty parts dropped
+});
+
+Deno.test("LockConflictError carries the holder and guidance", () => {
+  const holder = { actor: "bob", runId: "r7", since: "t" };
+  const err = new LockConflictError(holder, "held by bob");
+  assertEquals(err.message, "held by bob");
+  assertEquals(err.holder.actor, "bob");
+  assertEquals(err.name, "LockConflictError");
+});
+
+Deno.test("parseLockHolder validates untrusted holders", () => {
+  const holder = { actor: "a", runId: "r", since: "t", runUrl: "https://x" };
+  assertEquals(parseLockHolder(holder), holder);
+  assertEquals(parseLockHolder({ actor: "a", runId: "r", since: "t" }), {
+    actor: "a",
+    runId: "r",
+    since: "t",
+  });
+  assertThrows(() => parseLockHolder(5), Error, "not an object");
+  assertThrows(() => parseLockHolder({ actor: "a" }), Error, "runId");
+  assertThrows(
+    () => parseLockHolder({ actor: "a", runId: "r", since: "t", runUrl: 5 }),
+    Error,
+    "runUrl",
+  );
+});
+
+Deno.test("parseLockRecord round-trips and rejects malformed", () => {
+  const record = {
+    holder: { actor: "a", runId: "r", since: "t" },
+    token: "tok",
+    expiresAt: 123,
+  };
+  assertEquals(parseLockRecord(stringifyLockRecord(record)), record);
+  assertThrows(() => parseLockRecord("nope"), Error, "not valid JSON");
+  assertThrows(() => parseLockRecord("[]"), Error, "not an object");
+  assertThrows(
+    () => parseLockRecord(JSON.stringify({ ...record, expiresAt: "soon" })),
+    Error,
+    "expiresAt",
+  );
+});
+
+// ---------------------------------------------------------------- fs locks
+
+Deno.test("FileSystemStateStore locks: acquire, conflict, renew, release", async () => {
+  const host = new FakeStateHost();
+  const store = new FileSystemStateStore("/s", host);
+  const holderA = { actor: "a", runId: "r1", since: "t1" };
+  const holderB = { actor: "b", runId: "r2", since: "t2" };
+
+  const first = await store.acquireLock("deploy", holderA, 60_000);
+  if (!first.ok) throw new Error("expected first acquire to win");
+
+  // A second acquire while live loses, and learns the holder.
+  const second = await store.acquireLock("deploy", holderB, 60_000);
+  assertEquals(second.ok, false);
+  assertEquals(second.ok === false && second.holder.runId, "r1");
+
+  // Renew with the right token succeeds; a wrong token does not.
+  assertEquals(await store.renewLock("deploy", first.token, 60_000), true);
+  assertEquals(await store.renewLock("deploy", "wrong", 60_000), false);
+
+  // Release frees it; a fresh acquire then wins.
+  await store.releaseLock("deploy", first.token);
+  const third = await store.acquireLock("deploy", holderB, 60_000);
+  assertEquals(third.ok, true);
+});
+
+Deno.test("FileSystemStateStore locks: an expired lock is taken over (fake clock)", async () => {
+  const host = new FakeStateHost();
+  const store = new FileSystemStateStore("/s", host);
+  const won = await store.acquireLock("k", {
+    actor: "a",
+    runId: "r1",
+    since: "t",
+  }, 1000);
+  if (!won.ok) throw new Error("expected acquire to win");
+
+  // Still live: a second acquirer loses.
+  const blocked = await store.acquireLock("k", {
+    actor: "b",
+    runId: "r2",
+    since: "t",
+  }, 1000);
+  assertEquals(blocked.ok, false);
+
+  // Advance past the TTL (simulating the holder being kill -9'd): take over.
+  host.time += 2000;
+  const took = await store.acquireLock("k", {
+    actor: "b",
+    runId: "r2",
+    since: "t",
+  }, 1000);
+  assertEquals(took.ok, true);
+  // The stale holder's renew now fails — it lost the lock.
+  assertEquals(await store.renewLock("k", won.token, 1000), false);
+});
+
+Deno.test("FileSystemStateStore locks: concurrent acquire — exactly one wins", async () => {
+  const host = new FakeStateHost();
+  const store = new FileSystemStateStore("/s", host);
+  const results = await Promise.all([
+    store.acquireLock("k", { actor: "a", runId: "r1", since: "t" }, 60_000),
+    store.acquireLock("k", { actor: "b", runId: "r2", since: "t" }, 60_000),
+  ]);
+  assertEquals(results.filter((r) => r.ok).length, 1);
+  assertEquals(results.filter((r) => !r.ok).length, 1);
+});
+
+Deno.test("FileSystemStateStore locks: release/renew with no lock is safe", async () => {
+  const store = new FileSystemStateStore("/s", new FakeStateHost());
+  await store.releaseLock("absent", "tok"); // no throw
+  assertEquals(await store.renewLock("absent", "tok", 1000), false);
+});
+
+// ---------------------------------------------------------------- http locks
+
+Deno.test("HttpStateStore locks: acquire 201/409, renew, release", async () => {
+  const holder = { actor: "a", runId: "r1", since: "t" };
+  const store = new HttpStateStore({
+    url: "https://s",
+    fetch: fakeFetch((url, init) => {
+      const method = init?.method;
+      if (url.endsWith("/locks/held") && method === "POST") {
+        return new Response(JSON.stringify(holder), { status: 409 });
+      }
+      if (method === "POST") {
+        return new Response(JSON.stringify({ token: "tok-9" }), {
+          status: 201,
+        });
+      }
+      if (method === "PUT") return new Response(null, { status: 200 });
+      if (method === "DELETE") return new Response(null, { status: 200 });
+      return new Response(null, { status: 500 });
+    }),
+  });
+  const ok = await store.acquireLock("free", holder, 1000);
+  assertEquals(ok, { ok: true, token: "tok-9" });
+  const conflict = await store.acquireLock("held", holder, 1000);
+  assertEquals(conflict.ok === false && conflict.holder.runId, "r1");
+  assertEquals(await store.renewLock("free", "tok-9", 1000), true);
+  await store.releaseLock("free", "tok-9"); // no throw
+});
+
+Deno.test("HttpStateStore locks: renew 409/404 → lost; errors throw", async () => {
+  const lost = new HttpStateStore({
+    url: "https://s",
+    fetch: fakeFetch(() => new Response(null, { status: 409 })),
+  });
+  assertEquals(await lost.renewLock("k", "t", 1000), false);
+
+  const missing = new HttpStateStore({
+    url: "https://s",
+    fetch: fakeFetch(() => new Response(null, { status: 404 })),
+  });
+  assertEquals(await missing.renewLock("k", "t", 1000), false);
+  await missing.releaseLock("k", "t"); // 404 on release is not an error
+
+  const boom = new HttpStateStore({
+    url: "https://s",
+    fetch: fakeFetch(() => new Response(null, { status: 500 })),
+  });
+  await assertRejects(
+    () => boom.acquireLock("k", { actor: "a", runId: "r", since: "t" }, 1000),
+    HttpError,
+  );
+  await assertRejects(() => boom.renewLock("k", "t", 1000), HttpError);
+  await assertRejects(() => boom.releaseLock("k", "t"), HttpError);
+});
+
+Deno.test("HttpStateStore locks: a 201 without a token is an error", async () => {
+  const store = new HttpStateStore({
+    url: "https://s",
+    fetch: fakeFetch(() => new Response("{}", { status: 201 })),
+  });
+  await assertRejects(
+    () => store.acquireLock("k", { actor: "a", runId: "r", since: "t" }, 1000),
+    Error,
+    "did not return a token",
   );
 });

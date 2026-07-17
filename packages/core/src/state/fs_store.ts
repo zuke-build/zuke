@@ -14,6 +14,7 @@
 
 import {
   defaultStateHost,
+  type LockResult,
   type PutResult,
   type StateHost,
   type StateStore,
@@ -26,6 +27,12 @@ import {
   stringifyRunRecord,
   toSummary,
 } from "./types.ts";
+import {
+  type LockHolder,
+  type LockRecord,
+  parseLockRecord,
+  stringifyLockRecord,
+} from "./lock.ts";
 
 const encoder = new TextEncoder();
 
@@ -95,9 +102,23 @@ export class FileSystemStateStore implements StateStore {
     return `${this.#dir}/${id}.json.lock`;
   }
 
+  // Cross-run locks live in a `locks/` subdirectory: `<key>.json` is the lock
+  // record, `<key>.acq` the short-lived acquire mutex. The key is validated the
+  // same way a run id is, so it is safe as a filename.
+  #lockFile(key: string): string {
+    assertSafeId(key);
+    return `${this.#dir}/locks/${key}.json`;
+  }
+
+  #lockMarker(key: string): string {
+    assertSafeId(key);
+    return `${this.#dir}/locks/${key}.acq`;
+  }
+
   async #ensureDir(): Promise<void> {
     if (this.#ensured) return;
     await this.#host.mkdirp(this.#dir);
+    await this.#host.mkdirp(`${this.#dir}/locks`);
     this.#ensured = true;
   }
 
@@ -150,22 +171,100 @@ export class FileSystemStateStore implements StateStore {
     return sortNewestFirst(summaries);
   }
 
+  /** Atomically acquire the lock `key` for `holder`, taking over if expired. */
+  async acquireLock(
+    key: string,
+    holder: LockHolder,
+    ttlMs: number,
+  ): Promise<LockResult> {
+    await this.#ensureDir();
+    return await this.#withMutex(
+      this.#lockMarker(key),
+      `lock "${key}"`,
+      async () => {
+        const current = await this.#readLock(key);
+        const now = this.#host.now();
+        if (current !== null && current.expiresAt > now) {
+          return { ok: false, holder: current.holder };
+        }
+        const token = crypto.randomUUID();
+        await this.#writeLock(key, { holder, token, expiresAt: now + ttlMs });
+        return { ok: true, token };
+      },
+    );
+  }
+
+  /** Extend the lock `key` held under `token`; `false` if the token lost it. */
+  async renewLock(key: string, token: string, ttlMs: number): Promise<boolean> {
+    await this.#ensureDir();
+    return await this.#withMutex(
+      this.#lockMarker(key),
+      `lock "${key}"`,
+      async () => {
+        const current = await this.#readLock(key);
+        if (current === null || current.token !== token) return false;
+        await this.#writeLock(key, {
+          ...current,
+          expiresAt: this.#host.now() + ttlMs,
+        });
+        return true;
+      },
+    );
+  }
+
+  /** Release the lock `key` if still held under `token`; a no-op otherwise. */
+  async releaseLock(key: string, token: string): Promise<void> {
+    await this.#ensureDir();
+    await this.#withMutex(this.#lockMarker(key), `lock "${key}"`, async () => {
+      const current = await this.#readLock(key);
+      if (current !== null && current.token === token) {
+        await this.#host.remove(this.#lockFile(key));
+      }
+    });
+  }
+
+  /** Read a lock record, or `null` when the lock is free. */
+  async #readLock(key: string): Promise<LockRecord | null> {
+    const text = await this.#host.readText(this.#lockFile(key));
+    return text === null ? null : parseLockRecord(text);
+  }
+
+  /** Publish a lock record via an atomic temp-file rename. */
+  async #writeLock(key: string, record: LockRecord): Promise<void> {
+    const file = this.#lockFile(key);
+    const tmp = `${file}.tmp-${crypto.randomUUID()}`;
+    await this.#host.writeText(tmp, stringifyLockRecord(record));
+    await this.#host.rename(tmp, file);
+  }
+
   /** Take the run's lock (spinning briefly on contention), run `fn`, release. */
-  async #withLock<T>(id: string, fn: () => Promise<T>): Promise<T> {
-    const lock = this.#lock(id);
+  #withLock<T>(id: string, fn: () => Promise<T>): Promise<T> {
+    return this.#withMutex(this.#lock(id), `run "${id}"`, fn);
+  }
+
+  /**
+   * Hold the exclusive `marker` file (spinning briefly on contention) for the
+   * duration of `fn`, then release it. `subject` names what is being guarded,
+   * for the error raised if the marker cannot be taken.
+   */
+  async #withMutex<T>(
+    marker: string,
+    subject: string,
+    fn: () => Promise<T>,
+  ): Promise<T> {
     for (let attempt = 0; attempt < LOCK_ATTEMPTS; attempt++) {
-      if (await this.#host.createExclusive(lock)) {
+      if (await this.#host.createExclusive(marker)) {
         try {
           return await fn();
         } finally {
-          await this.#host.remove(lock);
+          await this.#host.remove(marker);
         }
       }
       await delay(LOCK_DELAY_MS);
     }
     throw new Error(
-      `state: could not acquire the lock for run "${id}" — ` +
-        `a stale ${lock} may need removing.`,
+      `state: could not acquire the mutex for ${subject} — ` +
+        `a stale ${marker} may need removing.`,
     );
   }
 }

@@ -45,6 +45,7 @@ export {
   Group,
   group,
   type JsonValue,
+  LockSettings,
   type Remediation,
   type RemediationContext,
   type RemediationResult,
@@ -95,10 +96,17 @@ export {
 } from "./src/remote_cache.ts";
 export {
   defaultStateHost,
+  type LockResult,
   type PutResult,
   type StateHost,
   type StateStore,
 } from "./src/state/store.ts";
+export {
+  LockConflictError,
+  type LockHolder,
+  lockKey,
+} from "./src/state/lock.ts";
+export { parseDuration } from "./src/duration.ts";
 export {
   type RunGraphNode,
   type RunQuery,

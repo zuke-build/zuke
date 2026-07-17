@@ -44,6 +44,24 @@ export function resolveActor(
   return "anonymous";
 }
 
+/**
+ * A URL for the current CI run, when derivable — used as a lock holder's
+ * `runUrl` so a conflict can link to who holds it. GitHub Actions only for now
+ * (`GITHUB_SERVER_URL`/`GITHUB_REPOSITORY`/`GITHUB_RUN_ID`); `undefined`
+ * elsewhere.
+ */
+export function ciRunUrl(
+  readEnv: (name: string) => string | undefined,
+): string | undefined {
+  const server = readEnv("GITHUB_SERVER_URL");
+  const repo = readEnv("GITHUB_REPOSITORY");
+  const runId = readEnv("GITHUB_RUN_ID");
+  if (server && repo && runId) {
+    return `${server}/${repo}/actions/runs/${runId}`;
+  }
+  return undefined;
+}
+
 /** The inputs needed to build a run's initial {@link RunRecord}. */
 export interface RunRecordInput {
   /** The run's unique id. */
