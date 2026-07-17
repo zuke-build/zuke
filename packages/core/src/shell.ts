@@ -17,6 +17,16 @@
  */
 
 import type { AbsolutePath, PathLike } from "./path.ts";
+import { ambientSignal } from "./ambient_signal.ts";
+
+/** Combine an optional timeout signal and an optional cancellation signal. */
+function combineSignals(
+  a: AbortSignal | undefined,
+  b: AbortSignal | undefined,
+): AbortSignal | undefined {
+  if (a !== undefined && b !== undefined) return AbortSignal.any([a, b]);
+  return a ?? b;
+}
 
 /** A value that may be interpolated into a `$` template. */
 export type Interpolatable =
@@ -195,6 +205,7 @@ export class Command implements PromiseLike<CommandOutput> {
   #quiet = false;
   #capturing = false;
   #timeoutMs?: number;
+  #signal?: AbortSignal;
   #result?: Promise<RunResult>;
 
   /** Build a command from a discrete argv array (binary first). */
@@ -235,6 +246,17 @@ export class Command implements PromiseLike<CommandOutput> {
     return this;
   }
 
+  /**
+   * Terminate the process (via `SIGTERM`) when `signal` aborts — for example
+   * when the enclosing run is cancelled. Overrides the executor's ambient
+   * run signal for this command. Composes with {@link killAfter}: either the
+   * timeout or the abort kills the process, whichever fires first.
+   */
+  signal(signal: AbortSignal): this {
+    this.#signal = signal;
+    return this;
+  }
+
   /** The command line, for diagnostics. */
   get commandLine(): string {
     return this.#argv.join(" ");
@@ -259,6 +281,14 @@ export class Command implements PromiseLike<CommandOutput> {
       controller?.abort();
     }, ms);
 
+    // The timeout's own signal is folded together with the cancellation signal
+    // (an explicit `.signal()`, else the executor's ambient run signal), so an
+    // aborted run terminates the child even when a timeout is also armed.
+    const signal = combineSignals(
+      controller?.signal,
+      this.#signal ?? ambientSignal(),
+    );
+
     try {
       const child = new Deno.Command(cmd, {
         args,
@@ -266,7 +296,7 @@ export class Command implements PromiseLike<CommandOutput> {
         env: this.#env,
         stdout: "piped",
         stderr: "piped",
-        signal: controller?.signal,
+        signal,
       }).spawn();
 
       // When capturing programmatically, don't echo stdout to the terminal.
@@ -347,6 +377,7 @@ export class Command implements PromiseLike<CommandOutput> {
       env: this.#env,
       stdout: "inherit",
       stderr: "inherit",
+      signal: this.#signal ?? ambientSignal(),
     }).spawn();
     return new SpawnedProcess(child, this.commandLine);
   }

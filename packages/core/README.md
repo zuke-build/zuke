@@ -1518,6 +1518,12 @@ interface ExecuteOptions
     Renderer for the per-target banners and the end-of-build summary. Defaults
     to Zuke's built-in {@link defaultRenderer}; `@zuke/console` exports an
     alternative a build can inject to restyle its output.
+  signal?: AbortSignal
+    Cancel the run when this signal aborts. Every target body's
+    {@link "./target.ts".TargetContext} `signal` mirrors it, and it is applied
+    as the shell's ambient default so an in-flight `$` command is terminated
+    (SIGTERM) on cancellation. A body that ignores its signal still runs to completion —
+    graph-level cancellation/compensation is a later milestone.
 
 interface FanOutOptions
   Options for {@link fanOutPipeline}: how a build's targets become parallel CI
@@ -1831,6 +1837,25 @@ interface TarEntry
   data: Uint8Array
     The file contents.
 
+interface TargetContext
+  The context passed to every target body. Optional to receive — an existing
+  zero-argument `.executes(() => …)` stays valid, since a zero-argument
+  function is assignable to this one-parameter type — but a body that wants the run's
+  identity, a cancellation signal, or (in later milestones) durable state and
+  external-signal payloads reads them here.
+
+  readonly runId: string
+    Unique ID of this run, stable for every target in the run.
+  readonly target: string
+    Dotted name of the executing target.
+  readonly signal: AbortSignal
+    Aborted when the run is cancelled (see {@link "./executor.ts".ExecuteOptions}
+    `signal`). Pass it to a shell command's `.signal()` to have that command
+    terminated on cancellation; the executor also applies it as the shell's
+    ambient default, so a plain `$` in the body is terminated too.
+  readonly dryRun: boolean
+    True when the run is a dry run (bodies do not execute under a dry run).
+
 interface TargetReport
   One row of the end-of-build summary.
 
@@ -1922,7 +1947,7 @@ type Target = TargetBuilder
   A configured target. Alias of {@link TargetBuilder} — the same object both
   builds and represents the target. Exposed as `Target` for use in signatures.
 
-type TargetFn = () => void | Promise<void>
+type TargetFn = (ctx: TargetContext) => void | Promise<void>
   The executable body of a target. May be synchronous or asynchronous.
 
 type TargetStatus = "passed" | "failed" | "skipped" | "cached"

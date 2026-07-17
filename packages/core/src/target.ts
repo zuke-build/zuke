@@ -30,8 +30,31 @@
 import type { PathLike } from "./path.ts";
 import type { AnyParameter } from "./params.ts";
 
+/**
+ * The context passed to every target body. Optional to receive — an existing
+ * zero-argument `.executes(() => …)` stays valid, since a zero-argument
+ * function is assignable to this one-parameter type — but a body that wants the run's
+ * identity, a cancellation signal, or (in later milestones) durable state and
+ * external-signal payloads reads them here.
+ */
+export interface TargetContext {
+  /** Unique ID of this run, stable for every target in the run. */
+  readonly runId: string;
+  /** Dotted name of the executing target. */
+  readonly target: string;
+  /**
+   * Aborted when the run is cancelled (see {@link "./executor.ts".ExecuteOptions}
+   * `signal`). Pass it to a shell command's `.signal()` to have that command
+   * terminated on cancellation; the executor also applies it as the shell's
+   * ambient default, so a plain `$` in the body is terminated too.
+   */
+  readonly signal: AbortSignal;
+  /** True when the run is a dry run (bodies do not execute under a dry run). */
+  readonly dryRun: boolean;
+}
+
 /** The executable body of a target. May be synchronous or asynchronous. */
-export type TargetFn = () => void | Promise<void>;
+export type TargetFn = (ctx: TargetContext) => void | Promise<void>;
 
 /** A predicate gating whether a target runs; may be synchronous or async. */
 export type Condition = () => boolean | Promise<boolean>;

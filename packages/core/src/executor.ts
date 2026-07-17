@@ -38,7 +38,8 @@ import { isCI } from "./host.ts";
 import { ServiceBuilder, ServiceRegistry } from "./service.ts";
 import { Redactor } from "./redact.ts";
 import { absolutePath } from "./path.ts";
-import type { Remediation, TargetBuilder, TargetFn } from "./target.ts";
+import type { Remediation, TargetBuilder, TargetContext } from "./target.ts";
+import { withAmbientSignal } from "./ambient_signal.ts";
 import type { Plugin } from "./plugin.ts";
 import { detectWidth, type Style, type TargetReport } from "./report.ts";
 import { defaultRenderer, type Renderer } from "./renderer.ts";
@@ -156,6 +157,14 @@ export interface ExecuteOptions {
    * alternative a build can inject to restyle its output.
    */
   renderer?: Renderer;
+  /**
+   * Cancel the run when this signal aborts. Every target body's
+   * {@link "./target.ts".TargetContext} `signal` mirrors it, and it is applied
+   * as the shell's ambient default so an in-flight `$` command is terminated
+   * (SIGTERM) on cancellation. A body that ignores its signal still runs to completion —
+   * graph-level cancellation/compensation is a later milestone.
+   */
+  signal?: AbortSignal;
 }
 
 /** Whether the build is running inside a GitHub Actions runner. */
@@ -385,7 +394,7 @@ function delay(ms: number): Promise<void> {
  * primitive), so it keeps running in the background — but its result is ignored.
  */
 function runWithTimeout(
-  fn: TargetFn,
+  fn: () => void | Promise<void>,
   timeoutMs: number | undefined,
 ): Promise<void> {
   const result = Promise.resolve().then(fn);
@@ -414,13 +423,13 @@ function runWithTimeout(
  * and a failure is retried (after an optional delay) up to the retry count
  * before the last error propagates.
  */
-async function runBody(t: TargetBuilder): Promise<void> {
+async function runBody(t: TargetBuilder, ctx: TargetContext): Promise<void> {
   const fn = t.fn_;
   if (fn === undefined) return; // guarded by the caller
   const attempts = t.retries_ + 1;
   for (let attempt = 1;; attempt++) {
     try {
-      await runWithTimeout(fn, t.timeout_);
+      await runWithTimeout(() => fn(ctx), t.timeout_);
       return;
     } catch (error) {
       if (attempt >= attempts) throw error;
@@ -441,9 +450,10 @@ async function runBodyWithRecovery(
   t: TargetBuilder,
   name: string,
   globalRecovery: Remediation[],
+  ctx: TargetContext,
 ): Promise<void> {
   try {
-    await runBody(t);
+    await runBody(t, ctx);
     return;
   } catch (error) {
     // A target's own remediations run first, then any build-level ones.
@@ -467,7 +477,7 @@ async function runBodyWithRecovery(
       }
       if (!willRetry) break;
       try {
-        await runBody(t);
+        await runBody(t, ctx);
         return;
       } catch (retryError) {
         lastError = retryError;
@@ -495,6 +505,8 @@ async function runTarget(
   dryRun: boolean,
   globalRecovery: Remediation[],
   services: ServiceRegistry,
+  runId: string,
+  runSignal: AbortSignal,
 ): Promise<TargetOutcome> {
   const name = t.name_ ?? "<unnamed>";
 
@@ -556,9 +568,10 @@ async function runTarget(
     return { status: "failed", ms: 0, error };
   }
 
+  const ctx: TargetContext = { runId, target: name, signal: runSignal, dryRun };
   try {
     for (const v of t.validateBefore_) await v.validate({ target: name });
-    await runBodyWithRecovery(t, name, globalRecovery);
+    await runBodyWithRecovery(t, name, globalRecovery, ctx);
     for (const v of t.validateAfter_) await v.validate({ target: name });
     const ms = performance.now() - start;
     if (cache !== undefined) await cache.record(t);
@@ -616,6 +629,8 @@ async function runSequential(
   dryRun: boolean,
   globalRecovery: Remediation[],
   services: ServiceRegistry,
+  runId: string,
+  runSignal: AbortSignal,
 ): Promise<RunOutcome> {
   const reports: TargetReport[] = [];
   const executed: string[] = [];
@@ -640,6 +655,8 @@ async function runSequential(
       dryRun,
       globalRecovery,
       services,
+      runId,
+      runSignal,
     );
     await life.targetEnd(name, outcome.status);
     if (outcome.status === "passed" || outcome.status === "failed") opened++;
@@ -677,6 +694,8 @@ async function runScheduled(
   dryRun: boolean,
   globalRecovery: Remediation[],
   services: ServiceRegistry,
+  runId: string,
+  runSignal: AbortSignal,
 ): Promise<RunOutcome> {
   const outcomes = new Map<TargetBuilder, TargetOutcome>();
   const done = new Set<TargetBuilder>(); // passed/cached/skipped → unblocks dependents
@@ -723,6 +742,8 @@ async function runScheduled(
           dryRun,
           globalRecovery,
           services,
+          runId,
+          runSignal,
         )
           .then(
             async (outcome) => {
@@ -894,6 +915,18 @@ export async function execute(
   // resolved once before the run.
   const globalRecovery = dryRun ? [] : build.recoverWith();
 
+  // One run identity and one cancellation controller per run. The controller
+  // aborts when the caller's `options.signal` does; its signal is handed to
+  // every target's context and installed as the shell's ambient signal, so a
+  // cancelled run terminates in-flight `$` child processes.
+  const runId = crypto.randomUUID();
+  const runController = new AbortController();
+  const onCancel = () => runController.abort();
+  if (options.signal !== undefined) {
+    if (options.signal.aborted) runController.abort();
+    else options.signal.addEventListener("abort", onCancel, { once: true });
+  }
+
   // Services started during the run are held here and torn down in reverse
   // order once it finishes — in a `finally`, so a failure never leaks a process.
   const services = new ServiceRegistry();
@@ -910,6 +943,8 @@ export async function execute(
         dryRun,
         globalRecovery,
         services,
+        runId,
+        runController.signal,
       );
     }
     // With `--parallel`, anything independent may overlap up to `limit`.
@@ -934,13 +969,21 @@ export async function execute(
       dryRun,
       globalRecovery,
       services,
+      runId,
+      runController.signal,
     );
   };
 
   let run: RunOutcome;
   try {
-    run = await runPlan();
+    // Run the plan inside the ambient-signal scope so a plain `$` in a target
+    // body is cancelled with the run; the binding unwinds on its own, even if
+    // the plan throws — nothing to restore.
+    run = await withAmbientSignal(runController.signal, runPlan);
   } finally {
+    if (options.signal !== undefined) {
+      options.signal.removeEventListener("abort", onCancel);
+    }
     if (services.size > 0) {
       await services.stopAll((line) => reporter.info(line));
     }

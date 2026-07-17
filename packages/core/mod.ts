@@ -50,6 +50,7 @@ export {
   type Target,
   target,
   TargetBuilder,
+  type TargetContext,
   type TargetFn,
   type Validation,
   type ValidationContext,

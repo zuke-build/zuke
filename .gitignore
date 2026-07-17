@@ -18,6 +18,7 @@
 
 # Specs
 docs/superpowers/
+plans/
 
 # OMC session state
 .omc/

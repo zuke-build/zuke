@@ -5,6 +5,10 @@ import {
   CommandTimeoutError,
   tokenize,
 } from "../src/shell.ts";
+import { withAmbientSignal } from "../src/ambient_signal.ts";
+
+/** A command that sleeps far longer than any test would wait. */
+const SLEEP = "await new Promise((r) => setTimeout(r, 30000))";
 
 // `deno` is guaranteed present (we are running under it) and shell-free, so it
 // makes a reliable, cross-platform subject for these tests.
@@ -151,4 +155,58 @@ Deno.test("$ .killAfter() fires even under .noThrow()", async () => {
         .then(),
     CommandTimeoutError,
   );
+});
+
+Deno.test("$ .signal() terminates a running command when it aborts", async () => {
+  const controller = new AbortController();
+  const running = $`${DENO} eval ${SLEEP}`
+    .quiet()
+    .noThrow()
+    .signal(controller.signal)
+    .then();
+  setTimeout(() => controller.abort(), 50);
+  const result = await running;
+  // The child was killed rather than sleeping 30s — a non-zero termination code.
+  assertEquals(result.code !== 0, true);
+});
+
+Deno.test("$ picks up the ambient signal and is terminated on abort", async () => {
+  const controller = new AbortController();
+  await withAmbientSignal(controller.signal, async () => {
+    const running = $`${DENO} eval ${SLEEP}`.quiet().noThrow().then();
+    setTimeout(() => controller.abort(), 50);
+    const result = await running;
+    assertEquals(result.code !== 0, true);
+  });
+});
+
+Deno.test("$ .signal() overrides the ambient signal", async () => {
+  // Ambient stays un-aborted; the explicit per-command signal does the killing.
+  const ambient = new AbortController();
+  await withAmbientSignal(ambient.signal, async () => {
+    const explicit = new AbortController();
+    const running = $`${DENO} eval ${SLEEP}`
+      .quiet()
+      .noThrow()
+      .signal(explicit.signal)
+      .then();
+    setTimeout(() => explicit.abort(), 50);
+    const result = await running;
+    assertEquals(result.code !== 0, true);
+    assertEquals(ambient.signal.aborted, false);
+  });
+});
+
+Deno.test("$ .killAfter() and .signal() combine — either can end it", async () => {
+  // A generous timeout is armed, but the abort signal fires first and kills it.
+  const controller = new AbortController();
+  const running = $`${DENO} eval ${SLEEP}`
+    .quiet()
+    .noThrow()
+    .killAfter(30000)
+    .signal(controller.signal)
+    .then();
+  setTimeout(() => controller.abort(), 50);
+  const result = await running;
+  assertEquals(result.code !== 0, true);
 });
