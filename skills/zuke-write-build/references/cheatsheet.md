@@ -8,29 +8,29 @@ summary, not the source of truth.
 
 Everything is optional except a body (`.executes`).
 
-| Method | Purpose |
-| --- | --- |
-| `.description(text)` | Summary shown in `--list`. |
-| `.dependsOn(...t)` | Hard prerequisites; run first, transitively. Pass `this.<field>`. |
-| `.executes(fn)` | The body. Sync or async. **Required.** `fn` may take a `TargetContext` (`(ctx) => …`); see below. |
-| `.before(...t)` / `.after(...t)` | Soft ordering — only reorders targets already in the plan; never pulls new ones in. |
-| `.triggers(...t)` | Pull targets into the plan and run them *after* this one. |
-| `.dependentFor(...t)` | Reverse of `dependsOn`: make this a prerequisite of others. |
-| `.inputs(...p)` / `.outputs(...p)` | Incremental cache: skip when inputs unchanged and outputs exist. |
-| `.cacheKey(fn)` | Add a non-file value (version, git sha, param) to the cache fingerprint. |
-| `.onlyWhen(cond)` | Run only when the (possibly async) predicate holds, else skip. |
-| `.requires(...params)` | Fail unless the listed parameters resolved to a value. |
-| `.retry(times, delayMs?)` | Retry the body on failure. |
-| `.timeout(ms)` | Fail the body if it runs longer than `ms` (per attempt). |
-| `.lock((s) => s.lockKey(...).withTtl(...))` | Hold a cross-run lock while running; a second run wanting the key fails. See below. |
-| `.waitsFor((s) => s.on(externalSignal(...)))` | Gate (no body): suspend the run until an external event; resume later. See below. |
-| `.proceedAfterFailure()` | Keep the build going if this target fails. |
-| `.always()` | Run even after the build failed (cleanup/teardown). |
-| `.unlisted()` | Hide from `--list`/`--help`; still runnable by name. |
-| `.validateBefore(...v)` / `.validateAfter(...v)` | Run `Validation` checks around the body; a throw fails the target. |
-| `.recoverWith(...r)` / `.recoverAttempts(n)` | Run `Remediation`s if the body fails (self-healing); re-run when one asks to. See AI section. |
-| `.partOf(group)` | Join a parallel batch (see `group()`). |
-| `.produces(...p)` / `.consumes(...t)` | Declare and consume artifact paths. |
+| Method                                           | Purpose                                                                                           |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
+| `.description(text)`                             | Summary shown in `--list`.                                                                        |
+| `.dependsOn(...t)`                               | Hard prerequisites; run first, transitively. Pass `this.<field>`.                                 |
+| `.executes(fn)`                                  | The body. Sync or async. **Required.** `fn` may take a `TargetContext` (`(ctx) => …`); see below. |
+| `.before(...t)` / `.after(...t)`                 | Soft ordering — only reorders targets already in the plan; never pulls new ones in.               |
+| `.triggers(...t)`                                | Pull targets into the plan and run them _after_ this one.                                         |
+| `.dependentFor(...t)`                            | Reverse of `dependsOn`: make this a prerequisite of others.                                       |
+| `.inputs(...p)` / `.outputs(...p)`               | Incremental cache: skip when inputs unchanged and outputs exist.                                  |
+| `.cacheKey(fn)`                                  | Add a non-file value (version, git sha, param) to the cache fingerprint.                          |
+| `.onlyWhen(cond)`                                | Run only when the (possibly async) predicate holds, else skip.                                    |
+| `.requires(...params)`                           | Fail unless the listed parameters resolved to a value.                                            |
+| `.retry(times, delayMs?)`                        | Retry the body on failure.                                                                        |
+| `.timeout(ms)`                                   | Fail the body if it runs longer than `ms` (per attempt).                                          |
+| `.lock((s) => s.lockKey(...).withTtl(...))`      | Hold a cross-run lock while running; a second run wanting the key fails. See below.               |
+| `.waitsFor((s) => s.on(externalSignal(...)))`    | Gate (no body): suspend the run until an external event; resume later. See below.                 |
+| `.proceedAfterFailure()`                         | Keep the build going if this target fails.                                                        |
+| `.always()`                                      | Run even after the build failed (cleanup/teardown).                                               |
+| `.unlisted()`                                    | Hide from `--list`/`--help`; still runnable by name.                                              |
+| `.validateBefore(...v)` / `.validateAfter(...v)` | Run `Validation` checks around the body; a throw fails the target.                                |
+| `.recoverWith(...r)` / `.recoverAttempts(n)`     | Run `Remediation`s if the body fails (self-healing); re-run when one asks to. See AI section.     |
+| `.partOf(group)`                                 | Join a parallel batch (see `group()`).                                                            |
+| `.produces(...p)` / `.consumes(...t)`            | Declare and consume artifact paths.                                                               |
 
 ## `group()` — parallel batches
 
@@ -89,12 +89,12 @@ class E2E extends Build {
 }
 ```
 
-| Method | Purpose |
-| --- | --- |
-| `.start(() => handle)` | Start the process; return a handle with `.stop()`. **Required.** |
-| `.readyWhen(() => boolean)` | Readiness probe, polled (200ms) until `true`. |
-| `.readyTimeout(ms)` | Wait before failing readiness (default 30s). |
-| `.stop((handle) => …)` | Custom teardown; receives what `.start()` returned. |
+| Method                      | Purpose                                                          |
+| --------------------------- | ---------------------------------------------------------------- |
+| `.start(() => handle)`      | Start the process; return a handle with `.stop()`. **Required.** |
+| `.readyWhen(() => boolean)` | Readiness probe, polled (200ms) until `true`.                    |
+| `.readyTimeout(ms)`         | Wait before failing readiness (default 30s).                     |
+| `.stop((handle) => …)`      | Custom teardown; receives what `.start()` returned.              |
 
 The shell's `Command` gains `.spawn()` (starts without awaiting, returns a
 `SpawnedProcess` whose `.stop()` sends `SIGTERM`) — a valid handle, so the
@@ -150,8 +150,10 @@ class CD extends Build {
   `HttpStateStore({ url, token? })` (hosted, production — see
   `docs/state-api.md`). Both dependency-free and pluggable behind `StateStore`.
 - The run record holds status, the graph shape, resolved **non-secret**
-  parameters, and per-target status/timing/metadata. Inspect programmatically
-  with `store.listRuns({ status?, target?, since? })` and `store.getRun(id)`.
+  parameters, and per-target status/timing/metadata. Inspect it from the CLI
+  with `zuke runs list [--status <s>] [--target <t>] [--since <iso>]` (newest
+  first) and `zuke runs show <id>` (`--json` on both), or programmatically with
+  `store.listRuns({ status?, target?, since? })` and `store.getRun(id)`.
 - **Never put secrets in `ctx.state`** — it is stored as plain JSON. Secret
   parameters are excluded from the record and state values are run through the
   redactor, but treat state as a non-secret channel. See `docs/state.md`.
@@ -172,7 +174,10 @@ class CD extends Build {
     .lock((s) =>
       s.lockKey("deploy", this.repo.value) // sanitised composite key
         .withTtl("4h") // renewed while running; expires this long after a kill -9
-        .onConflict((h) => `${this.repo.value} held by ${h.actor} (run ${h.runId}).`))
+        .onConflict((h) =>
+          `${this.repo.value} held by ${h.actor} (run ${h.runId}).`
+        )
+    )
     .executes(async (ctx) => {/* … */});
 }
 ```
@@ -206,7 +211,8 @@ class Deploy extends Build {
     .waitsFor((s) =>
       s.on(externalSignal("qa-approved")) // or resumeWhen(async () => …)
         .timeout("72h")
-        .onTimeout(() => this.rollback)); // thunk: sibling compensation target
+        .onTimeout(() => this.rollback)
+    ); // thunk: sibling compensation target
   promote = target().dependsOn(this.awaitQa).executes((ctx) => {
     const approval = ctx.signals.get("qa-approved"); // the signal's JSON payload
   });
@@ -219,8 +225,9 @@ class Deploy extends Build {
 - Needs a state store (a build with `.waitsFor()` enables `.zuke/runs` by
   default). A resume is a fresh process, so **only `ctx.state`/`ctx.signals`
   cross the boundary**. See `docs/orchestration.md`.
-- Continue a suspended run with `zuke resume <id> --signal <name> [--data <json>]`
-  (or `zuke resume --check [<id>]` for predicate waits/timeouts). Resumption is
+- Continue a suspended run with
+  `zuke resume <id> --signal <name> [--data <json>]` (or
+  `zuke resume --check [<id>]` for predicate waits/timeouts). Resumption is
   **exactly-once** (concurrent resumers get `AlreadyResumedError`) and re-runs
   only the not-yet-succeeded targets; `--force-graph` overrides a changed graph.
 
@@ -253,7 +260,9 @@ import { execSecret, parameter } from "jsr:@zuke/core";
 
 token = parameter("Deploy token")
   .secret()
-  .from(execSecret((s) => s.command("op").arg("read", "op://vault/deploy/token")));
+  .from(
+    execSecret((s) => s.command("op").arg("read", "op://vault/deploy/token")),
+  );
 ```
 
 A sourced secret is still an ordinary parameter (flag, env var, `.required()`,
@@ -270,7 +279,9 @@ import { toolchain, ToolTasks } from "jsr:@zuke/core";
 
 // One tool:
 bin = target().executes(async () =>
-  await ToolTasks.install((s) => s.name("shellcheck").version("0.10.0"/* …checksum */))
+  await ToolTasks.install((s) =>
+    s.name("shellcheck").version("0.10.0" /* …checksum */)
+  )
 );
 
 // Many at once:
@@ -283,26 +294,26 @@ Every external tool is a `*Tasks` object; each task takes `(s) => s.…` mirrori
 the real CLI's flags. A non-exhaustive map (run `deno doc jsr:@zuke/<pkg>` for
 the full task list and settings methods of each):
 
-| Package | Object | Typical tasks |
-| --- | --- | --- |
-| `@zuke/core` | `FileTasks`, `AnnounceTasks`, `ToolTasks` | copy/move/remove files; Slack/Teams/Discord posts; install tool binaries |
-| `@zuke/console` | `ConsoleTasks` | themed console output (headings, notices) so a build never hand-rolls `console.log` |
-| `@zuke/deno` | `DenoTasks` | `check`, `test`, `fmt`, `lint`, `cache`, `doc`, `run`, `publish` |
-| `@zuke/docs` | `DocsTasks` | turn generated API docs into published output |
-| `@zuke/npm`, `@zuke/npx`, `@zuke/bun`, `@zuke/pnpm`, `@zuke/yarn`, `@zuke/node` | `NpmTasks`, `NpxTasks`, `BunTasks`, ... | JS package managers + `npx` runner + `node` |
-| `@zuke/cmd` | `CmdTasks` | `exec` — generic fallback for any CLI |
-| `@zuke/docker`, `@zuke/docker-compose` | `DockerTasks`, ... | build/run/compose |
-| `@zuke/git`, `@zuke/gh` | `GitTasks`, `GhTasks` | git and GitHub CLI |
-| `@zuke/cspell`, `@zuke/eslint`, `@zuke/oxlint`, `@zuke/biome`, `@zuke/dprint`, `@zuke/knip`, `@zuke/dpdm` | `*Tasks` | lint/format/spell/dead-code |
-| `@zuke/tsc`, `@zuke/tsgo`, `@zuke/tsx`, `@zuke/tsc-alias`, `@zuke/tsup`, `@zuke/tsdown`, `@zuke/vite`, `@zuke/turbo`, `@zuke/nx`, `@zuke/nest` | `*Tasks` | TS compile / bundle / monorepo / framework CLIs |
-| `@zuke/openapi-ts`, `@zuke/orval` | `*Tasks` | generate API clients from OpenAPI |
-| `@zuke/husky` | `HuskyTasks` | git hooks |
-| `@zuke/jest`, `@zuke/vitest`, `@zuke/playwright`, `@zuke/cypress` | `*Tasks` | test runners |
-| `@zuke/jsr`, `@zuke/codecov`, `@zuke/release-please` | `JsrTasks`, `CodecovTasks`, ... | publish / coverage upload / releases |
-| `@zuke/kubectl`, `@zuke/helm`, `@zuke/kustomize`, `@zuke/terraform`, `@zuke/tofu`, `@zuke/gcloud` | `*Tasks` | infra/deploy |
-| `@zuke/security` | `*Tasks` | security scanning |
-| `@zuke/claude`, `@zuke/codex`, `@zuke/gemini` | `ClaudeTasks`, ... | headless AI CLIs |
-| `@zuke/ai` | `securityReviewer`, ..., `aiFixer`, `agentFixer` | AI review gates + self-healing (see below) |
+| Package                                                                                                                                        | Object                                           | Typical tasks                                                                       |
+| ---------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ | ----------------------------------------------------------------------------------- |
+| `@zuke/core`                                                                                                                                   | `FileTasks`, `AnnounceTasks`, `ToolTasks`        | copy/move/remove files; Slack/Teams/Discord posts; install tool binaries            |
+| `@zuke/console`                                                                                                                                | `ConsoleTasks`                                   | themed console output (headings, notices) so a build never hand-rolls `console.log` |
+| `@zuke/deno`                                                                                                                                   | `DenoTasks`                                      | `check`, `test`, `fmt`, `lint`, `cache`, `doc`, `run`, `publish`                    |
+| `@zuke/docs`                                                                                                                                   | `DocsTasks`                                      | turn generated API docs into published output                                       |
+| `@zuke/npm`, `@zuke/npx`, `@zuke/bun`, `@zuke/pnpm`, `@zuke/yarn`, `@zuke/node`                                                                | `NpmTasks`, `NpxTasks`, `BunTasks`, ...          | JS package managers + `npx` runner + `node`                                         |
+| `@zuke/cmd`                                                                                                                                    | `CmdTasks`                                       | `exec` — generic fallback for any CLI                                               |
+| `@zuke/docker`, `@zuke/docker-compose`                                                                                                         | `DockerTasks`, ...                               | build/run/compose                                                                   |
+| `@zuke/git`, `@zuke/gh`                                                                                                                        | `GitTasks`, `GhTasks`                            | git and GitHub CLI                                                                  |
+| `@zuke/cspell`, `@zuke/eslint`, `@zuke/oxlint`, `@zuke/biome`, `@zuke/dprint`, `@zuke/knip`, `@zuke/dpdm`                                      | `*Tasks`                                         | lint/format/spell/dead-code                                                         |
+| `@zuke/tsc`, `@zuke/tsgo`, `@zuke/tsx`, `@zuke/tsc-alias`, `@zuke/tsup`, `@zuke/tsdown`, `@zuke/vite`, `@zuke/turbo`, `@zuke/nx`, `@zuke/nest` | `*Tasks`                                         | TS compile / bundle / monorepo / framework CLIs                                     |
+| `@zuke/openapi-ts`, `@zuke/orval`                                                                                                              | `*Tasks`                                         | generate API clients from OpenAPI                                                   |
+| `@zuke/husky`                                                                                                                                  | `HuskyTasks`                                     | git hooks                                                                           |
+| `@zuke/jest`, `@zuke/vitest`, `@zuke/playwright`, `@zuke/cypress`                                                                              | `*Tasks`                                         | test runners                                                                        |
+| `@zuke/jsr`, `@zuke/codecov`, `@zuke/release-please`                                                                                           | `JsrTasks`, `CodecovTasks`, ...                  | publish / coverage upload / releases                                                |
+| `@zuke/kubectl`, `@zuke/helm`, `@zuke/kustomize`, `@zuke/terraform`, `@zuke/tofu`, `@zuke/gcloud`                                              | `*Tasks`                                         | infra/deploy                                                                        |
+| `@zuke/security`                                                                                                                               | `*Tasks`                                         | security scanning                                                                   |
+| `@zuke/claude`, `@zuke/codex`, `@zuke/gemini`                                                                                                  | `ClaudeTasks`, ...                               | headless AI CLIs                                                                    |
+| `@zuke/ai`                                                                                                                                     | `securityReviewer`, ..., `aiFixer`, `agentFixer` | AI review gates + self-healing (see below)                                          |
 
 The catalog keeps growing — `deno doc jsr:@zuke/<pkg>` (or the package list in
 `llms.txt`) is the source of truth for what exists.
@@ -315,9 +326,9 @@ await CmdTasks.exec("my-tool", (s) => s.args("--flag", "value")); // no wrapper?
 
 ## AI review & self-healing — `@zuke/ai`
 
-A model becomes part of the build graph two ways. Only the provider
-(`"claude"` | `"openai"` | `"gemini"`) and an API key (pass a `parameter().secret()`)
-are required; everything else is defaulted.
+A model becomes part of the build graph two ways. Only the provider (`"claude"`
+| `"openai"` | `"gemini"`) and an API key (pass a `parameter().secret()`) are
+required; everything else is defaulted.
 
 **Review gate** — a reviewer is a `Validation`; attach with `.validateBefore` /
 `.validateAfter`. It scores the diff and breaks the build past a threshold.
@@ -335,10 +346,11 @@ deploy = target().validateBefore(this.review).executes(() => {/* ... */});
 Factories: `securityReviewer`, `secretsReviewer`, `correctnessReviewer`,
 `licenseReviewer`, `genericReviewer`.
 
-**Self-healing** — `aiFixer` is a `Remediation`; attach with `.recoverWith(...)`.
-On a failing body it diagnoses the failure and (safe default) posts the
-diagnosis + a committable, Copilot-style inline suggestion to the PR — writing
-no files. The build re-runs the real command to verify any applied fix.
+**Self-healing** — `aiFixer` is a `Remediation`; attach with
+`.recoverWith(...)`. On a failing body it diagnoses the failure and (safe
+default) posts the diagnosis + a committable, Copilot-style inline suggestion to
+the PR — writing no files. The build re-runs the real command to verify any
+applied fix.
 
 ```ts
 import { aiFixer } from "jsr:@zuke/ai";
@@ -354,11 +366,12 @@ override recoverWith() {
 }
 ```
 
-Both compose: a target's own `.recoverWith(...)` runs first, then the build-level
-`recoverWith()`. Opt into changes with `.autoApply()` (path allowlist, file cap,
-local-only unless `.allowCI()`) and `.commitFixes()`; `.diff((d) => d.fetchBase())`
-fetches the PR base branch for context so CI needs no manual `git fetch`. Keys
-ride through `parameter().secret()`, which Zuke masks in CI output.
+Both compose: a target's own `.recoverWith(...)` runs first, then the
+build-level `recoverWith()`. Opt into changes with `.autoApply()` (path
+allowlist, file cap, local-only unless `.allowCI()`) and `.commitFixes()`;
+`.diff((d) => d.fetchBase())` fetches the PR base branch for context so CI needs
+no manual `git fetch`. Keys ride through `parameter().secret()`, which Zuke
+masks in CI output.
 
 **Delegate to a coding agent** — `agentFixer(runner)` is a `Remediation` that
 hands the failure to a coding agent you inject (`@zuke/claude`, `@zuke/codex`,
@@ -395,7 +408,7 @@ ci = cicd({ provider: "github" }); // .github/workflows/ci.yml, push/PR to main
 ```
 
 `provider` is the only required field (`"github"` / `"gitlab"` / `"azure"`).
-Running any target regenerates the YAML; on CI it *verifies* the committed file
+Running any target regenerates the YAML; on CI it _verifies_ the committed file
 is current (`zuke generate-ci --check` is a dedicated gate).
 
 ## Run & inspect
@@ -410,6 +423,8 @@ is current (`zuke generate-ci --check` is a dedicated gate).
 ./zuke <target> --no-cache    # ignore the incremental cache
 ./zuke <target> --state       # persist run state to .zuke/runs (durable state)
 ./zuke <target> --actor <who> # attribute the run in its state record
+./zuke runs list [--status s] # list persisted runs (also --target, --since, --json)
+./zuke runs show <id>         # one run's full per-target status (+ --json)
 ./zuke mcp [--allow-run]      # serve the build over MCP for an AI client
 ```
 

@@ -1,25 +1,27 @@
 # CLI reference
 
-| Command                             | Behaviour                                                      |
-| ----------------------------------- | -------------------------------------------------------------- |
-| `zuke <target>`                     | Run the target and all its transitive dependencies, in order.  |
-| `zuke <target> --skip <dep>`        | Run the target but skip the named dependency (repeatable).     |
-| `zuke <target> --parallel`          | Run independent targets concurrently (`--parallel=N` caps it). |
-| `zuke <target> --no-cache`          | Ignore the incremental cache; re-run every target.             |
-| `zuke <target> --affected[=<base>]` | Run only targets affected by files changed since a git base.   |
-| `zuke <target> --dry-run`           | Print the plan without executing any target body.              |
-| `zuke <target> --state`             | Persist [durable run state](./state.md) under `.zuke/runs`.    |
-| `zuke <target> --actor <name>`      | Attribute the run to `<name>` in its state record.            |
-| `zuke --list` / `-l`                | List all targets with descriptions and dependencies.           |
-| `zuke graph`                        | Print the dependency graph (`target → deps`).                  |
-| `zuke graph --output=html`          | Render an interactive HTML graph into `.zuke/` and open it.    |
-| `zuke completions print <shell>`    | Print a shell-completion script (`bash`, `zsh`, or `fish`).    |
-| `zuke completions install <shell>`  | Write the script and wire it into the shell's startup.         |
-| `zuke mcp [--allow-run]`            | Run an MCP server over the build for AI agents ([details](./mcp.md)). |
-| `zuke resume <id> [--signal <n>] [--data <json>]` | Resume a suspended run, optionally delivering a signal ([details](./orchestration.md)). |
-| `zuke resume --check [<id>]`        | Re-check suspended runs (predicate waits, timeouts).           |
-| `zuke --help` / `-h`                | Usage.                                                         |
-| `zuke` (no target)                  | Run the `default` target if defined, else print `--list`.      |
+| Command                                             | Behaviour                                                                               |
+| --------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `zuke <target>`                                     | Run the target and all its transitive dependencies, in order.                           |
+| `zuke <target> --skip <dep>`                        | Run the target but skip the named dependency (repeatable).                              |
+| `zuke <target> --parallel`                          | Run independent targets concurrently (`--parallel=N` caps it).                          |
+| `zuke <target> --no-cache`                          | Ignore the incremental cache; re-run every target.                                      |
+| `zuke <target> --affected[=<base>]`                 | Run only targets affected by files changed since a git base.                            |
+| `zuke <target> --dry-run`                           | Print the plan without executing any target body.                                       |
+| `zuke <target> --state`                             | Persist [durable run state](./state.md) under `.zuke/runs`.                             |
+| `zuke <target> --actor <name>`                      | Attribute the run to `<name>` in its state record.                                      |
+| `zuke --list` / `-l`                                | List all targets with descriptions and dependencies.                                    |
+| `zuke graph`                                        | Print the dependency graph (`target → deps`).                                           |
+| `zuke graph --output=html`                          | Render an interactive HTML graph into `.zuke/` and open it.                             |
+| `zuke completions print <shell>`                    | Print a shell-completion script (`bash`, `zsh`, or `fish`).                             |
+| `zuke completions install <shell>`                  | Write the script and wire it into the shell's startup.                                  |
+| `zuke mcp [--allow-run]`                            | Run an MCP server over the build for AI agents ([details](./mcp.md)).                   |
+| `zuke resume <id> [--signal <n>] [--data <json>]`   | Resume a suspended run, optionally delivering a signal ([details](./orchestration.md)). |
+| `zuke resume --check [<id>]`                        | Re-check suspended runs (predicate waits, timeouts).                                    |
+| `zuke runs list [--status/-target/-since] [--json]` | List persisted run records, newest first ([details](./state.md)).                       |
+| `zuke runs show <id> [--json]`                      | Show one run's full per-target status and metadata.                                     |
+| `zuke --help` / `-h`                                | Usage.                                                                                  |
+| `zuke` (no target)                                  | Run the `default` target if defined, else print `--list`.                               |
 
 (Read `zuke` as `deno run -A zuke.ts` until the launcher binary ships.)
 
@@ -61,9 +63,9 @@ emit `::error::` annotations, and the summary is written to the job summary.
 `zuke completions` takes an explicit sub-action — `print` or `install` — then a
 shell (`bash`, `zsh`, or `fish`). `print` writes the completion script to
 stdout; the script completes the build's target names, the reserved commands
-(`graph`, `generate-ci`, `completions`, `mcp`), the built-in option flags, and any
-declared [parameters](./parameters.md) as `--flag` candidates. Unlisted targets
-(`.unlisted()`) stay hidden, just as they are in `--list`.
+(`graph`, `generate-ci`, `completions`, `mcp`), the built-in option flags, and
+any declared [parameters](./parameters.md) as `--flag` candidates. Unlisted
+targets (`.unlisted()`) stay hidden, just as they are in `--list`.
 
 Source the printed script for the current shell:
 
@@ -244,9 +246,30 @@ store.
 
 A run parked at a [`.waitsFor()`](./orchestration.md) gate is continued with
 `zuke resume`. `--signal <name>` delivers a named external signal (with an
-optional `--data <json>` payload); `--check [<run-id>]` re-checks predicate waits
-and enforces timeouts across suspended runs (the cron/webhook entry point).
-Resumption is **exactly-once** — concurrent resumers race a compare-and-swap and
-all but one get `AlreadyResumedError` — and re-runs only the targets that hadn't
-yet succeeded. `--force-graph` continues even if the build graph changed since
-the run was suspended. See [Orchestration](./orchestration.md).
+optional `--data <json>` payload); `--check [<run-id>]` re-checks predicate
+waits and enforces timeouts across suspended runs (the cron/webhook entry
+point). Resumption is **exactly-once** — concurrent resumers race a
+compare-and-swap and all but one get `AlreadyResumedError` — and re-runs only
+the targets that hadn't yet succeeded. `--force-graph` continues even if the
+build graph changed since the run was suspended. See
+[Orchestration](./orchestration.md).
+
+## Inspecting runs
+
+`zuke runs` reads persisted [run records](./state.md) back from the store, so a
+run's full status survives the process that produced it.
+
+- `zuke runs list` prints one row per run — id, status, root target, actor, and
+  creation time — newest first. Narrow it with `--status <s>` (one of `running`,
+  `suspended`, `succeeded`, `failed`, `cancelled`), `--target <t>` (only runs
+  whose graph contains that target), and `--since <iso>` (only runs created at
+  or after an ISO-8601 timestamp). The filters compose.
+- `zuke runs show <run-id>` reconstructs one run in full: the header, resolved
+  (non-secret) parameters, each target's status with its duration, error, or
+  pending wait, and any external signals received.
+
+Both accept `--json` — `list` emits the summary array, `show` emits the whole
+record — for tools and agents. The store is resolved exactly as a run resolves
+it (`ZUKE_STATE_URL` / `ZUKE_STATE_DIR`, the build's `stateStore()` override, or
+the default `.zuke/runs`); with no store configured, both report a friendly
+error. (MCP `list_runs` / `show_run` tools arrive in a later milestone.)

@@ -35,6 +35,9 @@ export const MCP_COMMAND = "mcp";
 /** The `resume` command: continue a suspended run (external-event waits). */
 export const RESUME_COMMAND = "resume";
 
+/** The `runs` command: list and show persisted run records. */
+export const RUNS_COMMAND = "runs";
+
 /** Every reserved command, in help and completion order. */
 export const RESERVED_COMMANDS: readonly ReservedCommand[] = [
   { name: GRAPH_COMMAND, description: "Show the dependency graph" },
@@ -50,6 +53,10 @@ export const RESERVED_COMMANDS: readonly ReservedCommand[] = [
   {
     name: RESUME_COMMAND,
     description: "Resume a suspended run (or --check all suspended runs)",
+  },
+  {
+    name: RUNS_COMMAND,
+    description: "List or show persisted run records",
   },
 ];
 
@@ -109,6 +116,18 @@ export const BUILTIN_FLAGS: readonly BuiltinFlag[] = [
   {
     name: "--force-graph",
     description: "With resume, continue even if the build graph changed",
+  },
+  {
+    name: "--status",
+    description: "With runs list, keep only runs with this status",
+  },
+  {
+    name: "--target",
+    description: "With runs list, keep only runs whose graph has this target",
+  },
+  {
+    name: "--since",
+    description: "With runs list, keep only runs created at/after this time",
   },
   {
     name: "--allow-run",

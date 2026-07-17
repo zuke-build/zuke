@@ -163,6 +163,14 @@ const RUN_STATUSES: readonly RunStatus[] = [
   "cancelled",
 ];
 
+/** The {@link RunStatus} values as a list, for CLI help and error messages. */
+export const RUN_STATUS_NAMES: readonly string[] = RUN_STATUSES;
+
+/** True when `value` is a valid {@link RunStatus} (used to validate CLI filters). */
+export function isRunStatus(value: string): value is RunStatus {
+  return RUN_STATUSES.some((s) => s === value);
+}
+
 /** All valid {@link TargetRunStatus} values, for validation. */
 const TARGET_STATUSES: readonly TargetRunStatus[] = [
   "pending",

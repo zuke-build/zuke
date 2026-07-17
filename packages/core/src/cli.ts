@@ -31,9 +31,12 @@ import {
   GRAPH_COMMAND,
   MCP_COMMAND,
   RESUME_COMMAND,
+  RUNS_COMMAND,
 } from "./cli_spec.ts";
 import { serveMcp } from "./mcp/command.ts";
 import { resumeCheck, resumeRun } from "./resume.ts";
+import { runsCommand } from "./runs.ts";
+import { isRunStatus, RUN_STATUS_NAMES, type RunQuery } from "./state/types.ts";
 import {
   installCompletions,
   type InstallOptions,
@@ -121,6 +124,18 @@ export interface ParsedArgs {
   data?: string;
   /** Continue a resume even if the build graph changed (`--force-graph`). */
   forceGraph: boolean;
+  /** The `runs` command was requested (list/show persisted runs). */
+  runs: boolean;
+  /** The `runs` sub-action (`list` or `show`); the first positional after `runs`. */
+  runsAction?: string;
+  /** The run id to show (`runs show <id>`); the positional after the sub-action. */
+  runsRunId?: string;
+  /** With `runs list`, keep only runs with this status (`--status`). */
+  runStatus?: string;
+  /** With `runs list`, keep only runs whose graph has this target (`--target`). */
+  runTarget?: string;
+  /** With `runs list`, keep only runs created at/after this ISO-8601 time (`--since`). */
+  since?: string;
   /** Raw parameter values from declared flags, keyed by property name. */
   values: Record<string, string>;
   help: boolean;
@@ -160,6 +175,7 @@ export function parseArgs(
     state: false,
     resume: false,
     forceGraph: false,
+    runs: false,
     help: false,
   };
   const byFlag = new Map<string, ParamFlag>();
@@ -203,6 +219,21 @@ export function parseArgs(
       parsed.data = arg.slice("--data=".length);
     } else if (arg === "--force-graph") {
       parsed.forceGraph = true;
+    } else if (arg === "--status") {
+      const value = args[++i];
+      if (value) parsed.runStatus = value;
+    } else if (arg.startsWith("--status=")) {
+      parsed.runStatus = arg.slice("--status=".length);
+    } else if (arg === "--target") {
+      const value = args[++i];
+      if (value) parsed.runTarget = value;
+    } else if (arg.startsWith("--target=")) {
+      parsed.runTarget = arg.slice("--target=".length);
+    } else if (arg === "--since") {
+      const value = args[++i];
+      if (value) parsed.since = value;
+    } else if (arg.startsWith("--since=")) {
+      parsed.since = arg.slice("--since=".length);
     } else if (arg === "--check") {
       parsed.check = true;
     } else if (arg === "--allow-run") {
@@ -249,15 +280,22 @@ export function parseArgs(
     } else if (parsed.resume && parsed.resumeRunId === undefined) {
       // `resume` takes the run id as its positional.
       parsed.resumeRunId = arg;
+    } else if (parsed.runs && parsed.runsAction === undefined) {
+      // `runs` takes a sub-action first (list or show)...
+      parsed.runsAction = arg;
+    } else if (parsed.runs && parsed.runsRunId === undefined) {
+      // ...then, for `show`, the run id.
+      parsed.runsRunId = arg;
     } else if (
       parsed.target === undefined && !parsed.graph && !parsed.generateCi &&
-      !parsed.completions && !parsed.mcp && !parsed.resume
+      !parsed.completions && !parsed.mcp && !parsed.resume && !parsed.runs
     ) {
       if (arg === GRAPH_COMMAND) parsed.graph = true;
       else if (arg === GENERATE_CI_COMMAND) parsed.generateCi = true;
       else if (arg === COMPLETIONS_COMMAND) parsed.completions = true;
       else if (arg === MCP_COMMAND) parsed.mcp = true;
       else if (arg === RESUME_COMMAND) parsed.resume = true;
+      else if (arg === RUNS_COMMAND) parsed.runs = true;
       else parsed.target = arg;
     }
   }
@@ -280,6 +318,8 @@ Usage:
   deno run -A zuke.ts mcp [--allow-run]
   deno run -A zuke.ts resume <run-id> [--signal <name>] [--data <json>]
   deno run -A zuke.ts resume --check [<run-id>]
+  deno run -A zuke.ts runs list [--status <s>] [--target <t>] [--since <iso>] [--json]
+  deno run -A zuke.ts runs show <run-id> [--json]
 
 Options:
   <target>          Run the target and its transitive dependencies.
@@ -333,6 +373,16 @@ Options:
   --data <json>     With resume --signal, the signal's JSON payload (default {}).
   --force-graph     With resume, continue even if the build graph changed since
                     the run was suspended.
+  runs              Inspect persisted run records from the state store. 'list'
+                    prints one row per run (newest first); 'show <run-id>'
+                    reconstructs a run's full per-target status and metadata.
+                    Both accept --json for tools. See docs/state.md.
+  --status <s>      With runs list, keep only runs with this status (running,
+                    suspended, succeeded, failed, cancelled).
+  --target <t>      With runs list, keep only runs whose graph contains this
+                    target.
+  --since <iso>     With runs list, keep only runs created at or after this
+                    ISO-8601 timestamp.
   --<param> <val>   Set a declared build parameter (see Parameters below).
   --help, -h        Show this help.`;
 
@@ -556,6 +606,29 @@ async function runResume(build: Build, parsed: ParsedArgs): Promise<number> {
   }
 }
 
+/** Run the `runs` command: build the query (validating `--status`) and dispatch. */
+async function runRuns(build: Build, parsed: ParsedArgs): Promise<number> {
+  const query: RunQuery = {};
+  if (parsed.runStatus !== undefined) {
+    if (!isRunStatus(parsed.runStatus)) {
+      console.error(
+        `runs: unknown --status "${parsed.runStatus}" ` +
+          `(one of: ${RUN_STATUS_NAMES.join(", ")}).`,
+      );
+      return 1;
+    }
+    query.status = parsed.runStatus;
+  }
+  if (parsed.runTarget !== undefined) query.target = parsed.runTarget;
+  if (parsed.since !== undefined) query.since = parsed.since;
+  return await runsCommand(build, {
+    action: parsed.runsAction,
+    runId: parsed.runsRunId,
+    json: parsed.json,
+    query,
+  });
+}
+
 export async function main(
   BuildClass: new () => Build,
   args: string[],
@@ -589,7 +662,9 @@ export async function main(
     throw error;
   }
 
-  if (parsed.json) {
+  // `--json` prints the build surface, except when a command consumes it
+  // itself (`runs list/show --json` emits run data, not the build surface).
+  if (parsed.json && !parsed.runs) {
     const surface = describeBuildSurface(targets, params);
     console.log(JSON.stringify(surface, null, 2));
     return 0;
@@ -629,6 +704,9 @@ export async function main(
   }
   if (parsed.resume) {
     return await runResume(build, parsed);
+  }
+  if (parsed.runs) {
+    return await runRuns(build, parsed);
   }
 
   let name = parsed.target;
