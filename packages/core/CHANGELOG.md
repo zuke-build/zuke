@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.15.0](https://github.com/zuke-build/zuke/compare/core-v1.14.0...core-v1.15.0) (2026-07-17)
+
+
+### Features
+
+* **core:** cross-run TTL locks with typed conflict errors ([#167](https://github.com/zuke-build/zuke/issues/167)) ([34465f2](https://github.com/zuke-build/zuke/commit/34465f2b9870a98263eb0708d5c42270dbfae3f6))
+* **core:** durable run records with a pluggable StateStore ([#166](https://github.com/zuke-build/zuke/issues/166)) ([41b0432](https://github.com/zuke-build/zuke/commit/41b0432e9cebe7f5736ae5dd52068376e51ef55f))
+* **core:** pass a typed TargetContext to target bodies ([#164](https://github.com/zuke-build/zuke/issues/164)) ([7884347](https://github.com/zuke-build/zuke/commit/7884347c71aa57bf8478691d300bfcbb364f2c89))
+
 ## [1.14.0](https://github.com/zuke-build/zuke/compare/core-v1.13.0...core-v1.14.0) (2026-07-17)
 
 
