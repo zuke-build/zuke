@@ -28,6 +28,7 @@ import {
 import { inMemoryStateHandle, RunStateWriter } from "../src/state/writer.ts";
 import { Redactor } from "../src/redact.ts";
 import { LockSettings, target } from "../src/target.ts";
+import { externalSignal, resumeWhen } from "../src/wait.ts";
 import { Build, discoverTargets } from "../src/build.ts";
 import { discoverParameters, parameter } from "../src/params.ts";
 import { parseDuration } from "../src/duration.ts";
@@ -53,6 +54,7 @@ function sampleRecord(overrides: Partial<RunRecord> = {}): RunRecord {
     params: overrides.params ?? { env: "sit" },
     targets: overrides.targets ??
       { deploy: { status: "pending", meta: {} } },
+    signals: overrides.signals ?? {},
   };
 }
 
@@ -170,10 +172,75 @@ Deno.test("parseRunRecord rejects malformed records", () => {
       JSON.stringify({ ...sampleRecord(), targets: { a: 5 } }),
       "target state is not an object",
     ],
+    [
+      JSON.stringify({ ...sampleRecord(), signals: "x" }),
+      '"signals" is not an object',
+    ],
+    [
+      JSON.stringify({
+        ...sampleRecord(),
+        targets: {
+          a: {
+            status: "waiting",
+            meta: {},
+            waitingFor: { trigger: "signal:x", onTimeout: "bogus" },
+          },
+        },
+      }),
+      "invalid wait onTimeout disposition",
+    ],
   ];
   for (const [text, needle] of cases) {
     assertThrows(() => parseRunRecord(text), Error, needle);
   }
+});
+
+Deno.test("parseRunRecord round-trips signals and a waiting target", () => {
+  const record = sampleRecord({
+    status: "suspended",
+    signals: {
+      approved: { data: { by: "qa" }, receivedAt: "2026-07-17T10:00:00.000Z" },
+    },
+    targets: {
+      gate: {
+        status: "waiting",
+        meta: {},
+        waitingFor: {
+          trigger: "signal:approved",
+          deadline: "2026-07-20T10:00:00.000Z",
+          onTimeout: { target: "rollback" },
+        },
+      },
+    },
+  });
+  assertEquals(parseRunRecord(stringifyRunRecord(record)), record);
+});
+
+Deno.test("parseRunRecord defaults missing signals to empty (backwards compat)", () => {
+  const { signals: _signals, ...withoutSignals } = sampleRecord();
+  assertEquals(parseRunRecord(JSON.stringify(withoutSignals)).signals, {});
+});
+
+Deno.test("externalSignal is satisfied only when the named signal is present", async () => {
+  const trigger = externalSignal("approved");
+  assertEquals(trigger.descriptor, "signal:approved");
+  assertEquals(await trigger.isSatisfied(new Map()), false);
+  assertEquals(
+    await trigger.isSatisfied(
+      new Map([["approved", { data: {}, receivedAt: "t" }]]),
+    ),
+    true,
+  );
+});
+
+Deno.test("resumeWhen evaluates the predicate and carries a poll interval", async () => {
+  assertEquals(await resumeWhen(() => true).isSatisfied(new Map()), true);
+  assertEquals(await resumeWhen(() => false).isSatisfied(new Map()), false);
+  assertEquals(
+    resumeWhen(() => true, { interval: "30s" }).pollIntervalMs,
+    30_000,
+  );
+  assertEquals(resumeWhen(() => true).pollIntervalMs, undefined);
 });
 
 Deno.test("parseRunRecord preserves nested target meta as JSON", () => {

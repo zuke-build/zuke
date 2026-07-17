@@ -39,6 +39,27 @@ export type TargetRunStatus =
   | "failed"
   | "skipped";
 
+/** A payload received for an external signal (see {@link RunRecord.signals}). */
+export interface SignalRecord {
+  /** The signal's JSON payload (`{}` when none was sent). */
+  data: JsonValue;
+  /** ISO-8601 timestamp when the signal was recorded. */
+  receivedAt: string;
+}
+
+/** What a timed-out wait does: fail, cancel the run, or run a compensation target. */
+export type WaitDisposition = "fail" | "cancel-run" | { target: string };
+
+/** The pending wait recorded on a suspended target (see {@link TargetRunState.waitingFor}). */
+export interface WaitState {
+  /** A human-readable descriptor of what is awaited (e.g. `signal:approved`). */
+  trigger: string;
+  /** ISO-8601 deadline after which {@link onTimeout} applies, if a timeout was set. */
+  deadline?: string;
+  /** What happens when the deadline passes. */
+  onTimeout: WaitDisposition;
+}
+
 /** The recorded progress of a single target. */
 export interface TargetRunState {
   /** The target's current status within the run. */
@@ -51,6 +72,8 @@ export interface TargetRunState {
   endedAt?: string;
   /** The failure message when `status` is `failed`. */
   error?: string;
+  /** The pending wait when `status` is `waiting` (set by `.waitsFor(...)`). */
+  waitingFor?: WaitState;
 }
 
 /** One entry of a run's graph-shape snapshot. */
@@ -86,6 +109,8 @@ export interface RunRecord {
   params: Record<string, string>;
   /** Per-target progress, keyed by dotted target name. */
   targets: Record<string, TargetRunState>;
+  /** External signals received so far, keyed by name (see `.waitsFor(...)`). */
+  signals: Record<string, SignalRecord>;
 }
 
 /** A compact run listing row, returned by {@link "./store.ts".StateStore.listRuns}. */
@@ -211,7 +236,43 @@ function parseTargetState(value: unknown): TargetRunState {
   if (endedAt !== undefined) state.endedAt = endedAt;
   const error = optionalStr(object, "error");
   if (error !== undefined) state.error = error;
+  if (object.waitingFor !== undefined) {
+    state.waitingFor = parseWaitState(object.waitingFor);
+  }
   return state;
+}
+
+/** Validate a timed-out-wait disposition. */
+function parseWaitDisposition(value: unknown): WaitDisposition {
+  if (value === "fail" || value === "cancel-run") return value;
+  const object = asObject(value);
+  if (object !== null && typeof object.target === "string") {
+    return { target: object.target };
+  }
+  throw new Error("state: invalid wait onTimeout disposition");
+}
+
+/** Validate and narrow a {@link WaitState}. */
+function parseWaitState(value: unknown): WaitState {
+  const object = asObject(value);
+  if (object === null) throw new Error("state: waitingFor is not an object");
+  const state: WaitState = {
+    trigger: str(object, "trigger"),
+    onTimeout: parseWaitDisposition(object.onTimeout),
+  };
+  const deadline = optionalStr(object, "deadline");
+  if (deadline !== undefined) state.deadline = deadline;
+  return state;
+}
+
+/** Validate and narrow a {@link SignalRecord}. */
+function parseSignalRecord(value: unknown): SignalRecord {
+  const object = asObject(value);
+  if (object === null) throw new Error("state: signal record is not an object");
+  return {
+    data: toJsonValue(object.data ?? null),
+    receivedAt: str(object, "receivedAt"),
+  };
 }
 
 /** Coerce an object's values to {@link JsonValue}s (they came from JSON already). */
@@ -302,6 +363,19 @@ export function parseRunRecord(text: string): RunRecord {
     targets[name] = parseTargetState(value);
   }
 
+  // `signals` is newer than the first records — treat its absence as empty so
+  // records written before external-event waits existed still parse.
+  const signals: Record<string, SignalRecord> = {};
+  if (object.signals !== undefined) {
+    const rawSignals = asObject(object.signals);
+    if (rawSignals === null) {
+      throw new Error(`state: run record field "signals" is not an object`);
+    }
+    for (const [name, value] of Object.entries(rawSignals)) {
+      signals[name] = parseSignalRecord(value);
+    }
+  }
+
   return {
     id: str(object, "id"),
     build: str(object, "build"),
@@ -313,6 +387,7 @@ export function parseRunRecord(text: string): RunRecord {
     graph,
     params,
     targets,
+    signals,
   };
 }
 

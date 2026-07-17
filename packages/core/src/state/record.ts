@@ -25,6 +25,8 @@ export function recordStatusOf(status: TargetStatus): TargetRunStatus {
       return "failed";
     case "skipped":
       return "skipped";
+    case "waiting":
+      return "waiting";
   }
 }
 
@@ -116,6 +118,7 @@ export function buildRunRecord(input: RunRecordInput): RunRecord {
     graph,
     params,
     targets,
+    signals: {},
   };
 }
 

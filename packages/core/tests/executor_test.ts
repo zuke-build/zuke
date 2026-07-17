@@ -37,6 +37,7 @@ import { $ } from "../src/shell.ts";
 import { FileSystemStateStore } from "../src/state/fs_store.ts";
 import { defaultStateHost } from "../src/state/store.ts";
 import { LockConflictError } from "../src/state/lock.ts";
+import { externalSignal, resumeWhen } from "../src/wait.ts";
 
 const silent: ExecuteOptions = { silent: true };
 
@@ -1961,6 +1962,127 @@ Deno.test("cancelling a locked run releases the lock", async () => {
       since: "t",
     }, 1000);
     assertEquals(acq.ok, true); // lock was freed on cancellation
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("an unsatisfied waitsFor suspends the run and records it", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+    const log: string[] = [];
+    class B extends Build {
+      deploy = target().executes(() => void log.push("deploy"));
+      independent = target().executes(() => void log.push("independent"));
+      rollback = target().executes(() => void log.push("rollback"));
+      gate = target()
+        .dependsOn(this.deploy)
+        .waitsFor((s) =>
+          s.on(externalSignal("approved")).timeout("72h").onTimeout(() =>
+            this.rollback
+          )
+        );
+      promote = target().dependsOn(this.gate).executes(() =>
+        void log.push("promote")
+      );
+      all = target().dependsOn(this.promote, this.independent).executes(
+        () => {},
+      );
+    }
+    const b = new B();
+    discoverTargets(b);
+
+    const result = await execute(b, b.all, {
+      silent: true,
+      stateStore: store,
+      parallel: true,
+      actor: "alice",
+    });
+    assertEquals(result.ok, true); // suspended, not failed
+    assertEquals(result.suspended, true);
+    assertEquals(log.includes("deploy"), true);
+    assertEquals(log.includes("independent"), true); // independent branch finished
+    assertEquals(log.includes("promote"), false); // blocked behind the gate
+
+    const summaries = await store.listRuns({});
+    const loaded = await store.getRun(summaries[0].id);
+    assertEquals(loaded?.record.status, "suspended");
+    assertEquals(loaded?.record.targets.deploy.status, "succeeded");
+    assertEquals(loaded?.record.targets.gate.status, "waiting");
+    assertEquals(
+      loaded?.record.targets.gate.waitingFor?.trigger,
+      "signal:approved",
+    );
+    assertEquals(
+      typeof loaded?.record.targets.gate.waitingFor?.deadline,
+      "string",
+    );
+    assertEquals(loaded?.record.targets.gate.waitingFor?.onTimeout, {
+      target: "rollback",
+    });
+    // promote is left pending (a resume runs it), not skipped.
+    assertEquals(loaded?.record.targets.promote.status, "pending");
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("a satisfied waitsFor passes through and dependents run", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+    const log: string[] = [];
+    class B extends Build {
+      gate = target().waitsFor((s) => s.on(resumeWhen(() => true)));
+      promote = target().dependsOn(this.gate).executes(() =>
+        void log.push("promote")
+      );
+    }
+    const b = new B();
+    discoverTargets(b);
+
+    const result = await execute(b, b.promote, {
+      silent: true,
+      stateStore: store,
+    });
+    assertEquals(result.ok, true);
+    assertEquals(result.suspended, undefined);
+    assertEquals(log, ["promote"]);
+    const loaded = await store.getRun((await store.listRuns({}))[0].id);
+    assertEquals(loaded?.record.status, "succeeded");
+    assertEquals(loaded?.record.targets.gate.status, "succeeded");
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("waitsFor with no store fails with a friendly error", async () => {
+  class B extends Build {
+    gate = target().waitsFor((s) => s.on(externalSignal("x")));
+  }
+  const b = new B();
+  discoverTargets(b);
+  const result = await execute(b, b.gate, { silent: true, stateStore: false });
+  assertEquals(result.ok, false);
+  assertStringIncludes(messageOf(result.error), "needs a state store");
+});
+
+Deno.test("waitsFor with no trigger fails with a friendly error", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+    class B extends Build {
+      gate = target().waitsFor((s) => s); // never called .on(...)
+    }
+    const b = new B();
+    discoverTargets(b);
+    const result = await execute(b, b.gate, {
+      silent: true,
+      stateStore: store,
+    });
+    assertEquals(result.ok, false);
+    assertStringIncludes(messageOf(result.error), "set no trigger");
   } finally {
     await Deno.remove(dir, { recursive: true });
   }

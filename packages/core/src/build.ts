@@ -43,17 +43,32 @@ export function forEachField(
   walk(root, "");
 }
 
-/** The outcome of a single target, reported in the summary and lifecycle hooks. */
-export type TargetStatus = "passed" | "failed" | "skipped" | "cached";
+/**
+ * The outcome of a single target, reported in the summary and lifecycle hooks.
+ * `waiting` marks a `.waitsFor(...)` gate whose event has not occurred — the run
+ * suspends there.
+ */
+export type TargetStatus =
+  | "passed"
+  | "failed"
+  | "skipped"
+  | "cached"
+  | "waiting";
 
 /** Result passed to the {@link Build.onFinish} lifecycle hook. */
 export interface BuildResult {
-  /** Whether every executed target succeeded. */
+  /** Whether every executed target succeeded (also `true` for a suspended run). */
   ok: boolean;
   /** Names of the targets that ran, in execution order. */
   executed: string[];
   /** The error that aborted the run, if any. */
   error?: unknown;
+  /**
+   * True when the run **suspended** at a `.waitsFor(...)` gate rather than
+   * finishing — its state is saved and it can be resumed later. The process
+   * still exits 0.
+   */
+  suspended?: boolean;
 }
 
 /**

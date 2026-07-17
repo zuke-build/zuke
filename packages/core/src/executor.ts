@@ -40,10 +40,18 @@ import { Redactor } from "./redact.ts";
 import { absolutePath } from "./path.ts";
 import {
   LockSettings,
+  type OnTimeout,
   type Remediation,
   type TargetBuilder,
   type TargetContext,
+  WaitSettings,
 } from "./target.ts";
+import type { Configure } from "./tooling.ts";
+import type {
+  SignalRecord,
+  WaitDisposition,
+  WaitState,
+} from "./state/types.ts";
 import { withAmbientSignal } from "./ambient_signal.ts";
 import { defaultStateHost, type StateStore } from "./state/store.ts";
 import { resolveStateStore } from "./state/resolve.ts";
@@ -52,7 +60,12 @@ import { inMemoryStateHandle, RunStateWriter } from "./state/writer.ts";
 import { LockConflictError, type LockHolder } from "./state/lock.ts";
 import { parseDuration } from "./duration.ts";
 import type { Plugin } from "./plugin.ts";
-import { detectWidth, type Style, type TargetReport } from "./report.ts";
+import {
+  detectWidth,
+  type Style,
+  type TargetReport,
+  targetWaitFooter,
+} from "./report.ts";
 import { defaultRenderer, type Renderer } from "./renderer.ts";
 
 /** The artifact directory (under the repo root) for the cache store. */
@@ -377,6 +390,8 @@ interface RunOutcome {
   executed: string[];
   failure: unknown;
   aborted: boolean;
+  /** True when the run parked at a `.waitsFor(...)` gate rather than finishing. */
+  suspended: boolean;
 }
 
 /**
@@ -394,6 +409,8 @@ interface RunEnv {
   actor: string;
   /** A link to this run (CI job), stamped on a lock holder when known. */
   runUrl?: string;
+  /** External signals received so far, exposed to bodies via `ctx.signals`. */
+  signals: ReadonlyMap<string, SignalRecord>;
 }
 
 /** A failure's message, or `undefined` when there was none — for the state record. */
@@ -479,6 +496,51 @@ async function acquireTargetLock(
       await store.releaseLock(key, token);
     },
   };
+}
+
+/** Resolve a timeout thunk to a JSON-serialisable disposition (default `"fail"`). */
+function resolveDisposition(thunk: OnTimeout | undefined): WaitDisposition {
+  if (thunk === undefined) return "fail";
+  const disposition = thunk();
+  if (disposition === "fail" || disposition === "cancel-run") {
+    return disposition;
+  }
+  return { target: disposition.name_ ?? "?" };
+}
+
+/** The outcome of evaluating a target's `.waitsFor(...)` gate. */
+interface WaitResolution {
+  satisfied: boolean;
+  waitState: WaitState;
+  descriptor: string;
+}
+
+/**
+ * Run a target's wait settings lambda, evaluate its trigger against the run's
+ * signals, and build the {@link WaitState} to record if it must suspend.
+ */
+async function resolveWait(
+  configure: Configure<WaitSettings>,
+  env: RunEnv,
+  name: string,
+): Promise<WaitResolution> {
+  const settings = configure(new WaitSettings());
+  const trigger = settings.trigger_;
+  if (trigger === undefined) {
+    throw new Error(
+      `Target "${name}" .waitsFor(...) set no trigger — call s.on(...).`,
+    );
+  }
+  const satisfied = await trigger.isSatisfied(env.signals);
+  const waitState: WaitState = {
+    trigger: trigger.descriptor,
+    onTimeout: resolveDisposition(settings.onTimeout_),
+  };
+  if (settings.timeout_ !== undefined) {
+    waitState.deadline = new Date(Date.now() + parseDuration(settings.timeout_))
+      .toISOString();
+  }
+  return { satisfied, waitState, descriptor: trigger.descriptor };
 }
 
 /**
@@ -688,6 +750,28 @@ async function runTarget(
     return { status: "cached", ms: 0 };
   }
 
+  // A `.waitsFor(...)` target is a gate, not a body: if its trigger is already
+  // satisfied it passes (dependents run); otherwise the run suspends here.
+  if (t.waitsFor_ !== undefined) {
+    openTarget(reporter, renderer, style, name, opened);
+    let wait: WaitResolution;
+    try {
+      wait = await resolveWait(t.waitsFor_, env, name);
+    } catch (error) {
+      failTarget(reporter, renderer, style, name, 0, error);
+      return { status: "failed", ms: 0, error };
+    }
+    if (wait.satisfied) {
+      passTarget(reporter, renderer, style, name, 0);
+      return { status: "passed", ms: 0 };
+    }
+    void env.writer?.markTargetWaiting(name, wait.waitState);
+    for (const line of targetWaitFooter(style, name, wait.descriptor)) {
+      reporter.info(line);
+    }
+    return { status: "waiting", ms: 0 };
+  }
+
   openTarget(reporter, renderer, style, name, opened);
   await life.targetStart(name);
   void env.writer?.markTargetRunning(name);
@@ -706,6 +790,7 @@ async function runTarget(
     target: name,
     signal: env.signal,
     state: env.writer ? env.writer.stateHandle(name) : inMemoryStateHandle(),
+    signals: env.signals,
     dryRun,
   };
 
@@ -826,7 +911,7 @@ async function runSequential(
       aborted = true;
     }
   }
-  return { reports, executed, failure, aborted };
+  return { reports, executed, failure, aborted, suspended: false };
 }
 
 /**
@@ -861,6 +946,7 @@ async function runScheduled(
   const runningSet = new Set<TargetBuilder>();
   let failure: unknown;
   let anyFailed = false; // a failure occurred → the build fails
+  let anyWaiting = false; // a `.waitsFor(...)` gate parked → the run suspends
   let halted = false; // a non-lenient failure → stop launching new targets
   let flushed = 0;
 
@@ -906,14 +992,19 @@ async function runScheduled(
           .then(
             async (outcome) => {
               await life.targetEnd(t.name_ ?? "<unnamed>", outcome.status);
-              void env.writer?.markTargetSettled(
-                t.name_ ?? "<unnamed>",
-                outcome.status,
-                errorMessage(outcome.error),
-              );
-              // Only an executed target prints a block worth separating.
+              // A waiting gate already recorded its `waitingFor` via
+              // markTargetWaiting; settling it here would clobber that.
+              if (outcome.status !== "waiting") {
+                void env.writer?.markTargetSettled(
+                  t.name_ ?? "<unnamed>",
+                  outcome.status,
+                  errorMessage(outcome.error),
+                );
+              }
+              // An executed target (or a parked wait) prints a block worth
+              // separating.
               const printed = outcome.status === "passed" ||
-                outcome.status === "failed";
+                outcome.status === "failed" || outcome.status === "waiting";
               if (printed) {
                 if (!style.github && flushed > 0) reporter.info("");
                 buffer.flush(reporter);
@@ -927,6 +1018,10 @@ async function runScheduled(
                 // A lenient failure lets independent targets keep going; its
                 // own dependents stay blocked (never added to `done`).
                 if (!t.proceedAfterFailure_) halted = true;
+              } else if (outcome.status === "waiting") {
+                // The run suspends here: this target's dependents stay blocked
+                // (never `done`), but independent branches run to completion.
+                anyWaiting = true;
               } else {
                 done.add(t); // passed, cached, or condition-skipped
               }
@@ -939,10 +1034,14 @@ async function runScheduled(
           if (!started.has(t)) {
             outcomes.set(t, { status: "skipped", ms: 0 });
             started.add(t);
-            void env.writer?.markTargetSettled(
-              t.name_ ?? "<unnamed>",
-              "skipped",
-            );
+            // When the run suspends, targets blocked behind the wait are left
+            // `pending` in the record (a resume runs them) rather than skipped.
+            if (!anyWaiting) {
+              void env.writer?.markTargetSettled(
+                t.name_ ?? "<unnamed>",
+                "skipped",
+              );
+            }
           }
         }
         resolve();
@@ -959,7 +1058,13 @@ async function runScheduled(
     reports.push({ name, status: outcome.status, ms: outcome.ms });
     if (outcome.status === "passed") executed.push(name);
   }
-  return { reports, executed, failure, aborted: anyFailed };
+  return {
+    reports,
+    executed,
+    failure,
+    aborted: anyFailed,
+    suspended: anyWaiting && !anyFailed,
+  };
 }
 
 /**
@@ -1062,7 +1167,9 @@ export async function execute(
   const grouped = order.some((t) => t.group_ !== undefined);
   // `proceedAfterFailure` and `always` need the scheduler's per-target control,
   // so the simple sequential loop is only used when none of these apply.
-  const scheduled = order.some((t) => t.proceedAfterFailure_ || t.always_);
+  const scheduled = order.some((t) =>
+    t.proceedAfterFailure_ || t.always_ || t.waitsFor_ !== undefined
+  );
   const dryRun = options.dryRun ?? false;
   // A dry run never reads or writes the cache (no body runs to invalidate it).
   const cache = dryRun ? undefined : await resolveCache(
@@ -1101,7 +1208,9 @@ export async function execute(
   // A build that uses a durable feature (a cross-run lock; later, waits and
   // compensations) turns the filesystem store on by default, so state "just
   // works" without --state. Plain builds still opt in explicitly.
-  const usesDurableFeature = order.some((t) => t.lock_ !== undefined);
+  const usesDurableFeature = order.some((t) =>
+    t.lock_ !== undefined || t.waitsFor_ !== undefined
+  );
   const stateStore = dryRun ? undefined : resolveStateStore(
     options.stateStore,
     build.stateStore(),
@@ -1114,6 +1223,22 @@ export async function execute(
       enableDefault: (options.state ?? false) || usesDurableFeature,
     },
   );
+  // A wait needs somewhere to persist the suspension; without a store it could
+  // never be resumed. Fail fast with guidance instead of suspending into the
+  // void. (enableDefault turns the FS store on for waits, so this only triggers
+  // when state was explicitly disabled.)
+  if (
+    !dryRun && stateStore === undefined &&
+    order.some((t) => t.waitsFor_ !== undefined)
+  ) {
+    const error = new Error(
+      "A target uses .waitsFor(...), which needs a state store to persist the " +
+        "suspended run — but state is disabled. Enable it (drop stateStore: " +
+        "false, pass --state, or set ZUKE_STATE_DIR / ZUKE_STATE_URL).",
+    );
+    reporter.error(error.message);
+    return { ok: false, executed: [], error };
+  }
   const actor = resolveActor(options.actor, readEnv);
   const runUrl = ciRunUrl(readEnv);
   const nowIso = () => new Date().toISOString();
@@ -1141,6 +1266,7 @@ export async function execute(
     store: stateStore,
     actor,
     runUrl,
+    signals: writer ? writer.signals() : new Map<string, SignalRecord>(),
   };
 
   // Services started during the run are held here and torn down in reverse
@@ -1206,17 +1332,30 @@ export async function execute(
 
   const result: BuildResult = run.aborted
     ? { ok: false, executed: run.executed, error: run.failure }
+    : run.suspended
+    ? { ok: true, executed: run.executed, suspended: true }
     : { ok: true, executed: run.executed };
 
   // Record the run's terminal status. Awaiting this drains the writer's queue,
   // so every per-target transition has landed by the time the run returns.
-  await writer?.markRunFinished(result.ok);
+  if (run.suspended) await writer?.markRunSuspended();
+  else await writer?.markRunFinished(result.ok);
 
   const totalMs = performance.now() - overallStart;
   for (
     const line of renderer.summaryBlock(style, run.reports, totalMs, result.ok)
   ) {
     reporter.info(line);
+  }
+  // On suspension, point the operator at the saved run so it can be resumed.
+  if (run.suspended) {
+    const waiting = run.reports.filter((r) => r.status === "waiting")
+      .map((r) => r.name);
+    reporter.info(
+      `Run ${runId} suspended — state saved; waiting on: ${
+        waiting.join(", ")
+      }.`,
+    );
   }
   if (style.github && writesToConsole) {
     writeJobSummary(renderer, run.reports, totalMs, result.ok);

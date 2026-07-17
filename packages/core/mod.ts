@@ -46,6 +46,7 @@ export {
   group,
   type JsonValue,
   LockSettings,
+  type OnTimeout,
   type Remediation,
   type RemediationContext,
   type RemediationResult,
@@ -57,7 +58,14 @@ export {
   type TargetStateHandle,
   type Validation,
   type ValidationContext,
+  WaitSettings,
 } from "./src/target.ts";
+export {
+  externalSignal,
+  resumeWhen,
+  type ResumeWhenOptions,
+  type WaitTrigger,
+} from "./src/wait.ts";
 export { run, type RunOptions } from "./src/cli.ts";
 export {
   type CliCommandInfo,
@@ -113,8 +121,11 @@ export {
   type RunRecord,
   type RunStatus,
   type RunSummary,
+  type SignalRecord,
   type TargetRunState,
   type TargetRunStatus,
+  type WaitDisposition,
+  type WaitState,
 } from "./src/state/types.ts";
 export { FileSystemStateStore } from "./src/state/fs_store.ts";
 export {
