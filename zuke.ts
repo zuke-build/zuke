@@ -55,6 +55,7 @@ const PACKAGES = [
   "deno",
   "docs",
   "npm",
+  "npx",
   "bun",
   "pnpm",
   "yarn",

@@ -712,6 +712,11 @@
           "jsr:@zuke/core@1"
         ]
       },
+      "packages/npx": {
+        "dependencies": [
+          "jsr:@zuke/core@1"
+        ]
+      },
       "packages/nx": {
         "dependencies": [
           "jsr:@zuke/core@1"

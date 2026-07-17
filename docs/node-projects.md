@@ -84,3 +84,7 @@ wrapper: [`@zuke/bun`](../packages/bun) (`BunTasks` — also `bun test`),
 and [`@zuke/yarn`](../packages/yarn) (`YarnTasks`, Classic and Berry). For
 example, `await PnpmTasks.install((s) => s.frozenLockfile())` or
 `await BunTasks.run((s) => s.script("build"))`.
+
+To download and run a package binary in one step, [`@zuke/npx`](../packages/npx)
+(`NpxTasks`) wraps `npx` — npm's sibling of `bun x` and `pnpm dlx`. For example,
+`await NpxTasks.npx((s) => s.command("cowsay").yes().execArgs("hello"))`.

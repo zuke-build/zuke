@@ -165,7 +165,7 @@ the full task list and settings methods of each):
 | `@zuke/console` | `ConsoleTasks` | themed console output (headings, notices) so a build never hand-rolls `console.log` |
 | `@zuke/deno` | `DenoTasks` | `check`, `test`, `fmt`, `lint`, `cache`, `doc`, `run`, `publish` |
 | `@zuke/docs` | `DocsTasks` | turn generated API docs into published output |
-| `@zuke/npm`, `@zuke/bun`, `@zuke/pnpm`, `@zuke/yarn`, `@zuke/node` | `NpmTasks`, `BunTasks`, ... | JS package managers + `node` |
+| `@zuke/npm`, `@zuke/npx`, `@zuke/bun`, `@zuke/pnpm`, `@zuke/yarn`, `@zuke/node` | `NpmTasks`, `NpxTasks`, `BunTasks`, ... | JS package managers + `npx` runner + `node` |
 | `@zuke/cmd` | `CmdTasks` | `exec` — generic fallback for any CLI |
 | `@zuke/docker`, `@zuke/docker-compose` | `DockerTasks`, ... | build/run/compose |
 | `@zuke/git`, `@zuke/gh` | `GitTasks`, `GhTasks` | git and GitHub CLI |

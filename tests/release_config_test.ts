@@ -5,6 +5,7 @@ const PACKAGES = [
   "packages/deno",
   "packages/docs",
   "packages/npm",
+  "packages/npx",
   "packages/bun",
   "packages/pnpm",
   "packages/yarn",
