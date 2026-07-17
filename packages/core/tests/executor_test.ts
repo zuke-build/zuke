@@ -33,8 +33,12 @@ import {
   type Reporter,
 } from "../src/executor.ts";
 import type { Plugin } from "../src/plugin.ts";
+import { $ } from "../src/shell.ts";
 
 const silent: ExecuteOptions = { silent: true };
+
+/** `deno` — always present under the test runner, shell-free, cross-platform. */
+const DENO = Deno.execPath();
 
 /** A reporter that records every line, for asserting output. */
 function recorder(): { lines: string[]; reporter: Reporter } {
@@ -1606,4 +1610,150 @@ Deno.test("execute uploads to and restores from a remote cache store", async () 
     Deno.chdir(original);
     await Deno.remove(dir, { recursive: true });
   }
+});
+
+Deno.test("target body receives a context with a stable runId and its name", async () => {
+  const runIds: string[] = [];
+  const names: string[] = [];
+  let signalPresent = false;
+  let dryRunSeen = true;
+  class B extends Build {
+    a = target().executes((ctx) => {
+      runIds.push(ctx.runId);
+      names.push(ctx.target);
+    });
+    b = target().dependsOn(this.a).executes((ctx) => {
+      runIds.push(ctx.runId);
+      names.push(ctx.target);
+      signalPresent = ctx.signal instanceof AbortSignal && !ctx.signal.aborted;
+      dryRunSeen = ctx.dryRun;
+    });
+  }
+  const b = new B();
+  discoverTargets(b);
+
+  const result = await execute(b, b.b, silent);
+  assertEquals(result.ok, true);
+  assertEquals(names, ["a", "b"]);
+  assertEquals(runIds.length, 2);
+  assertEquals(runIds[0], runIds[1]); // one identity for the whole run
+  assertEquals(runIds[0].length > 0, true);
+  assertEquals(signalPresent, true); // live, un-aborted signal
+  assertEquals(dryRunSeen, false);
+});
+
+Deno.test("options.signal aborts the context signal of an in-flight target", async () => {
+  // Deterministic: no subprocess, no timing — proves the run's cancellation
+  // reaches a running body through ctx.signal.
+  let started: () => void = () => {};
+  const ready = new Promise<void>((resolve) => (started = resolve));
+  const controller = new AbortController();
+  let observedAbort = false;
+  class B extends Build {
+    waits = target().executes((ctx) =>
+      new Promise<void>((resolve) => {
+        ctx.signal.addEventListener("abort", () => {
+          observedAbort = true;
+          resolve();
+        }, { once: true });
+        started();
+      })
+    );
+  }
+  const b = new B();
+  discoverTargets(b);
+
+  const runPromise = execute(b, b.waits, {
+    silent: true,
+    signal: controller.signal,
+  });
+  await ready;
+  controller.abort();
+  const result = await runPromise;
+  assertEquals(observedAbort, true);
+  assertEquals(result.ok, true); // body resolved cleanly once its signal fired
+});
+
+Deno.test("cancelling a run terminates an in-flight shell command", async () => {
+  let started: () => void = () => {};
+  const ready = new Promise<void>((resolve) => (started = resolve));
+  const controller = new AbortController();
+  class B extends Build {
+    slow = target().executes(async () => {
+      started();
+      // A plain `$` — no explicit .signal() — is terminated via the executor's
+      // ambient run signal when the run is cancelled.
+      await $`${DENO} eval ${"await new Promise((r) => setTimeout(r, 30000))"}`
+        .quiet();
+    });
+  }
+  const b = new B();
+  discoverTargets(b);
+
+  const runPromise = execute(b, b.slow, {
+    silent: true,
+    signal: controller.signal,
+  });
+  await ready;
+  // Let the child fully spawn before cancelling (Deno wires its abort→SIGTERM
+  // listener a tick after spawn); the same 30s sleep proves it was killed, not
+  // waited out.
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  controller.abort();
+  const result = await runPromise;
+  assertEquals(result.ok, false); // the killed command failed the target
+});
+
+Deno.test("cancelling a parallel run terminates in-flight commands in every branch", async () => {
+  // Proves the ambient signal propagates through the scheduled (parallel)
+  // runner's callback-based pump, not just the sequential path.
+  let up = 0;
+  let ready: () => void = () => {};
+  const bothUp = new Promise<void>((resolve) => (ready = resolve));
+  const controller = new AbortController();
+  const sleep = "await new Promise((r) => setTimeout(r, 30000))";
+  class B extends Build {
+    a = target().executes(async () => {
+      if (++up === 2) ready();
+      await $`${DENO} eval ${sleep}`.quiet();
+    });
+    b = target().executes(async () => {
+      if (++up === 2) ready();
+      await $`${DENO} eval ${sleep}`.quiet();
+    });
+    all = target().dependsOn(this.a, this.b).executes(() => {});
+  }
+  const b = new B();
+  discoverTargets(b);
+
+  const runPromise = execute(b, b.all, {
+    silent: true,
+    signal: controller.signal,
+    parallel: true,
+  });
+  await bothUp;
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  controller.abort();
+  const result = await runPromise;
+  assertEquals(result.ok, false); // both branches' commands were killed
+});
+
+Deno.test("a pre-aborted options.signal aborts the context signal", async () => {
+  const controller = new AbortController();
+  controller.abort();
+  let sawAborted = false;
+  class B extends Build {
+    a = target().executes((ctx) => {
+      sawAborted = ctx.signal.aborted;
+    });
+  }
+  const b = new B();
+  discoverTargets(b);
+
+  const result = await execute(b, b.a, {
+    silent: true,
+    signal: controller.signal,
+  });
+  assertEquals(sawAborted, true);
+  assertEquals(result.ok, true); // no shell command to kill, so the body succeeds
 });
