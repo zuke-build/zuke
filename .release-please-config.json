@@ -49,6 +49,17 @@
         }
       ]
     },
+    "packages/npx": {
+      "component": "npx",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
+      ]
+    },
     "packages/bun": {
       "component": "bun",
       "changelog-path": "CHANGELOG.md",

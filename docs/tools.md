@@ -32,6 +32,7 @@ raises a `ToolNotFoundError` that names the tool and the fix.
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
 | `@zuke/deno`           | `run`, `test`, `check`, `fmt`, `lint`, `cache`, `coverage`, `task`                                                                    |
 | `@zuke/npm`            | `install`, `ci`, `run`, `exec`, `publish`, `version`                                                                                  |
+| `@zuke/npx`            | `npx`                                                                                                                                  |
 | `@zuke/bun`            | `install`, `add`, `remove`, `run`, `x`, `test`                                                                                        |
 | `@zuke/pnpm`           | `install`, `add`, `remove`, `run`, `dlx`, `publish`                                                                                   |
 | `@zuke/yarn`           | `install`, `add`, `remove`, `run`, `dlx`                                                                                              |

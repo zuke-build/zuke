@@ -70,6 +70,7 @@ Full reference: [docs/cli.md](./docs/cli.md).
 - [@zuke/deno](https://jsr.io/@zuke/deno) — typed `DenoTasks` wrappers for the `deno` CLI, for use in
 - [@zuke/docs](https://jsr.io/@zuke/docs) — typed tasks that turn already-generated API documentation into
 - [@zuke/npm](https://jsr.io/@zuke/npm) — typed `NpmTasks` wrappers for the `npm` CLI, for use in Zuke
+- [@zuke/npx](https://jsr.io/@zuke/npx) — typed `NpxTasks` wrappers for the `npx` package runner, for use
 - [@zuke/bun](https://jsr.io/@zuke/bun) — typed `BunTasks` wrappers for the `bun` CLI, for use in Zuke
 - [@zuke/pnpm](https://jsr.io/@zuke/pnpm) — typed `PnpmTasks` wrappers for the `pnpm` CLI, for use in Zuke
 - [@zuke/yarn](https://jsr.io/@zuke/yarn) — typed `YarnTasks` wrappers for the `yarn` CLI, for use in Zuke
