@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.16.0](https://github.com/zuke-build/zuke/compare/core-v1.15.0...core-v1.16.0) (2026-07-17)
+
+
+### Features
+
+* **core:** suspendable targets with waitsFor and external signals ([#168](https://github.com/zuke-build/zuke/issues/168)) ([fc06a9f](https://github.com/zuke-build/zuke/commit/fc06a9fcac0f6340a6f57790977f2fad0805c5a0))
+* **core:** zuke resume with exactly-once run resumption ([#170](https://github.com/zuke-build/zuke/issues/170)) ([ca91ee7](https://github.com/zuke-build/zuke/commit/ca91ee74caf7ce850ebfbf3976e529c742cf6b3d))
+
 ## [1.15.0](https://github.com/zuke-build/zuke/compare/core-v1.14.0...core-v1.15.0) (2026-07-17)
 
 
