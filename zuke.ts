@@ -533,9 +533,13 @@ class ZukeBuild extends Build {
       // in the build file, and no untrusted input. `1xwg7am` is AlreadyResumedError
       // naming the `--actor` that won a resume race — operator attribution by
       // design (like LockConflictError naming the holder), not a secret leak.
-      // (IDs are opaque fingerprints.)
+      // `3f7a0g` is `zuke runs`, a local read-only inspect of an operator-owned
+      // store of non-secret records — the FS/HTTP layer already owns access;
+      // agent/network authz is the M5 MCP surface. (IDs are opaque fingerprints.)
       // cspell:ignore myee
-      .suppress(suppressions((s) => s.add("1g3myee", "1mwn3kn", "1xwg7am")))
+      .suppress(
+        suppressions((s) => s.add("1g3myee", "1mwn3kn", "1xwg7am", "3f7a0g")),
+      )
       .failWhen((g) => g.scoreAbove(8))
       .onError("warn")
   );

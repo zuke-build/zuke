@@ -13,6 +13,26 @@ import { FakeGraphHost } from "./_fakes.ts";
 import { CONFIG_FILE } from "../src/config.ts";
 import { parameter } from "../src/params.ts";
 import { BUILTIN_FLAGS, RESERVED_COMMANDS } from "../src/cli_spec.ts";
+import { FileSystemStateStore } from "../src/state/fs_store.ts";
+import { defaultStateHost } from "../src/state/store.ts";
+import type { RunRecord } from "../src/state/types.ts";
+
+/** A minimal valid run record for the `runs` command tests. */
+function sampleRunRecord(overrides: Partial<RunRecord> = {}): RunRecord {
+  return {
+    id: overrides.id ?? "run-z",
+    build: overrides.build ?? "Demo",
+    rootTarget: overrides.rootTarget ?? "build",
+    status: overrides.status ?? "succeeded",
+    actor: overrides.actor ?? "alice",
+    createdAt: overrides.createdAt ?? "2026-07-17T10:00:00.000Z",
+    updatedAt: overrides.updatedAt ?? "2026-07-17T10:00:00.000Z",
+    graph: overrides.graph ?? [{ name: "build", dependsOn: [] }],
+    params: overrides.params ?? {},
+    targets: overrides.targets ?? { build: { status: "succeeded", meta: {} } },
+    signals: overrides.signals ?? {},
+  };
+}
 
 /** A build with declared parameters, for the parameter-aware CLI tests. */
 class Parameterised extends Build {
@@ -204,6 +224,80 @@ Deno.test("parseArgs reads resume with its run id, signal, data, and flags", () 
   assertEquals(check.resume, true);
   assertEquals(check.check, true);
   assertEquals(check.resumeRunId, undefined);
+});
+
+Deno.test("parseArgs reads the runs command, sub-action, id, and filters", () => {
+  assertEquals(parseArgs(["runs"]).runs, true);
+  assertEquals(parseArgs(["build"]).runs, false);
+
+  const list = parseArgs([
+    "runs",
+    "list",
+    "--status",
+    "failed",
+    "--target",
+    "deploy",
+    "--since",
+    "2026-01-01",
+  ]);
+  assertEquals(
+    [list.runs, list.runsAction, list.runStatus, list.runTarget, list.since],
+    [true, "list", "failed", "deploy", "2026-01-01"],
+  );
+
+  const show = parseArgs(["runs", "show", "run-9"]);
+  assertEquals([show.runsAction, show.runsRunId], ["show", "run-9"]);
+
+  // Inline `=` forms of the filters.
+  const eq = parseArgs([
+    "runs",
+    "list",
+    "--status=succeeded",
+    "--target=t",
+    "--since=x",
+  ]);
+  assertEquals([eq.runStatus, eq.runTarget, eq.since], ["succeeded", "t", "x"]);
+});
+
+Deno.test("main: runs list reads persisted runs; --json emits run data", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const store = new FileSystemStateStore(dir, defaultStateHost);
+    await store.putRun(sampleRunRecord({ id: "run-z" }), null);
+    class Stateful extends Build {
+      override stateStore() {
+        return store;
+      }
+      build = target().executes(() => {});
+    }
+
+    const list = await capture(() => main(Stateful, ["runs", "list"]));
+    assertEquals(list.code, 0);
+    assertStringIncludes(list.out.join("\n"), "run-z");
+
+    // --json must emit the run summaries, not the build surface.
+    const json = await capture(() =>
+      main(Stateful, ["runs", "list", "--json"])
+    );
+    assertEquals(json.code, 0);
+    const summaries = JSON.parse(json.out.join("\n"));
+    assertEquals(Array.isArray(summaries), true);
+    assertEquals(summaries[0].id, "run-z");
+
+    const show = await capture(() => main(Stateful, ["runs", "show", "run-z"]));
+    assertEquals(show.code, 0);
+    assertStringIncludes(show.out.join("\n"), "Run run-z");
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("main: runs list rejects an unknown --status", async () => {
+  const { code, err } = await capture(() =>
+    main(Demo, ["runs", "list", "--status", "bogus"])
+  );
+  assertEquals(code, 1);
+  assertStringIncludes(err.join("\n"), 'unknown --status "bogus"');
 });
 
 Deno.test("parseArgs reads --affected with an optional base", () => {

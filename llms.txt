@@ -46,6 +46,7 @@ Reserved commands:
 - `completions` — Print a shell-completion script
 - `mcp` — Run an MCP server over the build (for AI agents)
 - `resume` — Resume a suspended run (or --check all suspended runs)
+- `runs` — List or show persisted run records
 
 Option flags:
 
@@ -65,6 +66,9 @@ Option flags:
 - `--signal` — With resume, deliver a named external signal
 - `--data` — With resume --signal, the signal's JSON payload
 - `--force-graph` — With resume, continue even if the build graph changed
+- `--status` — With runs list, keep only runs with this status
+- `--target` — With runs list, keep only runs whose graph has this target
+- `--since` — With runs list, keep only runs created at/after this time
 - `--allow-run` — With mcp, let agents execute targets (not just inspect)
 - `--help` — Show usage
 

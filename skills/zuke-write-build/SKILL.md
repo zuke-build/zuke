@@ -21,7 +21,9 @@ class CI extends Build {
   test = target()
     .description("Type-check and test")
     .dependsOn(this.lint)
-    .executes(() => DenoTasks.test((s) => s.allowAll().coverage("cov_profile")));
+    .executes(() =>
+      DenoTasks.test((s) => s.allowAll().coverage("cov_profile"))
+    );
 
   // A field named `default` runs when no target is named on the CLI.
   default = target().dependsOn(this.test).executes(() => {});
@@ -41,9 +43,9 @@ await run(CI);
    dependencies come first.
 3. **Never guess the API and never shell out by hand.** Every external tool is a
    namespaced `*Tasks` object configured with a **settings lambda** that mirrors
-   the real CLI's flags — `DenoTasks`, `NpmTasks`, `DockerTasks`, `GitTasks`, and
-   30+ more. Reach for `jsr:@zuke/cmd` (`CmdTasks.exec`) or the `$` shell from
-   `jsr:@zuke/core/shell` only when no typed wrapper exists.
+   the real CLI's flags — `DenoTasks`, `NpmTasks`, `DockerTasks`, `GitTasks`,
+   and 30+ more. Reach for `jsr:@zuke/cmd` (`CmdTasks.exec`) or the `$` shell
+   from `jsr:@zuke/core/shell` only when no typed wrapper exists.
 4. **A body is required.** Set `.executes(...)`; it may be sync or async.
 
 ## Find the exact signature first
@@ -51,10 +53,11 @@ await run(CI);
 Before calling any task or settings method, confirm the real shape:
 
 - **Whole surface:** read `llms-full.txt` at the repo root (index: `llms.txt`).
-- **One package:** `deno doc jsr:@zuke/<package>` (e.g. `deno doc jsr:@zuke/deno`).
+- **One package:** `deno doc jsr:@zuke/<package>` (e.g.
+  `deno doc jsr:@zuke/deno`).
 - A quick map of the most common methods and task objects is in
-  [`references/cheatsheet.md`](references/cheatsheet.md) next to this file — read
-  it when wiring targets, then verify specifics against the sources above.
+  [`references/cheatsheet.md`](references/cheatsheet.md) next to this file —
+  read it when wiring targets, then verify specifics against the sources above.
 
 ## Workflow for a change
 
@@ -71,10 +74,10 @@ Before calling any task or settings method, confirm the real shape:
 
 - **Parallel batches:** `group()` + `.partOf(this.group)` run members
   concurrently; depend on the group to wait for all of them.
-- **Reusable bundles:** a *component* is a function returning related targets;
+- **Reusable bundles:** a _component_ is a function returning related targets;
   assign it to a field and reference members as `this.release.publish`.
-- **Long-lived processes:** `service()` models a process that must stay *running
-  while dependents execute* (dev server, database, mock API). Declared and
+- **Long-lived processes:** `service()` models a process that must stay _running
+  while dependents execute_ (dev server, database, mock API). Declared and
   depended on like a target, but with a `.start(...)` / `.readyWhen(...)`
   lifecycle instead of `.executes(...)`; the executor starts it, waits until
   ready, then stops it in a `finally` so it never leaks. See the cheatsheet.
@@ -92,8 +95,10 @@ Before calling any task or settings method, confirm the real shape:
   pluggable `StateStore` so it survives the process — turn it on with `--state`,
   `ZUKE_STATE_DIR` / `ZUKE_STATE_URL`, or `override stateStore()`. In a body,
   `ctx.state.set({ … })` / `ctx.state.get()` records per-target metadata (JSON,
-  **never secrets** — secret parameters and redacted values are excluded). See
-  the cheatsheet.
+  **never secrets** — secret parameters and redacted values are excluded).
+  Inspect persisted runs afterwards with `zuke runs list` (filter by
+  `--status`/`--target`/`--since`) and `zuke runs show <id>` (`--json` on both).
+  See the cheatsheet.
 - **Cross-run locks:** `.lock((s) => s.lockKey(...).withTtl("4h"))` — a settings
   lambda — gives a target an exclusive claim across runs/machines; a second run
   wanting the same key fails with a `LockConflictError` naming the holder. The
@@ -101,11 +106,12 @@ Before calling any task or settings method, confirm the real shape:
   The lock releases when the target settles and expires after the TTL if the
   holder is killed. Needs a state store (a build with `.lock()` enables the
   filesystem store by default). See the cheatsheet.
-- **External-event waits:** `.waitsFor((s) => s.on(externalSignal("approved")).timeout("72h"))`
-  makes a target a **gate** with no body: the run proceeds past it only when the
-  trigger is satisfied, otherwise it **suspends** (state saved, exits 0) to be
-  resumed later in a fresh process. Triggers: `externalSignal(name)` (payload
-  read via `ctx.signals`) and `resumeWhen(predicate)`. Continue it with
+- **External-event waits:**
+  `.waitsFor((s) => s.on(externalSignal("approved")).timeout("72h"))` makes a
+  target a **gate** with no body: the run proceeds past it only when the trigger
+  is satisfied, otherwise it **suspends** (state saved, exits 0) to be resumed
+  later in a fresh process. Triggers: `externalSignal(name)` (payload read via
+  `ctx.signals`) and `resumeWhen(predicate)`. Continue it with
   `zuke resume <id> --signal <name> [--data <json>]` (or `--check` for predicate
   waits/timeouts) — exactly-once, re-running only the not-yet-succeeded targets.
   Needs a state store. See the cheatsheet / `docs/orchestration.md`.
@@ -119,11 +125,11 @@ Before calling any task or settings method, confirm the real shape:
   returned path to a wrapper's `.toolPath(...)`.
 - **Code-first CI:** `cicd({ provider: "github" })` generates and verifies the
   workflow YAML from the build.
-- **Operate the build from an agent:** `zuke mcp` serves the build over MCP so an
-  AI client can list, inspect, and (with `--allow-run`) run targets.
+- **Operate the build from an agent:** `zuke mcp` serves the build over MCP so
+  an AI client can list, inspect, and (with `--allow-run`) run targets.
 - **AI review & self-healing (`@zuke/ai`):** gate a target on a structured LLM
   review of the diff (`securityReviewer(...)` etc. via `.validateBefore`), or
-  attach `aiFixer(...)` with `.recoverWith(...)` so a failing target is diagnosed
-  and (opt-in) auto-fixed, with a committable PR suggestion. Override
+  attach `aiFixer(...)` with `.recoverWith(...)` so a failing target is
+  diagnosed and (opt-in) auto-fixed, with a committable PR suggestion. Override
   `recoverWith()` on the build to apply one fixer to every target. See the
   cheatsheet's AI section.

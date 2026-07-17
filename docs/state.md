@@ -14,13 +14,13 @@ configuration writes nothing and pays nothing.
 
 A run gets a **state store** by the first of these that applies:
 
-| Precedence | Source                                             | Selects                                    |
-| ---------- | -------------------------------------------------- | ------------------------------------------ |
-| 1          | `execute(build, root, { stateStore })`             | that store (`false` disables state)        |
-| 2          | `Build.stateStore()` override                      | the returned store                         |
-| 3          | `ZUKE_STATE_URL` (+ optional `ZUKE_STATE_TOKEN`)   | an {@link HttpStateStore} (production)     |
-| 4          | `ZUKE_STATE_DIR`                                   | a `FileSystemStateStore` at that directory |
-| 5          | `--state` (CLI) with nothing above set             | a `FileSystemStateStore` at `.zuke/runs`   |
+| Precedence | Source                                           | Selects                                    |
+| ---------- | ------------------------------------------------ | ------------------------------------------ |
+| 1          | `execute(build, root, { stateStore })`           | that store (`false` disables state)        |
+| 2          | `Build.stateStore()` override                    | the returned store                         |
+| 3          | `ZUKE_STATE_URL` (+ optional `ZUKE_STATE_TOKEN`) | an {@link HttpStateStore} (production)     |
+| 4          | `ZUKE_STATE_DIR`                                 | a `FileSystemStateStore` at that directory |
+| 5          | `--state` (CLI) with nothing above set           | a `FileSystemStateStore` at `.zuke/runs`   |
 
 If none apply, the run has no store and no record is written.
 
@@ -50,21 +50,31 @@ Each run is stored as one JSON document:
 
 ```jsonc
 {
-  "id": "3f2a…",                 // == ctx.runId
-  "build": "CD",                  // the Build class name
-  "rootTarget": "deploy",         // the requested target
-  "status": "succeeded",          // running | suspended | succeeded | failed | cancelled
-  "actor": "alice",               // who ran it (see below)
+  "id": "3f2a…", // == ctx.runId
+  "build": "CD", // the Build class name
+  "rootTarget": "deploy", // the requested target
+  "status": "succeeded", // running | suspended | succeeded | failed | cancelled
+  "actor": "alice", // who ran it (see below)
   "createdAt": "2026-07-17T…Z",
   "updatedAt": "2026-07-17T…Z",
-  "graph": [                      // the shape it planned, in declaration order
+  "graph": [ // the shape it planned, in declaration order
     { "name": "build", "dependsOn": [] },
     { "name": "deploy", "dependsOn": ["build"] }
   ],
-  "params": { "env": "sit" },     // resolved, NON-secret parameters only
+  "params": { "env": "sit" }, // resolved, NON-secret parameters only
   "targets": {
-    "build":  { "status": "succeeded", "meta": {}, "startedAt": "…", "endedAt": "…" },
-    "deploy": { "status": "succeeded", "meta": { "target": "sit-7" }, "startedAt": "…", "endedAt": "…" }
+    "build": {
+      "status": "succeeded",
+      "meta": {},
+      "startedAt": "…",
+      "endedAt": "…"
+    },
+    "deploy": {
+      "status": "succeeded",
+      "meta": { "target": "sit-7" },
+      "startedAt": "…",
+      "endedAt": "…"
+    }
   }
 }
 ```
@@ -81,8 +91,8 @@ stamped.
 
 ## Per-target state — `ctx.state`
 
-`ctx.state` ([run context](./run-context.md)) is a small durable key/value
-store scoped to the current target:
+`ctx.state` ([run context](./run-context.md)) is a small durable key/value store
+scoped to the current target:
 
 ```ts
 deploy = target().executes(async (ctx) => {
@@ -139,9 +149,9 @@ import { HttpStateStore } from "jsr:@zuke/core";
 const store = new HttpStateStore({ url: "https://zuke-state.internal", token });
 ```
 
-> **Security.** A store's URL/token and directory are trusted configuration:
-> run records (with non-secret parameters and target metadata) are sent there.
-> Point it only at a store you control, and prefer a secret parameter or an
+> **Security.** A store's URL/token and directory are trusted configuration: run
+> records (with non-secret parameters and target metadata) are sent there. Point
+> it only at a store you control, and prefer a secret parameter or an
 > environment variable over a hard-coded value.
 
 ## Concurrency & compare-and-swap
@@ -159,16 +169,34 @@ real work outweighs its bookkeeping.
 
 ## Inspecting runs
 
-Programmatically, a store reconstructs runs from persistence alone:
+From the command line, `zuke runs` reads records back from the store — a run's
+status survives the process that produced it:
+
+```sh
+# All runs, newest first (id, status, target, actor, created).
+zuke runs list
+
+# Just the failed ones touching a given target, since a cutoff.
+zuke runs list --status failed --target deploy --since 2026-07-01
+
+# One run in full: header, parameters, per-target status, and signals.
+zuke runs show 6f1c…             # add --json to emit the raw record
+```
+
+The store resolves the same way a run resolves it (`ZUKE_STATE_URL` /
+`ZUKE_STATE_DIR`, a build's `stateStore()` override, or the default
+`.zuke/runs`); with none configured, `runs` reports a friendly error. See the
+[CLI reference](./cli.md#inspecting-runs) for every flag.
+
+Programmatically, the same data is a `listRuns` / `getRun` away:
 
 ```ts
 const store = new FileSystemStateStore(".zuke/runs");
 for (const summary of await store.listRuns({ status: "failed" })) {
-  const { record } = (await store.getRun(summary.id))!;
-  console.log(record.id, record.rootTarget, record.status);
+  const loaded = await store.getRun(summary.id);
+  if (loaded === null) continue;
+  console.log(loaded.record.id, loaded.record.rootTarget, loaded.record.status);
 }
 ```
 
-`listRuns` filters by `status`, `target`, and `since`, newest first. Inspecting
-runs from the command line (`zuke runs list` / `zuke runs show <id>`) lands with
-the CLI surface for state — see the [CLI reference](./cli.md).
+`listRuns` filters by `status`, `target`, and `since`, newest first.
