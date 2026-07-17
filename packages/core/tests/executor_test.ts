@@ -1,4 +1,4 @@
-import { assertEquals, messageOf } from "./_assert.ts";
+import { assertEquals, assertStringIncludes, messageOf } from "./_assert.ts";
 import {
   Build,
   type BuildResult,
@@ -36,6 +36,7 @@ import type { Plugin } from "../src/plugin.ts";
 import { $ } from "../src/shell.ts";
 import { FileSystemStateStore } from "../src/state/fs_store.ts";
 import { defaultStateHost } from "../src/state/store.ts";
+import { LockConflictError } from "../src/state/lock.ts";
 
 const silent: ExecuteOptions = { silent: true };
 
@@ -1817,4 +1818,150 @@ Deno.test("with no state store, ctx.state is an in-memory no-op", async () => {
   const result = await execute(b, b.a, silent); // no stateStore
   assertEquals(result.ok, true);
   assertEquals(readBack, "v"); // visible within the run, persisted nowhere
+});
+
+Deno.test("a second run of a locked target fails with a typed conflict", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+    let acquired: () => void = () => {};
+    const ready = new Promise<void>((resolve) => (acquired = resolve));
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const conflict = (h: { actor: string; runId: string }) =>
+      `busy: held by ${h.actor} run ${h.runId}`;
+    class Holder extends Build {
+      promote = target()
+        .lock((s) => s.key("deploy-x").withTtl("1h").onConflict(conflict))
+        .executes(async () => {
+          acquired();
+          await gate;
+        });
+    }
+    class Contender extends Build {
+      promote = target()
+        .lock((s) => s.key("deploy-x").withTtl("1h").onConflict(conflict))
+        .executes(() => {});
+    }
+    const h = new Holder();
+    discoverTargets(h);
+    const c = new Contender();
+    discoverTargets(c);
+
+    const run1 = execute(h, h.promote, {
+      silent: true,
+      stateStore: store,
+      actor: "alice",
+    });
+    await ready; // run1 holds the lock
+
+    const result2 = await execute(c, c.promote, {
+      silent: true,
+      stateStore: store,
+      actor: "bob",
+    });
+    assertEquals(result2.ok, false);
+    assertEquals(result2.error instanceof LockConflictError, true);
+    assertStringIncludes(messageOf(result2.error), "busy: held by alice");
+
+    release();
+    assertEquals((await run1).ok, true); // releases the lock
+
+    // Free again — a later run acquires cleanly.
+    const result3 = await execute(c, c.promote, {
+      silent: true,
+      stateStore: store,
+      actor: "carol",
+    });
+    assertEquals(result3.ok, true);
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("a locked target with no store fails with a friendly error", async () => {
+  class B extends Build {
+    promote = target().lock((s) => s.key("k").withTtl("1h")).executes(() => {});
+  }
+  const b = new B();
+  discoverTargets(b);
+  const result = await execute(b, b.promote, {
+    silent: true,
+    stateStore: false,
+  });
+  assertEquals(result.ok, false);
+  assertStringIncludes(messageOf(result.error), "no state store");
+});
+
+Deno.test("a lock with no key or no TTL fails with a friendly error", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+    class NoKey extends Build {
+      go = target().lock((s) => s.withTtl("1h")).executes(() => {});
+    }
+    class NoTtl extends Build {
+      go = target().lock((s) => s.lockKey("deploy")).executes(() => {});
+    }
+    const noKey = new NoKey();
+    discoverTargets(noKey);
+    const r1 = await execute(noKey, noKey.go, {
+      silent: true,
+      stateStore: store,
+    });
+    assertEquals(r1.ok, false);
+    assertStringIncludes(messageOf(r1.error), "set no key");
+
+    const noTtl = new NoTtl();
+    discoverTargets(noTtl);
+    const r2 = await execute(noTtl, noTtl.go, {
+      silent: true,
+      stateStore: store,
+    });
+    assertEquals(r2.ok, false);
+    assertStringIncludes(messageOf(r2.error), "set no TTL");
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("cancelling a locked run releases the lock", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+    const controller = new AbortController();
+    let started: () => void = () => {};
+    const ready = new Promise<void>((resolve) => (started = resolve));
+    class B extends Build {
+      hold = target().lock((s) => s.key("k").withTtl("1h")).executes((ctx) =>
+        new Promise<void>((_, reject) => {
+          started();
+          ctx.signal.addEventListener(
+            "abort",
+            () => reject(new Error("cancelled")),
+            { once: true },
+          );
+        })
+      );
+    }
+    const b = new B();
+    discoverTargets(b);
+    const run = execute(b, b.hold, {
+      silent: true,
+      stateStore: store,
+      signal: controller.signal,
+    });
+    await ready;
+    controller.abort();
+    await run; // body rejects on abort → target fails → finally releases the lock
+
+    const acq = await store.acquireLock("k", {
+      actor: "x",
+      runId: "r",
+      since: "t",
+    }, 1000);
+    assertEquals(acq.ok, true); // lock was freed on cancellation
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
 });

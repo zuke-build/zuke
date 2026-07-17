@@ -29,6 +29,60 @@
 
 import type { PathLike } from "./path.ts";
 import type { AnyParameter } from "./params.ts";
+import type { Configure } from "./tooling.ts";
+import { type LockHolder, lockKey } from "./state/lock.ts";
+
+/**
+ * Fluent configuration for {@link TargetBuilder.lock}, in the settings-lambda
+ * style: `.lock((s) => s.lockKey("deploy", repo).withTtl("4h"))`. Set the key
+ * (composed from sanitised parts with {@link LockSettings.lockKey}, or directly
+ * with {@link LockSettings.key}), the {@link LockSettings.withTtl | TTL}, and an
+ * optional {@link LockSettings.onConflict} message. The lambda runs after
+ * parameters resolve, so the key may read `this.<param>.value`.
+ */
+export class LockSettings {
+  /** The resolved lock key; set by {@link key} or {@link lockKey}. */
+  key_?: string;
+  /** The TTL (a duration string or milliseconds); set by {@link withTtl}. */
+  ttl_?: string | number;
+  /** The conflict-guidance renderer; set by {@link onConflict}. */
+  onConflict_?: (holder: LockHolder) => string;
+
+  /**
+   * Set the lock key from parts, sanitised and joined via
+   * {@link "./state/lock.ts".lockKey} — e.g. `s.lockKey("deploy", repo)`.
+   */
+  lockKey(...parts: Array<string | number>): this {
+    this.key_ = lockKey(...parts);
+    return this;
+  }
+
+  /** Set the lock key directly (must be filename-safe; prefer {@link lockKey}). */
+  key(key: string): this {
+    this.key_ = key;
+    return this;
+  }
+
+  /**
+   * How long the lock survives a killed holder — a duration string like `"4h"`
+   * / `"30m"` (see the duration parser) or raw milliseconds. A live holder
+   * renews it while it runs, so it never expires under it.
+   */
+  withTtl(ttl: string | number): this {
+    this.ttl_ = ttl;
+    return this;
+  }
+
+  /**
+   * Render the guidance shown to a run that loses the lock. Receives the
+   * current {@link "./state/lock.ts".LockHolder}; the returned string becomes
+   * the failure message. Defaults to a generic "held by … then retry" line.
+   */
+  onConflict(render: (holder: LockHolder) => string): this {
+    this.onConflict_ = render;
+    return this;
+  }
+}
 
 /**
  * A JSON-serialisable value — the only thing that may be persisted in a
@@ -228,6 +282,8 @@ export class TargetBuilder {
   readonly recoverWith_: Remediation[] = [];
   /** Max fix-then-rerun cycles when the body fails (set by {@link recoverAttempts}). */
   recoverAttempts_ = 1;
+  /** Cross-run lock settings lambda, set by {@link lock} and run after params resolve. */
+  lock_?: Configure<LockSettings>;
 
   /** Set the human-readable description shown in `zuke --list`. */
   description(text: string): this {
@@ -483,6 +539,34 @@ export class TargetBuilder {
    */
   recoverAttempts(times: number): this {
     this.recoverAttempts_ = Math.max(1, Math.floor(times));
+    return this;
+  }
+
+  /**
+   * Hold a **cross-run lock** while this target runs: only one run may hold
+   * `key` at a time, so a second run that tries to acquire it fails with a
+   * {@link "./state/lock.ts".LockConflictError} naming the current holder. The
+   * lock is released when the target settles — success, failure, or
+   * cancellation — and expires after `options.ttl` as a backstop should the
+   * holder be killed (a live holder renews it as it runs).
+   *
+   * `key` may be a thunk, evaluated after parameters resolve, so it can depend
+   * on `this.<param>.value`; compose composite keys with
+   * {@link "./state/lock.ts".lockKey}. Requires a state store (a build that
+   * uses `.lock()` gets a `.zuke/runs` filesystem store by default).
+   *
+   * ```ts
+   * promote = target()
+   *   .lock((s) =>
+   *     s.lockKey("deploy", this.repo.value)
+   *       .withTtl("4h")
+   *       .onConflict((h) =>
+   *         `${this.repo.value} is being deployed by ${h.actor} (run ${h.runId}).`))
+   *   .executes(...);
+   * ```
+   */
+  lock(configure: Configure<LockSettings>): this {
+    this.lock_ = configure;
     return this;
   }
 }

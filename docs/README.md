@@ -17,6 +17,8 @@
   (cross-machine) cache, and the AI response cache.
 - [Durable run state](./state.md) — persist a run's status and per-target
   metadata to a pluggable store, and read it back after the process exits.
+- [Cross-run locks](./locks.md) — `.lock()` claims an exclusive resource across
+  runs and machines, with a TTL backstop and typed conflicts.
 - [State HTTP API](./state-api.md) — the REST contract for hosting a production
   state backend.
 - [Shell wrapper (`$`)](./shell.md) — ergonomic, injection-safe process

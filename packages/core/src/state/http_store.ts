@@ -14,7 +14,7 @@
  */
 
 import { HttpError } from "../http.ts";
-import type { PutResult, StateStore } from "./store.ts";
+import type { LockResult, PutResult, StateStore } from "./store.ts";
 import {
   parseRunRecord,
   parseRunSummary,
@@ -23,6 +23,7 @@ import {
   type RunSummary,
   stringifyRunRecord,
 } from "./types.ts";
+import { type LockHolder, parseLockHolder } from "./lock.ts";
 
 /** Configuration for an {@link HttpStateStore}. */
 export interface HttpStateStoreOptions {
@@ -138,4 +139,69 @@ export class HttpStateStore implements StateStore {
     }
     return parsed.map(parseRunSummary);
   }
+
+  #lockUrl(key: string): string {
+    return `${this.#base}/locks/${encodeURIComponent(key)}`;
+  }
+
+  /** `POST /locks/:key` → `201 { token }`, or `409` with the current holder. */
+  async acquireLock(
+    key: string,
+    holder: LockHolder,
+    ttlMs: number,
+  ): Promise<LockResult> {
+    const url = this.#lockUrl(key);
+    const response = await this.#fetch(url, {
+      method: "POST",
+      headers: this.#headers({ "content-type": "application/json" }),
+      body: JSON.stringify({ holder, ttlMs }),
+    });
+    if (response.status === 409) {
+      return { ok: false, holder: parseLockHolder(await response.json()) };
+    }
+    if (!response.ok) {
+      await response.body?.cancel();
+      throw new HttpError(response.status, url);
+    }
+    const token = tokenFrom(await response.json(), url);
+    return { ok: true, token };
+  }
+
+  /** `PUT /locks/:key` renews; a `409`/`404` means the token lost the lock. */
+  async renewLock(key: string, token: string, ttlMs: number): Promise<boolean> {
+    const url = this.#lockUrl(key);
+    const response = await this.#fetch(url, {
+      method: "PUT",
+      headers: this.#headers({ "content-type": "application/json" }),
+      body: JSON.stringify({ token, ttlMs }),
+    });
+    await response.body?.cancel();
+    if (response.status === 409 || response.status === 404) return false;
+    if (!response.ok) throw new HttpError(response.status, url);
+    return true;
+  }
+
+  /** `DELETE /locks/:key` releases; a missing lock (`404`) is not an error. */
+  async releaseLock(key: string, token: string): Promise<void> {
+    const url = this.#lockUrl(key);
+    const response = await this.#fetch(url, {
+      method: "DELETE",
+      headers: this.#headers({ "content-type": "application/json" }),
+      body: JSON.stringify({ token }),
+    });
+    await response.body?.cancel();
+    if (!response.ok && response.status !== 404) {
+      throw new HttpError(response.status, url);
+    }
+  }
+}
+
+/** Extract a string `token` from a lock-acquire response body. */
+function tokenFrom(body: unknown, url: string): string {
+  if (typeof body === "object" && body !== null && !Array.isArray(body)) {
+    for (const [key, value] of Object.entries(body)) {
+      if (key === "token" && typeof value === "string") return value;
+    }
+  }
+  throw new Error(`state: ${url} did not return a token`);
 }

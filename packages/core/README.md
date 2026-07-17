@@ -356,6 +356,11 @@ async function installRelease(options: InstallReleaseOptions): Promise<AbsoluteP
 function isCI(): boolean
   Whether the build appears to be running in a CI environment.
 
+function lockKey(...parts: Array<string | number>): string
+  Join parts into a lock key that is safe to use as a filename and URL segment.
+  Each part is sanitised (non-`[A-Za-z0-9._-]` runs become `_`) and empty parts
+  are dropped, so `lockKey("deploy", repo)` is stable and injection-free.
+
 function operatingSystem(os: typeof Deno.build.os): OperatingSystem
   The operating system as a Zuke {@link OperatingSystem}: `darwin` becomes
   `macos`, `windows` stays `windows`, and every other Unix (`linux`, the BSDs,
@@ -373,6 +378,11 @@ function parameter(description?: string): Parameter<string, string | undefined>
   `.number()`/`.boolean()` change the kind, `.options(...)` restricts a string,
   `.default(v)`/`.required()` set optionality, and `.env(name)` overrides the
   environment variable.
+
+function parseDuration(value: string | number): number
+  Parse a duration to milliseconds. Accepts a number (already milliseconds) or a
+  string of a non-negative amount and a unit — `ms`, `s`, `m`, `h`, or `d`
+  (e.g. `"90s"`, `"4h"`, `"1.5h"`). Throws a friendly error on anything else.
 
 function plan(root: TargetBuilder): TargetBuilder[]
   Topologically sort the execution set for `root`, honouring hard dependencies
@@ -768,6 +778,12 @@ class FileSystemStateStore implements StateStore
     Publish `record` under an exclusive lock, guarding the expected version.
   async listRuns(query: RunQuery): Promise<RunSummary[]>
     List runs matching `query`, newest first. Unreadable files are skipped.
+  async acquireLock(key: string, holder: LockHolder, ttlMs: number): Promise<LockResult>
+    Atomically acquire the lock `key` for `holder`, taking over if expired.
+  async renewLock(key: string, token: string, ttlMs: number): Promise<boolean>
+    Extend the lock `key` held under `token`; `false` if the token lost it.
+  async releaseLock(key: string, token: string): Promise<void>
+    Release the lock `key` if still held under `token`; a no-op otherwise.
 
 class GraphError extends Error
   Raised when the build graph is invalid (cycle or unknown dependency).
@@ -833,6 +849,51 @@ class HttpStateStore implements StateStore
     `PUT /runs/:id` guarded by `If-Match` / `If-None-Match`; `412` → conflict.
   async listRuns(query: RunQuery): Promise<RunSummary[]>
     `GET /runs?status=&target=&since=` → an array of {@link RunSummary}.
+  async acquireLock(key: string, holder: LockHolder, ttlMs: number): Promise<LockResult>
+    `POST /locks/:key` → `201 { token }`, or `409` with the current holder.
+  async renewLock(key: string, token: string, ttlMs: number): Promise<boolean>
+    `PUT /locks/:key` renews; a `409`/`404` means the token lost the lock.
+  async releaseLock(key: string, token: string): Promise<void>
+    `DELETE /locks/:key` releases; a missing lock (`404`) is not an error.
+
+class LockConflictError extends Error
+  Raised when a target's lock is already held by another run. Its `message` is
+  the rendered guidance (from the target's `onConflict`, else a default), so it
+  surfaces verbatim in the CLI failure footer and the run record; `holder`
+  carries the structured identity for programmatic surfaces (e.g. MCP).
+
+  constructor(readonly holder: LockHolder, guidance: string)
+    Build the error from the current holder and the rendered guidance.
+  override name: string
+    The error name.
+
+class LockSettings
+  Fluent configuration for {@link TargetBuilder.lock}, in the settings-lambda
+  style: `.lock((s) => s.lockKey("deploy", repo).withTtl("4h"))`. Set the key
+  (composed from sanitised parts with {@link LockSettings.lockKey}, or directly
+  with {@link LockSettings.key}), the {@link LockSettings.withTtl | TTL}, and an
+  optional {@link LockSettings.onConflict} message. The lambda runs after
+  parameters resolve, so the key may read `this.<param>.value`.
+
+  key_?: string
+    The resolved lock key; set by {@link key} or {@link lockKey}.
+  ttl_?: string | number
+    The TTL (a duration string or milliseconds); set by {@link withTtl}.
+  onConflict_?: (holder: LockHolder) => string
+    The conflict-guidance renderer; set by {@link onConflict}.
+  lockKey(...parts: Array<string | number>): this
+    Set the lock key from parts, sanitised and joined via
+    {@link "./state/lock.ts".lockKey} — e.g. `s.lockKey("deploy", repo)`.
+  key(key: string): this
+    Set the lock key directly (must be filename-safe; prefer {@link lockKey}).
+  withTtl(ttl: string | number): this
+    How long the lock survives a killed holder — a duration string like `"4h"`
+    / `"30m"` (see the duration parser) or raw milliseconds. A live holder
+    renews it while it runs, so it never expires under it.
+  onConflict(render: (holder: LockHolder) => string): this
+    Render the guidance shown to a run that loses the lock. Receives the
+    current {@link "./state/lock.ts".LockHolder}; the returned string becomes
+    the failure message. Defaults to a generic "held by … then retry" line.
 
 class Parameter<K extends ParamValue = ParamValue, T extends K | K[] | undefined = K | undefined> implements AnyParameter
   A typed build parameter. Declare one with {@link parameter} and configure it
@@ -1044,6 +1105,8 @@ class TargetBuilder
     Remediations run after the body fails (set by {@link recoverWith}).
   recoverAttempts_: number
     Max fix-then-rerun cycles when the body fails (set by {@link recoverAttempts}).
+  lock_?: Configure<LockSettings>
+    Cross-run lock settings lambda, set by {@link lock} and run after params resolve.
   description(text: string): this
     Set the human-readable description shown in `zuke --list`.
   dependsOn(...targets: Array<TargetBuilder | Group>): this
@@ -1157,6 +1220,28 @@ class TargetBuilder
     and {@link recoverWith} remediations are configured (default 1). Each cycle
     runs every remediation, then re-runs the body once; the count bounds how
     many times that repeats before the failure is final. Clamped to at least 1.
+  lock(configure: Configure<LockSettings>): this
+    Hold a cross-run lock while this target runs: only one run may hold
+    `key` at a time, so a second run that tries to acquire it fails with a
+    {@link "./state/lock.ts".LockConflictError} naming the current holder. The
+    lock is released when the target settles — success, failure, or
+    cancellation — and expires after `options.ttl` as a backstop should the
+    holder be killed (a live holder renews it as it runs).
+
+    `key` may be a thunk, evaluated after parameters resolve, so it can depend
+    on `this.<param>.value`; compose composite keys with
+    {@link "./state/lock.ts".lockKey}. Requires a state store (a build that
+    uses `.lock()` gets a `.zuke/runs` filesystem store by default).
+
+    ```ts
+    promote = target()
+      .lock((s) =>
+        s.lockKey("deploy", this.repo.value)
+          .withTtl("4h")
+          .onConflict((h) =>
+            `${this.repo.value} is being deployed by ${h.actor} (run ${h.runId}).`))
+      .executes(...);
+    ```
 
 class TeamsAnnouncementSettings extends AnnouncementSettings
   Fluent settings for {@link AnnounceTasksApi.teams}. Bot mode
@@ -1745,6 +1830,18 @@ interface InstallReleaseOptions
     own hash — so pass a resolver `(platform) => string` (like `url`) to pin a
     checksum per platform, or a plain string when a single artifact is installed.
 
+interface LockHolder
+  Who holds a lock — surfaced to the loser of a conflict so it can act.
+
+  actor: string
+    The actor that acquired the lock.
+  runId: string
+    The run that holds it (`zuke cancel <runId>` releases it).
+  since: string
+    ISO-8601 timestamp when it was acquired.
+  runUrl?: string
+    A link to the holding run (e.g. its CI job), when known.
+
 interface OpenCacheOptions
   Optional extras for {@link openCache}: a remote store and a warning sink.
 
@@ -2008,6 +2105,8 @@ interface StateHost
     The entry names in a directory, or `[]` when the directory is absent.
   mkdirp(path: string): Promise<void>
     Create a directory and any missing parents.
+  now(): number
+    The current time in epoch milliseconds — the clock for lock expiry (injectable for tests).
 
 interface StateStore
   Pluggable persistence for run records. `version` is an opaque token (an ETag
@@ -2023,6 +2122,16 @@ interface StateStore
     the stored version has moved on — the caller re-reads and retries.
   listRuns(query: RunQuery): Promise<RunSummary[]>
     List runs matching `query`, newest first (by `createdAt`, then `id`).
+  acquireLock(key: string, holder: LockHolder, ttlMs: number): Promise<LockResult>
+    Atomically acquire the lock `key` for `holder`, expiring after `ttlMs`. An
+    expired lock is taken over. Returns a `token` on success, or the current
+    holder when the lock is live.
+  renewLock(key: string, token: string, ttlMs: number): Promise<boolean>
+    Extend the lock `key` held under `token` by another `ttlMs`. Returns `false`
+    if the token no longer owns it (expired and taken over), so a heartbeat can
+    detect a lost lock.
+  releaseLock(key: string, token: string): Promise<void>
+    Release the lock `key` if still held under `token`; a no-op otherwise.
 
 interface Style
   How a run renders its output.
@@ -2169,6 +2278,10 @@ type DownloadFn = (url: string, dest: PathLike) => Promise<void>
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue; }
   A JSON-serialisable value — the only thing that may be persisted in a
   target's {@link TargetStateHandle}, since run state is stored as JSON.
+
+type LockResult = { ok: true; token: string; } | { ok: false; holder: LockHolder; }
+  The result of {@link StateStore.acquireLock}: a `token` proving ownership, or
+  the current `holder` when the lock is already held.
 
 type OperatingSystem = "linux" | "macos" | "windows"
   The operating systems Zuke recognises — Deno's raw `Deno.build.os` values
