@@ -70,6 +70,7 @@ export class RunStateWriter {
   private constructor(
     store: StateStore,
     record: RunRecord,
+    version: string | null,
     now: () => string,
     redactor: Redactor,
     warn?: (message: string) => void,
@@ -79,7 +80,7 @@ export class RunStateWriter {
     this.#now = now;
     this.#redactor = redactor;
     this.#warn = warn;
-    this.#version = null; // no stored version yet; the first write creates it
+    this.#version = version;
   }
 
   /**
@@ -94,9 +95,26 @@ export class RunStateWriter {
     redactor: Redactor,
     warn?: (message: string) => void,
   ): Promise<RunStateWriter> {
-    const writer = new RunStateWriter(store, record, now, redactor, warn);
+    // version null → the first write is a create.
+    const writer = new RunStateWriter(store, record, null, now, redactor, warn);
     await writer.#update(() => {});
     return writer;
+  }
+
+  /**
+   * Wrap an **existing** record at its current `version` without writing — for
+   * resuming a run whose transition to `running` already landed. Subsequent
+   * transitions continue from that version.
+   */
+  static adopt(
+    store: StateStore,
+    record: RunRecord,
+    version: string,
+    now: () => string,
+    redactor: Redactor,
+    warn?: (message: string) => void,
+  ): RunStateWriter {
+    return new RunStateWriter(store, record, version, now, redactor, warn);
   }
 
   /** The current run id. */
@@ -130,6 +148,8 @@ export class RunStateWriter {
       target.status = recorded;
       target.endedAt = at;
       if (message !== undefined) target.error = message;
+      // A settled target is no longer waiting (e.g. a gate satisfied on resume).
+      delete target.waitingFor;
     });
   }
 

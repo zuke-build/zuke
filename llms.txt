@@ -45,6 +45,7 @@ Reserved commands:
 - `generate-ci` — Write declared CI configuration files
 - `completions` — Print a shell-completion script
 - `mcp` — Run an MCP server over the build (for AI agents)
+- `resume` — Resume a suspended run (or --check all suspended runs)
 
 Option flags:
 
@@ -60,7 +61,10 @@ Option flags:
 - `--actor` — Attribute the run to <name> in its state record
 - `--output` — Graph output format: text or html
 - `--no-open` — With --output=html, do not open a browser
-- `--check` — With generate-ci, verify files are current
+- `--check` — With generate-ci verify files; with resume re-check suspended runs
+- `--signal` — With resume, deliver a named external signal
+- `--data` — With resume --signal, the signal's JSON payload
+- `--force-graph` — With resume, continue even if the build graph changed
 - `--allow-run` — With mcp, let agents execute targets (not just inspect)
 - `--help` — Show usage
 

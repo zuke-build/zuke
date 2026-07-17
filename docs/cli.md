@@ -16,6 +16,8 @@
 | `zuke completions print <shell>`    | Print a shell-completion script (`bash`, `zsh`, or `fish`).    |
 | `zuke completions install <shell>`  | Write the script and wire it into the shell's startup.         |
 | `zuke mcp [--allow-run]`            | Run an MCP server over the build for AI agents ([details](./mcp.md)). |
+| `zuke resume <id> [--signal <n>] [--data <json>]` | Resume a suspended run, optionally delivering a signal ([details](./orchestration.md)). |
+| `zuke resume --check [<id>]`        | Re-check suspended runs (predicate waits, timeouts).           |
 | `zuke --help` / `-h`                | Usage.                                                         |
 | `zuke` (no target)                  | Run the `default` target if defined, else print `--list`.      |
 
@@ -237,3 +239,14 @@ build's `stateStore()` override. A plain run with none of these writes nothing.
 See [Durable run state](./state.md) for the record shape, `ctx.state`, the
 pluggable backends, and the [HTTP API](./state-api.md) for hosting a production
 store.
+
+## Resuming suspended runs
+
+A run parked at a [`.waitsFor()`](./orchestration.md) gate is continued with
+`zuke resume`. `--signal <name>` delivers a named external signal (with an
+optional `--data <json>` payload); `--check [<run-id>]` re-checks predicate waits
+and enforces timeouts across suspended runs (the cron/webhook entry point).
+Resumption is **exactly-once** — concurrent resumers race a compare-and-swap and
+all but one get `AlreadyResumedError` — and re-runs only the targets that hadn't
+yet succeeded. `--force-graph` continues even if the build graph changed since
+the run was suspended. See [Orchestration](./orchestration.md).

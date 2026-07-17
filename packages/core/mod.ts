@@ -82,7 +82,18 @@ export {
   type ChangedFilesFn,
   gitChangedFiles,
 } from "./src/affected.ts";
-export { execute, type ExecuteOptions, type Reporter } from "./src/executor.ts";
+export {
+  execute,
+  type ExecuteOptions,
+  type Reporter,
+  type ResumeState,
+} from "./src/executor.ts";
+export {
+  AlreadyResumedError,
+  resumeCheck,
+  type ResumeOptions,
+  resumeRun,
+} from "./src/resume.ts";
 export {
   defaultRenderer,
   type Renderer,

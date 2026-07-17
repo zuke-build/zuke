@@ -16,7 +16,7 @@ import {
   type GraphHost,
 } from "./graph_view.ts";
 import { type AnyParameter, discoverParameters, flagName } from "./params.ts";
-import type { TargetBuilder } from "./target.ts";
+import type { JsonValue, TargetBuilder } from "./target.ts";
 import type { Plugin } from "./plugin.ts";
 import {
   COMPLETION_SHELLS,
@@ -30,8 +30,10 @@ import {
   GENERATE_CI_COMMAND,
   GRAPH_COMMAND,
   MCP_COMMAND,
+  RESUME_COMMAND,
 } from "./cli_spec.ts";
 import { serveMcp } from "./mcp/command.ts";
+import { resumeCheck, resumeRun } from "./resume.ts";
 import {
   installCompletions,
   type InstallOptions,
@@ -109,6 +111,16 @@ export interface ParsedArgs {
   state: boolean;
   /** Attribute the run to this actor in its state record (`--actor <name>`). */
   actor?: string;
+  /** The `resume` command was requested (continue a suspended run). */
+  resume: boolean;
+  /** The run id to resume (the positional after `resume`). */
+  resumeRunId?: string;
+  /** Deliver this external signal on resume (`--signal <name>`). */
+  signal?: string;
+  /** The signal's JSON payload (`--data <json>`). */
+  data?: string;
+  /** Continue a resume even if the build graph changed (`--force-graph`). */
+  forceGraph: boolean;
   /** Raw parameter values from declared flags, keyed by property name. */
   values: Record<string, string>;
   help: boolean;
@@ -146,6 +158,8 @@ export function parseArgs(
     affected: false,
     dryRun: false,
     state: false,
+    resume: false,
+    forceGraph: false,
     help: false,
   };
   const byFlag = new Map<string, ParamFlag>();
@@ -177,6 +191,18 @@ export function parseArgs(
       if (who) parsed.actor = who;
     } else if (arg.startsWith("--actor=")) {
       parsed.actor = arg.slice("--actor=".length);
+    } else if (arg === "--signal") {
+      const name = args[++i];
+      if (name) parsed.signal = name;
+    } else if (arg.startsWith("--signal=")) {
+      parsed.signal = arg.slice("--signal=".length);
+    } else if (arg === "--data") {
+      const json = args[++i];
+      if (json !== undefined) parsed.data = json;
+    } else if (arg.startsWith("--data=")) {
+      parsed.data = arg.slice("--data=".length);
+    } else if (arg === "--force-graph") {
+      parsed.forceGraph = true;
     } else if (arg === "--check") {
       parsed.check = true;
     } else if (arg === "--allow-run") {
@@ -220,14 +246,18 @@ export function parseArgs(
     } else if (parsed.completions && parsed.shell === undefined) {
       // ...then the shell name.
       parsed.shell = arg;
+    } else if (parsed.resume && parsed.resumeRunId === undefined) {
+      // `resume` takes the run id as its positional.
+      parsed.resumeRunId = arg;
     } else if (
       parsed.target === undefined && !parsed.graph && !parsed.generateCi &&
-      !parsed.completions && !parsed.mcp
+      !parsed.completions && !parsed.mcp && !parsed.resume
     ) {
       if (arg === GRAPH_COMMAND) parsed.graph = true;
       else if (arg === GENERATE_CI_COMMAND) parsed.generateCi = true;
       else if (arg === COMPLETIONS_COMMAND) parsed.completions = true;
       else if (arg === MCP_COMMAND) parsed.mcp = true;
+      else if (arg === RESUME_COMMAND) parsed.resume = true;
       else parsed.target = arg;
     }
   }
@@ -248,6 +278,8 @@ Usage:
   deno run -A zuke.ts generate-ci [--check]
   deno run -A zuke.ts completions <install|print> <bash|zsh|fish>
   deno run -A zuke.ts mcp [--allow-run]
+  deno run -A zuke.ts resume <run-id> [--signal <name>] [--data <json>]
+  deno run -A zuke.ts resume --check [<run-id>]
 
 Options:
   <target>          Run the target and its transitive dependencies.
@@ -293,6 +325,14 @@ Options:
                     --allow-run to let agents execute targets too.
   --allow-run       With mcp, allow agents to execute targets, not just
                     inspect them.
+  resume            Continue a suspended run (a .waitsFor() gate). Exactly one
+                    resumer wins; the rest report "already resumed". With
+                    --check [<run-id>] it re-checks suspended runs (predicate
+                    waits, timeouts) — the cron/webhook entry point.
+  --signal <name>   With resume, deliver a named external signal to the run.
+  --data <json>     With resume --signal, the signal's JSON payload (default {}).
+  --force-graph     With resume, continue even if the build graph changed since
+                    the run was suspended.
   --<param> <val>   Set a declared build parameter (see Parameters below).
   --help, -h        Show this help.`;
 
@@ -455,6 +495,67 @@ async function installCompletionScript(
  * 1 failure). Does not call `Deno.exit`, so it is unit-testable; {@link run}
  * wraps it. Output goes through `console` unless `execute` options say otherwise.
  */
+/** Largest accepted `--data` payload, guarding the run record against bloat. */
+const MAX_SIGNAL_DATA_BYTES = 64 * 1024;
+
+/**
+ * Parse a `--data` JSON payload. Its *shape* is intentionally free-form (the
+ * build interprets its own signals, like parameters), but its size is capped so
+ * a webhook forwarding a large body can't bloat the persisted run record.
+ */
+function parseSignalData(raw: string | undefined): JsonValue | undefined {
+  if (raw === undefined) return undefined;
+  if (raw.length > MAX_SIGNAL_DATA_BYTES) {
+    throw new Error(
+      `resume: --data payload is too large (${raw.length} bytes; ` +
+        `max ${MAX_SIGNAL_DATA_BYTES}).`,
+    );
+  }
+  try {
+    return JSON.parse(raw);
+  } catch {
+    // Don't echo the (possibly large or sensitive) payload back.
+    throw new Error("resume: --data is not valid JSON.");
+  }
+}
+
+/** Run the `resume` command: continue a suspended run, or `--check` all of them. */
+async function runResume(build: Build, parsed: ParsedArgs): Promise<number> {
+  try {
+    if (parsed.check) {
+      const { checked, failed } = await resumeCheck(build, {
+        runId: parsed.resumeRunId,
+        params: parsed.values,
+        actor: parsed.actor,
+        forceGraph: parsed.forceGraph,
+      });
+      console.log(`Checked ${checked} suspended run(s); ${failed} failed.`);
+      return failed > 0 ? 1 : 0;
+    }
+    if (parsed.resumeRunId === undefined) {
+      console.error(
+        "Usage: zuke resume <run-id> [--signal <name>] [--data <json>]  |  " +
+          "zuke resume --check [<run-id>]",
+      );
+      return 1;
+    }
+    const result = await resumeRun(build, {
+      runId: parsed.resumeRunId,
+      signal: parsed.signal,
+      data: parseSignalData(parsed.data),
+      params: parsed.values,
+      actor: parsed.actor,
+      forceGraph: parsed.forceGraph,
+    });
+    return result.ok ? 0 : 1;
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    // A lost resume race (AlreadyResumedError) and any other failure both exit
+    // non-zero; the message tells the operator what happened.
+    return 1;
+  }
+}
+
 export async function main(
   BuildClass: new () => Build,
   args: string[],
@@ -525,6 +626,9 @@ export async function main(
   }
   if (parsed.mcp) {
     return await serveMcp(build, { allowRun: parsed.allowRun });
+  }
+  if (parsed.resume) {
+    return await runResume(build, parsed);
   }
 
   let name = parsed.target;

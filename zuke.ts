@@ -530,9 +530,12 @@ class ZukeBuild extends Build {
       // Dismissed false positives, kept auditable under "Suppressed": a build's
       // own readiness probe / tcpReachable run build-author code that connects
       // to an address the author typed — no more capability than any other line
-      // in the build file, and no untrusted input. (IDs are opaque fingerprints.)
+      // in the build file, and no untrusted input. `1xwg7am` is AlreadyResumedError
+      // naming the `--actor` that won a resume race — operator attribution by
+      // design (like LockConflictError naming the holder), not a secret leak.
+      // (IDs are opaque fingerprints.)
       // cspell:ignore myee
-      .suppress(suppressions((s) => s.add("1g3myee", "1mwn3kn")))
+      .suppress(suppressions((s) => s.add("1g3myee", "1mwn3kn", "1xwg7am")))
       .failWhen((g) => g.scoreAbove(8))
       .onError("warn")
   );

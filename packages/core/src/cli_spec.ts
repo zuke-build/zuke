@@ -32,6 +32,9 @@ export const COMPLETIONS_COMMAND = "completions";
 /** The `mcp` command: run an MCP server over the build (for AI agents). */
 export const MCP_COMMAND = "mcp";
 
+/** The `resume` command: continue a suspended run (external-event waits). */
+export const RESUME_COMMAND = "resume";
+
 /** Every reserved command, in help and completion order. */
 export const RESERVED_COMMANDS: readonly ReservedCommand[] = [
   { name: GRAPH_COMMAND, description: "Show the dependency graph" },
@@ -43,6 +46,10 @@ export const RESERVED_COMMANDS: readonly ReservedCommand[] = [
   {
     name: MCP_COMMAND,
     description: "Run an MCP server over the build (for AI agents)",
+  },
+  {
+    name: RESUME_COMMAND,
+    description: "Resume a suspended run (or --check all suspended runs)",
   },
 ];
 
@@ -88,7 +95,20 @@ export const BUILTIN_FLAGS: readonly BuiltinFlag[] = [
   },
   {
     name: "--check",
-    description: "With generate-ci, verify files are current",
+    description:
+      "With generate-ci verify files; with resume re-check suspended runs",
+  },
+  {
+    name: "--signal",
+    description: "With resume, deliver a named external signal",
+  },
+  {
+    name: "--data",
+    description: "With resume --signal, the signal's JSON payload",
+  },
+  {
+    name: "--force-graph",
+    description: "With resume, continue even if the build graph changed",
   },
   {
     name: "--allow-run",

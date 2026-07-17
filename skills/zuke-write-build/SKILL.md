@@ -105,8 +105,10 @@ Before calling any task or settings method, confirm the real shape:
   makes a target a **gate** with no body: the run proceeds past it only when the
   trigger is satisfied, otherwise it **suspends** (state saved, exits 0) to be
   resumed later in a fresh process. Triggers: `externalSignal(name)` (payload
-  read via `ctx.signals`) and `resumeWhen(predicate)`. Needs a state store. See
-  the cheatsheet / `docs/orchestration.md`.
+  read via `ctx.signals`) and `resumeWhen(predicate)`. Continue it with
+  `zuke resume <id> --signal <name> [--data <json>]` (or `--check` for predicate
+  waits/timeouts) — exactly-once, re-running only the not-yet-succeeded targets.
+  Needs a state store. See the cheatsheet / `docs/orchestration.md`.
 - **Typed inputs:** `parameter("...")` (with `.secret()` / `.required()`), read
   as `this.x.value`, gated with `.requires(this.x)`.
 - **Secrets from a manager:** `parameter(...).secret().from(source)` sources a

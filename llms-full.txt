@@ -389,6 +389,25 @@ async function restoreOutputs(artifact: Uint8Array, host: OutputHost): Promise<s
   rejected before anything is written, so a malicious archive can't plant files
   outside the current directory.
 
+async function resumeCheck(build: Build, options: Omit<ResumeOptions, "runId" | "signal" | "data"> & { runId?: string; }): Promise<{ checked: number; failed: number; }>
+  Re-attempt every suspended run in the store (or just `runId`): predicate-based
+  waits are re-evaluated and expired waits time out. Signal-based waits with no
+  new signal simply re-suspend. Returns the number of runs that ended in
+  failure. This is the sweep a cron or webhook drives (`zuke resume --check`).
+
+async function resumeRun(build: Build, options: ResumeOptions): Promise<BuildResult>
+  Resume the suspended run `options.runId` for `build`. Transitions it to
+  `running` (exactly one resumer wins), optionally delivers a signal, checks the
+  graph still matches, and continues via {@link "./executor.ts".execute},
+  re-running only the not-yet-succeeded targets.
+
+  @throws {AlreadyResumedError}
+      if another process already resumed it.
+
+  @throws
+      if the run does not exist, is not suspended, the build lacks its root
+      target, or the graph drifted (unless {@link ResumeOptions.forceGraph}).
+
 function resumeWhen(check: () => boolean | Promise<boolean>, options: ResumeWhenOptions): WaitTrigger
   A trigger satisfied when an async `check` predicate returns `true`. Zuke does
   not poll on its own — the predicate is evaluated when the target is reached
@@ -480,6 +499,14 @@ const defaultRenderer: Renderer
 
 const defaultStateHost: StateHost
   The real, `Deno`-backed {@link StateHost}.
+
+class AlreadyResumedError extends Error
+  Raised when a run has already been resumed by another process.
+
+  constructor(readonly runId: string, readonly by: string, readonly at: string)
+    Build the error from the run id and who is already running it.
+  override name: string
+    The error name.
 
 class AnnounceError extends Error
   Raised when an announcement is run before it is fully configured.
@@ -1694,6 +1721,12 @@ interface ExecuteOptions
   actor?: string
     Who to attribute the run to in its state record (CLI `--actor`). Falls back
     to `ZUKE_ACTOR`, then the CI actor, then `"anonymous"`.
+  resume?: ResumeState
+    Continue a suspended run instead of starting a fresh one. Set by
+    {@link "./resume.ts".resumeRun} after it has transitioned the run to
+    `running`; carries the existing record, its store version, and the targets
+    already succeeded (which are not re-run). Not for direct use — call
+    `resumeRun`.
 
 interface FanOutOptions
   Options for {@link fanOutPipeline}: how a build's targets become parallel CI
@@ -1986,6 +2019,42 @@ interface ResolveStateOptions
     Fall back to the default filesystem store when nothing else is configured.
     Set when the run opts into durable state (`--state`, or — from a later
     milestone — a durable feature like a lock or a wait).
+
+interface ResumeOptions
+  Options for {@link resumeRun}.
+
+  runId: string
+    The id of the suspended run to resume.
+  stateStore?: StateStore | false
+    Durable store the run lives in. Defaults to the same resolution as a normal
+    run (explicit → `stateStore()` override → env → `.zuke/runs`); resume always
+    needs one.
+  signal?: string
+    Deliver a signal by this name before resuming (satisfies `externalSignal`).
+  data?: JsonValue
+    The signal's JSON payload (defaults to `{}`); ignored without {@link signal}.
+  params?: Record<string, string>
+    Non-secret parameter overrides; the rest come from the record.
+  readEnv?: (name: string) => string | undefined
+    Reads an environment variable (secrets re-resolve from here).
+  actor?: string
+    Who to attribute the resumption to (stamped on the run).
+  forceGraph?: boolean
+    Continue even if the build graph changed since the run was suspended.
+  silent?: boolean
+    Suppress banner/summary output.
+  reporter?: Reporter
+    Custom reporter; overrides `silent`.
+
+interface ResumeState
+  The continuation state {@link resumeRun} hands to {@link execute} on a resume.
+
+  record: RunRecord
+    The run being continued (already transitioned to `running`).
+  version: string
+    Its current store version, for the writer to continue from.
+  done: ReadonlySet<string>
+    Names of targets recorded `succeeded` — seeded as done, never re-run.
 
 interface ResumeWhenOptions
   Options for {@link resumeWhen}.
