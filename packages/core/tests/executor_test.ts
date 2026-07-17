@@ -34,6 +34,8 @@ import {
 } from "../src/executor.ts";
 import type { Plugin } from "../src/plugin.ts";
 import { $ } from "../src/shell.ts";
+import { FileSystemStateStore } from "../src/state/fs_store.ts";
+import { defaultStateHost } from "../src/state/store.ts";
 
 const silent: ExecuteOptions = { silent: true };
 
@@ -1756,4 +1758,63 @@ Deno.test("a pre-aborted options.signal aborts the context signal", async () => 
   });
   assertEquals(sawAborted, true);
   assertEquals(result.ok, true); // no shell command to kill, so the body succeeds
+});
+
+Deno.test("a run with a state store reconstructs full status from disk", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+    const log: string[] = [];
+    class B extends Build {
+      token = parameter("api token").secret();
+      env = parameter("environment");
+      prep = target().executes(() => void log.push("prep"));
+      deploy = target().dependsOn(this.prep).executes(async (ctx) => {
+        await ctx.state.set({ where: "sit-7" });
+      });
+    }
+    const b = new B();
+    discoverTargets(b);
+
+    const result = await execute(b, b.deploy, {
+      silent: true,
+      stateStore: store,
+      params: { token: "swordfish", env: "sit" },
+    });
+    assertEquals(result.ok, true);
+
+    // A fresh store over the same directory reconstructs the run from disk alone.
+    const fresh = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+    const summaries = await fresh.listRuns({});
+    assertEquals(summaries.length, 1);
+    const loaded = await fresh.getRun(summaries[0].id);
+    assertEquals(loaded?.record.status, "succeeded");
+    assertEquals(loaded?.record.build, "B");
+    assertEquals(loaded?.record.rootTarget, "deploy");
+    assertEquals(loaded?.record.targets.prep.status, "succeeded");
+    assertEquals(loaded?.record.targets.deploy.status, "succeeded");
+    // The running transition landed (startedAt stamped) ...
+    assertEquals(typeof loaded?.record.targets.deploy.startedAt, "string");
+    // ... ctx.state was persisted ...
+    assertEquals(loaded?.record.targets.deploy.meta.where, "sit-7");
+    // ... and the secret parameter was excluded from the record.
+    assertEquals(loaded?.record.params, { env: "sit" });
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("with no state store, ctx.state is an in-memory no-op", async () => {
+  let readBack: unknown;
+  class B extends Build {
+    a = target().executes(async (ctx) => {
+      await ctx.state.set({ k: "v" });
+      readBack = ctx.state.get().k;
+    });
+  }
+  const b = new B();
+  discoverTargets(b);
+  const result = await execute(b, b.a, silent); // no stateStore
+  assertEquals(result.ok, true);
+  assertEquals(readBack, "v"); // visible within the run, persisted nowhere
 });

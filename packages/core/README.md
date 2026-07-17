@@ -212,6 +212,12 @@ function envCacheStore(readEnv: (name: string) => string | undefined): RemoteCac
   `ZUKE_REMOTE_CACHE_TOKEN`) selects an {@link HttpCacheStore}; otherwise
   `ZUKE_REMOTE_CACHE_DIR` selects a {@link FileSystemCacheStore}.
 
+function envStateStore(readEnv: (name: string) => string | undefined, host: StateHost): StateStore | undefined
+  Resolve a {@link StateStore} from the environment, or `undefined` when none is
+  configured. `ZUKE_STATE_URL` (with an optional `ZUKE_STATE_TOKEN`) selects an
+  {@link HttpStateStore}; otherwise `ZUKE_STATE_DIR` selects a
+  {@link FileSystemStateStore}.
+
 function envVarName(name: string): string
   The environment variable for a parameter: its path in SCREAMING_SNAKE_CASE.
 
@@ -407,6 +413,14 @@ function resolveRemoteStore(option: RemoteCacheStore | false | undefined, declar
   build's `remoteCache()` override), then the {@link envCacheStore} environment
   fallback.
 
+function resolveStateStore(option: StateStore | false | undefined, declared: StateStore | undefined, options: ResolveStateOptions): StateStore | undefined
+  Pick the state store for a run by precedence: an explicit `option` wins
+  (`false` disables state entirely), then a `declared` store (a build's
+  `stateStore()` override), then the {@link envStateStore} environment
+  fallback, then — only when {@link ResolveStateOptions.enableDefault} — a
+  filesystem store under `<root>/.zuke/runs`. A plain build with no durable
+  feature and no configuration gets `undefined`, so it carries zero overhead.
+
 async function restoreOutputs(artifact: Uint8Array, host: OutputHost): Promise<string[]>
   Restore the files in `artifact` (a gzipped tar produced by
   {@link archiveOutputs}) to disk, returning the paths written. Entry names are
@@ -496,6 +510,9 @@ const ToolTasks: ToolTasksApi
 
 const defaultRenderer: Renderer
   The built-in renderer: Zuke's ruled headers and summary table.
+
+const defaultStateHost: StateHost
+  The real, `Deno`-backed {@link StateHost}.
 
 class AnnounceError extends Error
   Raised when an announcement is run before it is fully configured.
@@ -636,6 +653,21 @@ class Build
       build = target().inputs("src").outputs("dist").executes(...);
     }
     ```
+  stateStore(): StateStore | undefined
+    The {@link "./state/store.ts".StateStore} that persists this build's run
+    records. Override to declare one in code; the default is none, and — unless
+    overridden — the executor falls back to the `ZUKE_STATE_URL` /
+    `ZUKE_STATE_DIR` environment variables, then (only when the run opts into
+    durable state) a filesystem store under `<root>/.zuke/runs`.
+
+    ```ts
+    class CD extends Build {
+      override stateStore() {
+        return new HttpStateStore({ url: this.stateUrl.value, token: this.stateToken.value });
+      }
+      deploy = target().executes(async (ctx) => { await ctx.state.set({ at: "sit-7" }); });
+    }
+    ```
 
 class CiFile
   A declared CI file. Assign one (via {@link cicd}) to a build field and Zuke
@@ -716,6 +748,27 @@ class FileSystemCacheStore implements RemoteCacheStore
   async put(key: string, artifact: Uint8Array): Promise<void>
     Store `artifact` (a gzipped tar of a target's outputs) under `key`.
 
+class FileSystemStateStore implements StateStore
+  A {@link StateStore} that writes one `<id>.json` file per run under a
+  directory.
+
+  Security. `dir` is trusted configuration — the location you choose to
+  store run state (from `ZUKE_STATE_DIR`, `--state`, or an explicit store), the
+  same posture as {@link "../remote_cache.ts".FileSystemCacheStore}. The only
+  untrusted value that reaches a path is the run id, which is validated at
+  every point a path is built, so a traversal cannot be smuggled in through an
+  id.
+
+  constructor(dir: string, host: StateHost)
+    Build the store over `dir` (created on first write). Filesystem access goes
+    through `host`, which defaults to {@link defaultStateHost}.
+  async getRun(id: string): Promise<{ record: RunRecord; version: string; } | null>
+    Fetch a run and the content-hash version of its stored file.
+  async putRun(record: RunRecord, expectedVersion: string | null): Promise<PutResult>
+    Publish `record` under an exclusive lock, guarding the expected version.
+  async listRuns(query: RunQuery): Promise<RunSummary[]>
+    List runs matching `query`, newest first. Unreadable files are skipped.
+
 class GraphError extends Error
   Raised when the build graph is invalid (cycle or unknown dependency).
 
@@ -762,6 +815,24 @@ class HttpError extends Error
     Build the error from the failing response's status and URL.
   override name: string
     The error name.
+
+class HttpStateStore implements StateStore
+  A {@link StateStore} backed by HTTP.
+
+  Security. The `url` and `token` are trusted configuration — run
+  records (which include resolved non-secret parameters and target metadata)
+  are sent to that host, so point it only at a service you control and prefer a
+  {@link "../params.ts" | secret parameter} or environment variable over a
+  hard-coded value.
+
+  constructor(options: HttpStateStoreOptions)
+    Build the store from its URL, optional token, and `fetch` seam.
+  async getRun(id: string): Promise<{ record: RunRecord; version: string; } | null>
+    `GET /runs/:id` → record + `ETag`; a `404` is a miss.
+  async putRun(record: RunRecord, expectedVersion: string | null): Promise<PutResult>
+    `PUT /runs/:id` guarded by `If-Match` / `If-None-Match`; `412` → conflict.
+  async listRuns(query: RunQuery): Promise<RunSummary[]>
+    `GET /runs?status=&target=&since=` → an array of {@link RunSummary}.
 
 class Parameter<K extends ParamValue = ParamValue, T extends K | K[] | undefined = K | undefined> implements AnyParameter
   A typed build parameter. Declare one with {@link parameter} and configure it
@@ -1524,6 +1595,19 @@ interface ExecuteOptions
     as the shell's ambient default so an in-flight `$` command is terminated
     (SIGTERM) on cancellation. A body that ignores its signal still runs to completion —
     graph-level cancellation/compensation is a later milestone.
+  stateStore?: StateStore | false
+    Durable run state (see {@link "./state/store.ts".StateStore}). A supplied
+    store is used directly; `false` disables state entirely. When omitted, the
+    build's `stateStore()` override is used, falling back to `ZUKE_STATE_URL` /
+    `ZUKE_STATE_DIR`, and finally — only when {@link state} is set — a
+    filesystem store under `<root>/.zuke/runs`.
+  state?: boolean
+    Opt a plain build into durable state (CLI `--state`): fall back to a
+    `.zuke/runs` filesystem store when nothing else is configured. Ignored when
+    a store is resolved from {@link stateStore}, the build, or the environment.
+  actor?: string
+    Who to attribute the run to in its state record (CLI `--actor`). Falls back
+    to `ZUKE_ACTOR`, then the CI actor, then `"anonymous"`.
 
 interface FanOutOptions
   Options for {@link fanOutPipeline}: how a build's targets become parallel CI
@@ -1608,6 +1692,16 @@ interface HttpOptions
   fetch?: typeof fetch
     The `fetch` implementation to use. Defaults to the global `fetch`;
     override it to unit-test without network access.
+
+interface HttpStateStoreOptions
+  Configuration for an {@link HttpStateStore}.
+
+  url: string
+    The base URL run endpoints are built under (any trailing slash is ignored).
+  token?: string
+    A bearer token sent as `Authorization: Bearer <token>`, if set.
+  fetch?: typeof fetch
+    The `fetch` implementation; defaults to the global. Overridable for tests.
 
 interface InstallPlatform
   The host identity: a Zuke {@link OperatingSystem} and {@link Architecture}.
@@ -1781,6 +1875,28 @@ interface Reporter
   error(line: string): void
     Write an error line.
 
+interface ResolveStateOptions
+  Inputs {@link resolveStateStore} needs to build the default filesystem store.
+
+  readEnv: (name: string) => string | undefined
+    Reads an environment variable (injectable for tests).
+  host: StateHost
+    Filesystem effects for the default/env filesystem store.
+  defaultDir: string
+    Directory the default filesystem store writes to (`<root>/.zuke/runs`).
+  enableDefault: boolean
+    Fall back to the default filesystem store when nothing else is configured.
+    Set when the run opts into durable state (`--state`, or — from a later
+    milestone — a durable feature like a lock or a wait).
+
+interface RunGraphNode
+  One entry of a run's graph-shape snapshot.
+
+  name: string
+    The target's dotted name.
+  dependsOn: string[]
+    The dotted names of its direct dependencies.
+
 interface RunOptions
   Options for {@link run}.
 
@@ -1792,6 +1908,59 @@ interface RunOptions
     Renderer for the per-target banners and end-of-build summary. Defaults to
     Zuke's built-in look; inject `consoleRenderer` from `@zuke/console` (or a
     custom {@link Renderer}) to restyle a build's output.
+
+interface RunQuery
+  Filters for {@link "./store.ts".StateStore.listRuns}; all fields are optional.
+
+  status?: RunStatus
+    Keep only runs with this status.
+  target?: string
+    Keep only runs whose graph contains a target with this dotted name.
+  since?: string
+    Keep only runs created at or after this ISO-8601 timestamp.
+
+interface RunRecord
+  A versioned snapshot of one run. Persisted as JSON; a store's opaque
+  `version` (an ETag / content hash) drives compare-and-swap writes.
+
+  id: string
+    Unique run ID (matches {@link "../target.ts".TargetContext} `runId`).
+  build: string
+    The build class name.
+  rootTarget: string
+    The dotted name of the requested (root) target.
+  status: RunStatus
+    The run's lifecycle status.
+  actor: string
+    Who started the run (resolved from `--actor`, `ZUKE_ACTOR`, or CI env).
+  createdAt: string
+    ISO-8601 timestamp when the run was created.
+  updatedAt: string
+    ISO-8601 timestamp of the last write.
+  graph: RunGraphNode[]
+    The graph shape the run planned, in declaration order.
+  params: Record<string, string>
+    Resolved parameter values, keyed by name. Secrets are always omitted.
+  targets: Record<string, TargetRunState>
+    Per-target progress, keyed by dotted target name.
+
+interface RunSummary
+  A compact run listing row, returned by {@link "./store.ts".StateStore.listRuns}.
+
+  id: string
+    The run ID.
+  build: string
+    The build class name.
+  rootTarget: string
+    The dotted name of the requested (root) target.
+  status: RunStatus
+    The run's lifecycle status.
+  actor: string
+    Who started the run.
+  createdAt: string
+    ISO-8601 creation timestamp.
+  updatedAt: string
+    ISO-8601 timestamp of the last write.
 
 interface RunningService
   A started service the executor holds until it tears it down.
@@ -1819,6 +1988,42 @@ interface ServiceHandle
   stop(): void | Promise<void>
     Terminate the service. Called on teardown unless `.stop()` overrides it.
 
+interface StateHost
+  Injected filesystem effects for {@link "./fs_store.ts".FileSystemStateStore},
+  so it stays unit-testable. The default implementation is
+  {@link defaultStateHost}.
+
+  readText(path: string): Promise<string | null>
+    File contents, or `null` when the file does not exist.
+  writeText(path: string, content: string): Promise<void>
+    Write a file's contents, creating parent directories as needed.
+  rename(from: string, to: string): Promise<void>
+    Rename a file (used to publish a temp file atomically).
+  createExclusive(path: string): Promise<boolean>
+    Create `path` exclusively: resolve `true` if it was created, `false` if it
+    already existed. Used as an atomic lock marker.
+  remove(path: string): Promise<void>
+    Remove a file; a missing file is not an error.
+  listDir(path: string): Promise<string[]>
+    The entry names in a directory, or `[]` when the directory is absent.
+  mkdirp(path: string): Promise<void>
+    Create a directory and any missing parents.
+
+interface StateStore
+  Pluggable persistence for run records. `version` is an opaque token (an ETag
+  or content hash) used for optimistic concurrency: a write only lands if the
+  stored version still matches the one the writer last read, so two writers
+  racing at the same version cannot both win.
+
+  getRun(id: string): Promise<{ record: RunRecord; version: string; } | null>
+    Fetch a run and its current version, or `null` if it does not exist.
+  putRun(record: RunRecord, expectedVersion: string | null): Promise<PutResult>
+    Write `record` only if the stored version equals `expectedVersion` (`null`
+    meaning "must not exist yet"). Returns the new version, or a conflict when
+    the stored version has moved on — the caller re-reads and retries.
+  listRuns(query: RunQuery): Promise<RunSummary[]>
+    List runs matching `query`, newest first (by `createdAt`, then `id`).
+
 interface Style
   How a run renders its output.
 
@@ -1840,9 +2045,9 @@ interface TarEntry
 interface TargetContext
   The context passed to every target body. Optional to receive — an existing
   zero-argument `.executes(() => …)` stays valid, since a zero-argument
-  function is assignable to this one-parameter type — but a body that wants the run's
-  identity, a cancellation signal, or (in later milestones) durable state and
-  external-signal payloads reads them here.
+  function is assignable to this one-parameter type — but a body that wants the
+  run's identity, a cancellation signal, or durable per-target state reads them
+  here.
 
   readonly runId: string
     Unique ID of this run, stable for every target in the run.
@@ -1853,6 +2058,11 @@ interface TargetContext
     `signal`). Pass it to a shell command's `.signal()` to have that command
     terminated on cancellation; the executor also applies it as the shell's
     ambient default, so a plain `$` in the body is terminated too.
+  readonly state: TargetStateHandle
+    Durable per-target metadata. Persisted to the run's state store when one is
+    configured (see {@link "./state/store.ts".StateStore}), and an in-memory
+    no-op otherwise. The carrier for state that must survive across a
+    suspend/resume boundary — do not put secrets in it.
   readonly dryRun: boolean
     True when the run is a dry run (bodies do not execute under a dry run).
 
@@ -1865,6 +2075,35 @@ interface TargetReport
     The target's terminal status.
   ms: number
     The target's wall-clock duration in milliseconds.
+
+interface TargetRunState
+  The recorded progress of a single target.
+
+  status: TargetRunStatus
+    The target's current status within the run.
+  meta: Record<string, JsonValue>
+    Durable metadata written via {@link "../target.ts".TargetStateHandle}.
+  startedAt?: string
+    ISO-8601 timestamp when the body started, if it has.
+  endedAt?: string
+    ISO-8601 timestamp when the target settled, if it has.
+  error?: string
+    The failure message when `status` is `failed`.
+
+interface TargetStateHandle
+  A target's durable, per-target metadata, surfaced on {@link TargetContext} as
+  `state`. Writes are persisted to the run's state store (see
+  {@link "./state/store.ts".StateStore}) and are visible to later runs — e.g. a
+  resuming process reading what a suspended target recorded. When no store is
+  configured, the handle is an in-memory no-op scoped to the current run.
+
+  Never store a secret here — state is persisted in plain JSON and read
+  back by later runs and by `zuke runs show`.
+
+  set(patch: Record<string, JsonValue>): Promise<void>
+    Merge a JSON patch into this target's persisted metadata (awaits the write).
+  get(): Record<string, JsonValue>
+    Read this target's persisted metadata (from prior attempts/runs too).
 
 interface ToolTasksApi
   The task surface of {@link ToolTasks}.
@@ -1927,6 +2166,10 @@ type Condition = () => boolean | Promise<boolean>
 type DownloadFn = (url: string, dest: PathLike) => Promise<void>
   A download function: fetch `url` into the file at `dest`.
 
+type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue; }
+  A JSON-serialisable value — the only thing that may be persisted in a
+  target's {@link TargetStateHandle}, since run state is stored as JSON.
+
 type OperatingSystem = "linux" | "macos" | "windows"
   The operating systems Zuke recognises — Deno's raw `Deno.build.os` values
   normalised to a friendly set (notably `darwin` → `macos`). Used across the
@@ -1943,12 +2186,23 @@ type PathLike = string | AbsolutePath
   {@link AbsolutePath}. Anywhere a tool wrapper or build helper takes a path,
   it accepts a `PathLike` and coerces it to a string.
 
+type PutResult = { ok: true; version: string; } | { ok: false; conflict: true; }
+  The result of a {@link StateStore.putRun} compare-and-swap write.
+
+type RunStatus = "running" | "suspended" | "succeeded" | "failed" | "cancelled"
+  The lifecycle status of a whole run.
+
 type Target = TargetBuilder
   A configured target. Alias of {@link TargetBuilder} — the same object both
   builds and represents the target. Exposed as `Target` for use in signatures.
 
 type TargetFn = (ctx: TargetContext) => void | Promise<void>
   The executable body of a target. May be synchronous or asynchronous.
+
+type TargetRunStatus = "pending" | "running" | "waiting" | "succeeded" | "failed" | "skipped"
+  The status of one target within a run record. `waiting` (a suspended
+  external-event wait) is produced only from a later milestone; the executor
+  records the others.
 
 type TargetStatus = "passed" | "failed" | "skipped" | "cached"
   The outcome of a single target, reported in the summary and lifecycle hooks.

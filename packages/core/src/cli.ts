@@ -105,6 +105,10 @@ export interface ParsedArgs {
   affectedBase?: string;
   /** Print the plan without running any target bodies (`--dry-run`). */
   dryRun: boolean;
+  /** Persist durable run state to `.zuke/runs` when nothing else configures a store (`--state`). */
+  state: boolean;
+  /** Attribute the run to this actor in its state record (`--actor <name>`). */
+  actor?: string;
   /** Raw parameter values from declared flags, keyed by property name. */
   values: Record<string, string>;
   help: boolean;
@@ -141,6 +145,7 @@ export function parseArgs(
     values: {},
     affected: false,
     dryRun: false,
+    state: false,
     help: false,
   };
   const byFlag = new Map<string, ParamFlag>();
@@ -165,6 +170,13 @@ export function parseArgs(
       parsed.affectedBase = arg.slice("--affected=".length);
     } else if (arg === "--dry-run") {
       parsed.dryRun = true;
+    } else if (arg === "--state") {
+      parsed.state = true;
+    } else if (arg === "--actor") {
+      const who = args[++i];
+      if (who) parsed.actor = who;
+    } else if (arg.startsWith("--actor=")) {
+      parsed.actor = arg.slice("--actor=".length);
     } else if (arg === "--check") {
       parsed.check = true;
     } else if (arg === "--allow-run") {
@@ -251,6 +263,12 @@ Options:
                     changed file is under its declared inputs or a dependency is
                     affected; targets with no declared inputs always run.
   --dry-run         Print the execution plan without running target bodies.
+  --state           Persist durable run state under .zuke/runs (a run record
+                    with per-target status and metadata), unless a store is
+                    already configured via ZUKE_STATE_URL/ZUKE_STATE_DIR or the
+                    build's stateStore(). See docs/state.md.
+  --actor <name>    Attribute the run to <name> in its state record (else
+                    ZUKE_ACTOR, the CI actor, or "anonymous").
   --list, -l        List all targets with descriptions and dependencies.
   --json            With --list, print the build surface (commands, flags,
                     targets, parameters) as JSON for tools and agents.
@@ -545,6 +563,8 @@ export async function main(
     remoteCache: parsed.remoteCache === false ? false : undefined,
     affected: parsed.affected ? { base: parsed.affectedBase } : undefined,
     dryRun: parsed.dryRun,
+    state: parsed.state,
+    actor: parsed.actor,
     plugins: options.plugins,
     renderer: options.renderer,
   });

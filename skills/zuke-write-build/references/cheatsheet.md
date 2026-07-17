@@ -12,7 +12,7 @@ Everything is optional except a body (`.executes`).
 | --- | --- |
 | `.description(text)` | Summary shown in `--list`. |
 | `.dependsOn(...t)` | Hard prerequisites; run first, transitively. Pass `this.<field>`. |
-| `.executes(fn)` | The body. Sync or async. **Required.** |
+| `.executes(fn)` | The body. Sync or async. **Required.** `fn` may take a `TargetContext` (`(ctx) => …`); see below. |
 | `.before(...t)` / `.after(...t)` | Soft ordering — only reorders targets already in the plan; never pulls new ones in. |
 | `.triggers(...t)` | Pull targets into the plan and run them *after* this one. |
 | `.dependentFor(...t)` | Reverse of `dependsOn`: make this a prerequisite of others. |
@@ -99,6 +99,60 @@ The shell's `Command` gains `.spawn()` (starts without awaiting, returns a
 common case needs no explicit `.stop()`. `tcpReachable("host:port")` is the
 built-in "is the port up yet?" probe. Shares `dependsOn`/`before`/`after`/
 `description` with `target()`.
+
+## Target context — `ctx`
+
+A body may accept a `TargetContext`. Zero-argument bodies keep working — the
+parameter is optional.
+
+```ts
+deploy = target().executes(async (ctx) => {
+  ctx.runId; // stable id for the whole run
+  ctx.target; // "deploy"
+  ctx.signal; // AbortSignal, fired when the run is cancelled
+  ctx.dryRun; // true under a dry run
+  await ctx.state.set({ where: "sit-7" }); // durable metadata — see below
+});
+```
+
+**Cancellation.** When the run is cancelled, `ctx.signal` fires and any plain
+`` $`…` `` in the body is terminated with `SIGTERM` automatically (the run's
+signal is the shell's ambient signal). Pass `ctx.signal` to `.signal(...)` to
+cancel a command explicitly; it composes with `.killAfter(ms)`. Cancel a run
+programmatically with `execute(build, root, { signal })`. A body that ignores
+its signal and never shells out runs to completion.
+
+## Durable run state
+
+Persist a run's status and per-target metadata so it survives the process
+exiting. **Opt-in** — a plain build writes nothing. Enable a store by (first
+wins): `execute(..., { stateStore })` → `override stateStore()` →
+`ZUKE_STATE_URL` (+ `ZUKE_STATE_TOKEN`) → `ZUKE_STATE_DIR` → `--state` (defaults
+to `.zuke/runs`).
+
+```ts
+import { Build, HttpStateStore, target } from "jsr:@zuke/core";
+
+class CD extends Build {
+  override stateStore() {
+    return new HttpStateStore({ url: this.url.value, token: this.token.value });
+  }
+  deploy = target().executes(async (ctx) => {
+    await ctx.state.set({ image: tag }); // JSON patch, merged and persisted
+    const meta = ctx.state.get(); // read back (this run and later ones)
+  });
+}
+```
+
+- Backends: `FileSystemStateStore(dir)` (single host, dev) and
+  `HttpStateStore({ url, token? })` (hosted, production — see
+  `docs/state-api.md`). Both dependency-free and pluggable behind `StateStore`.
+- The run record holds status, the graph shape, resolved **non-secret**
+  parameters, and per-target status/timing/metadata. Inspect programmatically
+  with `store.listRuns({ status?, target?, since? })` and `store.getRun(id)`.
+- **Never put secrets in `ctx.state`** — it is stored as plain JSON. Secret
+  parameters are excluded from the record and state values are run through the
+  redactor, but treat state as a non-secret channel. See `docs/state.md`.
 
 ## Parameters — typed build inputs
 
@@ -284,6 +338,8 @@ is current (`zuke generate-ci --check` is a dedicated gate).
 ./zuke <target> --parallel    # run independent targets concurrently
 ./zuke <target> --affected    # run only targets changed since a git base
 ./zuke <target> --no-cache    # ignore the incremental cache
+./zuke <target> --state       # persist run state to .zuke/runs (durable state)
+./zuke <target> --actor <who> # attribute the run in its state record
 ./zuke mcp [--allow-run]      # serve the build over MCP for an AI client
 ```
 

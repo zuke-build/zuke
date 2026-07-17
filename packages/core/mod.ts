@@ -44,6 +44,7 @@ export {
   type Condition,
   Group,
   group,
+  type JsonValue,
   type Remediation,
   type RemediationContext,
   type RemediationResult,
@@ -52,6 +53,7 @@ export {
   TargetBuilder,
   type TargetContext,
   type TargetFn,
+  type TargetStateHandle,
   type Validation,
   type ValidationContext,
 } from "./src/target.ts";
@@ -91,6 +93,31 @@ export {
   resolveRemoteStore,
   restoreOutputs,
 } from "./src/remote_cache.ts";
+export {
+  defaultStateHost,
+  type PutResult,
+  type StateHost,
+  type StateStore,
+} from "./src/state/store.ts";
+export {
+  type RunGraphNode,
+  type RunQuery,
+  type RunRecord,
+  type RunStatus,
+  type RunSummary,
+  type TargetRunState,
+  type TargetRunStatus,
+} from "./src/state/types.ts";
+export { FileSystemStateStore } from "./src/state/fs_store.ts";
+export {
+  HttpStateStore,
+  type HttpStateStoreOptions,
+} from "./src/state/http_store.ts";
+export {
+  envStateStore,
+  type ResolveStateOptions,
+  resolveStateStore,
+} from "./src/state/resolve.ts";
 export { type AbsolutePath, absolutePath, type PathLike } from "./src/path.ts";
 export { CONFIG_FILE, repoRoot } from "./src/config.ts";
 export {

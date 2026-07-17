@@ -31,11 +31,40 @@ import type { PathLike } from "./path.ts";
 import type { AnyParameter } from "./params.ts";
 
 /**
+ * A JSON-serialisable value — the only thing that may be persisted in a
+ * target's {@link TargetStateHandle}, since run state is stored as JSON.
+ */
+export type JsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | JsonValue[]
+  | { [key: string]: JsonValue };
+
+/**
+ * A target's durable, per-target metadata, surfaced on {@link TargetContext} as
+ * `state`. Writes are persisted to the run's state store (see
+ * {@link "./state/store.ts".StateStore}) and are visible to later runs — e.g. a
+ * resuming process reading what a suspended target recorded. When no store is
+ * configured, the handle is an in-memory no-op scoped to the current run.
+ *
+ * **Never store a secret here** — state is persisted in plain JSON and read
+ * back by later runs and by `zuke runs show`.
+ */
+export interface TargetStateHandle {
+  /** Merge a JSON patch into this target's persisted metadata (awaits the write). */
+  set(patch: Record<string, JsonValue>): Promise<void>;
+  /** Read this target's persisted metadata (from prior attempts/runs too). */
+  get(): Record<string, JsonValue>;
+}
+
+/**
  * The context passed to every target body. Optional to receive — an existing
  * zero-argument `.executes(() => …)` stays valid, since a zero-argument
- * function is assignable to this one-parameter type — but a body that wants the run's
- * identity, a cancellation signal, or (in later milestones) durable state and
- * external-signal payloads reads them here.
+ * function is assignable to this one-parameter type — but a body that wants the
+ * run's identity, a cancellation signal, or durable per-target state reads them
+ * here.
  */
 export interface TargetContext {
   /** Unique ID of this run, stable for every target in the run. */
@@ -49,6 +78,13 @@ export interface TargetContext {
    * ambient default, so a plain `$` in the body is terminated too.
    */
   readonly signal: AbortSignal;
+  /**
+   * Durable per-target metadata. Persisted to the run's state store when one is
+   * configured (see {@link "./state/store.ts".StateStore}), and an in-memory
+   * no-op otherwise. The carrier for state that must survive across a
+   * suspend/resume boundary — do not put secrets in it.
+   */
+  readonly state: TargetStateHandle;
   /** True when the run is a dry run (bodies do not execute under a dry run). */
   readonly dryRun: boolean;
 }

@@ -284,8 +284,13 @@ Full documentation lives in [`docs/`](./docs/):
   vars (`parameter()`, `this.x.value`).
 - [Authoring API](./docs/authoring.md) — `target()`, `Build`, `run()`,
   code-first CI generation (`cicd()`), and gotchas.
+- [Run context & cancellation](./docs/run-context.md) — the `TargetContext` a
+  body receives (`runId`, `signal`, `state`) and cancelling a run.
 - [Caching](./docs/caching.md) — the incremental build cache
   (`.inputs()`/`.outputs()`) and the AI response cache (`aiCache`).
+- [Durable run state](./docs/state.md) — persist a run's status and per-target
+  metadata to a pluggable store (`StateStore`, `ctx.state`), with an
+  [HTTP API](./docs/state-api.md) for hosting a production backend.
 - [Shell wrapper (`$`)](./docs/shell.md) — ergonomic, injection-safe process
   execution.
 - [Paths (`absolutePath`)](./docs/paths.md) — the fluent path type.

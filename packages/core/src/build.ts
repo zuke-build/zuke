@@ -11,6 +11,7 @@
 
 import { Group, type Remediation, TargetBuilder } from "./target.ts";
 import type { RemoteCacheStore } from "./remote_cache.ts";
+import type { StateStore } from "./state/store.ts";
 
 /** Whether a value is a plain object (a component bundle), not a class instance. */
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -111,6 +112,26 @@ export class Build {
    * ```
    */
   remoteCache(): RemoteCacheStore | undefined {
+    return undefined;
+  }
+
+  /**
+   * The {@link "./state/store.ts".StateStore} that persists this build's run
+   * records. Override to declare one in code; the default is none, and — unless
+   * overridden — the executor falls back to the `ZUKE_STATE_URL` /
+   * `ZUKE_STATE_DIR` environment variables, then (only when the run opts into
+   * durable state) a filesystem store under `<root>/.zuke/runs`.
+   *
+   * ```ts
+   * class CD extends Build {
+   *   override stateStore() {
+   *     return new HttpStateStore({ url: this.stateUrl.value, token: this.stateToken.value });
+   *   }
+   *   deploy = target().executes(async (ctx) => { await ctx.state.set({ at: "sit-7" }); });
+   * }
+   * ```
+   */
+  stateStore(): StateStore | undefined {
     return undefined;
   }
 }
