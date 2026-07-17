@@ -63,6 +63,43 @@ class MyBuild extends Build {
 }
 ```
 
+## Services — long-lived processes
+
+`service()` models a process that must stay **running while its dependents
+execute** (dev server, DB container, mock API). Declared and depended on like a
+target, but with a lifecycle instead of `.executes(...)`: the executor starts
+it, waits until ready, keeps it alive, then stops it in a `finally` (reverse
+order) so a failed test never leaks a process.
+
+```ts
+import { Build, run, service, target, tcpReachable } from "jsr:@zuke/core";
+import { $ } from "jsr:@zuke/core/shell";
+
+class E2E extends Build {
+  api = service()
+    .description("API under test")
+    .start(() => $`deno run -A server.ts`.spawn()) // spawn — don't await
+    .readyWhen(() => tcpReachable("localhost:8080")); // polled until ready
+
+  test = target()
+    .dependsOn(this.api) // started + ready before this runs
+    .executes(() => DenoTasks.test((s) => s.allowAll()));
+}
+```
+
+| Method | Purpose |
+| --- | --- |
+| `.start(() => handle)` | Start the process; return a handle with `.stop()`. **Required.** |
+| `.readyWhen(() => boolean)` | Readiness probe, polled (200ms) until `true`. |
+| `.readyTimeout(ms)` | Wait before failing readiness (default 30s). |
+| `.stop((handle) => …)` | Custom teardown; receives what `.start()` returned. |
+
+The shell's `Command` gains `.spawn()` (starts without awaiting, returns a
+`SpawnedProcess` whose `.stop()` sends `SIGTERM`) — a valid handle, so the
+common case needs no explicit `.stop()`. `tcpReachable("host:port")` is the
+built-in "is the port up yet?" probe. Shares `dependsOn`/`before`/`after`/
+`description` with `target()`.
+
 ## Parameters — typed build inputs
 
 ```ts
@@ -81,6 +118,41 @@ class MyBuild extends Build {
 
 Secrets are masked in CI output. Read a resolved value with `this.x.value`.
 
+### Secrets from a manager — `.from(source)`
+
+A `.secret()` parameter can be **sourced at run time** so the value never lands
+in a shell, `.env`, or CI YAML — and its resolved value is **redacted from all
+of Zuke's output**:
+
+```ts
+import { execSecret, parameter } from "jsr:@zuke/core";
+
+token = parameter("Deploy token")
+  .secret()
+  .from(execSecret((s) => s.command("op").arg("read", "op://vault/deploy/token")));
+```
+
+A sourced secret is still an ordinary parameter (flag, env var, `.required()`,
+`.number()`); `.from(...)` just adds the run-time provider.
+
+## Provisioning tools — hermetic builds
+
+Fetch pinned, checksum-verified tool binaries from the build itself instead of
+assuming they're installed. Both return the installed binary's `AbsolutePath`;
+hand it to a wrapper's `.toolPath(...)`, to `CmdTasks`, or to `defineTool`.
+
+```ts
+import { toolchain, ToolTasks } from "jsr:@zuke/core";
+
+// One tool:
+bin = target().executes(async () =>
+  await ToolTasks.install((s) => s.name("shellcheck").version("0.10.0"/* …checksum */))
+);
+
+// Many at once:
+tools = toolchain((t) => t.add(/* … */).add(/* … */));
+```
+
 ## Tool wrappers — the settings-lambda style
 
 Every external tool is a `*Tasks` object; each task takes `(s) => s.…` mirroring
@@ -89,17 +161,27 @@ the full task list and settings methods of each):
 
 | Package | Object | Typical tasks |
 | --- | --- | --- |
-| `@zuke/core` | `FileTasks`, `AnnounceTasks` | copy/move/remove files; Slack/Teams/Discord posts |
+| `@zuke/core` | `FileTasks`, `AnnounceTasks`, `ToolTasks` | copy/move/remove files; Slack/Teams/Discord posts; install tool binaries |
+| `@zuke/console` | `ConsoleTasks` | themed console output (headings, notices) so a build never hand-rolls `console.log` |
 | `@zuke/deno` | `DenoTasks` | `check`, `test`, `fmt`, `lint`, `cache`, `doc`, `run`, `publish` |
-| `@zuke/npm` | `NpmTasks` | `ci`, `install`, `run`, `exec`, `publish`, `version` |
+| `@zuke/docs` | `DocsTasks` | turn generated API docs into published output |
+| `@zuke/npm`, `@zuke/bun`, `@zuke/pnpm`, `@zuke/yarn`, `@zuke/node` | `NpmTasks`, `BunTasks`, ... | JS package managers + `node` |
 | `@zuke/cmd` | `CmdTasks` | `exec` — generic fallback for any CLI |
 | `@zuke/docker`, `@zuke/docker-compose` | `DockerTasks`, ... | build/run/compose |
 | `@zuke/git`, `@zuke/gh` | `GitTasks`, `GhTasks` | git and GitHub CLI |
-| `@zuke/cspell`, `@zuke/eslint`, `@zuke/oxlint`, `@zuke/biome`, `@zuke/dprint` | `*Tasks` | lint/format/spell |
+| `@zuke/cspell`, `@zuke/eslint`, `@zuke/oxlint`, `@zuke/biome`, `@zuke/dprint`, `@zuke/knip`, `@zuke/dpdm` | `*Tasks` | lint/format/spell/dead-code |
+| `@zuke/tsc`, `@zuke/tsgo`, `@zuke/tsx`, `@zuke/tsc-alias`, `@zuke/tsup`, `@zuke/tsdown`, `@zuke/vite`, `@zuke/turbo`, `@zuke/nx`, `@zuke/nest` | `*Tasks` | TS compile / bundle / monorepo / framework CLIs |
+| `@zuke/openapi-ts`, `@zuke/orval` | `*Tasks` | generate API clients from OpenAPI |
+| `@zuke/husky` | `HuskyTasks` | git hooks |
 | `@zuke/jest`, `@zuke/vitest`, `@zuke/playwright`, `@zuke/cypress` | `*Tasks` | test runners |
-| `@zuke/kubectl`, `@zuke/helm`, `@zuke/terraform`, `@zuke/tofu`, `@zuke/gcloud` | `*Tasks` | infra/deploy |
+| `@zuke/jsr`, `@zuke/codecov`, `@zuke/release-please` | `JsrTasks`, `CodecovTasks`, ... | publish / coverage upload / releases |
+| `@zuke/kubectl`, `@zuke/helm`, `@zuke/kustomize`, `@zuke/terraform`, `@zuke/tofu`, `@zuke/gcloud` | `*Tasks` | infra/deploy |
+| `@zuke/security` | `*Tasks` | security scanning |
 | `@zuke/claude`, `@zuke/codex`, `@zuke/gemini` | `ClaudeTasks`, ... | headless AI CLIs |
-| `@zuke/ai` | `securityReviewer`, ..., `aiFixer` | AI review gates + self-healing (see below) |
+| `@zuke/ai` | `securityReviewer`, ..., `aiFixer`, `agentFixer` | AI review gates + self-healing (see below) |
+
+The catalog keeps growing — `deno doc jsr:@zuke/<pkg>` (or the package list in
+`llms.txt`) is the source of truth for what exists.
 
 ```ts
 await DenoTasks.test((s) => s.allowAll().coverage("cov_profile"));
@@ -196,6 +278,18 @@ is current (`zuke generate-ci --check` is a dedicated gate).
 
 ```sh
 ./zuke --list                 # all targets
+./zuke --list --json          # whole surface (commands, flags, targets) as JSON
 ./zuke <target> --dry-run     # preview the plan, run nothing
 ./zuke <target>               # run it
+./zuke <target> --parallel    # run independent targets concurrently
+./zuke <target> --affected    # run only targets changed since a git base
+./zuke <target> --no-cache    # ignore the incremental cache
+./zuke mcp [--allow-run]      # serve the build over MCP for an AI client
 ```
+
+**Caching:** a target with `.inputs(...)`/`.outputs(...)` is incremental
+(skipped and reported `cached` when inputs are unchanged and outputs exist). Add
+a **remote store** to share results across machines — a fresh CI checkout or a
+teammate's clone restores outputs instead of rebuilding; `--no-remote-cache`
+uses the local cache only. `--affected` limits a run to targets touched since a
+git base (great for CI job fan-out).

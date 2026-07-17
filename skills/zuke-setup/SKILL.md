@@ -29,6 +29,26 @@ deno run -A jsr:@zuke/cli setup
 `setup` flags: `--dir <path>`, `--name <ClassName>`, `--force` (overwrite
 existing files), `--yes` (non-interactive).
 
+### Migrating an existing project: `zuke import`
+
+If the project already has `package.json` scripts or a `Makefile`, prefer
+`zuke import` over `setup` — it reads them and generates a `zuke.ts` with a
+target per task, a working starting point instead of a blank build:
+
+```sh
+zuke import                  # auto-detects package.json, then a Makefile
+zuke import --from makefile   # or pin the source (package.json | makefile)
+```
+
+Each script/target becomes a `target()`; a command maps to `CmdTasks.exec(...)`,
+an `&&` chain becomes sequential steps, a `run`/prerequisite delegation becomes
+`.dependsOn(...)`, and anything too shell-specific to translate (pipes,
+redirects, env assignments) is preserved behind a `// TODO` so the file still
+compiles. It scaffolds the launchers and `deno.json` exactly like `setup`, and
+takes the same `--dir`, `--name`, `--force`, `--yes` flags. Afterwards, use the
+**zuke-write-build** skill to replace the generated `CmdTasks.exec` calls with
+typed `*Tasks` wrappers.
+
 ### What `zuke setup` writes
 
 - **`zuke.ts`** — a starter build class with a sample target and a `default`.
@@ -46,8 +66,16 @@ existing files), `--yes` (non-interactive).
 ./zuke                 # run the default target  (Windows: .\zuke.ps1)
 ./zuke <target>        # run a specific target
 ./zuke --list          # list every target
+./zuke --list --json   # the whole build surface (commands, flags, targets) as JSON
 ./zuke <target> --dry-run   # print the plan without executing
 ```
+
+The CLI is self-describing: `./zuke --help` prints the usage grammar plus the
+build's live targets and parameters, so an agent discovers the real command
+surface instead of guessing. For an AI client to operate the build through typed
+calls, `zuke mcp` runs a Model Context Protocol server over it (register with
+`claude mcp add zuke -- deno run -A zuke.ts mcp`; add `--allow-run` to let the
+agent execute targets, not just inspect them).
 
 If Deno is already installed you can equivalently use
 `deno task zuke <target>` or `deno run -A zuke.ts <target>`. The `-A` flag

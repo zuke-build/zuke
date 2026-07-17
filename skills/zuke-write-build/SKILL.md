@@ -73,11 +73,27 @@ Before calling any task or settings method, confirm the real shape:
   concurrently; depend on the group to wait for all of them.
 - **Reusable bundles:** a *component* is a function returning related targets;
   assign it to a field and reference members as `this.release.publish`.
-- **Caching:** `.inputs(...)` / `.outputs(...)` make a target incremental.
+- **Long-lived processes:** `service()` models a process that must stay *running
+  while dependents execute* (dev server, database, mock API). Declared and
+  depended on like a target, but with a `.start(...)` / `.readyWhen(...)`
+  lifecycle instead of `.executes(...)`; the executor starts it, waits until
+  ready, then stops it in a `finally` so it never leaks. See the cheatsheet.
+- **Caching:** `.inputs(...)` / `.outputs(...)` make a target incremental. Add a
+  **remote store** to share results across machines (fresh CI, teammates);
+  `--affected` runs only targets changed since a git base; `--no-cache` /
+  `--no-remote-cache` bypass them.
 - **Typed inputs:** `parameter("...")` (with `.secret()` / `.required()`), read
   as `this.x.value`, gated with `.requires(this.x)`.
+- **Secrets from a manager:** `parameter(...).secret().from(source)` sources a
+  value at run time (e.g. `execSecret(...)` shelling out to a secret CLI) and
+  **redacts** it from all of Zuke's output. See the cheatsheet.
+- **Provisioning tools:** `ToolTasks.install((s) => …)` / `toolchain((t) => …)`
+  fetch pinned, checksum-verified tool binaries so a build is hermetic; hand the
+  returned path to a wrapper's `.toolPath(...)`.
 - **Code-first CI:** `cicd({ provider: "github" })` generates and verifies the
   workflow YAML from the build.
+- **Operate the build from an agent:** `zuke mcp` serves the build over MCP so an
+  AI client can list, inspect, and (with `--allow-run`) run targets.
 - **AI review & self-healing (`@zuke/ai`):** gate a target on a structured LLM
   review of the diff (`securityReviewer(...)` etc. via `.validateBefore`), or
   attach `aiFixer(...)` with `.recoverWith(...)` so a failing target is diagnosed
