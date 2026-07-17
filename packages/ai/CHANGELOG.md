@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.0](https://github.com/zuke-build/zuke/compare/ai-v1.4.2...ai-v1.5.0) (2026-07-17)
+
+
+### Features
+
+* **core:** document all public API symbols to raise JSR score ([#163](https://github.com/zuke-build/zuke/issues/163)) ([6e21b1b](https://github.com/zuke-build/zuke/commit/6e21b1bf312e39faac95473e34c87eeee7398eef))
+
 ## [1.4.2](https://github.com/zuke-build/zuke/compare/ai-v1.4.1...ai-v1.4.2) (2026-07-16)
 
 
