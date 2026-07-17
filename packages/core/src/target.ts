@@ -31,6 +31,8 @@ import type { PathLike } from "./path.ts";
 import type { AnyParameter } from "./params.ts";
 import type { Configure } from "./tooling.ts";
 import { type LockHolder, lockKey } from "./state/lock.ts";
+import type { WaitTrigger } from "./wait.ts";
+import type { SignalRecord } from "./state/types.ts";
 
 /**
  * Fluent configuration for {@link TargetBuilder.lock}, in the settings-lambda
@@ -80,6 +82,47 @@ export class LockSettings {
    */
   onConflict(render: (holder: LockHolder) => string): this {
     this.onConflict_ = render;
+    return this;
+  }
+}
+
+/** What a timed-out wait does — resolved from {@link WaitSettings.onTimeout}. */
+export type OnTimeout = () => TargetBuilder | "fail" | "cancel-run";
+
+/**
+ * Fluent configuration for {@link TargetBuilder.waitsFor}:
+ * `.waitsFor((s) => s.on(externalSignal("approved")).timeout("72h"))`. Set the
+ * {@link WaitSettings.on | trigger}, an optional {@link WaitSettings.timeout},
+ * and an optional {@link WaitSettings.onTimeout} disposition. The lambda runs
+ * when the target is reached, so the trigger may read `this.<param>.value`.
+ */
+export class WaitSettings {
+  /** The trigger deciding when the wait is satisfied; set by {@link on}. */
+  trigger_?: WaitTrigger;
+  /** The deadline duration (string or ms); set by {@link timeout}. */
+  timeout_?: string | number;
+  /** The timeout disposition thunk; set by {@link onTimeout}. */
+  onTimeout_?: OnTimeout;
+
+  /** Set the {@link "./wait.ts".WaitTrigger} the wait is satisfied by. */
+  on(trigger: WaitTrigger): this {
+    this.trigger_ = trigger;
+    return this;
+  }
+
+  /** Give the wait a deadline (a duration like `"72h"` or milliseconds). */
+  timeout(duration: string | number): this {
+    this.timeout_ = duration;
+    return this;
+  }
+
+  /**
+   * What to do when the deadline passes: a thunk returning a sibling
+   * compensation target (a thunk, so it can reference a target declared *below*
+   * this one), or the string `"fail"` / `"cancel-run"`. Defaults to `"fail"`.
+   */
+  onTimeout(disposition: OnTimeout): this {
+    this.onTimeout_ = disposition;
     return this;
   }
 }
@@ -139,6 +182,12 @@ export interface TargetContext {
    * suspend/resume boundary — do not put secrets in it.
    */
   readonly state: TargetStateHandle;
+  /**
+   * Payloads of the external signals received so far, keyed by name (see
+   * `.waitsFor(...)` and {@link "./wait.ts".externalSignal}). Empty until a
+   * signal is delivered by `zuke resume <id> --signal <name>`.
+   */
+  readonly signals: ReadonlyMap<string, SignalRecord>;
   /** True when the run is a dry run (bodies do not execute under a dry run). */
   readonly dryRun: boolean;
 }
@@ -284,6 +333,8 @@ export class TargetBuilder {
   recoverAttempts_ = 1;
   /** Cross-run lock settings lambda, set by {@link lock} and run after params resolve. */
   lock_?: Configure<LockSettings>;
+  /** External-event wait settings lambda, set by {@link waitsFor} and run when reached. */
+  waitsFor_?: Configure<WaitSettings>;
 
   /** Set the human-readable description shown in `zuke --list`. */
   description(text: string): this {
@@ -567,6 +618,28 @@ export class TargetBuilder {
    */
   lock(configure: Configure<LockSettings>): this {
     this.lock_ = configure;
+    return this;
+  }
+
+  /**
+   * Suspend the run at this target until an external event occurs, then let the
+   * run be resumed later (in a different process) — a settings lambda in the
+   * same style as {@link lock}. The target is a **gate** (no body): when its
+   * trigger is already satisfied it passes and dependents run; otherwise the
+   * run's state is saved, the run is marked suspended, its independent branches
+   * finish, and the process exits 0. Requires a state store.
+   *
+   * ```ts
+   * awaitApproval = target()
+   *   .dependsOn(this.deploy)
+   *   .waitsFor((s) =>
+   *     s.on(externalSignal("testing-approved"))
+   *       .timeout("72h")
+   *       .onTimeout(() => this.rollback));
+   * ```
+   */
+  waitsFor(configure: Configure<WaitSettings>): this {
+    this.waitsFor_ = configure;
     return this;
   }
 }

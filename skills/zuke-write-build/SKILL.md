@@ -101,6 +101,12 @@ Before calling any task or settings method, confirm the real shape:
   The lock releases when the target settles and expires after the TTL if the
   holder is killed. Needs a state store (a build with `.lock()` enables the
   filesystem store by default). See the cheatsheet.
+- **External-event waits:** `.waitsFor((s) => s.on(externalSignal("approved")).timeout("72h"))`
+  makes a target a **gate** with no body: the run proceeds past it only when the
+  trigger is satisfied, otherwise it **suspends** (state saved, exits 0) to be
+  resumed later in a fresh process. Triggers: `externalSignal(name)` (payload
+  read via `ctx.signals`) and `resumeWhen(predicate)`. Needs a state store. See
+  the cheatsheet / `docs/orchestration.md`.
 - **Typed inputs:** `parameter("...")` (with `.secret()` / `.required()`), read
   as `this.x.value`, gated with `.requires(this.x)`.
 - **Secrets from a manager:** `parameter(...).secret().from(source)` sources a

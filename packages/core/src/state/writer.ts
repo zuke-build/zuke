@@ -18,7 +18,12 @@ import type { TargetStatus } from "../build.ts";
 import type { JsonValue, TargetStateHandle } from "../target.ts";
 import type { Redactor } from "../redact.ts";
 import type { StateStore } from "./store.ts";
-import type { RunRecord, TargetRunState } from "./types.ts";
+import type {
+  RunRecord,
+  SignalRecord,
+  TargetRunState,
+  WaitState,
+} from "./types.ts";
 import { recordStatusOf } from "./record.ts";
 
 /** Extract a message from an unknown thrown value without casting. */
@@ -133,6 +138,27 @@ export class RunStateWriter {
     return this.#update((record) => {
       record.status = ok ? "succeeded" : "failed";
     });
+  }
+
+  /** Record a target as waiting on an external event, with its pending wait. */
+  markTargetWaiting(name: string, wait: WaitState): Promise<void> {
+    return this.#update((record) => {
+      const target = ensureTarget(record, name);
+      target.status = "waiting";
+      target.waitingFor = wait;
+    });
+  }
+
+  /** Record the run as suspended (parked at a `.waitsFor(...)` gate). */
+  markRunSuspended(): Promise<void> {
+    return this.#update((record) => {
+      record.status = "suspended";
+    });
+  }
+
+  /** The external signals received so far, as a read-only map. */
+  signals(): ReadonlyMap<string, SignalRecord> {
+    return new Map(Object.entries(this.#record.signals));
   }
 
   /** A {@link TargetStateHandle} bound to `name`, persisting through this writer. */

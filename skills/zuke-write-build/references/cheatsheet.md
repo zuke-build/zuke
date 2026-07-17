@@ -23,6 +23,7 @@ Everything is optional except a body (`.executes`).
 | `.retry(times, delayMs?)` | Retry the body on failure. |
 | `.timeout(ms)` | Fail the body if it runs longer than `ms` (per attempt). |
 | `.lock((s) => s.lockKey(...).withTtl(...))` | Hold a cross-run lock while running; a second run wanting the key fails. See below. |
+| `.waitsFor((s) => s.on(externalSignal(...)))` | Gate (no body): suspend the run until an external event; resume later. See below. |
 | `.proceedAfterFailure()` | Keep the build going if this target fails. |
 | `.always()` | Run even after the build failed (cleanup/teardown). |
 | `.unlisted()` | Hide from `--list`/`--help`; still runnable by name. |
@@ -184,6 +185,40 @@ class CD extends Build {
 - Needs a state store — a build using `.lock()` enables the `.zuke/runs`
   filesystem store by default; use the HTTP backend to share locks across
   machines. See `docs/locks.md`.
+
+## External-event waits
+
+`.waitsFor((s) => …)` makes a target a **gate** (no body): the run proceeds past
+it only when the trigger is satisfied; otherwise it **suspends** — the run's
+state is saved, independent branches finish, and the process exits 0 — to be
+resumed later in a fresh process.
+
+```ts
+import { Build, externalSignal, target } from "jsr:@zuke/core";
+
+class Deploy extends Build {
+  deploy = target().executes(async (ctx) => {
+    await applyToSit();
+    await ctx.state.set({ at: "sit-7" }); // only durable state crosses the resume
+  });
+  awaitQa = target()
+    .dependsOn(this.deploy)
+    .waitsFor((s) =>
+      s.on(externalSignal("qa-approved")) // or resumeWhen(async () => …)
+        .timeout("72h")
+        .onTimeout(() => this.rollback)); // thunk: sibling compensation target
+  promote = target().dependsOn(this.awaitQa).executes((ctx) => {
+    const approval = ctx.signals.get("qa-approved"); // the signal's JSON payload
+  });
+  rollback = target().executes(() => rollBack());
+}
+```
+
+- Triggers: `externalSignal(name)` (payload read via `ctx.signals`) and
+  `resumeWhen(fn, { interval? })` (async predicate, re-checked on resume).
+- Needs a state store (a build with `.waitsFor()` enables `.zuke/runs` by
+  default). A resume is a fresh process, so **only `ctx.state`/`ctx.signals`
+  cross the boundary**. See `docs/orchestration.md`.
 
 ## Parameters — typed build inputs
 

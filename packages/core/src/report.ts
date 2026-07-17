@@ -21,6 +21,7 @@ export const ICON: Record<TargetStatus, string> = {
   failed: "✘",
   skipped: "⊘",
   cached: "⊙",
+  waiting: "⏸",
 };
 
 /** Human label for a status — used in the summary table and PR comment. */
@@ -29,6 +30,7 @@ const STATUS_LABEL: Record<TargetStatus, string> = {
   failed: "Failed",
   skipped: "Skipped",
   cached: "Cached",
+  waiting: "Waiting",
 };
 
 /** Per-status ANSI colour for the icon/label. */
@@ -37,6 +39,7 @@ const STATUS_COLOR: Record<TargetStatus, string> = {
   failed: SGR.red,
   skipped: SGR.yellow,
   cached: SGR.cyan,
+  waiting: SGR.magenta,
 };
 
 /** One row of the end-of-build summary. */
@@ -101,6 +104,18 @@ export function targetFailFooter(
     info: ["::endgroup::"],
     error: [line, detail, `::error title=${name}::${name} failed: ${message}`],
   };
+}
+
+/** The footer printed for a target that suspended the run at a `.waitsFor(...)` gate. */
+export function targetWaitFooter(
+  style: Style,
+  name: string,
+  trigger: string,
+): string[] {
+  const icon = paint(style.color, SGR.magenta, ICON.waiting);
+  const note = paint(style.color, SGR.dim, `waiting for ${trigger}`);
+  const line = `${icon} ${name} ${note}`;
+  return style.github ? [line, "::endgroup::"] : [line];
 }
 
 /** The footer printed for a dry-run target — never actually executed. */
@@ -214,6 +229,15 @@ export function closingLine(
     reports.filter((r) => r.status === "passed" || r.status === "cached")
       .length;
   const stamp = timestamp(now);
+  const waiting = reports.filter((r) => r.status === "waiting");
+  if (waiting.length > 0) {
+    return paint(
+      style.color,
+      SGR.bold + SGR.magenta,
+      `${ICON.waiting} Build suspended — ${waiting.length} target(s) waiting ` +
+        `after ${formatDuration(totalMs)} · ${stamp}`,
+    );
+  }
   if (ok) {
     return paint(
       style.color,

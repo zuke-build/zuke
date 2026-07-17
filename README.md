@@ -293,6 +293,8 @@ Full documentation lives in [`docs/`](./docs/):
   [HTTP API](./docs/state-api.md) for hosting a production backend.
 - [Cross-run locks](./docs/locks.md) — `.lock()` claims an exclusive resource
   across runs and machines, with a TTL backstop and typed `LockConflictError`s.
+- [Orchestration: waits](./docs/orchestration.md) — `.waitsFor()` suspends a run
+  until an external signal or predicate, saving its state to be resumed later.
 - [Shell wrapper (`$`)](./docs/shell.md) — ergonomic, injection-safe process
   execution.
 - [Paths (`absolutePath`)](./docs/paths.md) — the fluent path type.

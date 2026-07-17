@@ -190,6 +190,11 @@ function executionSet(root: TargetBuilder): Set<TargetBuilder>
   Compute the execution set for a requested target: the target plus the
   transitive closure of its hard dependencies.
 
+function externalSignal(name: string): WaitTrigger
+  A trigger satisfied when a signal named `name` has been delivered to the run
+  (via `zuke resume <id> --signal <name>`). The signal's payload is exposed to
+  target bodies through {@link "./target.ts".TargetContext} `signals`.
+
 async function extractTarGzip(src: PathLike, destDir: PathLike): Promise<void>
   Read the `.tar.gz` at `src`, gunzip and unpack it, and write each entry under
   `destDir` (creating parent directories as needed).
@@ -383,6 +388,12 @@ async function restoreOutputs(artifact: Uint8Array, host: OutputHost): Promise<s
   validated first: an absolute path or one escaping the workspace (`..`) is
   rejected before anything is written, so a malicious archive can't plant files
   outside the current directory.
+
+function resumeWhen(check: () => boolean | Promise<boolean>, options: ResumeWhenOptions): WaitTrigger
+  A trigger satisfied when an async `check` predicate returns `true`. Zuke does
+  not poll on its own — the predicate is evaluated when the target is reached
+  and on each `zuke resume <id> --check`, so a cron or webhook nudging `--check`
+  drives it. Use it to wait on state Zuke can query (a row, a file, an API).
 
 async function run(BuildClass: new () => Build, options: RunOptions): Promise<void>
   Public entry point. Instantiate the build, parse arguments, run, and set the
@@ -1053,6 +1064,8 @@ class TargetBuilder
     Max fix-then-rerun cycles when the body fails (set by {@link recoverAttempts}).
   lock_?: Configure<LockSettings>
     Cross-run lock settings lambda, set by {@link lock} and run after params resolve.
+  waitsFor_?: Configure<WaitSettings>
+    External-event wait settings lambda, set by {@link waitsFor} and run when reached.
   description(text: string): this
     Set the human-readable description shown in `zuke --list`.
   dependsOn(...targets: Array<TargetBuilder | Group>): this
@@ -1188,6 +1201,22 @@ class TargetBuilder
             `${this.repo.value} is being deployed by ${h.actor} (run ${h.runId}).`))
       .executes(...);
     ```
+  waitsFor(configure: Configure<WaitSettings>): this
+    Suspend the run at this target until an external event occurs, then let the
+    run be resumed later (in a different process) — a settings lambda in the
+    same style as {@link lock}. The target is a gate (no body): when its
+    trigger is already satisfied it passes and dependents run; otherwise the
+    run's state is saved, the run is marked suspended, its independent branches
+    finish, and the process exits 0. Requires a state store.
+
+    ```ts
+    awaitApproval = target()
+      .dependsOn(this.deploy)
+      .waitsFor((s) =>
+        s.on(externalSignal("testing-approved"))
+          .timeout("72h")
+          .onTimeout(() => this.rollback));
+    ```
 
 class TeamsAnnouncementSettings extends AnnouncementSettings
   Fluent settings for {@link AnnounceTasksApi.teams}. Bot mode
@@ -1258,6 +1287,28 @@ class Toolchain
     Install every declared tool concurrently — reusing a cached copy where a
     pinned checksum matches — and return a map of tool name to installed
     {@link AbsolutePath}.
+
+class WaitSettings
+  Fluent configuration for {@link TargetBuilder.waitsFor}:
+  `.waitsFor((s) => s.on(externalSignal("approved")).timeout("72h"))`. Set the
+  {@link WaitSettings.on | trigger}, an optional {@link WaitSettings.timeout},
+  and an optional {@link WaitSettings.onTimeout} disposition. The lambda runs
+  when the target is reached, so the trigger may read `this.<param>.value`.
+
+  trigger_?: WaitTrigger
+    The trigger deciding when the wait is satisfied; set by {@link on}.
+  timeout_?: string | number
+    The deadline duration (string or ms); set by {@link timeout}.
+  onTimeout_?: OnTimeout
+    The timeout disposition thunk; set by {@link onTimeout}.
+  on(trigger: WaitTrigger): this
+    Set the {@link "./wait.ts".WaitTrigger} the wait is satisfied by.
+  timeout(duration: string | number): this
+    Give the wait a deadline (a duration like `"72h"` or milliseconds).
+  onTimeout(disposition: OnTimeout): this
+    What to do when the deadline passes: a thunk returning a sibling
+    compensation target (a thunk, so it can reference a target declared below
+    this one), or the string `"fail"` / `"cancel-run"`. Defaults to `"fail"`.
 
 interface AbsolutePath
   An immutable, absolute filesystem path with a fluent API.
@@ -1388,11 +1439,15 @@ interface BuildResult
   Result passed to the {@link Build.onFinish} lifecycle hook.
 
   ok: boolean
-    Whether every executed target succeeded.
+    Whether every executed target succeeded (also `true` for a suspended run).
   executed: string[]
     Names of the targets that ran, in execution order.
   error?: unknown
     The error that aborted the run, if any.
+  suspended?: boolean
+    True when the run suspended at a `.waitsFor(...)` gate rather than
+    finishing — its state is saved and it can be resumed later. The process
+    still exits 0.
 
 interface CiConcurrency
   A concurrency group: at most one run per group, optionally cancelling the prior one.
@@ -1932,6 +1987,12 @@ interface ResolveStateOptions
     Set when the run opts into durable state (`--state`, or — from a later
     milestone — a durable feature like a lock or a wait).
 
+interface ResumeWhenOptions
+  Options for {@link resumeWhen}.
+
+  interval?: string | number
+    How often `zuke resume --check` should re-evaluate the predicate.
+
 interface RunGraphNode
   One entry of a run's graph-shape snapshot.
 
@@ -1986,6 +2047,8 @@ interface RunRecord
     Resolved parameter values, keyed by name. Secrets are always omitted.
   targets: Record<string, TargetRunState>
     Per-target progress, keyed by dotted target name.
+  signals: Record<string, SignalRecord>
+    External signals received so far, keyed by name (see `.waitsFor(...)`).
 
 interface RunSummary
   A compact run listing row, returned by {@link "./store.ts".StateStore.listRuns}.
@@ -2030,6 +2093,14 @@ interface ServiceHandle
 
   stop(): void | Promise<void>
     Terminate the service. Called on teardown unless `.stop()` overrides it.
+
+interface SignalRecord
+  A payload received for an external signal (see {@link RunRecord.signals}).
+
+  data: JsonValue
+    The signal's JSON payload (`{}` when none was sent).
+  receivedAt: string
+    ISO-8601 timestamp when the signal was recorded.
 
 interface StateHost
   Injected filesystem effects for {@link "./fs_store.ts".FileSystemStateStore},
@@ -2118,6 +2189,10 @@ interface TargetContext
     configured (see {@link "./state/store.ts".StateStore}), and an in-memory
     no-op otherwise. The carrier for state that must survive across a
     suspend/resume boundary — do not put secrets in it.
+  readonly signals: ReadonlyMap<string, SignalRecord>
+    Payloads of the external signals received so far, keyed by name (see
+    `.waitsFor(...)` and {@link "./wait.ts".externalSignal}). Empty until a
+    signal is delivered by `zuke resume <id> --signal <name>`.
   readonly dryRun: boolean
     True when the run is a dry run (bodies do not execute under a dry run).
 
@@ -2144,6 +2219,8 @@ interface TargetRunState
     ISO-8601 timestamp when the target settled, if it has.
   error?: string
     The failure message when `status` is `failed`.
+  waitingFor?: WaitState
+    The pending wait when `status` is `waiting` (set by `.waitsFor(...)`).
 
 interface TargetStateHandle
   A target's durable, per-target metadata, surfaced on {@link TargetContext} as
@@ -2194,6 +2271,29 @@ interface ValidationContext
   target: string
     The name of the target the validation is attached to.
 
+interface WaitState
+  The pending wait recorded on a suspended target (see {@link TargetRunState.waitingFor}).
+
+  trigger: string
+    A human-readable descriptor of what is awaited (e.g. `signal:approved`).
+  deadline?: string
+    ISO-8601 deadline after which {@link onTimeout} applies, if a timeout was set.
+  onTimeout: WaitDisposition
+    What happens when the deadline passes.
+
+interface WaitTrigger
+  Decides whether the event a target waits for has occurred. `descriptor` is a
+  short, JSON-safe label recorded on the suspended target; `isSatisfied` is
+  evaluated against the run's received signals when the target is reached and
+  again on each resume attempt.
+
+  readonly descriptor: string
+    A short label recorded on the wait (e.g. `signal:approved`).
+  readonly pollIntervalMs?: number
+    Poll interval hint (ms) for predicate triggers driven by `zuke resume --check`.
+  isSatisfied(signals: ReadonlyMap<string, SignalRecord>): boolean | Promise<boolean>
+    Whether the awaited event has occurred, given the run's received signals.
+
 type AnnouncementLevel = "success" | "failure" | "warning" | "info"
   The outcome an announcement conveys. It drives the accent colour and the icon
   prepended to the message; defaults to `"info"`.
@@ -2229,6 +2329,9 @@ type LockResult = { ok: true; token: string; } | { ok: false; holder: LockHolder
   The result of {@link StateStore.acquireLock}: a `token` proving ownership, or
   the current `holder` when the lock is already held.
 
+type OnTimeout = () => TargetBuilder | "fail" | "cancel-run"
+  What a timed-out wait does — resolved from {@link WaitSettings.onTimeout}.
+
 type OperatingSystem = "linux" | "macos" | "windows"
   The operating systems Zuke recognises — Deno's raw `Deno.build.os` values
   normalised to a friendly set (notably `darwin` → `macos`). Used across the
@@ -2263,8 +2366,13 @@ type TargetRunStatus = "pending" | "running" | "waiting" | "succeeded" | "failed
   external-event wait) is produced only from a later milestone; the executor
   records the others.
 
-type TargetStatus = "passed" | "failed" | "skipped" | "cached"
+type TargetStatus = "passed" | "failed" | "skipped" | "cached" | "waiting"
   The outcome of a single target, reported in the summary and lifecycle hooks.
+  `waiting` marks a `.waitsFor(...)` gate whose event has not occurred — the run
+  suspends there.
+
+type WaitDisposition = "fail" | "cancel-run" | { target: string; }
+  What a timed-out wait does: fail, cancel the run, or run a compensation target.
 
 ========================================================================
 # @zuke/deno

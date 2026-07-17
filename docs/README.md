@@ -19,6 +19,8 @@
   metadata to a pluggable store, and read it back after the process exits.
 - [Cross-run locks](./locks.md) — `.lock()` claims an exclusive resource across
   runs and machines, with a TTL backstop and typed conflicts.
+- [Orchestration: waits & suspend/resume](./orchestration.md) — `.waitsFor()`
+  suspends a run until an external event, to be resumed later.
 - [State HTTP API](./state-api.md) — the REST contract for hosting a production
   state backend.
 - [Shell wrapper (`$`)](./shell.md) — ergonomic, injection-safe process
