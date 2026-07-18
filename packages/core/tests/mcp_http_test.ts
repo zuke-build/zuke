@@ -146,6 +146,15 @@ Deno.test("http transport enforces a configured bearer token", async () => {
     });
     assertEquals(lenient.status, 200);
     await lenient.json();
+
+    // Trailing content after the token is rejected (not treated as the token).
+    const trailing = await fetch(url, {
+      method: "POST",
+      headers: { authorization: "Bearer swordfish extra" },
+      body: rpc("ping", 1),
+    });
+    assertEquals(trailing.status, 401);
+    await trailing.json();
   } finally {
     await s.stop();
   }

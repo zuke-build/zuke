@@ -66,19 +66,21 @@ function safeEqual(a: string, b: string): boolean {
 
 /**
  * Extract the credential from an `Authorization: Bearer <token>` header, or
- * `undefined` when it is absent or not the Bearer scheme. The scheme name is
- * matched case-insensitively (per RFC 7235) and surrounding whitespace is
- * tolerated, so trivial client formatting differences don't spuriously fail
- * auth — the token itself is still compared exactly. Parsed by hand (no regex)
- * to keep it linear on adversarial input.
+ * `undefined` when it is absent, not the Bearer scheme, or not exactly one
+ * token. The scheme is matched case-insensitively (per RFC 7235) and extra
+ * surrounding/inner whitespace is tolerated, so trivial client formatting
+ * differences don't spuriously fail auth — but a credential is required to be a
+ * single `token68` (RFC 6750), so `Bearer <token> <anything-else>` is rejected
+ * rather than treated as the token. `split` on whitespace is a linear scan (no
+ * backtracking), so this stays safe on adversarial input.
  */
 function bearerToken(header: string | null): string | undefined {
   if (header === null) return undefined;
-  const trimmed = header.trim();
-  const space = trimmed.indexOf(" ");
-  if (space === -1) return undefined;
-  if (trimmed.slice(0, space).toLowerCase() !== "bearer") return undefined;
-  return trimmed.slice(space + 1).trimStart();
+  const parts = header.trim().split(/\s+/);
+  if (parts.length !== 2 || parts[0].toLowerCase() !== "bearer") {
+    return undefined;
+  }
+  return parts[1];
 }
 
 /**
