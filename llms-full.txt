@@ -2491,6 +2491,12 @@ interface TargetContext
     signal is delivered by `zuke resume <id> --signal <name>`.
   readonly dryRun: boolean
     True when the run is a dry run (bodies do not execute under a dry run).
+  stateOf(target: string): TargetStateHandle
+    The durable state handle of another target in this run — the seam a body
+    reads a dependency's published metadata through (e.g. the result a
+    `.waitsFor(githubWorkflow(...))` gate recorded to its state). `stateOf(this target)` is equivalent to {@link state}. It reads the run's current
+    record, so it sees writes a dependency made earlier in the run — including
+    across a suspend/resume, since the record is durable.
 
 interface TargetReport
   One row of the end-of-build summary.
@@ -2575,6 +2581,23 @@ interface ValidationContext
   target: string
     The name of the target the validation is attached to.
 
+interface WaitContext
+  The durable context a {@link WaitTrigger} may use while deciding whether its
+  event has occurred. Its {@link WaitContext.state} handle is the awaiting
+  target's persisted metadata — it survives a suspend/resume, even across
+  processes — so a stateful trigger (e.g. "dispatch a GitHub workflow, then poll
+  it") can remember what it started and hand a result to the target's body. The
+  built-in triggers ignore it.
+
+  readonly state: TargetStateHandle
+    The awaiting target's durable state handle (the same one its body receives
+    as `ctx.state`). Reads and writes here persist with the run and are visible
+    to a later resume in another process.
+  readonly runId: string
+    The run id — stable across a resume, so a natural correlation key.
+  readonly target: string
+    The awaiting target's dotted name.
+
 interface WaitState
   The pending wait recorded on a suspended target (see {@link TargetRunState.waitingFor}).
 
@@ -2588,15 +2611,18 @@ interface WaitState
 interface WaitTrigger
   Decides whether the event a target waits for has occurred. `descriptor` is a
   short, JSON-safe label recorded on the suspended target; `isSatisfied` is
-  evaluated against the run's received signals when the target is reached and
-  again on each resume attempt.
+  evaluated against the run's received signals (and a durable {@link
+  WaitContext}) when the target is reached and again on each resume attempt.
 
   readonly descriptor: string
     A short label recorded on the wait (e.g. `signal:approved`).
   readonly pollIntervalMs?: number
     Poll interval hint (ms) for predicate triggers driven by `zuke resume --check`.
-  isSatisfied(signals: ReadonlyMap<string, SignalRecord>): boolean | Promise<boolean>
-    Whether the awaited event has occurred, given the run's received signals.
+  isSatisfied(signals: ReadonlyMap<string, SignalRecord>, context: WaitContext): boolean | Promise<boolean>
+    Whether the awaited event has occurred, given the run's received signals
+    and a durable {@link WaitContext}. The context lets a trigger persist
+    correlation state across a suspend/resume; a trigger that only inspects
+    signals may ignore it (fewer parameters stay assignable).
 
 type AnnouncementLevel = "success" | "failure" | "warning" | "info"
   The outcome an announcement conveys. It drives the accent colour and the icon
@@ -6620,16 +6646,37 @@ type GitRunner = (args: string[]) => Promise<string | null>
 # @zuke/gh
 ========================================================================
 
-`@zuke/gh` — a typed `gh` (GitHub CLI) task wrapper for Zuke builds.
-
-A flexible command builder: name the command with `.command(...)`, set
-`--repo`, and pass anything else with `.flag(...)`.
+`@zuke/gh` — typed GitHub tooling for Zuke builds: the `gh` (GitHub CLI) task
+wrapper plus {@link githubWorkflow}, a wait trigger that dispatches and awaits
+an external GitHub Actions workflow.
 
 ```ts
-import { GhTasks } from "jsr:@zuke/gh";
+import { GhTasks, githubWorkflow } from "jsr:@zuke/gh";
+
 await GhTasks.run((s) => s.command("pr", "list").flag("state", "open"));
+
+// In a build: suspend until an e2e workflow in another repo finishes.
+e2e = target().waitsFor((s) =>
+  s.on(githubWorkflow((g) => g.repo("acme/app").workflow("e2e.yml")))
+);
 ```
 @module
+
+function githubWorkflow(configure: (settings: GithubWorkflowSettings) => GithubWorkflowSettings): WaitTrigger
+  A {@link "@zuke/core".WaitTrigger} that dispatches a GitHub Actions workflow,
+  suspends the run until it finishes, and records its per-job conclusions to the
+  awaiting target's state (read them with {@link readWorkflowResult}). See the
+  module docs for the `run-name` correlation requirement and auth.
+
+  ```ts
+  githubWorkflow((g) => g.repo("acme/app").workflow("e2e.yml").ref("main"))
+  ```
+
+function readWorkflowResult(state: TargetStateHandle): WorkflowResult | undefined
+  Read the {@link WorkflowResult} a completed {@link githubWorkflow} wait wrote
+  to a target's state, or `undefined` if the wait has not completed (or this is
+  not a github-workflow gate). Call it from a dependent target's body with
+  the gate's handle: `readWorkflowResult(ctx.stateOf("<gate-target>"))`.
 
 const GhTasks: GhTasksApi
   Typed task functions for the `gh` GitHub CLI.
@@ -6647,11 +6694,67 @@ class GhSettings extends ToolSettings
     it renders the bare `--name`. Repeatable.
   override protected buildArgs(): string[]
 
+class GithubWorkflowSettings
+  Configuration for {@link githubWorkflow}, set through a settings lambda. Every
+  setter returns `this` so calls chain; `repo` and `workflow` are required.
+
+  repo_?: string
+    The `OWNER/REPO` slug the workflow lives in.
+  workflow_?: string
+    The workflow file name (e.g. `e2e.yml`) or its numeric id.
+  ref_: string
+    The git ref to dispatch against (default `main`).
+  inputs_: Record<string, string>
+    Extra `workflow_dispatch` inputs.
+  markerInput_: string
+    The input name the marker is passed as (default `zuke_marker`).
+  pollIntervalMs_?: number
+    Poll interval hint (ms) for `zuke resume --check`.
+  repo(slug: string): this
+    Set the `OWNER/REPO` the workflow lives in.
+  workflow(idOrFile: string): this
+    Set the workflow file name (e.g. `e2e.yml`) or numeric id.
+  ref(ref: string): this
+    Set the git ref to dispatch against (default `main`).
+  input(name: string, value: string): this
+    Add one `workflow_dispatch` input.
+  inputs(map: Record<string, string>): this
+    Merge a map of `workflow_dispatch` inputs.
+  markerInput(name: string): this
+    Change the input name the correlation marker is dispatched as.
+  pollEvery(duration: string): this
+    Set how often `zuke resume --check` should re-poll (a duration string).
+
 interface GhTasksApi
   The shape of {@link GhTasks}.
 
   run(configure?: Configure<GhSettings>): Promise<CommandOutput>
     Run a `gh` command.
+
+interface WorkflowJob
+  One job's outcome within a completed workflow run.
+
+  name: string
+    The job's name.
+  conclusion: string
+    Its conclusion (`success`, `failure`, `cancelled`, `skipped`, …).
+  url: string
+    A link to the job on GitHub.
+
+interface WorkflowResult
+  The payload a completed {@link githubWorkflow} wait writes to the awaiting
+  target's state; read it in a dependent body with {@link readWorkflowResult}.
+
+  passed: boolean
+    True when the run's overall conclusion was `success`.
+  conclusion: string
+    The run's overall conclusion.
+  runId: number
+    The dispatched run's numeric id.
+  url: string
+    A link to the run on GitHub.
+  jobs: WorkflowJob[]
+    Each job's conclusion, so a build can branch on which suite failed.
 
 ========================================================================
 # @zuke/codecov

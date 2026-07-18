@@ -222,21 +222,31 @@ Deno.test("parseRunRecord defaults missing signals to empty (backwards compat)",
   assertEquals(parseRunRecord(JSON.stringify(withoutSignals)).signals, {});
 });
 
+// A minimal WaitContext for the built-in triggers, which ignore it.
+const WAIT_CTX = { state: inMemoryStateHandle(), runId: "r", target: "t" };
+
 Deno.test("externalSignal is satisfied only when the named signal is present", async () => {
   const trigger = externalSignal("approved");
   assertEquals(trigger.descriptor, "signal:approved");
-  assertEquals(await trigger.isSatisfied(new Map()), false);
+  assertEquals(await trigger.isSatisfied(new Map(), WAIT_CTX), false);
   assertEquals(
     await trigger.isSatisfied(
       new Map([["approved", { data: {}, receivedAt: "t" }]]),
+      WAIT_CTX,
     ),
     true,
   );
 });
 
 Deno.test("resumeWhen evaluates the predicate and carries a poll interval", async () => {
-  assertEquals(await resumeWhen(() => true).isSatisfied(new Map()), true);
-  assertEquals(await resumeWhen(() => false).isSatisfied(new Map()), false);
+  assertEquals(
+    await resumeWhen(() => true).isSatisfied(new Map(), WAIT_CTX),
+    true,
+  );
+  assertEquals(
+    await resumeWhen(() => false).isSatisfied(new Map(), WAIT_CTX),
+    false,
+  );
   assertEquals(
     resumeWhen(() => true, { interval: "30s" }).pollIntervalMs,
     30_000,

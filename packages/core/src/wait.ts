@@ -13,22 +13,50 @@
  */
 
 import type { SignalRecord } from "./state/types.ts";
+import type { TargetStateHandle } from "./target.ts";
 import { parseDuration } from "./duration.ts";
+
+/**
+ * The durable context a {@link WaitTrigger} may use while deciding whether its
+ * event has occurred. Its {@link WaitContext.state} handle is the awaiting
+ * target's persisted metadata — it **survives a suspend/resume**, even across
+ * processes — so a stateful trigger (e.g. "dispatch a GitHub workflow, then poll
+ * it") can remember what it started and hand a result to the target's body. The
+ * built-in triggers ignore it.
+ */
+export interface WaitContext {
+  /**
+   * The awaiting target's durable state handle (the same one its body receives
+   * as `ctx.state`). Reads and writes here persist with the run and are visible
+   * to a later resume in another process.
+   */
+  readonly state: TargetStateHandle;
+  /** The run id — stable across a resume, so a natural correlation key. */
+  readonly runId: string;
+  /** The awaiting target's dotted name. */
+  readonly target: string;
+}
 
 /**
  * Decides whether the event a target waits for has occurred. `descriptor` is a
  * short, JSON-safe label recorded on the suspended target; `isSatisfied` is
- * evaluated against the run's received signals when the target is reached and
- * again on each resume attempt.
+ * evaluated against the run's received signals (and a durable {@link
+ * WaitContext}) when the target is reached and again on each resume attempt.
  */
 export interface WaitTrigger {
   /** A short label recorded on the wait (e.g. `signal:approved`). */
   readonly descriptor: string;
   /** Poll interval hint (ms) for predicate triggers driven by `zuke resume --check`. */
   readonly pollIntervalMs?: number;
-  /** Whether the awaited event has occurred, given the run's received signals. */
+  /**
+   * Whether the awaited event has occurred, given the run's received signals
+   * and a durable {@link WaitContext}. The context lets a trigger persist
+   * correlation state across a suspend/resume; a trigger that only inspects
+   * signals may ignore it (fewer parameters stay assignable).
+   */
   isSatisfied(
     signals: ReadonlyMap<string, SignalRecord>,
+    context: WaitContext,
   ): boolean | Promise<boolean>;
 }
 

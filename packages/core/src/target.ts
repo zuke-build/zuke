@@ -265,6 +265,15 @@ export interface TargetContext {
    */
   readonly state: TargetStateHandle;
   /**
+   * The durable state handle of **another target** in this run — the seam a body
+   * reads a dependency's published metadata through (e.g. the result a
+   * `.waitsFor(githubWorkflow(...))` gate recorded to its state). `stateOf(this
+   * target)` is equivalent to {@link state}. It reads the run's **current**
+   * record, so it sees writes a dependency made earlier in the run — including
+   * across a suspend/resume, since the record is durable.
+   */
+  stateOf(target: string): TargetStateHandle;
+  /**
    * Payloads of the external signals received so far, keyed by name (see
    * `.waitsFor(...)` and {@link "./wait.ts".externalSignal}). Empty until a
    * signal is delivered by `zuke resume <id> --signal <name>`.

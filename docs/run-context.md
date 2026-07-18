@@ -24,6 +24,8 @@ class Deploy extends Build {
 | `target`     | `string`            | The executing target's dotted name.                                  |
 | `signal`     | `AbortSignal`       | Aborted when the run is cancelled (see below).                       |
 | `state`      | `TargetStateHandle` | Durable per-target metadata — see [Durable run state](./state.md).   |
+| `stateOf`    | `(t) => …`          | The state handle of **another** target — read a dependency's published metadata (e.g. a wait's result). |
+| `signals`    | `ReadonlyMap`       | Payloads of external signals received so far (see [waits](./orchestration.md)). |
 | `dryRun`     | `boolean`           | `true` when the run is a dry run (bodies don't execute in a dry run). |
 
 `runId` is minted once per run (`crypto.randomUUID()`), so it correlates every
