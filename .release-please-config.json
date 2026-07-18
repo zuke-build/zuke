@@ -599,6 +599,17 @@
           "jsonpath": "$.version"
         }
       ]
+    },
+    "packages/otel": {
+      "component": "otel",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
+      ]
     }
   }
 }

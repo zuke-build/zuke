@@ -31,6 +31,9 @@
   CLIs from a build with `installRelease()` and `toolchain()`.
 - [Extending Zuke](./extending.md) — the plugin contract: lifecycle plugins,
   tool wrappers, and reusable target bundles.
+- [Observability (OpenTelemetry)](./observability.md) — `@zuke/otel` exports run
+  and target spans plus counters as OTLP/HTTP JSON, with trace continuity across
+  suspend/resume.
 - [MCP server](./mcp.md) — `zuke mcp` exposes the build to AI agents as typed
   tools over the Model Context Protocol.
 - [AI review](./ai-review.md) — model-assessed review gates as build

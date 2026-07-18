@@ -156,3 +156,9 @@ Before calling any task or settings method, confirm the real shape:
   diagnosed and (opt-in) auto-fixed, with a committable PR suggestion. Override
   `recoverWith()` on the build to apply one fixer to every target. See the
   cheatsheet's AI section.
+- **OpenTelemetry export (`@zuke/otel`):** register `otel((s) => s.endpoint(…))`
+  as a plugin (`run(MyBuild, { plugins: [otel(…)] })`) to ship run/target spans
+  and `zuke.run.started` / `zuke.run.suspended` / `zuke.runs` counters as
+  OTLP/HTTP JSON. Needs a state store; the trace id is derived from the run id,
+  so a suspend/resume across processes is one trace. Config falls back to the
+  standard `OTEL_*` env vars, and it is inert with no endpoint. Dependency-free.

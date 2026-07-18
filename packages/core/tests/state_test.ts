@@ -727,6 +727,28 @@ Deno.test("RunStateWriter records a failure message, redacted", async () => {
   assertEquals(store.record?.targets.deploy.error, "bad password [redacted]");
 });
 
+Deno.test("RunStateWriter redacts a secret in a wait trigger descriptor", async () => {
+  const store = new MemStore();
+  const redactor = new Redactor();
+  redactor.add("swordfish"); // a secret routed into a signal name
+  const writer = await RunStateWriter.open(
+    store,
+    sampleRecord(),
+    () => "t",
+    redactor,
+  );
+  await writer.markTargetWaiting("deploy", {
+    trigger: "signal:swordfish",
+    onTimeout: "fail",
+  });
+  // The descriptor is masked in the persisted record (so @zuke/otel, the fs
+  // store on disk, and `zuke runs show` all see the redacted form).
+  assertEquals(
+    store.record?.targets.deploy.waitingFor?.trigger,
+    "signal:[redacted]",
+  );
+});
+
 Deno.test("RunStateWriter survives a store error without throwing", async () => {
   const store = new MemStore();
   const warnings: string[] = [];

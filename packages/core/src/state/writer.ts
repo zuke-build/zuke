@@ -200,7 +200,14 @@ export class RunStateWriter {
     return this.#update((record) => {
       const target = ensureTarget(record, name);
       target.status = "waiting";
-      target.waitingFor = wait;
+      // Redact the trigger descriptor like every other stored string (errors,
+      // audit args, meta): a secret routed into a signal name — e.g.
+      // `externalSignal(this.token.value)` → `signal:<secret>` — must not be
+      // persisted or exported (via @zuke/otel) or printed in the clear.
+      target.waitingFor = {
+        ...wait,
+        trigger: this.#redactor.redact(wait.trigger),
+      };
     });
   }
 

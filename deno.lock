@@ -732,6 +732,11 @@
           "jsr:@zuke/core@1"
         ]
       },
+      "packages/otel": {
+        "dependencies": [
+          "jsr:@zuke/core@^1.18.0"
+        ]
+      },
       "packages/oxlint": {
         "dependencies": [
           "jsr:@zuke/core@1"

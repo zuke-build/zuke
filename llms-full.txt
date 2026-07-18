@@ -8083,3 +8083,87 @@ type Provider = "claude" | "openai" | "gemini"
 
 type Severity = "none" | "low" | "medium" | "high" | "critical"
   A severity level, ordered `none` < `low` < `medium` < `high` < `critical`.
+
+========================================================================
+# @zuke/otel
+========================================================================
+
+`@zuke/otel` — an OpenTelemetry (OTLP/HTTP JSON) export plugin for Zuke
+builds. Register {@link otel} on a run and every run/target transition is
+exported to a collector: a run span with one child span per target, plus
+`zuke.run.started` / `zuke.run.suspended` / `zuke.runs` counters. The trace id
+is derived from the run id, so a run that suspends in one process and resumes
+in another lands its spans under a single trace with no handoff.
+
+```ts
+import { run } from "jsr:@zuke/core";
+import { otel } from "jsr:@zuke/otel";
+
+await run(MyBuild, {
+  plugins: [otel((s) => s.endpoint("http://localhost:4318").serviceName("ci"))],
+});
+```
+
+Configuration falls back to the standard `OTEL_EXPORTER_OTLP_ENDPOINT`,
+`OTEL_SERVICE_NAME`, and `OTEL_EXPORTER_OTLP_HEADERS` environment variables;
+with no endpoint the plugin is inert. Core stays OpenTelemetry-free — this
+package has no runtime dependencies and hand-rolls the OTLP JSON.
+@module
+
+function otel(configure?: Configure<OtelSettings>): Plugin
+  Create the OpenTelemetry export plugin. Register it on a run and every
+  run/target transition is exported as OTLP/HTTP JSON:
+
+  ```ts
+  import { run } from "jsr:@zuke/core";
+  import { otel } from "jsr:@zuke/otel";
+
+  await run(MyBuild, {
+    plugins: [otel((s) => s.endpoint("http://localhost:4318").serviceName("ci"))],
+  });
+  ```
+
+  With no argument it reads the standard `OTEL_EXPORTER_OTLP_ENDPOINT` /
+  `OTEL_SERVICE_NAME` / `OTEL_EXPORTER_OTLP_HEADERS` environment variables. If
+  no endpoint is configured by either route the plugin is inert, so it is safe
+  to register unconditionally. Telemetry needs a state store (the plugin's
+  records come from durable run state); a store-less build exports nothing.
+
+class OtelSettings
+  Configuration for the OTLP exporter, set through a lambda passed to
+  {@link "./plugin.ts".otel}. Every setter returns `this` so calls chain, and
+  each value falls back to the matching `OTEL_*` environment variable when left
+  unset (see {@link resolveOtel}).
+
+  endpoint_?: string
+    The base OTLP/HTTP endpoint (e.g. `http://localhost:4318`).
+  tracesEndpoint_?: string
+    A full endpoint for the trace signal, overriding {@link endpoint_} + `/v1/traces`.
+  metricsEndpoint_?: string
+    A full endpoint for the metric signal, overriding {@link endpoint_} + `/v1/metrics`.
+  serviceName_?: string
+    The `service.name` resource attribute.
+  headers_: Record<string, string>
+    Extra HTTP headers sent on every export (e.g. an auth token).
+  resourceAttributes_: Record<string, string>
+    Extra OTLP resource attributes (e.g. `deployment.environment`).
+  timeoutMs_: number
+    Per-request timeout in milliseconds (default 10s).
+  endpoint(url: string): this
+    Set the base OTLP/HTTP endpoint; `/v1/traces` and `/v1/metrics` are appended.
+  tracesEndpoint(url: string): this
+    Set a full endpoint URL for the trace signal (no path is appended).
+  metricsEndpoint(url: string): this
+    Set a full endpoint URL for the metric signal (no path is appended).
+  serviceName(name: string): this
+    Set the `service.name` reported to the collector.
+  header(name: string, value: string): this
+    Add one HTTP header to every export request.
+  headers(map: Record<string, string>): this
+    Merge a map of HTTP headers into the export requests.
+  resourceAttribute(name: string, value: string): this
+    Add one OTLP resource attribute.
+  resourceAttributes(map: Record<string, string>): this
+    Merge a map of OTLP resource attributes.
+  timeout(duration: string): this
+    Set the per-request timeout (a duration string like `"5s"`).

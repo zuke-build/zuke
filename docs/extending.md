@@ -67,6 +67,11 @@ export function slack(opts: { webhook: string }): Plugin {
 }
 ```
 
+[`@zuke/otel`](./observability.md) is a full worked example of this pattern: a
+factory returning a `Plugin` that turns `onRunStateChange` records into
+OpenTelemetry spans and counters — including trace continuity across a
+suspend/resume — with no runtime dependencies.
+
 ## 2. Tool wrappers — typed CLI tasks
 
 Wrap a CLI as a typed, fluent task in the settings-lambda style. For a one-off,
