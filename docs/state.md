@@ -89,6 +89,12 @@ finish, and when the run ends. So if the process is killed mid-run, the record
 on disk shows the target that was executing as `running`, with its `startedAt`
 stamped.
 
+A record also carries an append-only `events` array — the **audit trail** of
+[MCP](./mcp.md) tool calls against the run (time, tool, actor, outcome, redacted
+args). It is empty for a plain run and populated by the MCP server;
+`zuke runs
+show` prints it.
+
 ## Per-target state — `ctx.state`
 
 `ctx.state` ([run context](./run-context.md)) is a small durable key/value store

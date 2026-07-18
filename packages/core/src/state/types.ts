@@ -300,7 +300,11 @@ function parseWaitState(value: unknown): WaitState {
 }
 
 /** All valid {@link RunEventOutcome} values, for validation. */
-const RUN_EVENT_OUTCOMES: readonly RunEventOutcome[] = ["ok", "denied", "error"];
+const RUN_EVENT_OUTCOMES: readonly RunEventOutcome[] = [
+  "ok",
+  "denied",
+  "error",
+];
 
 /** Validate and narrow a {@link RunEvent} (an element of a run's audit trail). */
 function parseRunEvent(value: unknown): RunEvent {

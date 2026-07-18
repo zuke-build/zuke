@@ -33,6 +33,15 @@ export interface RunToolDeps {
   actor?: string;
   /** Reads an environment variable (secrets re-resolve from here on a resume). */
   readEnv: (name: string) => string | undefined;
+  /**
+   * Authorize resuming a run whose root target is `targetName`, applying the
+   * same allow-list and operator-token gates as a `run:` tool (a resume runs
+   * that target's code). Returns a denial reason, or `null` when allowed.
+   */
+  authorize: (
+    targetName: string,
+    args: Record<string, unknown>,
+  ) => string | null;
 }
 
 /** A run-state tool's rendered result: JSON text plus the MCP error flag. */
@@ -98,6 +107,11 @@ const MUTATING_TOOLS: readonly McpTool[] = [
           description: "The external signal name to deliver.",
         },
         data: { description: "The signal's JSON payload (optional)." },
+        operatorToken: {
+          type: "string",
+          description:
+            "Operator token, required if the run's target is protected.",
+        },
       },
       required: ["runId"],
     },
@@ -112,7 +126,12 @@ const MUTATING_TOOLS: readonly McpTool[] = [
       properties: {
         runId: {
           type: "string",
-          description: "A single run to check; omit to sweep every suspended run.",
+          description:
+            "A single run to check; omit to sweep every suspended run.",
+        },
+        operatorToken: {
+          type: "string",
+          description: "Operator token, required for protected targets.",
         },
       },
     },
@@ -125,9 +144,7 @@ const MUTATING_TOOLS: readonly McpTool[] = [
  * when `includeMutating` (i.e. execution is enabled).
  */
 export function runStateToolDefs(includeMutating: boolean): McpTool[] {
-  return includeMutating
-    ? [...READ_TOOLS, ...MUTATING_TOOLS]
-    : [...READ_TOOLS];
+  return includeMutating ? [...READ_TOOLS, ...MUTATING_TOOLS] : [...READ_TOOLS];
 }
 
 /** The name of every run-state tool, for dispatch and audit classification. */
@@ -142,7 +159,10 @@ export function isMutatingRunTool(name: string): boolean {
 }
 
 /** Read an optional string argument, or `undefined` when absent/not a string. */
-function stringArg(args: Record<string, unknown>, key: string): string | undefined {
+function stringArg(
+  args: Record<string, unknown>,
+  key: string,
+): string | undefined {
   const value = args[key];
   return typeof value === "string" ? value : undefined;
 }
@@ -156,7 +176,12 @@ function jsonResult(value: unknown, isError = false): RunToolResult {
 function structuredError(error: unknown, runId: string): RunToolResult {
   if (error instanceof AlreadyResumedError) {
     return jsonResult(
-      { error: "already_resumed", runId: error.runId, by: error.by, at: error.at },
+      {
+        error: "already_resumed",
+        runId: error.runId,
+        by: error.by,
+        at: error.at,
+      },
       true,
     );
   }
@@ -232,6 +257,14 @@ async function signalRun(
   if (runId === undefined) {
     return jsonResult({ error: "missing_argument", argument: "runId" }, true);
   }
+  // A resume runs the run's target code, so it is gated by the same allow-list
+  // and operator-token policy as a `run:` tool.
+  const loaded = await deps.store.getRun(runId);
+  if (loaded === null) return jsonResult({ error: "no_run", runId }, true);
+  const denied = deps.authorize(loaded.record.rootTarget, args);
+  if (denied !== null) {
+    return jsonResult({ error: "unauthorized", reason: denied, runId }, true);
+  }
   const data: JsonValue | undefined = "data" in args
     ? toJsonValue(args.data ?? null)
     : undefined;
@@ -259,22 +292,46 @@ async function signalRun(
   }
 }
 
-/** `resume_check`: re-check one or all suspended runs. */
+/** `resume_check`: re-check one or all suspended runs the caller may resume. */
 async function resumeCheckTool(
   deps: RunToolDeps,
   args: Record<string, unknown>,
 ): Promise<RunToolResult> {
   const runId = stringArg(args, "runId");
-  try {
-    const { checked, failed } = await resumeCheck(deps.build, {
-      runId,
-      stateStore: deps.store,
-      actor: deps.actor,
-      readEnv: deps.readEnv,
-      silent: true,
-    });
-    return jsonResult({ ok: failed === 0, checked, failed });
-  } catch (error) {
-    return structuredError(error, runId ?? "(all)");
+  // Resolve the candidate runs, then keep only those the caller is authorised to
+  // resume (same allow-list/operator-token gate as a run). A single-id request
+  // that is denied errors; a sweep silently skips runs it may not touch.
+  let candidates: string[];
+  if (runId !== undefined) {
+    const loaded = await deps.store.getRun(runId);
+    if (loaded === null) return jsonResult({ error: "no_run", runId }, true);
+    const denied = deps.authorize(loaded.record.rootTarget, args);
+    if (denied !== null) {
+      return jsonResult({ error: "unauthorized", reason: denied, runId }, true);
+    }
+    candidates = [runId];
+  } else {
+    const suspended = await deps.store.listRuns({ status: "suspended" });
+    candidates = suspended
+      .filter((s) => deps.authorize(s.rootTarget, args) === null)
+      .map((s) => s.id);
   }
+  let checked = 0;
+  let failed = 0;
+  for (const id of candidates) {
+    try {
+      const result = await resumeCheck(deps.build, {
+        runId: id,
+        stateStore: deps.store,
+        actor: deps.actor,
+        readEnv: deps.readEnv,
+        silent: true,
+      });
+      checked += result.checked;
+      failed += result.failed;
+    } catch (error) {
+      return structuredError(error, id);
+    }
+  }
+  return jsonResult({ ok: failed === 0, checked, failed });
 }

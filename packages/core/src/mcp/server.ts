@@ -17,7 +17,7 @@
  * @module
  */
 
-import type { Build } from "../build.ts";
+import type { Build, BuildResult } from "../build.ts";
 import { discoverTargets } from "../build.ts";
 import { type AnyParameter, discoverParameters } from "../params.ts";
 import { describeBuildSurface } from "../describe.ts";
@@ -38,6 +38,7 @@ import {
 } from "./runtools.ts";
 import {
   err,
+  INTERNAL_ERROR,
   INVALID_PARAMS,
   type JsonRpcResponse,
   METHOD_NOT_FOUND,
@@ -343,7 +344,18 @@ export class McpServer {
       case "tools/list":
         return ok(id, { tools: this.tools() });
       case "tools/call":
-        return await this.#callTool(id, params);
+        // Backstop: no tool call may crash the transport. Expected failures are
+        // already structured tool results; this catches anything unforeseen and
+        // returns a JSON-RPC error (generic, so no raw detail can escape).
+        try {
+          return await this.#callTool(id, params);
+        } catch {
+          return err(
+            id,
+            INTERNAL_ERROR,
+            "Internal error handling the tool call",
+          );
+        }
       default:
         // An unknown notification is silently ignored; an unknown request errors.
         if (id === null) return null;
@@ -443,6 +455,8 @@ export class McpServer {
         build: this.build,
         actor: this.#resolveActor(),
         readEnv: this.#readEnv,
+        authorize: (targetName, callArgs) =>
+          this.#authorizeTarget(targetName, callArgs),
       },
       name,
       args,
@@ -507,7 +521,11 @@ export class McpServer {
         return ok(
           id,
           textResult(
-            JSON.stringify({ error: "unauthorized", tool: runName, reason: denial }, null, 2),
+            JSON.stringify(
+              { error: "unauthorized", tool: runName, reason: denial },
+              null,
+              2,
+            ),
             true,
           ),
         );
@@ -518,19 +536,26 @@ export class McpServer {
 
     // Confirmation tiering: a destructive target without confirm:true returns
     // its resolved plan instead of executing (a dry run needs no confirmation).
-    if (this.#confirmDestructive && !root.readOnly_ && !dryRun && args.confirm !== true) {
+    if (
+      this.#confirmDestructive && !root.readOnly_ && !dryRun &&
+      args.confirm !== true
+    ) {
       const plan = planGraph(root).order
         .map((t) => t.name_)
         .filter((n): n is string => n !== undefined);
       return ok(
         id,
         textResult(
-          JSON.stringify({
-            status: "confirmation_required",
-            tool: runName,
-            plan,
-            hint: "Re-call with confirm:true to execute.",
-          }, null, 2),
+          JSON.stringify(
+            {
+              status: "confirmation_required",
+              tool: runName,
+              plan,
+              hint: "Re-call with confirm:true to execute.",
+            },
+            null,
+            2,
+          ),
           false,
         ),
       );
@@ -566,19 +591,51 @@ export class McpServer {
     // Parameters resolve like the CLI: MCP arguments beat the environment beats
     // the declared default, so a value set in the server's environment still
     // applies unless the agent overrides it.
-    const result = await execute(this.build, root, {
-      params: values,
-      reporter: buffer.reporter,
-      dryRun,
-      github: false,
-      actor: this.#resolveActor(),
-      readEnv: this.#readEnv,
-    });
+    // `execute` captures target failures into its result, but can still throw
+    // on a framework error (a build hook or plugin throwing, etc.). Catch it so
+    // a tool call never crashes the transport — and don't echo the raw message,
+    // which bypassed the reporter's redaction.
+    let result: BuildResult;
+    try {
+      result = await execute(this.build, root, {
+        params: values,
+        reporter: buffer.reporter,
+        dryRun,
+        github: false,
+        actor: this.#resolveActor(),
+        readEnv: this.#readEnv,
+      });
+    } catch (error) {
+      await this.#audit(runName, args, "error", "execute_threw");
+      const kind = error instanceof Error ? error.name : "Error";
+      return ok(
+        id,
+        textResult(
+          `${buffer.text()}\n\n✘ ${targetName} errored during execution (${kind}).`,
+          true,
+        ),
+      );
+    }
     await this.#audit(runName, args, result.ok ? "ok" : "error");
     const status = result.ok
       ? `\n\n✔ ${targetName} succeeded.`
       : `\n\n✘ ${targetName} failed.`;
     return ok(id, textResult(buffer.text() + status, !result.ok));
+  }
+
+  /**
+   * Authorize causing target `name` to run — the shared gate for a `run:` tool
+   * and for a resume (`signal_run`/`resume_check`, which re-run the target's
+   * code). Returns a denial reason (allow-list miss or operator-token failure)
+   * or `null` when allowed.
+   */
+  #authorizeTarget(name: string, args: Record<string, unknown>): string | null {
+    if (!this.#allowMatch(name)) return "not_allowed";
+    if (this.#isProtected(name)) {
+      const denial = this.#checkOperatorToken(args);
+      if (denial !== null) return denial;
+    }
+    return null;
   }
 
   /**
@@ -603,9 +660,9 @@ export class McpServer {
 
   /**
    * Append a tool call to the audit log (best-effort; never breaks a call).
-   * No-op without a store. `args` are structurally sanitised — the operator
-   * token is dropped and each secret parameter's value is masked — before the
-   * writer's redactor runs as a second layer.
+   * No-op without a store. `args` are sanitised by {@link "#auditArgs"} first —
+   * the operator token dropped, secret values masked wherever they appear — so
+   * nothing sensitive reaches the durable trail.
    */
   async #audit(
     tool: string,
@@ -635,19 +692,31 @@ export class McpServer {
     }
   }
 
-  /** Sanitise tool arguments for the audit log: drop the token, mask secrets. */
+  /**
+   * Sanitise tool arguments for the audit log: drop the operator token, mask
+   * each secret parameter's value, and — via a redactor seeded from this call's
+   * secret values — mask any secret **echoed into a non-secret argument** too,
+   * so a secret can't slip into the durable trail through another field.
+   */
   #auditArgs(args: Record<string, unknown>): Record<string, string> {
+    const redactor = new Redactor();
+    for (const [key, value] of Object.entries(args)) {
+      if (typeof value !== "string") continue;
+      if (key === "operatorToken" || this.#params.get(key)?.secret_) {
+        redactor.add(value);
+      }
+    }
     const out: Record<string, string> = {};
     for (const [key, value] of Object.entries(args)) {
       if (key === "operatorToken") continue; // never persist the operator token
-      const param = this.#params.get(key);
-      if (param?.secret_) {
+      if (this.#params.get(key)?.secret_) {
         out[key] = "[redacted]";
         continue;
       }
-      out[key] = typeof value === "object" && value !== null
+      const text = typeof value === "object" && value !== null
         ? JSON.stringify(value)
         : String(value);
+      out[key] = redactor.redact(text);
     }
     return out;
   }

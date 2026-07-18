@@ -680,6 +680,7 @@ async function runMcp(build: Build, parsed: ParsedArgs): Promise<number> {
     allowRunPatterns: parsed.allowRunPatterns,
     protectPatterns: parsed.protectPatterns,
     confirmDestructive: parsed.confirmDestructive,
+    actor: parsed.actor,
     http,
   });
 }

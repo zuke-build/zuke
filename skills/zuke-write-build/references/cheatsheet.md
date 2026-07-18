@@ -467,6 +467,9 @@ is current (`zuke generate-ci --check` is a dedicated gate).
 ./zuke runs show <id>         # one run's full per-target status (+ --json)
 ./zuke mcp [--allow-run]      # serve the build over MCP for an AI client (stdio)
 ./zuke mcp --http 7777        # ...or over HTTP (loopback; token off-loopback)
+./zuke mcp --allow-run=deploy,checks* --protect deploy --confirm-destructive
+                              # authz tiers: allow-list, operator token, confirm
+./zuke runs show mcp-audit    # the MCP tool-call audit trail
 ```
 
 **Caching:** a target with `.inputs(...)`/`.outputs(...)` is incremental

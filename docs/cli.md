@@ -1,27 +1,27 @@
 # CLI reference
 
-| Command                                             | Behaviour                                                                               |
-| --------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| `zuke <target>`                                     | Run the target and all its transitive dependencies, in order.                           |
-| `zuke <target> --skip <dep>`                        | Run the target but skip the named dependency (repeatable).                              |
-| `zuke <target> --parallel`                          | Run independent targets concurrently (`--parallel=N` caps it).                          |
-| `zuke <target> --no-cache`                          | Ignore the incremental cache; re-run every target.                                      |
-| `zuke <target> --affected[=<base>]`                 | Run only targets affected by files changed since a git base.                            |
-| `zuke <target> --dry-run`                           | Print the plan without executing any target body.                                       |
-| `zuke <target> --state`                             | Persist [durable run state](./state.md) under `.zuke/runs`.                             |
-| `zuke <target> --actor <name>`                      | Attribute the run to `<name>` in its state record.                                      |
-| `zuke --list` / `-l`                                | List all targets with descriptions and dependencies.                                    |
-| `zuke graph`                                        | Print the dependency graph (`target → deps`).                                           |
-| `zuke graph --output=html`                          | Render an interactive HTML graph into `.zuke/` and open it.                             |
-| `zuke completions print <shell>`                    | Print a shell-completion script (`bash`, `zsh`, or `fish`).                             |
-| `zuke completions install <shell>`                  | Write the script and wire it into the shell's startup.                                  |
-| `zuke mcp [--allow-run] [--http <host:port>]`       | Run an MCP server over the build for AI agents, on stdio or HTTP ([details](./mcp.md)). |
-| `zuke resume <id> [--signal <n>] [--data <json>]`   | Resume a suspended run, optionally delivering a signal ([details](./orchestration.md)). |
-| `zuke resume --check [<id>]`                        | Re-check suspended runs (predicate waits, timeouts).                                    |
-| `zuke runs list [--status/-target/-since] [--json]` | List persisted run records, newest first ([details](./state.md)).                       |
-| `zuke runs show <id> [--json]`                      | Show one run's full per-target status and metadata.                                     |
-| `zuke --help` / `-h`                                | Usage.                                                                                  |
-| `zuke` (no target)                                  | Run the `default` target if defined, else print `--list`.                               |
+| Command                                                 | Behaviour                                                                               |
+| ------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `zuke <target>`                                         | Run the target and all its transitive dependencies, in order.                           |
+| `zuke <target> --skip <dep>`                            | Run the target but skip the named dependency (repeatable).                              |
+| `zuke <target> --parallel`                              | Run independent targets concurrently (`--parallel=N` caps it).                          |
+| `zuke <target> --no-cache`                              | Ignore the incremental cache; re-run every target.                                      |
+| `zuke <target> --affected[=<base>]`                     | Run only targets affected by files changed since a git base.                            |
+| `zuke <target> --dry-run`                               | Print the plan without executing any target body.                                       |
+| `zuke <target> --state`                                 | Persist [durable run state](./state.md) under `.zuke/runs`.                             |
+| `zuke <target> --actor <name>`                          | Attribute the run to `<name>` in its state record.                                      |
+| `zuke --list` / `-l`                                    | List all targets with descriptions and dependencies.                                    |
+| `zuke graph`                                            | Print the dependency graph (`target → deps`).                                           |
+| `zuke graph --output=html`                              | Render an interactive HTML graph into `.zuke/` and open it.                             |
+| `zuke completions print <shell>`                        | Print a shell-completion script (`bash`, `zsh`, or `fish`).                             |
+| `zuke completions install <shell>`                      | Write the script and wire it into the shell's startup.                                  |
+| `zuke mcp [--allow-run[=<globs>]] [--http <host:port>]` | Run an MCP server over the build for AI agents, on stdio or HTTP ([details](./mcp.md)). |
+| `zuke resume <id> [--signal <n>] [--data <json>]`       | Resume a suspended run, optionally delivering a signal ([details](./orchestration.md)). |
+| `zuke resume --check [<id>]`                            | Re-check suspended runs (predicate waits, timeouts).                                    |
+| `zuke runs list [--status/-target/-since] [--json]`     | List persisted run records, newest first ([details](./state.md)).                       |
+| `zuke runs show <id> [--json]`                          | Show one run's full per-target status and metadata.                                     |
+| `zuke --help` / `-h`                                    | Usage.                                                                                  |
+| `zuke` (no target)                                      | Run the `default` target if defined, else print `--list`.                               |
 
 (Read `zuke` as `deno run -A zuke.ts` until the launcher binary ships.)
 
@@ -109,12 +109,17 @@ shared with the parser and `--help`, so they never drift out of sync.
 Runs a [Model Context Protocol](https://modelcontextprotocol.io) server over the
 build on stdio, so an AI agent can operate the pipeline through typed tool calls
 instead of guessing shell commands. It exposes read tools (`list_targets`,
-`describe_build`, `graph`) and — only with `--allow-run` — one `run:<target>`
-tool per target, whose input schema is derived from the build's parameters.
-`--http <host:port>` serves the streamable-HTTP transport instead of stdio
-(loopback by default; a non-loopback bind requires a `ZUKE_MCP_TOKEN` bearer
-token). `mcp` is a reserved command name. See the full guide:
-[MCP server](./mcp.md).
+`describe_build`, `graph`, plus `list_runs`/`show_run` when a state store
+resolves) and — only with `--allow-run` — one `run:<target>` tool per target
+(plus `signal_run`/`resume_check`). Authorization tiers layer on:
+`--allow-run=<globs>` limits which targets are runnable, `--protect <globs>`
+requires a `ZUKE_OPERATOR_TOKEN` operator token, and `--confirm-destructive`
+makes a destructive run return its plan until called with `confirm:true`. Every
+mutating or denied call is written to an audit trail
+(`zuke runs show mcp-audit`). `--http <host:port>` serves the streamable-HTTP
+transport instead of stdio (loopback by default; a non-loopback bind requires a
+`ZUKE_MCP_TOKEN` bearer token). `mcp` is a reserved command name. See the full
+guide: [MCP server](./mcp.md).
 
 ## Parallel execution
 

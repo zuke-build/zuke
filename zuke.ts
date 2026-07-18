@@ -375,7 +375,9 @@ class ZukeBuild extends Build {
   integration = target()
     .description("Run the subprocess e2e suite (real processes, OS matrix)")
     .executes(async () => {
-      await DenoTasks.test((s) => s.allowAll().paths("tests/e2e/race_e2e.ts"));
+      await DenoTasks.test((s) =>
+        s.allowAll().paths("tests/e2e/race_e2e.ts", "tests/e2e/mcp_e2e.ts")
+      );
     });
 
   // The dedicated workflow for the `integration` target, generated from this

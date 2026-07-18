@@ -137,7 +137,11 @@ Before calling any task or settings method, confirm the real shape:
 - **Operate the build from an agent:** `zuke mcp` serves the build over MCP so
   an AI client can list, inspect, and (with `--allow-run`) run targets — on
   stdio, or over HTTP with `--http <host:port>` (loopback by default; a
-  non-loopback bind needs a `ZUKE_MCP_TOKEN` bearer token).
+  non-loopback bind needs a `ZUKE_MCP_TOKEN` bearer token). With a state store
+  it also exposes `list_runs`/`show_run` (+ `signal_run`/`resume_check`). Tier
+  access with `--allow-run=<globs>` (allow-list), `--protect <globs>` +
+  `ZUKE_OPERATOR_TOKEN`, and `--confirm-destructive`; mark inspect-only targets
+  `.readOnly()`. Mutating/denied calls are audited (`zuke runs show mcp-audit`).
 - **AI review & self-healing (`@zuke/ai`):** gate a target on a structured LLM
   review of the diff (`securityReviewer(...)` etc. via `.validateBefore`), or
   attach `aiFixer(...)` with `.recoverWith(...)` so a failing target is
