@@ -158,7 +158,7 @@ async function killWithin(
   server: Deno.ChildProcess,
   ms: number,
 ): Promise<void> {
-  let timer: number | undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(
       () =>
