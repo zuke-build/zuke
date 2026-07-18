@@ -1,11 +1,12 @@
 # Parameters
 
 Parameters are typed inputs to a build. You declare them as class fields — just
-like targets — and read the resolved value inside a target. The execution
-engine resolves every parameter **before any target runs**, from (in order of
+like targets — and read the resolved value inside a target. The execution engine
+resolves every parameter **before any target runs**, from (in order of
 precedence):
 
-1. a command-line flag — `--environment production` or `--environment=production`
+1. a command-line flag — `--environment production` or
+   `--environment=production`
 2. an environment variable — `ENVIRONMENT`
 3. a [secret source](./secrets.md) declared with `.from(...)`
 4. the declared default
@@ -24,7 +25,9 @@ class Deploy extends Build {
 
   deploy = target().executes(() => {
     if (this.dryRun.value) console.log("(dry run)");
-    console.log(`Deploying to ${this.environment.value} with ${this.workers.value} workers`);
+    console.log(
+      `Deploying to ${this.environment.value} with ${this.workers.value} workers`,
+    );
   });
 }
 
@@ -42,22 +45,23 @@ ENVIRONMENT=staging ./zuke deploy        # value from the environment
 each call refines the value type, so `value` is exactly as strong as the
 declaration:
 
-| Method | Effect | `value` type |
-| --- | --- | --- |
-| `parameter("…")` | optional string | `string \| undefined` |
-| `.number()` | parse as a number | `number \| undefined` |
-| `.boolean()` | a flag; defaults to `false` | `boolean` |
-| `.options("a", "b")` | restrict a string to choices | unchanged |
-| `.default(v)` | provide a default | non-optional (`T`) |
-| `.required()` | must be supplied | non-optional (`T`) |
-| `.env("NAME")` | override the env var name | unchanged |
-| `.secret()` | mark the value sensitive (masked everywhere) | unchanged |
-| `.from(source)` | resolve from a [secret manager](./secrets.md) | unchanged |
-| `.array()` | a comma-separated / repeatable list | `string[]` |
+| Method               | Effect                                        | `value` type          |
+| -------------------- | --------------------------------------------- | --------------------- |
+| `parameter("…")`     | optional string                               | `string \| undefined` |
+| `.number()`          | parse as a number                             | `number \| undefined` |
+| `.boolean()`         | a flag; defaults to `false`                   | `boolean`             |
+| `.options("a", "b")` | restrict a string to choices                  | unchanged             |
+| `.default(v)`        | provide a default                             | non-optional (`T`)    |
+| `.required()`        | must be supplied                              | non-optional (`T`)    |
+| `.env("NAME")`       | override the env var name                     | unchanged             |
+| `.secret()`          | mark the value sensitive (masked everywhere)  | unchanged             |
+| `.from(source)`      | resolve from a [secret manager](./secrets.md) | unchanged             |
+| `.array()`           | a comma-separated / repeatable list           | `T[]`                 |
 
 `.number()` and `.boolean()` come first (they change the kind); `.options()`
-applies to strings. A required parameter with no value (and no default) fails
-the build before any target runs, with a message naming the flag and env var —
+applies to strings; `.array()` comes **last** and composes with the kind and
+choices before it. A required parameter with no value (and no default) fails the
+build before any target runs, with a message naming the flag and env var —
 unless it can be supplied interactively (below).
 
 ## Lists
@@ -75,6 +79,17 @@ tags = parameter("Image tags").array();
 ./zuke deploy --tags latest,canary      # ["latest", "canary"]
 ./zuke deploy --tags latest --tags canary  # same result
 TAGS=latest,canary ./zuke deploy        # from the environment
+```
+
+`.array()` composes with the kind and choices declared before it — every
+**element** is validated, not just the raw string:
+
+```ts
+// number[]: each entry parsed as a number; "1,x" is rejected.
+workers = parameter("Worker ids").number().array();
+
+// each element must be one of the choices; "api,nope" is rejected.
+services = parameter("Services").options("api", "web", "worker").array();
 ```
 
 ## Secrets
@@ -96,7 +111,9 @@ import { execSecret } from "jsr:@zuke/core";
 
 token = parameter("Deploy token")
   .secret()
-  .from(execSecret((s) => s.command("op").arg("read", "op://vault/deploy/token")));
+  .from(
+    execSecret((s) => s.command("op").arg("read", "op://vault/deploy/token")),
+  );
 ```
 
 The [Secrets guide](./secrets.md) covers sources, resolution precedence, and the

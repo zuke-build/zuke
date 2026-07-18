@@ -115,8 +115,17 @@ Before calling any task or settings method, confirm the real shape:
   `zuke resume <id> --signal <name> [--data <json>]` (or `--check` for predicate
   waits/timeouts) — exactly-once, re-running only the not-yet-succeeded targets.
   Needs a state store. See the cheatsheet / `docs/orchestration.md`.
+- **Fan-out over a list:**
+  `.forEach(() => this.repos.value, (repo) => ({ checks: target()…, deploy: target()… }), (s) => s.concurrency(3).continueOnItemFailure())`
+  runs the same pipeline over a runtime list — items concurrent, each item's
+  stages sequential. Sub-targets are materialised at run time
+  (`parent[item].stage`), each a first-class row in the summary and the run
+  record; `continueOnItemFailure()` isolates a failed item. See
+  `docs/orchestration.md`.
 - **Typed inputs:** `parameter("...")` (with `.secret()` / `.required()`), read
-  as `this.x.value`, gated with `.requires(this.x)`.
+  as `this.x.value`, gated with `.requires(this.x)`. `.array()` composes:
+  `.options(...).array()` validates each element, `.number().array()` →
+  `number[]`.
 - **Secrets from a manager:** `parameter(...).secret().from(source)` sources a
   value at run time (e.g. `execSecret(...)` shelling out to a secret CLI) and
   **redacts** it from all of Zuke's output. See the cheatsheet.

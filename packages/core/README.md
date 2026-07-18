@@ -823,6 +823,25 @@ class FileSystemStateStore implements StateStore
   async releaseLock(key: string, token: string): Promise<void>
     Release the lock `key` if still held under `token`; a no-op otherwise.
 
+class ForEachSettings
+  Fluent configuration for {@link TargetBuilder.forEach}, in the settings-lambda
+  style: `.forEach(items, factory, (s) => s.concurrency(3).continueOnItemFailure())`.
+  Sets the {@link ForEachSettings.concurrency | concurrency} cap and whether one
+  item's failure isolates it or stops the whole batch.
+
+  concurrency_?: number
+    Max item pipelines in flight at once; set by {@link concurrency}.
+  continueOnItemFailure_: boolean
+    Isolate a failed item from its siblings; set by {@link continueOnItemFailure}.
+  concurrency(limit: number): this
+    Cap how many item pipelines run concurrently (default: the host CPU count).
+    Clamped to at least 1; `1` runs items one at a time.
+  continueOnItemFailure(on: boolean): this
+    Keep running the other items when one item's pipeline fails (the failed
+    item's later stages are still skipped). The fan-out target still fails at
+    the end if any item failed. Without this, the first item failure stops the
+    batch — the default.
+
 class GraphError extends Error
   Raised when the build graph is invalid (cycle or unknown dependency).
 
@@ -992,10 +1011,15 @@ class Parameter<K extends ParamValue = ParamValue, T extends K | K[] | undefined
     Require a value, making `value` non-optional (`K`); errors if unsupplied.
   env(name: string): Parameter<K, T>
     Override the environment variable read as a fallback for this parameter.
-  array(this: Parameter<string, string | undefined>): Parameter<string, string[]>
-    Accept a comma-separated list (or a repeated flag), exposing `value` as a
-    `string[]`. `--tags a,b` and `--tags a --tags b` both yield `["a", "b"]`;
-    blank entries are dropped. An unsupplied list parameter defaults to `[]`.
+  array(this: Parameter<E, E | undefined>): Parameter<E, E[]>
+    Accept a comma-separated list (or a repeated flag), exposing `value` as an
+    array. `--tags a,b` and `--tags a --tags b` both yield `["a", "b"]`; blank
+    entries are dropped, and an unsupplied list defaults to `[]`.
+
+    Each element is parsed by this parameter's own element parser, so it
+    composes: `.options("a", "b").array()` validates every element against
+    the choices, and `.number().array()` yields a `number[]`, rejecting a
+    non-numeric entry. (Apply `.options()`/`.number()` before `.array()`.)
   resolve_(raw: string | undefined): void
     Resolve from a raw input (or `undefined` when none was supplied).
 
@@ -1147,6 +1171,8 @@ class TargetBuilder
     Cross-run lock settings lambda, set by {@link lock} and run after params resolve.
   waitsFor_?: Configure<WaitSettings>
     External-event wait settings lambda, set by {@link waitsFor} and run when reached.
+  forEach_?: ForEachSpec
+    Fan-out spec, set by {@link forEach}: materialises per-item sub-target pipelines.
   description(text: string): this
     Set the human-readable description shown in `zuke --list`.
   dependsOn(...targets: Array<TargetBuilder | Group>): this
@@ -1297,6 +1323,30 @@ class TargetBuilder
         s.on(externalSignal("testing-approved"))
           .timeout("72h")
           .onTimeout(() => this.rollback));
+    ```
+  forEach(items: () => readonly Item[], factory: ForEachFactory<Item>, configure?: Configure<ForEachSettings>): this
+    Fan out over a runtime list: for each item, build an ordered pipeline of
+    sub-targets and run them with per-item failure isolation and bounded
+    concurrency. `items` is a thunk (evaluated when the target runs, so it can
+    read `this.<param>.value`); `factory` returns a record of sub-targets per
+    item, each implicitly depending on the one before it. Items run
+    concurrently, each item's stages sequentially — the pipeline model.
+
+    The sub-targets are materialised at run time (named
+    `parent[item].stage`) — `--list`/`graph` show only the one fan-out node —
+    and each is a first-class target with its own status in the summary and the
+    run record. The fan-out target fails if any item's pipeline fails.
+
+    ```ts
+    deployBatch = target()
+      .forEach(
+        () => this.repos.value, // string[]
+        (repo) => ({
+          checks: target().executes(() => checkDeployable(repo)),
+          deploy: target().executes((ctx) => applyToSit(repo, ctx)),
+        }),
+        (s) => s.concurrency(3).continueOnItemFailure(),
+      );
     ```
 
 class TeamsAnnouncementSettings extends AnnouncementSettings
@@ -1840,6 +1890,25 @@ interface FileTasksApi
     Write `content` to the file at `path`, creating or truncating it.
   readJson(path: PathLike): Promise<T>
     Read and parse the JSON file at `path`.
+
+interface ForEachItem
+  One materialised fan-out item: a unique label plus its pipeline stages.
+
+  key: string
+    A label unique within the fan-out, used to name the item's sub-targets.
+  stages: Record<string, TargetBuilder>
+    The item's ordered pipeline stages, keyed by stage name.
+
+interface ForEachSpec
+  The internal fan-out spec stored by {@link TargetBuilder.forEach}. Its
+  {@link ForEachSpec.materialize} closure captures the item type, so the runtime
+  list and factory are erased to concrete {@link ForEachItem}s the executor can
+  run without knowing the item type.
+
+  materialize: () => ForEachItem[]
+    Produce the per-item sub-target pipelines from the runtime list.
+  configure?: Configure<ForEachSettings>
+    Optional fan-out settings (concurrency, per-item failure isolation).
 
 interface GlobOptions
   Options for {@link glob}.
@@ -2443,6 +2512,12 @@ type Condition = () => boolean | Promise<boolean>
 
 type DownloadFn = (url: string, dest: PathLike) => Promise<void>
   A download function: fetch `url` into the file at `dest`.
+
+type ForEachFactory<Item> = (item: Item, index: number) => Record<string, TargetBuilder>
+  Builds one item's ordered pipeline of sub-targets for {@link TargetBuilder.forEach}.
+  The returned record's keys are stage names and its values are targets; each
+  stage implicitly depends on the one declared before it, so an item's stages
+  run in insertion order.
 
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue; }
   A JSON-serialisable value — the only thing that may be persisted in a

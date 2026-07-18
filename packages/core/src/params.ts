@@ -361,21 +361,37 @@ export class Parameter<
   }
 
   /**
-   * Accept a comma-separated list (or a repeated flag), exposing `value` as a
-   * `string[]`. `--tags a,b` and `--tags a --tags b` both yield `["a", "b"]`;
-   * blank entries are dropped. An unsupplied list parameter defaults to `[]`.
+   * Accept a comma-separated list (or a repeated flag), exposing `value` as an
+   * array. `--tags a,b` and `--tags a --tags b` both yield `["a", "b"]`; blank
+   * entries are dropped, and an unsupplied list defaults to `[]`.
+   *
+   * Each element is parsed by this parameter's own element parser, so it
+   * composes: `.options("a", "b").array()` validates **every** element against
+   * the choices, and `.number().array()` yields a `number[]`, rejecting a
+   * non-numeric entry. (Apply `.options()`/`.number()` before `.array()`.)
    */
-  array(
-    this: Parameter<string, string | undefined>,
-  ): Parameter<string, string[]> {
-    return new Parameter<string, string[]>({
+  array<E extends string | number>(
+    this: Parameter<E, E | undefined>,
+  ): Parameter<E, E[]> {
+    // Reuse this parameter's scalar parser on each entry, so number parsing and
+    // option validation apply per element rather than to the raw list string.
+    const element = this.#parse;
+    return new Parameter<E, E[]>({
       description: this.description_,
-      kind: "string",
+      kind: this.kind_,
       required: false,
       options: this.options_,
       envName: this.envName_,
       parse: (raw) =>
-        raw.split(",").map((s) => s.trim()).filter((s) => s !== ""),
+        raw.split(",").map((s) => s.trim()).filter((s) => s !== "").map(
+          (entry) => {
+            const value = element(entry);
+            if (value === undefined) {
+              throw new ParameterError("internal: parser produced no value");
+            }
+            return value;
+          },
+        ),
       fallback: { has: true, value: [] },
       secret: this.secret_,
       array: true,
