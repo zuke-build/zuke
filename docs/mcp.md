@@ -101,10 +101,15 @@ from the build's declared parameters — a `required` parameter is required,
 parameters exactly like the CLI (MCP argument → the environment → the declared
 default) and returns the target's captured output with a pass/fail marker.
 
-With `--allow-run` a store also exposes two **mutating** run-state tools:
+With `--allow-run` a store also exposes three **mutating** run-state tools:
 `signal_run` (deliver an external signal and resume a suspended run,
-exactly-once) and `resume_check` (re-check suspended runs — predicate waits and
-timeouts). They are the MCP counterparts of `zuke resume`.
+exactly-once), `resume_check` (re-check suspended runs — predicate waits and
+timeouts), and `cancel_run` (cancel a run and run its
+[compensations](./orchestration.md#cancellation--compensation-oncancel)). They
+are the MCP counterparts of `zuke resume` and `zuke cancel`. Each runs the
+target's code (a resume continues it; a cancel runs its compensations), so it is
+gated by the same [allow-list and operator-token](#authorization) policy as a
+`run:` tool and appended to the [audit log](#audit-log).
 
 ```jsonc
 // tools/call
@@ -145,7 +150,7 @@ ZUKE_OPERATOR_TOKEN=… zuke mcp --http 7777 \
 ## Audit log
 
 With a store configured, **every mutating or denied tool call** (`run:<target>`,
-`signal_run`, `resume_check`) is appended to an audit trail: the time, the tool,
+`signal_run`, `resume_check`, `cancel_run`) is appended to an audit trail: the time, the tool,
 the resolved **actor**, the outcome (`ok` / `denied` / `error`), and the call's
 arguments. Arguments are **redacted** — the operator token is dropped and every
 `.secret()` parameter's value is masked — before anything is persisted.

@@ -142,9 +142,38 @@ Deno.test("two MCP sessions: query a suspended run over HTTP and signal it, audi
     assertEquals(event?.outcome, "ok");
   } finally {
     if (server !== undefined) {
+      // SIGTERM (kill's default) must terminate the server promptly. `zuke mcp`
+      // is a long-lived command, so the CLI must not intercept the signal for
+      // graceful build-cancellation and swallow it — fail fast if it does,
+      // rather than hang the whole job.
       server.kill();
-      await server.status;
+      await killWithin(server, 10_000);
     }
     await Deno.remove(dir, { recursive: true });
   }
 });
+
+/** Await a killed process exiting within `ms`, throwing a clear error otherwise. */
+async function killWithin(
+  server: Deno.ChildProcess,
+  ms: number,
+): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () =>
+        reject(
+          new Error(
+            `mcp server did not exit ${ms}ms after SIGTERM — the CLI is ` +
+              `swallowing the signal instead of terminating.`,
+          ),
+        ),
+      ms,
+    );
+  });
+  try {
+    await Promise.race([server.status, timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}

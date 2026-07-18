@@ -90,6 +90,14 @@ export class LockSettings {
 export type OnTimeout = () => TargetBuilder | "fail" | "cancel-run";
 
 /**
+ * A compensation registered with {@link TargetBuilder.onCancel}: either a
+ * sibling target directly, or a thunk returning one. The thunk form defers
+ * evaluation so a compensation declared *below* the target it cleans up (class
+ * fields initialise top-to-bottom) can still be referenced.
+ */
+export type OnCancel = TargetBuilder | (() => TargetBuilder);
+
+/**
  * Fluent configuration for {@link TargetBuilder.waitsFor}:
  * `.waitsFor((s) => s.on(externalSignal("approved")).timeout("72h"))`. Set the
  * {@link WaitSettings.on | trigger}, an optional {@link WaitSettings.timeout},
@@ -413,6 +421,8 @@ export class TargetBuilder {
   waitsFor_?: Configure<WaitSettings>;
   /** Fan-out spec, set by {@link forEach}: materialises per-item sub-target pipelines. */
   forEach_?: ForEachSpec;
+  /** Compensation thunk, set by {@link onCancel}: runs on cancel iff this target succeeded. */
+  onCancel_?: () => TargetBuilder;
 
   /** Set the human-readable description shown in `zuke --list`. */
   description(text: string): this {
@@ -730,6 +740,37 @@ export class TargetBuilder {
    */
   waitsFor(configure: Configure<WaitSettings>): this {
     this.waitsFor_ = configure;
+    return this;
+  }
+
+  /**
+   * Register a **compensation** target that undoes this target's effect when the
+   * run is later cancelled (via `zuke cancel <run-id>`, an MCP `cancel_run`, or a
+   * timed-out wait). The compensation runs **iff this target succeeded** — a
+   * target that never ran, was skipped, or failed has nothing to undo. On
+   * cancellation, compensations run in **reverse order** of the targets that
+   * succeeded, so later work is unwound before the work it built on.
+   *
+   * `compensation` is a sibling target, or a thunk returning one (use the thunk
+   * form to reference a target declared *below* this one — class fields
+   * initialise top-to-bottom). The compensation body receives a normal
+   * {@link TargetContext} whose `state` exposes **this target's** persisted
+   * metadata, so a deploy that recorded `{ slot: "sit-7" }` in `ctx.state` can be
+   * rolled back from exactly that slot. Compensation failures are recorded but do
+   * not stop the walk (cleanup is maximal). Requires a state store.
+   *
+   * ```ts
+   * deploy = target()
+   *   .executes((ctx) => ctx.state.set({ slot: "sit-7" }))
+   *   .onCancel(() => this.rollback);
+   * rollback = target()
+   *   .executes((ctx) => tearDown(ctx.state.get().slot)); // reads deploy's meta
+   * ```
+   */
+  onCancel(compensation: OnCancel): this {
+    this.onCancel_ = typeof compensation === "function"
+      ? compensation
+      : () => compensation;
     return this;
   }
 

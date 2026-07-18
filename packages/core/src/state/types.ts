@@ -18,10 +18,15 @@
 
 import type { JsonValue } from "../target.ts";
 
-/** The lifecycle status of a whole run. */
+/**
+ * The lifecycle status of a whole run. `cancelling` is the transient state a
+ * cancellation moves through — the run has been asked to stop and its
+ * compensations are running — before it settles as `cancelled`.
+ */
 export type RunStatus =
   | "running"
   | "suspended"
+  | "cancelling"
   | "succeeded"
   | "failed"
   | "cancelled";
@@ -184,6 +189,7 @@ export function toSummary(record: RunRecord): RunSummary {
 const RUN_STATUSES: readonly RunStatus[] = [
   "running",
   "suspended",
+  "cancelling",
   "succeeded",
   "failed",
   "cancelled",

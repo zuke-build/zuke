@@ -47,6 +47,7 @@ Reserved commands:
 - `mcp` — Run an MCP server over the build (for AI agents)
 - `resume` — Resume a suspended run (or --check all suspended runs)
 - `runs` — List or show persisted run records
+- `cancel` — Cancel a run and run its compensations
 
 Option flags:
 

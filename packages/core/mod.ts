@@ -50,6 +50,7 @@ export {
   group,
   type JsonValue,
   LockSettings,
+  type OnCancel,
   type OnTimeout,
   type Remediation,
   type RemediationContext,
@@ -98,6 +99,12 @@ export {
   type ResumeOptions,
   resumeRun,
 } from "./src/resume.ts";
+export {
+  type CancelOptions,
+  type CancelResult,
+  cancelRun,
+  type CompensationFailure,
+} from "./src/cancel.ts";
 export {
   defaultRenderer,
   type Renderer,

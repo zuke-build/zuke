@@ -64,6 +64,8 @@ export class RunStateWriter {
   readonly #now: () => string;
   readonly #redactor: Redactor;
   readonly #warn?: (message: string) => void;
+  /** Fired when a CAS re-read finds the run cancelling/cancelled by another process. */
+  readonly #onExternalCancel?: () => void;
   #record: RunRecord;
   #version: string | null;
   #chain: Promise<void> = Promise.resolve();
@@ -75,12 +77,14 @@ export class RunStateWriter {
     now: () => string,
     redactor: Redactor,
     warn?: (message: string) => void,
+    onExternalCancel?: () => void,
   ) {
     this.#store = store;
     this.#record = record;
     this.#now = now;
     this.#redactor = redactor;
     this.#warn = warn;
+    this.#onExternalCancel = onExternalCancel;
     this.#version = version;
   }
 
@@ -88,6 +92,8 @@ export class RunStateWriter {
    * Create a writer and persist the initial record (status `running`, targets
    * `pending`). The create rides the same best-effort path as every other
    * write, so a store that is briefly unavailable is reported, not fatal.
+   * `onExternalCancel` is invoked if a later write discovers the run has been
+   * moved to `cancelling`/`cancelled` by another process (see {@link "#applyAndPersist"}).
    */
   static async open(
     store: StateStore,
@@ -95,9 +101,18 @@ export class RunStateWriter {
     now: () => string,
     redactor: Redactor,
     warn?: (message: string) => void,
+    onExternalCancel?: () => void,
   ): Promise<RunStateWriter> {
     // version null → the first write is a create.
-    const writer = new RunStateWriter(store, record, null, now, redactor, warn);
+    const writer = new RunStateWriter(
+      store,
+      record,
+      null,
+      now,
+      redactor,
+      warn,
+      onExternalCancel,
+    );
     await writer.#update(() => {});
     return writer;
   }
@@ -114,13 +129,32 @@ export class RunStateWriter {
     now: () => string,
     redactor: Redactor,
     warn?: (message: string) => void,
+    onExternalCancel?: () => void,
   ): RunStateWriter {
-    return new RunStateWriter(store, record, version, now, redactor, warn);
+    return new RunStateWriter(
+      store,
+      record,
+      version,
+      now,
+      redactor,
+      warn,
+      onExternalCancel,
+    );
   }
 
   /** The current run id. */
   get runId(): string {
     return this.#record.id;
+  }
+
+  /** The live in-memory record — its per-target `meta` drives an in-process cancel walk. */
+  snapshot(): RunRecord {
+    return this.#record;
+  }
+
+  /** Await every write queued so far, so nothing is still persisting on return. */
+  drain(): Promise<void> {
+    return this.#chain;
   }
 
   /** Mark a target `running` and stamp its start time. */
@@ -174,6 +208,20 @@ export class RunStateWriter {
   markRunSuspended(): Promise<void> {
     return this.#update((record) => {
       record.status = "suspended";
+    });
+  }
+
+  /** Record the run as `cancelling` — asked to stop; compensations are running. */
+  markRunCancelling(): Promise<void> {
+    return this.#update((record) => {
+      record.status = "cancelling";
+    });
+  }
+
+  /** Record the run as `cancelled` — the terminal state after compensations. */
+  markRunCancelled(): Promise<void> {
+    return this.#update((record) => {
+      record.status = "cancelled";
     });
   }
 
@@ -251,6 +299,30 @@ export class RunStateWriter {
         const fresh = await this.#store.getRun(this.#record.id);
         this.#record = fresh?.record ?? this.#record;
         this.#version = fresh?.version ?? null;
+        // The other writer may be a `zuke cancel` in another process. If it has
+        // moved the run to cancelling/cancelled, re-apply our (target-level)
+        // change onto its record — so a just-settled `succeeded` target isn't
+        // lost to the canceller's compensation walk — but never revert the run's
+        // cancel status. Then signal the run to abort: its compensations are the
+        // canceller's responsibility now. Best-effort (a conflict here is
+        // harmless; the canceller owns finalisation).
+        if (
+          fresh !== null &&
+          (fresh.record.status === "cancelling" ||
+            fresh.record.status === "cancelled")
+        ) {
+          const cancelStatus = fresh.record.status;
+          mutator(this.#record);
+          this.#record.status = cancelStatus;
+          this.#record.updatedAt = this.#now();
+          const reapply = await this.#store.putRun(
+            this.#record,
+            this.#version,
+          );
+          if (reapply.ok) this.#version = reapply.version;
+          this.#onExternalCancel?.();
+          return;
+        }
       }
       this.#warn?.(
         `state: gave up persisting run "${this.#record.id}" after ` +

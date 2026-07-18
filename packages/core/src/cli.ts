@@ -25,6 +25,7 @@ import {
   isCompletionShell,
 } from "./completions.ts";
 import {
+  CANCEL_COMMAND,
   COMPLETIONS_COMMAND,
   DEFAULT_TARGET,
   GENERATE_CI_COMMAND,
@@ -34,6 +35,7 @@ import {
   RUNS_COMMAND,
 } from "./cli_spec.ts";
 import { type HttpAddress, serveMcp } from "./mcp/command.ts";
+import { cancelRun } from "./cancel.ts";
 import { resumeCheck, resumeRun } from "./resume.ts";
 import { runsCommand } from "./runs.ts";
 import { isRunStatus, RUN_STATUS_NAMES, type RunQuery } from "./state/types.ts";
@@ -144,6 +146,10 @@ export interface ParsedArgs {
   runTarget?: string;
   /** With `runs list`, keep only runs created at/after this ISO-8601 time (`--since`). */
   since?: string;
+  /** The `cancel` command was requested (cancel a run and run its compensations). */
+  cancel: boolean;
+  /** The run id to cancel (the positional after `cancel`). */
+  cancelRunId?: string;
   /** Raw parameter values from declared flags, keyed by property name. */
   values: Record<string, string>;
   help: boolean;
@@ -184,6 +190,7 @@ export function parseArgs(
     resume: false,
     forceGraph: false,
     runs: false,
+    cancel: false,
     confirmDestructive: false,
     help: false,
   };
@@ -310,9 +317,13 @@ export function parseArgs(
     } else if (parsed.runs && parsed.runsRunId === undefined) {
       // ...then, for `show`, the run id.
       parsed.runsRunId = arg;
+    } else if (parsed.cancel && parsed.cancelRunId === undefined) {
+      // `cancel` takes the run id as its positional.
+      parsed.cancelRunId = arg;
     } else if (
       parsed.target === undefined && !parsed.graph && !parsed.generateCi &&
-      !parsed.completions && !parsed.mcp && !parsed.resume && !parsed.runs
+      !parsed.completions && !parsed.mcp && !parsed.resume && !parsed.runs &&
+      !parsed.cancel
     ) {
       if (arg === GRAPH_COMMAND) parsed.graph = true;
       else if (arg === GENERATE_CI_COMMAND) parsed.generateCi = true;
@@ -320,6 +331,7 @@ export function parseArgs(
       else if (arg === MCP_COMMAND) parsed.mcp = true;
       else if (arg === RESUME_COMMAND) parsed.resume = true;
       else if (arg === RUNS_COMMAND) parsed.runs = true;
+      else if (arg === CANCEL_COMMAND) parsed.cancel = true;
       else parsed.target = arg;
     }
   }
@@ -344,6 +356,7 @@ Usage:
   deno run -A zuke.ts resume --check [<run-id>]
   deno run -A zuke.ts runs list [--status <s>] [--target <t>] [--since <iso>] [--json]
   deno run -A zuke.ts runs show <run-id> [--json]
+  deno run -A zuke.ts cancel <run-id> [--actor <name>]
 
 Options:
   <target>          Run the target and its transitive dependencies.
@@ -413,6 +426,10 @@ Options:
                     prints one row per run (newest first); 'show <run-id>'
                     reconstructs a run's full per-target status and metadata.
                     Both accept --json for tools. See docs/state.md.
+  cancel            Cancel a run <run-id>: stop it (a live run aborts), run the
+                    compensations of every target that had succeeded — in
+                    reverse order — and mark the record cancelled. Idempotent:
+                    cancelling a finished run is a no-op. See docs/orchestration.md.
   --status <s>      With runs list, keep only runs with this status (running,
                     suspended, succeeded, failed, cancelled).
   --target <t>      With runs list, keep only runs whose graph contains this
@@ -541,6 +558,21 @@ export interface MainOptions {
   installOptions?: InstallOptions;
   /** Renderer for the build's banners and summary (see {@link RunOptions}). */
   renderer?: Renderer;
+  /**
+   * Cancel a running **build** when this signal aborts (its compensations run and
+   * the record is marked cancelled). Applies only to a target run; other
+   * commands ignore it. Tests inject one directly; {@link run} does not use it —
+   * see {@link watchSignals}.
+   */
+  signal?: AbortSignal;
+  /**
+   * Install OS SIGINT/SIGTERM handlers that gracefully cancel a **build run**
+   * (running its compensations; a second signal force-exits). Set by
+   * {@link run}. Scoped to the target-run path on purpose, so a signal keeps its
+   * default terminate behaviour for a long-lived `mcp` server and every other
+   * command.
+   */
+  watchSignals?: boolean;
 }
 
 /**
@@ -685,6 +717,26 @@ async function runMcp(build: Build, parsed: ParsedArgs): Promise<number> {
   });
 }
 
+/** Run the `cancel` command: cancel a run and run its compensations. */
+async function runCancel(build: Build, parsed: ParsedArgs): Promise<number> {
+  if (parsed.cancelRunId === undefined) {
+    console.error("Usage: zuke cancel <run-id> [--actor <name>]");
+    return 1;
+  }
+  try {
+    const result = await cancelRun(build, {
+      runId: parsed.cancelRunId,
+      actor: parsed.actor,
+    });
+    // A no-op (already-terminal run) and a completed cancellation both succeed;
+    // a compensation that threw surfaces non-zero so the operator notices.
+    return result.failures.length > 0 ? 1 : 0;
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    return 1;
+  }
+}
+
 /** Run the `runs` command: build the query (validating `--status`) and dispatch. */
 async function runRuns(build: Build, parsed: ParsedArgs): Promise<number> {
   const query: RunQuery = {};
@@ -787,6 +839,9 @@ export async function main(
   if (parsed.runs) {
     return await runRuns(build, parsed);
   }
+  if (parsed.cancel) {
+    return await runCancel(build, parsed);
+  }
 
   let name = parsed.target;
   if (name === undefined) {
@@ -816,20 +871,70 @@ export async function main(
     if (ciCode !== 0) return ciCode;
   }
 
-  const result = await execute(build, root, {
-    skip: parsed.skip,
-    params: parsed.values,
-    parallel: parsed.parallel,
-    cache: parsed.cache,
-    remoteCache: parsed.remoteCache === false ? false : undefined,
-    affected: parsed.affected ? { base: parsed.affectedBase } : undefined,
-    dryRun: parsed.dryRun,
-    state: parsed.state,
-    actor: parsed.actor,
-    plugins: options.plugins,
-    renderer: options.renderer,
-  });
-  return result.ok ? 0 : 1;
+  // A running build cancels gracefully on Ctrl-C/SIGTERM — running its
+  // compensations — when `run` asks for it (`watchSignals`); a second signal
+  // force-exits. Handlers are installed only here, around the build, so a signal
+  // keeps its default terminate behaviour for `mcp` and every other command.
+  // A test can inject `options.signal` directly instead.
+  const controller = new AbortController();
+  const cleanupSignals = options.watchSignals
+    ? installCancelSignals(controller)
+    : undefined;
+  try {
+    const result = await execute(build, root, {
+      skip: parsed.skip,
+      params: parsed.values,
+      parallel: parsed.parallel,
+      cache: parsed.cache,
+      remoteCache: parsed.remoteCache === false ? false : undefined,
+      affected: parsed.affected ? { base: parsed.affectedBase } : undefined,
+      dryRun: parsed.dryRun,
+      state: parsed.state,
+      actor: parsed.actor,
+      plugins: options.plugins,
+      renderer: options.renderer,
+      signal: cleanupSignals ? controller.signal : options.signal,
+    });
+    return result.ok ? 0 : 1;
+  } finally {
+    cleanupSignals?.();
+  }
+}
+
+/**
+ * Install SIGINT/SIGTERM handlers that abort `controller` on the first signal
+ * (graceful cancel) and force-exit on a second, so a stuck build never traps the
+ * operator. Returns a cleanup function that removes them. SIGTERM is skipped on
+ * Windows (unsupported there).
+ */
+function installCancelSignals(controller: AbortController): () => void {
+  let cancelling = false;
+  const onSignal = () => {
+    if (cancelling) Deno.exit(130);
+    cancelling = true;
+    controller.abort();
+  };
+  const wanted: Deno.Signal[] = Deno.build.os === "windows"
+    ? ["SIGINT"]
+    : ["SIGINT", "SIGTERM"];
+  const installed: Deno.Signal[] = [];
+  for (const sig of wanted) {
+    try {
+      Deno.addSignalListener(sig, onSignal);
+      installed.push(sig);
+    } catch {
+      // A platform that doesn't support this signal — skip it.
+    }
+  }
+  return () => {
+    for (const sig of installed) {
+      try {
+        Deno.removeSignalListener(sig, onSignal);
+      } catch {
+        // Best-effort teardown.
+      }
+    }
+  };
 }
 
 /** Options for {@link run}. */
@@ -867,9 +972,12 @@ export async function run(
   // Run only when this build's module is the one Deno was started with, so the
   // caller needn't write `if (import.meta.main)`. Imported elsewhere, no-op.
   if (!isEntryModule(new Error().stack ?? "", import.meta.url)) return;
+  // `watchSignals` lets `main` wire Ctrl-C/SIGTERM to graceful cancellation, but
+  // only around a build run — every other command keeps default signal handling.
   const code = await main(BuildClass, options.args ?? Deno.args, {
     plugins: options.plugins,
     renderer: options.renderer,
+    watchSignals: true,
   });
   Deno.exit(code);
 }

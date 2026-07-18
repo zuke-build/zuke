@@ -53,7 +53,7 @@ Each run is stored as one JSON document:
   "id": "3f2a…", // == ctx.runId
   "build": "CD", // the Build class name
   "rootTarget": "deploy", // the requested target
-  "status": "succeeded", // running | suspended | succeeded | failed | cancelled
+  "status": "succeeded", // running | suspended | cancelling | succeeded | failed | cancelled
   "actor": "alice", // who ran it (see below)
   "createdAt": "2026-07-17T…Z",
   "updatedAt": "2026-07-17T…Z",
