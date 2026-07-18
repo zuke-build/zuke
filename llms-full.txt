@@ -2088,14 +2088,31 @@ interface Plugin
 
   name?: string
     A name for diagnostics (optional).
-  onStart?(): void | Promise<void>
-    Called once before any target runs.
-  onTargetStart?(target: string): void | Promise<void>
-    Called just before a target's body executes (not for skipped/cached).
-  onTargetEnd?(target: string, status: TargetStatus): void | Promise<void>
-    Called after each target settles, with its final status.
-  onFinish?(result: BuildResult): void | Promise<void>
-    Called once after the run completes (success or failure).
+  onStart?(run: RunInfo): void | Promise<void>
+    Called once before any target runs, with the run's {@link RunInfo}.
+  onTargetStart?(target: string, run: RunInfo): void | Promise<void>
+    Called just before a target's body executes (not for skipped/cached), with
+    the target name and the run's {@link RunInfo}.
+  onTargetEnd?(target: string, status: TargetStatus, timing: TargetTiming): void | Promise<void>
+    Called after each target settles, with its final status and its
+    {@link TargetTiming} (run id + duration).
+  onFinish?(result: BuildResult, run: RunInfo): void | Promise<void>
+    Called once after the run completes (success or failure), with the result
+    and the run's {@link RunInfo}.
+  onRunStateChange?(record: RunRecord): void | Promise<void>
+    Called on each run-level durable status change — the run going
+    `running`, `suspended`, `succeeded`, `failed`, `cancelling`, or `cancelled`
+    — with the current {@link "./state/types.ts".RunRecord}. It carries the full
+    record (per-target timings, waits, the audit trail), so a metrics exporter
+    can derive spans, wait durations, and counters from a single source.
+    Only fires when a state store is configured (the record's home); a plain
+    build with no store never produces one, and this hook stays silent.
+
+    A run cancelled in-process (Ctrl-C / its `signal`) is observed as
+    `running` → `cancelling` → `cancelled`. When another process cancels the
+    run (`zuke cancel`), this process observes it through `cancelling` and stops
+    — the canceller's process owns the final `cancelled` — so treat `cancelling`
+    as run-ended for the owning process.
 
 interface Remediation
   A recovery step plugged into a target with {@link TargetBuilder.recoverWith}.
@@ -2215,6 +2232,10 @@ interface ResumeOptions
     Suppress banner/summary output.
   reporter?: Reporter
     Custom reporter; overrides `silent`.
+  plugins?: Plugin[]
+    Lifecycle observers for the resumed run. Because a resume keeps the original
+    run id, a plugin sees the continuation under the same identity — so an
+    exporter's spans join one trace across the suspend/resume boundary.
 
 interface ResumeState
   The continuation state {@link resumeRun} hands to {@link execute} on a resume.
@@ -2258,6 +2279,16 @@ interface RunGraphNode
     The target's dotted name.
   dependsOn: string[]
     The dotted names of its direct dependencies.
+
+interface RunInfo
+  Run identity passed to a plugin's lifecycle hooks, so an observer can group a
+  run's events (e.g. under one trace id) — stable across a suspend/resume
+  boundary, since a resumed run keeps the original id.
+
+  readonly runId: string
+    The run id, stable for every target in the run (and across a resume).
+  readonly dryRun: boolean
+    True when the run is a dry run (no target body executes).
 
 interface RunOptions
   Options for {@link run}.
@@ -2496,6 +2527,14 @@ interface TargetStateHandle
     Merge a JSON patch into this target's persisted metadata (awaits the write).
   get(): Record<string, JsonValue>
     Read this target's persisted metadata (from prior attempts/runs too).
+
+interface TargetTiming
+  Timing for a settled target, passed to {@link Plugin.onTargetEnd}.
+
+  readonly runId: string
+    The run id (see {@link RunInfo}).
+  readonly durationMs: number
+    The target's wall-clock duration in milliseconds (0 for skipped/cached).
 
 interface ToolTasksApi
   The task surface of {@link ToolTasks}.

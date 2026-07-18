@@ -1317,6 +1317,181 @@ Deno.test("execute supports multiple plugins and partial hook sets", async () =>
   assertEquals(calls, ["p1:a:passed", "p2:finish"]);
 });
 
+Deno.test("plugin hooks carry the run id, dry-run flag, and target timing (M7)", async () => {
+  const seen: {
+    startRunId?: string;
+    tsRunId?: string;
+    teRunId?: string;
+    teDuration?: number;
+    finishRunId?: string;
+    dryRun?: boolean;
+  } = {};
+  class B extends Build {
+    a = target().executes(() => {});
+  }
+  const plugin: Plugin = {
+    onStart: (run) => {
+      seen.startRunId = run.runId;
+      seen.dryRun = run.dryRun;
+    },
+    onTargetStart: (_n, run) => void (seen.tsRunId = run.runId),
+    onTargetEnd: (_n, _s, timing) => {
+      seen.teRunId = timing.runId;
+      seen.teDuration = timing.durationMs;
+    },
+    onFinish: (_r, run) => void (seen.finishRunId = run.runId),
+  };
+  const b = new B();
+  discoverTargets(b);
+  const result = await execute(b, b.a, { silent: true, plugins: [plugin] });
+  // Every hook sees the same, non-empty run id — the run's identity.
+  assertEquals(seen.startRunId, result.runId);
+  assertEquals(seen.startRunId !== undefined && seen.startRunId !== "", true);
+  assertEquals(seen.tsRunId, seen.startRunId);
+  assertEquals(seen.teRunId, seen.startRunId);
+  assertEquals(seen.finishRunId, seen.startRunId);
+  assertEquals(seen.dryRun, false);
+  assertEquals(typeof seen.teDuration, "number");
+
+  // A dry run reports dryRun: true through the same RunInfo.
+  const dry: boolean[] = [];
+  const b2 = new B();
+  discoverTargets(b2);
+  await execute(b2, b2.a, {
+    silent: true,
+    dryRun: true,
+    plugins: [{ onStart: (run) => void dry.push(run.dryRun) }],
+  });
+  assertEquals(dry, [true]);
+});
+
+Deno.test("old-style plugin hooks (fewer args) still compile and run (M7)", async () => {
+  const calls: string[] = [];
+  class B extends Build {
+    a = target().executes(() => {});
+  }
+  // The pre-M7 signatures — no run/timing arguments — remain valid.
+  const legacy: Plugin = {
+    onStart: () => void calls.push("start"),
+    onTargetStart: (n) => void calls.push(`ts:${n}`),
+    onTargetEnd: (n, s) => void calls.push(`te:${n}:${s}`),
+    onFinish: (r) => void calls.push(`finish:${r.ok}`),
+  };
+  const b = new B();
+  discoverTargets(b);
+  await execute(b, b.a, { silent: true, plugins: [legacy] });
+  assertEquals(calls, ["start", "ts:a", "te:a:passed", "finish:true"]);
+});
+
+Deno.test("onRunStateChange fires with the record on run-level transitions (M7)", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+    const statuses: string[] = [];
+    const runIds = new Set<string>();
+    class B extends Build {
+      a = target().executes(() => {});
+    }
+    const plugin: Plugin = {
+      onRunStateChange: (record) => {
+        statuses.push(record.status);
+        runIds.add(record.id);
+      },
+    };
+    const b = new B();
+    discoverTargets(b);
+    const result = await execute(b, b.a, {
+      silent: true,
+      stateStore: store,
+      plugins: [plugin],
+    });
+    // Fires at start (running) and at the terminal transition (succeeded), both
+    // carrying the same run record.
+    assertEquals(statuses, ["running", "succeeded"]);
+    assertEquals(runIds.size, 1);
+    assertEquals([...runIds][0], result.runId);
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("onRunStateChange stays silent without a state store (M7)", async () => {
+  const calls: string[] = [];
+  class B extends Build {
+    a = target().executes(() => {});
+  }
+  const b = new B();
+  discoverTargets(b);
+  await execute(b, b.a, {
+    silent: true,
+    stateStore: false,
+    plugins: [{ onRunStateChange: (r) => void calls.push(r.status) }],
+  });
+  assertEquals(calls, []); // no store → no record → no run-state events
+});
+
+Deno.test("onRunStateChange delivers running → cancelling → cancelled on self-cancel (M7)", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+    const statuses: string[] = [];
+    let started: () => void = () => {};
+    const ready = new Promise<void>((resolve) => (started = resolve));
+    const controller = new AbortController();
+    class B extends Build {
+      hang = target().executes((ctx) =>
+        new Promise<void>((resolve) => {
+          ctx.signal.addEventListener("abort", () => resolve(), { once: true });
+          started();
+        })
+      );
+    }
+    const b = new B();
+    discoverTargets(b);
+    const runPromise = execute(b, b.hang, {
+      silent: true,
+      stateStore: store,
+      signal: controller.signal,
+      plugins: [{ onRunStateChange: (r) => void statuses.push(r.status) }],
+    });
+    await ready;
+    controller.abort();
+    const result = await runPromise;
+    assertEquals(result.cancelled, true);
+    // The full cancellation sequence is delivered, not just the terminal state.
+    assertEquals(statuses, ["running", "cancelling", "cancelled"]);
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("a throwing plugin hook is isolated and never breaks the run (M7)", async () => {
+  const events: string[] = [];
+  class B extends Build {
+    a = target().executes(() => void events.push("body"));
+  }
+  // A buggy observer that throws in every hook must not break the build, and
+  // must not stop a well-behaved plugin registered after it.
+  const bad: Plugin = {
+    name: "bad",
+    onStart: () => {
+      throw new Error("boom-start");
+    },
+    onTargetEnd: () => {
+      throw new Error("boom-te");
+    },
+    onFinish: () => {
+      throw new Error("boom-finish");
+    },
+  };
+  const good: Plugin = { onFinish: () => void events.push("good:finish") };
+  const b = new B();
+  discoverTargets(b);
+  const result = await execute(b, b.a, { silent: true, plugins: [bad, good] });
+  assertEquals(result.ok, true); // the run completes despite the throwing observer
+  assertEquals(events, ["body", "good:finish"]); // the good plugin still ran
+});
+
 Deno.test("validateBefore runs before the body; validateAfter runs after", async () => {
   const log: string[] = [];
   class B extends Build {
