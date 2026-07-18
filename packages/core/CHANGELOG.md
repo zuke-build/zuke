@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.18.0](https://github.com/zuke-build/zuke/compare/core-v1.17.0...core-v1.18.0) (2026-07-18)
+
+
+### Features
+
+* **core:** compensation targets and zuke cancel ([#177](https://github.com/zuke-build/zuke/issues/177)) ([10ce407](https://github.com/zuke-build/zuke/commit/10ce40732413b9d85dba68b137babae0b11ebf0b))
+* **core:** richer plugin lifecycle payloads ([#179](https://github.com/zuke-build/zuke/issues/179)) ([8ddf457](https://github.com/zuke-build/zuke/commit/8ddf457f5ea4eb1df5ef893848240568e1a68186))
+
 ## [1.17.0](https://github.com/zuke-build/zuke/compare/core-v1.16.0...core-v1.17.0) (2026-07-18)
 
 
