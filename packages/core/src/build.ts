@@ -69,6 +69,18 @@ export interface BuildResult {
    * still exits 0.
    */
   suspended?: boolean;
+  /**
+   * True when the run was **cancelled** (via `options.signal` / Ctrl-C, or by
+   * another process running `zuke cancel`) rather than failing on its own.
+   * Its compensations have run and the record is `cancelled`. `ok` is `false`.
+   */
+  cancelled?: boolean;
+  /**
+   * The run's id, when a run identity was established (always, in practice —
+   * every {@link "./executor.ts".execute} generates one). Lets the caller point
+   * a follow-up (`zuke runs show`, `zuke cancel`) at this run.
+   */
+  runId?: string;
 }
 
 /**

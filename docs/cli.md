@@ -20,6 +20,7 @@
 | `zuke resume --check [<id>]`                            | Re-check suspended runs (predicate waits, timeouts).                                    |
 | `zuke runs list [--status/-target/-since] [--json]`     | List persisted run records, newest first ([details](./state.md)).                       |
 | `zuke runs show <id> [--json]`                          | Show one run's full per-target status and metadata.                                     |
+| `zuke cancel <id> [--actor <name>]`                     | Cancel a run and run its compensations ([details](./orchestration.md#cancellation--compensation-oncancel)). |
 | `zuke --help` / `-h`                                    | Usage.                                                                                  |
 | `zuke` (no target)                                      | Run the `default` target if defined, else print `--list`.                               |
 
@@ -262,6 +263,17 @@ the targets that hadn't yet succeeded. `--force-graph` continues even if the
 build graph changed since the run was suspended. See
 [Orchestration](./orchestration.md).
 
+## Cancelling runs
+
+`zuke cancel <run-id>` cancels a run and runs its
+[compensations](./orchestration.md#cancellation--compensation-oncancel): every
+target that had **succeeded** and declared `.onCancel(...)` is unwound in reverse
+order, then the record settles `cancelled`. `--actor <name>` attributes the
+cancellation in the audit trail. Cancelling a run another process is executing
+stops it (a live run aborts on its next state write); cancelling an
+already-finished run is a friendly no-op. `Ctrl-C` (or `SIGTERM`) cancels the run
+in the current process the same way — a second `Ctrl-C` forces an immediate exit.
+
 ## Inspecting runs
 
 `zuke runs` reads persisted [run records](./state.md) back from the store, so a
@@ -269,7 +281,7 @@ run's full status survives the process that produced it.
 
 - `zuke runs list` prints one row per run — id, status, root target, actor, and
   creation time — newest first. Narrow it with `--status <s>` (one of `running`,
-  `suspended`, `succeeded`, `failed`, `cancelled`), `--target <t>` (only runs
+  `suspended`, `cancelling`, `succeeded`, `failed`, `cancelled`), `--target <t>` (only runs
   whose graph contains that target), and `--since <iso>` (only runs created at
   or after an ISO-8601 timestamp). The filters compose.
 - `zuke runs show <run-id>` reconstructs one run in full: the header, resolved

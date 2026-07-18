@@ -60,6 +60,7 @@ import { defaultStateHost, type StateStore } from "./state/store.ts";
 import { resolveStateStore } from "./state/resolve.ts";
 import { buildRunRecord, ciRunUrl, resolveActor } from "./state/record.ts";
 import { inMemoryStateHandle, RunStateWriter } from "./state/writer.ts";
+import { cancelEvent, runCompensations } from "./cancel.ts";
 import { LockConflictError, type LockHolder } from "./state/lock.ts";
 import { parseDuration } from "./duration.ts";
 import type { Plugin } from "./plugin.ts";
@@ -185,11 +186,16 @@ export interface ExecuteOptions {
    */
   renderer?: Renderer;
   /**
-   * Cancel the run when this signal aborts. Every target body's
+   * Cancel the run when this signal aborts (wired to Ctrl-C/SIGTERM by the CLI,
+   * or fired by another process running `zuke cancel`). Every target body's
    * {@link "./target.ts".TargetContext} `signal` mirrors it, and it is applied
    * as the shell's ambient default so an in-flight `$` command is terminated
-   * (SIGTERM) on cancellation. A body that ignores its signal still runs to completion —
-   * graph-level cancellation/compensation is a later milestone.
+   * (SIGTERM) on cancellation. When the run is cancelled, the compensations of
+   * every target that had **succeeded** run in reverse order (see
+   * {@link "./target.ts".TargetBuilder.onCancel}) and the result is a non-ok
+   * `cancelled` outcome. A body that ignores its signal still runs to
+   * completion, so promptly-cancellable work should pass `ctx.signal` to its
+   * shell commands.
    */
   signal?: AbortSignal;
   /**
@@ -1347,6 +1353,14 @@ export async function execute(
     if (options.signal.aborted) runController.abort();
     else options.signal.addEventListener("abort", onCancel, { once: true });
   }
+  // Set when a state write discovers another process moved this run to
+  // `cancelling`/`cancelled` (a `zuke cancel` elsewhere). We then abort and let
+  // that canceller own the compensation walk — we do not run it ourselves.
+  let externallyCancelled = false;
+  const onExternalCancel = () => {
+    externallyCancelled = true;
+    runController.abort();
+  };
 
   // Resolve the durable state store (if any) and open a writer that records the
   // run and its per-target transitions. Never for a dry run — no body executes,
@@ -1356,7 +1370,8 @@ export async function execute(
   // compensations) turns the filesystem store on by default, so state "just
   // works" without --state. Plain builds still opt in explicitly.
   const usesDurableFeature = order.some((t) =>
-    t.lock_ !== undefined || t.waitsFor_ !== undefined
+    t.lock_ !== undefined || t.waitsFor_ !== undefined ||
+    t.onCancel_ !== undefined
   );
   const stateStore = dryRun ? undefined : resolveStateStore(
     options.stateStore,
@@ -1401,6 +1416,7 @@ export async function execute(
       nowIso,
       redactor,
       warn,
+      onExternalCancel,
     )
     : await RunStateWriter.open(
       stateStore,
@@ -1416,6 +1432,7 @@ export async function execute(
       nowIso,
       redactor,
       warn,
+      onExternalCancel,
     );
   const env: RunEnv = {
     runId,
@@ -1489,16 +1506,69 @@ export async function execute(
   }
   if (cache !== undefined) await cache.save();
 
-  const result: BuildResult = run.aborted
-    ? { ok: false, executed: run.executed, error: run.failure }
-    : run.suspended
-    ? { ok: true, executed: run.executed, suspended: true }
-    : { ok: true, executed: run.executed };
-
-  // Record the run's terminal status. Awaiting this drains the writer's queue,
-  // so every per-target transition has landed by the time the run returns.
-  if (run.suspended) await writer?.markRunSuspended();
-  else await writer?.markRunFinished(result.ok);
+  // A cancellation (Ctrl-C / an aborted `options.signal`, or another process
+  // running `zuke cancel`) takes precedence over an ordinary failure: the
+  // aborted target failing is a symptom, not the outcome.
+  const cancelled = runController.signal.aborted;
+  let result: BuildResult;
+  if (cancelled) {
+    result = {
+      ok: false,
+      executed: run.executed,
+      cancelled: true,
+      runId,
+    };
+    if (externallyCancelled) {
+      // Another process owns the cancellation: it runs the compensations and
+      // settles the record. We stop and leave the run `cancelling`, draining any
+      // pending per-target writes so none races the process exit.
+      await writer?.drain();
+      reporter.info(
+        `Run ${runId} cancelled by another process — stopping.`,
+      );
+    } else if (writer !== undefined) {
+      // We initiated it (Ctrl-C / options.signal): mark cancelling (which also
+      // drains every pending per-target write, so the snapshot is current).
+      await writer.markRunCancelling();
+      // markRunCancelling drains the write chain, so if another process's
+      // `zuke cancel` won the race in the meantime, the conflict has already
+      // fired onExternalCancel. Re-check before walking, so we never run the
+      // compensations twice (that canceller owns them now).
+      if (externallyCancelled) {
+        await writer.drain();
+        reporter.info(
+          `Run ${runId} cancelled by another process — stopping.`,
+        );
+      } else {
+        // Run the succeeded targets' compensations in reverse order, record the
+        // cancellation in the audit trail (as `zuke cancel` does), then settle.
+        const comp = await runCompensations(order, writer.snapshot(), {
+          runId,
+          signals: env.signals,
+          reporter,
+          redactor,
+        });
+        await writer.appendEvent(cancelEvent(actor, comp, nowIso()));
+        await writer.markRunCancelled();
+        reporter.info(
+          `Run ${runId} cancelled — ${comp.compensated.length} ` +
+            `compensation(s) ran${
+              comp.failures.length > 0 ? `, ${comp.failures.length} failed` : ""
+            }.`,
+        );
+      }
+    }
+  } else {
+    result = run.aborted
+      ? { ok: false, executed: run.executed, error: run.failure, runId }
+      : run.suspended
+      ? { ok: true, executed: run.executed, suspended: true, runId }
+      : { ok: true, executed: run.executed, runId };
+    // Record the run's terminal status. Awaiting this drains the writer's queue,
+    // so every per-target transition has landed by the time the run returns.
+    if (run.suspended) await writer?.markRunSuspended();
+    else await writer?.markRunFinished(result.ok);
+  }
 
   const totalMs = performance.now() - overallStart;
   for (
@@ -1507,7 +1577,8 @@ export async function execute(
     reporter.info(line);
   }
   // On suspension, point the operator at the saved run so it can be resumed.
-  if (run.suspended) {
+  // A cancelled run never resumes, so it skips this even if it parked a wait.
+  if (run.suspended && !cancelled) {
     const waiting = run.reports.filter((r) => r.status === "waiting")
       .map((r) => r.name);
     reporter.info(

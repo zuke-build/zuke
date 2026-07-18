@@ -376,7 +376,11 @@ class ZukeBuild extends Build {
     .description("Run the subprocess e2e suite (real processes, OS matrix)")
     .executes(async () => {
       await DenoTasks.test((s) =>
-        s.allowAll().paths("tests/e2e/race_e2e.ts", "tests/e2e/mcp_e2e.ts")
+        s.allowAll().paths(
+          "tests/e2e/race_e2e.ts",
+          "tests/e2e/mcp_e2e.ts",
+          "tests/e2e/cancel_e2e.ts",
+        )
       );
     });
 

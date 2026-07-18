@@ -200,6 +200,36 @@ Deno.test("store-backed run tools appear with a store; mutating ones need --allo
     const names = (await toolList(server)).map((t) => t.name);
     assertEquals(names.includes("signal_run"), true);
     assertEquals(names.includes("resume_check"), true);
+    assertEquals(names.includes("cancel_run"), true);
+  });
+});
+
+Deno.test("cancel_run cancels a suspended run, gated by the allow-list and audited", async () => {
+  await withServer(
+    { allowRun: true, allowRunPatterns: ["safe*"], actor: "ops" },
+    async (server, store) => {
+      const excluded = await seedSuspended(store, "deploy"); // not allow-listed
+      const denied = await call(server, "cancel_run", { runId: excluded });
+      assertEquals(denied.isError, true);
+      assertEquals(JSON.parse(denied.text).reason, "not_allowed");
+    },
+  );
+  await withServer({ allowRun: true, actor: "ops" }, async (server, store) => {
+    // A missing run is a structured no_run.
+    const missing = await call(server, "cancel_run", { runId: "nope" });
+    assertEquals(missing.isError, true);
+    assertEquals(JSON.parse(missing.text).error, "no_run");
+
+    // A real suspended run cancels; the call is audited under the actor.
+    const id = await seedSuspended(store, "deploy");
+    const ok = await call(server, "cancel_run", { runId: id });
+    assertEquals(ok.isError, false);
+    const body = JSON.parse(ok.text);
+    assertEquals(body.status, "cancelled");
+    const loaded = await store.getRun(id);
+    assertEquals(loaded?.record.status, "cancelled");
+    const audit = await auditEvents(store);
+    assertEquals(audit.some((e) => e.tool === "cancel_run"), true);
   });
 });
 

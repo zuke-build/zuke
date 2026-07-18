@@ -38,6 +38,9 @@ export const RESUME_COMMAND = "resume";
 /** The `runs` command: list and show persisted run records. */
 export const RUNS_COMMAND = "runs";
 
+/** The `cancel` command: cancel a run and run its compensations. */
+export const CANCEL_COMMAND = "cancel";
+
 /** Every reserved command, in help and completion order. */
 export const RESERVED_COMMANDS: readonly ReservedCommand[] = [
   { name: GRAPH_COMMAND, description: "Show the dependency graph" },
@@ -57,6 +60,10 @@ export const RESERVED_COMMANDS: readonly ReservedCommand[] = [
   {
     name: RUNS_COMMAND,
     description: "List or show persisted run records",
+  },
+  {
+    name: CANCEL_COMMAND,
+    description: "Cancel a run and run its compensations",
   },
 ];
 

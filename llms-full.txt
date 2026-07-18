@@ -83,6 +83,16 @@ function assertExists<T>(value: T, message: string): NonNullable<T>
 async function assertFileExists(path: PathLike): Promise<void>
   Assert that `path` exists and is a file. Async (stats the filesystem).
 
+async function cancelRun(build: Build, options: CancelOptions): Promise<CancelResult>
+  Cancel the run `options.runId` for `build`: transition it to `cancelling`
+  (exactly one canceller drives the walk; a live owning process observes the
+  change and aborts), run the compensations of every succeeded target in reverse
+  order, and settle the record as `cancelled`. Idempotent — cancelling an
+  already-terminal run is a friendly no-op.
+
+  @throws
+      if no state store is configured, or the run does not exist.
+
 function ciHost(): string
   A short identifier for the detected CI host, or `"local"` when not on CI.
   Recognises GitHub Actions, GitLab CI, Azure Pipelines, Bitbucket Pipelines,
@@ -1121,6 +1131,8 @@ class TargetBuilder
     External-event wait settings lambda, set by {@link waitsFor} and run when reached.
   forEach_?: ForEachSpec
     Fan-out spec, set by {@link forEach}: materialises per-item sub-target pipelines.
+  onCancel_?: () => TargetBuilder
+    Compensation thunk, set by {@link onCancel}: runs on cancel iff this target succeeded.
   description(text: string): this
     Set the human-readable description shown in `zuke --list`.
   dependsOn(...targets: Array<TargetBuilder | Group>): this
@@ -1277,6 +1289,29 @@ class TargetBuilder
         s.on(externalSignal("testing-approved"))
           .timeout("72h")
           .onTimeout(() => this.rollback));
+    ```
+  onCancel(compensation: OnCancel): this
+    Register a compensation target that undoes this target's effect when the
+    run is later cancelled (via `zuke cancel <run-id>`, an MCP `cancel_run`, or a
+    timed-out wait). The compensation runs iff this target succeeded — a
+    target that never ran, was skipped, or failed has nothing to undo. On
+    cancellation, compensations run in reverse order of the targets that
+    succeeded, so later work is unwound before the work it built on.
+
+    `compensation` is a sibling target, or a thunk returning one (use the thunk
+    form to reference a target declared below this one — class fields
+    initialise top-to-bottom). The compensation body receives a normal
+    {@link TargetContext} whose `state` exposes this target's persisted
+    metadata, so a deploy that recorded `{ slot: "sit-7" }` in `ctx.state` can be
+    rolled back from exactly that slot. Compensation failures are recorded but do
+    not stop the walk (cleanup is maximal). Requires a state store.
+
+    ```ts
+    deploy = target()
+      .executes((ctx) => ctx.state.set({ slot: "sit-7" }))
+      .onCancel(() => this.rollback);
+    rollback = target()
+      .executes((ctx) => tearDown(ctx.state.get().slot)); // reads deploy's meta
     ```
   forEach(items: () => readonly Item[], factory: ForEachFactory<Item>, configure?: Configure<ForEachSettings>): this
     Fan out over a runtime list: for each item, build an ordered pipeline of
@@ -1533,6 +1568,49 @@ interface BuildResult
     True when the run suspended at a `.waitsFor(...)` gate rather than
     finishing — its state is saved and it can be resumed later. The process
     still exits 0.
+  cancelled?: boolean
+    True when the run was cancelled (via `options.signal` / Ctrl-C, or by
+    another process running `zuke cancel`) rather than failing on its own.
+    Its compensations have run and the record is `cancelled`. `ok` is `false`.
+  runId?: string
+    The run's id, when a run identity was established (always, in practice —
+    every {@link "./executor.ts".execute} generates one). Lets the caller point
+    a follow-up (`zuke runs show`, `zuke cancel`) at this run.
+
+interface CancelOptions
+  Options for {@link cancelRun}.
+
+  runId: string
+    The id of the run to cancel.
+  stateStore?: StateStore | false
+    Durable store the run lives in. Defaults to the same resolution as a normal
+    run (explicit → `stateStore()` override → env → `.zuke/runs`); cancel always
+    needs one.
+  actor?: string
+    Who to attribute the cancellation to in the audit trail.
+  readEnv?: (name: string) => string | undefined
+    Reads an environment variable (secrets re-resolve from here for compensations).
+  silent?: boolean
+    Suppress progress output.
+  reporter?: Reporter
+    Custom reporter; overrides `silent`.
+  also?: string[]
+    Extra compensation target names to run first (a timed-out wait whose
+    `onTimeout` names a specific compensation target routes through here).
+
+interface CancelResult
+  The outcome of {@link cancelRun}.
+
+  runId: string
+    The run that was cancelled.
+  status: RunStatus
+    The run's status after cancelling (`cancelled`, or the terminal status on a no-op).
+  noop: boolean
+    True when the run was already terminal and nothing was done.
+  compensated: string[]
+    Names of compensation targets whose bodies ran.
+  failures: CompensationFailure[]
+    Compensations that threw (recorded, non-fatal).
 
 interface CiConcurrency
   A concurrency group: at most one run per group, optionally cancelling the prior one.
@@ -1687,6 +1765,16 @@ interface CliTargetInfo
   readonly unlisted: boolean
     Whether the target is hidden from `--list` (still runnable by name).
 
+interface CompensationFailure
+  A compensation that threw during the cancel walk (recorded, non-fatal).
+
+  target: string
+    The compensation target that failed.
+  forTarget: string
+    The original target whose compensation this was.
+  error: string
+    The failure message.
+
 interface CopyOptions
   Options for {@link FileTasksApi.copy}.
 
@@ -1761,11 +1849,16 @@ interface ExecuteOptions
     to Zuke's built-in {@link defaultRenderer}; `@zuke/console` exports an
     alternative a build can inject to restyle its output.
   signal?: AbortSignal
-    Cancel the run when this signal aborts. Every target body's
+    Cancel the run when this signal aborts (wired to Ctrl-C/SIGTERM by the CLI,
+    or fired by another process running `zuke cancel`). Every target body's
     {@link "./target.ts".TargetContext} `signal` mirrors it, and it is applied
     as the shell's ambient default so an in-flight `$` command is terminated
-    (SIGTERM) on cancellation. A body that ignores its signal still runs to completion —
-    graph-level cancellation/compensation is a later milestone.
+    (SIGTERM) on cancellation. When the run is cancelled, the compensations of
+    every target that had succeeded run in reverse order (see
+    {@link "./target.ts".TargetBuilder.onCancel}) and the result is a non-ok
+    `cancelled` outcome. A body that ignores its signal still runs to
+    completion, so promptly-cancellable work should pass `ctx.signal` to its
+    shell commands.
   stateStore?: StateStore | false
     Durable run state (see {@link "./state/store.ts".StateStore}). A supplied
     store is used directly; `false` disables state entirely. When omitted, the
@@ -2502,6 +2595,12 @@ type LockResult = { ok: true; token: string; } | { ok: false; holder: LockHolder
   The result of {@link StateStore.acquireLock}: a `token` proving ownership, or
   the current `holder` when the lock is already held.
 
+type OnCancel = TargetBuilder | (() => TargetBuilder)
+  A compensation registered with {@link TargetBuilder.onCancel}: either a
+  sibling target directly, or a thunk returning one. The thunk form defers
+  evaluation so a compensation declared below the target it cleans up (class
+  fields initialise top-to-bottom) can still be referenced.
+
 type OnTimeout = () => TargetBuilder | "fail" | "cancel-run"
   What a timed-out wait does — resolved from {@link WaitSettings.onTimeout}.
 
@@ -2527,8 +2626,10 @@ type PutResult = { ok: true; version: string; } | { ok: false; conflict: true; }
 type RunEventOutcome = "ok" | "denied" | "error"
   The outcome recorded for an audited MCP tool call (see {@link RunEvent}).
 
-type RunStatus = "running" | "suspended" | "succeeded" | "failed" | "cancelled"
-  The lifecycle status of a whole run.
+type RunStatus = "running" | "suspended" | "cancelling" | "succeeded" | "failed" | "cancelled"
+  The lifecycle status of a whole run. `cancelling` is the transient state a
+  cancellation moves through — the run has been asked to stop and its
+  compensations are running — before it settles as `cancelled`.
 
 type Target = TargetBuilder
   A configured target. Alias of {@link TargetBuilder} — the same object both

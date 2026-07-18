@@ -17,6 +17,7 @@
  */
 
 import { type Build, type BuildResult, discoverTargets } from "./build.ts";
+import { cancelRun } from "./cancel.ts";
 import { execute, type Reporter } from "./executor.ts";
 import { planGraph } from "./graph.ts";
 import type { JsonValue, TargetBuilder } from "./target.ts";
@@ -25,7 +26,12 @@ import { findConfigDir, pathExists } from "./config.ts";
 import { defaultStateHost, type StateStore } from "./state/store.ts";
 import { resolveStateStore } from "./state/resolve.ts";
 import { resolveActor } from "./state/record.ts";
-import type { RunGraphNode, RunRecord, WaitState } from "./state/types.ts";
+import type {
+  RunGraphNode,
+  RunRecord,
+  WaitDisposition,
+  WaitState,
+} from "./state/types.ts";
 
 /** Raised when a run has already been resumed by another process. */
 export class AlreadyResumedError extends Error {
@@ -115,12 +121,24 @@ export async function resumeRun(
   const resumerActor = resolveActor(options.actor, readEnv);
   const now = () => new Date().toISOString();
 
-  // A wait past its deadline times out instead of resuming. Its recorded
-  // onTimeout disposition is honoured as "fail" for now; running a compensation
-  // target is a later milestone (cancellation), so the disposition is preserved.
+  // A wait past its deadline times out instead of resuming, honouring its
+  // recorded onTimeout disposition: "fail" fails the run; "cancel-run" and a
+  // named compensation target both cancel the run (running its compensations).
   const expired = expiredWait(initial.record, Date.now());
   if (initial.record.status === "suspended" && expired !== null) {
-    return await failTimedOut(store, initial, expired, now);
+    const disposition = expired.waitingFor.onTimeout;
+    if (disposition === "fail") {
+      return await failTimedOut(store, initial, expired, now);
+    }
+    return await cancelTimedOut(
+      build,
+      store,
+      options,
+      expired,
+      disposition,
+      resumerActor,
+      readEnv,
+    );
   }
   // Validate the root and graph shape *before* transitioning, so a mismatch
   // leaves the run suspended (retryable with --force-graph) rather than stuck.
@@ -333,6 +351,47 @@ async function failTimedOut(
 }
 
 /**
+ * Handle a timed-out wait whose disposition **cancels** the run: `"cancel-run"`
+ * cancels it (running the compensations of every succeeded target), and a named
+ * target additionally runs that specific compensation first. Delegates to
+ * {@link "./cancel.ts".cancelRun}, so a stuck deploy → wait → (timeout) is
+ * unwound and its locks released — the failure mode a bare timeout can't fix.
+ */
+async function cancelTimedOut(
+  build: Build,
+  store: StateStore,
+  options: ResumeOptions,
+  expired: { name: string; waitingFor: WaitState },
+  disposition: WaitDisposition,
+  actor: string,
+  readEnv: (name: string) => string | undefined,
+): Promise<BuildResult> {
+  const also = typeof disposition === "object"
+    ? [disposition.target]
+    : undefined;
+  const result = await cancelRun(build, {
+    runId: options.runId,
+    stateStore: store,
+    actor,
+    readEnv,
+    silent: options.silent,
+    reporter: options.reporter,
+    also,
+  });
+  return {
+    ok: false,
+    executed: [],
+    cancelled: true,
+    runId: options.runId,
+    error: new Error(
+      `resume: run ${options.runId}: wait "${expired.name}" timed out ` +
+        `(deadline ${expired.waitingFor.deadline}) — run cancelled ` +
+        `(${result.compensated.length} compensation(s) ran).`,
+    ),
+  };
+}
+
+/**
  * Re-attempt every suspended run in the store (or just `runId`): predicate-based
  * waits are re-evaluated and expired waits time out. Signal-based waits with no
  * new signal simply re-suspend. Returns the number of runs that ended in
@@ -359,7 +418,14 @@ export async function resumeCheck(
       if (!result.ok) failed += 1;
     } catch (error) {
       if (error instanceof AlreadyResumedError) continue; // another process has it
-      throw error;
+      // Isolate a per-run failure: one run erroring (a bad graph, a throwing
+      // compensation) must not abort the sweep and strand every run behind it.
+      failed += 1;
+      options.reporter?.error(
+        `resume --check: run ${id} errored: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
     }
   }
   return { checked: ids.length, failed };

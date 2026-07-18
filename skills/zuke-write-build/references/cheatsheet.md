@@ -24,6 +24,7 @@ Everything is optional except a body (`.executes`).
 | `.timeout(ms)`                                                                                           | Fail the body if it runs longer than `ms` (per attempt).                                          |
 | `.lock((s) => s.lockKey(...).withTtl(...))`                                                              | Hold a cross-run lock while running; a second run wanting the key fails. See below.               |
 | `.waitsFor((s) => s.on(externalSignal(...)))`                                                            | Gate (no body): suspend the run until an external event; resume later. See below.                 |
+| `.onCancel(() => this.rollback)`                                                                         | Compensation run (reverse order) iff this target succeeded when the run is cancelled. See below.   |
 | `.forEach(() => items, (item) => ({stage: target()…}), (s) => s.concurrency(3).continueOnItemFailure())` | Fan out a pipeline over a runtime list: items concurrent, stages sequential per item. See below.  |
 | `.proceedAfterFailure()`                                                                                 | Keep the build going if this target fails.                                                        |
 | `.always()`                                                                                              | Run even after the build failed (cleanup/teardown).                                               |
@@ -122,8 +123,11 @@ deploy = target().executes(async (ctx) => {
 `` $`…` `` in the body is terminated with `SIGTERM` automatically (the run's
 signal is the shell's ambient signal). Pass `ctx.signal` to `.signal(...)` to
 cancel a command explicitly; it composes with `.killAfter(ms)`. Cancel a run
-programmatically with `execute(build, root, { signal })`. A body that ignores
-its signal and never shells out runs to completion.
+with `zuke cancel <id>`, `Ctrl-C`/`SIGTERM`, the MCP `cancel_run` tool, or
+programmatically with `execute(build, root, { signal })` / `cancelRun(build, {
+runId })`. A body that ignores its signal and never shells out runs to
+completion. Register **compensations** with `.onCancel(...)` (see below) to undo
+a target's effect when the run is cancelled.
 
 ## Durable run state
 
@@ -231,6 +235,34 @@ class Deploy extends Build {
   `zuke resume --check [<id>]` for predicate waits/timeouts). Resumption is
   **exactly-once** (concurrent resumers get `AlreadyResumedError`) and re-runs
   only the not-yet-succeeded targets; `--force-graph` overrides a changed graph.
+
+## Cancellation & compensation — `.onCancel()`
+
+Undo a target's effect when the run is cancelled. `.onCancel(target | () =>
+target)` registers a **compensation** that runs **iff this target succeeded**;
+on cancel, compensations run in **reverse order** of the succeeded targets.
+
+```ts
+class CD extends Build {
+  deploy = target()
+    .executes((ctx) => ctx.state.set({ slot: "sit-7" })) // record what it did
+    .onCancel(() => this.rollback); // thunk → sibling compensation
+  rollback = target().executes((ctx) => tearDown(ctx.state.get().slot));
+  gate = target().dependsOn(this.deploy)
+    .waitsFor((s) => s.on(externalSignal("approved")));
+}
+```
+
+- The compensation body's `ctx.state` exposes **the original target's** persisted
+  metadata (persist what a rollback needs in `ctx.state` when you do the work).
+- Cancel with `zuke cancel <id>`, `Ctrl-C`/`SIGTERM`, or the MCP `cancel_run`
+  tool (all run the same walk). A live run aborts on its next state write.
+- A compensation that throws is recorded but does **not** stop the walk (cleanup
+  is maximal). Cancelling a finished run is a friendly no-op.
+- A timed-out `.waitsFor()` can route here: `.onTimeout(() => "cancel-run")`
+  cancels the run (running compensations); `.onTimeout(() => this.cleanup)` runs
+  that target too. Needs a state store (a build with `.onCancel()` enables
+  `.zuke/runs` by default). See `docs/orchestration.md`.
 
 ## Fan-out over a list — `.forEach()`
 
@@ -465,6 +497,8 @@ is current (`zuke generate-ci --check` is a dedicated gate).
 ./zuke <target> --actor <who> # attribute the run in its state record
 ./zuke runs list [--status s] # list persisted runs (also --target, --since, --json)
 ./zuke runs show <id>         # one run's full per-target status (+ --json)
+./zuke resume <id> --signal <name> [--data <json>]  # continue a suspended run
+./zuke cancel <id>            # cancel a run and run its .onCancel() compensations
 ./zuke mcp [--allow-run]      # serve the build over MCP for an AI client (stdio)
 ./zuke mcp --http 7777        # ...or over HTTP (loopback; token off-loopback)
 ./zuke mcp --allow-run=deploy,checks* --protect deploy --confirm-destructive

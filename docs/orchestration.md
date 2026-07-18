@@ -113,10 +113,20 @@ Programmatically, `resumeRun(build, { runId, signal, data })` and
 
 ### Timeouts
 
-A wait past its `timeout` deadline **times out** instead of resuming: the target
-is failed and the run fails, its recorded `onTimeout` disposition preserved.
-Running a compensation target on timeout (rather than just failing) arrives with
-the cancellation milestone.
+A wait past its `timeout` deadline **times out** instead of resuming, honouring
+its recorded `onTimeout` disposition:
+
+- **`"fail"`** (the default) — the waiting target is failed and the run fails.
+- **`"cancel-run"`** — the run is **cancelled**: every succeeded target's
+  compensation runs (see [Cancellation](#cancellation--compensation-oncancel))
+  and the record settles `cancelled`. This is what unwinds a stuck deploy → wait
+  and releases its locks, rather than leaving them held until their TTL.
+- **a sibling target** (`.onTimeout(() => this.rollback)`) — that specific
+  target runs as a compensation, then the run is cancelled (running the rest of
+  the compensations too).
+
+Timeouts are enforced lazily on any `zuke resume`/`resume --check`, so a single
+cron that sweeps suspended runs also enforces every deadline.
 
 ## State is the only thing that crosses the boundary
 
@@ -126,6 +136,70 @@ gone. Anything a later target needs must be in the durable record — `ctx.state
 model to build around: persist what matters, read it back on the other side.
 
 See [Durable run state](./state.md) for the record shape and `ctx.state`.
+
+## Cancellation & compensation — `.onCancel()`
+
+Cancelling a run should be **safe and complete**: work that already happened is
+undone, locks are released, and the record ends `cancelled`. Zuke does this with
+**compensation targets** — the inverse of a target, declared with `.onCancel()`.
+
+```ts
+class CD extends Build {
+  deploy = target()
+    .executes((ctx) => ctx.state.set({ slot: "sit-7" })) // record what it did
+    .onCancel(() => this.rollback); // …and how to undo it
+  rollback = target().executes((ctx) => tearDown(ctx.state.get().slot));
+
+  gate = target().dependsOn(this.deploy)
+    .waitsFor((s) => s.on(externalSignal("approved")));
+  promote = target().dependsOn(this.gate).executes(() => {});
+}
+```
+
+Cancel it three ways — all run the same walk:
+
+```bash
+zuke cancel <run-id>     # cancel a persisted run (any process)
+# Ctrl-C / SIGTERM       # cancel the run in this process
+# MCP cancel_run tool    # cancel over MCP (gated like a run tool)
+```
+
+What a cancellation does:
+
+- **A compensation runs iff its target succeeded.** A target that never ran, was
+  skipped, or failed has nothing to undo. Compensations run in **reverse order**
+  of the targets that succeeded, so later work is unwound before the work it was
+  built on.
+- **Each compensation reads its target's persisted state.** The compensation
+  body gets a normal `ctx` whose `ctx.state` exposes **the original target's**
+  metadata — the `deploy` above rolls back from exactly the `slot` it recorded.
+  So persist what a rollback needs in `ctx.state` at the time you do the work.
+- **A live run stops.** Cancelling a run another process is executing flips it
+  to `cancelling`; the owner observes that on its next state write and aborts —
+  its in-flight `$` commands get SIGTERM through the ambient signal, releasing
+  the locks they held. (A body that ignores its `ctx.signal` runs to completion,
+  so pass `ctx.signal` to long shell commands.)
+- **Cleanup is maximal.** A compensation that throws is recorded but does
+  **not** stop the walk — every other compensation still runs. The failures are
+  reported and land in the run's audit trail.
+- **It is idempotent.** Cancelling an already-finished (or already-cancelled)
+  run is a friendly no-op — safe to run from a retrying operator or a double
+  Ctrl-C.
+
+The compensation is a **thunk** (`() => this.rollback`) so it can reference a
+target declared _below_ the one it cleans up (class fields initialise
+top-to-bottom, exactly like `waitsFor`'s `onTimeout`). The whole cancellation is
+recorded as a `cancel` event in the run's [audit trail](./state.md), attributed
+to whoever cancelled it, so `zuke runs show <id>` shows what was unwound.
+
+Cancellation needs a state store, so a build that uses `.onCancel()` turns on
+the `.zuke/runs` filesystem store by default (like `.lock()` and `.waitsFor()`).
+
+> **Limitation:** the cancel walk considers only the static plan, so an
+> `.onCancel()` on a [`.forEach()`](#fan-out-over-a-list--foreach)
+> **sub-target** is not run (sub-targets are materialised at run time and don't
+> exist at cancel time). Put a compensation on an ordinary target, or on the
+> parent fan-out target itself.
 
 ## Fan-out over a list — `.forEach()`
 

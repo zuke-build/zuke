@@ -115,6 +115,14 @@ Before calling any task or settings method, confirm the real shape:
   `zuke resume <id> --signal <name> [--data <json>]` (or `--check` for predicate
   waits/timeouts) — exactly-once, re-running only the not-yet-succeeded targets.
   Needs a state store. See the cheatsheet / `docs/orchestration.md`.
+- **Cancellation & compensation:** `.onCancel(() => this.rollback)` registers a
+  compensation that runs **iff this target succeeded** when the run is later
+  cancelled — compensations run in reverse order, and the compensation body's
+  `ctx.state` exposes the original target's persisted metadata (so a rollback
+  reads what the deploy recorded). Cancel with `zuke cancel <id>` (or Ctrl-C, or
+  the MCP `cancel_run` tool). Idempotent; a timed-out wait can route its
+  `onTimeout` here (`"cancel-run"` or a named target). Needs a state store. See
+  `docs/orchestration.md`.
 - **Fan-out over a list:**
   `.forEach(() => this.repos.value, (repo) => ({ checks: target()…, deploy: target()… }), (s) => s.concurrency(3).continueOnItemFailure())`
   runs the same pipeline over a runtime list — items concurrent, each item's

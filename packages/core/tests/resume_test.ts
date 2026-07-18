@@ -231,6 +231,53 @@ Deno.test("resuming a run already running gives AlreadyResumedError", async () =
   });
 });
 
+Deno.test("resumeCheck isolates a per-run error and keeps sweeping", async () => {
+  await withTempStore(async (store) => {
+    let ready = false;
+    let ran = false;
+    const makeBuild = () => {
+      class B extends Build {
+        gate = target().waitsFor((s) => s.on(resumeWhen(() => ready)));
+        work = target().dependsOn(this.gate).executes(() => void (ran = true));
+      }
+      const build = new B();
+      discoverTargets(build);
+      return build;
+    };
+    // A normal run that suspends now (predicate false) and resumes in the sweep.
+    const a = makeBuild();
+    await execute(a, a.work, { silent: true, stateStore: store });
+
+    // A broken suspended run whose root target the build lacks → resumeRun throws.
+    // It is newer, so the sweep hits it first; the old behaviour would re-throw
+    // and strand the good run behind it.
+    const now = new Date().toISOString();
+    await store.putRun({
+      id: "broken",
+      build: "B",
+      rootTarget: "ghost",
+      status: "suspended" as const,
+      actor: "x",
+      createdAt: now,
+      updatedAt: now,
+      graph: [{ name: "ghost", dependsOn: [] }],
+      params: {},
+      targets: { ghost: { status: "waiting", meta: {} } },
+      signals: {},
+      events: [],
+    }, null);
+
+    ready = true; // the good run's predicate is now satisfied
+    const result = await resumeCheck(makeBuild(), {
+      stateStore: store,
+      silent: true,
+    });
+    assertEquals(result.checked, 2); // both were checked
+    assertEquals(result.failed >= 1, true); // the broken one counted as failed
+    assertEquals(ran, true); // the good run still ran despite the broken one
+  });
+});
+
 Deno.test("resumeCheck sweeps suspended runs and advances satisfied predicates", async () => {
   await withTempStore(async (store) => {
     let ready = false;

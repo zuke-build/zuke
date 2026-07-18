@@ -11,6 +11,7 @@
  */
 
 import type { Build } from "../build.ts";
+import { cancelRun } from "../cancel.ts";
 import { AlreadyResumedError, resumeCheck, resumeRun } from "../resume.ts";
 import { LockConflictError } from "../state/lock.ts";
 import type { StateStore } from "../state/store.ts";
@@ -137,6 +138,24 @@ const MUTATING_TOOLS: readonly McpTool[] = [
     },
     annotations: { title: "Resume check", destructiveHint: true },
   },
+  {
+    name: "cancel_run",
+    description:
+      "Cancel a run and run its compensations (reverse order). Idempotent — a finished run is a no-op.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        runId: { type: "string", description: "The run to cancel." },
+        operatorToken: {
+          type: "string",
+          description:
+            "Operator token, required if the run's target is protected.",
+        },
+      },
+      required: ["runId"],
+    },
+    annotations: { title: "Cancel run", destructiveHint: true },
+  },
 ];
 
 /**
@@ -155,7 +174,8 @@ export const RUN_STATE_TOOL_NAMES: readonly string[] = [
 
 /** Whether `name` is one of the mutating run-state tools (audited, gated). */
 export function isMutatingRunTool(name: string): boolean {
-  return name === "signal_run" || name === "resume_check";
+  return name === "signal_run" || name === "resume_check" ||
+    name === "cancel_run";
 }
 
 /** Read an optional string argument, or `undefined` when absent/not a string. */
@@ -208,6 +228,7 @@ export async function callRunStateTool(
   if (name === "show_run") return await showRun(deps, args);
   if (name === "signal_run") return await signalRun(deps, args);
   if (name === "resume_check") return await resumeCheckTool(deps, args);
+  if (name === "cancel_run") return await cancelRunTool(deps, args);
   return null;
 }
 
@@ -334,4 +355,42 @@ async function resumeCheckTool(
     }
   }
   return jsonResult({ ok: failed === 0, checked, failed });
+}
+
+/** `cancel_run`: cancel a run and run its compensations, exactly like `zuke cancel`. */
+async function cancelRunTool(
+  deps: RunToolDeps,
+  args: Record<string, unknown>,
+): Promise<RunToolResult> {
+  const runId = stringArg(args, "runId");
+  if (runId === undefined) {
+    return jsonResult({ error: "missing_argument", argument: "runId" }, true);
+  }
+  // Cancelling runs the run's compensation code, so it is gated by the same
+  // allow-list and operator-token policy as a `run:` tool.
+  const loaded = await deps.store.getRun(runId);
+  if (loaded === null) return jsonResult({ error: "no_run", runId }, true);
+  const denied = deps.authorize(loaded.record.rootTarget, args);
+  if (denied !== null) {
+    return jsonResult({ error: "unauthorized", reason: denied, runId }, true);
+  }
+  try {
+    const result = await cancelRun(deps.build, {
+      runId,
+      stateStore: deps.store,
+      actor: deps.actor,
+      readEnv: deps.readEnv,
+      silent: true,
+    });
+    return jsonResult({
+      ok: result.failures.length === 0,
+      runId,
+      status: result.status,
+      noop: result.noop,
+      compensated: result.compensated,
+      failures: result.failures,
+    });
+  } catch (error) {
+    return structuredError(error, runId);
+  }
 }

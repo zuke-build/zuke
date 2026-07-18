@@ -1675,7 +1675,10 @@ Deno.test("options.signal aborts the context signal of an in-flight target", asy
   controller.abort();
   const result = await runPromise;
   assertEquals(observedAbort, true);
-  assertEquals(result.ok, true); // body resolved cleanly once its signal fired
+  // Cancelling the run is now a first-class outcome (M6): even though the body
+  // resolved cleanly once its signal fired, the run is reported cancelled.
+  assertEquals(result.ok, false);
+  assertEquals(result.cancelled, true);
 });
 
 Deno.test("cancelling a run terminates an in-flight shell command", async () => {
@@ -1759,7 +1762,10 @@ Deno.test("a pre-aborted options.signal aborts the context signal", async () => 
     signal: controller.signal,
   });
   assertEquals(sawAborted, true);
-  assertEquals(result.ok, true); // no shell command to kill, so the body succeeds
+  // A pre-aborted signal cancels the run: no body ran to completion, and the
+  // result is a non-ok cancellation (M6).
+  assertEquals(result.ok, false);
+  assertEquals(result.cancelled, true);
 });
 
 Deno.test("a run with a state store reconstructs full status from disk", async () => {
