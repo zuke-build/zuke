@@ -300,6 +300,23 @@ Deno.test("main: runs list rejects an unknown --status", async () => {
   assertStringIncludes(err.join("\n"), 'unknown --status "bogus"');
 });
 
+Deno.test("parseArgs reads the mcp --http address", () => {
+  assertEquals(parseArgs(["mcp", "--http", "7777"]).httpAddr, "7777");
+  assertEquals(
+    parseArgs(["mcp", "--http=127.0.0.1:8080"]).httpAddr,
+    "127.0.0.1:8080",
+  );
+  assertEquals(parseArgs(["mcp"]).httpAddr, undefined);
+});
+
+Deno.test("main: mcp --http rejects an invalid address", async () => {
+  const { code, err } = await capture(() =>
+    main(Demo, ["mcp", "--http", "nope"])
+  );
+  assertEquals(code, 1);
+  assertStringIncludes(err.join("\n"), "invalid --http");
+});
+
 Deno.test("parseArgs reads --affected with an optional base", () => {
   assertEquals(parseArgs(["build"]).affected, false);
   assertEquals(parseArgs(["build", "--affected"]).affected, true);

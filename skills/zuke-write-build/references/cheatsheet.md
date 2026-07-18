@@ -465,7 +465,8 @@ is current (`zuke generate-ci --check` is a dedicated gate).
 ./zuke <target> --actor <who> # attribute the run in its state record
 ./zuke runs list [--status s] # list persisted runs (also --target, --since, --json)
 ./zuke runs show <id>         # one run's full per-target status (+ --json)
-./zuke mcp [--allow-run]      # serve the build over MCP for an AI client
+./zuke mcp [--allow-run]      # serve the build over MCP for an AI client (stdio)
+./zuke mcp --http 7777        # ...or over HTTP (loopback; token off-loopback)
 ```
 
 **Caching:** a target with `.inputs(...)`/`.outputs(...)` is incremental

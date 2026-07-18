@@ -70,6 +70,7 @@ Option flags:
 - `--target` — With runs list, keep only runs whose graph has this target
 - `--since` — With runs list, keep only runs created at/after this time
 - `--allow-run` — With mcp, let agents execute targets (not just inspect)
+- `--http` — With mcp, serve over HTTP on <host:port> instead of stdio
 - `--help` — Show usage
 
 Full reference: [docs/cli.md](./docs/cli.md).
