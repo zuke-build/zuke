@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.17.0](https://github.com/zuke-build/zuke/compare/core-v1.16.0...core-v1.17.0) (2026-07-18)
+
+
+### Features
+
+* **core:** add zuke runs list/show ([#171](https://github.com/zuke-build/zuke/issues/171)) ([d154ea7](https://github.com/zuke-build/zuke/commit/d154ea73da2545e4d67cadc9e212356c0741802f))
+* **core:** forEach fan-out targets with per-item isolation and reporting ([#173](https://github.com/zuke-build/zuke/issues/173)) ([d562ef7](https://github.com/zuke-build/zuke/commit/d562ef7b37d9dfbad22789e2298c80391f6e7e43))
+* **core:** MCP authz tiers, audit log, and run-state tools ([#176](https://github.com/zuke-build/zuke/issues/176)) ([a2e247b](https://github.com/zuke-build/zuke/commit/a2e247b0816265773c4a32bbe9077fdf14dcfd42))
+* **core:** MCP streamable-HTTP transport ([#174](https://github.com/zuke-build/zuke/issues/174)) ([01abdd6](https://github.com/zuke-build/zuke/commit/01abdd68cde13ae007ed26688013c4e4c507ba41))
+
 ## [1.16.0](https://github.com/zuke-build/zuke/compare/core-v1.15.0...core-v1.16.0) (2026-07-17)
 
 

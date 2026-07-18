@@ -1,6 +1,6 @@
 {
   "name": "@zuke/core",
-  "version": "1.16.0",
+  "version": "1.17.0",
   "description": "Core of Zuke: a code-first, strongly-typed build-automation library for Deno & TypeScript with a typed target graph and an injection-free shell.",
   "exports": {
     ".": "./mod.ts",
