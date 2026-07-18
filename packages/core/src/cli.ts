@@ -559,11 +559,20 @@ export interface MainOptions {
   /** Renderer for the build's banners and summary (see {@link RunOptions}). */
   renderer?: Renderer;
   /**
-   * Cancel the running build when this signal aborts (wired to SIGINT/SIGTERM by
-   * {@link run}). The run stops, its succeeded targets' compensations run, and
-   * the record is marked cancelled.
+   * Cancel a running **build** when this signal aborts (its compensations run and
+   * the record is marked cancelled). Applies only to a target run; other
+   * commands ignore it. Tests inject one directly; {@link run} does not use it —
+   * see {@link watchSignals}.
    */
   signal?: AbortSignal;
+  /**
+   * Install OS SIGINT/SIGTERM handlers that gracefully cancel a **build run**
+   * (running its compensations; a second signal force-exits). Set by
+   * {@link run}. Scoped to the target-run path on purpose, so a signal keeps its
+   * default terminate behaviour for a long-lived `mcp` server and every other
+   * command.
+   */
+  watchSignals?: boolean;
 }
 
 /**
@@ -862,21 +871,70 @@ export async function main(
     if (ciCode !== 0) return ciCode;
   }
 
-  const result = await execute(build, root, {
-    skip: parsed.skip,
-    params: parsed.values,
-    parallel: parsed.parallel,
-    cache: parsed.cache,
-    remoteCache: parsed.remoteCache === false ? false : undefined,
-    affected: parsed.affected ? { base: parsed.affectedBase } : undefined,
-    dryRun: parsed.dryRun,
-    state: parsed.state,
-    actor: parsed.actor,
-    plugins: options.plugins,
-    renderer: options.renderer,
-    signal: options.signal,
-  });
-  return result.ok ? 0 : 1;
+  // A running build cancels gracefully on Ctrl-C/SIGTERM — running its
+  // compensations — when `run` asks for it (`watchSignals`); a second signal
+  // force-exits. Handlers are installed only here, around the build, so a signal
+  // keeps its default terminate behaviour for `mcp` and every other command.
+  // A test can inject `options.signal` directly instead.
+  const controller = new AbortController();
+  const cleanupSignals = options.watchSignals
+    ? installCancelSignals(controller)
+    : undefined;
+  try {
+    const result = await execute(build, root, {
+      skip: parsed.skip,
+      params: parsed.values,
+      parallel: parsed.parallel,
+      cache: parsed.cache,
+      remoteCache: parsed.remoteCache === false ? false : undefined,
+      affected: parsed.affected ? { base: parsed.affectedBase } : undefined,
+      dryRun: parsed.dryRun,
+      state: parsed.state,
+      actor: parsed.actor,
+      plugins: options.plugins,
+      renderer: options.renderer,
+      signal: cleanupSignals ? controller.signal : options.signal,
+    });
+    return result.ok ? 0 : 1;
+  } finally {
+    cleanupSignals?.();
+  }
+}
+
+/**
+ * Install SIGINT/SIGTERM handlers that abort `controller` on the first signal
+ * (graceful cancel) and force-exit on a second, so a stuck build never traps the
+ * operator. Returns a cleanup function that removes them. SIGTERM is skipped on
+ * Windows (unsupported there).
+ */
+function installCancelSignals(controller: AbortController): () => void {
+  let cancelling = false;
+  const onSignal = () => {
+    if (cancelling) Deno.exit(130);
+    cancelling = true;
+    controller.abort();
+  };
+  const wanted: Deno.Signal[] = Deno.build.os === "windows"
+    ? ["SIGINT"]
+    : ["SIGINT", "SIGTERM"];
+  const installed: Deno.Signal[] = [];
+  for (const sig of wanted) {
+    try {
+      Deno.addSignalListener(sig, onSignal);
+      installed.push(sig);
+    } catch {
+      // A platform that doesn't support this signal — skip it.
+    }
+  }
+  return () => {
+    for (const sig of installed) {
+      try {
+        Deno.removeSignalListener(sig, onSignal);
+      } catch {
+        // Best-effort teardown.
+      }
+    }
+  };
 }
 
 /** Options for {@link run}. */
@@ -914,43 +972,12 @@ export async function run(
   // Run only when this build's module is the one Deno was started with, so the
   // caller needn't write `if (import.meta.main)`. Imported elsewhere, no-op.
   if (!isEntryModule(new Error().stack ?? "", import.meta.url)) return;
-
-  // Wire Ctrl-C (and SIGTERM, where supported) to graceful cancellation: the
-  // first signal aborts the run so its compensations run; a second forces an
-  // immediate exit, so a stuck build can never trap the operator.
-  const controller = new AbortController();
-  let cancelling = false;
-  const onSignal = () => {
-    if (cancelling) Deno.exit(130);
-    cancelling = true;
-    controller.abort();
-  };
-  const signals: Deno.Signal[] = Deno.build.os === "windows"
-    ? ["SIGINT"]
-    : ["SIGINT", "SIGTERM"];
-  for (const sig of signals) {
-    try {
-      Deno.addSignalListener(sig, onSignal);
-    } catch {
-      // A platform that doesn't support this signal — skip it.
-    }
-  }
-
-  let code: number;
-  try {
-    code = await main(BuildClass, options.args ?? Deno.args, {
-      plugins: options.plugins,
-      renderer: options.renderer,
-      signal: controller.signal,
-    });
-  } finally {
-    for (const sig of signals) {
-      try {
-        Deno.removeSignalListener(sig, onSignal);
-      } catch {
-        // Best-effort teardown; ignore an unsupported signal.
-      }
-    }
-  }
+  // `watchSignals` lets `main` wire Ctrl-C/SIGTERM to graceful cancellation, but
+  // only around a build run — every other command keeps default signal handling.
+  const code = await main(BuildClass, options.args ?? Deno.args, {
+    plugins: options.plugins,
+    renderer: options.renderer,
+    watchSignals: true,
+  });
   Deno.exit(code);
 }
