@@ -88,6 +88,11 @@ export interface Plugin {
    * **Only fires when a state store is configured** (the record's home); a plain
    * build with no store never produces one, and this hook stays silent.
    *
+   * The record is the **secret-free projection**: `secret()` parameters are
+   * omitted, and `ctx.state` metadata, target errors, and audit arguments are
+   * run through the redactor before they reach it — the same data already
+   * persisted to the store and shown by `zuke runs show`. It is safe to export.
+   *
    * A run cancelled in-process (Ctrl-C / its `signal`) is observed as
    * `running` → `cancelling` → `cancelled`. When **another process** cancels the
    * run (`zuke cancel`), this process observes it through `cancelling` and stops
