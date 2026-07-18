@@ -136,6 +136,16 @@ Deno.test("http transport enforces a configured bearer token", async () => {
     });
     assertEquals(good.status, 200);
     await good.json();
+
+    // The scheme is case-insensitive and surrounding whitespace is tolerated,
+    // but the token itself must still match exactly.
+    const lenient = await fetch(url, {
+      method: "POST",
+      headers: { authorization: "bearer   swordfish" },
+      body: rpc("ping", 1),
+    });
+    assertEquals(lenient.status, 200);
+    await lenient.json();
   } finally {
     await s.stop();
   }

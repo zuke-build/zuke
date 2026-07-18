@@ -65,6 +65,23 @@ function safeEqual(a: string, b: string): boolean {
 }
 
 /**
+ * Extract the credential from an `Authorization: Bearer <token>` header, or
+ * `undefined` when it is absent or not the Bearer scheme. The scheme name is
+ * matched case-insensitively (per RFC 7235) and surrounding whitespace is
+ * tolerated, so trivial client formatting differences don't spuriously fail
+ * auth — the token itself is still compared exactly. Parsed by hand (no regex)
+ * to keep it linear on adversarial input.
+ */
+function bearerToken(header: string | null): string | undefined {
+  if (header === null) return undefined;
+  const trimmed = header.trim();
+  const space = trimmed.indexOf(" ");
+  if (space === -1) return undefined;
+  if (trimmed.slice(0, space).toLowerCase() !== "bearer") return undefined;
+  return trimmed.slice(space + 1).trimStart();
+}
+
+/**
  * Serve JSON-RPC over HTTP: each `POST` carries one JSON-RPC message as its
  * body, `handle` produces the response, and it is returned as JSON. A
  * notification (`handle` returns `null`) is answered `202 Accepted` with no
@@ -78,9 +95,6 @@ export async function serveHttp(
   options: HttpTransportOptions,
 ): Promise<void> {
   const { host, port, token, signal, onListen } = options;
-  const authExpected = token !== undefined && token !== ""
-    ? `Bearer ${token}`
-    : undefined;
 
   // Process messages one at a time: the server/execute path mutates per-run
   // parameter state, so concurrent handling of two POSTs would race. Requests
@@ -99,9 +113,9 @@ export async function serveHttp(
         405,
       );
     }
-    if (authExpected !== undefined) {
-      const provided = request.headers.get("authorization") ?? "";
-      if (!safeEqual(provided, authExpected)) {
+    if (token !== undefined && token !== "") {
+      const provided = bearerToken(request.headers.get("authorization"));
+      if (provided === undefined || !safeEqual(provided, token)) {
         return new Response(
           JSON.stringify(err(null, INVALID_REQUEST, "Unauthorized")),
           {
