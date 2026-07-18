@@ -322,8 +322,20 @@ Deno.test("resume tools require the operator token for a protected target", asyn
         operatorToken: "nope",
       });
       assertEquals(JSON.parse(wrong.text).reason, "invalid_operator_token");
-      // (A correct token proceeds to resumeRun; the run has no real gate here,
-      // so its outcome is covered by the resume tests — the point is the gate.)
+
+      // resume_check enforces the same gate for a single protected run.
+      const checkNoToken = await call(server, "resume_check", { runId: id });
+      assertEquals(checkNoToken.isError, true);
+      assertEquals(
+        JSON.parse(checkNoToken.text).reason,
+        "missing_operator_token",
+      );
+
+      // The sweep (no runId) silently skips runs the caller can't authorise.
+      const sweep = await call(server, "resume_check");
+      assertEquals(JSON.parse(sweep.text).checked, 0);
+      // (A correct token proceeds to resumeRun; that outcome is covered by the
+      // resume tests — the point here is that the token gate is enforced.)
     },
   );
 });
