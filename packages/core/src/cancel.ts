@@ -256,6 +256,10 @@ export async function runCompensations(
       target: compName,
       signal: NEVER_ABORTED,
       state: seededStateHandle(step.meta),
+      // A compensation runs off the durable graph, so only its own seeded state
+      // is available; other targets read as empty here.
+      stateOf: (t) =>
+        t === compName ? seededStateHandle(step.meta) : seededStateHandle({}),
       signals: deps.signals,
       dryRun: false,
     };

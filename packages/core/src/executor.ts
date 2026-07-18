@@ -49,6 +49,7 @@ import {
   WaitSettings,
 } from "./target.ts";
 import type { Configure } from "./tooling.ts";
+import type { WaitContext } from "./wait.ts";
 import type {
   RunRecord,
   SignalRecord,
@@ -566,7 +567,15 @@ async function resolveWait(
       `Target "${name}" .waitsFor(...) set no trigger — call s.on(...).`,
     );
   }
-  const satisfied = await trigger.isSatisfied(env.signals);
+  // The trigger gets the target's durable state handle, so a stateful trigger
+  // (e.g. dispatch-then-poll) can persist correlation state across the
+  // suspend/resume boundary and hand a result to the body.
+  const waitCtx: WaitContext = {
+    state: env.writer ? env.writer.stateHandle(name) : inMemoryStateHandle(),
+    runId: env.runId,
+    target: name,
+  };
+  const satisfied = await trigger.isSatisfied(env.signals, waitCtx);
   const waitState: WaitState = {
     trigger: trigger.descriptor,
     onTimeout: resolveDisposition(settings.onTimeout_),
@@ -884,11 +893,21 @@ async function runTarget(
     return { status: "failed", ms: 0, error };
   }
 
+  // One own-state handle, reused for `stateOf(this target)` so the documented
+  // `stateOf(self) === state` invariant holds even store-less (a fresh
+  // inMemoryStateHandle per call would drop writes).
+  const ownState = env.writer
+    ? env.writer.stateHandle(name)
+    : inMemoryStateHandle();
   const ctx: TargetContext = {
     runId: env.runId,
     target: name,
     signal: env.signal,
-    state: env.writer ? env.writer.stateHandle(name) : inMemoryStateHandle(),
+    state: ownState,
+    stateOf: (t) =>
+      t === name
+        ? ownState
+        : (env.writer ? env.writer.stateHandle(t) : inMemoryStateHandle()),
     signals: env.signals,
     dryRun,
   };

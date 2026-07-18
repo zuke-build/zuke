@@ -116,6 +116,8 @@ deploy = target().executes(async (ctx) => {
   ctx.signal; // AbortSignal, fired when the run is cancelled
   ctx.dryRun; // true under a dry run
   await ctx.state.set({ where: "sit-7" }); // durable metadata — see below
+  ctx.stateOf("build").get(); // read ANOTHER target's published state
+  ctx.signals.get("approved"); // an external signal's payload (see waits)
 });
 ```
 
@@ -225,8 +227,12 @@ class Deploy extends Build {
 }
 ```
 
-- Triggers: `externalSignal(name)` (payload read via `ctx.signals`) and
-  `resumeWhen(fn, { interval? })` (async predicate, re-checked on resume).
+- Triggers: `externalSignal(name)` (payload read via `ctx.signals`),
+  `resumeWhen(fn, { interval? })` (async predicate, re-checked on resume), and
+  `githubWorkflow((g) => g.repo(...).workflow(...))` from `@zuke/gh` (dispatches
+  an external GitHub Actions workflow, satisfied when it finishes; read its
+  per-job result with `readWorkflowResult(ctx.stateOf("<gate>"))`). Write your
+  own trigger against the exported `WaitTrigger` / `WaitContext` interface.
 - Needs a state store (a build with `.waitsFor()` enables `.zuke/runs` by
   default). A resume is a fresh process, so **only `ctx.state`/`ctx.signals`
   cross the boundary**. See `docs/orchestration.md`.

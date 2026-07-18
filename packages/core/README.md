@@ -2545,6 +2545,12 @@ interface TargetContext
     signal is delivered by `zuke resume <id> --signal <name>`.
   readonly dryRun: boolean
     True when the run is a dry run (bodies do not execute under a dry run).
+  stateOf(target: string): TargetStateHandle
+    The durable state handle of another target in this run — the seam a body
+    reads a dependency's published metadata through (e.g. the result a
+    `.waitsFor(githubWorkflow(...))` gate recorded to its state). `stateOf(this target)` is equivalent to {@link state}. It reads the run's current
+    record, so it sees writes a dependency made earlier in the run — including
+    across a suspend/resume, since the record is durable.
 
 interface TargetReport
   One row of the end-of-build summary.
@@ -2629,6 +2635,23 @@ interface ValidationContext
   target: string
     The name of the target the validation is attached to.
 
+interface WaitContext
+  The durable context a {@link WaitTrigger} may use while deciding whether its
+  event has occurred. Its {@link WaitContext.state} handle is the awaiting
+  target's persisted metadata — it survives a suspend/resume, even across
+  processes — so a stateful trigger (e.g. "dispatch a GitHub workflow, then poll
+  it") can remember what it started and hand a result to the target's body. The
+  built-in triggers ignore it.
+
+  readonly state: TargetStateHandle
+    The awaiting target's durable state handle (the same one its body receives
+    as `ctx.state`). Reads and writes here persist with the run and are visible
+    to a later resume in another process.
+  readonly runId: string
+    The run id — stable across a resume, so a natural correlation key.
+  readonly target: string
+    The awaiting target's dotted name.
+
 interface WaitState
   The pending wait recorded on a suspended target (see {@link TargetRunState.waitingFor}).
 
@@ -2642,15 +2665,18 @@ interface WaitState
 interface WaitTrigger
   Decides whether the event a target waits for has occurred. `descriptor` is a
   short, JSON-safe label recorded on the suspended target; `isSatisfied` is
-  evaluated against the run's received signals when the target is reached and
-  again on each resume attempt.
+  evaluated against the run's received signals (and a durable {@link
+  WaitContext}) when the target is reached and again on each resume attempt.
 
   readonly descriptor: string
     A short label recorded on the wait (e.g. `signal:approved`).
   readonly pollIntervalMs?: number
     Poll interval hint (ms) for predicate triggers driven by `zuke resume --check`.
-  isSatisfied(signals: ReadonlyMap<string, SignalRecord>): boolean | Promise<boolean>
-    Whether the awaited event has occurred, given the run's received signals.
+  isSatisfied(signals: ReadonlyMap<string, SignalRecord>, context: WaitContext): boolean | Promise<boolean>
+    Whether the awaited event has occurred, given the run's received signals
+    and a durable {@link WaitContext}. The context lets a trigger persist
+    correlation state across a suspend/resume; a trigger that only inspects
+    signals may ignore it (fewer parameters stay assignable).
 
 type AnnouncementLevel = "success" | "failure" | "warning" | "info"
   The outcome an announcement conveys. It drives the accent colour and the icon

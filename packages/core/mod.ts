@@ -69,6 +69,7 @@ export {
   externalSignal,
   resumeWhen,
   type ResumeWhenOptions,
+  type WaitContext,
   type WaitTrigger,
 } from "./src/wait.ts";
 export { run, type RunOptions } from "./src/cli.ts";

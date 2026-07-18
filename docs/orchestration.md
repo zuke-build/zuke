@@ -52,12 +52,56 @@ class Deploy extends Build {
   - **`resumeWhen(fn, { interval? })`** — satisfied when an async predicate
     returns `true`. Zuke doesn't poll on its own; the predicate is re-checked on
     each resume, so a cron or webhook drives it.
+  - **`githubWorkflow((g) => …)`** — dispatches a GitHub Actions workflow (often
+    in another repo) and is satisfied when it finishes; see
+    [below](#waiting-for-an-external-github-workflow). A third-party trigger from
+    [`@zuke/gh`](../packages/gh/README.md), built on the exported `WaitTrigger` /
+    `WaitContext` seam — you can write your own the same way.
 - **`s.timeout("72h")`** — an optional deadline. Its purpose and enforcement
   (running `onTimeout`) arrive with the resume half.
 - **`s.onTimeout(() => this.rollback)`** — what a timed-out wait does: a
   **thunk** returning a sibling compensation target, or `"fail"` /
   `"cancel-run"`. A thunk because the compensation is usually declared _below_
   the waiting target, and fields initialise top-to-bottom.
+
+### Waiting for an external GitHub workflow
+
+[`@zuke/gh`](../packages/gh/README.md)'s `githubWorkflow` trigger dispatches a
+GitHub Actions workflow and suspends until it finishes — replacing hand-rolled
+"dispatch, then poll `gh run list`" glue:
+
+```ts
+import { Build, run, target } from "jsr:@zuke/core";
+import { githubWorkflow, readWorkflowResult } from "jsr:@zuke/gh";
+
+class Release extends Build {
+  e2e = target().waitsFor((s) =>
+    s.on(githubWorkflow((g) => g.repo("acme/app").workflow("e2e.yml").ref("main")))
+      .timeout("2h").onTimeout(() => this.rollback)
+  );
+  ship = target().dependsOn(this.e2e).executes((ctx) => {
+    // The gate publishes its result to its own state — read it via stateOf.
+    const result = readWorkflowResult(ctx.stateOf("e2e"));
+    if (!result?.passed) throw new Error("e2e suite failed");
+  });
+  rollback = target().executes(() => rollBack());
+}
+```
+
+- **Dispatch-once, then poll.** On first reach it dispatches, records a
+  correlation marker in the gate's durable state, and suspends. Each
+  `resume --check` polls the run; a resume in a **different process** never
+  re-dispatches, because the marker persisted with the run.
+- **Correlation.** `workflow_dispatch` returns no run id, so the trigger passes a
+  marker input (default `zuke_marker`) and matches it against the run's display
+  title — the dispatched workflow must echo it into `run-name`:
+  `run-name: ${{ inputs.zuke_marker }}`.
+- **Result.** On completion the per-job conclusions (`{ passed, jobs: [{ name,
+  conclusion, url }] }`) are written to the gate target's state; a dependent
+  reads them with `readWorkflowResult(ctx.stateOf("<gate>"))` and branches on a
+  failed suite.
+- **Auth** uses `GH_TOKEN` / `GITHUB_TOKEN`; the GitHub API is an injectable
+  transport, so it is testable without a real GitHub.
 
 ## What suspend does
 
