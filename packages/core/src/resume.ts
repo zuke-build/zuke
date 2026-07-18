@@ -135,7 +135,7 @@ export async function resumeRun(
   if (initial.record.status === "suspended" && expired !== null) {
     const disposition = expired.waitingFor.onTimeout;
     if (disposition === "fail") {
-      return await failTimedOut(store, initial, expired, now);
+      return await failTimedOut(store, initial, expired, now, options.plugins);
     }
     return await cancelTimedOut(
       build,
@@ -319,6 +319,26 @@ function expiredWait(
 }
 
 /**
+ * Best-effort: announce a settled run's record to each plugin's
+ * `onRunStateChange`. The resume-timeout paths settle a run directly (without
+ * running {@link execute}, which normally dispatches the lifecycle), so this is
+ * how an observer — e.g. the `@zuke/otel` exporter — sees a timed-out run's
+ * terminal transition. Plugins observe; a throw must never break the resume.
+ */
+async function announceRunState(
+  plugins: Plugin[] | undefined,
+  record: RunRecord,
+): Promise<void> {
+  for (const p of plugins ?? []) {
+    try {
+      await p.onRunStateChange?.(record);
+    } catch {
+      // Ignored — plugins observe, they do not change the run.
+    }
+  }
+}
+
+/**
  * Mark a timed-out wait's target `failed` and the run `failed` (CAS-retry), and
  * return a failing result. The onTimeout disposition is left recorded for the
  * cancellation milestone to act on.
@@ -328,9 +348,11 @@ async function failTimedOut(
   initial: { record: RunRecord; version: string },
   expired: { name: string; waitingFor: WaitState },
   now: () => string,
+  plugins: Plugin[] | undefined,
 ): Promise<BuildResult> {
   let record = initial.record;
   let version = initial.version;
+  let settled = initial.record;
   const message = `wait "${expired.name}" timed out (deadline ` +
     `${expired.waitingFor.deadline})`;
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
@@ -345,12 +367,19 @@ async function failTimedOut(
     next.status = "failed";
     next.updatedAt = now();
     const result = await store.putRun(next, version);
-    if (result.ok) break;
+    if (result.ok) {
+      settled = next;
+      break;
+    }
     const fresh = await store.getRun(record.id);
     if (fresh === null) break;
     record = fresh.record;
     version = fresh.version;
+    settled = fresh.record;
   }
+  // Let observers (e.g. @zuke/otel) see the terminal transition this fast-path
+  // settled without going through execute()'s lifecycle.
+  await announceRunState(plugins, settled);
   return {
     ok: false,
     executed: [],
@@ -386,6 +415,10 @@ async function cancelTimedOut(
     reporter: options.reporter,
     also,
   });
+  // cancelRun settles the record directly (no execute() lifecycle), so re-read
+  // the terminal record and let observers (e.g. @zuke/otel) see it.
+  const final = await store.getRun(options.runId);
+  if (final !== null) await announceRunState(options.plugins, final.record);
   return {
     ok: false,
     executed: [],

@@ -53,7 +53,8 @@
     "packages/tofu",
     "packages/release-please",
     "packages/security",
-    "packages/ai"
+    "packages/ai",
+    "packages/otel"
   ],
   "tasks": {
     "zuke": "deno run -A zuke.ts",

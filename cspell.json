@@ -27,6 +27,7 @@
     "checkpointing",
     "chmods",
     "codegen",
+    "dedup",
     "codecov",
     "codecovcli",
     "gcov",

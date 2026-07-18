@@ -134,3 +134,4 @@ Full reference: [docs/cli.md](./docs/cli.md).
 - [@zuke/release-please](https://jsr.io/@zuke/release-please) — typed `ReleasePleaseTasks` wrappers for the
 - [@zuke/security](https://jsr.io/@zuke/security) — typed task wrappers for free, open-source security scanners
 - [@zuke/ai](https://jsr.io/@zuke/ai) — AI-powered code review for Zuke builds
+- [@zuke/otel](https://jsr.io/@zuke/otel) — an OpenTelemetry (OTLP/HTTP JSON) export plugin for Zuke

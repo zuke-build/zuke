@@ -463,6 +463,37 @@ test = target()
   );
 ```
 
+## OpenTelemetry export — `@zuke/otel`
+
+A plugin that ships run/target spans and counters to an OTLP/HTTP JSON
+collector. Register it on the run, not the build — it observes durable run
+state, so a **state store is required**.
+
+```ts
+import { run } from "jsr:@zuke/core";
+import { otel } from "jsr:@zuke/otel";
+
+await run(MyBuild, {
+  plugins: [
+    otel((s) =>
+      s.endpoint("http://localhost:4318") // else OTEL_EXPORTER_OTLP_ENDPOINT
+        .serviceName("my-build") // else OTEL_SERVICE_NAME
+        .header("authorization", "Bearer …") // else OTEL_EXPORTER_OTLP_HEADERS
+    ),
+  ],
+});
+// Or fully env-driven: run(MyBuild, { plugins: [otel()] })
+```
+
+- Exports a **trace** (run span + one child span per executed target) when the
+  run settles, plus `zuke.run.started` / `zuke.run.suspended` /
+  `zuke.runs{outcome}` counters.
+- The trace id is `SHA-256(runId)`, so a **suspend/resume across processes is
+  one trace** — the finishing process exports the complete, gap-spanning run.
+- **Inert with no endpoint** (safe to always register); **best-effort** (a dead
+  collector never fails the build); the record is **secret-free**. No runtime
+  deps. See `docs/observability.md`.
+
 ## Helpers from `@zuke/core`
 
 - `glob(pattern, { cwd? })` — expand a glob to sorted paths.
