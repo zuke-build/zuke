@@ -15,7 +15,7 @@
 | `zuke graph --output=html`                          | Render an interactive HTML graph into `.zuke/` and open it.                             |
 | `zuke completions print <shell>`                    | Print a shell-completion script (`bash`, `zsh`, or `fish`).                             |
 | `zuke completions install <shell>`                  | Write the script and wire it into the shell's startup.                                  |
-| `zuke mcp [--allow-run]`                            | Run an MCP server over the build for AI agents ([details](./mcp.md)).                   |
+| `zuke mcp [--allow-run] [--http <host:port>]`       | Run an MCP server over the build for AI agents, on stdio or HTTP ([details](./mcp.md)). |
 | `zuke resume <id> [--signal <n>] [--data <json>]`   | Resume a suspended run, optionally delivering a signal ([details](./orchestration.md)). |
 | `zuke resume --check [<id>]`                        | Re-check suspended runs (predicate waits, timeouts).                                    |
 | `zuke runs list [--status/-target/-since] [--json]` | List persisted run records, newest first ([details](./state.md)).                       |
@@ -111,7 +111,10 @@ build on stdio, so an AI agent can operate the pipeline through typed tool calls
 instead of guessing shell commands. It exposes read tools (`list_targets`,
 `describe_build`, `graph`) and — only with `--allow-run` — one `run:<target>`
 tool per target, whose input schema is derived from the build's parameters.
-`mcp` is a reserved command name. See the full guide: [MCP server](./mcp.md).
+`--http <host:port>` serves the streamable-HTTP transport instead of stdio
+(loopback by default; a non-loopback bind requires a `ZUKE_MCP_TOKEN` bearer
+token). `mcp` is a reserved command name. See the full guide:
+[MCP server](./mcp.md).
 
 ## Parallel execution
 

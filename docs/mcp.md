@@ -39,6 +39,40 @@ Any client that speaks stdio MCP works the same way — give it the command
 `deno run -A zuke.ts mcp` (add `--allow-run` when you want the agent to execute
 targets).
 
+## HTTP transport
+
+For a client that connects over the network rather than launching the process,
+`--http` serves MCP's **streamable-HTTP** transport instead of stdio:
+
+```sh
+zuke mcp --http 7777                 # bind 127.0.0.1:7777 (local only)
+zuke mcp --http 0.0.0.0:7777         # bind all interfaces — needs a token
+```
+
+Each request is a `POST` whose body is one JSON-RPC message; the response is
+that message's JSON-RPC reply. A notification (no `id`) is answered
+`202 Accepted` with no body. Zuke never initiates server→client messages, so the
+optional server-sent-events stream is not implemented — a `GET` is answered
+`405`, and clients fall back to POST-only (which is spec-compliant). Messages
+are processed **one at a time**, mirroring stdio, so two concurrent runs of the
+one build can't race.
+
+**Security defaults — a bridge, not an internet gateway:**
+
+- `--http <port>` binds **loopback** (`127.0.0.1`), reachable only from the same
+  host.
+- Binding a **non-loopback** address requires a bearer token: set
+  `ZUKE_MCP_TOKEN`, and every request must send `Authorization: Bearer <token>`
+  (a missing or wrong token gets `401`). Without a token, Zuke **refuses to
+  bind** a non-loopback address rather than exposing an unauthenticated
+  endpoint.
+- A token is also enforced on a loopback bind when `ZUKE_MCP_TOKEN` is set.
+- This is a bridge for a trusted network segment: **put real TLS and
+  authentication in front of it** (a reverse proxy, a service mesh) for anything
+  production-facing. Zuke provides the transport, not an internet gateway.
+
+`--allow-run` and the [safety](#safety) model below apply identically over HTTP.
+
 ## Tools
 
 Read tools are always available:
@@ -65,13 +99,14 @@ captured output with a pass/fail marker.
 
 ## Safety
 
-**Trust model.** The server has no network endpoint. It speaks only over the
-stdin/stdout of a process the client launches, so its trust boundary is the
-local machine: anyone who can start `zuke mcp` already has a shell there and
-could run `deno run -A zuke.ts <target>` directly. The server therefore grants
-no capability beyond what launching it already implies — there is nothing to
-authenticate, because there is no remote party. Treat it like any other local
-developer tool: don't wire an untrusted client to it.
+**Trust model.** On the default stdio transport the server has no network
+endpoint: it speaks only over the stdin/stdout of a process the client launches,
+so its trust boundary is the local machine — anyone who can start `zuke mcp`
+already has a shell there and could run `deno run -A zuke.ts <target>` directly.
+The [HTTP transport](#http-transport) adds a network endpoint, so it moves that
+boundary: it binds loopback by default, requires a bearer token off loopback,
+and is meant to sit behind real TLS/authentication. Either way, treat the server
+like any other local developer tool and don't wire an untrusted client to it.
 
 Running a target executes real build code, so execution is **off by default**: a
 freshly-connected agent can only _inspect_ the build. Add `--allow-run`
@@ -87,7 +122,8 @@ reporter pipeline as the console, so `parameter().secret()` values are
 
 ## Protocol notes
 
-- **Transport:** newline-delimited JSON-RPC 2.0 on stdio.
+- **Transport:** newline-delimited JSON-RPC 2.0 on stdio, or one JSON-RPC
+  message per `POST` over the [HTTP transport](#http-transport) (`--http`).
 - **Lifecycle:** the server answers `initialize` (echoing the client's requested
   `protocolVersion`), `notifications/initialized` (no reply), `ping`,
   `tools/list`, and `tools/call`. Unknown requests get a JSON-RPC

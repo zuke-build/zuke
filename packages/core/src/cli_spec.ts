@@ -133,5 +133,9 @@ export const BUILTIN_FLAGS: readonly BuiltinFlag[] = [
     name: "--allow-run",
     description: "With mcp, let agents execute targets (not just inspect)",
   },
+  {
+    name: "--http",
+    description: "With mcp, serve over HTTP on <host:port> instead of stdio",
+  },
   { name: "--help", description: "Show usage" },
 ];

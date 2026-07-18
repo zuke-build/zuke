@@ -33,7 +33,7 @@ import {
   RESUME_COMMAND,
   RUNS_COMMAND,
 } from "./cli_spec.ts";
-import { serveMcp } from "./mcp/command.ts";
+import { type HttpAddress, serveMcp } from "./mcp/command.ts";
 import { resumeCheck, resumeRun } from "./resume.ts";
 import { runsCommand } from "./runs.ts";
 import { isRunStatus, RUN_STATUS_NAMES, type RunQuery } from "./state/types.ts";
@@ -88,6 +88,8 @@ export interface ParsedArgs {
   mcp: boolean;
   /** Allow `mcp` to execute targets, not just inspect them (`--allow-run`). */
   allowRun: boolean;
+  /** Serve `mcp` over HTTP on this `<host:port>` instead of stdio (`--http`). */
+  httpAddr?: string;
   /** The `completions` sub-action (`install` or `print`); the first positional. */
   completionsAction?: string;
   /** The shell argument to `completions` (the positional after the sub-action). */
@@ -238,6 +240,11 @@ export function parseArgs(
       parsed.check = true;
     } else if (arg === "--allow-run") {
       parsed.allowRun = true;
+    } else if (arg === "--http") {
+      const value = args[++i];
+      if (value) parsed.httpAddr = value;
+    } else if (arg.startsWith("--http=")) {
+      parsed.httpAddr = arg.slice("--http=".length);
     } else if (arg === "--parallel") {
       parsed.parallel = true;
     } else if (arg.startsWith("--parallel=")) {
@@ -315,7 +322,7 @@ Usage:
   deno run -A zuke.ts graph [--output=html] [--no-open]
   deno run -A zuke.ts generate-ci [--check]
   deno run -A zuke.ts completions <install|print> <bash|zsh|fish>
-  deno run -A zuke.ts mcp [--allow-run]
+  deno run -A zuke.ts mcp [--allow-run] [--http <host:port>]
   deno run -A zuke.ts resume <run-id> [--signal <name>] [--data <json>]
   deno run -A zuke.ts resume --check [<run-id>]
   deno run -A zuke.ts runs list [--status <s>] [--target <t>] [--since <iso>] [--json]
@@ -365,6 +372,11 @@ Options:
                     --allow-run to let agents execute targets too.
   --allow-run       With mcp, allow agents to execute targets, not just
                     inspect them.
+  --http <host:port>
+                    With mcp, serve the streamable-HTTP transport on the given
+                    address instead of stdio. Just <port> binds 127.0.0.1. A
+                    non-loopback host requires a bearer token (ZUKE_MCP_TOKEN);
+                    put real TLS/authn in front for production. See docs/mcp.md.
   resume            Continue a suspended run (a .waitsFor() gate). Exactly one
                     resumer wins; the rest report "already resumed". With
                     --check [<run-id>] it re-checks suspended runs (predicate
@@ -608,6 +620,33 @@ async function runResume(build: Build, parsed: ParsedArgs): Promise<number> {
   }
 }
 
+/** Parse a `--http` value: `<port>` (binds 127.0.0.1) or `<host:port>`. */
+function parseHttpAddress(raw: string): HttpAddress {
+  const colon = raw.lastIndexOf(":");
+  const host = colon === -1 ? "127.0.0.1" : raw.slice(0, colon) || "127.0.0.1";
+  const port = Number(colon === -1 ? raw : raw.slice(colon + 1));
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error(
+      `mcp: invalid --http address "${raw}" — expected <port> or <host:port>.`,
+    );
+  }
+  return { host, port };
+}
+
+/** Run the `mcp` command over stdio, or over HTTP when `--http` is given. */
+async function runMcp(build: Build, parsed: ParsedArgs): Promise<number> {
+  let http: HttpAddress | undefined;
+  if (parsed.httpAddr !== undefined) {
+    try {
+      http = parseHttpAddress(parsed.httpAddr);
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error));
+      return 1;
+    }
+  }
+  return await serveMcp(build, { allowRun: parsed.allowRun, http });
+}
+
 /** Run the `runs` command: build the query (validating `--status`) and dispatch. */
 async function runRuns(build: Build, parsed: ParsedArgs): Promise<number> {
   const query: RunQuery = {};
@@ -702,7 +741,7 @@ export async function main(
     return await syncCiConfig(build, { check: parsed.check });
   }
   if (parsed.mcp) {
-    return await serveMcp(build, { allowRun: parsed.allowRun });
+    return await runMcp(build, parsed);
   }
   if (parsed.resume) {
     return await runResume(build, parsed);
