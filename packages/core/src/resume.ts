@@ -19,6 +19,7 @@
 import { type Build, type BuildResult, discoverTargets } from "./build.ts";
 import { cancelRun } from "./cancel.ts";
 import { execute, type Reporter } from "./executor.ts";
+import type { Plugin } from "./plugin.ts";
 import { planGraph } from "./graph.ts";
 import type { JsonValue, TargetBuilder } from "./target.ts";
 import { absolutePath } from "./path.ts";
@@ -76,6 +77,12 @@ export interface ResumeOptions {
   silent?: boolean;
   /** Custom reporter; overrides `silent`. */
   reporter?: Reporter;
+  /**
+   * Lifecycle observers for the resumed run. Because a resume keeps the original
+   * run id, a plugin sees the continuation under the **same** identity — so an
+   * exporter's spans join one trace across the suspend/resume boundary.
+   */
+  plugins?: Plugin[];
 }
 
 /** How many times a conflicting resume CAS is re-read and retried. */
@@ -183,6 +190,7 @@ export async function resumeRun(
     actor: resumerActor,
     silent: options.silent,
     reporter: options.reporter,
+    plugins: options.plugins,
     resume: { record, version, done },
   });
 }

@@ -20,23 +20,36 @@ import { type Plugin, run } from "jsr:@zuke/core";
 
 const timing: Plugin = {
   name: "timing",
-  onTargetEnd: (target, status) => console.log(`${target}: ${status}`),
+  onTargetEnd: (target, status, { runId, durationMs }) =>
+    console.log(`${runId} ${target}: ${status} in ${durationMs}ms`),
   onFinish: (result) => console.log(`done: ${result.ok ? "ok" : "failed"}`),
 };
 
 await run(MyBuild, { plugins: [timing] });
 ```
 
-| Hook                       | When it runs                                          |
-| -------------------------- | ----------------------------------------------------- |
-| `onStart()`                | Once, before any target runs.                         |
-| `onTargetStart(target)`    | Before a target's body executes (not skipped/cached). |
-| `onTargetEnd(target, s)`   | After each target settles, with its status.           |
-| `onFinish(result)`         | Once, after the run (success or failure).             |
+| Hook                                  | When it runs                                                        |
+| ------------------------------------- | ------------------------------------------------------------------- |
+| `onStart(run)`                        | Once, before any target runs.                                       |
+| `onTargetStart(target, run)`          | Before a target's body executes (not skipped/cached).               |
+| `onTargetEnd(target, status, timing)` | After each target settles, with its status and duration.            |
+| `onFinish(result, run)`               | Once, after the run (success or failure).                           |
+| `onRunStateChange(record)`            | On each run-level status change; needs a [state store](./state.md). |
 
-Every hook is optional and may be async — the executor awaits each before
-continuing. Hooks mirror the `Build` lifecycle methods (`onStart`,
-`onTargetStart`, `onTargetEnd`, `onFinish`), so anything a build can observe by
+Each hook carries context beyond the bare names: `run` is a `RunInfo`
+(`{ runId, dryRun }`) whose `runId` is **stable across a suspend/resume
+boundary**, so an exporter can group a run's events (e.g. under one trace id);
+`timing` is a `TargetTiming` (`{ runId, durationMs }`). `onRunStateChange`
+receives the full [`RunRecord`](./state.md) whenever the run goes `running`,
+`suspended`, `succeeded`, `failed`, `cancelling`, or `cancelled` — per-target
+timings, waits, and the audit trail in one payload — and only fires when a state
+store is configured (a plain build with no store never produces a record).
+
+The extra arguments are **additive**: a plugin written against the old
+signatures (`onTargetEnd: (target, status) => …`) keeps working unchanged, since
+a function that ignores its trailing arguments is still assignable. Every hook
+is optional and may be async — the executor awaits each before continuing. Hooks
+mirror the `Build` lifecycle methods, so anything a build can observe by
 overriding those, a plugin can observe without subclassing — and several plugins
 can observe at once.
 
@@ -61,7 +74,11 @@ Wrap a CLI as a typed, fluent task in the settings-lambda style. For a one-off,
 distributable package extends `ToolSettings` from `@zuke/core/tooling`.
 
 ```ts
-import { type Configure, runSettings, ToolSettings } from "jsr:@zuke/core/tooling";
+import {
+  type Configure,
+  runSettings,
+  ToolSettings,
+} from "jsr:@zuke/core/tooling";
 
 class MyToolSettings extends ToolSettings {
   #args: string[] = [];
@@ -95,8 +112,9 @@ existing `@zuke/*` wrappers are the template.
 
 A **component** is a function that returns an object of related targets.
 Assigned to a build field, discovery recurses into the bundle and names each
-target with a dotted path (`release.publish`), runnable as `zuke release.publish`
-and shown in the graph. Components compose, nest, and take options.
+target with a dotted path (`release.publish`), runnable as
+`zuke release.publish` and shown in the graph. Components compose, nest, and
+take options.
 
 ```ts
 // @acme/zuke-release

@@ -231,6 +231,41 @@ Deno.test("resuming a run already running gives AlreadyResumedError", async () =
   });
 });
 
+Deno.test("a resumed run's plugins observe it under the original run id (M7)", async () => {
+  await withTempStore(async (store) => {
+    const makeBuild = () => {
+      class B extends Build {
+        gate = target().waitsFor((s) => s.on(externalSignal("go")));
+        done = target().dependsOn(this.gate).executes(() => {});
+      }
+      const build = new B();
+      discoverTargets(build);
+      return build;
+    };
+    // Original run: suspends at the gate.
+    const a = makeBuild();
+    const first = await execute(a, a.done, { silent: true, stateStore: store });
+    assertEquals(first.suspended, true);
+    const runId = (await store.listRuns({}))[0].id;
+
+    // Resume with a plugin: it sees the SAME run id and the run-state changes.
+    const seen: { start?: string; states: string[] } = { states: [] };
+    const resumed = await resumeRun(makeBuild(), {
+      runId,
+      signal: "go",
+      stateStore: store,
+      silent: true,
+      plugins: [{
+        onStart: (run) => void (seen.start = run.runId),
+        onRunStateChange: (record) => void seen.states.push(record.status),
+      }],
+    });
+    assertEquals(resumed.ok, true);
+    assertEquals(seen.start, runId); // one identity across the suspend/resume
+    assertEquals(seen.states, ["running", "succeeded"]);
+  });
+});
+
 Deno.test("resumeCheck isolates a per-run error and keeps sweeping", async () => {
   await withTempStore(async (store) => {
     let ready = false;

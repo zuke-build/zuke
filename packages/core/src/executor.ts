@@ -63,7 +63,7 @@ import { inMemoryStateHandle, RunStateWriter } from "./state/writer.ts";
 import { cancelEvent, runCompensations } from "./cancel.ts";
 import { LockConflictError, type LockHolder } from "./state/lock.ts";
 import { parseDuration } from "./duration.ts";
-import type { Plugin } from "./plugin.ts";
+import type { Plugin, RunInfo, TargetTiming } from "./plugin.ts";
 import {
   detectWidth,
   type Style,
@@ -586,28 +586,72 @@ async function resolveWait(
 interface Lifecycle {
   start(): Promise<void>;
   targetStart(name: string): Promise<void>;
-  targetEnd(name: string, status: TargetStatus): Promise<void>;
+  targetEnd(
+    name: string,
+    status: TargetStatus,
+    durationMs: number,
+  ): Promise<void>;
   finish(result: BuildResult): Promise<void>;
+  /** Notify plugins of a run-level durable status change (no-op without a store). */
+  runStateChange(record: RunRecord): Promise<void>;
 }
 
-/** Compose a build and its plugins into one {@link Lifecycle}. */
-function makeLifecycle(build: Build, plugins: Plugin[]): Lifecycle {
+/**
+ * Compose a build and its plugins into one {@link Lifecycle}. The run's
+ * {@link RunInfo} is bound in, so it enriches every plugin hook without threading
+ * it through each call site; the build's own hooks keep their original
+ * signatures. Plugin hooks that ignore the extra arguments stay compatible.
+ *
+ * A plugin is an **observer** — its contract is to report, time, or notify, not
+ * to change a target's result — so a throwing plugin hook is caught and reported
+ * through `warn`, never allowed to break the run. The build's own hooks are the
+ * build's logic and still propagate.
+ */
+function makeLifecycle(
+  build: Build,
+  plugins: Plugin[],
+  run: RunInfo,
+  warn: (message: string) => void,
+): Lifecycle {
+  const observe = async (
+    hook: string,
+    call: (p: Plugin) => void | Promise<void>,
+  ): Promise<void> => {
+    for (const p of plugins) {
+      try {
+        await call(p);
+      } catch (error) {
+        warn(
+          `plugin "${p.name ?? "?"}" threw in ${hook}: ${
+            errorMessage(error) ?? "unknown error"
+          } (ignored — plugins observe, they do not change the run)`,
+        );
+      }
+    }
+  };
   return {
     async start() {
       await build.onStart();
-      for (const p of plugins) await p.onStart?.();
+      await observe("onStart", (p) => p.onStart?.(run));
     },
     async targetStart(name) {
       await build.onTargetStart(name);
-      for (const p of plugins) await p.onTargetStart?.(name);
+      await observe("onTargetStart", (p) => p.onTargetStart?.(name, run));
     },
-    async targetEnd(name, status) {
+    async targetEnd(name, status, durationMs) {
       await build.onTargetEnd(name, status);
-      for (const p of plugins) await p.onTargetEnd?.(name, status);
+      const timing: TargetTiming = { runId: run.runId, durationMs };
+      await observe(
+        "onTargetEnd",
+        (p) => p.onTargetEnd?.(name, status, timing),
+      );
     },
     async finish(result) {
       await build.onFinish(result);
-      for (const p of plugins) await p.onFinish?.(result);
+      await observe("onFinish", (p) => p.onFinish?.(result, run));
+    },
+    async runStateChange(record) {
+      await observe("onRunStateChange", (p) => p.onRunStateChange?.(record));
     },
   };
 }
@@ -1037,7 +1081,7 @@ async function runSequential(
       services,
       env,
     );
-    await life.targetEnd(name, outcome.status);
+    await life.targetEnd(name, outcome.status, outcome.ms);
     void env.writer?.markTargetSettled(
       name,
       outcome.status,
@@ -1141,7 +1185,11 @@ async function runScheduled(
         )
           .then(
             async (outcome) => {
-              await life.targetEnd(t.name_ ?? "<unnamed>", outcome.status);
+              await life.targetEnd(
+                t.name_ ?? "<unnamed>",
+                outcome.status,
+                outcome.ms,
+              );
               // A waiting gate already recorded its `waitingFor` via
               // markTargetWaiting; settling it here would clobber that.
               if (outcome.status !== "waiting") {
@@ -1335,18 +1383,27 @@ export async function execute(
   );
   const overallStart = performance.now();
 
-  const life = makeLifecycle(build, options.plugins ?? []);
+  // One run identity per run (stable across a resume), established before the
+  // lifecycle so every plugin hook can carry it.
+  const runId = options.resume ? options.resume.record.id : crypto.randomUUID();
+  const runInfo: RunInfo = { runId, dryRun };
+
+  const life = makeLifecycle(
+    build,
+    options.plugins ?? [],
+    runInfo,
+    (message) => reporter.info(message),
+  );
   await life.start();
 
   // Build-level remediations apply to every target (after each target's own),
   // resolved once before the run.
   const globalRecovery = dryRun ? [] : build.recoverWith();
 
-  // One run identity and one cancellation controller per run. The controller
-  // aborts when the caller's `options.signal` does; its signal is handed to
-  // every target's context and installed as the shell's ambient signal, so a
-  // cancelled run terminates in-flight `$` child processes.
-  const runId = options.resume ? options.resume.record.id : crypto.randomUUID();
+  // One cancellation controller per run. The controller aborts when the caller's
+  // `options.signal` does; its signal is handed to every target's context and
+  // installed as the shell's ambient signal, so a cancelled run terminates
+  // in-flight `$` child processes.
   const runController = new AbortController();
   const onCancel = () => runController.abort();
   if (options.signal !== undefined) {
@@ -1445,6 +1502,10 @@ export async function execute(
     done: options.resume?.done,
   };
 
+  // Announce the run's initial durable state (`running`) to plugins — a no-op
+  // without a store. Terminal transitions are announced once the plan settles.
+  if (writer !== undefined) await life.runStateChange(writer.snapshot());
+
   // Services started during the run are held here and torn down in reverse
   // order once it finishes — in a `finally`, so a failure never leaks a process.
   const services = new ServiceRegistry();
@@ -1540,6 +1601,10 @@ export async function execute(
           `Run ${runId} cancelled by another process — stopping.`,
         );
       } else {
+        // Announce the intermediate `cancelling` transition (the record was just
+        // moved there) before compensations run, so a plugin sees the full
+        // running → cancelling → cancelled sequence.
+        await life.runStateChange(writer.snapshot());
         // Run the succeeded targets' compensations in reverse order, record the
         // cancellation in the audit trail (as `zuke cancel` does), then settle.
         const comp = await runCompensations(order, writer.snapshot(), {
@@ -1569,6 +1634,10 @@ export async function execute(
     if (run.suspended) await writer?.markRunSuspended();
     else await writer?.markRunFinished(result.ok);
   }
+
+  // Announce the run's terminal durable state (succeeded/failed/suspended/
+  // cancelling) to plugins, now that the transition above has landed.
+  if (writer !== undefined) await life.runStateChange(writer.snapshot());
 
   const totalMs = performance.now() - overallStart;
   for (

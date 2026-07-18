@@ -640,7 +640,11 @@ function parseSignalData(raw: string | undefined): JsonValue | undefined {
 }
 
 /** Run the `resume` command: continue a suspended run, or `--check` all of them. */
-async function runResume(build: Build, parsed: ParsedArgs): Promise<number> {
+async function runResume(
+  build: Build,
+  parsed: ParsedArgs,
+  plugins?: Plugin[],
+): Promise<number> {
   try {
     if (parsed.check) {
       const { checked, failed } = await resumeCheck(build, {
@@ -648,6 +652,7 @@ async function runResume(build: Build, parsed: ParsedArgs): Promise<number> {
         params: parsed.values,
         actor: parsed.actor,
         forceGraph: parsed.forceGraph,
+        plugins,
       });
       console.log(`Checked ${checked} suspended run(s); ${failed} failed.`);
       return failed > 0 ? 1 : 0;
@@ -666,6 +671,7 @@ async function runResume(build: Build, parsed: ParsedArgs): Promise<number> {
       params: parsed.values,
       actor: parsed.actor,
       forceGraph: parsed.forceGraph,
+      plugins,
     });
     return result.ok ? 0 : 1;
   } catch (error) {
@@ -834,7 +840,7 @@ export async function main(
     return await runMcp(build, parsed);
   }
   if (parsed.resume) {
-    return await runResume(build, parsed);
+    return await runResume(build, parsed, options.plugins);
   }
   if (parsed.runs) {
     return await runRuns(build, parsed);
