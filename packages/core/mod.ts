@@ -131,6 +131,8 @@ export {
 } from "./src/state/lock.ts";
 export { parseDuration } from "./src/duration.ts";
 export {
+  type RunEvent,
+  type RunEventOutcome,
   type RunGraphNode,
   type RunQuery,
   type RunRecord,

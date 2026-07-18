@@ -88,6 +88,12 @@ export interface ParsedArgs {
   mcp: boolean;
   /** Allow `mcp` to execute targets, not just inspect them (`--allow-run`). */
   allowRun: boolean;
+  /** Restrict `mcp` run tools to targets matching these globs (`--allow-run=<list>`). */
+  allowRunPatterns?: string[];
+  /** Targets whose `mcp` run tool needs an operator token (`--protect <list>`). */
+  protectPatterns?: string[];
+  /** Require `confirm:true` before a destructive `mcp` run (`--confirm-destructive`). */
+  confirmDestructive: boolean;
   /** Serve `mcp` over HTTP on this `<host:port>` instead of stdio (`--http`). */
   httpAddr?: string;
   /** The `completions` sub-action (`install` or `print`); the first positional. */
@@ -178,6 +184,7 @@ export function parseArgs(
     resume: false,
     forceGraph: false,
     runs: false,
+    confirmDestructive: false,
     help: false,
   };
   const byFlag = new Map<string, ParamFlag>();
@@ -240,6 +247,16 @@ export function parseArgs(
       parsed.check = true;
     } else if (arg === "--allow-run") {
       parsed.allowRun = true;
+    } else if (arg.startsWith("--allow-run=")) {
+      parsed.allowRun = true;
+      parsed.allowRunPatterns = splitList(arg.slice("--allow-run=".length));
+    } else if (arg === "--protect") {
+      const value = args[++i];
+      if (value) parsed.protectPatterns = splitList(value);
+    } else if (arg.startsWith("--protect=")) {
+      parsed.protectPatterns = splitList(arg.slice("--protect=".length));
+    } else if (arg === "--confirm-destructive") {
+      parsed.confirmDestructive = true;
     } else if (arg === "--http") {
       const value = args[++i];
       if (value) parsed.httpAddr = value;
@@ -370,8 +387,15 @@ Options:
                     targets to AI agents as typed tools. Read-only by default
                     (inspect the targets, parameters, and graph); add
                     --allow-run to let agents execute targets too.
-  --allow-run       With mcp, allow agents to execute targets, not just
-                    inspect them.
+  --allow-run[=<globs>]
+                    With mcp, allow agents to execute targets (not just inspect
+                    them). An optional =<comma,globs> allow-list exposes only the
+                    matching targets as run tools; others are invisible.
+  --protect <globs> With mcp, require an operator token (ZUKE_OPERATOR_TOKEN) as
+                    a tool-call argument to run the matching targets.
+  --confirm-destructive
+                    With mcp, make a destructive run tool return its plan unless
+                    called with confirm:true (a .readOnly() target is exempt).
   --http <host:port>
                     With mcp, serve the streamable-HTTP transport on the given
                     address instead of stdio. Just <port> binds 127.0.0.1. A
@@ -620,6 +644,13 @@ async function runResume(build: Build, parsed: ParsedArgs): Promise<number> {
   }
 }
 
+/** Split a comma-separated flag value into trimmed, non-empty entries. */
+function splitList(value: string): string[] {
+  return value.split(",").map((entry) => entry.trim()).filter((entry) =>
+    entry !== ""
+  );
+}
+
 /** Parse a `--http` value: `<port>` (binds 127.0.0.1) or `<host:port>`. */
 function parseHttpAddress(raw: string): HttpAddress {
   const colon = raw.lastIndexOf(":");
@@ -644,7 +675,13 @@ async function runMcp(build: Build, parsed: ParsedArgs): Promise<number> {
       return 1;
     }
   }
-  return await serveMcp(build, { allowRun: parsed.allowRun, http });
+  return await serveMcp(build, {
+    allowRun: parsed.allowRun,
+    allowRunPatterns: parsed.allowRunPatterns,
+    protectPatterns: parsed.protectPatterns,
+    confirmDestructive: parsed.confirmDestructive,
+    http,
+  });
 }
 
 /** Run the `runs` command: build the query (validating `--status`) and dispatch. */

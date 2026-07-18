@@ -385,6 +385,8 @@ export class TargetBuilder {
   always_ = false;
   /** Hide this target from `--list`/`--help` (set by {@link unlisted}). */
   unlisted_ = false;
+  /** Advertise this target as query-only over MCP (set by {@link readOnly}). */
+  readOnly_ = false;
   /** Extra cache-key contributors beyond input files (set by {@link cacheKey}). */
   readonly cacheKeys_: Array<() => string | Promise<string>> = [];
   /** Artifact paths this target produces (set by {@link produces}). */
@@ -541,6 +543,18 @@ export class TargetBuilder {
   /** Hide this target from `--list` and `--help` (it can still be run by name). */
   unlisted(): this {
     this.unlisted_ = true;
+    return this;
+  }
+
+  /**
+   * Mark this target **query-only** for MCP: its `run:` tool advertises MCP's
+   * `readOnlyHint` instead of the default `destructiveHint`, and it is exempt
+   * from `--confirm-destructive`. A hint about intent only — the target still
+   * runs its real body — so declare it on targets that inspect rather than
+   * mutate (a status check, a report).
+   */
+  readOnly(): this {
+    this.readOnly_ = true;
     return this;
   }
 

@@ -53,6 +53,7 @@ function sampleRecord(overrides: Partial<RunRecord> = {}): RunRecord {
     params: overrides.params ?? {},
     targets: overrides.targets ?? { deploy: { status: "succeeded", meta: {} } },
     signals: overrides.signals ?? {},
+    events: overrides.events ?? [],
   };
 }
 
