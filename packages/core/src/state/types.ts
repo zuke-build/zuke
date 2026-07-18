@@ -47,6 +47,30 @@ export interface SignalRecord {
   receivedAt: string;
 }
 
+/** The outcome recorded for an audited MCP tool call (see {@link RunEvent}). */
+export type RunEventOutcome = "ok" | "denied" | "error";
+
+/**
+ * One entry in a run's audit trail: an MCP tool call, who made it, and how it
+ * ended. Appended (never mutated) so the trail is a chronological record. The
+ * MCP server records a {@link RunEvent} for every mutating or denied tool call;
+ * `zuke runs show` prints them.
+ */
+export interface RunEvent {
+  /** ISO-8601 time the call was recorded. */
+  at: string;
+  /** The tool called (e.g. `run:deploy`, `signal_run`). */
+  tool: string;
+  /** Who made the call (a resolved actor; see {@link "./record.ts".resolveActor}). */
+  actor: string;
+  /** Whether the call ran, was denied by authorization, or errored. */
+  outcome: RunEventOutcome;
+  /** The call's arguments, **redacted** — secret values masked, tokens dropped. */
+  args: Record<string, string>;
+  /** A short, redacted human detail (e.g. a denial reason), when present. */
+  detail?: string;
+}
+
 /** What a timed-out wait does: fail, cancel the run, or run a compensation target. */
 export type WaitDisposition = "fail" | "cancel-run" | { target: string };
 
@@ -111,6 +135,8 @@ export interface RunRecord {
   targets: Record<string, TargetRunState>;
   /** External signals received so far, keyed by name (see `.waitsFor(...)`). */
   signals: Record<string, SignalRecord>;
+  /** Append-only audit trail of MCP tool calls against this run (see {@link RunEvent}). */
+  events: RunEvent[];
 }
 
 /** A compact run listing row, returned by {@link "./store.ts".StateStore.listRuns}. */
@@ -273,6 +299,40 @@ function parseWaitState(value: unknown): WaitState {
   return state;
 }
 
+/** All valid {@link RunEventOutcome} values, for validation. */
+const RUN_EVENT_OUTCOMES: readonly RunEventOutcome[] = [
+  "ok",
+  "denied",
+  "error",
+];
+
+/** Validate and narrow a {@link RunEvent} (an element of a run's audit trail). */
+function parseRunEvent(value: unknown): RunEvent {
+  const object = asObject(value);
+  if (object === null) throw new Error("state: run event is not an object");
+  const outcome = RUN_EVENT_OUTCOMES.find((o) => o === object.outcome);
+  if (outcome === undefined) {
+    throw new Error(`state: unknown run event outcome "${object.outcome}"`);
+  }
+  const rawArgs = asObject(object.args);
+  const args: Record<string, string> = {};
+  if (rawArgs !== null) {
+    for (const [key, val] of Object.entries(rawArgs)) {
+      if (typeof val === "string") args[key] = val;
+    }
+  }
+  const event: RunEvent = {
+    at: str(object, "at"),
+    tool: str(object, "tool"),
+    actor: str(object, "actor"),
+    outcome,
+    args,
+  };
+  const detail = optionalStr(object, "detail");
+  if (detail !== undefined) event.detail = detail;
+  return event;
+}
+
 /** Validate and narrow a {@link SignalRecord}. */
 function parseSignalRecord(value: unknown): SignalRecord {
   const object = asObject(value);
@@ -295,7 +355,7 @@ function parseJsonRecord(
 }
 
 /** Coerce a value parsed from JSON to a {@link JsonValue} (rejects functions etc.). */
-function toJsonValue(value: unknown): JsonValue {
+export function toJsonValue(value: unknown): JsonValue {
   if (value === null) return null;
   if (Array.isArray(value)) return value.map(toJsonValue);
   switch (typeof value) {
@@ -384,6 +444,16 @@ export function parseRunRecord(text: string): RunRecord {
     }
   }
 
+  // `events` (the MCP audit trail) is newer still — absent records parse with an
+  // empty trail, exactly as `signals` above.
+  const events: RunEvent[] = [];
+  if (object.events !== undefined) {
+    if (!Array.isArray(object.events)) {
+      throw new Error(`state: run record field "events" is not an array`);
+    }
+    for (const value of object.events) events.push(parseRunEvent(value));
+  }
+
   return {
     id: str(object, "id"),
     build: str(object, "build"),
@@ -396,6 +466,7 @@ export function parseRunRecord(text: string): RunRecord {
     params,
     targets,
     signals,
+    events,
   };
 }
 

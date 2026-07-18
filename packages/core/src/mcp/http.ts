@@ -25,6 +25,7 @@ import {
   type JsonRpcResponse,
   PARSE_ERROR,
 } from "./jsonrpc.ts";
+import { timingSafeEqual } from "./authz.ts";
 
 /** Options for {@link serveHttp}. */
 export interface HttpTransportOptions {
@@ -50,18 +51,6 @@ function jsonResponse(body: unknown, status: number): Response {
     status,
     headers: { "content-type": "application/json" },
   });
-}
-
-/**
- * Constant-time string comparison, so token validation does not leak the token
- * through response timing. The length is compared first (a length difference is
- * not itself sensitive), then every character regardless of early mismatches.
- */
-function safeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
 }
 
 /**
@@ -117,7 +106,7 @@ export async function serveHttp(
     }
     if (token !== undefined && token !== "") {
       const provided = bearerToken(request.headers.get("authorization"));
-      if (provided === undefined || !safeEqual(provided, token)) {
+      if (provided === undefined || !timingSafeEqual(provided, token)) {
         return new Response(
           JSON.stringify(err(null, INVALID_REQUEST, "Unauthorized")),
           {

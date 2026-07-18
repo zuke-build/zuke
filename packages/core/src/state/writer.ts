@@ -19,6 +19,7 @@ import type { JsonValue, TargetStateHandle } from "../target.ts";
 import type { Redactor } from "../redact.ts";
 import type { StateStore } from "./store.ts";
 import type {
+  RunEvent,
   RunRecord,
   SignalRecord,
   TargetRunState,
@@ -174,6 +175,37 @@ export class RunStateWriter {
     return this.#update((record) => {
       record.status = "suspended";
     });
+  }
+
+  /**
+   * Append an {@link RunEvent} to the run's audit trail (the MCP tool-call log).
+   * Its `args` values and `detail` are run through the redactor first, so a
+   * secret that reached a tool argument is masked before it is persisted.
+   */
+  appendEvent(event: RunEvent): Promise<void> {
+    const redacted = this.#redactEvent(event);
+    return this.#update((record) => {
+      record.events.push(redacted);
+    });
+  }
+
+  /** Copy a {@link RunEvent} with its `args` values and `detail` redacted. */
+  #redactEvent(event: RunEvent): RunEvent {
+    const args: Record<string, string> = {};
+    for (const [key, value] of Object.entries(event.args)) {
+      args[key] = this.#redactor.redact(value);
+    }
+    const out: RunEvent = {
+      at: event.at,
+      tool: event.tool,
+      actor: event.actor,
+      outcome: event.outcome,
+      args,
+    };
+    if (event.detail !== undefined) {
+      out.detail = this.#redactor.redact(event.detail);
+    }
+    return out;
   }
 
   /** The external signals received so far, as a read-only map. */

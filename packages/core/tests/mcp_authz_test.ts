@@ -1,0 +1,29 @@
+import { assertEquals } from "./_assert.ts";
+import { targetMatcher, timingSafeEqual } from "../src/mcp/authz.ts";
+
+Deno.test("targetMatcher: undefined patterns match every target", () => {
+  const match = targetMatcher(undefined);
+  assertEquals(match("deploy"), true);
+  assertEquals(match("release.publish"), true);
+});
+
+Deno.test("targetMatcher: exact names and globs, spanning dots", () => {
+  const match = targetMatcher(["deploy", "checks*"]);
+  assertEquals(match("deploy"), true);
+  assertEquals(match("deployToProd"), false); // 'deploy' is exact-anchored
+  assertEquals(match("checks"), true);
+  assertEquals(match("checks.lint"), true); // '*' spans the dot
+  assertEquals(match("promote"), false);
+});
+
+Deno.test("targetMatcher: an empty list matches nothing", () => {
+  const match = targetMatcher([]);
+  assertEquals(match("deploy"), false);
+});
+
+Deno.test("timingSafeEqual compares by value, length first", () => {
+  assertEquals(timingSafeEqual("abc", "abc"), true);
+  assertEquals(timingSafeEqual("abc", "abd"), false);
+  assertEquals(timingSafeEqual("abc", "ab"), false); // length mismatch
+  assertEquals(timingSafeEqual("", ""), true);
+});

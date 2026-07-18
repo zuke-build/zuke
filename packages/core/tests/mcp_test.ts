@@ -206,7 +206,9 @@ Deno.test("an unknown target or tool is surfaced through the result, not the tra
     ))?.result,
   );
   assertEquals(unknownTarget.isError, true);
-  assertStringIncludes(unknownTarget.text, "Unknown target");
+  // A run call to a nonexistent target is reported identically to a
+  // disallowed one ("Unknown tool: run:<name>"), so denial leaks nothing.
+  assertStringIncludes(unknownTarget.text, "Unknown tool: run:nope");
 
   const unknownTool = callText(
     (await server.handleMessage(

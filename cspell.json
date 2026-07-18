@@ -87,6 +87,7 @@
     "pnpm",
     "pyflakes",
     "refspec",
+    "runtools",
     "remediate",
     "remediation",
     "remediations",

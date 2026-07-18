@@ -31,15 +31,23 @@ export function recordStatusOf(status: TargetStatus): TargetRunStatus {
 }
 
 /**
- * Resolve who a run is attributed to: the explicit `--actor`, then
- * `ZUKE_ACTOR`, then the CI actor (`GITHUB_ACTOR`), else `"anonymous"`. A later
- * milestone widens this to bearer-token and MCP-client identities.
+ * Resolve who a run is attributed to, by precedence: the explicit `--actor`,
+ * then `ZUKE_ACTOR`, then the CI actor (`GITHUB_ACTOR`), then any `extra`
+ * lower-priority candidates (the MCP server passes a connecting client's
+ * `initialize` name here), else `"anonymous"`. `extra` defaults to none, so
+ * existing callers are unaffected.
  */
 export function resolveActor(
   explicit: string | undefined,
   readEnv: (name: string) => string | undefined,
+  extra: readonly (string | undefined)[] = [],
 ): string {
-  const candidates = [explicit, readEnv("ZUKE_ACTOR"), readEnv("GITHUB_ACTOR")];
+  const candidates = [
+    explicit,
+    readEnv("ZUKE_ACTOR"),
+    readEnv("GITHUB_ACTOR"),
+    ...extra,
+  ];
   for (const candidate of candidates) {
     if (candidate !== undefined && candidate !== "") return candidate;
   }
@@ -119,6 +127,7 @@ export function buildRunRecord(input: RunRecordInput): RunRecord {
     params,
     targets,
     signals: {},
+    events: [],
   };
 }
 

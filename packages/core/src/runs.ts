@@ -206,5 +206,16 @@ export function formatRunDetail(record: RunRecord): string {
     }
   }
 
+  if (record.events.length > 0) {
+    lines.push("", "Audit:");
+    for (const event of record.events) {
+      const detail = event.detail !== undefined ? `  ${event.detail}` : "";
+      lines.push(
+        `  ${event.at}  ${event.tool}  ${event.actor}  ` +
+          `${event.outcome}${detail}`,
+      );
+    }
+  }
+
   return lines.join("\n");
 }

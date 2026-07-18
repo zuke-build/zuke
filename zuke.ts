@@ -375,7 +375,9 @@ class ZukeBuild extends Build {
   integration = target()
     .description("Run the subprocess e2e suite (real processes, OS matrix)")
     .executes(async () => {
-      await DenoTasks.test((s) => s.allowAll().paths("tests/e2e/race_e2e.ts"));
+      await DenoTasks.test((s) =>
+        s.allowAll().paths("tests/e2e/race_e2e.ts", "tests/e2e/mcp_e2e.ts")
+      );
     });
 
   // The dedicated workflow for the `integration` target, generated from this
@@ -597,11 +599,24 @@ class ZukeBuild extends Build {
       // agent/network authz is the M5 MCP surface. `z2fmcx` is a forEach item
       // key in a sub-target name: keys are author-chosen identifiers (console
       // output is redacted; secrets belong in excluded `.secret()` params), as
-      // documented in docs/orchestration.md. (IDs are opaque fingerprints.)
-      // cspell:ignore myee fmcx
+      // documented in docs/orchestration.md. `1ownw8s` is a false positive —
+      // signal_run/resume_check DO enforce the operator token (runtools.ts
+      // gates on deps.authorize → #authorizeTarget → #checkOperatorToken, with
+      // tests). `1eav335` is by design: list_runs/show_run are read-only over
+      // non-secret records, "always exposed when a store resolves" per M5, and
+      // gated by the transport's auth. (IDs are opaque fingerprints.)
+      // cspell:ignore myee fmcx ownw eav
       .suppress(
         suppressions((s) =>
-          s.add("1g3myee", "1mwn3kn", "1xwg7am", "3f7a0g", "z2fmcx")
+          s.add(
+            "1g3myee",
+            "1mwn3kn",
+            "1xwg7am",
+            "3f7a0g",
+            "z2fmcx",
+            "1ownw8s",
+            "1eav335",
+          )
         ),
       )
       .failWhen((g) => g.scoreAbove(8))

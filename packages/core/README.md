@@ -1147,6 +1147,8 @@ class TargetBuilder
     Run even after the build has failed (set by {@link always}).
   unlisted_: boolean
     Hide this target from `--list`/`--help` (set by {@link unlisted}).
+  readOnly_: boolean
+    Advertise this target as query-only over MCP (set by {@link readOnly}).
   readonly cacheKeys_: Array<() => string | Promise<string>>
     Extra cache-key contributors beyond input files (set by {@link cacheKey}).
   readonly produces_: string[]
@@ -1223,6 +1225,12 @@ class TargetBuilder
     still reports failure, and this target's own dependents are skipped.
   unlisted(): this
     Hide this target from `--list` and `--help` (it can still be run by name).
+  readOnly(): this
+    Mark this target query-only for MCP: its `run:` tool advertises MCP's
+    `readOnlyHint` instead of the default `destructiveHint`, and it is exempt
+    from `--confirm-destructive`. A hint about intent only — the target still
+    runs its real body — so declare it on targets that inspect rather than
+    mutate (a status check, a report).
   always(): this
     Run this target even after the build has failed — for cleanup/teardown that
     must happen regardless. It still waits for its own dependencies to complete;
@@ -2185,6 +2193,25 @@ interface ResumeWhenOptions
   interval?: string | number
     How often `zuke resume --check` should re-evaluate the predicate.
 
+interface RunEvent
+  One entry in a run's audit trail: an MCP tool call, who made it, and how it
+  ended. Appended (never mutated) so the trail is a chronological record. The
+  MCP server records a {@link RunEvent} for every mutating or denied tool call;
+  `zuke runs show` prints them.
+
+  at: string
+    ISO-8601 time the call was recorded.
+  tool: string
+    The tool called (e.g. `run:deploy`, `signal_run`).
+  actor: string
+    Who made the call (a resolved actor; see {@link "./record.ts".resolveActor}).
+  outcome: RunEventOutcome
+    Whether the call ran, was denied by authorization, or errored.
+  args: Record<string, string>
+    The call's arguments, redacted — secret values masked, tokens dropped.
+  detail?: string
+    A short, redacted human detail (e.g. a denial reason), when present.
+
 interface RunGraphNode
   One entry of a run's graph-shape snapshot.
 
@@ -2241,6 +2268,8 @@ interface RunRecord
     Per-target progress, keyed by dotted target name.
   signals: Record<string, SignalRecord>
     External signals received so far, keyed by name (see `.waitsFor(...)`).
+  events: RunEvent[]
+    Append-only audit trail of MCP tool calls against this run (see {@link RunEvent}).
 
 interface RunSummary
   A compact run listing row, returned by {@link "./store.ts".StateStore.listRuns}.
@@ -2548,6 +2577,9 @@ type PathLike = string | AbsolutePath
 
 type PutResult = { ok: true; version: string; } | { ok: false; conflict: true; }
   The result of a {@link StateStore.putRun} compare-and-swap write.
+
+type RunEventOutcome = "ok" | "denied" | "error"
+  The outcome recorded for an audited MCP tool call (see {@link RunEvent}).
 
 type RunStatus = "running" | "suspended" | "succeeded" | "failed" | "cancelled"
   The lifecycle status of a whole run.

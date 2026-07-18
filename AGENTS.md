@@ -18,8 +18,8 @@ exact signatures are published — read them:
 - **One file with the whole typed surface of every package:**
   [`llms-full.txt`](./llms-full.txt) at the repo root. [`llms.txt`](./llms.txt)
   is the short index.
-- **A single wrapper on the command line:** `deno doc jsr:@zuke/<package>`
-  (e.g. `deno doc jsr:@zuke/deno`).
+- **A single wrapper on the command line:** `deno doc jsr:@zuke/<package>` (e.g.
+  `deno doc jsr:@zuke/deno`).
 - **On each package's JSR page / README:** a generated `## API` section.
 - **The CLI surface — commands, flags, and a build's actual targets:** run
   `zuke --help` (or `deno run -A zuke.ts --help`). It prints the usage grammar,
@@ -39,10 +39,10 @@ The mental model:
 - A build is a class that **extends `Build`**. Each **target is a class field**
   built with `target()`: `.description(...)`, `.dependsOn(...)`,
   `.executes(async () => { … })`.
-- **Dependencies are `this.<field>` references, not strings** — `dependsOn(this.lint)`,
-  never `dependsOn("lint")` — so renames and typos are compile-time errors. A
-  target may only depend on siblings **declared above it** (fields initialise
-  top-to-bottom).
+- **Dependencies are `this.<field>` references, not strings** —
+  `dependsOn(this.lint)`, never `dependsOn("lint")` — so renames and typos are
+  compile-time errors. A target may only depend on siblings **declared above
+  it** (fields initialise top-to-bottom).
 - Make the file runnable with **`await run(MyBuild)`** at the bottom — no
   `if (import.meta.main)` guard; `run` no-ops when the module is imported.
 - **Every external tool is a namespaced `*Tasks` object** (`DenoTasks`,
@@ -56,7 +56,9 @@ The mental model:
   class CI extends Build {
     lint = target().executes(() => DenoTasks.lint());
     test = target().dependsOn(this.lint)
-      .executes(() => DenoTasks.test((s) => s.allowAll().coverage("cov_profile")));
+      .executes(() =>
+        DenoTasks.test((s) => s.allowAll().coverage("cov_profile"))
+      );
   }
 
   await run(CI);
@@ -111,19 +113,19 @@ update the `check` task and CI accordingly. Do not bolt on a parallel
 3. **Keep test coverage at 95%+ (lines and branches) at all times.** Enforced by
    the coverage gate built into `DenoTasks.coverage` (a `.threshold()` parses
    the lcov report and fails the build), wired up in the `cov` task /
-   `zuke coverage` target and in CI. New code needs new tests in the same
-   change — see [**Testing**](#testing) for the required layers (always unit +
+   `zuke coverage` target and in CI. New code needs new tests in the same change
+   — see [**Testing**](#testing) for the required layers (always unit +
    integration; e2e for bigger features).
 4. **Document every public symbol — JSDoc on ALL of it.** A JSDoc comment is
    required on every exported symbol **and on every public member of an exported
    class or interface**: methods, fields (including the trailing-underscore
    internal fields that are still public on an exported class), constructors,
    and the `override name = "…"` line on an error class. A **first-party** type
-   that appears in a public signature must **itself be exported and
-   documented** — never leave a `private-type-ref` to one of the package's own
-   types. Verify with `deno doc --lint` run over **all of a package's
-   entrypoints in one invocation** (a multi-entrypoint package like `@zuke/core`
-   has `.`, `./shell`, `./tooling`, `./render`, so
+   that appears in a public signature must **itself be exported and documented**
+   — never leave a `private-type-ref` to one of the package's own types. Verify
+   with `deno doc --lint` run over **all of a package's entrypoints in one
+   invocation** (a multi-entrypoint package like `@zuke/core` has `.`,
+   `./shell`, `./tooling`, `./render`, so
    `deno doc --lint packages/core/mod.ts packages/core/src/shell.ts …` — linting
    them together lets cross-entrypoint references resolve). The bar: zero
    `missing-jsdoc` and zero `private-type-ref` to a first-party type. The one
@@ -196,25 +198,41 @@ ambient tools.
    `ZUKE_STATE_DIR` for durable-state features (`waitsFor`, `lock`, run
    records). Fixtures are small `Build` subclasses defined inside the test,
    recording execution into a local array. Prove the executor / graph / params /
-   CLI / wait-resume-state flow works as a whole, not just a unit seam. These are
-   ordinary `*_test.ts` files, so they run in the **normal `deno test` lane** —
-   every `deno task test` / `ci`, on all three OSes (the `test-os` matrix) — and
-   count toward coverage.
+   CLI / wait-resume-state flow works as a whole, not just a unit seam. These
+   are ordinary `*_test.ts` files, so they run in the **normal `deno test`
+   lane** — every `deno task test` / `ci`, on all three OSes (the `test-os`
+   matrix) — and count toward coverage.
 
-3. **E2E — `tests/e2e/*_e2e.ts` (+ `tests/e2e/fixtures/`).** For the one thing an
-   in-process test cannot prove: genuine **inter-process** behaviour (e.g. two
-   real processes racing a resume's compare-and-swap) and real **OS boundaries**
-   (Windows file-locking). Spawn real `deno` subprocesses with `Deno.execPath()`
-   (guideline 5) against a temp `ZUKE_STATE_DIR`; the fixture is a runnable
-   `Build` ending in `await run(...)`. **Name these files `*_e2e.ts`** so default
-   `deno test` discovery skips them — they stay out of the fast gate. They run
-   only via the `integration` build target in `zuke.ts` (add the file to its
-   `DenoTasks.test(...).paths(...)`), which the generated
+3. **E2E — `tests/e2e/*_e2e.ts` (+ `tests/e2e/fixtures/`).** For the one thing
+   an in-process test cannot prove: genuine **inter-process** behaviour (e.g.
+   two real processes racing a resume's compare-and-swap) and real **OS
+   boundaries** (Windows file-locking). Spawn real `deno` subprocesses with
+   `Deno.execPath()` (guideline 5) against a temp `ZUKE_STATE_DIR`; the fixture
+   is a runnable `Build` ending in `await run(...)`. **Name these files
+   `*_e2e.ts`** so default `deno test` discovery skips them — they stay out of
+   the fast gate. They run only via the `integration` build target in `zuke.ts`
+   (add the file to its `DenoTasks.test(...).paths(...)`), which the generated
    `.github/workflows/integration.yml` fans out over the three OS runners.
 
 Naming wrinkle to keep straight: the in-process suite _lives in_
 `tests/integration/` but runs in the normal test lane; the build target _named_
 `integration` runs the e2e suite. They are different things.
+
+## Adversarial review (every feature)
+
+**Every feature ships an adversarial review before the PR is finalized** — not
+just a green gate. After the implementation and its tests pass, run a review
+pass that actively tries to **break** the change: bypasses, leaks, race
+conditions, unhandled throws, and untested security branches. Have independent
+reviewers attack each dimension, **verify every finding against the real code**
+(reproduce the exact path — default to refuted if you can't), then fix the
+confirmed defects _and add a regression test for each_ before opening the PR.
+
+This is not optional polish: on the MCP authz/audit work an adversarial pass
+caught a real authorization bypass, a secret-redaction gap, and a
+transport-crashing throw that all passed lint, types, and 95%+ coverage. Fixing
+pre-PR beats churning through review findings. It complements — never replaces —
+the three test layers above and the "read every reviewer comment" rule below.
 
 ## Commands
 

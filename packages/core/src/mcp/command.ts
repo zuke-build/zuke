@@ -6,6 +6,10 @@
  */
 
 import type { Build } from "../build.ts";
+import { absolutePath } from "../path.ts";
+import { findConfigDir, pathExists } from "../config.ts";
+import { defaultStateHost, type StateStore } from "../state/store.ts";
+import { resolveStateStore } from "../state/resolve.ts";
 import { type ByteWriter, serveStdio } from "./jsonrpc.ts";
 import { serveHttp } from "./http.ts";
 import { McpServer, type McpServerOptions } from "./server.ts";
@@ -52,6 +56,22 @@ function isLoopback(host: string): boolean {
   return host === "127.0.0.1" || host === "::1" || host === "localhost";
 }
 
+/** Resolve the store for MCP — like a run, always defaulting on so run tools work. */
+function resolveMcpStore(
+  build: Build,
+  option: StateStore | undefined,
+  readEnv: (name: string) => string | undefined,
+): StateStore | undefined {
+  return resolveStateStore(option, build.stateStore(), {
+    readEnv,
+    host: defaultStateHost,
+    defaultDir: absolutePath(
+      findConfigDir(Deno.cwd(), pathExists) ?? Deno.cwd(),
+    )(".zuke", "runs").path,
+    enableDefault: true,
+  });
+}
+
 /**
  * Serve the build over MCP. Without {@link ServeMcpOptions.http} it runs on
  * stdin/stdout until the input stream closes; with it, over HTTP until the
@@ -62,7 +82,15 @@ export async function serveMcp(
   build: Build,
   options: ServeMcpOptions = {},
 ): Promise<number> {
-  const server = new McpServer(build, options);
+  const readEnv = options.readEnv ?? defaultReadEnv;
+  // Resolve the durable store (so the run tools work) and the operator token
+  // once, then hand them to the server alongside the caller's options.
+  const server = new McpServer(build, {
+    ...options,
+    readEnv,
+    stateStore: resolveMcpStore(build, options.stateStore, readEnv),
+    operatorToken: options.operatorToken ?? readEnv("ZUKE_OPERATOR_TOKEN"),
+  });
   if (options.http !== undefined) {
     return await serveMcpHttp(server, options.http, options);
   }

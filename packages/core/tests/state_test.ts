@@ -55,6 +55,7 @@ function sampleRecord(overrides: Partial<RunRecord> = {}): RunRecord {
     targets: overrides.targets ??
       { deploy: { status: "pending", meta: {} } },
     signals: overrides.signals ?? {},
+    events: overrides.events ?? [],
   };
 }
 

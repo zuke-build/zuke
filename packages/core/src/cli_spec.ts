@@ -131,7 +131,16 @@ export const BUILTIN_FLAGS: readonly BuiltinFlag[] = [
   },
   {
     name: "--allow-run",
-    description: "With mcp, let agents execute targets (not just inspect)",
+    description:
+      "With mcp, let agents run targets (optional =<glob-list> allow-list)",
+  },
+  {
+    name: "--protect",
+    description: "With mcp, require an operator token to run these targets",
+  },
+  {
+    name: "--confirm-destructive",
+    description: "With mcp, require confirm:true before a destructive run",
   },
   {
     name: "--http",
