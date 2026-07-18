@@ -15,6 +15,7 @@
 import {
   type AbsolutePath,
   Build,
+  cicd,
   describeCli,
   FileTasks,
   parameter,
@@ -363,6 +364,64 @@ class ZukeBuild extends Build {
         })
       );
     });
+
+  // The subprocess e2e suite (tests/e2e/), kept OUT of `test`/`ci` so the fast
+  // gate stays hermetic and quick. These tests spawn real `deno` processes to
+  // exercise what an in-process test cannot — genuine inter-process races (e.g.
+  // exactly-once resume). Their files are named `*_e2e.ts` so the default test
+  // discovery skips them; this target runs them by explicit path. The dedicated
+  // `integration.yml` workflow (declared below) runs this on an OS matrix, where
+  // Windows filesystem-lock semantics get real coverage.
+  integration = target()
+    .description("Run the subprocess e2e suite (real processes, OS matrix)")
+    .executes(async () => {
+      await DenoTasks.test((s) => s.allowAll().paths("tests/e2e/race_e2e.ts"));
+    });
+
+  // The dedicated workflow for the `integration` target, generated from this
+  // definition (and kept in sync by `generate-ci`). It fans out over the three
+  // OS runners so the subprocess races run on Windows too. It uses `setup-deno`
+  // + `deno` rather than the `./zuke` bash launcher because a generated step has
+  // no per-step shell/if to special-case Windows, and `deno` is identical on
+  // every OS. Kept separate from `ci.yml` so the fast gate is untouched.
+  integrationCi = cicd({
+    provider: "github",
+    path: ".github/workflows/integration.yml",
+    pipeline: {
+      name: "Integration",
+      triggers: { push: ["master"], pullRequest: [] },
+      permissions: { contents: "read" },
+      concurrency: {
+        group: "integration-${{ github.ref }}",
+        cancelInProgress: true,
+      },
+      jobs: [{
+        id: "e2e",
+        name: "E2E (${{ matrix.os }})",
+        matrix: { os: ["ubuntu-latest", "macos-latest", "windows-latest"] },
+        steps: [
+          {
+            name: "Checkout",
+            uses: "actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0",
+            with: { "persist-credentials": "false" },
+          },
+          {
+            // denoland/setup-deno v2.0.5, pinned to its commit SHA (repo
+            // convention — see the SHA-pinned checkout above; a bare tag trips
+            // the zizmor `unpinned-uses` gate in the security scan).
+            name: "Set up Deno",
+            uses:
+              "denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed",
+            with: { "deno-version": "v2.x" },
+          },
+          {
+            name: "Run the subprocess e2e suite",
+            run: "deno run -A zuke.ts integration",
+          },
+        ],
+      }],
+    },
+  });
 
   coverage = target()
     .description("Enforce the 95% coverage gate")

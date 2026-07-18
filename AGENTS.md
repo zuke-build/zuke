@@ -112,7 +112,8 @@ update the `check` task and CI accordingly. Do not bolt on a parallel
    the coverage gate built into `DenoTasks.coverage` (a `.threshold()` parses
    the lcov report and fails the build), wired up in the `cov` task /
    `zuke coverage` target and in CI. New code needs new tests in the same
-   change.
+   change — see [**Testing**](#testing) for the required layers (always unit +
+   integration; e2e for bigger features).
 4. **Document every public symbol — JSDoc on ALL of it.** A JSDoc comment is
    required on every exported symbol **and on every public member of an exported
    class or interface**: methods, fields (including the trailing-underscore
@@ -174,6 +175,47 @@ update the `check` task and CI accordingly. Do not bolt on a parallel
    scalar (a path, a name) can still be a direct argument; reach for the lambda
    once there are options to set.
 
+## Testing
+
+Zuke has **three test layers**. **Every change ships tests in the same PR** — at
+minimum a **unit** test _and_ an **integration** test; a bigger feature (a new
+flow mechanism, or anything with cross-process or cross-OS behaviour) also adds
+an **e2e** test. All three obey guideline 5: hermetic and fast, no network, no
+ambient tools.
+
+1. **Unit — `packages/<pkg>/tests/*_test.ts`.** One module in isolation, with
+   fakes and the local `tests/_assert.ts` helper (never a third-party assert
+   library). For a tool wrapper, assert the **pure `buildArgs()` argv** — do not
+   run the real tool. This layer covers a module's branches and a wrapper's
+   flags, and carries the bulk of the 95% coverage gate.
+
+2. **Integration — `tests/integration/*_test.ts`.** Drive a _real_ build
+   end-to-end through the CLI `main()` entry point using the harness in
+   `tests/integration/_harness.ts`: `runCli(BuildClass, args)` returns
+   `{ code, out, err }`, and `withStateDir(fn)` provides an isolated temporary
+   `ZUKE_STATE_DIR` for durable-state features (`waitsFor`, `lock`, run
+   records). Fixtures are small `Build` subclasses defined inside the test,
+   recording execution into a local array. Prove the executor / graph / params /
+   CLI / wait-resume-state flow works as a whole, not just a unit seam. These are
+   ordinary `*_test.ts` files, so they run in the **normal `deno test` lane** —
+   every `deno task test` / `ci`, on all three OSes (the `test-os` matrix) — and
+   count toward coverage.
+
+3. **E2E — `tests/e2e/*_e2e.ts` (+ `tests/e2e/fixtures/`).** For the one thing an
+   in-process test cannot prove: genuine **inter-process** behaviour (e.g. two
+   real processes racing a resume's compare-and-swap) and real **OS boundaries**
+   (Windows file-locking). Spawn real `deno` subprocesses with `Deno.execPath()`
+   (guideline 5) against a temp `ZUKE_STATE_DIR`; the fixture is a runnable
+   `Build` ending in `await run(...)`. **Name these files `*_e2e.ts`** so default
+   `deno test` discovery skips them — they stay out of the fast gate. They run
+   only via the `integration` build target in `zuke.ts` (add the file to its
+   `DenoTasks.test(...).paths(...)`), which the generated
+   `.github/workflows/integration.yml` fans out over the three OS runners.
+
+Naming wrinkle to keep straight: the in-process suite _lives in_
+`tests/integration/` but runs in the normal test lane; the build target _named_
+`integration` runs the e2e suite. They are different things.
+
 ## Commands
 
 | Task                          | Command                                 |
@@ -196,8 +238,12 @@ packages/
   deno/                   # @zuke/deno — DenoTasks
   npm/                    # @zuke/npm  — NpmTasks
   cmd/                    # @zuke/cmd  — CmdTasks (generic fallback)
+tests/
+  integration/            # in-process: real builds via the CLI main() + _harness.ts
+  e2e/                    # subprocess: *_e2e.ts + fixtures/ (run by the `integration` target)
 zuke.ts                   # Zuke's own build (runnable example)
-.github/workflows/ci.yml  # PR checks
+.github/workflows/ci.yml           # PR checks (quality + test-os matrix)
+.github/workflows/integration.yml  # e2e suite on the OS matrix (generated)
 ```
 
 ## Architecture notes
