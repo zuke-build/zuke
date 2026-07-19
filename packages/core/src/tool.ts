@@ -42,6 +42,12 @@ import {
   type InstallReleaseOptions,
   type Platform,
 } from "./install.ts";
+import {
+  installNpmTool,
+  type InstallNpmToolOptions,
+  type NpmRunner,
+  type NpmToolSpec,
+} from "./npm_tool.ts";
 import type { Configure } from "./tooling.ts";
 
 /** The default directory a {@link Toolchain} (and {@link ToolTasks}) installs into. */
@@ -157,16 +163,30 @@ export interface ToolTasksApi {
   install(
     configure: Configure<ToolInstallSettings>,
   ): Promise<AbsolutePath>;
+  /**
+   * Provision a single npm-registry package as a version-pinned, cached tool and
+   * resolve to its installed bin path. Defaults the install root to
+   * `.zuke/tools`. See {@link installNpmTool}; group several with
+   * {@link Toolchain.npm}.
+   */
+  npm(
+    spec: NpmToolSpec,
+    options?: InstallNpmToolOptions,
+  ): Promise<AbsolutePath>;
 }
 
 /**
  * Provision external CLIs from a build. `ToolTasks.install((s) => …)` fetches a
- * single tool; group several with {@link toolchain}.
+ * single release binary and `ToolTasks.npm(...)` a single npm package; group
+ * several of either with {@link toolchain}.
  */
 export const ToolTasks: ToolTasksApi = {
   install(configure) {
     const settings = configure(new ToolInstallSettings());
     return installRelease(settings.options_(DEFAULT_TOOLS_DIR));
+  },
+  npm(spec, options) {
+    return installNpmTool(spec, options);
   },
 };
 
@@ -174,8 +194,10 @@ export const ToolTasks: ToolTasksApi = {
 export interface ToolchainInstallOptions {
   /** Where tools without their own `destDir` install. Defaults to `.zuke/tools`. */
   destDir?: PathLike;
-  /** The download implementation for every tool (defaults per {@link installRelease}). */
+  /** The download implementation for every release tool (defaults per {@link installRelease}). */
   download?: DownloadFn;
+  /** The npm-install runner for npm-package tools (defaults to the ambient `npm`; a test seam). */
+  npmRun?: NpmRunner;
 }
 
 /**
@@ -185,37 +207,63 @@ export interface ToolchainInstallOptions {
  */
 export class Toolchain {
   readonly #tools: ToolInstallSettings[] = [];
+  readonly #npmTools: NpmToolSpec[] = [];
 
-  /** Add a tool, configured through a settings-lambda. Chainable. */
+  /** Add a release tool, configured through a settings-lambda. Chainable. */
   tool(configure: Configure<ToolInstallSettings>): this {
     this.#tools.push(configure(new ToolInstallSettings()));
     return this;
   }
 
-  /** The configured tools, in declaration order. */
+  /**
+   * Add an npm-registry package to provision as a version-pinned tool —
+   * installed under `<destDir>/npm/<name>@<version>` and keyed in
+   * {@link install}'s result by its {@link NpmToolSpec.name}. See
+   * {@link installNpmTool}. Chainable.
+   */
+  npm(spec: NpmToolSpec): this {
+    this.#npmTools.push(spec);
+    return this;
+  }
+
+  /** The configured release tools, in declaration order. */
   get tools(): readonly ToolInstallSettings[] {
     return this.#tools;
   }
 
+  /** The configured npm-package tools, in declaration order. */
+  get npmTools(): readonly NpmToolSpec[] {
+    return this.#npmTools;
+  }
+
   /**
    * Install every declared tool concurrently — reusing a cached copy where a
-   * pinned checksum matches — and return a map of tool name to installed
-   * {@link AbsolutePath}.
+   * release tool's pinned checksum, or an npm tool's `name@version` marker,
+   * matches — and return a map of tool name to installed {@link AbsolutePath}.
    */
   async install(
     options: ToolchainInstallOptions = {},
   ): Promise<Map<string, AbsolutePath>> {
     const destDir = options.destDir ?? DEFAULT_TOOLS_DIR;
     const installed = new Map<string, AbsolutePath>();
-    await Promise.all(this.#tools.map(async (settings) => {
-      const spec = settings.options_(destDir);
-      const path = await installRelease(
-        options.download === undefined
-          ? spec
-          : { ...spec, download: options.download },
-      );
-      installed.set(spec.name, path);
-    }));
+    await Promise.all([
+      ...this.#tools.map(async (settings) => {
+        const spec = settings.options_(destDir);
+        const path = await installRelease(
+          options.download === undefined
+            ? spec
+            : { ...spec, download: options.download },
+        );
+        installed.set(spec.name, path);
+      }),
+      ...this.#npmTools.map(async (spec) => {
+        const path = await installNpmTool(spec, {
+          destDir,
+          run: options.npmRun,
+        });
+        installed.set(spec.name, path);
+      }),
+    ]);
     return installed;
   }
 }

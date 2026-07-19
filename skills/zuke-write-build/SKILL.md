@@ -141,7 +141,9 @@ Before calling any task or settings method, confirm the real shape:
   value at run time (e.g. `execSecret(...)` shelling out to a secret CLI) and
   **redacts** it from all of Zuke's output. See the cheatsheet.
 - **Provisioning tools:** `ToolTasks.install((s) => …)` / `toolchain((t) => …)`
-  fetch pinned, checksum-verified tool binaries so a build is hermetic; hand the
+  fetch pinned, checksum-verified release binaries so a build is hermetic, and
+  `t.npm({ name, version, bin? })` / `ToolTasks.npm(...)` provision a
+  version-pinned, cached npm-registry package (needs `npm` on `PATH`); hand the
   returned path to a wrapper's `.toolPath(...)`. In a Node monorepo, resolve a
   wrapper's binary from `node_modules/.bin` npx-style instead —
   `.fromNodeModules()` on the settings (or `ZUKE_TOOL_RESOLUTION=node_modules`

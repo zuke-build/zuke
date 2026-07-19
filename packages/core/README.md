@@ -369,6 +369,28 @@ async function httpJson<T = unknown>(url: string, options: HttpOptions): Promise
 async function httpText(url: string, options: HttpOptions): Promise<string>
   Fetch `url` and return its body as text. Throws {@link HttpError} on non-2xx.
 
+async function installNpmTool(spec: NpmToolSpec, options: InstallNpmToolOptions): Promise<AbsolutePath>
+  Provision an npm-registry package as a version-pinned, cached tool and return
+  the installed bin's {@link AbsolutePath} — hand it straight to a wrapper's
+  `.toolPath(...)`.
+
+  The package installs under `<destDir>/npm/<name>@<version>` via
+  `npm install --prefix <dir> --no-save <name>@<version>`; a marker file records
+  the pinned `{ name, version }`, so a later run whose marker matches and whose
+  bin is still present is reused without invoking npm again. `npm` must be on
+  `PATH` (it resolves and downloads the package).
+
+  Throws — without recording a marker — if `spec` is malformed (an unsafe name,
+  version, or bin), if npm fails, or if npm succeeds but the expected bin is
+  absent (a typo'd `bin`, or a package that ships no executable), so a bad
+  install fails loudly here instead of at a later `.toolPath(...)`.
+
+  The marker is written only after the bin is verified present, so a matching
+  marker always has its bin — a reader never sees a half-written install.
+  Concurrent installs of the same pin into the same directory are not isolated;
+  they just do redundant work (the documented ceiling — a build resolves its
+  toolchain once, and distinct pins use distinct directories).
+
 async function installRelease(options: InstallReleaseOptions): Promise<AbsolutePath>
   Download and install a release binary, returning its {@link AbsolutePath}.
   The path is ready to hand to a wrapper's `.toolPath(...)` (or `CmdTasks`).
@@ -573,7 +595,8 @@ const REDACTED: "[redacted]"
 
 const ToolTasks: ToolTasksApi
   Provision external CLIs from a build. `ToolTasks.install((s) => …)` fetches a
-  single tool; group several with {@link toolchain}.
+  single release binary and `ToolTasks.npm(...)` a single npm package; group
+  several of either with {@link toolchain}.
 
 const defaultRenderer: Renderer
   The built-in renderer: Zuke's ruled headers and summary table.
@@ -1632,13 +1655,20 @@ class Toolchain
   {@link Toolchain.install}. Build one with {@link toolchain}.
 
   tool(configure: Configure<ToolInstallSettings>): this
-    Add a tool, configured through a settings-lambda. Chainable.
+    Add a release tool, configured through a settings-lambda. Chainable.
+  npm(spec: NpmToolSpec): this
+    Add an npm-registry package to provision as a version-pinned tool —
+    installed under `<destDir>/npm/<name>@<version>` and keyed in
+    {@link install}'s result by its {@link NpmToolSpec.name}. See
+    {@link installNpmTool}. Chainable.
   get tools(): readonly ToolInstallSettings[]
-    The configured tools, in declaration order.
+    The configured release tools, in declaration order.
+  get npmTools(): readonly NpmToolSpec[]
+    The configured npm-package tools, in declaration order.
   async install(options: ToolchainInstallOptions): Promise<Map<string, AbsolutePath>>
     Install every declared tool concurrently — reusing a cached copy where a
-    pinned checksum matches — and return a map of tool name to installed
-    {@link AbsolutePath}.
+    release tool's pinned checksum, or an npm tool's `name@version` marker,
+    matches — and return a map of tool name to installed {@link AbsolutePath}.
 
 class WaitSettings
   Fluent configuration for {@link TargetBuilder.waitsFor}:
@@ -2318,6 +2348,19 @@ interface HttpStateStoreOptions
   fetch?: typeof fetch
     The `fetch` implementation; defaults to the global. Overridable for tests.
 
+interface InstallNpmToolOptions
+  Options for {@link installNpmTool}.
+
+  destDir?: PathLike
+    The root tools directory; the package installs under
+    `<destDir>/npm/<name>@<version>`. Defaults to
+    {@link "./tool.ts".DEFAULT_TOOLS_DIR} (`.zuke/tools`).
+  run?: NpmRunner
+    The npm-install runner. Defaults to the ambient `npm`; a test seam.
+  os?: OperatingSystem
+    The OS whose bin-shim filename to return (`.cmd` on Windows). Defaults to
+    the host; a test seam for the Windows shim path.
+
 interface InstallPlatform
   The host identity: a Zuke {@link OperatingSystem} and {@link Architecture}.
 
@@ -2390,6 +2433,18 @@ interface McpRequestContext
 
   readonly headers: Headers
     The request headers; an empty {@link Headers} on stdio.
+
+interface NpmToolSpec
+  A specification of an npm-registry package to provision as a tool.
+
+  name: string
+    The npm package to install, e.g. `"vitest"` or `"@nestjs/cli"`.
+  version: string
+    The exact version to pin, e.g. `"4.1.9"` — installed as `name@version`.
+  bin?: string
+    The bin to resolve, when it differs from the package name — `@nestjs/cli`
+    publishes the `nest` bin, so `{ name: "@nestjs/cli", bin: "nest" }`.
+    Defaults to {@link name}.
 
 interface OpenCacheOptions
   Optional extras for {@link openCache}: a remote store and a warning sink.
@@ -2929,6 +2984,11 @@ interface ToolTasksApi
     Install a single release tool, configured through a
     {@link ToolInstallSettings} lambda, and resolve to its installed path.
     Defaults the install directory to `.zuke/tools`.
+  npm(spec: NpmToolSpec, options?: InstallNpmToolOptions): Promise<AbsolutePath>
+    Provision a single npm-registry package as a version-pinned, cached tool and
+    resolve to its installed bin path. Defaults the install root to
+    `.zuke/tools`. See {@link installNpmTool}; group several with
+    {@link Toolchain.npm}.
 
 interface ToolchainInstallOptions
   Options for {@link Toolchain.install}.
@@ -2936,7 +2996,9 @@ interface ToolchainInstallOptions
   destDir?: PathLike
     Where tools without their own `destDir` install. Defaults to `.zuke/tools`.
   download?: DownloadFn
-    The download implementation for every tool (defaults per {@link installRelease}).
+    The download implementation for every release tool (defaults per {@link installRelease}).
+  npmRun?: NpmRunner
+    The npm-install runner for npm-package tools (defaults to the ambient `npm`; a test seam).
 
 interface Validation
   A check plugged into a target with {@link TargetBuilder.validateBefore} or
@@ -3051,6 +3113,11 @@ type McpIdentityHook = (ctx: McpRequestContext) => McpIdentity
   per message, before any dispatch; throwing rejects the whole request with
   an auth error, so nothing executes and nothing is written to state — the seam
   a proxy in front of the server uses to inject an authenticated identity.
+
+type NpmRunner = (args: string[]) => Promise<void>
+  Runs `npm install <args>` — the injectable subprocess seam. Defaults to
+  spawning the ambient `npm`; a test injects a fake that records the argv and
+  plants the expected bin, so provisioning stays hermetic and network-free.
 
 type OnCancel = TargetBuilder | (() => TargetBuilder)
   A compensation registered with {@link TargetBuilder.onCancel}: either a

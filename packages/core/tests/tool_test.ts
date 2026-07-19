@@ -1,5 +1,6 @@
 import { assertEquals, assertThrows } from "./_assert.ts";
 import type { DownloadFn } from "../src/install.ts";
+import type { NpmRunner } from "../src/npm_tool.ts";
 import {
   DEFAULT_TOOLS_DIR,
   Toolchain,
@@ -9,12 +10,30 @@ import {
 } from "../src/tool.ts";
 
 const EXE = Deno.build.os === "windows" ? ".exe" : "";
+/** The npm bin-shim suffix on the host (`.cmd` on Windows, else none). */
+const NPM_EXE = Deno.build.os === "windows" ? ".cmd" : "";
 
 /** A download seam that writes the URL's own text, recording each URL fetched. */
 function recordingDownload(seen: string[]): DownloadFn {
   return async (url, dest) => {
     seen.push(url);
     await Deno.writeFile(String(dest), new TextEncoder().encode(url));
+  };
+}
+
+/** A fake npm runner that records argv and plants the named bin under `--prefix`. */
+function recordingNpm(
+  bin: string,
+  calls: string[][],
+): NpmRunner {
+  return async (args) => {
+    calls.push(args);
+    const prefix = args[args.indexOf("--prefix") + 1];
+    await Deno.mkdir(`${prefix}/node_modules/.bin`, { recursive: true });
+    await Deno.writeTextFile(
+      `${prefix}/node_modules/.bin/${bin}${NPM_EXE}`,
+      "x",
+    );
   };
 }
 
@@ -68,6 +87,58 @@ Deno.test("toolchain exposes its configured tools in order", () => {
     .tool((s) => s.name("a").url(() => "a"))
     .tool((s) => s.name("b").url(() => "b"));
   assertEquals(chain.tools.map((s) => s.name_), ["a", "b"]);
+});
+
+Deno.test("toolchain provisions npm tools alongside release tools", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const seen: string[] = [];
+    const npmCalls: string[][] = [];
+    const tools = toolchain((t) =>
+      t.tool((s) => s.name("helm").url(() => "https://tools.test/helm"))
+        .npm({ name: "vitest", version: "4.1.9" })
+    );
+    const bins = await tools.install({
+      destDir: dir,
+      download: recordingDownload(seen),
+      npmRun: recordingNpm("vitest", npmCalls),
+    });
+
+    assertEquals([...bins.keys()].sort(), ["helm", "vitest"]);
+    assertEquals(
+      bins.get("vitest")?.path.endsWith(
+        `/npm/vitest@4.1.9/node_modules/.bin/vitest${NPM_EXE}`,
+      ),
+      true,
+    );
+    assertEquals(npmCalls.length, 1);
+    assertEquals(npmCalls[0][4], "vitest@4.1.9");
+    assertEquals(seen, ["https://tools.test/helm"]);
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("toolchain exposes its npm tools in declaration order", () => {
+  const chain = new Toolchain()
+    .npm({ name: "a", version: "1" })
+    .npm({ name: "b", version: "2" });
+  assertEquals(chain.npmTools.map((s) => s.name), ["a", "b"]);
+});
+
+Deno.test("ToolTasks.npm provisions a single npm package with a distinct bin", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const npmCalls: string[][] = [];
+    const bin = await ToolTasks.npm(
+      { name: "@nestjs/cli", version: "10.0.0", bin: "nest" },
+      { destDir: dir, run: recordingNpm("nest", npmCalls) },
+    );
+    assertEquals(bin.name, `nest${NPM_EXE}`);
+    assertEquals(npmCalls[0][4], "@nestjs/cli@10.0.0");
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
 });
 
 Deno.test("a per-tool destDir overrides the toolchain default", async () => {

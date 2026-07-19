@@ -283,6 +283,12 @@ export {
   type Platform,
 } from "./src/install.ts";
 export {
+  installNpmTool,
+  type InstallNpmToolOptions,
+  type NpmRunner,
+  type NpmToolSpec,
+} from "./src/npm_tool.ts";
+export {
   DEFAULT_TOOLS_DIR,
   Toolchain,
   toolchain,
