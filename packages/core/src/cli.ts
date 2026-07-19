@@ -98,6 +98,8 @@ export interface ParsedArgs {
   protectPatterns?: string[];
   /** Require `confirm:true` before a destructive `mcp` run (`--confirm-destructive`). */
   confirmDestructive: boolean;
+  /** Serve `mcp` over the build registry (dynamic discovery) rather than one build (`--registry`). */
+  mcpRegistry: boolean;
   /** Serve `mcp` over HTTP on this `<host:port>` instead of stdio (`--http`). */
   httpAddr?: string;
   /** The `completions` sub-action (`install` or `print`); the first positional. */
@@ -197,6 +199,7 @@ export function parseArgs(
     cancel: false,
     register: false,
     confirmDestructive: false,
+    mcpRegistry: false,
     help: false,
   };
   const byFlag = new Map<string, ParamFlag>();
@@ -269,6 +272,8 @@ export function parseArgs(
       parsed.protectPatterns = splitList(arg.slice("--protect=".length));
     } else if (arg === "--confirm-destructive") {
       parsed.confirmDestructive = true;
+    } else if (arg === "--registry") {
+      parsed.mcpRegistry = true;
     } else if (arg === "--http") {
       const value = args[++i];
       if (value) parsed.httpAddr = value;
@@ -357,7 +362,7 @@ Usage:
   deno run -A zuke.ts graph [--output=html] [--no-open]
   deno run -A zuke.ts generate-ci [--check]
   deno run -A zuke.ts completions <install|print> <bash|zsh|fish>
-  deno run -A zuke.ts mcp [--allow-run] [--http <host:port>]
+  deno run -A zuke.ts mcp [--allow-run] [--registry] [--http <host:port>]
   deno run -A zuke.ts resume <run-id> [--signal <name>] [--data <json>]
   deno run -A zuke.ts resume --check [<run-id>]
   deno run -A zuke.ts runs list [--status <s>] [--target <t>] [--since <iso>] [--json]
@@ -416,6 +421,11 @@ Options:
   --confirm-destructive
                     With mcp, make a destructive run tool return its plan unless
                     called with confirm:true (a .readOnly() target is exempt).
+  --registry        With mcp, serve the build registry instead of this one build:
+                    expose every registered pipeline's targets as tools, re-read
+                    live so a newly-registered build appears with no restart. A
+                    run tool spawns the registered build's launch command (behind
+                    --allow-run + the same authz). See docs/registry.md.
   --http <host:port>
                     With mcp, serve the streamable-HTTP transport on the given
                     address instead of stdio. Just <port> binds 127.0.0.1. A
@@ -730,6 +740,7 @@ async function runMcp(build: Build, parsed: ParsedArgs): Promise<number> {
     allowRunPatterns: parsed.allowRunPatterns,
     protectPatterns: parsed.protectPatterns,
     confirmDestructive: parsed.confirmDestructive,
+    useRegistry: parsed.mcpRegistry,
     actor: parsed.actor,
     http,
   });

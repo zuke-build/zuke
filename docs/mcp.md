@@ -162,6 +162,40 @@ The trail lives in a store-level record; read it with `zuke runs show mcp-audit`
 never influences authorization. On a shared HTTP endpoint it reflects the most
 recent client to connect, so set `--actor` for authoritative attribution there.
 
+## Registry mode (dynamic discovery)
+
+By default `zuke mcp` serves the single build its process was launched with. With
+`--registry` it instead serves the [build registry](./registry.md) — the catalog
+`zuke register` writes to — and **re-reads it on every `tools/list` and
+`tools/call`**. So a pipeline registered by another process appears as a tool in
+an already-running server with **no restart**:
+
+```sh
+# Serve every registered pipeline, execution enabled:
+zuke mcp --registry --allow-run
+```
+
+- **Discovery.** `list_builds` returns the catalog; `describe_build` (with a
+  `build` id) returns one build's surface. Each registered target is exposed as a
+  `run:<buildId>:<target>` tool, re-read live.
+- **Execution is a spawn.** A registered build has no live instance in the
+  server, so a run tool **spawns the build's registered launch location** (the
+  `deno run <module> <target>` `zuke register` recorded, or an explicit command)
+  and returns its captured output. This is code execution, so it is off unless
+  `--allow-run`, and it honours the same [authorization](#authorization) tiers —
+  the allow-list and `--protect` globs match the **qualified** `<buildId>:<target>`
+  name (e.g. `--allow-run=Api:*`, `--protect=Api:deploy`). Every mutating or
+  denied call is [audited](#audit-log).
+- **Scope.** A run tool takes no per-parameter inputs yet — only `dryRun`,
+  `confirm`, and `operatorToken`; the spawned build resolves its own parameters
+  from the server's environment. Passing parameters across the spawn boundary
+  (which needs a secret-safe contract) is a follow-up. Because a descriptor does
+  not record whether a target is read-only, every registry run tool is treated as
+  destructive.
+
+The registry resolves like the run store: `ZUKE_REGISTRY_URL`/`_TOKEN` or
+`ZUKE_REGISTRY_DIR`, a build's `registry()` override, else `.zuke/builds`.
+
 ## Safety
 
 **Trust model.** On the default stdio transport the server has no network
