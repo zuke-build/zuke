@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.23.0](https://github.com/zuke-build/zuke/compare/core-v1.22.0...core-v1.23.0) (2026-07-19)
+
+
+### Features
+
+* **core:** registry-backed dynamic MCP tool discovery ([#188](https://github.com/zuke-build/zuke/issues/188)) ([d9a7d9e](https://github.com/zuke-build/zuke/commit/d9a7d9ed0b123055212f7a10f5c1a8baac76ae72))
+
 ## [1.22.0](https://github.com/zuke-build/zuke/compare/core-v1.21.0...core-v1.22.0) (2026-07-19)
 
 
