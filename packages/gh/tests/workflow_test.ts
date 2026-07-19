@@ -15,9 +15,18 @@ import {
   githubWorkflowWith,
   readWorkflowResult,
   RestGhWorkflowApi,
+  WorkflowCorrelationError,
   type WorkflowJob,
   type WorkflowRun,
 } from "../src/workflow.ts";
+
+/** A controllable monotonic clock (epoch ms) for driving the discovery window. */
+function clock(
+  start: number,
+): { now: () => number; advance: (ms: number) => void } {
+  let t = start;
+  return { now: () => t, advance: (ms) => void (t += ms) };
+}
 
 /** The global `fetch` signature, aliased so a local can be annotated. */
 type FetchFn = typeof globalThis.fetch;
@@ -48,10 +57,23 @@ class ScriptedApi implements GhWorkflowApi {
   dispatches: Array<{ ref: string; inputs: Record<string, string> }> = [];
   status = "in_progress";
   conclusion: string | null = null;
-  appears = true; // whether findRun can locate the dispatched run
+  appears = true; // whether findRun/recentRuns can locate the dispatched run
+  createdAt = "2026-07-19T00:00:00.000Z";
+  headBranch = "main";
   jobs: WorkflowJob[] = [
     { name: "build", conclusion: "success", url: "https://gh/j1" },
   ];
+
+  #run(): WorkflowRun {
+    return {
+      id: 100,
+      status: this.status,
+      conclusion: this.conclusion,
+      url: "https://gh/r100",
+      createdAt: this.createdAt,
+      headBranch: this.headBranch,
+    };
+  }
 
   dispatch(
     _repo: string,
@@ -63,24 +85,16 @@ class ScriptedApi implements GhWorkflowApi {
     return Promise.resolve();
   }
   findRun(): Promise<WorkflowRun | null> {
-    return Promise.resolve(
-      this.appears
-        ? {
-          id: 100,
-          status: this.status,
-          conclusion: this.conclusion,
-          url: "https://gh/r100",
-        }
-        : null,
-    );
+    return Promise.resolve(this.appears ? this.#run() : null);
+  }
+  recentRuns(): Promise<WorkflowRun[]> {
+    // Before dispatch the run does not exist yet (an empty created-window
+    // baseline); after dispatch it appears if `appears` is set.
+    const exists = this.appears && this.dispatches.length > 0;
+    return Promise.resolve(exists ? [this.#run()] : []);
   }
   getRun(): Promise<WorkflowRun> {
-    return Promise.resolve({
-      id: 100,
-      status: this.status,
-      conclusion: this.conclusion,
-      url: "https://gh/r100",
-    });
+    return Promise.resolve(this.#run());
   }
   listJobs(): Promise<WorkflowJob[]> {
     return Promise.resolve(this.jobs);
@@ -178,22 +192,19 @@ Deno.test("waits for the run to appear before polling it", async () => {
 
 Deno.test("a transient poll error re-suspends instead of failing the run", async () => {
   let failJobs = true;
+  const run: WorkflowRun = {
+    id: 100,
+    status: "completed",
+    conclusion: "success",
+    url: "u",
+    createdAt: "2026-07-19T00:00:00.000Z",
+    headBranch: "main",
+  };
   const api: GhWorkflowApi = {
     dispatch: () => Promise.resolve(),
-    findRun: () =>
-      Promise.resolve({
-        id: 100,
-        status: "completed",
-        conclusion: "success",
-        url: "u",
-      }),
-    getRun: () =>
-      Promise.resolve({
-        id: 100,
-        status: "completed",
-        conclusion: "success",
-        url: "u",
-      }),
+    findRun: () => Promise.resolve(run),
+    recentRuns: () => Promise.resolve([run]),
+    getRun: () => Promise.resolve(run),
     listJobs: () =>
       failJobs
         ? Promise.reject(new Error("gh workflow: GET /jobs → 502"))
@@ -275,6 +286,273 @@ Deno.test("readWorkflowResult tolerates malformed jobs", () => {
   ]);
 });
 
+// --- M18: created-window correlation and marker fast-fail -------------------
+
+const DISPATCH_AT = Date.parse("2026-07-19T00:00:00.000Z");
+
+Deno.test("created-window mode correlates the single matching run", async () => {
+  const api = new ScriptedApi();
+  api.status = "completed";
+  api.conclusion = "success";
+  api.createdAt = "2026-07-19T00:00:30.000Z"; // 30s after dispatch
+  api.headBranch = "release";
+  const c = clock(DISPATCH_AT);
+  const state = fakeState();
+  const trigger = githubWorkflowWith(
+    (g) =>
+      g.repo("a/b").workflow("w").ref("release").correlate("created-window"),
+    { api, now: c.now },
+  );
+  const cv = ctx(state);
+  assertEquals(await trigger.isSatisfied(NO_SIGNALS, cv), false); // dispatch
+  assertEquals(await trigger.isSatisfied(NO_SIGNALS, cv), true); // correlate + done
+  assertEquals(readWorkflowResult(state)?.runId, 100);
+});
+
+Deno.test("created-window mode fails loudly on two candidates in the window", async () => {
+  const created = "2026-07-19T00:00:10.000Z";
+  let dispatched = false;
+  const api: GhWorkflowApi = {
+    dispatch: () => {
+      dispatched = true;
+      return Promise.resolve();
+    },
+    findRun: () => Promise.resolve(null),
+    recentRuns: () =>
+      Promise.resolve(
+        dispatched
+          ? [
+            {
+              id: 1,
+              status: "in_progress",
+              conclusion: null,
+              url: "u1",
+              createdAt: created,
+              headBranch: "main",
+            },
+            {
+              id: 2,
+              status: "in_progress",
+              conclusion: null,
+              url: "u2",
+              createdAt: created,
+              headBranch: "main",
+            },
+          ]
+          : [], // empty baseline before dispatch, so both are fresh candidates
+      ),
+    getRun: () =>
+      Promise.reject(new Error("should not poll an ambiguous match")),
+    listJobs: () => Promise.resolve([]),
+  };
+  const c = clock(DISPATCH_AT);
+  const trigger = githubWorkflowWith(
+    (g) => g.repo("a/b").workflow("w").correlate("created-window"),
+    { api, now: c.now },
+  );
+  const cv = ctx(fakeState());
+  await trigger.isSatisfied(NO_SIGNALS, cv); // dispatch
+  await assertRejects(
+    () => Promise.resolve(trigger.isSatisfied(NO_SIGNALS, cv)),
+    WorkflowCorrelationError,
+    "ambiguous",
+  );
+});
+
+Deno.test("created-window ignores a run on another branch or created before dispatch", async () => {
+  let dispatched = false;
+  const api: GhWorkflowApi = {
+    dispatch: () => {
+      dispatched = true;
+      return Promise.resolve();
+    },
+    findRun: () => Promise.resolve(null),
+    recentRuns: () =>
+      Promise.resolve(
+        dispatched
+          ? [
+            // right window, wrong branch:
+            {
+              id: 1,
+              status: "in_progress",
+              conclusion: null,
+              url: "u1",
+              createdAt: "2026-07-19T00:01:00.000Z",
+              headBranch: "other",
+            },
+            // right branch, created a day before dispatch (beyond the skew):
+            {
+              id: 2,
+              status: "in_progress",
+              conclusion: null,
+              url: "u2",
+              createdAt: "2026-07-18T00:00:00.000Z",
+              headBranch: "main",
+            },
+          ]
+          : [], // empty baseline before dispatch
+      ),
+    getRun: () => Promise.reject(new Error("no candidate should be polled")),
+    listJobs: () => Promise.resolve([]),
+  };
+  const c = clock(DISPATCH_AT);
+  const trigger = githubWorkflowWith(
+    (g) => g.repo("a/b").workflow("w").correlate("created-window"),
+    { api, now: c.now },
+  );
+  const cv = ctx(fakeState());
+  await trigger.isSatisfied(NO_SIGNALS, cv); // dispatch
+  assertEquals(await trigger.isSatisfied(NO_SIGNALS, cv), false); // no candidate → suspended
+});
+
+Deno.test("marker mode fails fast with guidance once the discovery window elapses", async () => {
+  const api = new ScriptedApi();
+  api.appears = false; // the run never echoes the marker
+  const c = clock(DISPATCH_AT);
+  const state = fakeState();
+  const trigger = githubWorkflowWith(
+    (g) => g.repo("a/b").workflow("e2e.yml").discoveryTimeout("60s"),
+    { api, now: c.now },
+  );
+  const cv = ctx(state);
+  assertEquals(await trigger.isSatisfied(NO_SIGNALS, cv), false); // dispatch
+  assertEquals(await trigger.isSatisfied(NO_SIGNALS, cv), false); // within window → suspended
+  c.advance(61_000); // past the 60s discovery window
+  const error = await assertRejects(
+    () => Promise.resolve(trigger.isSatisfied(NO_SIGNALS, cv)),
+    WorkflowCorrelationError,
+    "run-name",
+  );
+  // The guidance names the workflow and the marker input.
+  assertEquals(error.message.includes("e2e.yml"), true);
+  assertEquals(error.message.includes("zuke_marker"), true);
+});
+
+Deno.test("created-window mode fails fast when no run appears in the window", async () => {
+  const api = new ScriptedApi();
+  api.appears = false; // recentRuns → []
+  const c = clock(DISPATCH_AT);
+  const trigger = githubWorkflowWith(
+    (g) =>
+      g.repo("a/b").workflow("w").correlate("created-window").discoveryTimeout(
+        "30s",
+      ),
+    { api, now: c.now },
+  );
+  const cv = ctx(fakeState());
+  await trigger.isSatisfied(NO_SIGNALS, cv); // dispatch
+  c.advance(31_000);
+  await assertRejects(
+    () => Promise.resolve(trigger.isSatisfied(NO_SIGNALS, cv)),
+    WorkflowCorrelationError,
+    "appeared within",
+  );
+});
+
+Deno.test("a discovery error suspends within the window, but fails fast past it", async () => {
+  // recentRuns keeps throwing (a bad token / renamed workflow / long outage):
+  // within the window the wait stays suspended, but past the window it fails
+  // fast — a permanent correlation error must not eat the whole .timeout().
+  const api: GhWorkflowApi = {
+    dispatch: () => Promise.resolve(),
+    findRun: () => Promise.resolve(null),
+    recentRuns: () =>
+      Promise.reject(
+        new Error("gh workflow: GET /runs → 403 (no actions:read)"),
+      ),
+    getRun: () => Promise.reject(new Error("uncorrelated, never polled")),
+    listJobs: () => Promise.resolve([]),
+  };
+  const c = clock(DISPATCH_AT);
+  const trigger = githubWorkflowWith(
+    (g) =>
+      g.repo("a/b").workflow("w").correlate("created-window").discoveryTimeout(
+        "60s",
+      ),
+    { api, now: c.now },
+  );
+  const cv = ctx(fakeState());
+  await trigger.isSatisfied(NO_SIGNALS, cv); // dispatch (baseline snapshot swallows the throw)
+  assertEquals(await trigger.isSatisfied(NO_SIGNALS, cv), false); // within window → suspended
+  c.advance(61_000); // past the window
+  await assertRejects(
+    () => Promise.resolve(trigger.isSatisfied(NO_SIGNALS, cv)),
+    WorkflowCorrelationError,
+  );
+});
+
+Deno.test("a persisted record without dispatchedAt (pre-M18) fails fast after backfilling", async () => {
+  const api = new ScriptedApi();
+  api.appears = false; // never correlates
+  const c = clock(DISPATCH_AT);
+  // A record from before M18: dispatched, but no dispatchedAt anchor.
+  const state = fakeState({
+    githubWorkflow: { dispatched: true, marker: "zuke:r1:e2e" },
+  });
+  const trigger = githubWorkflowWith(
+    (g) => g.repo("a/b").workflow("e2e.yml").discoveryTimeout("60s"),
+    { api, now: c.now },
+  );
+  const cv = ctx(state);
+  // First observation backfills and persists the anchor at the current time.
+  assertEquals(await trigger.isSatisfied(NO_SIGNALS, cv), false);
+  assertEquals(
+    typeof (state.get().githubWorkflow as { dispatchedAt?: number })
+      .dispatchedAt,
+    "number",
+  );
+  // The anchor is now stable, so advancing past the window fails fast (it would
+  // never elapse if each resume re-stamped the anchor).
+  c.advance(61_000);
+  await assertRejects(
+    () => Promise.resolve(trigger.isSatisfied(NO_SIGNALS, cv)),
+    WorkflowCorrelationError,
+    "run-name",
+  );
+});
+
+Deno.test("created-window excludes a run that already existed before dispatch", async () => {
+  // A foreign workflow_dispatch run on the same branch, created 15s before our
+  // dispatch, is in the baseline — so it is never claimed as ours.
+  const foreign: WorkflowRun = {
+    id: 100,
+    status: "completed",
+    conclusion: "success",
+    url: "u-foreign",
+    createdAt: "2026-07-18T23:59:45.000Z", // 15s before DISPATCH_AT
+    headBranch: "main",
+  };
+  let dispatched = false;
+  const api: GhWorkflowApi = {
+    dispatch: () => {
+      dispatched = true;
+      return Promise.resolve();
+    },
+    findRun: () => Promise.resolve(null),
+    // The foreign run exists both before and after dispatch; ours never appears.
+    recentRuns: () => Promise.resolve(dispatched ? [foreign] : [foreign]),
+    getRun: () =>
+      Promise.reject(new Error("a baseline run must never be polled")),
+    listJobs: () => Promise.resolve([]),
+  };
+  const c = clock(DISPATCH_AT);
+  const trigger = githubWorkflowWith(
+    (g) =>
+      g.repo("a/b").workflow("w").correlate("created-window").discoveryTimeout(
+        "60s",
+      ),
+    { api, now: c.now },
+  );
+  const cv = ctx(fakeState());
+  await trigger.isSatisfied(NO_SIGNALS, cv); // dispatch — snapshots [100] as baseline
+  assertEquals(await trigger.isSatisfied(NO_SIGNALS, cv), false); // #100 excluded → suspended
+  c.advance(61_000);
+  await assertRejects( // ours never appeared → fast-fail, never claims #100
+    () => Promise.resolve(trigger.isSatisfied(NO_SIGNALS, cv)),
+    WorkflowCorrelationError,
+  );
+});
+
 // --- The default REST transport, over a fake fetch --------------------------
 
 /** A fake `fetch` routing by `METHOD url` to a canned JSON response. */
@@ -354,6 +632,61 @@ Deno.test("RestGhWorkflowApi.findRun returns null when no run matches", async ()
   assertEquals(await api.findRun("a/b", "w.yml", "m"), null);
 });
 
+Deno.test("RestGhWorkflowApi.recentRuns maps workflow_dispatch runs", async () => {
+  const url =
+    "https://api.github.com/repos/a/b/actions/workflows/w.yml/runs?event=workflow_dispatch&per_page=100";
+  const { fetch } = routerFetch({
+    [`GET ${url}`]: {
+      workflow_runs: [
+        {
+          id: 7,
+          status: "in_progress",
+          conclusion: null,
+          html_url: "u7",
+          created_at: "2026-07-19T00:00:05.000Z",
+          head_branch: "main",
+        },
+      ],
+    },
+  });
+  const runs = await new RestGhWorkflowApi({ fetch }).recentRuns(
+    "a/b",
+    "w.yml",
+  );
+  assertEquals(runs.length, 1);
+  assertEquals(runs[0].id, 7);
+  assertEquals(runs[0].createdAt, "2026-07-19T00:00:05.000Z");
+  assertEquals(runs[0].headBranch, "main");
+});
+
+Deno.test("RestGhWorkflowApi.recentRuns tolerates a malformed payload", async () => {
+  const url =
+    "https://api.github.com/repos/a/b/actions/workflows/w.yml/runs?event=workflow_dispatch&per_page=100";
+  const { fetch } = routerFetch({ [`GET ${url}`]: { workflow_runs: "nope" } });
+  assertEquals(
+    await new RestGhWorkflowApi({ fetch }).recentRuns("a/b", "w.yml"),
+    [],
+  );
+  // A null/non-object element is skipped, not fatal.
+  const withJunk = routerFetch({
+    [`GET ${url}`]: {
+      workflow_runs: [null, {
+        id: 3,
+        status: "queued",
+        html_url: "u",
+        created_at: "t",
+        head_branch: "main",
+      }],
+    },
+  });
+  const runs = await new RestGhWorkflowApi({ fetch: withJunk.fetch })
+    .recentRuns(
+      "a/b",
+      "w.yml",
+    );
+  assertEquals(runs.map((r) => r.id), [3]);
+});
+
 Deno.test("RestGhWorkflowApi.getRun and listJobs map the GitHub shape", async () => {
   const { fetch } = routerFetch({
     "GET https://api.github.com/repos/a/b/actions/runs/9": {
@@ -361,6 +694,8 @@ Deno.test("RestGhWorkflowApi.getRun and listJobs map the GitHub shape", async ()
       status: "completed",
       conclusion: "success",
       html_url: "run-url",
+      created_at: "2026-07-19T10:00:00.000Z",
+      head_branch: "release",
     },
     "GET https://api.github.com/repos/a/b/actions/runs/9/jobs": {
       jobs: [{ name: "unit", conclusion: "failure", html_url: "job-url" }],
@@ -373,6 +708,8 @@ Deno.test("RestGhWorkflowApi.getRun and listJobs map the GitHub shape", async ()
     status: "completed",
     conclusion: "success",
     url: "run-url",
+    createdAt: "2026-07-19T10:00:00.000Z",
+    headBranch: "release",
   });
   const jobs = await api.listJobs("a/b", 9);
   assertEquals(jobs, [{ name: "unit", conclusion: "failure", url: "job-url" }]);
@@ -485,6 +822,8 @@ Deno.test("RestGhWorkflowApi maps missing run/job fields to defaults", async () 
     status: "unknown",
     conclusion: null,
     url: "",
+    createdAt: "",
+    headBranch: "",
   });
   // The null job is skipped; the empty job defaults every field.
   assertEquals(await api.listJobs("a/b", 9), [{

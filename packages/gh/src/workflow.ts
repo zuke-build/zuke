@@ -41,6 +41,21 @@
  * the awaiting target's durable state, so a resume in a **different process**
  * never re-dispatches — it polls the run it already started.
  *
+ * **Unmodified workflows.** A workflow that can't echo the marker (a long tail
+ * of repos you don't own) correlates **best-effort** with
+ * `.correlate("created-window")`: the trigger snapshots the runs that already
+ * exist at dispatch and then claims the *new* `workflow_dispatch` run on the
+ * dispatch ref created just after — excluding pre-existing runs and failing
+ * loudly if two fresh candidates sit in the window. (The residual ceiling: a
+ * foreign dispatch on the same ref that lands in the window and becomes visible
+ * before ours could still be claimed in error; prefer marker correlation when
+ * the workflow can echo the marker.) Either way, if no run is identified within a
+ * short **discovery window** (`.discoveryTimeout(...)`, default one minute), the
+ * wait fails fast with guidance — a workflow that silently never echoes the
+ * marker surfaces in ~a minute instead of eating the whole `.timeout()`. The
+ * discovery deadline is measured from the persisted dispatch time, so it holds
+ * across a suspend/resume.
+ *
  * **Auth & testing.** The default transport calls the GitHub REST API with
  * `fetch`, authenticated by `GH_TOKEN` / `GITHUB_TOKEN`. The transport is an
  * injectable seam ({@link GhWorkflowApi}), so tests drive the whole state
@@ -95,6 +110,10 @@ export interface WorkflowRun {
   conclusion: string | null;
   /** A link to the run on GitHub. */
   url: string;
+  /** ISO-8601 time the run was created — used by created-window correlation. */
+  createdAt: string;
+  /** The branch the run ran on — matched against the dispatch ref in created-window mode. */
+  headBranch: string;
 }
 
 /**
@@ -115,10 +134,38 @@ export interface GhWorkflowApi {
     workflow: string,
     marker: string,
   ): Promise<WorkflowRun | null>;
+  /**
+   * Recent `workflow_dispatch` runs of `workflow`, newest first — the candidate
+   * pool for created-window correlation (which filters them by branch and
+   * creation time). An implementation must return only `workflow_dispatch` runs.
+   */
+  recentRuns(repo: string, workflow: string): Promise<WorkflowRun[]>;
   /** The current state of run `runId`. */
   getRun(repo: string, runId: number): Promise<WorkflowRun>;
   /** The jobs of run `runId`. */
   listJobs(repo: string, runId: number): Promise<WorkflowJob[]>;
+}
+
+/**
+ * How {@link githubWorkflow} correlates the run it dispatched:
+ * - `"marker"` — match the `zuke:<runId>:<target>` marker echoed into the run's
+ *   `run-name:` (exact, but the target workflow must opt in).
+ * - `"created-window"` — claim the `workflow_dispatch` run on the dispatch ref
+ *   created just after dispatch; **best-effort**, for workflows that can't echo
+ *   the marker (fails loudly if two candidates are in the window).
+ */
+export type CorrelateMode = "marker" | "created-window";
+
+/**
+ * A {@link githubWorkflow} correlation failure the wait must **not** swallow as a
+ * transient blip: the dispatched run could not be identified (it never echoed the
+ * marker within the discovery window, or created-window correlation found more
+ * than one candidate). Thrown from the trigger so the waiting target fails with
+ * guidance instead of eating the whole `.timeout()`.
+ */
+export class WorkflowCorrelationError extends Error {
+  /** The error name, `"WorkflowCorrelationError"`. */
+  override name = "WorkflowCorrelationError";
 }
 
 /**
@@ -136,6 +183,10 @@ export class GithubWorkflowSettings {
   inputs_: Record<string, string> = {};
   /** The input name the marker is passed as (default `zuke_marker`). */
   markerInput_ = "zuke_marker";
+  /** How the dispatched run is correlated (default `"marker"`); set by {@link correlate}. */
+  correlateMode_: CorrelateMode = "marker";
+  /** How long to wait for the run to appear before failing fast (ms); set by {@link discoveryTimeout}. */
+  discoveryTimeoutMs_?: number;
   /** Poll interval hint (ms) for `zuke resume --check`. */
   pollIntervalMs_?: number;
 
@@ -175,6 +226,28 @@ export class GithubWorkflowSettings {
     return this;
   }
 
+  /**
+   * How the dispatched run is correlated: `"marker"` (default) matches the
+   * marker echoed into the run's `run-name:`; `"created-window"` claims the
+   * `workflow_dispatch` run on the dispatch ref created just after dispatch —
+   * a **best-effort** fallback for a workflow that cannot echo the marker.
+   */
+  correlate(mode: CorrelateMode): this {
+    this.correlateMode_ = mode;
+    return this;
+  }
+
+  /**
+   * How long after dispatch to keep looking for the run before failing fast with
+   * guidance (a duration string; default one minute). Bounds the "workflow never
+   * echoed the marker" failure so it surfaces in ~a minute instead of eating the
+   * whole `.timeout()`.
+   */
+  discoveryTimeout(duration: string): this {
+    this.discoveryTimeoutMs_ = parseDuration(duration);
+    return this;
+  }
+
   /** Set how often `zuke resume --check` should re-poll (a duration string). */
   pollEvery(duration: string): this {
     this.pollIntervalMs_ = parseDuration(duration);
@@ -208,6 +281,16 @@ function readNum(
 ): number | undefined {
   const value = object[key];
   return typeof value === "number" ? value : undefined;
+}
+
+/** Read a numeric array field of a JSON object, or `[]` when absent/malformed. */
+function readNumArray(
+  object: Record<string, JsonValue> | undefined,
+  key: string,
+): number[] {
+  const value = object?.[key];
+  if (!Array.isArray(value)) return [];
+  return value.filter((v): v is number => typeof v === "number");
 }
 
 /**
@@ -252,6 +335,8 @@ function persist(
   state: TargetStateHandle,
   data: {
     marker: string;
+    dispatchedAt?: number;
+    baselineIds?: number[];
     runId?: number;
     result?: WorkflowResult;
   },
@@ -260,6 +345,11 @@ function persist(
     dispatched: true,
     marker: data.marker,
   };
+  // The dispatch timestamp anchors the discovery window and the created-window
+  // filter, and the baseline excludes pre-existing runs — so every write must
+  // carry them forward (a persist replaces the entry).
+  if (data.dispatchedAt !== undefined) value.dispatchedAt = data.dispatchedAt;
+  if (data.baselineIds !== undefined) value.baselineIds = data.baselineIds;
   if (data.runId !== undefined) value.runId = data.runId;
   if (data.result !== undefined) {
     value.done = true;
@@ -293,6 +383,16 @@ const DEFAULT_TIMEOUT_MS = 30_000;
 
 /** How many pages of `per_page=100` runs `findRun` scans before giving up. */
 const MAX_RUN_PAGES = 5;
+
+/** Default discovery window: fail fast if the run has not appeared within this. */
+const DEFAULT_DISCOVERY_TIMEOUT_MS = 60_000;
+
+/**
+ * Clock-skew allowance for created-window correlation: a run whose GitHub
+ * `created_at` is up to this far *before* our dispatch timestamp still counts, so
+ * modest skew between this host and GitHub doesn't drop the run.
+ */
+const CREATED_WINDOW_SKEW_MS = 30_000;
 
 /** The default {@link GhWorkflowApi}: the GitHub REST API over `fetch`. */
 export class RestGhWorkflowApi implements GhWorkflowApi {
@@ -409,6 +509,25 @@ export class RestGhWorkflowApi implements GhWorkflowApi {
     return null;
   }
 
+  /**
+   * The newest page of `workflow_dispatch` runs of `workflow` (the API returns
+   * them newest first). One page suffices for created-window correlation — the
+   * run being sought was created seconds ago, so it is at the top.
+   */
+  async recentRuns(repo: string, workflow: string): Promise<WorkflowRun[]> {
+    const body = await this.#get(
+      `/repos/${repo}/actions/workflows/${workflow}/runs?event=workflow_dispatch&per_page=100`,
+    );
+    const runs = body.workflow_runs;
+    if (!Array.isArray(runs)) return [];
+    const out: WorkflowRun[] = [];
+    for (const raw of runs) {
+      const run = asRecord(raw);
+      if (run !== undefined) out.push(toRun(run));
+    }
+    return out;
+  }
+
   /** Fetch a run's current state. */
   async getRun(repo: string, runId: number): Promise<WorkflowRun> {
     return toRun(await this.#get(`/repos/${repo}/actions/runs/${runId}`));
@@ -441,6 +560,8 @@ function toRun(run: Record<string, JsonValue>): WorkflowRun {
     status: readStr(run, "status") ?? "unknown",
     conclusion: readStr(run, "conclusion") ?? null,
     url: readStr(run, "html_url") ?? "",
+    createdAt: readStr(run, "created_at") ?? "",
+    headBranch: readStr(run, "head_branch") ?? "",
   };
 }
 
@@ -452,6 +573,83 @@ export interface GithubWorkflowDeps {
   fetch?: typeof fetch;
   /** Environment reader for the token; defaults to `Deno.env.get`. */
   readEnv?: (name: string) => string | undefined;
+  /** The clock (epoch ms) for the discovery window; defaults to `Date.now` (tests inject it). */
+  now?: () => number;
+}
+
+/**
+ * Pick the one `workflow_dispatch` run this dispatch produced from `runs`: same
+ * branch as the dispatch `ref`, created at/after the dispatch time (minus a small
+ * skew allowance), and **not** one of the `baseline` runs that already existed
+ * when we dispatched (so a run someone else started just before ours is never
+ * claimed). Returns the sole match, `null` when none has appeared yet, or throws
+ * {@link WorkflowCorrelationError} when two or more sit in the window —
+ * best-effort correlation deliberately refuses to guess between them.
+ */
+function correlateByWindow(
+  runs: readonly WorkflowRun[],
+  ref: string,
+  dispatchedAtMs: number,
+  workflow: string,
+  baseline: readonly number[],
+): WorkflowRun | null {
+  const floor = dispatchedAtMs - CREATED_WINDOW_SKEW_MS;
+  const candidates = runs.filter((r) => {
+    if (r.headBranch !== ref || baseline.includes(r.id)) return false;
+    const created = Date.parse(r.createdAt);
+    return !Number.isNaN(created) && created >= floor;
+  });
+  if (candidates.length === 0) return null;
+  if (candidates.length > 1) {
+    const urls = candidates.map((r) => r.url).join(", ");
+    throw new WorkflowCorrelationError(
+      `githubWorkflow: created-window correlation for "${workflow}" on "${ref}" ` +
+        `is ambiguous — ${candidates.length} workflow_dispatch runs in the ` +
+        `window (${urls}). Echo the marker into run-name: and use marker ` +
+        `correlation, or dispatch on a dedicated ref.`,
+    );
+  }
+  return candidates[0];
+}
+
+/**
+ * The ids of the `workflow_dispatch` runs that already exist just before we
+ * dispatch — the baseline created-window correlation excludes so it never claims
+ * a pre-existing run. Best-effort: a transient error yields an empty baseline,
+ * and correlation then leans on the ambiguity guard.
+ */
+async function snapshotBaseline(
+  api: GhWorkflowApi,
+  repo: string,
+  workflow: string,
+): Promise<number[]> {
+  try {
+    return (await api.recentRuns(repo, workflow)).map((r) => r.id);
+  } catch {
+    return [];
+  }
+}
+
+/** Build the fast-fail guidance message for a run that never appeared, per mode. */
+function discoveryFailure(
+  mode: CorrelateMode,
+  ctx: {
+    workflow: string;
+    ref: string;
+    markerInput: string;
+    discoveryTimeoutMs: number;
+  },
+): string {
+  const secs = Math.round(ctx.discoveryTimeoutMs / 1000);
+  if (mode === "created-window") {
+    return `githubWorkflow: no workflow_dispatch run of "${ctx.workflow}" on ` +
+      `"${ctx.ref}" appeared within ${secs}s of dispatch — can "${ctx.workflow}" ` +
+      `be dispatched on that ref?`;
+  }
+  return `githubWorkflow: no run of "${ctx.workflow}" matched the marker within ` +
+    `${secs}s of dispatch. Does "${ctx.workflow}" echo the "${ctx.markerInput}" ` +
+    `input into its run-name:? (run-name: \${{ inputs.${ctx.markerInput} }}) — ` +
+    `or switch to .correlate("created-window").`;
 }
 
 /** Read an environment variable, treating missing env access as unset. */
@@ -484,6 +682,10 @@ export function githubWorkflowWith(
       fetch: deps.fetch,
       token: resolveToken(deps.readEnv ?? defaultReadEnv),
     });
+  const now = deps.now ?? (() => Date.now());
+  const mode = settings.correlateMode_;
+  const discoveryTimeoutMs = settings.discoveryTimeoutMs_ ??
+    DEFAULT_DISCOVERY_TIMEOUT_MS;
 
   return {
     descriptor: `github:${repo}:${workflow}`,
@@ -497,30 +699,80 @@ export function githubWorkflowWith(
       const marker = (entry && readStr(entry, "marker")) ??
         `zuke:${ctx.runId}:${ctx.target}`;
       const dispatched = entry !== undefined && entry.dispatched === true;
+      const baselineIds = readNumArray(entry, "baselineIds");
 
-      // 1. Dispatch once, then suspend until a later poll.
+      // Throw the fast-fail guidance error — hoisted so both the "no run" and the
+      // "API threw during discovery" paths can invoke it.
+      const failDiscovery = (): never => {
+        throw new WorkflowCorrelationError(discoveryFailure(mode, {
+          workflow,
+          ref: settings.ref_,
+          markerInput: settings.markerInput_,
+          discoveryTimeoutMs,
+        }));
+      };
+
+      // 1. Dispatch once. In created-window mode, snapshot the runs that already
+      //    exist **before** dispatching, so correlation never claims one that
+      //    was already there (e.g. a nightly cron or a colleague's run on the
+      //    same branch). Then stamp the dispatch time and suspend.
       if (!dispatched) {
+        const baseline = mode === "created-window"
+          ? await snapshotBaseline(api, repo, workflow)
+          : undefined;
         await api.dispatch(repo, workflow, settings.ref_, {
           ...settings.inputs_,
           [settings.markerInput_]: marker,
         });
-        await persist(ctx.state, { marker });
+        await persist(ctx.state, {
+          marker,
+          dispatchedAt: now(),
+          baselineIds: baseline,
+        });
         return false;
       }
 
-      // The run is dispatched; the rest is polling GitHub. A transient error
-      // here (a 5xx, a rate-limit, a network blip, a timeout) must NOT fail the
-      // build — it is treated as "not ready yet", so the wait stays suspended
-      // and retries on the next `zuke resume --check`. The persisted marker/runId
-      // are preserved, so no dispatch or correlation work is lost.
+      // Anchor the discovery clock. A record predating M18 has no dispatchedAt;
+      // backfill and persist it **once** so the deadline is stable across
+      // resumes (recomputing it every poll would reset the window forever).
+      let runId = entry === undefined ? undefined : readNum(entry, "runId");
+      let dispatchedAt = entry ? readNum(entry, "dispatchedAt") : undefined;
+      if (dispatchedAt === undefined) {
+        dispatchedAt = now();
+        await persist(ctx.state, { marker, dispatchedAt, runId, baselineIds });
+      }
+      const anchor = dispatchedAt;
+
+      // The run is dispatched; the rest is polling GitHub. A transient error here
+      // (a 5xx, a rate-limit, a network blip) must NOT fail the build — it is
+      // "not ready yet", so the wait stays suspended and retries next check. Two
+      // exceptions: a WorkflowCorrelationError is fatal (re-thrown), and while
+      // the run is still uncorrelated the discovery deadline applies even to a
+      // thrown error — a bad token or renamed workflow must fail fast, not eat
+      // the whole `.timeout()`.
       try {
-        // 2. Correlate the dispatched run by its marker, once it appears.
-        let runId = entry === undefined ? undefined : readNum(entry, "runId");
+        // 2. Correlate the dispatched run, once it appears.
         if (runId === undefined) {
-          const run = await api.findRun(repo, workflow, marker);
-          if (run === null) return false;
+          const run = mode === "created-window"
+            ? correlateByWindow(
+              await api.recentRuns(repo, workflow),
+              settings.ref_,
+              anchor,
+              workflow,
+              baselineIds,
+            )
+            : await api.findRun(repo, workflow, marker);
+          if (run === null) {
+            if (now() - anchor > discoveryTimeoutMs) failDiscovery();
+            return false;
+          }
           runId = run.id;
-          await persist(ctx.state, { marker, runId });
+          await persist(ctx.state, {
+            marker,
+            runId,
+            dispatchedAt: anchor,
+            baselineIds,
+          });
         }
 
         // 3. Poll until it completes, then record the per-job result.
@@ -534,11 +786,22 @@ export function githubWorkflowWith(
           url: run.url,
           jobs,
         };
-        await persist(ctx.state, { marker, runId, result });
+        await persist(ctx.state, {
+          marker,
+          runId,
+          result,
+          dispatchedAt: anchor,
+          baselineIds,
+        });
         return true;
-      } catch {
-        // Stay suspended and poll again next check.
-        return false;
+      } catch (error) {
+        if (error instanceof WorkflowCorrelationError) throw error; // fatal
+        // A discovery-phase error (run not yet correlated) also honours the
+        // deadline, so a persistent correlation failure fails fast.
+        if (runId === undefined && now() - anchor > discoveryTimeoutMs) {
+          failDiscovery();
+        }
+        return false; // transient → stay suspended, poll again next check
       }
     },
   };

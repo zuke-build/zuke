@@ -19,9 +19,11 @@
 
 export * from "./src/gh.ts";
 export {
+  type CorrelateMode,
   githubWorkflow,
   GithubWorkflowSettings,
   readWorkflowResult,
+  WorkflowCorrelationError,
   type WorkflowJob,
   type WorkflowResult,
 } from "./src/workflow.ts";

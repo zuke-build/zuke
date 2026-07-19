@@ -175,8 +175,11 @@ Before calling any task or settings method, confirm the real shape:
 - **Wait on an external GitHub workflow (`@zuke/gh`):** in a `.waitsFor(...)`
   gate, `s.on(githubWorkflow((g) => g.repo("o/r").workflow("e2e.yml")))`
   dispatches a workflow in another repo and suspends until it finishes; read the
-  per-job result with `readWorkflowResult(ctx.stateOf("<gate>"))`. Triggers are
-  extensible — write your own against the exported `WaitTrigger`/`WaitContext`.
+  per-job result with `readWorkflowResult(ctx.stateOf("<gate>"))`. Correlates by
+  a `run-name:` marker by default, or `.correlate("created-window")` for a
+  workflow you can't modify; fails fast (`.discoveryTimeout(...)`) if the run
+  never correlates. Triggers are extensible — write your own against the exported
+  `WaitTrigger`/`WaitContext`.
 - **OpenTelemetry export (`@zuke/otel`):** register `otel((s) => s.endpoint(…))`
   as a plugin (`run(MyBuild, { plugins: [otel(…)] })`) to ship run/target spans
   and `zuke.run.started` / `zuke.run.suspended` / `zuke.runs` counters as

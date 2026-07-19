@@ -53,10 +53,16 @@ await run(Release);
   correlation marker in the gate's durable state, and suspends. Each
   `zuke resume --check` polls; a resume in a **different process** never
   re-dispatches.
-- **Correlation.** `workflow_dispatch` returns no run id, so the trigger passes
-  a marker input (default `zuke_marker`) and matches it against the run's
-  display title — the dispatched workflow must echo it:
-  `run-name: ${{ inputs.zuke_marker }}`.
+- **Correlation.** `workflow_dispatch` returns no run id, so by default the
+  trigger passes a marker input (default `zuke_marker`) and matches it against
+  the run's display title — the dispatched workflow must echo it:
+  `run-name: ${{ inputs.zuke_marker }}`. For a workflow you can't modify, use
+  `.correlate("created-window")` to claim the run created just after dispatch on
+  the dispatch ref (best-effort; loud on ambiguity).
+- **Fast-fail.** If no run is identified within `.discoveryTimeout(...)`
+  (default one minute), the gate fails with guidance rather than eating the
+  whole `.timeout()` — measured from the persisted dispatch time, so it survives
+  suspend/resume.
 - **Result.** The per-job conclusions are published to the gate target's state;
   a dependent reads them with `readWorkflowResult(ctx.stateOf("<gate>"))`.
 - **Auth** uses `GH_TOKEN` / `GITHUB_TOKEN`; the GitHub API is an injectable
@@ -132,6 +138,10 @@ class GithubWorkflowSettings
     Extra `workflow_dispatch` inputs.
   markerInput_: string
     The input name the marker is passed as (default `zuke_marker`).
+  correlateMode_: CorrelateMode
+    How the dispatched run is correlated (default `"marker"`); set by {@link correlate}.
+  discoveryTimeoutMs_?: number
+    How long to wait for the run to appear before failing fast (ms); set by {@link discoveryTimeout}.
   pollIntervalMs_?: number
     Poll interval hint (ms) for `zuke resume --check`.
   repo(slug: string): this
@@ -146,8 +156,28 @@ class GithubWorkflowSettings
     Merge a map of `workflow_dispatch` inputs.
   markerInput(name: string): this
     Change the input name the correlation marker is dispatched as.
+  correlate(mode: CorrelateMode): this
+    How the dispatched run is correlated: `"marker"` (default) matches the
+    marker echoed into the run's `run-name:`; `"created-window"` claims the
+    `workflow_dispatch` run on the dispatch ref created just after dispatch —
+    a best-effort fallback for a workflow that cannot echo the marker.
+  discoveryTimeout(duration: string): this
+    How long after dispatch to keep looking for the run before failing fast with
+    guidance (a duration string; default one minute). Bounds the "workflow never
+    echoed the marker" failure so it surfaces in ~a minute instead of eating the
+    whole `.timeout()`.
   pollEvery(duration: string): this
     Set how often `zuke resume --check` should re-poll (a duration string).
+
+class WorkflowCorrelationError extends Error
+  A {@link githubWorkflow} correlation failure the wait must not swallow as a
+  transient blip: the dispatched run could not be identified (it never echoed the
+  marker within the discovery window, or created-window correlation found more
+  than one candidate). Thrown from the trigger so the waiting target fails with
+  guidance instead of eating the whole `.timeout()`.
+
+  override name: string
+    The error name, `"WorkflowCorrelationError"`.
 
 interface GhTasksApi
   The shape of {@link GhTasks}.
@@ -179,6 +209,15 @@ interface WorkflowResult
     A link to the run on GitHub.
   jobs: WorkflowJob[]
     Each job's conclusion, so a build can branch on which suite failed.
+
+type CorrelateMode = "marker" | "created-window"
+  How {@link githubWorkflow} correlates the run it dispatched:
+
+  - `"marker"` — match the `zuke:<runId>:<target>` marker echoed into the run's
+    `run-name:` (exact, but the target workflow must opt in).
+  - `"created-window"` — claim the `workflow_dispatch` run on the dispatch ref
+    created just after dispatch; best-effort, for workflows that can't echo
+    the marker (fails loudly if two candidates are in the window).
 ````
 
 </details>
