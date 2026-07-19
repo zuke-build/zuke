@@ -1,6 +1,6 @@
 {
   "name": "@zuke/jsr",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Typed JSR CLI task wrappers for Zuke builds — publish, add, and remove via an injection-free settings-lambda API.",
   "exports": {
     ".": "./mod.ts"

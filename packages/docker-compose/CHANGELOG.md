@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/zuke-build/zuke/compare/docker-compose-v0.3.0...docker-compose-v0.3.1) (2026-07-19)
+
+
+### Bug Fixes
+
+* pin @zuke/core ^1.25.0 across wrappers so fromNodeModules resolves ([#213](https://github.com/zuke-build/zuke/issues/213)) ([ef9baa5](https://github.com/zuke-build/zuke/commit/ef9baa50e64fa7b2382520c970d255534dbb6daa))
+
 ## [0.3.0](https://github.com/zuke-build/zuke/compare/docker-compose-v0.2.0...docker-compose-v0.3.0) (2026-06-16)
 
 
