@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.26.0](https://github.com/zuke-build/zuke/compare/core-v1.25.0...core-v1.26.0) (2026-07-19)
+
+
+### Features
+
+* **core:** concurrent registry MCP serving with a run cap ([#197](https://github.com/zuke-build/zuke/issues/197)) ([d949f45](https://github.com/zuke-build/zuke/commit/d949f4595f39cb2d229465b6a552ea02b9e8b1d6))
+* **core:** per-call identity hook for MCP servers ([#196](https://github.com/zuke-build/zuke/issues/196)) ([4cc3c98](https://github.com/zuke-build/zuke/commit/4cc3c98e948315a12c912aaa3444f3c60e32b0fe))
+* **core:** registry run-tools accept build parameters ([#194](https://github.com/zuke-build/zuke/issues/194)) ([632069f](https://github.com/zuke-build/zuke/commit/632069f36b1c7034102340ee525b187cb283b5aa))
+* **core:** state/registry conformance kit and protocol version ([#198](https://github.com/zuke-build/zuke/issues/198)) ([b2e0b5a](https://github.com/zuke-build/zuke/commit/b2e0b5a63942cd8474c77338be6ea65b70f197dd))
+
 ## [1.25.0](https://github.com/zuke-build/zuke/compare/core-v1.24.0...core-v1.25.0) (2026-07-19)
 
 
