@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.21.0](https://github.com/zuke-build/zuke/compare/core-v1.20.0...core-v1.21.0) (2026-07-19)
+
+
+### Features
+
+* **core:** external graph edges and deep dry-run ([#184](https://github.com/zuke-build/zuke/issues/184)) ([71d321a](https://github.com/zuke-build/zuke/commit/71d321ac66dfab5de1a735dd12fdf51353b1c326))
+
 ## [1.20.0](https://github.com/zuke-build/zuke/compare/core-v1.19.0...core-v1.20.0) (2026-07-18)
 
 
