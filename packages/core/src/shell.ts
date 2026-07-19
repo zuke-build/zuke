@@ -18,6 +18,7 @@
 
 import type { AbsolutePath, PathLike } from "./path.ts";
 import { ambientSignal } from "./ambient_signal.ts";
+import { ambientEcho } from "./ambient_echo.ts";
 
 /** Combine an optional timeout signal and an optional cancellation signal. */
 function combineSignals(
@@ -101,35 +102,43 @@ export class CommandOutput {
  * output is visible.
  */
 export class SpawnedProcess {
-  readonly #child: Deno.ChildProcess;
+  /** The child, or `undefined` for a no-op stub (a deep-dry-run echo). */
+  readonly #child?: Deno.ChildProcess;
 
-  /** Wrap a spawned child process and the command line that started it. */
-  constructor(child: Deno.ChildProcess, readonly commandLine: string) {
+  /** Wrap a spawned child process (or none, for a stub) and its command line. */
+  constructor(
+    child: Deno.ChildProcess | undefined,
+    readonly commandLine: string,
+  ) {
     this.#child = child;
   }
 
-  /** The operating-system process id. */
+  /** The operating-system process id (`-1` for a dry-run stub). */
   get pid(): number {
-    return this.#child.pid;
+    return this.#child?.pid ?? -1;
   }
 
-  /** Resolves when the process exits (with its status). */
+  /** Resolves when the process exits (immediate success for a dry-run stub). */
   get status(): Promise<Deno.CommandStatus> {
-    return this.#child.status;
+    return this.#child?.status ??
+      Promise.resolve({ success: true, code: 0, signal: null });
   }
 
   /**
    * Terminate the process and wait for it to exit. Sends `signal` (default
    * `SIGTERM`); if the process has not exited within `graceMs` (default 5s), it
    * escalates to `SIGKILL` so a process that ignores `SIGTERM` cannot hang
-   * teardown. A process that has already exited is treated as stopped.
+   * teardown. A process that has already exited is treated as stopped. A
+   * dry-run stub (no child) is a no-op.
    */
   async stop(
     signal: Deno.Signal = "SIGTERM",
     graceMs = 5000,
   ): Promise<void> {
+    const child = this.#child;
+    if (child === undefined) return; // dry-run stub: nothing to stop.
     try {
-      this.#child.kill(signal);
+      child.kill(signal);
     } catch {
       return; // Already exited: nothing to signal.
     }
@@ -139,17 +148,17 @@ export class SpawnedProcess {
     const graceExpired = new Promise<boolean>((resolve) => {
       timer = setTimeout(() => resolve(true), graceMs);
     });
-    const exited = this.#child.status.then(() => false);
+    const exited = child.status.then(() => false);
     const shouldKill = await Promise.race([exited, graceExpired]);
     if (timer !== undefined) clearTimeout(timer);
     if (shouldKill) {
       try {
-        this.#child.kill("SIGKILL");
+        child.kill("SIGKILL");
       } catch {
         // Raced to exit between the timeout and the kill.
       }
     }
-    await this.#child.status;
+    await child.status;
   }
 }
 
@@ -263,8 +272,22 @@ export class Command implements PromiseLike<CommandOutput> {
   }
 
   #run(): Promise<RunResult> {
-    if (!this.#result) this.#result = this.#spawn();
+    if (!this.#result) this.#result = this.#dispatch();
     return this.#result;
+  }
+
+  /**
+   * Under a deep dry run (an ambient echo sink is installed), report the resolved
+   * command line and resolve to an empty success without spawning; otherwise run
+   * the process for real.
+   */
+  #dispatch(): Promise<RunResult> {
+    const echo = ambientEcho();
+    if (echo !== undefined) {
+      echo(this.commandLine);
+      return Promise.resolve({ code: 0, stdout: "", stderr: "" });
+    }
+    return this.#spawn();
   }
 
   async #spawn(): Promise<RunResult> {
@@ -371,6 +394,13 @@ export class Command implements PromiseLike<CommandOutput> {
   spawn(): SpawnedProcess {
     const [cmd, ...args] = this.#argv;
     if (!cmd) throw new Error("Cannot spawn an empty command.");
+    // Under a deep dry run, echo the command and hand back a no-op stub instead
+    // of starting a real long-lived process.
+    const echo = ambientEcho();
+    if (echo !== undefined) {
+      echo(this.commandLine);
+      return new SpawnedProcess(undefined, this.commandLine);
+    }
     const child = new Deno.Command(cmd, {
       args,
       cwd: this.#cwd,

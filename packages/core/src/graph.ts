@@ -140,12 +140,25 @@ export function executionSet(root: TargetBuilder): Set<TargetBuilder> {
 }
 
 /**
+ * A soft ordering edge `[before, after]`: `before` must run before `after`,
+ * with no data dependency. Returned by {@link "./build.ts".Build.extraEdges} to
+ * feed a consumer's dependency graph (e.g. a monorepo's `dependency-graph.json`)
+ * into planning; an edge whose endpoints are not both in the run's execution set
+ * is ignored, and cycles are reported like any other.
+ */
+export type OrderingEdge = readonly [
+  before: TargetBuilder,
+  after: TargetBuilder,
+];
+
+/**
  * Build the "must run before" edges within the execution set for `root`. An
  * edge `from → to` means `from` runs before `to`. Shared by {@link plan} and
- * {@link planGraph}.
+ * {@link planGraph}. `extra` adds soft edges from {@link "./build.ts".Build.extraEdges}.
  */
 function planEdges(
   root: TargetBuilder,
+  extra: readonly OrderingEdge[],
 ): { set: Set<TargetBuilder>; edges: Map<TargetBuilder, Set<TargetBuilder>> } {
   const set = executionSet(root);
   const edges = new Map<TargetBuilder, Set<TargetBuilder>>();
@@ -161,6 +174,9 @@ function planEdges(
     for (const a of node.after_) addEdge(a, node); // a before node
     for (const t of node.triggers_) addEdge(node, t); // node before trigger
   }
+  // Consumer-supplied soft edges: `before` runs before `after` (ignored unless
+  // both endpoints are in this run's execution set).
+  for (const [before, after] of extra) addEdge(before, after);
   return { set, edges };
 }
 
@@ -217,8 +233,11 @@ function topoOrder(
  * @throws {GraphError} if the planned graph contains a cycle (which can happen
  *   via soft edges even when the hard graph is acyclic).
  */
-export function plan(root: TargetBuilder): TargetBuilder[] {
-  const { set, edges } = planEdges(root);
+export function plan(
+  root: TargetBuilder,
+  extra: readonly OrderingEdge[] = [],
+): TargetBuilder[] {
+  const { set, edges } = planEdges(root, extra);
   return topoOrder(set, edges);
 }
 
@@ -241,8 +260,11 @@ export interface ExecutionPlan {
  *
  * @throws {GraphError} if the planned graph contains a cycle.
  */
-export function planGraph(root: TargetBuilder): ExecutionPlan {
-  const { set, edges } = planEdges(root);
+export function planGraph(
+  root: TargetBuilder,
+  extra: readonly OrderingEdge[] = [],
+): ExecutionPlan {
+  const { set, edges } = planEdges(root, extra);
   const order = topoOrder(set, edges);
   const predecessors = new Map<TargetBuilder, TargetBuilder[]>();
   for (const node of set) predecessors.set(node, []);

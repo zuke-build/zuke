@@ -14,7 +14,9 @@
  */
 
 import type { Build, BuildResult, TargetStatus } from "./build.ts";
+import { discoverTargets } from "./build.ts";
 import { planGraph } from "./graph.ts";
+import { withAmbientEcho } from "./ambient_echo.ts";
 import {
   discoverParameters,
   ParameterError,
@@ -808,6 +810,36 @@ async function runTarget(
 
   if (dryRun) {
     openTarget(reporter, renderer, style, name, opened);
+    // A `.dryRunnable()` target with a body runs it with `$` in echo mode
+    // instead of being skipped, to preview the exact commands a real run would
+    // execute. State is in-memory only (a dry run persists nothing), and no lock
+    // or cache is taken.
+    if (t.dryRunnable_ && t.fn_ !== undefined) {
+      const echoState = inMemoryStateHandle();
+      const ctx: TargetContext = {
+        runId: env.runId,
+        target: name,
+        signal: env.signal,
+        state: echoState,
+        stateOf: (t2) => t2 === name ? echoState : inMemoryStateHandle(),
+        signals: env.signals,
+        dryRun: true,
+      };
+      const start = performance.now();
+      try {
+        await withAmbientEcho(
+          (line) => reporter.info(`  $ ${line}`),
+          () => runBody(t, ctx),
+        );
+        const ms = performance.now() - start;
+        passTarget(reporter, renderer, style, name, ms);
+        return { status: "passed", ms };
+      } catch (error) {
+        const ms = performance.now() - start;
+        failTarget(reporter, renderer, style, name, ms, error);
+        return { status: "failed", ms, error };
+      }
+    }
     for (const line of renderer.targetDryRunFooter(style, name)) {
       reporter.info(line);
     }
@@ -1361,7 +1393,10 @@ export async function execute(
     };
   }
 
-  const { order, predecessors } = planGraph(root);
+  // Soft ordering edges the build declares beyond target-level before/after
+  // (e.g. fed from an external dependency graph); cycle-checked with the rest.
+  const extraEdges = build.extraEdges(discoverTargets(build));
+  const { order, predecessors } = planGraph(root, extraEdges);
   // Evaluate up-front conditions for `whenSkipped("skip-dependencies")` targets
   // and skip them plus any dependencies that nothing else needs.
   for (const name of await conditionSkips(root, order)) skip.add(name);

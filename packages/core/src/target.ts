@@ -404,6 +404,8 @@ export class TargetBuilder {
   unlisted_ = false;
   /** Advertise this target as query-only over MCP (set by {@link readOnly}). */
   readOnly_ = false;
+  /** Run this target's body under `--dry-run` with `$` echoed (set by {@link dryRunnable}). */
+  dryRunnable_ = false;
   /** Extra cache-key contributors beyond input files (set by {@link cacheKey}). */
   readonly cacheKeys_: Array<() => string | Promise<string>> = [];
   /** Artifact paths this target produces (set by {@link produces}). */
@@ -584,6 +586,27 @@ export class TargetBuilder {
    */
   always(): this {
     this.always_ = true;
+    return this;
+  }
+
+  /**
+   * Run this target's **body under `--dry-run`** instead of skipping it, with the
+   * `$` shell in **echo mode**: each command (awaited or `.spawn()`ed) prints its
+   * resolved argv and returns an empty success **without starting a process**.
+   * Opt-in, because Zuke can only intercept `$`/{@link "./shell.ts".Command} —
+   * any *other* side effect a body performs (writing a file, calling an API
+   * directly) still happens under a dry run. Use it for bodies that are
+   * shell-command orchestration, to preview the exact commands a real run would
+   * execute. Without it, a dry run skips the body entirely (the default).
+   *
+   * Because an echoed command returns **empty stdout and exit code 0**, a body
+   * whose *control flow or command arguments* depend on a command's output
+   * (`await $\`git rev-parse HEAD\`.text()`, a `.code()` loop) should branch on
+   * the {@link "./executor.ts".TargetContext} `dryRun` flag rather than trust the
+   * echoed result.
+   */
+  dryRunnable(): this {
+    this.dryRunnable_ = true;
     return this;
   }
 

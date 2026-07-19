@@ -224,3 +224,57 @@ Deno.test("plan detects a cycle introduced by soft edges", () => {
 
   assertThrows(() => plan(root), GraphError, "cycle detected");
 });
+
+Deno.test("extra edges impose soft ordering between independent targets", () => {
+  class B extends Build {
+    a = target().executes(() => {});
+    b = target().executes(() => {});
+    root = target().dependsOn(this.a, this.b).executes(() => {});
+  }
+  const inst = new B();
+  discover(inst); // assign name_
+  const names = (extra: readonly [typeof inst.a, typeof inst.a][]) =>
+    plan(inst.root, extra).map((t) => t.name_);
+  // The default (topological) order of the two independent siblings.
+  const base = names([]);
+  assertEquals(base, ["b", "a", "root"]);
+  // An extra edge a→b forces a before b, flipping the sibling order.
+  assertEquals(names([[inst.a, inst.b]]), ["a", "b", "root"]);
+});
+
+Deno.test("an extra edge with an endpoint outside the run is ignored", () => {
+  class B extends Build {
+    a = target().executes(() => {});
+    b = target().executes(() => {});
+    orphan = target().executes(() => {}); // not reachable from root
+    root = target().dependsOn(this.a, this.b).executes(() => {});
+  }
+  const inst = new B();
+  discover(inst);
+  // `orphan` is not in root's execution set, so the edge is silently dropped
+  // and the order is unchanged from the no-edge plan.
+  assertEquals(
+    plan(inst.root, [[inst.orphan, inst.a]]).map((t) => t.name_),
+    plan(inst.root, []).map((t) => t.name_),
+  );
+});
+
+Deno.test("an extra edge that forms a cycle is reported", () => {
+  class B extends Build {
+    a = target().executes(() => {});
+    root = target().dependsOn(this.a).executes(() => {});
+  }
+  const inst = new B();
+  discover(inst);
+  // root already runs after a; forcing root before a closes a cycle.
+  assertThrows(
+    () => plan(inst.root, [[inst.root, inst.a]]),
+    GraphError,
+    "cycle detected",
+  );
+});
+
+Deno.test("Build.extraEdges defaults to no edges", () => {
+  class B extends Build {}
+  assertEquals(new B().extraEdges(new Map()), []);
+});

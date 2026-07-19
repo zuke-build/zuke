@@ -251,6 +251,24 @@ honouring `--skip` and `onlyWhen` conditions — without executing any body or
 touching the [cache](#incremental-caching-inputs--outputs). Use it to preview a
 plan before committing to it.
 
+**Deep dry-run — `.dryRunnable()`.** A target marked `.dryRunnable()` has its
+**body run** under `--dry-run` (instead of being skipped), with the `$` shell in
+**echo mode**: each command prints its resolved argv and returns an empty success
+**without spawning a process**. Use it to preview the exact commands a
+shell-orchestration target would execute:
+
+```ts
+deploy = target()
+  .dryRunnable()
+  .executes(async (ctx) => {
+    await $`kubectl apply -f ${ctx.dryRun ? "k8s/preview" : "k8s/prod"}`;
+  });
+```
+
+It is opt-in because Zuke can only intercept `$` / `Command` — any _other_ side
+effect a body performs (writing a file, calling an API directly) still happens
+under a dry run. Ordinary targets stay skipped-with-a-footer, the default.
+
 ### Assertions — `assert()` / `assertExists()` / `fail()`
 
 Fail a target fast with a clear message when an expectation does not hold.
@@ -599,6 +617,25 @@ class MyBuild extends Build {
 ```
 
 `BuildResult` is `{ ok: boolean; executed: string[]; error?: unknown }`.
+
+**External ordering — `override extraEdges(targets)`.** Return `[before, after]`
+pairs to impose soft ordering on the plan beyond the per-target `.before()` /
+`.after()` — the seam for feeding an **external dependency graph** (e.g. a
+monorepo's `dependency-graph.json`) into scheduling without wiring every edge by
+hand. The `targets` argument is the discovered map (keyed by dotted name); an
+edge whose endpoints are not both in a run's execution set is ignored, and a
+cycle is reported with the usual friendly error.
+
+```ts
+class Monorepo extends Build {
+  web = target().executes(/* … */);
+  api = target().executes(/* … */);
+  override extraEdges(t: Map<string, Target>): OrderingEdge[] {
+    const web = t.get("web"), api = t.get("api");
+    return web && api ? [[api, web]] : []; // api builds before web
+  }
+}
+```
 
 A field literally named `default` is the **default target**, run when no target
 is named on the command line.

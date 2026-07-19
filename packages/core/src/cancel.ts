@@ -419,7 +419,10 @@ export async function cancelRun(
         `"${record.rootTarget}" — cancelling without compensations.`,
     );
   } else {
-    const order = planGraph(root).order;
+    // Honour the build's soft extraEdges, exactly as execute() does, so
+    // out-of-process cancellation (zuke cancel / MCP / a timed-out wait)
+    // compensates in the same reverse-execution order as an in-process cancel.
+    const order = planGraph(root, build.extraEdges(targets)).order;
     outcome = await runCompensations(order, record, {
       runId,
       signals: new Map(Object.entries(record.signals)),
