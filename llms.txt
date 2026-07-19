@@ -48,6 +48,7 @@ Reserved commands:
 - `resume` — Resume a suspended run (or --check all suspended runs)
 - `runs` — List or show persisted run records
 - `cancel` — Cancel a run and run its compensations
+- `register` — Register this build in the build registry
 
 Option flags:
 

@@ -54,3 +54,14 @@ Deno.test("describeCli reports parameter flags, kinds, and options", () => {
   assertEquals(params.find((p) => p.flag === "tags")?.array, true);
   assertEquals(params.find((p) => p.flag === "verbose")?.boolean, true);
 });
+
+Deno.test("describeCli hides a secret parameter's option values", () => {
+  class WithSecret extends Build {
+    // A secret whose declared options are real credentials must not surface.
+    apiKey = parameter("API key").secret().options("sk-live-a", "sk-live-b");
+  }
+  const key = describeCli(new WithSecret()).parameters.find((p) =>
+    p.flag === "api-key"
+  );
+  assertEquals(key?.options, []);
+});

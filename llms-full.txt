@@ -162,6 +162,12 @@ function discoverTargets(build: Build): Map<string, TargetBuilder>
       if two properties reference the same builder instance under different
       names (a programming error that would corrupt naming).
 
+function envBuildRegistry(readEnv: (name: string) => string | undefined, host: StateHost): BuildRegistry | undefined
+  Resolve a {@link BuildRegistry} from the environment, or `undefined` when none
+  is configured. `ZUKE_REGISTRY_URL` (with an optional `ZUKE_REGISTRY_TOKEN`)
+  selects an {@link HttpBuildRegistry}; otherwise `ZUKE_REGISTRY_DIR` selects a
+  {@link FileSystemBuildRegistry}.
+
 function envCacheStore(readEnv: (name: string) => string | undefined): RemoteCacheStore | undefined
   Resolve a {@link RemoteCacheStore} from the environment, or `undefined` when
   none is configured. `ZUKE_REMOTE_CACHE_URL` (with an optional
@@ -377,6 +383,13 @@ function repoRoot(...segments: string[]): AbsolutePath
 
   @throws
       if no {@link CONFIG_FILE} is found in the cwd or any ancestor.
+
+function resolveBuildRegistry(option: BuildRegistry | false | undefined, declared: BuildRegistry | undefined, options: ResolveRegistryOptions): BuildRegistry | undefined
+  Pick the build registry by precedence: an explicit `option` wins (`false`
+  disables the registry entirely), then a `declared` registry (a build's
+  `registry()` override), then the {@link envBuildRegistry} environment
+  fallback, then — only when {@link ResolveRegistryOptions.enableDefault} — a
+  filesystem registry under `<root>/.zuke/builds`.
 
 function resolveRemoteStore(option: RemoteCacheStore | false | undefined, declared: RemoteCacheStore | undefined, readEnv: (name: string) => string | undefined): RemoteCacheStore | undefined
   Pick the remote store for a run by precedence: an explicit `option` wins
@@ -699,6 +712,23 @@ class Build
       }
     }
     ```
+  registry(): BuildRegistry | undefined
+    The {@link "./registry/registry.ts".BuildRegistry} this build registers
+    itself in (`zuke register`) and that a registry-backed `zuke mcp` server
+    discovers pipelines from. Override to declare one in code; the default is
+    none, and — unless overridden — the resolution falls back to the
+    `ZUKE_REGISTRY_URL` / `ZUKE_REGISTRY_DIR` environment variables, then (for
+    `zuke register`) a filesystem registry under `<root>/.zuke/builds`. Kept a
+    separate concern from {@link stateStore} (a run history and a build catalog
+    are different things), so a consumer can host a richer catalog as a plugin.
+
+    ```ts
+    class CD extends Build {
+      override registry() {
+        return new HttpBuildRegistry({ url: this.registryUrl.value, token: this.registryToken.value });
+      }
+    }
+    ```
 
 class CiFile
   A declared CI file. Assign one (via {@link cicd}) to a build field and Zuke
@@ -764,6 +794,29 @@ class FileSecretSettings
   async resolve_(): Promise<string>
     Read the file and return its content as the secret. A missing or
     unreadable file throws a {@link SecretError} naming the path.
+
+class FileSystemBuildRegistry implements BuildRegistry
+  A {@link BuildRegistry} that writes one `<id>.json` file per build under a
+  directory.
+
+  Security. `dir` is trusted configuration — the location you choose to
+  store the build catalog (from `ZUKE_REGISTRY_DIR` or an explicit registry),
+  the same posture as {@link "../state/fs_store.ts".FileSystemStateStore}. The
+  only untrusted value that reaches a path is the build id, validated at
+  every point a path is built, so a traversal cannot be smuggled in via an id.
+
+  constructor(dir: string, host: StateHost)
+    Build the registry over `dir` (created on first write). Filesystem access
+    goes through `host`, which defaults to
+    {@link "../state/store.ts".defaultStateHost}.
+  async getBuild(id: string): Promise<{ descriptor: BuildDescriptor; version: string; } | null>
+    Fetch a build and the content-hash version of its stored file.
+  async register(descriptor: BuildDescriptor, expectedVersion: string | null): Promise<PutBuildResult>
+    Publish `descriptor` under an exclusive lock, guarding the expected version.
+  async deregister(id: string): Promise<void>
+    Remove a registered build under an exclusive lock; a missing file is a no-op.
+  async listBuilds(query: BuildQuery): Promise<BuildSummary[]>
+    List builds matching `query`, newest first. Unreadable files are skipped.
 
 class FileSystemCacheStore implements RemoteCacheStore
   A {@link RemoteCacheStore} backed by a shared or mounted directory.
@@ -842,6 +895,25 @@ class Group
     Members that declared themselves part of this group, in declaration order.
   name_?: string
     Property name, assigned during discovery. Undefined until then.
+
+class HttpBuildRegistry implements BuildRegistry
+  A {@link BuildRegistry} backed by HTTP.
+
+  Security. The `url` and `token` are trusted configuration — build
+  descriptors (structural CLI metadata plus a launch location) are sent to that
+  host, so point it only at a service you control and prefer a secret parameter
+  or environment variable over a hard-coded value.
+
+  constructor(options: HttpBuildRegistryOptions)
+    Build the registry from its URL, optional token, and `fetch` seam.
+  async getBuild(id: string): Promise<{ descriptor: BuildDescriptor; version: string; } | null>
+    `GET /builds/:id` → descriptor + `ETag`; a `404` is a miss.
+  async register(descriptor: BuildDescriptor, expectedVersion: string | null): Promise<PutBuildResult>
+    `PUT /builds/:id` guarded by `If-Match` / `If-None-Match`; `412` → conflict.
+  async deregister(id: string): Promise<void>
+    `DELETE /builds/:id`; a missing build (`404`) is not an error.
+  async listBuilds(query: BuildQuery): Promise<BuildSummary[]>
+    `GET /builds?name=&since=` → an array of {@link BuildSummary}.
 
 class HttpCacheStore implements RemoteCacheStore
   A {@link RemoteCacheStore} backed by HTTP: `GET <url>/<key>` fetches an
@@ -1598,6 +1670,51 @@ interface BuildCache
   save(): Promise<void>
     Persist the store if anything changed.
 
+interface BuildDescriptor
+  A versioned snapshot of one registered build. Persisted as JSON; a registry's
+  opaque `version` (an ETag / content hash) drives compare-and-swap writes so
+  two registrations racing at the same version cannot both win.
+
+  id: string
+    Stable id of the build (its class name, unless overridden).
+  name: string
+    Human-facing build name (the build class name).
+  location: BuildLocation
+    Where the build lives, so a runner can launch it.
+  surface: CliDescription
+    The build's CLI surface, exactly as {@link "../describe.ts".describeCli} produces it.
+  actor: string
+    Who registered the build (a resolved actor; secrets never appear here).
+  createdAt: string
+    ISO-8601 timestamp when the build was first registered.
+  updatedAt: string
+    ISO-8601 timestamp of the last registration write.
+
+interface BuildQuery
+  Filters for {@link "./registry.ts".BuildRegistry.listBuilds}; all fields optional.
+
+  name?: string
+    Keep only builds whose `name` equals this.
+  since?: string
+    Keep only builds registered at or after this ISO-8601 timestamp.
+
+interface BuildRegistry
+  Pluggable persistence for {@link BuildDescriptor}s. `version` is an opaque
+  token (an ETag or content hash) used for optimistic concurrency: a write only
+  lands if the stored version still matches the one the writer last read, so two
+  registrations racing at the same version cannot both win.
+
+  getBuild(id: string): Promise<{ descriptor: BuildDescriptor; version: string; } | null>
+    Fetch a build and its current version, or `null` if it is not registered.
+  register(descriptor: BuildDescriptor, expectedVersion: string | null): Promise<PutBuildResult>
+    Write `descriptor` only if the stored version equals `expectedVersion`
+    (`null` meaning "must not exist yet"). Returns the new version, or a conflict
+    when the stored version has moved on — the caller re-reads and retries.
+  deregister(id: string): Promise<void>
+    Remove a registered build by id; a missing build is not an error.
+  listBuilds(query: BuildQuery): Promise<BuildSummary[]>
+    List registered builds matching `query`, newest first (by `createdAt`, then `id`).
+
 interface BuildResult
   Result passed to the {@link Build.onFinish} lifecycle hook.
 
@@ -1619,6 +1736,20 @@ interface BuildResult
     The run's id, when a run identity was established (always, in practice —
     every {@link "./executor.ts".execute} generates one). Lets the caller point
     a follow-up (`zuke runs show`, `zuke cancel`) at this run.
+
+interface BuildSummary
+  A compact registry listing row, returned by {@link "./registry.ts".BuildRegistry.listBuilds}.
+
+  id: string
+    The build id.
+  name: string
+    The build name.
+  actor: string
+    Who last registered the build.
+  createdAt: string
+    ISO-8601 first-registration timestamp.
+  updatedAt: string
+    ISO-8601 timestamp of the last registration write.
 
 interface CancelOptions
   Options for {@link cancelRun}.
@@ -2006,6 +2137,16 @@ interface GlobOptions
   cwd?: string
     Directory to resolve the pattern against (default: `Deno.cwd()`).
 
+interface HttpBuildRegistryOptions
+  Configuration for an {@link HttpBuildRegistry}.
+
+  url: string
+    The base URL build endpoints are built under (any trailing slash is ignored).
+  token?: string
+    A bearer token sent as `Authorization: Bearer <token>`, if set.
+  fetch?: typeof fetch
+    The `fetch` implementation; defaults to the global. Overridable for tests.
+
 interface HttpCacheStoreOptions
   Configuration for an {@link HttpCacheStore}.
 
@@ -2240,6 +2381,19 @@ interface Reporter
     Write an informational line.
   error(line: string): void
     Write an error line.
+
+interface ResolveRegistryOptions
+  Inputs {@link resolveBuildRegistry} needs to build the default filesystem registry.
+
+  readEnv: (name: string) => string | undefined
+    Reads an environment variable (injectable for tests).
+  host: StateHost
+    Filesystem effects for the default/env filesystem registry.
+  defaultDir: string
+    Directory the default filesystem registry writes to (`<root>/.zuke/builds`).
+  enableDefault: boolean
+    Fall back to the default filesystem registry when nothing else is
+    configured. `zuke register` sets this so the command works out of the box.
 
 interface ResolveStateOptions
   Inputs {@link resolveStateStore} needs to build the default filesystem store.
@@ -2674,6 +2828,12 @@ type AnnouncementLevel = "success" | "failure" | "warning" | "info"
 type Architecture = "x86_64" | "aarch64"
   The CPU architectures Zuke recognises.
 
+type BuildLocation = { kind: "module"; module: string; cwd: string; repo?: string; } | { kind: "command"; command: string[]; cwd: string; repo?: string; }
+  Where a registered build lives, so a runner can launch it. Two forms: a
+  `module` (the entry file `deno run` executes — the form `zuke register`
+  writes) or an explicit `command` (a launch argv, for a build fronted by a
+  wrapper script). Both carry the working directory and, in CI, the repository.
+
 type ChangedFilesFn = (base: string) => Promise<string[]>
   Lists the files changed since `base` (a git revision), each path relative to
   the repository root. The seam behind {@link ExecuteOptions.affected}; defaults
@@ -2739,6 +2899,9 @@ type PathLike = string | AbsolutePath
   A filesystem path accepted by Zuke APIs: either a plain string or an
   {@link AbsolutePath}. Anywhere a tool wrapper or build helper takes a path,
   it accepts a `PathLike` and coerces it to a string.
+
+type PutBuildResult = { ok: true; version: string; } | { ok: false; conflict: true; }
+  The result of a {@link BuildRegistry.register} compare-and-swap write.
 
 type PutResult = { ok: true; version: string; } | { ok: false; conflict: true; }
   The result of a {@link StateStore.putRun} compare-and-swap write.

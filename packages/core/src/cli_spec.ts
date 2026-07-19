@@ -41,6 +41,9 @@ export const RUNS_COMMAND = "runs";
 /** The `cancel` command: cancel a run and run its compensations. */
 export const CANCEL_COMMAND = "cancel";
 
+/** The `register` command: record this build in the build registry. */
+export const REGISTER_COMMAND = "register";
+
 /** Every reserved command, in help and completion order. */
 export const RESERVED_COMMANDS: readonly ReservedCommand[] = [
   { name: GRAPH_COMMAND, description: "Show the dependency graph" },
@@ -64,6 +67,10 @@ export const RESERVED_COMMANDS: readonly ReservedCommand[] = [
   {
     name: CANCEL_COMMAND,
     description: "Cancel a run and run its compensations",
+  },
+  {
+    name: REGISTER_COMMAND,
+    description: "Register this build in the build registry",
   },
 ];
 

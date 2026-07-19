@@ -162,6 +162,26 @@ export {
   type ResolveStateOptions,
   resolveStateStore,
 } from "./src/state/resolve.ts";
+export {
+  type BuildDescriptor,
+  type BuildLocation,
+  type BuildQuery,
+  type BuildSummary,
+} from "./src/registry/descriptor.ts";
+export {
+  type BuildRegistry,
+  type PutBuildResult,
+} from "./src/registry/registry.ts";
+export { FileSystemBuildRegistry } from "./src/registry/fs_registry.ts";
+export {
+  HttpBuildRegistry,
+  type HttpBuildRegistryOptions,
+} from "./src/registry/http_registry.ts";
+export {
+  envBuildRegistry,
+  resolveBuildRegistry,
+  type ResolveRegistryOptions,
+} from "./src/registry/resolve.ts";
 export { type AbsolutePath, absolutePath, type PathLike } from "./src/path.ts";
 export { CONFIG_FILE, repoRoot } from "./src/config.ts";
 export {
