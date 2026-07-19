@@ -25,6 +25,18 @@ const dispatchFile = Deno.env.get("GH_DISPATCH_FILE");
 const status = Deno.env.get("GH_RUN_STATUS") ?? "in_progress";
 const conclusion = Deno.env.get("GH_RUN_CONCLUSION") ?? "";
 
+/** The dispatched run, as the file-backed fake reports it. */
+function fakeRun(): WorkflowRun {
+  return {
+    id: 777,
+    status,
+    conclusion: conclusion === "" ? null : conclusion,
+    url: "https://gh/r777",
+    createdAt: "2026-07-19T00:00:05.000Z",
+    headBranch: "main",
+  };
+}
+
 /** A file-backed fake: `dispatch` records the marker; status comes from the env. */
 const api: GhWorkflowApi = {
   dispatch(_repo, _workflow, _ref, inputs): Promise<void> {
@@ -36,20 +48,13 @@ const api: GhWorkflowApi = {
     return Promise.resolve();
   },
   findRun(): Promise<WorkflowRun | null> {
-    return Promise.resolve({
-      id: 777,
-      status,
-      conclusion: conclusion === "" ? null : conclusion,
-      url: "https://gh/r777",
-    });
+    return Promise.resolve(fakeRun());
+  },
+  recentRuns(): Promise<WorkflowRun[]> {
+    return Promise.resolve([fakeRun()]);
   },
   getRun(): Promise<WorkflowRun> {
-    return Promise.resolve({
-      id: 777,
-      status,
-      conclusion: conclusion === "" ? null : conclusion,
-      url: "https://gh/r777",
-    });
+    return Promise.resolve(fakeRun());
   },
   listJobs(): Promise<WorkflowJob[]> {
     return Promise.resolve([

@@ -250,8 +250,12 @@ class Deploy extends Build {
   `resumeWhen(fn, { interval? })` (async predicate, re-checked on resume), and
   `githubWorkflow((g) => g.repo(...).workflow(...))` from `@zuke/gh` (dispatches
   an external GitHub Actions workflow, satisfied when it finishes; read its
-  per-job result with `readWorkflowResult(ctx.stateOf("<gate>"))`). Write your
-  own trigger against the exported `WaitTrigger` / `WaitContext` interface.
+  per-job result with `readWorkflowResult(ctx.stateOf("<gate>"))`). By default it
+  correlates via a marker echoed into the run's `run-name:`; for a workflow you
+  can't modify use `.correlate("created-window")` (best-effort). Either way it
+  **fails fast** (`.discoveryTimeout(...)`, default 1m) if the run never
+  correlates, instead of eating the whole `.timeout()`. Write your own trigger
+  against the exported `WaitTrigger` / `WaitContext` interface.
 - Needs a state store (a build with `.waitsFor()` enables `.zuke/runs` by
   default). A resume is a fresh process, so **only `ctx.state`/`ctx.signals`
   cross the boundary**. See `docs/orchestration.md`.

@@ -31,29 +31,34 @@ class FakeApi implements GhWorkflowApi {
   conclusion: string | null = null;
   dispatched = 0;
   throwOnGetRun = false;
+  appears = true; // whether the dispatched run can be correlated
+
+  #run(): WorkflowRun {
+    return {
+      id: 55,
+      status: this.status,
+      conclusion: this.conclusion,
+      url: "u",
+      createdAt: "2026-07-19T00:00:05.000Z",
+      headBranch: "main",
+    };
+  }
 
   dispatch(): Promise<void> {
     this.dispatched++;
     return Promise.resolve();
   }
   findRun(): Promise<WorkflowRun | null> {
-    return Promise.resolve({
-      id: 55,
-      status: this.status,
-      conclusion: this.conclusion,
-      url: "u",
-    });
+    return Promise.resolve(this.appears ? this.#run() : null);
+  }
+  recentRuns(): Promise<WorkflowRun[]> {
+    return Promise.resolve(this.appears ? [this.#run()] : []);
   }
   getRun(): Promise<WorkflowRun> {
     if (this.throwOnGetRun) {
       return Promise.reject(new Error("gh workflow: GET /runs/55 → 502"));
     }
-    return Promise.resolve({
-      id: 55,
-      status: this.status,
-      conclusion: this.conclusion,
-      url: "u",
-    });
+    return Promise.resolve(this.#run());
   }
   listJobs(): Promise<WorkflowJob[]> {
     return Promise.resolve([
@@ -104,6 +109,40 @@ Deno.test("a githubWorkflow gate dispatches, suspends, then resumes on completio
       await store.getRun(id).then((g) => g?.record.status),
       "succeeded",
     );
+  });
+});
+
+Deno.test("a githubWorkflow gate fails fast when the run never correlates", async () => {
+  await withStateDir(async (dir) => {
+    const api = new FakeApi();
+    api.appears = false; // the target workflow never echoes the marker
+    let t = Date.parse("2026-07-19T00:00:00.000Z");
+    const now = () => t;
+    class Ship extends Build {
+      e2e = target().waitsFor((s) =>
+        s.on(
+          githubWorkflowWith(
+            (g) =>
+              g.repo("acme/app").workflow("e2e.yml").discoveryTimeout("60s"),
+            { api, now },
+          ),
+        )
+      );
+      ship = target().dependsOn(this.e2e).executes(() => {});
+    }
+
+    // First process: dispatch + suspend.
+    const first = await runCli(Ship, ["ship"]);
+    assertEquals(first.code, 0);
+    const store = new FileSystemStateStore(dir, defaultStateHost);
+    const id = (await store.listRuns({}))[0].id;
+    assertEquals((await store.getRun(id))?.record.status, "suspended");
+
+    // Advance past the discovery window; the resume fails fast (not a timeout).
+    t += 61_000;
+    const resumed = await runCli(Ship, ["resume", id, "--check"]);
+    assertEquals(resumed.code, 1);
+    assertEquals((await store.getRun(id))?.record.status, "failed");
   });
 });
 

@@ -92,10 +92,19 @@ class Release extends Build {
   correlation marker in the gate's durable state, and suspends. Each
   `resume --check` polls the run; a resume in a **different process** never
   re-dispatches, because the marker persisted with the run.
-- **Correlation.** `workflow_dispatch` returns no run id, so the trigger passes a
-  marker input (default `zuke_marker`) and matches it against the run's display
-  title — the dispatched workflow must echo it into `run-name`:
-  `run-name: ${{ inputs.zuke_marker }}`.
+- **Correlation.** `workflow_dispatch` returns no run id, so by default the
+  trigger passes a marker input (default `zuke_marker`) and matches it against
+  the run's display title — the dispatched workflow must echo it into `run-name`:
+  `run-name: ${{ inputs.zuke_marker }}`. A workflow you can't modify (the long
+  tail of repos you don't own) correlates **best-effort** with
+  `.correlate("created-window")`: the trigger claims the `workflow_dispatch` run
+  on the dispatch ref created just after dispatch, and fails loudly if two
+  candidates share the window.
+- **Fast-fail.** If no run is identified within a short discovery window
+  (`.discoveryTimeout(...)`, default one minute), the gate fails with guidance
+  instead of eating the whole `.timeout()` — so a workflow that silently never
+  echoes the marker surfaces in ~a minute. The deadline is measured from the
+  persisted dispatch time, so it holds across a suspend/resume.
 - **Result.** On completion the per-job conclusions (`{ passed, jobs: [{ name,
   conclusion, url }] }`) are written to the gate target's state; a dependent
   reads them with `readWorkflowResult(ctx.stateOf("<gate>"))` and branches on a
