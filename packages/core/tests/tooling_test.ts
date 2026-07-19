@@ -143,8 +143,14 @@ function plantBin(dir: string, name: string): string {
   return path.replace(/\\/g, "/");
 }
 
-/** A wrapper whose binary is resolved from `node_modules` by default. */
+/**
+ * A wrapper whose binary is resolved from `node_modules` by default. The
+ * platform is pinned to `linux` so the walk/precedence tests match a planted
+ * bare shim regardless of the host OS; the Windows `.cmd`/`.bat` matching has
+ * its own tests that set `os_ = "windows"` explicitly.
+ */
 class NodeToolSettings extends ToolSettings {
+  override os_: typeof Deno.build.os = "linux";
   protected override defaultTool(): string {
     return "mytool";
   }
@@ -206,8 +212,10 @@ Deno.test("ZUKE_TOOL_RESOLUTION flips a path-default wrapper repo-wide", () => {
   const prev = Deno.env.get("ZUKE_TOOL_RESOLUTION");
   try {
     const bin = plantBin(root, "mytool");
-    // EvalSettings defaults to "path"; the ambient override switches it on.
+    // A "path"-default wrapper; the ambient override switches it on. Pinned to
+    // linux so the planted bare shim matches regardless of the host OS.
     class MyTool extends ToolSettings {
+      override os_: typeof Deno.build.os = "linux";
       protected override defaultTool(): string {
         return "mytool";
       }
