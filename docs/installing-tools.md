@@ -10,10 +10,11 @@ Tools are provisioned in Zuke's fluent settings-lambda style — the same
 `(s) => s.method(...)` shape the [tool wrappers](./tools.md) use — through two
 entry points in `@zuke/core`:
 
-| API                                                          | Installs   | Reach for it when                |
-| ------------------------------------------------------------ | ---------- | -------------------------------- |
-| [`ToolTasks.install((s) => …)`](#tooltasksinstall--one-tool) | one tool   | you need a single binary         |
-| [`toolchain()`](#toolchain--many-tools)                      | many tools | a build depends on several tools |
+| API                                                          | Installs      | Reach for it when                    |
+| ------------------------------------------------------------ | ------------- | ------------------------------------ |
+| [`ToolTasks.install((s) => …)`](#tooltasksinstall--one-tool) | one binary    | you need a single release binary     |
+| [`toolchain()`](#toolchain--many-tools)                      | many tools    | a build depends on several tools     |
+| [`ToolTasks.npm(...)` / `.npm(...)`](#npm-package-tools)      | an npm package | the tool ships on the npm registry   |
 
 Both return the installed binary's [`AbsolutePath`](./paths.md); hand it to a
 **[wrapper](./tools.md)** (`.toolPath(...)`), to `CmdTasks`, or to `defineTool`
@@ -190,7 +191,8 @@ class Deploy extends Build {
 - **Custom downloader.** `install({ download })` swaps the downloader for every
   tool — a test seam — and a per-tool `.download(...)` applies when the
   toolchain sets none.
-- **Introspection.** `chain.tools` returns the configured settings in order.
+- **Introspection.** `chain.tools` returns the configured release settings in
+  order; `chain.npmTools` the [npm-package tools](#npm-package-tools).
 - **Cheap to re-run.** Because a matching checksum is a cache hit, calling
   `install()` again (locally or on CI) is a no-op once the tools are present.
 
@@ -201,6 +203,45 @@ const tools = toolchain()
   .tool((s) => s.name("helm").url(helmUrl))
   .tool((s) => s.name("kubectl").url(kubectlUrl));
 ```
+
+## npm-package tools
+
+Not every tool ships a release binary — many (`vitest`, `dprint`,
+`@nestjs/cli`, …) are published on the **npm registry**. `Toolchain.npm(...)`
+provisions one as a version-pinned, cached tool without an ambient `npm ci`:
+
+```ts
+import { Build, target, toolchain } from "jsr:@zuke/core";
+import { VitestTasks } from "jsr:@zuke/vitest";
+
+class Test extends Build {
+  tools = toolchain((t) => t.npm({ name: "vitest", version: "4.1.9" }));
+
+  test = target().executes(async () => {
+    const bins = await this.tools.install();
+    await VitestTasks.run((s) => s.toolPath(bins.get("vitest")));
+  });
+}
+```
+
+Each package installs under `<destDir>/npm/<name>@<version>` via
+`npm install --prefix <dir> --no-save <name>@<version>`, and `install()` returns
+its bin under the same `Map<name, AbsolutePath>` as the release tools. For a
+one-off outside a toolchain, `ToolTasks.npm(spec, options?)` (or the underlying
+`installNpmTool`) does the same for a single package.
+
+- **npm is the one ambient requirement.** It resolves and downloads the package;
+  everything else is Zuke's. Nothing else needs to be on `PATH`.
+- **Pinned and cached.** A marker file records the `{ name, version }`, so a
+  later `install()` whose marker matches — and whose bin is still present — skips
+  npm entirely.
+- **Different bin name.** When a package's bin differs from its name, set `bin`:
+  `{ name: "@nestjs/cli", version: "10.4.0", bin: "nest" }` resolves the `nest`
+  bin.
+- **Hermetic pins compose with `node_modules` resolution.** An explicit
+  `.toolPath(bins.get(...))` always wins over
+  [`node_modules/.bin` resolution](./tools.md#resolving-from-node_modulesbin),
+  so a `toolchain()` pin stays authoritative even inside a Node workspace.
 
 ## Working with an installed tool
 

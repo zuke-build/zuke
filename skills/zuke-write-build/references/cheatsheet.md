@@ -387,15 +387,19 @@ hand it to a wrapper's `.toolPath(...)`, to `CmdTasks`, or to `defineTool`.
 ```ts
 import { toolchain, ToolTasks } from "jsr:@zuke/core";
 
-// One tool:
+// One release binary:
 bin = target().executes(async () =>
   await ToolTasks.install((s) =>
-    s.name("shellcheck").version("0.10.0" /* …checksum */)
+    s.name("shellcheck").url(shellcheckUrl).checksum(shellcheckSum)
   )
 );
 
-// Many at once:
-tools = toolchain((t) => t.add(/* … */).add(/* … */));
+// Many at once — release binaries via .tool(), npm packages via .npm():
+tools = toolchain((t) =>
+  t.tool((s) => s.name("helm").url(helmUrl))
+    .npm({ name: "vitest", version: "4.1.9" })
+);
+// install() returns Map<name, AbsolutePath>; npm packages need `npm` on PATH.
 ```
 
 **Resolve from `node_modules/.bin`** — in a Node monorepo where tool binaries
