@@ -157,11 +157,42 @@ dropped and every `.secret()` parameter's value is masked — before anything is
 persisted.
 
 The trail lives in a store-level record; read it with `zuke runs show mcp-audit`
-(or the `show_run` tool). The actor resolves by precedence: `--actor` →
-`ZUKE_ACTOR` → the CI actor → the connecting client's `initialize` name →
-`"anonymous"`. The client name is an **untrusted label** for the trail only — it
-never influences authorization. On a shared HTTP endpoint it reflects the most
-recent client to connect, so set `--actor` for authoritative attribution there.
+(or the `show_run` tool). The actor resolves by precedence: the **identity
+hook** (below) → `--actor` → `ZUKE_ACTOR` → the CI actor → the connecting
+client's `initialize` name → `"anonymous"`. The client name is an **untrusted
+label** for the trail only — it never influences authorization. On a shared HTTP
+endpoint it reflects the most recent client to connect, so use the identity hook
+(or `--actor`) for authoritative attribution there.
+
+### Trusted per-call identity
+
+On a shared, multi-user endpoint "who did this" must not be self-reported. Front
+the server with an authenticating reverse proxy (e.g. OAuth 2.1) that injects
+the real caller in a header it strips from client input, and resolve it with a
+per-request **identity hook** — `override mcpIdentity()` on the build:
+
+```ts
+class ControlPlane extends Build {
+  override mcpIdentity() {
+    return (ctx: McpRequestContext) => {
+      const sub = ctx.headers.get("x-forwarded-user"); // proxy-injected
+      if (!sub) throw new Error("no identity from proxy"); // any throw rejects
+      return { actor: sub, via: "oauth-proxy" };
+    };
+  }
+}
+```
+
+The hook runs **once per request, before any dispatch**. Its `actor` overrides
+`--actor`, the environment, and the client label for that call, and flows to the
+audit trail, run records, lock-holder identity, and — for a registry-spawned
+build — the child's `ZUKE_ACTOR`. It is **fail-closed**: a hook that throws _or_
+yields no usable actor (an empty string, e.g. from `headers.get(…) ?? ""` when
+the header is missing) **rejects the request** with an auth error — nothing
+executes, nothing is written, and it never falls back to the static actor, so
+the hook's precedence stays absolute. Without a hook, stdio/local behavior is
+unchanged. This is deliberately the _minimal_ seam — TLS, the OAuth flow, and
+header stripping are the proxy's job, not Zuke's.
 
 ## Registry mode (dynamic discovery)
 

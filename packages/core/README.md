@@ -787,6 +787,28 @@ class Build
       }
     }
     ```
+  mcpIdentity(): McpIdentityHook | undefined
+    A per-request identity hook for `zuke mcp` — resolve a trusted caller
+    from the request context (an authenticating reverse proxy's header) so a
+    shared, multi-user server attributes each call to the real engineer rather
+    than a client-self-reported label. When set, the resolved actor overrides
+    `--actor`, the environment, and the client label for that call, and flows to
+    the audit trail, run records, lock holders, and (for a registry-spawned
+    build) the child's `ZUKE_ACTOR`; a throwing hook rejects the request before
+    anything runs. Default: none — stdio/local use is unchanged.
+
+    ```ts
+    class ControlPlane extends Build {
+      override mcpIdentity() {
+        return (ctx: McpRequestContext) => {
+          // The proxy strips any client copy of this header and injects its own.
+          const sub = ctx.headers.get("x-forwarded-user");
+          if (!sub) throw new Error("no identity from proxy");
+          return { actor: sub, via: "oauth-proxy" };
+        };
+      }
+    }
+    ```
 
 class CiFile
   A declared CI file. Assign one (via {@link cicd}) to a build field and Zuke
@@ -2317,6 +2339,25 @@ interface LockHolder
   runUrl?: string
     A link to the holding run (e.g. its CI job), when known.
 
+interface McpIdentity
+  A trusted caller identity, resolved per request by a {@link McpIdentityHook}
+  (typically from an authenticating reverse proxy's header). Its
+  {@link McpIdentity.actor} is the highest-precedence attribution — it overrides
+  `--actor`, the environment, and the client's self-reported label for the call.
+
+  actor: string
+    The authenticated actor (e.g. an OAuth subject).
+  via?: string
+    How the identity was established (e.g. `"oauth-proxy"`); informational.
+
+interface McpRequestContext
+  The per-request context a transport hands the message handler. Carries the
+  request's headers, so a server's identity hook can authenticate the caller
+  from a trusted proxy header. Empty on the stdio transport (no headers).
+
+  readonly headers: Headers
+    The request headers; an empty {@link Headers} on stdio.
+
 interface OpenCacheOptions
   Optional extras for {@link openCache}: a remote store and a warning sink.
 
@@ -2963,6 +3004,12 @@ type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string
 type LockResult = { ok: true; token: string; } | { ok: false; holder: LockHolder; }
   The result of {@link StateStore.acquireLock}: a `token` proving ownership, or
   the current `holder` when the lock is already held.
+
+type McpIdentityHook = (ctx: McpRequestContext) => McpIdentity
+  Resolve a trusted {@link McpIdentity} from a request's context. Invoked once
+  per message, before any dispatch; throwing rejects the whole request with
+  an auth error, so nothing executes and nothing is written to state — the seam
+  a proxy in front of the server uses to inject an authenticated identity.
 
 type OnCancel = TargetBuilder | (() => TargetBuilder)
   A compensation registered with {@link TargetBuilder.onCancel}: either a

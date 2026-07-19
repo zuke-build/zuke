@@ -592,6 +592,16 @@ parameters are omitted from the descriptor entirely, so a secret can neither be
 requested nor forwarded; the child resolves it from its own environment /
 `.from()` source.
 
+**Trusted per-call identity** (`docs/mcp.md`): on a shared, multi-user endpoint,
+`override mcpIdentity()` returns a hook `(ctx) => ({ actor, via? })` that
+resolves the **real** caller from a request header an authenticating reverse
+proxy injects (`ctx.headers.get("x-forwarded-user")`). It runs once per request
+before any dispatch; its actor overrides `--actor`/env/the client label and
+flows to the audit trail, run records, lock holders, and a registry-spawned
+child's `ZUKE_ACTOR`. A **throwing hook rejects the request** (nothing runs,
+nothing is written). The minimal seam — TLS/OAuth/header-stripping is the
+proxy's job.
+
 **Caching:** a target with `.inputs(...)`/`.outputs(...)` is incremental
 (skipped and reported `cached` when inputs are unchanged and outputs exist). Add
 a **remote store** to share results across machines — a fresh CI checkout or a

@@ -15,6 +15,7 @@ import { resolveBuildRegistry } from "../registry/resolve.ts";
 import {
   type ByteWriter,
   type JsonRpcResponse,
+  type McpRequestContext,
   serveStdio,
 } from "./jsonrpc.ts";
 import { serveHttp } from "./http.ts";
@@ -23,8 +24,14 @@ import { RegistryMcpServer, type RegistryRunner } from "./registry_server.ts";
 
 /** A thing that answers MCP messages — either server flavour drives a transport. */
 interface McpHandler {
-  /** Handle one parsed JSON-RPC message, or return `null` for a notification. */
-  handleMessage(message: unknown): Promise<JsonRpcResponse | null>;
+  /**
+   * Handle one parsed JSON-RPC message with its per-request context (headers on
+   * HTTP; empty on stdio), or return `null` for a notification.
+   */
+  handleMessage(
+    message: unknown,
+    ctx?: McpRequestContext,
+  ): Promise<JsonRpcResponse | null>;
 }
 
 /** A parsed `--http` bind address. */
@@ -127,6 +134,9 @@ export async function serveMcp(
   // then hand them to the server alongside the caller's options.
   const store = resolveMcpStore(build, options.stateStore, readEnv);
   const operatorToken = options.operatorToken ?? readEnv("ZUKE_OPERATOR_TOKEN");
+  // The trusted identity hook: an explicit option wins, else the build declares
+  // one via `override mcpIdentity()` (the CLI-reachable seam).
+  const identity = options.identity ?? build.mcpIdentity();
   // An injected registry (tests) wins; otherwise `--registry` resolves one.
   const registry = options.registry ??
     (options.useRegistry ? resolveMcpRegistry(build, readEnv) : undefined);
@@ -141,6 +151,7 @@ export async function serveMcp(
       operatorToken,
       stateStore: store,
       actor: options.actor,
+      identity,
       readEnv,
       version: options.version,
       runner: options.runner,
@@ -150,6 +161,7 @@ export async function serveMcp(
       readEnv,
       stateStore: store,
       operatorToken,
+      identity,
     });
   if (options.http !== undefined) {
     return await serveMcpHttp(server, options.http, options);
@@ -162,7 +174,7 @@ export async function serveMcp(
     );
   }
   await serveStdio(
-    (message) => server.handleMessage(message),
+    (message, ctx) => server.handleMessage(message, ctx),
     options.input,
     options.output,
   );
@@ -203,7 +215,7 @@ async function serveMcpHttp(
         `(${source}${mode}, ${auth}). Press Ctrl-C to stop.`,
     );
   }
-  await serveHttp((message) => server.handleMessage(message), {
+  await serveHttp((message, ctx) => server.handleMessage(message, ctx), {
     host: address.host,
     port: address.port,
     token: hasToken ? token : undefined,

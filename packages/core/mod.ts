@@ -183,6 +183,11 @@ export {
   resolveBuildRegistry,
   type ResolveRegistryOptions,
 } from "./src/registry/resolve.ts";
+export {
+  type McpIdentity,
+  type McpIdentityHook,
+  type McpRequestContext,
+} from "./src/mcp/jsonrpc.ts";
 export { type AbsolutePath, absolutePath, type PathLike } from "./src/path.ts";
 export { CONFIG_FILE, repoRoot } from "./src/config.ts";
 export {

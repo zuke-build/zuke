@@ -1,6 +1,7 @@
 import { assertEquals, assertStringIncludes } from "./_assert.ts";
 import { Build, parameter, target } from "../mod.ts";
 import { McpServer, type McpServerOptions } from "../src/mcp/server.ts";
+import type { JsonRpcResponse } from "../src/mcp/jsonrpc.ts";
 import { FileSystemStateStore } from "../src/state/fs_store.ts";
 import { defaultStateHost } from "../src/state/store.ts";
 import { AUDIT_RUN_ID } from "../src/mcp/audit.ts";
@@ -424,4 +425,110 @@ Deno.test("a thrown framework error returns a structured result, not a crash", a
   } finally {
     await Deno.remove(dir, { recursive: true });
   }
+});
+
+// ---- M13: trusted per-call identity ----------------------------------------
+
+/** Send a tools/call with request headers (the transport's per-call context). */
+function callWith(
+  server: McpServer,
+  name: string,
+  headers: Record<string, string>,
+  args: Record<string, unknown> = {},
+): Promise<JsonRpcResponse | null> {
+  return server.handleMessage(
+    req("tools/call", { name, arguments: args }),
+    { headers: new Headers(headers) },
+  );
+}
+
+/** An identity hook that reads `x-user` and rejects a request that lacks it. */
+const xUser = (ctx: { headers: Headers }): { actor: string } => {
+  const sub = ctx.headers.get("x-user");
+  if (sub === null) throw new Error("no identity from proxy");
+  return { actor: sub };
+};
+
+Deno.test("an identity hook overrides --actor and the client label", async () => {
+  await withServer({ allowRun: true, actor: "ci-bot", identity: xUser }, async (
+    server,
+    store,
+  ) => {
+    // The client self-reports a name; the hook (and its header) must win.
+    await server.handleMessage(
+      req("initialize", { clientInfo: { name: "spoofed" } }),
+      { headers: new Headers({ "x-user": "engineer-a" }) },
+    );
+    await callWith(server, "run:deploy", { "x-user": "engineer-a" }, {
+      environment: "dev",
+    });
+    const deploy = (await auditEvents(store)).find((e) =>
+      e.tool === "run:deploy"
+    );
+    assertEquals(deploy?.actor, "engineer-a");
+  });
+});
+
+Deno.test("a run and a later signal are attributed to their own callers", async () => {
+  await withServer(
+    { allowRun: true, identity: xUser },
+    async (server, store) => {
+      // Engineer A runs deploy…
+      await callWith(server, "run:deploy", { "x-user": "engineer-a" }, {
+        environment: "dev",
+      });
+      // …and engineer B signals a suspended run.
+      const id = await seedSuspended(store, "deploy");
+      await callWith(server, "signal_run", { "x-user": "engineer-b" }, {
+        runId: id,
+        signal: "go",
+      });
+      const events = await auditEvents(store);
+      assertEquals(
+        events.find((e) => e.tool === "run:deploy")?.actor,
+        "engineer-a",
+      );
+      assertEquals(
+        events.find((e) => e.tool === "signal_run")?.actor,
+        "engineer-b",
+      );
+    },
+  );
+});
+
+Deno.test("a throwing identity hook rejects the request and writes nothing", async () => {
+  await withServer(
+    { allowRun: true, identity: xUser },
+    async (server, store) => {
+      // No `x-user` header → the hook throws → a JSON-RPC auth error.
+      const res = await callWith(server, "run:deploy", {}, {
+        environment: "dev",
+      });
+      assertEquals(res?.result, undefined);
+      assertEquals(res?.error?.message, "Unauthorized");
+      // Nothing was audited.
+      assertEquals((await auditEvents(store)).length, 0);
+    },
+  );
+});
+
+Deno.test("a hook yielding an empty actor is rejected, never the static fallback", async () => {
+  // The natural idiom `headers.get(...) ?? ""` yields `{ actor: "" }` — a valid
+  // string, no throw — when the header is missing. It must reject (fail-closed),
+  // NOT silently attribute the call to the static `--actor`/env.
+  await withServer(
+    {
+      allowRun: true,
+      actor: "ci-bot",
+      identity: (ctx) => ({ actor: ctx.headers.get("x-user") ?? "" }),
+    },
+    async (server, store) => {
+      const res = await callWith(server, "run:deploy", {}, {
+        environment: "dev",
+      });
+      assertEquals(res?.error?.message, "Unauthorized");
+      // Neither audited nor attributed to the untrusted static actor.
+      assertEquals((await auditEvents(store)).length, 0);
+    },
+  );
 });

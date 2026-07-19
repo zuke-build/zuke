@@ -6,7 +6,11 @@
 
 import { assertEquals, assertStringIncludes } from "./_assert.ts";
 import { Build } from "../src/build.ts";
-import { type ByteWriter, METHOD_NOT_FOUND } from "../src/mcp/jsonrpc.ts";
+import {
+  type ByteWriter,
+  type JsonRpcResponse,
+  METHOD_NOT_FOUND,
+} from "../src/mcp/jsonrpc.ts";
 import { PROTOCOL_VERSION } from "../src/mcp/server.ts";
 import { serveMcp } from "../src/mcp/command.ts";
 import {
@@ -123,13 +127,16 @@ function descriptor(
   };
 }
 
-/** A runner that records every spawn and returns a fixed result. */
+/** A runner that records every spawn (argv, cwd, actor) and returns a fixed result. */
 function recordingRunner(
   result: RegistryRunResult = { code: 0, stdout: "ran", stderr: "" },
-): { runner: RegistryRunner; calls: { argv: string[]; cwd: string }[] } {
-  const calls: { argv: string[]; cwd: string }[] = [];
-  const runner: RegistryRunner = (argv, cwd) => {
-    calls.push({ argv: [...argv], cwd });
+): {
+  runner: RegistryRunner;
+  calls: { argv: string[]; cwd: string; actor?: string }[];
+} {
+  const calls: { argv: string[]; cwd: string; actor?: string }[] = [];
+  const runner: RegistryRunner = (argv, cwd, options) => {
+    calls.push({ argv: [...argv], cwd, actor: options?.actor });
     return Promise.resolve(result);
   };
   return { runner, calls };
@@ -947,4 +954,115 @@ Deno.test("a malformed default/enum from an untrusted descriptor is dropped from
   // The schema is well-formed: a number type with neither a string enum nor a
   // non-numeric default.
   assertEquals(workers, { type: "number" });
+});
+
+// ---- M13: trusted per-call identity ----------------------------------------
+
+/** Send a tools/call with the given request headers. */
+function callWith(
+  server: RegistryMcpServer,
+  name: string,
+  headers: Record<string, string>,
+  args: Record<string, unknown> = {},
+): Promise<JsonRpcResponse | null> {
+  return server.handleMessage(
+    req("tools/call", { name, arguments: args }),
+    { headers: new Headers(headers) },
+  );
+}
+
+Deno.test("an identity hook attributes the call to the trusted actor, not the label", async () => {
+  const registry = new FakeRegistry();
+  registry.add(descriptor("Api", ["deploy"]));
+  const store = new FileSystemStateStore("/state", new FakeStateHost());
+  const { runner, calls } = recordingRunner();
+  const server = new RegistryMcpServer(registry, {
+    allowRun: true,
+    runner,
+    stateStore: store,
+    actor: "config-actor", // even an explicit --actor is overridden by the hook
+    identity: (ctx) => {
+      const sub = ctx.headers.get("x-user");
+      if (sub === null) throw new Error("no identity from proxy");
+      return { actor: sub, via: "oauth-proxy" };
+    },
+  });
+
+  // The client self-reports a name; the hook must win over it.
+  await server.handleMessage(
+    req("initialize", { clientInfo: { name: "spoofed-client" } }),
+    { headers: new Headers({ "x-user": "engineer-a" }) },
+  );
+  const res = await callWith(server, "run:Api:deploy", {
+    "x-user": "engineer-a",
+  });
+  assertEquals(res?.result !== undefined, true);
+
+  // The audit trail and the spawned child both name the trusted actor.
+  const events = (await store.getRun("mcp-audit"))?.record.events ?? [];
+  assertEquals(events.length > 0, true);
+  assertEquals(events.every((e) => e.actor === "engineer-a"), true);
+  assertEquals(calls.length, 1);
+  assertEquals(calls[0].actor, "engineer-a");
+});
+
+Deno.test("a throwing identity hook rejects the request and writes nothing", async () => {
+  const registry = new FakeRegistry();
+  registry.add(descriptor("Api", ["deploy"]));
+  const store = new FileSystemStateStore("/state", new FakeStateHost());
+  const { runner, calls } = recordingRunner();
+  const server = new RegistryMcpServer(registry, {
+    allowRun: true,
+    runner,
+    stateStore: store,
+    identity: (ctx) => {
+      const sub = ctx.headers.get("x-user");
+      if (sub === null) throw new Error("no identity from proxy");
+      return { actor: sub };
+    },
+  });
+
+  // No `x-user` header → the hook throws → a JSON-RPC auth error, no dispatch.
+  const res = await callWith(server, "run:Api:deploy", {});
+  assertEquals(res?.result, undefined);
+  assertEquals(res?.error?.message, "Unauthorized");
+  // Nothing executed and nothing was written to the audit trail.
+  assertEquals(calls.length, 0);
+  assertEquals(await store.getRun("mcp-audit"), null);
+});
+
+Deno.test("without an identity hook, attribution is unchanged (stdio/local)", async () => {
+  const registry = new FakeRegistry();
+  registry.add(descriptor("Api", ["deploy"]));
+  const store = new FileSystemStateStore("/state", new FakeStateHost());
+  const { runner } = recordingRunner();
+  const server = new RegistryMcpServer(registry, {
+    allowRun: true,
+    runner,
+    stateStore: store,
+    actor: "ci-bot",
+  });
+  await call(server, "run:Api:deploy");
+  const events = (await store.getRun("mcp-audit"))?.record.events ?? [];
+  assertEquals(events.every((e) => e.actor === "ci-bot"), true);
+});
+
+Deno.test("a hook yielding an empty actor is rejected, never a spawn", async () => {
+  const registry = new FakeRegistry();
+  registry.add(descriptor("Api", ["deploy"]));
+  const store = new FileSystemStateStore("/state", new FakeStateHost());
+  const { runner, calls } = recordingRunner();
+  const server = new RegistryMcpServer(registry, {
+    allowRun: true,
+    runner,
+    stateStore: store,
+    actor: "ci-bot", // the static fallback that must NOT be used
+    // `headers.get(...) ?? ""` yields `{ actor: "" }` on a missing header.
+    identity: (ctx) => ({ actor: ctx.headers.get("x-user") ?? "" }),
+  });
+  const res = await callWith(server, "run:Api:deploy", {});
+  assertEquals(res?.error?.message, "Unauthorized");
+  // No spawn (so no child ZUKE_ACTOR), and nothing audited.
+  assertEquals(calls.length, 0);
+  assertEquals(await store.getRun("mcp-audit"), null);
 });
