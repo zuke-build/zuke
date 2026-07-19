@@ -54,3 +54,48 @@ Deno.test("GcloudTasks.run reaches execution", async () => {
     ToolNotFoundError,
   );
 });
+
+Deno.test("containerImagesAddTag tags across registries, quietly", () => {
+  assertEquals(
+    new GcloudSettings()
+      .containerImagesAddTag("gcr.io/p/img:sha", "eu.gcr.io/p/img:prod")
+      .argv(),
+    [
+      "gcloud",
+      "container",
+      "images",
+      "add-tag",
+      "gcr.io/p/img:sha",
+      "eu.gcr.io/p/img:prod",
+      "--quiet",
+    ],
+  );
+});
+
+Deno.test("containerImagesAddTag accepts multiple destination tags", () => {
+  const argv = new GcloudSettings()
+    .containerImagesAddTag("src:sha", "a:prod", "b:latest")
+    .argv();
+  assertEquals(argv.slice(1, 6), [
+    "container",
+    "images",
+    "add-tag",
+    "src:sha",
+    "a:prod",
+  ]);
+  assertEquals(argv.includes("b:latest"), true);
+});
+
+Deno.test("sqlInstancesDescribe builds the describe command", () => {
+  assertEquals(
+    new GcloudSettings().sqlInstancesDescribe("prod-db").format("json").argv(),
+    ["gcloud", "sql", "instances", "describe", "prod-db", "--format", "json"],
+  );
+});
+
+Deno.test("sqlOperationsWait builds the wait command", () => {
+  assertEquals(
+    new GcloudSettings().sqlOperationsWait("op-123").project("p").argv(),
+    ["gcloud", "sql", "operations", "wait", "op-123", "--project", "p"],
+  );
+});

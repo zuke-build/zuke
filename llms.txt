@@ -128,7 +128,7 @@ Full reference: [docs/cli.md](./docs/cli.md).
 - [@zuke/husky](https://jsr.io/@zuke/husky) — typed `husky` task wrappers for Zuke builds
 - [@zuke/node](https://jsr.io/@zuke/node) — typed Node.js task wrappers for Zuke builds
 - [@zuke/dprint](https://jsr.io/@zuke/dprint) — typed `dprint` task wrappers for Zuke builds
-- [@zuke/gcloud](https://jsr.io/@zuke/gcloud) — a typed `gcloud` (Google Cloud SDK) task wrapper for Zuke
+- [@zuke/gcloud](https://jsr.io/@zuke/gcloud) — typed Google Cloud tooling for Zuke builds: the `gcloud`
 - [@zuke/git](https://jsr.io/@zuke/git) — typed `git` task wrappers for Zuke builds
 - [@zuke/gh](https://jsr.io/@zuke/gh) — typed GitHub tooling for Zuke builds: the `gh` (GitHub CLI) task
 - [@zuke/codecov](https://jsr.io/@zuke/codecov) — a typed Codecov CLI (`codecovcli`) task wrapper for Zuke

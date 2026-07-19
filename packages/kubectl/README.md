@@ -51,6 +51,23 @@ await KubectlTasks.rollout((s) =>
 const KubectlTasks: KubectlTasksApi
   Typed task functions for the `kubectl` CLI.
 
+class KubectlAnnotateSettings extends KubectlSettings
+  Settings for `kubectl annotate`.
+
+  resource(...tokens: string[]): this
+    Resource tokens, e.g. `("deploy", "api")` or `("pods", "-l", "app=web")`; repeatable.
+  annotation(key: string, value: string): this
+    Set an annotation as a `key=value` token; repeatable.
+  remove(key: string): this
+    Remove an annotation, rendered as kubectl's `key-` syntax; repeatable.
+  overwrite(): this
+    Overwrite existing annotations (`--overwrite`).
+  all(): this
+    Apply to all resources of the given type (`--all`).
+  selector(query: string): this
+    Restrict to resources matching a label selector (`-l`).
+  override protected buildArgs(): string[]
+
 class KubectlApplySettings extends KubectlSettings
   Settings for `kubectl apply`.
 
@@ -150,6 +167,23 @@ class KubectlGetSettings extends KubectlSettings
     Watch for changes instead of returning once (`-w`).
   showLabels(): this
     Include resource labels as columns (`--show-labels`).
+  override protected buildArgs(): string[]
+
+class KubectlLabelSettings extends KubectlSettings
+  Settings for `kubectl label`.
+
+  resource(...tokens: string[]): this
+    Resource tokens, e.g. `("deploy", "api")` or `("pods", "-l", "app=web")`; repeatable.
+  label(key: string, value: string): this
+    Set a label as a `key=value` token; repeatable.
+  remove(key: string): this
+    Remove a label, rendered as kubectl's `key-` syntax; repeatable.
+  overwrite(): this
+    Overwrite existing labels (`--overwrite`).
+  all(): this
+    Apply to all resources of the given type (`--all`).
+  selector(query: string): this
+    Restrict to resources matching a label selector (`-l`).
   override protected buildArgs(): string[]
 
 class KubectlLogsSettings extends KubectlSettings
@@ -303,6 +337,10 @@ interface KubectlTasksApi
     Scale a workload: `kubectl scale`.
   setImage(configure?: Configure<KubectlSetImageSettings>): Promise<CommandOutput>
     Update a container image: `kubectl set image`.
+  annotate(configure?: Configure<KubectlAnnotateSettings>): Promise<CommandOutput>
+    Annotate resources: `kubectl annotate`.
+  label(configure?: Configure<KubectlLabelSettings>): Promise<CommandOutput>
+    Label resources: `kubectl label`.
   patch(configure?: Configure<KubectlPatchSettings>): Promise<CommandOutput>
     Patch a resource: `kubectl patch`.
   portForward(configure?: Configure<KubectlPortForwardSettings>): Promise<CommandOutput>
