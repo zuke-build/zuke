@@ -150,10 +150,11 @@ ZUKE_OPERATOR_TOKEN=… zuke mcp --http 7777 \
 ## Audit log
 
 With a store configured, **every mutating or denied tool call** (`run:<target>`,
-`signal_run`, `resume_check`, `cancel_run`) is appended to an audit trail: the time, the tool,
-the resolved **actor**, the outcome (`ok` / `denied` / `error`), and the call's
-arguments. Arguments are **redacted** — the operator token is dropped and every
-`.secret()` parameter's value is masked — before anything is persisted.
+`signal_run`, `resume_check`, `cancel_run`) is appended to an audit trail: the
+time, the tool, the resolved **actor**, the outcome (`ok` / `denied` / `error`),
+and the call's arguments. Arguments are **redacted** — the operator token is
+dropped and every `.secret()` parameter's value is masked — before anything is
+persisted.
 
 The trail lives in a store-level record; read it with `zuke runs show mcp-audit`
 (or the `show_run` tool). The actor resolves by precedence: `--actor` →
@@ -161,6 +162,47 @@ The trail lives in a store-level record; read it with `zuke runs show mcp-audit`
 `"anonymous"`. The client name is an **untrusted label** for the trail only — it
 never influences authorization. On a shared HTTP endpoint it reflects the most
 recent client to connect, so set `--actor` for authoritative attribution there.
+
+## Registry mode (dynamic discovery)
+
+By default `zuke mcp` serves the single build its process was launched with.
+With `--registry` it instead serves the [build registry](./registry.md) — the
+catalog `zuke register` writes to — and **re-reads it on every `tools/list` and
+`tools/call`**. So a pipeline registered by another process appears as a tool in
+an already-running server with **no restart**:
+
+```sh
+# Serve every registered pipeline, execution enabled:
+zuke mcp --registry --allow-run
+```
+
+- **Discovery.** `list_builds` returns the catalog; `describe_build` (with a
+  `build` id) returns one build's surface. Each registered target is exposed as
+  a `run:<buildId>:<target>` tool, re-read live.
+- **Execution is a spawn.** A registered build has no live instance in the
+  server, so a run tool **spawns the build's registered launch location** (the
+  `deno run <module> <target>` `zuke register` recorded, or an explicit command)
+  and returns its captured output. This is code execution, so it is off unless
+  `--allow-run`, and it honours the same [authorization](#authorization) tiers —
+  the allow-list and `--protect` globs match the **qualified**
+  `<buildId>:<target>` name (e.g. `--allow-run=Api:*`, `--protect=Api:deploy`).
+  Every mutating or denied call is [audited](#audit-log).
+- **Scope.** A run tool takes no per-parameter inputs yet — only `dryRun`,
+  `confirm`, and `operatorToken`; the spawned build resolves its own parameters
+  from the server's environment. Passing parameters across the spawn boundary
+  (which needs a secret-safe contract) is a follow-up. Because a descriptor does
+  not record whether a target is read-only, every registry run tool is treated
+  as destructive.
+- **Environment.** A spawned build inherits the server's environment (that is
+  how it resolves its parameters), minus the MCP server's own authorization
+  secrets — `ZUKE_OPERATOR_TOKEN` and `ZUKE_MCP_TOKEN` are stripped so a
+  registered build can never read them. It does still see the rest of the
+  server's environment, so run a registry-backed server with **only the
+  environment the registered pipelines should have** — treat it like any host
+  that runs those builds.
+
+The registry resolves like the run store: `ZUKE_REGISTRY_URL`/`_TOKEN` or
+`ZUKE_REGISTRY_DIR`, a build's `registry()` override, else `.zuke/builds`.
 
 ## Safety
 

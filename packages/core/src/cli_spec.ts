@@ -157,6 +157,11 @@ export const BUILTIN_FLAGS: readonly BuiltinFlag[] = [
     description: "With mcp, require confirm:true before a destructive run",
   },
   {
+    name: "--registry",
+    description:
+      "With mcp, serve the build registry (dynamic pipeline discovery)",
+  },
+  {
     name: "--http",
     description: "With mcp, serve over HTTP on <host:port> instead of stdio",
   },

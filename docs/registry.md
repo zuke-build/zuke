@@ -6,12 +6,11 @@ registry records *builds*: each build registers a small **descriptor** — its i
 its CLI surface (targets, parameters, commands), and how to launch it — into a
 pluggable store.
 
-Its purpose is agentic discovery driven by the store: an MCP server pointed at
-the registry can expose newly-registered pipelines as tools **without a redeploy
-or new instructions**. A build that registers itself for the first time becomes
-discoverable through an already-running server. (That dynamic `zuke mcp`
-integration is the next milestone; this page covers the registry and
-`zuke register` that back it.)
+Its purpose is agentic discovery driven by the store: a `zuke mcp --registry`
+server exposes newly-registered pipelines as tools **without a redeploy or new
+instructions**. A build that registers itself for the first time becomes
+discoverable — and runnable — through an already-running server (see
+[Registry mode](./mcp.md#registry-mode-dynamic-discovery)).
 
 The registry is a **separate concern** from the run [`StateStore`](./state.md) —
 a run history and a build catalog are different things — but it is configured the
