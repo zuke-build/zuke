@@ -32,6 +32,12 @@ interface McpHandler {
     message: unknown,
     ctx?: McpRequestContext,
   ): Promise<JsonRpcResponse | null>;
+  /**
+   * Whether messages may be handled concurrently. The registry server sets this
+   * (each run is its own subprocess); the single-build server leaves it unset so
+   * the HTTP transport serialises its handling.
+   */
+  readonly concurrent?: boolean;
 }
 
 /** A parsed `--http` bind address. */
@@ -56,6 +62,8 @@ export interface ServeMcpOptions extends McpServerOptions {
   useRegistry?: boolean;
   /** Spawns a registered build in registry mode; injectable for tests. */
   runner?: RegistryRunner;
+  /** Cap on concurrent run-tool spawns in registry mode (`--max-concurrent-runs`). */
+  maxConcurrentRuns?: number;
   /** The message stream to read (defaults to stdin); injectable for tests. */
   input?: ReadableStream<Uint8Array>;
   /** The sink to write responses to (defaults to stdout); injectable for tests. */
@@ -155,6 +163,7 @@ export async function serveMcp(
       readEnv,
       version: options.version,
       runner: options.runner,
+      maxConcurrentRuns: options.maxConcurrentRuns,
     })
     : new McpServer(build, {
       ...options,
@@ -221,6 +230,7 @@ async function serveMcpHttp(
     token: hasToken ? token : undefined,
     signal: options.signal,
     onListen: options.onListen,
+    concurrent: server.concurrent,
   });
   return 0;
 }

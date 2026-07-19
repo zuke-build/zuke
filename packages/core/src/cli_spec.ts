@@ -162,6 +162,11 @@ export const BUILTIN_FLAGS: readonly BuiltinFlag[] = [
       "With mcp, serve the build registry (dynamic pipeline discovery)",
   },
   {
+    name: "--max-concurrent-runs",
+    description:
+      "With mcp --registry, cap concurrent run-tool spawns (default 4)",
+  },
+  {
     name: "--http",
     description: "With mcp, serve over HTTP on <host:port> instead of stdio",
   },

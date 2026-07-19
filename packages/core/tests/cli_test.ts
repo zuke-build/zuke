@@ -310,6 +310,28 @@ Deno.test("parseArgs reads the mcp --http address", () => {
   assertEquals(parseArgs(["mcp"]).httpAddr, undefined);
 });
 
+Deno.test("parseArgs reads --max-concurrent-runs as a positive integer", () => {
+  assertEquals(
+    parseArgs(["mcp", "--registry", "--max-concurrent-runs", "8"])
+      .maxConcurrentRuns,
+    8,
+  );
+  assertEquals(
+    parseArgs(["mcp", "--max-concurrent-runs=2"]).maxConcurrentRuns,
+    2,
+  );
+  // Absent, or an invalid value, leaves it unset (the server default applies).
+  assertEquals(parseArgs(["mcp"]).maxConcurrentRuns, undefined);
+  assertEquals(
+    parseArgs(["mcp", "--max-concurrent-runs=0"]).maxConcurrentRuns,
+    undefined,
+  );
+  assertEquals(
+    parseArgs(["mcp", "--max-concurrent-runs=x"]).maxConcurrentRuns,
+    undefined,
+  );
+});
+
 Deno.test("main: mcp --http rejects an invalid address", async () => {
   const { code, err } = await capture(() =>
     main(Demo, ["mcp", "--http", "nope"])

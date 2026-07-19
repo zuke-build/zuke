@@ -572,6 +572,7 @@ else a friendly error.
 ./zuke runs show mcp-audit    # the MCP tool-call audit trail
 ./zuke register [--json]      # record this build in the build registry (idempotent)
 ./zuke mcp --registry --allow-run  # serve the registry: registered builds as tools, spawned
+./zuke mcp --registry --max-concurrent-runs 4  # cap concurrent run-tool spawns (default 4)
 ```
 
 **Build registry** (`docs/registry.md`): `zuke register` writes a secret-free

@@ -53,9 +53,12 @@ Each request is a `POST` whose body is one JSON-RPC message; the response is
 that message's JSON-RPC reply. A notification (no `id`) is answered
 `202 Accepted` with no body. Zuke never initiates server→client messages, so the
 optional server-sent-events stream is not implemented — a `GET` is answered
-`405`, and clients fall back to POST-only (which is spec-compliant). Messages
-are processed **one at a time**, mirroring stdio, so two concurrent runs of the
-one build can't race.
+`405`, and clients fall back to POST-only (which is spec-compliant). For the
+single-build server, messages are processed **one at a time**, mirroring stdio,
+so two concurrent runs of the one build can't race. The
+[registry server](#registry-mode-dynamic-discovery) — which has no shared
+in-process run state — instead handles requests **concurrently** (see its cap
+below), so one long `run:` never head-of-line-blocks another client's read.
 
 **Security defaults — a bridge, not an internet gateway:**
 
@@ -243,6 +246,14 @@ zuke mcp --registry --allow-run
   does still see the rest of the server's environment, so run a registry-backed
   server with **only the environment the registered pipelines should have** —
   treat it like any host that runs those builds.
+- **Concurrency.** Unlike the single-build server, the registry server handles
+  requests **concurrently** — a read tool (`list_builds`, `describe_build`) is
+  never blocked behind a running `run:` call, and independent runs proceed in
+  parallel. Concurrent run-tool **spawns** are capped (default 4,
+  `--max-concurrent-runs <n>`); a call past the cap gets an immediate structured
+  `at_capacity` busy error (`{ running, cap, hint }`) rather than an unbounded
+  queue. Read tools are never counted against the cap. Cross-process state
+  safety rides the store's CAS, so no new coordination is introduced.
 
 The registry resolves like the run store: `ZUKE_REGISTRY_URL`/`_TOKEN` or
 `ZUKE_REGISTRY_DIR`, a build's `registry()` override, else `.zuke/builds`.
