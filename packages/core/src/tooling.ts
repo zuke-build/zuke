@@ -20,9 +20,105 @@
  */
 
 import { Command, type CommandOutput } from "./shell.ts";
-import type { AbsolutePath, PathLike } from "./path.ts";
+import { type AbsolutePath, absolutePath, type PathLike } from "./path.ts";
 
 export type { PathLike };
+
+/**
+ * How {@link ToolSettings.run} locates a wrapper's binary when no explicit
+ * {@link ToolSettings.toolPath} is set:
+ *
+ * - `"path"` — spawn the bare tool name and let the OS resolve it on `PATH`
+ *   (the default, matching a native/global install);
+ * - `"node_modules"` — npx-style: walk up from the working directory looking
+ *   for `node_modules/.bin/<tool>`, falling back to `PATH` on a miss (so a
+ *   package hoisted to a monorepo root runs with no `.toolPath()`).
+ */
+export type ToolResolution = "node_modules" | "path";
+
+/** Process-lifetime memo of `node_modules/.bin` lookups, keyed by os+tool+cwd. */
+const NODE_BIN_MEMO = new Map<string, NodeBinLookup>();
+
+/** The outcome of a `node_modules/.bin` walk. */
+interface NodeBinLookup {
+  /** The resolved absolute shim path, or `null` when none was found. */
+  bin: string | null;
+  /** Whether any `node_modules` directory was seen during the walk. */
+  sawNodeModules: boolean;
+}
+
+/** The ambient `ZUKE_TOOL_RESOLUTION` override, or `null` when unset/invalid. */
+function envResolution(): ToolResolution | null {
+  let value: string | undefined;
+  try {
+    value = Deno.env.get("ZUKE_TOOL_RESOLUTION");
+  } catch {
+    return null; // no --allow-env: behave as if unset
+  }
+  return value === "node_modules" || value === "path" ? value : null;
+}
+
+/** Whether `path` names an existing file (following symlinks). */
+function isFile(path: string): boolean {
+  try {
+    return Deno.statSync(path).isFile;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Search `node_modules/.bin` for `tool`, walking up from `cwd` to the
+ * filesystem root. On Windows the spawnable `.cmd`/`.bat` shim variants are
+ * matched (a batch shim is launched via {@link windowsCmdShim}). The result is
+ * memoized for the process, keyed by os+tool+cwd.
+ */
+function findNodeModulesBin(
+  tool: string,
+  cwd: string,
+  os: typeof Deno.build.os,
+): NodeBinLookup {
+  const key = `${os}\0${tool}\0${cwd}`;
+  const cached = NODE_BIN_MEMO.get(key);
+  if (cached !== undefined) return cached;
+  // On Windows only the batch shims can be spawned (via `cmd /c`); the bare
+  // shim (no extension) is a POSIX shell script and the `.ps1` needs PowerShell,
+  // so resolving to either would return a path Windows cannot launch — skip
+  // them and let the PATH fallback handle those (rare) cases.
+  const names = os === "windows" ? [`${tool}.cmd`, `${tool}.bat`] : [tool];
+  let dir = /^(\/|[A-Za-z]:)/.test(cwd)
+    ? absolutePath(cwd)
+    : absolutePath(Deno.cwd(), cwd);
+  let sawNodeModules = false;
+  while (true) {
+    const binDir = dir("node_modules", ".bin");
+    if (existsDir(dir("node_modules").path)) sawNodeModules = true;
+    for (const name of names) {
+      const candidate = binDir(name);
+      if (isFile(candidate.path)) {
+        return remember(key, { bin: candidate.path, sawNodeModules: true });
+      }
+    }
+    if (dir.isRoot) break;
+    dir = dir.parent();
+  }
+  return remember(key, { bin: null, sawNodeModules });
+}
+
+/** Whether `path` names an existing directory. */
+function existsDir(path: string): boolean {
+  try {
+    return Deno.statSync(path).isDirectory;
+  } catch {
+    return false;
+  }
+}
+
+/** Store `lookup` under `key` and return it. */
+function remember(key: string, lookup: NodeBinLookup): NodeBinLookup {
+  NODE_BIN_MEMO.set(key, lookup);
+  return lookup;
+}
 
 /** Raised when a tool's binary cannot be found on the system. */
 export class ToolNotFoundError extends Error {
@@ -32,10 +128,19 @@ export class ToolNotFoundError extends Error {
   constructor(
     /** The binary that could not be resolved. */
     readonly tool: string,
+    /**
+     * Whether a `node_modules` directory was seen during resolution but lacked
+     * the binary — when `true`, the message suggests `npm ci` / `toolchain()`.
+     */
+    sawNodeModules = false,
   ) {
     super(
       `Tool not found: "${tool}". Install it and make sure it is on PATH, ` +
-        `or point at the binary explicitly with .toolPath(...).`,
+        `or point at the binary explicitly with .toolPath(...).` +
+        (sawNodeModules
+          ? ` A node_modules directory was found but did not contain ` +
+            `"${tool}" — run \`npm ci\`, or provision it via toolchain().`
+          : ""),
     );
   }
 }
@@ -49,6 +154,22 @@ export function shimFallbackArgv(
   os: typeof Deno.build.os,
 ): string[] | null {
   return os === "windows" ? ["cmd", "/c", ...argv] : null;
+}
+
+/**
+ * On Windows, spawn a resolved `.cmd`/`.bat` shim (such as npm's `node_modules`
+ * shims) through `cmd /c` — a batch shim is not a PE executable, so
+ * `Deno.Command` cannot launch it directly. Returns `argv` unchanged on other
+ * platforms or when the binary is not a batch shim.
+ */
+export function windowsCmdShim(
+  argv: ReadonlyArray<string>,
+  os: typeof Deno.build.os,
+): string[] {
+  const first = argv[0];
+  return os === "windows" && first !== undefined && /\.(cmd|bat)$/i.test(first)
+    ? ["cmd", "/c", ...argv]
+    : [...argv];
 }
 
 /** A lambda that configures a settings instance and returns it. */
@@ -85,6 +206,7 @@ export abstract class ToolSettings {
   #quiet = false;
   #timeoutMs?: number;
   #toolPath?: string;
+  #resolution?: ToolResolution;
   #extraArgs: string[] = [];
 
   /** The binary to spawn when {@link toolPath} is not set. */
@@ -92,6 +214,17 @@ export abstract class ToolSettings {
 
   /** The subcommand argv. Must be pure — no I/O, no environment reads. */
   protected abstract buildArgs(): string[];
+
+  /**
+   * The wrapper's default binary-resolution strategy. The base returns
+   * `"path"` (bare name on `PATH`); a JS-ecosystem wrapper whose binary is
+   * almost always installed under `node_modules` overrides this to
+   * `"node_modules"`. A per-call {@link fromNodeModules}/{@link fromPath} and
+   * the ambient `ZUKE_TOOL_RESOLUTION` both take precedence over this default.
+   */
+  protected defaultResolution(): ToolResolution {
+    return "path";
+  }
 
   /** Merge additional environment variables for the process. */
   env(record: Record<string, string>): this {
@@ -142,6 +275,23 @@ export abstract class ToolSettings {
     return this;
   }
 
+  /**
+   * Resolve the binary npx-style: walk up from the working directory looking
+   * for `node_modules/.bin/<tool>`, falling back to `PATH` on a miss. Overrides
+   * both the wrapper default and the ambient `ZUKE_TOOL_RESOLUTION`. Has no
+   * effect once {@link toolPath} is set (an explicit path always wins).
+   */
+  fromNodeModules(): this {
+    this.#resolution = "node_modules";
+    return this;
+  }
+
+  /** Resolve the binary from `PATH` only, ignoring any `node_modules/.bin`. */
+  fromPath(): this {
+    this.#resolution = "path";
+    return this;
+  }
+
   /** Escape hatch: append raw arguments after all typed options. */
   args(...extra: Array<string | number | AbsolutePath>): this {
     this.#extraArgs.push(...extra.map(String));
@@ -155,6 +305,45 @@ export abstract class ToolSettings {
       ...this.buildArgs(),
       ...this.#extraArgs,
     ];
+  }
+
+  /** The effective resolution: per-call override, else ambient, else default. */
+  #effectiveResolution(): ToolResolution {
+    return this.#resolution ?? envResolution() ?? this.defaultResolution();
+  }
+
+  /**
+   * The argv {@link run} will actually spawn — like {@link argv}, but with the
+   * `node_modules/.bin` resolution applied (so it performs I/O). Useful for
+   * tests and diagnostics: it reveals whether a wrapper resolved to a local
+   * shim or fell back to the bare name on `PATH`.
+   */
+  resolvedArgv(): string[] {
+    return this.#resolveBinary().argv;
+  }
+
+  /**
+   * The argv to spawn, plus whether a `node_modules` directory was seen. When
+   * no explicit {@link toolPath} is set and resolution is `"node_modules"`,
+   * argv[0] is rewritten to the resolved `node_modules/.bin` shim (or left as
+   * the bare name to fall back to `PATH`).
+   */
+  #resolveBinary(): { argv: string[]; sawNodeModules: boolean } {
+    const base = this.argv();
+    if (this.#toolPath !== undefined || base[0] === undefined) {
+      return { argv: base, sawNodeModules: false };
+    }
+    if (this.#effectiveResolution() !== "node_modules") {
+      return { argv: base, sawNodeModules: false };
+    }
+    const cwd = this.#cwd ?? Deno.cwd();
+    const { bin, sawNodeModules } = findNodeModulesBin(
+      this.defaultTool(),
+      cwd,
+      this.os_,
+    );
+    const argv = bin === null ? base : [bin, ...base.slice(1)];
+    return { argv, sawNodeModules };
   }
 
   #command(argv: string[]): Command {
@@ -172,19 +361,23 @@ export abstract class ToolSettings {
    * otherwise raise a {@link ToolNotFoundError} naming the tool.
    */
   async run(): Promise<CommandOutput> {
-    const argv = this.argv();
+    const { argv, sawNodeModules } = this.#resolveBinary();
     const tool = argv[0] ?? "";
+    // A resolved `node_modules/.bin/*.cmd` shim must go through `cmd /c` up
+    // front — it is not directly spawnable — rather than relying on the
+    // NotFound retry below (which only fires for a bare name missing on PATH).
+    const primary = windowsCmdShim(argv, this.os_);
     try {
-      return await this.#command(argv);
+      return await this.#command(primary);
     } catch (error) {
       if (!(error instanceof Deno.errors.NotFound)) throw error;
       const fallback = shimFallbackArgv(argv, this.os_);
-      if (fallback === null) throw new ToolNotFoundError(tool);
+      if (fallback === null) throw new ToolNotFoundError(tool, sawNodeModules);
       try {
         return await this.#command(fallback);
       } catch (retryError) {
         if (retryError instanceof Deno.errors.NotFound) {
-          throw new ToolNotFoundError(tool);
+          throw new ToolNotFoundError(tool, sawNodeModules);
         }
         throw retryError;
       }
