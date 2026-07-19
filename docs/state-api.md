@@ -22,6 +22,13 @@ The client is dependency-free and talks plain HTTP, so any stack can serve it.
   returns it as an `ETag` response header and honours it in `If-Match` /
   `If-None-Match` request headers. Any stable per-write token works (a row
   version, a content hash, a monotonic counter).
+- **Protocol version.** This document describes wire protocol **`1`**. Every
+  client request carries `x-zuke-state-protocol: 1`. A service **may** echo its
+  own version in that response header; when it does and the value differs, the
+  client fails loudly rather than risk a silent mis-parse. A service that omits
+  the header is treated as compatible, so adopting it is optional — but echoing
+  it lets a version bump be detected immediately. A breaking change to this
+  contract bumps the number.
 
 ## Endpoints
 
@@ -30,10 +37,10 @@ The client is dependency-free and talks plain HTTP, so any stack can serve it.
 Fetch one run.
 
 | Response | Meaning                                                         |
-| -------- | -------------------------------------------------------------- |
-| `200`    | Body is the run record; **`ETag` header is required**.         |
+| -------- | --------------------------------------------------------------- |
+| `200`    | Body is the run record; **`ETag` header is required**.          |
 | `404`    | No such run (the client treats this as "not found", not error). |
-| other    | The client raises an error.                                    |
+| other    | The client raises an error.                                     |
 
 The client **requires** the `ETag` header on a `200`; omitting it is an error.
 
@@ -46,14 +53,14 @@ Create or update a run, guarded by a precondition:
 - **Update** — the client sends `If-Match: <etag>`. The service must store the
   record only if the current version equals `<etag>`, else respond `412`.
 
-| Response      | Meaning                                                       |
-| ------------- | ------------------------------------------------------------- |
-| `200`/`201`   | Stored; **`ETag` header (the new version) is required**.      |
-| `412`         | Precondition failed → the client reports a compare-and-swap conflict and retries. |
-| other         | The client raises an error.                                   |
+| Response    | Meaning                                                                           |
+| ----------- | --------------------------------------------------------------------------------- |
+| `200`/`201` | Stored; **`ETag` header (the new version) is required**.                          |
+| `412`       | Precondition failed → the client reports a compare-and-swap conflict and retries. |
+| other       | The client raises an error.                                                       |
 
-The service is the authority for versioning, which side-steps client clock
-skew. Records are small (kilobytes); whole-document CAS is the intended model.
+The service is the authority for versioning, which side-steps client clock skew.
+Records are small (kilobytes); whole-document CAS is the intended model.
 
 ### `GET /runs?status=&target=&since=`
 
@@ -75,11 +82,11 @@ List runs as an array of **summaries** (a subset of the record):
 
 Query parameters (all optional, combined with AND):
 
-| Param    | Keeps runs where…                                        |
-| -------- | -------------------------------------------------------- |
-| `status` | the run status equals this value                         |
-| `target` | the run's graph contains a target with this dotted name  |
-| `since`  | `createdAt` is at or after this ISO-8601 timestamp       |
+| Param    | Keeps runs where…                                       |
+| -------- | ------------------------------------------------------- |
+| `status` | the run status equals this value                        |
+| `target` | the run's graph contains a target with this dotted name |
+| `since`  | `createdAt` is at or after this ISO-8601 timestamp      |
 
 The client validates every summary it receives (an untrusted service is checked,
 not trusted) and expects newest-first ordering is applied server-side where it
@@ -91,8 +98,8 @@ The [build registry](./registry.md) rides the **same** contract — same base UR
 same bearer auth, same `ETag`/`If-Match` compare-and-swap — with a `/builds`
 collection beside `/runs`, so one service can host both (they stay separate
 concerns in the client:
-[`HttpBuildRegistry`](./registry.md#httpbuildregistry--hosted-service) is not the
-run store). A build **descriptor** is JSON, exactly the shape in
+[`HttpBuildRegistry`](./registry.md#httpbuildregistry--hosted-service) is not
+the run store). A build **descriptor** is JSON, exactly the shape in
 [the registry docs](./registry.md#the-build-descriptor); the service stores and
 returns it verbatim. Descriptors never contain secrets.
 
@@ -100,33 +107,45 @@ returns it verbatim. Descriptors never contain secrets.
 
 Fetch one registered build.
 
-| Response | Meaning                                                          |
-| -------- | --------------------------------------------------------------- |
-| `200`    | Body is the descriptor; **`ETag` header is required**.          |
-| `404`    | No such build (the client treats this as "not registered").     |
-| other    | The client raises an error.                                     |
+| Response | Meaning                                                     |
+| -------- | ----------------------------------------------------------- |
+| `200`    | Body is the descriptor; **`ETag` header is required**.      |
+| `404`    | No such build (the client treats this as "not registered"). |
+| other    | The client raises an error.                                 |
 
 ### `PUT /builds/:id`
 
 Register (create or update) a build, guarded exactly like `PUT /runs/:id`:
 `If-None-Match: *` to create, `If-Match: <etag>` to update, `412` on a version
-mismatch (the client re-reads and retries, so concurrent registrations converge).
-A `200`/`201` must return the new version as an `ETag`.
+mismatch (the client re-reads and retries, so concurrent registrations
+converge). A `200`/`201` must return the new version as an `ETag`.
 
 ### `DELETE /builds/:id`
 
-Deregister a build. `404` (already gone) is **not** an error; any other non-`2xx`
-is. No body.
+Deregister a build. `404` (already gone) is **not** an error; any other
+non-`2xx` is. No body.
 
 ### `GET /builds?name=&since=`
 
-List registered builds as an array of **summaries**
-(`id`, `name`, `actor`, `createdAt`, `updatedAt`). Query parameters (optional,
-AND-combined): `name` (exact match) and `since` (`createdAt` at or after an
-ISO-8601 timestamp). The client validates every summary and does not re-sort.
+List registered builds as an array of **summaries** (`id`, `name`, `actor`,
+`createdAt`, `updatedAt`). Query parameters (optional, AND-combined): `name`
+(exact match) and `since` (`createdAt` at or after an ISO-8601 timestamp). The
+client validates every summary and does not re-sort.
 
 ## Notes for implementers
 
+- **Conformance kit.** Do not re-derive correctness from this prose. Point the
+  kit at your running service and it verifies every semantic the core relies on
+  — CAS stale-write rejection, one-writer-wins, listing filter/sort, TTL lock
+  takeover, append-only events, and the `/builds` register/deregister CAS:
+
+  ```sh
+  deno run -A jsr:@zuke/core/conformance --url http://localhost:8080 [--token …]
+  ```
+
+  It exits `0` when every scenario passes and `1` (naming the failures) when one
+  does not. A backend that passes is compatible with `HttpStateStore` /
+  `HttpBuildRegistry`; one that violates CAS fails loudly.
 - **Never weaker than optimistic 409-retry.** The precondition model above is
   the minimum; a store that already does optimistic concurrency (e.g. a
   k8s-annotation store with resource versions) maps onto it directly.

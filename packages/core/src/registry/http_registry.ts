@@ -16,6 +16,11 @@
 
 import { HttpError } from "../http.ts";
 import {
+  assertProtocol,
+  STATE_PROTOCOL_HEADER,
+  STATE_PROTOCOL_VERSION,
+} from "../state/protocol.ts";
+import {
   type BuildDescriptor,
   type BuildQuery,
   type BuildSummary,
@@ -60,11 +65,21 @@ export class HttpBuildRegistry implements BuildRegistry {
   }
 
   #headers(extra?: Record<string, string>): Record<string, string> {
-    const headers: Record<string, string> = { ...extra };
+    const headers: Record<string, string> = {
+      ...extra,
+      [STATE_PROTOCOL_HEADER]: STATE_PROTOCOL_VERSION,
+    };
     if (this.#token !== undefined && this.#token !== "") {
       headers.Authorization = `Bearer ${this.#token}`;
     }
     return headers;
+  }
+
+  /** Fetch and reject a response that declares an incompatible protocol version. */
+  async #request(url: string, init?: RequestInit): Promise<Response> {
+    const response = await this.#fetch(url, init);
+    assertProtocol(response, "registry");
+    return response;
   }
 
   /** `GET /builds/:id` → descriptor + `ETag`; a `404` is a miss. */
@@ -72,7 +87,7 @@ export class HttpBuildRegistry implements BuildRegistry {
     id: string,
   ): Promise<{ descriptor: BuildDescriptor; version: string } | null> {
     const url = this.#buildUrl(id);
-    const response = await this.#fetch(url, { headers: this.#headers() });
+    const response = await this.#request(url, { headers: this.#headers() });
     if (response.status === 404) {
       await response.body?.cancel();
       return null;
@@ -98,7 +113,7 @@ export class HttpBuildRegistry implements BuildRegistry {
     const precondition: Record<string, string> = expectedVersion === null
       ? { "If-None-Match": "*" }
       : { "If-Match": expectedVersion };
-    const response = await this.#fetch(url, {
+    const response = await this.#request(url, {
       method: "PUT",
       headers: this.#headers({
         "content-type": "application/json",
@@ -122,7 +137,7 @@ export class HttpBuildRegistry implements BuildRegistry {
   /** `DELETE /builds/:id`; a missing build (`404`) is not an error. */
   async deregister(id: string): Promise<void> {
     const url = this.#buildUrl(id);
-    const response = await this.#fetch(url, {
+    const response = await this.#request(url, {
       method: "DELETE",
       headers: this.#headers(),
     });
@@ -139,7 +154,7 @@ export class HttpBuildRegistry implements BuildRegistry {
     if (query.since !== undefined) params.set("since", query.since);
     const qs = params.toString();
     const url = `${this.#base}/builds${qs === "" ? "" : `?${qs}`}`;
-    const response = await this.#fetch(url, { headers: this.#headers() });
+    const response = await this.#request(url, { headers: this.#headers() });
     if (!response.ok) {
       await response.body?.cancel();
       throw new HttpError(response.status, url);

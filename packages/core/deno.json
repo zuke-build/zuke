@@ -6,7 +6,8 @@
     ".": "./mod.ts",
     "./shell": "./src/shell.ts",
     "./tooling": "./src/tooling.ts",
-    "./render": "./src/render.ts"
+    "./render": "./src/render.ts",
+    "./conformance": "./src/conformance.ts"
   },
   "publish": {
     "exclude": [

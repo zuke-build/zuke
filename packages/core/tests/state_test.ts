@@ -426,7 +426,10 @@ Deno.test("HttpStateStore.getRun returns record + ETag, or null on 404", async (
     url: "https://s.example/",
     token: "t",
     fetch: fakeFetch((url, init) => {
-      assertEquals(init?.headers, { Authorization: "Bearer t" });
+      assertEquals(init?.headers, {
+        Authorization: "Bearer t",
+        "x-zuke-state-protocol": "1",
+      });
       if (url.endsWith("/runs/missing")) {
         return new Response(null, { status: 404 });
       }

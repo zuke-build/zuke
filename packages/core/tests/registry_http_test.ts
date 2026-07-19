@@ -64,7 +64,10 @@ Deno.test("HttpBuildRegistry.getBuild returns descriptor + ETag, or null on 404"
     url: "https://r.example/",
     token: "t",
     fetch: fakeFetch((url, init) => {
-      assertEquals(init?.headers, { Authorization: "Bearer t" });
+      assertEquals(init?.headers, {
+        Authorization: "Bearer t",
+        "x-zuke-state-protocol": "1",
+      });
       if (url.endsWith("/builds/missing")) {
         return new Response(null, { status: 404 });
       }
