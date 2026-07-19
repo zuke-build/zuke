@@ -34,6 +34,13 @@
 import { toYaml, type YamlValue } from "./yaml.ts";
 import { type Build, discoverTargets, forEachField } from "./build.ts";
 import type { TargetBuilder } from "./target.ts";
+import {
+  anyScheduleNeedsGuard,
+  guardShell,
+  type ScheduleEntry,
+  scheduleNeedsGuard,
+  utcCronsFor,
+} from "./ci_schedule.ts";
 
 /** The CI providers {@link generateCi} can target. */
 export type CiProvider = "github" | "gitlab" | "azure" | "bitbucket";
@@ -102,6 +109,15 @@ export interface CiTriggers {
   pullRequest?: string[];
   /** Allow manual runs (workflow dispatch / web). */
   manual?: boolean;
+  /**
+   * Timezone-aware scheduled runs. Each entry is a 5-field cron in an optional
+   * IANA timezone (`{ cron: "30 9 * * 1-5", tz: "Europe/Sofia" }`). Fully
+   * supported on **GitHub** (compiled to UTC crons, with a generated guard step
+   * for daylight-saving zones) and **Azure** (native `schedules:`, UTC/fixed
+   * offset only); **ignored** on GitLab and Bitbucket, whose schedules are
+   * configured in the provider UI, not in-file. See {@link "./ci_schedule.ts"}.
+   */
+  schedule?: ScheduleEntry[];
 }
 
 /** A concurrency group: at most one run per group, optionally cancelling the prior one. */
@@ -140,6 +156,26 @@ const DEFAULT_NAME = "CI";
 
 /** The default job id when one is not given. */
 const DEFAULT_JOB_ID = "build";
+
+/** The id of the generated GitHub job that guards a DST-zone schedule. */
+const GUARD_JOB_ID = "zuke-schedule-guard";
+
+/** The GitHub expression that is true when the guard job cleared this run. */
+const GUARD_OUTPUT_EXPR = `needs.${GUARD_JOB_ID}.outputs.run == 'true'`;
+
+/** Strip a `${{ … }}` wrapper from a raw GitHub expression, if present. */
+function unwrapExpr(expr: string): string {
+  const match = /^\$\{\{\s*([\s\S]*?)\s*\}\}$/.exec(expr.trim());
+  return match !== null ? match[1] : expr;
+}
+
+/** A job `if:` that ANDs the schedule guard onto any existing condition. */
+function guardedIf(existing: string | undefined): string {
+  const open = "${{ ";
+  const close = " }}";
+  if (existing === undefined) return `${open}${GUARD_OUTPUT_EXPR}${close}`;
+  return `${open}(${unwrapExpr(existing)}) && (${GUARD_OUTPUT_EXPR})${close}`;
+}
 
 /** Default triggers: push and pull request on `main`. */
 const DEFAULT_TRIGGERS: CiTriggers = { push: ["main"], pullRequest: ["main"] };
@@ -187,6 +223,15 @@ function github(pipeline: CiPipeline): YamlValue {
     on.pull_request = githubTrigger(triggers.pullRequest);
   }
   if (triggers.manual) on.workflow_dispatch = {};
+  // A tz-aware schedule compiles to UTC cron(s); a DST zone adds a guard job.
+  const scheduleCrons = [
+    ...new Set((triggers.schedule ?? []).flatMap(utcCronsFor)),
+  ];
+  if (scheduleCrons.length > 0) {
+    on.schedule = scheduleCrons.map((cron) => ({ cron }));
+  }
+  const guarded = triggers.schedule !== undefined &&
+    anyScheduleNeedsGuard(triggers.schedule);
 
   const concurrency = pipeline.concurrency
     ? {
@@ -208,12 +253,29 @@ function github(pipeline: CiPipeline): YamlValue {
     jobs[job.id ?? DEFAULT_JOB_ID] = {
       name: job.name,
       "runs-on": matrixOs ? "${{ matrix.os }}" : (job.runsOn ?? DEFAULT_RUNNER),
-      needs: job.needs,
-      if: job.if,
+      // A guarded schedule makes every job wait on the guard and run only when
+      // the guard cleared this firing (the correct wall-clock, or a non-schedule
+      // event).
+      needs: guarded ? [...(job.needs ?? []), GUARD_JOB_ID] : job.needs,
+      if: guarded ? guardedIf(job.if) : job.if,
       "timeout-minutes": job.timeoutMinutes,
       strategy: job.matrix ? { matrix: job.matrix } : undefined,
       env: job.env,
       steps,
+    };
+  }
+  if (guarded) {
+    if (Object.hasOwn(jobs, GUARD_JOB_ID)) {
+      throw new Error(
+        `cicd: a job named "${GUARD_JOB_ID}" collides with the generated ` +
+          `schedule guard — rename that job (or target) for a timezone-aware ` +
+          `schedule.`,
+      );
+    }
+    jobs[GUARD_JOB_ID] = {
+      "runs-on": DEFAULT_RUNNER,
+      outputs: { run: "${{ steps.check.outputs.run }}" },
+      steps: [{ id: "check", run: guardShell(triggers.schedule ?? []) }],
     };
   }
   return {
@@ -288,6 +350,25 @@ function azure(pipeline: CiPipeline): YamlValue {
   } else if (triggers.manual) config.trigger = "none";
   if (triggers.pullRequest) {
     config.pr = { branches: { include: include(triggers.pullRequest) } };
+  }
+  if (triggers.schedule && triggers.schedule.length > 0) {
+    for (const entry of triggers.schedule) {
+      if (scheduleNeedsGuard(entry)) {
+        throw new Error(
+          "cicd: Azure Pipelines schedules are UTC-only and Zuke's daylight-" +
+            "saving guard is GitHub-only. Use a fixed-offset timezone, or write " +
+            "the cron in UTC, for the azure provider.",
+        );
+      }
+    }
+    const scheduleBranches = triggers.push ? include(triggers.push) : ["main"];
+    config.schedules = [...new Set(triggers.schedule.flatMap(utcCronsFor))].map(
+      (cron) => ({
+        cron,
+        branches: { include: scheduleBranches },
+        always: true,
+      }),
+    );
   }
 
   const jobs: YamlValue[] = [];

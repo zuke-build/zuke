@@ -1934,6 +1934,13 @@ interface CiTriggers
     means every branch (no filter); omit the field to disable the trigger.
   manual?: boolean
     Allow manual runs (workflow dispatch / web).
+  schedule?: ScheduleEntry[]
+    Timezone-aware scheduled runs. Each entry is a 5-field cron in an optional
+    IANA timezone (`{ cron: "30 9 * * 1-5", tz: "Europe/Sofia" }`). Fully
+    supported on GitHub (compiled to UTC crons, with a generated guard step
+    for daylight-saving zones) and Azure (native `schedules:`, UTC/fixed
+    offset only); ignored on GitLab and Bitbucket, whose schedules are
+    configured in the provider UI, not in-file. See {@link "./ci_schedule.ts"}.
 
 interface CliCommandInfo
   A reserved command (`graph`, `generate-ci`, `completions`).
@@ -2622,6 +2629,15 @@ interface RunningService
     The service's target name, for diagnostics.
   stop(): Promise<void>
     Stop the service; never rejects (failures are the registry's concern).
+
+interface ScheduleEntry
+  A scheduled trigger: a 5-field cron expression in an optional IANA timezone.
+
+  cron: string
+    A standard 5-field cron expression (`minute hour day-of-month month day-of-week`).
+  tz?: string
+    An IANA timezone (e.g. `Europe/Sofia`) the `cron` is expressed in. Omitted
+    (or `UTC`) means the cron is already UTC and is emitted verbatim.
 
 interface SecretSource
   A provider that resolves a secret's value on demand. Built by

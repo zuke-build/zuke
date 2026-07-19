@@ -586,3 +586,103 @@ Deno.test("cicd accepts fan-out options directly", () => {
   const yaml = discoverCiFiles(new B())[0].render();
   assertStringIncludes(yaml, "runs-on: self-hosted");
 });
+
+// --- timezone-aware schedules (M8) ---
+
+Deno.test("github: a UTC schedule renders on.schedule with no guard job", () => {
+  const yaml = generateCi(
+    { triggers: { schedule: [{ cron: "0 6 * * *" }] } },
+    "github",
+  );
+  assertStringIncludes(yaml, 'schedule:\n    - cron: "0 6 * * *"');
+  assertEquals(yaml.includes("zuke-schedule-guard"), false);
+});
+
+Deno.test("github: a DST schedule emits dual crons, a guard job, and gates jobs", () => {
+  const yaml = generateCi(
+    {
+      triggers: { schedule: [{ cron: "30 9 * * *", tz: "Europe/Sofia" }] },
+      jobs: [{ id: "test", steps: [{ run: "deno task ci" }] }],
+    },
+    "github",
+  );
+  // Both offsets are registered as UTC crons.
+  assertStringIncludes(yaml, `- cron: "30 7 * * *"`);
+  assertStringIncludes(yaml, `- cron: "30 6 * * *"`);
+  // A guard job with a run output, and the real job wired to it.
+  assertStringIncludes(yaml, "zuke-schedule-guard:");
+  assertStringIncludes(yaml, 'run: "${{ steps.check.outputs.run }}"');
+  assertStringIncludes(yaml, "needs:\n      - zuke-schedule-guard");
+  assertStringIncludes(
+    yaml,
+    `if: "\${{ needs.zuke-schedule-guard.outputs.run == 'true' }}"`,
+  );
+  // The guard shell reads the zone's wall-clock.
+  assertStringIncludes(yaml, "TZ='Europe/Sofia' date");
+});
+
+Deno.test("github: the guard ANDs onto an existing job condition", () => {
+  const yaml = generateCi(
+    {
+      triggers: { schedule: [{ cron: "30 9 * * *", tz: "Europe/Sofia" }] },
+      jobs: [{
+        id: "test",
+        if: "${{ github.actor != 'bot' }}",
+        steps: [{ run: "x" }],
+      }],
+    },
+    "github",
+  );
+  assertStringIncludes(
+    yaml,
+    "(github.actor != 'bot') && (needs.zuke-schedule-guard.outputs.run == 'true')",
+  );
+});
+
+Deno.test("azure: a UTC/fixed schedule renders native schedules; a DST zone errors", () => {
+  const yaml = generateCi(
+    {
+      triggers: {
+        push: ["main"],
+        schedule: [{ cron: "0 6 * * *", tz: "Etc/GMT-2" }],
+      },
+    },
+    "azure",
+  );
+  assertStringIncludes(yaml, "schedules:");
+  assertStringIncludes(yaml, `- cron: "0 4 * * *"`);
+  assertStringIncludes(yaml, "always: true");
+
+  let threw = "";
+  try {
+    generateCi(
+      { triggers: { schedule: [{ cron: "30 9 * * *", tz: "Europe/Sofia" }] } },
+      "azure",
+    );
+  } catch (error) {
+    threw = error instanceof Error ? error.message : String(error);
+  }
+  assertStringIncludes(threw, "GitHub-only");
+});
+
+Deno.test("github: a job colliding with the guard id is a friendly error", () => {
+  let threw = "";
+  try {
+    generateCi(
+      {
+        triggers: { schedule: [{ cron: "30 9 * * *", tz: "Europe/Sofia" }] },
+        jobs: [{ id: "zuke-schedule-guard", steps: [{ run: "x" }] }],
+      },
+      "github",
+    );
+  } catch (error) {
+    threw = error instanceof Error ? error.message : String(error);
+  }
+  assertStringIncludes(threw, "collides with the generated");
+});
+
+Deno.test("gitlab and bitbucket ignore schedules (configured in the provider UI)", () => {
+  const triggers = { schedule: [{ cron: "30 9 * * *", tz: "Europe/Sofia" }] };
+  assertEquals(generateCi({ triggers }, "gitlab").includes("cron"), false);
+  assertEquals(generateCi({ triggers }, "bitbucket").includes("cron"), false);
+});
