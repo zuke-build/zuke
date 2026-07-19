@@ -45,6 +45,36 @@ export class GcloudSettings extends ToolSettings {
     return this;
   }
 
+  /**
+   * Add tags to a container image across registries:
+   * `gcloud container images add-tag <source> <destination…>`. Each argument is
+   * a discrete argv token, so an image reference can't inject flags. Runs with
+   * `--quiet` (the re-tag is non-interactive automation; `add-tag` otherwise
+   * prompts for confirmation).
+   */
+  containerImagesAddTag(source: string, ...destinations: string[]): this {
+    this.command("container", "images", "add-tag", source, ...destinations);
+    return this.noPrompt();
+  }
+
+  /**
+   * Describe a Cloud SQL instance:
+   * `gcloud sql instances describe <instance>`. Add `.format("json")` to get a
+   * machine-readable body to parse from the command's stdout.
+   */
+  sqlInstancesDescribe(instance: string): this {
+    return this.command("sql", "instances", "describe", instance);
+  }
+
+  /**
+   * Block until a Cloud SQL operation completes:
+   * `gcloud sql operations wait <operation>` — the typed form of the
+   * poll-an-operation shell loop.
+   */
+  sqlOperationsWait(operation: string): this {
+    return this.command("sql", "operations", "wait", operation);
+  }
+
   /** Target Google Cloud project (`--project`). */
   project(id: string): this {
     this.#project = id;

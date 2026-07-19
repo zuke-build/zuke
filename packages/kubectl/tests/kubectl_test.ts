@@ -5,12 +5,14 @@ import {
 } from "../../core/tests/_assert.ts";
 import { ToolNotFoundError, type ToolSettings } from "@zuke/core/tooling";
 import {
+  KubectlAnnotateSettings,
   KubectlApplySettings,
   KubectlCreateSettings,
   KubectlDeleteSettings,
   KubectlDescribeSettings,
   KubectlExecSettings,
   KubectlGetSettings,
+  KubectlLabelSettings,
   KubectlLogsSettings,
   KubectlPatchSettings,
   KubectlPortForwardSettings,
@@ -376,6 +378,121 @@ Deno.test("setImage: requires resource and image; all options", () => {
   );
 });
 
+Deno.test("annotate: resource + annotations, remove, and flags", () => {
+  // Resource tokens + one annotation + --overwrite.
+  assertEquals(
+    new KubectlAnnotateSettings()
+      .resource("deploy", "api")
+      .annotation("team", "payments")
+      .overwrite()
+      .argv()
+      .slice(1),
+    ["annotate", "deploy", "api", "team=payments", "--overwrite"],
+  );
+  // remove(key) renders kubectl's `key-` syntax.
+  assertEquals(
+    new KubectlAnnotateSettings()
+      .resource("deploy", "api")
+      .remove("team")
+      .argv()
+      .slice(1),
+    ["annotate", "deploy", "api", "team-"],
+  );
+  // Everything together, incl. --all and the label selector.
+  assertEquals(
+    new KubectlAnnotateSettings()
+      .resource("pods")
+      .annotation("team", "payments")
+      .remove("old")
+      .overwrite()
+      .all()
+      .selector("app=web")
+      .argv()
+      .slice(1),
+    [
+      "annotate",
+      "pods",
+      "team=payments",
+      "old-",
+      "--overwrite",
+      "--all",
+      "-l",
+      "app=web",
+    ],
+  );
+});
+
+Deno.test("label: resource + labels, remove, and flags", () => {
+  // Resource + a label + -l selector.
+  assertEquals(
+    new KubectlLabelSettings()
+      .resource("pods")
+      .label("team", "payments")
+      .selector("app=web")
+      .argv()
+      .slice(1),
+    ["label", "pods", "team=payments", "-l", "app=web"],
+  );
+  // Everything together, incl. remove(key), --overwrite, and --all.
+  assertEquals(
+    new KubectlLabelSettings()
+      .resource("deploy", "api")
+      .label("team", "payments")
+      .remove("old")
+      .overwrite()
+      .all()
+      .argv()
+      .slice(1),
+    ["label", "deploy", "api", "team=payments", "old-", "--overwrite", "--all"],
+  );
+});
+
+Deno.test("annotate and label honour the shared cluster flags", () => {
+  assertEquals(
+    new KubectlAnnotateSettings()
+      .resource("deploy", "api")
+      .annotation("team", "payments")
+      .namespace("prod")
+      .argv()
+      .slice(1),
+    ["annotate", "deploy", "api", "team=payments", "--namespace", "prod"],
+  );
+  assertEquals(
+    new KubectlLabelSettings()
+      .resource("deploy", "api")
+      .label("team", "payments")
+      .namespace("prod")
+      .argv()
+      .slice(1),
+    ["label", "deploy", "api", "team=payments", "--namespace", "prod"],
+  );
+});
+
+Deno.test("annotate and label require both a target and a payload", () => {
+  // A payload but no target.
+  assertThrows(
+    () => new KubectlAnnotateSettings().annotation("a", "b").argv(),
+    Error,
+    "a target is required",
+  );
+  // A target but no annotation/removal.
+  assertThrows(
+    () => new KubectlAnnotateSettings().resource("deploy").argv(),
+    Error,
+    "at least one .annotation()",
+  );
+  assertThrows(
+    () => new KubectlLabelSettings().label("a", "b").argv(),
+    Error,
+    "a target is required",
+  );
+  assertThrows(
+    () => new KubectlLabelSettings().resource("deploy").argv(),
+    Error,
+    "at least one .label()",
+  );
+});
+
 Deno.test("patch: requires resource and patch; --type ordering", () => {
   assertThrows(
     () => new KubectlPatchSettings().patch("{}").argv(),
@@ -536,6 +653,20 @@ Deno.test("every KubectlTasks function reaches execution", async () => {
     () =>
       KubectlTasks.setImage((s) =>
         missing(s).resource("deploy/api").image("api", "api:1")
+      ),
+    ToolNotFoundError,
+  );
+  await assertRejects(
+    () =>
+      KubectlTasks.annotate((s) =>
+        missing(s).resource("deploy", "api").annotation("team", "payments")
+      ),
+    ToolNotFoundError,
+  );
+  await assertRejects(
+    () =>
+      KubectlTasks.label((s) =>
+        missing(s).resource("deploy", "api").label("team", "payments")
       ),
     ToolNotFoundError,
   );

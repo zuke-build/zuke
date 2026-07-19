@@ -718,6 +718,152 @@ export class KubectlSetImageSettings extends KubectlSettings {
   }
 }
 
+/** Settings for `kubectl annotate`. */
+export class KubectlAnnotateSettings extends KubectlSettings {
+  #resources: string[] = [];
+  #annotations: string[] = [];
+  #removals: string[] = [];
+  #overwrite = false;
+  #all = false;
+  #selector?: string;
+
+  /** Resource tokens, e.g. `("deploy", "api")` or `("pods", "-l", "app=web")`; repeatable. */
+  resource(...tokens: string[]): this {
+    this.#resources.push(...tokens);
+    return this;
+  }
+
+  /** Set an annotation as a `key=value` token; repeatable. */
+  annotation(key: string, value: string): this {
+    this.#annotations.push(`${key}=${value}`);
+    return this;
+  }
+
+  /** Remove an annotation, rendered as kubectl's `key-` syntax; repeatable. */
+  remove(key: string): this {
+    this.#removals.push(`${key}-`);
+    return this;
+  }
+
+  /** Overwrite existing annotations (`--overwrite`). */
+  overwrite(): this {
+    this.#overwrite = true;
+    return this;
+  }
+
+  /** Apply to all resources of the given type (`--all`). */
+  all(): this {
+    this.#all = true;
+    return this;
+  }
+
+  /** Restrict to resources matching a label selector (`-l`). */
+  selector(query: string): this {
+    this.#selector = query;
+    return this;
+  }
+
+  protected override buildArgs(): string[] {
+    if (
+      this.#resources.length === 0 && this.#selector === undefined &&
+      !this.#all
+    ) {
+      throw new Error(
+        "KubectlTasks.annotate: a target is required — .resource(...), .selector(), or .all().",
+      );
+    }
+    if (this.#annotations.length === 0 && this.#removals.length === 0) {
+      throw new Error(
+        "KubectlTasks.annotate: at least one .annotation() or .remove() is required.",
+      );
+    }
+    const argv = [
+      "annotate",
+      ...this.#resources,
+      ...this.#annotations,
+      ...this.#removals,
+    ];
+    if (this.#overwrite) argv.push("--overwrite");
+    if (this.#all) argv.push("--all");
+    if (this.#selector !== undefined) argv.push("-l", this.#selector);
+    argv.push(...this.globalArgs());
+    return argv;
+  }
+}
+
+/** Settings for `kubectl label`. */
+export class KubectlLabelSettings extends KubectlSettings {
+  #resources: string[] = [];
+  #labels: string[] = [];
+  #removals: string[] = [];
+  #overwrite = false;
+  #all = false;
+  #selector?: string;
+
+  /** Resource tokens, e.g. `("deploy", "api")` or `("pods", "-l", "app=web")`; repeatable. */
+  resource(...tokens: string[]): this {
+    this.#resources.push(...tokens);
+    return this;
+  }
+
+  /** Set a label as a `key=value` token; repeatable. */
+  label(key: string, value: string): this {
+    this.#labels.push(`${key}=${value}`);
+    return this;
+  }
+
+  /** Remove a label, rendered as kubectl's `key-` syntax; repeatable. */
+  remove(key: string): this {
+    this.#removals.push(`${key}-`);
+    return this;
+  }
+
+  /** Overwrite existing labels (`--overwrite`). */
+  overwrite(): this {
+    this.#overwrite = true;
+    return this;
+  }
+
+  /** Apply to all resources of the given type (`--all`). */
+  all(): this {
+    this.#all = true;
+    return this;
+  }
+
+  /** Restrict to resources matching a label selector (`-l`). */
+  selector(query: string): this {
+    this.#selector = query;
+    return this;
+  }
+
+  protected override buildArgs(): string[] {
+    if (
+      this.#resources.length === 0 && this.#selector === undefined &&
+      !this.#all
+    ) {
+      throw new Error(
+        "KubectlTasks.label: a target is required — .resource(...), .selector(), or .all().",
+      );
+    }
+    if (this.#labels.length === 0 && this.#removals.length === 0) {
+      throw new Error(
+        "KubectlTasks.label: at least one .label() or .remove() is required.",
+      );
+    }
+    const argv = [
+      "label",
+      ...this.#resources,
+      ...this.#labels,
+      ...this.#removals,
+    ];
+    if (this.#overwrite) argv.push("--overwrite");
+    if (this.#all) argv.push("--all");
+    if (this.#selector !== undefined) argv.push("-l", this.#selector);
+    argv.push(...this.globalArgs());
+    return argv;
+  }
+}
+
 /** A patch strategy accepted by `kubectl patch --type`. */
 export type PatchType = "strategic" | "merge" | "json";
 
@@ -947,6 +1093,12 @@ export interface KubectlTasksApi {
   setImage(
     configure?: Configure<KubectlSetImageSettings>,
   ): Promise<CommandOutput>;
+  /** Annotate resources: `kubectl annotate`. */
+  annotate(
+    configure?: Configure<KubectlAnnotateSettings>,
+  ): Promise<CommandOutput>;
+  /** Label resources: `kubectl label`. */
+  label(configure?: Configure<KubectlLabelSettings>): Promise<CommandOutput>;
   /** Patch a resource: `kubectl patch`. */
   patch(configure?: Configure<KubectlPatchSettings>): Promise<CommandOutput>;
   /** Forward local ports: `kubectl port-forward`. */
@@ -996,6 +1148,14 @@ export const KubectlTasks: KubectlTasksApi = {
     configure?: Configure<KubectlSetImageSettings>,
   ): Promise<CommandOutput> {
     return runSettings(new KubectlSetImageSettings(), configure);
+  },
+  annotate(
+    configure?: Configure<KubectlAnnotateSettings>,
+  ): Promise<CommandOutput> {
+    return runSettings(new KubectlAnnotateSettings(), configure);
+  },
+  label(configure?: Configure<KubectlLabelSettings>): Promise<CommandOutput> {
+    return runSettings(new KubectlLabelSettings(), configure);
   },
   patch(configure?: Configure<KubectlPatchSettings>): Promise<CommandOutput> {
     return runSettings(new KubectlPatchSettings(), configure);

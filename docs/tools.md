@@ -62,7 +62,7 @@ actually spawn (the resolved shim or the bare fallback) for diagnostics.
 | `@zuke/yarn`           | `install`, `add`, `remove`, `run`, `dlx`                                                                                              |
 | `@zuke/docker`         | `build`, `run`, `exec`, `push`, `pull`, `tag`, `login`, `images`, `ps`, `stop`, `start`, `rm`, `rmi`, `save`, `load`                  |
 | `@zuke/docker-compose` | `up`, `down`, `build`, `pull`, `push`, `run`, `exec`, `logs`, `ps`, `config`, `start`, `stop`, `restart`, `rm`                        |
-| `@zuke/kubectl`        | `apply`, `create`, `delete`, `get`, `describe`, `logs`, `exec`, `rollout`, `scale`, `setImage`, `patch`, `portForward`, `wait`, `top` |
+| `@zuke/kubectl`        | `apply`, `create`, `delete`, `get`, `describe`, `logs`, `exec`, `rollout`, `scale`, `setImage`, `patch`, `portForward`, `wait`, `top`, `annotate`, `label` |
 | `@zuke/helm`           | `install`, `upgrade`, `uninstall`, `template`, `lint`, `dependencyUpdate`, `repoAdd`, `package`                                       |
 | `@zuke/kustomize`      | `build`, `editSetImage`                                                                                                               |
 | `@zuke/oxlint`         | `lint`                                                                                                                                |
@@ -91,7 +91,7 @@ actually spawn (the resolved shim or the bare fallback) for diagnostics.
 | `@zuke/husky`          | `init`, `install`                                                                                                                     |
 | `@zuke/node`           | `run`, `eval`, `test`                                                                                                                 |
 | `@zuke/dprint`         | `fmt`, `check`                                                                                                                        |
-| `@zuke/gcloud`         | `run` (any command)                                                                                                                   |
+| `@zuke/gcloud`         | `run` (any command; typed `containerImagesAddTag` / `sqlInstancesDescribe` / `sqlOperationsWait`), plus `GcsTasks` and `SecretManagerTasks` REST groups |
 | `@zuke/git`            | `init`, `clone`, `add`, `commit`, `status`, `checkout`, `branch`, `tag`, `push`, `pull`, `fetch`, `run` (+ `gitInfo()` helper)        |
 | `@zuke/gh`             | `run` (any command)                                                                                                                   |
 | `@zuke/codecov`        | `upload` (`codecovcli upload-process`)                                                                                                |
