@@ -5,8 +5,8 @@
  *
  * {@link installRelease} resolves a per-platform URL, downloads it (reusing
  * {@link httpDownload}), unpacks a `.tar.gz` (reusing {@link extractTarGzip}) or
- * takes a raw single binary, drops it into a directory, marks it executable, and
- * returns its {@link AbsolutePath}.
+ * a `.zip` (reusing {@link extractZip}) or takes a raw single binary, drops it
+ * into a directory, marks it executable, and returns its {@link AbsolutePath}.
  *
  * ```ts
  * import { installRelease } from "jsr:@zuke/core";
@@ -25,14 +25,11 @@
  * await CmdTasks.exec(String(bin), (s) => s.args("version"));
  * ```
  *
- * Zip archives are not yet supported (only raw binaries and `.tar.gz`), so this
- * targets the Unix CI runners where most release tarballs are published.
- *
  * @module
  */
 
 import { httpDownload } from "./http.ts";
-import { extractTarGzip } from "./compression.ts";
+import { extractTarGzip, extractZip } from "./compression.ts";
 import { type AbsolutePath, absolutePath, type PathLike } from "./path.ts";
 import {
   type Architecture,
@@ -122,12 +119,13 @@ export interface InstallReleaseOptions {
   destDir: PathLike;
   /**
    * The download format. `"raw"` (default) treats the download as the binary
-   * itself; `"tar.gz"` unpacks it and takes {@link binaryPath} from inside.
+   * itself; `"tar.gz"` and `"zip"` unpack it and take {@link binaryPath} from
+   * inside. Many release assets ship one or the other.
    */
-  archive?: "raw" | "tar.gz";
+  archive?: "raw" | "tar.gz" | "zip";
   /**
-   * For a `"tar.gz"` archive, the binary's path within the archive. Defaults to
-   * {@link name}.
+   * For a `"tar.gz"` or `"zip"` archive, the binary's path within the archive.
+   * Defaults to {@link name}.
    */
   binaryPath?: string;
   /**
@@ -300,10 +298,11 @@ export async function installRelease(
   const url = options.url(platform);
   await Deno.mkdir(String(dir), { recursive: true });
 
-  if ((options.archive ?? "raw") === "tar.gz") {
+  const archive = options.archive ?? "raw";
+  if (archive === "tar.gz" || archive === "zip") {
     const scratch = await Deno.makeTempDir();
     try {
-      const archivePath = `${scratch}/download.tar.gz`;
+      const archivePath = `${scratch}/download.${archive}`;
       await download(url, archivePath);
       if (checksum !== undefined) {
         await verifyChecksum(
@@ -313,7 +312,8 @@ export async function installRelease(
         );
       }
       const unpacked = `${scratch}/unpacked`;
-      await extractTarGzip(archivePath, unpacked);
+      if (archive === "zip") await extractZip(archivePath, unpacked);
+      else await extractTarGzip(archivePath, unpacked);
       await Deno.copyFile(
         `${unpacked}/${options.binaryPath ?? options.name}`,
         String(target),

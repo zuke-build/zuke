@@ -1,24 +1,46 @@
 /**
- * Compression helpers for build scripts: gzip/gunzip byte streams and read or
- * write `tar` / `.tar.gz` archives. Dependency-free — gzip uses the platform
- * `CompressionStream`, and the tar reader/writer implements the POSIX `ustar`
- * format directly.
+ * Compression helpers for build scripts: gzip/gunzip byte streams, read or write
+ * `tar` / `.tar.gz` archives, and read `.zip` archives. Dependency-free — gzip
+ * and deflate use the platform `CompressionStream`/`DecompressionStream`, and
+ * the tar reader/writer and the zip reader implement the formats directly.
  *
  * ```ts
- * import { createTarGzip, extractTarGzip } from "jsr:@zuke/core";
+ * import { createTarGzip, extractTarGzip, extractZip } from "jsr:@zuke/core";
  *
  * await createTarGzip(["dist/app.js", "README.md"], "artifact.tar.gz");
  * await extractTarGzip("artifact.tar.gz", "out");
+ * await extractZip("tool.zip", "out"); // read-only: many release assets ship zip
  * ```
  *
  * `tar` entry names are limited to 100 bytes (the `ustar` name field); longer
  * names throw. Archives are written with a fixed mtime so output is
- * reproducible.
+ * reproducible. Zip reading supports the two methods release assets use —
+ * `stored` and `deflate` — and rejects encrypted or zip64 archives with a
+ * friendly error; every extractor rejects an entry name that would escape the
+ * destination directory (a "zip slip").
  *
  * @module
  */
 
 import type { PathLike } from "./path.ts";
+
+/**
+ * Reject an archive entry whose name would escape the destination directory — an
+ * absolute path or one with a `..` segment (a "zip slip"). A downloaded or
+ * poisoned archive must never place files outside where it is being unpacked.
+ */
+export function assertSafeEntryName(name: string): void {
+  const normalized = name.replace(/\\/g, "/");
+  if (normalized.startsWith("/") || /^[A-Za-z]:/.test(normalized)) {
+    throw new Error(`archive: refusing to unpack an absolute path: "${name}".`);
+  }
+  if (normalized.split("/").some((segment) => segment === "..")) {
+    throw new Error(
+      `archive: refusing to unpack a path that escapes the destination: ` +
+        `"${name}".`,
+    );
+  }
+}
 
 /** Gzip-compress `data` using the platform `CompressionStream`. */
 export async function gzip(data: Uint8Array): Promise<Uint8Array> {
@@ -200,8 +222,21 @@ export async function extractTarGzip(
   destDir: PathLike,
 ): Promise<void> {
   const archive = untar(await gunzip(await Deno.readFile(String(src))));
+  await writeEntries(archive, destDir);
+}
+
+/**
+ * Write each archive `entry` under `destDir`, creating parent directories as
+ * needed. Every entry name is validated first ({@link assertSafeEntryName}), so
+ * a malicious archive cannot plant a file outside `destDir` (a "zip slip").
+ */
+async function writeEntries(
+  entries: TarEntry[],
+  destDir: PathLike,
+): Promise<void> {
+  for (const entry of entries) assertSafeEntryName(entry.name);
   const root = String(destDir);
-  for (const entry of archive) {
+  for (const entry of entries) {
     const path = `${root}/${entry.name}`;
     const slash = path.lastIndexOf("/");
     if (slash !== -1) {
@@ -209,4 +244,163 @@ export async function extractTarGzip(
     }
     await Deno.writeFile(path, entry.data);
   }
+}
+
+// --- ZIP reading -----------------------------------------------------------
+// Many release assets (dprint, deno, …) ship a `.zip`, so installing a tool
+// needs to read one. This is a *reader* only — the central directory is the
+// authoritative index — supporting the two methods release zips use.
+
+/** The End Of Central Directory record signature. */
+const ZIP_EOCD_SIG = 0x06054b50;
+/** The central-directory file-header signature. */
+const ZIP_CD_SIG = 0x02014b50;
+/** The local file-header signature. */
+const ZIP_LOCAL_SIG = 0x04034b50;
+/** Compression method: stored (no compression). */
+const ZIP_STORED = 0;
+/** Compression method: DEFLATE. */
+const ZIP_DEFLATE = 8;
+/** The 32-bit sentinel a field carries when its real value lives in a zip64 record. */
+const ZIP64_SENTINEL = 0xffffffff;
+
+/** Inflate a raw DEFLATE stream via the platform `DecompressionStream`. */
+async function inflateRaw(data: Uint8Array): Promise<Uint8Array> {
+  const stream = new Blob([new Uint8Array(data)]).stream().pipeThrough(
+    new DecompressionStream("deflate-raw"),
+  );
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+/**
+ * Find the offset of the End Of Central Directory record, scanning back from the
+ * end past a possible trailing comment (≤ 65535 bytes). Throws if none is found.
+ */
+function findEocd(view: DataView, length: number): number {
+  const earliest = Math.max(0, length - 22 - 0xffff);
+  for (let i = length - 22; i >= earliest; i--) {
+    if (view.getUint32(i, true) === ZIP_EOCD_SIG) return i;
+  }
+  throw new Error(
+    "zip: no end-of-central-directory record found (not a zip archive?).",
+  );
+}
+
+/** Read one entry's bytes from its local header, decompressing per `method`. */
+async function readLocalEntry(
+  view: DataView,
+  archive: Uint8Array,
+  offset: number,
+  compressedSize: number,
+  method: number,
+  name: string,
+): Promise<Uint8Array> {
+  if (
+    offset + 30 > archive.length ||
+    view.getUint32(offset, true) !== ZIP_LOCAL_SIG
+  ) {
+    throw new Error(`zip: malformed local header for entry "${name}".`);
+  }
+  // The local header's own name/extra lengths can differ from the central
+  // directory's, so re-read them here to locate the compressed data.
+  const nameLen = view.getUint16(offset + 26, true);
+  const extraLen = view.getUint16(offset + 28, true);
+  const start = offset + 30 + nameLen + extraLen;
+  if (start + compressedSize > archive.length) {
+    throw new Error(
+      `zip: entry "${name}" data runs past the archive (malformed).`,
+    );
+  }
+  const raw = archive.subarray(start, start + compressedSize);
+  if (method === ZIP_STORED) return raw.slice();
+  if (method === ZIP_DEFLATE) return await inflateRaw(raw);
+  throw new Error(
+    `zip: unsupported compression method ${method} for entry "${name}".`,
+  );
+}
+
+/**
+ * Read the entries of a `.zip` archive, decompressing `stored` and `deflate`
+ * members. The central directory is the source of truth. Directory entries (a
+ * trailing `/`) are skipped. Encrypted, zip64, or otherwise-compressed entries
+ * throw a friendly error naming the offending entry, and a header or data field
+ * that runs past the archive is reported as a malformed zip (not a raw
+ * out-of-bounds error). Every offset read from the archive is bounds-checked;
+ * for integrity against a tampered download, pin a `.checksum(...)`, which is
+ * verified before the archive is ever parsed.
+ */
+export async function unzip(archive: Uint8Array): Promise<TarEntry[]> {
+  const view = new DataView(
+    archive.buffer,
+    archive.byteOffset,
+    archive.byteLength,
+  );
+  const eocd = findEocd(view, archive.length);
+  const count = view.getUint16(eocd + 10, true);
+  const cdOffset = view.getUint32(eocd + 16, true);
+  if (count === 0xffff || cdOffset === ZIP64_SENTINEL) {
+    throw new Error("zip: unsupported zip feature (zip64).");
+  }
+  const entries: TarEntry[] = [];
+  let p = cdOffset;
+  for (let i = 0; i < count; i++) {
+    // Bounds-check every field read from the untrusted archive: a header
+    // running past the end is a malformed zip, not a raw DataView RangeError.
+    if (p + 46 > archive.length || view.getUint32(p, true) !== ZIP_CD_SIG) {
+      throw new Error("zip: malformed central directory.");
+    }
+    const flags = view.getUint16(p + 8, true);
+    const method = view.getUint16(p + 10, true);
+    const compressedSize = view.getUint32(p + 20, true);
+    const uncompressedSize = view.getUint32(p + 24, true);
+    const nameLen = view.getUint16(p + 28, true);
+    const extraLen = view.getUint16(p + 30, true);
+    const commentLen = view.getUint16(p + 32, true);
+    const localOffset = view.getUint32(p + 42, true);
+    if (p + 46 + nameLen > archive.length) {
+      throw new Error("zip: malformed central directory (name runs past end).");
+    }
+    const name = new TextDecoder().decode(
+      archive.subarray(p + 46, p + 46 + nameLen),
+    );
+    if ((flags & 0x0001) !== 0) {
+      throw new Error(
+        `zip: unsupported zip feature (encrypted entry "${name}").`,
+      );
+    }
+    if (
+      compressedSize === ZIP64_SENTINEL ||
+      uncompressedSize === ZIP64_SENTINEL || localOffset === ZIP64_SENTINEL
+    ) {
+      throw new Error(`zip: unsupported zip feature (zip64 entry "${name}").`);
+    }
+    if (!name.endsWith("/")) {
+      entries.push({
+        name,
+        data: await readLocalEntry(
+          view,
+          archive,
+          localOffset,
+          compressedSize,
+          method,
+          name,
+        ),
+      });
+    }
+    p += 46 + nameLen + extraLen + commentLen;
+  }
+  return entries;
+}
+
+/**
+ * Read the `.zip` at `src`, unpack it, and write each entry under `destDir`
+ * (creating parent directories as needed) — the zip counterpart of
+ * {@link extractTarGzip}. Entry names are validated so a malicious archive
+ * cannot escape `destDir`.
+ */
+export async function extractZip(
+  src: PathLike,
+  destDir: PathLike,
+): Promise<void> {
+  await writeEntries(await unzip(await Deno.readFile(String(src))), destDir);
 }

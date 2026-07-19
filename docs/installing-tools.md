@@ -61,25 +61,27 @@ await CmdTasks.exec(String(bin), (s) => s.args("--version"));
 | `.name(name)`                | The tool name, and the installed filename (`.exe` is appended on Windows). **Required.**                           |
 | `.url((platform) => string)` | Resolve the download URL for the target platform (see [platforms](#cross-platform-url-resolution)). **Required.**  |
 | `.destDir(dir)`              | Directory to install into (created if missing). Defaults to `.zuke/tools`.                                         |
-| `.archive("tar.gz")`         | Unpack a gzipped tarball; the default `"raw"` treats the download as the binary.                                   |
-| `.binaryPath(path)`          | For a `tar.gz`, the binary's path _inside_ the archive. Defaults to the name.                                      |
+| `.archive("tar.gz" \| "zip")` | Unpack a gzipped tarball or a zip; the default `"raw"` treats the download as the binary.                         |
+| `.binaryPath(path)`          | For an archive, the binary's path _inside_ it. Defaults to the name.                                               |
 | `.checksum(sha256)`          | Expected SHA-256, or a `(platform) => string` resolver — [verifies and caches](#pinning-verification-and-caching). |
 | `.platform({ os, arch })`    | Resolve for a specific platform instead of the host.                                                               |
 | `.download(fn)`              | Override the downloader (defaults to an HTTPS download); mainly a test seam.                                       |
 
-### Raw binaries vs. tarballs
+### Raw binaries vs. archives
 
 - **`"raw"`** (default) — the URL points straight at the executable; it's saved
   as `<destDir>/<name>` and `chmod +x`'d.
-- **`.archive("tar.gz")`** — the URL points at a gzipped tarball; Zuke unpacks
-  it to a scratch directory, copies `.binaryPath(...)` (default the name) out to
-  `<destDir>/<name>`, then discards the scratch. Set `.binaryPath(...)` when the
-  binary lives in a subdirectory of the archive (e.g. Helm ships it under
-  `linux-amd64/helm`).
+- **`.archive("tar.gz")` / `.archive("zip")`** — the URL points at a gzipped
+  tarball or a zip; Zuke unpacks it to a scratch directory, copies
+  `.binaryPath(...)` (default the name) out to `<destDir>/<name>`, then discards
+  the scratch. Set `.binaryPath(...)` when the binary lives in a subdirectory of
+  the archive (e.g. Helm ships it under `linux-amd64/helm`). Zip reading covers
+  the `stored` and `deflate` methods release assets use (dprint et al. ship
+  zip-only); encrypted or zip64 archives are rejected with a clear error, and no
+  archive entry may escape the destination directory (a "zip slip").
 
-Zip archives are not yet supported, so this targets the Unix runners where most
-release tarballs are published. On Windows the installed filename gains an
-`.exe` suffix and the executable bit is skipped.
+On Windows the installed filename gains an `.exe` suffix and the executable bit
+is skipped.
 
 ## Pinning, verification, and caching
 
@@ -106,9 +108,10 @@ publish — and it does three jobs at once:
    re-downloaded and re-verified, never silently reused. Bumping the checksum
    for a new version is a natural miss that re-fetches.
 
-What the checksum covers depends on the format: for `"tar.gz"` it's the SHA-256
-of the **archive** (what projects list in their `checksums.txt`/`sha256sum`
-files); for `"raw"` it's the SHA-256 of the **binary** itself.
+What the checksum covers depends on the format: for `"tar.gz"` and `"zip"` it's
+the SHA-256 of the **archive** (what projects list in their
+`checksums.txt`/`sha256sum` files); for `"raw"` it's the SHA-256 of the
+**binary** itself.
 
 Without a checksum, the tool is downloaded every run and left unverified — fine
 for a quick spike, but pin one for anything real.
