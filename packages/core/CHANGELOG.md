@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.27.0](https://github.com/zuke-build/zuke/compare/core-v1.26.0...core-v1.27.0) (2026-07-19)
+
+
+### Features
+
+* **core:** fan-out items run their own onCancel compensation ([#199](https://github.com/zuke-build/zuke/issues/199)) ([641adfb](https://github.com/zuke-build/zuke/commit/641adfbbfb0c1fd037fbf3e50fb4d06dbc983131))
+* **core:** lazy edge provider for batch ordering ([#203](https://github.com/zuke-build/zuke/issues/203)) ([4880229](https://github.com/zuke-build/zuke/commit/4880229d392349d0f8a4c3ba242182545f413c25))
+* **core:** run-record retention and runs prune ([#201](https://github.com/zuke-build/zuke/issues/201)) ([ce118fd](https://github.com/zuke-build/zuke/commit/ce118fde070efb20adf418e8958b565ef5e764f8))
+
 ## [1.26.0](https://github.com/zuke-build/zuke/compare/core-v1.25.0...core-v1.26.0) (2026-07-19)
 
 
