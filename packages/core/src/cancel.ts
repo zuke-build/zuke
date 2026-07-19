@@ -24,9 +24,9 @@
  * @module
  */
 
-import { type Build, discoverTargets } from "./build.ts";
+import { type Build, discoverTargets, resolveOrderingEdges } from "./build.ts";
 import type { Reporter } from "./executor.ts";
-import { planGraph } from "./graph.ts";
+import { type OrderingEdge, planGraph } from "./graph.ts";
 import { discoverParameters, resolveParameters } from "./params.ts";
 import { Redactor } from "./redact.ts";
 import type {
@@ -654,10 +654,24 @@ export async function cancelRun(
         `"${record.rootTarget}" — cancelling without compensations.`,
     );
   } else {
-    // Honour the build's soft extraEdges, exactly as execute() does, so
-    // out-of-process cancellation (zuke cancel / MCP / a timed-out wait)
-    // compensates in the same reverse-execution order as an in-process cancel.
-    const order = planGraph(root, build.extraEdges(targets)).order;
+    // Honour the build's soft ordering edges (extraEdges + the lazy orderWith
+    // provider), exactly as execute() does, so out-of-process cancellation
+    // (zuke cancel / MCP / a timed-out wait) compensates in the same
+    // reverse-execution order as an in-process cancel. These edges only affect
+    // the compensation ORDER, so a failing provider (e.g. an unreachable
+    // dependency-graph service during `zuke cancel`) degrades to the base
+    // topological order — never abandoning the walk, which would strand the run
+    // `cancelling` with its rollbacks never run (a re-cancel then skips them).
+    let edges: OrderingEdge[] = [];
+    try {
+      edges = await resolveOrderingEdges(build, targets);
+    } catch (error) {
+      reporter.error(
+        `cancel: ordering provider failed (${messageOf(error)}); ` +
+          `compensating in base topological order.`,
+      );
+    }
+    const order = planGraph(root, edges).order;
     outcome = await runCompensations(order, record, {
       runId,
       signals: new Map(Object.entries(record.signals)),

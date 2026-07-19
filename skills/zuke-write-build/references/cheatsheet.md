@@ -38,8 +38,10 @@ Everything is optional except a body (`.executes`).
 **External ordering:** `override extraEdges(targets)` on the `Build` returns
 `[before, after]` pairs (from the discovered `targets` map) to impose soft
 ordering beyond per-target `.before()`/`.after()` — the seam for feeding an
-external dependency graph in. Cycle-checked; edges outside the run's set are
-ignored.
+external dependency graph in. `override orderWith(targets)` is the same, but
+**async and resolved per run** (load the graph at run time); its edges merge
+with `extraEdges`. Cycle-checked; edges outside the run's set are ignored; both
+are honoured by a run and `zuke cancel`, but not by static `graph`/`--list`.
 
 ## `group()` — parallel batches
 

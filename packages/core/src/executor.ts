@@ -14,8 +14,8 @@
  */
 
 import type { Build, BuildResult, TargetStatus } from "./build.ts";
-import { discoverTargets } from "./build.ts";
-import { planGraph } from "./graph.ts";
+import { discoverTargets, resolveOrderingEdges } from "./build.ts";
+import { type OrderingEdge, planGraph } from "./graph.ts";
 import { withAmbientEcho } from "./ambient_echo.ts";
 import {
   discoverParameters,
@@ -1404,8 +1404,23 @@ export async function execute(
   }
 
   // Soft ordering edges the build declares beyond target-level before/after
-  // (e.g. fed from an external dependency graph); cycle-checked with the rest.
-  const extraEdges = build.extraEdges(discoverTargets(build));
+  // (`extraEdges` plus the lazy per-run `orderWith` provider, e.g. fed from an
+  // external dependency graph); cycle-checked with the rest. The lazy provider
+  // may be async and can fail (an unreachable graph service) — since ordering
+  // can be a correctness requirement, a failure fails the build cleanly rather
+  // than silently running in the base order or crashing with an unhandled
+  // rejection. (No run record exists yet, so nothing is stranded.)
+  let extraEdges: OrderingEdge[];
+  try {
+    extraEdges = await resolveOrderingEdges(build, discoverTargets(build));
+  } catch (error) {
+    reporter.error(
+      `Failed to resolve ordering edges: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    return { ok: false, executed: [], error };
+  }
   const { order, predecessors } = planGraph(root, extraEdges);
   // Evaluate up-front conditions for `whenSkipped("skip-dependencies")` targets
   // and skip them plus any dependencies that nothing else needs.

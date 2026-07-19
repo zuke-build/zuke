@@ -678,6 +678,25 @@ class Monorepo extends Build {
 }
 ```
 
+**Lazy ordering — `override orderWith(targets)`.** Same edges, but **async and
+resolved per run**: use it when the ordering must be *loaded* at run time — read
+the monorepo's `dependency-graph.json`, hit an API — rather than declared
+statically. Return the same `[before, after]` pairs; they merge with
+`extraEdges`, and share its rules (endpoints outside the run's set are ignored,
+cycles reported). Both are honoured by a run and by `zuke cancel`'s reverse-order
+compensation walk, but — being resolved only when a run plans — neither shows in
+the static `graph` / `--list` views nor in `cicd()`-generated CI.
+
+```ts
+override async orderWith(t: Map<string, Target>): Promise<OrderingEdge[]> {
+  const graph = await loadDependencyGraph(); // read it at run time
+  return graph.edges.flatMap(([before, after]) => {
+    const from = t.get(before), to = t.get(after);
+    return from && to ? [[from, to] as OrderingEdge] : [];
+  });
+}
+```
+
 A field literally named `default` is the **default target**, run when no target
 is named on the command line.
 
