@@ -93,7 +93,10 @@ function parameterInfo(name: string, p: AnyParameter): CliParameterInfo {
     required: p.required_,
     boolean: p.kind_ === "boolean",
     array: p.array_,
-    options: [...(p.options_ ?? [])],
+    // A secret parameter's declared option values could themselves be sensitive
+    // (e.g. `.secret().options(...)` listing real keys), so they are never
+    // surfaced — matching how a run record omits secret values entirely.
+    options: p.secret_ ? [] : [...(p.options_ ?? [])],
   };
 }
 

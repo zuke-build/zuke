@@ -383,6 +383,7 @@ class ZukeBuild extends Build {
           "tests/e2e/cancel_e2e.ts",
           "tests/e2e/otel_e2e.ts",
           "tests/e2e/gh_workflow_e2e.ts",
+          "tests/e2e/registry_e2e.ts",
         )
       );
     });

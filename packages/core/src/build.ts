@@ -13,6 +13,7 @@ import { Group, type Remediation, TargetBuilder } from "./target.ts";
 import type { OrderingEdge } from "./graph.ts";
 import type { RemoteCacheStore } from "./remote_cache.ts";
 import type { StateStore } from "./state/store.ts";
+import type { BuildRegistry } from "./registry/registry.ts";
 
 /** Whether a value is a plain object (a component bundle), not a class instance. */
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -193,6 +194,28 @@ export class Build {
    */
   extraEdges(_targets: Map<string, TargetBuilder>): OrderingEdge[] {
     return [];
+  }
+
+  /**
+   * The {@link "./registry/registry.ts".BuildRegistry} this build registers
+   * itself in (`zuke register`) and that a registry-backed `zuke mcp` server
+   * discovers pipelines from. Override to declare one in code; the default is
+   * none, and — unless overridden — the resolution falls back to the
+   * `ZUKE_REGISTRY_URL` / `ZUKE_REGISTRY_DIR` environment variables, then (for
+   * `zuke register`) a filesystem registry under `<root>/.zuke/builds`. Kept a
+   * separate concern from {@link stateStore} (a run history and a build catalog
+   * are different things), so a consumer can host a richer catalog as a plugin.
+   *
+   * ```ts
+   * class CD extends Build {
+   *   override registry() {
+   *     return new HttpBuildRegistry({ url: this.registryUrl.value, token: this.registryToken.value });
+   *   }
+   * }
+   * ```
+   */
+  registry(): BuildRegistry | undefined {
+    return undefined;
   }
 }
 

@@ -85,6 +85,46 @@ The client validates every summary it receives (an untrusted service is checked,
 not trusted) and expects newest-first ordering is applied server-side where it
 matters; it does not re-sort the list.
 
+## Build catalog (`/builds`)
+
+The [build registry](./registry.md) rides the **same** contract — same base URL,
+same bearer auth, same `ETag`/`If-Match` compare-and-swap — with a `/builds`
+collection beside `/runs`, so one service can host both (they stay separate
+concerns in the client:
+[`HttpBuildRegistry`](./registry.md#httpbuildregistry--hosted-service) is not the
+run store). A build **descriptor** is JSON, exactly the shape in
+[the registry docs](./registry.md#the-build-descriptor); the service stores and
+returns it verbatim. Descriptors never contain secrets.
+
+### `GET /builds/:id`
+
+Fetch one registered build.
+
+| Response | Meaning                                                          |
+| -------- | --------------------------------------------------------------- |
+| `200`    | Body is the descriptor; **`ETag` header is required**.          |
+| `404`    | No such build (the client treats this as "not registered").     |
+| other    | The client raises an error.                                     |
+
+### `PUT /builds/:id`
+
+Register (create or update) a build, guarded exactly like `PUT /runs/:id`:
+`If-None-Match: *` to create, `If-Match: <etag>` to update, `412` on a version
+mismatch (the client re-reads and retries, so concurrent registrations converge).
+A `200`/`201` must return the new version as an `ETag`.
+
+### `DELETE /builds/:id`
+
+Deregister a build. `404` (already gone) is **not** an error; any other non-`2xx`
+is. No body.
+
+### `GET /builds?name=&since=`
+
+List registered builds as an array of **summaries**
+(`id`, `name`, `actor`, `createdAt`, `updatedAt`). Query parameters (optional,
+AND-combined): `name` (exact match) and `since` (`createdAt` at or after an
+ISO-8601 timestamp). The client validates every summary and does not re-sort.
+
 ## Notes for implementers
 
 - **Never weaker than optimistic 409-retry.** The precondition model above is

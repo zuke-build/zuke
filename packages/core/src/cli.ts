@@ -31,6 +31,7 @@ import {
   GENERATE_CI_COMMAND,
   GRAPH_COMMAND,
   MCP_COMMAND,
+  REGISTER_COMMAND,
   RESUME_COMMAND,
   RUNS_COMMAND,
 } from "./cli_spec.ts";
@@ -38,6 +39,7 @@ import { type HttpAddress, serveMcp } from "./mcp/command.ts";
 import { cancelRun } from "./cancel.ts";
 import { resumeCheck, resumeRun } from "./resume.ts";
 import { runsCommand } from "./runs.ts";
+import { registerCommand } from "./registry/register.ts";
 import { isRunStatus, RUN_STATUS_NAMES, type RunQuery } from "./state/types.ts";
 import {
   installCompletions,
@@ -150,6 +152,8 @@ export interface ParsedArgs {
   cancel: boolean;
   /** The run id to cancel (the positional after `cancel`). */
   cancelRunId?: string;
+  /** The `register` command was requested (record this build in the registry). */
+  register: boolean;
   /** Raw parameter values from declared flags, keyed by property name. */
   values: Record<string, string>;
   help: boolean;
@@ -191,6 +195,7 @@ export function parseArgs(
     forceGraph: false,
     runs: false,
     cancel: false,
+    register: false,
     confirmDestructive: false,
     help: false,
   };
@@ -323,7 +328,7 @@ export function parseArgs(
     } else if (
       parsed.target === undefined && !parsed.graph && !parsed.generateCi &&
       !parsed.completions && !parsed.mcp && !parsed.resume && !parsed.runs &&
-      !parsed.cancel
+      !parsed.cancel && !parsed.register
     ) {
       if (arg === GRAPH_COMMAND) parsed.graph = true;
       else if (arg === GENERATE_CI_COMMAND) parsed.generateCi = true;
@@ -332,6 +337,7 @@ export function parseArgs(
       else if (arg === RESUME_COMMAND) parsed.resume = true;
       else if (arg === RUNS_COMMAND) parsed.runs = true;
       else if (arg === CANCEL_COMMAND) parsed.cancel = true;
+      else if (arg === REGISTER_COMMAND) parsed.register = true;
       else parsed.target = arg;
     }
   }
@@ -357,6 +363,7 @@ Usage:
   deno run -A zuke.ts runs list [--status <s>] [--target <t>] [--since <iso>] [--json]
   deno run -A zuke.ts runs show <run-id> [--json]
   deno run -A zuke.ts cancel <run-id> [--actor <name>]
+  deno run -A zuke.ts register [--actor <name>] [--json]
 
 Options:
   <target>          Run the target and its transitive dependencies.
@@ -430,6 +437,11 @@ Options:
                     compensations of every target that had succeeded — in
                     reverse order — and mark the record cancelled. Idempotent:
                     cancelling a finished run is a no-op. See docs/orchestration.md.
+  register          Record this build in the build registry (its targets,
+                    parameters, and launch location) so a registry-backed MCP
+                    server can discover it. Idempotent; excludes secrets. Writes
+                    to .zuke/builds unless ZUKE_REGISTRY_URL/DIR or the build's
+                    registry() configures a store. See docs/registry.md.
   --status <s>      With runs list, keep only runs with this status (running,
                     suspended, succeeded, failed, cancelled).
   --target <t>      With runs list, keep only runs whose graph contains this
@@ -743,6 +755,19 @@ async function runCancel(build: Build, parsed: ParsedArgs): Promise<number> {
   }
 }
 
+/** Run the `register` command: record this build in the build registry. */
+async function runRegister(build: Build, parsed: ParsedArgs): Promise<number> {
+  try {
+    return await registerCommand(build, {
+      actor: parsed.actor,
+      json: parsed.json,
+    });
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    return 1;
+  }
+}
+
 /** Run the `runs` command: build the query (validating `--status`) and dispatch. */
 async function runRuns(build: Build, parsed: ParsedArgs): Promise<number> {
   const query: RunQuery = {};
@@ -800,8 +825,9 @@ export async function main(
   }
 
   // `--json` prints the build surface, except when a command consumes it
-  // itself (`runs list/show --json` emits run data, not the build surface).
-  if (parsed.json && !parsed.runs) {
+  // itself (`runs list/show --json` emits run data; `register --json` emits the
+  // written descriptor).
+  if (parsed.json && !parsed.runs && !parsed.register) {
     const surface = describeBuildSurface(targets, params);
     console.log(JSON.stringify(surface, null, 2));
     return 0;
@@ -847,6 +873,9 @@ export async function main(
   }
   if (parsed.cancel) {
     return await runCancel(build, parsed);
+  }
+  if (parsed.register) {
+    return await runRegister(build, parsed);
   }
 
   let name = parsed.target;

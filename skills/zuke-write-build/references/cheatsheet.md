@@ -548,7 +548,16 @@ is current (`zuke generate-ci --check` is a dedicated gate).
 ./zuke mcp --allow-run=deploy,checks* --protect deploy --confirm-destructive
                               # authz tiers: allow-list, operator token, confirm
 ./zuke runs show mcp-audit    # the MCP tool-call audit trail
+./zuke register [--json]      # record this build in the build registry (idempotent)
 ```
+
+**Build registry** (`docs/registry.md`): `zuke register` writes a secret-free
+descriptor of this build — its `describeCli()` surface (targets, params) plus a
+launch location — into a pluggable `BuildRegistry`, so a registry-backed MCP
+server can discover new pipelines without a redeploy. Resolved like the state
+store: `ZUKE_REGISTRY_URL`/`_TOKEN` (HTTP) or `ZUKE_REGISTRY_DIR` (files), a
+`registry()` build override, else `.zuke/builds`. Separate from the run store; an
+HTTP backend shares the `/builds` REST contract beside `/runs`.
 
 **Caching:** a target with `.inputs(...)`/`.outputs(...)` is incremental
 (skipped and reported `cached` when inputs are unchanged and outputs exist). Add
