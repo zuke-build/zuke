@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/zuke-build/zuke/compare/cli-v0.6.0...cli-v0.7.0) (2026-07-19)
+
+
+### Features
+
+* **cli:** node-repo ergonomics — npm workspaces, setup collision guard, zuke doc ([#209](https://github.com/zuke-build/zuke/issues/209)) ([c0e3e38](https://github.com/zuke-build/zuke/commit/c0e3e382696add8747303f7b6f6b10318b0bdc3c))
+
 ## [0.6.0](https://github.com/zuke-build/zuke/compare/cli-v0.5.0...cli-v0.6.0) (2026-07-17)
 
 

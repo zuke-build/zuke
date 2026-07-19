@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/zuke-build/zuke/compare/kubectl-v0.2.0...kubectl-v0.3.0) (2026-07-19)
+
+
+### Features
+
+* **core:** runs list --counts and typed kubectl getNamespaces ([#211](https://github.com/zuke-build/zuke/issues/211)) ([b0d9a61](https://github.com/zuke-build/zuke/commit/b0d9a615b9e86c72b8965f5982e24c540f9933e9))
+
 ## [0.2.0](https://github.com/zuke-build/zuke/compare/kubectl-v0.1.0...kubectl-v0.2.0) (2026-07-19)
 
 
