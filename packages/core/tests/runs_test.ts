@@ -1,6 +1,8 @@
 import { assertEquals, assertStringIncludes } from "./_assert.ts";
 import { Build } from "../src/build.ts";
 import {
+  aggregateRunCounts,
+  formatRunCounts,
   formatRunDetail,
   formatRunList,
   runsCommand,
@@ -183,6 +185,92 @@ Deno.test("runsCommand list --json emits a summary array", async () => {
     const summaries = JSON.parse(out);
     assertEquals(Array.isArray(summaries), true);
     assertEquals(summaries[0].id, "run-a");
+  });
+});
+
+Deno.test("aggregateRunCounts tallies total and per-status, in stable order", () => {
+  const summary = (id: string, status: RunStatus): RunSummary => ({
+    id,
+    build: "CI",
+    rootTarget: "deploy",
+    status,
+    actor: "alice",
+    createdAt: "2026-07-17T10:00:00.000Z",
+    updatedAt: "2026-07-17T10:05:00.000Z",
+  });
+  const counts = aggregateRunCounts([
+    summary("1", "succeeded"),
+    summary("2", "failed"),
+    summary("3", "succeeded"),
+    summary("4", "running"),
+  ]);
+  assertEquals(counts.total, 4);
+  // Keys are sorted ascending, so the JSON is deterministic.
+  assertEquals(Object.keys(counts.byStatus), [
+    "failed",
+    "running",
+    "succeeded",
+  ]);
+  assertEquals(counts.byStatus.succeeded, 2);
+  assertEquals(counts.byStatus.failed, 1);
+  assertEquals(aggregateRunCounts([]), { total: 0, byStatus: {} });
+});
+
+Deno.test("formatRunCounts renders a total and per-status lines, or an empty note", () => {
+  const text = formatRunCounts({
+    total: 3,
+    byStatus: { failed: 1, succeeded: 2 },
+  });
+  assertStringIncludes(text, "Total: 3");
+  assertStringIncludes(text, "succeeded");
+  assertStringIncludes(text, "2");
+  assertEquals(formatRunCounts({ total: 0, byStatus: {} }), "No runs found.");
+});
+
+Deno.test("runsCommand list --counts prints aggregate counts, and --json emits them", async () => {
+  await withStore(async (store) => {
+    await store.putRun(sampleRecord({ id: "a", status: "succeeded" }), null);
+    await store.putRun(sampleRecord({ id: "b", status: "succeeded" }), null);
+    await store.putRun(sampleRecord({ id: "c", status: "failed" }), null);
+
+    const human = await capture(() =>
+      runsCommand(new B(), { action: "list", counts: true, stateStore: store })
+    );
+    assertEquals(human.code, 0);
+    assertStringIncludes(human.out, "Total: 3");
+    assertStringIncludes(human.out, "succeeded");
+
+    const json = await capture(() =>
+      runsCommand(new B(), {
+        action: "list",
+        counts: true,
+        json: true,
+        stateStore: store,
+      })
+    );
+    assertEquals(json.code, 0);
+    assertEquals(JSON.parse(json.out), {
+      total: 3,
+      byStatus: { failed: 1, succeeded: 2 },
+    });
+  });
+});
+
+Deno.test("runsCommand list --counts honours the query filter", async () => {
+  await withStore(async (store) => {
+    await store.putRun(sampleRecord({ id: "ok", status: "succeeded" }), null);
+    await store.putRun(sampleRecord({ id: "bad", status: "failed" }), null);
+    const { code, out } = await capture(() =>
+      runsCommand(new B(), {
+        action: "list",
+        counts: true,
+        json: true,
+        query: { status: "failed" },
+        stateStore: store,
+      })
+    );
+    assertEquals(code, 0);
+    assertEquals(JSON.parse(out), { total: 1, byStatus: { failed: 1 } });
   });
 });
 

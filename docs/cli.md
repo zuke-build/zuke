@@ -18,7 +18,7 @@
 | `zuke mcp [--allow-run[=<globs>]] [--http <host:port>]` | Run an MCP server over the build for AI agents, on stdio or HTTP ([details](./mcp.md)). |
 | `zuke resume <id> [--signal <n>] [--data <json>]`       | Resume a suspended run, optionally delivering a signal ([details](./orchestration.md)). |
 | `zuke resume --check [<id>]`                            | Re-check suspended runs (predicate waits, timeouts).                                    |
-| `zuke runs list [--status/-target/-since/-limit] [--json]` | List persisted run records, newest first ([details](./state.md)).                    |
+| `zuke runs list [--status/-target/-since/-limit] [--counts] [--json]` | List persisted run records (or `--counts` for a status tally), newest first ([details](./state.md)). |
 | `zuke runs show <id> [--json]`                          | Show one run's full per-target status and metadata.                                     |
 | `zuke runs prune [--keep <age>] [--keep-last <n>] [--dry-run]` | Delete old terminal run records; never touches non-terminal runs.                |
 | `zuke cancel <id> [--actor <name>]`                     | Cancel a run and run its compensations ([details](./orchestration.md#cancellation--compensation-oncancel)). |
@@ -285,7 +285,10 @@ run's full status survives the process that produced it.
   `suspended`, `cancelling`, `succeeded`, `failed`, `cancelled`), `--target <t>` (only runs
   whose graph contains that target), `--since <iso>` (only runs created at
   or after an ISO-8601 timestamp), and `--limit <n>` (at most the newest N). The
-  filters compose.
+  filters compose. Add `--counts` to print aggregate counts (a total and one
+  line per status) instead of rows — with `--json` it emits
+  `{ total, byStatus }` (status keys sorted for stable output), honouring the
+  same filters.
 - `zuke runs show <run-id>` reconstructs one run in full: the header, resolved
   (non-secret) parameters, each target's status with its duration, error, or
   pending wait, and any external signals received.

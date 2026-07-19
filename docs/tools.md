@@ -62,7 +62,7 @@ actually spawn (the resolved shim or the bare fallback) for diagnostics.
 | `@zuke/yarn`           | `install`, `add`, `remove`, `run`, `dlx`                                                                                              |
 | `@zuke/docker`         | `build`, `run`, `exec`, `push`, `pull`, `tag`, `login`, `images`, `ps`, `stop`, `start`, `rm`, `rmi`, `save`, `load`                  |
 | `@zuke/docker-compose` | `up`, `down`, `build`, `pull`, `push`, `run`, `exec`, `logs`, `ps`, `config`, `start`, `stop`, `restart`, `rm`                        |
-| `@zuke/kubectl`        | `apply`, `create`, `delete`, `get`, `describe`, `logs`, `exec`, `rollout`, `scale`, `setImage`, `patch`, `portForward`, `wait`, `top`, `annotate`, `label` |
+| `@zuke/kubectl`        | `apply`, `create`, `delete`, `get`, `getNamespaces` (typed), `describe`, `logs`, `exec`, `rollout`, `scale`, `setImage`, `patch`, `portForward`, `wait`, `top`, `annotate`, `label` |
 | `@zuke/helm`           | `install`, `upgrade`, `uninstall`, `template`, `lint`, `dependencyUpdate`, `repoAdd`, `package`                                       |
 | `@zuke/kustomize`      | `build`, `editSetImage`                                                                                                               |
 | `@zuke/oxlint`         | `lint`                                                                                                                                |

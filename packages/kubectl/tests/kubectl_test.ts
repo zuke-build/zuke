@@ -1,9 +1,11 @@
 import {
   assertEquals,
   assertRejects,
+  assertStringIncludes,
   assertThrows,
 } from "../../core/tests/_assert.ts";
 import { ToolNotFoundError, type ToolSettings } from "@zuke/core/tooling";
+import { withAmbientEcho } from "../../core/src/ambient_echo.ts";
 import {
   KubectlAnnotateSettings,
   KubectlApplySettings,
@@ -22,6 +24,7 @@ import {
   KubectlTasks,
   KubectlTopSettings,
   KubectlWaitSettings,
+  parseNamespaces,
 } from "../src/kubectl.ts";
 
 Deno.test("the default binary is kubectl", () => {
@@ -186,6 +189,156 @@ Deno.test("get: requires a resource; all options", () => {
       "-w",
       "--show-labels",
     ],
+  );
+});
+
+Deno.test("getNamespaces forces `get namespaces -o json`", () => {
+  // getNamespaces builds this argv internally (the forced `.quiet()` adds no arg).
+  assertEquals(
+    new KubectlGetSettings().resource("namespaces").output("json").argv().slice(
+      1,
+    ),
+    ["get", "namespaces", "-o", "json"],
+  );
+});
+
+Deno.test("parseNamespaces narrows a List, a single object, and skips bad items", () => {
+  const list = parseNamespaces(JSON.stringify({
+    items: [
+      {
+        metadata: {
+          name: "a",
+          labels: { x: "1", n: 2 },
+          creationTimestamp: "t",
+        },
+        status: { phase: "Active" },
+      },
+      { metadata: { name: "b" } }, // no status, no labels
+      { metadata: {} }, // no name → skipped
+      { spec: {} }, // no metadata → skipped
+      "nope", // not a record → skipped
+    ],
+  }));
+  assertEquals(list.map((n) => n.name), ["a", "b"]);
+  // A non-string label value (n: 2) is dropped, not coerced.
+  assertEquals(list[0], {
+    name: "a",
+    status: "Active",
+    labels: { x: "1" },
+    createdAt: "t",
+  });
+  assertEquals(list[1], {
+    name: "b",
+    status: "",
+    labels: {},
+    createdAt: undefined,
+  });
+
+  // A single namespace object (kubectl get ns <name> -o json) → one-element array.
+  assertEquals(
+    parseNamespaces(
+      JSON.stringify({
+        metadata: { name: "solo" },
+        status: { phase: "Terminating" },
+      }),
+    ),
+    [{ name: "solo", status: "Terminating", labels: {}, createdAt: undefined }],
+  );
+  assertEquals(parseNamespaces(JSON.stringify({ items: [] })), []);
+  assertEquals(parseNamespaces(JSON.stringify({})), []); // no name → dropped
+  assertEquals(parseNamespaces("  "), []); // empty/whitespace → no rows
+  assertThrows(() => parseNamespaces("{not json"), Error);
+});
+
+Deno.test("getNamespaces runs kubectl and parses the JSON (POSIX fake binary)", async () => {
+  if (Deno.build.os === "windows") return; // shebang script; argv is covered above.
+  const dir = await Deno.makeTempDir();
+  try {
+    const argvFile = `${dir}/argv`;
+    const jsonFile = `${dir}/ns.json`;
+    await Deno.writeTextFile(
+      jsonFile,
+      JSON.stringify({
+        items: [
+          {
+            metadata: {
+              name: "default",
+              labels: { env: "prod" },
+              creationTimestamp: "2026-01-01T00:00:00Z",
+            },
+            status: { phase: "Active" },
+          },
+          { metadata: { name: "kube-system" } },
+        ],
+      }),
+    );
+    const fake = `${dir}/kubectl`;
+    await Deno.writeTextFile(
+      fake,
+      `#!/bin/sh\nprintf '%s' "$*" > "${argvFile}"\ncat "${jsonFile}"\n`,
+    );
+    await Deno.chmod(fake, 0o755);
+
+    // The caller sets `.output("yaml")` and a `.selector()`: getNamespaces must
+    // FORCE `-o json` over the caller's yaml (or parsing would fail) while still
+    // threading the caller's selector through.
+    const namespaces = await KubectlTasks.getNamespaces((s) =>
+      s.toolPath(fake).output("yaml").selector("team=web")
+    );
+    assertEquals(namespaces.map((n) => n.name), ["default", "kube-system"]);
+    assertEquals(namespaces[0].status, "Active");
+    assertEquals(namespaces[0].labels, { env: "prod" });
+    assertEquals(namespaces[0].createdAt, "2026-01-01T00:00:00Z");
+    assertEquals(namespaces[1].status, ""); // no status.phase
+    assertEquals(
+      await Deno.readTextFile(argvFile),
+      "get namespaces -o json -l team=web",
+    );
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("getNamespaces with no configure runs the command (dry run yields no rows)", async () => {
+  // Under a deep-dry-run echo sink the command is echoed, not spawned; the
+  // empty output parses to no rows. Exercises the no-configure path.
+  const echoed: string[] = [];
+  const result = await withAmbientEcho(
+    (line) => echoed.push(line),
+    () => KubectlTasks.getNamespaces(),
+  );
+  assertEquals(result, []);
+  assertStringIncludes(echoed[0], "kubectl get namespaces -o json");
+});
+
+Deno.test("getNamespaces reaches execution", async () => {
+  await assertRejects(
+    () =>
+      KubectlTasks.getNamespaces((s) => {
+        s.os_ = "linux";
+        return s.toolPath("zuke-no-such-kubectl-xyz");
+      }),
+    ToolNotFoundError,
+  );
+});
+
+Deno.test("getNamespaces neutralizes a caller's .watch() so it never streams", async () => {
+  // A watch (`-w`) would stream forever and never yield parseable JSON; the
+  // helper must force it off. Echoed under a dry run so nothing spawns.
+  const echoed: string[] = [];
+  await withAmbientEcho(
+    (line) => echoed.push(line),
+    () => KubectlTasks.getNamespaces((s) => s.watch()),
+  );
+  assertStringIncludes(echoed[0], "get namespaces -o json");
+  assertEquals(echoed[0].includes("-w"), false);
+});
+
+Deno.test("KubectlGetSettings.watch(false) disables an earlier watch", () => {
+  assertEquals(
+    new KubectlGetSettings().resource("pods").watch().watch(false).argv()
+      .includes("-w"),
+    false,
   );
 });
 

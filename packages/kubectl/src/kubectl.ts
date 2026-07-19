@@ -329,9 +329,9 @@ export class KubectlGetSettings extends KubectlSettings {
     return this;
   }
 
-  /** Watch for changes instead of returning once (`-w`). */
-  watch(): this {
-    this.#watch = true;
+  /** Watch for changes instead of returning once (`-w`); pass `false` to disable. */
+  watch(on = true): this {
+    this.#watch = on;
     return this;
   }
 
@@ -1065,6 +1065,76 @@ export class KubectlTopSettings extends KubectlSettings {
   }
 }
 
+/**
+ * A Kubernetes namespace, parsed from `kubectl get namespaces -o json` — the
+ * typed result of {@link KubectlTasksApi.getNamespaces}.
+ */
+export interface KubernetesNamespace {
+  /** The namespace name (`metadata.name`). */
+  name: string;
+  /**
+   * The lifecycle phase (`status.phase`), e.g. `"Active"` or `"Terminating"`;
+   * `""` when the field is absent.
+   */
+  status: string;
+  /** The namespace labels (`metadata.labels`), string-valued; `{}` when none. */
+  labels: Record<string, string>;
+  /** When the namespace was created (`metadata.creationTimestamp`), if present. */
+  createdAt?: string;
+}
+
+/** Narrow an unknown value to a plain JSON object. */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** Narrow a value to a `Record<string, string>`, dropping non-string entries. */
+function stringMap(value: unknown): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (isRecord(value)) {
+    for (const [key, v] of Object.entries(value)) {
+      if (typeof v === "string") out[key] = v;
+    }
+  }
+  return out;
+}
+
+/** Narrow one `kubectl get` item into a {@link KubernetesNamespace}, or `null`. */
+function parseNamespace(item: unknown): KubernetesNamespace | null {
+  if (!isRecord(item)) return null;
+  const metadata = isRecord(item.metadata) ? item.metadata : {};
+  const name = typeof metadata.name === "string" ? metadata.name : undefined;
+  if (name === undefined) return null;
+  const status = isRecord(item.status) && typeof item.status.phase === "string"
+    ? item.status.phase
+    : "";
+  const createdAt = typeof metadata.creationTimestamp === "string"
+    ? metadata.creationTimestamp
+    : undefined;
+  return { name, status, labels: stringMap(metadata.labels), createdAt };
+}
+
+/**
+ * Parse the JSON text of `kubectl get namespaces -o json` — a `List`, or a
+ * single namespace object — into {@link KubernetesNamespace} records. Items
+ * without a `metadata.name` are skipped; empty input yields `[]`. Throws if the
+ * text is non-empty and not valid JSON.
+ */
+export function parseNamespaces(json: string): KubernetesNamespace[] {
+  const text = json.trim();
+  if (text === "") return [];
+  const parsed: unknown = JSON.parse(text);
+  const items = isRecord(parsed) && Array.isArray(parsed.items)
+    ? parsed.items
+    : [parsed];
+  const namespaces: KubernetesNamespace[] = [];
+  for (const item of items) {
+    const namespace = parseNamespace(item);
+    if (namespace !== null) namespaces.push(namespace);
+  }
+  return namespaces;
+}
+
 /** The shape of {@link KubectlTasks}. */
 export interface KubectlTasksApi {
   /** Apply manifests: `kubectl apply`. */
@@ -1075,6 +1145,14 @@ export interface KubectlTasksApi {
   delete(configure?: Configure<KubectlDeleteSettings>): Promise<CommandOutput>;
   /** List resources: `kubectl get`. */
   get(configure?: Configure<KubectlGetSettings>): Promise<CommandOutput>;
+  /**
+   * List namespaces as typed {@link KubernetesNamespace} records: runs
+   * `kubectl get namespaces -o json` (forcing JSON output, quietly) and parses
+   * the result. Use the lambda for cluster flags or a label `.selector(...)`.
+   */
+  getNamespaces(
+    configure?: Configure<KubectlGetSettings>,
+  ): Promise<KubernetesNamespace[]>;
   /** Describe resources: `kubectl describe`. */
   describe(
     configure?: Configure<KubectlDescribeSettings>,
@@ -1124,6 +1202,17 @@ export const KubectlTasks: KubectlTasksApi = {
   },
   get(configure?: Configure<KubectlGetSettings>): Promise<CommandOutput> {
     return runSettings(new KubectlGetSettings(), configure);
+  },
+  async getNamespaces(
+    configure?: Configure<KubectlGetSettings>,
+  ): Promise<KubernetesNamespace[]> {
+    const settings = new KubectlGetSettings().resource("namespaces");
+    configure?.(settings);
+    // Force a single JSON snapshot regardless of the caller's config: JSON output
+    // to parse, `.watch(false)` so it returns once instead of streaming forever,
+    // and `.quiet()` so the raw JSON isn't echoed to the terminal.
+    const out = await settings.output("json").watch(false).quiet().run();
+    return parseNamespaces(out.text());
   },
   describe(
     configure?: Configure<KubectlDescribeSettings>,
