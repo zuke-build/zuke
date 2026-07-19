@@ -139,7 +139,12 @@ Before calling any task or settings method, confirm the real shape:
   **redacts** it from all of Zuke's output. See the cheatsheet.
 - **Provisioning tools:** `ToolTasks.install((s) => …)` / `toolchain((t) => …)`
   fetch pinned, checksum-verified tool binaries so a build is hermetic; hand the
-  returned path to a wrapper's `.toolPath(...)`.
+  returned path to a wrapper's `.toolPath(...)`. In a Node monorepo, resolve a
+  wrapper's binary from `node_modules/.bin` npx-style instead —
+  `.fromNodeModules()` on the settings (or `ZUKE_TOOL_RESOLUTION=node_modules`
+  repo-wide) walks up for the local shim and falls back to PATH; `.fromPath()`
+  forces PATH and an explicit `.toolPath(...)` always wins. See the cheatsheet /
+  `docs/tools.md`.
 - **Code-first CI:** `cicd({ provider: "github" })` generates and verifies the
   workflow YAML from the build.
 - **Operate the build from an agent:** `zuke mcp` serves the build over MCP so
@@ -150,6 +155,10 @@ Before calling any task or settings method, confirm the real shape:
   access with `--allow-run=<globs>` (allow-list), `--protect <globs>` +
   `ZUKE_OPERATOR_TOKEN`, and `--confirm-destructive`; mark inspect-only targets
   `.readOnly()`. Mutating/denied calls are audited (`zuke runs show mcp-audit`).
+  A **registry-backed** server (`zuke register` then `zuke mcp --registry`)
+  instead serves every registered pipeline live, each as a
+  `run:<buildId>:<target>` tool that takes the build's declared parameters
+  (secrets excluded, validated, forwarded to the spawn) — see the cheatsheet.
 - **AI review & self-healing (`@zuke/ai`):** gate a target on a structured LLM
   review of the diff (`securityReviewer(...)` etc. via `.validateBefore`), or
   attach `aiFixer(...)` with `.recoverWith(...)` so a failing target is

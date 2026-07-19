@@ -8,32 +8,32 @@ summary, not the source of truth.
 
 Everything is optional except a body (`.executes`).
 
-| Method                                                                                                   | Purpose                                                                                           |
-| -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `.description(text)`                                                                                     | Summary shown in `--list`.                                                                        |
-| `.dependsOn(...t)`                                                                                       | Hard prerequisites; run first, transitively. Pass `this.<field>`.                                 |
-| `.executes(fn)`                                                                                          | The body. Sync or async. **Required.** `fn` may take a `TargetContext` (`(ctx) => …`); see below. |
-| `.before(...t)` / `.after(...t)`                                                                         | Soft ordering — only reorders targets already in the plan; never pulls new ones in.               |
-| `.triggers(...t)`                                                                                        | Pull targets into the plan and run them _after_ this one.                                         |
-| `.dependentFor(...t)`                                                                                    | Reverse of `dependsOn`: make this a prerequisite of others.                                       |
-| `.inputs(...p)` / `.outputs(...p)`                                                                       | Incremental cache: skip when inputs unchanged and outputs exist.                                  |
-| `.cacheKey(fn)`                                                                                          | Add a non-file value (version, git sha, param) to the cache fingerprint.                          |
-| `.onlyWhen(cond)`                                                                                        | Run only when the (possibly async) predicate holds, else skip.                                    |
-| `.requires(...params)`                                                                                   | Fail unless the listed parameters resolved to a value.                                            |
-| `.retry(times, delayMs?)`                                                                                | Retry the body on failure.                                                                        |
-| `.timeout(ms)`                                                                                           | Fail the body if it runs longer than `ms` (per attempt).                                          |
-| `.lock((s) => s.lockKey(...).withTtl(...))`                                                              | Hold a cross-run lock while running; a second run wanting the key fails. See below.               |
-| `.waitsFor((s) => s.on(externalSignal(...)))`                                                            | Gate (no body): suspend the run until an external event; resume later. See below.                 |
-| `.onCancel(() => this.rollback)`                                                                         | Compensation run (reverse order) iff this target succeeded when the run is cancelled. See below.   |
-| `.forEach(() => items, (item) => ({stage: target()…}), (s) => s.concurrency(3).continueOnItemFailure())` | Fan out a pipeline over a runtime list: items concurrent, stages sequential per item. See below.  |
-| `.proceedAfterFailure()`                                                                                 | Keep the build going if this target fails.                                                        |
-| `.always()`                                                                                              | Run even after the build failed (cleanup/teardown).                                               |
-| `.unlisted()`                                                                                            | Hide from `--list`/`--help`; still runnable by name.                                              |
+| Method                                                                                                   | Purpose                                                                                             |
+| -------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `.description(text)`                                                                                     | Summary shown in `--list`.                                                                          |
+| `.dependsOn(...t)`                                                                                       | Hard prerequisites; run first, transitively. Pass `this.<field>`.                                   |
+| `.executes(fn)`                                                                                          | The body. Sync or async. **Required.** `fn` may take a `TargetContext` (`(ctx) => …`); see below.   |
+| `.before(...t)` / `.after(...t)`                                                                         | Soft ordering — only reorders targets already in the plan; never pulls new ones in.                 |
+| `.triggers(...t)`                                                                                        | Pull targets into the plan and run them _after_ this one.                                           |
+| `.dependentFor(...t)`                                                                                    | Reverse of `dependsOn`: make this a prerequisite of others.                                         |
+| `.inputs(...p)` / `.outputs(...p)`                                                                       | Incremental cache: skip when inputs unchanged and outputs exist.                                    |
+| `.cacheKey(fn)`                                                                                          | Add a non-file value (version, git sha, param) to the cache fingerprint.                            |
+| `.onlyWhen(cond)`                                                                                        | Run only when the (possibly async) predicate holds, else skip.                                      |
+| `.requires(...params)`                                                                                   | Fail unless the listed parameters resolved to a value.                                              |
+| `.retry(times, delayMs?)`                                                                                | Retry the body on failure.                                                                          |
+| `.timeout(ms)`                                                                                           | Fail the body if it runs longer than `ms` (per attempt).                                            |
+| `.lock((s) => s.lockKey(...).withTtl(...))`                                                              | Hold a cross-run lock while running; a second run wanting the key fails. See below.                 |
+| `.waitsFor((s) => s.on(externalSignal(...)))`                                                            | Gate (no body): suspend the run until an external event; resume later. See below.                   |
+| `.onCancel(() => this.rollback)`                                                                         | Compensation run (reverse order) iff this target succeeded when the run is cancelled. See below.    |
+| `.forEach(() => items, (item) => ({stage: target()…}), (s) => s.concurrency(3).continueOnItemFailure())` | Fan out a pipeline over a runtime list: items concurrent, stages sequential per item. See below.    |
+| `.proceedAfterFailure()`                                                                                 | Keep the build going if this target fails.                                                          |
+| `.always()`                                                                                              | Run even after the build failed (cleanup/teardown).                                                 |
+| `.unlisted()`                                                                                            | Hide from `--list`/`--help`; still runnable by name.                                                |
 | `.dryRunnable()`                                                                                         | Run this body under `--dry-run` with `$` in echo mode (prints argv, no spawn); others stay skipped. |
-| `.validateBefore(...v)` / `.validateAfter(...v)`                                                         | Run `Validation` checks around the body; a throw fails the target.                                |
-| `.recoverWith(...r)` / `.recoverAttempts(n)`                                                             | Run `Remediation`s if the body fails (self-healing); re-run when one asks to. See AI section.     |
-| `.partOf(group)`                                                                                         | Join a parallel batch (see `group()`).                                                            |
-| `.produces(...p)` / `.consumes(...t)`                                                                    | Declare and consume artifact paths.                                                               |
+| `.validateBefore(...v)` / `.validateAfter(...v)`                                                         | Run `Validation` checks around the body; a throw fails the target.                                  |
+| `.recoverWith(...r)` / `.recoverAttempts(n)`                                                             | Run `Remediation`s if the body fails (self-healing); re-run when one asks to. See AI section.       |
+| `.partOf(group)`                                                                                         | Join a parallel batch (see `group()`).                                                              |
+| `.produces(...p)` / `.consumes(...t)`                                                                    | Declare and consume artifact paths.                                                                 |
 
 **External ordering:** `override extraEdges(targets)` on the `Build` returns
 `[before, after]` pairs (from the discovered `targets` map) to impose soft
@@ -133,10 +133,11 @@ deploy = target().executes(async (ctx) => {
 signal is the shell's ambient signal). Pass `ctx.signal` to `.signal(...)` to
 cancel a command explicitly; it composes with `.killAfter(ms)`. Cancel a run
 with `zuke cancel <id>`, `Ctrl-C`/`SIGTERM`, the MCP `cancel_run` tool, or
-programmatically with `execute(build, root, { signal })` / `cancelRun(build, {
-runId })`. A body that ignores its signal and never shells out runs to
-completion. Register **compensations** with `.onCancel(...)` (see below) to undo
-a target's effect when the run is cancelled.
+programmatically with `execute(build, root, { signal })` /
+`cancelRun(build, {
+runId })`. A body that ignores its signal and never shells
+out runs to completion. Register **compensations** with `.onCancel(...)` (see
+below) to undo a target's effect when the run is cancelled.
 
 ## Durable run state
 
@@ -251,9 +252,11 @@ class Deploy extends Build {
 
 ## Cancellation & compensation — `.onCancel()`
 
-Undo a target's effect when the run is cancelled. `.onCancel(target | () =>
-target)` registers a **compensation** that runs **iff this target succeeded**;
-on cancel, compensations run in **reverse order** of the succeeded targets.
+Undo a target's effect when the run is cancelled.
+`.onCancel(target | () =>
+target)` registers a **compensation** that runs **iff
+this target succeeded**; on cancel, compensations run in **reverse order** of
+the succeeded targets.
 
 ```ts
 class CD extends Build {
@@ -266,8 +269,9 @@ class CD extends Build {
 }
 ```
 
-- The compensation body's `ctx.state` exposes **the original target's** persisted
-  metadata (persist what a rollback needs in `ctx.state` when you do the work).
+- The compensation body's `ctx.state` exposes **the original target's**
+  persisted metadata (persist what a rollback needs in `ctx.state` when you do
+  the work).
 - Cancel with `zuke cancel <id>`, `Ctrl-C`/`SIGTERM`, or the MCP `cancel_run`
   tool (all run the same walk). A live run aborts on its next state write.
 - A compensation that throws is recorded but does **not** stop the walk (cleanup
@@ -372,6 +376,16 @@ bin = target().executes(async () =>
 // Many at once:
 tools = toolchain((t) => t.add(/* … */).add(/* … */));
 ```
+
+**Resolve from `node_modules/.bin`** — in a Node monorepo where tool binaries
+are hoisted to the repo root, a wrapper can find its binary npx-style instead of
+needing a `.toolPath(...)`. `.fromNodeModules()` on any settings object walks up
+from the working directory for `node_modules/.bin/<tool>` (the `.cmd`/`.bat`
+shims on Windows, launched via `cmd /c`) and falls back to `PATH` on a miss;
+`.fromPath()` forces `PATH`; and `ZUKE_TOOL_RESOLUTION=node_modules|path` flips
+every wrapper repo-wide without touching call sites (a per-call setting wins
+over it). An explicit `.toolPath(...)` always wins, so a `toolchain()` pin stays
+hermetic. `resolvedArgv()` shows what a run will spawn. See `docs/tools.md`.
 
 ## Tool wrappers — the settings-lambda style
 
@@ -529,10 +543,11 @@ is current (`zuke generate-ci --check` is a dedicated gate).
 
 **Scheduled runs** — `triggers.schedule: [{ cron, tz? }]`. A `tz` (IANA zone) is
 compiled to UTC cron(s); a daylight-saving zone also emits a generated guard job
-so only the correct wall-clock firing proceeds. Full on GitHub; Azure gets native
-`schedules:` for UTC/fixed-offset (DST zone errors); GitLab/Bitbucket schedules
-are UI-side and ignored. Numeric fields + whole-hour offsets only, else a friendly
-error. `cicd({ provider: "github", pipeline: { triggers: { schedule: [{ cron: "30 9 * * 1-5", tz: "Europe/Sofia" }] } } })`.
+so only the correct wall-clock firing proceeds. Full on GitHub; Azure gets
+native `schedules:` for UTC/fixed-offset (DST zone errors); GitLab/Bitbucket
+schedules are UI-side and ignored. Numeric fields + whole-hour offsets only,
+else a friendly error.
+`cicd({ provider: "github", pipeline: { triggers: { schedule: [{ cron: "30 9 * * 1-5", tz: "Europe/Sofia" }] } } })`.
 
 ## Run & inspect
 
@@ -563,11 +578,19 @@ error. `cicd({ provider: "github", pipeline: { triggers: { schedule: [{ cron: "3
 descriptor of this build — its `describeCli()` surface (targets, params) plus a
 launch location — into a pluggable `BuildRegistry`. Resolved like the state
 store: `ZUKE_REGISTRY_URL`/`_TOKEN` (HTTP) or `ZUKE_REGISTRY_DIR` (files), a
-`registry()` build override, else `.zuke/builds`. Separate from the run store; an
-HTTP backend shares the `/builds` REST contract beside `/runs`. **`zuke mcp
---registry`** then serves the whole catalog — re-read live, so a build registered
-by another process appears as a `run:<buildId>:<target>` tool with no restart and
-runs by spawning its launch location (behind `--allow-run` + the same authz).
+`registry()` build override, else `.zuke/builds`. Separate from the run store;
+an HTTP backend shares the `/builds` REST contract beside `/runs`.
+**`zuke mcp
+--registry`** then serves the whole catalog — re-read live, so a
+build registered by another process appears as a `run:<buildId>:<target>` tool
+with no restart and runs by spawning its launch location (behind `--allow-run` +
+the same authz). The run tool exposes the registered build's declared
+**parameters** as its input schema and forwards supplied values to the spawned
+build as `--flag=value` arguments — validated against their kinds first (a type
+mismatch is a clean tool error, never a failed subprocess). `.secret()`
+parameters are omitted from the descriptor entirely, so a secret can neither be
+requested nor forwarded; the child resolves it from its own environment /
+`.from()` source.
 
 **Caching:** a target with `.inputs(...)`/`.outputs(...)` is incremental
 (skipped and reported `cached` when inputs are unchanged and outputs exist). Add
