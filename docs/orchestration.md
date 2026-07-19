@@ -239,11 +239,36 @@ to whoever cancelled it, so `zuke runs show <id>` shows what was unwound.
 Cancellation needs a state store, so a build that uses `.onCancel()` turns on
 the `.zuke/runs` filesystem store by default (like `.lock()` and `.waitsFor()`).
 
-> **Limitation:** the cancel walk considers only the static plan, so an
-> `.onCancel()` on a [`.forEach()`](#fan-out-over-a-list--foreach)
-> **sub-target** is not run (sub-targets are materialised at run time and don't
-> exist at cancel time). Put a compensation on an ordinary target, or on the
-> parent fan-out target itself.
+An `.onCancel()` on a [`.forEach()`](#fan-out-over-a-list--foreach) **sub-target**
+runs too. Cancel re-materialises the fan-out, matches each item's sub-targets by
+name against the record, and runs the compensation of every item that had
+**succeeded — or was still in-flight when the cancel landed** (a mid-deploy item
+has partial work to undo). Items unwind before the parent's own compensation, in
+reverse order; a throwing item compensation is recorded and the walk continues,
+exactly as for an ordinary target. Each item's cleanup reads that item's own
+persisted state (`ctx.state`), and lands its own `compensate` entry in the
+[audit trail](./state.md) (naming the runtime sub-target, e.g.
+`deployBatch[repo-a].deploy`) alongside the summary.
+
+Nested fan-out works too: a `.forEach()` stage that is itself a `.forEach()` has
+its inner items' `.onCancel()` run, matched by the same nested
+`parent[item].stage[inner].stage` names.
+
+> **Caveat:** for per-item compensation to find its items, the `.forEach()`
+> item list must be **deterministic** — cancel re-evaluates it (from the
+> record's parameters) and matches by the same `parent[item].stage` names. A
+> non-deterministic list leaves a recorded item with no re-materialised twin;
+> its compensation is reported as skipped, never a crash.
+
+> **In-flight items and out-of-process cancel.** An out-of-process
+> `zuke cancel` compensates an item that was still **running** from the run
+> record's snapshot. The owning process aborts a live body only when it next
+> writes state (a `ctx.state.set(...)` checkpoint, or a `.lock()` heartbeat), so
+> a body doing one long uninterrupted command may keep running while its
+> compensation begins — the two can briefly overlap. Have item bodies
+> **checkpoint via `ctx.state.set(...)`** (or hold a `.lock()`) so a cancel
+> propagates promptly and closes that window; an in-process cancel (Ctrl-C) has
+> no such window, since bodies are aborted and settled before the walk runs.
 
 ## Fan-out over a list — `.forEach()`
 

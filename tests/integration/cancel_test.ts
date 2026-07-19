@@ -90,6 +90,53 @@ Deno.test("zuke cancel stops a suspended run and runs its compensations", async 
   });
 });
 
+Deno.test("zuke cancel runs each fan-out item's own onCancel compensation", async () => {
+  await withStateDir(async (dir) => {
+    const undone: string[] = [];
+    class CD extends Build {
+      deployBatch = target().forEach(
+        () => ["repo-a", "repo-b"],
+        (repo) => ({
+          deploy: target()
+            .executes((ctx) => ctx.state.set({ slot: `slot-${repo}` }))
+            .onCancel(() =>
+              target().executes((ctx) =>
+                void undone.push(`${repo}:${ctx.state.get().slot}`)
+              )
+            ),
+        }),
+        (s) => s.continueOnItemFailure(),
+      );
+      gate = target()
+        .dependsOn(this.deployBatch)
+        .waitsFor((s) => s.on(externalSignal("approved")));
+    }
+
+    // First process: the batch deploys, then the run suspends at the gate.
+    const first = await runCli(CD, ["gate"]);
+    assertEquals(first.code, 0);
+    const id = await onlyRunId(dir);
+    assertEquals((await loadRun(dir, id)).status, "suspended");
+
+    // Second process: cancel it. Each item's own compensation runs, reading that
+    // item's persisted slot — reverse order.
+    const cancelled = await runCli(CD, ["cancel", id]);
+    assertEquals(cancelled.code, 0);
+    assertEquals(undone, ["repo-b:slot-repo-b", "repo-a:slot-repo-a"]);
+
+    // Each item's compensation is its own audit entry naming the runtime target.
+    const record = await loadRun(dir, id);
+    const compensated = record.events
+      .filter((e) => e.tool === "compensate")
+      .map((e) => e.args.target)
+      .sort();
+    assertEquals(compensated, [
+      "deployBatch[repo-a].deploy",
+      "deployBatch[repo-b].deploy",
+    ]);
+  });
+});
+
 Deno.test("zuke cancel of a finished run is a no-op", async () => {
   await withStateDir(async (dir) => {
     const log: string[] = [];

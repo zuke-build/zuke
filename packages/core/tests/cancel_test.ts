@@ -3,11 +3,44 @@ import { Build, discoverTargets } from "../src/build.ts";
 import { parameter } from "../src/params.ts";
 import { target } from "../src/target.ts";
 import { execute } from "../src/executor.ts";
-import { cancelRun } from "../src/cancel.ts";
+import {
+  cancelRun,
+  compensationEvents,
+  runCompensations,
+} from "../src/cancel.ts";
 import { resumeRun } from "../src/resume.ts";
 import { FileSystemStateStore } from "../src/state/fs_store.ts";
 import { defaultStateHost, type StateStore } from "../src/state/store.ts";
+import type { RunRecord } from "../src/state/types.ts";
+import type { Reporter } from "../src/executor.ts";
 import { externalSignal } from "../src/wait.ts";
+
+/** A run record scaffold for driving {@link runCompensations} directly. */
+function craftRecord(
+  rootTarget: string,
+  targets: RunRecord["targets"],
+): RunRecord {
+  return {
+    id: "run",
+    build: "B",
+    rootTarget,
+    status: "cancelling",
+    actor: "ops",
+    createdAt: "t",
+    updatedAt: "t",
+    graph: [],
+    params: {},
+    targets,
+    signals: {},
+    events: [],
+  };
+}
+
+/** A reporter that captures error lines (for asserting cancel diagnostics). */
+function capturingReporter(): { reporter: Reporter; errors: string[] } {
+  const errors: string[] = [];
+  return { reporter: { info: () => {}, error: (l) => errors.push(l) }, errors };
+}
 
 /** Run `fn` with a temp filesystem store, cleaned up afterwards. */
 async function withTempStore(
@@ -621,6 +654,361 @@ Deno.test("a hung compensation is bounded by its .timeout()", async () => {
     assertEquals(result.failures.length, 1);
     assertEquals(result.failures[0].error.includes("timed out"), true);
   });
+});
+
+Deno.test("fan-out sub-target compensations run per item, in reverse, on cancel", async () => {
+  await withTempStore(async (store) => {
+    const undone: string[] = [];
+    const makeBuild = () => {
+      class CD extends Build {
+        deployBatch = target().forEach(
+          () => ["a", "b", "c"],
+          (repo) => ({
+            deploy: target()
+              .executes((ctx) => ctx.state.set({ slot: `slot-${repo}` }))
+              .onCancel(() =>
+                target().executes((ctx) => {
+                  undone.push(`${repo}:${ctx.state.get().slot}`);
+                })
+              ),
+          }),
+          (s) => s.continueOnItemFailure(),
+        );
+        gate = target()
+          .dependsOn(this.deployBatch)
+          .waitsFor((s) => s.on(externalSignal("x")));
+      }
+      const build = new CD();
+      discoverTargets(build);
+      return build;
+    };
+    const a = makeBuild();
+    const res = await execute(a, a.gate, { silent: true, stateStore: store });
+    assertEquals(res.suspended, true);
+    const runId = (await store.listRuns({}))[0].id;
+
+    const result = await cancelRun(makeBuild(), {
+      runId,
+      stateStore: store,
+      silent: true,
+      actor: "ops",
+    });
+    assertEquals(result.status, "cancelled");
+    // Reverse item order; each read its own item-scoped persisted slot.
+    assertEquals(undone, ["c:slot-c", "b:slot-b", "a:slot-a"]);
+
+    const loaded = await store.getRun(runId);
+    const events = (loaded?.record.events ?? []).filter(
+      (e) => e.tool === "compensate",
+    );
+    assertEquals(events.length, 3);
+    assertEquals(
+      events.map((e) => e.args.target).sort(),
+      [
+        "deployBatch[a].deploy",
+        "deployBatch[b].deploy",
+        "deployBatch[c].deploy",
+      ],
+    );
+    assertEquals(events.every((e) => e.outcome === "ok"), true);
+  });
+});
+
+Deno.test("a throwing fan-out item compensation is recorded; the others still run", async () => {
+  await withTempStore(async (store) => {
+    const undone: string[] = [];
+    const makeBuild = () => {
+      class CD extends Build {
+        deployBatch = target().forEach(
+          () => ["a", "b", "c"],
+          (repo) => ({
+            deploy: target().executes(() => {}).onCancel(() =>
+              target().executes(() => {
+                if (repo === "a") throw new Error("boom-a");
+                undone.push(repo);
+              })
+            ),
+          }),
+          (s) => s.continueOnItemFailure(),
+        );
+        gate = target()
+          .dependsOn(this.deployBatch)
+          .waitsFor((s) => s.on(externalSignal("x")));
+      }
+      const build = new CD();
+      discoverTargets(build);
+      return build;
+    };
+    const a = makeBuild();
+    await execute(a, a.gate, { silent: true, stateStore: store });
+    const runId = (await store.listRuns({}))[0].id;
+
+    const result = await cancelRun(makeBuild(), {
+      runId,
+      stateStore: store,
+      silent: true,
+    });
+    assertEquals(result.status, "cancelled"); // never wedged
+    // c and b ran (reverse order) despite a throwing.
+    assertEquals(undone, ["c", "b"]);
+    assertEquals(
+      result.failures.some((f) => f.forTarget === "deployBatch[a].deploy"),
+      true,
+    );
+    const loaded = await store.getRun(runId);
+    const errored = (loaded?.record.events ?? []).filter(
+      (e) => e.tool === "compensate" && e.outcome === "error",
+    );
+    assertEquals(errored.length, 1);
+    assertEquals(errored[0].args.target, "deployBatch[a].deploy");
+  });
+});
+
+Deno.test("an in-flight (running) fan-out item is compensated; a stage with no onCancel is skipped", async () => {
+  const undone: string[] = [];
+  class CD extends Build {
+    deployBatch = target().forEach(
+      () => ["a", "b"],
+      (repo) => ({
+        deploy: target().executes(() => {}).onCancel(() =>
+          target().executes(() => void undone.push(repo))
+        ),
+        // A second stage with no compensation — nothing to undo.
+        verify: target().executes(() => {}),
+      }),
+    );
+  }
+  const build = new CD();
+  discoverTargets(build);
+  // "a" succeeded, "b" was still running when the cancel landed — both undo;
+  // the verify stages have no onCancel, so they are skipped even when succeeded.
+  const record = craftRecord("deployBatch", {
+    "deployBatch[a].deploy": { status: "succeeded", meta: {} },
+    "deployBatch[a].verify": { status: "succeeded", meta: {} },
+    "deployBatch[b].deploy": { status: "running", meta: {} },
+    "deployBatch[b].verify": { status: "pending", meta: {} },
+  });
+  const outcome = await runCompensations([build.deployBatch], record, {
+    runId: "run",
+    signals: new Map(),
+    reporter: { info: () => {}, error: () => {} },
+  });
+  assertEquals(undone, ["b", "a"]); // reverse order, deploy stages only
+  assertEquals(outcome.attempts.length, 2);
+  assertEquals(outcome.attempts.every((a) => a.ok), true);
+});
+
+Deno.test("a pending fan-out item (never started) is not compensated", async () => {
+  const undone: string[] = [];
+  class CD extends Build {
+    deployBatch = target().forEach(
+      () => ["a", "b"],
+      (repo) => ({
+        deploy: target().executes(() => {}).onCancel(() =>
+          target().executes(() => void undone.push(repo))
+        ),
+      }),
+    );
+  }
+  const build = new CD();
+  discoverTargets(build);
+  const record = craftRecord("deployBatch", {
+    "deployBatch[a].deploy": { status: "succeeded", meta: {} },
+    "deployBatch[b].deploy": { status: "pending", meta: {} },
+  });
+  const outcome = await runCompensations([build.deployBatch], record, {
+    runId: "run",
+    signals: new Map(),
+    reporter: { info: () => {}, error: () => {} },
+  });
+  assertEquals(undone, ["a"]); // b never ran → nothing to undo
+  assertEquals(outcome.attempts.length, 1);
+});
+
+Deno.test("a non-deterministic forEach list reports an unmatched recorded item", async () => {
+  class CD extends Build {
+    deployBatch = target().forEach(
+      () => ["a"], // cancel-time list no longer includes "z"
+      (_repo) => ({
+        deploy: target().executes(() => {}).onCancel(() =>
+          target().executes(() => {})
+        ),
+      }),
+    );
+  }
+  const build = new CD();
+  discoverTargets(build);
+  const record = craftRecord("deployBatch", {
+    "deployBatch[z].deploy": { status: "succeeded", meta: {} },
+    // An unmatched, non-compensable row (failed) is silently skipped — no warning.
+    "deployBatch[gone].deploy": { status: "failed", meta: {} },
+  });
+  const { reporter, errors } = capturingReporter();
+  const outcome = await runCompensations([build.deployBatch], record, {
+    runId: "run",
+    signals: new Map(),
+    reporter,
+  });
+  assertEquals(outcome.failures, []); // not a crash
+  assertEquals(
+    errors.some((e) =>
+      e.includes("deployBatch[z].deploy") &&
+      e.includes("no matching re-materialised item")
+    ),
+    true,
+  );
+  // The non-compensable unmatched row does not warn.
+  assertEquals(errors.some((e) => e.includes("deployBatch[gone]")), false);
+});
+
+Deno.test("a forEach item list that throws at cancel is recorded, not fatal", async () => {
+  class CD extends Build {
+    deployBatch = target().forEach(
+      () => {
+        throw new Error("list boom");
+      },
+      (_repo) => ({ deploy: target().executes(() => {}) }),
+    );
+  }
+  const build = new CD();
+  discoverTargets(build);
+  const record = craftRecord("deployBatch", {
+    "deployBatch[a].deploy": { status: "succeeded", meta: {} },
+  });
+  const { reporter } = capturingReporter();
+  const outcome = await runCompensations([build.deployBatch], record, {
+    runId: "run",
+    signals: new Map(),
+    reporter,
+  });
+  assertEquals(
+    outcome.failures.some((f) => f.error.includes("list boom")),
+    true,
+  );
+  assertEquals(outcome.failures[0].forTarget, "deployBatch");
+});
+
+Deno.test("an item .onCancel() thunk that throws or returns undefined is skipped", async () => {
+  const undone: string[] = [];
+  class CD extends Build {
+    deployBatch = target().forEach(
+      () => ["boom", "undef", "ok"],
+      (repo) => ({
+        // @ts-expect-error the "undef" branch returns undefined to exercise the skip
+        deploy: target().executes(() => {}).onCancel(() => {
+          if (repo === "boom") throw new Error("thunk boom");
+          if (repo === "undef") return undefined;
+          return target().executes(() => void undone.push(repo));
+        }),
+      }),
+    );
+  }
+  const build = new CD();
+  discoverTargets(build);
+  const record = craftRecord("deployBatch", {
+    "deployBatch[boom].deploy": { status: "succeeded", meta: {} },
+    "deployBatch[undef].deploy": { status: "succeeded", meta: {} },
+    "deployBatch[ok].deploy": { status: "succeeded", meta: {} },
+  });
+  const { reporter } = capturingReporter();
+  const outcome = await runCompensations([build.deployBatch], record, {
+    runId: "run",
+    signals: new Map(),
+    reporter,
+  });
+  assertEquals(undone, ["ok"]); // only the valid item compensated
+  // The throwing thunk is a recorded failure; undefined is silently skipped.
+  assertEquals(
+    outcome.failures.some((f) => f.forTarget === "deployBatch[boom].deploy"),
+    true,
+  );
+  // The thrown thunk is also an attempt (ok:false), so it yields a per-target
+  // `compensate` event matching the summary's failed count.
+  assertEquals(
+    outcome.attempts.some((a) =>
+      a.forTarget === "deployBatch[boom].deploy" && !a.ok
+    ),
+    true,
+  );
+  const events = compensationEvents(outcome.attempts, "ops", "t");
+  assertEquals(
+    events.some((e) =>
+      e.args.target === "deployBatch[boom].deploy" && e.outcome === "error"
+    ),
+    true,
+  );
+});
+
+Deno.test("cancel runs a nested fan-out item's onCancel without false-warning", async () => {
+  const undone: string[] = [];
+  class CD extends Build {
+    // deployBatch fans out over ["a"]; each item's `inner` stage is itself a
+    // fan-out over ["g1"], whose `push` grandchild declares its own onCancel.
+    deployBatch = target().forEach(
+      () => ["a"],
+      (repo) => ({
+        inner: target().forEach(
+          () => ["g1"],
+          (g) => ({
+            push: target().executes(() => {}).onCancel(() =>
+              target().executes(() => void undone.push(`${repo}/${g}`))
+            ),
+          }),
+        ),
+      }),
+    );
+  }
+  const build = new CD();
+  discoverTargets(build);
+  const record = craftRecord("deployBatch", {
+    "deployBatch": { status: "succeeded", meta: {} },
+    "deployBatch[a].inner": { status: "succeeded", meta: {} },
+    "deployBatch[a].inner[g1].push": { status: "succeeded", meta: {} },
+  });
+  const { reporter, errors } = capturingReporter();
+  const outcome = await runCompensations([build.deployBatch], record, {
+    runId: "run",
+    signals: new Map(),
+    reporter,
+  });
+  assertEquals(undone, ["a/g1"]); // the grandchild's compensation ran
+  assertEquals(outcome.attempts.length, 1);
+  // Every descendant row is recognised, so no spurious "no matching" warning.
+  assertEquals(
+    errors.some((e) => e.includes("no matching re-materialised")),
+    false,
+  );
+});
+
+Deno.test("a fan-out parent's own onCancel runs after its item compensations", async () => {
+  const seq: string[] = [];
+  class CD extends Build {
+    deployBatch = target()
+      .forEach(
+        () => ["a", "b"],
+        (repo) => ({
+          deploy: target().executes(() => {}).onCancel(() =>
+            target().executes(() => void seq.push(`item:${repo}`))
+          ),
+        }),
+      )
+      .onCancel(() => this.batchRollback);
+    batchRollback = target().executes(() => void seq.push("parent"));
+  }
+  const build = new CD();
+  discoverTargets(build);
+  const record = craftRecord("deployBatch", {
+    "deployBatch": { status: "succeeded", meta: {} },
+    "deployBatch[a].deploy": { status: "succeeded", meta: {} },
+    "deployBatch[b].deploy": { status: "succeeded", meta: {} },
+  });
+  await runCompensations([build.deployBatch], record, {
+    runId: "run",
+    signals: new Map(),
+    reporter: { info: () => {}, error: () => {} },
+  });
+  // Items unwind first (reverse), then the batch-level compensation.
+  assertEquals(seq, ["item:b", "item:a", "parent"]);
 });
 
 /** Force a run to `cancelling`, retrying the CAS until it lands. */

@@ -30,6 +30,7 @@ import { planGraph } from "./graph.ts";
 import { discoverParameters, resolveParameters } from "./params.ts";
 import { Redactor } from "./redact.ts";
 import type {
+  ForEachSpec,
   JsonValue,
   TargetBuilder,
   TargetContext,
@@ -115,7 +116,11 @@ function isTerminal(status: RunStatus): boolean {
 }
 
 /** An empty compensation outcome (nothing ran, nothing failed). */
-const EMPTY_OUTCOME: CompensationOutcome = { compensated: [], failures: [] };
+const EMPTY_OUTCOME: CompensationOutcome = {
+  compensated: [],
+  failures: [],
+  attempts: [],
+};
 
 /** One compensation to run: the target undoing an original, plus that original's meta. */
 interface CompensationStep {
@@ -137,12 +142,24 @@ export interface CompensationFailure {
   error: string;
 }
 
+/** One attempted compensation, for the run's audit trail (see {@link compensationEvents}). */
+export interface CompensationAttempt {
+  /** The succeeded/in-flight target this compensation undid (e.g. a fan-out item `deploy[repo-a].push`). */
+  forTarget: string;
+  /** The name of the compensation target that ran. */
+  compensation: string;
+  /** True when the body completed, false when it threw or timed out. */
+  ok: boolean;
+}
+
 /** What a compensation walk did: which cleanups ran, and which threw. */
 export interface CompensationOutcome {
   /** Names of compensation targets whose bodies completed. */
   compensated: string[];
   /** Compensations that threw (the walk continued past each). */
   failures: CompensationFailure[];
+  /** Every attempted compensation in run order, for per-target audit events. */
+  attempts: CompensationAttempt[];
 }
 
 /** Dependencies for {@link runCompensations}. */
@@ -197,16 +214,29 @@ export async function runCompensations(
     deps.redactor ? deps.redactor.redact(message) : message;
   const compensated: string[] = [];
   const failures: CompensationFailure[] = [];
+  const attempts: CompensationAttempt[] = [];
   const steps: CompensationStep[] = [...(deps.extra ?? [])];
   // Reverse topological order: undo the work that ran last before the work it
   // was built on.
-  // ponytail: walks the static plan `order` only, so a `.forEach(...)` fan-out
-  // sub-target's `.onCancel(...)` is not run (sub-targets are materialised at
-  // run time and aren't in `order`). Put compensations on ordinary targets or
-  // the parent fan-out target; re-materialising the fan-out here would need the
-  // runtime item list, which cancel doesn't have. Documented in docs/orchestration.md.
   for (const t of [...order].reverse()) {
     const name = t.name_ ?? "";
+    // A `.forEach(...)` fan-out parent's per-item sub-targets are materialised at
+    // run time — they aren't in the static `order`, so the walk can't reach their
+    // `.onCancel(...)` directly. Re-materialise the parent and collect each
+    // succeeded/in-flight item's own compensation, matched by name against the
+    // record. Item compensations run before the parent's own (batch-level) one.
+    if (t.forEach_ !== undefined) {
+      steps.push(
+        ...collectForEachSteps(
+          t,
+          t.forEach_,
+          record,
+          failures,
+          attempts,
+          deps.reporter,
+        ),
+      );
+    }
     if (record.targets[name]?.status !== "succeeded") continue;
     if (t.onCancel_ === undefined) continue;
     // The thunk is user code: a throw here must be recorded, not allowed to
@@ -220,6 +250,13 @@ export async function runCompensations(
         target: `${name}.onCancel`,
         forTarget: name,
         error: message,
+      });
+      // Record the resolution failure as an attempt too, so the per-target
+      // `compensate` events match the summary event's failed count.
+      attempts.push({
+        forTarget: name,
+        compensation: `${name}.onCancel`,
+        ok: false,
       });
       deps.reporter.error(
         `✘ .onCancel() thunk for "${name}" threw: ${message}`,
@@ -269,6 +306,11 @@ export async function runCompensations(
       // the walk (and leave the record non-terminal); no default, like a body.
       await withTimeout(() => body(ctx), step.compensation.timeout_);
       compensated.push(compName);
+      attempts.push({
+        forTarget: step.forTarget,
+        compensation: compName,
+        ok: true,
+      });
     } catch (error) {
       const message = redact(messageOf(error));
       failures.push({
@@ -276,10 +318,203 @@ export async function runCompensations(
         forTarget: step.forTarget,
         error: message,
       });
+      attempts.push({
+        forTarget: step.forTarget,
+        compensation: compName,
+        ok: false,
+      });
       deps.reporter.error(`✘ compensation ${compName} failed: ${message}`);
     }
   }
-  return { compensated, failures };
+  return { compensated, failures, attempts };
+}
+
+/**
+ * Collect the per-item compensation steps of a `.forEach(...)` fan-out parent.
+ * The sub-targets live on ephemeral builders materialised at run time, so cancel
+ * — which may be a fresh process with no live builders — re-runs
+ * {@link ForEachSpec.materialize} and matches each stage sub-target **by name**
+ * (`parent[key].stage`) against the record. A sub-target that succeeded, or was
+ * still in-flight when the cancel landed (an item mid-deploy has partial work to
+ * undo), whose re-materialised twin declared `.onCancel(...)`, contributes a
+ * step. A stage that is itself a fan-out is recursed into, so nested items'
+ * compensations are reached too. Steps come back newest-first so later
+ * stages/items unwind before earlier ones. A `materialize()` that throws is
+ * recorded as a failure and skipped — never a crash; a record row with no
+ * re-materialised twin (a non-deterministic item list) is reported as skipped
+ * rather than silently dropped.
+ */
+function collectForEachSteps(
+  parent: TargetBuilder,
+  spec: ForEachSpec,
+  record: RunRecord,
+  failures: CompensationFailure[],
+  attempts: CompensationAttempt[],
+  reporter: Reporter,
+): CompensationStep[] {
+  const steps: CompensationStep[] = [];
+  const materialised = new Set<string>();
+  collectForEachInto(
+    parent,
+    spec,
+    record,
+    failures,
+    attempts,
+    reporter,
+    materialised,
+    steps,
+  );
+  // A non-deterministic item list can leave a recorded item with no
+  // re-materialised twin: its compensation can't be found. Flag it rather than
+  // silently dropping it. Run once, at the top level, against the full set of
+  // every descendant sub-target name (so nested items don't false-warn).
+  const prefix = `${parent.name_ ?? ""}[`;
+  for (const [rowName, row] of Object.entries(record.targets)) {
+    if (!rowName.startsWith(prefix) || materialised.has(rowName)) continue;
+    if (!isItemCompensable(row.status)) continue;
+    reporter.error(
+      `cancel: fan-out item "${rowName}" has no matching re-materialised item ` +
+        `— its compensation is skipped (is the item list deterministic?).`,
+    );
+  }
+  // Reverse once at the top: later stages/items (and nested items) unwind first.
+  return steps.reverse();
+}
+
+/**
+ * Recursive worker for {@link collectForEachSteps}: materialise `parent`, append
+ * each eligible item's compensation step to `out` in forward order, recurse into
+ * any stage that is itself a fan-out, and register every descendant sub-target
+ * name in `materialised`. A resolution failure (materialize or a thunk throwing)
+ * is recorded in both `failures` and `attempts` so the audit trail stays
+ * consistent, and never escapes.
+ */
+function collectForEachInto(
+  parent: TargetBuilder,
+  spec: ForEachSpec,
+  record: RunRecord,
+  failures: CompensationFailure[],
+  attempts: CompensationAttempt[],
+  reporter: Reporter,
+  materialised: Set<string>,
+  out: CompensationStep[],
+): void {
+  const parentName = parent.name_ ?? "";
+  let items: ReturnType<ForEachSpec["materialize"]>;
+  try {
+    items = spec.materialize();
+  } catch (error) {
+    failures.push({
+      target: `${parentName}.forEach`,
+      forTarget: parentName,
+      error: messageOf(error),
+    });
+    attempts.push({
+      forTarget: parentName,
+      compensation: `${parentName}.forEach`,
+      ok: false,
+    });
+    reporter.error(
+      `✘ cancel: re-materialising "${parentName}" for per-item ` +
+        `compensation threw: ${messageOf(error)}`,
+    );
+    return;
+  }
+  for (const { key, stages } of items) {
+    for (const [stage, sub] of Object.entries(stages)) {
+      const subName = `${parentName}[${key}].${stage}`;
+      // Name the sub as the executor does, so a nested fan-out reconstructs its
+      // grandchildren under the same `parent[key].stage[innerKey].innerStage`
+      // names.
+      sub.name_ = subName;
+      materialised.add(subName);
+      // A stage that is itself a fan-out: recurse so nested items' onCancel runs.
+      if (sub.forEach_ !== undefined) {
+        collectForEachInto(
+          sub,
+          sub.forEach_,
+          record,
+          failures,
+          attempts,
+          reporter,
+          materialised,
+          out,
+        );
+      }
+      if (!isItemCompensable(record.targets[subName]?.status)) continue;
+      if (sub.onCancel_ === undefined) continue;
+      let compensation: TargetBuilder | undefined;
+      try {
+        compensation = sub.onCancel_();
+      } catch (error) {
+        failures.push({
+          target: `${subName}.onCancel`,
+          forTarget: subName,
+          error: messageOf(error),
+        });
+        attempts.push({
+          forTarget: subName,
+          compensation: `${subName}.onCancel`,
+          ok: false,
+        });
+        reporter.error(
+          `✘ .onCancel() thunk for "${subName}" threw: ${messageOf(error)}`,
+        );
+        continue;
+      }
+      if (compensation === undefined) {
+        reporter.error(
+          `cancel: fan-out item "${subName}" .onCancel() resolved to ` +
+            `undefined — skipping.`,
+        );
+        continue;
+      }
+      out.push({
+        compensation,
+        forTarget: subName,
+        meta: record.targets[subName]?.meta ?? {},
+      });
+    }
+  }
+}
+
+/**
+ * A fan-out item is worth compensating if it succeeded, or was still running
+ * when the cancel landed — an item mid-flight may have partial side effects
+ * (a started deploy) its `.onCancel(...)` needs to unwind.
+ *
+ * ponytail: an out-of-process `zuke cancel` compensates a `running` item from a
+ * record snapshot, so if that item's body is still live in the owning process
+ * (which aborts only on its next state write / lock heartbeat), the compensation
+ * can overlap the body's tail. Bodies that checkpoint via `ctx.state.set(...)`
+ * or hold a `.lock()` propagate the cancel promptly and close the window; the
+ * full fix is prompt abort-propagation in the executor (background run-status
+ * poll) — a cancellation-hardening follow-up, out of this milestone's scope.
+ */
+function isItemCompensable(status: string | undefined): boolean {
+  return status === "succeeded" || status === "running";
+}
+
+/**
+ * Turn a compensation walk's {@link CompensationAttempt}s into audit events
+ * (`tool: "compensate"`), one per attempted cleanup, naming the target it undid
+ * (e.g. a fan-out item `deploy[repo-a].push`). Appended alongside the summary
+ * {@link cancelEvent} so the trail shows each item's outcome, not just a count.
+ * Target names are static identifiers, so nothing here needs redaction.
+ */
+export function compensationEvents(
+  attempts: CompensationAttempt[],
+  actor: string,
+  at: string,
+): RunEvent[] {
+  return attempts.map((a) => ({
+    at,
+    tool: "compensate",
+    actor,
+    outcome: a.ok ? "ok" : "error",
+    args: { target: a.forTarget },
+    detail: `${a.forTarget} → ${a.compensation}`,
+  }));
 }
 
 /** Options for {@link cancelRun}. */
@@ -531,10 +766,14 @@ async function finalizeCancelled(
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     const loaded = await store.getRun(id);
     if (loaded === null || loaded.record.status === "cancelled") return;
+    const at = now();
     const next = structuredClone(loaded.record);
     next.status = "cancelled";
-    next.updatedAt = now();
-    next.events.push(cancelEvent(actor, outcome, now()));
+    next.updatedAt = at;
+    for (const event of compensationEvents(outcome.attempts, actor, at)) {
+      next.events.push(event);
+    }
+    next.events.push(cancelEvent(actor, outcome, at));
     const result = await store.putRun(next, loaded.version);
     if (result.ok) return;
   }
