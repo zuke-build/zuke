@@ -1066,3 +1066,127 @@ Deno.test("a hook yielding an empty actor is rejected, never a spawn", async () 
   assertEquals(calls.length, 0);
   assertEquals(await store.getRun("mcp-audit"), null);
 });
+
+// ---- M14: concurrent registry serving + run cap ----------------------------
+
+/** A runner whose spawns block until released, exposing the in-flight count. */
+function gatedRunner(): {
+  runner: RegistryRunner;
+  active: () => number;
+  release: () => void;
+} {
+  let active = 0;
+  let open = () => {};
+  const gate = new Promise<void>((resolve) => {
+    open = resolve;
+  });
+  const runner: RegistryRunner = async () => {
+    active++;
+    try {
+      await gate;
+    } finally {
+      active--;
+    }
+    return { code: 0, stdout: "ok", stderr: "" };
+  };
+  return { runner, active: () => active, release: () => open() };
+}
+
+/** Wait until `predicate` holds (bounded), so we observe in-flight spawns. */
+async function until(predicate: () => boolean): Promise<void> {
+  for (let i = 0; i < 1000 && !predicate(); i++) {
+    await new Promise((r) => setTimeout(r, 1));
+  }
+}
+
+Deno.test("the concurrency cap refuses a spawn past the limit, immediately", async () => {
+  const registry = new FakeRegistry();
+  registry.add(descriptor("Api", ["deploy"]));
+  const { runner, active, release } = gatedRunner();
+  const server = new RegistryMcpServer(registry, {
+    allowRun: true,
+    runner,
+    maxConcurrentRuns: 2,
+  });
+
+  // Two runs start and block in the runner — both in flight.
+  const r1 = server.handleMessage(
+    req("tools/call", { name: "run:Api:deploy" }),
+  );
+  const r2 = server.handleMessage(
+    req("tools/call", { name: "run:Api:deploy" }),
+  );
+  await until(() => active() === 2);
+
+  // A third is refused at once with the structured busy error (not queued).
+  const third = callText(
+    await server.handleMessage(req("tools/call", { name: "run:Api:deploy" })),
+  );
+  assertEquals(third.isError, true);
+  const body = JSON.parse(third.text);
+  assertEquals(body.error, "at_capacity");
+  assertEquals(body.cap, 2);
+  assertEquals(body.running, 2);
+
+  // A read tool is never counted or blocked, even at capacity.
+  const list = await call(server, "list_builds");
+  assertEquals(list.isError, false);
+  assertStringIncludes(list.text, "Api");
+
+  // Releasing the two lets them finish and frees the slots.
+  release();
+  await Promise.all([r1, r2]);
+  assertEquals(active(), 0);
+  // A run tool works again once below the cap.
+  assertEquals((await call(server, "run:Api:deploy")).isError, false);
+});
+
+Deno.test("registry HTTP serving does not head-of-line-block a read behind a run", async () => {
+  const registry = new FakeRegistry();
+  registry.add(descriptor("Api", ["deploy"]));
+  const { runner, active, release } = gatedRunner();
+  const ac = new AbortController();
+  let setPort = (_: number) => {};
+  const portReady = new Promise<number>((r) => (setPort = r));
+  const finished = serveMcp(new RegistryBuild(registry), {
+    useRegistry: true,
+    allowRun: true,
+    runner,
+    http: { host: "127.0.0.1", port: 0 },
+    quiet: true,
+    signal: ac.signal,
+    onListen: (a) => setPort(a.port),
+  });
+  const url = `http://127.0.0.1:${await portReady}/`;
+  const post = (body: unknown) =>
+    fetch(url, { method: "POST", body: JSON.stringify(body) });
+  try {
+    // Start a run that blocks in the runner; do not await it.
+    const running = post({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/call",
+      params: { name: "run:Api:deploy", arguments: {} },
+    });
+    await until(() => active() === 1);
+
+    // A read returns while the run is still blocked — proving no serialization.
+    const list = await post({
+      jsonrpc: "2.0",
+      id: 2,
+      method: "tools/call",
+      params: { name: "list_builds", arguments: {} },
+    });
+    assertEquals(list.status, 200);
+    assertStringIncludes(JSON.stringify(await list.json()), "Api");
+    assertEquals(active(), 1); // the run is still in flight, untouched
+
+    // Release the run and drain it.
+    release();
+    const ran = await running;
+    await ran.json();
+  } finally {
+    ac.abort();
+    await finished;
+  }
+});

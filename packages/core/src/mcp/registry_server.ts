@@ -159,7 +159,16 @@ export interface RegistryMcpServerOptions {
   version?: string;
   /** Spawns a registered build; defaults to {@link defaultRegistryRunner}. */
   runner?: RegistryRunner;
+  /**
+   * The most run-tool spawns allowed in flight at once (default
+   * {@link DEFAULT_MAX_CONCURRENT_RUNS}). A call past the cap gets an immediate
+   * structured busy error rather than queueing; read tools are never counted.
+   */
+  maxConcurrentRuns?: number;
 }
+
+/** The default {@link RegistryMcpServerOptions.maxConcurrentRuns} cap. */
+export const DEFAULT_MAX_CONCURRENT_RUNS = 4;
 
 /** The reserved run-tool control keys — never treated as build parameters. */
 const CONTROL_KEYS: ReadonlySet<string> = new Set([
@@ -311,10 +320,23 @@ export class RegistryMcpServer {
   readonly #identity?: McpIdentityHook;
   readonly #readEnv: (name: string) => string | undefined;
   readonly #runner: RegistryRunner;
+  readonly #maxConcurrentRuns: number;
+  /**
+   * Requests may be handled concurrently: each run tool spawns its own
+   * subprocess and read tools only hit the CAS store, so there is no shared
+   * in-process run state to serialise (unlike the single-build server).
+   */
+  readonly concurrent = true;
+  /** Run-tool spawns currently in flight, capped by {@link #maxConcurrentRuns}. */
+  #inFlightRuns = 0;
   /** The connecting client's `initialize` name, a low-priority audit actor. */
   #clientLabel?: string;
-  /** The audit-log writer, opened lazily on the first audited call. */
-  #auditLog?: RunStateWriter;
+  /**
+   * The audit-log writer, opened lazily and memoized as a promise so concurrent
+   * first calls share a single open (and one serialising writer) rather than
+   * racing to create two.
+   */
+  #auditLog?: Promise<RunStateWriter>;
 
   /** Build the server over `registry`, applying the authz/audit options. */
   constructor(registry: BuildRegistry, options: RegistryMcpServerOptions = {}) {
@@ -335,6 +357,8 @@ export class RegistryMcpServer {
     this.#readEnv = options.readEnv ?? (() => undefined);
     this.#version = options.version ?? "0.0.0";
     this.#runner = options.runner ?? defaultRegistryRunner;
+    this.#maxConcurrentRuns = options.maxConcurrentRuns ??
+      DEFAULT_MAX_CONCURRENT_RUNS;
   }
 
   /**
@@ -703,6 +727,40 @@ export class RegistryMcpServer {
       );
     }
 
+    // Concurrency cap: refuse a spawn past the limit immediately with a
+    // structured busy error, rather than queueing it. The check and the
+    // increment are adjacent (no await between), so two concurrent calls can
+    // never both claim the last slot. Read tools never reach here.
+    if (this.#inFlightRuns >= this.#maxConcurrentRuns) {
+      await this.#audit(
+        runName,
+        args,
+        "denied",
+        actor,
+        "at_capacity",
+        knownParams,
+      );
+      return ok(
+        id,
+        textResult(
+          JSON.stringify(
+            {
+              error: "at_capacity",
+              tool: runName,
+              running: this.#inFlightRuns,
+              cap: this.#maxConcurrentRuns,
+              hint:
+                "The registry server is at its concurrent-run cap; retry shortly.",
+            },
+            null,
+            2,
+          ),
+          true,
+        ),
+      );
+    }
+
+    this.#inFlightRuns++;
     let result: RegistryRunResult;
     try {
       result = await this.#runner(launch.argv, launch.cwd, { actor });
@@ -720,6 +778,8 @@ export class RegistryMcpServer {
         id,
         textResult(`Failed to spawn ${qualified} (${kind}).`, true),
       );
+    } finally {
+      this.#inFlightRuns--;
     }
     await this.#audit(
       runName,
@@ -805,14 +865,18 @@ export class RegistryMcpServer {
     };
     if (detail !== undefined) event.detail = detail;
     try {
-      this.#auditLog ??= await openAuditLog(
+      // Memoize the open as a promise so concurrent first calls share one writer
+      // (whose #chain serialises appends) instead of racing to create two.
+      this.#auditLog ??= openAuditLog(
         store,
         () => new Date().toISOString(),
         new Redactor(),
       );
-      await this.#auditLog.appendEvent(event);
+      await (await this.#auditLog).appendEvent(event);
     } catch {
       // Auditing is best-effort: a store hiccup must not fail the tool call.
+      // Drop a failed open so a later call can retry instead of a poisoned one.
+      this.#auditLog = undefined;
     }
   }
 }

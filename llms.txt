@@ -75,6 +75,7 @@ Option flags:
 - `--protect` — With mcp, require an operator token to run these targets
 - `--confirm-destructive` — With mcp, require confirm:true before a destructive run
 - `--registry` — With mcp, serve the build registry (dynamic pipeline discovery)
+- `--max-concurrent-runs` — With mcp --registry, cap concurrent run-tool spawns (default 4)
 - `--http` — With mcp, serve over HTTP on <host:port> instead of stdio
 - `--help` — Show usage
 

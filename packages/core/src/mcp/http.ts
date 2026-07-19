@@ -44,6 +44,14 @@ export interface HttpTransportOptions {
   signal?: AbortSignal;
   /** Called once the listener is bound, with the actual address (test hook). */
   onListen?: (address: { hostname: string; port: number }) => void;
+  /**
+   * Handle requests **concurrently** instead of one at a time. Off by default:
+   * the single-build server mutates per-run parameter state on the shared build
+   * instance, so its handling must serialise. A handler with no shared in-process
+   * state (the registry server — each run is its own subprocess, reads only hit
+   * the CAS store) opts in, so a long run never head-of-line-blocks a read.
+   */
+  concurrent?: boolean;
 }
 
 /** A JSON `Response` with the given status and `application/json` content type. */
@@ -89,11 +97,12 @@ export async function serveHttp(
   ) => Promise<JsonRpcResponse | null>,
   options: HttpTransportOptions,
 ): Promise<void> {
-  const { host, port, token, signal, onListen } = options;
+  const { host, port, token, signal, onListen, concurrent } = options;
 
-  // Process messages one at a time: the server/execute path mutates per-run
-  // parameter state, so concurrent handling of two POSTs would race. Requests
-  // still arrive concurrently; this chain resolves them in arrival order.
+  // By default, process messages one at a time: the single-build server/execute
+  // path mutates per-run parameter state, so concurrent handling of two POSTs
+  // would race. Requests still arrive concurrently; this chain resolves them in
+  // arrival order. A `concurrent` handler bypasses the queue entirely.
   let queue: Promise<unknown> = Promise.resolve();
   const serial = (
     message: unknown,
@@ -103,6 +112,7 @@ export async function serveHttp(
     queue = result.then(() => {}, () => {});
     return result;
   };
+  const dispatch = concurrent === true ? handle : serial;
 
   const onRequest = async (request: Request): Promise<Response> => {
     if (request.method !== "POST") {
@@ -132,7 +142,7 @@ export async function serveHttp(
     } catch {
       return jsonResponse(err(null, PARSE_ERROR, "Parse error"), 400);
     }
-    const response = await serial(message, { headers: request.headers });
+    const response = await dispatch(message, { headers: request.headers });
     if (response === null) return new Response(null, { status: 202 });
     return jsonResponse(response, 200);
   };

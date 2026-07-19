@@ -100,6 +100,8 @@ export interface ParsedArgs {
   confirmDestructive: boolean;
   /** Serve `mcp` over the build registry (dynamic discovery) rather than one build (`--registry`). */
   mcpRegistry: boolean;
+  /** Cap on concurrent registry run-tool spawns (`--max-concurrent-runs`). */
+  maxConcurrentRuns?: number;
   /** Serve `mcp` over HTTP on this `<host:port>` instead of stdio (`--http`). */
   httpAddr?: string;
   /** The `completions` sub-action (`install` or `print`); the first positional. */
@@ -166,6 +168,13 @@ function parseParallel(value: string | undefined): boolean | number {
   if (value === undefined || value === "") return true;
   const n = Number(value);
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : true;
+}
+
+/** Parse a positive-integer flag value, or `undefined` when absent/invalid. */
+function parsePositiveInt(value: string | undefined): number | undefined {
+  if (value === undefined || value === "") return undefined;
+  const n = Number(value);
+  return Number.isInteger(n) && n > 0 ? n : undefined;
 }
 
 /**
@@ -274,6 +283,12 @@ export function parseArgs(
       parsed.confirmDestructive = true;
     } else if (arg === "--registry") {
       parsed.mcpRegistry = true;
+    } else if (arg.startsWith("--max-concurrent-runs=")) {
+      parsed.maxConcurrentRuns = parsePositiveInt(
+        arg.slice("--max-concurrent-runs=".length),
+      );
+    } else if (arg === "--max-concurrent-runs") {
+      parsed.maxConcurrentRuns = parsePositiveInt(args[++i]);
     } else if (arg === "--http") {
       const value = args[++i];
       if (value) parsed.httpAddr = value;
@@ -426,6 +441,10 @@ Options:
                     live so a newly-registered build appears with no restart. A
                     run tool spawns the registered build's launch command (behind
                     --allow-run + the same authz). See docs/registry.md.
+  --max-concurrent-runs <n>
+                    With mcp --registry, the most run-tool spawns allowed at
+                    once (default 4). A call past the cap gets an immediate busy
+                    error; read tools are never blocked or counted.
   --http <host:port>
                     With mcp, serve the streamable-HTTP transport on the given
                     address instead of stdio. Just <port> binds 127.0.0.1. A
@@ -741,6 +760,7 @@ async function runMcp(build: Build, parsed: ParsedArgs): Promise<number> {
     protectPatterns: parsed.protectPatterns,
     confirmDestructive: parsed.confirmDestructive,
     useRegistry: parsed.mcpRegistry,
+    maxConcurrentRuns: parsed.maxConcurrentRuns,
     actor: parsed.actor,
     http,
   });
