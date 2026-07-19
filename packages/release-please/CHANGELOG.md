@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.1](https://github.com/zuke-build/zuke/compare/release-please-v1.0.0...release-please-v1.0.1) (2026-07-19)
+
+
+### Bug Fixes
+
+* pin @zuke/core ^1.25.0 across wrappers so fromNodeModules resolves ([#213](https://github.com/zuke-build/zuke/issues/213)) ([ef9baa5](https://github.com/zuke-build/zuke/commit/ef9baa50e64fa7b2382520c970d255534dbb6daa))
+
 ## 1.0.0 (2026-06-21)
 
 

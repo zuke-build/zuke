@@ -1,6 +1,6 @@
 {
   "name": "@zuke/kubectl",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Typed kubectl CLI task wrappers for Zuke builds — apply, create, delete, get, describe, logs, exec, rollout, scale, set image, patch, port-forward, wait, and top via an injection-free settings-lambda API.",
   "exports": {
     ".": "./mod.ts"

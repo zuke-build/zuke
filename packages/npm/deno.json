@@ -1,6 +1,6 @@
 {
   "name": "@zuke/npm",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Typed npm CLI task wrappers for Zuke builds — install, ci, run, exec, publish, and version via an injection-free settings-lambda API.",
   "exports": {
     ".": "./mod.ts"

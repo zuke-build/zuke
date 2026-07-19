@@ -1,6 +1,6 @@
 {
   "name": "@zuke/oxlint",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Typed oxlint task wrappers for Zuke builds — fast Rust-based linting via an injection-free settings-lambda API.",
   "exports": {
     ".": "./mod.ts"

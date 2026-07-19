@@ -1,6 +1,6 @@
 {
   "name": "@zuke/tsup",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Typed tsup CLI task wrapper for Zuke builds — bundle TypeScript/JavaScript with formats, dts, minify, and more via an injection-free settings-lambda API.",
   "exports": {
     ".": "./mod.ts"
