@@ -1,13 +1,17 @@
-import { assertEquals, assertRejects } from "./_assert.ts";
+import { assertEquals, assertRejects, assertThrows } from "./_assert.ts";
 import {
+  assertSafeEntryName,
   createTarGzip,
   extractTarGzip,
+  extractZip,
   gunzip,
   gzip,
   tar,
   type TarEntry,
   untar,
+  unzip,
 } from "../src/compression.ts";
+import { DEFLATE, makeZip, STORED } from "./_zip.ts";
 
 const enc = (s: string) => new TextEncoder().encode(s);
 const dec = (b: Uint8Array) => new TextDecoder().decode(b);
@@ -106,4 +110,217 @@ Deno.test("createTarGzip fails clearly when a file is missing", async () => {
   } finally {
     await Deno.remove(dir, { recursive: true });
   }
+});
+
+Deno.test("extractTarGzip refuses a path that escapes the destination", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    // A hand-built archive with a traversing entry — a poisoned tarball.
+    const archive = `${dir}/evil.tar.gz`;
+    await Deno.writeFile(
+      String(archive),
+      await gzip(tar([
+        { name: "../escape.txt", data: enc("pwned") },
+      ])),
+    );
+    await assertRejects(
+      () => extractTarGzip(archive, `${dir}/out`),
+      Error,
+      "escapes the destination",
+    );
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("unzip round-trips a stored and a deflate entry", async () => {
+  const compressible = enc("deflate ".repeat(200));
+  const zip = await makeZip([
+    { name: "raw.txt", data: enc("stored-bytes"), method: STORED },
+    { name: "packed.txt", data: compressible, method: DEFLATE },
+  ]);
+  const out = await unzip(zip);
+  assertEquals(out.map((e) => e.name), ["raw.txt", "packed.txt"]);
+  assertEquals(dec(out[0].data), "stored-bytes");
+  assertEquals(dec(out[1].data), dec(compressible));
+});
+
+Deno.test("unzip skips directory entries and keeps nested files", async () => {
+  const zip = await makeZip([
+    { name: "bin/" }, // directory entry — no data
+    { name: "bin/tool", data: enc("#!/bin/sh\n"), method: DEFLATE },
+  ]);
+  const out = await unzip(zip);
+  assertEquals(out.map((e) => e.name), ["bin/tool"]);
+  assertEquals(dec(out[0].data), "#!/bin/sh\n");
+});
+
+Deno.test("extractZip writes files (stored + deflate + nested) to disk", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const zip = `${dir}/tool.zip`;
+    await Deno.writeFile(
+      zip,
+      await makeZip([
+        { name: "dprint", data: enc("BINARY"), method: STORED },
+        {
+          name: "lib/notes.txt",
+          data: enc("read me".repeat(50)),
+          method: DEFLATE,
+        },
+      ]),
+    );
+    await extractZip(zip, `${dir}/out`);
+    assertEquals(await Deno.readTextFile(`${dir}/out/dprint`), "BINARY");
+    assertEquals(
+      await Deno.readTextFile(`${dir}/out/lib/notes.txt`),
+      "read me".repeat(50),
+    );
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("extractZip refuses a traversing or absolute entry (zip slip)", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const evil = `${dir}/evil.zip`;
+    await Deno.writeFile(
+      evil,
+      await makeZip([{ name: "../escape", data: enc("x") }]),
+    );
+    await assertRejects(
+      () => extractZip(evil, `${dir}/out`),
+      Error,
+      "escapes the destination",
+    );
+    const abs = `${dir}/abs.zip`;
+    await Deno.writeFile(
+      abs,
+      await makeZip([{ name: "/etc/x", data: enc("x") }]),
+    );
+    await assertRejects(
+      () => extractZip(abs, `${dir}/out`),
+      Error,
+      "absolute path",
+    );
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("unzip rejects an encrypted entry", async () => {
+  const zip = await makeZip([
+    { name: "secret", data: enc("x"), flags: 0x0001 },
+  ]);
+  await assertRejects(() => unzip(zip), Error, "encrypted");
+});
+
+Deno.test("unzip rejects a zip64 archive", async () => {
+  const zip = await makeZip([{ name: "big", data: enc("x"), zip64: true }]);
+  await assertRejects(() => unzip(zip), Error, "zip64");
+});
+
+Deno.test("unzip rejects an unsupported compression method", async () => {
+  const zip = await makeZip([{ name: "bz", data: enc("x"), method: 12 }]);
+  await assertRejects(
+    () => unzip(zip),
+    Error,
+    "unsupported compression method",
+  );
+});
+
+Deno.test("unzip rejects bytes that are not a zip", async () => {
+  await assertRejects(
+    () => unzip(enc("not a zip at all, no signature here")),
+    Error,
+    "not a zip archive",
+  );
+});
+
+Deno.test("unzip rejects a corrupt local file header", async () => {
+  const zip = await makeZip([{ name: "x", data: enc("data") }]);
+  zip[0] = 0; // corrupt the local file-header signature
+  await assertRejects(() => unzip(zip), Error, "malformed local header");
+});
+
+Deno.test("unzip rejects a zip64 end-of-central-directory", async () => {
+  const zip = await makeZip([{ name: "x", data: enc("data") }]);
+  const view = new DataView(zip.buffer, zip.byteOffset, zip.byteLength);
+  // Point the central-directory offset at the zip64 sentinel.
+  view.setUint32(zip.length - 22 + 16, 0xffffffff, true);
+  await assertRejects(() => unzip(zip), Error, "zip64");
+});
+
+Deno.test("unzip rejects a corrupt central directory", async () => {
+  const zip = await makeZip([{ name: "x", data: enc("data") }]);
+  const view = new DataView(zip.buffer, zip.byteOffset, zip.byteLength);
+  const cdOffset = view.getUint32(zip.length - 22 + 16, true);
+  view.setUint32(cdOffset, 0, true); // corrupt the central-directory signature
+  await assertRejects(() => unzip(zip), Error, "malformed central directory");
+});
+
+Deno.test("unzip reports an out-of-range central-directory offset as malformed, not a RangeError", async () => {
+  const zip = await makeZip([{ name: "x", data: enc("data") }]);
+  const view = new DataView(zip.buffer, zip.byteOffset, zip.byteLength);
+  view.setUint32(zip.length - 22 + 16, zip.length + 100, true); // cdOffset past end
+  const err = await assertRejects(() => unzip(zip), Error);
+  assertEquals(err.message.includes("malformed central directory"), true);
+  assertEquals(err.message.includes("RangeError"), false);
+});
+
+Deno.test("unzip rejects a central-directory name that runs past the end", async () => {
+  const zip = await makeZip([{ name: "x", data: enc("data") }]);
+  const view = new DataView(zip.buffer, zip.byteOffset, zip.byteLength);
+  const cdOffset = view.getUint32(zip.length - 22 + 16, true);
+  view.setUint16(cdOffset + 28, 5000, true); // absurd name length
+  await assertRejects(() => unzip(zip), Error, "name runs past end");
+});
+
+Deno.test("unzip reports an out-of-range local-header offset as malformed", async () => {
+  const zip = await makeZip([{ name: "x", data: enc("data") }]);
+  const view = new DataView(zip.buffer, zip.byteOffset, zip.byteLength);
+  const cdOffset = view.getUint32(zip.length - 22 + 16, true);
+  view.setUint32(cdOffset + 42, zip.length + 100, true); // localOffset past end
+  await assertRejects(() => unzip(zip), Error, "malformed local header");
+});
+
+Deno.test("unzip rejects an entry whose data runs past the archive", async () => {
+  const zip = await makeZip([{ name: "x", data: enc("data") }]);
+  const view = new DataView(zip.buffer, zip.byteOffset, zip.byteLength);
+  const cdOffset = view.getUint32(zip.length - 22 + 16, true);
+  view.setUint32(cdOffset + 20, zip.length * 10, true); // absurd compressed size
+  await assertRejects(() => unzip(zip), Error, "runs past the archive");
+});
+
+Deno.test("unzip uses the local header's extra length, not the central directory's", async () => {
+  // The local header carries a 5-byte extra field the central directory omits.
+  // A reader that used the central-directory extra length would land 5 bytes
+  // early and decode garbage; this proves it reads the local length.
+  const zip = await makeZip([
+    {
+      name: "x",
+      data: enc("payload"),
+      localExtra: new Uint8Array([1, 2, 3, 4, 5]),
+    },
+  ]);
+  const out = await unzip(zip);
+  assertEquals(dec(out[0].data), "payload");
+});
+
+Deno.test("assertSafeEntryName accepts safe names and rejects escapes", () => {
+  assertSafeEntryName("bin/tool"); // no throw
+  assertSafeEntryName("a/b/c.txt");
+  assertThrows(() => assertSafeEntryName("/abs"), Error, "absolute path");
+  assertThrows(() => assertSafeEntryName("C:/win"), Error, "absolute path");
+  assertThrows(
+    () => assertSafeEntryName("a/../b"),
+    Error,
+    "escapes the destination",
+  );
+  assertThrows(
+    () => assertSafeEntryName("..\\win"),
+    Error,
+    "escapes the destination",
+  );
 });

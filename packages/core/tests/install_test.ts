@@ -8,6 +8,7 @@ import {
 } from "../src/install.ts";
 import { operatingSystem } from "../src/host.ts";
 import { createTarGzip } from "../src/compression.ts";
+import { makeZip, STORED } from "./_zip.ts";
 
 /**
  * The suffix `installRelease` adds to the installed filename for the host
@@ -185,6 +186,77 @@ Deno.test("installRelease (tar.gz) defaults binaryPath to the tool name", async 
     });
     const contents = new TextDecoder().decode(await Deno.readFile(String(bin)));
     assertEquals(contents, "flat-binary");
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("installRelease (zip) unpacks and installs the inner binary", async () => {
+  const root = await Deno.makeTempDir();
+  try {
+    // A zip carrying bin/dprint (dprint et al. ship zip-only), served via the seam.
+    const bytes = await makeZip([
+      { name: "bin/dprint", data: new TextEncoder().encode("zipped-binary") },
+    ]);
+    const dest = `${root}/install`;
+    const bin = await installRelease({
+      name: "dprint",
+      destDir: dest,
+      archive: "zip",
+      binaryPath: "bin/dprint",
+      url: () => "https://example.com/dprint.zip",
+      download: fakeDownload(bytes),
+    });
+    assertEquals(bin.path.endsWith(`/dprint${EXE}`), true);
+    const contents = new TextDecoder().decode(await Deno.readFile(String(bin)));
+    assertEquals(contents, "zipped-binary");
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("installRelease (zip) defaults binaryPath to the tool name and verifies a checksum", async () => {
+  const root = await Deno.makeTempDir();
+  try {
+    const bytes = await makeZip([
+      {
+        name: "flat",
+        data: new TextEncoder().encode("flat-zip"),
+        method: STORED,
+      },
+    ]);
+    const sha = await crypto.subtle.digest("SHA-256", new Uint8Array(bytes));
+    const checksum = Array.from(
+      new Uint8Array(sha),
+      (b) => b.toString(16).padStart(2, "0"),
+    ).join("");
+
+    const dest = `${root}/install`;
+    const bin = await installRelease({
+      name: "flat",
+      destDir: dest,
+      archive: "zip",
+      checksum,
+      url: () => "https://example.com/flat.zip",
+      download: fakeDownload(bytes),
+    });
+    const contents = new TextDecoder().decode(await Deno.readFile(String(bin)));
+    assertEquals(contents, "flat-zip");
+
+    // A wrong checksum on the same archive fails, installing nothing new.
+    await assertRejects(
+      () =>
+        installRelease({
+          name: "flat",
+          destDir: `${root}/install2`,
+          archive: "zip",
+          checksum: "0".repeat(64),
+          url: () => "https://example.com/flat.zip",
+          download: fakeDownload(bytes),
+        }),
+      Error,
+      "checksum mismatch",
+    );
   } finally {
     await Deno.remove(root, { recursive: true });
   }

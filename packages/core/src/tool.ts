@@ -67,7 +67,7 @@ export class ToolInstallSettings {
   /** Install directory (overrides the toolchain's). Set by {@link destDir}. */
   destDir_?: PathLike;
   /** Download format. Set by {@link archive}. */
-  archive_?: "raw" | "tar.gz";
+  archive_?: "raw" | "tar.gz" | "zip";
   /** The binary's path within a `tar.gz`. Set by {@link binaryPath}. */
   binaryPath_?: string;
   /** Expected SHA-256 (or a per-platform resolver). Set by {@link checksum}. */
@@ -95,13 +95,16 @@ export class ToolInstallSettings {
     return this;
   }
 
-  /** Treat the download as a `"tar.gz"` (default `"raw"`, the bare binary). */
-  archive(format: "raw" | "tar.gz"): this {
+  /**
+   * Treat the download as a `"tar.gz"` or `"zip"` to unpack (default `"raw"`,
+   * the bare binary). Pair with {@link binaryPath} for the binary inside.
+   */
+  archive(format: "raw" | "tar.gz" | "zip"): this {
     this.archive_ = format;
     return this;
   }
 
-  /** For a `tar.gz`, the binary's path within the archive (defaults to the name). */
+  /** For an archive, the binary's path within it (defaults to the name). */
   binaryPath(path: string): this {
     this.binaryPath_ = path;
     return this;

@@ -402,6 +402,12 @@ tools = toolchain((t) =>
 // install() returns Map<name, AbsolutePath>; npm packages need `npm` on PATH.
 ```
 
+`.archive("tar.gz")` or `.archive("zip")` unpacks an archive and copies
+`.binaryPath(...)` (default the name) out — zip reading covers the `stored`/
+`deflate` methods release assets use, rejects encrypted/zip64 archives, and
+blocks zip-slip. `.checksum(sha256)` verifies (the archive's SHA-256 for an
+archive, the binary's for `"raw"`) and doubles as the install cache key.
+
 **Resolve from `node_modules/.bin`** — in a Node monorepo where tool binaries
 are hoisted to the repo root, a wrapper can find its binary npx-style instead of
 needing a `.toolPath(...)`. `.fromNodeModules()` on any settings object walks up

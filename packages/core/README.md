@@ -137,6 +137,11 @@ function assertExists<T>(value: T, message: string): NonNullable<T>
 async function assertFileExists(path: PathLike): Promise<void>
   Assert that `path` exists and is a file. Async (stats the filesystem).
 
+function assertSafeEntryName(name: string): void
+  Reject an archive entry whose name would escape the destination directory — an
+  absolute path or one with a `..` segment (a "zip slip"). A downloaded or
+  poisoned archive must never place files outside where it is being unpacked.
+
 async function cancelRun(build: Build, options: CancelOptions): Promise<CancelResult>
   Cancel the run `options.runId` for `build`: transition it to `cancelling`
   (exactly one canceller drives the walk; a live owning process observes the
@@ -272,6 +277,12 @@ function externalSignal(name: string): WaitTrigger
 async function extractTarGzip(src: PathLike, destDir: PathLike): Promise<void>
   Read the `.tar.gz` at `src`, gunzip and unpack it, and write each entry under
   `destDir` (creating parent directories as needed).
+
+async function extractZip(src: PathLike, destDir: PathLike): Promise<void>
+  Read the `.zip` at `src`, unpack it, and write each entry under `destDir`
+  (creating parent directories as needed) — the zip counterpart of
+  {@link extractTarGzip}. Entry names are validated so a malicious archive
+  cannot escape `destDir`.
 
 function fail(message: string): never
   Throw an {@link AssertionError} with `message`. Never returns.
@@ -565,6 +576,16 @@ function toolchain(configure?: (t: Toolchain) => void): Toolchain
 
 function untar(archive: Uint8Array): TarEntry[]
   Extract the entries from a `ustar` archive (regular files only).
+
+async function unzip(archive: Uint8Array): Promise<TarEntry[]>
+  Read the entries of a `.zip` archive, decompressing `stored` and `deflate`
+  members. The central directory is the source of truth. Directory entries (a
+  trailing `/`) are skipped. Encrypted, zip64, or otherwise-compressed entries
+  throw a friendly error naming the offending entry, and a header or data field
+  that runs past the archive is reported as a malformed zip (not a raw
+  out-of-bounds error). Every offset read from the archive is bounds-checked;
+  for integrity against a tampered download, pin a `.checksum(...)`, which is
+  verified before the archive is ever parsed.
 
 function validateGraph(targets: Map<string, TargetBuilder>): void
   Validate the whole graph: unknown references first, then cycles.
@@ -1617,7 +1638,7 @@ class ToolInstallSettings
     Resolves the per-platform download URL. Set by {@link url}.
   destDir_?: PathLike
     Install directory (overrides the toolchain's). Set by {@link destDir}.
-  archive_?: "raw" | "tar.gz"
+  archive_?: "raw" | "tar.gz" | "zip"
     Download format. Set by {@link archive}.
   binaryPath_?: string
     The binary's path within a `tar.gz`. Set by {@link binaryPath}.
@@ -1633,10 +1654,11 @@ class ToolInstallSettings
     Resolve the download URL for the target {@link Platform}.
   destDir(dir: PathLike): this
     The directory to install the binary into (created if missing).
-  archive(format: "raw" | "tar.gz"): this
-    Treat the download as a `"tar.gz"` (default `"raw"`, the bare binary).
+  archive(format: "raw" | "tar.gz" | "zip"): this
+    Treat the download as a `"tar.gz"` or `"zip"` to unpack (default `"raw"`,
+    the bare binary). Pair with {@link binaryPath} for the binary inside.
   binaryPath(path: string): this
-    For a `tar.gz`, the binary's path within the archive (defaults to the name).
+    For an archive, the binary's path within it (defaults to the name).
   checksum(sha256: string | ((platform: Platform) => string)): this
     The expected SHA-256 (hex) of the downloaded artifact — verifies and caches
     the install. Pass a `({ os, arch }) => string` resolver to pin it per
@@ -2378,12 +2400,13 @@ interface InstallReleaseOptions
     Resolve the download URL for the target {@link Platform}.
   destDir: PathLike
     The directory to install the binary into (created if missing).
-  archive?: "raw" | "tar.gz"
+  archive?: "raw" | "tar.gz" | "zip"
     The download format. `"raw"` (default) treats the download as the binary
-    itself; `"tar.gz"` unpacks it and takes {@link binaryPath} from inside.
+    itself; `"tar.gz"` and `"zip"` unpack it and take {@link binaryPath} from
+    inside. Many release assets ship one or the other.
   binaryPath?: string
-    For a `"tar.gz"` archive, the binary's path within the archive. Defaults to
-    {@link name}.
+    For a `"tar.gz"` or `"zip"` archive, the binary's path within the archive.
+    Defaults to {@link name}.
   platform?: InstallPlatform
     The platform to resolve the URL for. Defaults to {@link hostPlatform}.
     Override it to install a foreign binary or to unit-test URL resolution.

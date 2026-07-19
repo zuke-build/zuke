@@ -266,13 +266,16 @@ export {
   TeamsAnnouncementSettings,
 } from "./src/announce.ts";
 export {
+  assertSafeEntryName,
   createTarGzip,
   extractTarGzip,
+  extractZip,
   gunzip,
   gzip,
   tar,
   type TarEntry,
   untar,
+  unzip,
 } from "./src/compression.ts";
 export {
   type DownloadFn,
