@@ -53,11 +53,12 @@ Deno.test("zuke register writes a descriptor a reader can load", async () => {
       loaded?.descriptor.surface.targets.map((t) => t.name),
       ["lint", "build"],
     );
-    // The secret parameter's flag is listed, but no value is anywhere in it.
-    assertEquals(
-      loaded?.descriptor.surface.parameters.map((p) => p.flag),
-      ["api-token"],
-    );
+    // The secret parameter is excluded entirely — neither its flag nor a value
+    // appears anywhere in the descriptor, so it can never become an MCP input.
+    assertEquals(loaded?.descriptor.surface.parameters, []);
+    const raw = JSON.stringify(loaded?.descriptor);
+    assertEquals(raw.includes("api-token"), false);
+    assertEquals(raw.includes("apiToken"), false);
     const createdAt = loaded?.descriptor.createdAt;
 
     // Re-registering is idempotent: createdAt is preserved.

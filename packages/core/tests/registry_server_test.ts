@@ -660,3 +660,291 @@ Deno.test("defaultRegistryRunner strips server secrets from the spawned env", as
     else Deno.env.set("ZUKE_OPERATOR_TOKEN", prev);
   }
 });
+
+// ---- M12: build parameters --------------------------------------------------
+
+/** A descriptor for build "Deploy" whose "deploy" target declares parameters. */
+function paramDescriptor(): BuildDescriptor {
+  const base = descriptor("Deploy", ["deploy"]);
+  return {
+    ...base,
+    surface: {
+      ...base.surface,
+      parameters: [
+        {
+          name: "repos",
+          flag: "repos",
+          description: "service repos to deploy",
+          required: true,
+          kind: "string",
+          boolean: false,
+          array: true,
+          options: [],
+        },
+        {
+          name: "sit",
+          flag: "sit",
+          description: "SIT slot",
+          required: false,
+          kind: "string",
+          boolean: false,
+          array: false,
+          options: [],
+        },
+        {
+          name: "skipE2e",
+          flag: "skip-e2e",
+          description: "skip the e2e stage",
+          required: false,
+          kind: "boolean",
+          boolean: true,
+          array: false,
+          options: [],
+          default: "false",
+        },
+        {
+          name: "workers",
+          flag: "workers",
+          description: "worker count",
+          required: false,
+          kind: "number",
+          boolean: false,
+          array: false,
+          options: [],
+        },
+        {
+          name: "env",
+          flag: "env",
+          description: "environment",
+          required: false,
+          kind: "string",
+          boolean: false,
+          array: false,
+          options: ["dev", "prod"],
+        },
+      ],
+    },
+  };
+}
+
+/** The `properties` map of an input schema, or `{}` when absent. */
+function schemaProps(schema: Record<string, unknown>): Record<string, unknown> {
+  return isRec(schema.properties) ? schema.properties : {};
+}
+
+/** The `run:<name>` tool's input schema from a `tools/list` response. */
+function runToolSchema(res: unknown, name: string): Record<string, unknown> {
+  const tools = resultOf(res).tools;
+  if (!Array.isArray(tools)) throw new Error("no tools array");
+  for (const t of tools) {
+    if (isRec(t) && t.name === name && isRec(t.inputSchema)) {
+      return t.inputSchema;
+    }
+  }
+  throw new Error(`no tool ${name}`);
+}
+
+Deno.test("a run tool's inputSchema exposes the build's parameters", async () => {
+  const registry = new FakeRegistry();
+  registry.add(paramDescriptor());
+  const server = new RegistryMcpServer(registry, { allowRun: true });
+  const schema = runToolSchema(
+    await server.handleMessage(req("tools/list")),
+    "run:Deploy:deploy",
+  );
+  const props = schemaProps(schema);
+  // repos: an array of strings, described, and required.
+  assertEquals(props.repos, {
+    type: "array",
+    items: { type: "string" },
+    description: "service repos to deploy",
+  });
+  assertEquals(
+    Array.isArray(schema.required) && schema.required.includes("repos"),
+    true,
+  );
+  // sit: an optional string.
+  assertEquals(props.sit, { type: "string", description: "SIT slot" });
+  // skipE2e: a boolean carrying its declared default.
+  assertEquals(props.skipE2e, {
+    type: "boolean",
+    description: "skip the e2e stage",
+    default: false,
+  });
+  // env: a constrained string (enum).
+  assertEquals(props.env, {
+    type: "string",
+    description: "environment",
+    enum: ["dev", "prod"],
+  });
+  // The reserved control key coexists with the parameters.
+  assertEquals(isRec(props.dryRun), true);
+});
+
+Deno.test("a run tool forwards validated parameters as --flag=value", async () => {
+  const registry = new FakeRegistry();
+  registry.add(paramDescriptor());
+  const { runner, calls } = recordingRunner();
+  const server = new RegistryMcpServer(registry, { allowRun: true, runner });
+  const result = await call(server, "run:Deploy:deploy", {
+    repos: ["expense-service", "web"],
+    skipE2e: true,
+    workers: 4,
+  });
+  assertEquals(result.isError, false);
+  assertEquals(calls.length, 1);
+  const argv = calls[0].argv;
+  assertEquals(argv.includes("--repos=expense-service,web"), true);
+  assertEquals(argv.includes("--skip-e2e=true"), true);
+  assertEquals(argv.includes("--workers=4"), true);
+  // The target name still leads the trailing args.
+  assertEquals(argv.includes("deploy"), true);
+});
+
+Deno.test("a boolean parameter forwards its false value explicitly", async () => {
+  const registry = new FakeRegistry();
+  registry.add(paramDescriptor());
+  const { runner, calls } = recordingRunner();
+  const server = new RegistryMcpServer(registry, { allowRun: true, runner });
+  await call(server, "run:Deploy:deploy", { repos: ["a"], skipE2e: false });
+  assertEquals(calls[0].argv.includes("--skip-e2e=false"), true);
+});
+
+Deno.test("a type-mismatched array parameter is rejected before any spawn", async () => {
+  const registry = new FakeRegistry();
+  registry.add(paramDescriptor());
+  const { runner, calls } = recordingRunner();
+  const server = new RegistryMcpServer(registry, { allowRun: true, runner });
+  // A bare string where an array is required.
+  const result = await call(server, "run:Deploy:deploy", {
+    repos: "expense-service",
+  });
+  assertEquals(result.isError, true);
+  assertStringIncludes(result.text, "repos");
+  assertEquals(calls.length, 0); // never spawned
+});
+
+Deno.test("a non-numeric number and an out-of-set enum are rejected", async () => {
+  const registry = new FakeRegistry();
+  registry.add(paramDescriptor());
+  const { runner, calls } = recordingRunner();
+  const server = new RegistryMcpServer(registry, { allowRun: true, runner });
+  const badNumber = await call(server, "run:Deploy:deploy", {
+    repos: ["a"],
+    workers: "four",
+  });
+  assertEquals(badNumber.isError, true);
+  assertStringIncludes(badNumber.text, "workers");
+  const badEnum = await call(server, "run:Deploy:deploy", {
+    repos: ["a"],
+    env: "staging",
+  });
+  assertEquals(badEnum.isError, true);
+  assertStringIncludes(badEnum.text, "env");
+  assertEquals(calls.length, 0);
+});
+
+Deno.test("an unknown parameter is rejected naming it", async () => {
+  const registry = new FakeRegistry();
+  registry.add(paramDescriptor());
+  const { runner, calls } = recordingRunner();
+  const server = new RegistryMcpServer(registry, { allowRun: true, runner });
+  const result = await call(server, "run:Deploy:deploy", {
+    repos: ["a"],
+    nope: "x",
+  });
+  assertEquals(result.isError, true);
+  assertStringIncludes(result.text, "nope");
+  assertStringIncludes(result.text, "unknown");
+  assertEquals(calls.length, 0);
+});
+
+Deno.test("parameters coexist with the operator token and confirmation", async () => {
+  const registry = new FakeRegistry();
+  registry.add(paramDescriptor());
+  const { runner, calls } = recordingRunner();
+  const server = new RegistryMcpServer(registry, {
+    allowRun: true,
+    runner,
+    confirmDestructive: true,
+    protectPatterns: ["Deploy:*"],
+    operatorToken: "good-token",
+  });
+  const result = await call(server, "run:Deploy:deploy", {
+    repos: ["a"],
+    confirm: true,
+    operatorToken: "good-token",
+  });
+  assertEquals(result.isError, false);
+  assertEquals(calls.length, 1);
+  const argv = calls[0].argv;
+  // The build parameter is forwarded; the control keys never are.
+  assertEquals(argv.includes("--repos=a"), true);
+  assertEquals(argv.some((a) => a.includes("operator")), false);
+  assertEquals(argv.some((a) => a.includes("confirm")), false);
+});
+
+// ---- M12 adversarial-review regressions -------------------------------------
+
+Deno.test("a value supplied under an unknown/secret key is elided from the audit log", async () => {
+  const registry = new FakeRegistry();
+  registry.add(paramDescriptor());
+  const store = new FileSystemStateStore("/state", new FakeStateHost());
+  const { runner } = recordingRunner();
+  const server = new RegistryMcpServer(registry, {
+    allowRun: true,
+    stateStore: store,
+    runner,
+  });
+  // `apiToken` is not a declared parameter (a secret would be absent from the
+  // descriptor); a mistaken value under it must not land verbatim in the trail.
+  await call(server, "run:Deploy:deploy", {
+    repos: ["expense-service"],
+    apiToken: "sk-live-SECRET",
+  });
+
+  const audit = await store.getRun("mcp-audit");
+  const events = audit?.record.events ?? [];
+  const serialized = JSON.stringify(events);
+  // The secret value never appears; the unknown key is recorded but elided.
+  assertEquals(serialized.includes("sk-live-SECRET"), false);
+  assertEquals(serialized.includes("<omitted>"), true);
+  // A declared parameter's value is still recorded (the point of the trail).
+  assertEquals(serialized.includes("expense-service"), true);
+});
+
+Deno.test("a malformed default/enum from an untrusted descriptor is dropped from the schema", async () => {
+  const registry = new FakeRegistry();
+  const base = descriptor("Api", ["deploy"]);
+  registry.add({
+    ...base,
+    surface: {
+      ...base.surface,
+      parameters: [
+        // A number parameter carrying a non-numeric default and a (string) enum
+        // — both invalid for the declared kind, as only an untrusted registry
+        // could produce.
+        {
+          name: "workers",
+          flag: "workers",
+          description: "",
+          required: false,
+          kind: "number",
+          boolean: false,
+          array: false,
+          options: ["1", "2"],
+          default: "abc",
+        },
+      ],
+    },
+  });
+  const server = new RegistryMcpServer(registry, { allowRun: true });
+  const schema = runToolSchema(
+    await server.handleMessage(req("tools/list")),
+    "run:Api:deploy",
+  );
+  const workers = schemaProps(schema).workers;
+  // The schema is well-formed: a number type with neither a string enum nor a
+  // non-numeric default.
+  assertEquals(workers, { type: "number" });
+});

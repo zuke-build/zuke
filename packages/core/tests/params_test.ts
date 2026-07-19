@@ -443,3 +443,43 @@ Deno.test("execute emits ::add-mask:: with the real value under GitHub", async (
     true,
   );
 });
+
+Deno.test("discoverParameters rejects a reserved MCP control name", () => {
+  // A parameter field named after a run-tool control key would be shadowed by
+  // that key in the MCP input schema, so discovery refuses it.
+  class BadDryRun extends Build {
+    dryRun = parameter();
+  }
+  class BadConfirm extends Build {
+    confirm = parameter();
+  }
+  class BadOperatorToken extends Build {
+    operatorToken = parameter();
+  }
+  for (
+    const [Bad, name] of [
+      [BadDryRun, "dryRun"],
+      [BadConfirm, "confirm"],
+      [BadOperatorToken, "operatorToken"],
+    ] as const
+  ) {
+    const error = assertThrows(
+      () => discoverParameters(new Bad()),
+      ParameterError,
+    );
+    assertStringIncludes(error.message, name);
+    assertStringIncludes(error.message, "reserved");
+  }
+});
+
+Deno.test("a parameter exposes its default as a display string", () => {
+  const withDefault = parameter().default("eu");
+  assertEquals(withDefault.default_, "eu");
+  const bool = parameter().boolean();
+  assertEquals(bool.default_, "false");
+  const num = parameter().number().default(4);
+  assertEquals(num.default_, "4");
+  // An empty-list array default and an undefined optional carry no default.
+  assertEquals(parameter().array().default_, undefined);
+  assertEquals(parameter().default_, undefined);
+});

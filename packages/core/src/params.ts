@@ -39,6 +39,28 @@ export type ParamValue = string | number | boolean;
 /** A parameter's runtime kind tag. */
 export type ParamKind = "string" | "number" | "boolean";
 
+/**
+ * Property names a parameter field may not use: they are the reserved control
+ * keys an MCP `run:<target>` tool adds to its input schema alongside the build's
+ * parameters ({@link "./mcp/server.ts".McpServer}). A build parameter sharing
+ * one of these names would be silently shadowed by the control key, so
+ * {@link discoverParameters} rejects it at discovery.
+ */
+const RESERVED_PARAM_NAMES: ReadonlySet<string> = new Set([
+  "dryRun",
+  "confirm",
+  "operatorToken",
+]);
+
+/** Render a declared default as a display string, or `undefined` when it has none. */
+function defaultToString(value: unknown): string | undefined {
+  if (value === undefined) return undefined;
+  if (Array.isArray(value)) {
+    return value.length === 0 ? undefined : value.map(String).join(",");
+  }
+  return String(value);
+}
+
 /** Internal resolved state: a value is present only once `ok` is true. */
 type Resolved<T> = { readonly ok: true; readonly value: T } | {
   readonly ok: false;
@@ -108,6 +130,12 @@ export interface AnyParameter {
   readonly array_: boolean;
   /** A provider that resolves the value when no flag/env supplied one. */
   readonly source_?: SecretSource;
+  /**
+   * The declared default rendered as a string (an array default is joined with
+   * commas), or `undefined` when the parameter has no default or an empty-list
+   * one. For display in tool schemas and `--list`; never a secret value.
+   */
+  readonly default_?: string;
   /** Resolve from a raw input (or `undefined` when none was supplied). */
   resolve_(raw: string | undefined): void;
   /** Whether the parameter resolved to a defined value (used by `.requires()`). */
@@ -163,6 +191,12 @@ export class Parameter<
   readonly array_: boolean;
   /** A provider that resolves the value when no flag/env supplied one. */
   readonly source_?: SecretSource;
+  /**
+   * The declared default rendered as a string (an array default is joined with
+   * commas), or `undefined` when the parameter has no default or an empty-list
+   * one. For display in tool schemas and `--list`; never a secret value.
+   */
+  readonly default_?: string;
   readonly #parse: (raw: string) => T;
   readonly #fallback: Fallback<T>;
   #state: Resolved<T> = { ok: false };
@@ -197,6 +231,9 @@ export class Parameter<
     this.secret_ = spec.secret ?? false;
     this.array_ = spec.array ?? false;
     this.source_ = spec.source;
+    this.default_ = spec.fallback.has
+      ? defaultToString(spec.fallback.value)
+      : undefined;
   }
 
   /** The resolved value. Throws if read before the build resolves parameters. */
@@ -440,6 +477,12 @@ export function discoverParameters(build: object): Map<string, AnyParameter> {
   const params = new Map<string, AnyParameter>();
   forEachField(build, (path, value) => {
     if (value instanceof Parameter) {
+      if (RESERVED_PARAM_NAMES.has(path)) {
+        throw new ParameterError(
+          `Parameter "${path}" collides with a reserved MCP control name ` +
+            `(dryRun, confirm, operatorToken). Rename the parameter field.`,
+        );
+      }
       value.name_ = path;
       params.set(path, value);
     }

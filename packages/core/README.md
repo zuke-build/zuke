@@ -176,7 +176,7 @@ async function createTarGzip(files: PathLike[], dest: PathLike, options: { cwd?:
   Read `files` (relative to `cwd`), pack them into a tar archive named by their
   path relative to `cwd`, gzip it, and write the result to `dest`.
 
-function describeCli(build: Build): CliDescription
+function describeCli(build: Build, options: DescribeCliOptions): CliDescription
   Describe a build's full CLI surface — reserved commands, option flags, targets
   (with descriptions and dependencies), and declared parameters — as a plain
   object ready for JSON. This is the same data `zuke --list --json` prints, made
@@ -187,6 +187,10 @@ function describeCli(build: Build): CliDescription
   const surface = describeCli(new MyBuild());
   console.log(surface.targets.map((t) => t.name));
   ```
+
+  Pass `{ omitSecrets: true }` to drop `.secret()` parameters from the result —
+  the posture the build registry uses, so a secret never becomes a spawnable
+  MCP input or crosses the run boundary (`zuke register` writes this form).
 
 function detectCiHost(env: (name: string) => string | undefined): CiHost
   Detect the CI host from the environment. Recognises GitHub Actions
@@ -1092,6 +1096,10 @@ class Parameter<K extends ParamValue = ParamValue, T extends K | K[] | undefined
     Whether the value is a comma-separated / repeatable list (`.array()`).
   readonly source_?: SecretSource
     A provider that resolves the value when no flag/env supplied one.
+  readonly default_?: string
+    The declared default rendered as a string (an array default is joined with
+    commas), or `undefined` when the parameter has no default or an empty-list
+    one. For display in tool schemas and `--list`; never a secret value.
   get value(): T
     The resolved value. Throws if read before the build resolves parameters.
   isSet_(): boolean
@@ -1706,6 +1714,10 @@ interface AnyParameter
     Whether the value is a comma-separated / repeatable list (`.array()`).
   readonly source_?: SecretSource
     A provider that resolves the value when no flag/env supplied one.
+  readonly default_?: string
+    The declared default rendered as a string (an array default is joined with
+    commas), or `undefined` when the parameter has no default or an empty-list
+    one. For display in tool schemas and `--list`; never a secret value.
   resolve_(raw: string | undefined): void
     Resolve from a raw input (or `undefined` when none was supplied).
   isSet_(): boolean
@@ -1973,18 +1985,26 @@ interface CliFlagInfo
 interface CliParameterInfo
   A parameter declared on the build.
 
+  readonly name: string
+    The parameter's property name — the key an MCP tool call and `execute`'s
+    `params` map use (e.g. `skipE2e`). Distinct from {@link flag}, which is its
+    kebab-case form.
   readonly flag: string
-    The CLI flag (without leading dashes), e.g. `environment`.
+    The CLI flag (without leading dashes), e.g. `skip-e2e`.
   readonly description: string
     The parameter's description, or `""` when none was set.
   readonly required: boolean
     Whether a value is required.
+  readonly kind: "string" | "number" | "boolean"
+    The parameter's value kind.
   readonly boolean: boolean
     Whether the flag is a value-less boolean.
   readonly array: boolean
     Whether repeated flags accumulate into a list.
   readonly options: string[]
     The allowed values, when the parameter is constrained to a set.
+  readonly default?: string
+    The declared default rendered as a string, when the parameter has one.
 
 interface CliTargetInfo
   A target declared on the build.
@@ -2021,6 +2041,12 @@ interface CreateDirectoryOptions
 
   recursive?: boolean
     Create parent directories as needed (default `true`).
+
+interface DescribeCliOptions
+  Options for {@link describeCli}.
+
+  omitSecrets?: boolean
+    Drop `.secret()` parameters from the surface (used for registry descriptors).
 
 interface ExecuteOptions
   Options for {@link execute}.

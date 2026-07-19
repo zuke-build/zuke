@@ -83,9 +83,11 @@ function sampleSurface(): CliDescription {
     ],
     parameters: [
       {
+        name: "environment",
         flag: "environment",
         description: "Deploy target",
         required: true,
+        kind: "string",
         boolean: false,
         array: false,
         options: ["sit", "prod"],
@@ -253,6 +255,71 @@ Deno.test("parseBuildDescriptor validates surface and location shapes", () => {
     () => parseBuildDescriptor(surface({ parameters: [5] })),
     Error,
     "surface parameter",
+  );
+});
+
+Deno.test("parseParameterInfo carries kind/default and tolerates a legacy descriptor", () => {
+  const withParams = (parameters: unknown[]) =>
+    JSON.stringify({
+      ...sampleDescriptor(),
+      surface: { commands: [], flags: [], targets: [], parameters },
+    });
+
+  // A modern parameter round-trips name, kind, and default.
+  const modern = parseBuildDescriptor(withParams([{
+    name: "workers",
+    flag: "workers",
+    description: "n",
+    required: false,
+    kind: "number",
+    boolean: false,
+    array: false,
+    options: [],
+    default: "4",
+  }])).surface.parameters[0];
+  assertEquals(modern.name, "workers");
+  assertEquals(modern.kind, "number");
+  assertEquals(modern.default, "4");
+
+  // A pre-M12 descriptor has no name/kind: derive kind from `boolean` and the
+  // key from `flag`.
+  const legacyBool = parseBuildDescriptor(withParams([{
+    flag: "verbose",
+    description: "",
+    required: false,
+    boolean: true,
+    array: false,
+    options: [],
+  }])).surface.parameters[0];
+  assertEquals(legacyBool.name, "verbose");
+  assertEquals(legacyBool.kind, "boolean");
+  assertEquals(legacyBool.default, undefined);
+
+  const legacyString = parseBuildDescriptor(withParams([{
+    flag: "env",
+    description: "",
+    required: false,
+    boolean: false,
+    array: false,
+    options: [],
+  }])).surface.parameters[0];
+  assertEquals(legacyString.kind, "string");
+
+  // An unrecognised kind is rejected.
+  assertThrows(
+    () =>
+      parseBuildDescriptor(withParams([{
+        name: "x",
+        flag: "x",
+        description: "",
+        required: false,
+        kind: "date",
+        boolean: false,
+        array: false,
+        options: [],
+      }])),
+    Error,
+    "valid kind",
   );
 });
 
