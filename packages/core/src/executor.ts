@@ -41,6 +41,7 @@ import { ServiceBuilder, ServiceRegistry } from "./service.ts";
 import { Redactor } from "./redact.ts";
 import { absolutePath } from "./path.ts";
 import {
+  type ForEachItem,
   ForEachSettings,
   type ForEachSpec,
   LockSettings,
@@ -63,7 +64,7 @@ import { defaultStateHost, type StateStore } from "./state/store.ts";
 import { resolveStateStore } from "./state/resolve.ts";
 import { buildRunRecord, ciRunUrl, resolveActor } from "./state/record.ts";
 import { inMemoryStateHandle, RunStateWriter } from "./state/writer.ts";
-import { cancelEvent, runCompensations } from "./cancel.ts";
+import { cancelEvent, compensationEvents, runCompensations } from "./cancel.ts";
 import { LockConflictError, type LockHolder } from "./state/lock.ts";
 import { parseDuration } from "./duration.ts";
 import type { Plugin, RunInfo, TargetTiming } from "./plugin.ts";
@@ -1002,35 +1003,44 @@ async function runForEachTarget(
   const settings = spec.configure
     ? spec.configure(new ForEachSettings())
     : new ForEachSettings();
-  const items = spec.materialize();
-
-  // Materialise each item's stages into named, chained sub-targets.
-  const order: TargetBuilder[] = [];
-  const predecessors = new Map<TargetBuilder, TargetBuilder[]>();
-  for (const { key, stages } of items) {
-    let prev: TargetBuilder | undefined;
-    for (const [stage, sub] of Object.entries(stages)) {
-      sub.name_ = `${name}[${key}].${stage}`;
-      // Isolating item failures means a failed stage stays lenient: its
-      // siblings keep running, only this item's later stages are blocked.
-      if (settings.continueOnItemFailure_) sub.proceedAfterFailure_ = true;
-      const deps = prev === undefined ? [] : [prev];
-      if (prev !== undefined) sub.dependsOn_.push(prev);
-      order.push(sub);
-      predecessors.set(sub, deps);
-      prev = sub;
-    }
-  }
-
   openTarget(reporter, renderer, style, name, opened);
   await life.targetStart(name);
   void env.writer?.markTargetRunning(name);
+  const start = performance.now();
+
+  // Materialise each item's stages into named, chained sub-targets. The items
+  // thunk and factory are user code (they read params and build targets), so a
+  // throw here must fail the fan-out target cleanly — not escape as an uncaught
+  // rejection that crashes the run and leaves the record non-terminal.
+  const order: TargetBuilder[] = [];
+  const predecessors = new Map<TargetBuilder, TargetBuilder[]>();
+  let items: ForEachItem[];
+  try {
+    items = spec.materialize();
+    for (const { key, stages } of items) {
+      let prev: TargetBuilder | undefined;
+      for (const [stage, sub] of Object.entries(stages)) {
+        sub.name_ = `${name}[${key}].${stage}`;
+        // Isolating item failures means a failed stage stays lenient: its
+        // siblings keep running, only this item's later stages are blocked.
+        if (settings.continueOnItemFailure_) sub.proceedAfterFailure_ = true;
+        const deps = prev === undefined ? [] : [prev];
+        if (prev !== undefined) sub.dependsOn_.push(prev);
+        order.push(sub);
+        predecessors.set(sub, deps);
+        prev = sub;
+      }
+    }
+  } catch (error) {
+    const ms = performance.now() - start;
+    failTarget(reporter, renderer, style, name, ms, error);
+    return { status: "failed", ms, error };
+  }
   reporter.info(
     items.length === 0
       ? `${name}: fan-out over 0 items — nothing to run.`
       : `${name}: fan-out over ${items.length} item(s).`,
   );
-  const start = performance.now();
   const run = await runScheduled(
     life,
     order,
@@ -1667,7 +1677,11 @@ export async function execute(
           reporter,
           redactor,
         });
-        await writer.appendEvent(cancelEvent(actor, comp, nowIso()));
+        const at = nowIso();
+        for (const event of compensationEvents(comp.attempts, actor, at)) {
+          await writer.appendEvent(event);
+        }
+        await writer.appendEvent(cancelEvent(actor, comp, at));
         await writer.markRunCancelled();
         reporter.info(
           `Run ${runId} cancelled — ${comp.compensated.length} ` +

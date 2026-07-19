@@ -224,6 +224,49 @@ Deno.test("forEach records per-item sub-target status and metadata in the run", 
   });
 });
 
+Deno.test("a throwing forEach items thunk fails the target, not the process", async () => {
+  class Batch extends Build {
+    deployBatch = target().forEach(
+      () => {
+        throw new Error("bad item list");
+      },
+      (_repo) => ({ deploy: target().executes(() => {}) }),
+    );
+  }
+  // Both the sequential and the parallel dispatch paths must settle to a failed
+  // result — never escape as an uncaught rejection.
+  for (const parallel of [false, true]) {
+    const b = new Batch();
+    discoverTargets(b);
+    const result = await execute(b, b.deployBatch, { silent: true, parallel });
+    assertEquals(result.ok, false);
+  }
+});
+
+Deno.test("a throwing forEach items thunk settles the run record to failed", async () => {
+  await withStore(async (store) => {
+    class Batch extends Build {
+      deployBatch = target().forEach(
+        () => {
+          throw new Error("boom list");
+        },
+        (_repo) => ({ deploy: target().executes(() => {}) }),
+      );
+    }
+    const b = new Batch();
+    discoverTargets(b);
+    const result = await execute(b, b.deployBatch, {
+      silent: true,
+      stateStore: store,
+    });
+    assertEquals(result.ok, false);
+    const runId = (await store.listRuns({}))[0].id;
+    const loaded = await store.getRun(runId);
+    assertEquals(loaded?.record.status, "failed"); // settled, not stuck running
+    assertEquals(loaded?.record.targets["deployBatch"].status, "failed");
+  });
+});
+
 Deno.test("--list and graph annotate a fan-out target", () => {
   class Batch extends Build {
     plain = target().description("plain").executes(() => {});

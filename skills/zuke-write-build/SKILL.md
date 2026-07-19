@@ -128,8 +128,9 @@ Before calling any task or settings method, confirm the real shape:
   runs the same pipeline over a runtime list — items concurrent, each item's
   stages sequential. Sub-targets are materialised at run time
   (`parent[item].stage`), each a first-class row in the summary and the run
-  record; `continueOnItemFailure()` isolates a failed item. See
-  `docs/orchestration.md`.
+  record; `continueOnItemFailure()` isolates a failed item. An `.onCancel(...)`
+  on a fan-out stage runs per item on cancel (item-scoped `ctx.state`, reverse
+  order). See `docs/orchestration.md`.
 - **Typed inputs:** `parameter("...")` (with `.secret()` / `.required()`), read
   as `this.x.value`, gated with `.requires(this.x)`. `.array()` composes:
   `.options(...).array()` validates each element, `.number().array()` →

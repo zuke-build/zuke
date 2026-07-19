@@ -791,6 +791,11 @@ export class TargetBuilder {
    * rolled back from exactly that slot. Compensation failures are recorded but do
    * not stop the walk (cleanup is maximal). Requires a state store.
    *
+   * On a {@link forEach} **sub-target**, the compensation is per item: cancel
+   * runs it for every item that had succeeded (or was still in-flight), each with
+   * its own item-scoped context — see the fan-out section of
+   * `docs/orchestration.md`.
+   *
    * ```ts
    * deploy = target()
    *   .executes((ctx) => ctx.state.set({ slot: "sit-7" }))

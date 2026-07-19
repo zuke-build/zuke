@@ -319,6 +319,10 @@ class CD extends Build {
   a first-class row in the summary and the [run record](#durable-run-state) (so
   `zuke runs show` reports per-item verdicts). `--list`/`graph` show the one
   node, annotated `[fan-out]`.
+- **Per-item compensation:** an `.onCancel(...)` on a fan-out **stage** runs on
+  cancel for each item that had succeeded — or was still in-flight — with its own
+  item-scoped `ctx.state`, in reverse order, before the parent's own `.onCancel`.
+  The item list must be deterministic (cancel re-materialises it to find items).
 - Pairs with array params: `.options(...).array()` / `.number().array()` type
   and validate the list before the batch runs.
 
