@@ -1,9 +1,11 @@
 import { assertEquals, assertStringIncludes } from "./_assert.ts";
-import { Build, target } from "../mod.ts";
+import { Build, type McpRequestContext, target } from "../mod.ts";
 import type { JsonRpcResponse } from "../src/mcp/jsonrpc.ts";
 import { McpServer } from "../src/mcp/server.ts";
 import { serveHttp } from "../src/mcp/http.ts";
 import { serveMcp } from "../src/mcp/command.ts";
+import { FileSystemStateStore } from "../src/state/fs_store.ts";
+import { defaultStateHost } from "../src/state/store.ts";
 
 /** A minimal build for the transport tests. */
 class Demo extends Build {
@@ -199,5 +201,64 @@ Deno.test("serveMcp refuses a non-loopback HTTP bind without a token", async () 
     assertStringIncludes(errs.join("\n"), "must be authenticated");
   } finally {
     console.error = origErr;
+  }
+});
+
+Deno.test("serveMcp applies the build's identity hook to HTTP requests", async () => {
+  // A build declaring a per-call identity hook via the override seam.
+  class Guarded extends Build {
+    deploy = target().description("Deploy").executes(() => {});
+    override mcpIdentity() {
+      return (ctx: McpRequestContext) => {
+        const user = ctx.headers.get("x-user");
+        if (user === null) throw new Error("no identity from proxy");
+        return { actor: user, via: "test-proxy" };
+      };
+    }
+  }
+  const dir = await Deno.makeTempDir();
+  const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+  const ac = new AbortController();
+  let setPort = (_: number) => {};
+  const portReady = new Promise<number>((r) => (setPort = r));
+  const finished = serveMcp(new Guarded(), {
+    http: { host: "127.0.0.1", port: 0 },
+    allowRun: true,
+    stateStore: store,
+    quiet: true,
+    signal: ac.signal,
+    onListen: (a) => setPort(a.port),
+  });
+  const url = `http://127.0.0.1:${await portReady}/`;
+  try {
+    // A request carrying the trusted header runs and is audited to that actor.
+    const ok = await fetch(url, {
+      method: "POST",
+      headers: { "x-user": "engineer-a" },
+      body: rpc("tools/call", 1, { name: "run:deploy", arguments: {} }),
+    });
+    assertEquals(ok.status, 200);
+    await ok.json();
+
+    // A request WITHOUT the header is rejected — the hook throws, nothing runs.
+    const denied = await fetch(url, {
+      method: "POST",
+      body: rpc("tools/call", 2, { name: "run:deploy", arguments: {} }),
+    });
+    assertEquals(denied.status, 200); // JSON-RPC error travels in the 200 body
+    const deniedBody = await denied.json();
+    assertEquals(deniedBody.error.message, "Unauthorized");
+
+    // The audit trail names the trusted actor for the successful call only.
+    const events = (await store.getRun("mcp-audit"))?.record.events ?? [];
+    assertEquals(
+      events.some((e) => e.tool === "run:deploy" && e.actor === "engineer-a"),
+      true,
+    );
+    assertEquals(events.every((e) => e.actor !== "anonymous"), true);
+  } finally {
+    ac.abort();
+    await finished;
+    await Deno.remove(dir, { recursive: true });
   }
 });

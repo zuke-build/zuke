@@ -40,9 +40,13 @@ import {
   err,
   INTERNAL_ERROR,
   INVALID_PARAMS,
+  INVALID_REQUEST,
   type JsonRpcResponse,
+  type McpIdentityHook,
+  type McpRequestContext,
   METHOD_NOT_FOUND,
   ok,
+  resolveIdentity,
 } from "./jsonrpc.ts";
 
 /**
@@ -61,6 +65,9 @@ export const PROTOCOL_VERSION = SUPPORTED_PROTOCOL_VERSIONS[0];
 
 /** The `run:` prefix that names a per-target execution tool. */
 const RUN_PREFIX = "run:";
+
+/** The request context handed to {@link McpServer.handleMessage} on stdio (no headers). */
+const EMPTY_CONTEXT: McpRequestContext = { headers: new Headers() };
 
 /** A JSON Schema fragment (kept loose — MCP only needs plain JSON Schema). */
 type JsonSchema = Record<string, unknown>;
@@ -116,8 +123,16 @@ export interface McpServerOptions {
    * tool call is written to the audit log.
    */
   stateStore?: StateStore;
-  /** Who to attribute audited calls to (`--actor`), highest precedence. */
+  /** Who to attribute audited calls to (`--actor`); below {@link identity}. */
   actor?: string;
+  /**
+   * Resolve a trusted caller identity per request (e.g. from an authenticating
+   * reverse proxy's header). When set, its actor overrides `--actor`, the
+   * environment, and the client's self-reported label for every call, and a
+   * throwing hook rejects the request before anything runs. Off by default, so
+   * stdio/local use is unchanged.
+   */
+  identity?: McpIdentityHook;
   /** Reads an environment variable (injectable for tests). */
   readEnv?: (name: string) => string | undefined;
   /** The server version reported in `initialize`. Defaults to `"0.0.0"`. */
@@ -196,6 +211,7 @@ export class McpServer {
   readonly #confirmDestructive: boolean;
   readonly #store?: StateStore;
   readonly #actor?: string;
+  readonly #identity?: McpIdentityHook;
   readonly #readEnv: (name: string) => string | undefined;
   /** The connecting client's `initialize` name, a low-priority audit actor. */
   #clientLabel?: string;
@@ -223,6 +239,7 @@ export class McpServer {
     this.#confirmDestructive = options.confirmDestructive ?? false;
     this.#store = options.stateStore;
     this.#actor = options.actor;
+    this.#identity = options.identity;
     this.#readEnv = options.readEnv ?? (() => undefined);
     this.#version = options.version ?? "0.0.0";
   }
@@ -322,7 +339,10 @@ export class McpServer {
    * Handle one parsed JSON-RPC message. Returns the response to send, or `null`
    * for a notification (which takes no reply).
    */
-  async handleMessage(message: unknown): Promise<JsonRpcResponse | null> {
+  async handleMessage(
+    message: unknown,
+    ctx: McpRequestContext = EMPTY_CONTEXT,
+  ): Promise<JsonRpcResponse | null> {
     if (
       typeof message !== "object" || message === null ||
       !("method" in message) || typeof message.method !== "string"
@@ -336,6 +356,17 @@ export class McpServer {
     // Notifications (no id) never receive a response.
     if (id === null && method.startsWith("notifications/")) return null;
 
+    // Resolve the trusted caller identity once, before any dispatch. A throwing
+    // hook — or one that yields no usable actor — rejects the whole request:
+    // nothing runs, nothing is written, and it never falls back to the
+    // (untrusted) static actor, so the hook's precedence stays absolute.
+    let identityActor: string | undefined;
+    if (this.#identity !== undefined) {
+      const resolved = resolveIdentity(this.#identity, ctx);
+      if (resolved === null) return err(id, INVALID_REQUEST, "Unauthorized");
+      identityActor = resolved;
+    }
+
     switch (method) {
       case "initialize":
         return ok(id, this.#initialize(params));
@@ -348,7 +379,7 @@ export class McpServer {
         // already structured tool results; this catches anything unforeseen and
         // returns a JSON-RPC error (generic, so no raw detail can escape).
         try {
-          return await this.#callTool(id, params);
+          return await this.#callTool(id, params, identityActor);
         } catch {
           return err(
             id,
@@ -396,10 +427,11 @@ export class McpServer {
     };
   }
 
-  /** Dispatch a `tools/call`. */
+  /** Dispatch a `tools/call`, attributed to `actor` (the resolved caller). */
   async #callTool(
     id: string | number | null,
     params: unknown,
+    actor: string | undefined,
   ): Promise<JsonRpcResponse> {
     if (!isRecord(params) || !("name" in params)) {
       return err(id, INVALID_PARAMS, "tools/call requires a tool name");
@@ -420,9 +452,9 @@ export class McpServer {
       return ok(id, textResult(this.#describe().graph));
     }
     if (name.startsWith(RUN_PREFIX)) {
-      return await this.#run(id, name.slice(RUN_PREFIX.length), args);
+      return await this.#run(id, name.slice(RUN_PREFIX.length), args, actor);
     }
-    const runStateResult = await this.#callRunStateTool(name, args);
+    const runStateResult = await this.#callRunStateTool(name, args, actor);
     if (runStateResult !== null) return ok(id, runStateResult);
     // An unknown tool is reported through the result (isError), per MCP, so the
     // model sees it rather than a transport-level failure.
@@ -438,9 +470,11 @@ export class McpServer {
   async #callRunStateTool(
     name: string,
     args: Record<string, unknown>,
+    identityActor: string | undefined,
   ): Promise<Record<string, unknown> | null> {
     const store = this.#store;
     if (store === undefined) return null;
+    const actor = identityActor ?? this.#resolveActor();
     const mutating = isMutatingRunTool(name);
     if (mutating && !this.#allowRun) {
       return textResult(
@@ -453,7 +487,7 @@ export class McpServer {
       {
         store,
         build: this.build,
-        actor: this.#resolveActor(),
+        actor,
         readEnv: this.#readEnv,
         authorize: (targetName, callArgs) =>
           this.#authorizeTarget(targetName, callArgs),
@@ -463,7 +497,7 @@ export class McpServer {
     );
     if (result === null) return null;
     if (mutating) {
-      await this.#audit(name, args, result.isError ? "error" : "ok");
+      await this.#audit(name, args, result.isError ? "error" : "ok", actor);
     }
     return textResult(result.text, result.isError);
   }
@@ -490,11 +524,13 @@ export class McpServer {
     id: string | number | null,
     targetName: string,
     args: Record<string, unknown>,
+    identityActor: string | undefined,
   ): Promise<JsonRpcResponse> {
     const runName = `${RUN_PREFIX}${targetName}`;
+    const actor = identityActor ?? this.#resolveActor();
     // Execution off entirely: a generic message (reveals no specific target).
     if (!this.#allowRun) {
-      await this.#audit(runName, args, "denied", "run_disabled");
+      await this.#audit(runName, args, "denied", actor, "run_disabled");
       return ok(
         id,
         textResult(
@@ -508,7 +544,7 @@ export class McpServer {
     // A target that is unknown OR not in the allow-list is reported identically,
     // so a denial never reveals which protected targets exist.
     if (root === undefined || !this.#allowMatch(targetName)) {
-      await this.#audit(runName, args, "denied", "not_allowed");
+      await this.#audit(runName, args, "denied", actor, "not_allowed");
       return ok(id, textResult(`Unknown tool: ${runName}`, true));
     }
 
@@ -517,7 +553,7 @@ export class McpServer {
     if (this.#isProtected(targetName)) {
       const denial = this.#checkOperatorToken(args);
       if (denial !== null) {
-        await this.#audit(runName, args, "denied", denial);
+        await this.#audit(runName, args, "denied", actor, denial);
         return ok(
           id,
           textResult(
@@ -576,7 +612,7 @@ export class McpServer {
       else values[paramName] = coerced;
     }
     if (badArgs.length > 0) {
-      await this.#audit(runName, args, "error", "invalid_arguments");
+      await this.#audit(runName, args, "error", actor, "invalid_arguments");
       return ok(
         id,
         textResult(
@@ -602,11 +638,11 @@ export class McpServer {
         reporter: buffer.reporter,
         dryRun,
         github: false,
-        actor: this.#resolveActor(),
+        actor,
         readEnv: this.#readEnv,
       });
     } catch (error) {
-      await this.#audit(runName, args, "error", "execute_threw");
+      await this.#audit(runName, args, "error", actor, "execute_threw");
       const kind = error instanceof Error ? error.name : "Error";
       return ok(
         id,
@@ -616,7 +652,7 @@ export class McpServer {
         ),
       );
     }
-    await this.#audit(runName, args, result.ok ? "ok" : "error");
+    await this.#audit(runName, args, result.ok ? "ok" : "error", actor);
     const status = result.ok
       ? `\n\n✔ ${targetName} succeeded.`
       : `\n\n✘ ${targetName} failed.`;
@@ -660,14 +696,16 @@ export class McpServer {
 
   /**
    * Append a tool call to the audit log (best-effort; never breaks a call).
-   * No-op without a store. `args` are sanitised by {@link "#auditArgs"} first —
-   * the operator token dropped, secret values masked wherever they appear — so
-   * nothing sensitive reaches the durable trail.
+   * No-op without a store. Attributed to `actor` — the trusted per-call identity
+   * when a hook is configured, else the resolved `--actor`/env/label. `args` are
+   * sanitised by {@link "#auditArgs"} first — the operator token dropped, secret
+   * values masked wherever they appear — so nothing sensitive reaches the trail.
    */
   async #audit(
     tool: string,
     args: Record<string, unknown>,
     outcome: RunEventOutcome,
+    actor: string,
     detail?: string,
   ): Promise<void> {
     const store = this.#store;
@@ -675,7 +713,7 @@ export class McpServer {
     const event: RunEvent = {
       at: new Date().toISOString(),
       tool,
-      actor: this.#resolveActor(),
+      actor,
       outcome,
       args: this.#auditArgs(args),
     };

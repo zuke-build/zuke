@@ -23,6 +23,7 @@ import {
   err,
   INVALID_REQUEST,
   type JsonRpcResponse,
+  type McpRequestContext,
   PARSE_ERROR,
 } from "./jsonrpc.ts";
 import { timingSafeEqual } from "./authz.ts";
@@ -82,7 +83,10 @@ function bearerToken(header: string | null): string | undefined {
  * Resolves when the server closes (abort {@link HttpTransportOptions.signal}).
  */
 export async function serveHttp(
-  handle: (message: unknown) => Promise<JsonRpcResponse | null>,
+  handle: (
+    message: unknown,
+    ctx: McpRequestContext,
+  ) => Promise<JsonRpcResponse | null>,
   options: HttpTransportOptions,
 ): Promise<void> {
   const { host, port, token, signal, onListen } = options;
@@ -91,8 +95,11 @@ export async function serveHttp(
   // parameter state, so concurrent handling of two POSTs would race. Requests
   // still arrive concurrently; this chain resolves them in arrival order.
   let queue: Promise<unknown> = Promise.resolve();
-  const serial = (message: unknown): Promise<JsonRpcResponse | null> => {
-    const result = queue.then(() => handle(message));
+  const serial = (
+    message: unknown,
+    ctx: McpRequestContext,
+  ): Promise<JsonRpcResponse | null> => {
+    const result = queue.then(() => handle(message, ctx));
     queue = result.then(() => {}, () => {});
     return result;
   };
@@ -125,7 +132,7 @@ export async function serveHttp(
     } catch {
       return jsonResponse(err(null, PARSE_ERROR, "Parse error"), 400);
     }
-    const response = await serial(message);
+    const response = await serial(message, { headers: request.headers });
     if (response === null) return new Response(null, { status: 202 });
     return jsonResponse(response, 200);
   };

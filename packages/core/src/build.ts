@@ -14,6 +14,7 @@ import type { OrderingEdge } from "./graph.ts";
 import type { RemoteCacheStore } from "./remote_cache.ts";
 import type { StateStore } from "./state/store.ts";
 import type { BuildRegistry } from "./registry/registry.ts";
+import type { McpIdentityHook } from "./mcp/jsonrpc.ts";
 
 /** Whether a value is a plain object (a component bundle), not a class instance. */
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -215,6 +216,33 @@ export class Build {
    * ```
    */
   registry(): BuildRegistry | undefined {
+    return undefined;
+  }
+
+  /**
+   * A per-request identity hook for `zuke mcp` — resolve a **trusted** caller
+   * from the request context (an authenticating reverse proxy's header) so a
+   * shared, multi-user server attributes each call to the real engineer rather
+   * than a client-self-reported label. When set, the resolved actor overrides
+   * `--actor`, the environment, and the client label for that call, and flows to
+   * the audit trail, run records, lock holders, and (for a registry-spawned
+   * build) the child's `ZUKE_ACTOR`; a throwing hook rejects the request before
+   * anything runs. Default: none — stdio/local use is unchanged.
+   *
+   * ```ts
+   * class ControlPlane extends Build {
+   *   override mcpIdentity() {
+   *     return (ctx: McpRequestContext) => {
+   *       // The proxy strips any client copy of this header and injects its own.
+   *       const sub = ctx.headers.get("x-forwarded-user");
+   *       if (!sub) throw new Error("no identity from proxy");
+   *       return { actor: sub, via: "oauth-proxy" };
+   *     };
+   *   }
+   * }
+   * ```
+   */
+  mcpIdentity(): McpIdentityHook | undefined {
     return undefined;
   }
 }

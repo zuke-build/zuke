@@ -159,6 +159,10 @@ Before calling any task or settings method, confirm the real shape:
   instead serves every registered pipeline live, each as a
   `run:<buildId>:<target>` tool that takes the build's declared parameters
   (secrets excluded, validated, forwarded to the spawn) — see the cheatsheet.
+  For a shared, multi-user endpoint, `override mcpIdentity()` resolves a
+  **trusted** caller per request from an authenticating proxy's header (it
+  overrides the client-reported actor and flows to the audit trail, run records,
+  and lock holders; a throwing hook rejects the request).
 - **AI review & self-healing (`@zuke/ai`):** gate a target on a structured LLM
   review of the diff (`securityReviewer(...)` etc. via `.validateBefore`), or
   attach `aiFixer(...)` with `.recoverWith(...)` so a failing target is
