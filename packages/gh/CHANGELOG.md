@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/zuke-build/zuke/compare/gh-v0.1.0...gh-v0.2.0) (2026-07-18)
+
+
+### Features
+
+* **gh:** githubWorkflow wait trigger for cross-repo CI ([#182](https://github.com/zuke-build/zuke/issues/182)) ([0a6a39e](https://github.com/zuke-build/zuke/commit/0a6a39e2db7681b4def4a0abe2da5e11a07cff3d))
+
 ## 0.1.0 (2026-06-16)
 
 
