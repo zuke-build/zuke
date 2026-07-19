@@ -28,6 +28,30 @@ hand its path to `.toolPath(...)` — see
 through `cmd /c` on Windows (npm ships as a `.cmd` shim there) and otherwise
 raises a `ToolNotFoundError` that names the tool and the fix.
 
+## Resolving from `node_modules/.bin`
+
+By default a wrapper spawns the bare tool name and lets the OS find it on
+`PATH`. In a Node monorepo the tools are usually installed locally and hoisted
+to the repo root instead, so Zuke can resolve them npx-style — walking up from
+the working directory for `node_modules/.bin/<tool>` (the `.cmd`/`.bat` shims,
+launched through `cmd /c`, on Windows) and falling back to `PATH` on a miss. There are three ways to
+turn it on, most specific first:
+
+- **Per call:** `.fromNodeModules()` (or `.fromPath()` to force `PATH`) on any
+  settings object — `OxlintTasks.lint((s) => s.fromNodeModules())`.
+- **Per wrapper:** the JS-ecosystem wrappers default to `node_modules`-first, so
+  in a workspace package whose binaries are hoisted you write no `.toolPath()`
+  and no `.fromNodeModules()` at all.
+- **Repo-wide:** `ZUKE_TOOL_RESOLUTION=node_modules` (or `path`) flips every
+  wrapper without touching call sites. A per-call `.fromNodeModules()`/
+  `.fromPath()` still wins over the ambient value.
+
+An explicit `.toolPath(...)` always wins over resolution — pins from
+`toolchain()` stay hermetic. When resolution walks past a `node_modules`
+directory that lacks the tool, `ToolNotFoundError` adds a hint to run `npm ci`
+or provision it via `toolchain()`. `resolvedArgv()` reports the argv a run will
+actually spawn (the resolved shim or the bare fallback) for diagnostics.
+
 | Package                | Tasks                                                                                                                                 |
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
 | `@zuke/deno`           | `run`, `test`, `check`, `fmt`, `lint`, `cache`, `coverage`, `task`                                                                    |
