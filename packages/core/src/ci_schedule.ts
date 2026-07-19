@@ -277,6 +277,11 @@ export function guardShell(schedule: readonly ScheduleEntry[]): string {
   for (const entry of schedule) {
     const parsed = parseCron(entry.cron);
     const tz = entry.tz === undefined || entry.tz === "" ? "UTC" : entry.tz;
+    // The tz is interpolated into `TZ='<tz>'` below, so it must be shell-safe.
+    // Validate it against the timezone database (a real IANA name has no shell
+    // metacharacters, and anything Intl rejects throws here) — so this exported
+    // function never emits an injectable script, independent of its caller.
+    if (tz !== "UTC") zoneFormatter(tz);
     // Read the wall-clock in the entry's zone; force base-10 so "08"/"09" parse.
     lines.push(
       `mm=$((10#$(TZ='${tz}' date +%M))); hh=$((10#$(TZ='${tz}' date +%H)))`,

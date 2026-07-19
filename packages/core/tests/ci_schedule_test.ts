@@ -71,6 +71,16 @@ Deno.test("utcCronsFor catches a sub-seasonal offset window (whole-year sampling
   );
 });
 
+Deno.test("guardShell rejects a timezone that is not a real IANA zone", () => {
+  // A tz is interpolated into `TZ='<tz>'`; a non-IANA string (e.g. a shell-
+  // injection attempt) is rejected rather than emitted into the guard script.
+  assertThrows(
+    () => guardShell([{ cron: "30 9 * * *", tz: "Europe/Sofia'; rm -rf / #" }]),
+    Error,
+    "unknown timezone",
+  );
+});
+
 Deno.test("guardShell ORs day-of-month and day-of-week when both are set", () => {
   // Cron fires if EITHER the 1st-of-month OR a Monday matches, so the guard must
   // OR the two day tests (not AND them).
