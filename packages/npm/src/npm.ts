@@ -80,6 +80,7 @@ export class NpmCiSettings extends NpmSettings {
 export class NpmRunSettings extends NpmSettings {
   #script?: string;
   #workspace?: string;
+  #workspaces = false;
   #ifPresent = false;
   #scriptArgs: string[] = [];
 
@@ -92,6 +93,16 @@ export class NpmRunSettings extends NpmSettings {
   /** Run in a specific workspace (`--workspace=`). */
   workspace(name: string): this {
     this.#workspace = name;
+    return this;
+  }
+
+  /**
+   * Run the script in **every** workspace (`--workspaces`). Pair with
+   * {@link ifPresent} to skip workspaces that lack the script. Mutually
+   * exclusive with {@link workspace} — setting both is a build error.
+   */
+  workspaces(): this {
+    this.#workspaces = true;
     return this;
   }
 
@@ -111,10 +122,17 @@ export class NpmRunSettings extends NpmSettings {
     if (this.#script === undefined) {
       throw new Error("NpmTasks.run: .script() is required.");
     }
+    if (this.#workspace !== undefined && this.#workspaces) {
+      throw new Error(
+        "NpmTasks.run: .workspace() and .workspaces() are mutually exclusive — " +
+          "pick one workspace or all of them, not both.",
+      );
+    }
     const argv = ["run"];
     if (this.#workspace !== undefined) {
       argv.push(`--workspace=${this.#workspace}`);
     }
+    if (this.#workspaces) argv.push("--workspaces");
     if (this.#ifPresent) argv.push("--if-present");
     argv.push(this.#script);
     if (this.#scriptArgs.length > 0) argv.push("--", ...this.#scriptArgs);

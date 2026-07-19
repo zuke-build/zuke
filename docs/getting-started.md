@@ -25,7 +25,15 @@ zuke setup                                  # in your project
 ```
 
 Without installing, the same wizard runs via `deno run -A jsr:@zuke/cli setup`
-(flags: `--dir <path>`, `--name <Class>`, `--force`, `--yes`).
+(flags: `--dir <path>`, `--name <Class>`, `--force`, `--yes`). If a `zuke/`
+directory already occupies the launcher's name, setup stops with an actionable
+error — pass `--launcher-name <name>` to write the launcher (and its `.ps1`)
+under a different name.
+
+Already have a `@zuke/*` package's API in hand? `zuke doc <package>` prints it
+(`zuke doc core`, `zuke doc @scope/pkg`), running `deno doc` in an isolated
+directory so a surrounding Node project's `@types/node` resolution doesn't drown
+the output.
 
 ## Migrate an existing project with `zuke import`
 

@@ -27,7 +27,14 @@ deno run -A jsr:@zuke/cli setup
 ```
 
 `setup` flags: `--dir <path>`, `--name <ClassName>`, `--force` (overwrite
-existing files), `--yes` (non-interactive).
+existing files), `--yes` (non-interactive), `--launcher-name <name>` (write the
+launcher under a different name when a `zuke/` directory already occupies it — a
+directory collision now fails with an actionable error instead of silently
+skipping the launcher).
+
+To read a `@zuke/*` package's API without a Node repo's `@types/node` noise, run
+`zuke doc <package>` (e.g. `zuke doc core`) — it runs `deno doc` in an isolated
+directory.
 
 ### Migrating an existing project: `zuke import`
 
