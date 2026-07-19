@@ -104,9 +104,12 @@ latest release on JSR.
 | [`@zuke/docs`](https://jsr.io/@zuke/docs)         | [![JSR](https://jsr.io/badges/@zuke/docs)](https://jsr.io/@zuke/docs) [![JSR score](https://jsr.io/badges/@zuke/docs/score)](https://jsr.io/@zuke/docs)                 |
 | [`@zuke/npm`](https://jsr.io/@zuke/npm)           | [![JSR](https://jsr.io/badges/@zuke/npm)](https://jsr.io/@zuke/npm) [![JSR score](https://jsr.io/badges/@zuke/npm/score)](https://jsr.io/@zuke/npm)                     |
 | [`@zuke/security`](https://jsr.io/@zuke/security) | [![JSR](https://jsr.io/badges/@zuke/security)](https://jsr.io/@zuke/security) [![JSR score](https://jsr.io/badges/@zuke/security/score)](https://jsr.io/@zuke/security) |
+| [`@zuke/ai`](https://jsr.io/@zuke/ai)             | [![JSR](https://jsr.io/badges/@zuke/ai)](https://jsr.io/@zuke/ai) [![JSR score](https://jsr.io/badges/@zuke/ai/score)](https://jsr.io/@zuke/ai)                         |
+| [`@zuke/console`](https://jsr.io/@zuke/console)   | [![JSR](https://jsr.io/badges/@zuke/console)](https://jsr.io/@zuke/console) [![JSR score](https://jsr.io/badges/@zuke/console/score)](https://jsr.io/@zuke/console)     |
+| [`@zuke/otel`](https://jsr.io/@zuke/otel)         | [![JSR](https://jsr.io/badges/@zuke/otel)](https://jsr.io/@zuke/otel) [![JSR score](https://jsr.io/badges/@zuke/otel/score)](https://jsr.io/@zuke/otel)                 |
 
 <details>
-<summary><strong>All tool wrappers</strong> (30+ packages)</summary>
+<summary><strong>All tool wrappers</strong> (40+ packages)</summary>
 
 | Package                                                       | Version                                                                                                                                                                                         |
 | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -142,6 +145,7 @@ latest release on JSR.
 | [`@zuke/oxlint`](https://jsr.io/@zuke/oxlint)                 | [![JSR](https://jsr.io/badges/@zuke/oxlint)](https://jsr.io/@zuke/oxlint) [![JSR score](https://jsr.io/badges/@zuke/oxlint/score)](https://jsr.io/@zuke/oxlint)                                 |
 | [`@zuke/playwright`](https://jsr.io/@zuke/playwright)         | [![JSR](https://jsr.io/badges/@zuke/playwright)](https://jsr.io/@zuke/playwright) [![JSR score](https://jsr.io/badges/@zuke/playwright/score)](https://jsr.io/@zuke/playwright)                 |
 | [`@zuke/pnpm`](https://jsr.io/@zuke/pnpm)                     | [![JSR](https://jsr.io/badges/@zuke/pnpm)](https://jsr.io/@zuke/pnpm) [![JSR score](https://jsr.io/badges/@zuke/pnpm/score)](https://jsr.io/@zuke/pnpm)                                         |
+| [`@zuke/release-please`](https://jsr.io/@zuke/release-please) | [![JSR](https://jsr.io/badges/@zuke/release-please)](https://jsr.io/@zuke/release-please) [![JSR score](https://jsr.io/badges/@zuke/release-please/score)](https://jsr.io/@zuke/release-please) |
 | [`@zuke/terraform`](https://jsr.io/@zuke/terraform)           | [![JSR](https://jsr.io/badges/@zuke/terraform)](https://jsr.io/@zuke/terraform) [![JSR score](https://jsr.io/badges/@zuke/terraform/score)](https://jsr.io/@zuke/terraform)                     |
 | [`@zuke/tofu`](https://jsr.io/@zuke/tofu)                     | [![JSR](https://jsr.io/badges/@zuke/tofu)](https://jsr.io/@zuke/tofu) [![JSR score](https://jsr.io/badges/@zuke/tofu/score)](https://jsr.io/@zuke/tofu)                                         |
 | [`@zuke/tsc`](https://jsr.io/@zuke/tsc)                       | [![JSR](https://jsr.io/badges/@zuke/tsc)](https://jsr.io/@zuke/tsc) [![JSR score](https://jsr.io/badges/@zuke/tsc/score)](https://jsr.io/@zuke/tsc)                                             |
@@ -366,9 +370,10 @@ Zuke stands on the shoulders of giants:
   **[Matthias Koch](https://github.com/matkoch)** — the code-first,
   strongly-typed build model that inspired Zuke. If you build for .NET, use
   NUKE; Zuke is an homage to its ideas in the Deno/TypeScript world.
-- **[Spectre.Console](https://spectreconsole.net/)** and its creator **[Patrik Svensson](https://github.com/patriksvensson)** — the .NET console library
-  whose markup, themes, and rich widgets (rules, panels, tables) inspired the
-  output model of `@zuke/console`.
+- **[Spectre.Console](https://spectreconsole.net/)** and its creator
+  **[Patrik Svensson](https://github.com/patriksvensson)** — the .NET console
+  library whose markup, themes, and rich widgets (rules, panels, tables)
+  inspired the output model of `@zuke/console`.
 - **[Deno](https://deno.com/)** — the runtime and toolchain (test runner,
   formatter, linter, type-checker, coverage) that makes a zero-dependency,
   hermetic build tool possible.

@@ -101,6 +101,24 @@ Deno.test("the deno workspace lists exactly the configured packages", async () =
   assertEquals(workspace.map(String).sort(), [...PACKAGES].sort());
 });
 
+Deno.test("the README package table lists every workspace package", async () => {
+  // The README's package tables are the human-facing catalog; a package missing
+  // there is invisible to anyone browsing the repo. Enforce it so the six
+  // membership lists (workspace, release-please config/manifest, zuke.ts publish
+  // loop, this test, and the README) never drift apart.
+  const readme = await Deno.readTextFile("README.md");
+  const missing = PACKAGES
+    .map((path) => path.replace("packages/", ""))
+    .filter((name) =>
+      !readme.includes(`[\`@zuke/${name}\`](https://jsr.io/@zuke/${name})`)
+    );
+  assertEquals(
+    missing,
+    [],
+    `README.md package tables are missing: ${missing.join(", ")}`,
+  );
+});
+
 Deno.test("the zuke.ts JSR publish list covers every workspace package", async () => {
   // `publishJsr` only iterates this array, so a package missing here is silently
   // never published — guard against that drift (it is what stranded the AI CLI

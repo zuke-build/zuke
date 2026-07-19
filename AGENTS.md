@@ -308,13 +308,14 @@ zuke.ts                   # Zuke's own build (runnable example)
   version is bumped. The repo squash-merges, so the squash body comes from the
   PR description/commits: put illustrative code in the PR discussion, and keep
   commit bodies to prose. See [`RELEASING.md`](RELEASING.md).
-- **A new package must be added everywhere.** Membership is declared in five
+- **A new package must be added everywhere.** Membership is declared in six
   places that must stay in lock-step: the `deno.json` workspace,
   `.release-please-config.json`, `.release-please-manifest.json`, the `PACKAGES`
-  array in `zuke.ts` (the JSR publish loop), and the list in
-  `tests/release_config_test.ts`. `tests/release_config_test.ts` enforces that
-  they agree — run it after adding a package. Omitting `zuke.ts` means the
-  package is released but never published.
+  array in `zuke.ts` (the JSR publish loop), the package table in `README.md`,
+  and the list in `tests/release_config_test.ts`. `tests/release_config_test.ts`
+  enforces that all six agree — run it after adding a package. Omitting
+  `zuke.ts` means the package is released but never published; omitting the
+  `README.md` table means it is invisible to anyone browsing the repo.
 - **Update docs with code.** If behaviour changes, update `README.md`, JSDoc,
   and the spec/acceptance criteria in the same PR.
 - **Always read the reviewer comments on every PR.** This repo runs AI reviewers
