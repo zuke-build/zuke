@@ -148,7 +148,10 @@ const store = new FileSystemStateStore(".zuke/runs");
 Talks to an HTTP service you host, using ETags for optimistic concurrency. This
 is the production path: point several machines (CI, developers) at one service
 and they share run state. The one-page contract is in
-[the state HTTP API](./state-api.md).
+[the state HTTP API](./state-api.md), and the
+[conformance kit](./state-api.md#notes-for-implementers)
+(`deno run -A jsr:@zuke/core/conformance --url …`) verifies your backend against
+it — don't re-derive correctness from the prose.
 
 ```ts
 import { HttpStateStore } from "jsr:@zuke/core";
@@ -206,3 +209,20 @@ for (const summary of await store.listRuns({ status: "failed" })) {
 ```
 
 `listRuns` filters by `status`, `target`, and `since`, newest first.
+
+## API stability
+
+The durable-state surface — the `StateStore` interface, `resumeRun`,
+`acquireLock`/`renewLock`/`releaseLock`, and the `RunRecord` / `RunEvent` shapes
+— is **stable with a deprecation cycle**: a breaking change ships with the old
+form kept working for one minor version, emitting a warning, before removal. The
+`RunRecord` JSON is versioned by tolerant parsing (an older record still loads,
+its missing fields defaulted), and that tolerance is a stated guarantee, not an
+accident — the schema-evolution tests enforce it.
+
+The HTTP wire contract carries an explicit
+[protocol version](./state-api.md#conventions) (`x-zuke-state-protocol`); a
+breaking change to the contract bumps the number, and a client fails loudly
+against a server that declares a different one rather than mis-parsing silently.
+Build the [conformance kit](./state-api.md#notes-for-implementers) into your
+backend's CI so a contract change surfaces the moment it lands.

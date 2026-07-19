@@ -164,6 +164,12 @@ class CD extends Build {
 - Backends: `FileSystemStateStore(dir)` (single host, dev) and
   `HttpStateStore({ url, token? })` (hosted, production — see
   `docs/state-api.md`). Both dependency-free and pluggable behind `StateStore`.
+  A hosted backend is verified with the **conformance kit**
+  (`deno run -A jsr:@zuke/core/conformance --url <base> [--token …]`, or
+  `checkStateStore`/`checkBuildRegistry` from `@zuke/core/conformance`) — it
+  exercises CAS, listing, and TTL-lock semantics. The HTTP clients stamp every
+  request with `x-zuke-state-protocol: 1` and fail loudly on a server-declared
+  mismatch.
 - The run record holds status, the graph shape, resolved **non-secret**
   parameters, and per-target status/timing/metadata. Inspect it from the CLI
   with `zuke runs list [--status <s>] [--target <t>] [--since <iso>]` (newest
