@@ -575,6 +575,47 @@ returns the YAML string directly (pass an empty pipeline,
 YAML quotes any scalar that would otherwise be misread (a bare `on`, a
 numeric-looking version), so the output is paste-ready.
 
+#### Scheduled runs — timezone-aware cron
+
+`triggers.schedule` declares cron schedules in a **local timezone**, so you can
+delete the external Cloud-Scheduler-plus-webhook dance and keep the schedule in
+code:
+
+```ts
+ci = cicd({
+  provider: "github",
+  pipeline: {
+    triggers: {
+      push: ["main"],
+      // Weekday mornings and afternoons, Sofia local time.
+      schedule: [{ cron: "30 9,13,15 * * 1-4", tz: "Europe/Sofia" }],
+    },
+  },
+});
+```
+
+GitHub (and Azure) cron is **UTC-only**, so a `tz` entry is compiled to the UTC
+cron(s) that fire at the intended wall-clock. A daylight-saving zone uses two UTC
+offsets across the year, so it compiles to **two** crons (one per offset) plus a
+generated **guard job** (`zuke-schedule-guard`) that every other job waits on and
+runs only when the current wall-clock in the zone matches — so the "wrong"
+offset's firing is skipped half the year. A fixed-offset zone (or plain UTC, when
+`tz` is omitted) is a single cron with no guard.
+
+The grammar is a deliberate subset: numeric minute/hour/day fields (single
+values, comma lists, `a-b` ranges, slash steps), and the timezone must have a
+whole-hour UTC offset. Anything outside that — a named field, a fractional-hour
+zone, or a day-constrained schedule that would cross midnight once shifted to
+UTC — is a friendly error telling you to write the UTC cron directly. Offsets are
+sampled from a pinned reference year, so `generate-ci --check` output never churns
+with the calendar.
+
+Provider support mirrors each platform's capability: **GitHub** gets the full
+treatment (UTC crons + DST guard); **Azure** emits native `schedules:` for UTC or
+fixed-offset zones (a DST zone errors — the guard is GitHub-only); **GitLab** and
+**Bitbucket** configure schedules in their web UI rather than in-file, so a
+`schedule` trigger is ignored for them.
+
 ### Host detection — `isCI()` / `ciHost()` / `operatingSystem()`
 
 `isCI()` and `ciHost()` (e.g. `"github-actions"`, `"gitlab-ci"`, `"local"`) let

@@ -124,6 +124,36 @@ Deno.test("generate-ci --check reports drift when the file is stale", async () =
   });
 });
 
+/** A build whose workflow declares a daylight-saving-zone schedule. */
+class ScheduledBuild extends Build {
+  ci = cicd({
+    provider: "github",
+    path: ".github/workflows/nightly.yml",
+    pipeline: {
+      triggers: { schedule: [{ cron: "30 9 * * 1-4", tz: "Europe/Sofia" }] },
+      jobs: [{ id: "test", steps: [{ run: "deno task ci" }] }],
+    },
+  });
+  build = target().executes(() => {});
+}
+
+Deno.test("generate-ci writes a timezone-aware scheduled workflow", async () => {
+  await inTempDir(async (dir) => {
+    const first = await runCli(ScheduledBuild, ["generate-ci"]);
+    assertEquals(first.code, 0);
+    const content = await Deno.readTextFile(
+      `${dir}/.github/workflows/nightly.yml`,
+    );
+    // A DST zone → dual UTC crons plus a guard job the real job waits on.
+    assertStringIncludes(content, "schedule:");
+    assertStringIncludes(content, "zuke-schedule-guard:");
+    assertStringIncludes(content, "TZ='Europe/Sofia' date");
+    // Deterministic: a --check immediately after writing sees no drift.
+    const check = await runCli(ScheduledBuild, ["generate-ci", "--check"]);
+    assertEquals(check.code, 0);
+  });
+});
+
 for (const shell of ["bash", "zsh", "fish"]) {
   Deno.test(`completions print ${shell} emits a non-empty script naming the targets`, async () => {
     const { code, out } = await runCli(Demo, ["completions", "print", shell]);

@@ -299,3 +299,4 @@ export {
   fanOutPipeline,
   generateCi,
 } from "./src/ci.ts";
+export { type ScheduleEntry } from "./src/ci_schedule.ts";

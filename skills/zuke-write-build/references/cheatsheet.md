@@ -527,6 +527,13 @@ ci = cicd({ provider: "github" }); // .github/workflows/ci.yml, push/PR to main
 Running any target regenerates the YAML; on CI it _verifies_ the committed file
 is current (`zuke generate-ci --check` is a dedicated gate).
 
+**Scheduled runs** — `triggers.schedule: [{ cron, tz? }]`. A `tz` (IANA zone) is
+compiled to UTC cron(s); a daylight-saving zone also emits a generated guard job
+so only the correct wall-clock firing proceeds. Full on GitHub; Azure gets native
+`schedules:` for UTC/fixed-offset (DST zone errors); GitLab/Bitbucket schedules
+are UI-side and ignored. Numeric fields + whole-hour offsets only, else a friendly
+error. `cicd({ provider: "github", pipeline: { triggers: { schedule: [{ cron: "30 9 * * 1-5", tz: "Europe/Sofia" }] } } })`.
+
 ## Run & inspect
 
 ```sh
