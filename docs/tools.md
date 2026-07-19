@@ -126,3 +126,24 @@ await helmUpgrade((s) => s.arg("api", "./chart").flag("install").cwd("infra"));
 `flag`/`option` add a `--` prefix unless the name already starts with a dash (so
 `flag("-v")` stays `-v`). Argv is a discrete array end-to-end, so a `defineTool`
 command is just as injection-free as the built-in wrappers.
+
+## Reading a wrapper's API — `zuke doc`
+
+`deno doc jsr:@zuke/deno` run inside a Node repo drowns the output in
+`@types/node` resolution warnings, because Deno discovers the surrounding
+project's `deno.json` / `node_modules`. `zuke doc <package>` runs `deno doc` from
+an **isolated throwaway directory**, so type resolution starts clean and the API
+prints readably in place:
+
+```sh
+zuke doc core            # jsr:@zuke/core
+zuke doc @scope/pkg      # a scoped package
+zuke doc deno --filter DenoTasks   # extra flags pass through to deno doc
+```
+
+A bare name resolves to `jsr:@zuke/<name>`; an explicit `jsr:`/`npm:`/`https:`
+specifier or a file path is used as-is.
+
+`NpmTasks.run` covers workspaces both ways: `.workspace("app")` for one, and
+`.workspaces()` for every workspace (compose with `.ifPresent()` to skip those
+missing the script) — the two are mutually exclusive.

@@ -135,6 +135,8 @@ export function zukeTaskState(text: string): DenoJsonState {
 export interface SetupHost {
   /** Whether a path exists. */
   exists(path: string): Promise<boolean>;
+  /** Whether a path exists and is a directory (a reserved-name collision). */
+  isDirectory(path: string): Promise<boolean>;
   /** Read a file as UTF-8 text. */
   readText(path: string): Promise<string>;
   /** Write UTF-8 text to a file, creating or truncating it. */
@@ -151,6 +153,14 @@ export const defaultHost: SetupHost = {
     try {
       await Deno.lstat(path);
       return true;
+    } catch (error) {
+      if (error instanceof Deno.errors.NotFound) return false;
+      throw error;
+    }
+  },
+  async isDirectory(path: string): Promise<boolean> {
+    try {
+      return (await Deno.lstat(path)).isDirectory;
     } catch (error) {
       if (error instanceof Deno.errors.NotFound) return false;
       throw error;
@@ -178,6 +188,12 @@ export interface SetupOptions {
   force: boolean;
   /** Build class name for the starter `zuke.ts`. */
   name: string;
+  /**
+   * The base name for the launcher scripts (`<name>` and `<name>.ps1`).
+   * Defaults to `"zuke"`; override it when a `zuke/` directory already occupies
+   * that name in the target directory.
+   */
+  launcherName?: string;
   /**
    * The `zuke.ts` contents to write. Defaults to {@link starterBuild}; `zuke
    * import` passes a build generated from an existing project's tasks instead.
@@ -212,29 +228,94 @@ interface ScaffoldFile {
   name: string;
   content: string;
   mode?: number;
+  /** Whether this file is a launcher (its name comes from `launcherName`). */
+  launcher?: boolean;
+}
+
+/** The default launcher base name. */
+export const DEFAULT_LAUNCHER = "zuke";
+
+/** Scaffold file names a launcher must not shadow (the build file and config). */
+const RESERVED_NON_LAUNCHER = new Set([
+  "zuke.ts",
+  "zuke.json",
+  "deno.json",
+  ".gitignore",
+]);
+
+/**
+ * Validate a `--launcher-name`: a single path segment (so the launcher can't be
+ * written outside the target directory) that doesn't shadow another file setup
+ * writes. Throws a friendly error otherwise.
+ */
+function assertLauncherName(name: string): void {
+  // Reject path separators and a colon (a Windows drive/ADS separator), so the
+  // launcher can only be a plain file in the target directory.
+  if (name === "" || /[\\/:]/.test(name) || name === "." || name === "..") {
+    throw new Error(
+      `zuke setup: invalid --launcher-name "${name}" — it must be a plain file ` +
+        `name (no path separators or ":").`,
+    );
+  }
+  // Compare case-insensitively: a case-insensitive filesystem (macOS, Windows)
+  // would let `Zuke.ts` shadow the `zuke.ts` setup writes.
+  if (RESERVED_NON_LAUNCHER.has(name.toLowerCase())) {
+    throw new Error(
+      `zuke setup: --launcher-name "${name}" would overwrite a file setup ` +
+        `writes (the build file or config) — choose a different name.`,
+    );
+  }
 }
 
 /**
- * Scaffold Zuke into `options.dir`: a starter `zuke.ts`, the `./zuke` and
- * `./zuke.ps1` launchers, and a `deno.json` task block. Existing files are
- * skipped unless `options.force` is set; `deno.json` is always merged (never
- * clobbered).
+ * Scaffold Zuke into `options.dir`: a starter `zuke.ts`, the launcher scripts,
+ * and a `deno.json` task block. Existing files are skipped unless
+ * `options.force` is set; `deno.json` is always merged (never clobbered). Fails
+ * up front if a target name is occupied by a directory (see
+ * {@link SetupOptions.launcherName}).
  */
 export async function runSetup(
   options: SetupOptions,
   host: SetupHost = defaultHost,
 ): Promise<SetupResult> {
   const files: FileResult[] = [];
+  const launcher = options.launcherName ?? DEFAULT_LAUNCHER;
+  assertLauncherName(launcher);
 
   const scaffold: readonly ScaffoldFile[] = [
     {
       name: "zuke.ts",
       content: options.buildContent ?? starterBuild(options.name),
     },
-    { name: "zuke", content: launcherBash(), mode: 0o755 },
-    { name: "zuke.ps1", content: launcherPwsh() },
+    { name: launcher, content: launcherBash(), mode: 0o755, launcher: true },
+    { name: `${launcher}.ps1`, content: launcherPwsh(), launcher: true },
     { name: "zuke.json", content: starterConfig(options.name) },
   ];
+
+  // Fail before writing anything if a target name is occupied by a directory —
+  // a scaffolded file can't be written over a directory, and silently skipping
+  // it (the old behaviour) produced a launcher-less setup. Covers every name
+  // setup writes, including the separately-written deno.json and .gitignore.
+  const collisionTargets: ReadonlyArray<{ name: string; launcher: boolean }> = [
+    ...scaffold.map((s) => ({ name: s.name, launcher: s.launcher === true })),
+    { name: "deno.json", launcher: false },
+    { name: ".gitignore", launcher: false },
+  ];
+  for (const item of collisionTargets) {
+    const path = joinPath(options.dir, item.name);
+    if (await host.isDirectory(path)) {
+      throw new Error(
+        `zuke setup: cannot write "${item.name}" — a directory exists at ` +
+          `${path}. ` +
+          (item.launcher
+            ? `Pass --launcher-name <name> to write the launcher under a ` +
+              `different name`
+            : `Move or rename that directory (${item.name} is reserved by ` +
+              `Zuke)`) +
+          `, then re-run setup.`,
+      );
+    }
+  }
 
   for (const item of scaffold) {
     const path = joinPath(options.dir, item.name);

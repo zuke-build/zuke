@@ -84,6 +84,10 @@ class NpmRunSettings extends NpmSettings
     The package.json script to run (required).
   workspace(name: string): this
     Run in a specific workspace (`--workspace=`).
+  workspaces(): this
+    Run the script in every workspace (`--workspaces`). Pair with
+    {@link ifPresent} to skip workspaces that lack the script. Mutually
+    exclusive with {@link workspace} — setting both is a build error.
   ifPresent(): this
     Do not fail when the script is missing (`--if-present`).
   scriptArgs(...args: Array<string | number>): this

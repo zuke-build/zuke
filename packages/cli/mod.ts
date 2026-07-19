@@ -53,6 +53,8 @@ export interface SetupFlags {
   name?: string;
   /** Directory to scaffold into (defaults to the current directory). */
   dir?: string;
+  /** Base name for the launcher scripts, when `zuke` is taken by a directory. */
+  launcherName?: string;
 }
 
 /** Parse the argument list following `zuke setup`. */
@@ -78,6 +80,13 @@ export function parseSetupFlags(args: string[]): SetupFlags {
       }
     } else if (arg.startsWith("--dir=")) {
       flags.dir = arg.slice("--dir=".length);
+    } else if (arg === "--launcher-name") {
+      if (i + 1 < args.length) {
+        i++;
+        flags.launcherName = args[i];
+      }
+    } else if (arg.startsWith("--launcher-name=")) {
+      flags.launcherName = arg.slice("--launcher-name=".length);
     }
   }
   return flags;
@@ -88,14 +97,16 @@ const HELP = `zuke ${VERSION} — code-first build automation for Deno
 Usage:
   zuke setup [options]    Scaffold Zuke into a directory
   zuke import [options]   Generate a build from package.json scripts or a Makefile
+  zuke doc <package>      Show a @zuke/* package's API docs (isolated resolution)
   zuke --help             Show this help
   zuke --version          Show the version
 
 Setup options:
-  --dir <path>     Directory to scaffold into (default: .)
-  --name <Class>   Build class name for zuke.ts (default: MyBuild)
-  --force, -f      Overwrite existing files
-  --yes, -y        Accept defaults without prompting
+  --dir <path>            Directory to scaffold into (default: .)
+  --name <Class>          Build class name for zuke.ts (default: MyBuild)
+  --launcher-name <name>  Launcher base name when a zuke/ directory is in the way
+  --force, -f             Overwrite existing files
+  --yes, -y               Accept defaults without prompting
 
 Import options:
   --dir <path>     Directory to read from and scaffold into (default: .)
@@ -103,6 +114,10 @@ Import options:
   --from <source>  Force a source: package.json or makefile (default: auto-detect)
   --force, -f      Overwrite existing files
   --yes, -y        Accept defaults without prompting
+
+Doc:
+  zuke doc core           API of @zuke/core
+  zuke doc @scope/pkg      API of a scoped package (or pass jsr:/npm:/https: as-is)
 
 Run your build with the scaffolded launcher: ./zuke <target>`;
 
@@ -126,9 +141,12 @@ async function commandSetup(
 
   const where = dir === "." ? "the current directory" : dir;
   host.log(`Scaffolding Zuke into ${where}:`);
-  const result = await runSetup({ dir, force, name }, host);
+  const launcherName = flags.launcherName;
+  const result = await runSetup({ dir, force, name, launcherName }, host);
   const written = result.files.filter((f) => f.status !== "skipped").length;
-  host.log(`Done — ${written} file(s) written. Next: ./zuke`);
+  host.log(
+    `Done — ${written} file(s) written. Next: ./${launcherName ?? "zuke"}`,
+  );
   return 0;
 }
 
@@ -195,13 +213,76 @@ async function commandImport(
 }
 
 /**
- * The CLI entry point. Returns a process exit code; `host`/`prompter` are
- * injectable for testing.
+ * Runs `deno doc <args>` — the injectable subprocess seam for
+ * {@link commandDoc}, so the command is testable without spawning `deno`.
+ */
+export type DocRunner = (denoArgs: string[]) => Promise<number>;
+
+/** The default {@link DocRunner}: spawn `deno doc …` in an isolated temp dir. */
+const defaultDocRunner: DocRunner = async (denoArgs) => {
+  // Run from a throwaway directory so the surrounding repo's deno.json /
+  // node_modules / tsconfig don't drag @types/node resolution noise into the
+  // output — the whole point of `zuke doc` inside a Node project.
+  const cwd = await Deno.makeTempDir({ prefix: "zuke-doc-" });
+  try {
+    const { code } = await new Deno.Command(Deno.execPath(), {
+      args: denoArgs,
+      cwd,
+      stdout: "inherit",
+      stderr: "inherit",
+    }).output();
+    return code;
+  } finally {
+    await Deno.remove(cwd, { recursive: true });
+  }
+};
+
+/**
+ * Resolve a `zuke doc` argument to a `deno doc` specifier: a bare package name
+ * (`core`) becomes `jsr:@zuke/core`, a scoped name (`@scope/pkg`) becomes
+ * `jsr:@scope/pkg`, and an explicit `jsr:`/`npm:`/`https:`/`file:`/path
+ * specifier is passed through unchanged. Returns `undefined` for no argument.
+ */
+export function resolveDocSpec(pkg: string | undefined): string | undefined {
+  if (pkg === undefined || pkg === "") return undefined;
+  // Pass through anything already a specifier: a URI scheme (`jsr:`, `npm:`,
+  // `https:`, `file:`, and a Windows `C:` drive), or a slash/dot path.
+  if (/^([a-z][a-z0-9+.-]*:|[\\/]|\.)/i.test(pkg)) return pkg;
+  return `jsr:${pkg.startsWith("@") ? pkg : `@zuke/${pkg}`}`;
+}
+
+/** Run the `doc` subcommand: `deno doc <spec>` in an isolated directory. */
+async function commandDoc(
+  args: string[],
+  host: SetupHost,
+  runner: DocRunner,
+): Promise<number> {
+  const [pkg, ...extra] = args;
+  let spec = pkg === undefined || pkg.startsWith("-")
+    ? undefined
+    : resolveDocSpec(pkg);
+  if (spec === undefined) {
+    host.log(
+      "zuke doc: name a package, e.g. `zuke doc core` or `zuke doc @scope/pkg`.",
+    );
+    return 1;
+  }
+  // A relative path would resolve against the runner's throwaway cwd — pin it to
+  // the user's directory now, while cwd is still theirs. (Absolute paths and
+  // `jsr:`/`npm:`/`https:` specifiers are already location-independent.)
+  if (spec.startsWith(".")) spec = `${Deno.cwd()}/${spec}`;
+  return await runner(["doc", ...extra, spec]);
+}
+
+/**
+ * The CLI entry point. Returns a process exit code; `host`/`prompter`/`docRunner`
+ * are injectable for testing.
  */
 export async function main(
   args: string[],
   host: SetupHost = defaultHost,
   prompter: Prompter = defaultPrompter,
+  docRunner: DocRunner = defaultDocRunner,
 ): Promise<number> {
   if (args.length === 0 || args[0] === "--help" || args[0] === "-h") {
     host.log(HELP);
@@ -214,11 +295,21 @@ export async function main(
     host.log(VERSION);
     return 0;
   }
-  if (command === "setup") {
-    return await commandSetup(rest, host, prompter);
-  }
-  if (command === "import") {
-    return await commandImport(rest, host, prompter);
+  try {
+    if (command === "setup") {
+      return await commandSetup(rest, host, prompter);
+    }
+    if (command === "import") {
+      return await commandImport(rest, host, prompter);
+    }
+    if (command === "doc") {
+      return await commandDoc(rest, host, docRunner);
+    }
+  } catch (error) {
+    // Surface a command's own friendly error (e.g. a setup directory collision)
+    // as a clean message and non-zero exit, not an uncaught stack trace.
+    host.log(error instanceof Error ? error.message : String(error));
+    return 1;
   }
   host.log(`Unknown command: ${command}\n`);
   host.log(HELP);

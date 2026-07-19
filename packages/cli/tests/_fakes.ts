@@ -7,6 +7,8 @@ import type { Prompter } from "../mod.ts";
 export class FakeHost implements SetupHost {
   /** Virtual filesystem: path → contents. */
   readonly files = new Map<string, string>();
+  /** Paths that exist as directories (for reserved-name collision tests). */
+  readonly directories = new Set<string>();
   /** Lines passed to {@link log}. */
   readonly logs: string[] = [];
   /** `[path, mode]` pairs passed to {@link chmod}. */
@@ -23,7 +25,11 @@ export class FakeHost implements SetupHost {
   }
 
   exists(path: string): Promise<boolean> {
-    return Promise.resolve(this.files.has(path));
+    return Promise.resolve(this.files.has(path) || this.directories.has(path));
+  }
+
+  isDirectory(path: string): Promise<boolean> {
+    return Promise.resolve(this.directories.has(path));
   }
 
   readText(path: string): Promise<string> {

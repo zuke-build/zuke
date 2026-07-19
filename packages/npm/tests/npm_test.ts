@@ -64,6 +64,28 @@ Deno.test("run: no -- separator when there are no script args", () => {
   ]);
 });
 
+Deno.test("run: --workspaces runs every workspace and composes with --if-present", () => {
+  assertEquals(
+    new NpmRunSettings().script("build").workspaces().argv().slice(1),
+    ["run", "--workspaces", "build"],
+  );
+  assertEquals(
+    new NpmRunSettings().script("test").workspaces().ifPresent().argv().slice(
+      1,
+    ),
+    ["run", "--workspaces", "--if-present", "test"],
+  );
+});
+
+Deno.test("run: .workspace() and .workspaces() are mutually exclusive", () => {
+  assertThrows(
+    () =>
+      new NpmRunSettings().script("build").workspace("app").workspaces().argv(),
+    Error,
+    "mutually exclusive",
+  );
+});
+
 Deno.test("exec: command required; --yes, --package, forwarded args", () => {
   assertThrows(
     () => new NpmExecSettings().argv(),
