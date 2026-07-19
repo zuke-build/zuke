@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.25.0](https://github.com/zuke-build/zuke/compare/core-v1.24.0...core-v1.25.0) (2026-07-19)
+
+
+### Features
+
+* **core:** npx-style node_modules/.bin tool resolution ([#192](https://github.com/zuke-build/zuke/issues/192)) ([7e8da19](https://github.com/zuke-build/zuke/commit/7e8da19d62d18baeb6d51ca6009a1e32b0cf9492))
+
 ## [1.24.0](https://github.com/zuke-build/zuke/compare/core-v1.23.0...core-v1.24.0) (2026-07-19)
 
 
