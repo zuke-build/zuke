@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.24.0](https://github.com/zuke-build/zuke/compare/core-v1.23.0...core-v1.24.0) (2026-07-19)
+
+
+### Features
+
+* **core:** timezone-aware schedules in cicd() ([#190](https://github.com/zuke-build/zuke/issues/190)) ([d005e8c](https://github.com/zuke-build/zuke/commit/d005e8c6f3bd879f7663ab589ad0ac8039eb3d8a))
+
 ## [1.23.0](https://github.com/zuke-build/zuke/compare/core-v1.22.0...core-v1.23.0) (2026-07-19)
 
 
