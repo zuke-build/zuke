@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.29.0](https://github.com/zuke-build/zuke/compare/core-v1.28.0...core-v1.29.0) (2026-07-19)
+
+
+### Features
+
+* **core:** runs list --counts and typed kubectl getNamespaces ([#211](https://github.com/zuke-build/zuke/issues/211)) ([b0d9a61](https://github.com/zuke-build/zuke/commit/b0d9a615b9e86c72b8965f5982e24c540f9933e9))
+
 ## [1.28.0](https://github.com/zuke-build/zuke/compare/core-v1.27.0...core-v1.28.0) (2026-07-19)
 
 
