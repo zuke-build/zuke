@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.28.0](https://github.com/zuke-build/zuke/compare/core-v1.27.0...core-v1.28.0) (2026-07-19)
+
+
+### Features
+
+* **core:** npm-package tool provisioning in toolchain() ([#206](https://github.com/zuke-build/zuke/issues/206)) ([e233be2](https://github.com/zuke-build/zuke/commit/e233be2b75b52d1445a84ebd28950aafbd8c1e4d))
+* **core:** zip archive support in installRelease ([#207](https://github.com/zuke-build/zuke/issues/207)) ([ba94e4e](https://github.com/zuke-build/zuke/commit/ba94e4e2561f663facb0c7f5dc9955c262e68525))
+
 ## [1.27.0](https://github.com/zuke-build/zuke/compare/core-v1.26.0...core-v1.27.0) (2026-07-19)
 
 
