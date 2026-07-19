@@ -1,6 +1,6 @@
 {
   "name": "@zuke/gcloud",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Typed Google Cloud tooling for Zuke builds — the gcloud (Google Cloud SDK) CLI wrapper plus GCS and Secret Manager REST task groups sharing gcloud-based auth, all injection-free and testable without network.",
   "exports": {
     ".": "./mod.ts"
