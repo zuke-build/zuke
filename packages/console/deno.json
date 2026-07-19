@@ -6,7 +6,7 @@
     ".": "./mod.ts"
   },
   "imports": {
-    "@zuke/core": "jsr:@zuke/core@^1.9.0"
+    "@zuke/core": "jsr:@zuke/core@^1.25.0"
   },
   "publish": {
     "exclude": [
