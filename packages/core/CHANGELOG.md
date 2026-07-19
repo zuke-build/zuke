@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.22.0](https://github.com/zuke-build/zuke/compare/core-v1.21.0...core-v1.22.0) (2026-07-19)
+
+
+### Features
+
+* **core:** pluggable BuildRegistry and zuke register ([#186](https://github.com/zuke-build/zuke/issues/186)) ([b55a876](https://github.com/zuke-build/zuke/commit/b55a876e5dddc4cd2892d0ffa08e442ffc6cbc35))
+
 ## [1.21.0](https://github.com/zuke-build/zuke/compare/core-v1.20.0...core-v1.21.0) (2026-07-19)
 
 
