@@ -63,9 +63,11 @@ Deno.test("two real processes register concurrently; no torn write", async () =>
       loaded?.descriptor.surface.targets.map((t) => t.name),
       ["lint", "build"],
     );
-    // The surface lists the parameter flag (structure) but never its value.
+    // The secret parameter is excluded from the descriptor entirely — neither
+    // its flag nor its value appears, so it can never become a spawnable input.
+    assertEquals(loaded?.descriptor.surface.parameters, []);
     const json = JSON.stringify(loaded?.descriptor);
-    assertEquals(json.includes("api-token"), true);
+    assertEquals(json.includes("api-token"), false);
     assertEquals(json.includes("e2e-secret-xyz"), false);
   } finally {
     await Deno.remove(dir, { recursive: true });
