@@ -80,6 +80,7 @@ export {
   type CliParameterInfo,
   type CliTargetInfo,
   describeCli,
+  type DescribeCliOptions,
 } from "./src/describe.ts";
 export type { Plugin, RunInfo, TargetTiming } from "./src/plugin.ts";
 export {

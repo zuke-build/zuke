@@ -55,6 +55,28 @@ function toolNames(reply: unknown): string[] {
   return (result?.tools ?? []).map((t) => t.name);
 }
 
+/** Whether a value is a plain object. */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** The input schema of a named tool from a `tools/list` reply. */
+function runToolInputSchema(
+  reply: unknown,
+  name: string,
+): Record<string, unknown> {
+  const result = isRecord(reply) ? reply.result : undefined;
+  const tools = isRecord(result) && Array.isArray(result.tools)
+    ? result.tools
+    : [];
+  for (const t of tools) {
+    if (isRecord(t) && t.name === name && isRecord(t.inputSchema)) {
+      return t.inputSchema;
+    }
+  }
+  throw new Error(`no tool ${name}`);
+}
+
 /** The text block of a `tools/call` reply. */
 function toolText(reply: unknown): string {
   const result =
@@ -123,6 +145,37 @@ Deno.test("a build registered after startup appears as a runnable MCP tool", asy
     );
     assertStringIncludes(ran, "HELLO-FROM-REGISTERED");
     assertStringIncludes(ran, "succeeded");
+
+    // The parameterized target advertises its inputs…
+    const schema = runToolInputSchema(
+      await rpc("tools/list"),
+      "run:Widget:deploy",
+    );
+    const props = isRecord(schema.properties) ? schema.properties : {};
+    assertEquals(isRecord(props.repos), true);
+    assertEquals(isRecord(props.skipE2e), true);
+
+    // …and a call binds the supplied values into the spawned build, proving the
+    // values crossed the process boundary as resolved parameters.
+    const deployed = toolText(
+      await rpc("tools/call", {
+        name: "run:Widget:deploy",
+        arguments: { repos: ["expense-service", "web"], skipE2e: true },
+      }),
+    );
+    assertStringIncludes(
+      deployed,
+      "DEPLOY repos=expense-service,web skipE2e=true sit=auto",
+    );
+
+    // A type mismatch is rejected without ever spawning the build.
+    const bad = await rpc("tools/call", {
+      name: "run:Widget:deploy",
+      arguments: { repos: "expense-service" },
+    });
+    const badText = toolText(bad);
+    assertStringIncludes(badText, "repos");
+    assertEquals(badText.includes("DEPLOY"), false);
   } finally {
     if (server !== undefined) {
       server.kill();

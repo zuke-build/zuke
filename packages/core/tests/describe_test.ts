@@ -65,3 +65,39 @@ Deno.test("describeCli hides a secret parameter's option values", () => {
   );
   assertEquals(key?.options, []);
 });
+
+Deno.test("describeCli reports the property name, kind, and default", () => {
+  class Params extends Build {
+    skipE2e = parameter("Skip e2e").boolean();
+    workers = parameter("Workers").number().default(4);
+    region = parameter("Region").default("eu");
+  }
+  const params = describeCli(new Params()).parameters;
+
+  const skip = params.find((p) => p.name === "skipE2e");
+  // The property name is distinct from the kebab flag.
+  assertEquals(skip?.flag, "skip-e2e");
+  assertEquals(skip?.kind, "boolean");
+  assertEquals(skip?.default, "false");
+
+  const workers = params.find((p) => p.name === "workers");
+  assertEquals(workers?.kind, "number");
+  assertEquals(workers?.default, "4");
+
+  // A parameter with no default carries none.
+  assertEquals(params.find((p) => p.name === "region")?.default, "eu");
+});
+
+Deno.test("describeCli omitSecrets drops secret parameters entirely", () => {
+  class WithSecret extends Build {
+    apiKey = parameter("API key").secret();
+    region = parameter("Region");
+  }
+  // By default the secret is present (with masked options).
+  const all = describeCli(new WithSecret()).parameters.map((p) => p.name);
+  assertEquals(all, ["apiKey", "region"]);
+  // With omitSecrets it is gone, so it can never become a spawnable input.
+  const visible = describeCli(new WithSecret(), { omitSecrets: true })
+    .parameters.map((p) => p.name);
+  assertEquals(visible, ["region"]);
+});

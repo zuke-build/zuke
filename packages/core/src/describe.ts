@@ -48,18 +48,28 @@ export interface CliTargetInfo {
 
 /** A parameter declared on the build. */
 export interface CliParameterInfo {
-  /** The CLI flag (without leading dashes), e.g. `environment`. */
+  /**
+   * The parameter's property name — the key an MCP tool call and `execute`'s
+   * `params` map use (e.g. `skipE2e`). Distinct from {@link flag}, which is its
+   * kebab-case form.
+   */
+  readonly name: string;
+  /** The CLI flag (without leading dashes), e.g. `skip-e2e`. */
   readonly flag: string;
   /** The parameter's description, or `""` when none was set. */
   readonly description: string;
   /** Whether a value is required. */
   readonly required: boolean;
+  /** The parameter's value kind. */
+  readonly kind: "string" | "number" | "boolean";
   /** Whether the flag is a value-less boolean. */
   readonly boolean: boolean;
   /** Whether repeated flags accumulate into a list. */
   readonly array: boolean;
   /** The allowed values, when the parameter is constrained to a set. */
   readonly options: string[];
+  /** The declared default rendered as a string, when the parameter has one. */
+  readonly default?: string;
 }
 
 /** A build's full CLI surface, suitable for JSON serialization. */
@@ -87,10 +97,12 @@ function targetInfo(name: string, t: TargetBuilder): CliTargetInfo {
 
 /** Describe one parameter. */
 function parameterInfo(name: string, p: AnyParameter): CliParameterInfo {
-  return {
+  const info: CliParameterInfo = {
+    name,
     flag: flagName(name),
     description: p.description_ ?? "",
     required: p.required_,
+    kind: p.kind_,
     boolean: p.kind_ === "boolean",
     array: p.array_,
     // A secret parameter's declared option values could themselves be sensitive
@@ -98,6 +110,10 @@ function parameterInfo(name: string, p: AnyParameter): CliParameterInfo {
     // surfaced — matching how a run record omits secret values entirely.
     options: p.secret_ ? [] : [...(p.options_ ?? [])],
   };
+  // A secret's default could itself be sensitive, so it is never surfaced.
+  return p.default_ !== undefined && !p.secret_
+    ? { ...info, default: p.default_ }
+    : info;
 }
 
 /**
@@ -133,10 +149,24 @@ export function describeBuildSurface(
  * const surface = describeCli(new MyBuild());
  * console.log(surface.targets.map((t) => t.name));
  * ```
+ *
+ * Pass `{ omitSecrets: true }` to drop `.secret()` parameters from the result —
+ * the posture the build registry uses, so a secret never becomes a spawnable
+ * MCP input or crosses the run boundary (`zuke register` writes this form).
  */
-export function describeCli(build: Build): CliDescription {
-  return describeBuildSurface(
-    discoverTargets(build),
-    discoverParameters(build),
-  );
+export function describeCli(
+  build: Build,
+  options: DescribeCliOptions = {},
+): CliDescription {
+  const params = discoverParameters(build);
+  const visible = options.omitSecrets
+    ? new Map([...params].filter(([, p]) => !p.secret_))
+    : params;
+  return describeBuildSurface(discoverTargets(build), visible);
+}
+
+/** Options for {@link describeCli}. */
+export interface DescribeCliOptions {
+  /** Drop `.secret()` parameters from the surface (used for registry descriptors). */
+  omitSecrets?: boolean;
 }

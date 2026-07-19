@@ -127,7 +127,7 @@ Deno.test("registerCommand writes a descriptor built from the build", async () =
   );
 });
 
-Deno.test("registerCommand excludes secret parameter values from the descriptor", async () => {
+Deno.test("registerCommand excludes secret parameters from the descriptor", async () => {
   const registry = new FakeBuildRegistry();
   // A secret is configured in the environment; it must never reach the record.
   await capture(() =>
@@ -139,10 +139,12 @@ Deno.test("registerCommand excludes secret parameter values from the descriptor"
     })
   );
   const descriptor = registry.builds.get("Sample")?.descriptor;
-  // The surface lists the parameter flags (structure) but no values.
-  const flags = descriptor?.surface.parameters.map((p) => p.flag);
-  assertEquals(flags, ["api-token", "region"]);
-  // The whole serialized descriptor carries no secret value.
+  // The secret parameter is omitted entirely — only the non-secret one remains,
+  // so a secret can never become a spawnable MCP input or cross the boundary.
+  const names = descriptor?.surface.parameters.map((p) => p.name);
+  assertEquals(names, ["region"]);
+  // Neither the secret's flag nor its value appears anywhere in the record.
+  assertEquals(JSON.stringify(descriptor).includes("api-token"), false);
   assertEquals(JSON.stringify(descriptor).includes("s3cr3t-value"), false);
 });
 

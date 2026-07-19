@@ -17,11 +17,12 @@
  * allow-list / operator-token / confirmation tiers (keyed on the qualified
  * `<buildId>:<target>` name), and every mutating or denied call is audited.
  *
- * Scope note: a run tool takes no per-parameter inputs yet (only `dryRun`,
- * `confirm`, and `operatorToken`); the spawned build resolves its own parameters
- * from the server's environment. Passing parameters across the spawn boundary —
- * which needs a secret-safe contract the descriptor does not yet carry — is a
- * follow-up.
+ * A run tool exposes the build's declared parameters as its input schema (from
+ * the descriptor's surface), validates supplied values against their kinds
+ * before spawning, and forwards them to the child as `--flag=value` arguments.
+ * Secret parameters are structurally absent from the descriptor (`zuke register`
+ * omits them), so they can neither be requested nor forwarded — the child
+ * resolves a secret from its own environment / `.from()` source.
  *
  * @module
  */
@@ -32,6 +33,7 @@ import { resolveActor } from "../state/record.ts";
 import type { RunEvent, RunEventOutcome } from "../state/types.ts";
 import type { StateStore } from "../state/store.ts";
 import type { RunStateWriter } from "../state/writer.ts";
+import type { CliParameterInfo } from "../describe.ts";
 import type { BuildLocation } from "../registry/descriptor.ts";
 import type { BuildRegistry } from "../registry/registry.ts";
 import { openAuditLog } from "./audit.ts";
@@ -127,9 +129,125 @@ export interface RegistryMcpServerOptions {
   runner?: RegistryRunner;
 }
 
+/** The reserved run-tool control keys — never treated as build parameters. */
+const CONTROL_KEYS: ReadonlySet<string> = new Set([
+  "dryRun",
+  "confirm",
+  "operatorToken",
+]);
+
 /** The MCP result content for a single block of text. */
 function textResult(text: string, isError = false): Record<string, unknown> {
   return { content: [{ type: "text", text }], isError };
+}
+
+/** The JSON-Schema property for one descriptor parameter (kind, enum, default). */
+function schemaForParam(p: CliParameterInfo): Record<string, unknown> {
+  // `options` constrains string parameters only (the fluent `.options()` is
+  // string-typed); an `enum` on a number/boolean would be a malformed schema, so
+  // ignore one from an untrusted descriptor rather than emit it.
+  const enumValues = p.kind === "string" && p.options.length > 0
+    ? [...p.options]
+    : undefined;
+  if (p.array) {
+    const items: Record<string, unknown> = { type: p.kind };
+    if (enumValues !== undefined) items.enum = enumValues;
+    const schema: Record<string, unknown> = { type: "array", items };
+    if (p.description !== "") schema.description = p.description;
+    return schema;
+  }
+  const base: Record<string, unknown> = { type: p.kind };
+  if (p.description !== "") base.description = p.description;
+  if (enumValues !== undefined) base.enum = enumValues;
+  const value = defaultToJson(p);
+  if (value !== undefined) base.default = value;
+  return base;
+}
+
+/**
+ * Render a descriptor parameter's string default back to its JSON-typed value,
+ * or `undefined` when it does not match the declared kind (a malformed default
+ * from an untrusted descriptor is dropped so the advertised schema stays valid).
+ */
+function defaultToJson(p: CliParameterInfo): unknown {
+  if (p.default === undefined) return undefined;
+  if (p.kind === "boolean") {
+    if (p.default === "true") return true;
+    return p.default === "false" ? false : undefined;
+  }
+  if (p.kind === "number") {
+    const n = Number(p.default);
+    return Number.isFinite(n) ? n : undefined;
+  }
+  return p.default;
+}
+
+/** A human phrase for a parameter's expected JSON type, used in error messages. */
+function describeType(p: CliParameterInfo): string {
+  const base = p.array ? `an array of ${p.kind}` : `a ${p.kind}`;
+  return p.options.length > 0 ? `${base} in {${p.options.join(", ")}}` : base;
+}
+
+/** Whether `value` is a scalar of `kind` (and within `options`, when set). */
+function scalarOk(
+  value: unknown,
+  kind: "string" | "number" | "boolean",
+  options: readonly string[],
+): value is string | number | boolean {
+  if (kind === "boolean") return typeof value === "boolean";
+  if (kind === "number") {
+    return typeof value === "number" && Number.isFinite(value);
+  }
+  return typeof value === "string" &&
+    (options.length === 0 || options.includes(value));
+}
+
+/**
+ * Coerce a supplied JSON value to the CLI string a parameter parses, or `null`
+ * when its shape/type is wrong. An array parameter requires a JSON array of
+ * matching scalars (a bare scalar is rejected — the mismatch the requirement
+ * calls out); every other parameter requires a single matching scalar. The
+ * result is joined the way the child's parser splits an array (on commas).
+ */
+function coerceParamValue(value: unknown, p: CliParameterInfo): string | null {
+  if (p.array) {
+    if (!Array.isArray(value)) return null;
+    const parts: string[] = [];
+    for (const element of value) {
+      if (!scalarOk(element, p.kind, p.options)) return null;
+      parts.push(String(element));
+    }
+    return parts.join(",");
+  }
+  return scalarOk(value, p.kind, p.options) ? String(value) : null;
+}
+
+/**
+ * Validate supplied tool arguments against the build's declared parameters and
+ * turn them into `--flag=value` child arguments. Returns the forward argv, or
+ * the list of offending `name (why)` descriptions when any value is the wrong
+ * type or names an unknown parameter — so the caller can reject before spawning.
+ */
+function validateParamArgs(
+  args: Record<string, unknown>,
+  parameters: readonly CliParameterInfo[],
+): { argv: string[] } | { errors: string[] } {
+  const byName = new Map(parameters.map((p) => [p.name, p]));
+  const argv: string[] = [];
+  const errors: string[] = [];
+  for (const [key, value] of Object.entries(args)) {
+    if (CONTROL_KEYS.has(key)) continue;
+    const param = byName.get(key);
+    if (param === undefined) {
+      errors.push(`${key} (unknown parameter)`);
+      continue;
+    }
+    const coerced = coerceParamValue(value, param);
+    if (coerced === null) {
+      errors.push(`${key} (expected ${describeType(param)})`);
+    } else argv.push(`--${param.flag}=${coerced}`);
+  }
+  return errors.length > 0 ? { errors } : { argv };
 }
 
 /** Whether a JSON value is a plain object (a string-keyed record). */
@@ -268,7 +386,12 @@ export class RegistryMcpServer {
         const qualified = `${summary.id}:${target.name}`;
         if (this.#allowMatch(qualified)) {
           tools.push(
-            this.#runTool(summary.id, target.name, target.description),
+            this.#runTool(
+              summary.id,
+              target.name,
+              target.description,
+              loaded.descriptor.surface.parameters,
+            ),
           );
         }
       }
@@ -277,15 +400,25 @@ export class RegistryMcpServer {
   }
 
   /** Build the `run:<buildId>:<target>` tool definition. */
-  #runTool(buildId: string, target: string, description: string): McpTool {
+  #runTool(
+    buildId: string,
+    target: string,
+    description: string,
+    parameters: readonly CliParameterInfo[],
+  ): McpTool {
     const qualified = `${buildId}:${target}`;
-    const properties: Record<string, Record<string, unknown>> = {
-      dryRun: {
-        type: "boolean",
-        description: "Plan without executing any target body.",
-      },
-    };
+    const properties: Record<string, Record<string, unknown>> = {};
     const required: string[] = [];
+    // The build's declared parameters come first, keyed by property name (the
+    // key a tool call supplies), then the reserved execution controls.
+    for (const param of parameters) {
+      properties[param.name] = schemaForParam(param);
+      if (param.required) required.push(param.name);
+    }
+    properties.dryRun = {
+      type: "boolean",
+      description: "Plan without executing any target body.",
+    };
     if (this.#isProtected(qualified)) {
       properties.operatorToken = {
         type: "string",
@@ -420,10 +553,16 @@ export class RegistryMcpServer {
       return ok(id, textResult(`Unknown tool: ${runName}`, true));
     }
 
+    // The build's declared parameter names — the only argument keys whose values
+    // are safe to record in the audit trail from here on.
+    const knownParams = new Set(
+      loaded.descriptor.surface.parameters.map((p) => p.name),
+    );
+
     if (this.#isProtected(qualified)) {
       const denial = this.#checkOperatorToken(args);
       if (denial !== null) {
-        await this.#audit(runName, args, "denied", denial);
+        await this.#audit(runName, args, "denied", denial, knownParams);
         return ok(
           id,
           textResult(
@@ -436,6 +575,30 @@ export class RegistryMcpServer {
           ),
         );
       }
+    }
+
+    // Validate the supplied parameters against the descriptor and turn them into
+    // child `--flag=value` arguments — before any spawn, so a type mismatch is a
+    // clean tool error rather than a subprocess that fails on bad input.
+    const validated = validateParamArgs(
+      args,
+      loaded.descriptor.surface.parameters,
+    );
+    if ("errors" in validated) {
+      await this.#audit(
+        runName,
+        args,
+        "error",
+        "invalid_arguments",
+        knownParams,
+      );
+      return ok(
+        id,
+        textResult(
+          `Invalid argument(s): ${validated.errors.join("; ")}.`,
+          true,
+        ),
+      );
     }
 
     const dryRun = args.dryRun === true;
@@ -461,9 +624,20 @@ export class RegistryMcpServer {
       );
     }
 
-    const launch = this.#launch(loaded.descriptor.location, target, dryRun);
+    const launch = this.#launch(
+      loaded.descriptor.location,
+      target,
+      dryRun,
+      validated.argv,
+    );
     if (launch.argv.length === 0 || launch.argv[0] === "") {
-      await this.#audit(runName, args, "error", "no_launch_command");
+      await this.#audit(
+        runName,
+        args,
+        "error",
+        "no_launch_command",
+        knownParams,
+      );
       return ok(
         id,
         textResult(
@@ -477,14 +651,20 @@ export class RegistryMcpServer {
     try {
       result = await this.#runner(launch.argv, launch.cwd);
     } catch (error) {
-      await this.#audit(runName, args, "error", "spawn_failed");
+      await this.#audit(runName, args, "error", "spawn_failed", knownParams);
       const kind = error instanceof Error ? error.name : "Error";
       return ok(
         id,
         textResult(`Failed to spawn ${qualified} (${kind}).`, true),
       );
     }
-    await this.#audit(runName, args, result.code === 0 ? "ok" : "error");
+    await this.#audit(
+      runName,
+      args,
+      result.code === 0 ? "ok" : "error",
+      undefined,
+      knownParams,
+    );
     const output = [result.stdout, result.stderr].filter((s) => s !== "").join(
       "\n",
     );
@@ -499,8 +679,9 @@ export class RegistryMcpServer {
     location: BuildLocation,
     target: string,
     dryRun: boolean,
+    params: readonly string[],
   ): { argv: string[]; cwd: string } {
-    const trailing = dryRun ? [target, "--dry-run"] : [target];
+    const trailing = [target, ...params, ...(dryRun ? ["--dry-run"] : [])];
     if (location.kind === "command") {
       // An empty command has nothing to launch — return an empty argv so the
       // caller reports it rather than spawning the bare target as a program.
@@ -535,14 +716,18 @@ export class RegistryMcpServer {
 
   /**
    * Append a tool call to the audit log (best-effort; never breaks a call).
-   * No-op without a store. The operator token is dropped from the recorded args
-   * so nothing sensitive reaches the durable trail.
+   * No-op without a store. Only the values of recognised, non-secret arguments
+   * ({@link known} parameters plus the safe control flags) are recorded — the
+   * operator token is dropped, and any unrecognised key's value is elided, so a
+   * value mistakenly supplied under a `.secret()` parameter's name (a secret is
+   * absent from the descriptor, hence "unknown") never reaches the durable trail.
    */
   async #audit(
     tool: string,
     args: Record<string, unknown>,
     outcome: RunEventOutcome,
     detail?: string,
+    known: ReadonlySet<string> = EMPTY_NAMES,
   ): Promise<void> {
     const store = this.#store;
     if (store === undefined) return;
@@ -551,7 +736,7 @@ export class RegistryMcpServer {
       tool,
       actor: this.#resolveActor(),
       outcome,
-      args: auditArgs(args),
+      args: auditArgs(args, known),
     };
     if (detail !== undefined) event.detail = detail;
     try {
@@ -567,15 +752,33 @@ export class RegistryMcpServer {
   }
 }
 
+/** An empty name set — the default when a call is audited before params resolve. */
+const EMPTY_NAMES: ReadonlySet<string> = new Set();
+
+/** Control keys whose values are always safe to record (booleans, never secrets). */
+const AUDIT_SAFE_KEYS: ReadonlySet<string> = new Set(["dryRun", "confirm"]);
+
 /**
- * Sanitise tool arguments for the audit log: drop the operator token entirely,
- * and stringify the rest (registry run tools take only `dryRun`/`confirm`, so
- * there are no secret parameter values to mask).
+ * Sanitise tool arguments for the audit log. The operator token is dropped
+ * entirely; the value of a **recognised** argument — a declared parameter in
+ * `known`, or a safe control flag (`dryRun`/`confirm`) — is stringified and
+ * recorded (build parameters name the deploy's repos, slots, etc. — the point
+ * of the audit trail). Any other key keeps its name but has its value elided to
+ * `"<omitted>"`, so a value mistakenly supplied under a secret parameter's name
+ * (a secret is absent from the descriptor, so it reads as an unknown key) is
+ * never written verbatim to the durable trail.
  */
-function auditArgs(args: Record<string, unknown>): Record<string, string> {
+function auditArgs(
+  args: Record<string, unknown>,
+  known: ReadonlySet<string>,
+): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [key, value] of Object.entries(args)) {
     if (key === "operatorToken") continue;
+    if (!known.has(key) && !AUDIT_SAFE_KEYS.has(key)) {
+      out[key] = "<omitted>";
+      continue;
+    }
     out[key] = typeof value === "object" && value !== null
       ? JSON.stringify(value)
       : String(value);

@@ -204,20 +204,44 @@ function parseTargetInfo(value: unknown): CliTargetInfo {
   };
 }
 
+/**
+ * Read the parameter `kind`, tolerating a pre-M12 descriptor that has no `kind`
+ * field by deriving it from the `boolean` flag (older descriptors only
+ * distinguished boolean from string).
+ */
+function paramKind(
+  object: Record<string, unknown>,
+  boolean: boolean,
+): "string" | "number" | "boolean" {
+  const value = object.kind;
+  if (value === undefined) return boolean ? "boolean" : "string";
+  if (value === "string" || value === "number" || value === "boolean") {
+    return value;
+  }
+  throw new Error(`registry: descriptor field "kind" is not a valid kind`);
+}
+
 /** Validate one {@link CliParameterInfo}. */
 function parseParameterInfo(value: unknown): CliParameterInfo {
   const object = asObject(value);
   if (object === null) {
     throw new Error("registry: surface parameter is not an object");
   }
-  return {
-    flag: str(object, "flag"),
+  const flag = str(object, "flag");
+  const boolean = bool(object, "boolean");
+  const info: CliParameterInfo = {
+    // Pre-M12 descriptors carry no `name`; the flag is the best available key.
+    name: optionalStr(object, "name") ?? flag,
+    flag,
     description: str(object, "description"),
     required: bool(object, "required"),
-    boolean: bool(object, "boolean"),
+    kind: paramKind(object, boolean),
+    boolean,
     array: bool(object, "array"),
     options: strArray(object, "options"),
   };
+  const def = optionalStr(object, "default");
+  return def !== undefined ? { ...info, default: def } : info;
 }
 
 /** Validate and narrow a {@link CliDescription} (the build surface). */

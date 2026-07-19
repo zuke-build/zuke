@@ -187,19 +187,31 @@ zuke mcp --registry --allow-run
   the allow-list and `--protect` globs match the **qualified**
   `<buildId>:<target>` name (e.g. `--allow-run=Api:*`, `--protect=Api:deploy`).
   Every mutating or denied call is [audited](#audit-log).
-- **Scope.** A run tool takes no per-parameter inputs yet — only `dryRun`,
-  `confirm`, and `operatorToken`; the spawned build resolves its own parameters
-  from the server's environment. Passing parameters across the spawn boundary
-  (which needs a secret-safe contract) is a follow-up. Because a descriptor does
-  not record whether a target is read-only, every registry run tool is treated
-  as destructive.
+- **Parameters.** A run tool exposes the registered build's declared parameters
+  as its input schema — keyed by the parameter's property name (e.g. `skipE2e`),
+  with the kind, description, enum, and default from the descriptor. Supplied
+  values are validated against their kinds **before** the build spawns (a type
+  mismatch — a bare string where an array is required, a non-numeric number, an
+  out-of-set enum, or an unknown parameter — is a clean tool error, not a failed
+  subprocess), then forwarded to the child as `--flag=value` arguments alongside
+  the target. A value still set in the server's environment applies when the
+  call omits it. Because a descriptor does not record whether a target is
+  read-only, every registry run tool is treated as destructive.
+- **Secrets never cross the boundary.** `.secret()` parameters are omitted from
+  the descriptor entirely (`zuke register` writes the secret-free surface), so a
+  secret can neither be requested nor forwarded — it is rejected as an unknown
+  parameter if a client tries. The spawned build resolves a secret from its own
+  environment / `.from()` source instead. In the [audit log](#audit-log) only a
+  recognised parameter's value is recorded; any unknown argument keeps its name
+  but its value is elided, so a value mistakenly supplied under a secret's name
+  is never written to the durable trail.
 - **Environment.** A spawned build inherits the server's environment (that is
-  how it resolves its parameters), minus the MCP server's own authorization
-  secrets — `ZUKE_OPERATOR_TOKEN` and `ZUKE_MCP_TOKEN` are stripped so a
-  registered build can never read them. It does still see the rest of the
-  server's environment, so run a registry-backed server with **only the
-  environment the registered pipelines should have** — treat it like any host
-  that runs those builds.
+  how it resolves its secrets and any un-supplied parameters), minus the MCP
+  server's own authorization secrets — `ZUKE_OPERATOR_TOKEN` and
+  `ZUKE_MCP_TOKEN` are stripped so a registered build can never read them. It
+  does still see the rest of the server's environment, so run a registry-backed
+  server with **only the environment the registered pipelines should have** —
+  treat it like any host that runs those builds.
 
 The registry resolves like the run store: `ZUKE_REGISTRY_URL`/`_TOKEN` or
 `ZUKE_REGISTRY_DIR`, a build's `registry()` override, else `.zuke/builds`.

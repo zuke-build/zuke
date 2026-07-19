@@ -163,7 +163,10 @@ export async function registerCommand(
     id: options.id ?? build.constructor.name,
     name: build.constructor.name,
     location: options.location ?? deriveLocation(readEnv),
-    surface: describeCli(build),
+    // Omit secret parameters: a registered pipeline's secrets must never become
+    // a spawnable MCP input or cross the spawn boundary — the child resolves
+    // them from its own environment / `.from()` source instead.
+    surface: describeCli(build, { omitSecrets: true }),
     actor: resolveActor(options.actor, readEnv),
   }, now);
 
