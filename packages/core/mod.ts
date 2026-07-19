@@ -198,6 +198,7 @@ export {
   executionSet,
   findCycle,
   GraphError,
+  type OrderingEdge,
   plan,
   validateGraph,
 } from "./src/graph.ts";

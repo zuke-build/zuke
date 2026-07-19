@@ -6,6 +6,7 @@ import {
   tokenize,
 } from "../src/shell.ts";
 import { withAmbientSignal } from "../src/ambient_signal.ts";
+import { withAmbientEcho } from "../src/ambient_echo.ts";
 
 /** A command that sleeps far longer than any test would wait. */
 const SLEEP = "await new Promise((r) => setTimeout(r, 30000))";
@@ -209,4 +210,46 @@ Deno.test("$ .killAfter() and .signal() combine — either can end it", async ()
   setTimeout(() => controller.abort(), 50);
   const result = await running;
   assertEquals(result.code !== 0, true);
+});
+
+Deno.test("under an ambient echo sink, a command is echoed, not spawned", async () => {
+  const echoed: string[] = [];
+  // Would exit 3 (→ CommandError) if actually run; echo mode returns empty success.
+  const out = await withAmbientEcho(
+    (line) => echoed.push(line),
+    async () => await $`${DENO} eval ${"Deno.exit(3)"}`,
+  );
+  assertEquals(out.code, 0);
+  assertEquals(out.stdout, "");
+  assertEquals(echoed, [`${DENO} eval Deno.exit(3)`]);
+});
+
+Deno.test("echo mode makes .text() return empty without running", async () => {
+  const echoed: string[] = [];
+  const text = await withAmbientEcho(
+    (line) => echoed.push(line),
+    () => $`${DENO} eval ${"console.log('hi')"}`.text(),
+  );
+  assertEquals(text, "");
+  assertEquals(echoed.length, 1);
+});
+
+Deno.test("echo mode is scoped to the withAmbientEcho subtree", async () => {
+  await withAmbientEcho(() => {}, () => Promise.resolve());
+  // Outside the scope, commands run for real again.
+  const code = await $`${DENO} eval ${"Deno.exit(7)"}`.noThrow().code();
+  assertEquals(code, 7);
+});
+
+Deno.test("under echo, .spawn() echoes and returns a no-op stub", async () => {
+  const echoed: string[] = [];
+  // Would start a real process (exit 5) if not intercepted.
+  const proc = await withAmbientEcho(
+    (line) => echoed.push(line),
+    () => Promise.resolve($`${DENO} eval ${"Deno.exit(5)"}`.spawn()),
+  );
+  assertEquals(echoed, [`${DENO} eval Deno.exit(5)`]);
+  assertEquals(proc.pid, -1); // stub, no real process
+  assertEquals((await proc.status).code, 0);
+  await proc.stop(); // no-op, does not throw
 });

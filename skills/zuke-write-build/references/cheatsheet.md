@@ -29,10 +29,17 @@ Everything is optional except a body (`.executes`).
 | `.proceedAfterFailure()`                                                                                 | Keep the build going if this target fails.                                                        |
 | `.always()`                                                                                              | Run even after the build failed (cleanup/teardown).                                               |
 | `.unlisted()`                                                                                            | Hide from `--list`/`--help`; still runnable by name.                                              |
+| `.dryRunnable()`                                                                                         | Run this body under `--dry-run` with `$` in echo mode (prints argv, no spawn); others stay skipped. |
 | `.validateBefore(...v)` / `.validateAfter(...v)`                                                         | Run `Validation` checks around the body; a throw fails the target.                                |
 | `.recoverWith(...r)` / `.recoverAttempts(n)`                                                             | Run `Remediation`s if the body fails (self-healing); re-run when one asks to. See AI section.     |
 | `.partOf(group)`                                                                                         | Join a parallel batch (see `group()`).                                                            |
 | `.produces(...p)` / `.consumes(...t)`                                                                    | Declare and consume artifact paths.                                                               |
+
+**External ordering:** `override extraEdges(targets)` on the `Build` returns
+`[before, after]` pairs (from the discovered `targets` map) to impose soft
+ordering beyond per-target `.before()`/`.after()` — the seam for feeding an
+external dependency graph in. Cycle-checked; edges outside the run's set are
+ignored.
 
 ## `group()` — parallel batches
 
