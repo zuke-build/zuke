@@ -168,7 +168,16 @@ export class FileSystemStateStore implements StateStore {
       }
       if (matches(record, query)) summaries.push(toSummary(record));
     }
-    return sortNewestFirst(summaries);
+    const sorted = sortNewestFirst(summaries);
+    return query.limit === undefined ? sorted : sorted.slice(0, query.limit);
+  }
+
+  /** Delete a run's file (under its lock); a missing run is a no-op. */
+  async deleteRun(id: string): Promise<void> {
+    await this.#ensureDir();
+    await this.#withLock(id, async () => {
+      await this.#host.remove(this.#file(id));
+    });
   }
 
   /** Atomically acquire the lock `key` for `holder`, taking over if expired. */

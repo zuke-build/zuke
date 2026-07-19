@@ -50,6 +50,13 @@ export interface StateStore {
   /** List runs matching `query`, newest first (by `createdAt`, then `id`). */
   listRuns(query: RunQuery): Promise<RunSummary[]>;
   /**
+   * Delete a run permanently. A missing run is **not** an error (delete is
+   * idempotent). Backs `zuke runs prune`; on the HTTP backend this maps to a
+   * `DELETE /runs/:id` a server may leave unimplemented (retention there is the
+   * server's job — see `docs/state-api.md`).
+   */
+  deleteRun(id: string): Promise<void>;
+  /**
    * Atomically acquire the lock `key` for `holder`, expiring after `ttlMs`. An
    * expired lock is taken over. Returns a `token` on success, or the current
    * holder when the lock is live.

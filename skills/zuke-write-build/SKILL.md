@@ -97,7 +97,9 @@ Before calling any task or settings method, confirm the real shape:
   `ctx.state.set({ … })` / `ctx.state.get()` records per-target metadata (JSON,
   **never secrets** — secret parameters and redacted values are excluded).
   Inspect persisted runs afterwards with `zuke runs list` (filter by
-  `--status`/`--target`/`--since`) and `zuke runs show <id>` (`--json` on both).
+  `--status`/`--target`/`--since`/`--limit`) and `zuke runs show <id>` (`--json`
+  on both). Prune old ones with `zuke runs prune --keep <age> --keep-last <n>`
+  (only terminal runs; never suspended/running).
   See the cheatsheet.
 - **Cross-run locks:** `.lock((s) => s.lockKey(...).withTtl("4h"))` — a settings
   lambda — gives a target an exclusive claim across runs/machines; a second run

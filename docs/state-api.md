@@ -62,7 +62,19 @@ Create or update a run, guarded by a precondition:
 The service is the authority for versioning, which side-steps client clock skew.
 Records are small (kilobytes); whole-document CAS is the intended model.
 
-### `GET /runs?status=&target=&since=`
+### `DELETE /runs/:id`
+
+Delete one run. Backs `zuke runs prune`. **Optional** — a server that manages
+retention itself (see [the retention note](#notes-for-implementers)) may leave
+this unimplemented; the client only calls it from an explicit prune.
+
+| Response | Meaning                                                    |
+| -------- | ---------------------------------------------------------- |
+| `2xx`    | Deleted (or already absent).                               |
+| `404`    | No such run — treated as success (delete is idempotent).   |
+| other    | The client raises an error.                                |
+
+### `GET /runs?status=&target=&since=&limit=`
 
 List runs as an array of **summaries** (a subset of the record):
 
@@ -82,15 +94,18 @@ List runs as an array of **summaries** (a subset of the record):
 
 Query parameters (all optional, combined with AND):
 
-| Param    | Keeps runs where…                                       |
-| -------- | ------------------------------------------------------- |
-| `status` | the run status equals this value                        |
-| `target` | the run's graph contains a target with this dotted name |
-| `since`  | `createdAt` is at or after this ISO-8601 timestamp      |
+| Param    | Keeps runs where…                                                |
+| -------- | ---------------------------------------------------------------- |
+| `status` | the run status equals this value                                 |
+| `target` | the run's graph contains a target with this dotted name          |
+| `since`  | `createdAt` is at or after this ISO-8601 timestamp               |
+| `limit`  | at most this many are returned — the **newest**, so a large store stays listable |
 
 The client validates every summary it receives (an untrusted service is checked,
 not trusted) and expects newest-first ordering is applied server-side where it
-matters; it does not re-sort the list.
+matters; it does not re-sort the list. Ordering is **newest first** (by
+`createdAt`, then `id`); apply `limit` **after** ordering so it returns the most
+recent runs.
 
 ## Build catalog (`/builds`)
 
@@ -146,6 +161,15 @@ client validates every summary and does not re-sort.
   It exits `0` when every scenario passes and `1` (naming the failures) when one
   does not. A backend that passes is compatible with `HttpStateStore` /
   `HttpBuildRegistry`; one that violates CAS fails loudly.
+- **Retention is the server's job.** For a hosted store, **you own retention** —
+  a TTL, a scheduled sweep, a partition drop, whatever fits your storage. The
+  contract's job is to keep the store _listable_ while it grows, which is why
+  `GET /runs` takes `limit` and returns newest-first. `zuke runs prune` exists
+  for the **filesystem** backend (dev-grade, single host, no server to run a
+  sweep); it drives the optional `DELETE /runs/:id`, so implement `DELETE` only
+  if you want the CLI to prune your hosted store too. **Never prune a
+  non-terminal run** (`suspended`, `running`, `cancelling`): a run suspended for
+  days awaiting a human is the point of the system, not stale data.
 - **Never weaker than optimistic 409-retry.** The precondition model above is
   the minimum; a store that already does optimistic concurrency (e.g. a
   k8s-annotation store with resource versions) maps onto it directly.

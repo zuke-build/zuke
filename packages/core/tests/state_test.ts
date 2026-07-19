@@ -379,6 +379,31 @@ Deno.test("FileSystemStateStore listRuns filters, sorts, and skips junk", async 
     ),
     ["r3"],
   );
+  // limit returns the newest N.
+  assertEquals((await store.listRuns({ limit: 2 })).map((s) => s.id), [
+    "r3",
+    "r2",
+  ]);
+  assertEquals((await store.listRuns({ limit: 0 })).length, 0);
+});
+
+Deno.test("FileSystemStateStore deleteRun removes a run; a missing run is a no-op", async () => {
+  const store = new FileSystemStateStore("/runs", new FakeStateHost());
+  await store.putRun(sampleRecord({ id: "r1" }), null);
+  assertEquals((await store.getRun("r1")) !== null, true);
+  await store.deleteRun("r1");
+  assertEquals(await store.getRun("r1"), null);
+  await store.deleteRun("r1"); // idempotent — no throw
+  await store.deleteRun("never-existed");
+});
+
+Deno.test("FileSystemStateStore deleteRun rejects an unsafe run id", async () => {
+  const store = new FileSystemStateStore("/runs", new FakeStateHost());
+  await assertRejects(
+    () => store.deleteRun("../escape"),
+    Error,
+    "unsafe run id",
+  );
 });
 
 Deno.test("FileSystemStateStore rejects an unsafe run id on read and write", async () => {
@@ -525,10 +550,12 @@ Deno.test("HttpStateStore.listRuns builds a query and validates the array", asyn
     status: "running",
     target: "deploy",
     since: "x",
+    limit: 5,
   });
   assertEquals(list.length, 1);
   assertStringIncludes(lastUrl, "status=running");
   assertStringIncludes(lastUrl, "target=deploy");
+  assertStringIncludes(lastUrl, "limit=5");
 
   const emptyQuery = new HttpStateStore({
     url: "https://s.example",
@@ -548,6 +575,34 @@ Deno.test("HttpStateStore.listRuns builds a query and validates the array", asyn
     fetch: fakeFetch(() => new Response(null, { status: 503 })),
   });
   await assertRejects(() => boom.listRuns({}), HttpError);
+});
+
+Deno.test("HttpStateStore.deleteRun sends DELETE; 404 is not an error, others throw", async () => {
+  let method = "";
+  let path = "";
+  const ok = new HttpStateStore({
+    url: "https://s.example",
+    fetch: fakeFetch((url, init) => {
+      method = init?.method ?? "GET";
+      path = url;
+      return new Response(null, { status: 204 });
+    }),
+  });
+  await ok.deleteRun("run-1");
+  assertEquals(method, "DELETE");
+  assertStringIncludes(path, "/runs/run-1");
+
+  const gone = new HttpStateStore({
+    url: "https://s.example",
+    fetch: fakeFetch(() => new Response(null, { status: 404 })),
+  });
+  await gone.deleteRun("missing"); // 404 → no throw
+
+  const boom = new HttpStateStore({
+    url: "https://s.example",
+    fetch: fakeFetch(() => new Response(null, { status: 500 })),
+  });
+  await assertRejects(() => boom.deleteRun("run-1"), HttpError);
 });
 
 // ---------------------------------------------------------------- resolve
@@ -685,6 +740,10 @@ class MemStore implements StateStore {
     this.record = structuredClone(record);
     this.version += 1;
     return Promise.resolve({ ok: true, version: String(this.version) });
+  }
+  deleteRun(): Promise<void> {
+    this.record = null;
+    return Promise.resolve();
   }
   // Locks are exercised against the real backends, not this run-only fake.
   acquireLock(): Promise<never> {

@@ -235,10 +235,17 @@ Deno.test("cancel_run cancels a suspended run, gated by the allow-list and audit
 });
 
 Deno.test("run tools query the store and return structured errors", async () => {
-  await withServer({ allowRun: true }, async (server) => {
+  await withServer({ allowRun: true }, async (server, store) => {
     const list = await call(server, "list_runs");
     assertEquals(list.isError, false);
     assertEquals(JSON.parse(list.text), []);
+
+    // list_runs honours a limit against the store.
+    await seedSuspended(store, "deploy");
+    await seedSuspended(store, "promote");
+    const limited = await call(server, "list_runs", { limit: 1 });
+    assertEquals(limited.isError, false);
+    assertEquals(JSON.parse(limited.text).length, 1);
 
     const missing = await call(server, "show_run", { runId: "nope" });
     assertEquals(missing.isError, true);

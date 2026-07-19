@@ -46,7 +46,7 @@ Reserved commands:
 - `completions` — Print a shell-completion script
 - `mcp` — Run an MCP server over the build (for AI agents)
 - `resume` — Resume a suspended run (or --check all suspended runs)
-- `runs` — List or show persisted run records
+- `runs` — List, show, or prune persisted run records
 - `cancel` — Cancel a run and run its compensations
 - `register` — Register this build in the build registry
 
@@ -71,6 +71,9 @@ Option flags:
 - `--status` — With runs list, keep only runs with this status
 - `--target` — With runs list, keep only runs whose graph has this target
 - `--since` — With runs list, keep only runs created at/after this time
+- `--limit` — With runs list, return at most this many runs (newest)
+- `--keep` — With runs prune, keep runs newer than this age (e.g. 90d)
+- `--keep-last` — With runs prune, always keep the newest N terminal runs
 - `--allow-run` — With mcp, let agents run targets (optional =<glob-list> allow-list)
 - `--protect` — With mcp, require an operator token to run these targets
 - `--confirm-destructive` — With mcp, require confirm:true before a destructive run
