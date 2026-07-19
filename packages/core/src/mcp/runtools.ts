@@ -58,7 +58,7 @@ const READ_TOOLS: readonly McpTool[] = [
   {
     name: "list_runs",
     description:
-      "List persisted runs (newest first). Optional filters: status, target, since (ISO-8601).",
+      "List persisted runs (newest first). Optional filters: status, target, since (ISO-8601), limit.",
     inputSchema: {
       type: "object",
       properties: {
@@ -73,6 +73,10 @@ const READ_TOOLS: readonly McpTool[] = [
         since: {
           type: "string",
           description: "Keep only runs created at/after this ISO-8601 time.",
+        },
+        limit: {
+          type: "integer",
+          description: "Return at most this many runs (the newest).",
         },
       },
     },
@@ -187,6 +191,17 @@ function stringArg(
   return typeof value === "string" ? value : undefined;
 }
 
+/** A positive-integer argument (a JSON number), or `undefined` when absent/invalid. */
+function positiveIntArg(
+  args: Record<string, unknown>,
+  key: string,
+): number | undefined {
+  const value = args[key];
+  return typeof value === "number" && Number.isInteger(value) && value > 0
+    ? value
+    : undefined;
+}
+
 /** Render a value as a pretty-printed JSON tool result. */
 function jsonResult(value: unknown, isError = false): RunToolResult {
   return { text: JSON.stringify(value, null, 2), isError };
@@ -252,6 +267,8 @@ async function listRuns(
   if (target !== undefined) query.target = target;
   const since = stringArg(args, "since");
   if (since !== undefined) query.since = since;
+  const limit = positiveIntArg(args, "limit");
+  if (limit !== undefined) query.limit = limit;
   return jsonResult(await deps.store.listRuns(query));
 }
 

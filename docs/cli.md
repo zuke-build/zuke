@@ -18,8 +18,9 @@
 | `zuke mcp [--allow-run[=<globs>]] [--http <host:port>]` | Run an MCP server over the build for AI agents, on stdio or HTTP ([details](./mcp.md)). |
 | `zuke resume <id> [--signal <n>] [--data <json>]`       | Resume a suspended run, optionally delivering a signal ([details](./orchestration.md)). |
 | `zuke resume --check [<id>]`                            | Re-check suspended runs (predicate waits, timeouts).                                    |
-| `zuke runs list [--status/-target/-since] [--json]`     | List persisted run records, newest first ([details](./state.md)).                       |
+| `zuke runs list [--status/-target/-since/-limit] [--json]` | List persisted run records, newest first ([details](./state.md)).                    |
 | `zuke runs show <id> [--json]`                          | Show one run's full per-target status and metadata.                                     |
+| `zuke runs prune [--keep <age>] [--keep-last <n>] [--dry-run]` | Delete old terminal run records; never touches non-terminal runs.                |
 | `zuke cancel <id> [--actor <name>]`                     | Cancel a run and run its compensations ([details](./orchestration.md#cancellation--compensation-oncancel)). |
 | `zuke --help` / `-h`                                    | Usage.                                                                                  |
 | `zuke` (no target)                                      | Run the `default` target if defined, else print `--list`.                               |
@@ -282,11 +283,18 @@ run's full status survives the process that produced it.
 - `zuke runs list` prints one row per run — id, status, root target, actor, and
   creation time — newest first. Narrow it with `--status <s>` (one of `running`,
   `suspended`, `cancelling`, `succeeded`, `failed`, `cancelled`), `--target <t>` (only runs
-  whose graph contains that target), and `--since <iso>` (only runs created at
-  or after an ISO-8601 timestamp). The filters compose.
+  whose graph contains that target), `--since <iso>` (only runs created at
+  or after an ISO-8601 timestamp), and `--limit <n>` (at most the newest N). The
+  filters compose.
 - `zuke runs show <run-id>` reconstructs one run in full: the header, resolved
   (non-secret) parameters, each target's status with its duration, error, or
   pending wait, and any external signals received.
+- `zuke runs prune` deletes old records. `--keep <age>` (e.g. `90d`) keeps runs
+  newer than that; `--keep-last <n>` always keeps the newest N; a run is deleted
+  only when it is **terminal** and matches neither. **Non-terminal** runs
+  (`suspended`, `running`, `cancelling`) are never pruned. At least one rule is
+  required, and `--dry-run` reports what would go without deleting. See
+  [retention](./state.md#retention) for who owns it on each backend.
 
 Both accept `--json` — `list` emits the summary array, `show` emits the whole
 record — for tools and agents. The store is resolved exactly as a run resolves

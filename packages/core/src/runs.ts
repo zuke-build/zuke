@@ -15,6 +15,7 @@ import { resolveStateStore } from "./state/resolve.ts";
 import type {
   RunQuery,
   RunRecord,
+  RunStatus,
   RunSummary,
   TargetRunState,
   TargetRunStatus,
@@ -23,14 +24,25 @@ import { formatDuration } from "./render.ts";
 
 /** Inputs for {@link runsCommand}. */
 export interface RunsOptions {
-  /** The sub-action: `list` (the default) or `show`. */
+  /** The sub-action: `list` (the default), `show`, or `prune`. */
   action?: string;
   /** The run id to show; required by the `show` sub-action. */
   runId?: string;
   /** Emit JSON (a summary array, or the whole record) instead of a human view. */
   json?: boolean;
-  /** Filters for `list` — status, a target in the run, a creation time. */
+  /** Filters for `list` — status, a target in the run, a creation time, a limit. */
   query?: RunQuery;
+  /**
+   * `prune`: keep runs created within this many milliseconds of now; older
+   * terminal runs become eligible. Omitted means no age rule.
+   */
+  keepMs?: number;
+  /** `prune`: always keep the newest N terminal runs, regardless of age. */
+  keepLast?: number;
+  /** `prune`: report what would be pruned without deleting (CLI `--dry-run`). */
+  dryRun?: boolean;
+  /** The wall clock for `prune`'s age cutoff (epoch ms); defaults to `Date.now`. */
+  now?: () => number;
   /**
    * Store override, resolved like a run (explicit → `stateStore()` → env →
    * `.zuke/runs`); `false` disables state. Tests inject a store here.
@@ -38,6 +50,54 @@ export interface RunsOptions {
   stateStore?: StateStore | false;
   /** Reads an environment variable (injectable for tests). */
   readEnv?: (name: string) => string | undefined;
+}
+
+/** The run statuses past which nothing more happens — the only prunable ones. */
+const TERMINAL_STATUSES: readonly RunStatus[] = [
+  "succeeded",
+  "failed",
+  "cancelled",
+];
+
+/** Whether a run has reached a terminal (prunable) status. */
+function isTerminalStatus(status: RunStatus): boolean {
+  return TERMINAL_STATUSES.includes(status);
+}
+
+/** Options for {@link selectRunsToPrune}. */
+export interface PruneRules {
+  /** Keep runs created within this many ms of `nowMs`; omitted means no age rule. */
+  keepMs?: number;
+  /** Always keep the newest N terminal runs; omitted means no count rule. */
+  keepLast?: number;
+}
+
+/**
+ * From `summaries` (newest first), pick the ids of runs to prune: a run is
+ * removed only if it is **terminal** and matches **neither** retention rule —
+ * it is beyond the newest `keepLast` and older than the `keepMs` window. A
+ * non-terminal run (suspended, running, cancelling) is never selected — a run
+ * waiting days for a human is the point of the system. With no rule given,
+ * every terminal run qualifies, so callers must supply at least one.
+ */
+export function selectRunsToPrune(
+  summaries: readonly RunSummary[],
+  rules: PruneRules,
+  nowMs: number,
+): string[] {
+  const cutoff = rules.keepMs === undefined ? undefined : nowMs - rules.keepMs;
+  const terminal = summaries.filter((s) => isTerminalStatus(s.status));
+  const toPrune: string[] = [];
+  terminal.forEach((s, index) => {
+    if (rules.keepLast !== undefined && index < rules.keepLast) return;
+    if (cutoff !== undefined) {
+      const created = Date.parse(s.createdAt);
+      // An unparseable timestamp is kept, never pruned (fail safe).
+      if (Number.isNaN(created) || created >= cutoff) return;
+    }
+    toPrune.push(s.id);
+  });
+  return toPrune;
 }
 
 /** Read an environment variable, treating missing env access as unset. */
@@ -110,8 +170,57 @@ export async function runsCommand(
     );
     return 0;
   }
-  console.error("Usage: zuke runs <list|show> [<run-id>]");
+  if (action === "prune") return await pruneRuns(store, options);
+  console.error("Usage: zuke runs <list|show|prune> [<run-id>]");
   return 1;
+}
+
+/**
+ * `zuke runs prune`: delete terminal runs that match neither retention rule,
+ * keeping non-terminal runs and everything within `--keep`/`--keep-last`. At
+ * least one rule is required, so an empty `prune` can't wipe the store. With
+ * `--dry-run`, reports what would be pruned without deleting.
+ */
+async function pruneRuns(
+  store: StateStore,
+  options: RunsOptions,
+): Promise<number> {
+  if (options.keepMs === undefined && options.keepLast === undefined) {
+    console.error(
+      "Usage: zuke runs prune [--keep <duration>] [--keep-last <n>]\n" +
+        "  Give at least one retention rule — prune never deletes everything by default.",
+    );
+    return 1;
+  }
+  const now = options.now ?? Date.now;
+  // List everything, newest first (no limit): pruning needs the full set to
+  // apply the newest-N and age rules across all runs.
+  const summaries = await store.listRuns({});
+  const ids = selectRunsToPrune(
+    summaries,
+    { keepMs: options.keepMs, keepLast: options.keepLast },
+    now(),
+  );
+  if (options.dryRun) {
+    console.log(
+      options.json
+        ? JSON.stringify({ wouldPrune: ids }, null, 2)
+        : `Would prune ${ids.length} run(s)${idList(ids)}.`,
+    );
+    return 0;
+  }
+  for (const id of ids) await store.deleteRun(id);
+  console.log(
+    options.json
+      ? JSON.stringify({ pruned: ids }, null, 2)
+      : `Pruned ${ids.length} run(s)${idList(ids)}.`,
+  );
+  return 0;
+}
+
+/** A short trailing ` (id, id, …)` list, or empty when nothing was selected. */
+function idList(ids: readonly string[]): string {
+  return ids.length === 0 ? "" : `: ${ids.join(", ")}`;
 }
 
 /** A single-glyph status marker, kept ASCII so it renders in any terminal/log. */

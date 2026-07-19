@@ -39,6 +39,7 @@ import { type HttpAddress, serveMcp } from "./mcp/command.ts";
 import { cancelRun } from "./cancel.ts";
 import { resumeCheck, resumeRun } from "./resume.ts";
 import { runsCommand } from "./runs.ts";
+import { parseDuration } from "./duration.ts";
 import { registerCommand } from "./registry/register.ts";
 import { isRunStatus, RUN_STATUS_NAMES, type RunQuery } from "./state/types.ts";
 import {
@@ -152,6 +153,12 @@ export interface ParsedArgs {
   runTarget?: string;
   /** With `runs list`, keep only runs created at/after this ISO-8601 time (`--since`). */
   since?: string;
+  /** With `runs list`, return at most this many runs (`--limit`). */
+  runLimit?: string;
+  /** With `runs prune`, keep runs newer than this age (`--keep`). */
+  keep?: string;
+  /** With `runs prune`, always keep the newest N terminal runs (`--keep-last`). */
+  keepLast?: string;
   /** The `cancel` command was requested (cancel a run and run its compensations). */
   cancel: boolean;
   /** The run id to cancel (the positional after `cancel`). */
@@ -267,6 +274,23 @@ export function parseArgs(
       if (value) parsed.since = value;
     } else if (arg.startsWith("--since=")) {
       parsed.since = arg.slice("--since=".length);
+    } else if (arg === "--limit") {
+      // Capture an explicit empty value (`--limit ""`) so it is validated and
+      // rejected, not silently dropped — only a missing token stays undefined.
+      const value = args[++i];
+      if (value !== undefined) parsed.runLimit = value;
+    } else if (arg.startsWith("--limit=")) {
+      parsed.runLimit = arg.slice("--limit=".length);
+    } else if (arg === "--keep") {
+      const value = args[++i];
+      if (value !== undefined) parsed.keep = value;
+    } else if (arg.startsWith("--keep=")) {
+      parsed.keep = arg.slice("--keep=".length);
+    } else if (arg === "--keep-last") {
+      const value = args[++i];
+      if (value !== undefined) parsed.keepLast = value;
+    } else if (arg.startsWith("--keep-last=")) {
+      parsed.keepLast = arg.slice("--keep-last=".length);
     } else if (arg === "--check") {
       parsed.check = true;
     } else if (arg === "--allow-run") {
@@ -380,8 +404,9 @@ Usage:
   deno run -A zuke.ts mcp [--allow-run] [--registry] [--http <host:port>]
   deno run -A zuke.ts resume <run-id> [--signal <name>] [--data <json>]
   deno run -A zuke.ts resume --check [<run-id>]
-  deno run -A zuke.ts runs list [--status <s>] [--target <t>] [--since <iso>] [--json]
+  deno run -A zuke.ts runs list [--status <s>] [--target <t>] [--since <iso>] [--limit <n>] [--json]
   deno run -A zuke.ts runs show <run-id> [--json]
+  deno run -A zuke.ts runs prune [--keep <age>] [--keep-last <n>] [--dry-run]
   deno run -A zuke.ts cancel <run-id> [--actor <name>]
   deno run -A zuke.ts register [--actor <name>] [--json]
 
@@ -477,6 +502,11 @@ Options:
                     target.
   --since <iso>     With runs list, keep only runs created at or after this
                     ISO-8601 timestamp.
+  --limit <n>       With runs list, return at most this many runs (the newest).
+  --keep <age>      With runs prune, keep runs newer than this age (e.g. 90d);
+                    older terminal runs become eligible for deletion.
+  --keep-last <n>   With runs prune, always keep the newest N terminal runs.
+                    Non-terminal runs (suspended, running) are never pruned.
   --<param> <val>   Set a declared build parameter (see Parameters below).
   --help, -h        Show this help.`;
 
@@ -814,11 +844,49 @@ async function runRuns(build: Build, parsed: ParsedArgs): Promise<number> {
   }
   if (parsed.runTarget !== undefined) query.target = parsed.runTarget;
   if (parsed.since !== undefined) query.since = parsed.since;
+  if (parsed.runLimit !== undefined) {
+    const limit = parsePositiveInt(parsed.runLimit);
+    if (limit === undefined) {
+      console.error(
+        `runs: --limit must be a positive integer (got "${parsed.runLimit}").`,
+      );
+      return 1;
+    }
+    query.limit = limit;
+  }
+
+  let keepMs: number | undefined;
+  if (parsed.keep !== undefined) {
+    try {
+      keepMs = parseDuration(parsed.keep);
+    } catch (error) {
+      console.error(
+        `runs: --keep is ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return 1;
+    }
+  }
+  let keepLast: number | undefined;
+  if (parsed.keepLast !== undefined) {
+    keepLast = parsePositiveInt(parsed.keepLast);
+    if (keepLast === undefined) {
+      console.error(
+        `runs: --keep-last must be a positive integer (got "${parsed.keepLast}").`,
+      );
+      return 1;
+    }
+  }
+
   return await runsCommand(build, {
     action: parsed.runsAction,
     runId: parsed.runsRunId,
     json: parsed.json,
     query,
+    keepMs,
+    keepLast,
+    dryRun: parsed.dryRun,
   });
 }
 

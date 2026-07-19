@@ -932,6 +932,8 @@ class FileSystemStateStore implements StateStore
     Publish `record` under an exclusive lock, guarding the expected version.
   async listRuns(query: RunQuery): Promise<RunSummary[]>
     List runs matching `query`, newest first. Unreadable files are skipped.
+  async deleteRun(id: string): Promise<void>
+    Delete a run's file (under its lock); a missing run is a no-op.
   async acquireLock(key: string, holder: LockHolder, ttlMs: number): Promise<LockResult>
     Atomically acquire the lock `key` for `holder`, taking over if expired.
   async renewLock(key: string, token: string, ttlMs: number): Promise<boolean>
@@ -1041,6 +1043,8 @@ class HttpStateStore implements StateStore
     `PUT /runs/:id` guarded by `If-Match` / `If-None-Match`; `412` → conflict.
   async listRuns(query: RunQuery): Promise<RunSummary[]>
     `GET /runs?status=&target=&since=` → an array of {@link RunSummary}.
+  async deleteRun(id: string): Promise<void>
+    `DELETE /runs/:id`; a missing run (`404`) is not an error.
   async acquireLock(key: string, holder: LockHolder, ttlMs: number): Promise<LockResult>
     `POST /locks/:key` → `201 { token }`, or `409` with the current holder.
   async renewLock(key: string, token: string, ttlMs: number): Promise<boolean>
@@ -2646,6 +2650,9 @@ interface RunQuery
     Keep only runs whose graph contains a target with this dotted name.
   since?: string
     Keep only runs created at or after this ISO-8601 timestamp.
+  limit?: number
+    Return at most this many runs (the newest, since listing is newest-first).
+    Applied server-side so a large store stays listable; `0` returns none.
 
 interface RunRecord
   A versioned snapshot of one run. Persisted as JSON; a store's opaque
@@ -2774,6 +2781,11 @@ interface StateStore
     the stored version has moved on — the caller re-reads and retries.
   listRuns(query: RunQuery): Promise<RunSummary[]>
     List runs matching `query`, newest first (by `createdAt`, then `id`).
+  deleteRun(id: string): Promise<void>
+    Delete a run permanently. A missing run is not an error (delete is
+    idempotent). Backs `zuke runs prune`; on the HTTP backend this maps to a
+    `DELETE /runs/:id` a server may leave unimplemented (retention there is the
+    server's job — see `docs/state-api.md`).
   acquireLock(key: string, holder: LockHolder, ttlMs: number): Promise<LockResult>
     Atomically acquire the lock `key` for `holder`, expiring after `ttlMs`. An
     expired lock is taken over. Returns a `token` on success, or the current

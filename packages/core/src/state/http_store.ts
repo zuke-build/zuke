@@ -141,6 +141,7 @@ export class HttpStateStore implements StateStore {
     if (query.status !== undefined) params.set("status", query.status);
     if (query.target !== undefined) params.set("target", query.target);
     if (query.since !== undefined) params.set("since", query.since);
+    if (query.limit !== undefined) params.set("limit", String(query.limit));
     const qs = params.toString();
     const url = `${this.#base}/runs${qs === "" ? "" : `?${qs}`}`;
     const response = await this.#request(url, { headers: this.#headers() });
@@ -153,6 +154,19 @@ export class HttpStateStore implements StateStore {
       throw new Error(`state: ${url} did not return a JSON array`);
     }
     return parsed.map(parseRunSummary);
+  }
+
+  /** `DELETE /runs/:id`; a missing run (`404`) is not an error. */
+  async deleteRun(id: string): Promise<void> {
+    const url = this.#runUrl(id);
+    const response = await this.#request(url, {
+      method: "DELETE",
+      headers: this.#headers(),
+    });
+    await response.body?.cancel();
+    if (!response.ok && response.status !== 404) {
+      throw new HttpError(response.status, url);
+    }
   }
 
   #lockUrl(key: string): string {

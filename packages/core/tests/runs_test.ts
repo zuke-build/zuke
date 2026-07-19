@@ -1,9 +1,14 @@
 import { assertEquals, assertStringIncludes } from "./_assert.ts";
 import { Build } from "../src/build.ts";
-import { formatRunDetail, formatRunList, runsCommand } from "../src/runs.ts";
+import {
+  formatRunDetail,
+  formatRunList,
+  runsCommand,
+  selectRunsToPrune,
+} from "../src/runs.ts";
 import { FileSystemStateStore } from "../src/state/fs_store.ts";
 import { defaultStateHost } from "../src/state/store.ts";
-import type { RunRecord } from "../src/state/types.ts";
+import type { RunRecord, RunStatus, RunSummary } from "../src/state/types.ts";
 
 /** A trivial build; `runsCommand` only reads `build.stateStore()` from it. */
 class B extends Build {}
@@ -282,6 +287,233 @@ Deno.test("runsCommand rejects an unknown sub-action", async () => {
       runsCommand(new B(), { action: "delete", stateStore: store })
     );
     assertEquals(code, 1);
-    assertStringIncludes(err, "Usage: zuke runs <list|show>");
+    assertStringIncludes(err, "Usage: zuke runs <list|show|prune>");
+  });
+});
+
+// --- M17: run-record retention ---
+
+const DAY = 86_400_000;
+const NOW = Date.parse("2026-07-19T00:00:00.000Z");
+
+/** A run summary at `agoDays` before {@link NOW}, with the given status. */
+function sum(id: string, status: RunStatus, agoDays: number): RunSummary {
+  return {
+    id,
+    build: "CI",
+    rootTarget: "deploy",
+    status,
+    actor: "alice",
+    createdAt: new Date(NOW - agoDays * DAY).toISOString(),
+    updatedAt: new Date(NOW - agoDays * DAY).toISOString(),
+  };
+}
+
+Deno.test("selectRunsToPrune keeps non-terminal runs and honours both rules", () => {
+  // Newest first: a suspended run, then four terminal runs of increasing age.
+  const summaries = [
+    sum("suspended", "suspended", 0), // non-terminal → never pruned
+    sum("t-1d", "succeeded", 1),
+    sum("t-10d", "failed", 10),
+    sum("t-40d", "cancelled", 40),
+    sum("t-50d", "succeeded", 50),
+  ];
+  // keepLast 2 protects the two newest terminal runs; keep 30d protects anything
+  // newer than 30 days. Only runs matching neither are pruned.
+  const ids = selectRunsToPrune(
+    summaries,
+    { keepMs: 30 * DAY, keepLast: 2 },
+    NOW,
+  );
+  assertEquals(ids, ["t-40d", "t-50d"]);
+});
+
+Deno.test("selectRunsToPrune with keep-last only keeps the newest N terminal", () => {
+  const summaries = [
+    sum("t-1d", "succeeded", 1),
+    sum("t-2d", "failed", 2),
+    sum("t-3d", "cancelled", 3),
+  ];
+  assertEquals(selectRunsToPrune(summaries, { keepLast: 1 }, NOW), [
+    "t-2d",
+    "t-3d",
+  ]);
+});
+
+Deno.test("selectRunsToPrune with keep only prunes terminal runs past the window", () => {
+  const summaries = [
+    sum("suspended-old", "suspended", 100), // non-terminal, old → still kept
+    sum("t-5d", "succeeded", 5),
+    sum("t-40d", "failed", 40),
+  ];
+  assertEquals(selectRunsToPrune(summaries, { keepMs: 30 * DAY }, NOW), [
+    "t-40d",
+  ]);
+});
+
+Deno.test("selectRunsToPrune keeps a run with an unparseable timestamp", () => {
+  const bad = sum("t-bad", "succeeded", 0);
+  bad.createdAt = "not-a-date";
+  assertEquals(selectRunsToPrune([bad], { keepMs: DAY }, NOW), []);
+});
+
+Deno.test("runs prune deletes old terminal runs, keeps recent and non-terminal", async () => {
+  await withStore(async (store) => {
+    const iso = (agoDays: number) =>
+      new Date(NOW - agoDays * DAY).toISOString();
+    await store.putRun(
+      sampleRecord({ id: "keep-new", status: "succeeded", createdAt: iso(1) }),
+      null,
+    );
+    await store.putRun(
+      sampleRecord({ id: "prune-old", status: "failed", createdAt: iso(100) }),
+      null,
+    );
+    await store.putRun(
+      sampleRecord({
+        id: "keep-suspended",
+        status: "suspended",
+        createdAt: iso(200),
+      }),
+      null,
+    );
+
+    const { code, out } = await capture(() =>
+      runsCommand(new B(), {
+        action: "prune",
+        keepMs: 30 * DAY,
+        stateStore: store,
+        now: () => NOW,
+      })
+    );
+    assertEquals(code, 0);
+    assertStringIncludes(out, "Pruned 1 run");
+    assertEquals(await store.getRun("prune-old"), null); // deleted
+    assertEquals((await store.getRun("keep-new")) !== null, true);
+    assertEquals((await store.getRun("keep-suspended")) !== null, true);
+  });
+});
+
+Deno.test("runs prune requires at least one retention rule", async () => {
+  await withStore(async (store) => {
+    await store.putRun(sampleRecord({ id: "r1" }), null);
+    const { code, err } = await capture(() =>
+      runsCommand(new B(), { action: "prune", stateStore: store })
+    );
+    assertEquals(code, 1);
+    assertStringIncludes(err, "at least one retention rule");
+    assertEquals((await store.getRun("r1")) !== null, true); // untouched
+  });
+});
+
+Deno.test("runs prune --dry-run reports without deleting", async () => {
+  await withStore(async (store) => {
+    await store.putRun(
+      sampleRecord({
+        id: "old",
+        status: "succeeded",
+        createdAt: "2020-01-01T00:00:00.000Z",
+      }),
+      null,
+    );
+    const { code, out } = await capture(() =>
+      runsCommand(new B(), {
+        action: "prune",
+        keepMs: DAY,
+        stateStore: store,
+        now: () => NOW,
+        dryRun: true,
+      })
+    );
+    assertEquals(code, 0);
+    assertStringIncludes(out, "Would prune 1 run");
+    assertStringIncludes(out, "old");
+    assertEquals((await store.getRun("old")) !== null, true); // not deleted
+  });
+});
+
+Deno.test("runs prune --json emits the pruned and would-prune ids", async () => {
+  await withStore(async (store) => {
+    await store.putRun(
+      sampleRecord({
+        id: "old",
+        status: "succeeded",
+        createdAt: "2020-01-01T00:00:00.000Z",
+      }),
+      null,
+    );
+    const dry = await capture(() =>
+      runsCommand(new B(), {
+        action: "prune",
+        keepMs: DAY,
+        stateStore: store,
+        now: () => NOW,
+        dryRun: true,
+        json: true,
+      })
+    );
+    assertEquals(dry.code, 0);
+    assertEquals(JSON.parse(dry.out).wouldPrune, ["old"]);
+    assertEquals((await store.getRun("old")) !== null, true); // dry-run kept it
+
+    const del = await capture(() =>
+      runsCommand(new B(), {
+        action: "prune",
+        keepMs: DAY,
+        stateStore: store,
+        now: () => NOW,
+        json: true,
+      })
+    );
+    assertEquals(JSON.parse(del.out).pruned, ["old"]);
+  });
+});
+
+Deno.test("runs prune reports zero when nothing matches", async () => {
+  await withStore(async (store) => {
+    await store.putRun(
+      sampleRecord({
+        id: "recent",
+        status: "succeeded",
+        createdAt: new Date(NOW).toISOString(),
+      }),
+      null,
+    );
+    const { code, out } = await capture(() =>
+      runsCommand(new B(), {
+        action: "prune",
+        keepMs: 365 * DAY,
+        stateStore: store,
+        now: () => NOW,
+      })
+    );
+    assertEquals(code, 0);
+    assertStringIncludes(out, "Pruned 0 run");
+    assertEquals((await store.getRun("recent")) !== null, true);
+  });
+});
+
+Deno.test("runs list honours --limit via the query", async () => {
+  await withStore(async (store) => {
+    for (let i = 0; i < 3; i++) {
+      await store.putRun(
+        sampleRecord({
+          id: `r${i}`,
+          createdAt: new Date(NOW - i * DAY).toISOString(),
+        }),
+        null,
+      );
+    }
+    const { code, out } = await capture(() =>
+      runsCommand(new B(), {
+        action: "list",
+        json: true,
+        query: { limit: 2 },
+        stateStore: store,
+      })
+    );
+    assertEquals(code, 0);
+    const rows: RunSummary[] = JSON.parse(out);
+    assertEquals(rows.length, 2);
   });
 });

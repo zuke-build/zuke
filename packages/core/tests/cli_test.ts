@@ -240,24 +240,61 @@ Deno.test("parseArgs reads the runs command, sub-action, id, and filters", () =>
     "deploy",
     "--since",
     "2026-01-01",
+    "--limit",
+    "5",
   ]);
   assertEquals(
-    [list.runs, list.runsAction, list.runStatus, list.runTarget, list.since],
-    [true, "list", "failed", "deploy", "2026-01-01"],
+    [
+      list.runs,
+      list.runsAction,
+      list.runStatus,
+      list.runTarget,
+      list.since,
+      list.runLimit,
+    ],
+    [true, "list", "failed", "deploy", "2026-01-01", "5"],
   );
 
   const show = parseArgs(["runs", "show", "run-9"]);
   assertEquals([show.runsAction, show.runsRunId], ["show", "run-9"]);
 
-  // Inline `=` forms of the filters.
+  // prune flags, space form.
+  const prune = parseArgs([
+    "runs",
+    "prune",
+    "--keep",
+    "90d",
+    "--keep-last",
+    "50",
+  ]);
+  assertEquals([prune.runsAction, prune.keep, prune.keepLast], [
+    "prune",
+    "90d",
+    "50",
+  ]);
+
+  // Inline `=` forms of the filters and prune flags.
   const eq = parseArgs([
     "runs",
     "list",
     "--status=succeeded",
     "--target=t",
     "--since=x",
+    "--limit=3",
   ]);
-  assertEquals([eq.runStatus, eq.runTarget, eq.since], ["succeeded", "t", "x"]);
+  assertEquals([eq.runStatus, eq.runTarget, eq.since, eq.runLimit], [
+    "succeeded",
+    "t",
+    "x",
+    "3",
+  ]);
+  const eqPrune = parseArgs(["runs", "prune", "--keep=30d", "--keep-last=10"]);
+  assertEquals([eqPrune.keep, eqPrune.keepLast], ["30d", "10"]);
+
+  // An explicit empty value (e.g. `--keep "$UNSET"`) is captured, not dropped,
+  // so it is validated and rejected rather than silently weakening prune.
+  const empty = parseArgs(["runs", "prune", "--keep", "", "--keep-last", "5"]);
+  assertEquals([empty.keep, empty.keepLast], ["", "5"]);
 });
 
 Deno.test("main: runs list reads persisted runs; --json emits run data", async () => {
@@ -299,6 +336,63 @@ Deno.test("main: runs list rejects an unknown --status", async () => {
   );
   assertEquals(code, 1);
   assertStringIncludes(err.join("\n"), 'unknown --status "bogus"');
+});
+
+Deno.test("main: runs prune validates --limit, --keep, and --keep-last", async () => {
+  const badLimit = await capture(() =>
+    main(Demo, ["runs", "list", "--limit", "nope"])
+  );
+  assertEquals(badLimit.code, 1);
+  assertStringIncludes(badLimit.err.join("\n"), "--limit must be a positive");
+
+  const badKeep = await capture(() =>
+    main(Demo, ["runs", "prune", "--keep", "banana"])
+  );
+  assertEquals(badKeep.code, 1);
+  assertStringIncludes(badKeep.err.join("\n"), "--keep");
+
+  const badKeepLast = await capture(() =>
+    main(Demo, ["runs", "prune", "--keep-last", "-1"])
+  );
+  assertEquals(badKeepLast.code, 1);
+  assertStringIncludes(badKeepLast.err.join("\n"), "--keep-last must be");
+
+  // An empty --keep (an unset CI variable) errors rather than silently pruning
+  // with only the other rule — it must not be treated as "no age window".
+  const emptyKeep = await capture(() =>
+    main(Demo, ["runs", "prune", "--keep", "", "--keep-last", "5"])
+  );
+  assertEquals(emptyKeep.code, 1);
+  assertStringIncludes(emptyKeep.err.join("\n"), "--keep");
+});
+
+Deno.test("main: runs prune deletes eligible runs through the CLI", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const store = new FileSystemStateStore(dir, defaultStateHost);
+    await store.putRun(
+      sampleRunRecord({
+        id: "old",
+        status: "succeeded",
+        createdAt: "2020-01-01T00:00:00.000Z",
+      }),
+      null,
+    );
+    class Stateful extends Build {
+      override stateStore() {
+        return store;
+      }
+      build = target().executes(() => {});
+    }
+    const ok = await capture(() =>
+      main(Stateful, ["runs", "prune", "--keep", "1d"])
+    );
+    assertEquals(ok.code, 0);
+    assertStringIncludes(ok.out.join("\n"), "Pruned 1 run");
+    assertEquals(await store.getRun("old"), null);
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
 });
 
 Deno.test("parseArgs reads the mcp --http address", () => {

@@ -208,7 +208,34 @@ for (const summary of await store.listRuns({ status: "failed" })) {
 }
 ```
 
-`listRuns` filters by `status`, `target`, and `since`, newest first.
+`listRuns` filters by `status`, `target`, and `since`, newest first, and takes a
+`limit` (the newest N) so a large store stays listable.
+
+## Retention
+
+Records accumulate, so old ones can be pruned:
+
+```sh
+# Delete terminal runs older than 90 days, but always keep the newest 50.
+zuke runs prune --keep 90d --keep-last 50
+
+# Preview what would go, without deleting.
+zuke runs prune --keep 30d --dry-run
+```
+
+A run is removed only when it is **terminal** (`succeeded`, `failed`,
+`cancelled`) **and** matches neither rule — it is both older than `--keep` and
+beyond the newest `--keep-last`. A **non-terminal** run (`suspended`, `running`,
+`cancelling`) is **never** pruned: a run suspended for days awaiting a human is
+the point of the system. At least one of `--keep` / `--keep-last` is required, so
+an accidental bare `prune` never wipes the store.
+
+Who owns retention depends on the backend. The **filesystem** store is
+dev-grade and single-host, so it owns its pruning through this CLI. For the
+**HTTP** backend, retention is the **server's** job (a TTL or scheduled sweep) —
+`GET /runs` takes a `limit` so large stores stay listable, and `DELETE /runs/:id`
+(which `prune` drives) is an optional endpoint a hosted store implements only if
+it wants the CLI to prune it too. See [the state HTTP API](./state-api.md#notes-for-implementers).
 
 ## API stability
 

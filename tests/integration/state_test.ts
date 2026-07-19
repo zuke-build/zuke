@@ -12,6 +12,7 @@ import {
 import {
   Build,
   defaultStateHost,
+  externalSignal,
   FileSystemStateStore,
   target,
 } from "../../packages/core/mod.ts";
@@ -62,6 +63,53 @@ Deno.test("a failing run is persisted as a failed record", async () => {
       assertEquals(got.record.status, "failed");
       assertEquals(got.record.targets["boom"].status, "failed");
     }
+  });
+});
+
+Deno.test("zuke runs prune keeps non-terminal runs and the newest terminal, honouring --limit", async () => {
+  await withStateDir(async (dir) => {
+    class Ok extends Build {
+      go = target().executes(() => {});
+    }
+    class Gated extends Build {
+      gate = target().waitsFor((s) => s.on(externalSignal("approve")));
+    }
+    // Two terminal (succeeded) runs and one suspended run.
+    await runCli(Ok, ["go"]);
+    await runCli(Ok, ["go"]);
+    const gated = await runCli(Gated, ["gate"]);
+    assertEquals(gated.code, 0); // suspends and exits 0
+
+    const store = storeAt(dir);
+    assertEquals((await store.listRuns({})).length, 3);
+    const suspended = (await store.listRuns({ status: "suspended" }))[0];
+
+    // --limit caps the listing at the newest run.
+    const listed = await runCli(Ok, ["runs", "list", "--limit", "1", "--json"]);
+    assertEquals(listed.code, 0);
+    assertEquals(JSON.parse(listed.out).length, 1);
+
+    // Keep only the newest terminal run; the suspended one is never counted.
+    const pruned = await runCli(Ok, ["runs", "prune", "--keep-last", "1"]);
+    assertEquals(pruned.code, 0);
+    assertStringIncludes(pruned.out, "Pruned 1 run");
+
+    // One terminal run pruned; the suspended run survives.
+    assertEquals((await store.listRuns({})).length, 2);
+    assertEquals((await store.getRun(suspended.id)) !== null, true);
+  });
+});
+
+Deno.test("zuke runs prune with no retention rule refuses to delete", async () => {
+  await withStateDir(async (dir) => {
+    class Ok extends Build {
+      go = target().executes(() => {});
+    }
+    await runCli(Ok, ["go"]);
+    const refused = await runCli(Ok, ["runs", "prune"]);
+    assertEquals(refused.code, 1);
+    assertStringIncludes(refused.err, "at least one retention rule");
+    assertEquals((await storeAt(dir).listRuns({})).length, 1); // untouched
   });
 });
 

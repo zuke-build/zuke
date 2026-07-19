@@ -177,7 +177,7 @@ const STATE_SCENARIOS: StateScenario[] = [
     },
   },
   {
-    name: "listRuns filters by target and status, newest first",
+    name: "listRuns filters by target, status, since, and limit, newest first",
     async run(store) {
       // A unique graph target isolates this run set on a shared backend.
       const target = uniqueId("t");
@@ -228,6 +228,16 @@ const STATE_SCENARIOS: StateScenario[] = [
       expect(
         since.length === 2,
         `since filter should return the 2 at/after the cutoff, got ${since.length}`,
+      );
+      const limited = await store.listRuns({ target, limit: 2 });
+      expect(
+        limited.length === 2,
+        `limit should cap the result at 2, got ${limited.length}`,
+      );
+      expect(
+        limited.map((r) => r.createdAt).join(",") ===
+          all.slice(0, 2).map((r) => r.createdAt).join(","),
+        "limit should keep the newest runs, in newest-first order",
       );
     },
   },

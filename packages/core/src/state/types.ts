@@ -170,6 +170,11 @@ export interface RunQuery {
   target?: string;
   /** Keep only runs created at or after this ISO-8601 timestamp. */
   since?: string;
+  /**
+   * Return at most this many runs (the newest, since listing is newest-first).
+   * Applied server-side so a large store stays listable; `0` returns none.
+   */
+  limit?: number;
 }
 
 /** The projection of a {@link RunRecord} down to its {@link RunSummary}. */

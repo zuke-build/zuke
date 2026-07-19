@@ -62,7 +62,7 @@ export const RESERVED_COMMANDS: readonly ReservedCommand[] = [
   },
   {
     name: RUNS_COMMAND,
-    description: "List or show persisted run records",
+    description: "List, show, or prune persisted run records",
   },
   {
     name: CANCEL_COMMAND,
@@ -142,6 +142,18 @@ export const BUILTIN_FLAGS: readonly BuiltinFlag[] = [
   {
     name: "--since",
     description: "With runs list, keep only runs created at/after this time",
+  },
+  {
+    name: "--limit",
+    description: "With runs list, return at most this many runs (newest)",
+  },
+  {
+    name: "--keep",
+    description: "With runs prune, keep runs newer than this age (e.g. 90d)",
+  },
+  {
+    name: "--keep-last",
+    description: "With runs prune, always keep the newest N terminal runs",
   },
   {
     name: "--allow-run",

@@ -70,6 +70,9 @@ class NoCasStore implements StateStore {
   listRuns(): Promise<RunSummary[]> {
     return Promise.resolve([]);
   }
+  deleteRun(): Promise<void> {
+    return Promise.resolve();
+  }
   acquireLock(): Promise<LockResult> {
     return Promise.resolve({ ok: true, token: "t" }); // never contends
   }
