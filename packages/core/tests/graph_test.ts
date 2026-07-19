@@ -1,10 +1,11 @@
 import { assertEquals, assertThrows } from "./_assert.ts";
-import { Build, discoverTargets } from "../src/build.ts";
-import { target } from "../src/target.ts";
+import { Build, discoverTargets, resolveOrderingEdges } from "../src/build.ts";
+import { target, type TargetBuilder } from "../src/target.ts";
 import {
   executionSet,
   findCycle,
   GraphError,
+  type OrderingEdge,
   plan,
   planGraph,
   validateGraph,
@@ -277,4 +278,38 @@ Deno.test("an extra edge that forms a cycle is reported", () => {
 Deno.test("Build.extraEdges defaults to no edges", () => {
   class B extends Build {}
   assertEquals(new B().extraEdges(new Map()), []);
+});
+
+Deno.test("Build.orderWith defaults to no edges", async () => {
+  class B extends Build {}
+  assertEquals(await new B().orderWith(new Map()), []);
+});
+
+Deno.test("resolveOrderingEdges merges extraEdges with an async orderWith", async () => {
+  class B extends Build {
+    a = target().executes(() => {});
+    b = target().executes(() => {});
+    c = target().executes(() => {});
+    all = target().dependsOn(this.a, this.b, this.c).executes(() => {});
+    override extraEdges(t: Map<string, TargetBuilder>): OrderingEdge[] {
+      const a = t.get("a"), b = t.get("b");
+      return a && b ? [[a, b]] : [];
+    }
+    override async orderWith(
+      t: Map<string, TargetBuilder>,
+    ): Promise<OrderingEdge[]> {
+      await Promise.resolve(); // a genuinely async provider (e.g. a fetch)
+      const b = t.get("b"), c = t.get("c");
+      return b && c ? [[b, c]] : [];
+    }
+  }
+  const build = new B();
+  const targets = discoverTargets(build);
+  const edges = await resolveOrderingEdges(build, targets);
+  // One edge from extraEdges (a→b) and one from orderWith (b→c).
+  assertEquals(edges.length, 2);
+  const order = planGraph(build.all, edges).order.map((t) => t.name_);
+  // The merged edges chain a → b → c within the run's execution set.
+  assertEquals(order.indexOf("a") < order.indexOf("b"), true);
+  assertEquals(order.indexOf("b") < order.indexOf("c"), true);
 });

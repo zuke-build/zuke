@@ -198,6 +198,37 @@ export class Build {
   }
 
   /**
+   * A **lazy, per-run** provider of soft ordering edges, merged with
+   * {@link extraEdges}. Unlike `extraEdges` — synchronous, evaluated at
+   * construction — this may be `async` and is evaluated when a run **plans**, so
+   * it can read an external source (a monorepo's `dependency-graph.json`, an
+   * API) to decide ordering at run time. The consumer keeps ownership of that
+   * graph; Zuke only binds it in. Return `[before, after]` edges over the run's
+   * targets; an edge whose endpoints are not both in the execution set is
+   * ignored, and cycles are reported with the usual friendly error.
+   *
+   * Like `extraEdges`, these are **execution-ordering** edges only: they are
+   * honoured by a run and by `zuke cancel` (the compensation order), but not by
+   * the static `graph`/`--list` views (which never run the provider) nor by
+   * `cicd()`-generated CI (whose `needs:` mirrors hard `dependsOn`).
+   *
+   * ```ts
+   * override async orderWith(t: Map<string, Target>): Promise<OrderingEdge[]> {
+   *   const graph = await loadDependencyGraph(); // e.g. dependency-graph.json
+   *   return graph.edges.flatMap(([before, after]) => {
+   *     const from = t.get(before), to = t.get(after);
+   *     return from && to ? [[from, to] as OrderingEdge] : [];
+   *   });
+   * }
+   * ```
+   */
+  orderWith(
+    _targets: Map<string, TargetBuilder>,
+  ): OrderingEdge[] | Promise<OrderingEdge[]> {
+    return [];
+  }
+
+  /**
    * The {@link "./registry/registry.ts".BuildRegistry} this build registers
    * itself in (`zuke register`) and that a registry-backed `zuke mcp` server
    * discovers pipelines from. Override to declare one in code; the default is
@@ -272,6 +303,22 @@ export function discoverTargets(build: Build): Map<string, TargetBuilder> {
     }
   });
   return targets;
+}
+
+/**
+ * Resolve a run's full set of soft ordering edges: the synchronous
+ * {@link Build.extraEdges} plus the lazy {@link Build.orderWith} provider,
+ * evaluated once when the run plans. `orderWith` may be `async` (it can read an
+ * external dependency graph), so this is awaited — which is why the merged edges
+ * are honoured by a run and by `zuke cancel`, but not by the static
+ * `graph`/`--list` views, which never resolve them.
+ */
+export async function resolveOrderingEdges(
+  build: Build,
+  targets: Map<string, TargetBuilder>,
+): Promise<OrderingEdge[]> {
+  const lazy = await build.orderWith(targets);
+  return [...build.extraEdges(targets), ...lazy];
 }
 
 /**

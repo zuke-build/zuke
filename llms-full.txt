@@ -716,6 +716,30 @@ class Build
       }
     }
     ```
+  orderWith(_targets: Map<string, TargetBuilder>): OrderingEdge[] | Promise<OrderingEdge[]>
+    A lazy, per-run provider of soft ordering edges, merged with
+    {@link extraEdges}. Unlike `extraEdges` — synchronous, evaluated at
+    construction — this may be `async` and is evaluated when a run plans, so
+    it can read an external source (a monorepo's `dependency-graph.json`, an
+    API) to decide ordering at run time. The consumer keeps ownership of that
+    graph; Zuke only binds it in. Return `[before, after]` edges over the run's
+    targets; an edge whose endpoints are not both in the execution set is
+    ignored, and cycles are reported with the usual friendly error.
+
+    Like `extraEdges`, these are execution-ordering edges only: they are
+    honoured by a run and by `zuke cancel` (the compensation order), but not by
+    the static `graph`/`--list` views (which never run the provider) nor by
+    `cicd()`-generated CI (whose `needs:` mirrors hard `dependsOn`).
+
+    ```ts
+    override async orderWith(t: Map<string, Target>): Promise<OrderingEdge[]> {
+      const graph = await loadDependencyGraph(); // e.g. dependency-graph.json
+      return graph.edges.flatMap(([before, after]) => {
+        const from = t.get(before), to = t.get(after);
+        return from && to ? [[from, to] as OrderingEdge] : [];
+      });
+    }
+    ```
   registry(): BuildRegistry | undefined
     The {@link "./registry/registry.ts".BuildRegistry} this build registers
     itself in (`zuke register`) and that a registry-backed `zuke mcp` server

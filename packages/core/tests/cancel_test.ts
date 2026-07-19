@@ -9,6 +9,7 @@ import {
   runCompensations,
 } from "../src/cancel.ts";
 import { resumeRun } from "../src/resume.ts";
+import type { OrderingEdge } from "../src/graph.ts";
 import { FileSystemStateStore } from "../src/state/fs_store.ts";
 import { defaultStateHost, type StateStore } from "../src/state/store.ts";
 import type { RunRecord } from "../src/state/types.ts";
@@ -1009,6 +1010,47 @@ Deno.test("a fan-out parent's own onCancel runs after its item compensations", a
   });
   // Items unwind first (reverse), then the batch-level compensation.
   assertEquals(seq, ["item:b", "item:a", "parent"]);
+});
+
+Deno.test("cancel degrades to base order when orderWith fails, still compensating", async () => {
+  await withTempStore(async (store) => {
+    const undone: string[] = [];
+    // The ordering provider is reachable at run time, but not at cancel time
+    // (a fresh `zuke cancel` process can't reach the dependency-graph service).
+    let failOrder = false;
+    const makeBuild = () => {
+      class CD extends Build {
+        deploy = target().executes(() => {}).onCancel(() => this.rollback);
+        rollback = target().executes(() => void undone.push("deploy"));
+        gate = target()
+          .dependsOn(this.deploy)
+          .waitsFor((s) => s.on(externalSignal("x")));
+        override orderWith(): Promise<OrderingEdge[]> {
+          return failOrder
+            ? Promise.reject(new Error("graph service down"))
+            : Promise.resolve([]);
+        }
+      }
+      const build = new CD();
+      discoverTargets(build);
+      return build;
+    };
+    const a = makeBuild();
+    await execute(a, a.gate, { silent: true, stateStore: store });
+    const id = (await store.listRuns({}))[0].id;
+
+    failOrder = true; // the provider now rejects
+    const result = await cancelRun(makeBuild(), {
+      runId: id,
+      stateStore: store,
+      silent: true,
+    });
+    // The run still settles cancelled with its compensation run — never stranded
+    // `cancelling` with rollbacks lost.
+    assertEquals(result.status, "cancelled");
+    assertEquals(undone, ["deploy"]);
+    assertEquals((await store.getRun(id))?.record.status, "cancelled");
+  });
 });
 
 /** Force a run to `cancelling`, retrying the CAS until it lands. */
