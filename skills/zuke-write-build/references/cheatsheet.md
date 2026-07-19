@@ -174,7 +174,7 @@ class CD extends Build {
   mismatch.
 - The run record holds status, the graph shape, resolved **non-secret**
   parameters, and per-target status/timing/metadata. Inspect it from the CLI
-  with `zuke runs list [--status <s>] [--target <t>] [--since <iso>] [--limit <n>]`
+  with `zuke runs list [--status <s>] [--target <t>] [--since <iso>] [--limit <n>] [--counts]`
   (newest first) and `zuke runs show <id>` (`--json` on both), or programmatically
   with `store.listRuns({ status?, target?, since?, limit? })` and `store.getRun(id)`.
 - **Retention:** `zuke runs prune --keep <age> --keep-last <n>` deletes only
@@ -592,7 +592,7 @@ else a friendly error.
 ./zuke <target> --no-cache    # ignore the incremental cache
 ./zuke <target> --state       # persist run state to .zuke/runs (durable state)
 ./zuke <target> --actor <who> # attribute the run in its state record
-./zuke runs list [--status s] # list persisted runs (also --target, --since, --limit, --json)
+./zuke runs list [--status s] # list persisted runs (also --target, --since, --limit, --counts, --json)
 ./zuke runs show <id>         # one run's full per-target status (+ --json)
 ./zuke runs prune --keep 90d --keep-last 50  # delete old terminal runs (--dry-run to preview)
 ./zuke resume <id> --signal <name> [--data <json>]  # continue a suspended run

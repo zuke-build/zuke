@@ -148,6 +148,10 @@ export const BUILTIN_FLAGS: readonly BuiltinFlag[] = [
     description: "With runs list, return at most this many runs (newest)",
   },
   {
+    name: "--counts",
+    description: "With runs list, print aggregate counts (total + per status)",
+  },
+  {
     name: "--keep",
     description: "With runs prune, keep runs newer than this age (e.g. 90d)",
   },

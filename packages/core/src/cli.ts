@@ -155,6 +155,8 @@ export interface ParsedArgs {
   since?: string;
   /** With `runs list`, return at most this many runs (`--limit`). */
   runLimit?: string;
+  /** With `runs list`, report aggregate counts instead of rows (`--counts`). */
+  runCounts?: boolean;
   /** With `runs prune`, keep runs newer than this age (`--keep`). */
   keep?: string;
   /** With `runs prune`, always keep the newest N terminal runs (`--keep-last`). */
@@ -274,6 +276,8 @@ export function parseArgs(
       if (value) parsed.since = value;
     } else if (arg.startsWith("--since=")) {
       parsed.since = arg.slice("--since=".length);
+    } else if (arg === "--counts") {
+      parsed.runCounts = true;
     } else if (arg === "--limit") {
       // Capture an explicit empty value (`--limit ""`) so it is validated and
       // rejected, not silently dropped — only a missing token stays undefined.
@@ -404,7 +408,7 @@ Usage:
   deno run -A zuke.ts mcp [--allow-run] [--registry] [--http <host:port>]
   deno run -A zuke.ts resume <run-id> [--signal <name>] [--data <json>]
   deno run -A zuke.ts resume --check [<run-id>]
-  deno run -A zuke.ts runs list [--status <s>] [--target <t>] [--since <iso>] [--limit <n>] [--json]
+  deno run -A zuke.ts runs list [--status <s>] [--target <t>] [--since <iso>] [--limit <n>] [--counts] [--json]
   deno run -A zuke.ts runs show <run-id> [--json]
   deno run -A zuke.ts runs prune [--keep <age>] [--keep-last <n>] [--dry-run]
   deno run -A zuke.ts cancel <run-id> [--actor <name>]
@@ -503,6 +507,7 @@ Options:
   --since <iso>     With runs list, keep only runs created at or after this
                     ISO-8601 timestamp.
   --limit <n>       With runs list, return at most this many runs (the newest).
+  --counts          With runs list, print aggregate counts (total + per status).
   --keep <age>      With runs prune, keep runs newer than this age (e.g. 90d);
                     older terminal runs become eligible for deletion.
   --keep-last <n>   With runs prune, always keep the newest N terminal runs.
@@ -883,6 +888,7 @@ async function runRuns(build: Build, parsed: ParsedArgs): Promise<number> {
     action: parsed.runsAction,
     runId: parsed.runsRunId,
     json: parsed.json,
+    counts: parsed.runCounts,
     query,
     keepMs,
     keepLast,

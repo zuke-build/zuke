@@ -188,6 +188,9 @@ zuke runs list
 # Just the failed ones touching a given target, since a cutoff.
 zuke runs list --status failed --target deploy --since 2026-07-01
 
+# Aggregate counts instead of rows (total + per status); honours the filters.
+zuke runs list --counts          # add --json for { total, byStatus }
+
 # One run in full: header, parameters, per-target status, and signals.
 zuke runs show 6f1c…             # add --json to emit the raw record
 ```

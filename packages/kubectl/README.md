@@ -48,6 +48,12 @@ await KubectlTasks.rollout((s) =>
 ```
 @module
 
+function parseNamespaces(json: string): KubernetesNamespace[]
+  Parse the JSON text of `kubectl get namespaces -o json` — a `List`, or a
+  single namespace object — into {@link KubernetesNamespace} records. Items
+  without a `metadata.name` are skipped; empty input yields `[]`. Throws if the
+  text is non-empty and not valid JSON.
+
 const KubectlTasks: KubectlTasksApi
   Typed task functions for the `kubectl` CLI.
 
@@ -163,8 +169,8 @@ class KubectlGetSettings extends KubectlSettings
     Restrict by field selector (`--field-selector`).
   allNamespaces(): this
     List across all namespaces (`-A`).
-  watch(): this
-    Watch for changes instead of returning once (`-w`).
+  watch(on: boolean): this
+    Watch for changes instead of returning once (`-w`); pass `false` to disable.
   showLabels(): this
     Include resource labels as columns (`--show-labels`).
   override protected buildArgs(): string[]
@@ -325,6 +331,10 @@ interface KubectlTasksApi
     Delete resources: `kubectl delete`.
   get(configure?: Configure<KubectlGetSettings>): Promise<CommandOutput>
     List resources: `kubectl get`.
+  getNamespaces(configure?: Configure<KubectlGetSettings>): Promise<KubernetesNamespace[]>
+    List namespaces as typed {@link KubernetesNamespace} records: runs
+    `kubectl get namespaces -o json` (forcing JSON output, quietly) and parses
+    the result. Use the lambda for cluster flags or a label `.selector(...)`.
   describe(configure?: Configure<KubectlDescribeSettings>): Promise<CommandOutput>
     Describe resources: `kubectl describe`.
   logs(configure?: Configure<KubectlLogsSettings>): Promise<CommandOutput>
@@ -349,6 +359,20 @@ interface KubectlTasksApi
     Wait for a condition: `kubectl wait`.
   top(configure?: Configure<KubectlTopSettings>): Promise<CommandOutput>
     Show resource usage: `kubectl top`.
+
+interface KubernetesNamespace
+  A Kubernetes namespace, parsed from `kubectl get namespaces -o json` — the
+  typed result of {@link KubectlTasksApi.getNamespaces}.
+
+  name: string
+    The namespace name (`metadata.name`).
+  status: string
+    The lifecycle phase (`status.phase`), e.g. `"Active"` or `"Terminating"`;
+    `""` when the field is absent.
+  labels: Record<string, string>
+    The namespace labels (`metadata.labels`), string-valued; `{}` when none.
+  createdAt?: string
+    When the namespace was created (`metadata.creationTimestamp`), if present.
 
 type DryRunMode = "none" | "client" | "server"
   The `--dry-run` strategies kubectl accepts.

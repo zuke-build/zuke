@@ -30,6 +30,8 @@ export interface RunsOptions {
   runId?: string;
   /** Emit JSON (a summary array, or the whole record) instead of a human view. */
   json?: boolean;
+  /** With `list`, report aggregate counts (total + per status) instead of rows. */
+  counts?: boolean;
   /** Filters for `list` — status, a target in the run, a creation time, a limit. */
   query?: RunQuery;
   /**
@@ -146,6 +148,15 @@ export async function runsCommand(
   const action = options.action ?? "list";
   if (action === "list") {
     const summaries = await store.listRuns(options.query ?? {});
+    if (options.counts) {
+      const counts = aggregateRunCounts(summaries);
+      console.log(
+        options.json
+          ? JSON.stringify(counts, null, 2)
+          : formatRunCounts(counts),
+      );
+      return 0;
+    }
     console.log(
       options.json
         ? JSON.stringify(summaries, null, 2)
@@ -232,6 +243,42 @@ const STATUS_MARK: Record<TargetRunStatus, string> = {
   failed: "x",
   skipped: "-",
 };
+
+/** Aggregate run counts for `runs list --counts`. */
+export interface RunCounts {
+  /** The total number of runs matched by the query. */
+  total: number;
+  /** The count per run status, keyed in ascending status-name order. */
+  byStatus: Record<string, number>;
+}
+
+/**
+ * Tally `summaries` into a total and per-status counts. The `byStatus` keys are
+ * inserted in ascending status-name order, so the JSON output is deterministic.
+ */
+export function aggregateRunCounts(
+  summaries: readonly RunSummary[],
+): RunCounts {
+  const tally = new Map<string, number>();
+  for (const s of summaries) {
+    tally.set(s.status, (tally.get(s.status) ?? 0) + 1);
+  }
+  const byStatus: Record<string, number> = {};
+  const sorted = [...tally].sort((a, b) =>
+    a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0
+  );
+  for (const [status, count] of sorted) byStatus[status] = count;
+  return { total: summaries.length, byStatus };
+}
+
+/** Render `runs list --counts`: a total and one line per present status. */
+export function formatRunCounts(counts: RunCounts): string {
+  if (counts.total === 0) return "No runs found.";
+  const entries = Object.entries(counts.byStatus);
+  const width = Math.max(...entries.map(([status]) => status.length));
+  const lines = entries.map(([status, n]) => `  ${status.padEnd(width)}  ${n}`);
+  return [`Total: ${counts.total}`, ...lines].join("\n");
+}
 
 /** Render `runs list`: one row per run, newest first (as the store returns them). */
 export function formatRunList(summaries: readonly RunSummary[]): string {

@@ -72,6 +72,7 @@ Option flags:
 - `--target` — With runs list, keep only runs whose graph has this target
 - `--since` — With runs list, keep only runs created at/after this time
 - `--limit` — With runs list, return at most this many runs (newest)
+- `--counts` — With runs list, print aggregate counts (total + per status)
 - `--keep` — With runs prune, keep runs newer than this age (e.g. 90d)
 - `--keep-last` — With runs prune, always keep the newest N terminal runs
 - `--allow-run` — With mcp, let agents run targets (optional =<glob-list> allow-list)

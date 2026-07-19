@@ -100,6 +100,32 @@ Deno.test("zuke runs prune keeps non-terminal runs and the newest terminal, hono
   });
 });
 
+Deno.test("zuke runs list --counts aggregates by status end-to-end", async () => {
+  await withStateDir(async () => {
+    class Ok extends Build {
+      go = target().executes(() => {});
+    }
+    class Boom extends Build {
+      go = target().executes(() => {
+        throw new Error("nope");
+      });
+    }
+    await runCli(Ok, ["go"]);
+    await runCli(Ok, ["go"]);
+    await runCli(Boom, ["go"]); // one failed run
+
+    const counts = await runCli(Ok, ["runs", "list", "--counts", "--json"]);
+    assertEquals(counts.code, 0);
+    assertEquals(JSON.parse(counts.out), {
+      total: 3,
+      byStatus: { failed: 1, succeeded: 2 },
+    });
+
+    const human = await runCli(Ok, ["runs", "list", "--counts"]);
+    assertStringIncludes(human.out, "Total: 3");
+  });
+});
+
 Deno.test("zuke runs prune with no retention rule refuses to delete", async () => {
   await withStateDir(async (dir) => {
     class Ok extends Build {
