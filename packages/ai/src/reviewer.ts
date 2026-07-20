@@ -22,6 +22,7 @@ import { AiReviewError } from "./errors.ts";
 import {
   DEFAULT_EXCLUDES,
   DiffSettings,
+  fetchBaseDiff,
   filterDiff,
   truncate,
 } from "./diff.ts";
@@ -44,7 +45,7 @@ import {
   toMarkdown,
   writeStepSummary,
 } from "./report.ts";
-import { detectReviewHost, readEnv } from "./hosts.ts";
+import { detectReviewHost, type EnvReader, readEnv } from "./hosts.ts";
 import type { RetryInfo, RetryOptions } from "./retry.ts";
 import type { Budget } from "./budget.ts";
 import type { AiCache } from "./cache.ts";
@@ -77,6 +78,7 @@ export class Reviewer implements Validation {
   #quiet = false;
   #fetch?: typeof fetch;
   #exec?: (argv: string[]) => Promise<string>;
+  #env: EnvReader = readEnv;
   #budget?: Budget;
   #cache?: AiCache;
   #suppress?: Suppressions;
@@ -255,6 +257,16 @@ export class Reviewer implements Validation {
   }
 
   /**
+   * Environment reader used to auto-detect the base branch for
+   * {@link "./diff.ts".DiffSettings.fetchBase} (reads `GITHUB_BASE_REF`). A test
+   * seam; defaults to the process environment.
+   */
+  env(reader: EnvReader): this {
+    this.#env = reader;
+    return this;
+  }
+
+  /**
    * Attach a shared {@link Budget} that caps spend by an exact **token** count
    * (a USD cap is opt-in, computed from prices you supply to the budget). Pass
    * the same budget to several reviewers and a fixer to bound the whole build:
@@ -291,6 +303,11 @@ export class Reviewer implements Validation {
     const text = this.#diff.text_();
     if (text !== undefined) return text;
     const run = this.#exec ?? ((argv: string[]) => new Command(argv).text());
+    // Honour `.fetchBase()` (fetch the base branch, diff against FETCH_HEAD) so
+    // CI PR review needs no manual `git fetch`; fall through to the configured
+    // source when no fetch was requested or it couldn't be done.
+    const fetched = await fetchBaseDiff(this.#diff, run, this.#env);
+    if (fetched !== undefined) return fetched;
     return await run(this.#diff.argv_());
   }
 

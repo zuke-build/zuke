@@ -162,6 +162,91 @@ Deno.test("security review passes below the threshold and calls Claude", async (
   assertEquals(body.output_config.format.schema.type, "object");
 });
 
+Deno.test("reviewer fetchBase fetches the base branch and diffs against it", async () => {
+  const { fetch, calls } = recordFetch(
+    claude({ score: 0, severity: "none", summary: "", findings: [] }),
+  );
+  const git: string[][] = [];
+  await securityReviewer((r) =>
+    r.provider("claude").apiKey("k").quiet()
+      .diff((d) => d.fetchBase())
+      .env((n) => n === "GITHUB_BASE_REF" ? "master" : undefined)
+      .exec((argv) => {
+        git.push(argv);
+        return Promise.resolve(
+          argv[1] === "diff" ? "diff --git a/z b/z\n+base context" : "",
+        );
+      })
+      .fetch(fetch)
+  ).validate({ target: "t" });
+  // The reviewer honours fetchBase itself (previously a silent no-op): it fetches
+  // the auto-detected base branch and diffs against FETCH_HEAD.
+  assertEquals(git[0], [
+    "git",
+    "fetch",
+    "--no-tags",
+    "--depth=1",
+    "origin",
+    "master",
+  ]);
+  assertEquals(git[1], ["git", "diff", "FETCH_HEAD"]);
+  // The fetched base diff is what reaches the model prompt.
+  const content = JSON.parse(calls[0].body).messages[0].content;
+  assertEquals(content.includes("base context"), true);
+});
+
+Deno.test("reviewer fetchBase falls back to the plain diff when the fetch fails", async () => {
+  const { fetch, calls } = recordFetch(
+    claude({ score: 0, severity: "none", summary: "", findings: [] }),
+  );
+  const git: string[][] = [];
+  await securityReviewer((r) =>
+    r.provider("claude").apiKey("k").quiet()
+      .diff((d) => d.fetchBase("develop", "upstream"))
+      .env(() => undefined)
+      .exec((argv) => {
+        git.push(argv);
+        if (argv[1] === "fetch") return Promise.reject(new Error("offline"));
+        return Promise.resolve("diff --git a/w b/w\n+working tree");
+      })
+      .fetch(fetch)
+  ).validate({ target: "t" });
+  assertEquals(git[0], [
+    "git",
+    "fetch",
+    "--no-tags",
+    "--depth=1",
+    "upstream",
+    "develop",
+  ]);
+  // The fetch threw, so it falls back to the configured (working-tree) diff.
+  assertEquals(git.some((g) => g.length === 2 && g[1] === "diff"), true);
+  const content = JSON.parse(calls[0].body).messages[0].content;
+  assertEquals(content.includes("working tree"), true);
+});
+
+Deno.test("reviewer fetchBase rejects an option-like base ref (never fetches)", async () => {
+  const { fetch } = recordFetch(
+    claude({ score: 0, severity: "none", summary: "", findings: [] }),
+  );
+  const git: string[][] = [];
+  await securityReviewer((r) =>
+    r.provider("claude").apiKey("k").quiet()
+      // A hostile GITHUB_BASE_REF must never reach `git fetch` as a flag.
+      .diff((d) => d.fetchBase())
+      .env((n) => n === "GITHUB_BASE_REF" ? "--upload-pack=evil" : undefined)
+      .exec((argv) => {
+        git.push(argv);
+        return Promise.resolve("diff --git a/w b/w\n+plain");
+      })
+      .fetch(fetch)
+  ).validate({ target: "t" });
+  // safeGitArg rejects the option-like ref: no `git fetch` runs, and it falls
+  // straight through to the configured diff.
+  assertEquals(git.some((g) => g[1] === "fetch"), false);
+  assertEquals(git[0], ["git", "diff"]);
+});
+
 Deno.test("the build breaks when the risk score exceeds the threshold", async () => {
   const { fetch } = recordFetch(
     claude({ score: 9, severity: "high", summary: "RCE risk", findings: [] }),
