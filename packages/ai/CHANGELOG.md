@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.6.0](https://github.com/zuke-build/zuke/compare/ai-v1.5.3...ai-v1.6.0) (2026-07-20)
+
+
+### Features
+
+* **ai:** honour DiffSettings.fetchBase in the reviewer ([#238](https://github.com/zuke-build/zuke/issues/238)) ([63dae90](https://github.com/zuke-build/zuke/commit/63dae907549ab0cb1656ccfe5cb6513a3033fb21))
+
+
+### Bug Fixes
+
+* **ai:** cache-key and hash correctness ([#235](https://github.com/zuke-build/zuke/issues/235)) ([8972b57](https://github.com/zuke-build/zuke/commit/8972b57e367b3837aff94582c24665e5c4d4d05c))
+* **ai:** cap thrown-fetch backoff and create parent dirs on apply ([#237](https://github.com/zuke-build/zuke/issues/237)) ([023d953](https://github.com/zuke-build/zuke/commit/023d9532f99ae82f3784971680a6c1447a809a78))
+
 ## [1.5.3](https://github.com/zuke-build/zuke/compare/ai-v1.5.2...ai-v1.5.3) (2026-07-20)
 
 
