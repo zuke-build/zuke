@@ -1130,12 +1130,18 @@ class HttpCacheStore implements RemoteCacheStore
     Store `artifact` (a gzipped tar of a target's outputs) under `key`.
 
 class HttpError extends Error
-  Raised when an HTTP request returns a non-2xx status.
+  Raised when an HTTP request returns a non-2xx status. The URL appears in the
+  message and on {@link url}, so it is passed through {@link redactUrl} first —
+  userinfo and credential query params never reach a log.
 
-  constructor(readonly status: number, readonly url: string)
+  constructor(status: number, url: string)
     Build the error from the failing response's status and URL.
   override name: string
     The error name.
+  readonly status: number
+    The HTTP status code of the failing response.
+  readonly url: string
+    The requested URL, with any credentials redacted.
 
 class HttpStateStore implements StateStore
   A {@link StateStore} backed by HTTP.

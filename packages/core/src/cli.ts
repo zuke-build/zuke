@@ -720,9 +720,13 @@ const MAX_SIGNAL_DATA_BYTES = 64 * 1024;
  */
 function parseSignalData(raw: string | undefined): JsonValue | undefined {
   if (raw === undefined) return undefined;
-  if (raw.length > MAX_SIGNAL_DATA_BYTES) {
+  // Measure real UTF-8 bytes, not `raw.length` (UTF-16 code units) — a payload
+  // of multi-byte characters can be well over the byte budget while its `.length`
+  // is under it.
+  const bytes = new TextEncoder().encode(raw).length;
+  if (bytes > MAX_SIGNAL_DATA_BYTES) {
     throw new Error(
-      `resume: --data payload is too large (${raw.length} bytes; ` +
+      `resume: --data payload is too large (${bytes} bytes; ` +
         `max ${MAX_SIGNAL_DATA_BYTES}).`,
     );
   }

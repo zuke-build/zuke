@@ -66,7 +66,10 @@ export function diffToSuggestions(
       path = undefined;
       continue;
     }
-    if (line.startsWith("+++ b/")) {
+    // The `+++ b/` file header only appears before a hunk; guarding on `!inHunk`
+    // stops an in-hunk addition of a line that happens to start `++ b/` from
+    // being misread as a header (the symmetric case to the `---` bug below).
+    if (!inHunk && line.startsWith("+++ b/")) {
       path = line.slice("+++ b/".length).trim();
       continue;
     }
@@ -78,7 +81,10 @@ export function diffToSuggestions(
       continue;
     }
     if (!inHunk || path === undefined) continue;
-    if (line.startsWith("---") || line.startsWith("\\")) continue;
+    // Inside a hunk, a `\ No newline` marker is skipped — but NOT a line starting
+    // `---`: that is the removal (`-`) of a line whose content begins `--` (e.g.
+    // deleting `--verbose`), which must fall through to the `-` branch below.
+    if (line.startsWith("\\")) continue;
     if (line.startsWith("-")) {
       if (blockStart === -1) blockStart = oldLine;
       blockEnd = oldLine;

@@ -2,7 +2,7 @@ import { assertEquals, assertStringIncludes } from "./_assert.ts";
 import { Build, type McpRequestContext, target } from "../mod.ts";
 import type { JsonRpcResponse } from "../src/mcp/jsonrpc.ts";
 import { McpServer } from "../src/mcp/server.ts";
-import { serveHttp } from "../src/mcp/http.ts";
+import { originAllowed, serveHttp } from "../src/mcp/http.ts";
 import { serveMcp } from "../src/mcp/command.ts";
 import { FileSystemStateStore } from "../src/state/fs_store.ts";
 import { defaultStateHost } from "../src/state/store.ts";
@@ -72,6 +72,71 @@ Deno.test("http transport rejects a non-POST with 405", async () => {
     const res = await fetch(`http://127.0.0.1:${s.port}/`);
     assertEquals(res.status, 405);
     await res.json();
+  } finally {
+    await s.stop();
+  }
+});
+
+Deno.test("originAllowed enforces the loopback / allow-list rules", () => {
+  // No Origin (a CLI/MCP client) is always allowed.
+  assertEquals(originAllowed(null, undefined, "127.0.0.1"), true);
+  // On a loopback bind, only loopback origins pass.
+  assertEquals(
+    originAllowed("http://localhost:5173", undefined, "127.0.0.1"),
+    true,
+  );
+  assertEquals(originAllowed("http://127.0.0.5", undefined, "127.0.0.1"), true);
+  assertEquals(originAllowed("http://[::1]:8080", undefined, "::1"), true);
+  assertEquals(
+    originAllowed("https://evil.example", undefined, "127.0.0.1"),
+    false,
+  );
+  // A domain that merely *starts* with `127.` is not loopback (anchored match).
+  assertEquals(
+    originAllowed("http://127.0.0.1.evil.com", undefined, "127.0.0.1"),
+    false,
+  );
+  assertEquals(
+    originAllowed("http://localhost.evil.com", undefined, "127.0.0.1"),
+    false,
+  );
+  assertEquals(originAllowed("not a url", undefined, "127.0.0.1"), false);
+  // A non-loopback bind runs no default Origin check (operator's responsibility).
+  assertEquals(
+    originAllowed("https://evil.example", undefined, "10.0.0.5"),
+    true,
+  );
+  // An explicit allow-list is matched exactly, regardless of the bind.
+  assertEquals(
+    originAllowed("https://app.example", ["https://app.example"], "0.0.0.0"),
+    true,
+  );
+  assertEquals(
+    originAllowed("https://evil.example", ["https://app.example"], "0.0.0.0"),
+    false,
+  );
+});
+
+Deno.test("http transport rejects a cross-origin browser request (drive-by guard)", async () => {
+  const server = new McpServer(new Demo());
+  const s = await startHttp((m) => server.handleMessage(m));
+  try {
+    // A drive-by / DNS-rebinding page sends its own (non-loopback) Origin.
+    const blocked = await fetch(`http://127.0.0.1:${s.port}/`, {
+      method: "POST",
+      headers: { origin: "https://evil.example" },
+      body: rpc("initialize", 1, {}),
+    });
+    assertEquals(blocked.status, 403);
+    await blocked.json();
+    // A loopback origin (a legit local dev tool) is allowed.
+    const ok = await fetch(`http://127.0.0.1:${s.port}/`, {
+      method: "POST",
+      headers: { origin: "http://localhost:5173" },
+      body: rpc("initialize", 2, {}),
+    });
+    assertEquals(ok.status, 200);
+    await ok.json();
   } finally {
     await s.stop();
   }

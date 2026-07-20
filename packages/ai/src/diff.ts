@@ -14,10 +14,27 @@ function matchesAny(patterns: string[], path: string): boolean {
   return patterns.some((p) => globToRegExp(p).test(path));
 }
 
-/** The file path of a `diff --git` section header, if it has one. */
+/** Whether a section is a file diff (has a `diff --git` header) at all. */
+function isFileSection(section: string): boolean {
+  return /^diff --git /m.test(section);
+}
+
+/**
+ * The file path of a diff section. Read from the unambiguous `+++ b/<path>`
+ * line (everything to end-of-line or a trailing tab), so a path containing
+ * spaces parses correctly — the space-separated `diff --git a/… b/…` header is
+ * ambiguous for such paths. Falls back to that header (tolerant of spaces via a
+ * greedy match) for a section with no `+++` line (a pure rename/mode change).
+ */
 function sectionPath(section: string): string | undefined {
-  const match = section.match(/^diff --git a\/(\S+) b\//m);
-  return match?.[1];
+  const plus = section.match(/^\+\+\+ b\/(.*)$/m);
+  if (plus) return plus[1].replace(/\t.*$/, "");
+  // ponytail: this greedy fallback only fires for a section with no `+++` line
+  // (a pure rename/mode change, which carries no content), and mis-splits a path
+  // that itself contains ` b/` — a genuinely ambiguous git header. Acceptable:
+  // no reviewable body is at stake. Reach for `git diff -z` if it ever matters.
+  const git = section.match(/^diff --git a\/(.+) b\//m);
+  return git?.[1];
 }
 
 /** Drop diff sections whose file is excluded (or not included). */
@@ -30,7 +47,14 @@ export function filterDiff(
   return sections
     .filter((section) => {
       const path = sectionPath(section);
-      if (path === undefined) return true; // preamble / non-file text
+      if (path === undefined) {
+        // Non-file preamble is kept. A file section whose path we could not
+        // parse is dropped when any filter is active — fail safe: we cannot
+        // confirm it is included, nor that it is not excluded, so we do not
+        // review it rather than leak a possibly-excluded file.
+        if (!isFileSection(section)) return true;
+        return include.length === 0 && exclude.length === 0;
+      }
       if (include.length > 0 && !matchesAny(include, path)) return false;
       return !matchesAny(exclude, path);
     })
