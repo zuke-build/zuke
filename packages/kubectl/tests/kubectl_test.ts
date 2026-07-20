@@ -59,16 +59,34 @@ Deno.test("apply: requires file or kustomize; all options", () => {
     Error,
     "KubectlTasks.apply: .file() or .kustomize() is required",
   );
+  // -f and -k are mutually exclusive (kubectl rejects both together).
+  assertThrows(
+    () =>
+      new KubectlApplySettings().file("a.yaml").kustomize("overlays/prod")
+        .argv(),
+    Error,
+    "mutually exclusive",
+  );
+  // -k also rejects -R (recursive).
+  assertThrows(
+    () =>
+      new KubectlApplySettings().kustomize("overlays/prod").recursive().argv(),
+    Error,
+    "cannot be combined with .recursive()",
+  );
   assertEquals(new KubectlApplySettings().file("a.yaml").argv().slice(1), [
     "apply",
     "-f",
     "a.yaml",
   ]);
   assertEquals(
+    new KubectlApplySettings().kustomize("overlays/prod").argv().slice(1),
+    ["apply", "-k", "overlays/prod"],
+  );
+  assertEquals(
     new KubectlApplySettings()
       .file("a.yaml")
       .file("b.yaml")
-      .kustomize("overlays/prod")
       .recursive()
       .prune()
       .serverSide()
@@ -83,8 +101,6 @@ Deno.test("apply: requires file or kustomize; all options", () => {
       "a.yaml",
       "-f",
       "b.yaml",
-      "-k",
-      "overlays/prod",
       "-R",
       "--prune",
       "--server-side",
@@ -342,19 +358,26 @@ Deno.test("KubectlGetSettings.watch(false) disables an earlier watch", () => {
   );
 });
 
-Deno.test("describe: requires resource or selector; both forms", () => {
+Deno.test("describe: requires a resource type; selector is a filter", () => {
   assertThrows(
     () => new KubectlDescribeSettings().argv(),
     Error,
-    "KubectlTasks.describe: specify .resource(...) or .selector()",
+    "specify a resource type",
+  );
+  // A bare selector with no resource type is rejected by kubectl.
+  assertThrows(
+    () => new KubectlDescribeSettings().selector("app=api").argv(),
+    Error,
+    "specify a resource type",
   );
   assertEquals(
     new KubectlDescribeSettings().resource("deployment/api").argv().slice(1),
     ["describe", "deployment/api"],
   );
   assertEquals(
-    new KubectlDescribeSettings().selector("app=api").argv().slice(1),
-    ["describe", "-l", "app=api"],
+    new KubectlDescribeSettings().resource("pods").selector("app=api").argv()
+      .slice(1),
+    ["describe", "pods", "-l", "app=api"],
   );
 });
 
@@ -393,6 +416,13 @@ Deno.test("logs: requires resource or selector; all options", () => {
   assertEquals(
     new KubectlLogsSettings().selector("app=api").argv().slice(1),
     ["logs", "-l", "app=api"],
+  );
+  // A pod name and a selector are mutually exclusive.
+  assertThrows(
+    () =>
+      new KubectlLogsSettings().resource("web-0").selector("app=api").argv(),
+    Error,
+    "mutually exclusive",
   );
 });
 
@@ -621,14 +651,26 @@ Deno.test("annotate and label honour the shared cluster flags", () => {
   );
 });
 
-Deno.test("annotate and label require both a target and a payload", () => {
-  // A payload but no target.
+Deno.test("annotate and label require a resource type and a payload", () => {
+  // A payload but no resource type — a bare selector or --all is not enough.
   assertThrows(
     () => new KubectlAnnotateSettings().annotation("a", "b").argv(),
     Error,
-    "a target is required",
+    "a resource type is required",
   );
-  // A target but no annotation/removal.
+  assertThrows(
+    () =>
+      new KubectlAnnotateSettings().selector("app=web").annotation("a", "b")
+        .argv(),
+    Error,
+    "a resource type is required",
+  );
+  assertThrows(
+    () => new KubectlAnnotateSettings().all().annotation("a", "b").argv(),
+    Error,
+    "a resource type is required",
+  );
+  // A resource type but no annotation/removal.
   assertThrows(
     () => new KubectlAnnotateSettings().resource("deploy").argv(),
     Error,
@@ -637,7 +679,12 @@ Deno.test("annotate and label require both a target and a payload", () => {
   assertThrows(
     () => new KubectlLabelSettings().label("a", "b").argv(),
     Error,
-    "a target is required",
+    "a resource type is required",
+  );
+  assertThrows(
+    () => new KubectlLabelSettings().all().label("a", "b").argv(),
+    Error,
+    "a resource type is required",
   );
   assertThrows(
     () => new KubectlLabelSettings().resource("deploy").argv(),
@@ -753,6 +800,22 @@ Deno.test("top: requires pods or nodes; all options", () => {
   assertEquals(
     new KubectlTopSettings().nodes().argv().slice(1),
     ["top", "nodes"],
+  );
+  // --containers and -A are pod-only; kubectl rejects them on `top node`.
+  assertThrows(
+    () => new KubectlTopSettings().nodes().containers().argv(),
+    Error,
+    "only valid with .pods()",
+  );
+  assertThrows(
+    () => new KubectlTopSettings().nodes().allNamespaces().argv(),
+    Error,
+    "only valid with .pods()",
+  );
+  // A selector stays valid on `top nodes`.
+  assertEquals(
+    new KubectlTopSettings().nodes().selector("role=worker").argv().slice(1),
+    ["top", "nodes", "-l", "role=worker"],
   );
 });
 

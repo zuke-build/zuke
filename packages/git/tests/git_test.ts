@@ -63,6 +63,7 @@ Deno.test("add and commit render their options", () => {
     "git",
     "add",
     "--all",
+    "--",
     "src",
     "mod.ts",
   ]);
@@ -70,6 +71,13 @@ Deno.test("add and commit render their options", () => {
     "git",
     "add",
     "--update",
+  ]);
+  // A pathspec beginning with `-` goes after `--`, not parsed by git as a flag.
+  assertEquals(new GitAddSettings().paths("-weird.txt").argv(), [
+    "git",
+    "add",
+    "--",
+    "-weird.txt",
   ]);
   assertEquals(
     new GitCommitSettings().all().amend().noEdit().allowEmpty()
