@@ -289,6 +289,7 @@ export {
   type InstallTreeOptions,
   type Platform,
 } from "./src/install.ts";
+export { prependPath } from "./src/env.ts";
 export {
   installNpmTool,
   type InstallNpmToolOptions,

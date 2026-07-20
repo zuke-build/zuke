@@ -408,6 +408,27 @@ tools = toolchain((t) =>
 blocks zip-slip. `.checksum(sha256)` verifies (the archive's SHA-256 for an
 archive, the binary's for `"raw"`) and doubles as the install cache key.
 
+**Multi-file runtimes (Node.js, a JDK, …)** — `ToolTasks.installTree((s) => …)`
+(or `toolchain().tree((s) => …)`) keeps the *whole* extracted tree instead of one
+binary, for a runtime that ships several bins plus `lib/`. `.strip(1)` unwraps the
+`tool-v1.2.3/` top directory, `.bins("bin/node", "bin/npm")` marks executables
+(symlinks preserved). It returns the tree root as a callable `AbsolutePath`, so
+`root("bin", "node")` is a binary and `root("bin")` the directory to put on PATH:
+
+```ts
+import { prependPath, ToolTasks } from "jsr:@zuke/core";
+
+const node = await ToolTasks.installTree((s) =>
+  s.name("node").archive("tar.gz").strip(1).bins("bin/node", "bin/npm")
+    .url(nodeUrl).checksum(nodeSum)
+);
+prependPath(node("bin")); // node/npm (and node_modules/.bin shims) now on PATH
+```
+
+`prependPath(dir)` puts `dir` first on the process `PATH` (idempotent, platform
+separator) so every subprocess Zuke spawns — the shell `$`, `Command`, and the
+tool wrappers, which inherit `Deno.env` — finds the provisioned tool.
+
 **Resolve from `node_modules/.bin`** — in a Node monorepo where tool binaries
 are hoisted to the repo root, a wrapper can find its binary npx-style instead of
 needing a `.toolPath(...)`. `.fromNodeModules()` on any settings object walks up
