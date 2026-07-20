@@ -777,6 +777,9 @@ async function runBody(t: TargetBuilder, ctx: TargetContext): Promise<void> {
       return;
     } catch (error) {
       if (attempt >= attempts) throw error;
+      // A cancelled run (Ctrl-C / SIGTERM / an aborted signal) must not burn
+      // further retries: surface the failure now instead of re-running the body.
+      if (ctx.signal.aborted) throw error;
       if (t.retryDelay_ > 0) await delay(t.retryDelay_);
     }
   }
@@ -805,6 +808,9 @@ async function runBodyWithRecovery(
     if (remediations.length === 0) throw error;
     let lastError = error;
     for (let attempt = 1; attempt <= t.recoverAttempts_; attempt++) {
+      // A cancelled run must not trigger (possibly paid) remediations: stop and
+      // let the original failure propagate (falls through to `throw lastError`).
+      if (ctx.signal.aborted) break;
       let willRetry = false;
       for (const r of remediations) {
         try {
@@ -1389,9 +1395,12 @@ async function runScheduled(
           if (!started.has(t)) {
             outcomes.set(t, { status: "skipped", ms: 0 });
             started.add(t);
-            // When the run suspends, targets blocked behind the wait are left
-            // `pending` in the record (a resume runs them) rather than skipped.
-            if (!anyWaiting) {
+            // When the run *suspends* (a wait parked and nothing failed),
+            // targets blocked behind the wait are left `pending` so a resume
+            // runs them. A run that also failed will never resume, so settle
+            // them `skipped` — otherwise they linger `pending` inside a terminal
+            // `failed` record that no resume sweep reaches (F8).
+            if (!anyWaiting || anyFailed) {
               void env.writer?.markTargetSettled(
                 t.name_ ?? "<unnamed>",
                 "skipped",
@@ -1404,6 +1413,20 @@ async function runScheduled(
     };
     pump();
   });
+
+  // A failed run does not suspend, so any target parked at a `.waitsFor(...)`
+  // gate — recorded `waiting` and normally left for a resume — will never be
+  // resumed. Settle those rows to a terminal `skipped` so the `failed` record
+  // has no permanently-`waiting` target that `runs show` and the resume sweep
+  // would otherwise see forever (F8).
+  if (anyFailed && anyWaiting) {
+    for (const [t, outcome] of outcomes) {
+      if (outcome.status === "waiting") {
+        outcomes.set(t, { status: "skipped", ms: outcome.ms });
+        void env.writer?.markTargetSettled(t.name_ ?? "<unnamed>", "skipped");
+      }
+    }
+  }
 
   const reports: TargetReport[] = [];
   const executed: string[] = [];
@@ -1777,43 +1800,65 @@ export async function execute(
         `Run ${runId} cancelled by another process — stopping.`,
       );
     } else if (writer !== undefined) {
-      // We initiated it (Ctrl-C / options.signal): mark cancelling (which also
-      // drains every pending per-target write, so the snapshot is current).
-      await writer.markRunCancelling();
-      // markRunCancelling drains the write chain, so if another process's
-      // `zuke cancel` won the race in the meantime, the conflict has already
-      // fired onExternalCancel. Re-check before walking, so we never run the
-      // compensations twice (that canceller owns them now).
-      if (externallyCancelled) {
+      // Hold the per-run cancel lock while we compensate, so a concurrent
+      // `zuke cancel` can't settle the run (declaring "no compensations") over
+      // our live cleanup. We only reach here with `externallyCancelled` false
+      // (the true case stopped above), so always attempt the acquire; a `null`
+      // result means another process already holds the lock and owns the walk —
+      // we stop and drain (F7).
+      const cancelLock = await writer.acquireCancelLock(actor);
+      if (cancelLock === null) {
         await writer.drain();
         reporter.info(
           `Run ${runId} cancelled by another process — stopping.`,
         );
       } else {
-        // Announce the intermediate `cancelling` transition (the record was just
-        // moved there) before compensations run, so a plugin sees the full
-        // running → cancelling → cancelled sequence.
-        await life.runStateChange(writer.snapshot());
-        // Run the succeeded targets' compensations in reverse order, record the
-        // cancellation in the audit trail (as `zuke cancel` does), then settle.
-        const comp = await runCompensations(order, writer.snapshot(), {
-          runId,
-          signals: env.signals,
-          reporter,
-          redactor,
-        });
-        const at = nowIso();
-        for (const event of compensationEvents(comp.attempts, actor, at)) {
-          await writer.appendEvent(event);
+        try {
+          // We initiated it (Ctrl-C / options.signal): mark cancelling (which
+          // also drains every pending per-target write, so the snapshot is
+          // current).
+          await writer.markRunCancelling();
+          // markRunCancelling drains the write chain, so if another process's
+          // `zuke cancel` won the race in the meantime, the conflict has already
+          // fired onExternalCancel. Re-check before walking, so we never run the
+          // compensations twice (that canceller owns them now).
+          if (externallyCancelled) {
+            await writer.drain();
+            reporter.info(
+              `Run ${runId} cancelled by another process — stopping.`,
+            );
+          } else {
+            // Announce the intermediate `cancelling` transition (the record was
+            // just moved there) before compensations run, so a plugin sees the
+            // full running → cancelling → cancelled sequence.
+            await life.runStateChange(writer.snapshot());
+            // Run the succeeded targets' compensations in reverse order, record
+            // the cancellation in the audit trail (as `zuke cancel` does), then
+            // settle.
+            const comp = await runCompensations(order, writer.snapshot(), {
+              runId,
+              signals: env.signals,
+              reporter,
+              redactor,
+            });
+            const at = nowIso();
+            for (const event of compensationEvents(comp.attempts, actor, at)) {
+              await writer.appendEvent(event);
+            }
+            await writer.appendEvent(cancelEvent(actor, comp, at));
+            await writer.markRunCancelled();
+            reporter.info(
+              `Run ${runId} cancelled — ${comp.compensated.length} ` +
+                `compensation(s) ran${
+                  comp.failures.length > 0
+                    ? `, ${comp.failures.length} failed`
+                    : ""
+                }.`,
+            );
+          }
+        } finally {
+          await cancelLock?.release();
         }
-        await writer.appendEvent(cancelEvent(actor, comp, at));
-        await writer.markRunCancelled();
-        reporter.info(
-          `Run ${runId} cancelled — ${comp.compensated.length} ` +
-            `compensation(s) ran${
-              comp.failures.length > 0 ? `, ${comp.failures.length} failed` : ""
-            }.`,
-        );
       }
     }
   } else {

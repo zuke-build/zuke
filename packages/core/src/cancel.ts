@@ -40,6 +40,7 @@ import { absolutePath } from "./path.ts";
 import { findConfigDir, pathExists } from "./config.ts";
 import { defaultStateHost, type StateStore } from "./state/store.ts";
 import { resolveStateStore } from "./state/resolve.ts";
+import { acquireCancelLock } from "./state/cancel_lock.ts";
 import { resolveActor } from "./state/record.ts";
 import type {
   RunEvent,
@@ -483,7 +484,7 @@ function collectForEachInto(
  * when the cancel landed — an item mid-flight may have partial side effects
  * (a started deploy) its `.onCancel(...)` needs to unwind.
  *
- * ponytail: an out-of-process `zuke cancel` compensates a `running` item from a
+ * An out-of-process `zuke cancel` compensates a `running` item from a
  * record snapshot, so if that item's body is still live in the owning process
  * (which aborts only on its next state write / lock heartbeat), the compensation
  * can overlap the body's tail. Bodies that checkpoint via `ctx.state.set(...)`
@@ -600,101 +601,128 @@ export async function cancelRun(
     };
   }
 
-  // Transition running/suspended → cancelling.
-  const transitioned = await transitionToCancelling(store, runId, initial, now);
-  if (transitioned === "noop") {
+  // Hold the per-run cancel lock so exactly one process drives the compensation
+  // walk. A live holder (another `zuke cancel`, or the in-process executor)
+  // blocks us with a friendly no-op; a crashed holder's lock lapses via the TTL,
+  // so we can then safely recover the stranded `cancelling` record (F7).
+  const cancelLock = await acquireCancelLock(store, runId, actor, now);
+  if (cancelLock === null) {
     const fresh = await store.getRun(runId);
-    const status = fresh?.record.status ?? "cancelled";
-    reporter.info(`Run ${runId} is already ${status}; nothing to cancel.`);
+    const status = fresh?.record.status ?? "cancelling";
+    reporter.info(
+      `Run ${runId} is already being cancelled by another process; ` +
+        `nothing to do.`,
+    );
     return { runId, status, noop: true, compensated: [], failures: [] };
   }
-  if (transitioned === "recover") {
-    // The run was left `cancelling` by an interrupted cancellation (a crashed
-    // canceller, or a store hiccup mid-finalize). Settle it to `cancelled`
-    // without re-running compensations — they may not be idempotent, so a second
-    // pass is more dangerous than the small chance an interrupted first pass
-    // left some cleanup undone. `zuke cancel` becomes retryable, not a dead end.
-    reporter.info(`Run ${runId} was mid-cancellation; finalizing it.`);
-    await finalizeCancelled(store, runId, actor, EMPTY_OUTCOME, now);
+  try {
+    // Transition running/suspended → cancelling.
+    const transitioned = await transitionToCancelling(
+      store,
+      runId,
+      initial,
+      now,
+    );
+    if (transitioned === "noop") {
+      const fresh = await store.getRun(runId);
+      const status = fresh?.record.status ?? "cancelled";
+      reporter.info(`Run ${runId} is already ${status}; nothing to cancel.`);
+      return { runId, status, noop: true, compensated: [], failures: [] };
+    }
+    if (transitioned === "recover") {
+      // The run was left `cancelling` by an interrupted cancellation. Because we
+      // hold the cancel lock, no other process is compensating it right now (a
+      // live one would still hold the lock; a crashed one's lock lapsed via the
+      // TTL). Settle it to `cancelled` without re-running compensations — they may
+      // not be idempotent, so a second pass is more dangerous than the small
+      // chance an interrupted first pass left some cleanup undone. `zuke cancel`
+      // becomes retryable, not a dead end.
+      reporter.info(`Run ${runId} was mid-cancellation; finalizing it.`);
+      await finalizeCancelled(store, runId, actor, EMPTY_OUTCOME, now);
+      return {
+        runId,
+        status: "cancelled",
+        noop: false,
+        compensated: [],
+        failures: [],
+      };
+    }
+    const record = transitioned.record;
+
+    // Resolve compensation targets by reference, and make `this.<param>.value`
+    // available to their bodies (from the record's non-secret params; secrets
+    // re-resolve from the environment, exactly as a resume does). Retain the
+    // seeded redactor so a compensation's failure message can't leak a secret.
+    const targets = discoverTargets(build);
+    const params = discoverParameters(build);
+    const redactor = new Redactor();
+    await resolveParameters(
+      params,
+      record.params,
+      readEnv,
+      () => undefined,
+      redactor,
+    );
+    for (const p of params.values()) {
+      if (!p.secret_) continue;
+      const value = p.stringValue_();
+      if (value !== undefined && value !== "") redactor.add(value);
+    }
+
+    let outcome: CompensationOutcome = EMPTY_OUTCOME;
+    const root = targets.get(record.rootTarget);
+    if (root === undefined) {
+      reporter.info(
+        `cancel: build "${build.constructor.name}" has no target ` +
+          `"${record.rootTarget}" — cancelling without compensations.`,
+      );
+    } else {
+      // Honour the build's soft ordering edges (extraEdges + the lazy orderWith
+      // provider), exactly as execute() does, so out-of-process cancellation
+      // (zuke cancel / MCP / a timed-out wait) compensates in the same
+      // reverse-execution order as an in-process cancel. These edges only affect
+      // the compensation ORDER, so a failing provider (e.g. an unreachable
+      // dependency-graph service during `zuke cancel`) degrades to the base
+      // topological order — never abandoning the walk, which would strand the run
+      // `cancelling` with its rollbacks never run (a re-cancel then skips them).
+      let edges: OrderingEdge[] = [];
+      try {
+        edges = await resolveOrderingEdges(build, targets);
+      } catch (error) {
+        reporter.error(
+          `cancel: ordering provider failed (${messageOf(error)}); ` +
+            `compensating in base topological order.`,
+        );
+      }
+      const order = planGraph(root, edges).order;
+      outcome = await runCompensations(order, record, {
+        runId,
+        signals: new Map(Object.entries(record.signals)),
+        reporter,
+        redactor,
+        extra: resolveExtra(options.also, targets, record),
+      });
+    }
+
+    await finalizeCancelled(store, runId, actor, outcome, now);
+    reporter.info(
+      `Run ${runId} cancelled — ${outcome.compensated.length} compensation(s) ` +
+        `ran${
+          outcome.failures.length > 0
+            ? `, ${outcome.failures.length} failed`
+            : ""
+        }.`,
+    );
     return {
       runId,
       status: "cancelled",
       noop: false,
-      compensated: [],
-      failures: [],
+      compensated: outcome.compensated,
+      failures: outcome.failures,
     };
+  } finally {
+    await cancelLock.release();
   }
-  const record = transitioned.record;
-
-  // Resolve compensation targets by reference, and make `this.<param>.value`
-  // available to their bodies (from the record's non-secret params; secrets
-  // re-resolve from the environment, exactly as a resume does). Retain the
-  // seeded redactor so a compensation's failure message can't leak a secret.
-  const targets = discoverTargets(build);
-  const params = discoverParameters(build);
-  const redactor = new Redactor();
-  await resolveParameters(
-    params,
-    record.params,
-    readEnv,
-    () => undefined,
-    redactor,
-  );
-  for (const p of params.values()) {
-    if (!p.secret_) continue;
-    const value = p.stringValue_();
-    if (value !== undefined && value !== "") redactor.add(value);
-  }
-
-  let outcome: CompensationOutcome = EMPTY_OUTCOME;
-  const root = targets.get(record.rootTarget);
-  if (root === undefined) {
-    reporter.info(
-      `cancel: build "${build.constructor.name}" has no target ` +
-        `"${record.rootTarget}" — cancelling without compensations.`,
-    );
-  } else {
-    // Honour the build's soft ordering edges (extraEdges + the lazy orderWith
-    // provider), exactly as execute() does, so out-of-process cancellation
-    // (zuke cancel / MCP / a timed-out wait) compensates in the same
-    // reverse-execution order as an in-process cancel. These edges only affect
-    // the compensation ORDER, so a failing provider (e.g. an unreachable
-    // dependency-graph service during `zuke cancel`) degrades to the base
-    // topological order — never abandoning the walk, which would strand the run
-    // `cancelling` with its rollbacks never run (a re-cancel then skips them).
-    let edges: OrderingEdge[] = [];
-    try {
-      edges = await resolveOrderingEdges(build, targets);
-    } catch (error) {
-      reporter.error(
-        `cancel: ordering provider failed (${messageOf(error)}); ` +
-          `compensating in base topological order.`,
-      );
-    }
-    const order = planGraph(root, edges).order;
-    outcome = await runCompensations(order, record, {
-      runId,
-      signals: new Map(Object.entries(record.signals)),
-      reporter,
-      redactor,
-      extra: resolveExtra(options.also, targets, record),
-    });
-  }
-
-  await finalizeCancelled(store, runId, actor, outcome, now);
-  reporter.info(
-    `Run ${runId} cancelled — ${outcome.compensated.length} compensation(s) ` +
-      `ran${
-        outcome.failures.length > 0 ? `, ${outcome.failures.length} failed` : ""
-      }.`,
-  );
-  return {
-    runId,
-    status: "cancelled",
-    noop: false,
-    compensated: outcome.compensated,
-    failures: outcome.failures,
-  };
 }
 
 /** Resolve the store for a cancel — like a run, but always defaulting on. */

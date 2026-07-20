@@ -12,6 +12,7 @@ import { resumeRun } from "../src/resume.ts";
 import type { OrderingEdge } from "../src/graph.ts";
 import { FileSystemStateStore } from "../src/state/fs_store.ts";
 import { defaultStateHost, type StateStore } from "../src/state/store.ts";
+import { lockKey } from "../src/state/lock.ts";
 import type { RunRecord } from "../src/state/types.ts";
 import type { Reporter } from "../src/executor.ts";
 import { externalSignal } from "../src/wait.ts";
@@ -1069,3 +1070,182 @@ async function forceCancelling(
   }
   throw new Error(`could not move run ${runId} to cancelling`);
 }
+
+/** Poll until `ready()` or the bound elapses (keeps a wedged test from hanging). */
+async function until(ready: () => boolean): Promise<void> {
+  for (let i = 0; !ready() && i < 400; i++) {
+    await new Promise((r) => setTimeout(r, 5));
+  }
+}
+
+Deno.test("a second cancelRun is a no-op while the first holds the cancel lock", async () => {
+  await withTempStore(async (store) => {
+    let release!: () => void;
+    const blocked = new Promise<void>((r) => {
+      release = r;
+    });
+    const undone: string[] = [];
+    const makeBuild = (blocking: boolean) => {
+      class B extends Build {
+        deploy = target().executes(() => {}).onCancel(() => this.rollback);
+        rollback = target().executes(async () => {
+          undone.push("deploy");
+          if (blocking) await blocked; // hold the cancel lock mid-walk
+        });
+        gate = target()
+          .dependsOn(this.deploy)
+          .waitsFor((s) => s.on(externalSignal("x")));
+      }
+      const b = new B();
+      discoverTargets(b);
+      return b;
+    };
+    const a = makeBuild(true);
+    await execute(a, a.gate, { silent: true, stateStore: store });
+    const id = (await store.listRuns({}))[0].id;
+
+    // Canceller A starts and blocks mid-compensation, holding the cancel lock.
+    const first = cancelRun(makeBuild(true), {
+      runId: id,
+      stateStore: store,
+      silent: true,
+      actor: "a",
+    });
+    await until(() => undone.length > 0);
+
+    // Canceller B arrives while A holds the lock → friendly no-op, no walk, no
+    // premature settlement (F7).
+    const second = await cancelRun(makeBuild(false), {
+      runId: id,
+      stateStore: store,
+      silent: true,
+      actor: "b",
+    });
+    assertEquals(second.noop, true);
+    assertEquals(second.status, "cancelling");
+    assertEquals((await store.getRun(id))?.record.status, "cancelling");
+
+    // Release A; it settles the run, having compensated exactly once.
+    release();
+    const firstResult = await first;
+    assertEquals(firstResult.noop, false);
+    assertEquals(firstResult.status, "cancelled");
+    assertEquals(undone, ["deploy"]);
+    assertEquals((await store.getRun(id))?.record.status, "cancelled");
+  });
+});
+
+Deno.test("a concurrent cancelRun is a no-op while the executor compensates in-process", async () => {
+  await withTempStore(async (store) => {
+    let release!: () => void;
+    const blocked = new Promise<void>((r) => {
+      release = r;
+    });
+    let workStarted!: () => void;
+    const workRunning = new Promise<void>((r) => {
+      workStarted = r;
+    });
+    const undone: string[] = [];
+    const controller = new AbortController();
+    class B extends Build {
+      deploy = target().executes(() => {}).onCancel(() => this.rollback);
+      rollback = target().executes(async () => {
+        undone.push("deploy");
+        await blocked; // hold the executor's cancel lock mid-walk
+      });
+      work = target()
+        .dependsOn(this.deploy)
+        .executes((ctx) => {
+          workStarted();
+          return new Promise<void>((resolve) => {
+            ctx.signal.addEventListener("abort", () => resolve(), {
+              once: true,
+            });
+          });
+        });
+    }
+    const b = new B();
+    discoverTargets(b);
+
+    // Start the run; once `work` is running, abort to trigger the executor's own
+    // in-process compensation (which holds the cancel lock while rolling back).
+    const runP = execute(b, b.work, {
+      silent: true,
+      stateStore: store,
+      signal: controller.signal,
+    });
+    await workRunning;
+    controller.abort();
+    await until(() => undone.length > 0);
+
+    // A `zuke cancel` racing the live in-process compensation is a no-op — it
+    // must not settle the run (declaring "no compensations") over the walk (F7).
+    const b2 = new B();
+    discoverTargets(b2);
+    const id = (await store.listRuns({}))[0].id;
+    const other = await cancelRun(b2, {
+      runId: id,
+      stateStore: store,
+      silent: true,
+      actor: "ops",
+    });
+    assertEquals(other.noop, true);
+    assertEquals((await store.getRun(id))?.record.status, "cancelling");
+
+    // Release the executor's compensation; it settles the run once.
+    release();
+    const runResult = await runP;
+    assertEquals(runResult.cancelled, true);
+    assertEquals(undone, ["deploy"]); // compensation ran exactly once
+    assertEquals((await store.getRun(id))?.record.status, "cancelled");
+  });
+});
+
+Deno.test("the executor defers when another process already holds the cancel lock", async () => {
+  await withTempStore(async (store) => {
+    const undone: string[] = [];
+    let workStarted!: () => void;
+    const workRunning = new Promise<void>((r) => {
+      workStarted = r;
+    });
+    const controller = new AbortController();
+    class B extends Build {
+      deploy = target().executes(() => {}).onCancel(() => this.rollback);
+      rollback = target().executes(() => void undone.push("deploy"));
+      work = target()
+        .dependsOn(this.deploy)
+        .executes((ctx) => {
+          workStarted();
+          return new Promise<void>((resolve) => {
+            ctx.signal.addEventListener("abort", () => resolve(), {
+              once: true,
+            });
+          });
+        });
+    }
+    const b = new B();
+    discoverTargets(b);
+    const runP = execute(b, b.work, {
+      silent: true,
+      stateStore: store,
+      signal: controller.signal,
+    });
+    await workRunning;
+    // A separate process grabs the run's cancel lock first.
+    const id = (await store.listRuns({}))[0].id;
+    const held = await store.acquireLock(
+      lockKey("zuke-cancel", id),
+      { actor: "other", runId: id, since: new Date().toISOString() },
+      30_000,
+    );
+    if (!held.ok) throw new Error("expected to acquire the cancel lock");
+
+    // The executor self-cancels but cannot get the lock, so it defers to the
+    // holder: it drains and runs NO compensations (F7).
+    controller.abort();
+    const runResult = await runP;
+    assertEquals(runResult.cancelled, true);
+    assertEquals(undone, []); // the lock holder owns the compensation walk
+    await store.releaseLock(lockKey("zuke-cancel", id), held.token);
+  });
+});

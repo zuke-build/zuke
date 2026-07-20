@@ -26,6 +26,7 @@ import {
   resolveActor,
 } from "../src/state/record.ts";
 import { inMemoryStateHandle, RunStateWriter } from "../src/state/writer.ts";
+import { acquireCancelLock } from "../src/state/cancel_lock.ts";
 import { Redactor } from "../src/redact.ts";
 import { LockSettings, target } from "../src/target.ts";
 import { externalSignal, resumeWhen } from "../src/wait.ts";
@@ -1122,4 +1123,60 @@ Deno.test("HttpStateStore locks: a 201 without a token is an error", async () =>
     Error,
     "did not return a token",
   );
+});
+
+Deno.test("RunStateWriter drops a write when the run vanishes after a conflict", async () => {
+  const store = new MemStore();
+  const warnings: string[] = [];
+  const writer = await RunStateWriter.open(
+    store,
+    sampleRecord(),
+    () => "t",
+    new Redactor(),
+    (m) => warnings.push(m),
+  );
+  // Simulate the run being deleted/pruned between the conflicting put and the
+  // re-read: the next put conflicts, and getRun then returns null. The mutator
+  // must NOT be re-applied to the already-mutated in-memory copy (which, pre-fix,
+  // re-ran it and a version-null create resurrected the run) (F12).
+  store.forceConflicts = 1;
+  store.record = null;
+  await writer.markRunFinished(true);
+  assertEquals(warnings.some((w) => w.includes("vanished")), true);
+  assertEquals(store.record, null); // vanished run is not resurrected
+});
+
+Deno.test("acquireCancelLock renews on a heartbeat and blocks a second holder", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    // A store that counts the heartbeat's renewals but still renews for real.
+    class CountingStore extends FileSystemStateStore {
+      renewCalls = 0;
+      override renewLock(
+        key: string,
+        token: string,
+        ttlMs: number,
+      ): Promise<boolean> {
+        this.renewCalls++;
+        return super.renewLock(key, token, ttlMs);
+      }
+    }
+    const store = new CountingStore(`${dir}/runs`, defaultStateHost);
+    const now = () => new Date().toISOString();
+    // A short TTL → a 1s renewal heartbeat that fires within the test.
+    const lock = await acquireCancelLock(store, "run-1", "a", now, 2000);
+    if (lock === null) throw new Error("expected to acquire the cancel lock");
+    // A second holder is blocked while the lock is held.
+    assertEquals(await acquireCancelLock(store, "run-1", "b", now, 2000), null);
+    // Outlive the 1s renewal interval so the heartbeat fires at least once.
+    await new Promise((r) => setTimeout(r, 1200));
+    assertEquals(store.renewCalls >= 1, true);
+    await lock.release();
+    // After release, a fresh holder can take it.
+    const next = await acquireCancelLock(store, "run-1", "c", now, 2000);
+    assertEquals(next !== null, true);
+    await next?.release();
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
 });

@@ -313,3 +313,16 @@ Deno.test("resolveOrderingEdges merges extraEdges with an async orderWith", asyn
   assertEquals(order.indexOf("a") < order.indexOf("b"), true);
   assertEquals(order.indexOf("b") < order.indexOf("c"), true);
 });
+
+Deno.test("planGraph rejects a forward-referenced (undefined) dependency", () => {
+  class B extends Build {
+    // @ts-expect-error -- deliberately forward-references a later field
+    early = target().dependsOn(this.later).executes(() => {});
+    later = target().executes(() => {});
+  }
+  const b = new B();
+  discover(b);
+  // The friendly GraphError (not a raw TypeError) surfaces for every entry
+  // point that plans a graph, not just the CLI's `validateGraph` pre-check (F10).
+  assertThrows(() => planGraph(b.early), GraphError, "undefined target");
+});

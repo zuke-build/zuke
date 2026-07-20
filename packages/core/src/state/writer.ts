@@ -26,6 +26,7 @@ import type {
   WaitState,
 } from "./types.ts";
 import { recordStatusOf } from "./record.ts";
+import { acquireCancelLock, type CancelLock } from "./cancel_lock.ts";
 
 /** Extract a message from an unknown thrown value without casting. */
 function messageOf(value: unknown): string {
@@ -233,6 +234,16 @@ export class RunStateWriter {
   }
 
   /**
+   * Try to hold this run's per-run cancellation lock (see
+   * {@link "./cancel_lock.ts".acquireCancelLock}) so the executor's in-process
+   * compensation walk and an out-of-process `zuke cancel` cannot both drive it.
+   * Returns the held lock, or `null` if another live canceller holds it.
+   */
+  acquireCancelLock(actor: string): Promise<CancelLock | null> {
+    return acquireCancelLock(this.#store, this.#record.id, actor, this.#now);
+  }
+
+  /**
    * Append an {@link RunEvent} to the run's audit trail (the MCP tool-call log).
    * Its `args` values and `detail` are run through the redactor first, so a
    * secret that reached a tool argument is masked before it is persisted.
@@ -302,10 +313,22 @@ export class RunStateWriter {
           this.#version = result.version;
           return;
         }
-        // Another writer moved the record on: re-read and re-apply the mutator.
+        // Another writer moved the record on: re-read a FRESH base and re-apply
+        // the mutator to it on the next iteration. If the run has vanished
+        // (deleted/pruned mid-write) there is no clean base to CAS onto — and
+        // the in-memory record already carries this mutation, so re-running the
+        // mutator on it would double-apply (e.g. push an audit event twice).
+        // Drop this best-effort write instead (F12).
         const fresh = await this.#store.getRun(this.#record.id);
-        this.#record = fresh?.record ?? this.#record;
-        this.#version = fresh?.version ?? null;
+        if (fresh === null) {
+          this.#warn?.(
+            `state: run "${this.#record.id}" vanished from the store ` +
+              `mid-write; dropping one update`,
+          );
+          return;
+        }
+        this.#record = fresh.record;
+        this.#version = fresh.version;
         // The other writer may be a `zuke cancel` in another process. If it has
         // moved the run to cancelling/cancelled, re-apply our (target-level)
         // change onto its record — so a just-settled `succeeded` target isn't
@@ -314,9 +337,8 @@ export class RunStateWriter {
         // canceller's responsibility now. Best-effort (a conflict here is
         // harmless; the canceller owns finalisation).
         if (
-          fresh !== null &&
-          (fresh.record.status === "cancelling" ||
-            fresh.record.status === "cancelled")
+          fresh.record.status === "cancelling" ||
+          fresh.record.status === "cancelled"
         ) {
           const cancelStatus = fresh.record.status;
           mutator(this.#record);
