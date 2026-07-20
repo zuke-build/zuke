@@ -1,6 +1,7 @@
 {
   "name": "@zuke/openapi-ts",
   "version": "0.2.3",
+  "license": "MIT",
   "description": "Typed openapi-ts task wrappers for Zuke builds — generate type-safe API clients from OpenAPI specs with Hey API via an injection-free settings-lambda API.",
   "exports": {
     ".": "./mod.ts"

@@ -3014,16 +3014,6 @@ interface StateStore
   releaseLock(key: string, token: string): Promise<void>
     Release the lock `key` if still held under `token`; a no-op otherwise.
 
-interface Style
-  How a run renders its output.
-
-  github: boolean
-    Wrap target output in `::group::`/`::endgroup::` and emit `::error::`.
-  color: boolean
-    Emit ANSI colour codes (off when piped, under `NO_COLOR`, or in CI).
-  width: number
-    Width of horizontal rules and boxes, in characters.
-
 interface TarEntry
   A single entry within a tar archive — a regular file or a symbolic link.
 
@@ -3334,6 +3324,480 @@ type TargetStatus = "passed" | "failed" | "skipped" | "cached" | "waiting"
 
 type WaitDisposition = "fail" | "cancel-run" | { target: string; }
   What a timed-out wait does: fail, cancel the run, or run a compensation target.
+
+Ergonomic process execution built on `Deno.Command`, exposed as the `$`
+tagged template.
+
+```ts
+await $`deno test -A`;                            // throws on non-zero exit
+const out = await $`git rev-parse HEAD`.text();   // trimmed stdout
+const code = await $`flaky-cmd`.noThrow().code();  // exit code, no throw
+await $`build`.env({ NODE_ENV: "prod" }).cwd("./app");
+```
+
+Interpolated values become discrete argv entries — they are never spliced
+into a shell string — so there is no shell-injection surface. Arrays expand
+to multiple arguments.
+@module
+
+function $(strings: TemplateStringsArray, ...values: Interpolatable[]): Command
+  Run an external command, ergonomically.
+
+  @example
+      `await $\`deno test -A``
+
+function tokenize(strings: ReadonlyArray<string>, values: ReadonlyArray<Interpolatable>): string[]
+  Tokenise a tagged-template invocation into an argv array.
+
+  Literal whitespace separates arguments; interpolated values are appended as
+  atomic tokens (so `--flag=${x}` and `pre${x}` work), and arrays expand to one
+  argument per element. Interpolated values are never re-split on whitespace,
+  which is what keeps command construction injection-free.
+
+class Command implements PromiseLike<CommandOutput>
+  A lazily-executed command. Built by the `$` tagged template. The process does
+  not start until the command is awaited or a terminal method (`text`, `lines`,
+  `code`) is called; the result is memoised so repeated reads are cheap.
+
+  constructor(argv: string[])
+    Build a command from a discrete argv array (binary first).
+  env(record: Record<string, string>): this
+    Merge additional environment variables.
+  cwd(path: PathLike): this
+    Set the working directory for the process.
+  noThrow(): this
+    Do not throw on a non-zero exit; combine with {@link code}.
+  quiet(): this
+    Suppress live stdout/stderr streaming to the terminal.
+  killAfter(ms: number): this
+    Kill the process if it runs longer than `ms` milliseconds, raising a
+    {@link CommandTimeoutError}. Fires even under {@link noThrow}.
+  signal(signal: AbortSignal): this
+    Terminate the process (via `SIGTERM`) when `signal` aborts — for example
+    when the enclosing run is cancelled. Overrides the executor's ambient
+    run signal for this command. Composes with {@link killAfter}: either the
+    timeout or the abort kills the process, whichever fires first.
+  get commandLine(): string
+    The command line, for diagnostics.
+  then(onfulfilled?: ((value: CommandOutput) => TResult1 | PromiseLike<TResult1>) | null, onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null): PromiseLike<TResult1 | TResult2>
+    Await support: run the command and resolve to a {@link CommandOutput}.
+  async text(): Promise<string>
+    Run and resolve to trimmed stdout. Throws on non-zero unless `noThrow`.
+  async lines(): Promise<string[]>
+    Run and resolve to stdout split into lines (trailing blank dropped).
+  async code(): Promise<number>
+    Run and resolve to the numeric exit code. Never throws on non-zero.
+  spawn(): SpawnedProcess
+    Start the command as a long-lived process without waiting for it to
+    exit, returning a {@link SpawnedProcess} handle. Use this for a service —
+    a dev server, a database, `docker compose up` — that must keep running
+    while other targets execute; stop it with {@link SpawnedProcess.stop}.
+    stdout/stderr are inherited so the process's output is visible.
+
+class CommandError extends Error
+  Raised when a command exits non-zero and throwing was not suppressed.
+
+  constructor(readonly command: string, readonly code: number, readonly stderr: string)
+    Build the error from the failed command line, exit code, and stderr.
+  override name: string
+    The error name.
+
+class CommandOutput
+  The resolved result of a command, available when awaiting a {@link Command}.
+
+  constructor(readonly code: number, readonly stdout: string, readonly stderr: string)
+    Build the output from the process exit code and captured streams.
+  text(): string
+    Trimmed stdout.
+
+class CommandTimeoutError extends Error
+  Raised when a command is killed for exceeding its {@link Command.killAfter}
+  budget. Thrown regardless of {@link Command.noThrow}, since a timeout is a
+  distinct, exceptional outcome from a normal non-zero exit.
+
+  constructor(readonly command: string, readonly timeoutMs: number)
+    Build the error from the command line and the elapsed-time budget.
+  override name: string
+    The error name.
+
+class SpawnedProcess
+  A long-lived process started with {@link Command.spawn} — the handle a
+  {@link https://jsr.io/@zuke/core service} keeps alive. Unlike awaiting a
+  {@link Command}, spawning does not wait for the process to exit; call
+  {@link SpawnedProcess.stop} to terminate it (which is also the default
+  service teardown). Its stdout/stderr are inherited so the process's own
+  output is visible.
+
+  constructor(child: Deno.ChildProcess | undefined, readonly commandLine: string)
+    Wrap a spawned child process (or none, for a stub) and its command line.
+  get pid(): number
+    The operating-system process id (`-1` for a dry-run stub).
+  get status(): Promise<Deno.CommandStatus>
+    Resolves when the process exits (immediate success for a dry-run stub).
+  async stop(signal: Deno.Signal, graceMs: number): Promise<void>
+    Terminate the process and wait for it to exit. Sends `signal` (default
+    `SIGTERM`); if the process has not exited within `graceMs` (default 5s), it
+    escalates to `SIGKILL` so a process that ignores `SIGTERM` cannot hang
+    teardown. A process that has already exited is treated as stopped. A
+    dry-run stub (no child) is a no-op.
+
+type Interpolatable = string | number | AbsolutePath | Array<string | number | AbsolutePath>
+  A value that may be interpolated into a `$` template.
+
+Foundations for typed tool wrappers (settings-lambda task functions).
+
+A tool package (e.g. `@zuke/deno`, `@zuke/npm`) defines one settings class
+per subcommand by extending {@link ToolSettings}: `buildArgs()` assembles
+the subcommand argv purely (no I/O), while the base contributes the common
+fluent chainers (`env`, `cwd`, `noThrow`, `quiet`, `toolPath`, `args`) and
+the execution logic, which reuses {@link Command} so argv stays an array
+end-to-end — there is no shell string and no injection surface.
+
+```ts
+class MyToolSettings extends ToolSettings {
+  protected defaultTool() { return "mytool"; }
+  protected buildArgs() { return ["build", "--fast"]; }
+}
+await runSettings(new MyToolSettings(), (s) => s.cwd("app"));
+```
+@module
+
+function defineTool(tool: string, options: DefineToolOptions): ToolTask
+  Define a fluent task for a CLI that has no dedicated `@zuke` wrapper. Returns
+  a task that runs the tool, configured through a {@link DynamicToolSettings}
+  lambda — the same settings-lambda style as the built-in wrappers, with
+  `arg`/`flag`/`option` for argv and the shared `cwd`/`env`/`noThrow`/… chainers.
+
+  ```ts
+  import { defineTool } from "jsr:@zuke/core/tooling";
+
+  const terraform = defineTool("terraform");
+  await terraform((s) => s.arg("plan").option("out", "plan.tfplan"));
+  // → terraform plan --out plan.tfplan
+
+  const helmUpgrade = defineTool("helm", { subcommand: "upgrade" });
+  await helmUpgrade((s) => s.arg("api", "./chart").flag("install"));
+  // → helm upgrade api ./chart --install
+  ```
+
+function runSettings<S extends ToolSettings>(settings: S, configure?: Configure<S>): Promise<CommandOutput>
+  Construct-configure-run: the shared shape of every task function.
+
+  ```ts
+  export const MyTasks = {
+    build: (configure?: Configure<MyBuildSettings>) =>
+      runSettings(new MyBuildSettings(), configure),
+  };
+  ```
+
+function shimFallbackArgv(argv: ReadonlyArray<string>, os: typeof Deno.build.os): string[] | null
+  On Windows, wrap an argv in a `cmd /c` invocation so `.cmd`/`.bat` shims
+  (such as npm's) become spawnable; returns `null` on other platforms.
+
+function windowsCmdShim(argv: ReadonlyArray<string>, os: typeof Deno.build.os): string[]
+  On Windows, spawn a resolved `.cmd`/`.bat` shim (such as npm's `node_modules`
+  shims) through `cmd /c` — a batch shim is not a PE executable, so
+  `Deno.Command` cannot launch it directly. Returns `argv` unchanged on other
+  platforms or when the binary is not a batch shim.
+
+class DynamicToolSettings extends ToolSettings
+  Fluent settings for a {@link defineTool} tool: build the argv with
+  {@link DynamicToolSettings.arg}/{@link DynamicToolSettings.flag}/{@link
+  DynamicToolSettings.option} (in call order), plus all the shared chainers
+  (`cwd`, `env`, `noThrow`, `quiet`, `toolPath`, `args`).
+
+  constructor(tool: string, initial: string[])
+    Build settings for `tool`, seeded with any `initial` subcommand tokens.
+  override protected defaultTool(): string
+    The configured tool binary.
+  arg(...values: Array<string | number>): this
+    Append raw positional/argument tokens.
+  flag(name: string): this
+    Append a boolean flag, e.g. `flag("verbose")` → `--verbose` (or `-v`).
+  option(name: string, value: string | number): this
+    Append a flag and its value as two tokens, e.g. `--output dist`.
+  override protected buildArgs(): string[]
+    The argv assembled from the `arg`/`flag`/`option` calls, in order.
+
+class ToolNotFoundError extends Error
+  Raised when a tool's binary cannot be found on the system.
+
+  constructor(readonly tool: string, sawNodeModules: boolean)
+    Build the error naming the tool binary that could not be found.
+  override name: string
+    The error name.
+
+abstract class ToolSettings
+  Abstract fluent base for tool settings. Subclasses provide the binary
+  ({@link defaultTool}) and the pure subcommand argv ({@link buildArgs});
+  the base provides the shared chainers and {@link run}.
+
+  os_: typeof Deno.build.os
+    The platform identifier used by {@link run} to decide whether to retry a
+    missing binary through the `cmd /c` shim path (Windows only).
+
+    In production this is always `Deno.build.os`. It is exposed as a public
+    field — rather than read from `Deno.build.os` inline — so that tests can
+    pin a specific platform without spawning a subprocess or touching the
+    environment:
+
+    ```ts
+    const s = new MyToolSettings();
+    s.os_ = "windows"; // exercise the cmd /c retry branch on any host
+    ```
+
+    The trailing underscore signals an internal test seam: do not rely on this
+    field in production code.
+  abstract protected defaultTool(): string
+    The binary to spawn when {@link toolPath} is not set.
+  abstract protected buildArgs(): string[]
+    The subcommand argv. Must be pure — no I/O, no environment reads.
+  protected defaultResolution(): ToolResolution
+    The wrapper's default binary-resolution strategy. The base returns
+    `"path"` (bare name on `PATH`); a JS-ecosystem wrapper whose binary is
+    almost always installed under `node_modules` overrides this to
+    `"node_modules"`. A per-call {@link fromNodeModules}/{@link fromPath} and
+    the ambient `ZUKE_TOOL_RESOLUTION` both take precedence over this default.
+  env(record: Record<string, string>): this
+    Merge additional environment variables for the process.
+  cwd(path: PathLike): this
+    Set the working directory for the process.
+  noThrow(): this
+    Do not throw on a non-zero exit; inspect `code` on the output instead.
+  get throwsOnError(): boolean
+    Whether a failure should throw — the default, or `false` after
+    {@link noThrow}. A task that layers its own validation on top of the
+    subprocess (e.g. a coverage-threshold gate) reads this to decide whether a
+    gate failure throws or is merely reported.
+  quiet(): this
+    Suppress live stdout/stderr streaming to the terminal.
+  killAfter(ms: number): this
+    Kill the tool if it runs longer than `ms` milliseconds, raising a
+    `CommandTimeoutError`. Fires even under {@link noThrow}.
+  toolPath(path: PathLike): this
+    Override the binary to run (e.g. an absolute path to the tool).
+  fromNodeModules(): this
+    Resolve the binary npx-style: walk up from the working directory looking
+    for `node_modules/.bin/<tool>`, falling back to `PATH` on a miss. Overrides
+    both the wrapper default and the ambient `ZUKE_TOOL_RESOLUTION`. Has no
+    effect once {@link toolPath} is set (an explicit path always wins).
+  fromPath(): this
+    Resolve the binary from `PATH` only, ignoring any `node_modules/.bin`.
+  args(...extra: Array<string | number | AbsolutePath>): this
+    Escape hatch: append raw arguments after all typed options.
+  argv(): string[]
+    The full argv (binary first). Pure — useful for tests and diagnostics.
+  resolvedArgv(): string[]
+    The argv {@link run} will actually spawn — like {@link argv}, but with the
+    `node_modules/.bin` resolution applied (so it performs I/O). Useful for
+    tests and diagnostics: it reveals whether a wrapper resolved to a local
+    shim or fell back to the bare name on `PATH`.
+  async run(): Promise<CommandOutput>
+    Run the configured tool. If the binary is missing and the platform is
+    Windows, retry once through `cmd /c` (covers `.cmd`/`.bat` shims);
+    otherwise raise a {@link ToolNotFoundError} naming the tool.
+
+interface DefineToolOptions
+  Options for {@link defineTool}.
+
+  subcommand?: string | string[]
+    Leading subcommand token(s) prepended to every invocation.
+
+type Configure<S> = (settings: S) => S
+  A lambda that configures a settings instance and returns it.
+
+type ToolResolution = "node_modules" | "path"
+  How {@link ToolSettings.run} locates a wrapper's binary when no explicit
+  {@link ToolSettings.toolPath} is set:
+
+  - `"path"` — spawn the bare tool name and let the OS resolve it on `PATH`
+    (the default, matching a native/global install);
+  - `"node_modules"` — npx-style: walk up from the working directory looking
+    for `node_modules/.bin/<tool>`, falling back to `PATH` on a miss (so a
+    package hoisted to a monorepo root runs with no `.toolPath()`).
+
+type ToolTask = (configure?: Configure<DynamicToolSettings>) => Promise<CommandOutput>
+  A ready-to-run task for a {@link defineTool} tool.
+
+Primitive terminal rendering, shared by the executor's build reporting
+(`./report.ts`) and the `@zuke/console` package: ANSI styling, terminal-width
+detection, duration formatting, and the reusable `line`/`box`/`table`
+primitives that draw a build's output.
+
+Everything here is pure — no I/O, no process state — so argv-free output can
+be unit-tested and reused without duplicating escape codes. Cells may already
+carry ANSI codes; width is measured on the visible text ({@link visibleWidth})
+so painted content still aligns.
+@module
+
+function box(style: Style, content: string | readonly string[], options: BoxOptions): string[]
+  A bordered panel around `content` (a string, split on newlines, or an array
+  of lines). Content may carry ANSI codes; padding is measured on the visible
+  text so the border stays flush.
+
+function detectWidth(): number
+  Read the terminal width if available, clamped to a sane range.
+
+function formatDuration(ms: number): string
+  Format a duration in milliseconds as `1.2s`.
+
+function isStyleName(name: string): name is StyleName
+  Whether a string names one of the {@link SGR} styles.
+
+function line(style: Style, options: LineOptions): string
+  A horizontal rule spanning the style's width (dimmed by default).
+
+function pad(text: string, width: number, align: "left" | "right"): string
+  Pad `text` to `width` visible columns, aligning left (default) or right.
+
+function paint(color: boolean, codes: string, text: string): string
+  Wrap text in ANSI codes when colour is enabled, otherwise return it as-is.
+
+function sgrCodes(names: readonly StyleName[]): string
+  Concatenate the escape codes for `names` (an unknown name contributes none).
+
+function stripAnsi(text: string): string
+  Strip ANSI escape sequences, leaving the visible text.
+
+function stylize(color: boolean, names: readonly StyleName[], text: string): string
+  Paint `text` in the named styles when `color` is enabled.
+
+function table(style: Style, columns: readonly TableColumn[], rows: readonly (readonly string[])[], options: TableOptions): string[]
+  An aligned text table: a styled header row, an optional dividing rule, then
+  one line per row. Column widths fit the widest visible cell; cells may already
+  carry ANSI colour. Rows shorter than the columns are padded with empty cells.
+
+function visibleWidth(text: string): number
+  The printable width of `text`, ignoring any ANSI colour codes it carries.
+
+const SGR: { reset: string; bold: string; dim: string; italic: string; underline: string; black: string; red: string; green: string; yellow: string; blue: string; magenta: string; cyan: string; white: string; gray: string; }
+  ANSI select-graphic-rendition codes, keyed by style name.
+
+interface BoxOptions
+  Options for {@link box}.
+
+  title?: string
+    A title embedded in the top border.
+  padding?: number
+    Horizontal padding inside the border, in spaces. Defaults to `1`.
+  width?: number
+    Force an inner width; widened automatically to fit content and title.
+  border?: readonly StyleName[]
+    Styles for the border characters. Defaults to `["dim"]`.
+  titleStyle?: readonly StyleName[]
+    Styles for the title text. Defaults to `["bold"]`.
+
+interface LineOptions
+  Options for {@link line}.
+
+  char?: string
+    The character to repeat. Defaults to `═`.
+  width?: number
+    The rule width. Defaults to the style's width.
+  style?: readonly StyleName[]
+    Styles applied to the whole rule. Defaults to `["dim"]`.
+
+interface Style
+  How a run renders its output.
+
+  github: boolean
+    Wrap target output in `::group::`/`::endgroup::` and emit `::error::`.
+  color: boolean
+    Emit ANSI colour codes (off when piped, under `NO_COLOR`, or in CI).
+  width: number
+    Width of horizontal rules and boxes, in characters.
+
+interface TableColumn
+  One column of a {@link table}.
+
+  header: string
+    The column header.
+  align?: "left" | "right"
+    Cell alignment. Defaults to `left`.
+
+interface TableOptions
+  Options for {@link table}.
+
+  separator?: string
+    Column separator. Defaults to two spaces.
+  divider?: boolean
+    Draw a dividing rule under the header. Defaults to `true`.
+  headerStyle?: readonly StyleName[]
+    Styles for the header row. Defaults to `["bold"]`.
+  dividerStyle?: readonly StyleName[]
+    Styles for the divider rule. Defaults to `["dim"]`.
+
+type StyleName = keyof typeof SGR
+  A style name understood by {@link sgrCodes}, {@link paint}, and markup.
+
+A backend conformance kit for the state-api (`docs/state-api.md`).
+
+A hosted {@link "./state/store.ts".StateStore} / {@link
+"./registry/registry.ts".BuildRegistry} backend must implement the same
+compare-and-swap, listing, and TTL-lock semantics the filesystem backend
+does — the exactly-once resume, lock takeover, and one-writer-wins guarantees
+the core relies on ride on them. This module extracts those semantics into
+store-agnostic scenarios you can point at any implementation: Zuke's own test
+lane runs them against the filesystem store, and a backend author runs them
+against a live service:
+
+```sh
+deno run -A jsr:@zuke/core/conformance --url http://localhost:8080 [--token …]
+```
+
+Every scenario uses freshly-generated ids, so it is safe to run against a
+shared, persistent service; the lock-takeover scenario uses a short real TTL
+and a brief sleep, so it takes a beat of wall-clock time. A backend that
+passes is compatible with
+{@link "./state/http_store.ts".HttpStateStore} /
+{@link "./registry/http_registry.ts".HttpBuildRegistry}; one that violates
+CAS fails loudly.
+@module
+
+async function checkBuildRegistry(make: BuildRegistryFactory): Promise<ConformanceResult[]>
+  Run the build-registry conformance scenarios against the registry `make` builds.
+
+async function checkStateStore(make: StateStoreFactory, options: ConformanceOptions): Promise<ConformanceResult[]>
+  Run the state-store conformance scenarios against the store `make` builds.
+
+async function runConformanceCli(args: string[], deps: ConformanceCliDeps): Promise<number>
+  Run the conformance kit as a CLI: `--url <base>` (required) and `--token <bearer>` (optional) name the backend, then both suites run against it. Prints
+  a `PASS`/`FAIL` line per scenario and resolves to a process exit code — `0`
+  when every scenario passes, `1` when any fails or `--url` is missing.
+
+interface ConformanceCliDeps
+  Injectable dependencies for {@link runConformanceCli} (tests override them).
+
+  makeStateStore?: (url: string, token?: string) => StateStore
+    Build the {@link StateStore} for a url/token (default {@link HttpStateStore}).
+  makeBuildRegistry?: (url: string, token?: string) => BuildRegistry
+    Build the {@link BuildRegistry} for a url/token (default {@link HttpBuildRegistry}).
+  log?: (line: string) => void
+    Emit a line of output (default `console.log`).
+
+interface ConformanceOptions
+  Tuning options for the conformance scenarios.
+
+  lockTtlMs?: number
+    The lock TTL (ms) the takeover scenario acquires with; it then waits a bit
+    longer than this for the lock to expire. Raise it for a slow backend.
+    Default 200.
+
+interface ConformanceResult
+  The outcome of one conformance scenario.
+
+  readonly name: string
+    The scenario's name.
+  readonly ok: boolean
+    Whether the backend satisfied it.
+  readonly error?: string
+    The failure detail when `ok` is false.
+
+type BuildRegistryFactory = () => BuildRegistry | Promise<BuildRegistry>
+  A `() =>` factory the kit calls once to obtain the registry under test.
+
+type StateStoreFactory = () => StateStore | Promise<StateStore>
+  A `() =>` factory the kit calls once to obtain the store under test.
 ````
 
 </details>

@@ -1,6 +1,7 @@
 {
   "name": "@zuke/git",
   "version": "0.2.2",
+  "license": "MIT",
   "description": "Typed git task wrappers for Zuke builds — common commands (add, commit, push, tag, checkout, …) plus a generic escape hatch, via an injection-free settings-lambda API.",
   "exports": {
     ".": "./mod.ts"

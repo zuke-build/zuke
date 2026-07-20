@@ -1,6 +1,7 @@
 {
   "name": "@zuke/playwright",
   "version": "0.1.3",
+  "license": "MIT",
   "description": "Typed Playwright CLI task wrappers for Zuke builds — test, install (browsers), show-report, and codegen via an injection-free settings-lambda API.",
   "exports": {
     ".": "./mod.ts"

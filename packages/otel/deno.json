@@ -1,6 +1,7 @@
 {
   "name": "@zuke/otel",
   "version": "1.0.1",
+  "license": "MIT",
   "description": "OpenTelemetry (OTLP/HTTP JSON) export plugin for Zuke builds — per-target spans linked across resume boundaries by run id, plus run counters, with no runtime dependencies.",
   "exports": {
     ".": "./mod.ts"

@@ -92,6 +92,20 @@ Deno.test("manifest versions match each package deno.json", async () => {
   }
 });
 
+Deno.test("every package declares the MIT license", async () => {
+  // Per-package license metadata so a published JSR artifact carries its own
+  // license rather than relying solely on root inference. Keep it in lock-step
+  // with the root LICENSE (MIT).
+  for (const path of PACKAGES) {
+    const pkg = await readJson(`${path}/deno.json`);
+    assertEquals(
+      pkg.license,
+      "MIT",
+      `${path}/deno.json must declare "license": "MIT"`,
+    );
+  }
+});
+
 Deno.test("the deno workspace lists exactly the configured packages", async () => {
   const root = await readJson("deno.json");
   const workspace = root.workspace;

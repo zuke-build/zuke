@@ -1,6 +1,7 @@
 {
   "name": "@zuke/ai",
   "version": "1.6.0",
+  "license": "MIT",
   "description": "AI code review for Zuke builds — define a reviewer (Claude/OpenAI/Gemini) with a settings-lambda API and plug it into a target's validateBefore/validateAfter to gate the build on a security (or custom) assessment.",
   "exports": {
     ".": "./mod.ts"

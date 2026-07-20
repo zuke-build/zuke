@@ -1,6 +1,7 @@
 {
   "name": "@zuke/cypress",
   "version": "0.1.3",
+  "license": "MIT",
   "description": "Typed Cypress CLI task wrappers for Zuke builds — run, open, install, verify, and info via an injection-free settings-lambda API.",
   "exports": {
     ".": "./mod.ts"

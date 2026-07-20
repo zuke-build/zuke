@@ -73,6 +73,14 @@ What the project does to keep releases trustworthy:
   tree as a backstop. The merged release tree should already be clean; once a
   real release confirms this, drop the flag for the strongest
   "published == committed source" guarantee.
+- **`contents: write` + `persist-credentials` on the `quality` job.** The
+  `quality` job in `ci.yml` runs on `pull_request` with `contents: write` and
+  `actions/checkout`'s `persist-credentials: true`, because the AI lint fixer may
+  push a fix commit back to the PR branch. This is a deliberate trade-off, and it
+  is fork-safe: `pull_request` (not `pull_request_target`) runs with the base
+  repository's read-only `GITHUB_TOKEN` for a fork PR, so the elevated write and
+  persisted credential apply only to same-repository branches, never to code a
+  fork controls. Workflow egress is audited by `step-security/harden-runner`.
 
 ## Running the scanners yourself
 

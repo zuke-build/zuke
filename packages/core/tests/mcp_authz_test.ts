@@ -21,6 +21,15 @@ Deno.test("targetMatcher: an empty list matches nothing", () => {
   assertEquals(match("deploy"), false);
 });
 
+// `timingSafeEqual` is the constant-time bearer-token comparison used by the
+// MCP HTTP transport. For two equal-length inputs the loop always visits every
+// character (it accumulates the XOR diff with no early `return`), so a partial
+// prefix match leaks no timing signal about how many characters were correct —
+// the property that stops a byte-at-a-time token guess. The one deliberate leak
+// is the initial `a.length !== b.length` short-circuit: it reveals only the
+// length, not the contents, which is an accepted trade-off (a token's length is
+// not the secret). These cases pin the value semantics; the constant-time
+// property is a structural guarantee of the implementation, not timed here.
 Deno.test("timingSafeEqual compares by value, length first", () => {
   assertEquals(timingSafeEqual("abc", "abc"), true);
   assertEquals(timingSafeEqual("abc", "abd"), false);
