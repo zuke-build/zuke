@@ -170,6 +170,71 @@ Deno.test("every reserved command is honoured by the parser and help", () => {
   for (const flag of BUILTIN_FLAGS) assertStringIncludes(help, flag.name);
 });
 
+Deno.test("parseArgs recognises the doc command and its spec", () => {
+  const p = parseArgs(["doc", "jsr:@zuke/deno"]);
+  assertEquals(p.doc, true);
+  assertEquals(p.docSpec, "jsr:@zuke/deno");
+  assertEquals(p.target, undefined); // a command, not a target
+});
+
+Deno.test("main doc runs the doc runner with the spec and passes its exit code", async () => {
+  const seen: string[] = [];
+  const runner = (spec: string) => {
+    seen.push(spec);
+    return Promise.resolve(0);
+  };
+  const { code } = await capture(() =>
+    main(Demo, ["doc", "jsr:@zuke/deno"], { docRunner: runner })
+  );
+  assertEquals(code, 0);
+  assertEquals(seen, ["jsr:@zuke/deno"]);
+});
+
+Deno.test("main doc resolves a relative spec to an absolute path before running", async () => {
+  const seen: string[] = [];
+  const runner = (spec: string) => {
+    seen.push(spec);
+    return Promise.resolve(0);
+  };
+  // Both a dot-prefixed and a bare relative file path resolve against cwd…
+  await capture(() => main(Demo, ["doc", "./mod.ts"], { docRunner: runner }));
+  await capture(() => main(Demo, ["doc", "src/lib.ts"], { docRunner: runner }));
+  // …while a URL and an absolute path pass through unchanged.
+  await capture(() => main(Demo, ["doc", "npm:cowsay"], { docRunner: runner }));
+  await capture(() =>
+    main(Demo, ["doc", "/abs/mod.ts"], { docRunner: runner })
+  );
+  assertEquals(seen, [
+    `${Deno.cwd()}/./mod.ts`,
+    `${Deno.cwd()}/src/lib.ts`,
+    "npm:cowsay",
+    "/abs/mod.ts",
+  ]);
+});
+
+Deno.test("main doc returns a friendly non-zero exit when the runner throws", async () => {
+  const { code, err } = await capture(() =>
+    main(Demo, ["doc", "jsr:@zuke/deno"], {
+      docRunner: () => Promise.reject(new Error("deno doc exploded")),
+    })
+  );
+  assertEquals(code, 1);
+  assertStringIncludes(err.join("\n"), "deno doc exploded"); // not a raw stack
+});
+
+Deno.test("main doc propagates the runner's non-zero exit code", async () => {
+  const { code } = await capture(() =>
+    main(Demo, ["doc", "jsr:@zuke/x"], { docRunner: () => Promise.resolve(3) })
+  );
+  assertEquals(code, 3);
+});
+
+Deno.test("main doc without a spec prints usage and fails", async () => {
+  const { code, err } = await capture(() => main(Demo, ["doc"]));
+  assertEquals(code, 1);
+  assertStringIncludes(err.join("\n"), "Usage: zuke doc");
+});
+
 Deno.test("parseArgs collects declared parameter flags", () => {
   const valued = parseArgs(
     ["greet", "--environment", "prod", "--verbose"],

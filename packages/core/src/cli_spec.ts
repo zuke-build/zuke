@@ -44,6 +44,9 @@ export const CANCEL_COMMAND = "cancel";
 /** The `register` command: record this build in the build registry. */
 export const REGISTER_COMMAND = "register";
 
+/** The `doc` command: print a package's API docs, isolated from the repo. */
+export const DOC_COMMAND = "doc";
+
 /** Every reserved command, in help and completion order. */
 export const RESERVED_COMMANDS: readonly ReservedCommand[] = [
   { name: GRAPH_COMMAND, description: "Show the dependency graph" },
@@ -71,6 +74,11 @@ export const RESERVED_COMMANDS: readonly ReservedCommand[] = [
   {
     name: REGISTER_COMMAND,
     description: "Register this build in the build registry",
+  },
+  {
+    name: DOC_COMMAND,
+    description:
+      "Print a package's API docs (deno doc), isolated from the repo",
   },
 ];
 

@@ -28,6 +28,7 @@ import {
   CANCEL_COMMAND,
   COMPLETIONS_COMMAND,
   DEFAULT_TARGET,
+  DOC_COMMAND,
   GENERATE_CI_COMMAND,
   GRAPH_COMMAND,
   MCP_COMMAND,
@@ -167,6 +168,10 @@ export interface ParsedArgs {
   cancelRunId?: string;
   /** The `register` command was requested (record this build in the registry). */
   register: boolean;
+  /** The `doc` command was requested (print a package's API docs, isolated). */
+  doc: boolean;
+  /** The spec to document (the positional after `doc`): a `jsr:`/`npm:` URL or a path. */
+  docSpec?: string;
   /** Raw parameter values from declared flags, keyed by property name. */
   values: Record<string, string>;
   help: boolean;
@@ -216,6 +221,7 @@ export function parseArgs(
     runs: false,
     cancel: false,
     register: false,
+    doc: false,
     confirmDestructive: false,
     mcpRegistry: false,
     help: false,
@@ -373,10 +379,13 @@ export function parseArgs(
     } else if (parsed.cancel && parsed.cancelRunId === undefined) {
       // `cancel` takes the run id as its positional.
       parsed.cancelRunId = arg;
+    } else if (parsed.doc && parsed.docSpec === undefined) {
+      // `doc` takes the spec to document as its positional.
+      parsed.docSpec = arg;
     } else if (
       parsed.target === undefined && !parsed.graph && !parsed.generateCi &&
       !parsed.completions && !parsed.mcp && !parsed.resume && !parsed.runs &&
-      !parsed.cancel && !parsed.register
+      !parsed.cancel && !parsed.register && !parsed.doc
     ) {
       if (arg === GRAPH_COMMAND) parsed.graph = true;
       else if (arg === GENERATE_CI_COMMAND) parsed.generateCi = true;
@@ -386,6 +395,7 @@ export function parseArgs(
       else if (arg === RUNS_COMMAND) parsed.runs = true;
       else if (arg === CANCEL_COMMAND) parsed.cancel = true;
       else if (arg === REGISTER_COMMAND) parsed.register = true;
+      else if (arg === DOC_COMMAND) parsed.doc = true;
       else parsed.target = arg;
     }
   }
@@ -413,6 +423,7 @@ Usage:
   deno run -A zuke.ts runs prune [--keep <age>] [--keep-last <n>] [--dry-run]
   deno run -A zuke.ts cancel <run-id> [--actor <name>]
   deno run -A zuke.ts register [--actor <name>] [--json]
+  deno run -A zuke.ts doc <spec>
 
 Options:
   <target>          Run the target and its transitive dependencies.
@@ -500,6 +511,12 @@ Options:
                     server can discover it. Idempotent; excludes secrets. Writes
                     to .zuke/builds unless ZUKE_REGISTRY_URL/DIR or the build's
                     registry() configures a store. See docs/registry.md.
+  doc <spec>        Print a package's API docs by running 'deno doc <spec>' from
+                    an isolated empty directory (e.g. doc jsr:@zuke/deno). Run in
+                    a Node repo, deno doc otherwise resolves node_modules/@types
+                    and buries the API under type-resolution warnings; the empty
+                    cwd has nothing to resolve. A relative path (./mod.ts) is
+                    resolved against the real working directory first.
   --status <s>      With runs list, keep only runs with this status (running,
                     suspended, succeeded, failed, cancelled).
   --target <t>      With runs list, keep only runs whose graph contains this
@@ -628,6 +645,8 @@ export async function syncCiConfig(
 export interface MainOptions {
   /** Host used to render and open the HTML graph (injected in tests). */
   graphHost?: GraphHost;
+  /** Runner for the `doc` command's `deno doc` spawn (injected in tests). */
+  docRunner?: DocRunner;
   /** Lifecycle observers to run alongside the build's own hooks. */
   plugins?: Plugin[];
   /** Overrides for `completions install` (home/config dir), injected in tests. */
@@ -834,6 +853,79 @@ async function runRegister(build: Build, parsed: ParsedArgs): Promise<number> {
   }
 }
 
+/**
+ * Runs `deno doc <spec>` for the {@link runDoc} command — the injectable seam a
+ * test swaps for a fake. Returns the process exit code.
+ */
+export type DocRunner = (spec: string) => Promise<number>;
+
+/**
+ * The default {@link DocRunner}: spawn the running `deno` (via
+ * {@link Deno.execPath}, so no ambient `deno` on `PATH` is assumed) as
+ * `deno doc <spec>` with the working directory set to a fresh empty temp dir.
+ * That isolation is the whole point — run from a Node repo, `deno doc` otherwise
+ * resolves the repo's `node_modules/@types/*` and buries the API under dozens of
+ * "Failed resolving types" warnings; an empty cwd has nothing to resolve.
+ */
+const defaultDocRunner: DocRunner = async (spec) => {
+  const cwd = await Deno.makeTempDir({ prefix: "zuke-doc-" });
+  try {
+    const command = new Deno.Command(Deno.execPath(), {
+      args: ["doc", spec],
+      cwd,
+      stdout: "inherit",
+      stderr: "inherit",
+    });
+    const { code } = await command.output();
+    return code;
+  } finally {
+    await Deno.remove(cwd, { recursive: true });
+  }
+};
+
+/**
+ * Whether a `deno doc` spec is a URL or an absolute path — i.e. not something to
+ * resolve against the working directory. A URL has a multi-character scheme
+ * (`jsr:`, `npm:`, `https:`, …); a lone drive letter (`C:`) is a Windows
+ * absolute path, not a scheme; a leading `/` is a POSIX absolute path.
+ */
+function isUrlOrAbsolute(spec: string): boolean {
+  const normalized = spec.replace(/\\/g, "/");
+  if (normalized.startsWith("/")) return true; // POSIX absolute
+  if (/^[A-Za-z]:/.test(normalized)) return true; // Windows drive absolute
+  return /^[a-z][a-z0-9+.-]+:/i.test(normalized); // URL scheme (2+ chars)
+}
+
+/**
+ * Run the `doc` command: print a package's API docs via `deno doc`, isolated
+ * from the repo so type-resolution noise doesn't bury the output. Any relative
+ * spec (a file path, not a `jsr:`/`npm:`/`https:` URL or absolute path) is
+ * resolved against the real working directory first, since the runner documents
+ * from a different (empty) directory. Errors resolve to a non-zero exit with a
+ * friendly message, matching the other commands.
+ */
+async function runDoc(
+  parsed: ParsedArgs,
+  runner: DocRunner = defaultDocRunner,
+): Promise<number> {
+  let spec = parsed.docSpec;
+  if (spec === undefined) {
+    console.error(
+      "Usage: zuke doc <spec>   (e.g. zuke doc jsr:@zuke/deno, or ./mod.ts)",
+    );
+    return 1;
+  }
+  // A file path is relative to the caller's cwd, but the runner documents from
+  // an isolated empty directory — resolve it to absolute before it changes.
+  if (!isUrlOrAbsolute(spec)) spec = `${Deno.cwd()}/${spec}`;
+  try {
+    return await runner(spec);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    return 1;
+  }
+}
+
 /** Run the `runs` command: build the query (validating `--status`) and dispatch. */
 async function runRuns(build: Build, parsed: ParsedArgs): Promise<number> {
   const query: RunQuery = {};
@@ -981,6 +1073,9 @@ export async function main(
   }
   if (parsed.register) {
     return await runRegister(build, parsed);
+  }
+  if (parsed.doc) {
+    return await runDoc(parsed, options.docRunner);
   }
 
   let name = parsed.target;
