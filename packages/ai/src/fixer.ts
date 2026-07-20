@@ -504,10 +504,12 @@ export class AiFixer implements Remediation {
       },
     };
 
-    // Cost cache: an identical failure (same provider, model, and prompt) reuses
-    // the prior fix instead of paying for another call.
+    // Cost cache: an identical failure (same provider, model, effort, and prompt)
+    // reuses the prior fix instead of paying for another call. `effort` is part
+    // of the key because it changes the model's output — omitting it would serve
+    // a fix computed at a different reasoning effort.
     const cacheKey = this.#cache?.enabled_()
-      ? this.#cache.key_([provider, model, system, user])
+      ? this.#cache.key_([provider, model, this.#effort ?? "", system, user])
       : undefined;
     const cached = cacheKey !== undefined
       ? await this.#cache?.get_(cacheKey)

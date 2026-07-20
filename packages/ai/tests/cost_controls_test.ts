@@ -172,6 +172,25 @@ Deno.test("reviewer caches a response and reuses it on a repeat run", async () =
   assertEquals(store.map.size, 1);
 });
 
+Deno.test("reviewer cache key is effort-sensitive (no cross-effort reuse)", async () => {
+  const store = memStore();
+  const c = aiCache((x) => x.store(store));
+  const { fetch, calls } = recordFetch(
+    claude({ score: 1, severity: "low", summary: "s", findings: [] }),
+  );
+  const runAt = (effort: "low" | "high") =>
+    securityReviewer((r) =>
+      r.provider("claude").apiKey("k").quiet().diff((d) => d.text(DIFF))
+        .fetch(fetch).cache(c).effort(effort)
+    ).validate({ target: "t" });
+  await runAt("low");
+  await runAt("high");
+  // Different effort changes the model's output, so it must not reuse the
+  // low-effort response: two real calls, two distinct cache entries.
+  assertEquals(calls.length, 2);
+  assertEquals(store.map.size, 2);
+});
+
 Deno.test("a cached review notes it served from cache", async () => {
   const store = memStore();
   const c = aiCache((x) => x.store(store));
@@ -428,4 +447,20 @@ Deno.test("fixer reuses a cached fix on a repeat failure", async () => {
   await run();
   assertEquals(calls.length, 1);
   assertEquals(store.map.size, 1);
+});
+
+Deno.test("fixer cache key is effort-sensitive (no cross-effort reuse)", async () => {
+  const store = memStore();
+  const c = aiCache((x) => x.store(store));
+  const { fetch, calls } = recordFetch(claudeFix(ONE_EDIT));
+  const runAt = (effort: "low" | "high") =>
+    hermetic(
+      aiFixer((f) => f.provider("claude").apiKey("k").cache(c).effort(effort)),
+    ).fetch(fetch).remediate(CTX);
+  await runAt("low");
+  await runAt("high");
+  // Effort changes the fix the model produces, so the high-effort run must not
+  // replay the low-effort cache: two real calls, two distinct entries.
+  assertEquals(calls.length, 2);
+  assertEquals(store.map.size, 2);
 });

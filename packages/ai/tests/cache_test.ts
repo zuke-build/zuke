@@ -1,4 +1,4 @@
-import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
+import { assertEquals } from "../../core/tests/_assert.ts";
 import { AiCache, aiCache } from "../src/cache.ts";
 import type { CacheEntry, CacheStore } from "../src/cache.ts";
 
@@ -149,13 +149,20 @@ Deno.test("the default file store round-trips and misses cleanly", async () => {
     // Valid JSON that is not a well-formed entry is also rejected as a miss.
     await Deno.writeTextFile(`${dir}/${key}.json`, JSON.stringify({ nope: 1 }));
     assertEquals(await cache.get_(key), undefined);
+    // An entry with text but no createdAt (an older format) is a miss too:
+    // without a timestamp the TTL check is NaN and the entry would otherwise be
+    // served forever. isCacheEntry rejects it.
+    await Deno.writeTextFile(
+      `${dir}/${key}.json`,
+      JSON.stringify({ text: "x" }),
+    );
+    assertEquals(await cache.get_(key), undefined);
   } finally {
     await Deno.remove(dir, { recursive: true });
   }
 });
 
-// Reference assertRejects so the shared import stays exercised under no-unused.
-Deno.test("a rejecting store get surfaces when not guarded by the cache", async () => {
+Deno.test("get_ swallows a throwing store and reports a miss (its contract)", async () => {
   const throwing: CacheStore = {
     get() {
       return Promise.reject(new Error("boom"));
@@ -164,5 +171,8 @@ Deno.test("a rejecting store get surfaces when not guarded by the cache", async 
       return Promise.resolve();
     },
   };
-  await assertRejects(() => throwing.get("k"), Error, "boom");
+  const cache = new AiCache().store(throwing);
+  // The class promises a store error is treated as a miss, never surfaced —
+  // a broken cache must not break the build it caches for.
+  assertEquals(await cache.get_("k"), undefined);
 });
