@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.30.1](https://github.com/zuke-build/zuke/compare/core-v1.30.0...core-v1.30.1) (2026-07-20)
+
+
+### Bug Fixes
+
+* **core:** validate MCP Origin and redact URLs; fix ai diff parsing ([#223](https://github.com/zuke-build/zuke/issues/223)) ([0015ad0](https://github.com/zuke-build/zuke/commit/0015ad0ed5964d0244e344431d2eb6e0ecabadee))
+
 ## [1.30.0](https://github.com/zuke-build/zuke/compare/core-v1.29.0...core-v1.30.0) (2026-07-20)
 
 

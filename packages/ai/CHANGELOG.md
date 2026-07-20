@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.3](https://github.com/zuke-build/zuke/compare/ai-v1.5.2...ai-v1.5.3) (2026-07-20)
+
+
+### Bug Fixes
+
+* **core:** validate MCP Origin and redact URLs; fix ai diff parsing ([#223](https://github.com/zuke-build/zuke/issues/223)) ([0015ad0](https://github.com/zuke-build/zuke/commit/0015ad0ed5964d0244e344431d2eb6e0ecabadee))
+
 ## [1.5.2](https://github.com/zuke-build/zuke/compare/ai-v1.5.1...ai-v1.5.2) (2026-07-20)
 
 
