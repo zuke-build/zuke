@@ -13,6 +13,7 @@
 
 import { dig } from "../json.ts";
 import { ensureGithubOk, type GithubContext, githubHeaders } from "./github.ts";
+import { MAX_COMMENT_PAGES, nextLink } from "./types.ts";
 
 /** The GitHub REST API origin. */
 const API = "https://api.github.com";
@@ -57,21 +58,26 @@ async function existingKeys(
   context: GithubContext,
   doFetch: typeof fetch,
 ): Promise<Set<string>> {
-  const url =
+  let url: string | undefined =
     `${API}/repos/${context.owner}/${context.repo}/pulls/${context.pull}/comments?per_page=100`;
-  const response = await doFetch(url, {
-    headers: githubHeaders(context.token),
-  });
-  await ensureGithubOk(response);
-  const data: unknown = await response.json();
   const keys = new Set<string>();
-  if (Array.isArray(data)) {
-    for (const item of data) {
-      const body = dig(item, "body");
-      if (typeof body !== "string") continue;
-      const match = body.match(/<!-- zuke-ai-fix:(.+?) -->/);
-      if (match) keys.add(match[1]);
+  // Page through all review comments so a re-run never re-posts a suggestion
+  // whose marker sits beyond the first page on a busy PR.
+  for (let page = 0; url !== undefined && page < MAX_COMMENT_PAGES; page++) {
+    const response = await doFetch(url, {
+      headers: githubHeaders(context.token),
+    });
+    await ensureGithubOk(response);
+    const data: unknown = await response.json();
+    if (Array.isArray(data)) {
+      for (const item of data) {
+        const body = dig(item, "body");
+        if (typeof body !== "string") continue;
+        const match = body.match(/<!-- zuke-ai-fix:(.+?) -->/);
+        if (match) keys.add(match[1]);
+      }
     }
+    url = nextLink(response.headers.get("link"));
   }
   return keys;
 }

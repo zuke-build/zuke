@@ -50,6 +50,29 @@ export interface ReviewHost {
 /** The Markdown header that every PR comment opens with, identifying Zuke. */
 export const HEADER = "🤖 **[Zuke](https://zuke.build) AI review**";
 
+/**
+ * Cap on pages followed when scanning for an existing comment. A safety bound so
+ * a misbehaving API can't loop forever; 100 pages × 100 per page = 10k comments,
+ * far beyond any real PR. (ponytail: fixed cap; the marker is our own recent
+ * comment, so it is found long before this on any real thread.)
+ */
+export const MAX_COMMENT_PAGES = 100;
+
+/**
+ * The next-page URL from an RFC-5988 `Link` header (GitHub, GitLab), or
+ * `undefined` when there is no `rel="next"`. Following it lets a marker scan
+ * page past the first 100 comments instead of missing an older marker and
+ * posting a duplicate.
+ */
+export function nextLink(header: string | null): string | undefined {
+  if (header === null) return undefined;
+  for (const part of header.split(",")) {
+    const match = part.match(/<([^>]+)>\s*;\s*rel="?next"?/);
+    if (match) return match[1];
+  }
+  return undefined;
+}
+
 /** Render the hidden marker (an HTML comment) used to identify a reviewer's prior comment. */
 export function commentMarker(name: string): string {
   return `<!-- zuke-ai-review:${name} -->`;

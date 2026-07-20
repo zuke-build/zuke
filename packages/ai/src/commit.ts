@@ -36,8 +36,38 @@ export async function commitAndPush(options: CommitOptions): Promise<void> {
   }
 }
 
-/** How to commit (and optionally push) every change in the working tree. */
-export interface CommitAllOptions {
+/**
+ * The paths reported dirty by `git status --porcelain`. Each line is
+ * `XY <path>` (or, only for a rename/copy — status `R`/`C` — `XY <old> -> <new>`,
+ * where the *new* path is taken). The ` -> ` split is gated on the status code
+ * so an ordinary file whose name literally contains ` -> ` isn't mis-parsed.
+ * Blank lines are ignored.
+ *
+ * ponytail: paths git would quote (non-ASCII under `core.quotePath`, or names
+ * with control chars) come back quoted and won't stage — fail-safe (the fix is
+ * reported failed, nothing wrong is committed); upgrade to `--porcelain=v2 -z`
+ * if exotic filenames need committing.
+ */
+export function porcelainPaths(status: string): string[] {
+  const paths: string[] = [];
+  for (const line of status.split("\n")) {
+    if (line.trim() === "") continue;
+    const code = line.slice(0, 2); // the XY status columns
+    const rest = line.slice(3); // drop the two status columns and the space
+    const renamed = code.includes("R") || code.includes("C");
+    const arrow = renamed ? rest.indexOf(" -> ") : -1;
+    paths.push(arrow === -1 ? rest : rest.slice(arrow + 4));
+  }
+  return paths;
+}
+
+/** How to commit only the changes an agent newly introduced. */
+export interface CommitChangedOptions {
+  /**
+   * Paths already dirty **before** the agent ran (from {@link porcelainPaths}).
+   * These are the developer's own working-tree changes and are left untouched.
+   */
+  before: string[];
   /** The commit message subject. */
   message: string;
   /** Push to the current branch after committing (default true). */
@@ -47,17 +77,27 @@ export interface CommitAllOptions {
 }
 
 /**
- * Stage **all** working-tree changes, commit them, and (unless `push` is false)
- * push. Used by the agent fixer, which lets the agent edit arbitrary files, so
- * the changed set isn't known ahead of time. A no-op when the working tree is
- * clean (the agent made no change), so it never creates an empty commit.
+ * Stage, commit, and (unless `push` is false) push **only the paths the agent
+ * newly changed** — those dirty now but not in `before`. The agent fixer lets a
+ * coding agent edit files autonomously, so this scopes the commit to its work
+ * and never sweeps a developer's unrelated working-tree changes into (or pushes
+ * them with) the fix. A no-op when nothing new changed, so it never makes an
+ * empty commit.
+ *
+ * Ceiling: a file already dirty before the agent ran is left to the developer
+ * even if the agent edited it further — deliberately, since committing their
+ * pre-existing changes to that file would be worse than under-committing.
  */
-export async function commitAll(options: CommitAllOptions): Promise<void> {
-  await options.run(["git", "add", "-A"]);
+export async function commitChanged(
+  options: CommitChangedOptions,
+): Promise<void> {
   const status = await options.run(["git", "status", "--porcelain"]);
-  if (status.trim() === "") return; // the agent changed nothing
-  await options.run(["git", "commit", "-m", options.message]);
-  if (options.push !== false) {
-    await options.run(["git", "push"]);
-  }
+  const before = new Set(options.before);
+  const paths = porcelainPaths(status).filter((p) => !before.has(p));
+  await commitAndPush({
+    paths,
+    message: options.message,
+    push: options.push,
+    run: options.run,
+  });
 }

@@ -49,7 +49,7 @@ import type { RetryInfo, RetryOptions } from "./retry.ts";
 import type { Budget } from "./budget.ts";
 import type { AiCache } from "./cache.ts";
 import { findingFingerprint, type Suppressions } from "./suppress.ts";
-import { rank } from "./severity.ts";
+import { rank, severityScore } from "./severity.ts";
 
 /**
  * A fluent AI reviewer. Construct one via {@link securityReviewer} (and the
@@ -341,12 +341,16 @@ export class Reviewer implements Validation {
       assessment.score = 0;
       assessment.severity = "none";
     } else {
-      // Suppression can only lower the bar: recompute severity from what's left.
+      // Suppression can only lower the bar: recompute severity AND score from
+      // what's left. Recomputing severity alone would leave the original score,
+      // so a score-based gate (the default, score > 7) would still fail after a
+      // critical false positive is suppressed. Never raise the score.
       let highest: Severity = "none";
       for (const finding of kept) {
         if (rank(finding.severity) > rank(highest)) highest = finding.severity;
       }
       assessment.severity = highest;
+      assessment.score = Math.min(assessment.score, severityScore(highest));
     }
     return dropped;
   }

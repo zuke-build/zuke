@@ -18,6 +18,7 @@ import { AiReviewError } from "./errors.ts";
 export const DEFAULT_FIX_EXCLUDES: string[] = [
   "**/*.lock",
   ".git/**",
+  "**/.git/**", // a nested .git (e.g. a vendored checkout), not just the root
   "**/.github/workflows/**",
   "**/*.pem",
   "**/.env",
@@ -34,9 +35,21 @@ export interface ApplyGuards {
   maxEdits: number;
 }
 
-/** Whether `path` matches any of the glob `patterns`. */
-function matchesAny(patterns: string[], path: string): boolean {
-  return patterns.some((p) => globToRegExp(p).test(path));
+/**
+ * Whether `path` matches any of the glob `patterns`. With `ci`, both sides are
+ * lowercased. Excludes match case-insensitively (`ci: true`) because macOS and
+ * Windows filesystems are case-insensitive, so a case-sensitive guard would let
+ * `.Env` or `.GitHub/workflows/ci.yml` slip past an exclude for `.env` /
+ * `.github/...`. The allowlist matches case-sensitively (`ci: false`): a
+ * case-insensitive allow would *widen* it on a case-sensitive filesystem —
+ * `SRC/x` would pass an `allow: ["src/**"]` yet be written to a sibling `SRC/`
+ * directory the user never allowlisted.
+ */
+function matchesAny(patterns: string[], path: string, ci: boolean): boolean {
+  const target = ci ? path.toLowerCase() : path;
+  return patterns.some((p) =>
+    globToRegExp(ci ? p.toLowerCase() : p).test(target)
+  );
 }
 
 /**
@@ -89,10 +102,10 @@ export function checkEdits(edits: FileEdit[], guards: ApplyGuards): string[] {
   const allow = guards.allow.length > 0 ? guards.allow : ["**"];
   return edits.map((edit) => {
     const path = normalizePath(edit.path);
-    if (matchesAny(excludes, path)) {
+    if (matchesAny(excludes, path, true)) { // case-insensitive: catch case tricks
       throw new AiReviewError(`refusing to write an excluded path: ${path}`);
     }
-    if (!matchesAny(allow, path)) {
+    if (!matchesAny(allow, path, false)) { // case-sensitive: never widen the allow
       throw new AiReviewError(`path is outside the allowlist: ${path}`);
     }
     return path;

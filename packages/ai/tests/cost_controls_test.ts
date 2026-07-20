@@ -250,6 +250,33 @@ Deno.test("partial suppression recomputes severity from what remains", async () 
   assertEquals(lines.some((l) => l.includes("(low) — 1 finding(s)")), true);
 });
 
+Deno.test("suppressing the critical finding recomputes the score below the gate", async () => {
+  const critical = {
+    title: "rce",
+    severity: "critical" as const,
+    file: "x.ts",
+  };
+  const low = { title: "nit", severity: "low" as const };
+  const sup = suppressions((s) =>
+    s.add(findingFingerprint("security", critical))
+  );
+  // Model scored 9 (trips the default gate, score > 7), driven by the critical
+  // finding. Suppressing it must recompute the score down to the surviving low
+  // finding — recomputing severity alone would leave 9 and still fail the gate.
+  const { fetch } = recordFetch(
+    claude({
+      score: 9,
+      severity: "critical",
+      summary: "s",
+      findings: [critical, low],
+    }),
+  );
+  await securityReviewer((r) =>
+    r.provider("claude").apiKey("k").quiet().diff((d) => d.text(DIFF))
+      .fetch(fetch).suppress(sup)
+  ).validate({ target: "t" }); // resolves — the recomputed score no longer trips
+});
+
 Deno.test("an empty suppress list leaves the findings untouched", async () => {
   // An injected reader that finds no file -> no fingerprints, nothing dropped.
   const sup = suppressions((s) => s.reader(() => Promise.resolve(undefined)));
