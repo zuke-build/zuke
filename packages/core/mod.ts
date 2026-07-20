@@ -267,7 +267,9 @@ export {
 } from "./src/announce.ts";
 export {
   assertSafeEntryName,
+  assertSafeLinkTarget,
   createTarGzip,
+  type ExtractOptions,
   extractTarGzip,
   extractZip,
   gunzip,
@@ -283,6 +285,8 @@ export {
   type InstallPlatform,
   installRelease,
   type InstallReleaseOptions,
+  installTree,
+  type InstallTreeOptions,
   type Platform,
 } from "./src/install.ts";
 export {

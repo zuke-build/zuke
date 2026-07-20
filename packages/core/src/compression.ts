@@ -42,6 +42,40 @@ export function assertSafeEntryName(name: string): void {
   }
 }
 
+/**
+ * Reject a symlink whose target would resolve outside the destination directory
+ * — an absolute target, or a relative one that climbs (with `..`) above the
+ * extraction root once resolved against the link's own directory. A file entry's
+ * name is bounded by {@link assertSafeEntryName}; a symlink adds a second escape
+ * vector (its target), so a poisoned tarball can't plant `bin/x -> ../../etc`.
+ */
+export function assertSafeLinkTarget(entryName: string, target: string): void {
+  const normalized = target.replace(/\\/g, "/");
+  if (normalized.startsWith("/") || /^[A-Za-z]:/.test(normalized)) {
+    throw new Error(
+      `archive: refusing a symlink "${entryName}" to an absolute path: ` +
+        `"${target}".`,
+    );
+  }
+  // Resolve the target relative to the symlink's own directory; it must never
+  // climb above the extraction root.
+  const parts = entryName.replace(/\\/g, "/").split("/").slice(0, -1);
+  for (const segment of normalized.split("/")) {
+    if (segment === "" || segment === ".") continue;
+    if (segment === "..") {
+      if (parts.length === 0) {
+        throw new Error(
+          `archive: refusing a symlink "${entryName}" whose target escapes ` +
+            `the destination: "${target}".`,
+        );
+      }
+      parts.pop();
+    } else {
+      parts.push(segment);
+    }
+  }
+}
+
 /** Gzip-compress `data` using the platform `CompressionStream`. */
 export async function gzip(data: Uint8Array): Promise<Uint8Array> {
   // Copy into a fresh ArrayBuffer-backed view so the Blob accepts it.
@@ -59,12 +93,18 @@ export async function gunzip(data: Uint8Array): Promise<Uint8Array> {
   return new Uint8Array(await new Response(stream).arrayBuffer());
 }
 
-/** A single file entry within a tar archive. */
+/** A single entry within a tar archive — a regular file or a symbolic link. */
 export interface TarEntry {
   /** The entry's path inside the archive (≤ 100 bytes). */
   name: string;
-  /** The file contents. */
+  /** The file contents (empty for a symlink entry). */
   data: Uint8Array;
+  /**
+   * For a symbolic-link entry, its target (≤ 100 bytes); absent for a regular
+   * file. Node's release tarballs, for one, ship `bin/npm`/`bin/npx` as symlinks
+   * into `lib/node_modules`, so extracting a runtime tree must preserve them.
+   */
+  linkname?: string;
 }
 
 /** The tar block size; headers and data are padded to a multiple of this. */
@@ -92,22 +132,30 @@ function writeOctal(
   writeString(block, offset, text);
 }
 
-/** Build the 512-byte `ustar` header for one entry. */
-function tarHeader(name: string, size: number): Uint8Array {
+/** Build the 512-byte `ustar` header for one entry (a file, or a symlink when
+ * `linkname` is given). */
+function tarHeader(name: string, size: number, linkname?: string): Uint8Array {
   const nameBytes = new TextEncoder().encode(name);
   if (nameBytes.length > 100) {
     throw new Error(
       `tar: entry name exceeds 100 bytes (ustar limit): "${name}"`,
     );
   }
+  const isLink = linkname !== undefined;
+  if (isLink && new TextEncoder().encode(linkname).length > 100) {
+    throw new Error(
+      `tar: symlink target exceeds 100 bytes (ustar limit): "${linkname}"`,
+    );
+  }
   const header = new Uint8Array(BLOCK);
   writeString(header, 0, name);
-  writeOctal(header, 100, 7, 0o644); // mode
+  writeOctal(header, 100, 7, isLink ? 0o777 : 0o644); // mode
   writeOctal(header, 108, 7, 0); // uid
   writeOctal(header, 116, 7, 0); // gid
-  writeOctal(header, 124, 11, size); // size
+  writeOctal(header, 124, 11, isLink ? 0 : size); // size (a symlink carries none)
   writeOctal(header, 136, 11, 0); // mtime (fixed for reproducibility)
-  header[156] = 0x30; // typeflag '0' (regular file)
+  header[156] = isLink ? 0x32 : 0x30; // typeflag '2' (symlink) | '0' (file)
+  if (isLink) writeString(header, 157, linkname); // linkname field
   writeString(header, 257, "ustar\0"); // magic
   header[263] = 0x30; // version "00"
   header[264] = 0x30;
@@ -126,11 +174,13 @@ export function tar(entries: TarEntry[]): Uint8Array {
   const blocks: Uint8Array[] = [];
   let total = 0;
   for (const entry of entries) {
-    const header = tarHeader(entry.name, entry.data.length);
+    const header = tarHeader(entry.name, entry.data.length, entry.linkname);
     blocks.push(header);
     total += BLOCK;
-    const body = new Uint8Array(padded(entry.data.length));
-    body.set(entry.data);
+    // A symlink entry carries no data blocks; a file's data is block-padded.
+    const size = entry.linkname === undefined ? entry.data.length : 0;
+    const body = new Uint8Array(padded(size));
+    if (entry.linkname === undefined) body.set(entry.data);
     blocks.push(body);
     total += body.length;
   }
@@ -184,9 +234,13 @@ export function untar(archive: Uint8Array): TarEntry[] {
     // Read the full 12-byte size field; the trailing byte is a NUL terminator.
     const size = readOctal(archive, offset + 124, 12);
     const typeflag = archive[offset + 156];
+    const linkname = readString(archive, offset + 157, 100);
     offset += BLOCK;
-    // Only regular files ('0' or legacy '\0') carry extractable data.
-    if (typeflag === 0x30 || typeflag === 0) {
+    if (typeflag === 0x32) {
+      // '2' → a symbolic link: the target is the linkname; it carries no data.
+      entries.push({ name, data: new Uint8Array(0), linkname });
+    } else if (typeflag === 0x30 || typeflag === 0) {
+      // Regular files ('0' or legacy '\0') carry extractable data.
       entries.push({ name, data: archive.slice(offset, offset + size) });
     }
     offset += padded(size);
@@ -213,36 +267,77 @@ export async function createTarGzip(
   await Deno.writeFile(String(dest), await gzip(tar(entries)));
 }
 
+/** Options common to {@link extractTarGzip} and {@link extractZip}. */
+export interface ExtractOptions {
+  /**
+   * Drop this many leading path components from every entry (like tar's
+   * `--strip-components`). An entry left with no path — e.g. the archive's
+   * single top-level directory — is skipped. Defaults to `0`. Use `1` to unpack
+   * a release tarball that wraps everything in a `tool-v1.2.3/` directory.
+   */
+  strip?: number;
+}
+
 /**
  * Read the `.tar.gz` at `src`, gunzip and unpack it, and write each entry under
- * `destDir` (creating parent directories as needed).
+ * `destDir` (creating parent directories as needed). Symlink entries are
+ * recreated as symlinks; pass {@link ExtractOptions.strip} to drop leading path
+ * components.
  */
 export async function extractTarGzip(
   src: PathLike,
   destDir: PathLike,
+  options: ExtractOptions = {},
 ): Promise<void> {
   const archive = untar(await gunzip(await Deno.readFile(String(src))));
-  await writeEntries(archive, destDir);
+  await writeEntries(archive, destDir, options);
+}
+
+/** Drop the first `n` path components from `name`, returning "" if none remain. */
+function stripComponents(name: string, n: number): string {
+  if (n <= 0) return name;
+  return name.replace(/\\/g, "/").split("/").slice(n).join("/");
 }
 
 /**
  * Write each archive `entry` under `destDir`, creating parent directories as
- * needed. Every entry name is validated first ({@link assertSafeEntryName}), so
- * a malicious archive cannot plant a file outside `destDir` (a "zip slip").
+ * needed. Every entry name is validated first ({@link assertSafeEntryName}), and
+ * a symlink's target is validated ({@link assertSafeLinkTarget}), so a malicious
+ * archive cannot plant or point a file outside `destDir` (a "zip slip"). With
+ * {@link ExtractOptions.strip}, leading path components are dropped and any entry
+ * left with an empty path is skipped.
  */
 async function writeEntries(
   entries: TarEntry[],
   destDir: PathLike,
+  options: ExtractOptions = {},
 ): Promise<void> {
+  const strip = options.strip ?? 0;
   for (const entry of entries) assertSafeEntryName(entry.name);
   const root = String(destDir);
   for (const entry of entries) {
-    const path = `${root}/${entry.name}`;
+    const name = stripComponents(entry.name, strip);
+    if (name === "") continue; // fully stripped (e.g. the top-level directory)
+    const path = `${root}/${name}`;
     const slash = path.lastIndexOf("/");
     if (slash !== -1) {
       await Deno.mkdir(path.slice(0, slash), { recursive: true });
     }
-    await Deno.writeFile(path, entry.data);
+    if (entry.linkname !== undefined) {
+      assertSafeLinkTarget(name, entry.linkname);
+      // `Deno.symlink` throws if the path already exists, whereas a file write
+      // silently overwrites; remove any prior entry first so a duplicate name in
+      // a malformed archive is "last one wins" (like a file) rather than a raw
+      // AlreadyExists crash.
+      await Deno.remove(path).catch(() => {});
+      // Windows requires an explicit link `type`; POSIX ignores it. Runtime bins
+      // (Node's bin/npm → npm-cli.js) are file symlinks.
+      // ponytail: assume "file"; a directory symlink in a tar unpacked on Windows
+      // would get the wrong type — rare (runtimes ship .zip on Windows).
+      await Deno.symlink(entry.linkname, path, { type: "file" });
+    } else {
+      await Deno.writeFile(path, entry.data);
+    }
   }
 }
 
@@ -401,6 +496,11 @@ export async function unzip(archive: Uint8Array): Promise<TarEntry[]> {
 export async function extractZip(
   src: PathLike,
   destDir: PathLike,
+  options: ExtractOptions = {},
 ): Promise<void> {
-  await writeEntries(await unzip(await Deno.readFile(String(src))), destDir);
+  await writeEntries(
+    await unzip(await Deno.readFile(String(src))),
+    destDir,
+    options,
+  );
 }

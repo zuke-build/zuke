@@ -88,6 +88,13 @@ function assertSafeEntryName(name: string): void
   absolute path or one with a `..` segment (a "zip slip"). A downloaded or
   poisoned archive must never place files outside where it is being unpacked.
 
+function assertSafeLinkTarget(entryName: string, target: string): void
+  Reject a symlink whose target would resolve outside the destination directory
+  — an absolute target, or a relative one that climbs (with `..`) above the
+  extraction root once resolved against the link's own directory. A file entry's
+  name is bounded by {@link assertSafeEntryName}; a symlink adds a second escape
+  vector (its target), so a poisoned tarball can't plant `bin/x -> ../../etc`.
+
 async function cancelRun(build: Build, options: CancelOptions): Promise<CancelResult>
   Cancel the run `options.runId` for `build`: transition it to `cancelling`
   (exactly one canceller drives the walk; a live owning process observes the
@@ -220,11 +227,13 @@ function externalSignal(name: string): WaitTrigger
   (via `zuke resume <id> --signal <name>`). The signal's payload is exposed to
   target bodies through {@link "./target.ts".TargetContext} `signals`.
 
-async function extractTarGzip(src: PathLike, destDir: PathLike): Promise<void>
+async function extractTarGzip(src: PathLike, destDir: PathLike, options: ExtractOptions): Promise<void>
   Read the `.tar.gz` at `src`, gunzip and unpack it, and write each entry under
-  `destDir` (creating parent directories as needed).
+  `destDir` (creating parent directories as needed). Symlink entries are
+  recreated as symlinks; pass {@link ExtractOptions.strip} to drop leading path
+  components.
 
-async function extractZip(src: PathLike, destDir: PathLike): Promise<void>
+async function extractZip(src: PathLike, destDir: PathLike, options: ExtractOptions): Promise<void>
   Read the `.zip` at `src`, unpack it, and write each entry under `destDir`
   (creating parent directories as needed) — the zip counterpart of
   {@link extractTarGzip}. Entry names are validated so a malicious archive
@@ -356,6 +365,19 @@ async function installRelease(options: InstallReleaseOptions): Promise<AbsoluteP
   anything is installed, and a matching prior install is reused without
   downloading again — so pinning a checksum makes the install both hermetic
   (tamper-evident) and cached.
+
+async function installTree(options: InstallTreeOptions): Promise<AbsolutePath>
+  Download and unpack a whole archive tree — a multi-file runtime such as
+  Node.js, which ships `bin/node`, `bin/npm`, `bin/npx`, and
+  `lib/node_modules/**` in one tarball — and return the {@link AbsolutePath} of
+  its (stripped) root. `installRelease` extracts a single binary; `installTree`
+  keeps the entire directory, symlinks included.
+
+  Because {@link AbsolutePath} is callable, the root doubles as an accessor:
+  `root("bin", "node")` is the node binary and `root("bin")` is the directory to
+  put on `PATH` (with `prependPath`). Declared {@link InstallTreeOptions.bins}
+  are marked executable on POSIX. With a {@link InstallTreeOptions.checksum} the
+  archive is verified before unpacking and a matching prior install is reused.
 
 function isCI(): boolean
   Whether the build appears to be running in a CI environment.
@@ -1588,6 +1610,10 @@ class ToolInstallSettings
     Download format. Set by {@link archive}.
   binaryPath_?: string
     The binary's path within a `tar.gz`. Set by {@link binaryPath}.
+  strip_?: number
+    Leading path components to strip on a tree install. Set by {@link strip}.
+  bins_?: string[]
+    Executable bins within a tree install. Set by {@link bins}.
   checksum_?: string | ((platform: Platform) => string)
     Expected SHA-256 (or a per-platform resolver). Set by {@link checksum}.
   platform_?: InstallPlatform
@@ -1605,6 +1631,14 @@ class ToolInstallSettings
     the bare binary). Pair with {@link binaryPath} for the binary inside.
   binaryPath(path: string): this
     For an archive, the binary's path within it (defaults to the name).
+  strip(components: number): this
+    For a tree install ({@link ToolTasksApi.installTree} / {@link Toolchain.tree}),
+    drop this many leading path components while unpacking — `1` unwraps a
+    release tarball's `tool-v1.2.3/` directory. Ignored by a single-binary install.
+  bins(...paths: string[]): this
+    For a tree install, the paths (relative to the stripped root) to mark
+    executable on POSIX — a runtime's `bin/node`, `bin/npm`, … Ignored by a
+    single-binary install.
   checksum(sha256: string | ((platform: Platform) => string)): this
     The expected SHA-256 (hex) of the downloaded artifact — verifies and caches
     the install. Pass a `({ os, arch }) => string` resolver to pin it per
@@ -1616,6 +1650,11 @@ class ToolInstallSettings
   options_(fallbackDestDir: PathLike): InstallReleaseOptions
     Build the {@link InstallReleaseOptions}, using `fallbackDestDir` when no
     {@link destDir} was set. Throws if a required field is missing.
+  treeOptions_(fallbackDestDir: PathLike): InstallTreeOptions
+    Build the {@link InstallTreeOptions} for a tree install, using
+    `fallbackDestDir` when no {@link destDir} was set. A tree always ships
+    packed, so the archive defaults to `"tar.gz"` and `"raw"` is rejected. Throws
+    if a required field is missing.
 
 class Toolchain
   A declared set of external tools. Add tools with {@link Toolchain.tool} (a
@@ -1624,6 +1663,12 @@ class Toolchain
 
   tool(configure: Configure<ToolInstallSettings>): this
     Add a release tool, configured through a settings-lambda. Chainable.
+  tree(configure: Configure<ToolInstallSettings>): this
+    Add a multi-file runtime tree (see {@link ToolTasksApi.installTree}),
+    configured through a settings-lambda with `.strip(...)`/`.bins(...)`. In
+    {@link install}'s result its entry is the extracted tree's root — a callable
+    {@link AbsolutePath}, so `root("bin")` is the directory to put on `PATH`.
+    Chainable.
   npm(spec: NpmToolSpec): this
     Add an npm-registry package to provision as a version-pinned tool —
     installed under `<destDir>/npm/<name>@<version>` and keyed in
@@ -1631,12 +1676,15 @@ class Toolchain
     {@link installNpmTool}. Chainable.
   get tools(): readonly ToolInstallSettings[]
     The configured release tools, in declaration order.
+  get trees(): readonly ToolInstallSettings[]
+    The configured runtime trees, in declaration order.
   get npmTools(): readonly NpmToolSpec[]
     The configured npm-package tools, in declaration order.
   async install(options: ToolchainInstallOptions): Promise<Map<string, AbsolutePath>>
     Install every declared tool concurrently — reusing a cached copy where a
-    release tool's pinned checksum, or an npm tool's `name@version` marker,
-    matches — and return a map of tool name to installed {@link AbsolutePath}.
+    release tool's or tree's pinned checksum, or an npm tool's `name@version`
+    marker, matches — and return a map of tool name to installed
+    {@link AbsolutePath}. A {@link tree}'s entry is its extracted root directory.
 
 class WaitSettings
   Fluent configuration for {@link TargetBuilder.waitsFor}:
@@ -2193,6 +2241,15 @@ interface ExecuteOptions
     already succeeded (which are not re-run). Not for direct use — call
     `resumeRun`.
 
+interface ExtractOptions
+  Options common to {@link extractTarGzip} and {@link extractZip}.
+
+  strip?: number
+    Drop this many leading path components from every entry (like tar's
+    `--strip-components`). An entry left with no path — e.g. the archive's
+    single top-level directory — is skipped. Defaults to `0`. Use `1` to unpack
+    a release tarball that wraps everything in a `tool-v1.2.3/` directory.
+
 interface FanOutOptions
   Options for {@link fanOutPipeline}: how a build's targets become parallel CI
   jobs.
@@ -2371,6 +2428,37 @@ interface InstallReleaseOptions
     Because {@link url} resolves a different artifact per platform, each has its
     own hash — so pass a resolver `(platform) => string` (like `url`) to pin a
     checksum per platform, or a plain string when a single artifact is installed.
+
+interface InstallTreeOptions
+  Options for {@link installTree}.
+
+  name: string
+    The tool name; the extracted tree lands in `<destDir>/<name>`.
+  url: (platform: Platform) => string
+    Resolve the download URL for the target {@link Platform}.
+  destDir: PathLike
+    The directory the tree is installed under (created if missing).
+  archive: "tar.gz" | "zip"
+    The archive format — a multi-file runtime always ships packed.
+  strip?: number
+    Leading path components to drop while unpacking (tar's `--strip-components`).
+    A release tarball wraps everything in a `tool-v1.2.3/` directory, so `1`
+    unwraps it; {@link bins} and the returned tree root are then relative to the
+    stripped tree. Defaults to `0`.
+  bins?: readonly string[]
+    Paths (relative to the stripped tree root) to mark executable on POSIX — the
+    tar reader does not preserve mode bits, so a runtime's `bin/node`,
+    `bin/npm`, … need it. Chmod follows a symlink to its real target, so listing
+    a symlinked bin makes the script it points at executable too.
+  platform?: InstallPlatform
+    The platform to resolve for. Defaults to {@link hostPlatform}.
+  download?: DownloadFn
+    The download implementation. Defaults to {@link httpDownload}; a test seam.
+  checksum?: string | ((platform: Platform) => string)
+    The expected SHA-256 (hex) of the downloaded archive — verified before
+    anything is unpacked, and used as the cache key (see
+    {@link InstallReleaseOptions.checksum}). Omit it and the tree is downloaded
+    every time and not verified.
 
 interface LockHolder
   Who holds a lock — surfaced to the loser of a conflict so it can act.
@@ -2856,12 +2944,16 @@ interface Style
     Width of horizontal rules and boxes, in characters.
 
 interface TarEntry
-  A single file entry within a tar archive.
+  A single entry within a tar archive — a regular file or a symbolic link.
 
   name: string
     The entry's path inside the archive (≤ 100 bytes).
   data: Uint8Array
-    The file contents.
+    The file contents (empty for a symlink entry).
+  linkname?: string
+    For a symbolic-link entry, its target (≤ 100 bytes); absent for a regular
+    file. Node's release tarballs, for one, ship `bin/npm`/`bin/npx` as symlinks
+    into `lib/node_modules`, so extracting a runtime tree must preserve them.
 
 interface TargetContext
   The context passed to every target body. Optional to receive — an existing
@@ -2953,6 +3045,14 @@ interface ToolTasksApi
     Install a single release tool, configured through a
     {@link ToolInstallSettings} lambda, and resolve to its installed path.
     Defaults the install directory to `.zuke/tools`.
+  installTree(configure: Configure<ToolInstallSettings>): Promise<AbsolutePath>
+    Install a multi-file runtime tree (Node.js, a JDK, …) from one archive,
+    configured through a {@link ToolInstallSettings} lambda, and resolve to the
+    extracted tree's root {@link AbsolutePath}. Because that path is callable,
+    `root("bin", "node")` is a binary and `root("bin")` a directory to put on
+    `PATH`. Use `.strip(...)` and `.bins(...)`; defaults the install directory to
+    `.zuke/tools`. See {@link installTree}; group several with
+    {@link Toolchain.tree}.
   npm(spec: NpmToolSpec, options?: InstallNpmToolOptions): Promise<AbsolutePath>
     Provision a single npm-registry package as a version-pinned, cached tool and
     resolve to its installed bin path. Defaults the install root to

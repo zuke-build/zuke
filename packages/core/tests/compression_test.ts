@@ -1,6 +1,7 @@
 import { assertEquals, assertRejects, assertThrows } from "./_assert.ts";
 import {
   assertSafeEntryName,
+  assertSafeLinkTarget,
   createTarGzip,
   extractTarGzip,
   extractZip,
@@ -306,6 +307,149 @@ Deno.test("unzip uses the local header's extra length, not the central directory
   ]);
   const out = await unzip(zip);
   assertEquals(dec(out[0].data), "payload");
+});
+
+Deno.test("tar/untar round-trips a symlink entry (linkname, no data)", () => {
+  const archive = tar([
+    { name: "bin/node", data: enc("ELF-binary") },
+    {
+      name: "bin/npm",
+      data: new Uint8Array(0),
+      linkname: "../lib/node_modules/npm/bin/npm-cli.js",
+    },
+  ]);
+  assertEquals(archive.length % 512, 0);
+  const out = untar(archive);
+  assertEquals(out.map((e) => e.name), ["bin/node", "bin/npm"]);
+  assertEquals(out[0].linkname, undefined); // a regular file
+  assertEquals(dec(out[0].data), "ELF-binary");
+  assertEquals(out[1].linkname, "../lib/node_modules/npm/bin/npm-cli.js");
+  assertEquals(out[1].data.length, 0); // a symlink carries no data
+});
+
+Deno.test("tar rejects a symlink target longer than the ustar limit", () => {
+  let message = "";
+  try {
+    tar([{ name: "l", data: new Uint8Array(0), linkname: "x/".repeat(60) }]);
+  } catch (error) {
+    message = error instanceof Error ? error.message : String(error);
+  }
+  assertEquals(message.includes("symlink target exceeds 100 bytes"), true);
+});
+
+Deno.test("extractTarGzip strips leading path components", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const archive = `${dir}/a.tar.gz`;
+    await Deno.writeFile(
+      archive,
+      await gzip(tar([
+        { name: "pkg-1.0/bin/tool", data: enc("BIN") },
+        { name: "pkg-1.0/README", data: enc("hi") },
+        { name: "pkg-1.0", data: new Uint8Array(0) }, // top dir → fully stripped
+      ])),
+    );
+    await extractTarGzip(archive, `${dir}/out`, { strip: 1 });
+    assertEquals(await Deno.readTextFile(`${dir}/out/bin/tool`), "BIN");
+    assertEquals(await Deno.readTextFile(`${dir}/out/README`), "hi");
+    // The stripped-to-nothing top-level entry left no stray file.
+    assertEquals(
+      await Deno.stat(`${dir}/out`).then((s) => s.isDirectory),
+      true,
+    );
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("extractTarGzip recreates an in-tree symlink on disk (POSIX)", async () => {
+  if (Deno.build.os === "windows") return; // symlink creation is privileged there
+  const dir = await Deno.makeTempDir();
+  try {
+    const archive = `${dir}/a.tar.gz`;
+    await Deno.writeFile(
+      archive,
+      await gzip(tar([
+        { name: "lib/real.txt", data: enc("payload") },
+        { name: "link", data: new Uint8Array(0), linkname: "lib/real.txt" },
+      ])),
+    );
+    await extractTarGzip(archive, `${dir}/out`);
+    const info = await Deno.lstat(`${dir}/out/link`);
+    assertEquals(info.isSymlink, true);
+    assertEquals(await Deno.readTextFile(`${dir}/out/link`), "payload"); // resolves
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("extractTarGzip lets a later symlink overwrite an earlier entry (no AlreadyExists crash)", async () => {
+  if (Deno.build.os === "windows") return; // symlink creation is privileged there
+  const dir = await Deno.makeTempDir();
+  try {
+    const archive = `${dir}/dup.tar.gz`;
+    // A duplicate name: first a file, then a symlink. A raw Deno.symlink would
+    // throw AlreadyExists; extraction must instead be "last one wins".
+    await Deno.writeFile(
+      archive,
+      await gzip(tar([
+        { name: "real.txt", data: enc("target") },
+        { name: "x", data: enc("first-as-file") },
+        { name: "x", data: new Uint8Array(0), linkname: "real.txt" },
+      ])),
+    );
+    await extractTarGzip(archive, `${dir}/out`);
+    const info = await Deno.lstat(`${dir}/out/x`);
+    assertEquals(info.isSymlink, true); // the symlink won
+    assertEquals(await Deno.readTextFile(`${dir}/out/x`), "target");
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("extractTarGzip refuses a symlink whose target escapes the destination", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const archive = `${dir}/evil.tar.gz`;
+    await Deno.writeFile(
+      archive,
+      await gzip(tar([
+        {
+          name: "bin/pwn",
+          data: new Uint8Array(0),
+          linkname: "../../../../etc/passwd",
+        },
+      ])),
+    );
+    await assertRejects(
+      () => extractTarGzip(archive, `${dir}/out`),
+      Error,
+      "escapes the destination",
+    );
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("assertSafeLinkTarget accepts in-tree targets and rejects escapes", () => {
+  assertSafeLinkTarget("bin/npm", "../lib/npm-cli.js"); // resolves inside the tree
+  assertSafeLinkTarget("bin/x", "./sibling");
+  assertSafeLinkTarget("a/b/c", "../../top"); // climbs to root, not above
+  assertThrows(
+    () => assertSafeLinkTarget("bin/x", "/etc/passwd"),
+    Error,
+    "absolute path",
+  );
+  assertThrows(
+    () => assertSafeLinkTarget("bin/x", "C:/win"),
+    Error,
+    "absolute path",
+  );
+  assertThrows(
+    () => assertSafeLinkTarget("bin/x", "../../etc"),
+    Error,
+    "escapes",
+  );
 });
 
 Deno.test("assertSafeEntryName accepts safe names and rejects escapes", () => {
