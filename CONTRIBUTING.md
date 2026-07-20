@@ -8,15 +8,16 @@ By participating, you agree to abide by our
 [Code of Conduct](./CODE_OF_CONDUCT.md).
 
 > [!NOTE]
-> Zuke is pre-1.0 and evolving fast. APIs can change within `0.x`. If you are
-> planning a large change, please open an issue first so we can agree on the
-> direction before you invest the effort.
+> Zuke's packages sit at different maturity levels: `@zuke/core` (1.x) and
+> several others follow semver, while the 0.x tool wrappers may still change
+> within `0.x`. If you are planning a large change, please open an issue first
+> so we can agree on the direction before you invest the effort.
 
 ## Prerequisites
 
 - [Deno](https://deno.com/) 2.x — the only toolchain you need. There is no Node,
-  npm, or external build step. The test runner, formatter, linter,
-  type-checker, and coverage tooling are all the built-in `deno` CLI.
+  npm, or external build step. The test runner, formatter, linter, type-checker,
+  and coverage tooling are all the built-in `deno` CLI.
 
 ## Getting started
 
@@ -40,7 +41,9 @@ deno task ci   # run the full gate to confirm a clean baseline
 | Full pre-commit / CI gate     | `deno task ci`                          |
 
 **Run `deno task ci` before opening a pull request — it must be green.** CI runs
-the same gate on every push and pull request.
+`./zuke ci`, a superset that also runs `coverageUpload` and `apiDocsCheck`, so
+if you change a public API, regenerate the docs (`./zuke apiDocs`) — otherwise
+CI can fail on `apiDocsCheck` even when `deno task ci` was green locally.
 
 ## Coding standards (non-negotiable)
 
@@ -63,8 +66,8 @@ code in this repo is written:
    When a test needs a subprocess, invoke `Deno.execPath()` (the running
    `deno`), which is always present and shell-free.
 
-See the architecture notes in [`CLAUDE.md`](./CLAUDE.md) for how targets,
-the dependency graph, the shell `$`, and tool wrappers fit together.
+See the architecture notes in [`CLAUDE.md`](./CLAUDE.md) for how targets, the
+dependency graph, the shell `$`, and tool wrappers fit together.
 
 ## Commit messages
 

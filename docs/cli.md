@@ -15,6 +15,7 @@
 | `zuke graph --output=html`                                            | Render an interactive HTML graph into `.zuke/` and open it.                                                 |
 | `zuke completions print <shell>`                                      | Print a shell-completion script (`bash`, `zsh`, or `fish`).                                                 |
 | `zuke completions install <shell>`                                    | Write the script and wire it into the shell's startup.                                                      |
+| `zuke generate-ci [--check]`                                          | Write the declared CI workflow files (`--check` verifies they are up to date instead of writing).           |
 | `zuke mcp [--allow-run[=<globs>]] [--http <host:port>]`               | Run an MCP server over the build for AI agents, on stdio or HTTP ([details](./mcp.md)).                     |
 | `zuke resume <id> [--signal <n>] [--data <json>]`                     | Resume a suspended run, optionally delivering a signal ([details](./orchestration.md)).                     |
 | `zuke resume --check [<id>]`                                          | Re-check suspended runs (predicate waits, timeouts).                                                        |
@@ -22,6 +23,7 @@
 | `zuke runs show <id> [--json]`                                        | Show one run's full per-target status and metadata.                                                         |
 | `zuke runs prune [--keep <age>] [--keep-last <n>] [--dry-run]`        | Delete old terminal run records; never touches non-terminal runs.                                           |
 | `zuke cancel <id> [--actor <name>]`                                   | Cancel a run and run its compensations ([details](./orchestration.md#cancellation--compensation-oncancel)). |
+| `zuke register`                                                       | Register this build in the build registry (dynamic pipeline discovery).                                     |
 | `zuke doc <spec>`                                                     | Print a package's API docs (`deno doc <spec>`) from an isolated empty directory.                            |
 | `zuke --help` / `-h`                                                  | Usage.                                                                                                      |
 | `zuke` (no target)                                                    | Run the `default` target if defined, else print `--list`.                                                   |
@@ -66,9 +68,10 @@ emit `::error::` annotations, and the summary is written to the job summary.
 `zuke completions` takes an explicit sub-action — `print` or `install` — then a
 shell (`bash`, `zsh`, or `fish`). `print` writes the completion script to
 stdout; the script completes the build's target names, the reserved commands
-(`graph`, `generate-ci`, `completions`, `mcp`), the built-in option flags, and
-any declared [parameters](./parameters.md) as `--flag` candidates. Unlisted
-targets (`.unlisted()`) stay hidden, just as they are in `--list`.
+(`graph`, `generate-ci`, `completions`, `mcp`, `resume`, `runs`, `cancel`,
+`register`, `doc`), the built-in option flags, and any declared
+[parameters](./parameters.md) as `--flag` candidates. Unlisted targets
+(`.unlisted()`) stay hidden, just as they are in `--list`.
 
 Source the printed script for the current shell:
 

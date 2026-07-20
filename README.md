@@ -31,8 +31,8 @@ strings), forming a dependency graph that Zuke resolves and runs in topological
 order. Inspired by [NUKE](https://nuke.build/) for .NET.
 
 - **Runtime:** Deno
-- **Packages:** `jsr:@zuke/core` plus 30+ typed tool wrappers and a generic
-  `jsr:@zuke/cmd` fallback (raw shell via `jsr:@zuke/core/shell`) — see
+- **Packages:** `jsr:@zuke/core` plus 50+ typed tool wrappers and plugins and a
+  generic `jsr:@zuke/cmd` fallback (raw shell via `jsr:@zuke/core/shell`) — see
   [Packages](#packages) for the full matrix with published versions
 - **Build file:** `zuke.ts` in your project root
 - **Zero runtime dependencies**
@@ -109,7 +109,7 @@ latest release on JSR.
 | [`@zuke/otel`](https://jsr.io/@zuke/otel)         | [![JSR](https://jsr.io/badges/@zuke/otel)](https://jsr.io/@zuke/otel) [![JSR score](https://jsr.io/badges/@zuke/otel/score)](https://jsr.io/@zuke/otel)                 |
 
 <details>
-<summary><strong>All tool wrappers</strong> (40+ packages)</summary>
+<summary><strong>All tool wrappers</strong> (45 packages)</summary>
 
 | Package                                                       | Version                                                                                                                                                                                         |
 | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -325,10 +325,11 @@ deno task check       # type-check
 deno task fmt         # format (fmt:check to verify only)
 deno task lint        # lint
 deno task spell       # spell-check (cspell)
-deno task ci          # everything CI runs: fmt:check, lint, spell, check, cov
+deno task ci          # local gate: fmt:check, lint, spell, check, cov
 ```
 
-CI runs `deno task ci` on every push and pull request (see
+CI runs `./zuke ci` on every push and pull request — the same checks plus
+`coverageUpload` and `apiDocsCheck` (see
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
 
 ## Contributing
