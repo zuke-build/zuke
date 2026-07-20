@@ -10,12 +10,13 @@
  * @module
  */
 
-import { AiReviewError } from "../errors.ts";
 import { dig } from "../json.ts";
 import {
   commentBody,
   commentMarker,
+  ensureOk,
   type EnvReader,
+  jsonHeaders,
   MAX_COMMENT_PAGES,
   nextLink,
   type ReviewHost,
@@ -54,24 +55,6 @@ export function resolveGitlabContext(
   return { token, api: api.replace(/\/+$/, ""), projectId, mrIid };
 }
 
-/** The request headers for a GitLab REST call. */
-function headers(token: string): Record<string, string> {
-  return {
-    "PRIVATE-TOKEN": token,
-    "accept": "application/json",
-    "content-type": "application/json",
-    "user-agent": "zuke-ai",
-  };
-}
-
-/** Throw an {@link AiReviewError} for a non-2xx GitLab response. */
-async function ensureOk(response: Response): Promise<void> {
-  if (!response.ok) {
-    await response.body?.cancel();
-    throw new AiReviewError(`GitLab API error: HTTP ${response.status}`);
-  }
-}
-
 /** The id of an existing note carrying `marker`, or `undefined`. */
 async function findNote(
   context: GitlabContext,
@@ -83,8 +66,10 @@ async function findNote(
   // Newest-first, but still follow `Link: rel="next"` so an older marker on a
   // busy MR (>100 notes) is found rather than re-posted as a duplicate.
   for (let page = 0; url !== undefined && page < MAX_COMMENT_PAGES; page++) {
-    const response = await doFetch(url, { headers: headers(context.token) });
-    await ensureOk(response);
+    const response = await doFetch(url, {
+      headers: jsonHeaders({ "PRIVATE-TOKEN": context.token }),
+    });
+    await ensureOk(response, "GitLab");
     const data: unknown = await response.json();
     if (Array.isArray(data)) {
       for (const item of data) {
@@ -118,10 +103,10 @@ export async function upsertMergeRequestNote(
   const url = existing === undefined ? root : `${root}/${existing}`;
   const response = await doFetch(url, {
     method: existing === undefined ? "POST" : "PUT",
-    headers: headers(context.token),
+    headers: jsonHeaders({ "PRIVATE-TOKEN": context.token }),
     body: JSON.stringify({ body }),
   });
-  await ensureOk(response);
+  await ensureOk(response, "GitLab");
 }
 
 /** The GitLab CI implementation of {@link ReviewHost}. */

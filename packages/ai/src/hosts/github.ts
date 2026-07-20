@@ -6,11 +6,11 @@
  * @module
  */
 
-import { AiReviewError } from "../errors.ts";
 import { dig } from "../json.ts";
 import {
   commentBody,
   commentMarker,
+  ensureOk,
   type EnvReader,
   MAX_COMMENT_PAGES,
   nextLink,
@@ -74,14 +74,6 @@ export function githubHeaders(token: string): Record<string, string> {
   };
 }
 
-/** Throw an {@link AiReviewError} for a non-2xx GitHub response. */
-export async function ensureGithubOk(response: Response): Promise<void> {
-  if (!response.ok) {
-    await response.body?.cancel();
-    throw new AiReviewError(`GitHub API error: HTTP ${response.status}`);
-  }
-}
-
 /** The id of an existing comment carrying `marker`, or `undefined`. */
 async function findComment(
   context: GithubContext,
@@ -96,7 +88,7 @@ async function findComment(
     const response = await doFetch(url, {
       headers: githubHeaders(context.token),
     });
-    await ensureGithubOk(response);
+    await ensureOk(response, "GitHub");
     const data: unknown = await response.json();
     if (Array.isArray(data)) {
       for (const item of data) {
@@ -137,7 +129,7 @@ export async function upsertPrComment(
     headers: githubHeaders(context.token),
     body: JSON.stringify({ body }),
   });
-  await ensureGithubOk(response);
+  await ensureOk(response, "GitHub");
 }
 
 /** The GitHub Actions implementation of {@link ReviewHost}. */
