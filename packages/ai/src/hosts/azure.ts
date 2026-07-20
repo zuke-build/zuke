@@ -10,12 +10,13 @@
  * @module
  */
 
-import { AiReviewError } from "../errors.ts";
 import { dig } from "../json.ts";
 import {
   commentBody,
   commentMarker,
+  ensureOk,
   type EnvReader,
+  jsonHeaders,
   type ReviewHost,
 } from "./types.ts";
 
@@ -56,24 +57,6 @@ export function resolveAzureContext(
   };
 }
 
-/** Headers for an Azure REST call. */
-function headers(token: string): Record<string, string> {
-  return {
-    "authorization": `Bearer ${token}`,
-    "accept": "application/json",
-    "content-type": "application/json",
-    "user-agent": "zuke-ai",
-  };
-}
-
-/** Throw an {@link AiReviewError} for a non-2xx Azure response. */
-async function ensureOk(response: Response): Promise<void> {
-  if (!response.ok) {
-    await response.body?.cancel();
-    throw new AiReviewError(`Azure DevOps API error: HTTP ${response.status}`);
-  }
-}
-
 /** The root URL for a PR's threads. */
 function threadsUrl(context: AzureContext): string {
   return `${context.collection}${encodeURIComponent(context.project)}` +
@@ -88,8 +71,10 @@ async function findThread(
   doFetch: typeof fetch,
 ): Promise<{ threadId: number; commentId: number } | undefined> {
   const url = `${threadsUrl(context)}?api-version=7.1`;
-  const response = await doFetch(url, { headers: headers(context.token) });
-  await ensureOk(response);
+  const response = await doFetch(url, {
+    headers: jsonHeaders({ "authorization": `Bearer ${context.token}` }),
+  });
+  await ensureOk(response, "Azure DevOps");
   const data: unknown = await response.json();
   const values = dig(data, "value");
   if (!Array.isArray(values)) return undefined;
@@ -124,23 +109,23 @@ export async function upsertPullRequestThread(
   if (existing === undefined) {
     const response = await doFetch(`${threadsUrl(context)}?api-version=7.1`, {
       method: "POST",
-      headers: headers(context.token),
+      headers: jsonHeaders({ "authorization": `Bearer ${context.token}` }),
       body: JSON.stringify({
         comments: [{ parentCommentId: 0, content, commentType: 1 }],
         status: 4, // "closed" — informational thread, not a review blocker.
       }),
     });
-    await ensureOk(response);
+    await ensureOk(response, "Azure DevOps");
     return;
   }
   const url = `${threadsUrl(context)}/${existing.threadId}` +
     `/comments/${existing.commentId}?api-version=7.1`;
   const response = await doFetch(url, {
     method: "PATCH",
-    headers: headers(context.token),
+    headers: jsonHeaders({ "authorization": `Bearer ${context.token}` }),
     body: JSON.stringify({ content, commentType: 1 }),
   });
-  await ensureOk(response);
+  await ensureOk(response, "Azure DevOps");
 }
 
 /** The Azure Pipelines implementation of {@link ReviewHost}. */

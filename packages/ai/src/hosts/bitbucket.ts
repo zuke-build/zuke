@@ -9,12 +9,13 @@
  * @module
  */
 
-import { AiReviewError } from "../errors.ts";
 import { dig } from "../json.ts";
 import {
   commentBody,
   commentMarker,
+  ensureOk,
   type EnvReader,
+  jsonHeaders,
   MAX_COMMENT_PAGES,
   type ReviewHost,
 } from "./types.ts";
@@ -49,24 +50,6 @@ export function resolveBitbucketContext(
   return { token, workspace, repoSlug, prId };
 }
 
-/** Headers for a Bitbucket REST call. */
-function headers(token: string): Record<string, string> {
-  return {
-    "authorization": `Bearer ${token}`,
-    "accept": "application/json",
-    "content-type": "application/json",
-    "user-agent": "zuke-ai",
-  };
-}
-
-/** Throw an {@link AiReviewError} for a non-2xx Bitbucket response. */
-async function ensureOk(response: Response): Promise<void> {
-  if (!response.ok) {
-    await response.body?.cancel();
-    throw new AiReviewError(`Bitbucket API error: HTTP ${response.status}`);
-  }
-}
-
 /** The id of an existing comment carrying `marker`, or `undefined`. */
 async function findComment(
   context: BitbucketContext,
@@ -79,8 +62,10 @@ async function findComment(
   // Bitbucket paginates via a `next` URL in the body; follow it so a marker
   // beyond the first page is found instead of a duplicate comment posted.
   for (let page = 0; url !== undefined && page < MAX_COMMENT_PAGES; page++) {
-    const response = await doFetch(url, { headers: headers(context.token) });
-    await ensureOk(response);
+    const response = await doFetch(url, {
+      headers: jsonHeaders({ "authorization": `Bearer ${context.token}` }),
+    });
+    await ensureOk(response, "Bitbucket");
     const data: unknown = await response.json();
     const values = dig(data, "values");
     if (Array.isArray(values)) {
@@ -116,10 +101,10 @@ export async function upsertBitbucketComment(
   const url = existing === undefined ? root : `${root}/${existing}`;
   const response = await doFetch(url, {
     method: existing === undefined ? "POST" : "PUT",
-    headers: headers(context.token),
+    headers: jsonHeaders({ "authorization": `Bearer ${context.token}` }),
     body: JSON.stringify({ content: { raw } }),
   });
-  await ensureOk(response);
+  await ensureOk(response, "Bitbucket");
 }
 
 /** The Bitbucket Cloud Pipelines implementation of {@link ReviewHost}. */

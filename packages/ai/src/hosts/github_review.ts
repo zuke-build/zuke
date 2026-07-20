@@ -12,8 +12,8 @@
  */
 
 import { dig } from "../json.ts";
-import { ensureGithubOk, type GithubContext, githubHeaders } from "./github.ts";
-import { MAX_COMMENT_PAGES, nextLink } from "./types.ts";
+import { type GithubContext, githubHeaders } from "./github.ts";
+import { ensureOk, MAX_COMMENT_PAGES, nextLink } from "./types.ts";
 
 /** The GitHub REST API origin. */
 const API = "https://api.github.com";
@@ -47,7 +47,7 @@ async function headSha(
   const response = await doFetch(url, {
     headers: githubHeaders(context.token),
   });
-  await ensureGithubOk(response);
+  await ensureOk(response, "GitHub");
   const data: unknown = await response.json();
   const sha = dig(data, "head", "sha");
   return typeof sha === "string" ? sha : undefined;
@@ -67,7 +67,7 @@ async function existingKeys(
     const response = await doFetch(url, {
       headers: githubHeaders(context.token),
     });
-    await ensureGithubOk(response);
+    await ensureOk(response, "GitHub");
     const data: unknown = await response.json();
     if (Array.isArray(data)) {
       for (const item of data) {

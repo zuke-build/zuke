@@ -6,6 +6,8 @@
  * @module
  */
 
+import { AiReviewError } from "../errors.ts";
+
 /** Read an environment variable, tolerating an absent `--allow-env` permission. */
 export type EnvReader = (name: string) => string | undefined;
 
@@ -81,4 +83,36 @@ export function commentMarker(name: string): string {
 /** Compose the final comment body: marker + header + assessment markdown. */
 export function commentBody(name: string, markdown: string): string {
   return `${commentMarker(name)}\n${HEADER}\n\n${markdown}`;
+}
+
+/**
+ * Throw an {@link AiReviewError} for a non-2xx response, naming the host in the
+ * message (e.g. `label` `"GitLab"` → "GitLab API error: HTTP 404"). Cancels the
+ * body first so the connection is released. Shared by every host integration.
+ */
+export async function ensureOk(
+  response: Response,
+  label: string,
+): Promise<void> {
+  if (!response.ok) {
+    await response.body?.cancel();
+    throw new AiReviewError(`${label} API error: HTTP ${response.status}`);
+  }
+}
+
+/**
+ * The common JSON request headers for a host REST call — `accept` and
+ * `content-type` of `application/json`, the `zuke-ai` user-agent — merged with
+ * the host's own `auth` header(s) (a bearer `authorization`, GitLab's
+ * `PRIVATE-TOKEN`, …).
+ */
+export function jsonHeaders(
+  auth: Record<string, string>,
+): Record<string, string> {
+  return {
+    ...auth,
+    "accept": "application/json",
+    "content-type": "application/json",
+    "user-agent": "zuke-ai",
+  };
 }
