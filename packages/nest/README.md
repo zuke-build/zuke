@@ -63,6 +63,7 @@ class NestBuildSettings extends NestSettings
   preserveWatchOutput(): this
     Keep prior console output between watch rebuilds (`--preserveWatchOutput`).
   override protected subcommandArgs(): string[]
+    Assemble the `nest build` argv.
 
 class NestGenerateSettings extends NestSettings
   Settings for `nest generate` — generate code from a schematic.
@@ -86,11 +87,13 @@ class NestGenerateSettings extends NestSettings
   dryRun(): this
     Report what would be generated without writing files (`--dry-run`).
   override protected subcommandArgs(): string[]
+    Assemble the `nest generate` argv.
 
 class NestInfoSettings extends NestSettings
   Settings for `nest info` — print Nest CLI and project information.
 
   override protected subcommandArgs(): string[]
+    Assemble the `nest info` argv.
 
 class NestNewSettings extends NestSettings
   Settings for `nest new` — scaffold a new NestJS application.
@@ -112,6 +115,17 @@ class NestNewSettings extends NestSettings
   language(value: string): this
     Programming language, e.g. `ts`/`js` (`--language <v>`).
   override protected subcommandArgs(): string[]
+    Assemble the `nest new` argv.
+
+abstract class NestSettings extends ToolSettings
+  Shared base for every `nest` subcommand: the binary and argv assembly.
+
+  override protected defaultTool(): string
+    The tool binary: `nest`.
+  abstract protected subcommandArgs(): string[]
+    The subcommand argv (the verb and its arguments).
+  override protected buildArgs(): string[]
+    Assemble the full `nest` argv from the subcommand.
 
 class NestStartSettings extends NestSettings
   Settings for `nest start` — build and run a NestJS application.
@@ -133,6 +147,7 @@ class NestStartSettings extends NestSettings
   builder(value: string): this
     Builder to use, e.g. `tsc`/`webpack`/`swc` (`--builder <v>`).
   override protected subcommandArgs(): string[]
+    Assemble the `nest start` argv.
 
 interface NestTasksApi
   The shape of {@link NestTasks}.

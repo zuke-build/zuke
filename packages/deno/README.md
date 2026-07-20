@@ -44,7 +44,9 @@ class CoverageThresholdError extends Error
   Raised when measured coverage falls below a configured threshold.
 
   constructor(readonly failures: string[])
+    Construct the error from one message per metric that fell short.
   override name: string
+    The error name, `"CoverageThresholdError"`.
 
 class DenoCacheSettings extends DenoSettings
   Settings for `deno cache`.
@@ -54,6 +56,7 @@ class DenoCacheSettings extends DenoSettings
   paths(...paths: PathLike[]): this
     The entry points to cache (at least one is required).
   override protected buildArgs(): string[]
+    Assemble the `deno cache` argv.
 
 class DenoCheckSettings extends DenoSettings
   Settings for `deno check`.
@@ -61,6 +64,7 @@ class DenoCheckSettings extends DenoSettings
   paths(...paths: PathLike[]): this
     The files to type-check (at least one is required).
   override protected buildArgs(): string[]
+    Assemble the `deno check` argv.
 
 class DenoCoverageSettings extends DenoSettings
   Settings for `deno coverage`.
@@ -91,6 +95,29 @@ class DenoCoverageSettings extends DenoSettings
   get outputPath(): string | undefined
     The `--output` file path, if {@link output} was set; read by the task.
   override protected buildArgs(): string[]
+    Assemble the `deno coverage` argv.
+
+class DenoDocSettings extends DenoSettings
+  Settings for `deno doc`.
+
+  paths(...paths: PathLike[]): this
+    The source files (entry points) to document.
+  json(): this
+    Output the documentation as JSON (`--json`).
+  html(): this
+    Generate static HTML documentation (`--html`).
+  name(title: string): this
+    Title for the generated HTML documentation (`--name`).
+  output(dir: PathLike): this
+    Output directory for HTML documentation (`--output`).
+  private(): this
+    Include private and internal symbols (`--private`).
+  filter(symbol: string): this
+    Document only the symbol at this dot-separated path (`--filter`).
+  lint(): this
+    Report documentation diagnostics rather than rendering docs (`--lint`).
+  override protected buildArgs(): string[]
+    Assemble the `deno doc` argv.
 
 class DenoFmtSettings extends DenoSettings
   Settings for `deno fmt`.
@@ -100,6 +127,7 @@ class DenoFmtSettings extends DenoSettings
   paths(...paths: PathLike[]): this
     Restrict formatting to specific files or directories.
   override protected buildArgs(): string[]
+    Assemble the `deno fmt` argv.
 
 class DenoInstallSettings extends DenoPermissionSettings
   Settings for `deno install`.
@@ -117,6 +145,7 @@ class DenoInstallSettings extends DenoPermissionSettings
   moduleArgs(...args: Array<string | number>): this
     Arguments baked into the generated launcher (after the module).
   override protected buildArgs(): string[]
+    Assemble the `deno install` argv.
 
 class DenoLintSettings extends DenoSettings
   Settings for `deno lint`.
@@ -126,6 +155,17 @@ class DenoLintSettings extends DenoSettings
   paths(...paths: PathLike[]): this
     Restrict linting to specific files or directories.
   override protected buildArgs(): string[]
+    Assemble the `deno lint` argv.
+
+abstract class DenoPermissionSettings extends DenoSettings
+  Base for subcommands that accept `--allow-*` permission flags.
+
+  allowAll(): this
+    Grant all permissions (`--allow-all`).
+  allow(permission: DenoPermission, ...values: string[]): this
+    Grant one permission, optionally scoped to values (`--allow-read=a,b`).
+  protected get permissionArgs(): string[]
+    The accumulated permission flags, in declaration order.
 
 class DenoPublishSettings extends DenoSettings
   Settings for `deno publish`.
@@ -143,6 +183,7 @@ class DenoPublishSettings extends DenoSettings
   token(value: string): this
     Authenticate with a token instead of interactive/OIDC auth (`--token`).
   override protected buildArgs(): string[]
+    Assemble the `deno publish` argv.
 
 class DenoRunSettings extends DenoPermissionSettings
   Settings for `deno run`.
@@ -156,6 +197,13 @@ class DenoRunSettings extends DenoPermissionSettings
   reload(): this
     Reload the module cache (`--reload`).
   override protected buildArgs(): string[]
+    Assemble the `deno run` argv.
+
+abstract class DenoSettings extends ToolSettings
+  Base for all `deno` subcommand settings: binary is the running deno.
+
+  override protected defaultTool(): string
+    Default the tool binary to the running `deno` executable.
 
 class DenoTaskSettings extends DenoSettings
   Settings for `deno task`.
@@ -165,6 +213,7 @@ class DenoTaskSettings extends DenoSettings
   taskArgs(...args: Array<string | number>): this
     Arguments forwarded to the task.
   override protected buildArgs(): string[]
+    Assemble the `deno task` argv.
 
 class DenoTestSettings extends DenoPermissionSettings
   Settings for `deno test`.
@@ -180,6 +229,7 @@ class DenoTestSettings extends DenoPermissionSettings
   failFast(): this
     Stop on the first failure (`--fail-fast`).
   override protected buildArgs(): string[]
+    Assemble the `deno test` argv.
 
 interface CoverageThresholds
   Line and branch percentage floors; an omitted metric is not enforced.

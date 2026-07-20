@@ -21,7 +21,8 @@ import { type Configure, runSettings, ToolSettings } from "@zuke/core/tooling";
 import type { CommandOutput } from "@zuke/core/shell";
 
 /** Base for all `yarn` subcommand settings: binary is `yarn` from PATH. */
-abstract class YarnSettings extends ToolSettings {
+export abstract class YarnSettings extends ToolSettings {
+  /** The default binary: `yarn` resolved from PATH. */
   protected override defaultTool(): string {
     return "yarn";
   }
@@ -44,6 +45,7 @@ export class YarnInstallSettings extends YarnSettings {
     return this;
   }
 
+  /** Assemble the `yarn install` argv. */
   protected override buildArgs(): string[] {
     const argv = ["install"];
     if (this.#immutable) argv.push("--immutable");
@@ -76,6 +78,7 @@ export class YarnAddSettings extends YarnSettings {
     return this;
   }
 
+  /** Assemble the `yarn add` argv. */
   protected override buildArgs(): string[] {
     if (this.#packages.length === 0) {
       throw new Error("YarnTasks.add: .packages() requires at least one spec.");
@@ -98,6 +101,7 @@ export class YarnRemoveSettings extends YarnSettings {
     return this;
   }
 
+  /** Assemble the `yarn remove` argv. */
   protected override buildArgs(): string[] {
     if (this.#packages.length === 0) {
       throw new Error(
@@ -125,6 +129,7 @@ export class YarnRunSettings extends YarnSettings {
     return this;
   }
 
+  /** Assemble the `yarn run` argv. */
   protected override buildArgs(): string[] {
     if (this.#script === undefined) {
       throw new Error("YarnTasks.run: .script() is required.");
@@ -157,6 +162,7 @@ export class YarnDlxSettings extends YarnSettings {
     return this;
   }
 
+  /** Assemble the `yarn dlx` argv. */
   protected override buildArgs(): string[] {
     if (this.#command === undefined) {
       throw new Error("YarnTasks.dlx: .command() is required.");

@@ -50,6 +50,7 @@ class NxAffectedSettings extends NxSettings
   parallel(count: number): this
     Maximum number of tasks to run in parallel (`--parallel`).
   override protected buildArgs(): string[]
+    Assemble the `nx affected` argv.
 
 class NxRunManySettings extends NxSettings
   Settings for `nx run-many`.
@@ -65,6 +66,7 @@ class NxRunManySettings extends NxSettings
   all(): this
     Run for every project (`--all`).
   override protected buildArgs(): string[]
+    Assemble the `nx run-many` argv.
 
 class NxRunSettings extends NxSettings
   Settings for `nx run` (a single `project:target`).
@@ -74,6 +76,13 @@ class NxRunSettings extends NxSettings
   configuration(name: string): this
     Use a named configuration (`--configuration`).
   override protected buildArgs(): string[]
+    Assemble the `nx run` argv.
+
+abstract class NxSettings extends ToolSettings
+  Base for all `nx` subcommand settings: the binary is `nx`.
+
+  override protected defaultTool(): string
+    The tool binary is `nx`.
 
 interface NxTasksApi
   The shape of {@link NxTasks}.

@@ -15,6 +15,7 @@
 export {
   KustomizeBuildSettings,
   KustomizeEditSetImageSettings,
+  KustomizeSettings,
   KustomizeTasks,
   type KustomizeTasksApi,
 } from "./src/kustomize.ts";

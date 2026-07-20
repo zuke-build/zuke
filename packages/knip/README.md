@@ -35,6 +35,7 @@ class KnipRunSettings extends ToolSettings
   Settings for a `knip` run.
 
   override protected defaultTool(): string
+    The underlying CLI command: `knip`.
   production(): this
     Restrict analysis to production code paths (`--production`).
   strict(): this
@@ -54,6 +55,7 @@ class KnipRunSettings extends ToolSettings
   include(...types: string[]): this
     Limit to specific issue types, e.g. `files`, `dependencies` (`--include`).
   override protected buildArgs(): string[]
+    Assemble the `knip <flags>` argv.
 
 interface KnipTasksApi
   The shape of {@link KnipTasks}.

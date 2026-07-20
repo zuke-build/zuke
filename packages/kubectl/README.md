@@ -73,6 +73,7 @@ class KubectlAnnotateSettings extends KubectlSettings
   selector(query: string): this
     Restrict to resources matching a label selector (`-l`).
   override protected buildArgs(): string[]
+    Assemble the `kubectl annotate` argv.
 
 class KubectlApplySettings extends KubectlSettings
   Settings for `kubectl apply`.
@@ -94,6 +95,7 @@ class KubectlApplySettings extends KubectlSettings
   force(): this
     Force apply by delete-and-recreate when needed (`--force`).
   override protected buildArgs(): string[]
+    Assemble the `kubectl apply` argv.
 
 class KubectlCreateSettings extends KubectlSettings
   Settings for `kubectl create`.
@@ -110,6 +112,7 @@ class KubectlCreateSettings extends KubectlSettings
   saveConfig(): this
     Record the current resource in its annotation (`--save-config`).
   override protected buildArgs(): string[]
+    Assemble the `kubectl create` argv.
 
 class KubectlDeleteSettings extends KubectlSettings
   Settings for `kubectl delete`.
@@ -131,6 +134,7 @@ class KubectlDeleteSettings extends KubectlSettings
   recursive(): this
     Recurse into directories given to `-f` (`-R`).
   override protected buildArgs(): string[]
+    Assemble the `kubectl delete` argv.
 
 class KubectlDescribeSettings extends KubectlSettings
   Settings for `kubectl describe`.
@@ -140,6 +144,7 @@ class KubectlDescribeSettings extends KubectlSettings
   selector(query: string): this
     Restrict to resources matching a label selector (`-l`).
   override protected buildArgs(): string[]
+    Assemble the `kubectl describe` argv.
 
 class KubectlExecSettings extends KubectlSettings
   Settings for `kubectl exec`.
@@ -155,6 +160,7 @@ class KubectlExecSettings extends KubectlSettings
   command(...args: Array<string | number>): this
     The command and arguments to run in the container (required).
   override protected buildArgs(): string[]
+    Assemble the `kubectl exec` argv.
 
 class KubectlGetSettings extends KubectlSettings
   Settings for `kubectl get`.
@@ -174,6 +180,7 @@ class KubectlGetSettings extends KubectlSettings
   showLabels(): this
     Include resource labels as columns (`--show-labels`).
   override protected buildArgs(): string[]
+    Assemble the `kubectl get` argv.
 
 class KubectlLabelSettings extends KubectlSettings
   Settings for `kubectl label`.
@@ -191,6 +198,7 @@ class KubectlLabelSettings extends KubectlSettings
   selector(query: string): this
     Restrict to resources matching a label selector (`-l`).
   override protected buildArgs(): string[]
+    Assemble the `kubectl label` argv.
 
 class KubectlLogsSettings extends KubectlSettings
   Settings for `kubectl logs`.
@@ -214,6 +222,7 @@ class KubectlLogsSettings extends KubectlSettings
   timestamps(): this
     Prefix each line with a timestamp (`--timestamps`).
   override protected buildArgs(): string[]
+    Assemble the `kubectl logs` argv.
 
 class KubectlPatchSettings extends KubectlSettings
   Settings for `kubectl patch`.
@@ -225,6 +234,7 @@ class KubectlPatchSettings extends KubectlSettings
   type(strategy: PatchType): this
     The patch strategy (`--type`).
   override protected buildArgs(): string[]
+    Assemble the `kubectl patch` argv.
 
 class KubectlPortForwardSettings extends KubectlSettings
   Settings for `kubectl port-forward`.
@@ -236,6 +246,7 @@ class KubectlPortForwardSettings extends KubectlSettings
   address(value: string): this
     The local address(es) to bind (`--address`).
   override protected buildArgs(): string[]
+    Assemble the `kubectl port-forward` argv.
 
 class KubectlRolloutSettings extends KubectlSettings
   Settings for `kubectl rollout`.
@@ -255,6 +266,7 @@ class KubectlRolloutSettings extends KubectlSettings
   timeout(duration: string): this
     With `status`, how long to wait, e.g. `60s` (`--timeout`).
   override protected buildArgs(): string[]
+    Assemble the `kubectl rollout <action>` argv.
 
 class KubectlScaleSettings extends KubectlSettings
   Settings for `kubectl scale`.
@@ -272,6 +284,7 @@ class KubectlScaleSettings extends KubectlSettings
   all(): this
     Scale all resources of the given type (`--all`).
   override protected buildArgs(): string[]
+    Assemble the `kubectl scale` argv.
 
 class KubectlSetImageSettings extends KubectlSettings
   Settings for `kubectl set image`.
@@ -285,6 +298,23 @@ class KubectlSetImageSettings extends KubectlSettings
   all(): this
     Apply to all resources of the given type (`--all`).
   override protected buildArgs(): string[]
+    Assemble the `kubectl set image` argv.
+
+abstract class KubectlSettings extends ToolSettings
+  Base for all `kubectl` subcommand settings: the binary is `kubectl`, and the
+  cluster-targeting flags (`--namespace`, `--context`, `--kubeconfig`) are
+  shared by every subcommand.
+
+  override protected defaultTool(): string
+    The tool binary invoked by every subcommand: `kubectl`.
+  namespace(name: string): this
+    Target a namespace (`--namespace`).
+  context(name: string): this
+    Use a named kubeconfig context (`--context`).
+  kubeconfig(path: PathLike): this
+    Use an explicit kubeconfig file (`--kubeconfig`).
+  protected globalArgs(): string[]
+    The cluster-targeting flags shared by every subcommand.
 
 class KubectlTopSettings extends KubectlSettings
   Settings for `kubectl top`.
@@ -302,6 +332,7 @@ class KubectlTopSettings extends KubectlSettings
   allNamespaces(): this
     Report across all namespaces (`-A`).
   override protected buildArgs(): string[]
+    Assemble the `kubectl top <pods|nodes>` argv.
 
 class KubectlWaitSettings extends KubectlSettings
   Settings for `kubectl wait`.
@@ -319,6 +350,7 @@ class KubectlWaitSettings extends KubectlSettings
   all(): this
     Wait on all resources of the given type (`--all`).
   override protected buildArgs(): string[]
+    Assemble the `kubectl wait` argv.
 
 interface KubectlTasksApi
   The shape of {@link KubectlTasks}.

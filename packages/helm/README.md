@@ -47,6 +47,7 @@ class HelmDependencyUpdateSettings extends HelmSettings
   chart(path: PathLike): this
     The chart path whose dependencies to update (required).
   override protected buildArgs(): string[]
+    Assemble the `helm dependency update` argv.
 
 class HelmInstallSettings extends HelmValuesSettings
   Settings for `helm install`.
@@ -66,6 +67,7 @@ class HelmInstallSettings extends HelmValuesSettings
   dryRun(): this
     Simulate the install (`--dry-run`).
   override protected buildArgs(): string[]
+    Assemble the `helm install` argv.
 
 class HelmLintSettings extends HelmSettings
   Settings for `helm lint`.
@@ -77,6 +79,7 @@ class HelmLintSettings extends HelmSettings
   strict(): this
     Treat warnings as errors (`--strict`).
   override protected buildArgs(): string[]
+    Assemble the `helm lint` argv.
 
 class HelmPackageSettings extends HelmSettings
   Settings for `helm package`.
@@ -90,6 +93,7 @@ class HelmPackageSettings extends HelmSettings
   appVersion(value: string): this
     Set the chart appVersion (`--app-version`).
   override protected buildArgs(): string[]
+    Assemble the `helm package` argv.
 
 class HelmRepoAddSettings extends HelmSettings
   Settings for `helm repo add`.
@@ -99,6 +103,23 @@ class HelmRepoAddSettings extends HelmSettings
   url(value: string): this
     The repository URL (required).
   override protected buildArgs(): string[]
+    Assemble the `helm repo add` argv.
+
+abstract class HelmSettings extends ToolSettings
+  Base for all `helm` subcommand settings: the binary is `helm`, and the
+  cluster-targeting flags (`--namespace`, `--kube-context`, `--kubeconfig`) are
+  shared by every subcommand.
+
+  override protected defaultTool(): string
+    The tool binary: `helm`.
+  namespace(name: string): this
+    Target a namespace (`--namespace`).
+  kubeContext(name: string): this
+    Use a named kube context (`--kube-context`).
+  kubeconfig(path: PathLike): this
+    Use an explicit kubeconfig file (`--kubeconfig`).
+  protected globalArgs(): string[]
+    The cluster-targeting flags shared by every subcommand.
 
 class HelmTemplateSettings extends HelmValuesSettings
   Settings for `helm template` (render manifests locally).
@@ -110,6 +131,7 @@ class HelmTemplateSettings extends HelmValuesSettings
   outputDir(path: PathLike): this
     Write rendered manifests to a directory (`--output-dir`).
   override protected buildArgs(): string[]
+    Assemble the `helm template` argv.
 
 class HelmUninstallSettings extends HelmSettings
   Settings for `helm uninstall`.
@@ -121,6 +143,7 @@ class HelmUninstallSettings extends HelmSettings
   wait(): this
     Wait until removal completes (`--wait`).
   override protected buildArgs(): string[]
+    Assemble the `helm uninstall` argv.
 
 class HelmUpgradeSettings extends HelmValuesSettings
   Settings for `helm upgrade`.
@@ -140,6 +163,19 @@ class HelmUpgradeSettings extends HelmValuesSettings
   timeout(duration: string): this
     Operation timeout, e.g. `5m` (`--timeout`).
   override protected buildArgs(): string[]
+    Assemble the `helm upgrade` argv.
+
+abstract class HelmValuesSettings extends HelmSettings
+  Base for value-bearing commands (install/upgrade/template).
+
+  values(path: PathLike): this
+    Add a values file (`--values`/`-f`); repeatable.
+  set(name: string, value: string): this
+    Override a single value (`--set name=value`); repeatable.
+  version(value: string): this
+    Pin the chart version (`--version`).
+  protected valueArgs(): string[]
+    The shared value/version arguments.
 
 interface HelmTasksApi
   The shape of {@link HelmTasks}.

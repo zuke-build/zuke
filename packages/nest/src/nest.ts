@@ -27,7 +27,8 @@ import {
 import type { CommandOutput } from "@zuke/core/shell";
 
 /** Shared base for every `nest` subcommand: the binary and argv assembly. */
-abstract class NestSettings extends ToolSettings {
+export abstract class NestSettings extends ToolSettings {
+  /** The tool binary: `nest`. */
   protected override defaultTool(): string {
     return "nest";
   }
@@ -35,6 +36,7 @@ abstract class NestSettings extends ToolSettings {
   /** The subcommand argv (the verb and its arguments). */
   protected abstract subcommandArgs(): string[];
 
+  /** Assemble the full `nest` argv from the subcommand. */
   protected override buildArgs(): string[] {
     return this.subcommandArgs();
   }
@@ -99,6 +101,7 @@ export class NestNewSettings extends NestSettings {
     return this;
   }
 
+  /** Assemble the `nest new` argv. */
   protected override subcommandArgs(): string[] {
     if (this.#name === undefined) {
       throw new Error("NestTasks.new: .name() is required.");
@@ -185,6 +188,7 @@ export class NestGenerateSettings extends NestSettings {
     return this;
   }
 
+  /** Assemble the `nest generate` argv. */
   protected override subcommandArgs(): string[] {
     if (this.#schematic === undefined) {
       throw new Error("NestTasks.generate: .schematic() is required.");
@@ -263,6 +267,7 @@ export class NestBuildSettings extends NestSettings {
     return this;
   }
 
+  /** Assemble the `nest build` argv. */
   protected override subcommandArgs(): string[] {
     const argv = ["build"];
     if (this.#config !== undefined) argv.push("--config", this.#config);
@@ -336,6 +341,7 @@ export class NestStartSettings extends NestSettings {
     return this;
   }
 
+  /** Assemble the `nest start` argv. */
   protected override subcommandArgs(): string[] {
     const argv = ["start"];
     if (this.#config !== undefined) argv.push("--config", this.#config);
@@ -352,6 +358,7 @@ export class NestStartSettings extends NestSettings {
 
 /** Settings for `nest info` — print Nest CLI and project information. */
 export class NestInfoSettings extends NestSettings {
+  /** Assemble the `nest info` argv. */
   protected override subcommandArgs(): string[] {
     return ["info"];
   }

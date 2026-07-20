@@ -111,6 +111,7 @@ export abstract class DockerComposeSettings extends ToolSettings {
   #projectDirectory?: string;
   #envFile?: string;
 
+  /** The resolved binary (`docker` or `docker-compose`) for error messages. */
   protected override defaultTool(): string {
     return this.#invocation[0] ?? "docker";
   }
@@ -162,6 +163,7 @@ export abstract class DockerComposeSettings extends ToolSettings {
   /** The subcommand argv (without global options). Must be pure — no I/O. */
   protected abstract composeArgs(): string[];
 
+  /** Assemble the global options followed by the subcommand argv. */
   protected override buildArgs(): string[] {
     const argv = this.#invocation.slice(1);
     argv.push(...this.#files);
@@ -237,6 +239,7 @@ export class DockerComposeUpSettings extends DockerComposeSettings {
     return this;
   }
 
+  /** Assemble the `compose up` argv. */
   protected override composeArgs(): string[] {
     const argv = ["up"];
     if (this.#detach) argv.push("-d");
@@ -280,6 +283,7 @@ export class DockerComposeDownSettings extends DockerComposeSettings {
     return this;
   }
 
+  /** Assemble the `compose down` argv. */
   protected override composeArgs(): string[] {
     const argv = ["down"];
     if (this.#volumes) argv.push("-v");
@@ -321,6 +325,7 @@ export class DockerComposeBuildSettings extends DockerComposeSettings {
     return this;
   }
 
+  /** Assemble the `compose build` argv. */
   protected override composeArgs(): string[] {
     const argv = ["build"];
     if (this.#noCache) argv.push("--no-cache");
@@ -354,6 +359,7 @@ export class DockerComposePullSettings extends DockerComposeSettings {
     return this;
   }
 
+  /** Assemble the `compose pull` argv. */
   protected override composeArgs(): string[] {
     const argv = ["pull"];
     if (this.#ignorePullFailures) argv.push("--ignore-pull-failures");
@@ -380,6 +386,7 @@ export class DockerComposePushSettings extends DockerComposeSettings {
     return this;
   }
 
+  /** Assemble the `compose push` argv. */
   protected override composeArgs(): string[] {
     const argv = ["push"];
     if (this.#ignorePushFailures) argv.push("--ignore-push-failures");
@@ -440,6 +447,7 @@ export class DockerComposeRunSettings extends DockerComposeSettings {
     return this;
   }
 
+  /** Assemble the `compose run` argv. */
   protected override composeArgs(): string[] {
     if (this.#service === undefined) {
       throw new Error("DockerComposeTasks.run: .service() is required.");
@@ -499,6 +507,7 @@ export class DockerComposeExecSettings extends DockerComposeSettings {
     return this;
   }
 
+  /** Assemble the `compose exec` argv. */
   protected override composeArgs(): string[] {
     if (this.#service === undefined) {
       throw new Error("DockerComposeTasks.exec: .service() is required.");
@@ -543,6 +552,7 @@ export class DockerComposeLogsSettings extends DockerComposeSettings {
     return this;
   }
 
+  /** Assemble the `compose logs` argv. */
   protected override composeArgs(): string[] {
     const argv = ["logs"];
     if (this.#follow) argv.push("-f");
@@ -584,6 +594,7 @@ export class DockerComposePsSettings extends DockerComposeSettings {
     return this;
   }
 
+  /** Assemble the `compose ps` argv. */
   protected override composeArgs(): string[] {
     const argv = ["ps"];
     if (this.#all) argv.push("-a");
@@ -625,6 +636,7 @@ export class DockerComposeConfigSettings extends DockerComposeSettings {
     return this;
   }
 
+  /** Assemble the `compose config` argv. */
   protected override composeArgs(): string[] {
     const argv = ["config"];
     if (this.#quiet) argv.push("-q");
@@ -645,6 +657,7 @@ export class DockerComposeStartSettings extends DockerComposeSettings {
     return this;
   }
 
+  /** Assemble the `compose start` argv. */
   protected override composeArgs(): string[] {
     return ["start", ...this.#services];
   }
@@ -667,6 +680,7 @@ export class DockerComposeStopSettings extends DockerComposeSettings {
     return this;
   }
 
+  /** Assemble the `compose stop` argv. */
   protected override composeArgs(): string[] {
     const argv = ["stop"];
     if (this.#timeout !== undefined) argv.push("-t", String(this.#timeout));
@@ -692,6 +706,7 @@ export class DockerComposeRestartSettings extends DockerComposeSettings {
     return this;
   }
 
+  /** Assemble the `compose restart` argv. */
   protected override composeArgs(): string[] {
     const argv = ["restart"];
     if (this.#timeout !== undefined) argv.push("-t", String(this.#timeout));
@@ -731,6 +746,7 @@ export class DockerComposeRmSettings extends DockerComposeSettings {
     return this;
   }
 
+  /** Assemble the `compose rm` argv. */
   protected override composeArgs(): string[] {
     const argv = ["rm"];
     if (this.#force) argv.push("-f");

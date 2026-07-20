@@ -19,6 +19,7 @@ export {
   YarnInstallSettings,
   YarnRemoveSettings,
   YarnRunSettings,
+  YarnSettings,
   YarnTasks,
   type YarnTasksApi,
 } from "./src/yarn.ts";

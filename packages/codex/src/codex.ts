@@ -70,6 +70,7 @@ export class CodexExecSettings extends ToolSettings {
   #profile?: string;
   #oss = false;
 
+  /** The executable this settings class drives (`codex`). */
   protected override defaultTool(): string {
     return "codex";
   }
@@ -170,6 +171,7 @@ export class CodexExecSettings extends ToolSettings {
     return this;
   }
 
+  /** Assemble the `codex exec` argv. */
   protected override buildArgs(): string[] {
     const argv = ["exec"];
     if (this.#model !== undefined) argv.push("--model", this.#model);
@@ -206,6 +208,7 @@ export class CodexMcpSettings extends ToolSettings {
   #command: string[] = [];
   #flags: string[] = [];
 
+  /** The executable this settings class drives (`codex`). */
   protected override defaultTool(): string {
     return "codex";
   }
@@ -226,6 +229,7 @@ export class CodexMcpSettings extends ToolSettings {
     return this;
   }
 
+  /** Assemble the `codex mcp` argv. */
   protected override buildArgs(): string[] {
     return ["mcp", ...this.#command, ...this.#flags];
   }

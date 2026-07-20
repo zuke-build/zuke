@@ -19,7 +19,8 @@ import { type Configure, runSettings, ToolSettings } from "@zuke/core/tooling";
 import type { CommandOutput } from "@zuke/core/shell";
 
 /** Base for all `nx` subcommand settings: the binary is `nx`. */
-abstract class NxSettings extends ToolSettings {
+export abstract class NxSettings extends ToolSettings {
+  /** The tool binary is `nx`. */
   protected override defaultTool(): string {
     return "nx";
   }
@@ -42,6 +43,7 @@ export class NxRunSettings extends NxSettings {
     return this;
   }
 
+  /** Assemble the `nx run` argv. */
   protected override buildArgs(): string[] {
     if (this.#target === undefined) {
       throw new Error("NxTasks.run: .target() is required.");
@@ -92,6 +94,7 @@ export class NxRunManySettings extends NxSettings {
     return this;
   }
 
+  /** Assemble the `nx run-many` argv. */
   protected override buildArgs(): string[] {
     if (this.#target === undefined) {
       throw new Error("NxTasks.runMany: .target() is required.");
@@ -147,6 +150,7 @@ export class NxAffectedSettings extends NxSettings {
     return this;
   }
 
+  /** Assemble the `nx affected` argv. */
   protected override buildArgs(): string[] {
     if (this.#target === undefined) {
       throw new Error("NxTasks.affected: .target() is required.");

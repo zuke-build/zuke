@@ -50,6 +50,7 @@ class TscAliasRunSettings extends ToolSettings
   Settings for a `tsc-alias` run.
 
   override protected defaultTool(): string
+    The executable this settings object drives (`tsc-alias`).
   project(path: PathLike): this
     Path to the `tsconfig.json` to read aliases from (`-p`/`--project`).
   watch(): this
@@ -75,6 +76,7 @@ class TscAliasRunSettings extends ToolSettings
   silent(): this
     Suppress all output (`--silent`).
   override protected buildArgs(): string[]
+    Assemble the `tsc-alias` argv from the configured settings.
 
 interface TscAliasTasksApi
   The shape of {@link TscAliasTasks}.

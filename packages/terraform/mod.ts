@@ -19,6 +19,7 @@ export {
   TerraformInitSettings,
   TerraformOutputSettings,
   TerraformPlanSettings,
+  TerraformSettings,
   TerraformTasks,
   type TerraformTasksApi,
   TerraformValidateSettings,

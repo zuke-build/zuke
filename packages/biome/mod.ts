@@ -17,6 +17,7 @@ export {
   BiomeCiSettings,
   BiomeFormatSettings,
   BiomeLintSettings,
+  BiomeSettings,
   BiomeTasks,
   type BiomeTasksApi,
 } from "./src/biome.ts";

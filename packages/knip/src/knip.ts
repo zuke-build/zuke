@@ -37,6 +37,7 @@ export class KnipRunSettings extends ToolSettings {
   #reporter?: string;
   #include: string[] = [];
 
+  /** The underlying CLI command: `knip`. */
   protected override defaultTool(): string {
     return "knip";
   }
@@ -95,6 +96,7 @@ export class KnipRunSettings extends ToolSettings {
     return this;
   }
 
+  /** Assemble the `knip <flags>` argv. */
   protected override buildArgs(): string[] {
     const argv: string[] = [];
     if (this.#production) argv.push("--production");

@@ -51,6 +51,7 @@ export class ZizmorSettings extends ToolSettings {
   #persona?: string;
   #offline = false;
 
+  /** The binary this settings object drives (`zizmor`). */
   protected override defaultTool(): string {
     return "zizmor";
   }
@@ -91,6 +92,7 @@ export class ZizmorSettings extends ToolSettings {
     return this;
   }
 
+  /** Assemble the `zizmor` argv. */
   protected override buildArgs(): string[] {
     const argv: string[] = [];
     if (this.#config !== undefined) argv.push("--config", this.#config);
@@ -115,6 +117,7 @@ export class ActionlintSettings extends ToolSettings {
   #color = false;
   #noColor = false;
 
+  /** The binary this settings object drives (`actionlint`). */
   protected override defaultTool(): string {
     return "actionlint";
   }
@@ -143,6 +146,7 @@ export class ActionlintSettings extends ToolSettings {
     return this;
   }
 
+  /** Assemble the `actionlint` argv. */
   protected override buildArgs(): string[] {
     const argv: string[] = [];
     if (this.#format !== undefined) argv.push("-format", this.#format);
@@ -166,6 +170,7 @@ export class GitleaksDetectSettings extends ToolSettings {
   #noGit = false;
   #verbose = false;
 
+  /** The binary this settings object drives (`gitleaks`). */
   protected override defaultTool(): string {
     return "gitleaks";
   }
@@ -212,6 +217,7 @@ export class GitleaksDetectSettings extends ToolSettings {
     return this;
   }
 
+  /** Assemble the `gitleaks detect` argv. */
   protected override buildArgs(): string[] {
     const argv = ["detect"];
     if (this.#source !== undefined) argv.push("--source", this.#source);
@@ -240,6 +246,7 @@ export class OsvScannerSettings extends ToolSettings {
   #output?: string;
   #recursive = false;
 
+  /** The binary this settings object drives (`osv-scanner`). */
   protected override defaultTool(): string {
     return "osv-scanner";
   }
@@ -274,6 +281,7 @@ export class OsvScannerSettings extends ToolSettings {
     return this;
   }
 
+  /** Assemble the `osv-scanner` argv. */
   protected override buildArgs(): string[] {
     const argv: string[] = [];
     for (const l of this.#lockfiles) argv.push("--lockfile", l);
@@ -298,6 +306,7 @@ export class SemgrepScanSettings extends ToolSettings {
   #output?: string;
   #error = false;
 
+  /** The binary this settings object drives (`semgrep`). */
   protected override defaultTool(): string {
     return "semgrep";
   }
@@ -338,6 +347,7 @@ export class SemgrepScanSettings extends ToolSettings {
     return this;
   }
 
+  /** Assemble the `semgrep scan` argv. */
   protected override buildArgs(): string[] {
     const argv = ["scan"];
     for (const c of this.#configs) argv.push("--config", c);
@@ -351,12 +361,13 @@ export class SemgrepScanSettings extends ToolSettings {
 }
 
 /** Shared options for `trivy` subcommands that produce a report. */
-abstract class TrivyReportSettings extends ToolSettings {
+export abstract class TrivyReportSettings extends ToolSettings {
   #format?: string;
   #output?: string;
   #severities: string[] = [];
   #exitCode?: number;
 
+  /** The binary the `trivy` subcommands drive (`trivy`). */
   protected override defaultTool(): string {
     return "trivy";
   }
@@ -420,6 +431,7 @@ export class TrivyFsSettings extends TrivyReportSettings {
     return this;
   }
 
+  /** Assemble the `trivy fs` argv. */
   protected override buildArgs(): string[] {
     const argv = ["fs"];
     if (this.#scanners.length > 0) {
@@ -445,6 +457,7 @@ export class TrivyConfigSettings extends TrivyReportSettings {
     return this;
   }
 
+  /** Assemble the `trivy config` argv. */
   protected override buildArgs(): string[] {
     const argv = ["config"];
     argv.push(...this.reportArgs());

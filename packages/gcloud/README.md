@@ -109,6 +109,7 @@ class GcloudSettings extends ToolSettings
   Settings for a `gcloud` invocation.
 
   override protected defaultTool(): string
+    The default executable name (`gcloud`).
   command(...parts: Array<string | number>): this
     The command path and verb, e.g. `command("run", "deploy", "api")`.
   containerImagesAddTag(source: string, ...destinations: string[]): this
@@ -143,6 +144,7 @@ class GcloudSettings extends ToolSettings
     Add an arbitrary flag. With a value it renders `--name value`; without one
     it renders the bare `--name`. Repeatable.
   override protected buildArgs(): string[]
+    Assemble the `gcloud` argv from the command path and global flags.
 
 interface GcloudTasksApi
   The shape of {@link GcloudTasks}.

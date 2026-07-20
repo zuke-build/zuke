@@ -7,7 +7,14 @@
 import { FileTasks } from "@zuke/core";
 import { resolveOptions } from "./options.ts";
 import { generate } from "./generate.ts";
-import type { ApiDocsOptions, DocsTasksApi, PackageDoc } from "./types.ts";
+import { docLintDefects, parseDocLint } from "./doc_lint.ts";
+import type {
+  ApiDocsOptions,
+  DocLintReport,
+  DocLintViolation,
+  DocsTasksApi,
+  PackageDoc,
+} from "./types.ts";
 
 /** The artifacts whose intended content differs from what is on disk. */
 async function pending(
@@ -43,5 +50,22 @@ export const DocsTasks: DocsTasksApi = {
     options: ApiDocsOptions = {},
   ): Promise<string[]> {
     return (await pending(docs, options)).map(([path]) => path);
+  },
+
+  checkDocLint(reports: DocLintReport[]): DocLintViolation[] {
+    const violations: DocLintViolation[] = [];
+    for (const report of reports) {
+      const accepted = new Set(report.crossPackageTypes);
+      for (
+        const defect of docLintDefects(parseDocLint(report.output), accepted)
+      ) {
+        violations.push({
+          pkg: report.pkg,
+          kind: defect.kind,
+          message: defect.message,
+        });
+      }
+    }
+    return violations;
   },
 };

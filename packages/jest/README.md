@@ -42,6 +42,7 @@ class JestSettings extends ToolSettings
   Settings for a `jest` run.
 
   override protected defaultTool(): string
+    The underlying tool binary is `jest`.
   paths(...values: PathLike[]): this
     Regex patterns matched against test paths (positional); repeatable.
   config(path: PathLike): this
@@ -79,6 +80,7 @@ class JestSettings extends ToolSettings
   reporters(...names: string[]): this
     Use the named reporters (`--reporters`); repeatable.
   override protected buildArgs(): string[]
+    Assemble the `jest` argv from the configured flags and patterns.
 
 interface JestTasksApi
   The shape of {@link JestTasks}.

@@ -16,6 +16,7 @@ export {
   ViteBuildSettings,
   ViteDevSettings,
   VitePreviewSettings,
+  ViteSettings,
   ViteTasks,
   type ViteTasksApi,
 } from "./src/vite.ts";

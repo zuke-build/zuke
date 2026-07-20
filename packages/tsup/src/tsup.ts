@@ -44,6 +44,7 @@ export class TsupBuildSettings extends ToolSettings {
   #tsconfig?: string;
   #config?: string;
 
+  /** The executable this settings object runs: `tsup`. */
   protected override defaultTool(): string {
     return "tsup";
   }
@@ -114,6 +115,7 @@ export class TsupBuildSettings extends ToolSettings {
     return this;
   }
 
+  /** Assemble the `tsup <entries> <flags>` argv. */
   protected override buildArgs(): string[] {
     const argv: string[] = [...this.#entries];
     if (this.#formats.length > 0) {

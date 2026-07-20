@@ -41,6 +41,7 @@ class TurboPruneSettings extends TurboSettings
   outDir(path: PathLike): this
     Output directory (`--out-dir`).
   override protected buildArgs(): string[]
+    Assemble the `turbo prune` argv.
 
 class TurboRunSettings extends TurboSettings
   Settings for `turbo run`.
@@ -64,6 +65,13 @@ class TurboRunSettings extends TurboSettings
   outputLogs(mode: string): this
     Output-log mode, e.g. `full`, `hash-only`, `errors-only` (`--output-logs`).
   override protected buildArgs(): string[]
+    Assemble the `turbo run` argv.
+
+abstract class TurboSettings extends ToolSettings
+  Base for all `turbo` subcommand settings: the binary is `turbo`.
+
+  override protected defaultTool(): string
+    The tool binary this settings class invokes: `turbo`.
 
 interface TurboTasksApi
   The shape of {@link TurboTasks}.

@@ -91,6 +91,32 @@ interface ApiDocsOptions
   regenerateCommand?: string
     Command shown in "regenerate with …" notes. Default `"deno task docs"`.
 
+interface DocLintReport
+  One package's `deno doc --lint` output plus the type names it imports from
+  other `@zuke/*` packages, fed into {@link DocsTasksApi.checkDocLint}. The
+  caller runs the linter and scans the package's imports, so `@zuke/docs` never
+  runs `deno`.
+
+  pkg: string
+    The package identifier, surfaced in violations (e.g. `@zuke/kubectl`).
+  output: string
+    The raw `deno doc --lint` output for the package's entrypoints.
+  crossPackageTypes: string[]
+    The local names the package imports from another `@zuke/*` package. A
+    `private-type-ref` to one of these is the accepted residual (guideline 4);
+    a ref to any other type is a defect (the type is first-party and must be
+    exported).
+
+interface DocLintViolation
+  A documentation-lint defect, tied to the package it was found in.
+
+  pkg: string
+    The package the defect is in.
+  kind: string
+    The lint rule, e.g. `"missing-jsdoc"` or `"private-type-ref"`.
+  message: string
+    The diagnostic's headline message.
+
 interface DocsTasksApi
   The shape of {@link DocsTasks}.
 
@@ -101,6 +127,12 @@ interface DocsTasksApi
   checkApiDocs(docs: PackageDoc[], options?: ApiDocsOptions): Promise<string[]>
     Recompute every artifact and return the paths that are out of date on disk
     (empty when everything is current). Writes nothing.
+  checkDocLint(reports: DocLintReport[]): DocLintViolation[]
+    Classify `deno doc --lint` output across packages into real defects: every
+    `missing-jsdoc`, plus every `private-type-ref` whose referenced type is not
+    an accepted cross-package import (in the report's `crossPackageTypes`).
+    Fails safe — any other referenced type is treated as a first-party leak.
+    Pure: the caller runs the linter; this classifies. Empty when clean.
 
 interface PackageDoc
   One package's already-generated documentation, fed into the tasks.

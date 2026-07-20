@@ -19,7 +19,8 @@ import { type Configure, runSettings, ToolSettings } from "@zuke/core/tooling";
 import type { CommandOutput } from "@zuke/core/shell";
 
 /** Base for all `tofu` subcommand settings: binary is `tofu`. */
-abstract class TofuSettings extends ToolSettings {
+export abstract class TofuSettings extends ToolSettings {
+  /** The tool binary is `tofu`. */
   protected override defaultTool(): string {
     return "tofu";
   }
@@ -61,6 +62,7 @@ export class TofuInitSettings extends TofuSettings {
     return this;
   }
 
+  /** Assemble the `tofu init` argv. */
   protected override buildArgs(): string[] {
     const argv = ["init"];
     if (this.#upgrade) argv.push("-upgrade");
@@ -81,6 +83,7 @@ export class TofuValidateSettings extends TofuSettings {
     return this;
   }
 
+  /** Assemble the `tofu validate` argv. */
   protected override buildArgs(): string[] {
     const argv = ["validate"];
     if (this.#json) argv.push("-json");
@@ -126,6 +129,7 @@ export class TofuPlanSettings extends TofuSettings {
     return this;
   }
 
+  /** Assemble the `tofu plan` argv. */
   protected override buildArgs(): string[] {
     const argv = ["plan"];
     if (this.#out !== undefined) argv.push(`-out=${this.#out}`);
@@ -175,6 +179,7 @@ export class TofuApplySettings extends TofuSettings {
     return this;
   }
 
+  /** Assemble the `tofu apply` argv. */
   protected override buildArgs(): string[] {
     const argv = ["apply"];
     if (this.#autoApprove) argv.push("-auto-approve");
@@ -210,6 +215,7 @@ export class TofuDestroySettings extends TofuSettings {
     return this;
   }
 
+  /** Assemble the `tofu destroy` argv. */
   protected override buildArgs(): string[] {
     const argv = ["destroy"];
     if (this.#autoApprove) argv.push("-auto-approve");
@@ -243,6 +249,7 @@ export class TofuFmtSettings extends TofuSettings {
     return this;
   }
 
+  /** Assemble the `tofu fmt` argv. */
   protected override buildArgs(): string[] {
     const argv = ["fmt"];
     if (this.#check) argv.push("-check");
@@ -276,6 +283,7 @@ export class TofuOutputSettings extends TofuSettings {
     return this;
   }
 
+  /** Assemble the `tofu output` argv. */
   protected override buildArgs(): string[] {
     const argv = ["output"];
     if (this.#json) argv.push("-json");

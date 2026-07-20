@@ -48,6 +48,7 @@ class BunAddSettings extends BunSettings
   global(): this
     Install globally (`--global`).
   override protected buildArgs(): string[]
+    Assemble the `bun add` argv.
 
 class BunInstallSettings extends BunSettings
   Settings for `bun install`.
@@ -57,6 +58,7 @@ class BunInstallSettings extends BunSettings
   frozenLockfile(): this
     Fail if the lockfile is out of date (`--frozen-lockfile`).
   override protected buildArgs(): string[]
+    Assemble the `bun install` argv.
 
 class BunRemoveSettings extends BunSettings
   Settings for `bun remove`.
@@ -64,6 +66,7 @@ class BunRemoveSettings extends BunSettings
   packages(...names: string[]): this
     Package names to remove (required).
   override protected buildArgs(): string[]
+    Assemble the `bun remove` argv.
 
 class BunRunSettings extends BunSettings
   Settings for `bun run`.
@@ -73,6 +76,13 @@ class BunRunSettings extends BunSettings
   scriptArgs(...args: Array<string | number>): this
     Arguments forwarded to the script.
   override protected buildArgs(): string[]
+    Assemble the `bun run` argv.
+
+abstract class BunSettings extends ToolSettings
+  Base for all `bun` subcommand settings: binary is `bun` from PATH.
+
+  override protected defaultTool(): string
+    The tool binary: `bun` on PATH.
 
 class BunTestSettings extends BunSettings
   Settings for `bun test`.
@@ -84,6 +94,7 @@ class BunTestSettings extends BunSettings
   bail(): this
     Stop after the first failure (`--bail`).
   override protected buildArgs(): string[]
+    Assemble the `bun test` argv.
 
 class BunXSettings extends BunSettings
   Settings for `bun x` (the `bunx` package runner).
@@ -93,6 +104,7 @@ class BunXSettings extends BunSettings
   execArgs(...args: Array<string | number>): this
     Arguments forwarded to the command.
   override protected buildArgs(): string[]
+    Assemble the `bun x` argv.
 
 interface BunTasksApi
   The shape of {@link BunTasks}.

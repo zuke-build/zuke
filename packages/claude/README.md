@@ -63,21 +63,41 @@ await ClaudeTasks.run((s) =>
 const ClaudeTasks: ClaudeTasksApi
   Typed task functions for the Claude Code CLI.
 
+abstract class ClaudeCommandSettings extends ToolSettings
+  Shared builder for `claude <group> …` subcommand groups (`mcp`, `config`):
+  name the verb and operands with `.command(...)` and pass anything else with
+  `.flag(...)`.
+
+  override protected defaultTool(): string
+    The underlying executable: `claude`.
+  abstract protected group(): string
+    The leading subcommand group token, e.g. `"mcp"`.
+  command(...parts: Array<string | number>): this
+    The verb and operands, e.g. `command("add", "my-server")`.
+  flag(name: string, value?: string | number): this
+    Add an arbitrary flag. With a value it renders `--name value`; without one
+    it renders the bare `--name`. Repeatable.
+  override protected buildArgs(): string[]
+    Assemble the `claude <group> …` argv.
+
 class ClaudeConfigSettings extends ClaudeCommandSettings
   Settings for a `claude config …` invocation (manage configuration).
 
   override protected group(): string
+    The leading subcommand group token: `"config"`.
 
 class ClaudeMcpSettings extends ClaudeCommandSettings
   Settings for a `claude mcp …` invocation (manage MCP servers).
 
   override protected group(): string
+    The leading subcommand group token: `"mcp"`.
 
 class ClaudeRunSettings extends ToolSettings
   Settings for a non-interactive `claude --print` run — the build-friendly
   way to send a single prompt and capture the response.
 
   override protected defaultTool(): string
+    The underlying executable: `claude`.
   prompt(text: string): this
     The prompt to run non-interactively. Required.
   model(id: string): this
@@ -115,12 +135,15 @@ class ClaudeRunSettings extends ToolSettings
   verbose(): this
     Emit verbose logging (`--verbose`).
   override protected buildArgs(): string[]
+    Assemble the `claude --print` argv.
 
 class ClaudeUpdateSettings extends ToolSettings
   Settings for `claude update` (self-update the CLI).
 
   override protected defaultTool(): string
+    The underlying executable: `claude`.
   override protected buildArgs(): string[]
+    Assemble the `claude update` argv.
 
 interface ClaudeTasksApi
   The shape of {@link ClaudeTasks}.

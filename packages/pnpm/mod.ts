@@ -20,6 +20,7 @@ export {
   PnpmPublishSettings,
   PnpmRemoveSettings,
   PnpmRunSettings,
+  PnpmSettings,
   PnpmTasks,
   type PnpmTasksApi,
 } from "./src/pnpm.ts";

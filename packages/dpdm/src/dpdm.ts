@@ -49,6 +49,7 @@ export class DpdmAnalyzeSettings extends ToolSettings {
   #exitCode?: string;
   #entries: string[] = [];
 
+  /** The command this settings object runs (`dpdm`). */
   protected override defaultTool(): string {
     return "dpdm";
   }
@@ -149,6 +150,7 @@ export class DpdmAnalyzeSettings extends ToolSettings {
     return this;
   }
 
+  /** Assemble the `dpdm <flags> <entries...>` argv. */
   protected override buildArgs(): string[] {
     const argv: string[] = [];
     if (this.#transform) argv.push("--transform");

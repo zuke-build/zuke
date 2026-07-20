@@ -17,6 +17,7 @@ export {
   BunInstallSettings,
   BunRemoveSettings,
   BunRunSettings,
+  BunSettings,
   BunTasks,
   type BunTasksApi,
   BunTestSettings,

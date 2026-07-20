@@ -44,6 +44,7 @@ class OxlintSettings extends ToolSettings
   Settings for an `oxlint` run.
 
   override protected defaultTool(): string
+    The default executable name (`oxlint`).
   paths(...values: PathLike[]): this
     Files or directories to lint (positional); repeatable.
   config(path: PathLike): this
@@ -75,6 +76,7 @@ class OxlintSettings extends ToolSettings
   threads(count: number): this
     Number of threads to use (`--threads`).
   override protected buildArgs(): string[]
+    Assemble the `oxlint` argv from the configured settings.
 
 interface OxlintTasksApi
   The shape of {@link OxlintTasks}.

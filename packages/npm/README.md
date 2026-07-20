@@ -39,6 +39,7 @@ class NpmCiSettings extends NpmSettings
   omit(type: NpmOmitType): this
     Skip a dependency group (`--omit=dev` etc.); repeatable.
   override protected buildArgs(): string[]
+    Assemble the `npm ci` argv.
 
 class NpmExecSettings extends NpmSettings
   Settings for `npm exec`.
@@ -52,6 +53,7 @@ class NpmExecSettings extends NpmSettings
   execArgs(...args: Array<string | number>): this
     Arguments forwarded to the command (after `--`).
   override protected buildArgs(): string[]
+    Assemble the `npm exec` argv.
 
 class NpmInstallSettings extends NpmSettings
   Settings for `npm install`.
@@ -63,6 +65,7 @@ class NpmInstallSettings extends NpmSettings
   saveExact(): this
     Pin exact versions (`--save-exact`).
   override protected buildArgs(): string[]
+    Assemble the `npm install` argv.
 
 class NpmPublishSettings extends NpmSettings
   Settings for `npm publish`.
@@ -76,6 +79,7 @@ class NpmPublishSettings extends NpmSettings
   otp(code: string): this
     Provide a one-time password (`--otp=`).
   override protected buildArgs(): string[]
+    Assemble the `npm publish` argv.
 
 class NpmRunSettings extends NpmSettings
   Settings for `npm run`.
@@ -93,6 +97,13 @@ class NpmRunSettings extends NpmSettings
   scriptArgs(...args: Array<string | number>): this
     Arguments forwarded to the script (after `--`).
   override protected buildArgs(): string[]
+    Assemble the `npm run` argv.
+
+abstract class NpmSettings extends ToolSettings
+  Base for all `npm` subcommand settings: binary is `npm` from PATH.
+
+  override protected defaultTool(): string
+    The default binary: `npm` resolved from PATH.
 
 class NpmVersionSettings extends NpmSettings
   Settings for `npm version`.
@@ -104,6 +115,7 @@ class NpmVersionSettings extends NpmSettings
   noGitTagVersion(): this
     Do not create a git commit and tag (`--no-git-tag-version`).
   override protected buildArgs(): string[]
+    Assemble the `npm version` argv.
 
 interface NpmTasksApi
   The shape of {@link NpmTasks}.

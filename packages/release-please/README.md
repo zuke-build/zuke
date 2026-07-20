@@ -48,11 +48,39 @@ class ReleasePleaseGithubReleaseSettings extends ReleasePleaseSettings
   Settings for `release-please github-release` (cut releases and tags).
 
   override protected subcommand(): string
+    The subcommand token, `github-release`.
 
 class ReleasePleaseReleasePrSettings extends ReleasePleaseSettings
   Settings for `release-please release-pr` (maintain the release PR).
 
   override protected subcommand(): string
+    The subcommand token, `release-pr`.
+
+abstract class ReleasePleaseSettings extends ToolSettings
+  Shared base for release-please subcommands. Each subcommand contributes its
+  leading token via {@link subcommand}; the common `--token`/`--repo-url`/… flags
+  live here since `release-pr` and `github-release` accept the same set.
+
+  override protected defaultTool(): string
+    The default binary name, `release-please`.
+  abstract protected subcommand(): string
+    The subcommand token, e.g. `release-pr`.
+  token(value: string): this
+    GitHub access token (`--token`).
+  repoUrl(value: string): this
+    The repository, as `owner/repo` or a URL (`--repo-url`).
+  targetBranch(value: string): this
+    The branch to release from (`--target-branch`).
+  configFile(path: PathLike): this
+    Path to the release-please config file (`--config-file`).
+  manifestFile(path: PathLike): this
+    Path to the release-please manifest file (`--manifest-file`).
+  dryRun(): this
+    Print actions without performing them (`--dry-run`).
+  debug(): this
+    Emit verbose debug logging (`--debug`).
+  override protected buildArgs(): string[]
+    Assemble the `release-please <subcommand>` argv with the common flags.
 
 interface ReleasePleaseTasksApi
   The shape of {@link ReleasePleaseTasks}.

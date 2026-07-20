@@ -29,6 +29,8 @@
 
 export type {
   ApiDocsOptions,
+  DocLintReport,
+  DocLintViolation,
   DocsTasksApi,
   PackageDoc,
   ProjectInfo,

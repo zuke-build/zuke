@@ -19,9 +19,11 @@ export {
   HelmLintSettings,
   HelmPackageSettings,
   HelmRepoAddSettings,
+  HelmSettings,
   HelmTasks,
   type HelmTasksApi,
   HelmTemplateSettings,
   HelmUninstallSettings,
   HelmUpgradeSettings,
+  HelmValuesSettings,
 } from "./src/helm.ts";

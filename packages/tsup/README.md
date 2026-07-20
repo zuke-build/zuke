@@ -39,6 +39,7 @@ class TsupBuildSettings extends ToolSettings
   Settings for a `tsup` bundle run.
 
   override protected defaultTool(): string
+    The executable this settings object runs: `tsup`.
   entry(...paths: PathLike[]): this
     Entry point(s) to bundle (positional); repeatable.
   format(...formats: TsupFormat[]): this
@@ -62,6 +63,7 @@ class TsupBuildSettings extends ToolSettings
   config(path: PathLike): this
     Path to a tsup config file (`--config`).
   override protected buildArgs(): string[]
+    Assemble the `tsup <entries> <flags>` argv.
 
 interface TsupTasksApi
   The shape of {@link TsupTasks}.

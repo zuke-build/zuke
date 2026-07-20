@@ -40,8 +40,11 @@ class CmdSettings extends ToolSettings
   Settings for a generic command: the tool name plus raw arguments.
 
   constructor(tool: PathLike)
+    Create settings for `tool`; the tool name is required.
   override protected defaultTool(): string
+    The command to run — the tool name passed to the constructor.
   override protected buildArgs(): string[]
+    No implicit arguments; the caller supplies them via `.args(...)`.
 
 interface CmdTasksApi
   The shape of {@link CmdTasks}.

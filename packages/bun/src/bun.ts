@@ -17,7 +17,8 @@ import { type Configure, runSettings, ToolSettings } from "@zuke/core/tooling";
 import type { CommandOutput } from "@zuke/core/shell";
 
 /** Base for all `bun` subcommand settings: binary is `bun` from PATH. */
-abstract class BunSettings extends ToolSettings {
+export abstract class BunSettings extends ToolSettings {
+  /** The tool binary: `bun` on PATH. */
   protected override defaultTool(): string {
     return "bun";
   }
@@ -40,6 +41,7 @@ export class BunInstallSettings extends BunSettings {
     return this;
   }
 
+  /** Assemble the `bun install` argv. */
   protected override buildArgs(): string[] {
     const argv = ["install"];
     if (this.#production) argv.push("--production");
@@ -86,6 +88,7 @@ export class BunAddSettings extends BunSettings {
     return this;
   }
 
+  /** Assemble the `bun add` argv. */
   protected override buildArgs(): string[] {
     if (this.#packages.length === 0) {
       throw new Error("BunTasks.add: .packages() requires at least one spec.");
@@ -110,6 +113,7 @@ export class BunRemoveSettings extends BunSettings {
     return this;
   }
 
+  /** Assemble the `bun remove` argv. */
   protected override buildArgs(): string[] {
     if (this.#packages.length === 0) {
       throw new Error(
@@ -137,6 +141,7 @@ export class BunRunSettings extends BunSettings {
     return this;
   }
 
+  /** Assemble the `bun run` argv. */
   protected override buildArgs(): string[] {
     if (this.#script === undefined) {
       throw new Error("BunTasks.run: .script() is required.");
@@ -162,6 +167,7 @@ export class BunXSettings extends BunSettings {
     return this;
   }
 
+  /** Assemble the `bun x` argv. */
   protected override buildArgs(): string[] {
     if (this.#command === undefined) {
       throw new Error("BunTasks.x: .command() is required.");
@@ -194,6 +200,7 @@ export class BunTestSettings extends BunSettings {
     return this;
   }
 
+  /** Assemble the `bun test` argv. */
   protected override buildArgs(): string[] {
     const argv = ["test"];
     if (this.#coverage) argv.push("--coverage");

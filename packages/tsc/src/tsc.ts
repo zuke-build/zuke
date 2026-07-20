@@ -31,6 +31,7 @@ import type { CommandOutput } from "@zuke/core/shell";
 
 /** Shared base for `tsc` settings; resolves the `tsc` binary. */
 export abstract class TscBaseSettings extends ToolSettings {
+  /** The default binary these settings invoke: `tsc`. */
   protected override defaultTool(): string {
     return "tsc";
   }
@@ -144,6 +145,7 @@ export class TscSettings extends TscBaseSettings {
     return this;
   }
 
+  /** Assemble the `tsc` argv from the configured compile options. */
   protected override buildArgs(): string[] {
     const argv: string[] = [];
     if (this.#project !== undefined) argv.push("-p", this.#project);
@@ -217,6 +219,7 @@ export class TscBuildSettings extends TscBaseSettings {
     return this;
   }
 
+  /** Assemble the `tsc --build` argv from the configured options. */
   protected override buildArgs(): string[] {
     const argv: string[] = ["--build"];
     if (this.#clean) argv.push("--clean");

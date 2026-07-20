@@ -47,6 +47,7 @@ class ViteBuildSettings extends ViteSettings
   root(path: PathLike): this
     The project root (positional).
   override protected buildArgs(): string[]
+    Assemble the `vite build` argv.
 
 class ViteDevSettings extends ViteSettings
   Settings for `vite dev` (the development server).
@@ -58,6 +59,7 @@ class ViteDevSettings extends ViteSettings
   open(): this
     Open the app in the browser on start (`--open`).
   override protected buildArgs(): string[]
+    Assemble the `vite dev` argv.
 
 class VitePreviewSettings extends ViteSettings
   Settings for `vite preview` (serve a production build locally).
@@ -69,6 +71,20 @@ class VitePreviewSettings extends ViteSettings
   open(): this
     Open the app in the browser on start (`--open`).
   override protected buildArgs(): string[]
+    Assemble the `vite preview` argv.
+
+abstract class ViteSettings extends ToolSettings
+  Base for all `vite` subcommand settings: the binary is `vite`, with the
+  `--config` and `--mode` options shared by every subcommand.
+
+  override protected defaultTool(): string
+    The default binary this wrapper invokes: `vite`.
+  config(path: PathLike): this
+    Use an explicit config file (`--config`).
+  mode(name: string): this
+    Set the mode, e.g. `production` or `development` (`--mode`).
+  protected baseArgs(): string[]
+    The shared option arguments.
 
 interface ViteTasksApi
   The shape of {@link ViteTasks}.

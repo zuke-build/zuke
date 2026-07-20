@@ -11,7 +11,9 @@
 
 /** Raised when measured coverage falls below a configured threshold. */
 export class CoverageThresholdError extends Error {
+  /** The error name, `"CoverageThresholdError"`. */
   override name = "CoverageThresholdError";
+  /** Construct the error from one message per metric that fell short. */
   constructor(
     /** One human-readable message per metric that fell short. */
     readonly failures: string[],

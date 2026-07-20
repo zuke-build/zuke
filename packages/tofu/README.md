@@ -51,6 +51,7 @@ class TofuApplySettings extends TofuSettings
   planFile(path: string): this
     Apply a previously saved plan file (positional argument).
   override protected buildArgs(): string[]
+    Assemble the `tofu apply` argv.
 
 class TofuDestroySettings extends TofuSettings
   Settings for `tofu destroy`.
@@ -62,6 +63,7 @@ class TofuDestroySettings extends TofuSettings
   varFile(path: string): this
     Load variables from a file (`-var-file=`); repeatable.
   override protected buildArgs(): string[]
+    Assemble the `tofu destroy` argv.
 
 class TofuFmtSettings extends TofuSettings
   Settings for `tofu fmt`.
@@ -73,6 +75,7 @@ class TofuFmtSettings extends TofuSettings
   diff(): this
     Show a diff of formatting changes (`-diff`).
   override protected buildArgs(): string[]
+    Assemble the `tofu fmt` argv.
 
 class TofuInitSettings extends TofuSettings
   Settings for `tofu init`.
@@ -86,6 +89,7 @@ class TofuInitSettings extends TofuSettings
   noInput(): this
     Do not prompt for input (`-input=false`).
   override protected buildArgs(): string[]
+    Assemble the `tofu init` argv.
 
 class TofuOutputSettings extends TofuSettings
   Settings for `tofu output`.
@@ -97,6 +101,7 @@ class TofuOutputSettings extends TofuSettings
   name(value: string): this
     Read a single named output (positional argument).
   override protected buildArgs(): string[]
+    Assemble the `tofu output` argv.
 
 class TofuPlanSettings extends TofuSettings
   Settings for `tofu plan`.
@@ -112,6 +117,13 @@ class TofuPlanSettings extends TofuSettings
   noInput(): this
     Do not prompt for input (`-input=false`).
   override protected buildArgs(): string[]
+    Assemble the `tofu plan` argv.
+
+abstract class TofuSettings extends ToolSettings
+  Base for all `tofu` subcommand settings: binary is `tofu`.
+
+  override protected defaultTool(): string
+    The tool binary is `tofu`.
 
 class TofuValidateSettings extends TofuSettings
   Settings for `tofu validate`.
@@ -119,6 +131,7 @@ class TofuValidateSettings extends TofuSettings
   json(): this
     Emit machine-readable JSON output (`-json`).
   override protected buildArgs(): string[]
+    Assemble the `tofu validate` argv.
 
 interface TofuTasksApi
   The shape of {@link TofuTasks}.

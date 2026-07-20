@@ -58,6 +58,7 @@ export class GeminiRunSettings extends ToolSettings {
   #checkpointing = false;
   #showMemoryUsage = false;
 
+  /** The underlying executable — `gemini`. */
   protected override defaultTool(): string {
     return "gemini";
   }
@@ -152,6 +153,7 @@ export class GeminiRunSettings extends ToolSettings {
     return this;
   }
 
+  /** Assemble the `gemini --prompt` argv. */
   protected override buildArgs(): string[] {
     if (this.#prompt === undefined) {
       throw new Error("GeminiTasks.run: .prompt() is required.");
@@ -190,10 +192,11 @@ export class GeminiRunSettings extends ToolSettings {
  * `extensions`): name the verb and operands with `.command(...)` and pass
  * anything else with `.flag(...)`.
  */
-abstract class GeminiCommandSettings extends ToolSettings {
+export abstract class GeminiCommandSettings extends ToolSettings {
   #command: string[] = [];
   #flags: string[] = [];
 
+  /** The underlying executable — `gemini`. */
   protected override defaultTool(): string {
     return "gemini";
   }
@@ -217,6 +220,7 @@ abstract class GeminiCommandSettings extends ToolSettings {
     return this;
   }
 
+  /** Assemble the `gemini <group> …` argv. */
   protected override buildArgs(): string[] {
     return [this.group(), ...this.#command, ...this.#flags];
   }
@@ -224,6 +228,7 @@ abstract class GeminiCommandSettings extends ToolSettings {
 
 /** Settings for a `gemini mcp …` invocation (manage MCP servers). */
 export class GeminiMcpSettings extends GeminiCommandSettings {
+  /** The subcommand group token — `mcp`. */
   protected override group(): string {
     return "mcp";
   }
@@ -231,6 +236,7 @@ export class GeminiMcpSettings extends GeminiCommandSettings {
 
 /** Settings for a `gemini extensions …` invocation (manage extensions). */
 export class GeminiExtensionsSettings extends GeminiCommandSettings {
+  /** The subcommand group token — `extensions`. */
   protected override group(): string {
     return "extensions";
   }

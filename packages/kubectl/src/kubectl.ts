@@ -35,11 +35,12 @@ import type { CommandOutput } from "@zuke/core/shell";
  * cluster-targeting flags (`--namespace`, `--context`, `--kubeconfig`) are
  * shared by every subcommand.
  */
-abstract class KubectlSettings extends ToolSettings {
+export abstract class KubectlSettings extends ToolSettings {
   #namespace?: string;
   #context?: string;
   #kubeconfig?: string;
 
+  /** The tool binary invoked by every subcommand: `kubectl`. */
   protected override defaultTool(): string {
     return "kubectl";
   }
@@ -138,6 +139,7 @@ export class KubectlApplySettings extends KubectlSettings {
     return this;
   }
 
+  /** Assemble the `kubectl apply` argv. */
   protected override buildArgs(): string[] {
     if (this.#files.length === 0 && this.#kustomize === undefined) {
       throw new Error(
@@ -210,6 +212,7 @@ export class KubectlCreateSettings extends KubectlSettings {
     return this;
   }
 
+  /** Assemble the `kubectl create` argv. */
   protected override buildArgs(): string[] {
     const argv = ["create", ...this.globalArgs()];
     for (const f of this.#files) argv.push("-f", f);
@@ -280,6 +283,7 @@ export class KubectlDeleteSettings extends KubectlSettings {
     return this;
   }
 
+  /** Assemble the `kubectl delete` argv. */
   protected override buildArgs(): string[] {
     if (this.#files.length === 0 && this.#resources.length === 0) {
       throw new Error(
@@ -353,6 +357,7 @@ export class KubectlGetSettings extends KubectlSettings {
     return this;
   }
 
+  /** Assemble the `kubectl get` argv. */
   protected override buildArgs(): string[] {
     if (this.#resources.length === 0) {
       throw new Error(
@@ -389,6 +394,7 @@ export class KubectlDescribeSettings extends KubectlSettings {
     return this;
   }
 
+  /** Assemble the `kubectl describe` argv. */
   protected override buildArgs(): string[] {
     // kubectl describe needs a resource type even with a selector; a bare
     // `describe -l ...` is rejected ("You must specify the type of resource").
@@ -469,6 +475,7 @@ export class KubectlLogsSettings extends KubectlSettings {
     return this;
   }
 
+  /** Assemble the `kubectl logs` argv. */
   protected override buildArgs(): string[] {
     if (this.#resource === undefined && this.#selector === undefined) {
       throw new Error("KubectlTasks.logs: specify .resource() or .selector().");
@@ -531,6 +538,7 @@ export class KubectlExecSettings extends KubectlSettings {
     return this;
   }
 
+  /** Assemble the `kubectl exec` argv. */
   protected override buildArgs(): string[] {
     if (this.#resource === undefined) {
       throw new Error("KubectlTasks.exec: .resource() is required.");
@@ -599,6 +607,7 @@ export class KubectlRolloutSettings extends KubectlSettings {
     return this;
   }
 
+  /** Assemble the `kubectl rollout <action>` argv. */
   protected override buildArgs(): string[] {
     if (this.#action === undefined) {
       throw new Error(
@@ -667,6 +676,7 @@ export class KubectlScaleSettings extends KubectlSettings {
     return this;
   }
 
+  /** Assemble the `kubectl scale` argv. */
   protected override buildArgs(): string[] {
     if (this.#replicas === undefined) {
       throw new Error("KubectlTasks.scale: .replicas() is required.");
@@ -721,6 +731,7 @@ export class KubectlSetImageSettings extends KubectlSettings {
     return this;
   }
 
+  /** Assemble the `kubectl set image` argv. */
   protected override buildArgs(): string[] {
     if (this.#resource === undefined) {
       throw new Error("KubectlTasks.setImage: .resource() is required.");
@@ -783,6 +794,7 @@ export class KubectlAnnotateSettings extends KubectlSettings {
     return this;
   }
 
+  /** Assemble the `kubectl annotate` argv. */
   protected override buildArgs(): string[] {
     // kubectl annotate always needs a resource type; `.all()`/`.selector()`
     // are modifiers on top of it, not substitutes for it.
@@ -855,6 +867,7 @@ export class KubectlLabelSettings extends KubectlSettings {
     return this;
   }
 
+  /** Assemble the `kubectl label` argv. */
   protected override buildArgs(): string[] {
     // kubectl label always needs a resource type; `.all()`/`.selector()` are
     // modifiers on top of it, not substitutes for it.
@@ -909,6 +922,7 @@ export class KubectlPatchSettings extends KubectlSettings {
     return this;
   }
 
+  /** Assemble the `kubectl patch` argv. */
   protected override buildArgs(): string[] {
     if (this.#resource === undefined) {
       throw new Error("KubectlTasks.patch: .resource() is required.");
@@ -947,6 +961,7 @@ export class KubectlPortForwardSettings extends KubectlSettings {
     return this;
   }
 
+  /** Assemble the `kubectl port-forward` argv. */
   protected override buildArgs(): string[] {
     if (this.#resource === undefined) {
       throw new Error("KubectlTasks.portForward: .resource() is required.");
@@ -1008,6 +1023,7 @@ export class KubectlWaitSettings extends KubectlSettings {
     return this;
   }
 
+  /** Assemble the `kubectl wait` argv. */
   protected override buildArgs(): string[] {
     if (this.#files.length === 0 && this.#resources.length === 0) {
       throw new Error("KubectlTasks.wait: specify .file() or .resource(...).");
@@ -1070,6 +1086,7 @@ export class KubectlTopSettings extends KubectlSettings {
     return this;
   }
 
+  /** Assemble the `kubectl top <pods|nodes>` argv. */
   protected override buildArgs(): string[] {
     if (this.#kind === undefined) {
       throw new Error("KubectlTasks.top: choose .pods() or .nodes().");

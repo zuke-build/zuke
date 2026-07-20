@@ -55,6 +55,7 @@ class JsrAddSettings extends JsrSettings
   dev(): this
     Add as a development dependency (`--save-dev`).
   override protected buildArgs(): string[]
+    Assemble the `jsr add` argv.
 
 class JsrPublishSettings extends JsrSettings
   Settings for `jsr publish`.
@@ -72,6 +73,7 @@ class JsrPublishSettings extends JsrSettings
   token(value: string): this
     Authenticate with a token instead of the interactive flow (`--token`).
   override protected buildArgs(): string[]
+    Assemble the `jsr publish` argv.
 
 class JsrRemoveSettings extends JsrSettings
   Settings for `jsr remove`.
@@ -79,6 +81,13 @@ class JsrRemoveSettings extends JsrSettings
   packages(...names: string[]): this
     Package names to remove (required).
   override protected buildArgs(): string[]
+    Assemble the `jsr remove` argv.
+
+abstract class JsrSettings extends ToolSettings
+  Base for all `jsr` subcommand settings: the binary is `jsr`.
+
+  override protected defaultTool(): string
+    The tool binary is `jsr`.
 
 interface JsrRegistryOptions
   Options shared by the JSR registry helpers.

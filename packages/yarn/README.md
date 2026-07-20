@@ -48,6 +48,7 @@ class YarnAddSettings extends YarnSettings
   exact(): this
     Pin the exact version (`--exact`).
   override protected buildArgs(): string[]
+    Assemble the `yarn add` argv.
 
 class YarnDlxSettings extends YarnSettings
   Settings for `yarn dlx` (Yarn Berry's one-off package runner).
@@ -59,6 +60,7 @@ class YarnDlxSettings extends YarnSettings
   execArgs(...args: Array<string | number>): this
     Arguments forwarded to the command.
   override protected buildArgs(): string[]
+    Assemble the `yarn dlx` argv.
 
 class YarnInstallSettings extends YarnSettings
   Settings for `yarn install`.
@@ -68,6 +70,7 @@ class YarnInstallSettings extends YarnSettings
   frozenLockfile(): this
     Fail if the lockfile would change — `--frozen-lockfile` (Yarn Classic).
   override protected buildArgs(): string[]
+    Assemble the `yarn install` argv.
 
 class YarnRemoveSettings extends YarnSettings
   Settings for `yarn remove`.
@@ -75,6 +78,7 @@ class YarnRemoveSettings extends YarnSettings
   packages(...names: string[]): this
     Package names to remove (required).
   override protected buildArgs(): string[]
+    Assemble the `yarn remove` argv.
 
 class YarnRunSettings extends YarnSettings
   Settings for `yarn run`.
@@ -84,6 +88,13 @@ class YarnRunSettings extends YarnSettings
   scriptArgs(...args: Array<string | number>): this
     Arguments forwarded to the script.
   override protected buildArgs(): string[]
+    Assemble the `yarn run` argv.
+
+abstract class YarnSettings extends ToolSettings
+  Base for all `yarn` subcommand settings: binary is `yarn` from PATH.
+
+  override protected defaultTool(): string
+    The default binary: `yarn` resolved from PATH.
 
 interface YarnTasksApi
   The shape of {@link YarnTasks}.

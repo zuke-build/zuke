@@ -39,6 +39,7 @@ export class OxlintSettings extends ToolSettings {
   #format?: string;
   #threads?: number;
 
+  /** The default executable name (`oxlint`). */
   protected override defaultTool(): string {
     return "oxlint";
   }
@@ -133,6 +134,7 @@ export class OxlintSettings extends ToolSettings {
     return this;
   }
 
+  /** Assemble the `oxlint` argv from the configured settings. */
   protected override buildArgs(): string[] {
     const argv: string[] = [];
     if (this.#config !== undefined) argv.push("-c", this.#config);

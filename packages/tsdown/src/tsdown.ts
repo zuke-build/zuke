@@ -47,6 +47,7 @@ export class TsdownBuildSettings extends ToolSettings {
   #platform?: string;
   #treeshake = false;
 
+  /** The default executable to run: `tsdown`. */
   protected override defaultTool(): string {
     return "tsdown";
   }
@@ -129,6 +130,7 @@ export class TsdownBuildSettings extends ToolSettings {
     return this;
   }
 
+  /** Assemble the `tsdown [entries] [flags]` argv. */
   protected override buildArgs(): string[] {
     const argv: string[] = [...this.#entries];
     if (this.#formats.length > 0) {
@@ -154,6 +156,7 @@ export class TsdownMigrateSettings extends ToolSettings {
   #from?: string;
   #dryRun = false;
 
+  /** The default executable to run: `tsdown`. */
   protected override defaultTool(): string {
     return "tsdown";
   }
@@ -170,6 +173,7 @@ export class TsdownMigrateSettings extends ToolSettings {
     return this;
   }
 
+  /** Assemble the `tsdown migrate [flags]` argv. */
   protected override buildArgs(): string[] {
     return [
       "migrate",

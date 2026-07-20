@@ -63,6 +63,7 @@ class DockerBuildSettings extends DockerSettings
   context(path: PathLike): this
     The build context path or URL (default `.`).
   override protected buildArgs(): string[]
+    Assemble the `docker build` argv.
 
 class DockerExecSettings extends DockerSettings
   Settings for `docker exec`.
@@ -80,6 +81,7 @@ class DockerExecSettings extends DockerSettings
   commandArgs(...args: Array<string | number>): this
     The command and arguments to execute.
   override protected buildArgs(): string[]
+    Assemble the `docker exec` argv.
 
 class DockerImagesSettings extends DockerSettings
   Settings for `docker images`.
@@ -93,6 +95,7 @@ class DockerImagesSettings extends DockerSettings
   repository(name: string): this
     Restrict to a repository (positional argument).
   override protected buildArgs(): string[]
+    Assemble the `docker images` argv.
 
 class DockerLoadSettings extends DockerSettings
   Settings for `docker load`.
@@ -102,6 +105,7 @@ class DockerLoadSettings extends DockerSettings
   quietOutput(): this
     Suppress the load output (`-q`).
   override protected buildArgs(): string[]
+    Assemble the `docker load` argv.
 
 class DockerLoginSettings extends DockerSettings
   Settings for `docker login`.
@@ -115,6 +119,7 @@ class DockerLoginSettings extends DockerSettings
   registry(server: string): this
     The registry server (defaults to Docker Hub).
   override protected buildArgs(): string[]
+    Assemble the `docker login` argv.
 
 class DockerPsSettings extends DockerSettings
   Settings for `docker ps`.
@@ -126,6 +131,7 @@ class DockerPsSettings extends DockerSettings
   filter(expression: string): this
     Filter the listing (`--filter`); repeatable.
   override protected buildArgs(): string[]
+    Assemble the `docker ps` argv.
 
 class DockerPullSettings extends DockerSettings
   Settings for `docker pull`.
@@ -137,6 +143,7 @@ class DockerPullSettings extends DockerSettings
   quietOutput(): this
     Suppress verbose output (`-q`).
   override protected buildArgs(): string[]
+    Assemble the `docker pull` argv.
 
 class DockerPushSettings extends DockerSettings
   Settings for `docker push`.
@@ -146,6 +153,7 @@ class DockerPushSettings extends DockerSettings
   allTags(): this
     Push every tag of the repository (`--all-tags`).
   override protected buildArgs(): string[]
+    Assemble the `docker push` argv.
 
 class DockerRmSettings extends DockerSettings
   Settings for `docker rm`.
@@ -157,6 +165,7 @@ class DockerRmSettings extends DockerSettings
   volumes(): this
     Also remove anonymous volumes (`-v`).
   override protected buildArgs(): string[]
+    Assemble the `docker rm` argv.
 
 class DockerRmiSettings extends DockerSettings
   Settings for `docker rmi`.
@@ -166,6 +175,7 @@ class DockerRmiSettings extends DockerSettings
   force(): this
     Force removal (`-f`).
   override protected buildArgs(): string[]
+    Assemble the `docker rmi` argv.
 
 class DockerRunSettings extends DockerSettings
   Settings for `docker run`.
@@ -193,6 +203,7 @@ class DockerRunSettings extends DockerSettings
   commandArgs(...args: Array<string | number>): this
     The command and arguments to run inside the container.
   override protected buildArgs(): string[]
+    Assemble the `docker run` argv.
 
 class DockerSaveSettings extends DockerSettings
   Settings for `docker save`.
@@ -202,6 +213,13 @@ class DockerSaveSettings extends DockerSettings
   output(path: PathLike): this
     Write to a file instead of STDOUT (`-o`).
   override protected buildArgs(): string[]
+    Assemble the `docker save` argv.
+
+abstract class DockerSettings extends ToolSettings
+  Base for all `docker` subcommand settings: the binary is `docker`.
+
+  override protected defaultTool(): string
+    The invoked binary is `docker`.
 
 class DockerStartSettings extends DockerSettings
   Settings for `docker start`.
@@ -211,6 +229,7 @@ class DockerStartSettings extends DockerSettings
   attach(): this
     Attach STDOUT/STDERR and forward signals (`-a`).
   override protected buildArgs(): string[]
+    Assemble the `docker start` argv.
 
 class DockerStopSettings extends DockerSettings
   Settings for `docker stop`.
@@ -220,6 +239,7 @@ class DockerStopSettings extends DockerSettings
   time(seconds: number): this
     Seconds to wait before killing (`-t`).
   override protected buildArgs(): string[]
+    Assemble the `docker stop` argv.
 
 class DockerTagSettings extends DockerSettings
   Settings for `docker tag`.
@@ -229,6 +249,7 @@ class DockerTagSettings extends DockerSettings
   target(reference: string): this
     The new image reference (required).
   override protected buildArgs(): string[]
+    Assemble the `docker tag` argv.
 
 interface DockerTasksApi
   The shape of {@link DockerTasks}.

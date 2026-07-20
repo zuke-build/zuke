@@ -28,7 +28,8 @@ import {
 import type { CommandOutput } from "@zuke/core/shell";
 
 /** Shared base for every `husky` invocation: the binary and argv assembly. */
-abstract class HuskySettings extends ToolSettings {
+export abstract class HuskySettings extends ToolSettings {
+  /** The tool binary is `husky`. */
   protected override defaultTool(): string {
     return "husky";
   }
@@ -36,6 +37,7 @@ abstract class HuskySettings extends ToolSettings {
   /** The subcommand argv (everything after the binary). */
   protected abstract subcommandArgs(): string[];
 
+  /** Assemble the full `husky` argv from the subcommand argv. */
   protected override buildArgs(): string[] {
     return this.subcommandArgs();
   }
@@ -55,6 +57,7 @@ export class HuskyInitSettings extends HuskySettings {
     return this;
   }
 
+  /** Assemble the `husky init [dir]` subcommand argv. */
   protected override subcommandArgs(): string[] {
     return ["init", ...(this.#dir !== undefined ? [this.#dir] : [])];
   }
@@ -77,6 +80,7 @@ export class HuskyInstallSettings extends HuskySettings {
     return this;
   }
 
+  /** Assemble the bare `husky [dir]` invocation argv (no subcommand). */
   protected override subcommandArgs(): string[] {
     return [...(this.#dir !== undefined ? [this.#dir] : [])];
   }

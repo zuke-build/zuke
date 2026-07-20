@@ -115,6 +115,7 @@ class GhSettings extends ToolSettings
   Settings for a `gh` invocation.
 
   override protected defaultTool(): string
+    The default executable name: `gh`.
   command(...parts: Array<string | number>): this
     The command path and verb, e.g. `command("pr", "create")`.
   repo(slug: string): this
@@ -123,6 +124,7 @@ class GhSettings extends ToolSettings
     Add an arbitrary flag. With a value it renders `--name value`; without one
     it renders the bare `--name`. Repeatable.
   override protected buildArgs(): string[]
+    Assemble the `gh` argv: command path, then `--repo`, then flags.
 
 class GithubWorkflowSettings
   Configuration for {@link githubWorkflow}, set through a settings lambda. Every

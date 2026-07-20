@@ -23,7 +23,8 @@ import {
 import type { CommandOutput } from "@zuke/core/shell";
 
 /** Base for all `cypress` subcommand settings: the binary is `cypress`. */
-abstract class CypressSettings extends ToolSettings {
+export abstract class CypressSettings extends ToolSettings {
+  /** The default tool binary: `cypress`. */
   protected override defaultTool(): string {
     return "cypress";
   }
@@ -33,7 +34,7 @@ abstract class CypressSettings extends ToolSettings {
  * Base for the `run`/`open` commands, which share testing-type selection, a
  * browser, a config file, and a project path.
  */
-abstract class CypressTestingSettings extends CypressSettings {
+export abstract class CypressTestingSettings extends CypressSettings {
   #e2e = false;
   #component = false;
   #browser?: string;
@@ -129,6 +130,7 @@ export class CypressRunSettings extends CypressTestingSettings {
     return this;
   }
 
+  /** Assemble the `cypress run` argv. */
   protected override buildArgs(): string[] {
     const argv = ["run", ...this.sharedArgs()];
     if (this.#headed) argv.push("--headed");
@@ -143,6 +145,7 @@ export class CypressRunSettings extends CypressTestingSettings {
 
 /** Settings for `cypress open` (interactive). */
 export class CypressOpenSettings extends CypressTestingSettings {
+  /** Assemble the `cypress open` argv. */
   protected override buildArgs(): string[] {
     return ["open", ...this.sharedArgs()];
   }
@@ -158,6 +161,7 @@ export class CypressInstallSettings extends CypressSettings {
     return this;
   }
 
+  /** Assemble the `cypress install` argv. */
   protected override buildArgs(): string[] {
     const argv = ["install"];
     if (this.#force) argv.push("--force");
@@ -167,6 +171,7 @@ export class CypressInstallSettings extends CypressSettings {
 
 /** Settings for `cypress verify`. */
 export class CypressVerifySettings extends CypressSettings {
+  /** Assemble the `cypress verify` argv. */
   protected override buildArgs(): string[] {
     return ["verify"];
   }
@@ -174,6 +179,7 @@ export class CypressVerifySettings extends CypressSettings {
 
 /** Settings for `cypress info`. */
 export class CypressInfoSettings extends CypressSettings {
+  /** Assemble the `cypress info` argv. */
   protected override buildArgs(): string[] {
     return ["info"];
   }

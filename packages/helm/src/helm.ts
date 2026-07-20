@@ -33,11 +33,12 @@ import type { CommandOutput } from "@zuke/core/shell";
  * cluster-targeting flags (`--namespace`, `--kube-context`, `--kubeconfig`) are
  * shared by every subcommand.
  */
-abstract class HelmSettings extends ToolSettings {
+export abstract class HelmSettings extends ToolSettings {
   #namespace?: string;
   #kubeContext?: string;
   #kubeconfig?: string;
 
+  /** The tool binary: `helm`. */
   protected override defaultTool(): string {
     return "helm";
   }
@@ -77,7 +78,7 @@ abstract class HelmSettings extends ToolSettings {
 }
 
 /** Base for value-bearing commands (install/upgrade/template). */
-abstract class HelmValuesSettings extends HelmSettings {
+export abstract class HelmValuesSettings extends HelmSettings {
   #valueFiles: string[] = [];
   #sets: Array<[string, string]> = [];
   #version?: string;
@@ -164,6 +165,7 @@ export class HelmInstallSettings extends HelmValuesSettings {
     return this;
   }
 
+  /** Assemble the `helm install` argv. */
   protected override buildArgs(): string[] {
     if (this.#release === undefined || this.#chart === undefined) {
       throw new Error(
@@ -233,6 +235,7 @@ export class HelmUpgradeSettings extends HelmValuesSettings {
     return this;
   }
 
+  /** Assemble the `helm upgrade` argv. */
   protected override buildArgs(): string[] {
     if (this.#release === undefined || this.#chart === undefined) {
       throw new Error(
@@ -274,6 +277,7 @@ export class HelmUninstallSettings extends HelmSettings {
     return this;
   }
 
+  /** Assemble the `helm uninstall` argv. */
   protected override buildArgs(): string[] {
     if (this.#release === undefined) {
       throw new Error("HelmTasks.uninstall: .release() is required.");
@@ -309,6 +313,7 @@ export class HelmTemplateSettings extends HelmValuesSettings {
     return this;
   }
 
+  /** Assemble the `helm template` argv. */
   protected override buildArgs(): string[] {
     if (this.#release === undefined || this.#chart === undefined) {
       throw new Error(
@@ -348,6 +353,7 @@ export class HelmLintSettings extends HelmSettings {
     return this;
   }
 
+  /** Assemble the `helm lint` argv. */
   protected override buildArgs(): string[] {
     if (this.#chart === undefined) {
       throw new Error("HelmTasks.lint: .chart() is required.");
@@ -369,6 +375,7 @@ export class HelmDependencyUpdateSettings extends HelmSettings {
     return this;
   }
 
+  /** Assemble the `helm dependency update` argv. */
   protected override buildArgs(): string[] {
     if (this.#chart === undefined) {
       throw new Error("HelmTasks.dependencyUpdate: .chart() is required.");
@@ -394,6 +401,7 @@ export class HelmRepoAddSettings extends HelmSettings {
     return this;
   }
 
+  /** Assemble the `helm repo add` argv. */
   protected override buildArgs(): string[] {
     if (this.#name === undefined || this.#url === undefined) {
       throw new Error("HelmTasks.repoAdd: .name() and .url() are required.");
@@ -433,6 +441,7 @@ export class HelmPackageSettings extends HelmSettings {
     return this;
   }
 
+  /** Assemble the `helm package` argv. */
   protected override buildArgs(): string[] {
     if (this.#chart === undefined) {
       throw new Error("HelmTasks.package: .chart() is required.");

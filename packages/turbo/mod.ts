@@ -14,6 +14,7 @@
 export {
   TurboPruneSettings,
   TurboRunSettings,
+  TurboSettings,
   TurboTasks,
   type TurboTasksApi,
 } from "./src/turbo.ts";

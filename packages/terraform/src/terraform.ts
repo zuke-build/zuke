@@ -19,7 +19,8 @@ import { type Configure, runSettings, ToolSettings } from "@zuke/core/tooling";
 import type { CommandOutput } from "@zuke/core/shell";
 
 /** Base for all `terraform` subcommand settings: binary is `terraform`. */
-abstract class TerraformSettings extends ToolSettings {
+export abstract class TerraformSettings extends ToolSettings {
+  /** The invoked binary: `terraform`. */
   protected override defaultTool(): string {
     return "terraform";
   }
@@ -61,6 +62,7 @@ export class TerraformInitSettings extends TerraformSettings {
     return this;
   }
 
+  /** Assemble the `terraform init` argv. */
   protected override buildArgs(): string[] {
     const argv = ["init"];
     if (this.#upgrade) argv.push("-upgrade");
@@ -81,6 +83,7 @@ export class TerraformValidateSettings extends TerraformSettings {
     return this;
   }
 
+  /** Assemble the `terraform validate` argv. */
   protected override buildArgs(): string[] {
     const argv = ["validate"];
     if (this.#json) argv.push("-json");
@@ -126,6 +129,7 @@ export class TerraformPlanSettings extends TerraformSettings {
     return this;
   }
 
+  /** Assemble the `terraform plan` argv. */
   protected override buildArgs(): string[] {
     const argv = ["plan"];
     if (this.#out !== undefined) argv.push(`-out=${this.#out}`);
@@ -175,6 +179,7 @@ export class TerraformApplySettings extends TerraformSettings {
     return this;
   }
 
+  /** Assemble the `terraform apply` argv. */
   protected override buildArgs(): string[] {
     const argv = ["apply"];
     if (this.#autoApprove) argv.push("-auto-approve");
@@ -210,6 +215,7 @@ export class TerraformDestroySettings extends TerraformSettings {
     return this;
   }
 
+  /** Assemble the `terraform destroy` argv. */
   protected override buildArgs(): string[] {
     const argv = ["destroy"];
     if (this.#autoApprove) argv.push("-auto-approve");
@@ -243,6 +249,7 @@ export class TerraformFmtSettings extends TerraformSettings {
     return this;
   }
 
+  /** Assemble the `terraform fmt` argv. */
   protected override buildArgs(): string[] {
     const argv = ["fmt"];
     if (this.#check) argv.push("-check");
@@ -276,6 +283,7 @@ export class TerraformOutputSettings extends TerraformSettings {
     return this;
   }
 
+  /** Assemble the `terraform output` argv. */
   protected override buildArgs(): string[] {
     const argv = ["output"];
     if (this.#json) argv.push("-json");

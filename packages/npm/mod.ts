@@ -20,6 +20,7 @@ export {
   type NpmOmitType,
   NpmPublishSettings,
   NpmRunSettings,
+  NpmSettings,
   NpmTasks,
   type NpmTasksApi,
   NpmVersionSettings,

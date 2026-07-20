@@ -19,6 +19,7 @@ export {
   TofuInitSettings,
   TofuOutputSettings,
   TofuPlanSettings,
+  TofuSettings,
   TofuTasks,
   type TofuTasksApi,
   TofuValidateSettings,

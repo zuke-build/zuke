@@ -43,6 +43,7 @@ class PlaywrightCodegenSettings extends PlaywrightSettings
   output(path: string): this
     Write the generated script to a file (`--output=`).
   override protected buildArgs(): string[]
+    Assemble the `playwright codegen` argv.
 
 class PlaywrightInstallSettings extends PlaywrightSettings
   Settings for `playwright install` (browser binaries).
@@ -52,6 +53,13 @@ class PlaywrightInstallSettings extends PlaywrightSettings
   withDeps(): this
     Also install the OS dependencies (`--with-deps`).
   override protected buildArgs(): string[]
+    Assemble the `playwright install` argv.
+
+abstract class PlaywrightSettings extends ToolSettings
+  Base for all Playwright subcommand settings: binary is `playwright`.
+
+  override protected defaultTool(): string
+    The tool binary invoked by all Playwright subcommands: `playwright`.
 
 class PlaywrightShowReportSettings extends PlaywrightSettings
   Settings for `playwright show-report`.
@@ -59,6 +67,7 @@ class PlaywrightShowReportSettings extends PlaywrightSettings
   dir(path: string): this
     The report directory to open; omit for the default.
   override protected buildArgs(): string[]
+    Assemble the `playwright show-report` argv.
 
 class PlaywrightTestSettings extends PlaywrightSettings
   Settings for `playwright test`.
@@ -78,6 +87,7 @@ class PlaywrightTestSettings extends PlaywrightSettings
   paths(...filters: string[]): this
     Test file or directory filters to run; omit to run all tests.
   override protected buildArgs(): string[]
+    Assemble the `playwright test` argv.
 
 interface PlaywrightTasksApi
   The shape of {@link PlaywrightTasks}.

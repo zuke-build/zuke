@@ -29,6 +29,7 @@ export class NpxSettings extends ToolSettings {
   #ignoreExisting = false;
   #execArgs: string[] = [];
 
+  /** The executable this settings object drives: `npx`. */
   protected override defaultTool(): string {
     return "npx";
   }
@@ -75,6 +76,7 @@ export class NpxSettings extends ToolSettings {
     return this;
   }
 
+  /** Assemble the `npx <command>` argv from the configured settings. */
   protected override buildArgs(): string[] {
     if (this.#command === undefined && this.#call === undefined) {
       throw new Error("NpxTasks.npx: .command() or .call() is required.");

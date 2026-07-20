@@ -53,6 +53,7 @@ class HuskyInitSettings extends HuskySettings
   dir(path: PathLike): this
     The hooks directory to initialise (positional; defaults to `.husky`).
   override protected subcommandArgs(): string[]
+    Assemble the `husky init [dir]` subcommand argv.
 
 class HuskyInstallSettings extends HuskySettings
   Settings for installing Git hooks by invoking `husky [dir]` bare.
@@ -65,6 +66,17 @@ class HuskyInstallSettings extends HuskySettings
   dir(path: PathLike): this
     The hooks directory to install into (positional; defaults to `.husky`).
   override protected subcommandArgs(): string[]
+    Assemble the bare `husky [dir]` invocation argv (no subcommand).
+
+abstract class HuskySettings extends ToolSettings
+  Shared base for every `husky` invocation: the binary and argv assembly.
+
+  override protected defaultTool(): string
+    The tool binary is `husky`.
+  abstract protected subcommandArgs(): string[]
+    The subcommand argv (everything after the binary).
+  override protected buildArgs(): string[]
+    Assemble the full `husky` argv from the subcommand argv.
 
 interface HuskyTasksApi
   The shape of {@link HuskyTasks}.

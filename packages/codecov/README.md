@@ -60,6 +60,7 @@ class CodecovUploadSettings extends ToolSettings
   Settings for `codecovcli upload-process`.
 
   override protected defaultTool(): string
+    The Codecov CLI binary this settings class drives.
   files(...paths: string[]): this
     A coverage report file to upload (`--file`). Repeatable.
   flags(...names: string[]): this
@@ -95,6 +96,7 @@ class CodecovUploadSettings extends ToolSettings
   dryRun(): this
     Print what would be uploaded without sending anything (`--dry-run`).
   override protected buildArgs(): string[]
+    Assemble the `codecovcli upload-process` argv.
 
 interface CodecovTasksApi
   The shape of {@link CodecovTasks}.

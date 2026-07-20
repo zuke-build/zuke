@@ -45,6 +45,7 @@ class DpdmAnalyzeSettings extends ToolSettings
   Settings for a `dpdm` analysis run.
 
   override protected defaultTool(): string
+    The command this settings object runs (`dpdm`).
   transform(): this
     Transform TypeScript modules to JavaScript before analysis (`--transform`).
   noTree(): this
@@ -78,6 +79,7 @@ class DpdmAnalyzeSettings extends ToolSettings
   entries(...paths: PathLike[]): this
     The entry files or globs to analyze (appended after all options).
   override protected buildArgs(): string[]
+    Assemble the `dpdm <flags> <entries...>` argv.
 
 interface DpdmTasksApi
   The shape of {@link DpdmTasks}.

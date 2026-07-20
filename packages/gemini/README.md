@@ -60,21 +60,41 @@ await GeminiTasks.run((s) =>
 const GeminiTasks: GeminiTasksApi
   Typed task functions for the Gemini CLI.
 
+abstract class GeminiCommandSettings extends ToolSettings
+  Shared builder for `gemini <group> …` subcommand groups (`mcp`,
+  `extensions`): name the verb and operands with `.command(...)` and pass
+  anything else with `.flag(...)`.
+
+  override protected defaultTool(): string
+    The underlying executable — `gemini`.
+  abstract protected group(): string
+    The leading subcommand group token, e.g. `"mcp"`.
+  command(...parts: Array<string | number>): this
+    The verb and operands, e.g. `command("add", "my-server")`.
+  flag(name: string, value?: string | number): this
+    Add an arbitrary flag. With a value it renders `--name value`; without one
+    it renders the bare `--name`. Repeatable.
+  override protected buildArgs(): string[]
+    Assemble the `gemini <group> …` argv.
+
 class GeminiExtensionsSettings extends GeminiCommandSettings
   Settings for a `gemini extensions …` invocation (manage extensions).
 
   override protected group(): string
+    The subcommand group token — `extensions`.
 
 class GeminiMcpSettings extends GeminiCommandSettings
   Settings for a `gemini mcp …` invocation (manage MCP servers).
 
   override protected group(): string
+    The subcommand group token — `mcp`.
 
 class GeminiRunSettings extends ToolSettings
   Settings for a non-interactive `gemini --prompt` run — the build-friendly
   way to send a single prompt and capture the response.
 
   override protected defaultTool(): string
+    The underlying executable — `gemini`.
   prompt(text: string): this
     The prompt to run non-interactively (`--prompt`). Required.
   model(id: string): this
@@ -106,6 +126,7 @@ class GeminiRunSettings extends ToolSettings
   showMemoryUsage(): this
     Report memory usage in the status bar (`--show-memory-usage`).
   override protected buildArgs(): string[]
+    Assemble the `gemini --prompt` argv.
 
 interface GeminiTasksApi
   The shape of {@link GeminiTasks}.

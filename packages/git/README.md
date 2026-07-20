@@ -83,6 +83,7 @@ class GitAddSettings extends GitSettings
   update(): this
     Stage modifications and deletions, but not new files (`-u`/`--update`).
   override protected subcommandArgs(): string[]
+    Assemble the `git add` argv.
 
 class GitBranchSettings extends GitSettings
   Settings for `git branch`.
@@ -94,6 +95,7 @@ class GitBranchSettings extends GitSettings
   all(): this
     List both local and remote-tracking branches (`-a`/`--all`).
   override protected subcommandArgs(): string[]
+    Assemble the `git branch` argv.
 
 class GitCheckoutSettings extends GitSettings
   Settings for `git checkout`.
@@ -105,6 +107,7 @@ class GitCheckoutSettings extends GitSettings
   force(): this
     Force checkout, discarding local changes (`-f`/`--force`).
   override protected subcommandArgs(): string[]
+    Assemble the `git checkout` argv.
 
 class GitCloneSettings extends GitSettings
   Settings for `git clone`.
@@ -120,6 +123,7 @@ class GitCloneSettings extends GitSettings
   bare(): this
     Clone a bare repository (`--bare`).
   override protected subcommandArgs(): string[]
+    Assemble the `git clone` argv.
 
 class GitCommitSettings extends GitSettings
   Settings for `git commit`.
@@ -135,6 +139,7 @@ class GitCommitSettings extends GitSettings
   allowEmpty(): this
     Allow a commit with no changes (`--allow-empty`).
   override protected subcommandArgs(): string[]
+    Assemble the `git commit` argv.
 
 class GitFetchSettings extends GitSettings
   Settings for `git fetch`.
@@ -148,6 +153,7 @@ class GitFetchSettings extends GitSettings
   prune(): this
     Prune deleted remote refs (`--prune`).
   override protected subcommandArgs(): string[]
+    Assemble the `git fetch` argv.
 
 class GitInitSettings extends GitSettings
   Settings for `git init`.
@@ -157,6 +163,7 @@ class GitInitSettings extends GitSettings
   initialBranch(name: string): this
     Name the initial branch (`-b`/`--initial-branch`).
   override protected subcommandArgs(): string[]
+    Assemble the `git init` argv.
 
 class GitPullSettings extends GitSettings
   Settings for `git pull`.
@@ -170,6 +177,7 @@ class GitPullSettings extends GitSettings
   ffOnly(): this
     Only fast-forward (`--ff-only`).
   override protected subcommandArgs(): string[]
+    Assemble the `git pull` argv.
 
 class GitPushSettings extends GitSettings
   Settings for `git push`.
@@ -187,6 +195,7 @@ class GitPushSettings extends GitSettings
   deleteRef(): this
     Delete the remote ref (`--delete`).
   override protected subcommandArgs(): string[]
+    Assemble the `git push` argv.
 
 class GitRunSettings extends GitSettings
   Settings for an arbitrary `git` command not covered by a typed task.
@@ -194,6 +203,21 @@ class GitRunSettings extends GitSettings
   command(...parts: Array<string | number>): this
     The subcommand and its arguments, e.g. `command("rev-parse", "HEAD")`.
   override protected subcommandArgs(): string[]
+    Assemble the arbitrary `git` subcommand argv from `.command(...)`.
+
+abstract class GitSettings extends ToolSettings
+  Shared base for every `git` subcommand: the binary and global options.
+
+  override protected defaultTool(): string
+    The default tool binary: `git`.
+  abstract protected subcommandArgs(): string[]
+    The subcommand argv (after the global options).
+  dir(path: PathLike): this
+    Run git as if started in `path` (`-C <path>`).
+  config(key: string, value: string): this
+    Set a one-off config value (`-c key=value`); repeatable.
+  override protected buildArgs(): string[]
+    Assemble the `git` argv: global options followed by the subcommand.
 
 class GitStatusSettings extends GitSettings
   Settings for `git status`.
@@ -205,6 +229,7 @@ class GitStatusSettings extends GitSettings
   branch(): this
     Show branch information (`-b`/`--branch`).
   override protected subcommandArgs(): string[]
+    Assemble the `git status` argv.
 
 class GitTagSettings extends GitSettings
   Settings for `git tag`.
@@ -218,6 +243,7 @@ class GitTagSettings extends GitSettings
   deleteTag(): this
     Delete the tag (`-d`/`--delete`).
   override protected subcommandArgs(): string[]
+    Assemble the `git tag` argv.
 
 interface GitInfo
   Resolved git repository information.

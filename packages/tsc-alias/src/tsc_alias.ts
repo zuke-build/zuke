@@ -43,6 +43,7 @@ export class TscAliasRunSettings extends ToolSettings {
   #debug = false;
   #silent = false;
 
+  /** The executable this settings object drives (`tsc-alias`). */
   protected override defaultTool(): string {
     return "tsc-alias";
   }
@@ -121,6 +122,7 @@ export class TscAliasRunSettings extends ToolSettings {
     return this;
   }
 
+  /** Assemble the `tsc-alias` argv from the configured settings. */
   protected override buildArgs(): string[] {
     const argv: string[] = [];
     if (this.#project !== undefined) argv.push("-p", this.#project);

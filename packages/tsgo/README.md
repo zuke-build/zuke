@@ -51,6 +51,7 @@ class TsgoSettings extends ToolSettings
   Settings for a `tsgo` run.
 
   override protected defaultTool(): string
+    The executable this settings object drives (`tsgo`).
   paths(...values: PathLike[]): this
     Source files to compile (positional); repeatable.
   project(path: PathLike): this
@@ -82,6 +83,7 @@ class TsgoSettings extends ToolSettings
   module(value: string): this
     Module system, e.g. `esnext`, `nodenext` (`--module`).
   override protected buildArgs(): string[]
+    Assemble the `tsgo` argv from the configured flags and paths.
 
 interface TsgoTasksApi
   The shape of {@link TsgoTasks}.

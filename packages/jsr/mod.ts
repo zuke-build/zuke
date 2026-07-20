@@ -19,6 +19,7 @@ export {
   JsrAddSettings,
   JsrPublishSettings,
   JsrRemoveSettings,
+  JsrSettings,
   JsrTasks,
   type JsrTasksApi,
 } from "./src/jsr.ts";

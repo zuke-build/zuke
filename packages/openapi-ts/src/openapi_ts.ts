@@ -42,6 +42,7 @@ export class OpenapiTsGenerateSettings extends ToolSettings {
   #watch = false;
   #silent = false;
 
+  /** The tool binary this settings object invokes (`openapi-ts`). */
   protected override defaultTool(): string {
     return "openapi-ts";
   }
@@ -88,6 +89,7 @@ export class OpenapiTsGenerateSettings extends ToolSettings {
     return this;
   }
 
+  /** Assemble the `openapi-ts` argv from the configured flags. */
   protected override buildArgs(): string[] {
     const argv: string[] = [];
     if (this.#input !== undefined) argv.push("--input", this.#input);

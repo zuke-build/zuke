@@ -35,6 +35,7 @@ class NpxSettings extends ToolSettings
   Settings for the `npx` package runner.
 
   override protected defaultTool(): string
+    The executable this settings object drives: `npx`.
   command(name: string): this
     The package binary to execute (required unless {@link call} is set).
   package(...specs: string[]): this
@@ -50,6 +51,7 @@ class NpxSettings extends ToolSettings
   execArgs(...args: Array<string | number>): this
     Arguments forwarded to the command.
   override protected buildArgs(): string[]
+    Assemble the `npx <command>` argv from the configured settings.
 
 interface NpxTasksApi
   The shape of {@link NpxTasks}.
