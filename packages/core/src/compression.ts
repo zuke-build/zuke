@@ -330,7 +330,11 @@ async function writeEntries(
       // a malformed archive is "last one wins" (like a file) rather than a raw
       // AlreadyExists crash.
       await Deno.remove(path).catch(() => {});
-      await Deno.symlink(entry.linkname, path);
+      // Windows requires an explicit link `type`; POSIX ignores it. Runtime bins
+      // (Node's bin/npm → npm-cli.js) are file symlinks.
+      // ponytail: assume "file"; a directory symlink in a tar unpacked on Windows
+      // would get the wrong type — rare (runtimes ship .zip on Windows).
+      await Deno.symlink(entry.linkname, path, { type: "file" });
     } else {
       await Deno.writeFile(path, entry.data);
     }

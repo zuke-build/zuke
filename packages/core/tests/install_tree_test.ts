@@ -34,16 +34,23 @@ async function sha256Hex(bytes: Uint8Array): Promise<string> {
 function nodeTarball(): Promise<Uint8Array> {
   const entries: TarEntry[] = [
     { name: "node-v1/bin/node", data: enc("#!/bin/sh\necho node\n") },
-    {
-      name: "node-v1/lib/node_modules/npm/bin/npm-cli.js",
-      data: enc("#!/bin/sh\necho npm\n"),
-    },
-    {
-      name: "node-v1/bin/npm",
-      data: new Uint8Array(0),
-      linkname: "../lib/node_modules/npm/bin/npm-cli.js",
-    },
   ];
+  if (POSIX) {
+    // Plant the symlinked bin only on POSIX: Windows symlink creation is
+    // privileged (and Windows runtimes ship .zip of real bins, not symlinks), so
+    // the symlink-preservation path is exercised on macOS/Linux runners.
+    entries.push(
+      {
+        name: "node-v1/lib/node_modules/npm/bin/npm-cli.js",
+        data: enc("#!/bin/sh\necho npm\n"),
+      },
+      {
+        name: "node-v1/bin/npm",
+        data: new Uint8Array(0),
+        linkname: "../lib/node_modules/npm/bin/npm-cli.js",
+      },
+    );
+  }
   return gzip(tar(entries));
 }
 
