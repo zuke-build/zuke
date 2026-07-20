@@ -44,6 +44,7 @@ class CspellSettings extends ToolSettings
   Settings for a `cspell lint` run.
 
   override protected defaultTool(): string
+    The default executable name (`cspell`).
   files(...globs: PathLike[]): this
     Files or globs to check (positional); repeatable.
   config(path: PathLike): this
@@ -73,6 +74,7 @@ class CspellSettings extends ToolSettings
   maxDuplicateProblems(count: number): this
     Cap the number of duplicate problems reported (`--max-duplicate-problems`).
   override protected buildArgs(): string[]
+    Assemble the `cspell lint` argv.
 
 interface CspellTasksApi
   The shape of {@link CspellTasks}.

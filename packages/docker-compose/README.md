@@ -83,6 +83,7 @@ class DockerComposeBuildSettings extends DockerComposeSettings
   services(...names: string[]): this
     Restrict to specific services (positional); optional.
   override protected composeArgs(): string[]
+    Assemble the `compose build` argv.
 
 class DockerComposeConfigSettings extends DockerComposeSettings
   Settings for `compose config`.
@@ -96,6 +97,7 @@ class DockerComposeConfigSettings extends DockerComposeSettings
   format(value: string): this
     Output format (`--format`), e.g. `yaml` or `json`.
   override protected composeArgs(): string[]
+    Assemble the `compose config` argv.
 
 class DockerComposeDownSettings extends DockerComposeSettings
   Settings for `compose down`.
@@ -109,6 +111,7 @@ class DockerComposeDownSettings extends DockerComposeSettings
   timeout(seconds: number): this
     Shutdown timeout in seconds (`-t`).
   override protected composeArgs(): string[]
+    Assemble the `compose down` argv.
 
 class DockerComposeExecSettings extends DockerComposeSettings
   Settings for `compose exec`.
@@ -126,6 +129,7 @@ class DockerComposeExecSettings extends DockerComposeSettings
   commandArgs(...args: Array<string | number>): this
     The command and arguments to execute.
   override protected composeArgs(): string[]
+    Assemble the `compose exec` argv.
 
 class DockerComposeLogsSettings extends DockerComposeSettings
   Settings for `compose logs`.
@@ -139,6 +143,7 @@ class DockerComposeLogsSettings extends DockerComposeSettings
   services(...names: string[]): this
     Restrict to specific services (positional); optional.
   override protected composeArgs(): string[]
+    Assemble the `compose logs` argv.
 
 class DockerComposePsSettings extends DockerComposeSettings
   Settings for `compose ps`.
@@ -152,6 +157,7 @@ class DockerComposePsSettings extends DockerComposeSettings
   services(...names: string[]): this
     Restrict to specific services (positional); optional.
   override protected composeArgs(): string[]
+    Assemble the `compose ps` argv.
 
 class DockerComposePullSettings extends DockerComposeSettings
   Settings for `compose pull`.
@@ -163,6 +169,7 @@ class DockerComposePullSettings extends DockerComposeSettings
   services(...names: string[]): this
     Restrict to specific services (positional); optional.
   override protected composeArgs(): string[]
+    Assemble the `compose pull` argv.
 
 class DockerComposePushSettings extends DockerComposeSettings
   Settings for `compose push`.
@@ -172,6 +179,7 @@ class DockerComposePushSettings extends DockerComposeSettings
   services(...names: string[]): this
     Restrict to specific services (positional); optional.
   override protected composeArgs(): string[]
+    Assemble the `compose push` argv.
 
 class DockerComposeRestartSettings extends DockerComposeSettings
   Settings for `compose restart`.
@@ -181,6 +189,7 @@ class DockerComposeRestartSettings extends DockerComposeSettings
   services(...names: string[]): this
     Restrict to specific services (positional); optional.
   override protected composeArgs(): string[]
+    Assemble the `compose restart` argv.
 
 class DockerComposeRmSettings extends DockerComposeSettings
   Settings for `compose rm`.
@@ -194,6 +203,7 @@ class DockerComposeRmSettings extends DockerComposeSettings
   services(...names: string[]): this
     Restrict to specific services (positional); optional.
   override protected composeArgs(): string[]
+    Assemble the `compose rm` argv.
 
 class DockerComposeRunSettings extends DockerComposeSettings
   Settings for `compose run`.
@@ -213,6 +223,7 @@ class DockerComposeRunSettings extends DockerComposeSettings
   commandArgs(...args: Array<string | number>): this
     The command and arguments to run inside the container.
   override protected composeArgs(): string[]
+    Assemble the `compose run` argv.
 
 abstract class DockerComposeSettings extends ToolSettings
   Base for all Compose subcommand settings. Holds the invocation prefix
@@ -221,6 +232,7 @@ abstract class DockerComposeSettings extends ToolSettings
   run time unless it was pinned with {@link usePlugin}/{@link useStandalone}.
 
   override protected defaultTool(): string
+    The resolved binary (`docker` or `docker-compose`) for error messages.
   file(path: PathLike): this
     Add a Compose file (`-f`); repeatable, order-significant.
   projectName(name: string): this
@@ -238,6 +250,7 @@ abstract class DockerComposeSettings extends ToolSettings
   abstract protected composeArgs(): string[]
     The subcommand argv (without global options). Must be pure — no I/O.
   override protected buildArgs(): string[]
+    Assemble the global options followed by the subcommand argv.
   override async run(): Promise<CommandOutput>
     Resolve the invocation prefix (unless pinned) and run, so the same build
     works against either the v2 plugin or the v1 standalone binary.
@@ -248,6 +261,7 @@ class DockerComposeStartSettings extends DockerComposeSettings
   services(...names: string[]): this
     Restrict to specific services (positional); optional.
   override protected composeArgs(): string[]
+    Assemble the `compose start` argv.
 
 class DockerComposeStopSettings extends DockerComposeSettings
   Settings for `compose stop`.
@@ -257,6 +271,7 @@ class DockerComposeStopSettings extends DockerComposeSettings
   services(...names: string[]): this
     Restrict to specific services (positional); optional.
   override protected composeArgs(): string[]
+    Assemble the `compose stop` argv.
 
 class DockerComposeUpSettings extends DockerComposeSettings
   Settings for `compose up`.
@@ -276,6 +291,7 @@ class DockerComposeUpSettings extends DockerComposeSettings
   services(...names: string[]): this
     Restrict to specific services (positional); optional.
   override protected composeArgs(): string[]
+    Assemble the `compose up` argv.
 
 interface DockerComposeTasksApi
   The shape of {@link DockerComposeTasks}.

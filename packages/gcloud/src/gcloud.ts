@@ -35,6 +35,7 @@ export class GcloudSettings extends ToolSettings {
   #noPrompt = false;
   #flags: string[] = [];
 
+  /** The default executable name (`gcloud`). */
   protected override defaultTool(): string {
     return "gcloud";
   }
@@ -125,6 +126,7 @@ export class GcloudSettings extends ToolSettings {
     return this;
   }
 
+  /** Assemble the `gcloud` argv from the command path and global flags. */
   protected override buildArgs(): string[] {
     const argv = [...this.#command];
     if (this.#project !== undefined) argv.push("--project", this.#project);

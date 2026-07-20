@@ -47,6 +47,7 @@ export class TsgoSettings extends ToolSettings {
   #target?: string;
   #module?: string;
 
+  /** The executable this settings object drives (`tsgo`). */
   protected override defaultTool(): string {
     return "tsgo";
   }
@@ -141,6 +142,7 @@ export class TsgoSettings extends ToolSettings {
     return this;
   }
 
+  /** Assemble the `tsgo` argv from the configured flags and paths. */
   protected override buildArgs(): string[] {
     const argv: string[] = [];
     if (this.#project !== undefined) argv.push("-p", this.#project);

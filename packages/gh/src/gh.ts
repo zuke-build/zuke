@@ -31,6 +31,7 @@ export class GhSettings extends ToolSettings {
   #repo?: string;
   #flags: string[] = [];
 
+  /** The default executable name: `gh`. */
   protected override defaultTool(): string {
     return "gh";
   }
@@ -57,6 +58,7 @@ export class GhSettings extends ToolSettings {
     return this;
   }
 
+  /** Assemble the `gh` argv: command path, then `--repo`, then flags. */
   protected override buildArgs(): string[] {
     const argv = [...this.#command];
     if (this.#repo !== undefined) argv.push("--repo", this.#repo);

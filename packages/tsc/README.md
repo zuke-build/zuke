@@ -55,6 +55,7 @@ abstract class TscBaseSettings extends ToolSettings
   Shared base for `tsc` settings; resolves the `tsc` binary.
 
   override protected defaultTool(): string
+    The default binary these settings invoke: `tsc`.
 
 class TscBuildSettings extends TscBaseSettings
   Settings for a `tsc --build` project-references run.
@@ -74,6 +75,7 @@ class TscBuildSettings extends TscBaseSettings
   incremental(): this
     Reuse prior build information for faster rebuilds (`--incremental`).
   override protected buildArgs(): string[]
+    Assemble the `tsc --build` argv from the configured options.
 
 class TscSettings extends TscBaseSettings
   Settings for a standard `tsc` run.
@@ -109,6 +111,7 @@ class TscSettings extends TscBaseSettings
   module(value: string): this
     Module system, e.g. `esnext`, `nodenext` (`--module`).
   override protected buildArgs(): string[]
+    Assemble the `tsc` argv from the configured compile options.
 
 interface TscTasksApi
   The shape of {@link TscTasks}.

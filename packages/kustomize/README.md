@@ -45,6 +45,7 @@ class KustomizeBuildSettings extends KustomizeSettings
   loadRestrictor(mode: string): this
     Set the file-load restrictor, e.g. `LoadRestrictionsNone` (`--load-restrictor`).
   override protected buildArgs(): string[]
+    Assemble the `kustomize build` argv.
 
 class KustomizeEditSetImageSettings extends KustomizeSettings
   Settings for `kustomize edit set image`.
@@ -53,6 +54,13 @@ class KustomizeEditSetImageSettings extends KustomizeSettings
     Set an image override, e.g. `("api", "api:1.4")` → `api=api:1.4`; repeatable,
     at least one is required.
   override protected buildArgs(): string[]
+    Assemble the `kustomize edit set image` argv.
+
+abstract class KustomizeSettings extends ToolSettings
+  Base for all `kustomize` subcommand settings: the binary is `kustomize`.
+
+  override protected defaultTool(): string
+    The binary these settings invoke: `kustomize`.
 
 interface KustomizeTasksApi
   The shape of {@link KustomizeTasks}.

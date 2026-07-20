@@ -3304,7 +3304,9 @@ class CoverageThresholdError extends Error
   Raised when measured coverage falls below a configured threshold.
 
   constructor(readonly failures: string[])
+    Construct the error from one message per metric that fell short.
   override name: string
+    The error name, `"CoverageThresholdError"`.
 
 class DenoCacheSettings extends DenoSettings
   Settings for `deno cache`.
@@ -3314,6 +3316,7 @@ class DenoCacheSettings extends DenoSettings
   paths(...paths: PathLike[]): this
     The entry points to cache (at least one is required).
   override protected buildArgs(): string[]
+    Assemble the `deno cache` argv.
 
 class DenoCheckSettings extends DenoSettings
   Settings for `deno check`.
@@ -3321,6 +3324,7 @@ class DenoCheckSettings extends DenoSettings
   paths(...paths: PathLike[]): this
     The files to type-check (at least one is required).
   override protected buildArgs(): string[]
+    Assemble the `deno check` argv.
 
 class DenoCoverageSettings extends DenoSettings
   Settings for `deno coverage`.
@@ -3351,6 +3355,29 @@ class DenoCoverageSettings extends DenoSettings
   get outputPath(): string | undefined
     The `--output` file path, if {@link output} was set; read by the task.
   override protected buildArgs(): string[]
+    Assemble the `deno coverage` argv.
+
+class DenoDocSettings extends DenoSettings
+  Settings for `deno doc`.
+
+  paths(...paths: PathLike[]): this
+    The source files (entry points) to document.
+  json(): this
+    Output the documentation as JSON (`--json`).
+  html(): this
+    Generate static HTML documentation (`--html`).
+  name(title: string): this
+    Title for the generated HTML documentation (`--name`).
+  output(dir: PathLike): this
+    Output directory for HTML documentation (`--output`).
+  private(): this
+    Include private and internal symbols (`--private`).
+  filter(symbol: string): this
+    Document only the symbol at this dot-separated path (`--filter`).
+  lint(): this
+    Report documentation diagnostics rather than rendering docs (`--lint`).
+  override protected buildArgs(): string[]
+    Assemble the `deno doc` argv.
 
 class DenoFmtSettings extends DenoSettings
   Settings for `deno fmt`.
@@ -3360,6 +3387,7 @@ class DenoFmtSettings extends DenoSettings
   paths(...paths: PathLike[]): this
     Restrict formatting to specific files or directories.
   override protected buildArgs(): string[]
+    Assemble the `deno fmt` argv.
 
 class DenoInstallSettings extends DenoPermissionSettings
   Settings for `deno install`.
@@ -3377,6 +3405,7 @@ class DenoInstallSettings extends DenoPermissionSettings
   moduleArgs(...args: Array<string | number>): this
     Arguments baked into the generated launcher (after the module).
   override protected buildArgs(): string[]
+    Assemble the `deno install` argv.
 
 class DenoLintSettings extends DenoSettings
   Settings for `deno lint`.
@@ -3386,6 +3415,17 @@ class DenoLintSettings extends DenoSettings
   paths(...paths: PathLike[]): this
     Restrict linting to specific files or directories.
   override protected buildArgs(): string[]
+    Assemble the `deno lint` argv.
+
+abstract class DenoPermissionSettings extends DenoSettings
+  Base for subcommands that accept `--allow-*` permission flags.
+
+  allowAll(): this
+    Grant all permissions (`--allow-all`).
+  allow(permission: DenoPermission, ...values: string[]): this
+    Grant one permission, optionally scoped to values (`--allow-read=a,b`).
+  protected get permissionArgs(): string[]
+    The accumulated permission flags, in declaration order.
 
 class DenoPublishSettings extends DenoSettings
   Settings for `deno publish`.
@@ -3403,6 +3443,7 @@ class DenoPublishSettings extends DenoSettings
   token(value: string): this
     Authenticate with a token instead of interactive/OIDC auth (`--token`).
   override protected buildArgs(): string[]
+    Assemble the `deno publish` argv.
 
 class DenoRunSettings extends DenoPermissionSettings
   Settings for `deno run`.
@@ -3416,6 +3457,13 @@ class DenoRunSettings extends DenoPermissionSettings
   reload(): this
     Reload the module cache (`--reload`).
   override protected buildArgs(): string[]
+    Assemble the `deno run` argv.
+
+abstract class DenoSettings extends ToolSettings
+  Base for all `deno` subcommand settings: binary is the running deno.
+
+  override protected defaultTool(): string
+    Default the tool binary to the running `deno` executable.
 
 class DenoTaskSettings extends DenoSettings
   Settings for `deno task`.
@@ -3425,6 +3473,7 @@ class DenoTaskSettings extends DenoSettings
   taskArgs(...args: Array<string | number>): this
     Arguments forwarded to the task.
   override protected buildArgs(): string[]
+    Assemble the `deno task` argv.
 
 class DenoTestSettings extends DenoPermissionSettings
   Settings for `deno test`.
@@ -3440,6 +3489,7 @@ class DenoTestSettings extends DenoPermissionSettings
   failFast(): this
     Stop on the first failure (`--fail-fast`).
   override protected buildArgs(): string[]
+    Assemble the `deno test` argv.
 
 interface CoverageThresholds
   Line and branch percentage floors; an omitted metric is not enforced.
@@ -3537,6 +3587,32 @@ interface ApiDocsOptions
   regenerateCommand?: string
     Command shown in "regenerate with …" notes. Default `"deno task docs"`.
 
+interface DocLintReport
+  One package's `deno doc --lint` output plus the type names it imports from
+  other `@zuke/*` packages, fed into {@link DocsTasksApi.checkDocLint}. The
+  caller runs the linter and scans the package's imports, so `@zuke/docs` never
+  runs `deno`.
+
+  pkg: string
+    The package identifier, surfaced in violations (e.g. `@zuke/kubectl`).
+  output: string
+    The raw `deno doc --lint` output for the package's entrypoints.
+  crossPackageTypes: string[]
+    The local names the package imports from another `@zuke/*` package. A
+    `private-type-ref` to one of these is the accepted residual (guideline 4);
+    a ref to any other type is a defect (the type is first-party and must be
+    exported).
+
+interface DocLintViolation
+  A documentation-lint defect, tied to the package it was found in.
+
+  pkg: string
+    The package the defect is in.
+  kind: string
+    The lint rule, e.g. `"missing-jsdoc"` or `"private-type-ref"`.
+  message: string
+    The diagnostic's headline message.
+
 interface DocsTasksApi
   The shape of {@link DocsTasks}.
 
@@ -3547,6 +3623,12 @@ interface DocsTasksApi
   checkApiDocs(docs: PackageDoc[], options?: ApiDocsOptions): Promise<string[]>
     Recompute every artifact and return the paths that are out of date on disk
     (empty when everything is current). Writes nothing.
+  checkDocLint(reports: DocLintReport[]): DocLintViolation[]
+    Classify `deno doc --lint` output across packages into real defects: every
+    `missing-jsdoc`, plus every `private-type-ref` whose referenced type is not
+    an accepted cross-package import (in the report's `crossPackageTypes`).
+    Fails safe — any other referenced type is treated as a first-party leak.
+    Pure: the caller runs the linter; this classifies. Empty when clean.
 
 interface PackageDoc
   One package's already-generated documentation, fed into the tasks.
@@ -3603,6 +3685,7 @@ class NpmCiSettings extends NpmSettings
   omit(type: NpmOmitType): this
     Skip a dependency group (`--omit=dev` etc.); repeatable.
   override protected buildArgs(): string[]
+    Assemble the `npm ci` argv.
 
 class NpmExecSettings extends NpmSettings
   Settings for `npm exec`.
@@ -3616,6 +3699,7 @@ class NpmExecSettings extends NpmSettings
   execArgs(...args: Array<string | number>): this
     Arguments forwarded to the command (after `--`).
   override protected buildArgs(): string[]
+    Assemble the `npm exec` argv.
 
 class NpmInstallSettings extends NpmSettings
   Settings for `npm install`.
@@ -3627,6 +3711,7 @@ class NpmInstallSettings extends NpmSettings
   saveExact(): this
     Pin exact versions (`--save-exact`).
   override protected buildArgs(): string[]
+    Assemble the `npm install` argv.
 
 class NpmPublishSettings extends NpmSettings
   Settings for `npm publish`.
@@ -3640,6 +3725,7 @@ class NpmPublishSettings extends NpmSettings
   otp(code: string): this
     Provide a one-time password (`--otp=`).
   override protected buildArgs(): string[]
+    Assemble the `npm publish` argv.
 
 class NpmRunSettings extends NpmSettings
   Settings for `npm run`.
@@ -3657,6 +3743,13 @@ class NpmRunSettings extends NpmSettings
   scriptArgs(...args: Array<string | number>): this
     Arguments forwarded to the script (after `--`).
   override protected buildArgs(): string[]
+    Assemble the `npm run` argv.
+
+abstract class NpmSettings extends ToolSettings
+  Base for all `npm` subcommand settings: binary is `npm` from PATH.
+
+  override protected defaultTool(): string
+    The default binary: `npm` resolved from PATH.
 
 class NpmVersionSettings extends NpmSettings
   Settings for `npm version`.
@@ -3668,6 +3761,7 @@ class NpmVersionSettings extends NpmSettings
   noGitTagVersion(): this
     Do not create a git commit and tag (`--no-git-tag-version`).
   override protected buildArgs(): string[]
+    Assemble the `npm version` argv.
 
 interface NpmTasksApi
   The shape of {@link NpmTasks}.
@@ -3712,6 +3806,7 @@ class NpxSettings extends ToolSettings
   Settings for the `npx` package runner.
 
   override protected defaultTool(): string
+    The executable this settings object drives: `npx`.
   command(name: string): this
     The package binary to execute (required unless {@link call} is set).
   package(...specs: string[]): this
@@ -3727,6 +3822,7 @@ class NpxSettings extends ToolSettings
   execArgs(...args: Array<string | number>): this
     Arguments forwarded to the command.
   override protected buildArgs(): string[]
+    Assemble the `npx <command>` argv from the configured settings.
 
 interface NpxTasksApi
   The shape of {@link NpxTasks}.
@@ -3766,6 +3862,7 @@ class BunAddSettings extends BunSettings
   global(): this
     Install globally (`--global`).
   override protected buildArgs(): string[]
+    Assemble the `bun add` argv.
 
 class BunInstallSettings extends BunSettings
   Settings for `bun install`.
@@ -3775,6 +3872,7 @@ class BunInstallSettings extends BunSettings
   frozenLockfile(): this
     Fail if the lockfile is out of date (`--frozen-lockfile`).
   override protected buildArgs(): string[]
+    Assemble the `bun install` argv.
 
 class BunRemoveSettings extends BunSettings
   Settings for `bun remove`.
@@ -3782,6 +3880,7 @@ class BunRemoveSettings extends BunSettings
   packages(...names: string[]): this
     Package names to remove (required).
   override protected buildArgs(): string[]
+    Assemble the `bun remove` argv.
 
 class BunRunSettings extends BunSettings
   Settings for `bun run`.
@@ -3791,6 +3890,13 @@ class BunRunSettings extends BunSettings
   scriptArgs(...args: Array<string | number>): this
     Arguments forwarded to the script.
   override protected buildArgs(): string[]
+    Assemble the `bun run` argv.
+
+abstract class BunSettings extends ToolSettings
+  Base for all `bun` subcommand settings: binary is `bun` from PATH.
+
+  override protected defaultTool(): string
+    The tool binary: `bun` on PATH.
 
 class BunTestSettings extends BunSettings
   Settings for `bun test`.
@@ -3802,6 +3908,7 @@ class BunTestSettings extends BunSettings
   bail(): this
     Stop after the first failure (`--bail`).
   override protected buildArgs(): string[]
+    Assemble the `bun test` argv.
 
 class BunXSettings extends BunSettings
   Settings for `bun x` (the `bunx` package runner).
@@ -3811,6 +3918,7 @@ class BunXSettings extends BunSettings
   execArgs(...args: Array<string | number>): this
     Arguments forwarded to the command.
   override protected buildArgs(): string[]
+    Assemble the `bun x` argv.
 
 interface BunTasksApi
   The shape of {@link BunTasks}.
@@ -3858,6 +3966,7 @@ class PnpmAddSettings extends PnpmSettings
   global(): this
     Install globally (`--global`).
   override protected buildArgs(): string[]
+    Assemble the `pnpm add` argv.
 
 class PnpmDlxSettings extends PnpmSettings
   Settings for `pnpm dlx`.
@@ -3869,6 +3978,7 @@ class PnpmDlxSettings extends PnpmSettings
   execArgs(...args: Array<string | number>): this
     Arguments forwarded to the command.
   override protected buildArgs(): string[]
+    Assemble the `pnpm dlx` argv.
 
 class PnpmInstallSettings extends PnpmSettings
   Settings for `pnpm install`.
@@ -3878,6 +3988,7 @@ class PnpmInstallSettings extends PnpmSettings
   prod(): this
     Install without devDependencies (`--prod`).
   override protected buildArgs(): string[]
+    Assemble the `pnpm install` argv.
 
 class PnpmPublishSettings extends PnpmSettings
   Settings for `pnpm publish`.
@@ -3891,6 +4002,7 @@ class PnpmPublishSettings extends PnpmSettings
   dryRun(): this
     Report what would be published without uploading (`--dry-run`).
   override protected buildArgs(): string[]
+    Assemble the `pnpm publish` argv.
 
 class PnpmRemoveSettings extends PnpmSettings
   Settings for `pnpm remove`.
@@ -3898,6 +4010,7 @@ class PnpmRemoveSettings extends PnpmSettings
   packages(...names: string[]): this
     Package names to remove (required).
   override protected buildArgs(): string[]
+    Assemble the `pnpm remove` argv.
 
 class PnpmRunSettings extends PnpmSettings
   Settings for `pnpm run`.
@@ -3911,6 +4024,13 @@ class PnpmRunSettings extends PnpmSettings
   scriptArgs(...args: Array<string | number>): this
     Arguments forwarded to the script.
   override protected buildArgs(): string[]
+    Assemble the `pnpm run` argv.
+
+abstract class PnpmSettings extends ToolSettings
+  Base for all `pnpm` subcommand settings: binary is `pnpm` from PATH.
+
+  override protected defaultTool(): string
+    The default binary: `pnpm` resolved from PATH.
 
 interface PnpmTasksApi
   The shape of {@link PnpmTasks}.
@@ -3960,6 +4080,7 @@ class YarnAddSettings extends YarnSettings
   exact(): this
     Pin the exact version (`--exact`).
   override protected buildArgs(): string[]
+    Assemble the `yarn add` argv.
 
 class YarnDlxSettings extends YarnSettings
   Settings for `yarn dlx` (Yarn Berry's one-off package runner).
@@ -3971,6 +4092,7 @@ class YarnDlxSettings extends YarnSettings
   execArgs(...args: Array<string | number>): this
     Arguments forwarded to the command.
   override protected buildArgs(): string[]
+    Assemble the `yarn dlx` argv.
 
 class YarnInstallSettings extends YarnSettings
   Settings for `yarn install`.
@@ -3980,6 +4102,7 @@ class YarnInstallSettings extends YarnSettings
   frozenLockfile(): this
     Fail if the lockfile would change — `--frozen-lockfile` (Yarn Classic).
   override protected buildArgs(): string[]
+    Assemble the `yarn install` argv.
 
 class YarnRemoveSettings extends YarnSettings
   Settings for `yarn remove`.
@@ -3987,6 +4110,7 @@ class YarnRemoveSettings extends YarnSettings
   packages(...names: string[]): this
     Package names to remove (required).
   override protected buildArgs(): string[]
+    Assemble the `yarn remove` argv.
 
 class YarnRunSettings extends YarnSettings
   Settings for `yarn run`.
@@ -3996,6 +4120,13 @@ class YarnRunSettings extends YarnSettings
   scriptArgs(...args: Array<string | number>): this
     Arguments forwarded to the script.
   override protected buildArgs(): string[]
+    Assemble the `yarn run` argv.
+
+abstract class YarnSettings extends ToolSettings
+  Base for all `yarn` subcommand settings: binary is `yarn` from PATH.
+
+  override protected defaultTool(): string
+    The default binary: `yarn` resolved from PATH.
 
 interface YarnTasksApi
   The shape of {@link YarnTasks}.
@@ -4032,8 +4163,11 @@ class CmdSettings extends ToolSettings
   Settings for a generic command: the tool name plus raw arguments.
 
   constructor(tool: PathLike)
+    Create settings for `tool`; the tool name is required.
   override protected defaultTool(): string
+    The command to run — the tool name passed to the constructor.
   override protected buildArgs(): string[]
+    No implicit arguments; the caller supplies them via `.args(...)`.
 
 interface CmdTasksApi
   The shape of {@link CmdTasks}.
@@ -4304,6 +4438,7 @@ class DockerBuildSettings extends DockerSettings
   context(path: PathLike): this
     The build context path or URL (default `.`).
   override protected buildArgs(): string[]
+    Assemble the `docker build` argv.
 
 class DockerExecSettings extends DockerSettings
   Settings for `docker exec`.
@@ -4321,6 +4456,7 @@ class DockerExecSettings extends DockerSettings
   commandArgs(...args: Array<string | number>): this
     The command and arguments to execute.
   override protected buildArgs(): string[]
+    Assemble the `docker exec` argv.
 
 class DockerImagesSettings extends DockerSettings
   Settings for `docker images`.
@@ -4334,6 +4470,7 @@ class DockerImagesSettings extends DockerSettings
   repository(name: string): this
     Restrict to a repository (positional argument).
   override protected buildArgs(): string[]
+    Assemble the `docker images` argv.
 
 class DockerLoadSettings extends DockerSettings
   Settings for `docker load`.
@@ -4343,6 +4480,7 @@ class DockerLoadSettings extends DockerSettings
   quietOutput(): this
     Suppress the load output (`-q`).
   override protected buildArgs(): string[]
+    Assemble the `docker load` argv.
 
 class DockerLoginSettings extends DockerSettings
   Settings for `docker login`.
@@ -4356,6 +4494,7 @@ class DockerLoginSettings extends DockerSettings
   registry(server: string): this
     The registry server (defaults to Docker Hub).
   override protected buildArgs(): string[]
+    Assemble the `docker login` argv.
 
 class DockerPsSettings extends DockerSettings
   Settings for `docker ps`.
@@ -4367,6 +4506,7 @@ class DockerPsSettings extends DockerSettings
   filter(expression: string): this
     Filter the listing (`--filter`); repeatable.
   override protected buildArgs(): string[]
+    Assemble the `docker ps` argv.
 
 class DockerPullSettings extends DockerSettings
   Settings for `docker pull`.
@@ -4378,6 +4518,7 @@ class DockerPullSettings extends DockerSettings
   quietOutput(): this
     Suppress verbose output (`-q`).
   override protected buildArgs(): string[]
+    Assemble the `docker pull` argv.
 
 class DockerPushSettings extends DockerSettings
   Settings for `docker push`.
@@ -4387,6 +4528,7 @@ class DockerPushSettings extends DockerSettings
   allTags(): this
     Push every tag of the repository (`--all-tags`).
   override protected buildArgs(): string[]
+    Assemble the `docker push` argv.
 
 class DockerRmSettings extends DockerSettings
   Settings for `docker rm`.
@@ -4398,6 +4540,7 @@ class DockerRmSettings extends DockerSettings
   volumes(): this
     Also remove anonymous volumes (`-v`).
   override protected buildArgs(): string[]
+    Assemble the `docker rm` argv.
 
 class DockerRmiSettings extends DockerSettings
   Settings for `docker rmi`.
@@ -4407,6 +4550,7 @@ class DockerRmiSettings extends DockerSettings
   force(): this
     Force removal (`-f`).
   override protected buildArgs(): string[]
+    Assemble the `docker rmi` argv.
 
 class DockerRunSettings extends DockerSettings
   Settings for `docker run`.
@@ -4434,6 +4578,7 @@ class DockerRunSettings extends DockerSettings
   commandArgs(...args: Array<string | number>): this
     The command and arguments to run inside the container.
   override protected buildArgs(): string[]
+    Assemble the `docker run` argv.
 
 class DockerSaveSettings extends DockerSettings
   Settings for `docker save`.
@@ -4443,6 +4588,13 @@ class DockerSaveSettings extends DockerSettings
   output(path: PathLike): this
     Write to a file instead of STDOUT (`-o`).
   override protected buildArgs(): string[]
+    Assemble the `docker save` argv.
+
+abstract class DockerSettings extends ToolSettings
+  Base for all `docker` subcommand settings: the binary is `docker`.
+
+  override protected defaultTool(): string
+    The invoked binary is `docker`.
 
 class DockerStartSettings extends DockerSettings
   Settings for `docker start`.
@@ -4452,6 +4604,7 @@ class DockerStartSettings extends DockerSettings
   attach(): this
     Attach STDOUT/STDERR and forward signals (`-a`).
   override protected buildArgs(): string[]
+    Assemble the `docker start` argv.
 
 class DockerStopSettings extends DockerSettings
   Settings for `docker stop`.
@@ -4461,6 +4614,7 @@ class DockerStopSettings extends DockerSettings
   time(seconds: number): this
     Seconds to wait before killing (`-t`).
   override protected buildArgs(): string[]
+    Assemble the `docker stop` argv.
 
 class DockerTagSettings extends DockerSettings
   Settings for `docker tag`.
@@ -4470,6 +4624,7 @@ class DockerTagSettings extends DockerSettings
   target(reference: string): this
     The new image reference (required).
   override protected buildArgs(): string[]
+    Assemble the `docker tag` argv.
 
 interface DockerTasksApi
   The shape of {@link DockerTasks}.
@@ -4559,6 +4714,7 @@ class DockerComposeBuildSettings extends DockerComposeSettings
   services(...names: string[]): this
     Restrict to specific services (positional); optional.
   override protected composeArgs(): string[]
+    Assemble the `compose build` argv.
 
 class DockerComposeConfigSettings extends DockerComposeSettings
   Settings for `compose config`.
@@ -4572,6 +4728,7 @@ class DockerComposeConfigSettings extends DockerComposeSettings
   format(value: string): this
     Output format (`--format`), e.g. `yaml` or `json`.
   override protected composeArgs(): string[]
+    Assemble the `compose config` argv.
 
 class DockerComposeDownSettings extends DockerComposeSettings
   Settings for `compose down`.
@@ -4585,6 +4742,7 @@ class DockerComposeDownSettings extends DockerComposeSettings
   timeout(seconds: number): this
     Shutdown timeout in seconds (`-t`).
   override protected composeArgs(): string[]
+    Assemble the `compose down` argv.
 
 class DockerComposeExecSettings extends DockerComposeSettings
   Settings for `compose exec`.
@@ -4602,6 +4760,7 @@ class DockerComposeExecSettings extends DockerComposeSettings
   commandArgs(...args: Array<string | number>): this
     The command and arguments to execute.
   override protected composeArgs(): string[]
+    Assemble the `compose exec` argv.
 
 class DockerComposeLogsSettings extends DockerComposeSettings
   Settings for `compose logs`.
@@ -4615,6 +4774,7 @@ class DockerComposeLogsSettings extends DockerComposeSettings
   services(...names: string[]): this
     Restrict to specific services (positional); optional.
   override protected composeArgs(): string[]
+    Assemble the `compose logs` argv.
 
 class DockerComposePsSettings extends DockerComposeSettings
   Settings for `compose ps`.
@@ -4628,6 +4788,7 @@ class DockerComposePsSettings extends DockerComposeSettings
   services(...names: string[]): this
     Restrict to specific services (positional); optional.
   override protected composeArgs(): string[]
+    Assemble the `compose ps` argv.
 
 class DockerComposePullSettings extends DockerComposeSettings
   Settings for `compose pull`.
@@ -4639,6 +4800,7 @@ class DockerComposePullSettings extends DockerComposeSettings
   services(...names: string[]): this
     Restrict to specific services (positional); optional.
   override protected composeArgs(): string[]
+    Assemble the `compose pull` argv.
 
 class DockerComposePushSettings extends DockerComposeSettings
   Settings for `compose push`.
@@ -4648,6 +4810,7 @@ class DockerComposePushSettings extends DockerComposeSettings
   services(...names: string[]): this
     Restrict to specific services (positional); optional.
   override protected composeArgs(): string[]
+    Assemble the `compose push` argv.
 
 class DockerComposeRestartSettings extends DockerComposeSettings
   Settings for `compose restart`.
@@ -4657,6 +4820,7 @@ class DockerComposeRestartSettings extends DockerComposeSettings
   services(...names: string[]): this
     Restrict to specific services (positional); optional.
   override protected composeArgs(): string[]
+    Assemble the `compose restart` argv.
 
 class DockerComposeRmSettings extends DockerComposeSettings
   Settings for `compose rm`.
@@ -4670,6 +4834,7 @@ class DockerComposeRmSettings extends DockerComposeSettings
   services(...names: string[]): this
     Restrict to specific services (positional); optional.
   override protected composeArgs(): string[]
+    Assemble the `compose rm` argv.
 
 class DockerComposeRunSettings extends DockerComposeSettings
   Settings for `compose run`.
@@ -4689,6 +4854,7 @@ class DockerComposeRunSettings extends DockerComposeSettings
   commandArgs(...args: Array<string | number>): this
     The command and arguments to run inside the container.
   override protected composeArgs(): string[]
+    Assemble the `compose run` argv.
 
 abstract class DockerComposeSettings extends ToolSettings
   Base for all Compose subcommand settings. Holds the invocation prefix
@@ -4697,6 +4863,7 @@ abstract class DockerComposeSettings extends ToolSettings
   run time unless it was pinned with {@link usePlugin}/{@link useStandalone}.
 
   override protected defaultTool(): string
+    The resolved binary (`docker` or `docker-compose`) for error messages.
   file(path: PathLike): this
     Add a Compose file (`-f`); repeatable, order-significant.
   projectName(name: string): this
@@ -4714,6 +4881,7 @@ abstract class DockerComposeSettings extends ToolSettings
   abstract protected composeArgs(): string[]
     The subcommand argv (without global options). Must be pure — no I/O.
   override protected buildArgs(): string[]
+    Assemble the global options followed by the subcommand argv.
   override async run(): Promise<CommandOutput>
     Resolve the invocation prefix (unless pinned) and run, so the same build
     works against either the v2 plugin or the v1 standalone binary.
@@ -4724,6 +4892,7 @@ class DockerComposeStartSettings extends DockerComposeSettings
   services(...names: string[]): this
     Restrict to specific services (positional); optional.
   override protected composeArgs(): string[]
+    Assemble the `compose start` argv.
 
 class DockerComposeStopSettings extends DockerComposeSettings
   Settings for `compose stop`.
@@ -4733,6 +4902,7 @@ class DockerComposeStopSettings extends DockerComposeSettings
   services(...names: string[]): this
     Restrict to specific services (positional); optional.
   override protected composeArgs(): string[]
+    Assemble the `compose stop` argv.
 
 class DockerComposeUpSettings extends DockerComposeSettings
   Settings for `compose up`.
@@ -4752,6 +4922,7 @@ class DockerComposeUpSettings extends DockerComposeSettings
   services(...names: string[]): this
     Restrict to specific services (positional); optional.
   override protected composeArgs(): string[]
+    Assemble the `compose up` argv.
 
 interface DockerComposeTasksApi
   The shape of {@link DockerComposeTasks}.
@@ -4836,6 +5007,7 @@ class KubectlAnnotateSettings extends KubectlSettings
   selector(query: string): this
     Restrict to resources matching a label selector (`-l`).
   override protected buildArgs(): string[]
+    Assemble the `kubectl annotate` argv.
 
 class KubectlApplySettings extends KubectlSettings
   Settings for `kubectl apply`.
@@ -4857,6 +5029,7 @@ class KubectlApplySettings extends KubectlSettings
   force(): this
     Force apply by delete-and-recreate when needed (`--force`).
   override protected buildArgs(): string[]
+    Assemble the `kubectl apply` argv.
 
 class KubectlCreateSettings extends KubectlSettings
   Settings for `kubectl create`.
@@ -4873,6 +5046,7 @@ class KubectlCreateSettings extends KubectlSettings
   saveConfig(): this
     Record the current resource in its annotation (`--save-config`).
   override protected buildArgs(): string[]
+    Assemble the `kubectl create` argv.
 
 class KubectlDeleteSettings extends KubectlSettings
   Settings for `kubectl delete`.
@@ -4894,6 +5068,7 @@ class KubectlDeleteSettings extends KubectlSettings
   recursive(): this
     Recurse into directories given to `-f` (`-R`).
   override protected buildArgs(): string[]
+    Assemble the `kubectl delete` argv.
 
 class KubectlDescribeSettings extends KubectlSettings
   Settings for `kubectl describe`.
@@ -4903,6 +5078,7 @@ class KubectlDescribeSettings extends KubectlSettings
   selector(query: string): this
     Restrict to resources matching a label selector (`-l`).
   override protected buildArgs(): string[]
+    Assemble the `kubectl describe` argv.
 
 class KubectlExecSettings extends KubectlSettings
   Settings for `kubectl exec`.
@@ -4918,6 +5094,7 @@ class KubectlExecSettings extends KubectlSettings
   command(...args: Array<string | number>): this
     The command and arguments to run in the container (required).
   override protected buildArgs(): string[]
+    Assemble the `kubectl exec` argv.
 
 class KubectlGetSettings extends KubectlSettings
   Settings for `kubectl get`.
@@ -4937,6 +5114,7 @@ class KubectlGetSettings extends KubectlSettings
   showLabels(): this
     Include resource labels as columns (`--show-labels`).
   override protected buildArgs(): string[]
+    Assemble the `kubectl get` argv.
 
 class KubectlLabelSettings extends KubectlSettings
   Settings for `kubectl label`.
@@ -4954,6 +5132,7 @@ class KubectlLabelSettings extends KubectlSettings
   selector(query: string): this
     Restrict to resources matching a label selector (`-l`).
   override protected buildArgs(): string[]
+    Assemble the `kubectl label` argv.
 
 class KubectlLogsSettings extends KubectlSettings
   Settings for `kubectl logs`.
@@ -4977,6 +5156,7 @@ class KubectlLogsSettings extends KubectlSettings
   timestamps(): this
     Prefix each line with a timestamp (`--timestamps`).
   override protected buildArgs(): string[]
+    Assemble the `kubectl logs` argv.
 
 class KubectlPatchSettings extends KubectlSettings
   Settings for `kubectl patch`.
@@ -4988,6 +5168,7 @@ class KubectlPatchSettings extends KubectlSettings
   type(strategy: PatchType): this
     The patch strategy (`--type`).
   override protected buildArgs(): string[]
+    Assemble the `kubectl patch` argv.
 
 class KubectlPortForwardSettings extends KubectlSettings
   Settings for `kubectl port-forward`.
@@ -4999,6 +5180,7 @@ class KubectlPortForwardSettings extends KubectlSettings
   address(value: string): this
     The local address(es) to bind (`--address`).
   override protected buildArgs(): string[]
+    Assemble the `kubectl port-forward` argv.
 
 class KubectlRolloutSettings extends KubectlSettings
   Settings for `kubectl rollout`.
@@ -5018,6 +5200,7 @@ class KubectlRolloutSettings extends KubectlSettings
   timeout(duration: string): this
     With `status`, how long to wait, e.g. `60s` (`--timeout`).
   override protected buildArgs(): string[]
+    Assemble the `kubectl rollout <action>` argv.
 
 class KubectlScaleSettings extends KubectlSettings
   Settings for `kubectl scale`.
@@ -5035,6 +5218,7 @@ class KubectlScaleSettings extends KubectlSettings
   all(): this
     Scale all resources of the given type (`--all`).
   override protected buildArgs(): string[]
+    Assemble the `kubectl scale` argv.
 
 class KubectlSetImageSettings extends KubectlSettings
   Settings for `kubectl set image`.
@@ -5048,6 +5232,23 @@ class KubectlSetImageSettings extends KubectlSettings
   all(): this
     Apply to all resources of the given type (`--all`).
   override protected buildArgs(): string[]
+    Assemble the `kubectl set image` argv.
+
+abstract class KubectlSettings extends ToolSettings
+  Base for all `kubectl` subcommand settings: the binary is `kubectl`, and the
+  cluster-targeting flags (`--namespace`, `--context`, `--kubeconfig`) are
+  shared by every subcommand.
+
+  override protected defaultTool(): string
+    The tool binary invoked by every subcommand: `kubectl`.
+  namespace(name: string): this
+    Target a namespace (`--namespace`).
+  context(name: string): this
+    Use a named kubeconfig context (`--context`).
+  kubeconfig(path: PathLike): this
+    Use an explicit kubeconfig file (`--kubeconfig`).
+  protected globalArgs(): string[]
+    The cluster-targeting flags shared by every subcommand.
 
 class KubectlTopSettings extends KubectlSettings
   Settings for `kubectl top`.
@@ -5065,6 +5266,7 @@ class KubectlTopSettings extends KubectlSettings
   allNamespaces(): this
     Report across all namespaces (`-A`).
   override protected buildArgs(): string[]
+    Assemble the `kubectl top <pods|nodes>` argv.
 
 class KubectlWaitSettings extends KubectlSettings
   Settings for `kubectl wait`.
@@ -5082,6 +5284,7 @@ class KubectlWaitSettings extends KubectlSettings
   all(): this
     Wait on all resources of the given type (`--all`).
   override protected buildArgs(): string[]
+    Assemble the `kubectl wait` argv.
 
 interface KubectlTasksApi
   The shape of {@link KubectlTasks}.
@@ -5171,6 +5374,7 @@ class HelmDependencyUpdateSettings extends HelmSettings
   chart(path: PathLike): this
     The chart path whose dependencies to update (required).
   override protected buildArgs(): string[]
+    Assemble the `helm dependency update` argv.
 
 class HelmInstallSettings extends HelmValuesSettings
   Settings for `helm install`.
@@ -5190,6 +5394,7 @@ class HelmInstallSettings extends HelmValuesSettings
   dryRun(): this
     Simulate the install (`--dry-run`).
   override protected buildArgs(): string[]
+    Assemble the `helm install` argv.
 
 class HelmLintSettings extends HelmSettings
   Settings for `helm lint`.
@@ -5201,6 +5406,7 @@ class HelmLintSettings extends HelmSettings
   strict(): this
     Treat warnings as errors (`--strict`).
   override protected buildArgs(): string[]
+    Assemble the `helm lint` argv.
 
 class HelmPackageSettings extends HelmSettings
   Settings for `helm package`.
@@ -5214,6 +5420,7 @@ class HelmPackageSettings extends HelmSettings
   appVersion(value: string): this
     Set the chart appVersion (`--app-version`).
   override protected buildArgs(): string[]
+    Assemble the `helm package` argv.
 
 class HelmRepoAddSettings extends HelmSettings
   Settings for `helm repo add`.
@@ -5223,6 +5430,23 @@ class HelmRepoAddSettings extends HelmSettings
   url(value: string): this
     The repository URL (required).
   override protected buildArgs(): string[]
+    Assemble the `helm repo add` argv.
+
+abstract class HelmSettings extends ToolSettings
+  Base for all `helm` subcommand settings: the binary is `helm`, and the
+  cluster-targeting flags (`--namespace`, `--kube-context`, `--kubeconfig`) are
+  shared by every subcommand.
+
+  override protected defaultTool(): string
+    The tool binary: `helm`.
+  namespace(name: string): this
+    Target a namespace (`--namespace`).
+  kubeContext(name: string): this
+    Use a named kube context (`--kube-context`).
+  kubeconfig(path: PathLike): this
+    Use an explicit kubeconfig file (`--kubeconfig`).
+  protected globalArgs(): string[]
+    The cluster-targeting flags shared by every subcommand.
 
 class HelmTemplateSettings extends HelmValuesSettings
   Settings for `helm template` (render manifests locally).
@@ -5234,6 +5458,7 @@ class HelmTemplateSettings extends HelmValuesSettings
   outputDir(path: PathLike): this
     Write rendered manifests to a directory (`--output-dir`).
   override protected buildArgs(): string[]
+    Assemble the `helm template` argv.
 
 class HelmUninstallSettings extends HelmSettings
   Settings for `helm uninstall`.
@@ -5245,6 +5470,7 @@ class HelmUninstallSettings extends HelmSettings
   wait(): this
     Wait until removal completes (`--wait`).
   override protected buildArgs(): string[]
+    Assemble the `helm uninstall` argv.
 
 class HelmUpgradeSettings extends HelmValuesSettings
   Settings for `helm upgrade`.
@@ -5264,6 +5490,19 @@ class HelmUpgradeSettings extends HelmValuesSettings
   timeout(duration: string): this
     Operation timeout, e.g. `5m` (`--timeout`).
   override protected buildArgs(): string[]
+    Assemble the `helm upgrade` argv.
+
+abstract class HelmValuesSettings extends HelmSettings
+  Base for value-bearing commands (install/upgrade/template).
+
+  values(path: PathLike): this
+    Add a values file (`--values`/`-f`); repeatable.
+  set(name: string, value: string): this
+    Override a single value (`--set name=value`); repeatable.
+  version(value: string): this
+    Pin the chart version (`--version`).
+  protected valueArgs(): string[]
+    The shared value/version arguments.
 
 interface HelmTasksApi
   The shape of {@link HelmTasks}.
@@ -5315,6 +5554,7 @@ class KustomizeBuildSettings extends KustomizeSettings
   loadRestrictor(mode: string): this
     Set the file-load restrictor, e.g. `LoadRestrictionsNone` (`--load-restrictor`).
   override protected buildArgs(): string[]
+    Assemble the `kustomize build` argv.
 
 class KustomizeEditSetImageSettings extends KustomizeSettings
   Settings for `kustomize edit set image`.
@@ -5323,6 +5563,13 @@ class KustomizeEditSetImageSettings extends KustomizeSettings
     Set an image override, e.g. `("api", "api:1.4")` → `api=api:1.4`; repeatable,
     at least one is required.
   override protected buildArgs(): string[]
+    Assemble the `kustomize edit set image` argv.
+
+abstract class KustomizeSettings extends ToolSettings
+  Base for all `kustomize` subcommand settings: the binary is `kustomize`.
+
+  override protected defaultTool(): string
+    The binary these settings invoke: `kustomize`.
 
 interface KustomizeTasksApi
   The shape of {@link KustomizeTasks}.
@@ -5354,6 +5601,7 @@ class OxlintSettings extends ToolSettings
   Settings for an `oxlint` run.
 
   override protected defaultTool(): string
+    The default executable name (`oxlint`).
   paths(...values: PathLike[]): this
     Files or directories to lint (positional); repeatable.
   config(path: PathLike): this
@@ -5385,6 +5633,7 @@ class OxlintSettings extends ToolSettings
   threads(count: number): this
     Number of threads to use (`--threads`).
   override protected buildArgs(): string[]
+    Assemble the `oxlint` argv from the configured settings.
 
 interface OxlintTasksApi
   The shape of {@link OxlintTasks}.
@@ -5414,6 +5663,7 @@ class EslintSettings extends ToolSettings
   Settings for an `eslint` run.
 
   override protected defaultTool(): string
+    The default executable this settings object runs (`eslint`).
   paths(...values: PathLike[]): this
     Files, directories, or globs to lint (positional); repeatable.
   config(path: PathLike): this
@@ -5449,6 +5699,7 @@ class EslintSettings extends ToolSettings
   reportUnusedDisableDirectives(): this
     Report unused `eslint-disable` directives (`--report-unused-disable-directives`).
   override protected buildArgs(): string[]
+    Assemble the `eslint` argv from the configured settings.
 
 interface EslintTasksApi
   The shape of {@link EslintTasks}.
@@ -5478,6 +5729,7 @@ class CspellSettings extends ToolSettings
   Settings for a `cspell lint` run.
 
   override protected defaultTool(): string
+    The default executable name (`cspell`).
   files(...globs: PathLike[]): this
     Files or globs to check (positional); repeatable.
   config(path: PathLike): this
@@ -5507,6 +5759,7 @@ class CspellSettings extends ToolSettings
   maxDuplicateProblems(count: number): this
     Cap the number of duplicate problems reported (`--max-duplicate-problems`).
   override protected buildArgs(): string[]
+    Assemble the `cspell lint` argv.
 
 interface CspellTasksApi
   The shape of {@link CspellTasks}.
@@ -5536,6 +5789,7 @@ class JestSettings extends ToolSettings
   Settings for a `jest` run.
 
   override protected defaultTool(): string
+    The underlying tool binary is `jest`.
   paths(...values: PathLike[]): this
     Regex patterns matched against test paths (positional); repeatable.
   config(path: PathLike): this
@@ -5573,6 +5827,7 @@ class JestSettings extends ToolSettings
   reporters(...names: string[]): this
     Use the named reporters (`--reporters`); repeatable.
   override protected buildArgs(): string[]
+    Assemble the `jest` argv from the configured flags and patterns.
 
 interface JestTasksApi
   The shape of {@link JestTasks}.
@@ -5603,6 +5858,7 @@ class VitestSettings extends ToolSettings
   Settings for a `vitest` run.
 
   override protected defaultTool(): string
+    The underlying tool binary (`vitest`).
   filters(...values: string[]): this
     Filename filters matched against test files (positional); repeatable.
   watch(): this
@@ -5642,6 +5898,7 @@ class VitestSettings extends ToolSettings
   silent(): this
     Suppress test console output (`--silent`).
   override protected buildArgs(): string[]
+    Assemble the `vitest run`/`vitest watch` argv.
 
 interface VitestTasksApi
   The shape of {@link VitestTasks}.
@@ -5677,6 +5934,7 @@ class PlaywrightCodegenSettings extends PlaywrightSettings
   output(path: string): this
     Write the generated script to a file (`--output=`).
   override protected buildArgs(): string[]
+    Assemble the `playwright codegen` argv.
 
 class PlaywrightInstallSettings extends PlaywrightSettings
   Settings for `playwright install` (browser binaries).
@@ -5686,6 +5944,13 @@ class PlaywrightInstallSettings extends PlaywrightSettings
   withDeps(): this
     Also install the OS dependencies (`--with-deps`).
   override protected buildArgs(): string[]
+    Assemble the `playwright install` argv.
+
+abstract class PlaywrightSettings extends ToolSettings
+  Base for all Playwright subcommand settings: binary is `playwright`.
+
+  override protected defaultTool(): string
+    The tool binary invoked by all Playwright subcommands: `playwright`.
 
 class PlaywrightShowReportSettings extends PlaywrightSettings
   Settings for `playwright show-report`.
@@ -5693,6 +5958,7 @@ class PlaywrightShowReportSettings extends PlaywrightSettings
   dir(path: string): this
     The report directory to open; omit for the default.
   override protected buildArgs(): string[]
+    Assemble the `playwright show-report` argv.
 
 class PlaywrightTestSettings extends PlaywrightSettings
   Settings for `playwright test`.
@@ -5712,6 +5978,7 @@ class PlaywrightTestSettings extends PlaywrightSettings
   paths(...filters: string[]): this
     Test file or directory filters to run; omit to run all tests.
   override protected buildArgs(): string[]
+    Assemble the `playwright test` argv.
 
 interface PlaywrightTasksApi
   The shape of {@link PlaywrightTasks}.
@@ -5747,6 +6014,7 @@ class CypressInfoSettings extends CypressSettings
   Settings for `cypress info`.
 
   override protected buildArgs(): string[]
+    Assemble the `cypress info` argv.
 
 class CypressInstallSettings extends CypressSettings
   Settings for `cypress install` (the bundled binary).
@@ -5754,11 +6022,13 @@ class CypressInstallSettings extends CypressSettings
   force(): this
     Reinstall even if already present (`--force`).
   override protected buildArgs(): string[]
+    Assemble the `cypress install` argv.
 
 class CypressOpenSettings extends CypressTestingSettings
   Settings for `cypress open` (interactive).
 
   override protected buildArgs(): string[]
+    Assemble the `cypress open` argv.
 
 class CypressRunSettings extends CypressTestingSettings
   Settings for `cypress run` (headless).
@@ -5776,11 +6046,36 @@ class CypressRunSettings extends CypressTestingSettings
   port(value: number): this
     Override the server port (`--port`).
   override protected buildArgs(): string[]
+    Assemble the `cypress run` argv.
+
+abstract class CypressSettings extends ToolSettings
+  Base for all `cypress` subcommand settings: the binary is `cypress`.
+
+  override protected defaultTool(): string
+    The default tool binary: `cypress`.
+
+abstract class CypressTestingSettings extends CypressSettings
+  Base for the `run`/`open` commands, which share testing-type selection, a
+  browser, a config file, and a project path.
+
+  e2e(): this
+    Run end-to-end tests (`--e2e`).
+  component(): this
+    Run component tests (`--component`).
+  browser(name: string): this
+    Choose the browser, e.g. `chrome` or `electron` (`--browser`).
+  configFile(path: PathLike): this
+    Use an explicit config file (`--config-file`).
+  project(path: PathLike): this
+    Run against a project at the given path (`--project`).
+  protected sharedArgs(): string[]
+    The testing-type/browser/config/project arguments shared by run and open.
 
 class CypressVerifySettings extends CypressSettings
   Settings for `cypress verify`.
 
   override protected buildArgs(): string[]
+    Assemble the `cypress verify` argv.
 
 interface CypressTasksApi
   The shape of {@link CypressTasks}.
@@ -5822,11 +6117,13 @@ class BiomeCheckSettings extends BiomeSettings
   unsafe(): this
     Also apply unsafe fixes; implies writing (`--unsafe`).
   override protected buildArgs(): string[]
+    Assemble the `biome check` argv.
 
 class BiomeCiSettings extends BiomeSettings
   Settings for `biome ci` (read-only check tuned for CI).
 
   override protected buildArgs(): string[]
+    Assemble the `biome ci` argv.
 
 class BiomeFormatSettings extends BiomeSettings
   Settings for `biome format`.
@@ -5834,6 +6131,7 @@ class BiomeFormatSettings extends BiomeSettings
   write(): this
     Write formatting changes back to disk (`--write`).
   override protected buildArgs(): string[]
+    Assemble the `biome format` argv.
 
 class BiomeLintSettings extends BiomeSettings
   Settings for `biome lint`.
@@ -5843,6 +6141,29 @@ class BiomeLintSettings extends BiomeSettings
   unsafe(): this
     Also apply unsafe fixes; implies writing (`--unsafe`).
   override protected buildArgs(): string[]
+    Assemble the `biome lint` argv.
+
+abstract class BiomeSettings extends ToolSettings
+  Base for all `biome` subcommand settings: the binary is `biome`, and the
+  common filters (config path, reporter, `--staged`, `--changed`) plus the
+  trailing path arguments are shared by every subcommand.
+
+  override protected defaultTool(): string
+    The tool binary: `biome`.
+  paths(...paths: PathLike[]): this
+    Files or directories to operate on; omit to use the configured includes.
+  config(path: PathLike): this
+    Use an explicit configuration file (`--config-path`).
+  reporter(name: string): this
+    Choose the diagnostics reporter, e.g. `github` or `json` (`--reporter`).
+  staged(): this
+    Restrict to files staged in git (`--staged`).
+  changed(): this
+    Restrict to files changed against the VCS base (`--changed`).
+  protected flagArgs(): string[]
+    The shared flag arguments (before paths).
+  protected pathArgs(): string[]
+    The trailing path arguments.
 
 interface BiomeTasksApi
   The shape of {@link BiomeTasks}.
@@ -5877,6 +6198,7 @@ class KnipRunSettings extends ToolSettings
   Settings for a `knip` run.
 
   override protected defaultTool(): string
+    The underlying CLI command: `knip`.
   production(): this
     Restrict analysis to production code paths (`--production`).
   strict(): this
@@ -5896,6 +6218,7 @@ class KnipRunSettings extends ToolSettings
   include(...types: string[]): this
     Limit to specific issue types, e.g. `files`, `dependencies` (`--include`).
   override protected buildArgs(): string[]
+    Assemble the `knip <flags>` argv.
 
 interface KnipTasksApi
   The shape of {@link KnipTasks}.
@@ -5927,6 +6250,7 @@ class DpdmAnalyzeSettings extends ToolSettings
   Settings for a `dpdm` analysis run.
 
   override protected defaultTool(): string
+    The command this settings object runs (`dpdm`).
   transform(): this
     Transform TypeScript modules to JavaScript before analysis (`--transform`).
   noTree(): this
@@ -5960,6 +6284,7 @@ class DpdmAnalyzeSettings extends ToolSettings
   entries(...paths: PathLike[]): this
     The entry files or globs to analyze (appended after all options).
   override protected buildArgs(): string[]
+    Assemble the `dpdm <flags> <entries...>` argv.
 
 interface DpdmTasksApi
   The shape of {@link DpdmTasks}.
@@ -6007,6 +6332,7 @@ class JsrAddSettings extends JsrSettings
   dev(): this
     Add as a development dependency (`--save-dev`).
   override protected buildArgs(): string[]
+    Assemble the `jsr add` argv.
 
 class JsrPublishSettings extends JsrSettings
   Settings for `jsr publish`.
@@ -6024,6 +6350,7 @@ class JsrPublishSettings extends JsrSettings
   token(value: string): this
     Authenticate with a token instead of the interactive flow (`--token`).
   override protected buildArgs(): string[]
+    Assemble the `jsr publish` argv.
 
 class JsrRemoveSettings extends JsrSettings
   Settings for `jsr remove`.
@@ -6031,6 +6358,13 @@ class JsrRemoveSettings extends JsrSettings
   packages(...names: string[]): this
     Package names to remove (required).
   override protected buildArgs(): string[]
+    Assemble the `jsr remove` argv.
+
+abstract class JsrSettings extends ToolSettings
+  Base for all `jsr` subcommand settings: the binary is `jsr`.
+
+  override protected defaultTool(): string
+    The tool binary is `jsr`.
 
 interface JsrRegistryOptions
   Options shared by the JSR registry helpers.
@@ -6081,6 +6415,7 @@ class ViteBuildSettings extends ViteSettings
   root(path: PathLike): this
     The project root (positional).
   override protected buildArgs(): string[]
+    Assemble the `vite build` argv.
 
 class ViteDevSettings extends ViteSettings
   Settings for `vite dev` (the development server).
@@ -6092,6 +6427,7 @@ class ViteDevSettings extends ViteSettings
   open(): this
     Open the app in the browser on start (`--open`).
   override protected buildArgs(): string[]
+    Assemble the `vite dev` argv.
 
 class VitePreviewSettings extends ViteSettings
   Settings for `vite preview` (serve a production build locally).
@@ -6103,6 +6439,20 @@ class VitePreviewSettings extends ViteSettings
   open(): this
     Open the app in the browser on start (`--open`).
   override protected buildArgs(): string[]
+    Assemble the `vite preview` argv.
+
+abstract class ViteSettings extends ToolSettings
+  Base for all `vite` subcommand settings: the binary is `vite`, with the
+  `--config` and `--mode` options shared by every subcommand.
+
+  override protected defaultTool(): string
+    The default binary this wrapper invokes: `vite`.
+  config(path: PathLike): this
+    Use an explicit config file (`--config`).
+  mode(name: string): this
+    Set the mode, e.g. `production` or `development` (`--mode`).
+  protected baseArgs(): string[]
+    The shared option arguments.
 
 interface ViteTasksApi
   The shape of {@link ViteTasks}.
@@ -6137,6 +6487,7 @@ class TsupBuildSettings extends ToolSettings
   Settings for a `tsup` bundle run.
 
   override protected defaultTool(): string
+    The executable this settings object runs: `tsup`.
   entry(...paths: PathLike[]): this
     Entry point(s) to bundle (positional); repeatable.
   format(...formats: TsupFormat[]): this
@@ -6160,6 +6511,7 @@ class TsupBuildSettings extends ToolSettings
   config(path: PathLike): this
     Path to a tsup config file (`--config`).
   override protected buildArgs(): string[]
+    Assemble the `tsup <entries> <flags>` argv.
 
 interface TsupTasksApi
   The shape of {@link TsupTasks}.
@@ -6197,6 +6549,7 @@ class TurboPruneSettings extends TurboSettings
   outDir(path: PathLike): this
     Output directory (`--out-dir`).
   override protected buildArgs(): string[]
+    Assemble the `turbo prune` argv.
 
 class TurboRunSettings extends TurboSettings
   Settings for `turbo run`.
@@ -6220,6 +6573,13 @@ class TurboRunSettings extends TurboSettings
   outputLogs(mode: string): this
     Output-log mode, e.g. `full`, `hash-only`, `errors-only` (`--output-logs`).
   override protected buildArgs(): string[]
+    Assemble the `turbo run` argv.
+
+abstract class TurboSettings extends ToolSettings
+  Base for all `turbo` subcommand settings: the binary is `turbo`.
+
+  override protected defaultTool(): string
+    The tool binary this settings class invokes: `turbo`.
 
 interface TurboTasksApi
   The shape of {@link TurboTasks}.
@@ -6261,6 +6621,7 @@ class NxAffectedSettings extends NxSettings
   parallel(count: number): this
     Maximum number of tasks to run in parallel (`--parallel`).
   override protected buildArgs(): string[]
+    Assemble the `nx affected` argv.
 
 class NxRunManySettings extends NxSettings
   Settings for `nx run-many`.
@@ -6276,6 +6637,7 @@ class NxRunManySettings extends NxSettings
   all(): this
     Run for every project (`--all`).
   override protected buildArgs(): string[]
+    Assemble the `nx run-many` argv.
 
 class NxRunSettings extends NxSettings
   Settings for `nx run` (a single `project:target`).
@@ -6285,6 +6647,13 @@ class NxRunSettings extends NxSettings
   configuration(name: string): this
     Use a named configuration (`--configuration`).
   override protected buildArgs(): string[]
+    Assemble the `nx run` argv.
+
+abstract class NxSettings extends ToolSettings
+  Base for all `nx` subcommand settings: the binary is `nx`.
+
+  override protected defaultTool(): string
+    The tool binary is `nx`.
 
 interface NxTasksApi
   The shape of {@link NxTasks}.
@@ -6315,10 +6684,35 @@ await TsxTasks.tsx((s) => s.script("src/main.ts").tsconfig("tsconfig.json"));
 const TsxTasks: TsxTasksApi
   Typed task functions for the `tsx` TypeScript runner.
 
+abstract class TsxCommonSettings extends ToolSettings
+  Options shared by every `tsx` invocation: the entry point and how to load it.
+
+  override protected defaultTool(): string
+    The underlying executable: `tsx`.
+  script(path: PathLike): this
+    The entry point to execute (required).
+  scriptArgs(...args: Array<string | number>): this
+    Arguments passed to the script (after the entry point).
+  tsconfig(path: PathLike): this
+    Use an explicit `tsconfig.json` (`--tsconfig`).
+  envFile(path: PathLike): this
+    Load environment variables from a file (`--env-file`).
+  noCache(): this
+    Disable the file-system transpile cache (`--no-cache`).
+  noWarnings(): this
+    Suppress Node warnings (`--no-warnings`).
+  conditions(...names: string[]): this
+    Custom export conditions to resolve (`--conditions`); repeatable.
+  importModule(...modules: string[]): this
+    Preload a module before the entry point (`--import`); repeatable.
+  protected entryArgs(): string[]
+    The option flags, then the required entry point and its arguments.
+
 class TsxSettings extends TsxCommonSettings
   Settings for `tsx <file>`.
 
   override protected buildArgs(): string[]
+    Assemble the `tsx <file>` argv.
 
 class TsxWatchSettings extends TsxCommonSettings
   Settings for `tsx watch <file>`.
@@ -6330,6 +6724,7 @@ class TsxWatchSettings extends TsxCommonSettings
   exclude(...paths: PathLike[]): this
     Paths to ignore while watching (`--exclude`); repeatable.
   override protected buildArgs(): string[]
+    Assemble the `tsx watch <file>` argv.
 
 interface TsxTasksApi
   The shape of {@link TsxTasks}.
@@ -6362,6 +6757,7 @@ class TsgoSettings extends ToolSettings
   Settings for a `tsgo` run.
 
   override protected defaultTool(): string
+    The executable this settings object drives (`tsgo`).
   paths(...values: PathLike[]): this
     Source files to compile (positional); repeatable.
   project(path: PathLike): this
@@ -6393,6 +6789,7 @@ class TsgoSettings extends ToolSettings
   module(value: string): this
     Module system, e.g. `esnext`, `nodenext` (`--module`).
   override protected buildArgs(): string[]
+    Assemble the `tsgo` argv from the configured flags and paths.
 
 interface TsgoTasksApi
   The shape of {@link TsgoTasks}.
@@ -6425,6 +6822,7 @@ abstract class TscBaseSettings extends ToolSettings
   Shared base for `tsc` settings; resolves the `tsc` binary.
 
   override protected defaultTool(): string
+    The default binary these settings invoke: `tsc`.
 
 class TscBuildSettings extends TscBaseSettings
   Settings for a `tsc --build` project-references run.
@@ -6444,6 +6842,7 @@ class TscBuildSettings extends TscBaseSettings
   incremental(): this
     Reuse prior build information for faster rebuilds (`--incremental`).
   override protected buildArgs(): string[]
+    Assemble the `tsc --build` argv from the configured options.
 
 class TscSettings extends TscBaseSettings
   Settings for a standard `tsc` run.
@@ -6479,6 +6878,7 @@ class TscSettings extends TscBaseSettings
   module(value: string): this
     Module system, e.g. `esnext`, `nodenext` (`--module`).
   override protected buildArgs(): string[]
+    Assemble the `tsc` argv from the configured compile options.
 
 interface TscTasksApi
   The shape of {@link TscTasks}.
@@ -6512,6 +6912,7 @@ class TscAliasRunSettings extends ToolSettings
   Settings for a `tsc-alias` run.
 
   override protected defaultTool(): string
+    The executable this settings object drives (`tsc-alias`).
   project(path: PathLike): this
     Path to the `tsconfig.json` to read aliases from (`-p`/`--project`).
   watch(): this
@@ -6537,6 +6938,7 @@ class TscAliasRunSettings extends ToolSettings
   silent(): this
     Suppress all output (`--silent`).
   override protected buildArgs(): string[]
+    Assemble the `tsc-alias` argv from the configured settings.
 
 interface TscAliasTasksApi
   The shape of {@link TscAliasTasks}.
@@ -6567,6 +6969,7 @@ class TsdownBuildSettings extends ToolSettings
   Settings for a `tsdown` bundle run (`tsdown [entries] [flags]`).
 
   override protected defaultTool(): string
+    The default executable to run: `tsdown`.
   entry(...paths: PathLike[]): this
     Entry point(s) to bundle (positional); repeatable.
   format(...formats: TsdownFormat[]): this
@@ -6594,16 +6997,19 @@ class TsdownBuildSettings extends ToolSettings
   treeshake(): this
     Enable tree-shaking of the output (`--treeshake`).
   override protected buildArgs(): string[]
+    Assemble the `tsdown [entries] [flags]` argv.
 
 class TsdownMigrateSettings extends ToolSettings
   Settings for a `tsdown migrate` run (`tsdown migrate [flags]`).
 
   override protected defaultTool(): string
+    The default executable to run: `tsdown`.
   from(value: string): this
     The tool to migrate from, e.g. `tsup` (`--from`).
   dryRun(): this
     Preview the migration without writing any files (`--dry-run`).
   override protected buildArgs(): string[]
+    Assemble the `tsdown migrate [flags]` argv.
 
 interface TsdownTasksApi
   The shape of {@link TsdownTasks}.
@@ -6656,6 +7062,7 @@ class NestBuildSettings extends NestSettings
   preserveWatchOutput(): this
     Keep prior console output between watch rebuilds (`--preserveWatchOutput`).
   override protected subcommandArgs(): string[]
+    Assemble the `nest build` argv.
 
 class NestGenerateSettings extends NestSettings
   Settings for `nest generate` — generate code from a schematic.
@@ -6679,11 +7086,13 @@ class NestGenerateSettings extends NestSettings
   dryRun(): this
     Report what would be generated without writing files (`--dry-run`).
   override protected subcommandArgs(): string[]
+    Assemble the `nest generate` argv.
 
 class NestInfoSettings extends NestSettings
   Settings for `nest info` — print Nest CLI and project information.
 
   override protected subcommandArgs(): string[]
+    Assemble the `nest info` argv.
 
 class NestNewSettings extends NestSettings
   Settings for `nest new` — scaffold a new NestJS application.
@@ -6705,6 +7114,17 @@ class NestNewSettings extends NestSettings
   language(value: string): this
     Programming language, e.g. `ts`/`js` (`--language <v>`).
   override protected subcommandArgs(): string[]
+    Assemble the `nest new` argv.
+
+abstract class NestSettings extends ToolSettings
+  Shared base for every `nest` subcommand: the binary and argv assembly.
+
+  override protected defaultTool(): string
+    The tool binary: `nest`.
+  abstract protected subcommandArgs(): string[]
+    The subcommand argv (the verb and its arguments).
+  override protected buildArgs(): string[]
+    Assemble the full `nest` argv from the subcommand.
 
 class NestStartSettings extends NestSettings
   Settings for `nest start` — build and run a NestJS application.
@@ -6726,6 +7146,7 @@ class NestStartSettings extends NestSettings
   builder(value: string): this
     Builder to use, e.g. `tsc`/`webpack`/`swc` (`--builder <v>`).
   override protected subcommandArgs(): string[]
+    Assemble the `nest start` argv.
 
 interface NestTasksApi
   The shape of {@link NestTasks}.
@@ -6767,6 +7188,7 @@ class OpenapiTsGenerateSettings extends ToolSettings
   Settings for an `openapi-ts` generation run.
 
   override protected defaultTool(): string
+    The tool binary this settings object invokes (`openapi-ts`).
   input(value: PathLike): this
     OpenAPI specification to read — a file path or URL (`--input`).
   output(value: PathLike): this
@@ -6782,6 +7204,7 @@ class OpenapiTsGenerateSettings extends ToolSettings
   silent(): this
     Suppress informational logging (`--silent`).
   override protected buildArgs(): string[]
+    Assemble the `openapi-ts` argv from the configured flags.
 
 interface OpenapiTsTasksApi
   The shape of {@link OpenapiTsTasks}.
@@ -6813,6 +7236,7 @@ class OrvalGenerateSettings extends ToolSettings
   Settings for an `orval` generation run.
 
   override protected defaultTool(): string
+    The executable this settings object runs: `orval`.
   config(value: PathLike): this
     Configuration file to load settings from (`-c`/`--config`).
   project(value: string): this
@@ -6832,6 +7256,7 @@ class OrvalGenerateSettings extends ToolSettings
   mock(): this
     Generate mocks alongside the client (`--mock`).
   override protected buildArgs(): string[]
+    Assemble the `orval` argv from the configured flags.
 
 interface OrvalTasksApi
   The shape of {@link OrvalTasks}.
@@ -6866,6 +7291,7 @@ class HuskyInitSettings extends HuskySettings
   dir(path: PathLike): this
     The hooks directory to initialise (positional; defaults to `.husky`).
   override protected subcommandArgs(): string[]
+    Assemble the `husky init [dir]` subcommand argv.
 
 class HuskyInstallSettings extends HuskySettings
   Settings for installing Git hooks by invoking `husky [dir]` bare.
@@ -6878,6 +7304,17 @@ class HuskyInstallSettings extends HuskySettings
   dir(path: PathLike): this
     The hooks directory to install into (positional; defaults to `.husky`).
   override protected subcommandArgs(): string[]
+    Assemble the bare `husky [dir]` invocation argv (no subcommand).
+
+abstract class HuskySettings extends ToolSettings
+  Shared base for every `husky` invocation: the binary and argv assembly.
+
+  override protected defaultTool(): string
+    The tool binary is `husky`.
+  abstract protected subcommandArgs(): string[]
+    The subcommand argv (everything after the binary).
+  override protected buildArgs(): string[]
+    Assemble the full `husky` argv from the subcommand argv.
 
 interface HuskyTasksApi
   The shape of {@link HuskyTasks}.
@@ -6920,6 +7357,7 @@ class NodeEvalSettings extends NodeSettings
   print(): this
     Print the result of the evaluated code (`--print` instead of `--eval`).
   override protected buildArgs(): string[]
+    Assemble the `node --eval <code>` (or `--print`) argv.
 
 class NodeRunSettings extends NodeSettings
   Settings for `node [options] <script> [args]`.
@@ -6949,6 +7387,13 @@ class NodeRunSettings extends NodeSettings
   maxOldSpaceSize(megabytes: number): this
     Set the V8 old-space memory limit in MiB (`--max-old-space-size=<n>`).
   override protected buildArgs(): string[]
+    Assemble the `node [options] <script> [args]` argv.
+
+abstract class NodeSettings extends ToolSettings
+  Shared base for every `node` task: it pins the binary to `node`.
+
+  override protected defaultTool(): string
+    Pin the tool binary to `node`.
 
 class NodeTestSettings extends NodeSettings
   Settings for `node --test [paths] [flags]`.
@@ -6968,6 +7413,7 @@ class NodeTestSettings extends NodeSettings
   experimentalTestCoverage(): this
     Collect and report test coverage (`--experimental-test-coverage`).
   override protected buildArgs(): string[]
+    Assemble the `node --test [paths] [flags]` argv.
 
 interface NodeTasksApi
   The shape of {@link NodeTasks}.
@@ -7001,11 +7447,33 @@ class DprintCheckSettings extends DprintSettings
   Settings for `dprint check` (verify formatting without writing).
 
   override protected subcommand(): string
+    The dprint subcommand this settings class runs: `check`.
 
 class DprintFmtSettings extends DprintSettings
   Settings for `dprint fmt` (format files in place).
 
   override protected subcommand(): string
+    The dprint subcommand this settings class runs: `fmt`.
+
+abstract class DprintSettings extends ToolSettings
+  Shared options for a `dprint` subcommand (`fmt` or `check`).
+
+  override protected defaultTool(): string
+    The default executable this settings class invokes: `dprint`.
+  abstract protected subcommand(): string
+    The dprint subcommand this settings class runs.
+  config(path: PathLike): this
+    Use an explicit config file (`-c`/`--config`).
+  files(...patterns: PathLike[]): this
+    File paths or globs to format/check (positional); repeatable.
+  excludes(...patterns: string[]): this
+    Exclude files matching a pattern (`--excludes`); repeatable.
+  incremental(): this
+    Only process files that changed since the last run (`--incremental`).
+  allowNoFiles(): this
+    Do not error when no files are matched (`--allow-no-files`).
+  override protected buildArgs(): string[]
+    Assemble the `dprint <subcommand>` argv from the configured options.
 
 interface DprintTasksApi
   The shape of {@link DprintTasks}.
@@ -7060,6 +7528,7 @@ class GcloudSettings extends ToolSettings
   Settings for a `gcloud` invocation.
 
   override protected defaultTool(): string
+    The default executable name (`gcloud`).
   command(...parts: Array<string | number>): this
     The command path and verb, e.g. `command("run", "deploy", "api")`.
   containerImagesAddTag(source: string, ...destinations: string[]): this
@@ -7094,6 +7563,7 @@ class GcloudSettings extends ToolSettings
     Add an arbitrary flag. With a value it renders `--name value`; without one
     it renders the bare `--name`. Repeatable.
   override protected buildArgs(): string[]
+    Assemble the `gcloud` argv from the command path and global flags.
 
 interface GcloudTasksApi
   The shape of {@link GcloudTasks}.
@@ -7212,6 +7682,7 @@ class GitAddSettings extends GitSettings
   update(): this
     Stage modifications and deletions, but not new files (`-u`/`--update`).
   override protected subcommandArgs(): string[]
+    Assemble the `git add` argv.
 
 class GitBranchSettings extends GitSettings
   Settings for `git branch`.
@@ -7223,6 +7694,7 @@ class GitBranchSettings extends GitSettings
   all(): this
     List both local and remote-tracking branches (`-a`/`--all`).
   override protected subcommandArgs(): string[]
+    Assemble the `git branch` argv.
 
 class GitCheckoutSettings extends GitSettings
   Settings for `git checkout`.
@@ -7234,6 +7706,7 @@ class GitCheckoutSettings extends GitSettings
   force(): this
     Force checkout, discarding local changes (`-f`/`--force`).
   override protected subcommandArgs(): string[]
+    Assemble the `git checkout` argv.
 
 class GitCloneSettings extends GitSettings
   Settings for `git clone`.
@@ -7249,6 +7722,7 @@ class GitCloneSettings extends GitSettings
   bare(): this
     Clone a bare repository (`--bare`).
   override protected subcommandArgs(): string[]
+    Assemble the `git clone` argv.
 
 class GitCommitSettings extends GitSettings
   Settings for `git commit`.
@@ -7264,6 +7738,7 @@ class GitCommitSettings extends GitSettings
   allowEmpty(): this
     Allow a commit with no changes (`--allow-empty`).
   override protected subcommandArgs(): string[]
+    Assemble the `git commit` argv.
 
 class GitFetchSettings extends GitSettings
   Settings for `git fetch`.
@@ -7277,6 +7752,7 @@ class GitFetchSettings extends GitSettings
   prune(): this
     Prune deleted remote refs (`--prune`).
   override protected subcommandArgs(): string[]
+    Assemble the `git fetch` argv.
 
 class GitInitSettings extends GitSettings
   Settings for `git init`.
@@ -7286,6 +7762,7 @@ class GitInitSettings extends GitSettings
   initialBranch(name: string): this
     Name the initial branch (`-b`/`--initial-branch`).
   override protected subcommandArgs(): string[]
+    Assemble the `git init` argv.
 
 class GitPullSettings extends GitSettings
   Settings for `git pull`.
@@ -7299,6 +7776,7 @@ class GitPullSettings extends GitSettings
   ffOnly(): this
     Only fast-forward (`--ff-only`).
   override protected subcommandArgs(): string[]
+    Assemble the `git pull` argv.
 
 class GitPushSettings extends GitSettings
   Settings for `git push`.
@@ -7316,6 +7794,7 @@ class GitPushSettings extends GitSettings
   deleteRef(): this
     Delete the remote ref (`--delete`).
   override protected subcommandArgs(): string[]
+    Assemble the `git push` argv.
 
 class GitRunSettings extends GitSettings
   Settings for an arbitrary `git` command not covered by a typed task.
@@ -7323,6 +7802,21 @@ class GitRunSettings extends GitSettings
   command(...parts: Array<string | number>): this
     The subcommand and its arguments, e.g. `command("rev-parse", "HEAD")`.
   override protected subcommandArgs(): string[]
+    Assemble the arbitrary `git` subcommand argv from `.command(...)`.
+
+abstract class GitSettings extends ToolSettings
+  Shared base for every `git` subcommand: the binary and global options.
+
+  override protected defaultTool(): string
+    The default tool binary: `git`.
+  abstract protected subcommandArgs(): string[]
+    The subcommand argv (after the global options).
+  dir(path: PathLike): this
+    Run git as if started in `path` (`-C <path>`).
+  config(key: string, value: string): this
+    Set a one-off config value (`-c key=value`); repeatable.
+  override protected buildArgs(): string[]
+    Assemble the `git` argv: global options followed by the subcommand.
 
 class GitStatusSettings extends GitSettings
   Settings for `git status`.
@@ -7334,6 +7828,7 @@ class GitStatusSettings extends GitSettings
   branch(): this
     Show branch information (`-b`/`--branch`).
   override protected subcommandArgs(): string[]
+    Assemble the `git status` argv.
 
 class GitTagSettings extends GitSettings
   Settings for `git tag`.
@@ -7347,6 +7842,7 @@ class GitTagSettings extends GitSettings
   deleteTag(): this
     Delete the tag (`-d`/`--delete`).
   override protected subcommandArgs(): string[]
+    Assemble the `git tag` argv.
 
 interface GitInfo
   Resolved git repository information.
@@ -7447,6 +7943,7 @@ class GhSettings extends ToolSettings
   Settings for a `gh` invocation.
 
   override protected defaultTool(): string
+    The default executable name: `gh`.
   command(...parts: Array<string | number>): this
     The command path and verb, e.g. `command("pr", "create")`.
   repo(slug: string): this
@@ -7455,6 +7952,7 @@ class GhSettings extends ToolSettings
     Add an arbitrary flag. With a value it renders `--name value`; without one
     it renders the bare `--name`. Repeatable.
   override protected buildArgs(): string[]
+    Assemble the `gh` argv: command path, then `--repo`, then flags.
 
 class GithubWorkflowSettings
   Configuration for {@link githubWorkflow}, set through a settings lambda. Every
@@ -7574,6 +8072,7 @@ class CodecovUploadSettings extends ToolSettings
   Settings for `codecovcli upload-process`.
 
   override protected defaultTool(): string
+    The Codecov CLI binary this settings class drives.
   files(...paths: string[]): this
     A coverage report file to upload (`--file`). Repeatable.
   flags(...names: string[]): this
@@ -7609,6 +8108,7 @@ class CodecovUploadSettings extends ToolSettings
   dryRun(): this
     Print what would be uploaded without sending anything (`--dry-run`).
   override protected buildArgs(): string[]
+    Assemble the `codecovcli upload-process` argv.
 
 interface CodecovTasksApi
   The shape of {@link CodecovTasks}.
@@ -7639,21 +8139,41 @@ await ClaudeTasks.run((s) =>
 const ClaudeTasks: ClaudeTasksApi
   Typed task functions for the Claude Code CLI.
 
+abstract class ClaudeCommandSettings extends ToolSettings
+  Shared builder for `claude <group> …` subcommand groups (`mcp`, `config`):
+  name the verb and operands with `.command(...)` and pass anything else with
+  `.flag(...)`.
+
+  override protected defaultTool(): string
+    The underlying executable: `claude`.
+  abstract protected group(): string
+    The leading subcommand group token, e.g. `"mcp"`.
+  command(...parts: Array<string | number>): this
+    The verb and operands, e.g. `command("add", "my-server")`.
+  flag(name: string, value?: string | number): this
+    Add an arbitrary flag. With a value it renders `--name value`; without one
+    it renders the bare `--name`. Repeatable.
+  override protected buildArgs(): string[]
+    Assemble the `claude <group> …` argv.
+
 class ClaudeConfigSettings extends ClaudeCommandSettings
   Settings for a `claude config …` invocation (manage configuration).
 
   override protected group(): string
+    The leading subcommand group token: `"config"`.
 
 class ClaudeMcpSettings extends ClaudeCommandSettings
   Settings for a `claude mcp …` invocation (manage MCP servers).
 
   override protected group(): string
+    The leading subcommand group token: `"mcp"`.
 
 class ClaudeRunSettings extends ToolSettings
   Settings for a non-interactive `claude --print` run — the build-friendly
   way to send a single prompt and capture the response.
 
   override protected defaultTool(): string
+    The underlying executable: `claude`.
   prompt(text: string): this
     The prompt to run non-interactively. Required.
   model(id: string): this
@@ -7691,12 +8211,15 @@ class ClaudeRunSettings extends ToolSettings
   verbose(): this
     Emit verbose logging (`--verbose`).
   override protected buildArgs(): string[]
+    Assemble the `claude --print` argv.
 
 class ClaudeUpdateSettings extends ToolSettings
   Settings for `claude update` (self-update the CLI).
 
   override protected defaultTool(): string
+    The underlying executable: `claude`.
   override protected buildArgs(): string[]
+    Assemble the `claude update` argv.
 
 interface ClaudeTasksApi
   The shape of {@link ClaudeTasks}.
@@ -7747,6 +8270,7 @@ class CodexExecSettings extends ToolSettings
   send a single prompt and capture the response.
 
   override protected defaultTool(): string
+    The executable this settings class drives (`codex`).
   prompt(text: string): this
     The prompt to run non-interactively. Omit to read from stdin.
   model(id: string): this
@@ -7780,18 +8304,21 @@ class CodexExecSettings extends ToolSettings
   oss(): this
     Use a local open-source model provider (`--oss`).
   override protected buildArgs(): string[]
+    Assemble the `codex exec` argv.
 
 class CodexMcpSettings extends ToolSettings
   Settings for a `codex mcp …` invocation (manage MCP servers): name the verb
   and operands with `.command(...)` and pass anything else with `.flag(...)`.
 
   override protected defaultTool(): string
+    The executable this settings class drives (`codex`).
   command(...parts: Array<string | number>): this
     The verb and operands, e.g. `command("add", "my-server")`.
   flag(name: string, value?: string | number): this
     Add an arbitrary flag. With a value it renders `--name value`; without one
     it renders the bare `--name`. Repeatable.
   override protected buildArgs(): string[]
+    Assemble the `codex mcp` argv.
 
 interface CodexTasksApi
   The shape of {@link CodexTasks}.
@@ -7833,21 +8360,41 @@ await GeminiTasks.run((s) =>
 const GeminiTasks: GeminiTasksApi
   Typed task functions for the Gemini CLI.
 
+abstract class GeminiCommandSettings extends ToolSettings
+  Shared builder for `gemini <group> …` subcommand groups (`mcp`,
+  `extensions`): name the verb and operands with `.command(...)` and pass
+  anything else with `.flag(...)`.
+
+  override protected defaultTool(): string
+    The underlying executable — `gemini`.
+  abstract protected group(): string
+    The leading subcommand group token, e.g. `"mcp"`.
+  command(...parts: Array<string | number>): this
+    The verb and operands, e.g. `command("add", "my-server")`.
+  flag(name: string, value?: string | number): this
+    Add an arbitrary flag. With a value it renders `--name value`; without one
+    it renders the bare `--name`. Repeatable.
+  override protected buildArgs(): string[]
+    Assemble the `gemini <group> …` argv.
+
 class GeminiExtensionsSettings extends GeminiCommandSettings
   Settings for a `gemini extensions …` invocation (manage extensions).
 
   override protected group(): string
+    The subcommand group token — `extensions`.
 
 class GeminiMcpSettings extends GeminiCommandSettings
   Settings for a `gemini mcp …` invocation (manage MCP servers).
 
   override protected group(): string
+    The subcommand group token — `mcp`.
 
 class GeminiRunSettings extends ToolSettings
   Settings for a non-interactive `gemini --prompt` run — the build-friendly
   way to send a single prompt and capture the response.
 
   override protected defaultTool(): string
+    The underlying executable — `gemini`.
   prompt(text: string): this
     The prompt to run non-interactively (`--prompt`). Required.
   model(id: string): this
@@ -7879,6 +8426,7 @@ class GeminiRunSettings extends ToolSettings
   showMemoryUsage(): this
     Report memory usage in the status bar (`--show-memory-usage`).
   override protected buildArgs(): string[]
+    Assemble the `gemini --prompt` argv.
 
 interface GeminiTasksApi
   The shape of {@link GeminiTasks}.
@@ -7928,6 +8476,7 @@ class TerraformApplySettings extends TerraformSettings
   planFile(path: string): this
     Apply a previously saved plan file (positional argument).
   override protected buildArgs(): string[]
+    Assemble the `terraform apply` argv.
 
 class TerraformDestroySettings extends TerraformSettings
   Settings for `terraform destroy`.
@@ -7939,6 +8488,7 @@ class TerraformDestroySettings extends TerraformSettings
   varFile(path: string): this
     Load variables from a file (`-var-file=`); repeatable.
   override protected buildArgs(): string[]
+    Assemble the `terraform destroy` argv.
 
 class TerraformFmtSettings extends TerraformSettings
   Settings for `terraform fmt`.
@@ -7950,6 +8500,7 @@ class TerraformFmtSettings extends TerraformSettings
   diff(): this
     Show a diff of formatting changes (`-diff`).
   override protected buildArgs(): string[]
+    Assemble the `terraform fmt` argv.
 
 class TerraformInitSettings extends TerraformSettings
   Settings for `terraform init`.
@@ -7963,6 +8514,7 @@ class TerraformInitSettings extends TerraformSettings
   noInput(): this
     Do not prompt for input (`-input=false`).
   override protected buildArgs(): string[]
+    Assemble the `terraform init` argv.
 
 class TerraformOutputSettings extends TerraformSettings
   Settings for `terraform output`.
@@ -7974,6 +8526,7 @@ class TerraformOutputSettings extends TerraformSettings
   name(value: string): this
     Read a single named output (positional argument).
   override protected buildArgs(): string[]
+    Assemble the `terraform output` argv.
 
 class TerraformPlanSettings extends TerraformSettings
   Settings for `terraform plan`.
@@ -7989,6 +8542,13 @@ class TerraformPlanSettings extends TerraformSettings
   noInput(): this
     Do not prompt for input (`-input=false`).
   override protected buildArgs(): string[]
+    Assemble the `terraform plan` argv.
+
+abstract class TerraformSettings extends ToolSettings
+  Base for all `terraform` subcommand settings: binary is `terraform`.
+
+  override protected defaultTool(): string
+    The invoked binary: `terraform`.
 
 class TerraformValidateSettings extends TerraformSettings
   Settings for `terraform validate`.
@@ -7996,6 +8556,7 @@ class TerraformValidateSettings extends TerraformSettings
   json(): this
     Emit machine-readable JSON output (`-json`).
   override protected buildArgs(): string[]
+    Assemble the `terraform validate` argv.
 
 interface TerraformTasksApi
   The shape of {@link TerraformTasks}.
@@ -8047,6 +8608,7 @@ class TofuApplySettings extends TofuSettings
   planFile(path: string): this
     Apply a previously saved plan file (positional argument).
   override protected buildArgs(): string[]
+    Assemble the `tofu apply` argv.
 
 class TofuDestroySettings extends TofuSettings
   Settings for `tofu destroy`.
@@ -8058,6 +8620,7 @@ class TofuDestroySettings extends TofuSettings
   varFile(path: string): this
     Load variables from a file (`-var-file=`); repeatable.
   override protected buildArgs(): string[]
+    Assemble the `tofu destroy` argv.
 
 class TofuFmtSettings extends TofuSettings
   Settings for `tofu fmt`.
@@ -8069,6 +8632,7 @@ class TofuFmtSettings extends TofuSettings
   diff(): this
     Show a diff of formatting changes (`-diff`).
   override protected buildArgs(): string[]
+    Assemble the `tofu fmt` argv.
 
 class TofuInitSettings extends TofuSettings
   Settings for `tofu init`.
@@ -8082,6 +8646,7 @@ class TofuInitSettings extends TofuSettings
   noInput(): this
     Do not prompt for input (`-input=false`).
   override protected buildArgs(): string[]
+    Assemble the `tofu init` argv.
 
 class TofuOutputSettings extends TofuSettings
   Settings for `tofu output`.
@@ -8093,6 +8658,7 @@ class TofuOutputSettings extends TofuSettings
   name(value: string): this
     Read a single named output (positional argument).
   override protected buildArgs(): string[]
+    Assemble the `tofu output` argv.
 
 class TofuPlanSettings extends TofuSettings
   Settings for `tofu plan`.
@@ -8108,6 +8674,13 @@ class TofuPlanSettings extends TofuSettings
   noInput(): this
     Do not prompt for input (`-input=false`).
   override protected buildArgs(): string[]
+    Assemble the `tofu plan` argv.
+
+abstract class TofuSettings extends ToolSettings
+  Base for all `tofu` subcommand settings: binary is `tofu`.
+
+  override protected defaultTool(): string
+    The tool binary is `tofu`.
 
 class TofuValidateSettings extends TofuSettings
   Settings for `tofu validate`.
@@ -8115,6 +8688,7 @@ class TofuValidateSettings extends TofuSettings
   json(): this
     Emit machine-readable JSON output (`-json`).
   override protected buildArgs(): string[]
+    Assemble the `tofu validate` argv.
 
 interface TofuTasksApi
   The shape of {@link TofuTasks}.
@@ -8159,11 +8733,39 @@ class ReleasePleaseGithubReleaseSettings extends ReleasePleaseSettings
   Settings for `release-please github-release` (cut releases and tags).
 
   override protected subcommand(): string
+    The subcommand token, `github-release`.
 
 class ReleasePleaseReleasePrSettings extends ReleasePleaseSettings
   Settings for `release-please release-pr` (maintain the release PR).
 
   override protected subcommand(): string
+    The subcommand token, `release-pr`.
+
+abstract class ReleasePleaseSettings extends ToolSettings
+  Shared base for release-please subcommands. Each subcommand contributes its
+  leading token via {@link subcommand}; the common `--token`/`--repo-url`/… flags
+  live here since `release-pr` and `github-release` accept the same set.
+
+  override protected defaultTool(): string
+    The default binary name, `release-please`.
+  abstract protected subcommand(): string
+    The subcommand token, e.g. `release-pr`.
+  token(value: string): this
+    GitHub access token (`--token`).
+  repoUrl(value: string): this
+    The repository, as `owner/repo` or a URL (`--repo-url`).
+  targetBranch(value: string): this
+    The branch to release from (`--target-branch`).
+  configFile(path: PathLike): this
+    Path to the release-please config file (`--config-file`).
+  manifestFile(path: PathLike): this
+    Path to the release-please manifest file (`--manifest-file`).
+  dryRun(): this
+    Print actions without performing them (`--dry-run`).
+  debug(): this
+    Emit verbose debug logging (`--debug`).
+  override protected buildArgs(): string[]
+    Assemble the `release-please <subcommand>` argv with the common flags.
 
 interface ReleasePleaseTasksApi
   The shape of {@link ReleasePleaseTasks}.
@@ -8197,6 +8799,7 @@ class ActionlintSettings extends ToolSettings
   GitHub Actions workflow files (and the shell embedded in `run:` steps).
 
   override protected defaultTool(): string
+    The binary this settings object drives (`actionlint`).
   files(...paths: PathLike[]): this
     Add an explicit workflow file to lint (positional); repeatable.
   format(template: string): this
@@ -8206,12 +8809,14 @@ class ActionlintSettings extends ToolSettings
   noColor(): this
     Disable colored output (`-no-color`).
   override protected buildArgs(): string[]
+    Assemble the `actionlint` argv.
 
 class GitleaksDetectSettings extends ToolSettings
   Settings for `gitleaks detect` (https://github.com/gitleaks/gitleaks), which
   scans a directory (and, by default, git history) for committed secrets.
 
   override protected defaultTool(): string
+    The binary this settings object drives (`gitleaks`).
   source(path: PathLike): this
     Path to scan (`--source`).
   config(path: PathLike): this
@@ -8227,12 +8832,14 @@ class GitleaksDetectSettings extends ToolSettings
   verbose(): this
     Verbose output (`--verbose`).
   override protected buildArgs(): string[]
+    Assemble the `gitleaks detect` argv.
 
 class OsvScannerSettings extends ToolSettings
   Settings for `osv-scanner` (https://github.com/google/osv-scanner), which
   matches lockfile entries against the OSV vulnerability database.
 
   override protected defaultTool(): string
+    The binary this settings object drives (`osv-scanner`).
   lockfile(path: PathLike): this
     Scan an explicit lockfile (`--lockfile`); repeatable.
   paths(...inputs: PathLike[]): this
@@ -8244,6 +8851,7 @@ class OsvScannerSettings extends ToolSettings
   recursive(): this
     Recurse into subdirectories (`--recursive`).
   override protected buildArgs(): string[]
+    Assemble the `osv-scanner` argv.
 
 class SemgrepScanSettings extends ToolSettings
   Settings for `semgrep scan` (https://github.com/semgrep/semgrep), a static
@@ -8251,6 +8859,7 @@ class SemgrepScanSettings extends ToolSettings
   selects (e.g. `auto` or `p/ci`).
 
   override protected defaultTool(): string
+    The binary this settings object drives (`semgrep`).
   config(value: string): this
     Add a rules config (`--config`), e.g. `auto`, `p/ci`; repeatable.
   paths(...inputs: PathLike[]): this
@@ -8264,6 +8873,7 @@ class SemgrepScanSettings extends ToolSettings
   error(): this
     Exit non-zero when findings are present (`--error`).
   override protected buildArgs(): string[]
+    Assemble the `semgrep scan` argv.
 
 class TrivyConfigSettings extends TrivyReportSettings
   Settings for `trivy config` (https://github.com/aquasecurity/trivy), which
@@ -8273,6 +8883,7 @@ class TrivyConfigSettings extends TrivyReportSettings
   target(path: PathLike): this
     The path to scan (default `.`).
   override protected buildArgs(): string[]
+    Assemble the `trivy config` argv.
 
 class TrivyFsSettings extends TrivyReportSettings
   Settings for `trivy fs` (https://github.com/aquasecurity/trivy), which scans
@@ -8283,6 +8894,23 @@ class TrivyFsSettings extends TrivyReportSettings
   scanners(...values: string[]): this
     Enable specific scanners (`--scanners`), e.g. `vuln`, `secret`, `misconfig`.
   override protected buildArgs(): string[]
+    Assemble the `trivy fs` argv.
+
+abstract class TrivyReportSettings extends ToolSettings
+  Shared options for `trivy` subcommands that produce a report.
+
+  override protected defaultTool(): string
+    The binary the `trivy` subcommands drive (`trivy`).
+  format(value: string): this
+    Report format (`--format`), e.g. `table`, `json`, `sarif`.
+  output(path: PathLike): this
+    Write the report to a file (`--output`).
+  severity(...values: string[]): this
+    Restrict to these severities (`--severity`), e.g. `HIGH`, `CRITICAL`.
+  exitCode(code: number): this
+    Process exit code when issues are found (`--exit-code`).
+  protected reportArgs(): string[]
+    The report flags shared by every `trivy` subcommand, in stable order.
 
 class ZizmorSettings extends ToolSettings
   Settings for `zizmor` (https://github.com/woodruffw/zizmor), a static analyzer
@@ -8290,6 +8918,7 @@ class ZizmorSettings extends ToolSettings
   over-broad permissions, and more).
 
   override protected defaultTool(): string
+    The binary this settings object drives (`zizmor`).
   paths(...inputs: PathLike[]): this
     Add a workflow file or directory to audit (positional); repeatable.
   config(path: PathLike): this
@@ -8303,6 +8932,7 @@ class ZizmorSettings extends ToolSettings
   offline(): this
     Do not perform any network access (`--offline`).
   override protected buildArgs(): string[]
+    Assemble the `zizmor` argv.
 
 interface SecurityTasksApi
   The shape of {@link SecurityTasks}.

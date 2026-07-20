@@ -34,14 +34,15 @@ export type DenoPermission =
   | "import";
 
 /** Base for all `deno` subcommand settings: binary is the running deno. */
-abstract class DenoSettings extends ToolSettings {
+export abstract class DenoSettings extends ToolSettings {
+  /** Default the tool binary to the running `deno` executable. */
   protected override defaultTool(): string {
     return Deno.execPath();
   }
 }
 
 /** Base for subcommands that accept `--allow-*` permission flags. */
-abstract class DenoPermissionSettings extends DenoSettings {
+export abstract class DenoPermissionSettings extends DenoSettings {
   #permissions: string[] = [];
 
   /** Grant all permissions (`--allow-all`). */
@@ -97,6 +98,7 @@ export class DenoRunSettings extends DenoPermissionSettings {
     return this;
   }
 
+  /** Assemble the `deno run` argv. */
   protected override buildArgs(): string[] {
     if (this.#script === undefined) {
       throw new Error("DenoTasks.run: .script() is required.");
@@ -147,6 +149,7 @@ export class DenoTestSettings extends DenoPermissionSettings {
     return this;
   }
 
+  /** Assemble the `deno test` argv. */
   protected override buildArgs(): string[] {
     const argv = ["test", ...this.permissionArgs];
     if (this.#coverage !== undefined) {
@@ -170,6 +173,7 @@ export class DenoCheckSettings extends DenoSettings {
     return this;
   }
 
+  /** Assemble the `deno check` argv. */
   protected override buildArgs(): string[] {
     if (this.#paths.length === 0) {
       throw new Error(
@@ -197,6 +201,7 @@ export class DenoFmtSettings extends DenoSettings {
     return this;
   }
 
+  /** Assemble the `deno fmt` argv. */
   protected override buildArgs(): string[] {
     const argv = ["fmt"];
     if (this.#check) argv.push("--check");
@@ -222,6 +227,7 @@ export class DenoLintSettings extends DenoSettings {
     return this;
   }
 
+  /** Assemble the `deno lint` argv. */
   protected override buildArgs(): string[] {
     const argv = ["lint"];
     if (this.#fix) argv.push("--fix");
@@ -283,6 +289,7 @@ export class DenoDocSettings extends DenoSettings {
     return this;
   }
 
+  /** Assemble the `deno doc` argv. */
   protected override buildArgs(): string[] {
     return ["doc", ...this.#flags, ...this.#paths];
   }
@@ -305,6 +312,7 @@ export class DenoCacheSettings extends DenoSettings {
     return this;
   }
 
+  /** Assemble the `deno cache` argv. */
   protected override buildArgs(): string[] {
     if (this.#paths.length === 0) {
       throw new Error(
@@ -406,6 +414,7 @@ export class DenoCoverageSettings extends DenoSettings {
       this.#perFileThreshold !== undefined;
   }
 
+  /** Assemble the `deno coverage` argv. */
   protected override buildArgs(): string[] {
     const argv = ["coverage"];
     if (this.#dir !== undefined) argv.push(this.#dir);
@@ -462,6 +471,7 @@ export class DenoInstallSettings extends DenoPermissionSettings {
     return this;
   }
 
+  /** Assemble the `deno install` argv. */
   protected override buildArgs(): string[] {
     const argv = ["install", ...this.permissionArgs];
     if (this.#global) argv.push("--global");
@@ -519,6 +529,7 @@ export class DenoPublishSettings extends DenoSettings {
     return this;
   }
 
+  /** Assemble the `deno publish` argv. */
   protected override buildArgs(): string[] {
     const argv = ["publish"];
     if (this.#allowDirty) argv.push("--allow-dirty");
@@ -548,6 +559,7 @@ export class DenoTaskSettings extends DenoSettings {
     return this;
   }
 
+  /** Assemble the `deno task` argv. */
   protected override buildArgs(): string[] {
     if (this.#name === undefined) {
       throw new Error("DenoTasks.task: .name() is required.");

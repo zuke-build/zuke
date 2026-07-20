@@ -17,7 +17,9 @@ export {
   CypressInstallSettings,
   CypressOpenSettings,
   CypressRunSettings,
+  CypressSettings,
   CypressTasks,
   type CypressTasksApi,
+  CypressTestingSettings,
   CypressVerifySettings,
 } from "./src/cypress.ts";

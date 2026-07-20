@@ -53,6 +53,7 @@ class TsdownBuildSettings extends ToolSettings
   Settings for a `tsdown` bundle run (`tsdown [entries] [flags]`).
 
   override protected defaultTool(): string
+    The default executable to run: `tsdown`.
   entry(...paths: PathLike[]): this
     Entry point(s) to bundle (positional); repeatable.
   format(...formats: TsdownFormat[]): this
@@ -80,16 +81,19 @@ class TsdownBuildSettings extends ToolSettings
   treeshake(): this
     Enable tree-shaking of the output (`--treeshake`).
   override protected buildArgs(): string[]
+    Assemble the `tsdown [entries] [flags]` argv.
 
 class TsdownMigrateSettings extends ToolSettings
   Settings for a `tsdown migrate` run (`tsdown migrate [flags]`).
 
   override protected defaultTool(): string
+    The default executable to run: `tsdown`.
   from(value: string): this
     The tool to migrate from, e.g. `tsup` (`--from`).
   dryRun(): this
     Preview the migration without writing any files (`--dry-run`).
   override protected buildArgs(): string[]
+    Assemble the `tsdown migrate [flags]` argv.
 
 interface TsdownTasksApi
   The shape of {@link TsdownTasks}.

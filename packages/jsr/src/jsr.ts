@@ -20,7 +20,8 @@ import { type Configure, runSettings, ToolSettings } from "@zuke/core/tooling";
 import type { CommandOutput } from "@zuke/core/shell";
 
 /** Base for all `jsr` subcommand settings: the binary is `jsr`. */
-abstract class JsrSettings extends ToolSettings {
+export abstract class JsrSettings extends ToolSettings {
+  /** The tool binary is `jsr`. */
   protected override defaultTool(): string {
     return "jsr";
   }
@@ -71,6 +72,7 @@ export class JsrPublishSettings extends JsrSettings {
     return this;
   }
 
+  /** Assemble the `jsr publish` argv. */
   protected override buildArgs(): string[] {
     const argv = ["publish"];
     if (this.#dryRun) argv.push("--dry-run");
@@ -100,6 +102,7 @@ export class JsrAddSettings extends JsrSettings {
     return this;
   }
 
+  /** Assemble the `jsr add` argv. */
   protected override buildArgs(): string[] {
     if (this.#packages.length === 0) {
       throw new Error("JsrTasks.add: .packages() requires at least one spec.");
@@ -121,6 +124,7 @@ export class JsrRemoveSettings extends JsrSettings {
     return this;
   }
 
+  /** Assemble the `jsr remove` argv. */
   protected override buildArgs(): string[] {
     if (this.#packages.length === 0) {
       throw new Error(

@@ -25,7 +25,8 @@ import {
 import type { CommandOutput } from "@zuke/core/shell";
 
 /** Base for all `docker` subcommand settings: the binary is `docker`. */
-abstract class DockerSettings extends ToolSettings {
+export abstract class DockerSettings extends ToolSettings {
+  /** The invoked binary is `docker`. */
   protected override defaultTool(): string {
     return "docker";
   }
@@ -97,6 +98,7 @@ export class DockerBuildSettings extends DockerSettings {
     return this;
   }
 
+  /** Assemble the `docker build` argv. */
   protected override buildArgs(): string[] {
     const argv = ["build"];
     for (const t of this.#tags) argv.push("-t", t);
@@ -192,6 +194,7 @@ export class DockerRunSettings extends DockerSettings {
     return this;
   }
 
+  /** Assemble the `docker run` argv. */
   protected override buildArgs(): string[] {
     if (this.#image === undefined) {
       throw new Error("DockerTasks.run: .image() is required.");
@@ -254,6 +257,7 @@ export class DockerExecSettings extends DockerSettings {
     return this;
   }
 
+  /** Assemble the `docker exec` argv. */
   protected override buildArgs(): string[] {
     if (this.#container === undefined) {
       throw new Error("DockerTasks.exec: .container() is required.");
@@ -285,6 +289,7 @@ export class DockerPushSettings extends DockerSettings {
     return this;
   }
 
+  /** Assemble the `docker push` argv. */
   protected override buildArgs(): string[] {
     if (this.#image === undefined) {
       throw new Error("DockerTasks.push: .image() is required.");
@@ -320,6 +325,7 @@ export class DockerPullSettings extends DockerSettings {
     return this;
   }
 
+  /** Assemble the `docker pull` argv. */
   protected override buildArgs(): string[] {
     if (this.#image === undefined) {
       throw new Error("DockerTasks.pull: .image() is required.");
@@ -349,6 +355,7 @@ export class DockerTagSettings extends DockerSettings {
     return this;
   }
 
+  /** Assemble the `docker tag` argv. */
   protected override buildArgs(): string[] {
     if (this.#source === undefined || this.#target === undefined) {
       throw new Error("DockerTasks.tag: .source() and .target() are required.");
@@ -388,6 +395,7 @@ export class DockerLoginSettings extends DockerSettings {
     return this;
   }
 
+  /** Assemble the `docker login` argv. */
   protected override buildArgs(): string[] {
     const argv = ["login"];
     if (this.#username !== undefined) argv.push("-u", this.#username);
@@ -429,6 +437,7 @@ export class DockerImagesSettings extends DockerSettings {
     return this;
   }
 
+  /** Assemble the `docker images` argv. */
   protected override buildArgs(): string[] {
     const argv = ["images"];
     if (this.#all) argv.push("-a");
@@ -463,6 +472,7 @@ export class DockerPsSettings extends DockerSettings {
     return this;
   }
 
+  /** Assemble the `docker ps` argv. */
   protected override buildArgs(): string[] {
     const argv = ["ps"];
     if (this.#all) argv.push("-a");
@@ -489,6 +499,7 @@ export class DockerStopSettings extends DockerSettings {
     return this;
   }
 
+  /** Assemble the `docker stop` argv. */
   protected override buildArgs(): string[] {
     if (this.#containers.length === 0) {
       throw new Error("DockerTasks.stop: at least one container is required.");
@@ -517,6 +528,7 @@ export class DockerStartSettings extends DockerSettings {
     return this;
   }
 
+  /** Assemble the `docker start` argv. */
   protected override buildArgs(): string[] {
     if (this.#containers.length === 0) {
       throw new Error("DockerTasks.start: at least one container is required.");
@@ -552,6 +564,7 @@ export class DockerRmSettings extends DockerSettings {
     return this;
   }
 
+  /** Assemble the `docker rm` argv. */
   protected override buildArgs(): string[] {
     if (this.#containers.length === 0) {
       throw new Error("DockerTasks.rm: at least one container is required.");
@@ -581,6 +594,7 @@ export class DockerRmiSettings extends DockerSettings {
     return this;
   }
 
+  /** Assemble the `docker rmi` argv. */
   protected override buildArgs(): string[] {
     if (this.#images.length === 0) {
       throw new Error("DockerTasks.rmi: at least one image is required.");
@@ -609,6 +623,7 @@ export class DockerSaveSettings extends DockerSettings {
     return this;
   }
 
+  /** Assemble the `docker save` argv. */
   protected override buildArgs(): string[] {
     if (this.#images.length === 0) {
       throw new Error("DockerTasks.save: at least one image is required.");
@@ -637,6 +652,7 @@ export class DockerLoadSettings extends DockerSettings {
     return this;
   }
 
+  /** Assemble the `docker load` argv. */
   protected override buildArgs(): string[] {
     const argv = ["load"];
     if (this.#input !== undefined) argv.push("-i", this.#input);

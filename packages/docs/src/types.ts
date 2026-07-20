@@ -58,6 +58,36 @@ export interface ApiDocsOptions {
   regenerateCommand?: string;
 }
 
+/**
+ * One package's `deno doc --lint` output plus the type names it imports from
+ * other `@zuke/*` packages, fed into {@link DocsTasksApi.checkDocLint}. The
+ * caller runs the linter and scans the package's imports, so `@zuke/docs` never
+ * runs `deno`.
+ */
+export interface DocLintReport {
+  /** The package identifier, surfaced in violations (e.g. `@zuke/kubectl`). */
+  pkg: string;
+  /** The raw `deno doc --lint` output for the package's entrypoints. */
+  output: string;
+  /**
+   * The local names the package imports from another `@zuke/*` package. A
+   * `private-type-ref` to one of these is the accepted residual (guideline 4);
+   * a ref to any other type is a defect (the type is first-party and must be
+   * exported).
+   */
+  crossPackageTypes: string[];
+}
+
+/** A documentation-lint defect, tied to the package it was found in. */
+export interface DocLintViolation {
+  /** The package the defect is in. */
+  pkg: string;
+  /** The lint rule, e.g. `"missing-jsdoc"` or `"private-type-ref"`. */
+  kind: string;
+  /** The diagnostic's headline message. */
+  message: string;
+}
+
 /** The shape of {@link DocsTasks}. */
 export interface DocsTasksApi {
   /**
@@ -71,4 +101,12 @@ export interface DocsTasksApi {
    * (empty when everything is current). Writes nothing.
    */
   checkApiDocs(docs: PackageDoc[], options?: ApiDocsOptions): Promise<string[]>;
+  /**
+   * Classify `deno doc --lint` output across packages into real defects: every
+   * `missing-jsdoc`, plus every `private-type-ref` whose referenced type is not
+   * an accepted cross-package import (in the report's `crossPackageTypes`).
+   * Fails safe — any other referenced type is treated as a first-party leak.
+   * Pure: the caller runs the linter; this classifies. Empty when clean.
+   */
+  checkDocLint(reports: DocLintReport[]): DocLintViolation[];
 }

@@ -25,13 +25,14 @@ import {
 import type { CommandOutput } from "@zuke/core/shell";
 
 /** Shared options for a `dprint` subcommand (`fmt` or `check`). */
-abstract class DprintSettings extends ToolSettings {
+export abstract class DprintSettings extends ToolSettings {
   #config?: string;
   #files: string[] = [];
   #excludes: string[] = [];
   #incremental = false;
   #allowNoFiles = false;
 
+  /** The default executable this settings class invokes: `dprint`. */
   protected override defaultTool(): string {
     return "dprint";
   }
@@ -69,6 +70,7 @@ abstract class DprintSettings extends ToolSettings {
     return this;
   }
 
+  /** Assemble the `dprint <subcommand>` argv from the configured options. */
   protected override buildArgs(): string[] {
     const argv = [this.subcommand()];
     if (this.#config !== undefined) argv.push("-c", this.#config);
@@ -82,6 +84,7 @@ abstract class DprintSettings extends ToolSettings {
 
 /** Settings for `dprint fmt` (format files in place). */
 export class DprintFmtSettings extends DprintSettings {
+  /** The dprint subcommand this settings class runs: `fmt`. */
   protected override subcommand(): string {
     return "fmt";
   }
@@ -89,6 +92,7 @@ export class DprintFmtSettings extends DprintSettings {
 
 /** Settings for `dprint check` (verify formatting without writing). */
 export class DprintCheckSettings extends DprintSettings {
+  /** The dprint subcommand this settings class runs: `check`. */
   protected override subcommand(): string {
     return "check";
   }

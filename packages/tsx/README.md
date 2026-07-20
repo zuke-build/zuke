@@ -45,10 +45,35 @@ await TsxTasks.tsx((s) => s.script("src/main.ts").tsconfig("tsconfig.json"));
 const TsxTasks: TsxTasksApi
   Typed task functions for the `tsx` TypeScript runner.
 
+abstract class TsxCommonSettings extends ToolSettings
+  Options shared by every `tsx` invocation: the entry point and how to load it.
+
+  override protected defaultTool(): string
+    The underlying executable: `tsx`.
+  script(path: PathLike): this
+    The entry point to execute (required).
+  scriptArgs(...args: Array<string | number>): this
+    Arguments passed to the script (after the entry point).
+  tsconfig(path: PathLike): this
+    Use an explicit `tsconfig.json` (`--tsconfig`).
+  envFile(path: PathLike): this
+    Load environment variables from a file (`--env-file`).
+  noCache(): this
+    Disable the file-system transpile cache (`--no-cache`).
+  noWarnings(): this
+    Suppress Node warnings (`--no-warnings`).
+  conditions(...names: string[]): this
+    Custom export conditions to resolve (`--conditions`); repeatable.
+  importModule(...modules: string[]): this
+    Preload a module before the entry point (`--import`); repeatable.
+  protected entryArgs(): string[]
+    The option flags, then the required entry point and its arguments.
+
 class TsxSettings extends TsxCommonSettings
   Settings for `tsx <file>`.
 
   override protected buildArgs(): string[]
+    Assemble the `tsx <file>` argv.
 
 class TsxWatchSettings extends TsxCommonSettings
   Settings for `tsx watch <file>`.
@@ -60,6 +85,7 @@ class TsxWatchSettings extends TsxCommonSettings
   exclude(...paths: PathLike[]): this
     Paths to ignore while watching (`--exclude`); repeatable.
   override protected buildArgs(): string[]
+    Assemble the `tsx watch <file>` argv.
 
 interface TsxTasksApi
   The shape of {@link TsxTasks}.

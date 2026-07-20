@@ -32,7 +32,8 @@ import {
 import type { CommandOutput } from "@zuke/core/shell";
 
 /** Shared base for every `node` task: it pins the binary to `node`. */
-abstract class NodeSettings extends ToolSettings {
+export abstract class NodeSettings extends ToolSettings {
+  /** Pin the tool binary to `node`. */
   protected override defaultTool(): string {
     return "node";
   }
@@ -127,6 +128,7 @@ export class NodeRunSettings extends NodeSettings {
     return this;
   }
 
+  /** Assemble the `node [options] <script> [args]` argv. */
   protected override buildArgs(): string[] {
     if (this.#script === undefined) {
       throw new Error("NodeTasks.run: .script() is required.");
@@ -178,6 +180,7 @@ export class NodeEvalSettings extends NodeSettings {
     return this;
   }
 
+  /** Assemble the `node --eval <code>` (or `--print`) argv. */
   protected override buildArgs(): string[] {
     if (this.#code === undefined) {
       throw new Error("NodeTasks.eval: .code() is required.");
@@ -243,6 +246,7 @@ export class NodeTestSettings extends NodeSettings {
     return this;
   }
 
+  /** Assemble the `node --test [paths] [flags]` argv. */
   protected override buildArgs(): string[] {
     const argv = ["--test"];
     if (this.#testNamePattern !== undefined) {

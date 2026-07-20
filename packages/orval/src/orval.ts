@@ -42,6 +42,7 @@ export class OrvalGenerateSettings extends ToolSettings {
   #biome = false;
   #mock = false;
 
+  /** The executable this settings object runs: `orval`. */
   protected override defaultTool(): string {
     return "orval";
   }
@@ -100,6 +101,7 @@ export class OrvalGenerateSettings extends ToolSettings {
     return this;
   }
 
+  /** Assemble the `orval` argv from the configured flags. */
   protected override buildArgs(): string[] {
     const argv: string[] = [];
     if (this.#config !== undefined) argv.push("--config", this.#config);

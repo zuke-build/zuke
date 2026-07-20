@@ -47,6 +47,7 @@ class VitestSettings extends ToolSettings
   Settings for a `vitest` run.
 
   override protected defaultTool(): string
+    The underlying tool binary (`vitest`).
   filters(...values: string[]): this
     Filename filters matched against test files (positional); repeatable.
   watch(): this
@@ -86,6 +87,7 @@ class VitestSettings extends ToolSettings
   silent(): this
     Suppress test console output (`--silent`).
   override protected buildArgs(): string[]
+    Assemble the `vitest run`/`vitest watch` argv.
 
 interface VitestTasksApi
   The shape of {@link VitestTasks}.

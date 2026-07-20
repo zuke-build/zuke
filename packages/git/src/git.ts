@@ -28,10 +28,11 @@ import {
 import type { CommandOutput } from "@zuke/core/shell";
 
 /** Shared base for every `git` subcommand: the binary and global options. */
-abstract class GitSettings extends ToolSettings {
+export abstract class GitSettings extends ToolSettings {
   #dir?: string;
   #configs: string[] = [];
 
+  /** The default tool binary: `git`. */
   protected override defaultTool(): string {
     return "git";
   }
@@ -51,6 +52,7 @@ abstract class GitSettings extends ToolSettings {
     return this;
   }
 
+  /** Assemble the `git` argv: global options followed by the subcommand. */
   protected override buildArgs(): string[] {
     const argv: string[] = [];
     if (this.#dir !== undefined) argv.push("-C", this.#dir);
@@ -77,6 +79,7 @@ export class GitInitSettings extends GitSettings {
     return this;
   }
 
+  /** Assemble the `git init` argv. */
   protected override subcommandArgs(): string[] {
     const argv = ["init"];
     if (this.#bare) argv.push("--bare");
@@ -125,6 +128,7 @@ export class GitCloneSettings extends GitSettings {
     return this;
   }
 
+  /** Assemble the `git clone` argv. */
   protected override subcommandArgs(): string[] {
     if (this.#repository === undefined) {
       throw new Error("GitTasks.clone: .repository() is required.");
@@ -163,6 +167,7 @@ export class GitAddSettings extends GitSettings {
     return this;
   }
 
+  /** Assemble the `git add` argv. */
   protected override subcommandArgs(): string[] {
     const argv = ["add"];
     if (this.#all) argv.push("--all");
@@ -212,6 +217,7 @@ export class GitCommitSettings extends GitSettings {
     return this;
   }
 
+  /** Assemble the `git commit` argv. */
   protected override subcommandArgs(): string[] {
     const argv = ["commit"];
     if (this.#all) argv.push("--all");
@@ -247,6 +253,7 @@ export class GitStatusSettings extends GitSettings {
     return this;
   }
 
+  /** Assemble the `git status` argv. */
   protected override subcommandArgs(): string[] {
     const argv = ["status"];
     if (this.#short) argv.push("--short");
@@ -280,6 +287,7 @@ export class GitCheckoutSettings extends GitSettings {
     return this;
   }
 
+  /** Assemble the `git checkout` argv. */
   protected override subcommandArgs(): string[] {
     if (this.#ref === undefined) {
       throw new Error("GitTasks.checkout: .ref() is required.");
@@ -316,6 +324,7 @@ export class GitBranchSettings extends GitSettings {
     return this;
   }
 
+  /** Assemble the `git branch` argv. */
   protected override subcommandArgs(): string[] {
     const argv = ["branch"];
     if (this.#delete !== undefined) {
@@ -358,6 +367,7 @@ export class GitTagSettings extends GitSettings {
     return this;
   }
 
+  /** Assemble the `git tag` argv. */
   protected override subcommandArgs(): string[] {
     const argv = ["tag"];
     if (this.#delete) argv.push("--delete");
@@ -413,6 +423,7 @@ export class GitPushSettings extends GitSettings {
     return this;
   }
 
+  /** Assemble the `git push` argv. */
   protected override subcommandArgs(): string[] {
     const argv = ["push"];
     if (this.#setUpstream) argv.push("--set-upstream");
@@ -456,6 +467,7 @@ export class GitPullSettings extends GitSettings {
     return this;
   }
 
+  /** Assemble the `git pull` argv. */
   protected override subcommandArgs(): string[] {
     const argv = ["pull"];
     if (this.#rebase) argv.push("--rebase");
@@ -497,6 +509,7 @@ export class GitFetchSettings extends GitSettings {
     return this;
   }
 
+  /** Assemble the `git fetch` argv. */
   protected override subcommandArgs(): string[] {
     const argv = ["fetch"];
     if (this.#all) argv.push("--all");
@@ -517,6 +530,7 @@ export class GitRunSettings extends GitSettings {
     return this;
   }
 
+  /** Assemble the arbitrary `git` subcommand argv from `.command(...)`. */
   protected override subcommandArgs(): string[] {
     return [...this.#command];
   }

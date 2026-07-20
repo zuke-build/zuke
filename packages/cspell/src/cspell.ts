@@ -40,6 +40,7 @@ export class CspellSettings extends ToolSettings {
   #excludes: string[] = [];
   #maxDuplicateProblems?: number;
 
+  /** The default executable name (`cspell`). */
   protected override defaultTool(): string {
     return "cspell";
   }
@@ -128,6 +129,7 @@ export class CspellSettings extends ToolSettings {
     return this;
   }
 
+  /** Assemble the `cspell lint` argv. */
   protected override buildArgs(): string[] {
     const argv = ["lint"];
     if (this.#config !== undefined) argv.push("-c", this.#config);

@@ -28,13 +28,14 @@ import type { CommandOutput } from "@zuke/core/shell";
  * common filters (config path, reporter, `--staged`, `--changed`) plus the
  * trailing path arguments are shared by every subcommand.
  */
-abstract class BiomeSettings extends ToolSettings {
+export abstract class BiomeSettings extends ToolSettings {
   #paths: string[] = [];
   #config?: string;
   #reporter?: string;
   #staged = false;
   #changed = false;
 
+  /** The tool binary: `biome`. */
   protected override defaultTool(): string {
     return "biome";
   }
@@ -102,6 +103,7 @@ export class BiomeCheckSettings extends BiomeSettings {
     return this;
   }
 
+  /** Assemble the `biome check` argv. */
   protected override buildArgs(): string[] {
     const argv = ["check", ...this.flagArgs()];
     if (this.#write) argv.push("--write");
@@ -121,6 +123,7 @@ export class BiomeFormatSettings extends BiomeSettings {
     return this;
   }
 
+  /** Assemble the `biome format` argv. */
   protected override buildArgs(): string[] {
     const argv = ["format", ...this.flagArgs()];
     if (this.#write) argv.push("--write");
@@ -146,6 +149,7 @@ export class BiomeLintSettings extends BiomeSettings {
     return this;
   }
 
+  /** Assemble the `biome lint` argv. */
   protected override buildArgs(): string[] {
     const argv = ["lint", ...this.flagArgs()];
     if (this.#write) argv.push("--write");
@@ -157,6 +161,7 @@ export class BiomeLintSettings extends BiomeSettings {
 
 /** Settings for `biome ci` (read-only check tuned for CI). */
 export class BiomeCiSettings extends BiomeSettings {
+  /** Assemble the `biome ci` argv. */
   protected override buildArgs(): string[] {
     return ["ci", ...this.flagArgs(), ...this.pathArgs()];
   }

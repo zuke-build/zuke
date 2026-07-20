@@ -16,6 +16,7 @@ export {
   NxAffectedSettings,
   NxRunManySettings,
   NxRunSettings,
+  NxSettings,
   NxTasks,
   type NxTasksApi,
 } from "./src/nx.ts";

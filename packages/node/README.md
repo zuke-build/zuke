@@ -58,6 +58,7 @@ class NodeEvalSettings extends NodeSettings
   print(): this
     Print the result of the evaluated code (`--print` instead of `--eval`).
   override protected buildArgs(): string[]
+    Assemble the `node --eval <code>` (or `--print`) argv.
 
 class NodeRunSettings extends NodeSettings
   Settings for `node [options] <script> [args]`.
@@ -87,6 +88,13 @@ class NodeRunSettings extends NodeSettings
   maxOldSpaceSize(megabytes: number): this
     Set the V8 old-space memory limit in MiB (`--max-old-space-size=<n>`).
   override protected buildArgs(): string[]
+    Assemble the `node [options] <script> [args]` argv.
+
+abstract class NodeSettings extends ToolSettings
+  Shared base for every `node` task: it pins the binary to `node`.
+
+  override protected defaultTool(): string
+    Pin the tool binary to `node`.
 
 class NodeTestSettings extends NodeSettings
   Settings for `node --test [paths] [flags]`.
@@ -106,6 +114,7 @@ class NodeTestSettings extends NodeSettings
   experimentalTestCoverage(): this
     Collect and report test coverage (`--experimental-test-coverage`).
   override protected buildArgs(): string[]
+    Assemble the `node --test [paths] [flags]` argv.
 
 interface NodeTasksApi
   The shape of {@link NodeTasks}.

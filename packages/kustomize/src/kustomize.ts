@@ -25,7 +25,8 @@ import {
 import type { CommandOutput } from "@zuke/core/shell";
 
 /** Base for all `kustomize` subcommand settings: the binary is `kustomize`. */
-abstract class KustomizeSettings extends ToolSettings {
+export abstract class KustomizeSettings extends ToolSettings {
+  /** The binary these settings invoke: `kustomize`. */
   protected override defaultTool(): string {
     return "kustomize";
   }
@@ -62,6 +63,7 @@ export class KustomizeBuildSettings extends KustomizeSettings {
     return this;
   }
 
+  /** Assemble the `kustomize build` argv. */
   protected override buildArgs(): string[] {
     const argv = ["build"];
     if (this.#dir !== undefined) argv.push(this.#dir);
@@ -87,6 +89,7 @@ export class KustomizeEditSetImageSettings extends KustomizeSettings {
     return this;
   }
 
+  /** Assemble the `kustomize edit set image` argv. */
   protected override buildArgs(): string[] {
     if (this.#images.length === 0) {
       throw new Error(

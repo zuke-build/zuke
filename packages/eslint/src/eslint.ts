@@ -43,6 +43,7 @@ export class EslintSettings extends ToolSettings {
   #noConfigLookup = false;
   #reportUnusedDisableDirectives = false;
 
+  /** The default executable this settings object runs (`eslint`). */
   protected override defaultTool(): string {
     return "eslint";
   }
@@ -149,6 +150,7 @@ export class EslintSettings extends ToolSettings {
     return this;
   }
 
+  /** Assemble the `eslint` argv from the configured settings. */
   protected override buildArgs(): string[] {
     const argv: string[] = [];
     if (this.#config !== undefined) argv.push("-c", this.#config);

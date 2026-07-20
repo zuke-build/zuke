@@ -22,7 +22,8 @@ export type NpmOmitType = "dev" | "optional" | "peer";
 export type NpmAccess = "public" | "restricted";
 
 /** Base for all `npm` subcommand settings: binary is `npm` from PATH. */
-abstract class NpmSettings extends ToolSettings {
+export abstract class NpmSettings extends ToolSettings {
+  /** The default binary: `npm` resolved from PATH. */
   protected override defaultTool(): string {
     return "npm";
   }
@@ -52,6 +53,7 @@ export class NpmInstallSettings extends NpmSettings {
     return this;
   }
 
+  /** Assemble the `npm install` argv. */
   protected override buildArgs(): string[] {
     const argv = ["install"];
     if (this.#saveDev) argv.push("--save-dev");
@@ -71,6 +73,7 @@ export class NpmCiSettings extends NpmSettings {
     return this;
   }
 
+  /** Assemble the `npm ci` argv. */
   protected override buildArgs(): string[] {
     return ["ci", ...this.#omit.map((t) => `--omit=${t}`)];
   }
@@ -118,6 +121,7 @@ export class NpmRunSettings extends NpmSettings {
     return this;
   }
 
+  /** Assemble the `npm run` argv. */
   protected override buildArgs(): string[] {
     if (this.#script === undefined) {
       throw new Error("NpmTasks.run: .script() is required.");
@@ -171,6 +175,7 @@ export class NpmExecSettings extends NpmSettings {
     return this;
   }
 
+  /** Assemble the `npm exec` argv. */
   protected override buildArgs(): string[] {
     if (this.#command === undefined) {
       throw new Error("NpmTasks.exec: .command() is required.");
@@ -215,6 +220,7 @@ export class NpmPublishSettings extends NpmSettings {
     return this;
   }
 
+  /** Assemble the `npm publish` argv. */
   protected override buildArgs(): string[] {
     const argv = ["publish"];
     if (this.#tag !== undefined) argv.push(`--tag=${this.#tag}`);
@@ -249,6 +255,7 @@ export class NpmVersionSettings extends NpmSettings {
     return this;
   }
 
+  /** Assemble the `npm version` argv. */
   protected override buildArgs(): string[] {
     if (this.#bump === undefined) {
       throw new Error("NpmTasks.version: .bump() is required.");

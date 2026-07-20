@@ -19,7 +19,8 @@ import { type Configure, runSettings, ToolSettings } from "@zuke/core/tooling";
 import type { CommandOutput } from "@zuke/core/shell";
 
 /** Base for all Playwright subcommand settings: binary is `playwright`. */
-abstract class PlaywrightSettings extends ToolSettings {
+export abstract class PlaywrightSettings extends ToolSettings {
+  /** The tool binary invoked by all Playwright subcommands: `playwright`. */
   protected override defaultTool(): string {
     return "playwright";
   }
@@ -77,6 +78,7 @@ export class PlaywrightTestSettings extends PlaywrightSettings {
     return this;
   }
 
+  /** Assemble the `playwright test` argv. */
   protected override buildArgs(): string[] {
     const argv = ["test"];
     for (const p of this.#projects) argv.push(`--project=${p}`);
@@ -107,6 +109,7 @@ export class PlaywrightInstallSettings extends PlaywrightSettings {
     return this;
   }
 
+  /** Assemble the `playwright install` argv. */
   protected override buildArgs(): string[] {
     const argv = ["install"];
     if (this.#withDeps) argv.push("--with-deps");
@@ -125,6 +128,7 @@ export class PlaywrightShowReportSettings extends PlaywrightSettings {
     return this;
   }
 
+  /** Assemble the `playwright show-report` argv. */
   protected override buildArgs(): string[] {
     const argv = ["show-report"];
     if (this.#dir !== undefined) argv.push(this.#dir);
@@ -156,6 +160,7 @@ export class PlaywrightCodegenSettings extends PlaywrightSettings {
     return this;
   }
 
+  /** Assemble the `playwright codegen` argv. */
   protected override buildArgs(): string[] {
     const argv = ["codegen"];
     if (this.#target !== undefined) argv.push(`--target=${this.#target}`);

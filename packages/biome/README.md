@@ -41,11 +41,13 @@ class BiomeCheckSettings extends BiomeSettings
   unsafe(): this
     Also apply unsafe fixes; implies writing (`--unsafe`).
   override protected buildArgs(): string[]
+    Assemble the `biome check` argv.
 
 class BiomeCiSettings extends BiomeSettings
   Settings for `biome ci` (read-only check tuned for CI).
 
   override protected buildArgs(): string[]
+    Assemble the `biome ci` argv.
 
 class BiomeFormatSettings extends BiomeSettings
   Settings for `biome format`.
@@ -53,6 +55,7 @@ class BiomeFormatSettings extends BiomeSettings
   write(): this
     Write formatting changes back to disk (`--write`).
   override protected buildArgs(): string[]
+    Assemble the `biome format` argv.
 
 class BiomeLintSettings extends BiomeSettings
   Settings for `biome lint`.
@@ -62,6 +65,29 @@ class BiomeLintSettings extends BiomeSettings
   unsafe(): this
     Also apply unsafe fixes; implies writing (`--unsafe`).
   override protected buildArgs(): string[]
+    Assemble the `biome lint` argv.
+
+abstract class BiomeSettings extends ToolSettings
+  Base for all `biome` subcommand settings: the binary is `biome`, and the
+  common filters (config path, reporter, `--staged`, `--changed`) plus the
+  trailing path arguments are shared by every subcommand.
+
+  override protected defaultTool(): string
+    The tool binary: `biome`.
+  paths(...paths: PathLike[]): this
+    Files or directories to operate on; omit to use the configured includes.
+  config(path: PathLike): this
+    Use an explicit configuration file (`--config-path`).
+  reporter(name: string): this
+    Choose the diagnostics reporter, e.g. `github` or `json` (`--reporter`).
+  staged(): this
+    Restrict to files staged in git (`--staged`).
+  changed(): this
+    Restrict to files changed against the VCS base (`--changed`).
+  protected flagArgs(): string[]
+    The shared flag arguments (before paths).
+  protected pathArgs(): string[]
+    The trailing path arguments.
 
 interface BiomeTasksApi
   The shape of {@link BiomeTasks}.

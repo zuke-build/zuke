@@ -51,6 +51,7 @@ class TerraformApplySettings extends TerraformSettings
   planFile(path: string): this
     Apply a previously saved plan file (positional argument).
   override protected buildArgs(): string[]
+    Assemble the `terraform apply` argv.
 
 class TerraformDestroySettings extends TerraformSettings
   Settings for `terraform destroy`.
@@ -62,6 +63,7 @@ class TerraformDestroySettings extends TerraformSettings
   varFile(path: string): this
     Load variables from a file (`-var-file=`); repeatable.
   override protected buildArgs(): string[]
+    Assemble the `terraform destroy` argv.
 
 class TerraformFmtSettings extends TerraformSettings
   Settings for `terraform fmt`.
@@ -73,6 +75,7 @@ class TerraformFmtSettings extends TerraformSettings
   diff(): this
     Show a diff of formatting changes (`-diff`).
   override protected buildArgs(): string[]
+    Assemble the `terraform fmt` argv.
 
 class TerraformInitSettings extends TerraformSettings
   Settings for `terraform init`.
@@ -86,6 +89,7 @@ class TerraformInitSettings extends TerraformSettings
   noInput(): this
     Do not prompt for input (`-input=false`).
   override protected buildArgs(): string[]
+    Assemble the `terraform init` argv.
 
 class TerraformOutputSettings extends TerraformSettings
   Settings for `terraform output`.
@@ -97,6 +101,7 @@ class TerraformOutputSettings extends TerraformSettings
   name(value: string): this
     Read a single named output (positional argument).
   override protected buildArgs(): string[]
+    Assemble the `terraform output` argv.
 
 class TerraformPlanSettings extends TerraformSettings
   Settings for `terraform plan`.
@@ -112,6 +117,13 @@ class TerraformPlanSettings extends TerraformSettings
   noInput(): this
     Do not prompt for input (`-input=false`).
   override protected buildArgs(): string[]
+    Assemble the `terraform plan` argv.
+
+abstract class TerraformSettings extends ToolSettings
+  Base for all `terraform` subcommand settings: binary is `terraform`.
+
+  override protected defaultTool(): string
+    The invoked binary: `terraform`.
 
 class TerraformValidateSettings extends TerraformSettings
   Settings for `terraform validate`.
@@ -119,6 +131,7 @@ class TerraformValidateSettings extends TerraformSettings
   json(): this
     Emit machine-readable JSON output (`-json`).
   override protected buildArgs(): string[]
+    Assemble the `terraform validate` argv.
 
 interface TerraformTasksApi
   The shape of {@link TerraformTasks}.

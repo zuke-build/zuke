@@ -41,6 +41,7 @@ export class CodecovUploadSettings extends ToolSettings {
   #failOnError = false;
   #dryRun = false;
 
+  /** The Codecov CLI binary this settings class drives. */
   protected override defaultTool(): string {
     return "codecovcli";
   }
@@ -147,6 +148,7 @@ export class CodecovUploadSettings extends ToolSettings {
     return this;
   }
 
+  /** Assemble the `codecovcli upload-process` argv. */
   protected override buildArgs(): string[] {
     const argv = ["upload-process"];
     if (this.#token !== undefined) argv.push("--token", this.#token);

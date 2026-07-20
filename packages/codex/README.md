@@ -65,6 +65,7 @@ class CodexExecSettings extends ToolSettings
   send a single prompt and capture the response.
 
   override protected defaultTool(): string
+    The executable this settings class drives (`codex`).
   prompt(text: string): this
     The prompt to run non-interactively. Omit to read from stdin.
   model(id: string): this
@@ -98,18 +99,21 @@ class CodexExecSettings extends ToolSettings
   oss(): this
     Use a local open-source model provider (`--oss`).
   override protected buildArgs(): string[]
+    Assemble the `codex exec` argv.
 
 class CodexMcpSettings extends ToolSettings
   Settings for a `codex mcp …` invocation (manage MCP servers): name the verb
   and operands with `.command(...)` and pass anything else with `.flag(...)`.
 
   override protected defaultTool(): string
+    The executable this settings class drives (`codex`).
   command(...parts: Array<string | number>): this
     The verb and operands, e.g. `command("add", "my-server")`.
   flag(name: string, value?: string | number): this
     Add an arbitrary flag. With a value it renders `--name value`; without one
     it renders the bare `--name`. Repeatable.
   override protected buildArgs(): string[]
+    Assemble the `codex mcp` argv.
 
 interface CodexTasksApi
   The shape of {@link CodexTasks}.

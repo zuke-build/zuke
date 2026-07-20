@@ -45,6 +45,7 @@ class OrvalGenerateSettings extends ToolSettings
   Settings for an `orval` generation run.
 
   override protected defaultTool(): string
+    The executable this settings object runs: `orval`.
   config(value: PathLike): this
     Configuration file to load settings from (`-c`/`--config`).
   project(value: string): this
@@ -64,6 +65,7 @@ class OrvalGenerateSettings extends ToolSettings
   mock(): this
     Generate mocks alongside the client (`--mock`).
   override protected buildArgs(): string[]
+    Assemble the `orval` argv from the configured flags.
 
 interface OrvalTasksApi
   The shape of {@link OrvalTasks}.

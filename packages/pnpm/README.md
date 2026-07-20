@@ -45,6 +45,7 @@ class PnpmAddSettings extends PnpmSettings
   global(): this
     Install globally (`--global`).
   override protected buildArgs(): string[]
+    Assemble the `pnpm add` argv.
 
 class PnpmDlxSettings extends PnpmSettings
   Settings for `pnpm dlx`.
@@ -56,6 +57,7 @@ class PnpmDlxSettings extends PnpmSettings
   execArgs(...args: Array<string | number>): this
     Arguments forwarded to the command.
   override protected buildArgs(): string[]
+    Assemble the `pnpm dlx` argv.
 
 class PnpmInstallSettings extends PnpmSettings
   Settings for `pnpm install`.
@@ -65,6 +67,7 @@ class PnpmInstallSettings extends PnpmSettings
   prod(): this
     Install without devDependencies (`--prod`).
   override protected buildArgs(): string[]
+    Assemble the `pnpm install` argv.
 
 class PnpmPublishSettings extends PnpmSettings
   Settings for `pnpm publish`.
@@ -78,6 +81,7 @@ class PnpmPublishSettings extends PnpmSettings
   dryRun(): this
     Report what would be published without uploading (`--dry-run`).
   override protected buildArgs(): string[]
+    Assemble the `pnpm publish` argv.
 
 class PnpmRemoveSettings extends PnpmSettings
   Settings for `pnpm remove`.
@@ -85,6 +89,7 @@ class PnpmRemoveSettings extends PnpmSettings
   packages(...names: string[]): this
     Package names to remove (required).
   override protected buildArgs(): string[]
+    Assemble the `pnpm remove` argv.
 
 class PnpmRunSettings extends PnpmSettings
   Settings for `pnpm run`.
@@ -98,6 +103,13 @@ class PnpmRunSettings extends PnpmSettings
   scriptArgs(...args: Array<string | number>): this
     Arguments forwarded to the script.
   override protected buildArgs(): string[]
+    Assemble the `pnpm run` argv.
+
+abstract class PnpmSettings extends ToolSettings
+  Base for all `pnpm` subcommand settings: binary is `pnpm` from PATH.
+
+  override protected defaultTool(): string
+    The default binary: `pnpm` resolved from PATH.
 
 interface PnpmTasksApi
   The shape of {@link PnpmTasks}.

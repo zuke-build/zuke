@@ -23,7 +23,8 @@ import {
 import type { CommandOutput } from "@zuke/core/shell";
 
 /** Base for all `turbo` subcommand settings: the binary is `turbo`. */
-abstract class TurboSettings extends ToolSettings {
+export abstract class TurboSettings extends ToolSettings {
+  /** The tool binary this settings class invokes: `turbo`. */
   protected override defaultTool(): string {
     return "turbo";
   }
@@ -95,6 +96,7 @@ export class TurboRunSettings extends TurboSettings {
     return this;
   }
 
+  /** Assemble the `turbo run` argv. */
   protected override buildArgs(): string[] {
     if (this.#tasks.length === 0) {
       throw new Error(
@@ -142,6 +144,7 @@ export class TurboPruneSettings extends TurboSettings {
     return this;
   }
 
+  /** Assemble the `turbo prune` argv. */
   protected override buildArgs(): string[] {
     if (this.#package === undefined) {
       throw new Error("TurboTasks.prune: .package() is required.");

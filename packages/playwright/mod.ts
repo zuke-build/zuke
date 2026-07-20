@@ -15,6 +15,7 @@
 export {
   PlaywrightCodegenSettings,
   PlaywrightInstallSettings,
+  PlaywrightSettings,
   PlaywrightShowReportSettings,
   PlaywrightTasks,
   type PlaywrightTasksApi,

@@ -70,6 +70,7 @@ export class ClaudeRunSettings extends ToolSettings {
   #resumeId?: string;
   #verbose = false;
 
+  /** The underlying executable: `claude`. */
   protected override defaultTool(): string {
     return "claude";
   }
@@ -183,6 +184,7 @@ export class ClaudeRunSettings extends ToolSettings {
     return this;
   }
 
+  /** Assemble the `claude --print` argv. */
   protected override buildArgs(): string[] {
     if (this.#prompt === undefined) {
       throw new Error("ClaudeTasks.run: .prompt() is required.");
@@ -239,10 +241,11 @@ export class ClaudeRunSettings extends ToolSettings {
  * name the verb and operands with `.command(...)` and pass anything else with
  * `.flag(...)`.
  */
-abstract class ClaudeCommandSettings extends ToolSettings {
+export abstract class ClaudeCommandSettings extends ToolSettings {
   #command: string[] = [];
   #flags: string[] = [];
 
+  /** The underlying executable: `claude`. */
   protected override defaultTool(): string {
     return "claude";
   }
@@ -266,6 +269,7 @@ abstract class ClaudeCommandSettings extends ToolSettings {
     return this;
   }
 
+  /** Assemble the `claude <group> …` argv. */
   protected override buildArgs(): string[] {
     return [this.group(), ...this.#command, ...this.#flags];
   }
@@ -273,6 +277,7 @@ abstract class ClaudeCommandSettings extends ToolSettings {
 
 /** Settings for a `claude mcp …` invocation (manage MCP servers). */
 export class ClaudeMcpSettings extends ClaudeCommandSettings {
+  /** The leading subcommand group token: `"mcp"`. */
   protected override group(): string {
     return "mcp";
   }
@@ -280,6 +285,7 @@ export class ClaudeMcpSettings extends ClaudeCommandSettings {
 
 /** Settings for a `claude config …` invocation (manage configuration). */
 export class ClaudeConfigSettings extends ClaudeCommandSettings {
+  /** The leading subcommand group token: `"config"`. */
   protected override group(): string {
     return "config";
   }
@@ -287,10 +293,12 @@ export class ClaudeConfigSettings extends ClaudeCommandSettings {
 
 /** Settings for `claude update` (self-update the CLI). */
 export class ClaudeUpdateSettings extends ToolSettings {
+  /** The underlying executable: `claude`. */
   protected override defaultTool(): string {
     return "claude";
   }
 
+  /** Assemble the `claude update` argv. */
   protected override buildArgs(): string[] {
     return ["update"];
   }

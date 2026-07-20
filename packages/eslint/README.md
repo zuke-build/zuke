@@ -44,6 +44,7 @@ class EslintSettings extends ToolSettings
   Settings for an `eslint` run.
 
   override protected defaultTool(): string
+    The default executable this settings object runs (`eslint`).
   paths(...values: PathLike[]): this
     Files, directories, or globs to lint (positional); repeatable.
   config(path: PathLike): this
@@ -79,6 +80,7 @@ class EslintSettings extends ToolSettings
   reportUnusedDisableDirectives(): this
     Report unused `eslint-disable` directives (`--report-unused-disable-directives`).
   override protected buildArgs(): string[]
+    Assemble the `eslint` argv from the configured settings.
 
 interface EslintTasksApi
   The shape of {@link EslintTasks}.

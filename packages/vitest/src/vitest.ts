@@ -49,6 +49,7 @@ export class VitestSettings extends ToolSettings {
   #passWithNoTests = false;
   #silent = false;
 
+  /** The underlying tool binary (`vitest`). */
   protected override defaultTool(): string {
     return "vitest";
   }
@@ -167,6 +168,7 @@ export class VitestSettings extends ToolSettings {
     return this;
   }
 
+  /** Assemble the `vitest run`/`vitest watch` argv. */
   protected override buildArgs(): string[] {
     const argv = [this.#watch ? "watch" : "run"];
     if (this.#config !== undefined) argv.push("-c", this.#config);

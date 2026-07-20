@@ -44,6 +44,7 @@ export class JestSettings extends ToolSettings {
   #selectProjects: string[] = [];
   #reporters: string[] = [];
 
+  /** The underlying tool binary is `jest`. */
   protected override defaultTool(): string {
     return "jest";
   }
@@ -156,6 +157,7 @@ export class JestSettings extends ToolSettings {
     return this;
   }
 
+  /** Assemble the `jest` argv from the configured flags and patterns. */
   protected override buildArgs(): string[] {
     const argv: string[] = [];
     if (this.#config !== undefined) argv.push("-c", this.#config);

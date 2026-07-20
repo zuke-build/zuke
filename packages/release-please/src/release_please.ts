@@ -36,7 +36,7 @@ import type { CommandOutput } from "@zuke/core/shell";
  * leading token via {@link subcommand}; the common `--token`/`--repo-url`/… flags
  * live here since `release-pr` and `github-release` accept the same set.
  */
-abstract class ReleasePleaseSettings extends ToolSettings {
+export abstract class ReleasePleaseSettings extends ToolSettings {
   #token?: string;
   #repoUrl?: string;
   #targetBranch?: string;
@@ -45,6 +45,7 @@ abstract class ReleasePleaseSettings extends ToolSettings {
   #dryRun = false;
   #debug = false;
 
+  /** The default binary name, `release-please`. */
   protected override defaultTool(): string {
     return "release-please";
   }
@@ -94,6 +95,7 @@ abstract class ReleasePleaseSettings extends ToolSettings {
     return this;
   }
 
+  /** Assemble the `release-please <subcommand>` argv with the common flags. */
   protected override buildArgs(): string[] {
     const argv = [this.subcommand()];
     if (this.#token !== undefined) argv.push("--token", this.#token);
@@ -115,6 +117,7 @@ abstract class ReleasePleaseSettings extends ToolSettings {
 
 /** Settings for `release-please release-pr` (maintain the release PR). */
 export class ReleasePleaseReleasePrSettings extends ReleasePleaseSettings {
+  /** The subcommand token, `release-pr`. */
   protected override subcommand(): string {
     return "release-pr";
   }
@@ -122,6 +125,7 @@ export class ReleasePleaseReleasePrSettings extends ReleasePleaseSettings {
 
 /** Settings for `release-please github-release` (cut releases and tags). */
 export class ReleasePleaseGithubReleaseSettings extends ReleasePleaseSettings {
+  /** The subcommand token, `github-release`. */
   protected override subcommand(): string {
     return "github-release";
   }

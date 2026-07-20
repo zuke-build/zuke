@@ -18,6 +18,7 @@
 export {
   ReleasePleaseGithubReleaseSettings,
   ReleasePleaseReleasePrSettings,
+  ReleasePleaseSettings,
   ReleasePleaseTasks,
   type ReleasePleaseTasksApi,
 } from "./src/release_please.ts";

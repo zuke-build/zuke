@@ -20,7 +20,8 @@ import type { CommandOutput } from "@zuke/core/shell";
 export type PnpmAccess = "public" | "restricted";
 
 /** Base for all `pnpm` subcommand settings: binary is `pnpm` from PATH. */
-abstract class PnpmSettings extends ToolSettings {
+export abstract class PnpmSettings extends ToolSettings {
+  /** The default binary: `pnpm` resolved from PATH. */
   protected override defaultTool(): string {
     return "pnpm";
   }
@@ -43,6 +44,7 @@ export class PnpmInstallSettings extends PnpmSettings {
     return this;
   }
 
+  /** Assemble the `pnpm install` argv. */
   protected override buildArgs(): string[] {
     const argv = ["install"];
     if (this.#frozenLockfile) argv.push("--frozen-lockfile");
@@ -82,6 +84,7 @@ export class PnpmAddSettings extends PnpmSettings {
     return this;
   }
 
+  /** Assemble the `pnpm add` argv. */
   protected override buildArgs(): string[] {
     if (this.#packages.length === 0) {
       throw new Error("PnpmTasks.add: .packages() requires at least one spec.");
@@ -105,6 +108,7 @@ export class PnpmRemoveSettings extends PnpmSettings {
     return this;
   }
 
+  /** Assemble the `pnpm remove` argv. */
   protected override buildArgs(): string[] {
     if (this.#packages.length === 0) {
       throw new Error(
@@ -146,6 +150,7 @@ export class PnpmRunSettings extends PnpmSettings {
     return this;
   }
 
+  /** Assemble the `pnpm run` argv. */
   protected override buildArgs(): string[] {
     if (this.#script === undefined) {
       throw new Error("PnpmTasks.run: .script() is required.");
@@ -182,6 +187,7 @@ export class PnpmDlxSettings extends PnpmSettings {
     return this;
   }
 
+  /** Assemble the `pnpm dlx` argv. */
   protected override buildArgs(): string[] {
     if (this.#command === undefined) {
       throw new Error("PnpmTasks.dlx: .command() is required.");
@@ -224,6 +230,7 @@ export class PnpmPublishSettings extends PnpmSettings {
     return this;
   }
 
+  /** Assemble the `pnpm publish` argv. */
   protected override buildArgs(): string[] {
     const argv = ["publish"];
     if (this.#tag !== undefined) argv.push(`--tag=${this.#tag}`);

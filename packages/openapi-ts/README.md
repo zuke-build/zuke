@@ -55,6 +55,7 @@ class OpenapiTsGenerateSettings extends ToolSettings
   Settings for an `openapi-ts` generation run.
 
   override protected defaultTool(): string
+    The tool binary this settings object invokes (`openapi-ts`).
   input(value: PathLike): this
     OpenAPI specification to read — a file path or URL (`--input`).
   output(value: PathLike): this
@@ -70,6 +71,7 @@ class OpenapiTsGenerateSettings extends ToolSettings
   silent(): this
     Suppress informational logging (`--silent`).
   override protected buildArgs(): string[]
+    Assemble the `openapi-ts` argv from the configured flags.
 
 interface OpenapiTsTasksApi
   The shape of {@link OpenapiTsTasks}.

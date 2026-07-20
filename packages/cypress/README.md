@@ -36,6 +36,7 @@ class CypressInfoSettings extends CypressSettings
   Settings for `cypress info`.
 
   override protected buildArgs(): string[]
+    Assemble the `cypress info` argv.
 
 class CypressInstallSettings extends CypressSettings
   Settings for `cypress install` (the bundled binary).
@@ -43,11 +44,13 @@ class CypressInstallSettings extends CypressSettings
   force(): this
     Reinstall even if already present (`--force`).
   override protected buildArgs(): string[]
+    Assemble the `cypress install` argv.
 
 class CypressOpenSettings extends CypressTestingSettings
   Settings for `cypress open` (interactive).
 
   override protected buildArgs(): string[]
+    Assemble the `cypress open` argv.
 
 class CypressRunSettings extends CypressTestingSettings
   Settings for `cypress run` (headless).
@@ -65,11 +68,36 @@ class CypressRunSettings extends CypressTestingSettings
   port(value: number): this
     Override the server port (`--port`).
   override protected buildArgs(): string[]
+    Assemble the `cypress run` argv.
+
+abstract class CypressSettings extends ToolSettings
+  Base for all `cypress` subcommand settings: the binary is `cypress`.
+
+  override protected defaultTool(): string
+    The default tool binary: `cypress`.
+
+abstract class CypressTestingSettings extends CypressSettings
+  Base for the `run`/`open` commands, which share testing-type selection, a
+  browser, a config file, and a project path.
+
+  e2e(): this
+    Run end-to-end tests (`--e2e`).
+  component(): this
+    Run component tests (`--component`).
+  browser(name: string): this
+    Choose the browser, e.g. `chrome` or `electron` (`--browser`).
+  configFile(path: PathLike): this
+    Use an explicit config file (`--config-file`).
+  project(path: PathLike): this
+    Run against a project at the given path (`--project`).
+  protected sharedArgs(): string[]
+    The testing-type/browser/config/project arguments shared by run and open.
 
 class CypressVerifySettings extends CypressSettings
   Settings for `cypress verify`.
 
   override protected buildArgs(): string[]
+    Assemble the `cypress verify` argv.
 
 interface CypressTasksApi
   The shape of {@link CypressTasks}.

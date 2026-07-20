@@ -18,6 +18,7 @@ import {
   cicd,
   describeCli,
   FileTasks,
+  glob,
   parameter,
   repoRoot,
   run,
@@ -45,6 +46,7 @@ import {
 import { SecurityTasks } from "@zuke/security";
 import {
   type ApiDocsOptions,
+  type DocLintReport,
   DocsTasks,
   type PackageDoc,
   type ProjectInfo,
@@ -197,6 +199,87 @@ async function collectPackageDocs(): Promise<PackageDoc[]> {
     docs.push({ name: `@zuke/${dir}`, dir, doc: stdout });
   }
   return docs;
+}
+
+/** A package's export entrypoints (resolved from its `deno.json` `exports`). */
+async function packageEntrypoints(dir: string): Promise<string[]> {
+  const json = await FileTasks.readText(`packages/${dir}/deno.json`);
+  const exportsField: unknown = JSON.parse(json).exports;
+  const specs: string[] = [];
+  if (typeof exportsField === "string") {
+    specs.push(exportsField);
+  } else if (exportsField !== null && typeof exportsField === "object") {
+    for (const value of Object.values(exportsField)) {
+      if (typeof value === "string") specs.push(value);
+    }
+  }
+  return specs.map((p) => `packages/${dir}/${p.replace(/^\.\//, "")}`);
+}
+
+/**
+ * The local names a package imports from another `@zuke/*` package — the types
+ * a public signature may reference without exporting them locally (guideline
+ * 4's accepted `private-type-ref` residual). Everything else a `deno doc --lint`
+ * `private-type-ref` names is first-party and must be exported, so the doc-lint
+ * gate flags it. Covers named specifiers (`{ type X, Y as Z }`), namespace
+ * (`* as ns`), and default imports; tests are excluded (not the doc surface).
+ */
+async function crossPackageTypesOf(dir: string): Promise<string[]> {
+  const files = (await glob(`packages/${dir}/**/*.ts`))
+    .filter((f) => !f.includes(`packages/${dir}/tests/`));
+  const names = new Set<string>();
+  // Each `import … from "…"` statement. Anchored at a line start (`m` flag) so
+  // a `* import { … } from "jsr:@zuke/…"` example inside a JSDoc block (prefixed
+  // by `* `) is not matched; the specifier is filtered to `@zuke/*` in code.
+  const importStmt =
+    /^import\b(?:\s+type\b)?([\s\S]*?)\bfrom\s*["']([^"']*)["']/gm;
+  for (const file of files) {
+    for (const m of (await FileTasks.readText(file)).matchAll(importStmt)) {
+      if (!m[2].startsWith("@zuke/")) continue;
+      const clause = m[1];
+      const namespace = clause.match(/\*\s+as\s+([A-Za-z_$][\w$]*)/);
+      if (namespace !== null) names.add(namespace[1]);
+      const braces = clause.match(/\{([\s\S]*)\}/);
+      if (braces !== null) {
+        for (const part of braces[1].split(",")) {
+          const spec = part.trim().replace(/^type\s+/, "");
+          if (spec === "") continue;
+          // `X as Z` binds the local name `Z`; a bare `X` binds `X`.
+          const asMatch = spec.match(/\bas\s+([A-Za-z_$][\w$]*)/);
+          const local = asMatch !== null
+            ? asMatch[1]
+            : spec.match(/^([A-Za-z_$][\w$]*)/)?.[1];
+          if (local !== undefined) names.add(local);
+        }
+      } else {
+        // A bare default import: `import Foo from "@zuke/…"`.
+        const def = clause.match(/^([A-Za-z_$][\w$]*)\s*$/);
+        if (def !== null) names.add(def[1]);
+      }
+    }
+  }
+  return [...names];
+}
+
+/**
+ * Collect a {@link DocLintReport} per package: the `deno doc --lint` output for
+ * its entrypoints (captured with `noThrow`, since the linter exits non-zero on
+ * any diagnostic) plus the types it imports from other `@zuke/*` packages.
+ */
+async function collectDocLintReports(): Promise<DocLintReport[]> {
+  const reports: DocLintReport[] = [];
+  for (const dir of PACKAGES) {
+    const entrypoints = await packageEntrypoints(dir);
+    const { stderr } = await DenoTasks.doc((s) =>
+      s.paths(...entrypoints).lint().env({ NO_COLOR: "1" }).noThrow().quiet()
+    );
+    reports.push({
+      pkg: `@zuke/${dir}`,
+      output: stderr,
+      crossPackageTypes: await crossPackageTypesOf(dir),
+    });
+  }
+  return reports;
 }
 
 /**
@@ -542,6 +625,25 @@ class ZukeBuild extends Build {
       }
     });
 
+  docLint = target()
+    .description(
+      "Fail on missing JSDoc or first-party private-type refs (deno doc --lint)",
+    )
+    .executes(async () => {
+      const violations = DocsTasks.checkDocLint(await collectDocLintReports());
+      if (violations.length > 0) {
+        const lines = violations.map(
+          (v) => `  ${v.pkg}: [${v.kind}] ${v.message}`,
+        );
+        throw new Error(
+          `Documentation lint found ${violations.length} issue(s):\n` +
+            `${lines.join("\n")}\n` +
+            "Export the referenced first-party type, or add the missing JSDoc.",
+        );
+      }
+      ConsoleTasks.info("Documentation lint clean.");
+    });
+
   ci = target()
     .description("Full pre-commit / CI gate")
     .dependsOn(
@@ -551,6 +653,7 @@ class ZukeBuild extends Build {
       this.coverage,
       this.coverageUpload,
       this.apiDocsCheck,
+      this.docLint,
     )
     .executes(() => {});
 

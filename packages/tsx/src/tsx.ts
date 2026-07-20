@@ -29,7 +29,7 @@ import {
 import type { CommandOutput } from "@zuke/core/shell";
 
 /** Options shared by every `tsx` invocation: the entry point and how to load it. */
-abstract class TsxCommonSettings extends ToolSettings {
+export abstract class TsxCommonSettings extends ToolSettings {
   #script?: string;
   #scriptArgs: string[] = [];
   #tsconfig?: string;
@@ -39,6 +39,7 @@ abstract class TsxCommonSettings extends ToolSettings {
   #conditions: string[] = [];
   #imports: string[] = [];
 
+  /** The underlying executable: `tsx`. */
   protected override defaultTool(): string {
     return "tsx";
   }
@@ -109,6 +110,7 @@ abstract class TsxCommonSettings extends ToolSettings {
 
 /** Settings for `tsx <file>`. */
 export class TsxSettings extends TsxCommonSettings {
+  /** Assemble the `tsx <file>` argv. */
   protected override buildArgs(): string[] {
     return this.entryArgs();
   }
@@ -138,6 +140,7 @@ export class TsxWatchSettings extends TsxCommonSettings {
     return this;
   }
 
+  /** Assemble the `tsx watch <file>` argv. */
   protected override buildArgs(): string[] {
     const argv = ["watch"];
     if (this.#noClearScreen) argv.push("--clear-screen=false");

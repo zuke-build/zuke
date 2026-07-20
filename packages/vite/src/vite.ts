@@ -27,10 +27,11 @@ import type { CommandOutput } from "@zuke/core/shell";
  * Base for all `vite` subcommand settings: the binary is `vite`, with the
  * `--config` and `--mode` options shared by every subcommand.
  */
-abstract class ViteSettings extends ToolSettings {
+export abstract class ViteSettings extends ToolSettings {
   #config?: string;
   #mode?: string;
 
+  /** The default binary this wrapper invokes: `vite`. */
   protected override defaultTool(): string {
     return "vite";
   }
@@ -80,6 +81,7 @@ export class ViteDevSettings extends ViteSettings {
     return this;
   }
 
+  /** Assemble the `vite dev` argv. */
   protected override buildArgs(): string[] {
     const argv = ["dev", ...this.baseArgs()];
     if (this.#host !== undefined) argv.push("--host", this.#host);
@@ -127,6 +129,7 @@ export class ViteBuildSettings extends ViteSettings {
     return this;
   }
 
+  /** Assemble the `vite build` argv. */
   protected override buildArgs(): string[] {
     const argv = ["build", ...this.baseArgs()];
     if (this.#base !== undefined) argv.push("--base", this.#base);
@@ -162,6 +165,7 @@ export class VitePreviewSettings extends ViteSettings {
     return this;
   }
 
+  /** Assemble the `vite preview` argv. */
   protected override buildArgs(): string[] {
     const argv = ["preview", ...this.baseArgs()];
     if (this.#host !== undefined) argv.push("--host", this.#host);

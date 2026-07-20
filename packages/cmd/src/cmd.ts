@@ -21,16 +21,19 @@ import type { CommandOutput } from "@zuke/core/shell";
 export class CmdSettings extends ToolSettings {
   #tool: string;
 
+  /** Create settings for `tool`; the tool name is required. */
   constructor(tool: PathLike) {
     super();
     if (!tool) throw new Error("CmdTasks.exec: tool name is required.");
     this.#tool = String(tool);
   }
 
+  /** The command to run — the tool name passed to the constructor. */
   protected override defaultTool(): string {
     return this.#tool;
   }
 
+  /** No implicit arguments; the caller supplies them via `.args(...)`. */
   protected override buildArgs(): string[] {
     return [];
   }

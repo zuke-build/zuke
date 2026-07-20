@@ -67,6 +67,7 @@ class ActionlintSettings extends ToolSettings
   GitHub Actions workflow files (and the shell embedded in `run:` steps).
 
   override protected defaultTool(): string
+    The binary this settings object drives (`actionlint`).
   files(...paths: PathLike[]): this
     Add an explicit workflow file to lint (positional); repeatable.
   format(template: string): this
@@ -76,12 +77,14 @@ class ActionlintSettings extends ToolSettings
   noColor(): this
     Disable colored output (`-no-color`).
   override protected buildArgs(): string[]
+    Assemble the `actionlint` argv.
 
 class GitleaksDetectSettings extends ToolSettings
   Settings for `gitleaks detect` (https://github.com/gitleaks/gitleaks), which
   scans a directory (and, by default, git history) for committed secrets.
 
   override protected defaultTool(): string
+    The binary this settings object drives (`gitleaks`).
   source(path: PathLike): this
     Path to scan (`--source`).
   config(path: PathLike): this
@@ -97,12 +100,14 @@ class GitleaksDetectSettings extends ToolSettings
   verbose(): this
     Verbose output (`--verbose`).
   override protected buildArgs(): string[]
+    Assemble the `gitleaks detect` argv.
 
 class OsvScannerSettings extends ToolSettings
   Settings for `osv-scanner` (https://github.com/google/osv-scanner), which
   matches lockfile entries against the OSV vulnerability database.
 
   override protected defaultTool(): string
+    The binary this settings object drives (`osv-scanner`).
   lockfile(path: PathLike): this
     Scan an explicit lockfile (`--lockfile`); repeatable.
   paths(...inputs: PathLike[]): this
@@ -114,6 +119,7 @@ class OsvScannerSettings extends ToolSettings
   recursive(): this
     Recurse into subdirectories (`--recursive`).
   override protected buildArgs(): string[]
+    Assemble the `osv-scanner` argv.
 
 class SemgrepScanSettings extends ToolSettings
   Settings for `semgrep scan` (https://github.com/semgrep/semgrep), a static
@@ -121,6 +127,7 @@ class SemgrepScanSettings extends ToolSettings
   selects (e.g. `auto` or `p/ci`).
 
   override protected defaultTool(): string
+    The binary this settings object drives (`semgrep`).
   config(value: string): this
     Add a rules config (`--config`), e.g. `auto`, `p/ci`; repeatable.
   paths(...inputs: PathLike[]): this
@@ -134,6 +141,7 @@ class SemgrepScanSettings extends ToolSettings
   error(): this
     Exit non-zero when findings are present (`--error`).
   override protected buildArgs(): string[]
+    Assemble the `semgrep scan` argv.
 
 class TrivyConfigSettings extends TrivyReportSettings
   Settings for `trivy config` (https://github.com/aquasecurity/trivy), which
@@ -143,6 +151,7 @@ class TrivyConfigSettings extends TrivyReportSettings
   target(path: PathLike): this
     The path to scan (default `.`).
   override protected buildArgs(): string[]
+    Assemble the `trivy config` argv.
 
 class TrivyFsSettings extends TrivyReportSettings
   Settings for `trivy fs` (https://github.com/aquasecurity/trivy), which scans
@@ -153,6 +162,23 @@ class TrivyFsSettings extends TrivyReportSettings
   scanners(...values: string[]): this
     Enable specific scanners (`--scanners`), e.g. `vuln`, `secret`, `misconfig`.
   override protected buildArgs(): string[]
+    Assemble the `trivy fs` argv.
+
+abstract class TrivyReportSettings extends ToolSettings
+  Shared options for `trivy` subcommands that produce a report.
+
+  override protected defaultTool(): string
+    The binary the `trivy` subcommands drive (`trivy`).
+  format(value: string): this
+    Report format (`--format`), e.g. `table`, `json`, `sarif`.
+  output(path: PathLike): this
+    Write the report to a file (`--output`).
+  severity(...values: string[]): this
+    Restrict to these severities (`--severity`), e.g. `HIGH`, `CRITICAL`.
+  exitCode(code: number): this
+    Process exit code when issues are found (`--exit-code`).
+  protected reportArgs(): string[]
+    The report flags shared by every `trivy` subcommand, in stable order.
 
 class ZizmorSettings extends ToolSettings
   Settings for `zizmor` (https://github.com/woodruffw/zizmor), a static analyzer
@@ -160,6 +186,7 @@ class ZizmorSettings extends ToolSettings
   over-broad permissions, and more).
 
   override protected defaultTool(): string
+    The binary this settings object drives (`zizmor`).
   paths(...inputs: PathLike[]): this
     Add a workflow file or directory to audit (positional); repeatable.
   config(path: PathLike): this
@@ -173,6 +200,7 @@ class ZizmorSettings extends ToolSettings
   offline(): this
     Do not perform any network access (`--offline`).
   override protected buildArgs(): string[]
+    Assemble the `zizmor` argv.
 
 interface SecurityTasksApi
   The shape of {@link SecurityTasks}.
