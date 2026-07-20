@@ -1039,7 +1039,29 @@ Deno.test("onTargetStart and onTargetEnd fire around each target", async () => {
   ]);
 });
 
-Deno.test("secret parameter values are masked under GitHub Actions", async () => {
+Deno.test("secret parameter values are masked to the real console under GitHub Actions", async () => {
+  class B extends Build {
+    token = parameter("token").secret();
+    go = target().executes(() => {});
+  }
+  const b = new B();
+  discoverTargets(b);
+  const printed: string[] = [];
+  const origLog = console.log;
+  console.log = (...args: unknown[]) => void printed.push(args.join(" "));
+  try {
+    await withEnv("GITHUB_STEP_SUMMARY", undefined, async () => {
+      // No custom reporter and not silent → output goes to the real console
+      // (the GitHub runner's stdout), which is where ::add-mask:: belongs.
+      await execute(b, b.go, { github: true, params: { token: "s3cr3t" } });
+    });
+  } finally {
+    console.log = origLog;
+  }
+  assertEquals(printed.includes("::add-mask::s3cr3t"), true);
+});
+
+Deno.test("a custom reporter never receives a raw ::add-mask:: secret", async () => {
   const { lines, reporter } = recorder();
   class B extends Build {
     token = parameter("token").secret();
@@ -1048,13 +1070,17 @@ Deno.test("secret parameter values are masked under GitHub Actions", async () =>
   const b = new B();
   discoverTargets(b);
   await withEnv("GITHUB_STEP_SUMMARY", undefined, async () => {
+    // A custom reporter *is* the base reporter (not redacted), so the add-mask
+    // directive — which bypasses redaction — must not be emitted to it: an
+    // embedded execute() would otherwise be handed the plaintext secret.
     await execute(b, b.go, {
       reporter,
       github: true,
       params: { token: "s3cr3t" },
     });
   });
-  assertEquals(lines.includes("::add-mask::s3cr3t"), true);
+  assertEquals(lines.some((l) => l.includes("s3cr3t")), false); // no leak at all
+  assertEquals(lines.some((l) => l.startsWith("::add-mask::")), false);
 });
 
 Deno.test("execute prompts for a missing required parameter", async () => {
@@ -2267,4 +2293,178 @@ Deno.test("waitsFor with no trigger fails with a friendly error", async () => {
   } finally {
     await Deno.remove(dir, { recursive: true });
   }
+});
+
+Deno.test("a throwing onlyWhen predicate fails the target, not the process (sequential)", async () => {
+  const { lines, reporter } = recorder();
+  class B extends Build {
+    setup = target().executes(() => {});
+    boom = target()
+      .dependsOn(this.setup)
+      .onlyWhen(() => {
+        throw new Error("predicate boom");
+      })
+      .executes(() => {});
+  }
+  const b = new B();
+  discoverTargets(b);
+  // The predicate rejects outside runTarget's own try/catch; the run must still
+  // finalize as failed (no unhandled rejection crashes the test process).
+  const result = await execute(b, b.boom, { reporter, github: false });
+  assertEquals(result.ok, false);
+  assertEquals(lines.some((l) => l.includes("predicate boom")), true);
+});
+
+Deno.test("a throwing predicate settles the parallel scheduler without hanging", async () => {
+  const { reporter } = recorder();
+  class B extends Build {
+    good = target().executes(() => {});
+    bad = target()
+      .onlyWhen(() => {
+        throw new Error("predicate boom");
+      })
+      .executes(() => {});
+    all = target().dependsOn(this.good, this.bad).executes(() => {});
+  }
+  const b = new B();
+  discoverTargets(b);
+  // If the scheduler's `.then` had no `.catch`, `bad` would reject unobserved:
+  // its slot never frees and the run would hang (or die). It must instead settle
+  // as failed while the independent `good` still completes.
+  const result = await execute(b, b.all, {
+    reporter,
+    parallel: true,
+    github: false,
+  });
+  assertEquals(result.ok, false);
+  assertEquals(result.executed.includes("good"), true);
+});
+
+Deno.test("a rejected lock renewal never crashes the build", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    // A store whose lock renewal always rejects, counting the heartbeat's calls.
+    class RenewFails extends FileSystemStateStore {
+      renewCalls = 0;
+      override renewLock(
+        _key: string,
+        _token: string,
+        _ttlMs: number,
+      ): Promise<boolean> {
+        this.renewCalls++;
+        return Promise.reject(new Error("renew boom"));
+      }
+    }
+    const store = new RenewFails(`${dir}/runs`, defaultStateHost);
+    class B extends Build {
+      work = target()
+        .lock((s) => s.key("build-lock").withTtl("2s"))
+        // Outlive the 1s renewal heartbeat so it fires (and rejects) mid-body.
+        .executes(() => new Promise<void>((r) => setTimeout(r, 1200)));
+    }
+    const b = new B();
+    discoverTargets(b);
+    const result = await execute(b, b.work, {
+      silent: true,
+      stateStore: store,
+    });
+    // The heartbeat fired and its rejection was swallowed: the build still won.
+    assertEquals(result.ok, true);
+    assertEquals(store.renewCalls >= 1, true);
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+/** A reporter whose every write throws — a buggy sink, or EPIPE on piped stdout. */
+const throwingReporter: Reporter = {
+  info: () => {
+    throw new Error("EPIPE");
+  },
+  error: () => {
+    throw new Error("EPIPE");
+  },
+};
+
+Deno.test("a throwing reporter never strands the run record (sequential)", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+    class B extends Build {
+      // A reject from outside runTarget's own try/catch, so failTarget prints
+      // through the (throwing) reporter on the settle path.
+      boom = target()
+        .onlyWhen(() => {
+          throw new Error("predicate boom");
+        })
+        .executes(() => {});
+    }
+    const b = new B();
+    discoverTargets(b);
+    const result = await execute(b, b.boom, {
+      reporter: throwingReporter,
+      stateStore: store,
+    });
+    assertEquals(result.ok, false);
+    const runs = await store.listRuns({});
+    // The record is finalized, not left stranded `running` (un-resumable).
+    assertEquals((await store.getRun(runs[0].id))?.record.status, "failed");
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("a throwing reporter never hangs the parallel scheduler or strands the record", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+    class B extends Build {
+      good = target().executes(() => {});
+      bad = target()
+        .onlyWhen(() => {
+          throw new Error("predicate boom");
+        })
+        .executes(() => {});
+      all = target().dependsOn(this.good, this.bad).executes(() => {});
+    }
+    const b = new B();
+    discoverTargets(b);
+    // The `.catch` prints the failure through the throwing reporter; it must
+    // still free the slot, pump, and finalize — never hang or leak a rejection.
+    const result = await execute(b, b.all, {
+      reporter: throwingReporter,
+      parallel: true,
+      stateStore: store,
+    });
+    assertEquals(result.ok, false);
+    const runs = await store.listRuns({});
+    assertEquals((await store.getRun(runs[0].id))?.record.status, "failed");
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("a throwing predicate on a lenient target does not halt its siblings", async () => {
+  const { reporter } = recorder();
+  class B extends Build {
+    bad = target()
+      .proceedAfterFailure()
+      .onlyWhen(() => {
+        throw new Error("predicate boom");
+      })
+      .executes(() => {});
+    sib = target().executes(() => {});
+    root = target().dependsOn(this.bad, this.sib).executes(() => {});
+  }
+  const b = new B();
+  discoverTargets(b);
+  const result = await execute(b, b.root, {
+    reporter,
+    parallel: true,
+    github: false,
+  });
+  // `bad` fails via the `.catch`, but being lenient it does not set `halted`, so
+  // the independent `sib` still runs (root stays blocked behind bad).
+  assertEquals(result.ok, false);
+  assertEquals(result.executed.includes("sib"), true);
 });

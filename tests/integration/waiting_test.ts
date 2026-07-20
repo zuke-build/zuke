@@ -134,6 +134,34 @@ Deno.test("a wait past its deadline times out on resume --check", async () => {
   });
 });
 
+Deno.test("a re-suspend preserves the original timeout deadline", async () => {
+  await withStateDir(async (dir) => {
+    const ready = false; // never satisfied here: the gate only ever re-suspends
+    class B extends Build {
+      gate = target().waitsFor((s) =>
+        s.on(resumeWhen(() => ready)).timeout("1h")
+      );
+    }
+    const store = new FileSystemStateStore(dir, defaultStateHost);
+    const deadlineOf = async (id: string): Promise<string | undefined> =>
+      (await store.getRun(id))?.record.targets["gate"].waitingFor?.deadline;
+
+    const first = await runCli(B, ["gate"]);
+    assertEquals(first.code, 0);
+    const id = await onlyRunId(dir);
+    const d1 = await deadlineOf(id);
+    assertEquals(typeof d1, "string");
+
+    // A `resume --check` while the predicate is still false re-suspends the gate.
+    // The recorded deadline must stay put — recomputing `now + 1h` on every check
+    // would push it forward forever, so the timeout could never fire.
+    const again = await runCli(B, ["resume", "--check"]);
+    assertEquals(again.code, 0);
+    assertEquals(await runStatus(dir, id), "suspended");
+    assertEquals(await deadlineOf(id), d1); // preserved, not moved
+  });
+});
+
 Deno.test("a service starts, gates its dependent on readiness, and is stopped", async () => {
   const log: string[] = [];
   let probes = 0;

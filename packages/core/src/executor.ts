@@ -102,6 +102,33 @@ function redactingReporter(inner: Reporter, redactor: Redactor): Reporter {
   };
 }
 
+/**
+ * Wrap a reporter so a failing write can never escape into the run. Output is a
+ * best-effort side effect: a sink that throws — a custom reporter with a bug, or
+ * the default console raising `BrokenPipe`/EPIPE when stdout is piped to a reader
+ * that closed early (`zuke build | head`) — must not turn into a rejection that
+ * unwinds the scheduler and strands the durable run record `running`. A thrown
+ * write is dropped; every other write still lands.
+ */
+function safeReporter(inner: Reporter): Reporter {
+  return {
+    info: (line) => {
+      try {
+        inner.info(line);
+      } catch {
+        // best-effort: a broken output sink must not break the build
+      }
+    },
+    error: (line) => {
+      try {
+        inner.error(line);
+      } catch {
+        // best-effort: a broken output sink must not break the build
+      }
+    },
+  };
+}
+
 /** Options for {@link execute}. */
 export interface ExecuteOptions {
   /** Suppress all banner/summary output (used by tests). */
@@ -239,6 +266,19 @@ export interface ResumeState {
   version: string;
   /** Names of targets recorded `succeeded` — seeded as done, never re-run. */
   done: ReadonlySet<string>;
+}
+
+/**
+ * The still-waiting targets of a resumed run, mapped to the {@link WaitState}
+ * they last recorded — the source of the original timeout deadline that a
+ * re-suspend must preserve (see {@link RunEnv.priorWaits}).
+ */
+function priorWaitsOf(record: RunRecord): ReadonlyMap<string, WaitState> {
+  const waits = new Map<string, WaitState>();
+  for (const [name, state] of Object.entries(record.targets)) {
+    if (state.waitingFor !== undefined) waits.set(name, state.waitingFor);
+  }
+  return waits;
 }
 
 /** Whether the build is running inside a GitHub Actions runner. */
@@ -450,6 +490,13 @@ interface RunEnv {
   signals: ReadonlyMap<string, SignalRecord>;
   /** On a resume, target names already succeeded — seeded done, never re-run. */
   done?: ReadonlySet<string>;
+  /**
+   * On a resume, each still-waiting target's previously recorded {@link WaitState}
+   * — so a re-suspend preserves the original timeout deadline instead of
+   * recomputing `now + timeout` (which would push it forward on every
+   * `resume --check` and mean the timeout never fires).
+   */
+  priorWaits?: ReadonlyMap<string, WaitState>;
 }
 
 /** A failure's message, or `undefined` when there was none — for the state record. */
@@ -525,14 +572,20 @@ async function acquireTargetLock(
   const token = result.token;
   // Renew at half the TTL so a long body keeps its short-TTL lock; cleared on
   // release. The interval is unref'd so it never keeps the process alive.
+  // Renewal is best-effort: `.catch` swallows a rejected renew (store contention
+  // or a transient error) so it can never surface as an unhandled rejection that
+  // crashes the build from a background timer — the lock simply lapses at its
+  // TTL, which is the documented backstop.
   const heartbeat = setInterval(() => {
-    void store.renewLock(key, token, ttlMs);
+    store.renewLock(key, token, ttlMs).catch(() => {});
   }, Math.max(1000, Math.floor(ttlMs / 2)));
   Deno.unrefTimer(heartbeat);
   return {
     release: async () => {
       clearInterval(heartbeat);
-      await store.releaseLock(key, token);
+      // Best-effort release for the same reason: a failed release must not turn
+      // an otherwise-succeeded body into a failure. The TTL reclaims the lock.
+      await store.releaseLock(key, token).catch(() => {});
     },
   };
 }
@@ -584,8 +637,14 @@ async function resolveWait(
     onTimeout: resolveDisposition(settings.onTimeout_),
   };
   if (settings.timeout_ !== undefined) {
-    waitState.deadline = new Date(Date.now() + parseDuration(settings.timeout_))
-      .toISOString();
+    // Preserve the deadline first recorded when this wait suspended: a resume
+    // that re-suspends the same still-unsatisfied gate must not push the
+    // deadline forward, or an hourly `resume --check` cron would reset the
+    // timeout every hour and it would never fire. Only compute a fresh deadline
+    // when there is no prior one (the first suspend).
+    const priorDeadline = env.priorWaits?.get(name)?.deadline;
+    waitState.deadline = priorDeadline ??
+      new Date(Date.now() + parseDuration(settings.timeout_)).toISOString();
   }
   return { satisfied, waitState, descriptor: trigger.descriptor };
 }
@@ -1129,20 +1188,30 @@ async function runSequential(
       void env.writer?.markTargetSettled(name, "skipped");
       continue;
     }
-    const outcome = await runTarget(
-      life,
-      reporter,
-      renderer,
-      style,
-      t,
-      opened,
-      cache,
-      dryRun,
-      globalRecovery,
-      services,
-      env,
-    );
-    await life.targetEnd(name, outcome.status, outcome.ms);
+    let outcome: TargetOutcome;
+    try {
+      outcome = await runTarget(
+        life,
+        reporter,
+        renderer,
+        style,
+        t,
+        opened,
+        cache,
+        dryRun,
+        globalRecovery,
+        services,
+        env,
+      );
+      await life.targetEnd(name, outcome.status, outcome.ms);
+    } catch (error) {
+      // A reject from outside runTarget's own try/catch (an `onlyWhen`/`cacheKey`
+      // thunk, a lifecycle hook, or `life.targetEnd`) becomes a failed target so
+      // the run finalizes here instead of rejecting out of `execute()` and
+      // stranding the record `running`.
+      failTarget(reporter, renderer, style, name, 0, error);
+      outcome = { status: "failed", ms: 0, error };
+    }
     void env.writer?.markTargetSettled(
       name,
       outcome.status,
@@ -1286,7 +1355,34 @@ async function runScheduled(
               }
               pump();
             },
-          );
+          )
+          .catch((error: unknown) => {
+            // `runTarget` handles a thrown body itself, but paths outside its
+            // try/catch can still reject — an `onlyWhen`/`cacheKey` thunk, a
+            // lifecycle hook, or `life.targetEnd` in the fulfilment handler
+            // above. Route any such rejection into the normal failure path so
+            // the scheduler settles (and finalizes the record) instead of
+            // hanging with the target stuck in `runningSet`, or dying on an
+            // unhandled rejection.
+            //
+            // Free the slot and record the failure BEFORE emitting output, so
+            // even a throwing reporter (already made best-effort by
+            // safeReporter) can never leave `t` in `runningSet` — which would
+            // wedge the scheduler's completion `Promise` forever.
+            const targetName = t.name_ ?? "<unnamed>";
+            outcomes.set(t, { status: "failed", ms: 0, error });
+            runningSet.delete(t);
+            anyFailed = true;
+            failure ??= error;
+            if (!t.proceedAfterFailure_) halted = true;
+            failTarget(reporter, renderer, style, targetName, 0, error);
+            void env.writer?.markTargetSettled(
+              targetName,
+              "failed",
+              errorMessage(error),
+            );
+            pump();
+          });
       }
       if (runningSet.size === 0) {
         for (const t of order) {
@@ -1349,7 +1445,10 @@ export async function execute(
   // parameter resolution below; since nothing meaningful is reported before
   // then, wrapping the reporter up-front is safe.
   const redactor = new Redactor();
-  const reporter = redactingReporter(baseReporter, redactor);
+  // …and every write is best-effort (see safeReporter): a throwing sink (a buggy
+  // custom reporter, or EPIPE on a piped stdout) must never escape `failTarget`
+  // and reject out of a scheduler, which would strand the run record `running`.
+  const reporter = safeReporter(redactingReporter(baseReporter, redactor));
   // The GitHub job summary is a real-world output side effect (it appends to a
   // shared file named by GITHUB_STEP_SUMMARY). Only write it when output goes to
   // the default console — i.e. neither silenced nor redirected to a custom
@@ -1384,12 +1483,18 @@ export async function execute(
   }
   // Under GitHub Actions, also emit `::add-mask::` with the real value so the
   // runner masks it in its own logs. This goes through the base reporter, which
-  // is not wrapped in the redactor — a masked directive would hide nothing.
-  if (style.github) {
+  // is not wrapped in the redactor — a masked directive would hide nothing. Gate
+  // it on `writesToConsole` too: when a custom reporter is supplied it *is* the
+  // base reporter, so an embedded `execute()` must never be handed the raw
+  // secret — only the real runner stdout should receive the directive.
+  if (style.github && writesToConsole) {
+    const maskReporter = safeReporter(baseReporter);
     for (const p of params.values()) {
       const value = p.secret_ ? p.stringValue_() : undefined;
       if (value !== undefined && value !== "") {
-        baseReporter.info(`::add-mask::${value}`);
+        // Straight to the base reporter (not redacted, so the directive works),
+        // but best-effort: an EPIPE here must not abort the run either.
+        maskReporter.info(`::add-mask::${value}`);
       }
     }
   }
@@ -1579,6 +1684,9 @@ export async function execute(
     runUrl,
     signals: writer ? writer.signals() : new Map<string, SignalRecord>(),
     done: options.resume?.done,
+    priorWaits: options.resume
+      ? priorWaitsOf(options.resume.record)
+      : undefined,
   };
 
   // Announce the run's initial durable state (`running`) to plugins — a no-op
@@ -1634,7 +1742,9 @@ export async function execute(
   try {
     // Run the plan inside the ambient-signal scope so a plain `$` in a target
     // body is cancelled with the run; the binding unwinds on its own, even if
-    // the plan throws — nothing to restore.
+    // the plan throws — nothing to restore. Both schedulers convert every
+    // target-path reject into a failed outcome (never rejecting themselves), so
+    // the run always settles here rather than stranding the record `running`.
     run = await withAmbientSignal(runController.signal, runPlan);
   } finally {
     if (options.signal !== undefined) {
