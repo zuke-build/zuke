@@ -422,7 +422,7 @@ Deno.test("execute redacts a secret's invalid value from the parameter error", a
   assertStringIncludes(joined, REDACTED);
 });
 
-Deno.test("execute emits ::add-mask:: with the real value under GitHub", async () => {
+Deno.test("a custom reporter is never handed the raw secret via ::add-mask::", async () => {
   const { reporter, lines } = recordingReporter();
   class Deploy extends Build {
     token = parameter("Token").secret().from(fixedSource("real-value-123"));
@@ -436,12 +436,12 @@ Deno.test("execute emits ::add-mask:: with the real value under GitHub", async (
     github: true,
     readEnv: () => undefined,
   });
-  // The add-mask directive carries the true value so the runner can mask it;
-  // redacting it would defeat the purpose.
-  assertEquals(
-    lines.some((l) => l === "::add-mask::real-value-123"),
-    true,
-  );
+  // The add-mask directive bypasses redaction (a masked directive hides
+  // nothing), so it must reach only the real runner stdout — never a custom
+  // reporter, which an embedded execute() supplies. The raw value must not leak
+  // in any form. (The positive real-console case is covered in executor_test.)
+  assertEquals(lines.some((l) => l.includes("real-value-123")), false);
+  assertEquals(lines.some((l) => l.startsWith("::add-mask::")), false);
 });
 
 Deno.test("discoverParameters rejects a reserved MCP control name", () => {
