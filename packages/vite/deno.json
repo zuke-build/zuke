@@ -1,6 +1,6 @@
 {
   "name": "@zuke/vite",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Typed Vite CLI task wrappers for Zuke builds — dev, build, and preview via an injection-free settings-lambda API.",
   "exports": {
     ".": "./mod.ts"
