@@ -59,7 +59,7 @@ export function parseLcov(lcov: string): CoverageTotals {
     branchesFound: 0,
     branchesHit: 0,
   };
-  for (const line of lcov.split("\n")) {
+  for (const line of lcov.split(/\r?\n/)) {
     const [tag, value] = line.split(":", 2);
     const n = Number(value);
     if (Number.isNaN(n)) continue;
@@ -89,7 +89,10 @@ export function parseLcov(lcov: string): CoverageTotals {
 export function parseLcovPerFile(lcov: string): FileCoverage[] {
   const files: FileCoverage[] = [];
   let current: FileCoverage | null = null;
-  for (const line of lcov.split("\n")) {
+  // Split on CRLF or LF so a Windows-authored report doesn't leave a trailing
+  // `\r` on the `SF:` path (the numeric records tolerate it — `Number` trims —
+  // but the path would carry it into a failure message).
+  for (const line of lcov.split(/\r?\n/)) {
     if (line.startsWith("SF:")) {
       current = {
         file: line.slice(3),

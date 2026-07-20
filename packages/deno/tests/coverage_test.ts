@@ -127,6 +127,15 @@ Deno.test("parseLcovPerFile splits totals per file, keeping colon-bearing paths"
   assertEquals(files[1].linesHit, 4);
 });
 
+Deno.test("parseLcovPerFile strips CRLF so paths carry no trailing carriage return", () => {
+  const lcov = ["SF:win.ts", "LF:4", "LH:2", "end_of_record", ""].join("\r\n");
+  const files = parseLcovPerFile(lcov);
+  assertEquals(files.length, 1);
+  assertEquals(files[0].file, "win.ts"); // no trailing "\r"
+  assertEquals(files[0].linesFound, 4);
+  assertEquals(files[0].linesHit, 2);
+});
+
 Deno.test("the per-file floor fails a single low file even when the aggregate passes", () => {
   // Aggregate is 90/100 = 90% (passes a 90 line gate), but one file is at 20%.
   const lcov = [
