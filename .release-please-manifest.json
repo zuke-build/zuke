@@ -1,6 +1,6 @@
 {
-  "packages/core": "1.29.0",
-  "packages/deno": "0.5.1",
+  "packages/core": "1.30.0",
+  "packages/deno": "0.6.0",
   "packages/docs": "0.3.1",
   "packages/npm": "0.3.1",
   "packages/npx": "0.2.1",
@@ -52,6 +52,6 @@
   "packages/tofu": "0.1.1",
   "packages/release-please": "1.0.1",
   "packages/security": "0.2.1",
-  "packages/ai": "1.5.1",
+  "packages/ai": "1.5.2",
   "packages/otel": "1.0.1"
 }

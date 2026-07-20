@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/zuke-build/zuke/compare/deno-v0.5.1...deno-v0.6.0) (2026-07-20)
+
+
+### Features
+
+* **deno:** make the coverage gate trustworthy ([#221](https://github.com/zuke-build/zuke/issues/221)) ([5b2c256](https://github.com/zuke-build/zuke/commit/5b2c256542d6f68cd8734ff8c53d2af28e442b37))
+
 ## [0.5.1](https://github.com/zuke-build/zuke/compare/deno-v0.5.0...deno-v0.5.1) (2026-07-19)
 
 

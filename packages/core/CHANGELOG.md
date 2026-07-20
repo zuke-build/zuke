@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.30.0](https://github.com/zuke-build/zuke/compare/core-v1.29.0...core-v1.30.0) (2026-07-20)
+
+
+### Features
+
+* **core:** add a doc command to print a package's API in isolation ([#218](https://github.com/zuke-build/zuke/issues/218)) ([03d8744](https://github.com/zuke-build/zuke/commit/03d874445fbd37a65a7eeb50f124c203f75d4a31))
+* **core:** add prependPath to put a provisioned dir on PATH ([#217](https://github.com/zuke-build/zuke/issues/217)) ([b581d5b](https://github.com/zuke-build/zuke/commit/b581d5bd9ce7ed82f69bd407970581b5a149c331))
+* **core:** install multi-file runtime trees via installTree ([#215](https://github.com/zuke-build/zuke/issues/215)) ([7e4c22d](https://github.com/zuke-build/zuke/commit/7e4c22d62b27f0bd6f20761f5f53ae062505ae53))
+
+
+### Bug Fixes
+
+* **core:** executor async-safety and durable wait-timeout ([#219](https://github.com/zuke-build/zuke/issues/219)) ([2687bf3](https://github.com/zuke-build/zuke/commit/2687bf3e12128daae5087a4e1b5e806008392ec8))
+
 ## [1.29.0](https://github.com/zuke-build/zuke/compare/core-v1.28.0...core-v1.29.0) (2026-07-19)
 
 
