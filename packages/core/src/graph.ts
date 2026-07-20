@@ -25,6 +25,21 @@ function label(t: TargetBuilder | undefined): string {
 }
 
 /**
+ * The friendly error for a `this.x` reference to a target declared *after* the
+ * referrer: class fields initialise top-to-bottom, so the reference read
+ * `undefined`. Shared by {@link validateReferences} (the CLI pre-check) and
+ * {@link executionSet} (the backstop every programmatic entry point hits).
+ */
+function undefinedRefError(name: string, verb: string): GraphError {
+  return new GraphError(
+    `Target "${name}" ${verb} an undefined target. This usually means it ` +
+      `references a sibling via this.x that is declared *after* it — ` +
+      `class fields initialise top-to-bottom, so referenced targets must ` +
+      `be declared before the targets that reference them.`,
+  );
+}
+
+/**
  * Validate that every `.dependsOn(...)` reference is a discovered target.
  *
  * A reference is "unknown" if the builder was never assigned to a property of
@@ -42,14 +57,7 @@ export function validateReferences(
     verb: string,
   ) => {
     for (const ref of refs) {
-      if (ref === undefined) {
-        throw new GraphError(
-          `Target "${name}" ${verb} an undefined target. This usually means it ` +
-            `references a sibling via this.x that is declared *after* it — ` +
-            `class fields initialise top-to-bottom, so referenced targets must ` +
-            `be declared before the targets that reference them.`,
-        );
-      }
+      if (ref === undefined) throw undefinedRefError(name, verb);
       if (!known.has(ref)) {
         throw new GraphError(
           `Target "${name}" ${verb} a target that was not discovered ` +
@@ -129,13 +137,24 @@ export function validateGraph(targets: Map<string, TargetBuilder>): void {
  */
 export function executionSet(root: TargetBuilder): Set<TargetBuilder> {
   const set = new Set<TargetBuilder>();
-  const walk = (node: TargetBuilder) => {
+  // Guard against a forward reference (a `this.x` to a target declared below,
+  // so the array holds `undefined`). Walking into it would throw a raw
+  // `TypeError`; instead every entry point that plans a graph — execute(),
+  // resumeRun(), cancelRun(), the CLI — surfaces the friendly `GraphError`
+  // here. On the CLI path `validateReferences` already caught it, so the guard
+  // is a no-op there (F10).
+  const walk = (
+    node: TargetBuilder | undefined,
+    from: TargetBuilder | undefined,
+    verb: string,
+  ) => {
+    if (node === undefined) throw undefinedRefError(label(from), verb);
     if (set.has(node)) return;
     set.add(node);
-    for (const dep of node.dependsOn_) walk(dep);
-    for (const trigger of node.triggers_) walk(trigger);
+    for (const dep of node.dependsOn_) walk(dep, node, "depends on");
+    for (const trigger of node.triggers_) walk(trigger, node, "triggers");
   };
-  walk(root);
+  walk(root, undefined, "depends on");
   return set;
 }
 

@@ -1,4 +1,10 @@
-import { assertEquals, assertStringIncludes, messageOf } from "./_assert.ts";
+import {
+  assertEquals,
+  assertRejects,
+  assertStringIncludes,
+  messageOf,
+} from "./_assert.ts";
+import { GraphError } from "../src/graph.ts";
 import {
   Build,
   type BuildResult,
@@ -2467,4 +2473,103 @@ Deno.test("a throwing predicate on a lenient target does not halt its siblings",
   // the independent `sib` still runs (root stays blocked behind bad).
   assertEquals(result.ok, false);
   assertEquals(result.executed.includes("sib"), true);
+});
+
+// --- Cancellation stops retries and remediations (F6) ---
+
+Deno.test("a cancelled run stops retrying immediately", async () => {
+  let attempts = 0;
+  const controller = new AbortController();
+  class B extends Build {
+    doomed = target()
+      .retry(5, 1)
+      .executes(() => {
+        attempts++;
+        controller.abort(); // cancel synchronously mid-run
+        throw new Error("boom");
+      });
+  }
+  const b = new B();
+  discoverTargets(b);
+  const result = await execute(b, b.doomed, {
+    silent: true,
+    signal: controller.signal,
+  });
+  assertEquals(result.ok, false);
+  assertEquals(attempts, 1); // no further retries after the cancel (pre-fix: 6)
+});
+
+Deno.test("a cancelled run does not invoke recoverWith remediations", async () => {
+  let fixes = 0;
+  const controller = new AbortController();
+  class B extends Build {
+    doomed = target()
+      .recoverWith({
+        remediate: () => {
+          fixes++;
+          return { retry: true };
+        },
+      })
+      .recoverAttempts(3)
+      .executes(() => {
+        controller.abort();
+        throw new Error("boom");
+      });
+  }
+  const b = new B();
+  discoverTargets(b);
+  const result = await execute(b, b.doomed, {
+    silent: true,
+    signal: controller.signal,
+  });
+  assertEquals(result.ok, false);
+  assertEquals(fixes, 0); // remediations skipped on cancel (pre-fix: 3)
+});
+
+// --- Public API validates the graph, emitting GraphError not TypeError (F10) ---
+
+Deno.test("execute rejects a forward-referenced dependency with GraphError", async () => {
+  class B extends Build {
+    // @ts-expect-error -- deliberately forward-references a later field
+    early = target().dependsOn(this.later).executes(() => {});
+    later = target().executes(() => {});
+  }
+  const b = new B();
+  discoverTargets(b);
+  await assertRejects(
+    () => execute(b, b.early, silent),
+    GraphError,
+    "undefined target",
+  );
+});
+
+// --- A failed run strands no `waiting` target row (F8) ---
+
+Deno.test("a failed run leaves no waiting target stranded in the record", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+    class B extends Build {
+      // Independent branches: one parks at a wait gate, the other fails.
+      gate = target().waitsFor((s) => s.on(externalSignal("go")));
+      boom = target().executes(() => {
+        throw new Error("boom");
+      });
+      all = target().dependsOn(this.gate, this.boom).executes(() => {});
+    }
+    const b = new B();
+    discoverTargets(b);
+    const result = await execute(b, b.all, { silent: true, stateStore: store });
+    assertEquals(result.ok, false); // failed, not suspended
+    const runId = (await store.listRuns({}))[0].id;
+    const loaded = await store.getRun(runId);
+    assertEquals(loaded?.record.status, "failed");
+    // No target row is left `waiting` in the terminal `failed` record (F8).
+    const statuses = Object.values(loaded?.record.targets ?? {}).map(
+      (t) => t.status,
+    );
+    assertEquals(statuses.includes("waiting"), false);
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
 });
