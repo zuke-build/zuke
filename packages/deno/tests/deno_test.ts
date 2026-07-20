@@ -201,13 +201,28 @@ Deno.test("coverage: a threshold forces --lcov and stays off the argv", () => {
   const s = new DenoCoverageSettings().dir("cov_profile").threshold(95);
   // The threshold is enforced by the task, not a `deno coverage` flag.
   assertEquals(s.argv().slice(1), ["coverage", "cov_profile", "--lcov"]);
-  assertEquals(s.thresholds, { lines: 95, branches: 95 });
+  assertEquals(s.thresholds, {
+    lines: 95,
+    branches: 95,
+    perFile: undefined,
+  });
 });
 
 Deno.test("coverage: line and branch thresholds can differ", () => {
   const s = new DenoCoverageSettings().linesThreshold(90).branchesThreshold(80);
-  assertEquals(s.thresholds, { lines: 90, branches: 80 });
+  assertEquals(s.thresholds, { lines: 90, branches: 80, perFile: undefined });
   assertEquals(s.outputPath, undefined);
+  assertEquals(s.argv().slice(1), ["coverage", "--lcov"]);
+});
+
+Deno.test("coverage: a per-file floor alone forces --lcov and is exposed", () => {
+  const s = new DenoCoverageSettings().perFileThreshold(50);
+  assertEquals(s.thresholds, {
+    lines: undefined,
+    branches: undefined,
+    perFile: 50,
+  });
+  // A per-file floor still needs an lcov report to parse, so --lcov is forced.
   assertEquals(s.argv().slice(1), ["coverage", "--lcov"]);
 });
 
