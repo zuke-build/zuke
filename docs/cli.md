@@ -1,29 +1,30 @@
 # CLI reference
 
-| Command                                                 | Behaviour                                                                               |
-| ------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| `zuke <target>`                                         | Run the target and all its transitive dependencies, in order.                           |
-| `zuke <target> --skip <dep>`                            | Run the target but skip the named dependency (repeatable).                              |
-| `zuke <target> --parallel`                              | Run independent targets concurrently (`--parallel=N` caps it).                          |
-| `zuke <target> --no-cache`                              | Ignore the incremental cache; re-run every target.                                      |
-| `zuke <target> --affected[=<base>]`                     | Run only targets affected by files changed since a git base.                            |
-| `zuke <target> --dry-run`                               | Print the plan without executing any target body.                                       |
-| `zuke <target> --state`                                 | Persist [durable run state](./state.md) under `.zuke/runs`.                             |
-| `zuke <target> --actor <name>`                          | Attribute the run to `<name>` in its state record.                                      |
-| `zuke --list` / `-l`                                    | List all targets with descriptions and dependencies.                                    |
-| `zuke graph`                                            | Print the dependency graph (`target → deps`).                                           |
-| `zuke graph --output=html`                              | Render an interactive HTML graph into `.zuke/` and open it.                             |
-| `zuke completions print <shell>`                        | Print a shell-completion script (`bash`, `zsh`, or `fish`).                             |
-| `zuke completions install <shell>`                      | Write the script and wire it into the shell's startup.                                  |
-| `zuke mcp [--allow-run[=<globs>]] [--http <host:port>]` | Run an MCP server over the build for AI agents, on stdio or HTTP ([details](./mcp.md)). |
-| `zuke resume <id> [--signal <n>] [--data <json>]`       | Resume a suspended run, optionally delivering a signal ([details](./orchestration.md)). |
-| `zuke resume --check [<id>]`                            | Re-check suspended runs (predicate waits, timeouts).                                    |
-| `zuke runs list [--status/-target/-since/-limit] [--counts] [--json]` | List persisted run records (or `--counts` for a status tally), newest first ([details](./state.md)). |
-| `zuke runs show <id> [--json]`                          | Show one run's full per-target status and metadata.                                     |
-| `zuke runs prune [--keep <age>] [--keep-last <n>] [--dry-run]` | Delete old terminal run records; never touches non-terminal runs.                |
-| `zuke cancel <id> [--actor <name>]`                     | Cancel a run and run its compensations ([details](./orchestration.md#cancellation--compensation-oncancel)). |
-| `zuke --help` / `-h`                                    | Usage.                                                                                  |
-| `zuke` (no target)                                      | Run the `default` target if defined, else print `--list`.                               |
+| Command                                                               | Behaviour                                                                                                   |
+| --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `zuke <target>`                                                       | Run the target and all its transitive dependencies, in order.                                               |
+| `zuke <target> --skip <dep>`                                          | Run the target but skip the named dependency (repeatable).                                                  |
+| `zuke <target> --parallel`                                            | Run independent targets concurrently (`--parallel=N` caps it).                                              |
+| `zuke <target> --no-cache`                                            | Ignore the incremental cache; re-run every target.                                                          |
+| `zuke <target> --affected[=<base>]`                                   | Run only targets affected by files changed since a git base.                                                |
+| `zuke <target> --dry-run`                                             | Print the plan without executing any target body.                                                           |
+| `zuke <target> --state`                                               | Persist [durable run state](./state.md) under `.zuke/runs`.                                                 |
+| `zuke <target> --actor <name>`                                        | Attribute the run to `<name>` in its state record.                                                          |
+| `zuke --list` / `-l`                                                  | List all targets with descriptions and dependencies.                                                        |
+| `zuke graph`                                                          | Print the dependency graph (`target → deps`).                                                               |
+| `zuke graph --output=html`                                            | Render an interactive HTML graph into `.zuke/` and open it.                                                 |
+| `zuke completions print <shell>`                                      | Print a shell-completion script (`bash`, `zsh`, or `fish`).                                                 |
+| `zuke completions install <shell>`                                    | Write the script and wire it into the shell's startup.                                                      |
+| `zuke mcp [--allow-run[=<globs>]] [--http <host:port>]`               | Run an MCP server over the build for AI agents, on stdio or HTTP ([details](./mcp.md)).                     |
+| `zuke resume <id> [--signal <n>] [--data <json>]`                     | Resume a suspended run, optionally delivering a signal ([details](./orchestration.md)).                     |
+| `zuke resume --check [<id>]`                                          | Re-check suspended runs (predicate waits, timeouts).                                                        |
+| `zuke runs list [--status/-target/-since/-limit] [--counts] [--json]` | List persisted run records (or `--counts` for a status tally), newest first ([details](./state.md)).        |
+| `zuke runs show <id> [--json]`                                        | Show one run's full per-target status and metadata.                                                         |
+| `zuke runs prune [--keep <age>] [--keep-last <n>] [--dry-run]`        | Delete old terminal run records; never touches non-terminal runs.                                           |
+| `zuke cancel <id> [--actor <name>]`                                   | Cancel a run and run its compensations ([details](./orchestration.md#cancellation--compensation-oncancel)). |
+| `zuke doc <spec>`                                                     | Print a package's API docs (`deno doc <spec>`) from an isolated empty directory.                            |
+| `zuke --help` / `-h`                                                  | Usage.                                                                                                      |
+| `zuke` (no target)                                                    | Run the `default` target if defined, else print `--list`.                                                   |
 
 (Read `zuke` as `deno run -A zuke.ts` until the launcher binary ships.)
 
@@ -122,6 +123,20 @@ mutating or denied call is written to an audit trail
 transport instead of stdio (loopback by default; a non-loopback bind requires a
 `ZUKE_MCP_TOKEN` bearer token). `mcp` is a reserved command name. See the full
 guide: [MCP server](./mcp.md).
+
+## `zuke doc`
+
+`zuke doc <spec>` prints a package's API by running `deno doc <spec>` (e.g.
+`zuke doc jsr:@zuke/deno`) — but from a fresh empty directory instead of the
+current one. Run inside a Node repository, a bare `deno doc jsr:@zuke/...`
+resolves the repo's `node_modules/@types/*` and buries the API under dozens of
+`Failed resolving types …` warnings; the isolated empty working directory has
+nothing to resolve, so the output is just the API. Any relative file path
+(`zuke doc ./mod.ts` or `zuke doc mod.ts`) is resolved against the real working
+directory before the isolated `deno doc` runs; `jsr:`/`npm:`/`https:` specifiers
+and absolute paths are passed through unchanged. `doc` is a reserved command
+name. (This complements the generated [`llms-full.txt`](../llms-full.txt) and
+each package's README `## API` block.)
 
 ## Parallel execution
 
@@ -268,12 +283,13 @@ build graph changed since the run was suspended. See
 
 `zuke cancel <run-id>` cancels a run and runs its
 [compensations](./orchestration.md#cancellation--compensation-oncancel): every
-target that had **succeeded** and declared `.onCancel(...)` is unwound in reverse
-order, then the record settles `cancelled`. `--actor <name>` attributes the
-cancellation in the audit trail. Cancelling a run another process is executing
-stops it (a live run aborts on its next state write); cancelling an
-already-finished run is a friendly no-op. `Ctrl-C` (or `SIGTERM`) cancels the run
-in the current process the same way — a second `Ctrl-C` forces an immediate exit.
+target that had **succeeded** and declared `.onCancel(...)` is unwound in
+reverse order, then the record settles `cancelled`. `--actor <name>` attributes
+the cancellation in the audit trail. Cancelling a run another process is
+executing stops it (a live run aborts on its next state write); cancelling an
+already-finished run is a friendly no-op. `Ctrl-C` (or `SIGTERM`) cancels the
+run in the current process the same way — a second `Ctrl-C` forces an immediate
+exit.
 
 ## Inspecting runs
 
@@ -282,11 +298,11 @@ run's full status survives the process that produced it.
 
 - `zuke runs list` prints one row per run — id, status, root target, actor, and
   creation time — newest first. Narrow it with `--status <s>` (one of `running`,
-  `suspended`, `cancelling`, `succeeded`, `failed`, `cancelled`), `--target <t>` (only runs
-  whose graph contains that target), `--since <iso>` (only runs created at
-  or after an ISO-8601 timestamp), and `--limit <n>` (at most the newest N). The
-  filters compose. Add `--counts` to print aggregate counts (a total and one
-  line per status) instead of rows — with `--json` it emits
+  `suspended`, `cancelling`, `succeeded`, `failed`, `cancelled`), `--target <t>`
+  (only runs whose graph contains that target), `--since <iso>` (only runs
+  created at or after an ISO-8601 timestamp), and `--limit <n>` (at most the
+  newest N). The filters compose. Add `--counts` to print aggregate counts (a
+  total and one line per status) instead of rows — with `--json` it emits
   `{ total, byStatus }` (status keys sorted for stable output), honouring the
   same filters.
 - `zuke runs show <run-id>` reconstructs one run in full: the header, resolved

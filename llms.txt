@@ -49,6 +49,7 @@ Reserved commands:
 - `runs` — List, show, or prune persisted run records
 - `cancel` — Cancel a run and run its compensations
 - `register` — Register this build in the build registry
+- `doc` — Print a package's API docs (deno doc), isolated from the repo
 
 Option flags:
 
