@@ -7,6 +7,8 @@
  * {@link httpDownload}), unpacks a `.tar.gz` (reusing {@link extractTarGzip}) or
  * a `.zip` (reusing {@link extractZip}) or takes a raw single binary, drops it
  * into a directory, marks it executable, and returns its {@link AbsolutePath}.
+ * {@link installTree} is its multi-file sibling: it keeps the whole extracted
+ * tree (symlinks included) for a runtime like Node.js that ships several bins.
  *
  * ```ts
  * import { installRelease } from "jsr:@zuke/core";
@@ -343,4 +345,159 @@ export async function installRelease(
   // skip the download only when the binary on disk still matches.
   if (checksum !== undefined) await writeMarker(target, checksum);
   return target;
+}
+
+/** Whether a filesystem path exists (follows symlinks, so a bin symlink counts). */
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await Deno.stat(path);
+    return true;
+  } catch (error) {
+    if (error instanceof Deno.errors.NotFound) return false;
+    throw error;
+  }
+}
+
+/** The marker file recording the checksum an installed tree satisfied. */
+function treeMarkerPath(treeRoot: AbsolutePath): string {
+  return `${String(treeRoot)}.tree.json`;
+}
+
+/**
+ * Whether `treeRoot` is a valid cache hit for `checksum`: the recorded install
+ * satisfied the same checksum, and every declared bin is still present. Unlike a
+ * single-binary install, a tree is not re-hashed file-by-file — the pinned
+ * archive checksum is the integrity boundary, and a present-bins check catches a
+ * half-deleted directory. (ponytail: no whole-tree re-hash; the download's
+ * checksum already gates integrity, re-verify by re-pinning a new checksum.)
+ */
+async function cachedTree(
+  treeRoot: AbsolutePath,
+  checksum: string,
+  bins: readonly string[],
+): Promise<boolean> {
+  const recorded = await readFileOrNull(treeMarkerPath(treeRoot));
+  if (recorded === null) return false;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(new TextDecoder().decode(recorded));
+  } catch {
+    return false; // a corrupt marker is treated as no marker — re-install.
+  }
+  if (
+    typeof parsed !== "object" || parsed === null ||
+    !("checksum" in parsed) || parsed.checksum !== checksum
+  ) {
+    return false;
+  }
+  for (const bin of bins) {
+    if (!await pathExists(String(treeRoot(...bin.split("/"))))) return false;
+  }
+  return true;
+}
+
+/** Options for {@link installTree}. */
+export interface InstallTreeOptions {
+  /** The tool name; the extracted tree lands in `<destDir>/<name>`. */
+  name: string;
+  /** Resolve the download URL for the target {@link Platform}. */
+  url: (platform: Platform) => string;
+  /** The directory the tree is installed under (created if missing). */
+  destDir: PathLike;
+  /** The archive format — a multi-file runtime always ships packed. */
+  archive: "tar.gz" | "zip";
+  /**
+   * Leading path components to drop while unpacking (tar's `--strip-components`).
+   * A release tarball wraps everything in a `tool-v1.2.3/` directory, so `1`
+   * unwraps it; {@link bins} and the returned tree root are then relative to the
+   * stripped tree. Defaults to `0`.
+   */
+  strip?: number;
+  /**
+   * Paths (relative to the stripped tree root) to mark executable on POSIX — the
+   * tar reader does not preserve mode bits, so a runtime's `bin/node`,
+   * `bin/npm`, … need it. Chmod follows a symlink to its real target, so listing
+   * a symlinked bin makes the script it points at executable too.
+   */
+  bins?: readonly string[];
+  /** The platform to resolve for. Defaults to {@link hostPlatform}. */
+  platform?: InstallPlatform;
+  /** The download implementation. Defaults to {@link httpDownload}; a test seam. */
+  download?: DownloadFn;
+  /**
+   * The expected **SHA-256** (hex) of the downloaded archive — verified before
+   * anything is unpacked, and used as the cache key (see
+   * {@link InstallReleaseOptions.checksum}). Omit it and the tree is downloaded
+   * every time and not verified.
+   */
+  checksum?: string | ((platform: Platform) => string);
+}
+
+/**
+ * Download and unpack a **whole archive tree** — a multi-file runtime such as
+ * Node.js, which ships `bin/node`, `bin/npm`, `bin/npx`, and
+ * `lib/node_modules/**` in one tarball — and return the {@link AbsolutePath} of
+ * its (stripped) root. `installRelease` extracts a single binary; `installTree`
+ * keeps the entire directory, symlinks included.
+ *
+ * Because {@link AbsolutePath} is callable, the root doubles as an accessor:
+ * `root("bin", "node")` is the node binary and `root("bin")` is the directory to
+ * put on `PATH` (with `prependPath`). Declared {@link InstallTreeOptions.bins}
+ * are marked executable on POSIX. With a {@link InstallTreeOptions.checksum} the
+ * archive is verified before unpacking and a matching prior install is reused.
+ */
+export async function installTree(
+  options: InstallTreeOptions,
+): Promise<AbsolutePath> {
+  const platform = options.platform !== undefined
+    ? platformOf(options.platform)
+    : hostPlatform();
+  const download = options.download ?? httpDownload;
+  const checksum = resolveChecksum(options.checksum, platform);
+  const root = resolveDir(String(options.destDir));
+  const treeRoot = root(options.name);
+  const bins = options.bins ?? [];
+
+  // Cache hit: a prior install verified against the same checksum, bins intact.
+  if (checksum !== undefined && await cachedTree(treeRoot, checksum, bins)) {
+    return treeRoot;
+  }
+
+  const url = options.url(platform);
+  const scratch = await Deno.makeTempDir();
+  try {
+    const archivePath = `${scratch}/download.${options.archive}`;
+    await download(url, archivePath);
+    if (checksum !== undefined) {
+      await verifyChecksum(
+        options.name,
+        await Deno.readFile(archivePath),
+        checksum,
+      );
+    }
+    // Clear any stale or partial prior tree before unpacking a fresh one, so a
+    // re-install never collides with leftover files (or symlinks).
+    await Deno.remove(String(treeRoot), { recursive: true }).catch(() => {});
+    await Deno.mkdir(String(treeRoot), { recursive: true });
+    const extract = options.archive === "zip" ? extractZip : extractTarGzip;
+    await extract(archivePath, String(treeRoot), { strip: options.strip });
+  } finally {
+    await Deno.remove(scratch, { recursive: true });
+  }
+
+  // The tar reader drops mode bits, so make the declared bins executable —
+  // skipped for a Windows target, whose `.exe`/`.cmd` bins need no POSIX mode
+  // (mirrors installRelease, and keeps the skip branch testable via `platform`).
+  if (platform.os !== "windows") {
+    for (const bin of bins) {
+      await Deno.chmod(String(treeRoot(...bin.split("/"))), 0o755);
+    }
+  }
+  if (checksum !== undefined) {
+    await Deno.writeTextFile(
+      treeMarkerPath(treeRoot),
+      `${JSON.stringify({ checksum })}\n`,
+    );
+  }
+  return treeRoot;
 }

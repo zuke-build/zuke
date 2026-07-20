@@ -40,6 +40,8 @@ import {
   type InstallPlatform,
   installRelease,
   type InstallReleaseOptions,
+  installTree,
+  type InstallTreeOptions,
   type Platform,
 } from "./install.ts";
 import {
@@ -70,6 +72,10 @@ export class ToolInstallSettings {
   archive_?: "raw" | "tar.gz" | "zip";
   /** The binary's path within a `tar.gz`. Set by {@link binaryPath}. */
   binaryPath_?: string;
+  /** Leading path components to strip on a tree install. Set by {@link strip}. */
+  strip_?: number;
+  /** Executable bins within a tree install. Set by {@link bins}. */
+  bins_?: string[];
   /** Expected SHA-256 (or a per-platform resolver). Set by {@link checksum}. */
   checksum_?: string | ((platform: Platform) => string);
   /** The platform to resolve for. Set by {@link platform}. */
@@ -107,6 +113,26 @@ export class ToolInstallSettings {
   /** For an archive, the binary's path within it (defaults to the name). */
   binaryPath(path: string): this {
     this.binaryPath_ = path;
+    return this;
+  }
+
+  /**
+   * For a tree install ({@link ToolTasksApi.installTree} / {@link Toolchain.tree}),
+   * drop this many leading path components while unpacking — `1` unwraps a
+   * release tarball's `tool-v1.2.3/` directory. Ignored by a single-binary install.
+   */
+  strip(components: number): this {
+    this.strip_ = components;
+    return this;
+  }
+
+  /**
+   * For a tree install, the paths (relative to the stripped root) to mark
+   * executable on POSIX — a runtime's `bin/node`, `bin/npm`, … Ignored by a
+   * single-binary install.
+   */
+  bins(...paths: string[]): this {
+    this.bins_ = paths;
     return this;
   }
 
@@ -154,6 +180,38 @@ export class ToolInstallSettings {
       download: this.download_,
     };
   }
+
+  /**
+   * Build the {@link InstallTreeOptions} for a tree install, using
+   * `fallbackDestDir` when no {@link destDir} was set. A tree always ships
+   * packed, so the archive defaults to `"tar.gz"` and `"raw"` is rejected. Throws
+   * if a required field is missing.
+   */
+  treeOptions_(fallbackDestDir: PathLike): InstallTreeOptions {
+    if (this.name_ === undefined) {
+      throw new Error("a tool tree install requires .name(...).");
+    }
+    if (this.url_ === undefined) {
+      throw new Error(`tool "${this.name_}" requires .url(...).`);
+    }
+    if (this.archive_ === "raw") {
+      throw new Error(
+        `tool "${this.name_}": a tree install needs an archive ` +
+          `("tar.gz" or "zip"), not "raw".`,
+      );
+    }
+    return {
+      name: this.name_,
+      url: this.url_,
+      destDir: this.destDir_ ?? fallbackDestDir,
+      archive: this.archive_ ?? "tar.gz",
+      strip: this.strip_,
+      bins: this.bins_,
+      checksum: this.checksum_,
+      platform: this.platform_,
+      download: this.download_,
+    };
+  }
 }
 
 /** The task surface of {@link ToolTasks}. */
@@ -164,6 +222,18 @@ export interface ToolTasksApi {
    * Defaults the install directory to `.zuke/tools`.
    */
   install(
+    configure: Configure<ToolInstallSettings>,
+  ): Promise<AbsolutePath>;
+  /**
+   * Install a multi-file runtime tree (Node.js, a JDK, …) from one archive,
+   * configured through a {@link ToolInstallSettings} lambda, and resolve to the
+   * extracted tree's root {@link AbsolutePath}. Because that path is callable,
+   * `root("bin", "node")` is a binary and `root("bin")` a directory to put on
+   * `PATH`. Use `.strip(...)` and `.bins(...)`; defaults the install directory to
+   * `.zuke/tools`. See {@link installTree}; group several with
+   * {@link Toolchain.tree}.
+   */
+  installTree(
     configure: Configure<ToolInstallSettings>,
   ): Promise<AbsolutePath>;
   /**
@@ -188,6 +258,10 @@ export const ToolTasks: ToolTasksApi = {
     const settings = configure(new ToolInstallSettings());
     return installRelease(settings.options_(DEFAULT_TOOLS_DIR));
   },
+  installTree(configure) {
+    const settings = configure(new ToolInstallSettings());
+    return installTree(settings.treeOptions_(DEFAULT_TOOLS_DIR));
+  },
   npm(spec, options) {
     return installNpmTool(spec, options);
   },
@@ -210,11 +284,24 @@ export interface ToolchainInstallOptions {
  */
 export class Toolchain {
   readonly #tools: ToolInstallSettings[] = [];
+  readonly #trees: ToolInstallSettings[] = [];
   readonly #npmTools: NpmToolSpec[] = [];
 
   /** Add a release tool, configured through a settings-lambda. Chainable. */
   tool(configure: Configure<ToolInstallSettings>): this {
     this.#tools.push(configure(new ToolInstallSettings()));
+    return this;
+  }
+
+  /**
+   * Add a multi-file runtime tree (see {@link ToolTasksApi.installTree}),
+   * configured through a settings-lambda with `.strip(...)`/`.bins(...)`. In
+   * {@link install}'s result its entry is the extracted tree's root — a callable
+   * {@link AbsolutePath}, so `root("bin")` is the directory to put on `PATH`.
+   * Chainable.
+   */
+  tree(configure: Configure<ToolInstallSettings>): this {
+    this.#trees.push(configure(new ToolInstallSettings()));
     return this;
   }
 
@@ -234,6 +321,11 @@ export class Toolchain {
     return this.#tools;
   }
 
+  /** The configured runtime trees, in declaration order. */
+  get trees(): readonly ToolInstallSettings[] {
+    return this.#trees;
+  }
+
   /** The configured npm-package tools, in declaration order. */
   get npmTools(): readonly NpmToolSpec[] {
     return this.#npmTools;
@@ -241,8 +333,9 @@ export class Toolchain {
 
   /**
    * Install every declared tool concurrently — reusing a cached copy where a
-   * release tool's pinned checksum, or an npm tool's `name@version` marker,
-   * matches — and return a map of tool name to installed {@link AbsolutePath}.
+   * release tool's or tree's pinned checksum, or an npm tool's `name@version`
+   * marker, matches — and return a map of tool name to installed
+   * {@link AbsolutePath}. A {@link tree}'s entry is its extracted root directory.
    */
   async install(
     options: ToolchainInstallOptions = {},
@@ -258,6 +351,15 @@ export class Toolchain {
             : { ...spec, download: options.download },
         );
         installed.set(spec.name, path);
+      }),
+      ...this.#trees.map(async (settings) => {
+        const spec = settings.treeOptions_(destDir);
+        const root = await installTree(
+          options.download === undefined
+            ? spec
+            : { ...spec, download: options.download },
+        );
+        installed.set(spec.name, root);
       }),
       ...this.#npmTools.map(async (spec) => {
         const path = await installNpmTool(spec, {
