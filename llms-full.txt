@@ -9405,6 +9405,10 @@ class Reviewer implements Validation
     The `fetch` implementation for the API call (test seam).
   exec(run: (argv: string[]) => Promise<string>): this
     The `git` runner used to produce the diff (test seam).
+  env(reader: EnvReader): this
+    Environment reader used to auto-detect the base branch for
+    {@link "./diff.ts".DiffSettings.fetchBase} (reads `GITHUB_BASE_REF`). A test
+    seam; defaults to the process environment.
   budget(budget: Budget): this
     Attach a shared {@link Budget} that caps spend by an exact token count
     (a USD cap is opt-in, computed from prices you supply to the budget). Pass

@@ -146,3 +146,42 @@ export class DiffSettings {
     return argv;
   }
 }
+
+/**
+ * Whether a value is safe to pass as a positional `git` argument: non-empty and
+ * not option-like (a leading `-` could be misread as a flag — e.g. an injected
+ * `--upload-pack=...` — so such values are rejected rather than fetched).
+ */
+function safeGitArg(value: string): boolean {
+  return value !== "" && !value.startsWith("-");
+}
+
+/**
+ * Honour a {@link DiffSettings.fetchBase} request: fetch the base branch
+ * ourselves (a shallow, tag-less `git fetch`, auto-detecting the branch from
+ * `GITHUB_BASE_REF` when unset) and return the diff against `FETCH_HEAD`, so a
+ * CI job needs no manual `git fetch` step. Returns `undefined` — leaving the
+ * caller to fall back to its normal diff source — when no fetch was requested,
+ * the branch can't be determined, a `remote`/`branch` argument is unsafe, or the
+ * fetch/diff fails (offline, not a PR, ref unavailable). Shared by the reviewer
+ * and the {@link "./fixer.ts".AiFixer} so both resolve `fetchBase` identically.
+ */
+export async function fetchBaseDiff(
+  diff: DiffSettings,
+  run: (argv: string[]) => Promise<string>,
+  env: (name: string) => string | undefined,
+): Promise<string | undefined> {
+  const fetch = diff.fetch_();
+  if (fetch === undefined) return undefined;
+  const branch = fetch.branch ?? env("GITHUB_BASE_REF");
+  const remote = fetch.remote;
+  if (branch === undefined || !safeGitArg(branch) || !safeGitArg(remote)) {
+    return undefined;
+  }
+  try {
+    await run(["git", "fetch", "--no-tags", "--depth=1", remote, branch]);
+    return await run(["git", "diff", "FETCH_HEAD"]);
+  } catch {
+    return undefined; // offline, not a PR, or the ref is unavailable
+  }
+}

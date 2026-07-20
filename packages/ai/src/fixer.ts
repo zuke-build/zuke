@@ -29,6 +29,7 @@ import { postSuggestions } from "./hosts/github_review.ts";
 import {
   DEFAULT_EXCLUDES,
   DiffSettings,
+  fetchBaseDiff,
   filterDiff,
   truncate,
 } from "./diff.ts";
@@ -66,15 +67,6 @@ function suggestionBody(diagnosis: string, loc: FixLocation): string {
     ? ["```suggestion", "```"]
     : ["```suggestion", suggestion, "```"];
   return [diagnosis, "", ...block].join("\n");
-}
-
-/**
- * Whether a value is safe to pass as a positional `git` argument: non-empty and
- * not option-like (a leading `-` could be misread as a flag — e.g. an injected
- * `--upload-pack=...` — so such values are rejected rather than fetched).
- */
-function safeGitArg(value: string): boolean {
-  return value !== "" && !value.startsWith("-");
 }
 
 /**
@@ -349,22 +341,10 @@ export class AiFixer implements Remediation {
     const text = this.#diff.text_();
     if (text !== undefined) return text;
     const run = this.#git();
-    // When `.fetchBase()` is set, fetch the base branch ourselves (auto-detecting
-    // it from the CI env when unspecified) so no manual `git fetch` step is
-    // needed; fall back to the working-tree diff if the fetch can't be done.
-    const fetch = this.#diff.fetch_();
-    if (fetch) {
-      const branch = fetch.branch ?? this.#env("GITHUB_BASE_REF");
-      const remote = fetch.remote;
-      if (branch !== undefined && safeGitArg(branch) && safeGitArg(remote)) {
-        try {
-          await run(["git", "fetch", "--no-tags", "--depth=1", remote, branch]);
-          return await run(["git", "diff", "FETCH_HEAD"]);
-        } catch {
-          // Offline, not a PR, or the ref is unavailable — fall through.
-        }
-      }
-    }
+    // When `.fetchBase()` is set, fetch the base branch ourselves so no manual
+    // `git fetch` step is needed; fall back to the working-tree diff otherwise.
+    const fetched = await fetchBaseDiff(this.#diff, run, this.#env);
+    if (fetched !== undefined) return fetched;
     try {
       return await run(this.#diff.argv_());
     } catch {
