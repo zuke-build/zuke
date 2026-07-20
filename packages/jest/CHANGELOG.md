@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.3](https://github.com/zuke-build/zuke/compare/jest-v0.2.2...jest-v0.2.3) (2026-07-20)
+
+
+### Bug Fixes
+
+* default JS-ecosystem wrappers to node_modules binary resolution ([#231](https://github.com/zuke-build/zuke/issues/231)) ([51d7206](https://github.com/zuke-build/zuke/commit/51d72060c8b8bb55d302483a0f68c5c5ab46acf3))
+
 ## [0.2.2](https://github.com/zuke-build/zuke/compare/jest-v0.2.1...jest-v0.2.2) (2026-07-20)
 
 

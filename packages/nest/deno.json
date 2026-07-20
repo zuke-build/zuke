@@ -1,6 +1,6 @@
 {
   "name": "@zuke/nest",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Typed NestJS CLI (nest) task wrappers for Zuke builds — scaffold, generate, build, and start NestJS projects via an injection-free settings-lambda API.",
   "exports": {
     ".": "./mod.ts"

@@ -1,6 +1,6 @@
 {
   "name": "@zuke/tsdown",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Typed tsdown CLI task wrapper for Zuke builds — bundle TypeScript/JavaScript with the Rolldown-powered tsdown bundler (formats, dts, minify, and more) via an injection-free settings-lambda API.",
   "exports": {
     ".": "./mod.ts"

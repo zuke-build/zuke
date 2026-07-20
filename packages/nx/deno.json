@@ -1,6 +1,6 @@
 {
   "name": "@zuke/nx",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Typed Nx CLI task wrappers for Zuke builds — run, run-many, and affected via an injection-free settings-lambda API.",
   "exports": {
     ".": "./mod.ts"
