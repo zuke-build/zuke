@@ -24,15 +24,15 @@ exact signatures are published — read them:
 - **The CLI surface — commands, flags, and a build's actual targets:** run
   `zuke --help` (or `deno run -A zuke.ts --help`). It prints the usage grammar,
   every reserved command (`graph`, `generate-ci`,
-  `completions <print|install> <shell>`) and flag, **plus the current build's
-  targets — with descriptions and dependencies — and its parameters.** So an
-  agent asked to set up or run a build discovers the real command surface live
-  instead of guessing; `zuke --list` is the targets-only view and
-  `zuke --list --json` emits the whole surface (commands, flags, targets,
-  parameters) as JSON for tools. The written reference is
-  [`docs/cli.md`](./docs/cli.md), and [`llms.txt`](./llms.txt) carries a
-  generated `## CLI` section; the same data is available in code via the
-  exported `describeCli(build)`.
+  `completions <print|install> <shell>`, `mcp`, `resume`, `runs`, `cancel`,
+  `register`, `doc`) and flag, **plus the current build's targets — with
+  descriptions and dependencies — and its parameters.** So an agent asked to set
+  up or run a build discovers the real command surface live instead of guessing;
+  `zuke --list` is the targets-only view and `zuke --list --json` emits the
+  whole surface (commands, flags, targets, parameters) as JSON for tools. The
+  written reference is [`docs/cli.md`](./docs/cli.md), and
+  [`llms.txt`](./llms.txt) carries a generated `## CLI` section; the same data
+  is available in code via the exported `describeCli(build)`.
 
 The mental model:
 
@@ -75,13 +75,15 @@ regenerate them in the same PR.
   runner, formatter, linter, type-checker, coverage — is the built-in `deno`
   CLI. No Node, npm, or external build tools.
 - **Language:** TypeScript, strict mode (Deno's default).
-- **Distribution:** [JSR](https://jsr.io/) as a workspace of four packages:
-  `@zuke/core` (exports `.`, `./shell`, `./tooling`), `@zuke/deno`, `@zuke/npm`,
-  `@zuke/cmd`. The npm org `@zuke-build` is reserved for future npm distribution
-  (1:1 name mapping).
+- **Distribution:** [JSR](https://jsr.io/) as a workspace of 55 packages:
+  `@zuke/core` (exports `.`, `./shell`, `./tooling`, `./render`,
+  `./conformance`) plus the `@zuke/cli` command, a generic `@zuke/cmd` fallback,
+  and 50+ typed tool wrappers and plugins (`@zuke/deno`, `@zuke/npm`,
+  `@zuke/docker`, `@zuke/ai`, …). The npm org `@zuke-build` is reserved for
+  future npm distribution (1:1 name mapping).
 - **No runtime dependencies.** The library is dependency-free; tests use a local
-  assertion helper (`tests/_assert.ts`) rather than a third-party assert library
-  so the suite runs with zero network access.
+  assertion helper (`packages/core/tests/_assert.ts`) rather than a third-party
+  assert library so the suite runs with zero network access.
 
 ### TypeScript 7 / `tsgo`
 
@@ -125,7 +127,7 @@ update the `check` task and CI accordingly. Do not bolt on a parallel
    — never leave a `private-type-ref` to one of the package's own types. Verify
    with `deno doc --lint` run over **all of a package's entrypoints in one
    invocation** (a multi-entrypoint package like `@zuke/core` has `.`,
-   `./shell`, `./tooling`, `./render`, so
+   `./shell`, `./tooling`, `./render`, `./conformance`, so
    `deno doc --lint packages/core/mod.ts packages/core/src/shell.ts …` — linting
    them together lets cross-entrypoint references resolve). The bar: zero
    `missing-jsdoc` and zero `private-type-ref` to a first-party type. The one
@@ -186,10 +188,11 @@ an **e2e** test. All three obey guideline 5: hermetic and fast, no network, no
 ambient tools.
 
 1. **Unit — `packages/<pkg>/tests/*_test.ts`.** One module in isolation, with
-   fakes and the local `tests/_assert.ts` helper (never a third-party assert
-   library). For a tool wrapper, assert the **pure `buildArgs()` argv** — do not
-   run the real tool. This layer covers a module's branches and a wrapper's
-   flags, and carries the bulk of the 95% coverage gate.
+   fakes and the local `packages/core/tests/_assert.ts` helper (never a
+   third-party assert library). For a tool wrapper, assert the **pure
+   `buildArgs()` argv** — do not run the real tool. This layer covers a module's
+   branches and a wrapper's flags, and carries the bulk of the 95% coverage
+   gate.
 
 2. **Integration — `tests/integration/*_test.ts`.** Drive a _real_ build
    end-to-end through the CLI `main()` entry point using the harness in
@@ -200,8 +203,9 @@ ambient tools.
    recording execution into a local array. Prove the executor / graph / params /
    CLI / wait-resume-state flow works as a whole, not just a unit seam. These
    are ordinary `*_test.ts` files, so they run in the **normal `deno test`
-   lane** — every `deno task test` / `ci`, on all three OSes (the `test-os`
-   matrix) — and count toward coverage.
+   lane** — every `deno task test` / `ci`, on all three OSes (Ubuntu via
+   ci.yml's `quality` job, macOS and Windows via the `test-os` matrix) — and
+   count toward coverage.
 
 3. **E2E — `tests/e2e/*_e2e.ts` (+ `tests/e2e/fixtures/`).** For the one thing
    an in-process test cannot prove: genuine **inter-process** behaviour (e.g.
@@ -236,32 +240,38 @@ the three test layers above and the "read every reviewer comment" rule below.
 
 ## Commands
 
-| Task                          | Command                                 |
-| ----------------------------- | --------------------------------------- |
-| Run tests                     | `deno task test`                        |
-| Coverage + gate (95%)         | `deno task cov`                         |
-| Human-readable coverage table | `deno task cov:report`                  |
-| Type-check everything         | `deno task check`                       |
-| Format / check formatting     | `deno task fmt` / `deno task fmt:check` |
-| Lint                          | `deno task lint`                        |
-| Spell-check                   | `deno task spell`                       |
-| Full pre-commit / CI gate     | `deno task ci`                          |
+| Task                          | Command                                              |
+| ----------------------------- | ---------------------------------------------------- |
+| Run tests                     | `deno task test`                                     |
+| Coverage + gate (95%)         | `deno task cov`                                      |
+| Human-readable coverage table | `deno task cov:report`                               |
+| Type-check everything         | `deno task check`                                    |
+| Format / check formatting     | `deno task fmt` / `deno task fmt:check`              |
+| Lint                          | `deno task lint`                                     |
+| Spell-check                   | `deno task spell`                                    |
+| Local pre-commit gate         | `deno task ci` (fmt, lint, spell, check, cov)        |
+| Full CI gate (as CI runs it)  | `./zuke ci` (adds `coverageUpload` + `apiDocsCheck`) |
 
 ## Repository layout
 
 ```
 deno.json                 # workspace root: tasks, fmt/lint config
 packages/
-  core/                   # @zuke/core — mod.ts, src/, tests/ (+ ./shell, ./tooling)
+  core/                   # @zuke/core — mod.ts, src/, tests/ (+ ./shell, ./tooling, ./render, ./conformance)
   deno/                   # @zuke/deno — DenoTasks
   npm/                    # @zuke/npm  — NpmTasks
   cmd/                    # @zuke/cmd  — CmdTasks (generic fallback)
+  …                       # + 51 more: @zuke/cli, @zuke/docs, @zuke/ai, and tool wrappers (55 total)
 tests/
   integration/            # in-process: real builds via the CLI main() + _harness.ts
   e2e/                    # subprocess: *_e2e.ts + fixtures/ (run by the `integration` target)
 zuke.ts                   # Zuke's own build (runnable example)
 .github/workflows/ci.yml           # PR checks (quality + test-os matrix)
 .github/workflows/integration.yml  # e2e suite on the OS matrix (generated)
+.github/workflows/ai-review.yml    # @zuke/ai PR review
+.github/workflows/release.yml      # release-please automation
+.github/workflows/scorecard.yml    # OpenSSF supply-chain scorecard
+.github/workflows/security.yml     # security scanners
 ```
 
 ## Architecture notes

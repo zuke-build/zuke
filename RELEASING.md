@@ -1,17 +1,20 @@
 # Releasing
 
-Zuke publishes five packages to [JSR](https://jsr.io/@zuke) — `@zuke/core`,
-`@zuke/deno`, `@zuke/npm`, `@zuke/cmd`, and the `@zuke/cli` command — from a
-single workspace. Releases are automated end to end; you only ever merge a
-pull request.
+Zuke publishes 55 packages to [JSR](https://jsr.io/@zuke) from a single
+workspace — `@zuke/core`, the `@zuke/cli` command, a generic `@zuke/cmd`
+fallback, and 50+ typed tool wrappers and plugins (`@zuke/deno`, `@zuke/npm`,
+`@zuke/ai`, …). Releases are automated end to end; you only ever merge a pull
+request.
 
 ## How it works
 
 1. **Conventional commits drive versions.** Land work on `master` with
    Conventional Commits (`feat:`, `fix:`, `feat!:` / `BREAKING CHANGE:`).
-   Because Zuke is pre-1.0, breaking
-   changes bump the **minor** version and stay in `0.x`
-   (`bump-minor-pre-major`); they do not jump to `1.0.0`.
+   Versions are per-package. `bump-minor-pre-major` is enabled, so a package
+   still in `0.x` (most tool wrappers) takes a **minor** bump on a breaking
+   change and stays in `0.x`. Packages that have reached 1.0 — `@zuke/core`
+   (1.30.0), plus `@zuke/ai`, `@zuke/console`, `@zuke/otel`, and others — follow
+   full semver: a breaking change bumps the **major** version.
 
 2. **Zuke runs the whole release.** `.github/workflows/release.yml` is itself
    driven by Zuke: on every push to `master` it runs a single command,
@@ -23,20 +26,20 @@ pull request.
    release-please CLI (`release-pr` + `github-release`). release-please
    maintains a **single** release PR covering every package with pending
    changes, bumping the version in each `packages/<pkg>/deno.json`, updating the
-   `CHANGELOG.md`s, and updating `.release-please-manifest.json`. Merging it tags
-   each release (`<component>-v<version>`, e.g. `core-v0.1.0`) and cuts the
-   GitHub releases.
+   `CHANGELOG.md`s, and updating `.release-please-manifest.json`. Merging it
+   tags each release (`<component>-v<version>`, e.g. `core-v1.30.0`) and cuts
+   the GitHub releases.
 
-4. **`publish` pushes to JSR.** The `publish` target walks the packages
-   **core first** (so the workspace's `jsr:@zuke/core` dependency resolves) and
+4. **`publish` pushes to JSR.** The `publish` target walks the packages **core
+   first** (so the workspace's `jsr:@zuke/core` dependency resolves) and
    publishes each one whose `deno.json` version is **not yet on JSR** — it
-   queries each package's JSR `meta.json` first, so it is idempotent and a
-   no-op on pushes that didn't release anything. Authentication is OIDC — the
-   JSR package ↔ repo link means **no tokens or secrets** are required; the
-   workflow just grants `id-token: write`.
+   queries each package's JSR `meta.json` first, so it is idempotent and a no-op
+   on pushes that didn't release anything. Authentication is OIDC — the JSR
+   package ↔ repo link means **no tokens or secrets** are required; the workflow
+   just grants `id-token: write`.
 
-So the steady-state flow is: merge conventional commits → merge the release PR
-→ the packages publish themselves.
+So the steady-state flow is: merge conventional commits → merge the release PR →
+the packages publish themselves.
 
 > [!IMPORTANT]
 > **Keep code snippets out of commit message bodies.** release-please parses
@@ -45,34 +48,7 @@ So the steady-state flow is: merge conventional commits → merge the release PR
 > it fail to parse the whole commit — which silently drops it from the release,
 > so no version is bumped. Because the repo squash-merges, the squash body is
 > built from the PR description/commits, so keep illustrative code in the PR
-> *discussion*, not in the commit body. Describe the change in prose instead.
-
-## First release (one-time bootstrap)
-
-The four JSR packages start empty, so the very first release is bootstrapped to
-land at exactly `0.1.0`:
-
-- Every package's `deno.json` and `.release-please-manifest.json` are seeded at
-  `0.0.0`. `zuke publish` treats `0.0.0` as "not released yet" and skips it, so
-  nothing is published until release-please bumps a package to a real version.
-- `.release-please-config.json` pins `"release-as": "0.1.0"` per package, so the
-  first release is cut at `0.1.0` regardless of commit history.
-
-To cut the first release:
-
-1. Merge this change to `master`. release-please opens a single `0.1.0` release
-   PR covering all packages (bumping each `deno.json` from `0.0.0` to `0.1.0`);
-   nothing publishes yet.
-2. Merge that release PR. `zuke publish` then publishes every package, **core
-   first**, in one run.
-
-### Remove the `release-as` pins afterwards
-
-Once all four `0.1.0` versions are on JSR, **delete the `"release-as": "0.1.0"`
-lines** from `.release-please-config.json`. They are a one-time bootstrap; if
-left in place they would force every future release back to `0.1.0` and break
-automatic versioning. After removal, the manifest (now `0.1.0`) becomes the
-baseline and conventional commits drive all subsequent versions.
+> _discussion_, not in the commit body. Describe the change in prose instead.
 
 ## Manual trigger
 
