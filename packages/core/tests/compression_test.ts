@@ -66,6 +66,92 @@ Deno.test("untar stops at the zero-block trailer and ignores non-files", () => {
   assertEquals(out[0].name, "only.txt");
 });
 
+/**
+ * Build a raw `ustar` archive by hand, splitting long paths across the `prefix`
+ * (bytes 345-499) and `name` (bytes 0-99) fields the way POSIX tar does — the
+ * production `tar()` writer refuses names over 100 bytes, so a long-path archive
+ * (e.g. Node's release tarball) can only be synthesised directly.
+ */
+function ustarArchive(
+  entries: { name: string; prefix: string; data: Uint8Array; magic?: string }[],
+): Uint8Array {
+  const blocks: Uint8Array[] = [];
+  for (const e of entries) {
+    const header = new Uint8Array(512);
+    const put = (offset: number, s: string) =>
+      header.set(new TextEncoder().encode(s), offset);
+    put(0, e.name);
+    put(124, e.data.length.toString(8).padStart(11, "0")); // size, octal
+    header[156] = 0x30; // typeflag '0' — regular file
+    put(257, e.magic ?? "ustar\0"); // POSIX magic (a trailing space → non-ustar)
+    put(263, "00"); // version
+    put(345, e.prefix);
+    blocks.push(header);
+    const body = new Uint8Array(Math.ceil(e.data.length / 512) * 512);
+    body.set(e.data);
+    blocks.push(body);
+  }
+  blocks.push(new Uint8Array(512)); // zero-block trailer
+  const total = blocks.reduce((n, b) => n + b.length, 0);
+  const out = new Uint8Array(total);
+  let off = 0;
+  for (const b of blocks) {
+    out.set(b, off);
+    off += b.length;
+  }
+  return out;
+}
+
+Deno.test("untar reconstructs a long path from the ustar prefix field", () => {
+  // A >100-byte path POSIX tar split across prefix + name (as Node's tarball
+  // does for npm's deeply-nested bundled deps).
+  const prefix =
+    "lib/node_modules/npm/node_modules/@npmcli/config/lib/definitions";
+  const out = untar(ustarArchive([
+    { name: "definitions.js", prefix, data: enc("module.exports = {};") },
+    // A short path with the ustar magic but an empty prefix stays unchanged.
+    { name: "short.txt", prefix: "", data: enc("no prefix") },
+  ]));
+  assertEquals(out.map((e) => e.name), [
+    `${prefix}/definitions.js`,
+    "short.txt",
+  ]);
+  assertEquals(dec(out[0].data), "module.exports = {};");
+  assertEquals(dec(out[1].data), "no prefix");
+});
+
+Deno.test("untar ignores the prefix field for a non-ustar (GNU) header", () => {
+  // GNU tar writes "ustar " (trailing space) and reuses the byte-345 region for
+  // other fields, so the prefix must not be treated as a path there.
+  const out = untar(ustarArchive([
+    { name: "short.js", prefix: "not/a/path", data: enc("x"), magic: "ustar " },
+  ]));
+  assertEquals(out.length, 1);
+  assertEquals(out[0].name, "short.js"); // prefix not prepended
+});
+
+Deno.test("extractTarGzip lands a >100-byte prefixed path at its full location", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const prefix =
+      "lib/node_modules/npm/node_modules/@npmcli/config/lib/definitions";
+    const raw = ustarArchive([
+      { name: "definitions.js", prefix, data: enc("ok") },
+    ]);
+    const archive = `${dir}/node.tar.gz`;
+    await Deno.writeFile(archive, await gzip(raw));
+    const outDir = `${dir}/out`;
+    await extractTarGzip(archive, outDir);
+    // The file lands at its full nested path, not truncated under the root.
+    assertEquals(
+      await Deno.readTextFile(`${outDir}/${prefix}/definitions.js`),
+      "ok",
+    );
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
 Deno.test("createTarGzip then extractTarGzip round-trips files on disk", async () => {
   const dir = await Deno.makeTempDir();
   try {
