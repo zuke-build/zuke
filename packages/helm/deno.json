@@ -1,6 +1,6 @@
 {
   "name": "@zuke/helm",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Typed Helm CLI task wrappers for Zuke builds — install, upgrade, uninstall, template, lint, dependency update, repo add, and package via an injection-free settings-lambda API.",
   "exports": {
     ".": "./mod.ts"

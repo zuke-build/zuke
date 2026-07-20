@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.30.2](https://github.com/zuke-build/zuke/compare/core-v1.30.1...core-v1.30.2) (2026-07-20)
+
+
+### Bug Fixes
+
+* **core:** harden executor cancellation, graph validation, and state edge cases ([#226](https://github.com/zuke-build/zuke/issues/226)) ([aa3cedf](https://github.com/zuke-build/zuke/commit/aa3cedfc8a380cd5958da5968cd6f5b6f081ac79))
+* **core:** honour the ustar prefix field so long tar paths extract correctly ([#228](https://github.com/zuke-build/zuke/issues/228)) ([0b57325](https://github.com/zuke-build/zuke/commit/0b5732594c36d585745a8ee377fedd89f965f9a5))
+
 ## [1.30.1](https://github.com/zuke-build/zuke/compare/core-v1.30.0...core-v1.30.1) (2026-07-20)
 
 

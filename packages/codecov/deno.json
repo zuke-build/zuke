@@ -1,6 +1,6 @@
 {
   "name": "@zuke/codecov",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Typed Codecov CLI (codecovcli) task wrapper for Zuke builds — upload coverage reports to Codecov via a settings-lambda API, injection-free.",
   "exports": {
     ".": "./mod.ts"

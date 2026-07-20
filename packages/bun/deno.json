@@ -1,6 +1,6 @@
 {
   "name": "@zuke/bun",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Typed bun CLI task wrappers for Zuke builds — install, add, remove, run, x, and test via an injection-free settings-lambda API.",
   "exports": {
     ".": "./mod.ts"

@@ -1,6 +1,6 @@
 {
   "name": "@zuke/docker-compose",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Typed Docker Compose task wrappers for Zuke builds — auto-detects `docker compose` (v2) vs `docker-compose` (v1); up, down, build, logs, ps, and more.",
   "exports": {
     ".": "./mod.ts"

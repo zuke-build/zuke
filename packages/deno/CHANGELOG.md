@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.1](https://github.com/zuke-build/zuke/compare/deno-v0.6.0...deno-v0.6.1) (2026-07-20)
+
+
+### Bug Fixes
+
+* satisfy deno doc --lint across all packages and gate it ([#230](https://github.com/zuke-build/zuke/issues/230)) ([28aa1aa](https://github.com/zuke-build/zuke/commit/28aa1aa9833a69ee2ef63c3f1566ce975867f010))
+
 ## [0.6.0](https://github.com/zuke-build/zuke/compare/deno-v0.5.1...deno-v0.6.0) (2026-07-20)
 
 
