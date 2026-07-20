@@ -52,6 +52,21 @@ Deno.test("a non-2xx status throws HttpError carrying the status", async () => {
   }
 });
 
+Deno.test("HttpError redacts userinfo and credential query params from the URL", () => {
+  const e = new HttpError(
+    500,
+    "https://user:pw@host.example/x?key=abc&client_secret=cs&refresh_token=rt&q=ok",
+  );
+  // Userinfo and every credential param (incl. OAuth `client_secret` /
+  // `refresh_token`, caught by substring markers) are masked.
+  for (const leaked of ["user", "pw", "abc", "cs", "rt"]) {
+    assertEquals(e.message.includes(leaked), false, `leaked: ${leaked}`);
+    assertEquals(e.url.includes(leaked), false); // the stored url is redacted too
+  }
+  assertEquals(e.message.includes("REDACTED"), true);
+  assertEquals(e.url.includes("q=ok"), true); // a non-credential param is kept
+});
+
 Deno.test("httpDownload streams the body to a file", async () => {
   const { fetch } = fakeFetch("file-contents");
   const dir = await Deno.makeTempDir();

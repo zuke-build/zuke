@@ -4,6 +4,7 @@
   "useGitignore": true,
   "words": [
     "ACCESSTOKEN",
+    "apikey",
     "COLLECTIONURI",
     "Dependabot",
     "Dockerfiles",
@@ -22,6 +23,7 @@
     "Svensson",
     "TEAMPROJECT",
     "USERPROFILE",
+    "userinfo",
     "Vixie",
     "actionlint",
     "asciinema",

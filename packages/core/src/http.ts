@@ -19,18 +19,68 @@
 
 import type { PathLike } from "./path.ts";
 
-/** Raised when an HTTP request returns a non-2xx status. */
+/**
+ * Substrings that mark a query-param name as credential-bearing. Matched as
+ * substrings (not exact names) so variants — `client_secret`, `refresh_token`,
+ * `x-api-key` — are covered without maintaining an exhaustive list. Over-masking
+ * an innocent param (e.g. `monkey`) is harmless; under-masking a secret is not.
+ */
+const CREDENTIAL_MARKERS = [
+  "secret",
+  "token",
+  "key",
+  "password",
+  "pwd",
+  "auth",
+  "sig",
+  "credential",
+  "session",
+];
+
+/** Whether a query-param `name` looks credential-bearing (see {@link CREDENTIAL_MARKERS}). */
+function isCredentialParam(name: string): boolean {
+  const lower = name.toLowerCase();
+  return CREDENTIAL_MARKERS.some((marker) => lower.includes(marker));
+}
+
+/**
+ * Strip userinfo (`user:pass@`) and mask any credential-bearing query param so a
+ * URL is safe to put in an error message or log. A string that is not a URL is
+ * returned unchanged. Non-goal: a secret embedded in the URL *path* (rare and
+ * non-standard) is not redacted — only userinfo and query params are.
+ */
+export function redactUrl(raw: string): string {
+  try {
+    const url = new URL(raw);
+    url.username = "";
+    url.password = "";
+    for (const key of [...url.searchParams.keys()]) {
+      if (isCredentialParam(key)) url.searchParams.set(key, "REDACTED");
+    }
+    return url.href;
+  } catch {
+    return raw;
+  }
+}
+
+/**
+ * Raised when an HTTP request returns a non-2xx status. The URL appears in the
+ * message and on {@link url}, so it is passed through {@link redactUrl} first —
+ * userinfo and credential query params never reach a log.
+ */
 export class HttpError extends Error {
   /** The error name. */
   override name = "HttpError";
+  /** The HTTP status code of the failing response. */
+  readonly status: number;
+  /** The requested URL, with any credentials redacted. */
+  readonly url: string;
   /** Build the error from the failing response's status and URL. */
-  constructor(
-    /** The HTTP status code of the failing response. */
-    readonly status: number,
-    /** The requested URL. */
-    readonly url: string,
-  ) {
-    super(`HTTP ${status} for ${url}`);
+  constructor(status: number, url: string) {
+    const safe = redactUrl(url);
+    super(`HTTP ${status} for ${safe}`);
+    this.status = status;
+    this.url = safe;
   }
 }
 

@@ -170,6 +170,22 @@ Deno.test("every reserved command is honoured by the parser and help", () => {
   for (const flag of BUILTIN_FLAGS) assertStringIncludes(help, flag.name);
 });
 
+Deno.test("parseArgs accumulates --allowed-origin (repeatable and comma-list)", () => {
+  const p = parseArgs([
+    "mcp",
+    "--allowed-origin",
+    "https://a.example",
+    "--allowed-origin=https://b.example,https://c.example",
+  ]);
+  assertEquals(p.allowedOrigins, [
+    "https://a.example",
+    "https://b.example",
+    "https://c.example",
+  ]);
+  // Absent by default.
+  assertEquals(parseArgs(["mcp"]).allowedOrigins, undefined);
+});
+
 Deno.test("parseArgs recognises the doc command and its spec", () => {
   const p = parseArgs(["doc", "jsr:@zuke/deno"]);
   assertEquals(p.doc, true);
@@ -1010,5 +1026,17 @@ Deno.test("main: resume rejects an oversized --data payload", async () => {
     main(Demo, ["resume", "run-x", "--data", huge])
   );
   assertEquals(code, 1);
+  assertEquals(err.join("\n").includes("too large"), true);
+});
+
+Deno.test("main: resume rejects a multibyte --data payload over the byte budget", async () => {
+  // 22k euro signs: ~22k UTF-16 code units (under the 64 KiB char length) but
+  // ~66 KB of UTF-8 (over it). Measuring `.length` would wrongly let it through.
+  const multibyte = JSON.stringify({ blob: "€".repeat(22_000) });
+  assertEquals(multibyte.length < 64 * 1024, true); // under the cap by char count
+  const { code, err } = await capture(() =>
+    main(Demo, ["resume", "run-x", "--data", multibyte])
+  );
+  assertEquals(code, 1); // but over it in real bytes → rejected
   assertEquals(err.join("\n").includes("too large"), true);
 });

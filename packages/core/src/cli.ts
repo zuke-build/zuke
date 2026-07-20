@@ -98,6 +98,8 @@ export interface ParsedArgs {
   allowRunPatterns?: string[];
   /** Targets whose `mcp` run tool needs an operator token (`--protect <list>`). */
   protectPatterns?: string[];
+  /** Extra origins allowed to call the `mcp --http` transport (`--allowed-origin`). */
+  allowedOrigins?: string[];
   /** Require `confirm:true` before a destructive `mcp` run (`--confirm-destructive`). */
   confirmDestructive: boolean;
   /** Serve `mcp` over the build registry (dynamic discovery) rather than one build (`--registry`). */
@@ -313,6 +315,16 @@ export function parseArgs(
       if (value) parsed.protectPatterns = splitList(value);
     } else if (arg.startsWith("--protect=")) {
       parsed.protectPatterns = splitList(arg.slice("--protect=".length));
+    } else if (arg === "--allowed-origin") {
+      const value = args[++i];
+      if (value) {
+        parsed.allowedOrigins = [...parsed.allowedOrigins ?? [], value];
+      }
+    } else if (arg.startsWith("--allowed-origin=")) {
+      parsed.allowedOrigins = [
+        ...parsed.allowedOrigins ?? [],
+        ...splitList(arg.slice("--allowed-origin=".length)),
+      ];
     } else if (arg === "--confirm-destructive") {
       parsed.confirmDestructive = true;
     } else if (arg === "--registry") {
@@ -490,6 +502,11 @@ Options:
                     address instead of stdio. Just <port> binds 127.0.0.1. A
                     non-loopback host requires a bearer token (ZUKE_MCP_TOKEN);
                     put real TLS/authn in front for production. See docs/mcp.md.
+  --allowed-origin <origin>
+                    With mcp --http, permit this browser Origin (repeatable). By
+                    default a loopback bind accepts only loopback origins (the
+                    drive-by / DNS-rebinding guard); a request with no Origin (a
+                    CLI client) is always allowed.
   resume            Continue a suspended run (a .waitsFor() gate). Exactly one
                     resumer wins; the rest report "already resumed". With
                     --check [<run-id>] it re-checks suspended runs (predicate
@@ -720,9 +737,13 @@ const MAX_SIGNAL_DATA_BYTES = 64 * 1024;
  */
 function parseSignalData(raw: string | undefined): JsonValue | undefined {
   if (raw === undefined) return undefined;
-  if (raw.length > MAX_SIGNAL_DATA_BYTES) {
+  // Measure real UTF-8 bytes, not `raw.length` (UTF-16 code units) — a payload
+  // of multi-byte characters can be well over the byte budget while its `.length`
+  // is under it.
+  const bytes = new TextEncoder().encode(raw).length;
+  if (bytes > MAX_SIGNAL_DATA_BYTES) {
     throw new Error(
-      `resume: --data payload is too large (${raw.length} bytes; ` +
+      `resume: --data payload is too large (${bytes} bytes; ` +
         `max ${MAX_SIGNAL_DATA_BYTES}).`,
     );
   }
@@ -816,6 +837,7 @@ async function runMcp(build: Build, parsed: ParsedArgs): Promise<number> {
     useRegistry: parsed.mcpRegistry,
     maxConcurrentRuns: parsed.maxConcurrentRuns,
     actor: parsed.actor,
+    allowedOrigins: parsed.allowedOrigins,
     http,
   });
 }

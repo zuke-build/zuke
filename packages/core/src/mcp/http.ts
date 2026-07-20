@@ -40,6 +40,16 @@ export interface HttpTransportOptions {
    * unauthenticated (only safe on loopback — the caller enforces that).
    */
   token?: string;
+  /**
+   * Origins allowed to call the server. When set, a request whose `Origin`
+   * header is present must exactly match one of these (a request with no
+   * `Origin`, e.g. a CLI client, is always allowed). When unset, the default
+   * applies: on a **loopback** bind, only loopback origins pass — the
+   * DNS-rebinding / browser drive-by guard the MCP streamable-HTTP spec
+   * requires; on a non-loopback bind, no default Origin check runs (front it
+   * with your own TLS/authn).
+   */
+  allowedOrigins?: string[];
   /** Abort to stop the server (its {@link serveHttp} promise then resolves). */
   signal?: AbortSignal;
   /** Called once the listener is bound, with the actual address (test hook). */
@@ -81,6 +91,42 @@ function bearerToken(header: string | null): string | undefined {
   return parts[1];
 }
 
+/** Whether `host` is a loopback address (localhost, 127.0.0.0/8, or ::1). The
+ * 127/8 match is a fully-anchored dotted-quad so an attacker domain like
+ * `127.0.0.1.evil.com` (which merely *starts* with `127.`) is not accepted. */
+function isLoopbackHost(host: string): boolean {
+  return host === "localhost" || host === "::1" || host === "[::1]" ||
+    /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host);
+}
+
+/** The hostname of an `Origin` value, or `null` if it can't be parsed. */
+function originHost(origin: string): string | null {
+  try {
+    return new URL(origin).hostname;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Whether a request's `Origin` is allowed. A client that sends no `Origin` (a
+ * CLI/MCP client, not a browser) is always allowed. With an explicit
+ * {@link HttpTransportOptions.allowedOrigins} list the origin must be in it.
+ * Otherwise, on a loopback bind only loopback origins pass (the drive-by /
+ * DNS-rebinding guard); a non-loopback bind runs no default check.
+ */
+export function originAllowed(
+  origin: string | null,
+  allowed: string[] | undefined,
+  bindHost: string,
+): boolean {
+  if (origin === null) return true;
+  if (allowed !== undefined) return allowed.includes(origin);
+  if (!isLoopbackHost(bindHost)) return true;
+  const host = originHost(origin);
+  return host !== null && isLoopbackHost(host);
+}
+
 /**
  * Serve JSON-RPC over HTTP: each `POST` carries one JSON-RPC message as its
  * body, `handle` produces the response, and it is returned as JSON. A
@@ -97,7 +143,8 @@ export async function serveHttp(
   ) => Promise<JsonRpcResponse | null>,
   options: HttpTransportOptions,
 ): Promise<void> {
-  const { host, port, token, signal, onListen, concurrent } = options;
+  const { host, port, token, signal, onListen, concurrent, allowedOrigins } =
+    options;
 
   // By default, process messages one at a time: the single-build server/execute
   // path mutates per-run parameter state, so concurrent handling of two POSTs
@@ -119,6 +166,18 @@ export async function serveHttp(
       return jsonResponse(
         err(null, INVALID_REQUEST, "This MCP endpoint accepts POST only."),
         405,
+      );
+    }
+    // Reject a cross-origin browser request before doing anything else: on a
+    // loopback bind this blocks a drive-by / DNS-rebinding page from driving the
+    // local server. A CLI client sends no Origin and passes. (This is the guard;
+    // a Content-Type check is deliberately not added — Deno/browser `fetch`
+    // defaults a string body to text/plain, so requiring JSON would break
+    // legitimate non-SDK clients, and Origin already stops the cross-origin case.)
+    if (!originAllowed(request.headers.get("origin"), allowedOrigins, host)) {
+      return jsonResponse(
+        err(null, INVALID_REQUEST, "Forbidden: Origin not allowed."),
+        403,
       );
     }
     if (token !== undefined && token !== "") {

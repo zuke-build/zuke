@@ -73,6 +73,24 @@ Deno.test("multiple files and hunks each produce a suggestion", () => {
   ]);
 });
 
+Deno.test("a removed line whose content begins with '--' is a removal, not a header", () => {
+  const diff = [
+    "diff --git a/flags.ts b/flags.ts",
+    "--- a/flags.ts",
+    "+++ b/flags.ts",
+    "@@ -3,2 +3,1 @@",
+    " keep",
+    "---verbose", // the removal (`-`) of a line whose content is `--verbose`
+    "+--quiet", // the addition of `--quiet`
+  ].join("\n");
+  const s = diffToSuggestions(diff, PRELUDE);
+  // If `---verbose` were mistaken for a header the block would have no removal
+  // and be skipped; the fix parses it, producing a replacement suggestion.
+  assertEquals(s.length, 1);
+  assertEquals([s[0].startLine, s[0].line], [4, 4]);
+  assertEquals(s[0].body.includes("--quiet"), true);
+});
+
 Deno.test("an empty diff yields no suggestions", () => {
   assertEquals(diffToSuggestions("", PRELUDE), []);
 });

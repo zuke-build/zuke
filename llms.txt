@@ -78,6 +78,7 @@ Option flags:
 - `--keep-last` — With runs prune, always keep the newest N terminal runs
 - `--allow-run` — With mcp, let agents run targets (optional =<glob-list> allow-list)
 - `--protect` — With mcp, require an operator token to run these targets
+- `--allowed-origin` — With mcp --http, an extra allowed Origin (repeatable; loopback-only otherwise)
 - `--confirm-destructive` — With mcp, require confirm:true before a destructive run
 - `--registry` — With mcp, serve the build registry (dynamic pipeline discovery)
 - `--max-concurrent-runs` — With mcp --registry, cap concurrent run-tool spawns (default 4)

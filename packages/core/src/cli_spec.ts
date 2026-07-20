@@ -177,6 +177,11 @@ export const BUILTIN_FLAGS: readonly BuiltinFlag[] = [
     description: "With mcp, require an operator token to run these targets",
   },
   {
+    name: "--allowed-origin",
+    description:
+      "With mcp --http, an extra allowed Origin (repeatable; loopback-only otherwise)",
+  },
+  {
     name: "--confirm-destructive",
     description: "With mcp, require confirm:true before a destructive run",
   },

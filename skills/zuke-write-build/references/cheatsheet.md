@@ -619,7 +619,8 @@ else a friendly error.
 ./zuke resume <id> --signal <name> [--data <json>]  # continue a suspended run
 ./zuke cancel <id>            # cancel a run and run its .onCancel() compensations
 ./zuke mcp [--allow-run]      # serve the build over MCP for an AI client (stdio)
-./zuke mcp --http 7777        # ...or over HTTP (loopback; token off-loopback)
+./zuke mcp --http 7777        # ...or over HTTP (loopback; token off-loopback; Origin-guarded)
+./zuke mcp --http 7777 --allowed-origin https://app.example  # permit an extra browser Origin
 ./zuke mcp --allow-run=deploy,checks* --protect deploy --confirm-destructive
                               # authz tiers: allow-list, operator token, confirm
 ./zuke runs show mcp-audit    # the MCP tool-call audit trail
