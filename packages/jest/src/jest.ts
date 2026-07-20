@@ -19,6 +19,7 @@ import {
   type Configure,
   type PathLike,
   runSettings,
+  type ToolResolution,
   ToolSettings,
 } from "@zuke/core/tooling";
 import type { CommandOutput } from "@zuke/core/shell";
@@ -47,6 +48,11 @@ export class JestSettings extends ToolSettings {
   /** The underlying tool binary is `jest`. */
   protected override defaultTool(): string {
     return "jest";
+  }
+
+  /** Resolve the binary from `node_modules/.bin` by default — jest is an npm-distributed tool. */
+  protected override defaultResolution(): ToolResolution {
+    return "node_modules";
   }
 
   /** Regex patterns matched against test paths (positional); repeatable. */

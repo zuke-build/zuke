@@ -122,6 +122,8 @@ abstract class NestSettings extends ToolSettings
 
   override protected defaultTool(): string
     The tool binary: `nest`.
+  override protected defaultResolution(): ToolResolution
+    Resolve the binary from `node_modules/.bin` by default — nest is an npm-distributed tool.
   abstract protected subcommandArgs(): string[]
     The subcommand argv (the verb and its arguments).
   override protected buildArgs(): string[]

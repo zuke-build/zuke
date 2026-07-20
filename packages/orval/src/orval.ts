@@ -26,6 +26,7 @@ import {
   type Configure,
   type PathLike,
   runSettings,
+  type ToolResolution,
   ToolSettings,
 } from "@zuke/core/tooling";
 import type { CommandOutput } from "@zuke/core/shell";
@@ -45,6 +46,11 @@ export class OrvalGenerateSettings extends ToolSettings {
   /** The executable this settings object runs: `orval`. */
   protected override defaultTool(): string {
     return "orval";
+  }
+
+  /** Resolve the binary from `node_modules/.bin` by default — orval is an npm-distributed tool. */
+  protected override defaultResolution(): ToolResolution {
+    return "node_modules";
   }
 
   /** Configuration file to load settings from (`-c`/`--config`). */

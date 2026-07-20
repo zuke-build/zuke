@@ -19,6 +19,7 @@ import {
   type Configure,
   type PathLike,
   runSettings,
+  type ToolResolution,
   ToolSettings,
 } from "@zuke/core/tooling";
 import type { CommandOutput } from "@zuke/core/shell";
@@ -34,6 +35,11 @@ export abstract class ViteSettings extends ToolSettings {
   /** The default binary this wrapper invokes: `vite`. */
   protected override defaultTool(): string {
     return "vite";
+  }
+
+  /** Resolve the binary from `node_modules/.bin` by default — vite is an npm-distributed tool. */
+  protected override defaultResolution(): ToolResolution {
+    return "node_modules";
   }
 
   /** Use an explicit config file (`--config`). */

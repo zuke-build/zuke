@@ -25,6 +25,7 @@ import {
   type Configure,
   type PathLike,
   runSettings,
+  type ToolResolution,
   ToolSettings,
 } from "@zuke/core/tooling";
 import type { CommandOutput } from "@zuke/core/shell";
@@ -34,6 +35,11 @@ export abstract class TscBaseSettings extends ToolSettings {
   /** The default binary these settings invoke: `tsc`. */
   protected override defaultTool(): string {
     return "tsc";
+  }
+
+  /** Resolve the binary from `node_modules/.bin` by default — tsc is an npm-distributed tool. */
+  protected override defaultResolution(): ToolResolution {
+    return "node_modules";
   }
 }
 

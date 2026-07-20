@@ -73,6 +73,8 @@ abstract class HuskySettings extends ToolSettings
 
   override protected defaultTool(): string
     The tool binary is `husky`.
+  override protected defaultResolution(): ToolResolution
+    Resolve the binary from `node_modules/.bin` by default — husky is an npm-distributed tool.
   abstract protected subcommandArgs(): string[]
     The subcommand argv (everything after the binary).
   override protected buildArgs(): string[]

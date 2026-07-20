@@ -45,6 +45,8 @@ class EslintSettings extends ToolSettings
 
   override protected defaultTool(): string
     The default executable this settings object runs (`eslint`).
+  override protected defaultResolution(): ToolResolution
+    Resolve the binary from `node_modules/.bin` by default — eslint is an npm-distributed tool.
   paths(...values: PathLike[]): this
     Files, directories, or globs to lint (positional); repeatable.
   config(path: PathLike): this

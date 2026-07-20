@@ -50,6 +50,8 @@ abstract class TsxCommonSettings extends ToolSettings
 
   override protected defaultTool(): string
     The underlying executable: `tsx`.
+  override protected defaultResolution(): ToolResolution
+    Resolve the binary from `node_modules/.bin` by default — tsx is an npm-distributed tool.
   script(path: PathLike): this
     The entry point to execute (required).
   scriptArgs(...args: Array<string | number>): this

@@ -79,6 +79,8 @@ abstract class ViteSettings extends ToolSettings
 
   override protected defaultTool(): string
     The default binary this wrapper invokes: `vite`.
+  override protected defaultResolution(): ToolResolution
+    Resolve the binary from `node_modules/.bin` by default — vite is an npm-distributed tool.
   config(path: PathLike): this
     Use an explicit config file (`--config`).
   mode(name: string): this

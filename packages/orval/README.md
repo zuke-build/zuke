@@ -46,6 +46,8 @@ class OrvalGenerateSettings extends ToolSettings
 
   override protected defaultTool(): string
     The executable this settings object runs: `orval`.
+  override protected defaultResolution(): ToolResolution
+    Resolve the binary from `node_modules/.bin` by default — orval is an npm-distributed tool.
   config(value: PathLike): this
     Configuration file to load settings from (`-c`/`--config`).
   project(value: string): this

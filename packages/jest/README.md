@@ -43,6 +43,8 @@ class JestSettings extends ToolSettings
 
   override protected defaultTool(): string
     The underlying tool binary is `jest`.
+  override protected defaultResolution(): ToolResolution
+    Resolve the binary from `node_modules/.bin` by default — jest is an npm-distributed tool.
   paths(...values: PathLike[]): this
     Regex patterns matched against test paths (positional); repeatable.
   config(path: PathLike): this

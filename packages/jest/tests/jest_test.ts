@@ -73,3 +73,22 @@ const missing = <S extends ToolSettings>(s: S): S => {
 Deno.test("JestTasks.run reaches execution", async () => {
   await assertRejects(() => JestTasks.run(missing), ToolNotFoundError);
 });
+
+Deno.test("jest: resolves its binary from node_modules by default", () => {
+  const prevRes = Deno.env.get("ZUKE_TOOL_RESOLUTION");
+  Deno.env.delete("ZUKE_TOOL_RESOLUTION");
+  const root = Deno.makeTempDirSync();
+  try {
+    const binDir = `${root}/node_modules/.bin`;
+    Deno.mkdirSync(binDir, { recursive: true });
+    const bin = `${binDir}/jest`;
+    Deno.writeTextFileSync(bin, "#!/bin/sh\n");
+    const s = new JestSettings();
+    s.os_ = "linux"; // pin so the planted bare shim matches on any host
+    assertEquals(s.cwd(root).resolvedArgv()[0], bin.replace(/\\/g, "/"));
+  } finally {
+    Deno.removeSync(root, { recursive: true });
+    if (prevRes === undefined) Deno.env.delete("ZUKE_TOOL_RESOLUTION");
+    else Deno.env.set("ZUKE_TOOL_RESOLUTION", prevRes);
+  }
+});

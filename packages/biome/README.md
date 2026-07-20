@@ -74,6 +74,8 @@ abstract class BiomeSettings extends ToolSettings
 
   override protected defaultTool(): string
     The tool binary: `biome`.
+  override protected defaultResolution(): ToolResolution
+    Resolve the binary from `node_modules/.bin` by default — biome is an npm-distributed tool.
   paths(...paths: PathLike[]): this
     Files or directories to operate on; omit to use the configured includes.
   config(path: PathLike): this

@@ -5602,6 +5602,8 @@ class OxlintSettings extends ToolSettings
 
   override protected defaultTool(): string
     The default executable name (`oxlint`).
+  override protected defaultResolution(): ToolResolution
+    Resolve the binary from `node_modules/.bin` by default — oxlint is an npm-distributed tool.
   paths(...values: PathLike[]): this
     Files or directories to lint (positional); repeatable.
   config(path: PathLike): this
@@ -5664,6 +5666,8 @@ class EslintSettings extends ToolSettings
 
   override protected defaultTool(): string
     The default executable this settings object runs (`eslint`).
+  override protected defaultResolution(): ToolResolution
+    Resolve the binary from `node_modules/.bin` by default — eslint is an npm-distributed tool.
   paths(...values: PathLike[]): this
     Files, directories, or globs to lint (positional); repeatable.
   config(path: PathLike): this
@@ -5730,6 +5734,8 @@ class CspellSettings extends ToolSettings
 
   override protected defaultTool(): string
     The default executable name (`cspell`).
+  override protected defaultResolution(): ToolResolution
+    Resolve the binary from `node_modules/.bin` by default — cspell is an npm-distributed tool.
   files(...globs: PathLike[]): this
     Files or globs to check (positional); repeatable.
   config(path: PathLike): this
@@ -5790,6 +5796,8 @@ class JestSettings extends ToolSettings
 
   override protected defaultTool(): string
     The underlying tool binary is `jest`.
+  override protected defaultResolution(): ToolResolution
+    Resolve the binary from `node_modules/.bin` by default — jest is an npm-distributed tool.
   paths(...values: PathLike[]): this
     Regex patterns matched against test paths (positional); repeatable.
   config(path: PathLike): this
@@ -5859,6 +5867,8 @@ class VitestSettings extends ToolSettings
 
   override protected defaultTool(): string
     The underlying tool binary (`vitest`).
+  override protected defaultResolution(): ToolResolution
+    Resolve the binary from `node_modules/.bin` by default — vitest is an npm-distributed tool.
   filters(...values: string[]): this
     Filename filters matched against test files (positional); repeatable.
   watch(): this
@@ -5951,6 +5961,8 @@ abstract class PlaywrightSettings extends ToolSettings
 
   override protected defaultTool(): string
     The tool binary invoked by all Playwright subcommands: `playwright`.
+  override protected defaultResolution(): ToolResolution
+    Resolve the binary from `node_modules/.bin` by default — playwright is an npm-distributed tool.
 
 class PlaywrightShowReportSettings extends PlaywrightSettings
   Settings for `playwright show-report`.
@@ -6053,6 +6065,8 @@ abstract class CypressSettings extends ToolSettings
 
   override protected defaultTool(): string
     The default tool binary: `cypress`.
+  override protected defaultResolution(): ToolResolution
+    Resolve the binary from `node_modules/.bin` by default — cypress is an npm-distributed tool.
 
 abstract class CypressTestingSettings extends CypressSettings
   Base for the `run`/`open` commands, which share testing-type selection, a
@@ -6150,6 +6164,8 @@ abstract class BiomeSettings extends ToolSettings
 
   override protected defaultTool(): string
     The tool binary: `biome`.
+  override protected defaultResolution(): ToolResolution
+    Resolve the binary from `node_modules/.bin` by default — biome is an npm-distributed tool.
   paths(...paths: PathLike[]): this
     Files or directories to operate on; omit to use the configured includes.
   config(path: PathLike): this
@@ -6199,6 +6215,8 @@ class KnipRunSettings extends ToolSettings
 
   override protected defaultTool(): string
     The underlying CLI command: `knip`.
+  override protected defaultResolution(): ToolResolution
+    Resolve the binary from `node_modules/.bin` by default — knip is an npm-distributed tool.
   production(): this
     Restrict analysis to production code paths (`--production`).
   strict(): this
@@ -6251,6 +6269,8 @@ class DpdmAnalyzeSettings extends ToolSettings
 
   override protected defaultTool(): string
     The command this settings object runs (`dpdm`).
+  override protected defaultResolution(): ToolResolution
+    Resolve the binary from `node_modules/.bin` by default — dpdm is an npm-distributed tool.
   transform(): this
     Transform TypeScript modules to JavaScript before analysis (`--transform`).
   noTree(): this
@@ -6447,6 +6467,8 @@ abstract class ViteSettings extends ToolSettings
 
   override protected defaultTool(): string
     The default binary this wrapper invokes: `vite`.
+  override protected defaultResolution(): ToolResolution
+    Resolve the binary from `node_modules/.bin` by default — vite is an npm-distributed tool.
   config(path: PathLike): this
     Use an explicit config file (`--config`).
   mode(name: string): this
@@ -6488,6 +6510,8 @@ class TsupBuildSettings extends ToolSettings
 
   override protected defaultTool(): string
     The executable this settings object runs: `tsup`.
+  override protected defaultResolution(): ToolResolution
+    Resolve the binary from `node_modules/.bin` by default — tsup is an npm-distributed tool.
   entry(...paths: PathLike[]): this
     Entry point(s) to bundle (positional); repeatable.
   format(...formats: TsupFormat[]): this
@@ -6580,6 +6604,8 @@ abstract class TurboSettings extends ToolSettings
 
   override protected defaultTool(): string
     The tool binary this settings class invokes: `turbo`.
+  override protected defaultResolution(): ToolResolution
+    Resolve the binary from `node_modules/.bin` by default — turbo is an npm-distributed tool.
 
 interface TurboTasksApi
   The shape of {@link TurboTasks}.
@@ -6654,6 +6680,8 @@ abstract class NxSettings extends ToolSettings
 
   override protected defaultTool(): string
     The tool binary is `nx`.
+  override protected defaultResolution(): ToolResolution
+    Resolve the binary from `node_modules/.bin` by default — nx is an npm-distributed tool.
 
 interface NxTasksApi
   The shape of {@link NxTasks}.
@@ -6689,6 +6717,8 @@ abstract class TsxCommonSettings extends ToolSettings
 
   override protected defaultTool(): string
     The underlying executable: `tsx`.
+  override protected defaultResolution(): ToolResolution
+    Resolve the binary from `node_modules/.bin` by default — tsx is an npm-distributed tool.
   script(path: PathLike): this
     The entry point to execute (required).
   scriptArgs(...args: Array<string | number>): this
@@ -6758,6 +6788,8 @@ class TsgoSettings extends ToolSettings
 
   override protected defaultTool(): string
     The executable this settings object drives (`tsgo`).
+  override protected defaultResolution(): ToolResolution
+    Resolve the binary from `node_modules/.bin` by default — tsgo is an npm-distributed tool.
   paths(...values: PathLike[]): this
     Source files to compile (positional); repeatable.
   project(path: PathLike): this
@@ -6823,6 +6855,8 @@ abstract class TscBaseSettings extends ToolSettings
 
   override protected defaultTool(): string
     The default binary these settings invoke: `tsc`.
+  override protected defaultResolution(): ToolResolution
+    Resolve the binary from `node_modules/.bin` by default — tsc is an npm-distributed tool.
 
 class TscBuildSettings extends TscBaseSettings
   Settings for a `tsc --build` project-references run.
@@ -6913,6 +6947,8 @@ class TscAliasRunSettings extends ToolSettings
 
   override protected defaultTool(): string
     The executable this settings object drives (`tsc-alias`).
+  override protected defaultResolution(): ToolResolution
+    Resolve the binary from `node_modules/.bin` by default — tsc-alias is an npm-distributed tool.
   project(path: PathLike): this
     Path to the `tsconfig.json` to read aliases from (`-p`/`--project`).
   watch(): this
@@ -6970,6 +7006,8 @@ class TsdownBuildSettings extends ToolSettings
 
   override protected defaultTool(): string
     The default executable to run: `tsdown`.
+  override protected defaultResolution(): ToolResolution
+    Resolve the binary from `node_modules/.bin` by default — tsdown is an npm-distributed tool.
   entry(...paths: PathLike[]): this
     Entry point(s) to bundle (positional); repeatable.
   format(...formats: TsdownFormat[]): this
@@ -7004,6 +7042,8 @@ class TsdownMigrateSettings extends ToolSettings
 
   override protected defaultTool(): string
     The default executable to run: `tsdown`.
+  override protected defaultResolution(): ToolResolution
+    Resolve the binary from `node_modules/.bin` by default — tsdown is an npm-distributed tool.
   from(value: string): this
     The tool to migrate from, e.g. `tsup` (`--from`).
   dryRun(): this
@@ -7121,6 +7161,8 @@ abstract class NestSettings extends ToolSettings
 
   override protected defaultTool(): string
     The tool binary: `nest`.
+  override protected defaultResolution(): ToolResolution
+    Resolve the binary from `node_modules/.bin` by default — nest is an npm-distributed tool.
   abstract protected subcommandArgs(): string[]
     The subcommand argv (the verb and its arguments).
   override protected buildArgs(): string[]
@@ -7189,6 +7231,8 @@ class OpenapiTsGenerateSettings extends ToolSettings
 
   override protected defaultTool(): string
     The tool binary this settings object invokes (`openapi-ts`).
+  override protected defaultResolution(): ToolResolution
+    Resolve the binary from `node_modules/.bin` by default — openapi-ts is an npm-distributed tool.
   input(value: PathLike): this
     OpenAPI specification to read — a file path or URL (`--input`).
   output(value: PathLike): this
@@ -7237,6 +7281,8 @@ class OrvalGenerateSettings extends ToolSettings
 
   override protected defaultTool(): string
     The executable this settings object runs: `orval`.
+  override protected defaultResolution(): ToolResolution
+    Resolve the binary from `node_modules/.bin` by default — orval is an npm-distributed tool.
   config(value: PathLike): this
     Configuration file to load settings from (`-c`/`--config`).
   project(value: string): this
@@ -7311,6 +7357,8 @@ abstract class HuskySettings extends ToolSettings
 
   override protected defaultTool(): string
     The tool binary is `husky`.
+  override protected defaultResolution(): ToolResolution
+    Resolve the binary from `node_modules/.bin` by default — husky is an npm-distributed tool.
   abstract protected subcommandArgs(): string[]
     The subcommand argv (everything after the binary).
   override protected buildArgs(): string[]
@@ -7460,6 +7508,8 @@ abstract class DprintSettings extends ToolSettings
 
   override protected defaultTool(): string
     The default executable this settings class invokes: `dprint`.
+  override protected defaultResolution(): ToolResolution
+    Resolve the binary from `node_modules/.bin` by default — dprint is an npm-distributed tool.
   abstract protected subcommand(): string
     The dprint subcommand this settings class runs.
   config(path: PathLike): this

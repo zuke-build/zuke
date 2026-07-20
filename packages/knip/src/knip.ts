@@ -21,6 +21,7 @@ import {
   type Configure,
   type PathLike,
   runSettings,
+  type ToolResolution,
   ToolSettings,
 } from "@zuke/core/tooling";
 import type { CommandOutput } from "@zuke/core/shell";
@@ -40,6 +41,11 @@ export class KnipRunSettings extends ToolSettings {
   /** The underlying CLI command: `knip`. */
   protected override defaultTool(): string {
     return "knip";
+  }
+
+  /** Resolve the binary from `node_modules/.bin` by default — knip is an npm-distributed tool. */
+  protected override defaultResolution(): ToolResolution {
+    return "node_modules";
   }
 
   /** Restrict analysis to production code paths (`--production`). */

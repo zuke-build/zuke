@@ -25,6 +25,7 @@ import {
   type Configure,
   type PathLike,
   runSettings,
+  type ToolResolution,
   ToolSettings,
 } from "@zuke/core/tooling";
 import type { CommandOutput } from "@zuke/core/shell";
@@ -50,6 +51,11 @@ export class TsgoSettings extends ToolSettings {
   /** The executable this settings object drives (`tsgo`). */
   protected override defaultTool(): string {
     return "tsgo";
+  }
+
+  /** Resolve the binary from `node_modules/.bin` by default — tsgo is an npm-distributed tool. */
+  protected override defaultResolution(): ToolResolution {
+    return "node_modules";
   }
 
   /** Source files to compile (positional); repeatable. */

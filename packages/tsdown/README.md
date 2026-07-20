@@ -54,6 +54,8 @@ class TsdownBuildSettings extends ToolSettings
 
   override protected defaultTool(): string
     The default executable to run: `tsdown`.
+  override protected defaultResolution(): ToolResolution
+    Resolve the binary from `node_modules/.bin` by default — tsdown is an npm-distributed tool.
   entry(...paths: PathLike[]): this
     Entry point(s) to bundle (positional); repeatable.
   format(...formats: TsdownFormat[]): this
@@ -88,6 +90,8 @@ class TsdownMigrateSettings extends ToolSettings
 
   override protected defaultTool(): string
     The default executable to run: `tsdown`.
+  override protected defaultResolution(): ToolResolution
+    Resolve the binary from `node_modules/.bin` by default — tsdown is an npm-distributed tool.
   from(value: string): this
     The tool to migrate from, e.g. `tsup` (`--from`).
   dryRun(): this

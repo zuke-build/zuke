@@ -40,6 +40,8 @@ class TsupBuildSettings extends ToolSettings
 
   override protected defaultTool(): string
     The executable this settings object runs: `tsup`.
+  override protected defaultResolution(): ToolResolution
+    Resolve the binary from `node_modules/.bin` by default — tsup is an npm-distributed tool.
   entry(...paths: PathLike[]): this
     Entry point(s) to bundle (positional); repeatable.
   format(...formats: TsupFormat[]): this

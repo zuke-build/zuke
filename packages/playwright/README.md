@@ -60,6 +60,8 @@ abstract class PlaywrightSettings extends ToolSettings
 
   override protected defaultTool(): string
     The tool binary invoked by all Playwright subcommands: `playwright`.
+  override protected defaultResolution(): ToolResolution
+    Resolve the binary from `node_modules/.bin` by default — playwright is an npm-distributed tool.
 
 class PlaywrightShowReportSettings extends PlaywrightSettings
   Settings for `playwright show-report`.

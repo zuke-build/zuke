@@ -56,6 +56,8 @@ abstract class TscBaseSettings extends ToolSettings
 
   override protected defaultTool(): string
     The default binary these settings invoke: `tsc`.
+  override protected defaultResolution(): ToolResolution
+    Resolve the binary from `node_modules/.bin` by default — tsc is an npm-distributed tool.
 
 class TscBuildSettings extends TscBaseSettings
   Settings for a `tsc --build` project-references run.

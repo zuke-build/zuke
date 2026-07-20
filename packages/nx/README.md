@@ -83,6 +83,8 @@ abstract class NxSettings extends ToolSettings
 
   override protected defaultTool(): string
     The tool binary is `nx`.
+  override protected defaultResolution(): ToolResolution
+    Resolve the binary from `node_modules/.bin` by default — nx is an npm-distributed tool.
 
 interface NxTasksApi
   The shape of {@link NxTasks}.

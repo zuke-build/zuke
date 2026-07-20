@@ -75,6 +75,8 @@ abstract class CypressSettings extends ToolSettings
 
   override protected defaultTool(): string
     The default tool binary: `cypress`.
+  override protected defaultResolution(): ToolResolution
+    Resolve the binary from `node_modules/.bin` by default — cypress is an npm-distributed tool.
 
 abstract class CypressTestingSettings extends CypressSettings
   Base for the `run`/`open` commands, which share testing-type selection, a

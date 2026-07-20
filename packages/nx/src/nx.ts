@@ -15,7 +15,12 @@
  * @module
  */
 
-import { type Configure, runSettings, ToolSettings } from "@zuke/core/tooling";
+import {
+  type Configure,
+  runSettings,
+  type ToolResolution,
+  ToolSettings,
+} from "@zuke/core/tooling";
 import type { CommandOutput } from "@zuke/core/shell";
 
 /** Base for all `nx` subcommand settings: the binary is `nx`. */
@@ -23,6 +28,11 @@ export abstract class NxSettings extends ToolSettings {
   /** The tool binary is `nx`. */
   protected override defaultTool(): string {
     return "nx";
+  }
+
+  /** Resolve the binary from `node_modules/.bin` by default — nx is an npm-distributed tool. */
+  protected override defaultResolution(): ToolResolution {
+    return "node_modules";
   }
 }
 

@@ -46,6 +46,8 @@ class DpdmAnalyzeSettings extends ToolSettings
 
   override protected defaultTool(): string
     The command this settings object runs (`dpdm`).
+  override protected defaultResolution(): ToolResolution
+    Resolve the binary from `node_modules/.bin` by default — dpdm is an npm-distributed tool.
   transform(): this
     Transform TypeScript modules to JavaScript before analysis (`--transform`).
   noTree(): this

@@ -19,6 +19,7 @@ import {
   type Configure,
   type PathLike,
   runSettings,
+  type ToolResolution,
   ToolSettings,
 } from "@zuke/core/tooling";
 import type { CommandOutput } from "@zuke/core/shell";
@@ -38,6 +39,11 @@ export abstract class BiomeSettings extends ToolSettings {
   /** The tool binary: `biome`. */
   protected override defaultTool(): string {
     return "biome";
+  }
+
+  /** Resolve the binary from `node_modules/.bin` by default — biome is an npm-distributed tool. */
+  protected override defaultResolution(): ToolResolution {
+    return "node_modules";
   }
 
   /** Files or directories to operate on; omit to use the configured includes. */

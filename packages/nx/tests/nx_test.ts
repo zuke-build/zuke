@@ -15,6 +15,28 @@ Deno.test("the default binary is nx", () => {
   assertEquals(new NxRunSettings().target("web:build").argv()[0], "nx");
 });
 
+Deno.test("nx: resolves its binary from node_modules by default", () => {
+  const prevRes = Deno.env.get("ZUKE_TOOL_RESOLUTION");
+  Deno.env.delete("ZUKE_TOOL_RESOLUTION");
+  const root = Deno.makeTempDirSync();
+  try {
+    const binDir = `${root}/node_modules/.bin`;
+    Deno.mkdirSync(binDir, { recursive: true });
+    const bin = `${binDir}/nx`;
+    Deno.writeTextFileSync(bin, "#!/bin/sh\n");
+    const s = new NxRunSettings();
+    s.os_ = "linux";
+    assertEquals(
+      s.cwd(root).target("web:build").resolvedArgv()[0],
+      bin.replace(/\\/g, "/"),
+    );
+  } finally {
+    Deno.removeSync(root, { recursive: true });
+    if (prevRes === undefined) Deno.env.delete("ZUKE_TOOL_RESOLUTION");
+    else Deno.env.set("ZUKE_TOOL_RESOLUTION", prevRes);
+  }
+});
+
 Deno.test("run: requires a target; configuration", () => {
   assertThrows(
     () => new NxRunSettings().argv(),

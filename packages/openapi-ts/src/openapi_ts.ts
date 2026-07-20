@@ -28,6 +28,7 @@ import {
   type Configure,
   type PathLike,
   runSettings,
+  type ToolResolution,
   ToolSettings,
 } from "@zuke/core/tooling";
 import type { CommandOutput } from "@zuke/core/shell";
@@ -45,6 +46,11 @@ export class OpenapiTsGenerateSettings extends ToolSettings {
   /** The tool binary this settings object invokes (`openapi-ts`). */
   protected override defaultTool(): string {
     return "openapi-ts";
+  }
+
+  /** Resolve the binary from `node_modules/.bin` by default — openapi-ts is an npm-distributed tool. */
+  protected override defaultResolution(): ToolResolution {
+    return "node_modules";
   }
 
   /** OpenAPI specification to read — a file path or URL (`--input`). */

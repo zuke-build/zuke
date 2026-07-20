@@ -45,6 +45,8 @@ class CspellSettings extends ToolSettings
 
   override protected defaultTool(): string
     The default executable name (`cspell`).
+  override protected defaultResolution(): ToolResolution
+    Resolve the binary from `node_modules/.bin` by default — cspell is an npm-distributed tool.
   files(...globs: PathLike[]): this
     Files or globs to check (positional); repeatable.
   config(path: PathLike): this

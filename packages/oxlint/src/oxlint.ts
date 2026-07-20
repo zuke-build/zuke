@@ -19,6 +19,7 @@ import {
   type Configure,
   type PathLike,
   runSettings,
+  type ToolResolution,
   ToolSettings,
 } from "@zuke/core/tooling";
 import type { CommandOutput } from "@zuke/core/shell";
@@ -42,6 +43,11 @@ export class OxlintSettings extends ToolSettings {
   /** The default executable name (`oxlint`). */
   protected override defaultTool(): string {
     return "oxlint";
+  }
+
+  /** Resolve the binary from `node_modules/.bin` by default — oxlint is an npm-distributed tool. */
+  protected override defaultResolution(): ToolResolution {
+    return "node_modules";
   }
 
   /** Files or directories to lint (positional); repeatable. */
