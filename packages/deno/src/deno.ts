@@ -326,6 +326,7 @@ export class DenoCoverageSettings extends DenoSettings {
   #exclude?: string;
   #linesThreshold?: number;
   #branchesThreshold?: number;
+  #perFileThreshold?: number;
 
   /** The coverage profile directory to report on. */
   dir(path: PathLike): this {
@@ -374,9 +375,24 @@ export class DenoCoverageSettings extends DenoSettings {
     return this;
   }
 
+  /**
+   * Fail the gate if any single instrumented file's line coverage is below
+   * `percent` — a per-file floor, so an under-tested file can't hide inside a
+   * healthy aggregate (see {@link CoverageThresholds.perFile}, which notes the
+   * `deno coverage` limit for files no test loads).
+   */
+  perFileThreshold(percent: number): this {
+    this.#perFileThreshold = percent;
+    return this;
+  }
+
   /** The configured thresholds; read by {@link DenoTasks.coverage}. */
   get thresholds(): CoverageThresholds {
-    return { lines: this.#linesThreshold, branches: this.#branchesThreshold };
+    return {
+      lines: this.#linesThreshold,
+      branches: this.#branchesThreshold,
+      perFile: this.#perFileThreshold,
+    };
   }
 
   /** The `--output` file path, if {@link output} was set; read by the task. */
@@ -386,7 +402,8 @@ export class DenoCoverageSettings extends DenoSettings {
 
   #hasThreshold(): boolean {
     return this.#linesThreshold !== undefined ||
-      this.#branchesThreshold !== undefined;
+      this.#branchesThreshold !== undefined ||
+      this.#perFileThreshold !== undefined;
   }
 
   protected override buildArgs(): string[] {
@@ -606,8 +623,10 @@ export const DenoTasks: DenoTasksApi = {
   ): Promise<CommandOutput> {
     const settings = new DenoCoverageSettings();
     const s = configure ? configure(settings) : settings;
-    const { lines, branches } = s.thresholds;
-    if (lines === undefined && branches === undefined) {
+    const { lines, branches, perFile } = s.thresholds;
+    if (
+      lines === undefined && branches === undefined && perFile === undefined
+    ) {
       return await s.run(); // plain `deno coverage`, no gate
     }
     // Read the lcov from the output file when one is set, else capture it from
@@ -618,7 +637,7 @@ export const DenoTasks: DenoTasksApi = {
     const lcov = output === undefined
       ? result.stdout
       : await Deno.readTextFile(output);
-    enforceCoverage(lcov, { lines, branches }, s.throwsOnError);
+    enforceCoverage(lcov, { lines, branches, perFile }, s.throwsOnError);
     return result;
   },
   /** Install a script or executable: `deno install`. */

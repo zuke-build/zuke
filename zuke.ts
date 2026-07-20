@@ -438,8 +438,13 @@ class ZukeBuild extends Build {
     .description("Enforce the 95% coverage gate")
     .dependsOn(this.test)
     .executes(async () => {
+      // A 95% aggregate gate, plus a per-file floor so a wholly-untested file or
+      // package can't hide inside the average. The floor (50%) sits well below
+      // the current lowest src file (~82%), so it flags only a genuinely
+      // neglected file rather than churning on the existing spread.
       await DenoTasks.coverage((s) =>
-        s.dir("cov_profile").exclude("tests/").output("cov.lcov").threshold(95)
+        s.dir("cov_profile").exclude("tests/").output("cov.lcov")
+          .threshold(95).perFileThreshold(50)
       );
     });
 

@@ -1,12 +1,14 @@
 import {
   assertEquals,
   assertRejects,
+  assertStringIncludes,
   assertThrows,
 } from "../../core/tests/_assert.ts";
 import {
   CoverageThresholdError,
   enforceCoverage,
   parseLcov,
+  parseLcovPerFile,
 } from "../src/coverage.ts";
 import { DenoTasks } from "../src/deno.ts";
 
@@ -46,9 +48,33 @@ Deno.test("enforceCoverage passes when metrics meet the thresholds", () => {
   );
 });
 
-Deno.test("enforceCoverage treats zero-found as fully covered", () => {
+Deno.test("enforceCoverage fails when no data was measured (an empty report)", () => {
+  // An empty report is not 100% covered — nothing ran. A gated metric with zero
+  // found must fail, not pass vacuously.
+  const err = assertThrows(
+    () =>
+      enforceCoverage(
+        "LF:0\nLH:0\nBRF:0\nBRH:0\n",
+        { lines: 95, branches: 95 },
+        true,
+      ),
+    CoverageThresholdError,
+    "no coverage data measured",
+  );
+  if (err instanceof CoverageThresholdError) {
+    assertEquals(err.failures.length, 1); // one clear "nothing measured" message
+  }
+});
+
+Deno.test("enforceCoverage passes branchless code that is fully line-covered", () => {
+  // A module with no conditionals reports BRF:0. Under a combined threshold that
+  // must NOT fail as "no branch data" — the branch score is vacuously 100%.
   assertEquals(
-    enforceCoverage("LF:0\nLH:0\n", { lines: 100, branches: 100 }, true),
+    enforceCoverage(
+      "SF:a.ts\nLF:5\nLH:5\nBRF:0\nBRH:0\nend_of_record\n",
+      { lines: 95, branches: 95 },
+      true,
+    ),
     [],
   );
 });
@@ -77,6 +103,75 @@ Deno.test("enforceCoverage returns failures instead of throwing when not enforci
     false,
   );
   assertEquals(failures.length, 2);
+});
+
+Deno.test("parseLcovPerFile splits totals per file, keeping colon-bearing paths", () => {
+  const lcov = [
+    "SF:C:/win/a.ts", // a Windows drive path — the colon must survive
+    "LF:10",
+    "LH:9",
+    "BRF:2",
+    "BRH:1",
+    "end_of_record",
+    "SF:b.ts",
+    "LF:4",
+    "LH:4",
+    "end_of_record",
+  ].join("\n");
+  const files = parseLcovPerFile(lcov);
+  assertEquals(files.length, 2);
+  assertEquals(files[0].file, "C:/win/a.ts");
+  assertEquals(files[0].linesFound, 10);
+  assertEquals(files[0].linesHit, 9);
+  assertEquals(files[1].file, "b.ts");
+  assertEquals(files[1].linesHit, 4);
+});
+
+Deno.test("parseLcovPerFile strips CRLF so paths carry no trailing carriage return", () => {
+  const lcov = ["SF:win.ts", "LF:4", "LH:2", "end_of_record", ""].join("\r\n");
+  const files = parseLcovPerFile(lcov);
+  assertEquals(files.length, 1);
+  assertEquals(files[0].file, "win.ts"); // no trailing "\r"
+  assertEquals(files[0].linesFound, 4);
+  assertEquals(files[0].linesHit, 2);
+});
+
+Deno.test("the per-file floor fails a single low file even when the aggregate passes", () => {
+  // Aggregate is 90/100 = 90% (passes a 90 line gate), but one file is at 20%.
+  const lcov = [
+    "SF:good.ts",
+    "LF:90",
+    "LH:88",
+    "end_of_record",
+    "SF:bad.ts",
+    "LF:10",
+    "LH:2",
+    "end_of_record",
+  ].join("\n");
+  const err = assertThrows(
+    () => enforceCoverage(lcov, { lines: 90, perFile: 50 }, true),
+    CoverageThresholdError,
+    "per-file line floor",
+  );
+  if (err instanceof CoverageThresholdError) {
+    // Only the aggregate-passing-but-file-failing case trips: bad.ts (20%).
+    assertEquals(err.failures.length, 1);
+    assertStringIncludes(err.failures[0], "bad.ts");
+  }
+});
+
+Deno.test("the per-file floor skips files with no measurable lines", () => {
+  const lcov = [
+    "SF:types.ts", // a declaration-only file: zero lines found
+    "LF:0",
+    "LH:0",
+    "end_of_record",
+    "SF:code.ts",
+    "LF:10",
+    "LH:10",
+    "end_of_record",
+  ].join("\n");
+  assertEquals(enforceCoverage(lcov, { perFile: 80 }, true), []); // no failure
 });
 
 /**
@@ -144,6 +239,21 @@ Deno.test("coverage with noThrow reports a shortfall without throwing", async ()
       s.dir(profile).threshold(100).noThrow().quiet()
     );
     assertEquals(out.code, 0); // deno coverage itself succeeded
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("a per-file floor alone gates the run and fails a low file", async () => {
+  // No aggregate threshold — only .perFileThreshold(). It must still force
+  // --lcov and enforce, so the under-covered single file trips the gate.
+  const { dir, profile } = await makeProfile(false);
+  try {
+    await assertRejects(
+      () => DenoTasks.coverage((s) => s.dir(profile).perFileThreshold(100)),
+      CoverageThresholdError,
+      "per-file line floor",
+    );
   } finally {
     await Deno.remove(dir, { recursive: true });
   }

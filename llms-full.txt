@@ -3335,6 +3335,11 @@ class DenoCoverageSettings extends DenoSettings
     Fail the gate if branch coverage is below `percent` (see {@link linesThreshold}).
   threshold(percent: number): this
     Fail the gate if either line or branch coverage is below `percent`.
+  perFileThreshold(percent: number): this
+    Fail the gate if any single instrumented file's line coverage is below
+    `percent` — a per-file floor, so an under-tested file can't hide inside a
+    healthy aggregate (see {@link CoverageThresholds.perFile}, which notes the
+    `deno coverage` limit for files no test loads).
   get thresholds(): CoverageThresholds
     The configured thresholds; read by {@link DenoTasks.coverage}.
   get outputPath(): string | undefined
@@ -3437,6 +3442,14 @@ interface CoverageThresholds
     Minimum line-coverage percentage (0–100).
   branches?: number
     Minimum branch-coverage percentage (0–100).
+  perFile?: number
+    Minimum per-file line-coverage percentage (0–100). Unlike {@link lines}
+    (an aggregate over the whole report), this fails the gate when any single
+    instrumented file falls below the floor — so an under-tested file can't
+    hide inside a healthy repo-wide average. Files with no measurable lines are
+    skipped. Note the coverage tool's limit: `deno coverage` only reports files
+    that were loaded, so a source file no test imports at all is invisible to
+    this check (as it is to every coverage metric).
 
 interface DenoTasksApi
   The shape of {@link DenoTasks}.
