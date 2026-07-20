@@ -64,6 +64,7 @@ Deno.test("two real processes resume the same run; exactly one wins", async () =
     const promotions = [a.out, b.out].filter((o) => o.includes("PROMOTED"));
     assertEquals(promotions.length, 1);
   } finally {
-    await Deno.remove(dir, { recursive: true });
+    // Best-effort: a cleanup failure must not mask the real assertion error.
+    await Deno.remove(dir, { recursive: true }).catch(() => {});
   }
 });
