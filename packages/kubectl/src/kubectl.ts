@@ -144,6 +144,18 @@ export class KubectlApplySettings extends KubectlSettings {
         "KubectlTasks.apply: .file() or .kustomize() is required.",
       );
     }
+    // kubectl apply accepts EITHER -f or -k, never both.
+    if (this.#files.length > 0 && this.#kustomize !== undefined) {
+      throw new Error(
+        "KubectlTasks.apply: .file() and .kustomize() are mutually exclusive.",
+      );
+    }
+    // -k also rejects -R: kubectl errors "the -k flag can't be used with -f or -R".
+    if (this.#kustomize !== undefined && this.#recursive) {
+      throw new Error(
+        "KubectlTasks.apply: .kustomize() cannot be combined with .recursive().",
+      );
+    }
     const argv = ["apply", ...this.globalArgs()];
     for (const f of this.#files) argv.push("-f", f);
     if (this.#kustomize !== undefined) argv.push("-k", this.#kustomize);
@@ -378,9 +390,11 @@ export class KubectlDescribeSettings extends KubectlSettings {
   }
 
   protected override buildArgs(): string[] {
-    if (this.#resources.length === 0 && this.#selector === undefined) {
+    // kubectl describe needs a resource type even with a selector; a bare
+    // `describe -l ...` is rejected ("You must specify the type of resource").
+    if (this.#resources.length === 0) {
       throw new Error(
-        "KubectlTasks.describe: specify .resource(...) or .selector().",
+        "KubectlTasks.describe: specify a resource type with .resource(...).",
       );
     }
     const argv = ["describe", ...this.globalArgs(), ...this.#resources];
@@ -458,6 +472,12 @@ export class KubectlLogsSettings extends KubectlSettings {
   protected override buildArgs(): string[] {
     if (this.#resource === undefined && this.#selector === undefined) {
       throw new Error("KubectlTasks.logs: specify .resource() or .selector().");
+    }
+    // kubectl logs takes a pod name OR a selector, never both.
+    if (this.#resource !== undefined && this.#selector !== undefined) {
+      throw new Error(
+        "KubectlTasks.logs: .resource() and .selector() are mutually exclusive.",
+      );
     }
     const argv = ["logs", ...this.globalArgs()];
     if (this.#resource !== undefined) argv.push(this.#resource);
@@ -764,12 +784,11 @@ export class KubectlAnnotateSettings extends KubectlSettings {
   }
 
   protected override buildArgs(): string[] {
-    if (
-      this.#resources.length === 0 && this.#selector === undefined &&
-      !this.#all
-    ) {
+    // kubectl annotate always needs a resource type; `.all()`/`.selector()`
+    // are modifiers on top of it, not substitutes for it.
+    if (this.#resources.length === 0) {
       throw new Error(
-        "KubectlTasks.annotate: a target is required — .resource(...), .selector(), or .all().",
+        "KubectlTasks.annotate: a resource type is required — .resource(...).",
       );
     }
     if (this.#annotations.length === 0 && this.#removals.length === 0) {
@@ -837,12 +856,11 @@ export class KubectlLabelSettings extends KubectlSettings {
   }
 
   protected override buildArgs(): string[] {
-    if (
-      this.#resources.length === 0 && this.#selector === undefined &&
-      !this.#all
-    ) {
+    // kubectl label always needs a resource type; `.all()`/`.selector()` are
+    // modifiers on top of it, not substitutes for it.
+    if (this.#resources.length === 0) {
       throw new Error(
-        "KubectlTasks.label: a target is required — .resource(...), .selector(), or .all().",
+        "KubectlTasks.label: a resource type is required — .resource(...).",
       );
     }
     if (this.#labels.length === 0 && this.#removals.length === 0) {
@@ -1055,6 +1073,18 @@ export class KubectlTopSettings extends KubectlSettings {
   protected override buildArgs(): string[] {
     if (this.#kind === undefined) {
       throw new Error("KubectlTasks.top: choose .pods() or .nodes().");
+    }
+    // `--containers` and `-A`/`--all-namespaces` are `top pod`-only; kubectl
+    // rejects them on `top node` ("unknown flag"). `-l`/selector stays valid.
+    if (this.#containers && this.#kind !== "pods") {
+      throw new Error(
+        "KubectlTasks.top: .containers() is only valid with .pods().",
+      );
+    }
+    if (this.#allNamespaces && this.#kind !== "pods") {
+      throw new Error(
+        "KubectlTasks.top: .allNamespaces() is only valid with .pods().",
+      );
     }
     const argv = ["top", this.#kind, ...this.globalArgs()];
     if (this.#name !== undefined) argv.push(this.#name);

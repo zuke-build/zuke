@@ -34,16 +34,27 @@ Deno.test("jest: every option renders, patterns last", () => {
     "-o",
     "--passWithNoTests",
     "--detectOpenHandles",
-    "--selectProjects",
-    "web",
-    "api",
-    "--reporters",
-    "default",
-    "--reporters",
-    "jest-junit",
+    "--selectProjects=web",
+    "--selectProjects=api",
+    "--reporters=default",
+    "--reporters=jest-junit",
     "src/",
     "test/",
   ]);
+});
+
+Deno.test("jest: array flags use = form so positional patterns survive", () => {
+  // Space-separated array flags let jest's yargs parser greedily swallow the
+  // trailing `src/` into --reporters; the `=` form binds one value per flag so
+  // the positional test-path pattern survives.
+  assertEquals(
+    new JestSettings().reporters("default", "jest-junit").paths("src/").argv(),
+    ["jest", "--reporters=default", "--reporters=jest-junit", "src/"],
+  );
+  assertEquals(
+    new JestSettings().selectProjects("web", "api").paths("test/").argv(),
+    ["jest", "--selectProjects=web", "--selectProjects=api", "test/"],
+  );
 });
 
 Deno.test("jest: bail defaults to one suite", () => {

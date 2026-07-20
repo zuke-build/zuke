@@ -152,7 +152,7 @@ export class JestSettings extends ToolSettings {
 
   /** Use the named reporters (`--reporters`); repeatable. */
   reporters(...names: string[]): this {
-    for (const name of names) this.#reporters.push("--reporters", name);
+    this.#reporters.push(...names);
     return this;
   }
 
@@ -177,10 +177,11 @@ export class JestSettings extends ToolSettings {
     if (this.#onlyChanged) argv.push("-o");
     if (this.#passWithNoTests) argv.push("--passWithNoTests");
     if (this.#detectOpenHandles) argv.push("--detectOpenHandles");
-    if (this.#selectProjects.length > 0) {
-      argv.push("--selectProjects", ...this.#selectProjects);
-    }
-    argv.push(...this.#reporters);
+    // Array flags use `--flag=value` form so jest's yargs parser binds exactly
+    // one value per flag; the space-separated form is greedy and swallows the
+    // trailing positional test-path patterns into the array instead.
+    for (const p of this.#selectProjects) argv.push(`--selectProjects=${p}`);
+    for (const r of this.#reporters) argv.push(`--reporters=${r}`);
     argv.push(...this.#patterns);
     return argv;
   }

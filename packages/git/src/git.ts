@@ -167,7 +167,9 @@ export class GitAddSettings extends GitSettings {
     const argv = ["add"];
     if (this.#all) argv.push("--all");
     if (this.#update) argv.push("--update");
-    argv.push(...this.#paths);
+    // `--` so a pathspec beginning with `-` (e.g. `-weird.txt`) is treated as a
+    // path, not parsed by git as a flag. `add` positionals are always pathspecs.
+    if (this.#paths.length > 0) argv.push("--", ...this.#paths);
     return argv;
   }
 }
