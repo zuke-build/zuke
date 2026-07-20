@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.2](https://github.com/zuke-build/zuke/compare/ai-v1.5.1...ai-v1.5.2) (2026-07-20)
+
+
+### Bug Fixes
+
+* **ai:** harden the review/fix pipeline against secret and injection risks ([#222](https://github.com/zuke-build/zuke/issues/222)) ([714dc03](https://github.com/zuke-build/zuke/commit/714dc033c4c81c71b64c84f45c122cc0b40971bb))
+
 ## [1.5.1](https://github.com/zuke-build/zuke/compare/ai-v1.5.0...ai-v1.5.1) (2026-07-19)
 
 
