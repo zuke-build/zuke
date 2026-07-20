@@ -154,7 +154,10 @@ export async function retryingFetch(
       if (timer !== undefined) clearTimeout(timer);
       lastReason = reasonForThrow(error, timeoutMs);
       if (last) break;
-      const delayMs = baseMs * Math.pow(2, attempt);
+      // Cap the thrown-fetch backoff at MAX_DELAY_MS too — the response path
+      // already caps via delayFor(); without this a large baseDelayMs or a long
+      // attempt run could sleep far past the ceiling on network errors.
+      const delayMs = Math.min(baseMs * Math.pow(2, attempt), MAX_DELAY_MS);
       options.onRetry?.({
         attempt: attempt + 1,
         attempts,

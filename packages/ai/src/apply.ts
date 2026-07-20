@@ -113,17 +113,33 @@ export function checkEdits(edits: FileEdit[], guards: ApplyGuards): string[] {
 }
 
 /**
+ * Default write: create the file's parent directory (if any) then write it, so
+ * a fix that adds a file in a new directory doesn't fail with a missing-parent
+ * error. Paths are already normalised to `/`-separated, repo-relative form by
+ * {@link normalizePath}, so splitting on the last `/` yields the parent.
+ */
+async function writeEnsuringDir(path: string, content: string): Promise<void> {
+  const slash = path.lastIndexOf("/");
+  if (slash > 0) await Deno.mkdir(path.slice(0, slash), { recursive: true });
+  await Deno.writeTextFile(path, content);
+}
+
+/**
  * Validate and apply the edits, writing each file's full new contents. Returns
  * the list of written paths. Throws (writing nothing) when any edit violates a
- * guard. The `write` seam is overridable for tests.
+ * guard. The default write creates missing parent directories; the `write` seam
+ * is overridable for tests.
  */
 export async function applyEdits(
   edits: FileEdit[],
   guards: ApplyGuards,
-  write: (path: string, content: string) => Promise<void> = (p, c) =>
-    Deno.writeTextFile(p, c),
+  write: (path: string, content: string) => Promise<void> = writeEnsuringDir,
 ): Promise<string[]> {
   const paths = checkEdits(edits, guards);
+  // Writes are sequential and not transactional: if a later write fails (e.g. a
+  // permission error), files written earlier stay written. ponytail: no rollback
+  // — the fixer's output is human-reviewed and the run is re-runnable, so atomic
+  // multi-file application (temp + rename) isn't worth the complexity here.
   for (let i = 0; i < edits.length; i++) {
     await write(paths[i], edits[i].content);
   }
