@@ -476,6 +476,27 @@ function plan(root: TargetBuilder, extra: readonly OrderingEdge[]): TargetBuilde
       if the planned graph contains a cycle (which can happen
       via soft edges even when the hard graph is acyclic).
 
+function prependPath(dir: PathLike, os: typeof Deno.build.os): string
+  Prepend `dir` to the process `PATH`, and return the new value. A tool
+  provisioned into `dir` (e.g. the `bin` directory of an {@link "./install.ts".installTree}
+  runtime) then resolves for the rest of the build: the shell `$`, `Command`,
+  and every tool wrapper spawn subprocesses that inherit `Deno.env`, so the
+  `node_modules/.bin` shims and `NpmTasks` that assume a `node`/`npm` on `PATH`
+  find the provisioned one.
+
+  Idempotent — a directory already on `PATH` is left in place, not duplicated —
+  and uses the platform separator (`;` on Windows, `:` elsewhere).
+
+  @param dir
+      the directory to place first on `PATH`.
+
+  @param os
+      the OS whose `PATH` separator to use; defaults to the host (a test
+      seam, mirroring {@link operatingSystem}).
+
+  @return
+      the resulting `PATH` string.
+
 function remoteCacheKey(name: string, fingerprint: string): string
   The store key for a target's outputs: its name and input `fingerprint`. The
   name is sanitised so the key is safe as a filename and a URL path segment.
