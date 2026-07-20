@@ -70,6 +70,14 @@ below), so one long `run:` never head-of-line-blocks another client's read.
   bind** a non-loopback address rather than exposing an unauthenticated
   endpoint.
 - A token is also enforced on a loopback bind when `ZUKE_MCP_TOKEN` is set.
+- **Origin validation** guards against a browser drive-by / DNS-rebinding page:
+  on a loopback bind, a request that carries an `Origin` header is accepted only
+  when it is a loopback origin, and rejected `403` otherwise. A client that sends
+  no `Origin` (a CLI/MCP client — not a browser) is always allowed, so this is
+  invisible to normal use. Permit a specific extra origin with
+  `--allowed-origin <origin>` (repeatable); when set, a present `Origin` must
+  match one exactly. A non-loopback bind runs no default Origin check — front it
+  with your own policy.
 - This is a bridge for a trusted network segment: **put real TLS and
   authentication in front of it** (a reverse proxy, a service mesh) for anything
   production-facing. Zuke provides the transport, not an internet gateway.

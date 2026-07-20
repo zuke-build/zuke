@@ -74,6 +74,13 @@ export interface ServeMcpOptions extends McpServerOptions {
   http?: HttpAddress;
   /** Bearer token for the HTTP transport (defaults to `ZUKE_MCP_TOKEN`). */
   token?: string;
+  /**
+   * Extra origins allowed to call the HTTP transport (the `--allowed-origin`
+   * flag, repeatable). When set, a request's `Origin` — if present — must match
+   * one of these exactly; when unset, the default applies (loopback origins only
+   * on a loopback bind). See {@link "./http.ts".HttpTransportOptions.allowedOrigins}.
+   */
+  allowedOrigins?: string[];
   /** Reads an environment variable (injectable for tests). */
   readEnv?: (name: string) => string | undefined;
   /** Abort to stop the HTTP server (test hook; the CLI runs until killed). */
@@ -228,6 +235,7 @@ async function serveMcpHttp(
     host: address.host,
     port: address.port,
     token: hasToken ? token : undefined,
+    allowedOrigins: options.allowedOrigins,
     signal: options.signal,
     onListen: options.onListen,
     concurrent: server.concurrent,

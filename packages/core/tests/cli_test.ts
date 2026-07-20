@@ -170,6 +170,22 @@ Deno.test("every reserved command is honoured by the parser and help", () => {
   for (const flag of BUILTIN_FLAGS) assertStringIncludes(help, flag.name);
 });
 
+Deno.test("parseArgs accumulates --allowed-origin (repeatable and comma-list)", () => {
+  const p = parseArgs([
+    "mcp",
+    "--allowed-origin",
+    "https://a.example",
+    "--allowed-origin=https://b.example,https://c.example",
+  ]);
+  assertEquals(p.allowedOrigins, [
+    "https://a.example",
+    "https://b.example",
+    "https://c.example",
+  ]);
+  // Absent by default.
+  assertEquals(parseArgs(["mcp"]).allowedOrigins, undefined);
+});
+
 Deno.test("parseArgs recognises the doc command and its spec", () => {
   const p = parseArgs(["doc", "jsr:@zuke/deno"]);
   assertEquals(p.doc, true);
