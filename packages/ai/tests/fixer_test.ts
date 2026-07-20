@@ -1,7 +1,7 @@
 import { assertEquals } from "../../core/tests/_assert.ts";
 import { CommandError } from "@zuke/core/shell";
 import { AiFixer, aiFixer, type Fix } from "../mod.ts";
-import { checkEdits, DEFAULT_FIX_EXCLUDES } from "../src/apply.ts";
+import { applyEdits, checkEdits, DEFAULT_FIX_EXCLUDES } from "../src/apply.ts";
 import { parseFix } from "../src/fix.ts";
 import { readTextOrUndefined } from "../src/context.ts";
 import { commitAndPush } from "../src/commit.ts";
@@ -402,6 +402,29 @@ Deno.test("the allowlist is case-sensitive, so a case variant is not silently wi
     checkEdits([{ path: "src/ok.ts", content: "" }], guards),
     ["src/ok.ts"],
   );
+});
+
+Deno.test("applyEdits (default write) creates missing parent directories", async () => {
+  // Exercises the real default write — every other test injects a write seam,
+  // so the mkdir path would otherwise be uncovered. chdir into a temp dir so the
+  // repo-relative write lands there, not in the repo; restored in finally.
+  const dir = await Deno.makeTempDir({ prefix: "zuke-apply-" });
+  const cwd = Deno.cwd();
+  Deno.chdir(dir);
+  try {
+    const written = await applyEdits(
+      [{ path: "nested/new/mod.ts", content: "export const x = 1;\n" }],
+      { allow: ["**"], exclude: [], maxEdits: 10 },
+    );
+    assertEquals(written, ["nested/new/mod.ts"]);
+    assertEquals(
+      await Deno.readTextFile(`${dir}/nested/new/mod.ts`),
+      "export const x = 1;\n",
+    );
+  } finally {
+    Deno.chdir(cwd);
+    await Deno.remove(dir, { recursive: true });
+  }
 });
 
 /** A Claude fix response carrying token usage. */

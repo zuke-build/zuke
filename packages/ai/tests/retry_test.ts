@@ -122,6 +122,23 @@ Deno.test("a thrown fetch (network error) is retried, then surfaces an AiReviewE
   assertEquals(sleeps, [5]); // one backoff between the two attempts
 });
 
+Deno.test("thrown-fetch backoff is capped at MAX_DELAY_MS", async () => {
+  const { sleeps, sleep } = recordSleep();
+  const f = scriptedFetch(
+    new TypeError("connection reset"),
+    new TypeError("connection reset"),
+    new Response("ok", { status: 200 }),
+  );
+  await retryingFetch(f.fetch, "https://api.example/x", { method: "POST" }, {
+    attempts: 3,
+    baseDelayMs: 20_000,
+    sleep,
+  });
+  // Attempt 0 → 20_000 (under the cap); attempt 1 → 40_000 uncapped, capped to
+  // the 30_000 ceiling. Without the cap this would sleep 40_000ms.
+  assertEquals(sleeps, [20_000, 30_000]);
+});
+
 Deno.test("a thrown fetch followed by a success returns the success", async () => {
   const { sleep } = recordSleep();
   const f = scriptedFetch(
