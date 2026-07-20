@@ -12,6 +12,8 @@ import {
   commentBody,
   commentMarker,
   type EnvReader,
+  MAX_COMMENT_PAGES,
+  nextLink,
   readEnv,
   type ReviewHost,
 } from "./types.ts";
@@ -86,23 +88,29 @@ async function findComment(
   marker: string,
   doFetch: typeof fetch,
 ): Promise<number | undefined> {
-  const url =
+  let url: string | undefined =
     `${API}/repos/${context.owner}/${context.repo}/issues/${context.pull}/comments?per_page=100`;
-  const response = await doFetch(url, {
-    headers: githubHeaders(context.token),
-  });
-  await ensureGithubOk(response);
-  const data: unknown = await response.json();
-  if (!Array.isArray(data)) return undefined;
-  for (const item of data) {
-    const body = dig(item, "body");
-    const id = dig(item, "id");
-    if (
-      typeof body === "string" && body.includes(marker) &&
-      typeof id === "number"
-    ) {
-      return id;
+  // Follow `Link: rel="next"` so a marker beyond the first page is still found —
+  // otherwise a busy PR (>100 comments) would re-post a duplicate every run.
+  for (let page = 0; url !== undefined && page < MAX_COMMENT_PAGES; page++) {
+    const response = await doFetch(url, {
+      headers: githubHeaders(context.token),
+    });
+    await ensureGithubOk(response);
+    const data: unknown = await response.json();
+    if (Array.isArray(data)) {
+      for (const item of data) {
+        const body = dig(item, "body");
+        const id = dig(item, "id");
+        if (
+          typeof body === "string" && body.includes(marker) &&
+          typeof id === "number"
+        ) {
+          return id;
+        }
+      }
     }
+    url = nextLink(response.headers.get("link"));
   }
   return undefined;
 }

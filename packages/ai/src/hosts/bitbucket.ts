@@ -15,6 +15,7 @@ import {
   commentBody,
   commentMarker,
   type EnvReader,
+  MAX_COMMENT_PAGES,
   type ReviewHost,
 } from "./types.ts";
 
@@ -72,21 +73,30 @@ async function findComment(
   marker: string,
   doFetch: typeof fetch,
 ): Promise<number | undefined> {
-  const url = `${API}/repositories/${context.workspace}/${context.repoSlug}` +
+  let url: string | undefined =
+    `${API}/repositories/${context.workspace}/${context.repoSlug}` +
     `/pullrequests/${context.prId}/comments?pagelen=100`;
-  const response = await doFetch(url, { headers: headers(context.token) });
-  await ensureOk(response);
-  const data: unknown = await response.json();
-  const values = dig(data, "values");
-  if (!Array.isArray(values)) return undefined;
-  for (const item of values) {
-    const raw = dig(item, "content", "raw");
-    const id = dig(item, "id");
-    if (
-      typeof raw === "string" && raw.includes(marker) && typeof id === "number"
-    ) {
-      return id;
+  // Bitbucket paginates via a `next` URL in the body; follow it so a marker
+  // beyond the first page is found instead of a duplicate comment posted.
+  for (let page = 0; url !== undefined && page < MAX_COMMENT_PAGES; page++) {
+    const response = await doFetch(url, { headers: headers(context.token) });
+    await ensureOk(response);
+    const data: unknown = await response.json();
+    const values = dig(data, "values");
+    if (Array.isArray(values)) {
+      for (const item of values) {
+        const raw = dig(item, "content", "raw");
+        const id = dig(item, "id");
+        if (
+          typeof raw === "string" && raw.includes(marker) &&
+          typeof id === "number"
+        ) {
+          return id;
+        }
+      }
     }
+    const next = dig(data, "next");
+    url = typeof next === "string" ? next : undefined;
   }
   return undefined;
 }

@@ -16,6 +16,8 @@ import {
   commentBody,
   commentMarker,
   type EnvReader,
+  MAX_COMMENT_PAGES,
+  nextLink,
   type ReviewHost,
 } from "./types.ts";
 
@@ -76,21 +78,27 @@ async function findNote(
   marker: string,
   doFetch: typeof fetch,
 ): Promise<number | undefined> {
-  const url = `${context.api}/projects/${context.projectId}` +
+  let url: string | undefined = `${context.api}/projects/${context.projectId}` +
     `/merge_requests/${context.mrIid}/notes?per_page=100&sort=desc`;
-  const response = await doFetch(url, { headers: headers(context.token) });
-  await ensureOk(response);
-  const data: unknown = await response.json();
-  if (!Array.isArray(data)) return undefined;
-  for (const item of data) {
-    const body = dig(item, "body");
-    const id = dig(item, "id");
-    if (
-      typeof body === "string" && body.includes(marker) &&
-      typeof id === "number"
-    ) {
-      return id;
+  // Newest-first, but still follow `Link: rel="next"` so an older marker on a
+  // busy MR (>100 notes) is found rather than re-posted as a duplicate.
+  for (let page = 0; url !== undefined && page < MAX_COMMENT_PAGES; page++) {
+    const response = await doFetch(url, { headers: headers(context.token) });
+    await ensureOk(response);
+    const data: unknown = await response.json();
+    if (Array.isArray(data)) {
+      for (const item of data) {
+        const body = dig(item, "body");
+        const id = dig(item, "id");
+        if (
+          typeof body === "string" && body.includes(marker) &&
+          typeof id === "number"
+        ) {
+          return id;
+        }
+      }
     }
+    url = nextLink(response.headers.get("link"));
   }
   return undefined;
 }

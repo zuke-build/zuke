@@ -362,6 +362,48 @@ Deno.test("checkEdits enforces the allowlist, exclusions, traversal, and the cap
   assertEquals(DEFAULT_FIX_EXCLUDES.length > 0, true);
 });
 
+Deno.test("the exclude guard is case-insensitive and covers nested .git", () => {
+  const guards = { allow: ["**"], exclude: [], maxEdits: 5 };
+  // On macOS/Windows these resolve to the protected files, so a case variant
+  // must not slip past the exclude (which lists lowercase `.env`/`.github`/…).
+  for (
+    const hostile of [
+      ".Env",
+      "config/.ENV.local",
+      "secrets.PEM",
+      ".GitHub/workflows/ci.yml",
+      "vendor/dep/.git/hooks/pre-commit", // a nested .git, not just the root
+      ".git/config",
+    ]
+  ) {
+    let rejected = false;
+    try {
+      checkEdits([{ path: hostile, content: "" }], guards);
+    } catch {
+      rejected = true;
+    }
+    assertEquals(rejected, true, `expected ${hostile} to be excluded`);
+  }
+});
+
+Deno.test("the allowlist is case-sensitive, so a case variant is not silently widened", () => {
+  const guards = { allow: ["src/**"], exclude: [], maxEdits: 5 };
+  // On a case-sensitive FS, `SRC/` is a distinct dir; it must NOT pass an
+  // `allow: ["src/**"]` (case-insensitive matching there would be fail-open).
+  let rejected = false;
+  try {
+    checkEdits([{ path: "SRC/evil.ts", content: "" }], guards);
+  } catch {
+    rejected = true;
+  }
+  assertEquals(rejected, true);
+  // The exact-case path is admitted.
+  assertEquals(
+    checkEdits([{ path: "src/ok.ts", content: "" }], guards),
+    ["src/ok.ts"],
+  );
+});
+
 /** A Claude fix response carrying token usage. */
 function claudeFixUsage(
   fix: Partial<Fix>,

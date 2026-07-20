@@ -127,6 +127,48 @@ Deno.test("upsertPrComment creates a new comment when none exists", async () => 
   assertEquals(body.body.includes("## body"), true);
 });
 
+Deno.test("upsertPrComment follows Link pagination to find a marker on a later page", async () => {
+  const calls: Call[] = [];
+  const page2 =
+    "https://api.github.com/repos/zuke-build/zuke/issues/100/comments?per_page=100&page=2";
+  const doFetch = ((input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    const method = init?.method ?? "GET";
+    calls.push({
+      url,
+      method,
+      body: typeof init?.body === "string" ? init.body : "",
+    });
+    if (method !== "GET") return Promise.resolve(new Response("{}"));
+    if (url.includes("page=2")) {
+      // Page 2 carries the reviewer's prior comment.
+      return Promise.resolve(
+        new Response(
+          JSON.stringify([
+            { id: 42, body: "<!-- zuke-ai-review:security review -->\nold" },
+          ]),
+        ),
+      );
+    }
+    // Page 1: no marker, but a Link header pointing at page 2.
+    return Promise.resolve(
+      new Response(JSON.stringify([{ id: 1, body: "unrelated" }]), {
+        headers: { link: `<${page2}>; rel="next"` },
+      }),
+    );
+  }) as typeof fetch;
+
+  await upsertPrComment(CONTEXT, "security review", "## new", doFetch);
+  // Both pages were fetched, then the found comment PATCHed — not a duplicate.
+  assertEquals(calls.filter((c) => c.method === "GET").length, 2);
+  const write = calls.find((c) => c.method !== "GET");
+  assertEquals(write?.method, "PATCH");
+  assertEquals(
+    write?.url,
+    "https://api.github.com/repos/zuke-build/zuke/issues/comments/42",
+  );
+});
+
 Deno.test("upsertPrComment patches the existing comment in place", async () => {
   const existing = [
     { id: 1, body: "unrelated" },
@@ -424,6 +466,54 @@ Deno.test("resolveBitbucketContext requires workspace + slug + PR id + token", (
   assertEquals(
     resolveBitbucketContext("bbt", env({ BITBUCKET_WORKSPACE: "ws" })),
     undefined,
+  );
+});
+
+Deno.test("upsertBitbucketComment follows the body `next` url to a later page", async () => {
+  const calls: Call[] = [];
+  const page2 =
+    "https://api.bitbucket.org/2.0/repositories/ws/repo/pullrequests/5/comments?pagelen=100&page=2";
+  const doFetch = ((input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    const method = init?.method ?? "GET";
+    calls.push({
+      url,
+      method,
+      body: typeof init?.body === "string" ? init.body : "",
+    });
+    if (method !== "GET") return Promise.resolve(new Response("{}"));
+    if (url.includes("page=2")) {
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            values: [{
+              id: 42,
+              content: {
+                raw: "<!-- zuke-ai-review:security review -->\nold",
+              },
+            }],
+          }),
+        ),
+      );
+    }
+    // Page 1: no marker, and a `next` url in the body (Bitbucket's paging).
+    return Promise.resolve(
+      new Response(JSON.stringify({ values: [], next: page2 })),
+    );
+  }) as typeof fetch;
+
+  await upsertBitbucketComment(
+    BITBUCKET_CTX,
+    "security review",
+    "## new",
+    doFetch,
+  );
+  assertEquals(calls.filter((c) => c.method === "GET").length, 2);
+  const write = calls.find((c) => c.method !== "GET");
+  assertEquals(write?.method, "PUT"); // updates in place, no duplicate
+  assertEquals(
+    write?.url,
+    "https://api.bitbucket.org/2.0/repositories/ws/repo/pullrequests/5/comments/42",
   );
 });
 

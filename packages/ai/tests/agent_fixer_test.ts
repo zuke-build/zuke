@@ -1,7 +1,7 @@
 import { assertEquals } from "../../core/tests/_assert.ts";
 import { CommandError, CommandOutput } from "@zuke/core/shell";
 import { type AgentContext, type AgentFixer, agentFixer } from "../mod.ts";
-import { commitAll } from "../src/commit.ts";
+import { commitChanged, porcelainPaths } from "../src/commit.ts";
 import type { RemediationContext } from "@zuke/core";
 
 const CTX: RemediationContext = {
@@ -20,15 +20,22 @@ function recorder() {
   return { calls, run };
 }
 
-/** Apply the hermetic seams (no disk, no real git, local env, no comment). */
+/** Apply the hermetic seams (no disk, no real git, local env, no comment). The
+ * git stub reports a clean tree on the first `status` (the pre-agent snapshot)
+ * and a dirty `src/app.ts` afterwards, simulating the agent's own edit. */
 function hermetic(f: AgentFixer, git?: string[][]): AgentFixer {
+  let statusCalls = 0;
   return f
     .conventions("")
     .env(() => undefined)
     .readFile(() => Promise.resolve(undefined))
     .exec((argv) => {
       git?.push(argv);
-      return Promise.resolve(argv[1] === "status" ? " M src/app.ts" : "");
+      if (argv[1] === "status") {
+        statusCalls++;
+        return Promise.resolve(statusCalls === 1 ? "" : " M src/app.ts");
+      }
+      return Promise.resolve("");
     })
     .quiet();
 }
@@ -78,8 +85,9 @@ Deno.test("commitFixes stages all changes, commits, and pushes", async () => {
   const result = await fixer.remediate(CTX);
   assertEquals(result.retry, true);
   assertEquals(git, [
-    ["git", "add", "-A"],
-    ["git", "status", "--porcelain"],
+    ["git", "status", "--porcelain"], // pre-agent snapshot
+    ["git", "status", "--porcelain"], // post-agent, inside commitChanged
+    ["git", "add", "--", "src/app.ts"], // only the agent's file, never `-A`
     ["git", "commit", "-m", 'Apply Zuke agent fix for "test"'],
     ["git", "push"],
   ]);
@@ -94,25 +102,30 @@ Deno.test("commitFixes makes no commit when the agent changed nothing", async ()
     )
     .exec((argv) => {
       git.push(argv);
-      return Promise.resolve(""); // clean working tree
+      return Promise.resolve(""); // clean working tree, before and after
     })
     .quiet();
   await fixer.remediate(CTX);
   assertEquals(git, [
-    ["git", "add", "-A"],
-    ["git", "status", "--porcelain"],
-  ]); // no commit, no push
+    ["git", "status", "--porcelain"], // pre-agent snapshot
+    ["git", "status", "--porcelain"], // commitChanged sees nothing new
+  ]); // no add, no commit, no push
 });
 
 Deno.test("a failed push is reported but the fix still retries", async () => {
   const r = recorder();
+  let statusCalls = 0;
   const fixer = agentFixer(r.run, (f) => f.commitFixes())
     .conventions("").env(() => undefined).readFile(() =>
       Promise.resolve(undefined)
     )
     .exec((argv) => {
       if (argv[1] === "push") return Promise.reject(new Error("no upstream"));
-      return Promise.resolve(argv[1] === "status" ? " M x" : "");
+      if (argv[1] === "status") {
+        statusCalls++;
+        return Promise.resolve(statusCalls === 1 ? "" : " M x"); // agent edited x
+      }
+      return Promise.resolve("");
     })
     .quiet();
   const result = await fixer.remediate(CTX);
@@ -139,10 +152,11 @@ Deno.test("noPush commits without pushing, with a custom message", async () => {
   );
   await fixer.remediate(CTX);
   assertEquals(git, [
-    ["git", "add", "-A"],
-    ["git", "status", "--porcelain"],
+    ["git", "status", "--porcelain"], // pre-agent snapshot
+    ["git", "status", "--porcelain"], // post-agent, inside commitChanged
+    ["git", "add", "--", "src/app.ts"],
     ["git", "commit", "-m", "fix: heal"],
-  ]);
+  ]); // no push
 });
 
 Deno.test("conventions and criteria reach the prompt", async () => {
@@ -300,29 +314,75 @@ Deno.test("a non-quiet run prints what the agent did", async () => {
   assertEquals(result.retry, true);
 });
 
-Deno.test("commitAll is a no-op on a clean tree and commits on a dirty one", async () => {
-  const clean: string[][] = [];
-  await commitAll({
-    message: "m",
-    run: (argv) => {
-      clean.push(argv);
-      return Promise.resolve(""); // porcelain empty
-    },
-  });
-  assertEquals(clean, [["git", "add", "-A"], ["git", "status", "--porcelain"]]);
-
-  const dirty: string[][] = [];
-  await commitAll({
+Deno.test("commitChanged stages only the agent's new changes, not pre-existing dirt", async () => {
+  const calls: string[][] = [];
+  await commitChanged({
+    before: ["already.ts"], // the developer had this dirty before the agent ran
     message: "m",
     push: false,
     run: (argv) => {
-      dirty.push(argv);
-      return Promise.resolve(argv[1] === "status" ? " M f" : "");
+      calls.push(argv);
+      // Both files are dirty now; only the agent's `new.ts` must be committed.
+      return Promise.resolve(
+        argv[1] === "status" ? " M already.ts\n?? new.ts" : "",
+      );
     },
   });
-  assertEquals(dirty, [
-    ["git", "add", "-A"],
+  assertEquals(calls, [
     ["git", "status", "--porcelain"],
+    ["git", "add", "--", "new.ts"], // never `git add -A`, never `already.ts`
     ["git", "commit", "-m", "m"],
   ]);
+});
+
+Deno.test("commitChanged is a no-op when only pre-existing files are dirty", async () => {
+  const calls: string[][] = [];
+  await commitChanged({
+    before: ["already.ts"],
+    message: "m",
+    run: (argv) => {
+      calls.push(argv);
+      return Promise.resolve(argv[1] === "status" ? " M already.ts" : "");
+    },
+  });
+  assertEquals(calls, [["git", "status", "--porcelain"]]); // nothing to commit
+});
+
+Deno.test("porcelainPaths takes a rename's new name but not a literal ' -> ' in a filename", () => {
+  assertEquals(
+    // A rename (R) splits on the arrow; a *modified* file (` M`) whose name
+    // literally contains ` -> ` must be kept whole.
+    porcelainPaths(" M a.ts\n?? b.ts\nR  old.ts -> new.ts\n M a -> b.ts\n"),
+    ["a.ts", "b.ts", "new.ts", "a -> b.ts"],
+  );
+});
+
+Deno.test("commitFixes fails closed when the pre-snapshot cannot be taken", async () => {
+  const git: string[][] = [];
+  const r = recorder();
+  let firstStatus = true;
+  const fixer = agentFixer(r.run, (f) => f.commitFixes())
+    .conventions("").env(() => undefined).readFile(() =>
+      Promise.resolve(undefined)
+    )
+    .exec((argv) => {
+      git.push(argv);
+      // The pre-agent snapshot throws (e.g. an index.lock); the rest would work.
+      if (argv[1] === "status" && firstStatus) {
+        firstStatus = false;
+        return Promise.reject(new Error("fatal: index.lock exists"));
+      }
+      return Promise.resolve(
+        argv[1] === "status" ? " M developer-file.ts" : "",
+      );
+    })
+    .quiet();
+  const result = await fixer.remediate(CTX);
+  assertEquals(result.retry, true); // still re-runs to verify
+  // Never staged/committed/pushed: without the snapshot we can't isolate the
+  // agent's changes, so the developer's dirty file is left untouched.
+  assertEquals(
+    git.some((c) => c[1] === "add" || c[1] === "commit" || c[1] === "push"),
+    false,
+  );
 });

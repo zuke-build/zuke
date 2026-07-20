@@ -39,7 +39,7 @@ import {
   resolveConventions,
 } from "./context.ts";
 import { agentPrompt } from "./prompts/agent.ts";
-import { commitAll, type GitRunner } from "./commit.ts";
+import { commitChanged, type GitRunner, porcelainPaths } from "./commit.ts";
 import { writeStepSummary } from "./report.ts";
 import { postComment } from "./comment.ts";
 import { type EnvReader, readEnv } from "./hosts.ts";
@@ -330,6 +330,23 @@ export class AgentFixer implements Remediation {
       criteria: this.#criteria === "" ? undefined : this.#criteria,
     });
 
+    // When committing the fix, snapshot what is already dirty so only the
+    // agent's own changes are staged — never the developer's unrelated edits.
+    let dirtyBefore: string[] = [];
+    let snapshotOk = true;
+    if (this.#commitFixes) {
+      try {
+        dirtyBefore = porcelainPaths(
+          await this.#git()(["git", "status", "--porcelain"]),
+        );
+      } catch {
+        // Fail CLOSED: without the snapshot we can't tell the agent's changes
+        // from the developer's, and `dirtyBefore = []` would sweep everything
+        // in (the exact `git add -A` leak this fix removes). Skip the commit.
+        snapshotOk = false;
+      }
+    }
+
     let agentOutput: string;
     try {
       agentOutput = textOf(
@@ -362,9 +379,14 @@ export class AgentFixer implements Remediation {
     }
 
     let action = "ran the agent; re-running the target to verify";
-    if (this.#commitFixes) {
+    if (this.#commitFixes && !snapshotOk) {
+      action =
+        "ran the agent (skipped commit: could not snapshot the working tree); " +
+        "re-running to verify";
+    } else if (this.#commitFixes) {
       try {
-        await commitAll({
+        await commitChanged({
+          before: dirtyBefore,
           message: this.#commitMessage ??
             `Apply Zuke agent fix for "${context.target}"`,
           push: this.#push,
