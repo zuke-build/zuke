@@ -49,14 +49,20 @@ export interface CacheStore {
 }
 
 /**
- * Whether `value` is a well-formed {@link CacheEntry} — it must at least carry a
- * string `text`. Parsed JSON is `unknown`, so this guard narrows it without a
- * cast; a malformed file (hand-edited, truncated, or from an older format) is
- * rejected as a miss rather than handed back as a bad entry.
+ * Whether `value` is a well-formed {@link CacheEntry} — it must carry a string
+ * `text` and a finite numeric `createdAt`. Parsed JSON is `unknown`, so this
+ * guard narrows it without a cast; a malformed file (hand-edited, truncated, or
+ * from an older format) is rejected as a miss rather than handed back as a bad
+ * entry. `createdAt` is required because {@link AiCache.get_} computes the TTL
+ * from it — a missing timestamp would make `now - createdAt` be `NaN`, whose
+ * comparisons are always false, so a stale entry would never expire and be
+ * served forever.
  */
 function isCacheEntry(value: unknown): value is CacheEntry {
-  return typeof value === "object" && value !== null && "text" in value &&
-    typeof value.text === "string";
+  return typeof value === "object" && value !== null &&
+    "text" in value && typeof value.text === "string" &&
+    "createdAt" in value && typeof value.createdAt === "number" &&
+    Number.isFinite(value.createdAt);
 }
 
 /**
@@ -154,7 +160,15 @@ export class AiCache {
   /** INTERNAL: fetch a live (non-expired) entry, or `undefined`. */
   async get_(key: string): Promise<CacheEntry | undefined> {
     if (!this.enabled__) return undefined;
-    const entry = await this.backing_().get(key);
+    let entry: CacheEntry | undefined;
+    try {
+      entry = await this.backing_().get(key);
+    } catch {
+      // Best-effort per the class contract: a throwing store is a miss, never a
+      // build-breaking error. (The file store already swallows its own errors;
+      // this guards an injected store that rejects.)
+      return undefined;
+    }
     if (entry === undefined) return undefined;
     if (this.ttl_ > 0 && this.now_() - entry.createdAt > this.ttl_ * 1_000) {
       return undefined; // expired — treat as a miss

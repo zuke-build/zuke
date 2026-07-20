@@ -8,25 +8,31 @@
  * @module
  */
 
-/** The 32-bit FNV-1a offset basis. */
-const OFFSET_BASIS = 0x811c9dc5;
+/** The 64-bit FNV-1a offset basis. */
+const OFFSET_BASIS = 0xcbf29ce484222325n;
 
-/** The 32-bit FNV-1a prime. */
-const PRIME = 0x01000193;
+/** The 64-bit FNV-1a prime. */
+const PRIME = 0x00000100000001b3n;
+
+/** Mask that keeps the running hash within 64 bits (BigInt has no fixed width). */
+const MASK_64 = 0xffffffffffffffffn;
 
 /**
- * Hash `input` to a short, stable token (lowercase base-36) via FNV-1a. The
- * same input always yields the same token, on any platform, with no external
+ * Hash `input` to a short, stable token (lowercase base-36) via 64-bit FNV-1a.
+ * The same input always yields the same token, on any platform, with no external
  * dependencies — suitable for cache keys and fingerprints, not for security.
+ *
+ * 64 bits (via BigInt) rather than 32: these tokens key a response cache and a
+ * false-positive suppression set, where a collision would serve a wrong cached
+ * review or silently mute an unrelated finding. A 32-bit space reaches a 50%
+ * birthday-collision chance at only ~77k distinct inputs; 64 bits pushes that
+ * far past any realistic corpus.
  */
 export function stableHash(input: string): string {
   let hash = OFFSET_BASIS;
   for (let i = 0; i < input.length; i++) {
-    hash ^= input.charCodeAt(i);
-    // Multiply mod 2^32 without overflowing the safe-integer range: combine the
-    // 16-bit halves so the product stays exact, then mask back to 32 bits.
-    hash = Math.imul(hash, PRIME);
+    hash ^= BigInt(input.charCodeAt(i));
+    hash = (hash * PRIME) & MASK_64;
   }
-  // `>>> 0` reinterprets the 32-bit result as unsigned before the base-36 cast.
-  return (hash >>> 0).toString(36);
+  return hash.toString(36);
 }
