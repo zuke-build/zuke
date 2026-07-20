@@ -1,6 +1,7 @@
 {
   "name": "@zuke/security",
   "version": "0.2.2",
+  "license": "MIT",
   "exports": {
     ".": "./mod.ts"
   },

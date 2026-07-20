@@ -1,6 +1,7 @@
 {
   "name": "@zuke/cli",
   "version": "0.7.0",
+  "license": "MIT",
   "description": "The zuke command-line tool — scaffold a Zuke project with `zuke setup`, including a starter build, launchers, and tasks.",
   "exports": {
     ".": "./mod.ts"

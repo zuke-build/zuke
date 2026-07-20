@@ -1,6 +1,7 @@
 {
   "name": "@zuke/dpdm",
   "version": "0.1.3",
+  "license": "MIT",
   "description": "Typed dpdm CLI task wrapper for Zuke builds — analyze module dependency graphs and circular imports via an injection-free settings-lambda API.",
   "exports": {
     ".": "./mod.ts"

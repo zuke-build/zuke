@@ -1,6 +1,7 @@
 {
   "name": "@zuke/release-please",
   "version": "1.0.2",
+  "license": "MIT",
   "description": "Typed release-please CLI task wrappers for Zuke builds — maintain release PRs and cut GitHub releases via an injection-free settings-lambda API.",
   "exports": {
     ".": "./mod.ts"

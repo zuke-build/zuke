@@ -193,8 +193,13 @@ function docsOptions(): ApiDocsOptions {
 async function collectPackageDocs(): Promise<PackageDoc[]> {
   const docs: PackageDoc[] = [];
   for (const dir of PACKAGES) {
+    // Document every declared entrypoint, not just `mod.ts`, so a package with
+    // secondary exports (core's `./shell`, `./tooling`, `./render`,
+    // `./conformance`) has its whole typed surface in `llms-full.txt` and its
+    // README — the "whole typed surface" the docs claim to carry.
+    const entrypoints = await packageEntrypoints(dir);
     const { stdout } = await DenoTasks.doc((s) =>
-      s.paths(`packages/${dir}/mod.ts`).env({ NO_COLOR: "1" }).quiet()
+      s.paths(...entrypoints).env({ NO_COLOR: "1" }).quiet()
     );
     docs.push({ name: `@zuke/${dir}`, dir, doc: stdout });
   }

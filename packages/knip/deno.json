@@ -1,6 +1,7 @@
 {
   "name": "@zuke/knip",
   "version": "0.1.3",
+  "license": "MIT",
   "description": "Typed Knip CLI task wrapper for Zuke builds — find unused files, dependencies, and exports via an injection-free settings-lambda API.",
   "exports": {
     ".": "./mod.ts"

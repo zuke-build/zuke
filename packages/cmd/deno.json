@@ -1,6 +1,7 @@
 {
   "name": "@zuke/cmd",
   "version": "0.3.2",
+  "license": "MIT",
   "description": "Generic command task wrapper for Zuke builds — run any CLI tool through a typed, injection-free settings-lambda API.",
   "exports": {
     ".": "./mod.ts"

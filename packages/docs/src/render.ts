@@ -26,15 +26,26 @@ export interface DocEntry {
 }
 
 /**
- * Normalise supplied doc text: drop machine-specific `Defined in file://…`
- * source locations (they leak an absolute path and add no API information),
- * strip trailing whitespace per line (so the embedded block stays
- * formatter-clean), and collapse the blank-line runs this leaves behind.
+ * Normalise supplied doc text: drop the machine-specific `file://…` source
+ * locations `deno doc` emits (they leak an absolute checkout path and add no
+ * API information), strip trailing whitespace per line (so the embedded block
+ * stays formatter-clean), and collapse the blank-line runs this leaves behind.
+ *
+ * Three shapes of location line are dropped: the single-file `Defined in
+ * file://…` line, and — in `deno doc`'s multi-file mode (a package with several
+ * entrypoints) — the bare `file://…` per-file section header and the
+ * `reference <Name>: file://…` re-export pointer. All embed an absolute path
+ * that differs per machine/CI runner, so leaving them in would both leak the
+ * path and make `apiDocsCheck` drift off the author's checkout.
  */
 export function cleanDoc(text: string): string {
   return text
     .split("\n")
-    .filter((line) => !/^\s*Defined in /.test(line))
+    .filter((line) =>
+      !/^\s*Defined in /.test(line) &&
+      !/^\s*file:\/\//.test(line) &&
+      !/^\s*reference \S+: file:\/\//.test(line)
+    )
     .map((line) => line.replace(/[ \t]+$/, ""))
     .join("\n")
     .replace(/\n{3,}/g, "\n\n")

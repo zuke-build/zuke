@@ -1,6 +1,7 @@
 {
   "name": "@zuke/deno",
   "version": "0.6.1",
+  "license": "MIT",
   "description": "Typed deno CLI task wrappers for Zuke builds — run, test, check, fmt, lint, doc, cache, coverage, and task via an injection-free settings-lambda API.",
   "exports": {
     ".": "./mod.ts"

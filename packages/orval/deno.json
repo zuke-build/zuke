@@ -1,6 +1,7 @@
 {
   "name": "@zuke/orval",
   "version": "0.2.3",
+  "license": "MIT",
   "description": "Typed orval task wrappers for Zuke builds — generate TypeScript API clients and mocks from an OpenAPI spec via an injection-free settings-lambda API.",
   "exports": {
     ".": "./mod.ts"

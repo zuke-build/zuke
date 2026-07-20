@@ -1,6 +1,7 @@
 {
   "name": "@zuke/tsc-alias",
   "version": "0.2.3",
+  "license": "MIT",
   "description": "Typed tsc-alias task wrappers for Zuke builds — rewrite TypeScript path aliases in compiled output via an injection-free settings-lambda API.",
   "exports": {
     ".": "./mod.ts"

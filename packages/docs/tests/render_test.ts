@@ -42,6 +42,28 @@ Deno.test("cleanDoc strips machine paths, trailing space, and blank runs", () =>
   assertStringIncludes(out, "function go(): void");
 });
 
+Deno.test("cleanDoc strips deno doc multi-file file:// headers and reference lines", () => {
+  // `deno doc a.ts b.ts` (a multi-entrypoint package) emits bare `file://`
+  // section headers and `reference X: file://` re-export pointers, both with an
+  // absolute checkout path. Neither is a `Defined in` line, so both must be
+  // dropped explicitly or they leak the path and drift apiDocsCheck per machine.
+  const raw = [
+    "file:///Users/someone/work/zuke/packages/core/mod.ts",
+    "`@zuke/core` — the core.",
+    "",
+    "reference Style: file:///Users/someone/work/zuke/packages/core/src/render.ts:41:1",
+    "file:///Users/someone/work/zuke/packages/core/src/shell.ts",
+    "class Command",
+  ].join("\n");
+  const out = cleanDoc(raw);
+  assertEquals(/file:\/\//.test(out), false);
+  assertEquals(/reference Style/.test(out), false);
+  assertStringIncludes(out, "`@zuke/core` — the core.");
+  assertStringIncludes(out, "class Command");
+  // The summary is the real description, not the leading path header.
+  assertEquals(summarize(out), "the core");
+});
+
 Deno.test("summarize takes the text after the em dash, without trailing dot", () => {
   assertEquals(summarize("`@acme/foo` — does a thing."), "does a thing");
 });

@@ -1,6 +1,7 @@
 {
   "name": "@zuke/node",
   "version": "0.2.2",
+  "license": "MIT",
   "description": "Typed Node.js task wrappers for Zuke builds — run scripts, evaluate code, and run the built-in test runner with the `node` runtime via an injection-free settings-lambda API.",
   "exports": {
     ".": "./mod.ts"
