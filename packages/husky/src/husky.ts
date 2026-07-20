@@ -23,6 +23,7 @@ import {
   type Configure,
   type PathLike,
   runSettings,
+  type ToolResolution,
   ToolSettings,
 } from "@zuke/core/tooling";
 import type { CommandOutput } from "@zuke/core/shell";
@@ -32,6 +33,11 @@ export abstract class HuskySettings extends ToolSettings {
   /** The tool binary is `husky`. */
   protected override defaultTool(): string {
     return "husky";
+  }
+
+  /** Resolve the binary from `node_modules/.bin` by default — husky is an npm-distributed tool. */
+  protected override defaultResolution(): ToolResolution {
+    return "node_modules";
   }
 
   /** The subcommand argv (everything after the binary). */

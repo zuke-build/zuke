@@ -36,6 +36,8 @@ class KnipRunSettings extends ToolSettings
 
   override protected defaultTool(): string
     The underlying CLI command: `knip`.
+  override protected defaultResolution(): ToolResolution
+    Resolve the binary from `node_modules/.bin` by default — knip is an npm-distributed tool.
   production(): this
     Restrict analysis to production code paths (`--production`).
   strict(): this

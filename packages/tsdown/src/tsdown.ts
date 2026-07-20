@@ -24,6 +24,7 @@ import {
   type Configure,
   type PathLike,
   runSettings,
+  type ToolResolution,
   ToolSettings,
 } from "@zuke/core/tooling";
 import type { CommandOutput } from "@zuke/core/shell";
@@ -50,6 +51,11 @@ export class TsdownBuildSettings extends ToolSettings {
   /** The default executable to run: `tsdown`. */
   protected override defaultTool(): string {
     return "tsdown";
+  }
+
+  /** Resolve the binary from `node_modules/.bin` by default — tsdown is an npm-distributed tool. */
+  protected override defaultResolution(): ToolResolution {
+    return "node_modules";
   }
 
   /** Entry point(s) to bundle (positional); repeatable. */
@@ -159,6 +165,11 @@ export class TsdownMigrateSettings extends ToolSettings {
   /** The default executable to run: `tsdown`. */
   protected override defaultTool(): string {
     return "tsdown";
+  }
+
+  /** Resolve the binary from `node_modules/.bin` by default — tsdown is an npm-distributed tool. */
+  protected override defaultResolution(): ToolResolution {
+    return "node_modules";
   }
 
   /** The tool to migrate from, e.g. `tsup` (`--from`). */

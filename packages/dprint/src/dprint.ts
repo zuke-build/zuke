@@ -20,6 +20,7 @@ import {
   type Configure,
   type PathLike,
   runSettings,
+  type ToolResolution,
   ToolSettings,
 } from "@zuke/core/tooling";
 import type { CommandOutput } from "@zuke/core/shell";
@@ -35,6 +36,11 @@ export abstract class DprintSettings extends ToolSettings {
   /** The default executable this settings class invokes: `dprint`. */
   protected override defaultTool(): string {
     return "dprint";
+  }
+
+  /** Resolve the binary from `node_modules/.bin` by default — dprint is an npm-distributed tool. */
+  protected override defaultResolution(): ToolResolution {
+    return "node_modules";
   }
 
   /** The dprint subcommand this settings class runs. */

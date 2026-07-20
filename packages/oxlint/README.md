@@ -45,6 +45,8 @@ class OxlintSettings extends ToolSettings
 
   override protected defaultTool(): string
     The default executable name (`oxlint`).
+  override protected defaultResolution(): ToolResolution
+    Resolve the binary from `node_modules/.bin` by default — oxlint is an npm-distributed tool.
   paths(...values: PathLike[]): this
     Files or directories to lint (positional); repeatable.
   config(path: PathLike): this

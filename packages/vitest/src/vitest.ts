@@ -23,6 +23,7 @@ import {
   type Configure,
   type PathLike,
   runSettings,
+  type ToolResolution,
   ToolSettings,
 } from "@zuke/core/tooling";
 import type { CommandOutput } from "@zuke/core/shell";
@@ -52,6 +53,11 @@ export class VitestSettings extends ToolSettings {
   /** The underlying tool binary (`vitest`). */
   protected override defaultTool(): string {
     return "vitest";
+  }
+
+  /** Resolve the binary from `node_modules/.bin` by default — vitest is an npm-distributed tool. */
+  protected override defaultResolution(): ToolResolution {
+    return "node_modules";
   }
 
   /** Filename filters matched against test files (positional); repeatable. */

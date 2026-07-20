@@ -24,6 +24,7 @@ import {
   type Configure,
   type PathLike,
   runSettings,
+  type ToolResolution,
   ToolSettings,
 } from "@zuke/core/tooling";
 import type { CommandOutput } from "@zuke/core/shell";
@@ -46,6 +47,11 @@ export class TscAliasRunSettings extends ToolSettings {
   /** The executable this settings object drives (`tsc-alias`). */
   protected override defaultTool(): string {
     return "tsc-alias";
+  }
+
+  /** Resolve the binary from `node_modules/.bin` by default — tsc-alias is an npm-distributed tool. */
+  protected override defaultResolution(): ToolResolution {
+    return "node_modules";
   }
 
   /** Path to the `tsconfig.json` to read aliases from (`-p`/`--project`). */

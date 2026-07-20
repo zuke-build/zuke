@@ -52,6 +52,8 @@ class TsgoSettings extends ToolSettings
 
   override protected defaultTool(): string
     The executable this settings object drives (`tsgo`).
+  override protected defaultResolution(): ToolResolution
+    Resolve the binary from `node_modules/.bin` by default — tsgo is an npm-distributed tool.
   paths(...values: PathLike[]): this
     Source files to compile (positional); repeatable.
   project(path: PathLike): this

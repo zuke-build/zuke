@@ -18,6 +18,7 @@ import {
   type Configure,
   type PathLike,
   runSettings,
+  type ToolResolution,
   ToolSettings,
 } from "@zuke/core/tooling";
 import type { CommandOutput } from "@zuke/core/shell";
@@ -27,6 +28,11 @@ export abstract class CypressSettings extends ToolSettings {
   /** The default tool binary: `cypress`. */
   protected override defaultTool(): string {
     return "cypress";
+  }
+
+  /** Resolve the binary from `node_modules/.bin` by default — cypress is an npm-distributed tool. */
+  protected override defaultResolution(): ToolResolution {
+    return "node_modules";
   }
 }
 

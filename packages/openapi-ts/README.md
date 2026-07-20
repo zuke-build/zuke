@@ -56,6 +56,8 @@ class OpenapiTsGenerateSettings extends ToolSettings
 
   override protected defaultTool(): string
     The tool binary this settings object invokes (`openapi-ts`).
+  override protected defaultResolution(): ToolResolution
+    Resolve the binary from `node_modules/.bin` by default — openapi-ts is an npm-distributed tool.
   input(value: PathLike): this
     OpenAPI specification to read — a file path or URL (`--input`).
   output(value: PathLike): this

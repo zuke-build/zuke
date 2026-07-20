@@ -72,6 +72,8 @@ abstract class TurboSettings extends ToolSettings
 
   override protected defaultTool(): string
     The tool binary this settings class invokes: `turbo`.
+  override protected defaultResolution(): ToolResolution
+    Resolve the binary from `node_modules/.bin` by default — turbo is an npm-distributed tool.
 
 interface TurboTasksApi
   The shape of {@link TurboTasks}.

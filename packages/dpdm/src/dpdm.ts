@@ -26,6 +26,7 @@ import {
   type Configure,
   type PathLike,
   runSettings,
+  type ToolResolution,
   ToolSettings,
 } from "@zuke/core/tooling";
 import type { CommandOutput } from "@zuke/core/shell";
@@ -52,6 +53,11 @@ export class DpdmAnalyzeSettings extends ToolSettings {
   /** The command this settings object runs (`dpdm`). */
   protected override defaultTool(): string {
     return "dpdm";
+  }
+
+  /** Resolve the binary from `node_modules/.bin` by default — dpdm is an npm-distributed tool. */
+  protected override defaultResolution(): ToolResolution {
+    return "node_modules";
   }
 
   /** Transform TypeScript modules to JavaScript before analysis (`--transform`). */

@@ -51,6 +51,8 @@ class TscAliasRunSettings extends ToolSettings
 
   override protected defaultTool(): string
     The executable this settings object drives (`tsc-alias`).
+  override protected defaultResolution(): ToolResolution
+    Resolve the binary from `node_modules/.bin` by default — tsc-alias is an npm-distributed tool.
   project(path: PathLike): this
     Path to the `tsconfig.json` to read aliases from (`-p`/`--project`).
   watch(): this

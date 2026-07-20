@@ -14,6 +14,28 @@ Deno.test("the default binary is turbo", () => {
   assertEquals(new TurboRunSettings().tasks("build").argv()[0], "turbo");
 });
 
+Deno.test("turbo: resolves its binary from node_modules by default", () => {
+  const prevRes = Deno.env.get("ZUKE_TOOL_RESOLUTION");
+  Deno.env.delete("ZUKE_TOOL_RESOLUTION");
+  const root = Deno.makeTempDirSync();
+  try {
+    const binDir = `${root}/node_modules/.bin`;
+    Deno.mkdirSync(binDir, { recursive: true });
+    const bin = `${binDir}/turbo`;
+    Deno.writeTextFileSync(bin, "#!/bin/sh\n");
+    const s = new TurboRunSettings();
+    s.os_ = "linux"; // pin so the planted bare shim matches on any host
+    assertEquals(
+      s.cwd(root).tasks("build").resolvedArgv()[0],
+      bin.replace(/\\/g, "/"),
+    );
+  } finally {
+    Deno.removeSync(root, { recursive: true });
+    if (prevRes === undefined) Deno.env.delete("ZUKE_TOOL_RESOLUTION");
+    else Deno.env.set("ZUKE_TOOL_RESOLUTION", prevRes);
+  }
+});
+
 Deno.test("run: requires a task; tasks first, then flags", () => {
   assertThrows(
     () => new TurboRunSettings().argv(),

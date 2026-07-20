@@ -56,3 +56,22 @@ const missing = <S extends ToolSettings>(s: S): S => {
 Deno.test("TsupTasks.build reaches execution", async () => {
   await assertRejects(() => TsupTasks.build(missing), ToolNotFoundError);
 });
+
+Deno.test("tsup: resolves its binary from node_modules by default", () => {
+  const prevRes = Deno.env.get("ZUKE_TOOL_RESOLUTION");
+  Deno.env.delete("ZUKE_TOOL_RESOLUTION");
+  const root = Deno.makeTempDirSync();
+  try {
+    const binDir = `${root}/node_modules/.bin`;
+    Deno.mkdirSync(binDir, { recursive: true });
+    const bin = `${binDir}/tsup`;
+    Deno.writeTextFileSync(bin, "#!/bin/sh\n");
+    const s = new TsupBuildSettings();
+    s.os_ = "linux"; // pin so the planted bare shim matches on any host
+    assertEquals(s.cwd(root).resolvedArgv()[0], bin.replace(/\\/g, "/"));
+  } finally {
+    Deno.removeSync(root, { recursive: true });
+    if (prevRes === undefined) Deno.env.delete("ZUKE_TOOL_RESOLUTION");
+    else Deno.env.set("ZUKE_TOOL_RESOLUTION", prevRes);
+  }
+});

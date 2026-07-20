@@ -56,6 +56,8 @@ abstract class DprintSettings extends ToolSettings
 
   override protected defaultTool(): string
     The default executable this settings class invokes: `dprint`.
+  override protected defaultResolution(): ToolResolution
+    Resolve the binary from `node_modules/.bin` by default — dprint is an npm-distributed tool.
   abstract protected subcommand(): string
     The dprint subcommand this settings class runs.
   config(path: PathLike): this

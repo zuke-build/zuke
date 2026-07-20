@@ -37,3 +37,22 @@ Deno.test("HuskyTasks.init reaches execution", async () => {
 Deno.test("HuskyTasks.install reaches execution", async () => {
   await assertRejects(() => HuskyTasks.install(missing), ToolNotFoundError);
 });
+
+Deno.test("husky: resolves its binary from node_modules by default", () => {
+  const prevRes = Deno.env.get("ZUKE_TOOL_RESOLUTION");
+  Deno.env.delete("ZUKE_TOOL_RESOLUTION");
+  const root = Deno.makeTempDirSync();
+  try {
+    const binDir = `${root}/node_modules/.bin`;
+    Deno.mkdirSync(binDir, { recursive: true });
+    const bin = `${binDir}/husky`;
+    Deno.writeTextFileSync(bin, "#!/bin/sh\n");
+    const s = new HuskyInstallSettings();
+    s.os_ = "linux";
+    assertEquals(s.cwd(root).resolvedArgv()[0], bin.replace(/\\/g, "/"));
+  } finally {
+    Deno.removeSync(root, { recursive: true });
+    if (prevRes === undefined) Deno.env.delete("ZUKE_TOOL_RESOLUTION");
+    else Deno.env.set("ZUKE_TOOL_RESOLUTION", prevRes);
+  }
+});

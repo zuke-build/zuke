@@ -15,7 +15,12 @@
  * spawning fails.
  */
 
-import { type Configure, runSettings, ToolSettings } from "@zuke/core/tooling";
+import {
+  type Configure,
+  runSettings,
+  type ToolResolution,
+  ToolSettings,
+} from "@zuke/core/tooling";
 import type { CommandOutput } from "@zuke/core/shell";
 
 /** Base for all Playwright subcommand settings: binary is `playwright`. */
@@ -23,6 +28,11 @@ export abstract class PlaywrightSettings extends ToolSettings {
   /** The tool binary invoked by all Playwright subcommands: `playwright`. */
   protected override defaultTool(): string {
     return "playwright";
+  }
+
+  /** Resolve the binary from `node_modules/.bin` by default — playwright is an npm-distributed tool. */
+  protected override defaultResolution(): ToolResolution {
+    return "node_modules";
   }
 }
 

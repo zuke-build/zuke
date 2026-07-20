@@ -19,6 +19,7 @@ import {
   type Configure,
   type PathLike,
   runSettings,
+  type ToolResolution,
   ToolSettings,
 } from "@zuke/core/tooling";
 import type { CommandOutput } from "@zuke/core/shell";
@@ -46,6 +47,11 @@ export class EslintSettings extends ToolSettings {
   /** The default executable this settings object runs (`eslint`). */
   protected override defaultTool(): string {
     return "eslint";
+  }
+
+  /** Resolve the binary from `node_modules/.bin` by default — eslint is an npm-distributed tool. */
+  protected override defaultResolution(): ToolResolution {
+    return "node_modules";
   }
 
   /** Files, directories, or globs to lint (positional); repeatable. */

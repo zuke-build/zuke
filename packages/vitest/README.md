@@ -48,6 +48,8 @@ class VitestSettings extends ToolSettings
 
   override protected defaultTool(): string
     The underlying tool binary (`vitest`).
+  override protected defaultResolution(): ToolResolution
+    Resolve the binary from `node_modules/.bin` by default — vitest is an npm-distributed tool.
   filters(...values: string[]): this
     Filename filters matched against test files (positional); repeatable.
   watch(): this

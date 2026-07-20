@@ -23,6 +23,7 @@ import {
   type Configure,
   type PathLike,
   runSettings,
+  type ToolResolution,
   ToolSettings,
 } from "@zuke/core/tooling";
 import type { CommandOutput } from "@zuke/core/shell";
@@ -47,6 +48,11 @@ export class TsupBuildSettings extends ToolSettings {
   /** The executable this settings object runs: `tsup`. */
   protected override defaultTool(): string {
     return "tsup";
+  }
+
+  /** Resolve the binary from `node_modules/.bin` by default — tsup is an npm-distributed tool. */
+  protected override defaultResolution(): ToolResolution {
+    return "node_modules";
   }
 
   /** Entry point(s) to bundle (positional); repeatable. */

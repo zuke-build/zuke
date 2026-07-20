@@ -22,6 +22,7 @@ import {
   type Configure,
   type PathLike,
   runSettings,
+  type ToolResolution,
   ToolSettings,
 } from "@zuke/core/tooling";
 import type { CommandOutput } from "@zuke/core/shell";
@@ -31,6 +32,11 @@ export abstract class NestSettings extends ToolSettings {
   /** The tool binary: `nest`. */
   protected override defaultTool(): string {
     return "nest";
+  }
+
+  /** Resolve the binary from `node_modules/.bin` by default — nest is an npm-distributed tool. */
+  protected override defaultResolution(): ToolResolution {
+    return "node_modules";
   }
 
   /** The subcommand argv (the verb and its arguments). */
