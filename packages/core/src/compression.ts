@@ -224,13 +224,36 @@ function isZeroBlock(archive: Uint8Array, offset: number): boolean {
   return true;
 }
 
+/**
+ * The full path of the `ustar` header at `offset`. A path longer than the
+ * 100-byte `name` field is stored by POSIX tar **split** across a 155-byte
+ * `prefix` field (bytes 345-499); the real path is `prefix + "/" + name`.
+ * Reading only `name` — as this reader once did — truncated long paths to their
+ * trailing components, scattering e.g. the deeply-nested files in Node's release
+ * tarball (npm's bundled deps) so `npm` could not resolve them. The prefix is
+ * honoured only for the POSIX `ustar\0` magic at byte 257; the older GNU format
+ * reuses that byte region for other fields (and encodes long names via
+ * `@LongLink` pseudo-entries instead), so `readString` there yields `"ustar "`
+ * (trailing space), not `"ustar"`, and the prefix is skipped.
+ *
+ * ponytail: GNU `@LongLink` (typeflag `'L'`) long names are not reconstructed —
+ * the release tarballs Zuke provisions use the ustar prefix split; add LongLink
+ * handling if a consumed archive ever needs it.
+ */
+function entryName(archive: Uint8Array, offset: number): string {
+  const name = readString(archive, offset, 100);
+  if (readString(archive, offset + 257, 6) !== "ustar") return name;
+  const prefix = readString(archive, offset + 345, 155);
+  return prefix === "" ? name : `${prefix}/${name}`;
+}
+
 /** Extract the entries from a `ustar` archive (regular files only). */
 export function untar(archive: Uint8Array): TarEntry[] {
   const entries: TarEntry[] = [];
   let offset = 0;
   while (offset + BLOCK <= archive.length) {
     if (isZeroBlock(archive, offset)) break;
-    const name = readString(archive, offset, 100);
+    const name = entryName(archive, offset);
     // Read the full 12-byte size field; the trailing byte is a NUL terminator.
     const size = readOctal(archive, offset + 124, 12);
     const typeflag = archive[offset + 156];
