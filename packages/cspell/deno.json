@@ -1,6 +1,6 @@
 {
   "name": "@zuke/cspell",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Typed cspell task wrappers for Zuke builds — spell-check files and globs via an injection-free settings-lambda API.",
   "exports": {
     ".": "./mod.ts"

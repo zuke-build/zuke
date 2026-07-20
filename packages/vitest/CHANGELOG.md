@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/zuke-build/zuke/compare/vitest-v0.2.1...vitest-v0.2.2) (2026-07-20)
+
+
+### Bug Fixes
+
+* satisfy deno doc --lint across all packages and gate it ([#230](https://github.com/zuke-build/zuke/issues/230)) ([28aa1aa](https://github.com/zuke-build/zuke/commit/28aa1aa9833a69ee2ef63c3f1566ce975867f010))
+
 ## [0.2.1](https://github.com/zuke-build/zuke/compare/vitest-v0.2.0...vitest-v0.2.1) (2026-07-19)
 
 

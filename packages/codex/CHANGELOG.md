@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.2](https://github.com/zuke-build/zuke/compare/codex-v1.0.1...codex-v1.0.2) (2026-07-20)
+
+
+### Bug Fixes
+
+* satisfy deno doc --lint across all packages and gate it ([#230](https://github.com/zuke-build/zuke/issues/230)) ([28aa1aa](https://github.com/zuke-build/zuke/commit/28aa1aa9833a69ee2ef63c3f1566ce975867f010))
+
 ## [1.0.1](https://github.com/zuke-build/zuke/compare/codex-v1.0.0...codex-v1.0.1) (2026-07-19)
 
 
