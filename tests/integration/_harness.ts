@@ -65,6 +65,12 @@ export async function withStateDir(
   } finally {
     if (prev === undefined) Deno.env.delete("ZUKE_STATE_DIR");
     else Deno.env.set("ZUKE_STATE_DIR", prev);
-    await Deno.remove(dir, { recursive: true });
+    // Best-effort cleanup: a removal error (e.g. a Windows file lock) must never
+    // replace the test's own assertion failure, which is the error worth seeing.
+    try {
+      await Deno.remove(dir, { recursive: true });
+    } catch {
+      // ignore — the temp dir is throwaway; masking the real error is worse.
+    }
   }
 }

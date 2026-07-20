@@ -16,8 +16,21 @@ import {
 } from "../../packages/core/tests/_assert.ts";
 
 const FIXTURE = new URL("./fixtures/discoverable_build.ts", import.meta.url);
-const PORT = 8801;
+// An OS-assigned free port instead of a fixed constant, removing the port
+// collision-flake class. ponytail: a tiny bind→close→rebind race window
+// remains; the race-free fix is to bind `:0` in the server and report the
+// assigned port, which needs a core CLI change and is out of scope here.
+const PORT = freePort();
 const BASE = `http://127.0.0.1:${PORT}/`;
+
+/** Grab an OS-assigned free TCP port: bind ephemeral, read it, release it. */
+function freePort(): number {
+  const listener = Deno.listen({ port: 0 });
+  const addr = listener.addr;
+  listener.close();
+  if (addr.transport !== "tcp") throw new Error("expected a TCP listener");
+  return addr.port;
+}
 
 /** Run the fixture as a real `deno` subprocess against registry dir `dir`. */
 async function runFixture(
@@ -181,7 +194,8 @@ Deno.test("a build registered after startup appears as a runnable MCP tool", asy
       server.kill();
       await killWithin(server, 10_000);
     }
-    await Deno.remove(dir, { recursive: true });
+    // Best-effort: a cleanup failure must not mask the real assertion error.
+    await Deno.remove(dir, { recursive: true }).catch(() => {});
   }
 });
 

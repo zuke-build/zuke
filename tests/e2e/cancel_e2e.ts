@@ -64,6 +64,7 @@ Deno.test("a separate process cancels a suspended run and runs its compensation"
     assertEquals(loaded?.record.status, "cancelled");
     assertEquals(loaded?.record.events.some((e) => e.tool === "cancel"), true);
   } finally {
-    await Deno.remove(dir, { recursive: true });
+    // Best-effort: a cleanup failure must not mask the real assertion error.
+    await Deno.remove(dir, { recursive: true }).catch(() => {});
   }
 });
