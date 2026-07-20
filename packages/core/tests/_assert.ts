@@ -11,23 +11,101 @@ export function messageOf(value: unknown): string {
   return value instanceof Error ? value.message : String(value);
 }
 
-/** Structural equality via JSON-ish deep comparison. */
+/** A plain data object (`{...}`) — not a class instance with an opaque shape. */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== "object" || value === null) return false;
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+}
+
+/** A readable type name for an unknown value, for a clear failure message. */
+function typeName(value: unknown): string {
+  if (value === null) return "null";
+  if (typeof value !== "object") return typeof value;
+  return Object.getPrototypeOf(value)?.constructor?.name ?? "object";
+}
+
+/**
+ * Deep-equal two `Set`s: same size and a one-to-one matching of members (a
+ * bijection, not a subset). Each `b` member is consumed once, so
+ * `Set([{n:1},{n:1}])` does not match `Set([{n:1},{n:2}])` — the object-member
+ * form of the very false positive (unequal Sets comparing equal) this helper
+ * exists to catch.
+ */
+function setsEqual(a: Set<unknown>, b: Set<unknown>): boolean {
+  if (a.size !== b.size) return false;
+  const bs = [...b];
+  const used = bs.map(() => false);
+  return [...a].every((av) => {
+    const i = bs.findIndex((bv, j) => !used[j] && deepEqual(av, bv));
+    if (i === -1) return false;
+    used[i] = true;
+    return true;
+  });
+}
+
+/**
+ * Deep-equal two `Map`s: same size, every key present with a deep-equal value.
+ * Keys are matched by `Map.has` (SameValueZero / reference identity), so two
+ * maps keyed by equal-but-distinct objects read as unequal — an over-strict
+ * (safe) limit; the suite only ever uses primitive keys.
+ */
+function mapsEqual(
+  a: Map<unknown, unknown>,
+  b: Map<unknown, unknown>,
+): boolean {
+  if (a.size !== b.size) return false;
+  for (const [key, value] of a) {
+    if (!b.has(key) || !deepEqual(value, b.get(key))) return false;
+  }
+  return true;
+}
+
+/**
+ * Structural equality. Handles primitives, arrays, plain objects, and the
+ * built-ins whose data is invisible to `Object.keys` — `Date`, `Set`, `Map` —
+ * which a naive key-only compare treats as always-equal (any two Sets have zero
+ * keys). Any other object type (a class instance with an opaque shape, a RegExp,
+ * …) throws rather than silently returning a vacuous `true`: add an explicit
+ * handler here if the suite needs to compare one.
+ */
 function deepEqual(a: unknown, b: unknown): boolean {
   if (a === b) return true;
-  if (typeof a !== typeof b || a === null || b === null) return false;
-  if (typeof a !== "object") return false;
+  if (a instanceof Date || b instanceof Date) {
+    return a instanceof Date && b instanceof Date &&
+      a.getTime() === b.getTime();
+  }
+  if (a instanceof Set || b instanceof Set) {
+    return a instanceof Set && b instanceof Set && setsEqual(a, b);
+  }
+  if (a instanceof Map || b instanceof Map) {
+    return a instanceof Map && b instanceof Map && mapsEqual(a, b);
+  }
+  if (a instanceof Uint8Array || b instanceof Uint8Array) {
+    return a instanceof Uint8Array && b instanceof Uint8Array &&
+      a.length === b.length && a.every((v, i) => v === b[i]);
+  }
   if (Array.isArray(a) || Array.isArray(b)) {
     if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) {
       return false;
     }
     return a.every((v, i) => deepEqual(v, b[i]));
   }
-  const ao = a as Record<string, unknown>;
-  const bo = b as Record<string, unknown>;
-  const ak = Object.keys(ao);
-  const bk = Object.keys(bo);
+  if (
+    typeof a !== "object" || typeof b !== "object" || a === null || b === null
+  ) {
+    return false; // a primitive (not `===`) or a null/object mismatch
+  }
+  if (!isRecord(a) || !isRecord(b)) {
+    throw new Error(
+      `deepEqual: cannot structurally compare ${typeName(a)} with ` +
+        `${typeName(b)} — add an explicit handler in tests/_assert.ts.`,
+    );
+  }
+  const ak = Object.keys(a);
+  const bk = Object.keys(b);
   if (ak.length !== bk.length) return false;
-  return ak.every((k) => deepEqual(ao[k], bo[k]));
+  return ak.every((k) => k in b && deepEqual(a[k], b[k]));
 }
 
 /** Assert deep equality. */

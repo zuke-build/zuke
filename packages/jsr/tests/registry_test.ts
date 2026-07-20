@@ -5,19 +5,27 @@ import {
   publishedVersions,
 } from "../src/registry.ts";
 
+/** A Set's members as a sorted array — an order-independent comparison that does
+ * not depend on the assert helper's Set support (so it can't pass vacuously). */
+function sortedMembers(set: Set<string>): string[] {
+  return [...set].sort();
+}
+
 Deno.test("publishedVersions extracts version keys", () => {
   assertEquals(
-    publishedVersions({ versions: { "1.0.0": {}, "1.1.0": {} } }),
-    new Set(["1.0.0", "1.1.0"]),
+    sortedMembers(
+      publishedVersions({ versions: { "1.0.0": {}, "1.1.0": {} } }),
+    ),
+    ["1.0.0", "1.1.0"],
   );
 });
 
 Deno.test("publishedVersions tolerates malformed payloads", () => {
-  assertEquals(publishedVersions(null), new Set<string>());
-  assertEquals(publishedVersions("nope"), new Set<string>());
-  assertEquals(publishedVersions({}), new Set<string>());
-  assertEquals(publishedVersions({ versions: null }), new Set<string>());
-  assertEquals(publishedVersions({ versions: 7 }), new Set<string>());
+  assertEquals(sortedMembers(publishedVersions(null)), []);
+  assertEquals(sortedMembers(publishedVersions("nope")), []);
+  assertEquals(sortedMembers(publishedVersions({})), []);
+  assertEquals(sortedMembers(publishedVersions({ versions: null })), []);
+  assertEquals(sortedMembers(publishedVersions({ versions: 7 })), []);
 });
 
 /** A `fetch` stub returning the given JSON body with a controllable status. */
@@ -35,14 +43,14 @@ Deno.test("jsrVersions returns the published set on a 2xx", async () => {
   const versions = await jsrVersions("@zuke/core", {
     fetch: stubFetch({ versions: { "0.13.0": {} } }),
   });
-  assertEquals(versions, new Set(["0.13.0"]));
+  assertEquals(sortedMembers(versions), ["0.13.0"]);
 });
 
 Deno.test("jsrVersions resolves to an empty set on a non-2xx", async () => {
   const versions = await jsrVersions("@zuke/nope", {
     fetch: stubFetch({}, false),
   });
-  assertEquals(versions, new Set<string>());
+  assertEquals(sortedMembers(versions), []);
 });
 
 Deno.test("jsrVersions requests the package meta.json", async () => {
@@ -54,7 +62,7 @@ Deno.test("jsrVersions requests the package meta.json", async () => {
     },
   });
   assertEquals(requested, "https://jsr.io/@zuke/core/meta.json");
-  assertEquals(versions, new Set<string>());
+  assertEquals(sortedMembers(versions), []);
 });
 
 Deno.test("isPublished reflects membership in the published set", async () => {
