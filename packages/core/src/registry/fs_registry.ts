@@ -22,17 +22,7 @@ import {
   toBuildSummary,
 } from "./descriptor.ts";
 import type { BuildRegistry, PutBuildResult } from "./registry.ts";
-
-const encoder = new TextEncoder();
-
-/** Hex SHA-256 of a UTF-8 string — the opaque CAS version of a stored descriptor. */
-async function hashText(text: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", encoder.encode(text));
-  return Array.from(
-    new Uint8Array(digest),
-    (b) => b.toString(16).padStart(2, "0"),
-  ).join("");
-}
+import { delay, sha256Hex } from "../internal.ts";
 
 /**
  * Reject a build id that could escape the builds directory. Ids are build class
@@ -48,11 +38,6 @@ function assertSafeId(id: string): void {
 /** How long to wait for a contended lock before giving up. */
 const LOCK_ATTEMPTS = 100;
 const LOCK_DELAY_MS = 10;
-
-/** Resolve after `ms` milliseconds. */
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 /**
  * A {@link BuildRegistry} that writes one `<id>.json` file per build under a
@@ -105,7 +90,7 @@ export class FileSystemBuildRegistry implements BuildRegistry {
     if (text === null) return null;
     return {
       descriptor: parseBuildDescriptor(text),
-      version: await hashText(text),
+      version: await sha256Hex(text),
     };
   }
 
@@ -118,7 +103,7 @@ export class FileSystemBuildRegistry implements BuildRegistry {
     await this.#ensureDir();
     return await this.#withLock(descriptor.id, async () => {
       const current = await this.#host.readText(this.#file(descriptor.id));
-      const currentVersion = current === null ? null : await hashText(current);
+      const currentVersion = current === null ? null : await sha256Hex(current);
       if (currentVersion !== expectedVersion) {
         return { ok: false, conflict: true };
       }
@@ -126,7 +111,7 @@ export class FileSystemBuildRegistry implements BuildRegistry {
       const tmp = `${this.#file(descriptor.id)}.tmp-${crypto.randomUUID()}`;
       await this.#host.writeText(tmp, content);
       await this.#host.rename(tmp, this.#file(descriptor.id));
-      return { ok: true, version: await hashText(content) };
+      return { ok: true, version: await sha256Hex(content) };
     });
   }
 

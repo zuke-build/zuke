@@ -14,6 +14,7 @@
  */
 
 import type { TargetBuilder } from "./target.ts";
+import { messageOf } from "./internal.ts";
 import {
   archiveOutputs,
   type OutputHost,
@@ -166,11 +167,6 @@ function parseStore(text: string | null): Record<string, string> {
   } catch {
     return {}; // a corrupt store just means everything rebuilds
   }
-}
-
-/** Extract a message from an unknown thrown value without casting. */
-function messageOf(value: unknown): string {
-  return value instanceof Error ? value.message : String(value);
 }
 
 /** Optional extras for {@link openCache}: a remote store and a warning sink. */

@@ -26,6 +26,7 @@
  */
 
 import type { RunEvent, RunRecord } from "./state/types.ts";
+import { messageOf } from "./internal.ts";
 import type { StateStore } from "./state/store.ts";
 import type { LockHolder } from "./state/lock.ts";
 import { HttpStateStore } from "./state/http_store.ts";
@@ -58,11 +59,6 @@ export type StateStoreFactory = () => StateStore | Promise<StateStore>;
 
 /** A `() =>` factory the kit calls once to obtain the registry under test. */
 export type BuildRegistryFactory = () => BuildRegistry | Promise<BuildRegistry>;
-
-/** The message of an unknown thrown value, without casting. */
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
 
 /** Assert `condition`, throwing `message` (a scenario failure) otherwise. */
 function expect(condition: boolean, message: string): void {

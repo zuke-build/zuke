@@ -14,6 +14,7 @@
  */
 
 import type { Build } from "../build.ts";
+import { defaultReadEnv } from "../internal.ts";
 import { describeCli } from "../describe.ts";
 import { absolutePath } from "../path.ts";
 import { findConfigDir, pathExists } from "../config.ts";
@@ -25,15 +26,6 @@ import { resolveBuildRegistry } from "./resolve.ts";
 
 /** How many times a conflicting registration CAS is re-read and retried. */
 const MAX_RETRIES = 10;
-
-/** Read an environment variable, treating missing env access as unset. */
-function defaultReadEnv(name: string): string | undefined {
-  try {
-    return Deno.env.get(name);
-  } catch {
-    return undefined;
-  }
-}
 
 /** Inputs for {@link registerCommand}. */
 export interface RegisterOptions {

@@ -33,17 +33,7 @@ import {
   parseLockRecord,
   stringifyLockRecord,
 } from "./lock.ts";
-
-const encoder = new TextEncoder();
-
-/** Hex SHA-256 of a UTF-8 string — the opaque CAS version of a stored record. */
-async function hashText(text: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", encoder.encode(text));
-  return Array.from(
-    new Uint8Array(digest),
-    (b) => b.toString(16).padStart(2, "0"),
-  ).join("");
-}
+import { delay, sha256Hex } from "../internal.ts";
 
 /**
  * Reject a run id that could escape the runs directory. Ids are UUIDs in
@@ -58,11 +48,6 @@ function assertSafeId(id: string): void {
 /** How long to wait for a contended lock before giving up. */
 const LOCK_ATTEMPTS = 100;
 const LOCK_DELAY_MS = 10;
-
-/** Resolve after `ms` milliseconds. */
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 /**
  * A {@link StateStore} that writes one `<id>.json` file per run under a
@@ -128,7 +113,7 @@ export class FileSystemStateStore implements StateStore {
   ): Promise<{ record: RunRecord; version: string } | null> {
     const text = await this.#host.readText(this.#file(id));
     if (text === null) return null;
-    return { record: parseRunRecord(text), version: await hashText(text) };
+    return { record: parseRunRecord(text), version: await sha256Hex(text) };
   }
 
   /** Publish `record` under an exclusive lock, guarding the expected version. */
@@ -140,7 +125,7 @@ export class FileSystemStateStore implements StateStore {
     await this.#ensureDir();
     return await this.#withLock(record.id, async () => {
       const current = await this.#host.readText(this.#file(record.id));
-      const currentVersion = current === null ? null : await hashText(current);
+      const currentVersion = current === null ? null : await sha256Hex(current);
       if (currentVersion !== expectedVersion) {
         return { ok: false, conflict: true };
       }
@@ -148,7 +133,7 @@ export class FileSystemStateStore implements StateStore {
       const tmp = `${this.#file(record.id)}.tmp-${crypto.randomUUID()}`;
       await this.#host.writeText(tmp, content);
       await this.#host.rename(tmp, this.#file(record.id));
-      return { ok: true, version: await hashText(content) };
+      return { ok: true, version: await sha256Hex(content) };
     });
   }
 

@@ -25,6 +25,7 @@
  */
 
 import { type Build, discoverTargets, resolveOrderingEdges } from "./build.ts";
+import { defaultReadEnv, messageOf, runWithTimeout } from "./internal.ts";
 import type { Reporter } from "./executor.ts";
 import { type OrderingEdge, planGraph } from "./graph.ts";
 import { discoverParameters, resolveParameters } from "./params.ts";
@@ -57,49 +58,6 @@ const MAX_RETRIES = 10;
  * cancelled, but the cleanup itself must run to completion.
  */
 const NEVER_ABORTED: AbortSignal = new AbortController().signal;
-
-/** Read an environment variable, treating missing env access as unset. */
-function defaultReadEnv(name: string): string | undefined {
-  try {
-    return Deno.env.get(name);
-  } catch {
-    return undefined;
-  }
-}
-
-/** A message from an unknown thrown value, without casting. */
-function messageOf(value: unknown): string {
-  return value instanceof Error ? value.message : String(value);
-}
-
-/**
- * Run `fn`, rejecting if it runs longer than `timeoutMs` (undefined → no bound).
- * A timed-out compensation keeps running in the background but its result is
- * ignored — the same limitation as a target body's `.timeout()`.
- */
-function withTimeout(
-  fn: () => void | Promise<void>,
-  timeoutMs: number | undefined,
-): Promise<void> {
-  const result = Promise.resolve().then(fn);
-  if (timeoutMs === undefined) return result;
-  return new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(
-      () => reject(new Error(`timed out after ${timeoutMs}ms`)),
-      timeoutMs,
-    );
-    result.then(
-      () => {
-        clearTimeout(timer);
-        resolve();
-      },
-      (error) => {
-        clearTimeout(timer);
-        reject(error);
-      },
-    );
-  });
-}
 
 /** The console reporter cancel prints through when none is supplied. */
 const consoleReporter: Reporter = {
@@ -305,7 +263,7 @@ export async function runCompensations(
       deps.reporter.info(`↩ compensating ${step.forTarget} → ${compName}`);
       // Honour the compensation's own `.timeout()` so a hung cleanup can't wedge
       // the walk (and leave the record non-terminal); no default, like a body.
-      await withTimeout(() => body(ctx), step.compensation.timeout_);
+      await runWithTimeout(() => body(ctx), step.compensation.timeout_);
       compensated.push(compName);
       attempts.push({
         forTarget: step.forTarget,

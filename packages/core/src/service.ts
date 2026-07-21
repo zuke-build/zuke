@@ -30,6 +30,7 @@
  */
 
 import { TargetBuilder } from "./target.ts";
+import { delay, messageOf } from "./internal.ts";
 
 /** The default time a service is given to become ready before it fails. */
 export const DEFAULT_READY_TIMEOUT_MS = 30_000;
@@ -62,11 +63,6 @@ export interface RunningService {
   stop(): Promise<void>;
 }
 
-/** Sleep for `ms` milliseconds. */
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 /** Returned by {@link within} when the deadline elapses before the promise settles. */
 const TIMED_OUT = Symbol("timed-out");
 
@@ -88,11 +84,6 @@ async function within<T>(
   } finally {
     if (timer !== undefined) clearTimeout(timer);
   }
-}
-
-/** A message from an unknown thrown value, without casting. */
-function messageOf(value: unknown): string {
-  return value instanceof Error ? value.message : String(value);
 }
 
 /**

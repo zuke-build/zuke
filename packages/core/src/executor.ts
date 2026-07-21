@@ -14,6 +14,7 @@
  */
 
 import type { Build, BuildResult, TargetStatus } from "./build.ts";
+import { defaultReadEnv, delay, runWithTimeout } from "./internal.ts";
 import { discoverTargets, resolveOrderingEdges } from "./build.ts";
 import { type OrderingEdge, planGraph } from "./graph.ts";
 import { withAmbientEcho } from "./ambient_echo.ts";
@@ -287,15 +288,6 @@ function inGitHubActions(): boolean {
     return Deno.env.get("GITHUB_ACTIONS") === "true";
   } catch {
     return false;
-  }
-}
-
-/** Read an environment variable, treating missing env access as unset. */
-function defaultReadEnv(name: string): string | undefined {
-  try {
-    return Deno.env.get(name);
-  } catch {
-    return undefined;
   }
 }
 
@@ -725,40 +717,6 @@ function makeLifecycle(
       await observe("onRunStateChange", (p) => p.onRunStateChange?.(record));
     },
   };
-}
-
-/** Resolve after `ms` milliseconds. */
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/**
- * Run a target body once, rejecting with a timeout error if it runs longer than
- * `timeoutMs`. A timed-out body cannot be cancelled (JavaScript has no such
- * primitive), so it keeps running in the background — but its result is ignored.
- */
-function runWithTimeout(
-  fn: () => void | Promise<void>,
-  timeoutMs: number | undefined,
-): Promise<void> {
-  const result = Promise.resolve().then(fn);
-  if (timeoutMs === undefined) return result;
-  return new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(
-      () => reject(new Error(`timed out after ${timeoutMs}ms`)),
-      timeoutMs,
-    );
-    result.then(
-      () => {
-        clearTimeout(timer);
-        resolve();
-      },
-      (error) => {
-        clearTimeout(timer);
-        reject(error);
-      },
-    );
-  });
 }
 
 /**
