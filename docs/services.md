@@ -52,7 +52,8 @@ runs the tests against it, then stops `api` — whether the tests pass or fail.
 `.start()` returns a **handle** the executor stops on teardown. The shell's
 `Command` gains a `.spawn()` for exactly this — it starts a process *without*
 waiting for it to exit and returns a `SpawnedProcess`, whose `.stop()` sends
-`SIGTERM` (then reaps it). A `SpawnedProcess` is a valid handle, so the common
+`SIGTERM`, then escalates to `SIGKILL` if the process hasn't exited within a 5s
+grace period. A `SpawnedProcess` is a valid handle, so the common
 case needs no explicit stop:
 
 ```ts
