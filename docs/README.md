@@ -23,6 +23,8 @@
   suspends a run until an external event, to be resumed later.
 - [State HTTP API](./state-api.md) — the REST contract for hosting a production
   state backend.
+- [Console output](./console.md) — `@zuke/console`: the levelled logger, markup,
+  boxes/tables/rules, and the renderer behind Zuke's own build log.
 - [Shell wrapper (`$`)](./shell.md) — ergonomic, injection-safe process
   execution.
 - [Paths (`absolutePath`)](./paths.md) — the fluent path type.
@@ -42,5 +44,7 @@
   re-runs the command to verify.
 - [Using Zuke in a Node/npm project](./node-projects.md) — drive a Node build
   with Deno.
+- [Scheduled runs](./schedules.md) — `triggers.schedule` (`{ cron, tz }`)
+  compiled to UTC cron with a daylight-saving wall-clock guard.
 - [CLI reference](./cli.md) — commands and flags.
 - [Programmatic API](./programmatic-api.md) — drive Zuke from your own code.

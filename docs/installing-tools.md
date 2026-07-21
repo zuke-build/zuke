@@ -13,6 +13,7 @@ entry points in `@zuke/core`:
 | API                                                          | Installs      | Reach for it when                    |
 | ------------------------------------------------------------ | ------------- | ------------------------------------ |
 | [`ToolTasks.install((s) => …)`](#tooltasksinstall--one-tool) | one binary    | you need a single release binary     |
+| [`ToolTasks.installTree((s) => …)`](#tooltasksinstalltree--a-multi-file-tree) | one runtime tree | the tool ships as a multi-file tree (a JDK, Node.js) |
 | [`toolchain()`](#toolchain--many-tools)                      | many tools    | a build depends on several tools     |
 | [`ToolTasks.npm(...)` / `.npm(...)`](#npm-package-tools)      | an npm package | the tool ships on the npm registry   |
 
@@ -141,12 +142,65 @@ Everything lands under the `.destDir(...)` you choose — conventionally
 [`toolchain()`](#toolchain--many-tools). The `.zuke/` directory is git-ignored,
 so installed binaries and their `.install.json` markers are never committed.
 
+## `ToolTasks.installTree()` — a multi-file tree
+
+Some tools aren't a single binary but a **whole runtime tree** — a JDK, or
+Node.js shipping `bin/node`, `bin/npm`, `bin/npx`, and `lib/node_modules/**` in
+one tarball. `ToolTasks.installTree((s) => …)` fetches one such archive, unpacks
+the **entire directory** (symlinks included), and resolves to the extracted
+tree's **root** rather than to a single copied-out binary.
+
+```ts
+import { ToolTasks } from "jsr:@zuke/core";
+import { CmdTasks } from "jsr:@zuke/cmd";
+
+const node = await ToolTasks.installTree((s) =>
+  s
+    .name("node")
+    .archive("tar.gz")
+    .strip(1) // unwrap the `node-v22.5.1-<os>-<arch>/` top directory
+    .bins("bin/node", "bin/npm", "bin/npx")
+    .checksum(nodeSum)
+    .url(({ os, arch }) => nodeUrl(os, arch))
+);
+
+// The root is a callable `AbsolutePath`: index into the tree.
+await CmdTasks.exec(String(node("bin", "node")), (s) => s.args("--version"));
+// `node("bin")` is the directory to put on PATH (e.g. with `prependPath`).
+```
+
+Because the returned `AbsolutePath` is **callable**, the root doubles as an
+accessor: `root("bin", "node")` is a binary and `root("bin")` a directory to add
+to `PATH`. It takes the same settings-lambda as `install()`, plus two that only
+apply to a tree:
+
+| Method             | Purpose                                                                                                                                                      |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `.strip(n)`        | Drop `n` leading path components while unpacking (tar's `--strip-components`) — `1` unwraps a release tarball's `tool-v1.2.3/` directory. Defaults to `0`.    |
+| `.bins(...paths)`  | Paths (relative to the stripped root) to mark executable on POSIX — the tar reader doesn't preserve mode bits, so a runtime's `bin/node`, `bin/npm`, … need it. Following a symlink chmods its real target too. |
+
+A tree always ships packed, so `.archive(...)` defaults to `"tar.gz"` and
+`"raw"` is rejected (`a tree install needs an archive ("tar.gz" or "zip"), not
+"raw"`). Everything else — `.name(...)`, `.url(...)`, `.destDir(...)`,
+`.checksum(...)`, `.platform(...)`, `.download(...)` — behaves as for
+[`install()`](#settings); the tree lands at `<destDir>/<name>`. Pinning,
+verification, and caching work the same, except the checksum is always the
+SHA-256 of the **archive** and a cache hit additionally requires the declared
+`.bins(...)` to still be present. For a one-off outside a toolchain use
+`ToolTasks.installTree`; group several with
+[`Toolchain.tree`](#toolchain--many-tools), or drop to the
+[`installTree`](#the-installrelease-primitive) primitive directly.
+
 ## `toolchain()` — many tools
 
 When a build needs several tools, `toolchain()` declares them in one place so
 the build file fully describes its environment. Add tools with `.tool((s) => …)`
-(the same settings-lambda), then `install()` fetches them all **concurrently** —
-pinned, verified, and cached — and returns a `Map<name, AbsolutePath>`.
+(a single binary), `.tree((s) => …)` (a
+[multi-file runtime](#tooltasksinstalltree--a-multi-file-tree)), or
+`.npm(...)` (an [npm package](#npm-package-tools)) — all the same
+settings-lambda — then `install()` fetches them all **concurrently** — pinned,
+verified, and cached — and returns a `Map<name, AbsolutePath>` (a tree's entry
+is its extracted root directory).
 
 ```ts
 import { Build, target, toolchain } from "jsr:@zuke/core";
@@ -195,7 +249,8 @@ class Deploy extends Build {
   tool — a test seam — and a per-tool `.download(...)` applies when the
   toolchain sets none.
 - **Introspection.** `chain.tools` returns the configured release settings in
-  order; `chain.npmTools` the [npm-package tools](#npm-package-tools).
+  order; `chain.trees` the [runtime trees](#tooltasksinstalltree--a-multi-file-tree);
+  `chain.npmTools` the [npm-package tools](#npm-package-tools).
 - **Cheap to re-run.** Because a matching checksum is a cache hit, calling
   `install()` again (locally or on CI) is a no-op once the tools are present.
 
@@ -369,10 +424,15 @@ and returns the installed `AbsolutePath`. Reach for the fluent surface above in
 a build; use `installRelease` directly if you already have an options object in
 hand.
 
+Its tree counterpart is **`installTree(options)`** — the primitive behind
+`ToolTasks.installTree` and `Toolchain.tree`. It takes an `InstallTreeOptions`
+(`{ name, url, destDir, archive, strip?, bins?, checksum?, platform?, download? }`)
+and returns the extracted tree's root `AbsolutePath`.
+
 ## API reference
 
 The exact signatures live in the generated [`llms-full.txt`](../llms-full.txt)
 and on the [`@zuke/core` JSR page](https://jsr.io/@zuke/core): `ToolTasks`,
 `ToolInstallSettings`, `toolchain`, `Toolchain`, `ToolchainInstallOptions`,
-`DEFAULT_TOOLS_DIR`, `installRelease`, `InstallReleaseOptions`,
-`InstallPlatform`, and `hostPlatform`.
+`DEFAULT_TOOLS_DIR`, `installRelease`, `InstallReleaseOptions`, `installTree`,
+`InstallTreeOptions`, `InstallPlatform`, and `hostPlatform`.
