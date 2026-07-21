@@ -27,11 +27,7 @@ import type {
 } from "./types.ts";
 import { recordStatusOf } from "./record.ts";
 import { acquireCancelLock, type CancelLock } from "./cancel_lock.ts";
-
-/** Extract a message from an unknown thrown value without casting. */
-function messageOf(value: unknown): string {
-  return value instanceof Error ? value.message : String(value);
-}
+import { messageOf } from "../internal.ts";
 
 /** How many times a conflicting write is re-read and retried before giving up. */
 const MAX_RETRIES = 5;

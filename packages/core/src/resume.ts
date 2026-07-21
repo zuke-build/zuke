@@ -17,6 +17,7 @@
  */
 
 import { type Build, type BuildResult, discoverTargets } from "./build.ts";
+import { defaultReadEnv } from "./internal.ts";
 import { cancelRun } from "./cancel.ts";
 import { execute, type Reporter } from "./executor.ts";
 import type { Plugin } from "./plugin.ts";
@@ -87,15 +88,6 @@ export interface ResumeOptions {
 
 /** How many times a conflicting resume CAS is re-read and retried. */
 const MAX_RETRIES = 10;
-
-/** Read an environment variable, treating missing env access as unset. */
-function defaultReadEnv(name: string): string | undefined {
-  try {
-    return Deno.env.get(name);
-  } catch {
-    return undefined;
-  }
-}
 
 /**
  * Resume the suspended run `options.runId` for `build`. Transitions it to

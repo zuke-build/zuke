@@ -8,6 +8,7 @@
  */
 
 import type { Build } from "./build.ts";
+import { defaultReadEnv } from "./internal.ts";
 import { absolutePath } from "./path.ts";
 import { findConfigDir, pathExists } from "./config.ts";
 import { defaultStateHost, type StateStore } from "./state/store.ts";
@@ -100,15 +101,6 @@ export function selectRunsToPrune(
     toPrune.push(s.id);
   });
   return toPrune;
-}
-
-/** Read an environment variable, treating missing env access as unset. */
-function defaultReadEnv(name: string): string | undefined {
-  try {
-    return Deno.env.get(name);
-  } catch {
-    return undefined;
-  }
 }
 
 /** Resolve the store for a `runs` query — like a run, but always defaulting on. */
