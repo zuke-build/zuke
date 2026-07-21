@@ -1,7 +1,13 @@
 {
   "version": "5",
   "specifiers": {
+    "jsr:@std/yaml@*": "1.1.1",
     "npm:cspell@9": "9.8.0"
+  },
+  "jsr": {
+    "@std/yaml@1.1.1": {
+      "integrity": "a57665ecf3d17b926380593a56625d8a10cc7281802f1e993b5ebc94a48e71f8"
+    }
   },
   "npm": {
     "@cspell/cspell-bundled-dicts@9.8.0": {
