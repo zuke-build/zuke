@@ -38,6 +38,36 @@ async function runStatus(dir: string, id: string): Promise<string> {
   return got === null ? "" : got.record.status;
 }
 
+Deno.test("a .waitsFor() gate inside a forEach fails loudly, never stranding the run", async () => {
+  await withStateDir(async (dir) => {
+    class CD extends Build {
+      deployBatch = target().forEach(
+        () => ["repo-a", "repo-b"],
+        () => ({
+          deploy: target().executes(() => {}),
+          // A wait gate on a fan-out sub-target has no resume path. Before the
+          // fix this returned exit 0 ("succeeded") while durably recording a
+          // stranded "waiting" row the resume sweep could never reach.
+          gate: target().waitsFor((s) => s.on(externalSignal("approved"))),
+        }),
+      );
+    }
+    const res = await runCli(CD, ["deployBatch"]);
+    // Fails loudly with guidance — not a silent exit-0 success.
+    assertEquals(res.code, 1);
+    const output = res.err + "\n" + res.out;
+    assertStringIncludes(output, ".waitsFor()");
+    assertStringIncludes(output, ".dependsOn(");
+    // No run is left resumable/stranded: any recorded run is terminal (failed).
+    const store = new FileSystemStateStore(dir, defaultStateHost);
+    for (const summary of await store.listRuns({})) {
+      const got = await store.getRun(summary.id);
+      const status = got === null ? "" : got.record.status;
+      assertEquals(["suspended", "succeeded"].includes(status), false);
+    }
+  });
+});
+
 Deno.test("a signal gate suspends, then resume delivers the signal and continues", async () => {
   await withStateDir(async (dir) => {
     const log: string[] = [];

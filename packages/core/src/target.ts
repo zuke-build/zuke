@@ -824,6 +824,12 @@ export class TargetBuilder {
    * and each is a first-class target with its own status in the summary and the
    * run record. The fan-out target fails if any item's pipeline fails.
    *
+   * A fan-out cannot contain a **wait gate**: neither the fan-out target itself
+   * nor any stage may use {@link waitsFor} — a materialised sub-target has no
+   * resume path, so the gate would be silently swallowed. Combining them fails
+   * the target with guidance. Gate a fan-out by putting the wait on a separate
+   * target that the fan-out `.dependsOn(...)`.
+   *
    * ```ts
    * deployBatch = target()
    *   .forEach(
@@ -846,6 +852,21 @@ export class TargetBuilder {
       // ForEachItems (string keys, TargetBuilder stages), so no `Item` escapes
       // into the non-generic stored spec.
       materialize: () => {
+        // A wait gate has no coherent place inside a fan-out: a fan-out
+        // sub-target is materialised per run and never listed by the resume
+        // sweep, so a "waiting" gate — on the parent or on any stage — would be
+        // silently swallowed (the run finishes "succeeded" while a durable row
+        // is stranded "waiting" forever). Reject both loudly; put the wait on a
+        // separate target the fan-out `.dependsOn(...)` instead.
+        const self = this.name_ ?? "<unnamed>";
+        if (this.waitsFor_ !== undefined) {
+          throw new Error(
+            `Target "${self}" combines .forEach() with .waitsFor(): a wait gate ` +
+              `on a fan-out target has no resume path and would be silently ` +
+              `skipped. Put the wait on a separate target that this fan-out ` +
+              `.dependsOn(...).`,
+          );
+        }
         const seen = new Map<string, number>();
         return items().map((item, index) => {
           const base = itemKey(item, index);
@@ -853,7 +874,19 @@ export class TargetBuilder {
           seen.set(base, count + 1);
           // Disambiguate duplicate keys so sub-target names stay unique.
           const key = count === 0 ? base : `${base}#${index}`;
-          return { key, stages: factory(item, index) };
+          const stages = factory(item, index);
+          for (const [stage, sub] of Object.entries(stages)) {
+            if (sub.waitsFor_ !== undefined) {
+              throw new Error(
+                `Fan-out target "${self}" stage "${stage}" uses .waitsFor(): a ` +
+                  `wait gate inside a fan-out has no resume path (the resume ` +
+                  `sweep can't reach a materialised sub-target), so it would be ` +
+                  `silently swallowed. Put the wait on a separate target that ` +
+                  `the fan-out .dependsOn(...).`,
+              );
+            }
+          }
+          return { key, stages };
         });
       },
       configure,

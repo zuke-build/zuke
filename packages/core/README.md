@@ -1657,6 +1657,12 @@ class TargetBuilder
     and each is a first-class target with its own status in the summary and the
     run record. The fan-out target fails if any item's pipeline fails.
 
+    A fan-out cannot contain a wait gate: neither the fan-out target itself
+    nor any stage may use {@link waitsFor} — a materialised sub-target has no
+    resume path, so the gate would be silently swallowed. Combining them fails
+    the target with guidance. Gate a fan-out by putting the wait on a separate
+    target that the fan-out `.dependsOn(...)`.
+
     ```ts
     deployBatch = target()
       .forEach(

@@ -440,6 +440,12 @@ async function runForEachTarget(
     () => true, // items and stages overlap; predecessors enforce per-item order
   );
   const ms = performance.now() - start;
+  // Only `aborted` (a failed sub-target) is possible here — never `suspended`. A
+  // fan-out sub-target can't carry a `.waitsFor()` gate (rejected at materialise
+  // above), so no stage can end "waiting"; `run.suspended` is therefore always
+  // false. Were a suspend to slip through it would be swallowed (the parent would
+  // report "passed" while the row stayed durably "waiting"), which the materialise
+  // guard exists to prevent.
   if (run.aborted) {
     const failed = run.reports.filter((r) => r.status === "failed").length;
     const error = run.failure ??
