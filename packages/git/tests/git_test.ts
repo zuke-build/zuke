@@ -96,11 +96,37 @@ Deno.test("add and commit render their options", () => {
 });
 
 Deno.test("checkout requires a ref and supports -b/-f", () => {
+  // `--force` precedes `-b`: `git checkout -b --force feature` makes git read
+  // `--force` as the branch name and fails; `--force -b feature` is valid.
   assertEquals(
     new GitCheckoutSettings().create().force().ref("feature").argv(),
-    ["git", "checkout", "-b", "--force", "feature"],
+    ["git", "checkout", "--force", "-b", "feature"],
   );
   assertThrows(() => new GitCheckoutSettings().argv(), Error, ".ref()");
+});
+
+Deno.test("checkout restores paths with a `--` separator", () => {
+  // Restore paths from the index (discard working-tree changes): no ref.
+  assertEquals(
+    new GitCheckoutSettings().paths("src/a.ts", "src/b.ts").argv(),
+    ["git", "checkout", "--", "src/a.ts", "src/b.ts"],
+  );
+  // Restore a path from a ref — `--` keeps the path from being read as a branch.
+  assertEquals(
+    new GitCheckoutSettings().ref("origin/main").paths("src/a.ts").argv(),
+    ["git", "checkout", "origin/main", "--", "src/a.ts"],
+  );
+  // .paths() alone satisfies the requirement (no ref needed).
+  assertEquals(
+    new GitCheckoutSettings().paths("x").argv(),
+    ["git", "checkout", "--", "x"],
+  );
+  // -b creates a branch and cannot restore files.
+  assertThrows(
+    () => new GitCheckoutSettings().create().paths("x").argv(),
+    Error,
+    ".create() cannot be combined with .paths(",
+  );
 });
 
 Deno.test("branch and tag render their options", () => {
