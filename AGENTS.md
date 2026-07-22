@@ -268,6 +268,11 @@ tests/
   integration/            # in-process: real builds via the CLI main() + _harness.ts
   e2e/                    # subprocess: *_e2e.ts + fixtures/ (run by the `integration` target)
 zuke.ts                   # Zuke's own build (runnable example)
+build/                    # reusable helpers behind zuke.ts's targets (docs, publish, snippets, …)
+zuke, zuke.ps1            # bootstrap launchers (install Deno, run the build); zuke.json names the build class
+docs/                     # long-form guides (linked from the README)
+skills/                   # agent skills: zuke-write-build, zuke-setup
+plugins/zuke/             # Claude Code plugin wrapping the skills
 .github/workflows/ci.yml           # PR checks (quality + test-os matrix)
 .github/workflows/integration.yml  # e2e suite on the OS matrix (generated)
 .github/workflows/ai-review.yml    # @zuke/ai PR review

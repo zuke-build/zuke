@@ -17,7 +17,7 @@ import {
 
 const FIXTURE = new URL("./fixtures/discoverable_build.ts", import.meta.url);
 // An OS-assigned free port instead of a fixed constant, removing the port
-// collision-flake class. ponytail: a tiny bind→close→rebind race window
+// collision-flake class. caveat: a tiny bind→close→rebind race window
 // remains; the race-free fix is to bind `:0` in the server and report the
 // assigned port, which needs a core CLI change and is out of scope here.
 const PORT = freePort();

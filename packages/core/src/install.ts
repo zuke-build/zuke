@@ -368,7 +368,7 @@ function treeMarkerPath(treeRoot: AbsolutePath): string {
  * satisfied the same checksum, and every declared bin is still present. Unlike a
  * single-binary install, a tree is not re-hashed file-by-file — the pinned
  * archive checksum is the integrity boundary, and a present-bins check catches a
- * half-deleted directory. (ponytail: no whole-tree re-hash; the download's
+ * half-deleted directory. (caveat: no whole-tree re-hash; the download's
  * checksum already gates integrity, re-verify by re-pinning a new checksum.)
  */
 async function cachedTree(

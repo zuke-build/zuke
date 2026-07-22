@@ -195,6 +195,18 @@ class ZukeBuild extends Build {
         matrix: { os: ["ubuntu-latest", "macos-latest", "windows-latest"] },
         steps: [
           {
+            // Audit runner egress on the e2e matrix, matching every other
+            // workflow (only secret-bearing `ci.yml` blocks) and SECURITY.md's
+            // stated posture. This job carries no secrets and a read-only token,
+            // so `audit` — observe, don't block — is the right trade-off: it
+            // records outbound calls without risking a false-block of the
+            // cross-OS Deno bootstrap.
+            name: "Harden the runner",
+            uses:
+              "step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920",
+            with: { "egress-policy": "audit" },
+          },
+          {
             name: "Checkout",
             uses: "actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0",
             with: { "persist-credentials": "false" },

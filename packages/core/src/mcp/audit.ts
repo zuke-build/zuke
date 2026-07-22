@@ -4,7 +4,7 @@
  * "../state/store.ts".StateStore} method — it rides the same CAS-append path as
  * any run record, through {@link "../state/writer.ts".RunStateWriter.appendEvent}.
  *
- * ponytail: reuses one run record as the audit stream, so it shows up in
+ * caveat: reuses one run record as the audit stream, so it shows up in
  * `zuke runs list` (and `zuke runs show mcp-audit` prints the trail — handy) and
  * grows unbounded. Fine for the dev-grade filesystem backend. Upgrade path if it
  * grows large or a hosted operator wants it separate: a dedicated store-level

@@ -147,7 +147,7 @@ export async function applyEdits(
 ): Promise<string[]> {
   const paths = checkEdits(edits, guards);
   // Writes are sequential and not transactional: if a later write fails (e.g. a
-  // permission error), files written earlier stay written. ponytail: no rollback
+  // permission error), files written earlier stay written. caveat: no rollback
   // — the fixer's output is human-reviewed and the run is re-runnable, so atomic
   // multi-file application (temp + rename) isn't worth the complexity here.
   for (let i = 0; i < edits.length; i++) {

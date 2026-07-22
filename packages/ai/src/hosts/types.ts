@@ -55,7 +55,7 @@ export const HEADER = "🤖 **[Zuke](https://zuke.build) AI review**";
 /**
  * Cap on pages followed when scanning for an existing comment. A safety bound so
  * a misbehaving API can't loop forever; 100 pages × 100 per page = 10k comments,
- * far beyond any real PR. (ponytail: fixed cap; the marker is our own recent
+ * far beyond any real PR. (caveat: fixed cap; the marker is our own recent
  * comment, so it is found long before this on any real thread.)
  */
 export const MAX_COMMENT_PAGES = 100;

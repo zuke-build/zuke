@@ -496,11 +496,12 @@ Deno.test("a persisted record without dispatchedAt (pre-M18) fails fast after ba
   const cv = ctx(state);
   // First observation backfills and persists the anchor at the current time.
   assertEquals(await trigger.isSatisfied(NO_SIGNALS, cv), false);
-  assertEquals(
-    typeof (state.get().githubWorkflow as { dispatchedAt?: number })
-      .dispatchedAt,
-    "number",
-  );
+  const persisted = state.get().githubWorkflow;
+  const dispatchedAt = typeof persisted === "object" && persisted !== null &&
+      !Array.isArray(persisted)
+    ? persisted.dispatchedAt
+    : undefined;
+  assertEquals(typeof dispatchedAt, "number");
   // The anchor is now stable, so advancing past the window fails fast (it would
   // never elapse if each resume re-stamped the anchor).
   c.advance(61_000);

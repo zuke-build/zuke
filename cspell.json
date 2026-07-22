@@ -169,7 +169,11 @@
     "zukebox",
     "zukeeper"
   ],
+  "flagWords": [
+    "ponytail"
+  ],
   "ignorePaths": [
+    "cspell.json",
     "cov_profile/",
     "cov.lcov",
     "/llms.txt",
