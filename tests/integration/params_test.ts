@@ -23,6 +23,23 @@ Deno.test("a missing required parameter fails the build with a clear error", asy
   assertStringIncludes(err, "--environment is required");
 });
 
+Deno.test("a required array parameter is enforced through the CLI", async () => {
+  const seen: string[][] = [];
+  class Deploy extends Build {
+    repos = parameter("repos to deploy").required().array();
+    deploy = target().executes(() => void seen.push(this.repos.value));
+  }
+  // Unsupplied: the build fails before running, not a silent empty list.
+  const missing = await runCli(Deploy, ["deploy"]);
+  assertEquals(missing.code, 1);
+  assertStringIncludes(missing.err, "--repos is required");
+  assertEquals(seen, []);
+  // Supplied: the target sees the parsed list.
+  const ok = await runCli(Deploy, ["deploy", "--repos", "a,b,c"]);
+  assertEquals(ok.code, 0);
+  assertEquals(seen, [["a", "b", "c"]]);
+});
+
 Deno.test("options() rejects an invalid value and accepts a valid one", async () => {
   class Deploy extends Build {
     environment = parameter("Target environment").options("dev", "prod")

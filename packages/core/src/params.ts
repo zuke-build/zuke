@@ -400,12 +400,18 @@ export class Parameter<
   /**
    * Accept a comma-separated list (or a repeated flag), exposing `value` as an
    * array. `--tags a,b` and `--tags a --tags b` both yield `["a", "b"]`; blank
-   * entries are dropped, and an unsupplied list defaults to `[]`.
+   * entries are dropped, and an unsupplied *optional* list defaults to `[]`
+   * (a required one is reported missing — see below).
    *
    * Each element is parsed by this parameter's own element parser, so it
    * composes: `.options("a", "b").array()` validates **every** element against
    * the choices, and `.number().array()` yields a `number[]`, rejecting a
    * non-numeric entry. (Apply `.options()`/`.number()` before `.array()`.)
+   *
+   * `.array()` composes **last**, after `.required()` too: a
+   * `.required().array()` list stays required, so an unsupplied value is
+   * reported as missing rather than silently resolving to the empty-list
+   * default. An optional (non-required) list defaults to `[]`.
    */
   array<E extends string | number>(
     this: Parameter<E, E | undefined>,
@@ -416,7 +422,9 @@ export class Parameter<
     return new Parameter<E, E[]>({
       description: this.description_,
       kind: this.kind_,
-      required: false,
+      // Carry the required flag through: `.required().array()` stays required
+      // (no fallback), so a missing value errors instead of resolving to `[]`.
+      required: this.required_,
       options: this.options_,
       envName: this.envName_,
       parse: (raw) =>
@@ -429,7 +437,7 @@ export class Parameter<
             return value;
           },
         ),
-      fallback: { has: true, value: [] },
+      fallback: this.required_ ? { has: false } : { has: true, value: [] },
       secret: this.secret_,
       array: true,
       source: this.source_,

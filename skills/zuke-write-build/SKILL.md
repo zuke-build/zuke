@@ -133,10 +133,12 @@ Before calling any task or settings method, confirm the real shape:
   record; `continueOnItemFailure()` isolates a failed item. An `.onCancel(...)`
   on a fan-out stage runs per item on cancel (item-scoped `ctx.state`, reverse
   order). See `docs/orchestration.md`.
-- **Typed inputs:** `parameter("...")` (with `.secret()` / `.required()`), read
-  as `this.x.value`, gated with `.requires(this.x)`. `.array()` composes:
+- **Typed inputs:** `parameter("...")` (with `.number()` / `.boolean()` /
+  `.options(...)` / `.secret()` / `.required()`), read as `this.x.value`, gated
+  with `.requires(this.x)`. `.array()` composes and comes **last**:
   `.options(...).array()` validates each element, `.number().array()` →
-  `number[]`.
+  `number[]`, and a required list is `.required().array()` (required before
+  array — `.array().required()` does not typecheck).
 - **Secrets from a manager:** `parameter(...).secret().from(source)` sources a
   value at run time (e.g. `execSecret(...)` shelling out to a secret CLI) and
   **redacts** it from all of Zuke's output. See the cheatsheet.

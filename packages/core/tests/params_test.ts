@@ -157,6 +157,53 @@ Deno.test("array parameters resolve through the CLI map (repeated flag joined)",
   if (p instanceof Parameter) assertEquals(p.value, ["x", "y"]);
 });
 
+Deno.test("required().array() is a required list, not an []-default one", () => {
+  // Regression: `.array()` used to hardcode required:false, so a
+  // `.required().array()` list silently resolved to [] when unsupplied instead
+  // of being reported missing. It must carry the required flag through.
+  const p = parameter("repos").required().array();
+  assertEquals([p.required_, p.hasFallback_, p.array_], [true, false, true]);
+  p.resolve_(undefined);
+  assertThrows(() => p.value, ParameterError); // unsupplied stays unresolved
+  p.resolve_("a, b ,c");
+  assertEquals(p.value, ["a", "b", "c"]); // supplied, parses per element
+});
+
+Deno.test("required().array() composes with a kind and options", () => {
+  // The canonical order is kind/options → .required() → .array() (last).
+  const nums = parameter("workers").number().required().array();
+  assertEquals([nums.required_, nums.hasFallback_], [true, false]);
+  nums.resolve_("1, 2 ,3");
+  assertEquals(nums.value, [1, 2, 3]);
+  assertThrows(() => nums.resolve_("x"), ParameterError, "expected a number");
+
+  const opts = parameter("svc").options("api", "web").required().array();
+  assertEquals([opts.required_, opts.hasFallback_], [true, false]);
+  opts.resolve_("api,web");
+  assertEquals(opts.value, ["api", "web"]);
+  assertThrows(() => opts.resolve_("db"), ParameterError, "expected one of");
+});
+
+Deno.test("resolveParameters reports a missing required array parameter", async () => {
+  class B extends Build {
+    repos = parameter("repos").required().array();
+  }
+  const params = discoverParameters(new B());
+  const missing = await resolveParameters(params, {}, () => undefined);
+  assertEquals(missing.length, 1);
+  assertStringIncludes(missing[0], "--repos is required");
+  // Supplied via the CLI map, it resolves cleanly.
+  const supplied = discoverParameters(new B());
+  const ok = await resolveParameters(
+    supplied,
+    { repos: "a,b" },
+    () => undefined,
+  );
+  assertEquals(ok, []);
+  const p = supplied.get("repos");
+  if (p instanceof Parameter) assertEquals(p.value, ["a", "b"]);
+});
+
 Deno.test("resolveParameters prompts for a missing required value", async () => {
   class B extends Build {
     token = parameter("API token").required();
