@@ -11,6 +11,8 @@ precedence):
 3. a [secret source](./secrets.md) declared with `.from(...)`
 4. the declared default
 
+<!-- check -->
+
 ```ts
 import { Build, parameter, run, target } from "jsr:@zuke/core";
 
@@ -23,10 +25,15 @@ class Deploy extends Build {
 
   dryRun = parameter("Print actions without performing them").boolean();
 
+  // A required list: `.required()` comes before `.array()` — the reverse order
+  // does not type-check.
+  repos = parameter("Repos to deploy").required().array();
+
   deploy = target().executes(() => {
     if (this.dryRun.value) console.log("(dry run)");
     console.log(
-      `Deploying to ${this.environment.value} with ${this.workers.value} workers`,
+      `Deploying ${this.repos.value.join(", ")} to ${this.environment.value} ` +
+        `with ${this.workers.value} workers`,
     );
   });
 }

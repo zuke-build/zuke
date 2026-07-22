@@ -19,6 +19,7 @@ import {
   Build,
   cicd,
   FileTasks,
+  glob,
   parameter,
   run,
   target,
@@ -57,6 +58,7 @@ import {
 } from "./build/docs.ts";
 import { writeApiJson } from "./build/api_reference.ts";
 import { runWebsiteSync } from "./build/website_sync.ts";
+import { checkSnippets, formatSnippetFailures } from "./build/snippets.ts";
 
 class ZukeBuild extends Build {
   clean = target()
@@ -361,6 +363,24 @@ class ZukeBuild extends Build {
       ConsoleTasks.info("Documentation lint clean.");
     });
 
+  snippetsCheck = target()
+    .description("Type-check the marked ts snippets in docs and skills")
+    .executes(async () => {
+      // Opt-in: only `<!-- check -->`-marked ```ts blocks are checked (the rest
+      // of the corpus is intentionally-elided prose). Snippets resolve `@zuke/…`
+      // against the local workspace, so the gate holds every checkable example
+      // to the real API — never a published version that could drift.
+      const files = [
+        ...await glob("docs/*.md"),
+        ...await glob("skills/**/*.md"),
+      ];
+      const failures = await checkSnippets(files);
+      if (failures.length > 0) {
+        throw new Error(formatSnippetFailures(failures));
+      }
+      ConsoleTasks.info("Doc snippets type-check clean.");
+    });
+
   ci = target()
     .description("Full pre-commit / CI gate")
     .dependsOn(
@@ -371,6 +391,7 @@ class ZukeBuild extends Build {
       this.coverageUpload,
       this.apiDocsCheck,
       this.docLint,
+      this.snippetsCheck,
     )
     .executes(() => {});
 
