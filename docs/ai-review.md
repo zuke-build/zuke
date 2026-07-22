@@ -158,6 +158,11 @@ outage isn't a silent skip either.
   suppressed finding is still listed (under "Suppressed (not gating)") so the
   dismissal is auditable — it mutes the gate, it never silently buries a finding.
 
+  > **Migration:** the finding-fingerprint format was widened (32→64-bit), so
+  > IDs recorded before that change no longer match. If previously dismissed
+  > findings resurface, re-record them: copy the new ID shown in the report back
+  > into your suppress file (default `.zuke/ai-suppress.json`).
+
 ## GitHub Actions summary
 
 Under Actions, a review appends a Markdown section (score, severity, and a

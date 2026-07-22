@@ -154,7 +154,7 @@ Deno.test("commitFixes stages, commits, and pushes the applied files", async () 
   const result = await fixer.remediate(CTX);
   assertEquals(result.retry, true);
   assertEquals(s.git, [
-    ["git", "add", "--", "src/app.ts"],
+    ["git", "--literal-pathspecs", "add", "--", "src/app.ts"],
     ["git", "commit", "-m", 'Apply Zuke AI fix for "test"'],
     ["git", "push"],
   ]);
@@ -171,7 +171,7 @@ Deno.test("noPush commits without pushing", async () => {
   ).fetch(fetch).quiet();
   await fixer.remediate(CTX);
   assertEquals(s.git, [
-    ["git", "add", "--", "src/app.ts"],
+    ["git", "--literal-pathspecs", "add", "--", "src/app.ts"],
     ["git", "commit", "-m", "fix: heal build"],
   ]);
 });
@@ -321,6 +321,11 @@ Deno.test("checkEdits enforces the allowlist, exclusions, traversal, and the cap
       "\\\\server\\share\\x",
       "", // empty
       "./.", // resolves to nothing
+      // git pathspec magic: a leading `:` would sweep the tree at `git add`.
+      ":(glob)**",
+      ":/",
+      ":(exclude)*.ts",
+      "./:(glob)secrets.env",
     ]
   ) {
     let rejected = false;
@@ -858,6 +863,32 @@ Deno.test("fixMarkdown renders each location as a file:line diff block", () => {
   assertEquals(md.includes("-const X = 1;"), true);
 });
 
+Deno.test("fixMarkdown neutralizes Markdown injection in model-controlled fields", () => {
+  const md = fixMarkdown("AI fix", "lint", {
+    diagnosis: "ok\n## ✅ Approved by security",
+    rootCause: "x",
+    confidence: "high",
+    locations: [{
+      // A backtick in the model-controlled path must not break the inline code
+      // span in the #### header and inject a link/banner.
+      file: "a`.ts",
+      line: 1,
+      code: "x\n```\n## Injected heading",
+    }],
+    files: ["a`.ts"],
+    action: "diagnosed",
+  });
+  // A newline in the diagnosis is collapsed — it can't start a top-level heading.
+  assertEquals(md.includes("\n## ✅ Approved"), false);
+  // The code's embedded ``` can't close the diff fence (the fence outgrows it),
+  // so the injected heading stays inert data inside the block.
+  assertEquals(md.includes("\n## Injected heading"), false);
+  // The backtick path is wrapped in a longer (double-backtick) code span, not a
+  // single-backtick one it could close early.
+  assertEquals(md.includes("#### ``a`.ts:1``"), true);
+  assertEquals(md.includes("**Files:** ``a`.ts``"), true);
+});
+
 Deno.test("a single-line location with a replacement renders + and - lines", () => {
   const md = fixMarkdown("AI fix", "lint", {
     diagnosis: "Use const.",
@@ -931,6 +962,28 @@ Deno.test("conventions default reader reads from disk", async () => {
   // deno.json exists at the repo root (the test cwd); a missing file is undefined.
   assertEquals(typeof await readTextOrUndefined("deno.json"), "string");
   assertEquals(await readTextOrUndefined("does-not-exist.zzz"), undefined);
+});
+
+Deno.test("commitAndPush stages with --literal-pathspecs (no pathspec magic)", async () => {
+  const git: string[][] = [];
+  await commitAndPush({
+    paths: ["src/app.ts"],
+    message: "m",
+    push: false,
+    run: (argv) => {
+      git.push(argv);
+      return Promise.resolve("");
+    },
+  });
+  // Defence in depth: even if a `:`-prefixed path slipped the write guard, this
+  // disables git's pathspec magic so `add` can only ever stage the literal file.
+  assertEquals(git[0], [
+    "git",
+    "--literal-pathspecs",
+    "add",
+    "--",
+    "src/app.ts",
+  ]);
 });
 
 Deno.test("commitAndPush is a no-op when there are nothing to commit", async () => {

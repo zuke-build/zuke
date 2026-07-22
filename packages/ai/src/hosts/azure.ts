@@ -70,6 +70,10 @@ async function findThread(
   marker: string,
   doFetch: typeof fetch,
 ): Promise<{ threadId: number; commentId: number } | undefined> {
+  // No pagination loop (unlike the GitHub/GitLab/Bitbucket hosts): the Azure
+  // DevOps PR *threads* list endpoint returns every thread for the PR in one
+  // response — it exposes no `$top`/`$skip` and no continuation-token header — so
+  // a single fetch is complete and the marker can't hide on a later page.
   const url = `${threadsUrl(context)}?api-version=7.1`;
   const response = await doFetch(url, {
     headers: jsonHeaders({ "authorization": `Bearer ${context.token}` }),

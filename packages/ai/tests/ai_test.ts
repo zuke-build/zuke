@@ -247,6 +247,88 @@ Deno.test("reviewer fetchBase rejects an option-like base ref (never fetches)", 
   assertEquals(git[0], ["git", "diff"]);
 });
 
+Deno.test("fetchBase failure with an empty fallback fails the gate, never a silent pass", async () => {
+  const { fetch, calls } = recordFetch(
+    claude({ score: 0, severity: "none", summary: "", findings: [] }),
+  );
+  // The fetch fails and the working-tree diff is empty (a clean CI checkout).
+  // Passing that as an empty assessment would green the gate without reviewing.
+  await assertRejects(
+    () =>
+      securityReviewer((r) =>
+        r.provider("claude").apiKey("k").quiet()
+          .diff((d) => d.fetchBase("main"))
+          .env(() => undefined)
+          .exec((argv) =>
+            argv[1] === "fetch"
+              ? Promise.reject(new Error("offline"))
+              : Promise.resolve("")
+          )
+          .fetch(fetch)
+      ).validate({ target: "t" }),
+    AiReviewError,
+    "could not compute the base diff",
+  );
+  assertEquals(calls.length, 0); // the model is never called
+});
+
+Deno.test("fetchBase failure with an empty fallback skips visibly under onError:warn", async () => {
+  const { fetch, calls } = recordFetch(
+    claude({ score: 0, severity: "none", summary: "", findings: [] }),
+  );
+  // onError:"warn" turns the hard fail into a visible skip — still not a call.
+  await securityReviewer((r) =>
+    r.provider("claude").apiKey("k").quiet().onError("warn")
+      .diff((d) => d.fetchBase("main"))
+      .env(() => undefined)
+      .exec((argv) =>
+        argv[1] === "fetch"
+          ? Promise.reject(new Error("offline"))
+          : Promise.resolve("")
+      )
+      .fetch(fetch)
+  ).validate({ target: "t" });
+  assertEquals(calls.length, 0);
+});
+
+Deno.test("fetchBase failure still reviews a non-empty working-tree fallback", async () => {
+  const { fetch, calls } = recordFetch(
+    claude({ score: 0, severity: "none", summary: "", findings: [] }),
+  );
+  // A non-empty fallback is a legitimate review (e.g. local dev): keep it, don't
+  // fail — only an *empty* fallback after a fetch failure is the silent-pass hole.
+  await securityReviewer((r) =>
+    r.provider("claude").apiKey("k").quiet()
+      .diff((d) => d.fetchBase("main"))
+      .env(() => undefined)
+      .exec((argv) =>
+        argv[1] === "fetch"
+          ? Promise.reject(new Error("offline"))
+          : Promise.resolve("diff --git a/w b/w\n+working tree")
+      )
+      .fetch(fetch)
+  ).validate({ target: "t" });
+  assertEquals(calls.length, 1); // the fallback diff was reviewed
+});
+
+Deno.test("a successful fetchBase with a genuinely empty diff passes, not fails", async () => {
+  const { fetch, calls } = recordFetch(
+    claude({ score: 0, severity: "none", summary: "", findings: [] }),
+  );
+  // Both the fetch and the base diff succeed but the diff is empty (a PR with no
+  // reviewable changes). That is a real "no changes" — it must pass as an empty
+  // assessment, NOT be mistaken for the fetch-failure hole. Locks the contract
+  // that fetchBaseDiff returns "" (not undefined) on an empty-but-successful diff.
+  await securityReviewer((r) =>
+    r.provider("claude").apiKey("k").quiet()
+      .diff((d) => d.fetchBase("main"))
+      .env(() => undefined)
+      .exec(() => Promise.resolve("")) // fetch ok, diff empty
+      .fetch(fetch)
+  ).validate({ target: "t" });
+  assertEquals(calls.length, 0); // no findings, no throw — a clean empty pass
+});
+
 Deno.test("the build breaks when the risk score exceeds the threshold", async () => {
   const { fetch } = recordFetch(
     claude({ score: 9, severity: "high", summary: "RCE risk", findings: [] }),

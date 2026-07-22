@@ -29,7 +29,16 @@ export interface CommitOptions {
  */
 export async function commitAndPush(options: CommitOptions): Promise<void> {
   if (options.paths.length === 0) return;
-  await options.run(["git", "add", "--", ...options.paths]);
+  // `--literal-pathspecs` disables pathspec magic (`:(glob)`, `:/`, …) so a path
+  // that slipped a guard can only ever stage that literal file, never sweep the
+  // tree. Defence in depth with normalizePath's leading-`:` rejection.
+  await options.run([
+    "git",
+    "--literal-pathspecs",
+    "add",
+    "--",
+    ...options.paths,
+  ]);
   await options.run(["git", "commit", "-m", options.message]);
   if (options.push !== false) {
     await options.run(["git", "push"]);

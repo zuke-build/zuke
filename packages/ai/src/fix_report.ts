@@ -9,6 +9,7 @@
 
 import type { Confidence, FixLocation } from "./fix.ts";
 import type { Usage } from "./types.ts";
+import { codeSpan, fenceMarkdown } from "./markdown.ts";
 import { formatUsage } from "./report.ts";
 
 /** A fixer's outcome, summarised for the report. */
@@ -29,9 +30,16 @@ export interface FixReport {
   usage?: Usage;
 }
 
-/** Escape `|` so a value is safe inside a Markdown table cell. */
+/**
+ * Neutralize a value for a plain inline Markdown context (a table cell or a
+ * blockquote): escape the `|` cell separator and collapse newlines, so
+ * model-controlled text can't inject block-level Markdown (a heading, a fake
+ * "approved" banner) by starting a fresh line. For an **inline code span** use
+ * {@link "./markdown.ts".codeSpan} (backticks need neutralizing too); for a
+ * fenced code body use {@link "./markdown.ts".fenceMarkdown}.
+ */
 function cell(value: string): string {
-  return value.replaceAll("|", "\\|");
+  return value.replaceAll(/[\r\n]+/g, " ").replaceAll("|", "\\|");
 }
 
 /** The `file:line` (or `file:line-endLine`) label for a location. */
@@ -57,7 +65,10 @@ function locationDiff(loc: FixLocation): string {
     ...signLines("-", loc.code),
     ...(suggestion === "" ? [] : signLines("+", suggestion)),
   ];
-  return ["```diff", ...body, "```"].join("\n");
+  // fenceMarkdown, not a bare ```diff fence: the model controls `code`,
+  // `suggestion`, and `file` (in the hunk header), so a plain fence could be
+  // closed early to inject Markdown into the PR comment / job summary.
+  return fenceMarkdown(body.join("\n"), "diff");
 }
 
 /** The console lines describing a fix. */
@@ -98,10 +109,12 @@ export function fixMarkdown(
     "",
   ];
   for (const loc of report.locations) {
-    parts.push(`#### \`${cell(locationLabel(loc))}\``, locationDiff(loc), "");
+    // codeSpan (not cell): loc.file is model-controlled and goes in an inline
+    // code span, where a backtick would close the span and inject Markdown.
+    parts.push(`#### ${codeSpan(locationLabel(loc))}`, locationDiff(loc), "");
   }
   if (report.files.length > 0) {
-    const list = report.files.map((f) => `\`${cell(f)}\``).join(", ");
+    const list = report.files.map((f) => codeSpan(f)).join(", ");
     parts.push(`**Files:** ${list}`, "");
   }
   return parts.join("\n");
