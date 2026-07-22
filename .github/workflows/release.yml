@@ -106,6 +106,10 @@ jobs:
           private-key: ${{ secrets.ZUKE_BUILD_APP_KEY }}
           owner: zuke-build
           repositories: zuke-build.github.io
+          # Narrow the minted token to exactly what syncWebsite needs — a branch
+          # push and a PR — rather than the app's full permission set.
+          permission-contents: write
+          permission-pull-requests: write
 
       # The ./zuke launcher bootstraps a pinned Deno version (override with
       # DENO_VERSION); no separate setup-deno step.

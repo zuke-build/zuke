@@ -71,8 +71,8 @@ interface DocProperty {
 }
 
 /**
- * The `def` object of a declaration, unioned across kinds (each field is
- * present only for the relevant kind). `extends` is `unknown` because it may
+ * The `def` object of a declaration — a union of the per-kind fields (each
+ * field is present only for the relevant kind). `extends` is `unknown` because it may
  * be a string or a type node; it is narrowed with `typeof` at the use site.
  */
 interface DocDef {
