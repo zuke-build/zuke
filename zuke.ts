@@ -439,7 +439,10 @@ class ZukeBuild extends Build {
       // tests). `1eav335` is by design: list_runs/show_run are read-only over
       // non-secret records, "always exposed when a store resolves" per M5, and
       // gated by the transport's auth. (IDs are opaque fingerprints.)
-      // cspell:ignore myee fmcx ownw eav
+      // `3ud7i3zbigfl0` is a false positive: a static, author-written workflow
+      // comment documenting the website-sync job — it does not execute and
+      // feeds no runtime model, so there is no prompt-injection surface.
+      // cspell:ignore myee fmcx ownw eav zbigfl
       .suppress(
         suppressions((s) =>
           s.add(
@@ -450,6 +453,7 @@ class ZukeBuild extends Build {
             "z2fmcx",
             "1ownw8s",
             "1eav335",
+            "3ud7i3zbigfl0",
           )
         ),
       )

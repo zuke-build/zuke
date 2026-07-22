@@ -62,6 +62,7 @@
     "eocd",
     "esac",
     "exfiltrate",
+    "extraheader",
     "fpath",
     "funcstack",
     "gcloud",
