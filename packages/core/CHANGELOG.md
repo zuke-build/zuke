@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.30.4](https://github.com/zuke-build/zuke/compare/core-v1.30.3...core-v1.30.4) (2026-07-22)
+
+
+### Bug Fixes
+
+* **core:** flag dead ordering edges; document the fan-out ordering limit ([#253](https://github.com/zuke-build/zuke/issues/253)) ([807be57](https://github.com/zuke-build/zuke/commit/807be57c87eec3d0c72079756b9cdd10d97560c4))
+* **core:** reject wait gates inside a fan-out (forEach) ([#249](https://github.com/zuke-build/zuke/issues/249)) ([2efd81b](https://github.com/zuke-build/zuke/commit/2efd81bce4b348c0dbffd4b68414f8f62ebb1a26))
+
 ## [1.30.3](https://github.com/zuke-build/zuke/compare/core-v1.30.2...core-v1.30.3) (2026-07-22)
 
 

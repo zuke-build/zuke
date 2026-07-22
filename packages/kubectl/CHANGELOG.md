@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.3](https://github.com/zuke-build/zuke/compare/kubectl-v0.3.2...kubectl-v0.3.3) (2026-07-22)
+
+
+### Bug Fixes
+
+* **kubectl:** reject invalid flag combinations in top, annotate, label ([#251](https://github.com/zuke-build/zuke/issues/251)) ([7de68b1](https://github.com/zuke-build/zuke/commit/7de68b15e4dc1d3db42875b1e593fa1e27d8c40f))
+
 ## [0.3.2](https://github.com/zuke-build/zuke/compare/kubectl-v0.3.1...kubectl-v0.3.2) (2026-07-20)
 
 

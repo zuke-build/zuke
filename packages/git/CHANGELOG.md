@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.3](https://github.com/zuke-build/zuke/compare/git-v0.2.2...git-v0.2.3) (2026-07-22)
+
+
+### Bug Fixes
+
+* **git:** fix checkout flag order and support restoring paths ([#252](https://github.com/zuke-build/zuke/issues/252)) ([b66ea9b](https://github.com/zuke-build/zuke/commit/b66ea9b76061fde01ec50da91022996e555c0f46))
+
 ## [0.2.2](https://github.com/zuke-build/zuke/compare/git-v0.2.1...git-v0.2.2) (2026-07-20)
 
 
