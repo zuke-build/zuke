@@ -38,10 +38,33 @@ export async function runCli(
   const origErr = console.error;
   console.log = (...a: unknown[]) => void out.push(a.join(" "));
   console.error = (...a: unknown[]) => void err.push(a.join(" "));
+  // Guard the async-safety fixes: a promise rejection that escapes the run
+  // (e.g. a scheduler path that dropped its `.catch`) must fail the test
+  // explicitly, not merely rely on the Deno runner's default handling — which
+  // this pins even if that default changes. We take ownership of the event
+  // (preventDefault) so the check below is authoritative; a rejection firing
+  // after this call (listener already removed) still falls back to the runner.
+  const rejections: unknown[] = [];
+  const onRejection = (event: PromiseRejectionEvent) => {
+    event.preventDefault();
+    rejections.push(event.reason);
+  };
+  addEventListener("unhandledrejection", onRejection);
   try {
     const code = await main(BuildClass, args, options);
+    // A macrotask boundary so any queued unhandledrejection event has dispatched
+    // before we inspect — it fires at a microtask checkpoint, which setTimeout(0)
+    // is guaranteed to follow.
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    if (rejections.length > 0) {
+      const reasons = rejections
+        .map((r) => (r instanceof Error ? r.message : String(r)))
+        .join("; ");
+      throw new Error(`unhandled promise rejection during runCli: ${reasons}`);
+    }
     return { code, out: out.join("\n"), err: err.join("\n") };
   } finally {
+    removeEventListener("unhandledrejection", onRejection);
     console.log = origLog;
     console.error = origErr;
   }
