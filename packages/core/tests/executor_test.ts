@@ -2346,6 +2346,71 @@ Deno.test("a throwing predicate settles the parallel scheduler without hanging",
   assertEquals(result.executed.includes("good"), true);
 });
 
+Deno.test("a throwing cacheKey thunk fails the target, not the process (sequential)", async () => {
+  const dir = await Deno.makeTempDir();
+  const original = Deno.cwd();
+  try {
+    // Run from a temp dir so the default `.zuke` cache store never touches the
+    // repo (the real cache is exercised: a cacheKey target is cacheable).
+    await Deno.writeTextFile(`${dir}/zuke.json`, "{}\n");
+    Deno.chdir(dir);
+    const { lines, reporter } = recorder();
+    class B extends Build {
+      boom = target()
+        // A cache-key contributor is evaluated by cache.upToDate, outside
+        // runTarget's own try/catch (like onlyWhen). A throw here must finalize
+        // the run as failed — never reject out of execute() (stranding the
+        // record `running`) nor crash on an unhandled rejection.
+        .cacheKey(() => {
+          throw new Error("key boom");
+        })
+        .executes(() => {});
+    }
+    const b = new B();
+    discoverTargets(b);
+    const result = await execute(b, b.boom, { reporter, github: false });
+    assertEquals(result.ok, false);
+    assertEquals(lines.some((l) => l.includes("key boom")), true);
+  } finally {
+    Deno.chdir(original);
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("a throwing cacheKey settles the parallel scheduler without hanging", async () => {
+  const dir = await Deno.makeTempDir();
+  const original = Deno.cwd();
+  try {
+    await Deno.writeTextFile(`${dir}/zuke.json`, "{}\n");
+    Deno.chdir(dir);
+    const { reporter } = recorder();
+    class B extends Build {
+      good = target().executes(() => {});
+      bad = target()
+        .cacheKey(() => {
+          throw new Error("key boom");
+        })
+        .executes(() => {});
+      all = target().dependsOn(this.good, this.bad).executes(() => {});
+    }
+    const b = new B();
+    discoverTargets(b);
+    // The parallel scheduler's `.then(...).catch(...)` must route the rejecting
+    // cacheKey into the failure path so the slot frees and the run settles,
+    // instead of leaving `bad` stuck in the running set and hanging.
+    const result = await execute(b, b.all, {
+      reporter,
+      parallel: true,
+      github: false,
+    });
+    assertEquals(result.ok, false);
+    assertEquals(result.executed.includes("good"), true);
+  } finally {
+    Deno.chdir(original);
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
 Deno.test("a rejected lock renewal never crashes the build", async () => {
   const dir = await Deno.makeTempDir();
   try {

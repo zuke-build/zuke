@@ -7,8 +7,12 @@
  * @module
  */
 
-import { assertEquals } from "../../packages/core/tests/_assert.ts";
-import { withStateDir } from "./_harness.ts";
+import {
+  assertEquals,
+  assertRejects,
+} from "../../packages/core/tests/_assert.ts";
+import { Build, target } from "../../packages/core/mod.ts";
+import { runCli, withStateDir } from "./_harness.ts";
 
 Deno.test("withStateDir surfaces the body error even when cleanup fails", async () => {
   const marker = new Error("body failure");
@@ -38,4 +42,16 @@ Deno.test("withStateDir resolves when cleanup fails after a successful body", as
   });
   // The env var is still restored on the success-with-failed-cleanup path.
   assertEquals(Deno.env.get("ZUKE_STATE_DIR"), prev);
+});
+
+Deno.test("runCli surfaces an unhandled rejection during the run as a failure", async () => {
+  class Leaky extends Build {
+    // A body that fires a detached promise it never awaits — a genuine
+    // unhandled rejection escaping the run. The harness guard must surface it
+    // as a thrown error rather than let it slip past on the runner's defaults.
+    leak = target().executes(() => {
+      void Promise.reject(new Error("detached boom"));
+    });
+  }
+  await assertRejects(() => runCli(Leaky, ["leak"]), Error, "detached boom");
 });
