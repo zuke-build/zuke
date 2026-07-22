@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.1](https://github.com/zuke-build/zuke/compare/ai-v1.6.0...ai-v1.6.1) (2026-07-22)
+
+
+### Bug Fixes
+
+* **ai:** close AI-review security regressions and hardening tail ([#247](https://github.com/zuke-build/zuke/issues/247)) ([473c95d](https://github.com/zuke-build/zuke/commit/473c95d753036082af243adeed96feb8690b5b89))
+
 ## [1.6.0](https://github.com/zuke-build/zuke/compare/ai-v1.5.3...ai-v1.6.0) (2026-07-20)
 
 
