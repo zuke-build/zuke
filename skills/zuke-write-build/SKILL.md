@@ -41,11 +41,15 @@ await run(CI);
    initialise top-to-bottom; a forward reference is `undefined` and is reported
    as an error (TypeScript also flags it, `TS2729`). Order fields so
    dependencies come first.
-3. **Never guess the API and never shell out by hand.** Every external tool is a
-   namespaced `*Tasks` object configured with a **settings lambda** that mirrors
-   the real CLI's flags — `DenoTasks`, `NpmTasks`, `DockerTasks`, `GitTasks`,
-   and 30+ more. Reach for `jsr:@zuke/cmd` (`CmdTasks.exec`) or the `$` shell
-   from `jsr:@zuke/core/shell` only when no typed wrapper exists.
+3. **Inside a target body, never guess the API or shell out by hand.** Whatever
+   runs in an `.executes(...)` body drives an external tool through its
+   namespaced `*Tasks` object, configured with a **settings lambda** that mirrors
+   the real CLI's flags — `DenoTasks`, `NpmTasks`, `DockerTasks`, `GitTasks`, and
+   30+ more — never a raw `Deno.Command` or shell string. Reach for
+   `jsr:@zuke/cmd` (`CmdTasks.exec`) or the `$` shell from `jsr:@zuke/core/shell`
+   only when no typed wrapper exists. (If a build delegates its side effects to
+   your own tested modules behind injected clients, the wrapper rule still
+   governs whatever those modules run in the target body.)
 4. **A body is required.** Set `.executes(...)`; it may be sync or async.
 
 ## Find the exact signature first
@@ -182,8 +186,12 @@ Before calling any task or settings method, confirm the real shape:
   per-job result with `readWorkflowResult(ctx.stateOf("<gate>"))`. Correlates by
   a `run-name:` marker by default, or `.correlate("created-window")` for a
   workflow you can't modify; fails fast (`.discoveryTimeout(...)`) if the run
-  never correlates. Triggers are extensible — write your own against the exported
-  `WaitTrigger`/`WaitContext`.
+  never correlates. The **dispatched** workflow has a contract: declare the
+  marker input (`zuke_marker`, or rename via `.markerInput(...)`), echo it as its
+  _entire_ `run-name:` (equality, not substring), and receive any of its
+  `required: true` inputs via `.inputs(...)` — see the cheatsheet's
+  receiving-workflow contract. Triggers are extensible — write your own against
+  the exported `WaitTrigger`/`WaitContext`.
 - **OpenTelemetry export (`@zuke/otel`):** register `otel((s) => s.endpoint(…))`
   as a plugin (`run(MyBuild, { plugins: [otel(…)] })`) to ship run/target spans
   and `zuke.run.started` / `zuke.run.suspended` / `zuke.runs` counters as
