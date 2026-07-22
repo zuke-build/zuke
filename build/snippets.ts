@@ -107,7 +107,13 @@ export type SnippetChecker = (
 
 /** The default checker: `deno check` against the local workspace. */
 const denoCheck: SnippetChecker = async (path) => {
-  const out = await DenoTasks.check((s) => s.paths(path).quiet().noThrow());
+  // `--quiet` drops deno's `Check <relative-path>` progress line, which would
+  // otherwise leak the random temp-dir name into failure output as a relative
+  // path (a form {@link reduceTempPath} can't match); the `file://` error
+  // locations deno still prints are reduced there.
+  const out = await DenoTasks.check((s) =>
+    s.paths(path).args("--quiet").quiet().noThrow()
+  );
   return { ok: out.code === 0, detail: `${out.stderr}${out.stdout}`.trim() };
 };
 

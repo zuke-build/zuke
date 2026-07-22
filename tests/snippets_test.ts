@@ -211,6 +211,10 @@ Deno.test("check (real deno): the pilot's wrong order fails, the correct order p
     assertEquals(failures[0].line, 11); // the second (Bad) block's fence line
     assertStringIncludes(failures[0].detail, "snippet.ts"); // temp path reduced
     assertEquals(failures[0].detail.includes(dir), false);
+    // No random temp-dir name leaks — neither the scratch dir prefix nor the
+    // raw temp filename survive (the `Check <relative>` progress line is off).
+    assertEquals(failures[0].detail.includes(".snippets-"), false);
+    assertEquals(failures[0].detail.includes("snippet_"), false);
   } finally {
     await Deno.remove(dir, { recursive: true });
   }
