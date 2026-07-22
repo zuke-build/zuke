@@ -266,12 +266,27 @@ export class GitStatusSettings extends GitSettings {
 /** Settings for `git checkout`. */
 export class GitCheckoutSettings extends GitSettings {
   #ref?: string;
+  #paths: string[] = [];
   #create = false;
   #force = false;
 
-  /** The branch, commit, or path to check out (required). */
+  /**
+   * The branch or commit to check out — or, with {@link paths}, the source to
+   * restore those paths from. Required unless {@link paths} is given.
+   */
   ref(target: string): this {
     this.#ref = target;
+    return this;
+  }
+
+  /**
+   * Restore one or more paths (`git checkout [<ref>] -- <paths>`). The `--`
+   * separates paths from any ref so a path is never misread as a branch name;
+   * repeatable. With no {@link ref}, restores the paths from the index
+   * (discarding working-tree changes).
+   */
+  paths(...paths: string[]): this {
+    this.#paths.push(...paths);
     return this;
   }
 
@@ -289,13 +304,23 @@ export class GitCheckoutSettings extends GitSettings {
 
   /** Assemble the `git checkout` argv. */
   protected override subcommandArgs(): string[] {
-    if (this.#ref === undefined) {
-      throw new Error("GitTasks.checkout: .ref() is required.");
+    if (this.#ref === undefined && this.#paths.length === 0) {
+      throw new Error("GitTasks.checkout: .ref() or .paths(...) is required.");
+    }
+    if (this.#create && this.#paths.length > 0) {
+      throw new Error(
+        "GitTasks.checkout: .create() cannot be combined with .paths(...) — " +
+          "`git checkout -b` creates a branch, it does not restore files.",
+      );
     }
     const argv = ["checkout"];
-    if (this.#create) argv.push("-b");
+    // `--force` must precede `-b`: `git checkout -b --force <ref>` makes git read
+    // `--force` as the new branch name (`cannot be created`), so force comes first.
     if (this.#force) argv.push("--force");
-    argv.push(this.#ref);
+    if (this.#create) argv.push("-b");
+    if (this.#ref !== undefined) argv.push(this.#ref);
+    // `-- <paths>` last so git never treats a path as a ref (mirrors `add`).
+    if (this.#paths.length > 0) argv.push("--", ...this.#paths);
     return argv;
   }
 }

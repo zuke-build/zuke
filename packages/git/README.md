@@ -101,7 +101,13 @@ class GitCheckoutSettings extends GitSettings
   Settings for `git checkout`.
 
   ref(target: string): this
-    The branch, commit, or path to check out (required).
+    The branch or commit to check out — or, with {@link paths}, the source to
+    restore those paths from. Required unless {@link paths} is given.
+  paths(...paths: string[]): this
+    Restore one or more paths (`git checkout [<ref>] -- <paths>`). The `--`
+    separates paths from any ref so a path is never misread as a branch name;
+    repeatable. With no {@link ref}, restores the paths from the index
+    (discarding working-tree changes).
   create(): this
     Create a new branch (`-b`).
   force(): this
