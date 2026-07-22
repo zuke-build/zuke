@@ -1,4 +1,4 @@
-import { assertEquals, assertStringIncludes } from "./_assert.ts";
+import { assertEquals, assertStringIncludes, assertThrows } from "./_assert.ts";
 import { Build, discoverTargets } from "../src/build.ts";
 import { target } from "../src/target.ts";
 import { execute, type Reporter } from "../src/executor.ts";
@@ -83,6 +83,20 @@ Deno.test("forEach rejects a .waitsFor() on a stage (no resume path)", async () 
   assertStringIncludes(message, "deployBatch");
   assertStringIncludes(message, ".waitsFor()");
   assertStringIncludes(message, ".dependsOn(");
+});
+
+Deno.test("the fan-out wait-gate rejection names an undiscovered target as <unnamed>", () => {
+  // materialize() can run before discovery assigns a name; the error still reads
+  // cleanly (covers the `name_ ?? "<unnamed>"` fallback).
+  const t = target()
+    .waitsFor((s) => s.on(externalSignal("go")))
+    .forEach(() => ["a"], () => ({ deploy: target().executes(() => {}) }));
+  const spec = t.forEach_;
+  assertEquals(spec !== undefined, true);
+  if (spec !== undefined) {
+    const error = assertThrows(() => spec.materialize());
+    assertStringIncludes(errorMessage(error), '"<unnamed>"');
+  }
 });
 
 Deno.test("forEach rejects a .waitsFor() on the fan-out target itself", async () => {
