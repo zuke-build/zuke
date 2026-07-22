@@ -43,6 +43,14 @@ external dependency graph in. `override orderWith(targets)` is the same, but
 with `extraEdges`. Cycle-checked; edges outside the run's set are ignored; both
 are honoured by a run and `zuke cancel`, but not by static `graph`/`--list`.
 
+> **Fan-out caveat:** `targets` holds only **class-field targets** — a
+> `.forEach()` fan-out's per-item sub-targets (`parent[item].stage`) don't exist
+> at plan time, so **per-item ordering across a fan-out is not expressible** with
+> `orderWith`/`extraEdges`. Order whole fan-out **waves** instead: split the work
+> into one `.forEach()` per wave and chain the waves with `.dependsOn`. An edge to
+> a target that isn't in the build (a fan-out item name, a typo, an ad-hoc
+> `target()`) is logged as ignored rather than silently dropped.
+
 ## `group()` — parallel batches
 
 ```ts

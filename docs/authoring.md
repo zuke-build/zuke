@@ -697,6 +697,17 @@ override async orderWith(t: Map<string, Target>): Promise<OrderingEdge[]> {
 }
 ```
 
+The `targets` map holds only **class-field targets**. A
+[`.forEach()`](./orchestration.md#fan-out-over-a-list--foreach) fan-out's
+per-item sub-targets are materialised only while a run executes, so
+they are never in `targets` and **per-item ordering across a fan-out cannot be
+expressed** with `orderWith`/`extraEdges` (`t.get("parent[item].stage")` is
+`undefined`). Order whole fan-out **waves** instead — one `.forEach()` per wave,
+the waves chained with `.dependsOn` — so ordering lives between class-field
+targets. An edge whose endpoint is not a target in the build (a fan-out item
+name, a typo, or an ad-hoc `target()`) is logged as ignored when the run plans,
+rather than silently doing nothing.
+
 A field literally named `default` is the **default target**, run when no target
 is named on the command line.
 
