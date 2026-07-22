@@ -9,9 +9,10 @@ blob of prose.
 
 ## How it plugs in
 
-A reviewer is a [`Validation`](./authoring.md#validations--validatebefore--validateafter):
-an object with a `validate(ctx)` method. You build one fluently, then attach it
-to a target with `.validateBefore(...)` (gate before the body) or
+A reviewer is a
+[`Validation`](./authoring.md#validations--validatebefore--validateafter): an
+object with a `validate(ctx)` method. You build one fluently, then attach it to
+a target with `.validateBefore(...)` (gate before the body) or
 `.validateAfter(...)` (check after a successful body). The target decides _when_
 it runs; the reviewer decides _what_ it checks.
 
@@ -39,13 +40,13 @@ await run(Pipeline);
 
 All share the same fluent `Reviewer` and return a `Validation`:
 
-| Factory | Reviews for | Extra |
-| --- | --- | --- |
-| `securityReviewer` | security vulnerabilities | — |
-| `secretsReviewer` | leaked secrets/credentials | — |
-| `correctnessReviewer` | bugs and likely regressions | — |
-| `licenseReviewer` | license / dependency-compliance risk | — |
-| `genericReviewer` | code quality and maintainability | — |
+| Factory               | Reviews for                          | Extra |
+| --------------------- | ------------------------------------ | ----- |
+| `securityReviewer`    | security vulnerabilities             | —     |
+| `secretsReviewer`     | leaked secrets/credentials           | —     |
+| `correctnessReviewer` | bugs and likely regressions          | —     |
+| `licenseReviewer`     | license / dependency-compliance risk | —     |
+| `genericReviewer`     | code quality and maintainability     | —     |
 
 ## Providers and credentials
 
@@ -64,10 +65,12 @@ structured-output mode:
 - **OpenAI** → `response_format: { type: "json_schema", strict: true }`.
 - **Gemini** → `generationConfig.responseSchema`.
 
-The assessment is `{ score: 0–10, severity, summary, findings: [{ title,
-severity, file?, line?, detail? }] }`. The strict dialect (OpenAI/Claude) makes
-the optional fields nullable; the Gemini dialect drops `additionalProperties`
-and uses `nullable`. Both map to the same parsed result.
+The assessment is
+`{ score: 0–10, severity, summary, findings: [{ title,
+severity, file?, line?, detail? }] }`.
+The strict dialect (OpenAI/Claude) makes the optional fields nullable; the
+Gemini dialect drops `additionalProperties` and uses `nullable`. Both map to the
+same parsed result.
 
 ## Choosing the gate
 
@@ -121,12 +124,12 @@ start line echoing its settings, and a notice on every retry:
 // On by default; override only when you want different behaviour.
 securityReviewer((r) =>
   r.provider("gemini").apiKey(this.key)
-    .retry({ attempts: 5 })          // more aggressive — five tries total
+    .retry({ attempts: 5 }) // more aggressive — five tries total
 );
 
 genericReviewer((r) =>
   r.provider("openai").apiKey(this.key)
-    .retry({ attempts: 1 })          // disable retries
+    .retry({ attempts: 1 }) // disable retries
 );
 ```
 
@@ -154,14 +157,17 @@ outage isn't a silent skip either.
   is spent, the review is skipped (not failed) with a note. See
   [Cost controls and learning](./self-healing.md#cost-controls-and-learning).
 - `.suppress(suppressions(...))` hides findings you've dismissed as false
-  positives, matched by the stable ID shown next to each finding in the report. A
-  suppressed finding is still listed (under "Suppressed (not gating)") so the
-  dismissal is auditable — it mutes the gate, it never silently buries a finding.
+  positives, matched by the stable ID shown next to each finding in the report.
+  A suppressed finding is still listed (under "Suppressed (not gating)") so the
+  dismissal is auditable — it mutes the gate, it never silently buries a
+  finding.
 
-  > **Migration:** the finding-fingerprint format was widened (32→64-bit), so
-  > IDs recorded before that change no longer match. If previously dismissed
-  > findings resurface, re-record them: copy the new ID shown in the report back
-  > into your suppress file (default `.zuke/ai-suppress.json`).
+  > **One-time migration:** the finding-fingerprint format was widened
+  > (32→64-bit), so IDs recorded before that change no longer match. A
+  > previously dismissed finding therefore reappears in the report and re-trips
+  > the gate — it fails safe (a stale suppression is ignored, never silently
+  > applied to hide a finding). Re-record it once: copy the new ID shown next to
+  > it into your suppress file (default `.zuke/ai-suppress.json`).
 
 ## GitHub Actions summary
 
@@ -175,19 +181,19 @@ on a failure). `.quiet()` suppresses both the console output and the summary.
 `.comment()` additionally posts the assessment onto the pull/merge request,
 under a **"🤖 Zuke AI review"** header linking back to the project. Rather than
 adding a new comment every run, it **upserts a single comment per reviewer**:
-the body carries a hidden marker (`<!-- zuke-ai-review:<name> -->`), so a
-re-run finds its previous comment and edits it in place. Different reviewers
-(e.g. a security and a secrets review) keep separate comments because the
-marker includes the reviewer name.
+the body carries a hidden marker (`<!-- zuke-ai-review:<name> -->`), so a re-run
+finds its previous comment and edits it in place. Different reviewers (e.g. a
+security and a secrets review) keep separate comments because the marker
+includes the reviewer name.
 
 Which API gets called is decided at runtime by [`detectCiHost()`](authoring.md):
 
-| Host | API used | Default token env | Workflow scope to grant |
-| --- | --- | --- | --- |
-| **GitHub Actions** | issue/PR comments | `GITHUB_TOKEN` | `pull-requests: write` |
-| **GitLab CI** | merge-request notes | `GITLAB_TOKEN` | personal/group token with `api` scope (the job token can't post notes) |
-| **Azure Pipelines** | PR comment threads | `SYSTEM_ACCESSTOKEN` | `System.AccessToken` mapped into env |
-| **Bitbucket Pipelines** | PR comments | `BITBUCKET_TOKEN` | app password or workspace access token |
+| Host                    | API used            | Default token env    | Workflow scope to grant                                                |
+| ----------------------- | ------------------- | -------------------- | ---------------------------------------------------------------------- |
+| **GitHub Actions**      | issue/PR comments   | `GITHUB_TOKEN`       | `pull-requests: write`                                                 |
+| **GitLab CI**           | merge-request notes | `GITLAB_TOKEN`       | personal/group token with `api` scope (the job token can't post notes) |
+| **Azure Pipelines**     | PR comment threads  | `SYSTEM_ACCESSTOKEN` | `System.AccessToken` mapped into env                                   |
+| **Bitbucket Pipelines** | PR comments         | `BITBUCKET_TOKEN`    | app password or workspace access token                                 |
 
 Override the token explicitly with `.commentToken(param | string)` (or, for
 backwards compatibility, the GitHub-only alias `.githubToken(...)`). Outside a
@@ -202,8 +208,8 @@ workflow permissions automatically when any reviewer has `.comment()` set.
 
 If the provider's response reports token counts, the review prints them as a
 footer — `tokens: 1234 in · 567 out · 1801 total` on the console, and a
-`**Tokens:** …` line in the summary and PR comment. The counts are read from each
-provider's own shape (Claude `usage.input_tokens` / `output_tokens`, OpenAI
+`**Tokens:** …` line in the summary and PR comment. The counts are read from
+each provider's own shape (Claude `usage.input_tokens` / `output_tokens`, OpenAI
 `usage.*_tokens`, Gemini `usageMetadata.*TokenCount`); the total is taken
 verbatim when present, or derived from input + output (Claude) otherwise. Only
 the counts a provider actually returns are shown, so this is purely
@@ -213,10 +219,10 @@ informational — it never affects the gate.
 
 Maintaining `.github/workflows/ai-review.yml` by hand is a chore — it has to
 stay in sync with every reviewer's secret env var, with `pull-requests: write`
-when any reviewer uses `.comment()`, with the right harden-runner +
-checkout pins, with the fork-gating `if`. `aiReviewWorkflow({...})` does it for
-you: declare it on the build and Zuke writes a [`CiFile`](authoring.md#cicd)
-that the standard `cicd` sync keeps current.
+when any reviewer uses `.comment()`, with the right harden-runner + checkout
+pins, with the fork-gating `if`. `aiReviewWorkflow({...})` does it for you:
+declare it on the build and Zuke writes a [`CiFile`](authoring.md#cicd) that the
+standard `cicd` sync keeps current.
 
 ```ts
 import { aiReviewWorkflow, securityReviewer } from "jsr:@zuke/ai";
@@ -247,12 +253,12 @@ from the workflow env (the generator can't infer a secret name).
 generate the equivalent for those providers — matching the cross-platform PR
 commenting above. Output shape per host:
 
-| `host` | Default path | What's generated |
-| --- | --- | --- |
-| `"github"` | `.github/workflows/ai-review.yml` | Full workflow — fork-gated, harden-runner + pinned checkout, base-branch fetch, `pull-requests: write` if any reviewer comments. |
-| `"gitlab"` | `.gitlab/ai-review.gitlab-ci.yml` | Merge-request-only job snippet on `denoland/deno:latest`. **Include from your `.gitlab-ci.yml`** (`include: { local: '.gitlab/ai-review.gitlab-ci.yml' }`). GitLab project-level CI variables flow into the job automatically — no `variables:` block emitted. |
-| `"azure"` | `pipelines/ai-review.azure-pipelines.yml` | PR-only job snippet. Each reviewer's secret is wired into the script step's `env:` block as `$(NAME)` (Azure doesn't expose pipeline secrets as env vars by default); `SYSTEM_ACCESSTOKEN` is added when any reviewer uses `.comment()`. **Use as a template** from your main pipeline. |
-| `"bitbucket"` | `bitbucket-pipelines.yml` | Pull-request-only step on `denoland/deno:latest`, written to the repo-root pipelines file Bitbucket expects (it has no `include` mechanism). Repository variables flow into the step automatically — no env block emitted; map your secrets as **secured** repository variables. |
+| `host`        | Default path                              | What's generated                                                                                                                                                                                                                                                                        |
+| ------------- | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `"github"`    | `.github/workflows/ai-review.yml`         | Full workflow — fork-gated, harden-runner + pinned checkout, base-branch fetch, `pull-requests: write` if any reviewer comments.                                                                                                                                                        |
+| `"gitlab"`    | `.gitlab/ai-review.gitlab-ci.yml`         | Merge-request-only job snippet on `denoland/deno:latest`. **Include from your `.gitlab-ci.yml`** (`include: { local: '.gitlab/ai-review.gitlab-ci.yml' }`). GitLab project-level CI variables flow into the job automatically — no `variables:` block emitted.                          |
+| `"azure"`     | `pipelines/ai-review.azure-pipelines.yml` | PR-only job snippet. Each reviewer's secret is wired into the script step's `env:` block as `$(NAME)` (Azure doesn't expose pipeline secrets as env vars by default); `SYSTEM_ACCESSTOKEN` is added when any reviewer uses `.comment()`. **Use as a template** from your main pipeline. |
+| `"bitbucket"` | `bitbucket-pipelines.yml`                 | Pull-request-only step on `denoland/deno:latest`, written to the repo-root pipelines file Bitbucket expects (it has no `include` mechanism). Repository variables flow into the step automatically — no env block emitted; map your secrets as **secured** repository variables.        |
 
 ```ts
 // Declare one per host you care about — they share the same reviewers.
@@ -314,8 +320,8 @@ reviewer name, the two land as **separate comments** ("security review" and
 
 `.skipIfKeyMissing()` replaces an `.onlyWhen(() => this.openaiKey.isSet_())`
 gate on the target: rather than the target vanishing silently when a key is
-absent, the reviewer runs, sees no key, and prints a "skipped — no API key"
-line (and a matching job-summary note). The
+absent, the reviewer runs, sees no key, and prints a "skipped — no API key" line
+(and a matching job-summary note). The
 [`ai-review.yml`](../.github/workflows/ai-review.yml) workflow runs
 `./zuke review` on pull requests (non-fork only, so the secrets are never
 exposed to untrusted code), passing `OPENAI_API_KEY`, `GEMINI_API_KEY`, the
