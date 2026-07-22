@@ -1,6 +1,6 @@
 {
   "name": "@zuke/core",
-  "version": "1.30.2",
+  "version": "1.30.3",
   "license": "MIT",
   "description": "Core of Zuke: a code-first, strongly-typed build-automation library for Deno & TypeScript with a typed target graph and an injection-free shell.",
   "exports": {

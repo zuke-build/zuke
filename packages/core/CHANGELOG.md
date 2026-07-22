@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.30.3](https://github.com/zuke-build/zuke/compare/core-v1.30.2...core-v1.30.3) (2026-07-22)
+
+
+### Bug Fixes
+
+* **core:** required array parameters stay required ([#245](https://github.com/zuke-build/zuke/issues/245)) ([79d7656](https://github.com/zuke-build/zuke/commit/79d76565f29a5aae0e61b39db45d740fff3590f3))
+
 ## [1.30.2](https://github.com/zuke-build/zuke/compare/core-v1.30.1...core-v1.30.2) (2026-07-20)
 
 
