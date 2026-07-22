@@ -77,6 +77,62 @@ Deno.test("orderWith and extraEdges merge into one edge set", async () => {
   assertEquals(log.indexOf("b") < log.indexOf("c"), true);
 });
 
+Deno.test("orderWith warns about a dead edge to a target not in the build", async () => {
+  class Mono extends Build {
+    a = target().executes(() => {});
+    all = target().dependsOn(this.a).executes(() => {});
+    override orderWith(t: Map<string, TargetBuilder>): OrderingEdge[] {
+      const a = t.get("a");
+      // An ad-hoc target that is not a class field — never in the run or the
+      // discovered set, so this edge can never apply. Mirrors the trap of
+      // feeding a fan-out per-item name (which is not a class field) into
+      // orderWith: the edge is dead, and used to be dropped silently.
+      const ghost = target();
+      return a ? [[a, ghost]] : [];
+    }
+  }
+  const res = await runCli(Mono, ["all"]);
+  assertEquals(res.code, 0); // the dead edge is ignored; the run still succeeds
+  assertStringIncludes(res.out + res.err, "not a target in this build");
+});
+
+Deno.test("orderWith stays silent for a declared target simply not in this run", async () => {
+  class Mono extends Build {
+    a = target().executes(() => {});
+    other = target().executes(() => {}); // a real target, but not reached by `all`
+    all = target().dependsOn(this.a).executes(() => {});
+    // `other` is a declared (conditional) target, legitimately ignored here — it
+    // must NOT be flagged like the dangling ad-hoc target above.
+    override extraEdges(t: Map<string, TargetBuilder>): OrderingEdge[] {
+      const a = t.get("a"), other = t.get("other");
+      return a && other ? [[a, other]] : [];
+    }
+  }
+  const res = await runCli(Mono, ["all"]);
+  assertEquals(res.code, 0);
+  assertEquals(
+    (res.out + res.err).includes("not a target in this build"),
+    false,
+  );
+});
+
+Deno.test("orderWith tolerates a malformed edge with a nullish endpoint (no crash)", async () => {
+  class Mono extends Build {
+    a = target().executes(() => {});
+    all = target().dependsOn(this.a).executes(() => {});
+    override orderWith(t: Map<string, TargetBuilder>): OrderingEdge[] {
+      const a = t.get("a");
+      if (!a) return [];
+      // A consumer bypassing the OrderingEdge type to feed a nullish endpoint:
+      // the run must tolerate it (like any out-of-set edge), never crash on it.
+      // @ts-expect-error deliberately pass a nullish endpoint to exercise the guard
+      return [[a, undefined]];
+    }
+  }
+  const res = await runCli(Mono, ["all"]);
+  assertEquals(res.code, 0); // tolerated, not a crash
+});
+
 Deno.test("a failing orderWith fails the run cleanly, not with an unhandled rejection", async () => {
   class B extends Build {
     a = target().executes(() => {});

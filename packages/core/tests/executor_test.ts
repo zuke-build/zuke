@@ -4,14 +4,14 @@ import {
   assertStringIncludes,
   messageOf,
 } from "./_assert.ts";
-import { GraphError } from "../src/graph.ts";
+import { GraphError, type OrderingEdge } from "../src/graph.ts";
 import {
   Build,
   type BuildResult,
   discoverTargets,
   type TargetStatus,
 } from "../src/build.ts";
-import { group, target } from "../src/target.ts";
+import { group, target, type TargetBuilder } from "../src/target.ts";
 import type { BuildCache } from "../src/cache.ts";
 import type { RemoteCacheStore } from "../src/remote_cache.ts";
 import { parameter } from "../src/params.ts";
@@ -2572,4 +2572,28 @@ Deno.test("a failed run leaves no waiting target stranded in the record", async 
   } finally {
     await Deno.remove(dir, { recursive: true });
   }
+});
+
+Deno.test("execute flags an ordering edge to a target not in the build", async () => {
+  const { lines, reporter } = recorder();
+  class Mono extends Build {
+    a = target().executes(() => {});
+    other = target().executes(() => {}); // declared, but not reached by `all`
+    all = target().dependsOn(this.a).executes(() => {});
+    override orderWith(t: Map<string, TargetBuilder>): OrderingEdge[] {
+      const a = t.get("a"), other = t.get("other");
+      // `ghost` is not a class field → never in the run nor the declared set, so
+      // its edge is dead (mirrors a fan-out per-item name). `other` is declared
+      // but not in this run → legitimately ignored, must NOT be flagged.
+      const ghost = target();
+      return a && other ? [[a, ghost], [a, other]] : [];
+    }
+  }
+  const b = new Mono();
+  discoverTargets(b);
+  const result = await execute(b, b.all, { reporter, github: false });
+  assertEquals(result.ok, true); // the dead edge is ignored; the run succeeds
+  const out = lines.join("\n");
+  assertStringIncludes(out, "not a target in this build"); // ghost flagged
+  assertEquals(out.includes('"other"'), false); // conditional target not flagged
 });

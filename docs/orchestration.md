@@ -332,3 +332,10 @@ Runtime lists pair naturally with [array parameters](./parameters.md#lists):
 `.options("api", "web").array()` validates each element, and `.number().array()`
 yields a `number[]` — so the batch's inputs are typed and checked before it
 runs.
+
+Because the sub-targets exist only at run time, they can't be referenced by the
+soft-ordering seams: `orderWith`/`extraEdges` (see
+[Authoring → `Build`](./authoring.md#build)) see only
+class-field targets, so **per-item ordering across a fan-out is not
+expressible**. When items must run in a dependency order, split them into ordered
+**waves** — one `.forEach()` per wave — and chain the waves with `.dependsOn`.

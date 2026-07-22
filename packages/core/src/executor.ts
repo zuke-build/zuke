@@ -426,9 +426,10 @@ export async function execute(
   // can be a correctness requirement, a failure fails the build cleanly rather
   // than silently running in the base order or crashing with an unhandled
   // rejection. (No run record exists yet, so nothing is stranded.)
+  const discovered = discoverTargets(build);
   let extraEdges: OrderingEdge[];
   try {
-    extraEdges = await resolveOrderingEdges(build, discoverTargets(build));
+    extraEdges = await resolveOrderingEdges(build, discovered);
   } catch (error) {
     reporter.error(
       `Failed to resolve ordering edges: ${
@@ -438,6 +439,35 @@ export async function execute(
     return { ok: false, executed: [], error };
   }
   const { order, predecessors } = planGraph(root, extraEdges);
+  // Flag ordering edges that can never apply: an endpoint that is neither in this
+  // run's execution set nor a declared build target is dead weight (silently
+  // dropped otherwise). A declared target simply not in this run — a conditional
+  // target — is legitimately ignored, so it is not flagged. This catches feeding
+  // ad-hoc or fan-out per-item names into orderWith/extraEdges: per-item fan-out
+  // ordering is not expressible (order whole fan-out waves with .dependsOn).
+  if (extraEdges.length > 0) {
+    const inRun = new Set(order);
+    const declared = new Set(discovered.values());
+    const dangling = new Set<string>();
+    for (const edge of extraEdges) {
+      for (const endpoint of edge) {
+        // `endpoint &&` tolerates a malformed edge (a consumer bypassing the
+        // OrderingEdge type to pass a nullish endpoint) instead of crashing on
+        // `.name_`, matching planEdges' silent tolerance of such edges.
+        if (endpoint && !inRun.has(endpoint) && !declared.has(endpoint)) {
+          dangling.add(endpoint.name_ ?? "<unnamed>");
+        }
+      }
+    }
+    for (const name of dangling) {
+      reporter.info(
+        `ordering: an edge references "${name}", which is not a target in this ` +
+          `build — the edge is ignored. orderWith/extraEdges see only ` +
+          `class-field targets, not fan-out sub-targets (order whole fan-out ` +
+          `waves with .dependsOn instead).`,
+      );
+    }
+  }
   // Evaluate up-front conditions for `whenSkipped("skip-dependencies")` targets
   // and skip them plus any dependencies that nothing else needs.
   for (const name of await conditionSkips(root, order)) skip.add(name);
