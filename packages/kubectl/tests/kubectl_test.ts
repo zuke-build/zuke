@@ -581,7 +581,8 @@ Deno.test("annotate: resource + annotations, remove, and flags", () => {
       .slice(1),
     ["annotate", "deploy", "api", "team-"],
   );
-  // Everything together, incl. --all and the label selector.
+  // Everything together with --all (kubectl rejects --all combined with -l, so
+  // the selector is covered separately, not here).
   assertEquals(
     new KubectlAnnotateSettings()
       .resource("pods")
@@ -589,7 +590,6 @@ Deno.test("annotate: resource + annotations, remove, and flags", () => {
       .remove("old")
       .overwrite()
       .all()
-      .selector("app=web")
       .argv()
       .slice(1),
     [
@@ -599,8 +599,6 @@ Deno.test("annotate: resource + annotations, remove, and flags", () => {
       "old-",
       "--overwrite",
       "--all",
-      "-l",
-      "app=web",
     ],
   );
 });
@@ -616,17 +614,18 @@ Deno.test("label: resource + labels, remove, and flags", () => {
       .slice(1),
     ["label", "pods", "team=payments", "-l", "app=web"],
   );
-  // Everything together, incl. remove(key), --overwrite, and --all.
+  // Everything together with --all (a name would conflict with --all, so the
+  // type alone is used here — name-targeted forms are covered separately).
   assertEquals(
     new KubectlLabelSettings()
-      .resource("deploy", "api")
+      .resource("deploy")
       .label("team", "payments")
       .remove("old")
       .overwrite()
       .all()
       .argv()
       .slice(1),
-    ["label", "deploy", "api", "team=payments", "old-", "--overwrite", "--all"],
+    ["label", "deploy", "team=payments", "old-", "--overwrite", "--all"],
   );
 });
 
@@ -691,6 +690,74 @@ Deno.test("annotate and label require a resource type and a payload", () => {
     Error,
     "at least one .label()",
   );
+});
+
+Deno.test("annotate and label reject a bare type with no name, selector, or --all", () => {
+  // kubectl rejects `annotate pods key=val` ("no name was specified").
+  assertThrows(
+    () =>
+      new KubectlAnnotateSettings().resource("pods").annotation("a", "b")
+        .argv(),
+    Error,
+    "a resource name, .selector(), or .all()",
+  );
+  assertThrows(
+    () => new KubectlLabelSettings().resource("pods").label("a", "b").argv(),
+    Error,
+    "a resource name, .selector(), or .all()",
+  );
+  // The valid targeting forms all pass: a name, a type/name token, --all, or -l
+  // (whether via the setter or inline as a raw resource token).
+  const ok = [
+    new KubectlAnnotateSettings().resource("pods", "web-0").annotation(
+      "a",
+      "b",
+    ),
+    new KubectlAnnotateSettings().resource("pods/web-0").annotation("a", "b"),
+    new KubectlAnnotateSettings().resource("pods").all().annotation("a", "b"),
+    new KubectlAnnotateSettings().resource("pods").selector("app=web")
+      .annotation("a", "b"),
+    new KubectlLabelSettings().resource("pods", "web-0").label("a", "b"),
+    new KubectlLabelSettings().resource("pods/web-0").label("a", "b"),
+    new KubectlLabelSettings().resource("pods").all().label("a", "b"),
+    new KubectlLabelSettings().resource("pods").selector("app=web").label(
+      "a",
+      "b",
+    ),
+    // name + --all is accepted by kubectl (it ignores --all), so it passes.
+    new KubectlAnnotateSettings().resource("pods", "web-0").all().annotation(
+      "a",
+      "b",
+    ),
+    new KubectlLabelSettings().resource("pods/web-0").all().label("a", "b"),
+  ];
+  for (const s of ok) s.argv(); // none throw
+});
+
+Deno.test("annotate and label reject a selector combined with a name or --all", () => {
+  // A label selector is mutually exclusive with a name and with --all (kubectl
+  // rejects both client-side). A name + --all is NOT rejected — kubectl accepts
+  // it (ignoring --all), so the wrapper mirrors that. Covers annotate and label
+  // and both name-detection paths (a second positional token and a type/name).
+  const rejected = [
+    // --all + selector: "cannot set --all and --selector at the same time".
+    new KubectlAnnotateSettings().resource("pods").all().selector("app=web")
+      .annotation("a", "b"),
+    new KubectlLabelSettings().resource("pods").all().selector("app=web").label(
+      "a",
+      "b",
+    ),
+    // name + selector: "name cannot be provided when a selector is specified".
+    new KubectlAnnotateSettings().resource("pods", "web-0").selector("app=web")
+      .annotation("a", "b"),
+    new KubectlLabelSettings().resource("pods/web-0").selector("app=web").label(
+      "a",
+      "b",
+    ),
+  ];
+  for (const s of rejected) {
+    assertThrows(() => s.argv(), Error, "mutually exclusive with a resource");
+  }
 });
 
 Deno.test("patch: requires resource and patch; --type ordering", () => {
@@ -790,12 +857,23 @@ Deno.test("top: requires pods or nodes; all options", () => {
     new KubectlTopSettings()
       .pods()
       .name("web-0")
-      .selector("app=api")
       .containers()
       .allNamespaces()
       .argv()
       .slice(1),
-    ["top", "pods", "web-0", "-l", "app=api", "--containers", "-A"],
+    ["top", "pods", "web-0", "--containers", "-A"],
+  );
+  // A selector (without a name) is valid on pods too.
+  assertEquals(
+    new KubectlTopSettings().pods().selector("app=api").argv().slice(1),
+    ["top", "pods", "-l", "app=api"],
+  );
+  // A name and a selector are mutually exclusive — kubectl rejects both together.
+  assertThrows(
+    () =>
+      new KubectlTopSettings().pods().name("web-0").selector("app=api").argv(),
+    Error,
+    "mutually exclusive",
   );
   assertEquals(
     new KubectlTopSettings().nodes().argv().slice(1),

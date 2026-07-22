@@ -749,6 +749,17 @@ export class KubectlSetImageSettings extends KubectlSettings {
   }
 }
 
+/**
+ * Whether the resource tokens name a specific resource: a `type/name` token, or
+ * a non-flag positional after the type (a bare NAME). An inline `-l`/`--all`
+ * token (which starts with `-`) is not a name.
+ */
+function hasResourceName(resources: readonly string[]): boolean {
+  if (resources.length === 0) return false;
+  return resources[0].includes("/") ||
+    (resources.length >= 2 && !resources[1].startsWith("-"));
+}
+
 /** Settings for `kubectl annotate`. */
 export class KubectlAnnotateSettings extends KubectlSettings {
   #resources: string[] = [];
@@ -806,6 +817,25 @@ export class KubectlAnnotateSettings extends KubectlSettings {
     if (this.#annotations.length === 0 && this.#removals.length === 0) {
       throw new Error(
         "KubectlTasks.annotate: at least one .annotation() or .remove() is required.",
+      );
+    }
+    const hasName = hasResourceName(this.#resources);
+    const hasSelector = this.#selector !== undefined;
+    if (!hasName && !this.#all && !hasSelector && this.#resources.length < 2) {
+      throw new Error(
+        "KubectlTasks.annotate: a resource name, .selector(), or .all() is " +
+          "required alongside the type — kubectl rejects a bare type like " +
+          "`annotate pods key=val`.",
+      );
+    }
+    // kubectl rejects a label selector combined with a name or with --all
+    // ("name cannot be provided when a selector is specified" / "cannot set
+    // --all and --selector"). A name + --all is accepted by kubectl (it ignores
+    // --all), so it is not rejected here.
+    if (hasSelector && (hasName || this.#all)) {
+      throw new Error(
+        "KubectlTasks.annotate: .selector() is mutually exclusive with a " +
+          "resource name and with .all() — kubectl rejects `-l` with either.",
       );
     }
     const argv = [
@@ -879,6 +909,25 @@ export class KubectlLabelSettings extends KubectlSettings {
     if (this.#labels.length === 0 && this.#removals.length === 0) {
       throw new Error(
         "KubectlTasks.label: at least one .label() or .remove() is required.",
+      );
+    }
+    const hasName = hasResourceName(this.#resources);
+    const hasSelector = this.#selector !== undefined;
+    if (!hasName && !this.#all && !hasSelector && this.#resources.length < 2) {
+      throw new Error(
+        "KubectlTasks.label: a resource name, .selector(), or .all() is " +
+          "required alongside the type — kubectl rejects a bare type like " +
+          "`label pods key=val`.",
+      );
+    }
+    // kubectl rejects a label selector combined with a name or with --all
+    // ("name cannot be provided when a selector is specified" / "cannot set
+    // --all and --selector"). A name + --all is accepted by kubectl (it ignores
+    // --all), so it is not rejected here.
+    if (hasSelector && (hasName || this.#all)) {
+      throw new Error(
+        "KubectlTasks.label: .selector() is mutually exclusive with a resource " +
+          "name and with .all() — kubectl rejects `-l` with either.",
       );
     }
     const argv = [
@@ -1090,6 +1139,15 @@ export class KubectlTopSettings extends KubectlSettings {
   protected override buildArgs(): string[] {
     if (this.#kind === undefined) {
       throw new Error("KubectlTasks.top: choose .pods() or .nodes().");
+    }
+    // kubectl `top` accepts a single NAME or a label selector, never both — for
+    // pods and nodes alike. Emitting `top pods NAME -l sel` is rejected by
+    // kubectl, so reject it here (same class as the `logs` name+selector fix).
+    if (this.#name !== undefined && this.#selector !== undefined) {
+      throw new Error(
+        "KubectlTasks.top: .name() and .selector() are mutually exclusive — " +
+          "pass a single name or a label selector, not both.",
+      );
     }
     // `--containers` and `-A`/`--all-namespaces` are `top pod`-only; kubectl
     // rejects them on `top node` ("unknown flag"). `-l`/selector stays valid.
