@@ -10,6 +10,12 @@ import {
 } from "../src/params.ts";
 import { FileSystemStateStore } from "../src/state/fs_store.ts";
 import { defaultStateHost } from "../src/state/store.ts";
+import { externalSignal } from "../src/wait.ts";
+
+/** The message of a failed `execute` result. */
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
 
 /** A reporter that records every printed line, for asserting output. */
 function recorder(): { lines: string[]; reporter: Reporter } {
@@ -55,6 +61,46 @@ Deno.test("forEach runs each item's stages in order, items in parallel", async (
   assertEquals(log.indexOf("checks:a") < log.indexOf("deploy:a"), true);
   assertEquals(log.indexOf("checks:b") < log.indexOf("deploy:b"), true);
   assertEquals(log.length, 4);
+});
+
+Deno.test("forEach rejects a .waitsFor() on a stage (no resume path)", async () => {
+  // A wait gate on a materialised sub-target would be silently swallowed (the
+  // run finishes "succeeded" while the row is stranded "waiting"); reject it.
+  class Batch extends Build {
+    deployBatch = target().forEach(
+      () => ["a"],
+      () => ({
+        gate: target().waitsFor((s) => s.on(externalSignal("go"))),
+        deploy: target().executes(() => {}),
+      }),
+    );
+  }
+  const b = new Batch();
+  discoverTargets(b);
+  const result = await execute(b, b.deployBatch, { silent: true });
+  assertEquals(result.ok, false);
+  const message = errorMessage(result.error);
+  assertStringIncludes(message, "deployBatch");
+  assertStringIncludes(message, ".waitsFor()");
+  assertStringIncludes(message, ".dependsOn(");
+});
+
+Deno.test("forEach rejects a .waitsFor() on the fan-out target itself", async () => {
+  // A wait on the fan-out parent is dispatched before the gate is checked, so it
+  // is silently skipped; reject the combination.
+  class Batch extends Build {
+    deployBatch = target()
+      .waitsFor((s) => s.on(externalSignal("go")))
+      .forEach(() => ["a"], () => ({ deploy: target().executes(() => {}) }));
+  }
+  const b = new Batch();
+  discoverTargets(b);
+  const result = await execute(b, b.deployBatch, { silent: true });
+  assertEquals(result.ok, false);
+  assertStringIncludes(
+    errorMessage(result.error),
+    "combines .forEach() with .waitsFor()",
+  );
 });
 
 Deno.test("forEach isolates a failed item with continueOnItemFailure", async () => {
