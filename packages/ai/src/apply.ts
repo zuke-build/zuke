@@ -58,6 +58,13 @@ function matchesAny(patterns: string[], path: string, ci: boolean): boolean {
  * can't bypass the guards), then `.`/`..` segments are fully resolved: an
  * absolute path, a Windows drive, or any `..` that escapes the repo root is
  * rejected outright rather than written.
+ *
+ * A path whose first segment begins with `:` is rejected too: git reserves a
+ * leading `:` for pathspec *magic* (`:(glob)`, `:/`, `:(exclude)`, …), which
+ * `git add -- <path>` does **not** disable, so a magic path would later stage
+ * the whole tree rather than the one file (see {@link "./commit.ts".commitAndPush}).
+ * No trackable repo-relative path starts with `:`, so this can only be an attempt
+ * to smuggle a pathspec through the fixer's write/commit seam.
  */
 function normalizePath(path: string): string {
   const unified = path.replaceAll("\\", "/");
@@ -83,6 +90,9 @@ function normalizePath(path: string): string {
   }
   if (segments.length === 0) {
     throw new AiReviewError(`refusing to write outside the repo: ${path}`);
+  }
+  if (segments[0].startsWith(":")) {
+    throw new AiReviewError(`refusing a git pathspec-magic path: ${path}`);
   }
   return segments.join("/");
 }

@@ -298,17 +298,29 @@ export class Reviewer implements Validation {
     return this;
   }
 
-  /** Resolve the diff text from the configured source. */
-  async #resolveDiff(): Promise<string> {
+  /**
+   * Resolve the diff text from the configured source, reporting whether a
+   * requested `.fetchBase()` failed. `fetchFailed` is true only when a fetch was
+   * asked for but could not produce a base diff (offline, not a PR, unsafe ref):
+   * the caller must not let an empty working-tree fallback pass the gate silently.
+   */
+  async #resolveDiff(): Promise<{ diff: string; fetchFailed: boolean }> {
     const text = this.#diff.text_();
-    if (text !== undefined) return text;
+    if (text !== undefined) return { diff: text, fetchFailed: false };
     const run = this.#exec ?? ((argv: string[]) => new Command(argv).text());
     // Honour `.fetchBase()` (fetch the base branch, diff against FETCH_HEAD) so
     // CI PR review needs no manual `git fetch`; fall through to the configured
     // source when no fetch was requested or it couldn't be done.
+    const wantsFetch = this.#diff.fetch_() !== undefined;
     const fetched = await fetchBaseDiff(this.#diff, run, this.#env);
-    if (fetched !== undefined) return fetched;
-    return await run(this.#diff.argv_());
+    if (fetched !== undefined) return { diff: fetched, fetchFailed: false };
+    if (wantsFetch && !this.#quiet) {
+      console.warn(
+        `[${this.name}] fetchBase could not compute the base diff — ` +
+          `falling back to the working-tree diff`,
+      );
+    }
+    return { diff: await run(this.#diff.argv_()), fetchFailed: wantsFetch };
   }
 
   /**
@@ -386,7 +398,7 @@ export class Reviewer implements Validation {
   async #publish(markdown: string): Promise<void> {
     writeStepSummary(markdown);
     if (!this.#comment) return;
-    const host = detectReviewHost();
+    const host = detectReviewHost(this.#env);
     if (host === undefined) {
       console.warn(
         `[${this.name}] no PR-comment host detected — skipping comment`,
@@ -395,8 +407,8 @@ export class Reviewer implements Validation {
     }
     const token = this.#commentToken !== undefined
       ? resolveKey(this.#commentToken)
-      : readEnv(host.defaultTokenEnv) ?? "";
-    const upsert = host.prepare(token, readEnv);
+      : this.#env(host.defaultTokenEnv) ?? "";
+    const upsert = host.prepare(token, this.#env);
     if (upsert === undefined) {
       console.warn(
         `[${this.name}] no ${host.label} PR context — skipping comment`,
@@ -440,12 +452,28 @@ export class Reviewer implements Validation {
       }));
     }
 
+    const resolved = await this.#resolveDiff();
     let diff = filterDiff(
-      await this.#resolveDiff(),
+      resolved.diff,
       this.#include,
       [...DEFAULT_EXCLUDES, ...this.#exclude],
     ).trim();
     if (diff === "") {
+      // A requested fetchBase that failed leaves an empty working-tree fallback
+      // on a clean CI checkout. Passing that as an empty assessment would let the
+      // gate go green without reviewing anything — a silent security bypass. Fail
+      // (or, under `onError: "warn"`, skip visibly), never pass silently.
+      if (resolved.fetchFailed) {
+        const reason =
+          "could not compute the base diff (git fetch for the base branch failed)";
+        if (this.#onError === "warn") {
+          await this.#reportSkip(context.target, reason);
+          return;
+        }
+        throw new AiReviewError(
+          `${this.name} of "${context.target}" ${reason}; refusing to pass on an empty fallback diff`,
+        );
+      }
       await this.#report(emptyAssessment(), context.target);
       return;
     }

@@ -40,6 +40,7 @@ import {
 } from "./context.ts";
 import { agentPrompt } from "./prompts/agent.ts";
 import { commitChanged, type GitRunner, porcelainPaths } from "./commit.ts";
+import { fenceMarkdown } from "./markdown.ts";
 import { writeStepSummary } from "./report.ts";
 import { postComment } from "./comment.ts";
 import { type EnvReader, readEnv } from "./hosts.ts";
@@ -107,9 +108,7 @@ function agentMarkdown(
     parts.push(
       "<details><summary>Agent output</summary>",
       "",
-      "```",
-      capped,
-      "```",
+      fenceMarkdown(capped),
       "</details>",
       "",
     );
@@ -257,15 +256,35 @@ export class AgentFixer implements Remediation {
   }
 
   /**
-   * Post the agent's working-tree changes (`git diff HEAD`) as committable
-   * inline suggestions on the PR. Returns the number posted; a no-op off GitHub,
-   * without a PR context, or when the agent produced no committable hunks.
+   * Post the agent's changes as committable inline suggestions on the PR. Scoped
+   * to only the paths the agent newly changed — dirty now but not in `before`
+   * (the pre-agent snapshot) — so a working tree already dirtied by the developer
+   * or earlier build steps is never leaked into the public PR as "agent" output.
+   * Returns the number posted; a no-op off GitHub, without a PR context, when the
+   * status can't be read (fail closed), or when the agent produced no committable
+   * hunks.
    */
-  async #postSuggestions(target: string): Promise<number> {
+  async #postSuggestions(target: string, before: string[]): Promise<number> {
     if (detectCiHost(this.#env) !== "github") return 0;
+    let changed: string[];
+    try {
+      const after = porcelainPaths(
+        await this.#git()(["git", "status", "--porcelain"]),
+      );
+      const beforeSet = new Set(before);
+      changed = after.filter((p) => !beforeSet.has(p));
+    } catch {
+      return 0; // fail closed: can't scope the diff → propose nothing
+    }
+    if (changed.length === 0) return 0;
     let diff: string;
     try {
-      diff = await this.#git()(["git", "diff", "HEAD"]);
+      // Scope the diff to the agent's own paths (never a bare `git diff HEAD`,
+      // which would post the whole dirty tree). `--literal-pathspecs` keeps a
+      // path with a `:` sigil from being read as pathspec magic.
+      diff = await this.#git()(
+        ["git", "--literal-pathspecs", "diff", "HEAD", "--", ...changed],
+      );
     } catch {
       return 0;
     }
@@ -330,11 +349,12 @@ export class AgentFixer implements Remediation {
       criteria: this.#criteria === "" ? undefined : this.#criteria,
     });
 
-    // When committing the fix, snapshot what is already dirty so only the
-    // agent's own changes are staged — never the developer's unrelated edits.
+    // Before committing OR suggesting, snapshot what is already dirty so only the
+    // agent's own changes are staged / proposed — never the developer's unrelated
+    // edits (which, in suggest mode, would otherwise leak into the public PR).
     let dirtyBefore: string[] = [];
     let snapshotOk = true;
-    if (this.#commitFixes) {
+    if (this.#commitFixes || this.#suggest) {
       try {
         dirtyBefore = porcelainPaths(
           await this.#git()(["git", "status", "--porcelain"]),
@@ -342,7 +362,8 @@ export class AgentFixer implements Remediation {
       } catch {
         // Fail CLOSED: without the snapshot we can't tell the agent's changes
         // from the developer's, and `dirtyBefore = []` would sweep everything
-        // in (the exact `git add -A` leak this fix removes). Skip the commit.
+        // in (the exact `git add -A` leak this fix removes). Skip the commit /
+        // suggestions rather than expose unrelated changes.
         snapshotOk = false;
       }
     }
@@ -370,10 +391,16 @@ export class AgentFixer implements Remediation {
     // when not auto-fixing; `.commitFixes()` (auto-fix) takes precedence and
     // reports an overview of what it committed instead.
     if (this.#suggest && !this.#commitFixes) {
-      const posted = await this.#postSuggestions(context.target);
-      const action = posted > 0
-        ? `ran the agent and proposed ${posted} inline suggestion(s) — apply them to fix`
-        : "ran the agent (no committable suggestions produced)";
+      let action: string;
+      if (!snapshotOk) {
+        action =
+          "ran the agent (skipped suggestions: could not snapshot the working tree)";
+      } else {
+        const posted = await this.#postSuggestions(context.target, dirtyBefore);
+        action = posted > 0
+          ? `ran the agent and proposed ${posted} inline suggestion(s) — apply them to fix`
+          : "ran the agent (no committable suggestions produced)";
+      }
       await this.#report(context.target, action, agentOutput);
       return { retry: false };
     }

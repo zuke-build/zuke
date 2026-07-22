@@ -87,7 +87,7 @@ Deno.test("commitFixes stages all changes, commits, and pushes", async () => {
   assertEquals(git, [
     ["git", "status", "--porcelain"], // pre-agent snapshot
     ["git", "status", "--porcelain"], // post-agent, inside commitChanged
-    ["git", "add", "--", "src/app.ts"], // only the agent's file, never `-A`
+    ["git", "--literal-pathspecs", "add", "--", "src/app.ts"], // only the agent's file, never `-A`
     ["git", "commit", "-m", 'Apply Zuke agent fix for "test"'],
     ["git", "push"],
   ]);
@@ -154,7 +154,7 @@ Deno.test("noPush commits without pushing, with a custom message", async () => {
   assertEquals(git, [
     ["git", "status", "--porcelain"], // pre-agent snapshot
     ["git", "status", "--porcelain"], // post-agent, inside commitChanged
-    ["git", "add", "--", "src/app.ts"],
+    ["git", "--literal-pathspecs", "add", "--", "src/app.ts"],
     ["git", "commit", "-m", "fix: heal"],
   ]); // no push
 });
@@ -229,6 +229,7 @@ Deno.test("suggest mode posts the agent's diff as inline suggestions, no commit,
       }),
     );
   }) as typeof fetch;
+  let statusCalls = 0;
   const fixer = agentFixer(() => Promise.resolve())
     .allowCI().suggest().conventions("").readFile(() =>
       Promise.resolve(undefined)
@@ -236,19 +237,59 @@ Deno.test("suggest mode posts the agent's diff as inline suggestions, no commit,
     .env((n) => prEnv[n])
     .exec((argv) => {
       git.push(argv);
-      return Promise.resolve(argv[1] === "diff" ? diff : "");
+      if (argv.includes("status")) {
+        // Pre-agent snapshot: clean. Post-agent: the agent changed zuke.ts.
+        statusCalls++;
+        return Promise.resolve(statusCalls === 1 ? "" : " M zuke.ts");
+      }
+      return Promise.resolve(argv.includes("diff") ? diff : "");
     })
     .fetch(impl).quiet();
   const result = await fixer.remediate(CTX);
   assertEquals(result.retry, false); // proposal mode — build stays failed
-  // It read the agent's diff and never committed.
-  assertEquals(git.some((a) => a[1] === "diff"), true);
-  assertEquals(git.some((a) => a[1] === "commit"), false);
+  // It read the agent's diff (scoped to its own path) and never committed.
+  assertEquals(git.some((a) => a.includes("diff")), true);
+  assertEquals(git.some((a) => a.includes("commit")), false);
   // A review comment with a suggestion block was posted.
   const posted = calls.some((c) =>
     c.url.endsWith("/pulls/7/comments") && c.body.includes("```suggestion")
   );
   assertEquals(posted, true);
+});
+
+Deno.test("suggest mode scopes the diff to the agent's paths, not pre-existing dirt", async () => {
+  const prEnv: Record<string, string> = {
+    GITHUB_ACTIONS: "true",
+    GITHUB_REPOSITORY: "o/r",
+    GITHUB_REF: "refs/pull/7/merge",
+    GITHUB_TOKEN: "tok",
+  };
+  const git: string[][] = [];
+  let statusCalls = 0;
+  const fixer = agentFixer(() => Promise.resolve())
+    .allowCI().suggest().conventions("").readFile(() =>
+      Promise.resolve(undefined)
+    )
+    .env((n) => prEnv[n])
+    .exec((argv) => {
+      git.push(argv);
+      if (argv.includes("status")) {
+        statusCalls++;
+        // Before the agent: the developer already had secrets.env dirty.
+        // After: the agent additionally changed zuke.ts.
+        return Promise.resolve(
+          statusCalls === 1 ? " M secrets.env" : " M secrets.env\n M zuke.ts",
+        );
+      }
+      return Promise.resolve(argv.includes("diff") ? "diff --git a/z b/z" : "");
+    })
+    .noComment().quiet();
+  await fixer.remediate(CTX);
+  // The diff is scoped to only the agent's new path — the developer's dirty
+  // secrets.env is never diffed (and so never leaked into the PR).
+  const diffCall = git.find((a) => a.includes("diff"));
+  assertEquals(diffCall?.includes("zuke.ts"), true);
+  assertEquals(diffCall?.includes("secrets.env"), false);
 });
 
 Deno.test("suggest mode off GitHub reports no committable suggestions", async () => {
@@ -270,16 +311,22 @@ Deno.test("suggest mode tolerates a git diff failure", async () => {
     GITHUB_REF: "refs/pull/7/merge",
     GITHUB_TOKEN: "tok",
   };
+  let statusCalls = 0;
   const fixer = agentFixer(() => Promise.resolve())
     .allowCI().suggest().conventions("").readFile(() =>
       Promise.resolve(undefined)
     )
     .env((n) => prEnv[n])
-    .exec((argv) =>
-      argv[1] === "diff"
+    .exec((argv) => {
+      if (argv.includes("status")) {
+        statusCalls++;
+        return Promise.resolve(statusCalls === 1 ? "" : " M zuke.ts");
+      }
+      // The scoped diff for the agent's changed path fails; suggest tolerates it.
+      return argv.includes("diff")
         ? Promise.reject(new Error("no HEAD"))
-        : Promise.resolve("")
-    )
+        : Promise.resolve("");
+    })
     .noComment().quiet();
   const result = await fixer.remediate(CTX);
   assertEquals(result.retry, false);
@@ -330,7 +377,7 @@ Deno.test("commitChanged stages only the agent's new changes, not pre-existing d
   });
   assertEquals(calls, [
     ["git", "status", "--porcelain"],
-    ["git", "add", "--", "new.ts"], // never `git add -A`, never `already.ts`
+    ["git", "--literal-pathspecs", "add", "--", "new.ts"], // never `git add -A`, never `already.ts`
     ["git", "commit", "-m", "m"],
   ]);
 });
@@ -382,7 +429,9 @@ Deno.test("commitFixes fails closed when the pre-snapshot cannot be taken", asyn
   // Never staged/committed/pushed: without the snapshot we can't isolate the
   // agent's changes, so the developer's dirty file is left untouched.
   assertEquals(
-    git.some((c) => c[1] === "add" || c[1] === "commit" || c[1] === "push"),
+    git.some((c) =>
+      c.includes("add") || c.includes("commit") || c.includes("push")
+    ),
     false,
   );
 });
