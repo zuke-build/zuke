@@ -1220,12 +1220,18 @@ class Parameter<K extends ParamValue = ParamValue, T extends K | K[] | undefined
   array(this: Parameter<E, E | undefined>): Parameter<E, E[]>
     Accept a comma-separated list (or a repeated flag), exposing `value` as an
     array. `--tags a,b` and `--tags a --tags b` both yield `["a", "b"]`; blank
-    entries are dropped, and an unsupplied list defaults to `[]`.
+    entries are dropped, and an unsupplied optional list defaults to `[]`
+    (a required one is reported missing — see below).
 
     Each element is parsed by this parameter's own element parser, so it
     composes: `.options("a", "b").array()` validates every element against
     the choices, and `.number().array()` yields a `number[]`, rejecting a
     non-numeric entry. (Apply `.options()`/`.number()` before `.array()`.)
+
+    `.array()` composes last, after `.required()` too: a
+    `.required().array()` list stays required, so an unsupplied value is
+    reported as missing rather than silently resolving to the empty-list
+    default. An optional (non-required) list defaults to `[]`.
   resolve_(raw: string | undefined): void
     Resolve from a raw input (or `undefined` when none was supplied).
 

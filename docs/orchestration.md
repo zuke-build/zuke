@@ -287,7 +287,7 @@ without hand-writing a target per item.
 
 ```ts
 class CD extends Build {
-  repos = parameter("services to deploy").array().required();
+  repos = parameter("services to deploy").required().array();
 
   deployBatch = target().forEach(
     () => this.repos.value, // items: a thunk, read when the target runs

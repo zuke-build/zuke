@@ -59,16 +59,19 @@ declaration:
 | `.array()`           | a comma-separated / repeatable list           | `T[]`                 |
 
 `.number()` and `.boolean()` come first (they change the kind); `.options()`
-applies to strings; `.array()` comes **last** and composes with the kind and
-choices before it. A required parameter with no value (and no default) fails the
-build before any target runs, with a message naming the flag and env var —
-unless it can be supplied interactively (below).
+applies to strings; `.required()`/`.default()` set optionality; and `.array()`
+comes **last** and composes with everything before it — so a required list is
+`.required().array()` (in that order). A required parameter with no value (and
+no default) fails the build before any target runs, with a message naming the
+flag and env var — unless it can be supplied interactively (below).
 
 ## Lists
 
 `.array()` turns a string parameter into a list. On the command line, a comma
 separates values **or** the flag is repeated (the two are equivalent); blank
-entries are dropped, and an unsupplied list defaults to `[]`.
+entries are dropped. An unsupplied **optional** list defaults to `[]`; make it
+`.required().array()` to reject a missing value instead (the required flag
+carries through `.array()`).
 
 ```ts
 tags = parameter("Image tags").array();
@@ -90,6 +93,9 @@ workers = parameter("Worker ids").number().array();
 
 // each element must be one of the choices; "api,nope" is rejected.
 services = parameter("Services").options("api", "web", "worker").array();
+
+// required list: missing --repos fails the build (not a silent []).
+repos = parameter("Repos to deploy").required().array();
 ```
 
 ## Secrets

@@ -307,7 +307,7 @@ concurrency:
 import { Build, parameter, target } from "jsr:@zuke/core";
 
 class CD extends Build {
-  repos = parameter("services").array().required();
+  repos = parameter("services").required().array();
 
   deployBatch = target().forEach(
     () => this.repos.value, // items: thunk, read when the target runs
@@ -355,9 +355,17 @@ class MyBuild extends Build {
 
 Secrets are masked in CI output. Read a resolved value with `this.x.value`.
 
-Lists: `.array()` (comma-separated or repeated flag → `[]`-default array) comes
-last and composes — `.options("a", "b").array()` validates each element, and
-`.number().array()` yields a `number[]`.
+Kinds & modifiers: `.number()` → `number`, `.boolean()` → `boolean` (a flag,
+defaults to `false`), `.options("a", "b")` restricts a string, `.secret()`
+masks + redacts, `.default(v)`/`.required()` set optionality, `.env(NAME)`
+overrides the env var.
+
+Lists: `.array()` (comma-separated or repeated flag) comes **last** and
+composes — `.options("a", "b").array()` validates each element, and
+`.number().array()` yields a `number[]`. Order is kind/options →
+`.required()` → `.array()`: put `.required()` **before** `.array()`
+(`.required().array()`), not after — `.array().required()` fails to typecheck,
+and a non-required list defaults to `[]`.
 
 ### Secrets from a manager — `.from(source)`
 
