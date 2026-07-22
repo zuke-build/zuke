@@ -112,6 +112,39 @@ class Release extends Build {
 - **Auth** uses `GH_TOKEN` / `GITHUB_TOKEN`; the GitHub API is an injectable
   transport, so it is testable without a real GitHub.
 
+#### The dispatched workflow's contract
+
+The gate is only half the wiring. Three requirements on the **target** workflow
+are load-bearing — each is a deterministic dispatch `422` or a gate that hangs
+until timeout:
+
+```yaml
+# .github/workflows/e2e.yml — in the repo being dispatched
+on:
+  workflow_dispatch:
+    inputs:
+      zuke_marker: { required: false } # rename → .markerInput("name") on the gate
+      # any `required: true` input here must be supplied via .inputs(...) below
+run-name: ${{ inputs.zuke_marker }} # the ENTIRE run-name; equality, not substring
+```
+
+- **Marker input name.** The correlation marker is dispatched as an input named
+  `zuke_marker` by default. GitHub `422`s a dispatch carrying an input the
+  workflow does not declare, so a workflow that names its marker input anything
+  else rejects the dispatch outright — declare `zuke_marker`, or point the gate
+  at your name with `.markerInput("<name>")`.
+- **Required inputs.** Every `required: true` input on the target workflow must be
+  supplied from the gate with `.inputs({ … })` / `.input(name, value)`, or the
+  dispatch `422`s. The settings lambda is evaluated when the build is defined and
+  has **no access to run state** (`ctx.state`) — it can read params but not a
+  value an earlier target recorded in run state, so an input whose value is
+  produced at run time needs a custom `WaitTrigger`.
+- **Strict run-name equality.** Marker correlation matches
+  `display_title === marker` — **exact equality, not substring**. A decorated
+  run-name like `run-name: E2E [${{ inputs.zuke_marker }}]` dispatches fine and
+  then never correlates, so the gate just times out. Echo the marker as the
+  workflow's _entire_ `run-name:`, or switch to `.correlate("created-window")`.
+
 ## What suspend does
 
 When the scheduler reaches a wait whose trigger is **not** satisfied:

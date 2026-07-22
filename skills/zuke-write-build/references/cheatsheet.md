@@ -264,8 +264,11 @@ class Deploy extends Build {
   correlates via a marker echoed into the run's `run-name:`; for a workflow you
   can't modify use `.correlate("created-window")` (best-effort). Either way it
   **fails fast** (`.discoveryTimeout(...)`, default 1m) if the run never
-  correlates, instead of eating the whole `.timeout()`. Write your own trigger
-  against the exported `WaitTrigger` / `WaitContext` interface.
+  correlates, instead of eating the whole `.timeout()`. The **dispatched**
+  workflow has its own contract (marker input, run-name, required inputs) — see
+  [The dispatched workflow's contract](#the-dispatched-workflows-contract-githubworkflow)
+  below. Write your own trigger against the exported `WaitTrigger` /
+  `WaitContext` interface.
 - Needs a state store (a build with `.waitsFor()` enables `.zuke/runs` by
   default). A resume is a fresh process, so **only `ctx.state`/`ctx.signals`
   cross the boundary**. See `docs/orchestration.md`.
@@ -274,6 +277,37 @@ class Deploy extends Build {
   `zuke resume --check [<id>]` for predicate waits/timeouts). Resumption is
   **exactly-once** (concurrent resumers get `AlreadyResumedError`) and re-runs
   only the not-yet-succeeded targets; `--force-graph` overrides a changed graph.
+
+### The dispatched workflow's contract (`githubWorkflow`)
+
+The gate is only half the wiring — the **target** workflow has a contract, and
+each of these three is a deterministic dispatch `422` or a gate that hangs until
+timeout:
+
+```yaml
+# .github/workflows/e2e.yml — in the repo being dispatched
+on:
+  workflow_dispatch:
+    inputs:
+      zuke_marker: { required: false } # rename → .markerInput("name") on the gate
+      # any `required: true` input here must be supplied via .inputs(...) below
+run-name: ${{ inputs.zuke_marker }} # the ENTIRE run-name; equality, not substring
+```
+
+- **Marker input name.** The marker is dispatched as an input named `zuke_marker`
+  by default; a dispatch carrying an input the workflow does not declare is
+  `422`ed, so a workflow that names it anything else rejects the dispatch. Declare
+  `zuke_marker`, or point the gate at your name with `.markerInput("<name>")`.
+- **Required inputs.** Every `required: true` input on the target workflow must be
+  passed from the gate with `.inputs({ … })` / `.input(name, value)`, or the
+  dispatch `422`s. The settings lambda is captured when the build is defined and
+  has **no run state** — it can read params but not a value an earlier target
+  recorded in `ctx.state`; for a run-time value, write a custom `WaitTrigger`.
+- **Strict run-name equality.** Marker mode matches `display_title === marker`
+  **exactly, not by substring**. A decorated run-name
+  (`run-name: E2E [${{ inputs.zuke_marker }}]`) dispatches fine but never
+  correlates — the gate just times out. Echo the marker as the workflow's
+  _entire_ `run-name:`, or use `.correlate("created-window")`.
 
 ## Cancellation & compensation — `.onCancel()`
 
