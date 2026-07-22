@@ -9,6 +9,9 @@
 # Generated Zuke artifacts (e.g. `zuke graph` output)
 /.zuke/
 
+# Doc-snippet type-check scratch dirs (build/snippets.ts; cleaned up per run)
+/.snippets-*/
+
 # Editor / OS noise
 .DS_Store
 *.swp

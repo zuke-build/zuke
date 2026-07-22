@@ -54,11 +54,13 @@ The mental model:
   import { DenoTasks } from "jsr:@zuke/deno";
 
   class CI extends Build {
-    lint = target().executes(() => DenoTasks.lint());
+    lint = target().executes(async () => {
+      await DenoTasks.lint();
+    });
     test = target().dependsOn(this.lint)
-      .executes(() =>
-        DenoTasks.test((s) => s.allowAll().coverage("cov_profile"))
-      );
+      .executes(async () => {
+        await DenoTasks.test((s) => s.allowAll().coverage("cov_profile"));
+      });
   }
 
   await run(CI);

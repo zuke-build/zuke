@@ -9,6 +9,8 @@ A build is a class that **extends `Build`**. Each **target is a class field**
 created with `target()` and made runnable with `await run(MyBuild)` at the
 bottom of `zuke.ts` (no `import.meta.main` guard — `run` no-ops on import).
 
+<!-- check -->
+
 ```ts
 import { Build, run, target } from "jsr:@zuke/core";
 import { DenoTasks } from "jsr:@zuke/deno";
@@ -16,14 +18,16 @@ import { DenoTasks } from "jsr:@zuke/deno";
 class CI extends Build {
   lint = target()
     .description("Lint sources")
-    .executes(() => DenoTasks.lint());
+    .executes(async () => {
+      await DenoTasks.lint();
+    });
 
   test = target()
     .description("Type-check and test")
     .dependsOn(this.lint)
-    .executes(() =>
-      DenoTasks.test((s) => s.allowAll().coverage("cov_profile"))
-    );
+    .executes(async () => {
+      await DenoTasks.test((s) => s.allowAll().coverage("cov_profile"));
+    });
 
   // A field named `default` runs when no target is named on the CLI.
   default = target().dependsOn(this.test).executes(() => {});
