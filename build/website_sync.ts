@@ -37,16 +37,21 @@ export async function runWebsiteSync(build: Build): Promise<void> {
   await DocsTasks.apiDocs(await collectPackageDocs(), docsOptions(build));
   await writeApiJson();
 
-  // Shallow-clone the website into a throwaway temp dir, authenticated via
-  // the token embedded in the remote URL (so the later push reuses it); the
-  // dir — and its credentialed .git/config — is deleted in `finally`.
+  // Shallow-clone the website (a public repo — the clone needs no credential)
+  // into a throwaway temp dir, deleted in `finally`.
   const coreVersion = await localVersion("core");
   const branch = `zuke-sync/${coreVersion}`;
   const message = `chore: sync docs + api reference for core@${coreVersion}`;
   const dir = await Deno.makeTempDir({ prefix: "zuke-sync-" });
+  // The push carries the token as a one-off HTTP Authorization header rather
+  // than embedding it in the remote URL — so it is never persisted in
+  // .git/config or echoed back by git. Mirrors how actions/checkout injects
+  // credentials.
+  const authHeader = `AUTHORIZATION: basic ${btoa(`x-access-token:${token}`)}`;
   try {
-    const url = `https://x-access-token:${token}@github.com/${repo}.git`;
-    await GitTasks.clone((s) => s.repository(url).directory(dir).depth(1));
+    await GitTasks.clone((s) =>
+      s.repository(`https://github.com/${repo}.git`).directory(dir).depth(1)
+    );
 
     // Reset the sync branch off the freshly-cloned default branch.
     await GitTasks.checkout((s) => s.dir(dir).ref(branch).create());
@@ -81,9 +86,15 @@ export async function runWebsiteSync(build: Build): Promise<void> {
         )
         .message(message)
     );
-    // Force-push so the branch is create-or-reset on every release.
+    // Force-push so the branch is create-or-reset on every release. The token
+    // rides as a one-off `-c http.extraheader`, never in the remote URL.
     await GitTasks.run((s) =>
-      s.dir(dir).command("push", "--force", "origin", branch)
+      s.dir(dir).config("http.extraheader", authHeader).command(
+        "push",
+        "--force",
+        "origin",
+        branch,
+      )
     );
 
     // Open the PR, or note the existing one — a push to the same head
