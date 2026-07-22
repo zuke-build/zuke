@@ -10,22 +10,20 @@
  *   deno task zuke release   # release-please: maintain release PRs & releases
  *   deno task zuke publish   # publish new package versions to JSR, core first
  *   deno task zuke --list    # show every target
+ *
+ * The reusable helpers behind these targets live in `./build/*.ts`; this file
+ * is just the build definition (the `ZukeBuild` class) plus `run()`.
  */
 
 import {
-  type AbsolutePath,
   Build,
   cicd,
-  describeCli,
   FileTasks,
-  glob,
   parameter,
-  repoRoot,
   run,
   target,
   toolchain,
 } from "@zuke/core";
-import { CommandTimeoutError } from "@zuke/core/shell";
 import { consoleRenderer, ConsoleTasks } from "@zuke/console";
 import {
   aiFixer,
@@ -34,7 +32,7 @@ import {
   securityReviewer,
   suppressions,
 } from "@zuke/ai";
-import { type DenoInstallSettings, DenoTasks } from "@zuke/deno";
+import { DenoTasks } from "@zuke/deno";
 import { CspellTasks } from "@zuke/cspell";
 import { CodecovTasks } from "@zuke/codecov";
 import { isPublished } from "@zuke/jsr";
@@ -44,326 +42,21 @@ import {
   ReleasePleaseTasks,
 } from "@zuke/release-please";
 import { SecurityTasks } from "@zuke/security";
+import { DocsTasks } from "@zuke/docs";
+import { localVersion, PACKAGES } from "./build/packages.ts";
 import {
-  type ApiDocsOptions,
-  type DocLintReport,
-  DocsTasks,
-  type PackageDoc,
-  type ProjectInfo,
-} from "@zuke/docs";
-
-/** Workspace packages, in dependency order: core must publish before the rest. */
-const PACKAGES = [
-  "core",
-  "deno",
-  "docs",
-  "npm",
-  "npx",
-  "bun",
-  "pnpm",
-  "yarn",
-  "cmd",
-  "console",
-  "cli",
-  "docker",
-  "docker-compose",
-  "kubectl",
-  "helm",
-  "kustomize",
-  "oxlint",
-  "eslint",
-  "cspell",
-  "jest",
-  "vitest",
-  "playwright",
-  "cypress",
-  "biome",
-  "knip",
-  "dpdm",
-  "jsr",
-  "vite",
-  "tsup",
-  "turbo",
-  "nx",
-  "tsx",
-  "tsgo",
-  "tsc",
-  "tsc-alias",
-  "tsdown",
-  "nest",
-  "openapi-ts",
-  "orval",
-  "husky",
-  "node",
-  "dprint",
-  "gcloud",
-  "git",
-  "gh",
-  "codecov",
-  "claude",
-  "codex",
-  "gemini",
-  "terraform",
-  "tofu",
-  "release-please",
-  "security",
-  "ai",
-  "otel",
-];
-
-/** Project framing for the generated API docs (`@zuke/docs`). */
-const DOCS_PROJECT: ProjectInfo = {
-  title: "Zuke",
-  summary:
-    "Code-first, strongly-typed build automation for Deno/TypeScript. Define " +
-    "a build by extending `Build`; declare targets with the `target()` fluent " +
-    "builder, wiring dependencies as `this.<field>` references (not strings) " +
-    "for compile-time safety. Every external tool has a typed `*Tasks` wrapper " +
-    "in a settings-lambda style — never shell out by hand.",
-  install: "deno run -A jsr:@zuke/cli setup",
-  example: [
-    'import { Build, run, target } from "jsr:@zuke/core";',
-    'import { DenoTasks } from "jsr:@zuke/deno";',
-    "",
-    "class CI extends Build {",
-    "  lint = target().executes(() => DenoTasks.lint());",
-    "  test = target().dependsOn(this.lint)",
-    "    .executes(() => DenoTasks.test((s) => s.allowAll()));",
-    "}",
-    "",
-    "await run(CI);",
-  ].join("\n"),
-  guidance: [
-    "A single package's API on the command line: " +
-    "`deno doc jsr:@zuke/<package>`",
-  ],
-};
-
-const DOCS_OPTIONS: ApiDocsOptions = {
-  regenerateCommand: "./zuke apiDocs",
-  project: DOCS_PROJECT,
-};
-
-/**
- * Render the `## CLI` block for the generated index from the build's own
- * command/flag registry (via `describeCli`), so the agent docs describe the
- * `zuke` command — not just the importable API — and never drift from the CLI.
- */
-function cliReference(): string {
-  const { commands, flags } = describeCli(new ZukeBuild());
-  const bullets = (
-    items: ReadonlyArray<{ name: string; description: string }>,
-  ) => items.map((i) => `- \`${i.name}\` — ${i.description}`);
-  return [
-    "Run a build with the `zuke` command — `deno run -A zuke.ts <target>` (or",
-    "the `./zuke` launcher). The CLI is self-describing:",
-    "",
-    "```sh",
-    "zuke <target> [--skip <dep>] [--parallel[=N]]    # run a target and its deps",
-    "zuke --list [--json]                             # list targets (JSON: full surface)",
-    "zuke graph [--output=html]                       # dependency graph",
-    "zuke generate-ci [--check]                       # write declared CI files",
-    "zuke completions <print|install> <bash|zsh|fish> # shell completion",
-    "```",
-    "",
-    "`zuke --help` prints the usage grammar plus the build's live targets and",
-    "parameters; `zuke --list --json` emits the whole surface for tools.",
-    "",
-    "Reserved commands:",
-    "",
-    ...bullets(commands),
-    "",
-    "Option flags:",
-    "",
-    ...bullets(flags),
-    "",
-    "Full reference: [docs/cli.md](./docs/cli.md).",
-  ].join("\n");
-}
-
-/** {@link DOCS_OPTIONS} with the freshly rendered CLI block injected. */
-function docsOptions(): ApiDocsOptions {
-  return { ...DOCS_OPTIONS, project: { ...DOCS_PROJECT, cli: cliReference() } };
-}
-
-/**
- * Produce each package's API documentation text with `deno doc` (from
- * `@zuke/deno`), so `@zuke/docs` can consume it without running `deno` itself.
- */
-async function collectPackageDocs(): Promise<PackageDoc[]> {
-  const docs: PackageDoc[] = [];
-  for (const dir of PACKAGES) {
-    // Document every declared entrypoint, not just `mod.ts`, so a package with
-    // secondary exports (core's `./shell`, `./tooling`, `./render`,
-    // `./conformance`) has its whole typed surface in `llms-full.txt` and its
-    // README — the "whole typed surface" the docs claim to carry.
-    const entrypoints = await packageEntrypoints(dir);
-    const { stdout } = await DenoTasks.doc((s) =>
-      s.paths(...entrypoints).env({ NO_COLOR: "1" }).quiet()
-    );
-    docs.push({ name: `@zuke/${dir}`, dir, doc: stdout });
-  }
-  return docs;
-}
-
-/** A package's export entrypoints (resolved from its `deno.json` `exports`). */
-async function packageEntrypoints(dir: string): Promise<string[]> {
-  const json = await FileTasks.readText(`packages/${dir}/deno.json`);
-  const exportsField: unknown = JSON.parse(json).exports;
-  const specs: string[] = [];
-  if (typeof exportsField === "string") {
-    specs.push(exportsField);
-  } else if (exportsField !== null && typeof exportsField === "object") {
-    for (const value of Object.values(exportsField)) {
-      if (typeof value === "string") specs.push(value);
-    }
-  }
-  return specs.map((p) => `packages/${dir}/${p.replace(/^\.\//, "")}`);
-}
-
-/**
- * The local names a package imports from another `@zuke/*` package — the types
- * a public signature may reference without exporting them locally (guideline
- * 4's accepted `private-type-ref` residual). Everything else a `deno doc --lint`
- * `private-type-ref` names is first-party and must be exported, so the doc-lint
- * gate flags it. Covers named specifiers (`{ type X, Y as Z }`), namespace
- * (`* as ns`), and default imports; tests are excluded (not the doc surface).
- */
-async function crossPackageTypesOf(dir: string): Promise<string[]> {
-  const files = (await glob(`packages/${dir}/**/*.ts`))
-    .filter((f) => !f.includes(`packages/${dir}/tests/`));
-  const names = new Set<string>();
-  // Each `import … from "…"` statement. Anchored at a line start (`m` flag) so
-  // a `* import { … } from "jsr:@zuke/…"` example inside a JSDoc block (prefixed
-  // by `* `) is not matched; the specifier is filtered to `@zuke/*` in code.
-  const importStmt =
-    /^import\b(?:\s+type\b)?([\s\S]*?)\bfrom\s*["']([^"']*)["']/gm;
-  for (const file of files) {
-    for (const m of (await FileTasks.readText(file)).matchAll(importStmt)) {
-      if (!m[2].startsWith("@zuke/")) continue;
-      const clause = m[1];
-      const namespace = clause.match(/\*\s+as\s+([A-Za-z_$][\w$]*)/);
-      if (namespace !== null) names.add(namespace[1]);
-      const braces = clause.match(/\{([\s\S]*)\}/);
-      if (braces !== null) {
-        for (const part of braces[1].split(",")) {
-          const spec = part.trim().replace(/^type\s+/, "");
-          if (spec === "") continue;
-          // `X as Z` binds the local name `Z`; a bare `X` binds `X`.
-          const asMatch = spec.match(/\bas\s+([A-Za-z_$][\w$]*)/);
-          const local = asMatch !== null
-            ? asMatch[1]
-            : spec.match(/^([A-Za-z_$][\w$]*)/)?.[1];
-          if (local !== undefined) names.add(local);
-        }
-      } else {
-        // A bare default import: `import Foo from "@zuke/…"`.
-        const def = clause.match(/^([A-Za-z_$][\w$]*)\s*$/);
-        if (def !== null) names.add(def[1]);
-      }
-    }
-  }
-  return [...names];
-}
-
-/**
- * Collect a {@link DocLintReport} per package: the `deno doc --lint` output for
- * its entrypoints (captured with `noThrow`, since the linter exits non-zero on
- * any diagnostic) plus the types it imports from other `@zuke/*` packages.
- */
-async function collectDocLintReports(): Promise<DocLintReport[]> {
-  const reports: DocLintReport[] = [];
-  for (const dir of PACKAGES) {
-    const entrypoints = await packageEntrypoints(dir);
-    const { stderr } = await DenoTasks.doc((s) =>
-      s.paths(...entrypoints).lint().env({ NO_COLOR: "1" }).noThrow().quiet()
-    );
-    reports.push({
-      pkg: `@zuke/${dir}`,
-      output: stderr,
-      crossPackageTypes: await crossPackageTypesOf(dir),
-    });
-  }
-  return reports;
-}
-
-/**
- * Where build-time CLIs are installed on demand. Gitignored (`/.zuke/`), so the
- * install is a transient, per-run artifact.
- */
-const TOOLS_ROOT: AbsolutePath = repoRoot(".zuke", "tools");
-
-/**
- * The pinned Codecov CLI version `coverageUpload` downloads. Pinned (never
- * `latest`) so the build is reproducible and fetches a fixed artifact rather
- * than a moving target; bump it deliberately. Codecov serves versioned binaries
- * at `cli.codecov.io/v<semver>/<platform>/codecov`.
- */
-const CODECOV_CLI_VERSION = "v11.2.8";
-
-/**
- * Install an npm-distributed CLI as a local executable under {@link TOOLS_ROOT}
- * and return the absolute path to its launcher. cspell and release-please ship
- * only on npm, so the build provisions them with `deno install` rather than
- * assuming a global binary — keeping the gate runnable without a separate setup
- * step. The caller's `permit` lambda grants the launcher its permissions.
- */
-async function installCli(
-  module: string,
-  name: string,
-  permit: (s: DenoInstallSettings) => DenoInstallSettings,
-): Promise<AbsolutePath> {
-  await DenoTasks.install((s) =>
-    permit(s.global().force().root(TOOLS_ROOT).name(name)).module(module)
-  );
-  return TOOLS_ROOT("bin", name);
-}
-
-/** Validate and return the `version` field of a parsed `deno.json`. */
-function readVersion(value: unknown): string {
-  if (typeof value !== "object" || value === null) {
-    throw new Error("deno.json must be a JSON object.");
-  }
-  if (!("version" in value)) {
-    throw new Error('deno.json is missing a "version" field.');
-  }
-  if (typeof value.version !== "string") {
-    throw new Error('deno.json "version" must be a string.');
-  }
-  return value.version;
-}
-
-/** The current version declared in `packages/<pkg>/deno.json`. */
-async function localVersion(pkg: string): Promise<string> {
-  return readVersion(await FileTasks.readJson(`packages/${pkg}/deno.json`));
-}
-
-/** How long to wait for one `deno publish` before treating it as stalled. */
-const PUBLISH_TIMEOUT_MS = 180_000;
-
-/**
- * Publish one package with a timeout. Returns `true` on success, or `false` if
- * `deno publish` stalled past the timeout and was killed. JSR's post-upload
- * finalization (provenance) occasionally hangs *after* the upload completes, so
- * the caller re-checks JSR before deciding whether a `false` is fatal.
- *
- * `--allow-dirty`: release-please bumps `deno.json` versions on the release PR
- * branch, so the merged tree should already be clean here. It is kept as a
- * backstop; for the strongest "published == committed source" guarantee (which
- * provenance otherwise gives) drop it once a real release confirms the publish
- * tree is clean. See SECURITY.md.
- */
-async function publishPackage(pkg: string): Promise<boolean> {
-  try {
-    await DenoTasks.publish((s) =>
-      s.allowDirty().cwd(`packages/${pkg}`).killAfter(PUBLISH_TIMEOUT_MS)
-    );
-    return true;
-  } catch (error) {
-    if (error instanceof CommandTimeoutError) return false;
-    throw error;
-  }
-}
+  CODECOV_CLI_VERSION,
+  installCli,
+  publishPackage,
+  TOOLS_ROOT,
+} from "./build/publish.ts";
+import {
+  collectDocLintReports,
+  collectPackageDocs,
+  docsOptions,
+} from "./build/docs.ts";
+import { writeApiJson } from "./build/api_reference.ts";
+import { runWebsiteSync } from "./build/website_sync.ts";
 
 class ZukeBuild extends Build {
   clean = target()
@@ -606,7 +299,7 @@ class ZukeBuild extends Build {
     .executes(async () => {
       const written = await DocsTasks.apiDocs(
         await collectPackageDocs(),
-        docsOptions(),
+        docsOptions(this),
       );
       ConsoleTasks.info(
         written.length === 0
@@ -620,7 +313,7 @@ class ZukeBuild extends Build {
     .executes(async () => {
       const stale = await DocsTasks.checkApiDocs(
         await collectPackageDocs(),
-        docsOptions(),
+        docsOptions(this),
       );
       if (stale.length > 0) {
         throw new Error(
@@ -628,6 +321,25 @@ class ZukeBuild extends Build {
             "Run `./zuke apiDocs` and commit the result.",
         );
       }
+    });
+
+  apiReference = target()
+    .description(
+      "Generate the structured API reference (dist/api.json) for the website",
+    )
+    .executes(async () => {
+      const reference = await writeApiJson();
+      ConsoleTasks.info(
+        `Wrote dist/api.json (${reference.packages.length} packages).`,
+      );
+    });
+
+  syncWebsite = target()
+    .description(
+      "Open a PR to the website with refreshed llms.txt + api.json",
+    )
+    .executes(async () => {
+      await runWebsiteSync(this);
     });
 
   docLint = target()
@@ -727,7 +439,10 @@ class ZukeBuild extends Build {
       // tests). `1eav335` is by design: list_runs/show_run are read-only over
       // non-secret records, "always exposed when a store resolves" per M5, and
       // gated by the transport's auth. (IDs are opaque fingerprints.)
-      // cspell:ignore myee fmcx ownw eav
+      // `3ud7i3zbigfl0` is a false positive: a static, author-written workflow
+      // comment documenting the website-sync job — it does not execute and
+      // feeds no runtime model, so there is no prompt-injection surface.
+      // cspell:ignore myee fmcx ownw eav zbigfl
       .suppress(
         suppressions((s) =>
           s.add(
@@ -738,6 +453,7 @@ class ZukeBuild extends Build {
             "z2fmcx",
             "1ownw8s",
             "1eav335",
+            "3ud7i3zbigfl0",
           )
         ),
       )

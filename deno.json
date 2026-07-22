@@ -61,7 +61,7 @@
     "test": "GITHUB_STEP_SUMMARY= deno test -A --frozen",
     "cov": "deno run -A zuke.ts coverage",
     "cov:report": "deno coverage cov_profile '--exclude=tests/'",
-    "check": "deno check --frozen zuke.ts tests/**/*.ts packages/*/mod.ts packages/*/src/**/*.ts packages/*/tests/**/*.ts",
+    "check": "deno check --frozen zuke.ts build/*.ts tests/**/*.ts packages/*/mod.ts packages/*/src/**/*.ts packages/*/tests/**/*.ts",
     "fmt": "deno fmt",
     "fmt:check": "deno fmt --check",
     "lint": "deno lint",
@@ -71,6 +71,7 @@
   "fmt": {
     "include": [
       "zuke.ts",
+      "build/",
       "tests/",
       "packages/"
     ],
@@ -81,6 +82,7 @@
   "lint": {
     "include": [
       "zuke.ts",
+      "build/",
       "tests/",
       "packages/"
     ],

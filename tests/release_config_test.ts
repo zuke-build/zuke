@@ -133,14 +133,15 @@ Deno.test("the README package table lists every workspace package", async () => 
   );
 });
 
-Deno.test("the zuke.ts JSR publish list covers every workspace package", async () => {
-  // `publishJsr` only iterates this array, so a package missing here is silently
-  // never published — guard against that drift (it is what stranded the AI CLI
+Deno.test("the build/packages.ts publish list covers every workspace package", async () => {
+  // `publishJsr` only iterates this array (defined in build/packages.ts and
+  // imported by zuke.ts), so a package missing here is silently never
+  // published — guard against that drift (it is what stranded the AI CLI
   // wrappers on JSR).
-  const source = await Deno.readTextFile("zuke.ts");
+  const source = await Deno.readTextFile("build/packages.ts");
   const block = source.match(/const PACKAGES = \[([^\]]*)\]/);
   if (block === null) {
-    throw new Error("could not find the PACKAGES array in zuke.ts");
+    throw new Error("could not find the PACKAGES array in build/packages.ts");
   }
   const names = [...block[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]);
   assertEquals(

@@ -69,3 +69,51 @@ jobs:
       # DENO_VERSION); no separate setup-deno step.
       - name: Publish new versions to JSR with Zuke
         run: ./zuke publishJsr
+
+  # Push refreshed docs (llms.txt/llms-full.txt) and api.json to the website by
+  # opening a PR on the separate `zuke-build.github.io` repo. The default
+  # GITHUB_TOKEN cannot push cross-repo, so we mint a short-lived installation
+  # token from the "Zuke Build" GitHub App (ZUKE_BUILD_APP_ID/_KEY org secrets),
+  # scoped to just the website repo. `contents: read` here is enough — the
+  # cross-repo write rides on the app token. The target is idempotent
+  # (no diff → no PR), so running it every release is safe.
+  sync-website:
+    name: Sync website docs + API reference
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      # Mint a short-lived, website-scoped installation token from the GitHub
+      # App. The default GITHUB_TOKEN is scoped to this repo only and cannot
+      # push to zuke-build.github.io; this token can (contents + pull-requests
+      # write, limited to that one repo) and expires in an hour.
+      - name: Mint a website-scoped token from the Zuke Build app
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.ZUKE_BUILD_APP_ID }}
+          private-key: ${{ secrets.ZUKE_BUILD_APP_KEY }}
+          owner: zuke-build
+          repositories: zuke-build.github.io
+          # Narrow the minted token to exactly what syncWebsite needs — a branch
+          # push and a PR — rather than the app's full permission set.
+          permission-contents: write
+          permission-pull-requests: write
+
+      # The ./zuke launcher bootstraps a pinned Deno version (override with
+      # DENO_VERSION); no separate setup-deno step.
+      - name: Open the website sync PR with Zuke
+        run: ./zuke syncWebsite
+        env:
+          WEBSITE_SYNC_TOKEN: ${{ steps.app-token.outputs.token }}
