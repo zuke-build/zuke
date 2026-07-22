@@ -111,10 +111,20 @@ const denoCheck: SnippetChecker = async (path) => {
   return { ok: out.code === 0, detail: `${out.stderr}${out.stdout}`.trim() };
 };
 
-/** Replace the snippet's temp path (bare and `file://` forms) with `snippet.ts`. */
-function reduceTempPath(detail: string, path: string): string {
-  const url = `file://${path.startsWith("/") ? path : `/${path}`}`;
-  return detail.replaceAll(url, "snippet.ts").replaceAll(path, "snippet.ts");
+/**
+ * Reduce the snippet's temp path to `snippet.ts` in checker output, in every
+ * form it can appear: the raw path, the forward-slash path, and the `file://`
+ * URL. `deno check` always emits forward-slash `file://` URLs even on Windows
+ * (where the path itself uses backslashes), so both separator conventions are
+ * normalised before matching.
+ */
+export function reduceTempPath(detail: string, path: string): string {
+  const forward = path.replaceAll("\\", "/");
+  const url = `file://${forward.startsWith("/") ? forward : `/${forward}`}`;
+  return detail
+    .replaceAll(url, "snippet.ts")
+    .replaceAll(forward, "snippet.ts")
+    .replaceAll(path, "snippet.ts");
 }
 
 /**

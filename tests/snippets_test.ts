@@ -18,6 +18,7 @@ import {
   collectCheckedSnippets,
   extractCheckedSnippets,
   formatSnippetFailures,
+  reduceTempPath,
   type SnippetChecker,
 } from "../build/snippets.ts";
 
@@ -131,23 +132,39 @@ Deno.test("check: a failing snippet is reported with its source location, temp p
       md,
       [CHECK_MARKER, "```ts", "const a = 1;", "```"].join("\n"),
     );
-    // A fake checker that fails and echoes both the bare temp path and its
-    // file:// URL, so the reduction of both forms to `snippet.ts` is asserted.
-    const fake: SnippetChecker = (path) =>
-      Promise.resolve({
-        ok: false,
-        detail: `error ${path} and file://${path} end`,
-      });
+    // A fake checker that fails and echoes the snippet's `file://` URL the way
+    // `deno check` does (forward slashes on every OS), so the reduction to
+    // `snippet.ts` is asserted through the full orchestration.
+    const fake: SnippetChecker = (path) => {
+      const forward = path.replaceAll("\\", "/");
+      const url = `file://${forward.startsWith("/") ? forward : `/${forward}`}`;
+      return Promise.resolve({ ok: false, detail: `error at ${url}:2:1` });
+    };
     const failures = await checkSnippets([md], fake);
     assertEquals(failures.length, 1);
     assertEquals(failures[0].file, md);
     assertEquals(failures[0].line, 2);
-    assertEquals(failures[0].detail, "error snippet.ts and snippet.ts end");
-    // The scratch dir is cleaned up.
-    assertEquals(failures[0].detail.includes(dir), false);
+    assertEquals(failures[0].detail, "error at snippet.ts:2:1");
   } finally {
     await Deno.remove(dir, { recursive: true });
   }
+});
+
+Deno.test("reduceTempPath normalises POSIX and Windows path forms to snippet.ts", () => {
+  // POSIX: the forward-slash path and its file:// URL both reduce.
+  assertEquals(
+    reduceTempPath("at file:///t/s_0.ts:1:1 then /t/s_0.ts", "/t/s_0.ts"),
+    "at snippet.ts:1:1 then snippet.ts",
+  );
+  // Windows: the temp path uses backslashes, but deno emits a forward-slash
+  // file:// URL — both forms must still reduce.
+  assertEquals(
+    reduceTempPath(
+      "at file:///C:/t/s_0.ts:1:1 then C:/t/s_0.ts",
+      "C:\\t\\s_0.ts",
+    ),
+    "at snippet.ts:1:1 then snippet.ts",
+  );
 });
 
 Deno.test("format: renders every failure by source location above its detail", () => {
