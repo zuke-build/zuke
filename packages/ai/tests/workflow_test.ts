@@ -69,7 +69,7 @@ Deno.test("the steps are: harden, checkout (no credentials), fetch base, run ./z
   assertStringIncludes(yaml, "egress-policy: audit");
   assertStringIncludes(
     yaml,
-    "uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0",
+    "uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
   );
   // `false` is a string here so YAML doesn't read it as a boolean.
   assertStringIncludes(yaml, 'persist-credentials: "false"');
