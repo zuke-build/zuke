@@ -29,7 +29,12 @@
  * @module
  */
 
-import { type Configure, runSettings, ToolSettings } from "@zuke/core/tooling";
+import {
+  type Configure,
+  runSettings,
+  SubcommandSettings,
+  ToolSettings,
+} from "@zuke/core/tooling";
 import type { CommandOutput } from "@zuke/core/shell";
 
 /** Sandbox policy for model-generated commands (`--sandbox`). */
@@ -204,34 +209,15 @@ export class CodexExecSettings extends ToolSettings {
  * Settings for a `codex mcp …` invocation (manage MCP servers): name the verb
  * and operands with `.command(...)` and pass anything else with `.flag(...)`.
  */
-export class CodexMcpSettings extends ToolSettings {
-  #command: string[] = [];
-  #flags: string[] = [];
-
+export class CodexMcpSettings extends SubcommandSettings {
   /** The executable this settings class drives (`codex`). */
   protected override defaultTool(): string {
     return "codex";
   }
 
-  /** The verb and operands, e.g. `command("add", "my-server")`. */
-  command(...parts: Array<string | number>): this {
-    this.#command.push(...parts.map(String));
-    return this;
-  }
-
-  /**
-   * Add an arbitrary flag. With a value it renders `--name value`; without one
-   * it renders the bare `--name`. Repeatable.
-   */
-  flag(name: string, value?: string | number): this {
-    this.#flags.push(`--${name}`);
-    if (value !== undefined) this.#flags.push(String(value));
-    return this;
-  }
-
-  /** Assemble the `codex mcp` argv. */
-  protected override buildArgs(): string[] {
-    return ["mcp", ...this.#command, ...this.#flags];
+  /** The fixed `mcp` group token that leads the argv. */
+  protected override leadingTokens(): string[] {
+    return ["mcp"];
   }
 }
 

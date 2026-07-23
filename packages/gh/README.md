@@ -111,20 +111,15 @@ function readWorkflowResult(state: TargetStateHandle): WorkflowResult | undefine
 const GhTasks: GhTasksApi
   Typed task functions for the `gh` GitHub CLI.
 
-class GhSettings extends ToolSettings
+class GhSettings extends SubcommandSettings
   Settings for a `gh` invocation.
 
   override protected defaultTool(): string
     The default executable name: `gh`.
-  command(...parts: Array<string | number>): this
-    The command path and verb, e.g. `command("pr", "create")`.
   repo(slug: string): this
     Target repository as `OWNER/REPO` (`-R`/`--repo`).
-  flag(name: string, value?: string | number): this
-    Add an arbitrary flag. With a value it renders `--name value`; without one
-    it renders the bare `--name`. Repeatable.
-  override protected buildArgs(): string[]
-    Assemble the `gh` argv: command path, then `--repo`, then flags.
+  override protected middleTokens(): string[]
+    Emit `--repo <slug>` between the command path and the flags, when set.
 
 class GithubWorkflowSettings
   Configuration for {@link githubWorkflow}, set through a settings lambda. Every

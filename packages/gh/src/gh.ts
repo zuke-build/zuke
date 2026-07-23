@@ -22,24 +22,20 @@
  * @module
  */
 
-import { type Configure, runSettings, ToolSettings } from "@zuke/core/tooling";
+import {
+  type Configure,
+  runSettings,
+  SubcommandSettings,
+} from "@zuke/core/tooling";
 import type { CommandOutput } from "@zuke/core/shell";
 
 /** Settings for a `gh` invocation. */
-export class GhSettings extends ToolSettings {
-  #command: string[] = [];
+export class GhSettings extends SubcommandSettings {
   #repo?: string;
-  #flags: string[] = [];
 
   /** The default executable name: `gh`. */
   protected override defaultTool(): string {
     return "gh";
-  }
-
-  /** The command path and verb, e.g. `command("pr", "create")`. */
-  command(...parts: Array<string | number>): this {
-    this.#command.push(...parts.map(String));
-    return this;
   }
 
   /** Target repository as `OWNER/REPO` (`-R`/`--repo`). */
@@ -48,22 +44,9 @@ export class GhSettings extends ToolSettings {
     return this;
   }
 
-  /**
-   * Add an arbitrary flag. With a value it renders `--name value`; without one
-   * it renders the bare `--name`. Repeatable.
-   */
-  flag(name: string, value?: string | number): this {
-    this.#flags.push(`--${name}`);
-    if (value !== undefined) this.#flags.push(String(value));
-    return this;
-  }
-
-  /** Assemble the `gh` argv: command path, then `--repo`, then flags. */
-  protected override buildArgs(): string[] {
-    const argv = [...this.#command];
-    if (this.#repo !== undefined) argv.push("--repo", this.#repo);
-    argv.push(...this.#flags);
-    return argv;
+  /** Emit `--repo <slug>` between the command path and the flags, when set. */
+  protected override middleTokens(): string[] {
+    return this.#repo !== undefined ? ["--repo", this.#repo] : [];
   }
 }
 

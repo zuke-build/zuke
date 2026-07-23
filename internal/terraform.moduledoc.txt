@@ -1,0 +1,16 @@
+/**
+ * `TerraformTasks` — typed task functions for the `terraform` CLI, in the
+ * settings-lambda style: configure a fluent settings object in a lambda, and
+ * the task function builds the command line and executes it.
+ *
+ * ```ts
+ * import { TerraformTasks } from "jsr:@zuke/terraform";
+ * await TerraformTasks.init((s) => s.upgrade());
+ * await TerraformTasks.apply((s) => s.autoApprove().var("env", "prod"));
+ * ```
+ *
+ * Terraform uses single-dash flags (`-out`, `-var`); the wrappers below build
+ * them exactly. Each `-var` is emitted as `-var=name=value`, a single argv
+ * entry, so values are never re-split by a shell. On Windows the shared tooling
+ * base retries through `cmd /c` automatically when direct spawning fails.
+ */

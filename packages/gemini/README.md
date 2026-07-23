@@ -60,7 +60,7 @@ await GeminiTasks.run((s) =>
 const GeminiTasks: GeminiTasksApi
   Typed task functions for the Gemini CLI.
 
-abstract class GeminiCommandSettings extends ToolSettings
+abstract class GeminiCommandSettings extends SubcommandSettings
   Shared builder for `gemini <group> …` subcommand groups (`mcp`,
   `extensions`): name the verb and operands with `.command(...)` and pass
   anything else with `.flag(...)`.
@@ -69,13 +69,8 @@ abstract class GeminiCommandSettings extends ToolSettings
     The underlying executable — `gemini`.
   abstract protected group(): string
     The leading subcommand group token, e.g. `"mcp"`.
-  command(...parts: Array<string | number>): this
-    The verb and operands, e.g. `command("add", "my-server")`.
-  flag(name: string, value?: string | number): this
-    Add an arbitrary flag. With a value it renders `--name value`; without one
-    it renders the bare `--name`. Repeatable.
-  override protected buildArgs(): string[]
-    Assemble the `gemini <group> …` argv.
+  override protected leadingTokens(): string[]
+    Lead the `gemini <group> …` argv with the subcommand group token.
 
 class GeminiExtensionsSettings extends GeminiCommandSettings
   Settings for a `gemini extensions …` invocation (manage extensions).

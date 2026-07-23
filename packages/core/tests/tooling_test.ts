@@ -9,6 +9,7 @@ import {
   DynamicToolSettings,
   runSettings,
   shimFallbackArgv,
+  SubcommandSettings,
   ToolNotFoundError,
   ToolSettings,
   windowsCmdShim,
@@ -421,4 +422,44 @@ Deno.test("defineTool: subcommand array initial tokens drive a real run", async 
   // Exercise the array-subcommand path through the task closure.
   const tool = defineTool("zuke-no-such-tool-xyz", { subcommand: ["a", "b"] });
   await assertRejects(() => tool(onLinux), ToolNotFoundError);
+});
+
+Deno.test("SubcommandSettings: command path + flags, no leading/middle by default", () => {
+  class Sub extends SubcommandSettings {
+    protected override defaultTool(): string {
+      return "tool";
+    }
+  }
+  const s = new Sub().command("pr", "create").flag("title", "v1").flag("draft");
+  // [tool, ...command, ...flags] — leadingTokens()/middleTokens() default to [].
+  assertEquals(s.argv(), ["tool", "pr", "create", "--title", "v1", "--draft"]);
+  // A numeric flag value is coerced to a string.
+  assertEquals(new Sub().flag("port", 8080).argv().slice(1), [
+    "--port",
+    "8080",
+  ]);
+});
+
+Deno.test("SubcommandSettings: leadingTokens and middleTokens bracket the command", () => {
+  class Sub extends SubcommandSettings {
+    protected override defaultTool(): string {
+      return "tool";
+    }
+    protected override leadingTokens(): string[] {
+      return ["mcp"];
+    }
+    protected override middleTokens(): string[] {
+      return ["--repo", "o/r"];
+    }
+  }
+  const s = new Sub().command("add", "x").flag("json");
+  // [tool, ...leading, ...command, ...middle, ...flags].
+  assertEquals(s.argv().slice(1), [
+    "mcp",
+    "add",
+    "x",
+    "--repo",
+    "o/r",
+    "--json",
+  ]);
 });

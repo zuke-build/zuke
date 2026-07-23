@@ -35,7 +35,7 @@ await TofuTasks.apply((s) => s.autoApprove().var("env", "prod"));
 @module
 
 const TofuTasks: TofuTasksApi
-  Typed task functions for the OpenTofu CLI.
+  Typed task functions for the `tofu` CLI.
 
 class TofuApplySettings extends TofuSettings
   Settings for `tofu apply`.
@@ -123,7 +123,7 @@ abstract class TofuSettings extends ToolSettings
   Base for all `tofu` subcommand settings: binary is `tofu`.
 
   override protected defaultTool(): string
-    The tool binary is `tofu`.
+    The invoked binary: `tofu`.
 
 class TofuValidateSettings extends TofuSettings
   Settings for `tofu validate`.

@@ -105,13 +105,11 @@ const GcsTasks: GcsTasksApi
 const SecretManagerTasks: SecretManagerTasksApi
   Typed Google Secret Manager operations.
 
-class GcloudSettings extends ToolSettings
+class GcloudSettings extends SubcommandSettings
   Settings for a `gcloud` invocation.
 
   override protected defaultTool(): string
     The default executable name (`gcloud`).
-  command(...parts: Array<string | number>): this
-    The command path and verb, e.g. `command("run", "deploy", "api")`.
   containerImagesAddTag(source: string, ...destinations: string[]): this
     Add tags to a container image across registries:
     `gcloud container images add-tag <source> <destination…>`. Each argument is
@@ -140,11 +138,8 @@ class GcloudSettings extends ToolSettings
     Disable interactive prompts, accepting defaults (gcloud's `--quiet`). Named
     `noPrompt` to avoid clashing with the base `.quiet()`, which suppresses
     Zuke's own output streaming.
-  flag(name: string, value?: string | number): this
-    Add an arbitrary flag. With a value it renders `--name value`; without one
-    it renders the bare `--name`. Repeatable.
-  override protected buildArgs(): string[]
-    Assemble the `gcloud` argv from the command path and global flags.
+  override protected middleTokens(): string[]
+    Emit gcloud's common global flags between the command path and the flags.
 
 interface GcloudTasksApi
   The shape of {@link GcloudTasks}.

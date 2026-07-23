@@ -12,6 +12,9 @@
 # Doc-snippet type-check scratch dirs (build/snippets.ts; cleaned up per run)
 /.snippets-*/
 
+# HCL wrapper generator scratch dirs (build/hcl_gen.ts; cleaned up per run)
+/.hclgen-*/
+
 # Editor / OS noise
 .DS_Store
 *.swp
