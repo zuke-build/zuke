@@ -1,6 +1,6 @@
 {
   "name": "@zuke/claude",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "license": "MIT",
   "description": "Typed Claude Code CLI task wrapper for Zuke builds — drive prompts non-interactively and manage MCP/config via an injection-free, settings-lambda API.",
   "exports": {

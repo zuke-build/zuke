@@ -1,6 +1,6 @@
 {
   "name": "@zuke/codex",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "license": "MIT",
   "description": "Typed OpenAI Codex CLI task wrapper for Zuke builds — run prompts non-interactively with codex exec and manage MCP via an injection-free, settings-lambda API.",
   "exports": {
