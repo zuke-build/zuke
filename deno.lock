@@ -580,7 +580,7 @@
       },
       "packages/claude": {
         "dependencies": [
-          "jsr:@zuke/core@^1.25.0"
+          "jsr:@zuke/core@^1.31.0"
         ]
       },
       "packages/cmd": {
@@ -595,7 +595,7 @@
       },
       "packages/codex": {
         "dependencies": [
-          "jsr:@zuke/core@^1.25.0"
+          "jsr:@zuke/core@^1.31.0"
         ]
       },
       "packages/console": {
@@ -650,17 +650,17 @@
       },
       "packages/gcloud": {
         "dependencies": [
-          "jsr:@zuke/core@^1.25.0"
+          "jsr:@zuke/core@^1.31.0"
         ]
       },
       "packages/gemini": {
         "dependencies": [
-          "jsr:@zuke/core@^1.25.0"
+          "jsr:@zuke/core@^1.31.0"
         ]
       },
       "packages/gh": {
         "dependencies": [
-          "jsr:@zuke/core@^1.25.0"
+          "jsr:@zuke/core@^1.31.0"
         ]
       },
       "packages/git": {
