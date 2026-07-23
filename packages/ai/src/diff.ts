@@ -29,7 +29,7 @@ function isFileSection(section: string): boolean {
 function sectionPath(section: string): string | undefined {
   const plus = section.match(/^\+\+\+ b\/(.*)$/m);
   if (plus) return plus[1].replace(/\t.*$/, "");
-  // ponytail: this greedy fallback only fires for a section with no `+++` line
+  // caveat: this greedy fallback only fires for a section with no `+++` line
   // (a pure rename/mode change, which carries no content), and mis-splits a path
   // that itself contains ` b/` — a genuinely ambiguous git header. Acceptable:
   // no reviewable body is at stake. Reach for `git diff -z` if it ever matters.

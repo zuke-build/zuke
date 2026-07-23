@@ -12,9 +12,9 @@ request.
    Conventional Commits (`feat:`, `fix:`, `feat!:` / `BREAKING CHANGE:`).
    Versions are per-package. `bump-minor-pre-major` is enabled, so a package
    still in `0.x` (most tool wrappers) takes a **minor** bump on a breaking
-   change and stays in `0.x`. Packages that have reached 1.0 — `@zuke/core`
-   (1.30.0), plus `@zuke/ai`, `@zuke/console`, `@zuke/otel`, and others — follow
-   full semver: a breaking change bumps the **major** version.
+   change and stays in `0.x`. Packages that have reached 1.0 — `@zuke/core`,
+   plus `@zuke/ai`, `@zuke/console`, `@zuke/otel`, and others — follow full
+   semver: a breaking change bumps the **major** version.
 
 2. **Zuke runs the whole release.** `.github/workflows/release.yml` is itself
    driven by Zuke: on every push to `master` it runs a single command,

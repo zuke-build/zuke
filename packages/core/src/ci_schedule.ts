@@ -10,7 +10,7 @@
  * zone matches the schedule. A fixed-offset zone (or plain UTC) needs a single
  * cron and no guard.
  *
- * ponytail: on the DST *fall-back* day the ambiguous hour occurs twice, and both
+ * caveat: on the DST *fall-back* day the ambiguous hour occurs twice, and both
  * offsets' UTC crons then satisfy the wall-clock guard — so a schedule inside
  * that one hour can fire twice that day. Suppressing it would need per-cron
  * offset context in the guard; a once-a-year double-run is a smaller cost, so

@@ -236,7 +236,7 @@ function isZeroBlock(archive: Uint8Array, offset: number): boolean {
  * `@LongLink` pseudo-entries instead), so `readString` there yields `"ustar "`
  * (trailing space), not `"ustar"`, and the prefix is skipped.
  *
- * ponytail: GNU `@LongLink` (typeflag `'L'`) long names are not reconstructed —
+ * caveat: GNU `@LongLink` (typeflag `'L'`) long names are not reconstructed —
  * the release tarballs Zuke provisions use the ustar prefix split; add LongLink
  * handling if a consumed archive ever needs it.
  */
@@ -355,7 +355,7 @@ async function writeEntries(
       await Deno.remove(path).catch(() => {});
       // Windows requires an explicit link `type`; POSIX ignores it. Runtime bins
       // (Node's bin/npm → npm-cli.js) are file symlinks.
-      // ponytail: assume "file"; a directory symlink in a tar unpacked on Windows
+      // caveat: assume "file"; a directory symlink in a tar unpacked on Windows
       // would get the wrong type — rare (runtimes ship .zip on Windows).
       await Deno.symlink(entry.linkname, path, { type: "file" });
     } else {

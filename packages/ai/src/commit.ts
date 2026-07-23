@@ -52,7 +52,7 @@ export async function commitAndPush(options: CommitOptions): Promise<void> {
  * so an ordinary file whose name literally contains ` -> ` isn't mis-parsed.
  * Blank lines are ignored.
  *
- * ponytail: paths git would quote (non-ASCII under `core.quotePath`, or names
+ * caveat: paths git would quote (non-ASCII under `core.quotePath`, or names
  * with control chars) come back quoted and won't stage — fail-safe (the fix is
  * reported failed, nothing wrong is committed); upgrade to `--porcelain=v2 -z`
  * if exotic filenames need committing.
