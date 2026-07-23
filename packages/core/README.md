@@ -3531,6 +3531,32 @@ class DynamicToolSettings extends ToolSettings
   override protected buildArgs(): string[]
     The argv assembled from the `arg`/`flag`/`option` calls, in order.
 
+abstract class SubcommandSettings extends ToolSettings
+  Base for a wrapper over a CLI organised into subcommand groups — a command
+  path built with {@link command} plus repeatable `--flag [value]` options built
+  with {@link flag}. The agent and cloud wrappers (`gh`, `gcloud`, `claude`,
+  `gemini`, `codex`) share this shape; each sets its binary via
+  {@link ToolSettings.defaultTool} and, when needed, a fixed prefix via
+  {@link leadingTokens} or between-command global flags via {@link middleTokens}.
+
+  The argv is assembled as
+  `[...leadingTokens(), ...command, ...middleTokens(), ...flags]`, keeping every
+  token a discrete argv entry so command construction stays injection-free.
+
+  command(...parts: Array<string | number>): this
+    Append command-path tokens — the group, verb, and operands — in order.
+  flag(name: string, value?: string | number): this
+    Add an arbitrary flag. With a value it renders `--name value`; without one
+    the bare `--name`. Repeatable.
+  protected leadingTokens(): string[]
+    Fixed token(s) placed before the command path (e.g. a subcommand-group
+    name). Empty by default; override to prepend a constant prefix.
+  protected middleTokens(): string[]
+    Token(s) placed between the command path and the trailing flags (e.g. a
+    wrapper's common global flags). Empty by default; override to insert them.
+  override protected buildArgs(): string[]
+    Assemble the argv: leading tokens, command path, middle tokens, then flags.
+
 class ToolNotFoundError extends Error
   Raised when a tool's binary cannot be found on the system.
 

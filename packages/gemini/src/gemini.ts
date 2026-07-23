@@ -28,7 +28,12 @@
  * @module
  */
 
-import { type Configure, runSettings, ToolSettings } from "@zuke/core/tooling";
+import {
+  type Configure,
+  runSettings,
+  SubcommandSettings,
+  ToolSettings,
+} from "@zuke/core/tooling";
 import type { CommandOutput } from "@zuke/core/shell";
 
 /** Approval mode for tool calls (`--approval-mode`). */
@@ -192,10 +197,7 @@ export class GeminiRunSettings extends ToolSettings {
  * `extensions`): name the verb and operands with `.command(...)` and pass
  * anything else with `.flag(...)`.
  */
-export abstract class GeminiCommandSettings extends ToolSettings {
-  #command: string[] = [];
-  #flags: string[] = [];
-
+export abstract class GeminiCommandSettings extends SubcommandSettings {
   /** The underlying executable — `gemini`. */
   protected override defaultTool(): string {
     return "gemini";
@@ -204,25 +206,9 @@ export abstract class GeminiCommandSettings extends ToolSettings {
   /** The leading subcommand group token, e.g. `"mcp"`. */
   protected abstract group(): string;
 
-  /** The verb and operands, e.g. `command("add", "my-server")`. */
-  command(...parts: Array<string | number>): this {
-    this.#command.push(...parts.map(String));
-    return this;
-  }
-
-  /**
-   * Add an arbitrary flag. With a value it renders `--name value`; without one
-   * it renders the bare `--name`. Repeatable.
-   */
-  flag(name: string, value?: string | number): this {
-    this.#flags.push(`--${name}`);
-    if (value !== undefined) this.#flags.push(String(value));
-    return this;
-  }
-
-  /** Assemble the `gemini <group> …` argv. */
-  protected override buildArgs(): string[] {
-    return [this.group(), ...this.#command, ...this.#flags];
+  /** Lead the `gemini <group> …` argv with the subcommand group token. */
+  protected override leadingTokens(): string[] {
+    return [this.group()];
   }
 }
 

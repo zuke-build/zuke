@@ -59,6 +59,7 @@ import {
 import { writeApiJson } from "./build/api_reference.ts";
 import { runWebsiteSync } from "./build/website_sync.ts";
 import { checkSnippets, formatSnippetFailures } from "./build/snippets.ts";
+import { checkHclWrappers, generateHclWrappers } from "./build/hcl_gen.ts";
 
 class ZukeBuild extends Build {
   clean = target()
@@ -393,6 +394,31 @@ class ZukeBuild extends Build {
       ConsoleTasks.info("Doc snippets type-check clean.");
     });
 
+  hclGen = target()
+    .description("Regenerate the Terraform/OpenTofu wrappers from one template")
+    .executes(async () => {
+      const written = await generateHclWrappers();
+      ConsoleTasks.info(
+        `Regenerated ${written.length} wrapper(s):\n  ${written.join("\n  ")}`,
+      );
+    });
+
+  hclSyncCheck = target()
+    .description("Verify the Terraform/OpenTofu wrappers match their template")
+    .executes(async () => {
+      const stale = await checkHclWrappers();
+      if (stale.length > 0) {
+        throw new Error(
+          `Terraform/OpenTofu wrappers are out of date:\n  ${
+            stale.join("\n  ")
+          }\n` +
+            "Run `./zuke hclGen` and commit the result (edit " +
+            "internal/hcl_tool.ts.tmpl, not the generated package files).",
+        );
+      }
+      ConsoleTasks.info("Terraform/OpenTofu wrappers are in sync.");
+    });
+
   ci = target()
     .description("Full pre-commit / CI gate")
     .dependsOn(
@@ -404,6 +430,7 @@ class ZukeBuild extends Build {
       this.apiDocsCheck,
       this.docLint,
       this.snippetsCheck,
+      this.hclSyncCheck,
     )
     .executes(() => {});
 

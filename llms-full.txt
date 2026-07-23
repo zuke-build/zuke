@@ -3477,6 +3477,32 @@ class DynamicToolSettings extends ToolSettings
   override protected buildArgs(): string[]
     The argv assembled from the `arg`/`flag`/`option` calls, in order.
 
+abstract class SubcommandSettings extends ToolSettings
+  Base for a wrapper over a CLI organised into subcommand groups — a command
+  path built with {@link command} plus repeatable `--flag [value]` options built
+  with {@link flag}. The agent and cloud wrappers (`gh`, `gcloud`, `claude`,
+  `gemini`, `codex`) share this shape; each sets its binary via
+  {@link ToolSettings.defaultTool} and, when needed, a fixed prefix via
+  {@link leadingTokens} or between-command global flags via {@link middleTokens}.
+
+  The argv is assembled as
+  `[...leadingTokens(), ...command, ...middleTokens(), ...flags]`, keeping every
+  token a discrete argv entry so command construction stays injection-free.
+
+  command(...parts: Array<string | number>): this
+    Append command-path tokens — the group, verb, and operands — in order.
+  flag(name: string, value?: string | number): this
+    Add an arbitrary flag. With a value it renders `--name value`; without one
+    the bare `--name`. Repeatable.
+  protected leadingTokens(): string[]
+    Fixed token(s) placed before the command path (e.g. a subcommand-group
+    name). Empty by default; override to prepend a constant prefix.
+  protected middleTokens(): string[]
+    Token(s) placed between the command path and the trailing flags (e.g. a
+    wrapper's common global flags). Empty by default; override to insert them.
+  override protected buildArgs(): string[]
+    Assemble the argv: leading tokens, command path, middle tokens, then flags.
+
 class ToolNotFoundError extends Error
   Raised when a tool's binary cannot be found on the system.
 
@@ -8050,13 +8076,11 @@ const GcsTasks: GcsTasksApi
 const SecretManagerTasks: SecretManagerTasksApi
   Typed Google Secret Manager operations.
 
-class GcloudSettings extends ToolSettings
+class GcloudSettings extends SubcommandSettings
   Settings for a `gcloud` invocation.
 
   override protected defaultTool(): string
     The default executable name (`gcloud`).
-  command(...parts: Array<string | number>): this
-    The command path and verb, e.g. `command("run", "deploy", "api")`.
   containerImagesAddTag(source: string, ...destinations: string[]): this
     Add tags to a container image across registries:
     `gcloud container images add-tag <source> <destination…>`. Each argument is
@@ -8085,11 +8109,8 @@ class GcloudSettings extends ToolSettings
     Disable interactive prompts, accepting defaults (gcloud's `--quiet`). Named
     `noPrompt` to avoid clashing with the base `.quiet()`, which suppresses
     Zuke's own output streaming.
-  flag(name: string, value?: string | number): this
-    Add an arbitrary flag. With a value it renders `--name value`; without one
-    it renders the bare `--name`. Repeatable.
-  override protected buildArgs(): string[]
-    Assemble the `gcloud` argv from the command path and global flags.
+  override protected middleTokens(): string[]
+    Emit gcloud's common global flags between the command path and the flags.
 
 interface GcloudTasksApi
   The shape of {@link GcloudTasks}.
@@ -8471,20 +8492,15 @@ function readWorkflowResult(state: TargetStateHandle): WorkflowResult | undefine
 const GhTasks: GhTasksApi
   Typed task functions for the `gh` GitHub CLI.
 
-class GhSettings extends ToolSettings
+class GhSettings extends SubcommandSettings
   Settings for a `gh` invocation.
 
   override protected defaultTool(): string
     The default executable name: `gh`.
-  command(...parts: Array<string | number>): this
-    The command path and verb, e.g. `command("pr", "create")`.
   repo(slug: string): this
     Target repository as `OWNER/REPO` (`-R`/`--repo`).
-  flag(name: string, value?: string | number): this
-    Add an arbitrary flag. With a value it renders `--name value`; without one
-    it renders the bare `--name`. Repeatable.
-  override protected buildArgs(): string[]
-    Assemble the `gh` argv: command path, then `--repo`, then flags.
+  override protected middleTokens(): string[]
+    Emit `--repo <slug>` between the command path and the flags, when set.
 
 class GithubWorkflowSettings
   Configuration for {@link githubWorkflow}, set through a settings lambda. Every
@@ -8671,7 +8687,7 @@ await ClaudeTasks.run((s) =>
 const ClaudeTasks: ClaudeTasksApi
   Typed task functions for the Claude Code CLI.
 
-abstract class ClaudeCommandSettings extends ToolSettings
+abstract class ClaudeCommandSettings extends SubcommandSettings
   Shared builder for `claude <group> …` subcommand groups (`mcp`, `config`):
   name the verb and operands with `.command(...)` and pass anything else with
   `.flag(...)`.
@@ -8680,13 +8696,8 @@ abstract class ClaudeCommandSettings extends ToolSettings
     The underlying executable: `claude`.
   abstract protected group(): string
     The leading subcommand group token, e.g. `"mcp"`.
-  command(...parts: Array<string | number>): this
-    The verb and operands, e.g. `command("add", "my-server")`.
-  flag(name: string, value?: string | number): this
-    Add an arbitrary flag. With a value it renders `--name value`; without one
-    it renders the bare `--name`. Repeatable.
-  override protected buildArgs(): string[]
-    Assemble the `claude <group> …` argv.
+  override protected leadingTokens(): string[]
+    Lead the `claude <group> …` argv with the subcommand group token.
 
 class ClaudeConfigSettings extends ClaudeCommandSettings
   Settings for a `claude config …` invocation (manage configuration).
@@ -8838,19 +8849,14 @@ class CodexExecSettings extends ToolSettings
   override protected buildArgs(): string[]
     Assemble the `codex exec` argv.
 
-class CodexMcpSettings extends ToolSettings
+class CodexMcpSettings extends SubcommandSettings
   Settings for a `codex mcp …` invocation (manage MCP servers): name the verb
   and operands with `.command(...)` and pass anything else with `.flag(...)`.
 
   override protected defaultTool(): string
     The executable this settings class drives (`codex`).
-  command(...parts: Array<string | number>): this
-    The verb and operands, e.g. `command("add", "my-server")`.
-  flag(name: string, value?: string | number): this
-    Add an arbitrary flag. With a value it renders `--name value`; without one
-    it renders the bare `--name`. Repeatable.
-  override protected buildArgs(): string[]
-    Assemble the `codex mcp` argv.
+  override protected leadingTokens(): string[]
+    The fixed `mcp` group token that leads the argv.
 
 interface CodexTasksApi
   The shape of {@link CodexTasks}.
@@ -8892,7 +8898,7 @@ await GeminiTasks.run((s) =>
 const GeminiTasks: GeminiTasksApi
   Typed task functions for the Gemini CLI.
 
-abstract class GeminiCommandSettings extends ToolSettings
+abstract class GeminiCommandSettings extends SubcommandSettings
   Shared builder for `gemini <group> …` subcommand groups (`mcp`,
   `extensions`): name the verb and operands with `.command(...)` and pass
   anything else with `.flag(...)`.
@@ -8901,13 +8907,8 @@ abstract class GeminiCommandSettings extends ToolSettings
     The underlying executable — `gemini`.
   abstract protected group(): string
     The leading subcommand group token, e.g. `"mcp"`.
-  command(...parts: Array<string | number>): this
-    The verb and operands, e.g. `command("add", "my-server")`.
-  flag(name: string, value?: string | number): this
-    Add an arbitrary flag. With a value it renders `--name value`; without one
-    it renders the bare `--name`. Repeatable.
-  override protected buildArgs(): string[]
-    Assemble the `gemini <group> …` argv.
+  override protected leadingTokens(): string[]
+    Lead the `gemini <group> …` argv with the subcommand group token.
 
 class GeminiExtensionsSettings extends GeminiCommandSettings
   Settings for a `gemini extensions …` invocation (manage extensions).
@@ -9124,7 +9125,7 @@ await TofuTasks.apply((s) => s.autoApprove().var("env", "prod"));
 @module
 
 const TofuTasks: TofuTasksApi
-  Typed task functions for the OpenTofu CLI.
+  Typed task functions for the `tofu` CLI.
 
 class TofuApplySettings extends TofuSettings
   Settings for `tofu apply`.
@@ -9212,7 +9213,7 @@ abstract class TofuSettings extends ToolSettings
   Base for all `tofu` subcommand settings: binary is `tofu`.
 
   override protected defaultTool(): string
-    The tool binary is `tofu`.
+    The invoked binary: `tofu`.
 
 class TofuValidateSettings extends TofuSettings
   Settings for `tofu validate`.

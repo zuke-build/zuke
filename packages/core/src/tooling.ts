@@ -453,6 +453,65 @@ export class DynamicToolSettings extends ToolSettings {
   }
 }
 
+/**
+ * Base for a wrapper over a CLI organised into **subcommand groups** — a command
+ * path built with {@link command} plus repeatable `--flag [value]` options built
+ * with {@link flag}. The agent and cloud wrappers (`gh`, `gcloud`, `claude`,
+ * `gemini`, `codex`) share this shape; each sets its binary via
+ * {@link ToolSettings.defaultTool} and, when needed, a fixed prefix via
+ * {@link leadingTokens} or between-command global flags via {@link middleTokens}.
+ *
+ * The argv is assembled as
+ * `[...leadingTokens(), ...command, ...middleTokens(), ...flags]`, keeping every
+ * token a discrete argv entry so command construction stays injection-free.
+ */
+export abstract class SubcommandSettings extends ToolSettings {
+  readonly #command: string[] = [];
+  readonly #flags: string[] = [];
+
+  /** Append command-path tokens — the group, verb, and operands — in order. */
+  command(...parts: Array<string | number>): this {
+    this.#command.push(...parts.map(String));
+    return this;
+  }
+
+  /**
+   * Add an arbitrary flag. With a value it renders `--name value`; without one
+   * the bare `--name`. Repeatable.
+   */
+  flag(name: string, value?: string | number): this {
+    this.#flags.push(`--${name}`);
+    if (value !== undefined) this.#flags.push(String(value));
+    return this;
+  }
+
+  /**
+   * Fixed token(s) placed before the command path (e.g. a subcommand-group
+   * name). Empty by default; override to prepend a constant prefix.
+   */
+  protected leadingTokens(): string[] {
+    return [];
+  }
+
+  /**
+   * Token(s) placed between the command path and the trailing flags (e.g. a
+   * wrapper's common global flags). Empty by default; override to insert them.
+   */
+  protected middleTokens(): string[] {
+    return [];
+  }
+
+  /** Assemble the argv: leading tokens, command path, middle tokens, then flags. */
+  protected override buildArgs(): string[] {
+    return [
+      ...this.leadingTokens(),
+      ...this.#command,
+      ...this.middleTokens(),
+      ...this.#flags,
+    ];
+  }
+}
+
 /** A ready-to-run task for a {@link defineTool} tool. */
 export type ToolTask = (
   configure?: Configure<DynamicToolSettings>,

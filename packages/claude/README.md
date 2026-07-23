@@ -63,7 +63,7 @@ await ClaudeTasks.run((s) =>
 const ClaudeTasks: ClaudeTasksApi
   Typed task functions for the Claude Code CLI.
 
-abstract class ClaudeCommandSettings extends ToolSettings
+abstract class ClaudeCommandSettings extends SubcommandSettings
   Shared builder for `claude <group> …` subcommand groups (`mcp`, `config`):
   name the verb and operands with `.command(...)` and pass anything else with
   `.flag(...)`.
@@ -72,13 +72,8 @@ abstract class ClaudeCommandSettings extends ToolSettings
     The underlying executable: `claude`.
   abstract protected group(): string
     The leading subcommand group token, e.g. `"mcp"`.
-  command(...parts: Array<string | number>): this
-    The verb and operands, e.g. `command("add", "my-server")`.
-  flag(name: string, value?: string | number): this
-    Add an arbitrary flag. With a value it renders `--name value`; without one
-    it renders the bare `--name`. Repeatable.
-  override protected buildArgs(): string[]
-    Assemble the `claude <group> …` argv.
+  override protected leadingTokens(): string[]
+    Lead the `claude <group> …` argv with the subcommand group token.
 
 class ClaudeConfigSettings extends ClaudeCommandSettings
   Settings for a `claude config …` invocation (manage configuration).

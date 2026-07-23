@@ -21,29 +21,25 @@
  * @module
  */
 
-import { type Configure, runSettings, ToolSettings } from "@zuke/core/tooling";
+import {
+  type Configure,
+  runSettings,
+  SubcommandSettings,
+} from "@zuke/core/tooling";
 import type { CommandOutput } from "@zuke/core/shell";
 
 /** Settings for a `gcloud` invocation. */
-export class GcloudSettings extends ToolSettings {
-  #command: string[] = [];
+export class GcloudSettings extends SubcommandSettings {
   #project?: string;
   #account?: string;
   #configuration?: string;
   #format?: string;
   #verbosity?: string;
   #noPrompt = false;
-  #flags: string[] = [];
 
   /** The default executable name (`gcloud`). */
   protected override defaultTool(): string {
     return "gcloud";
-  }
-
-  /** The command path and verb, e.g. `command("run", "deploy", "api")`. */
-  command(...parts: Array<string | number>): this {
-    this.#command.push(...parts.map(String));
-    return this;
   }
 
   /**
@@ -116,19 +112,9 @@ export class GcloudSettings extends ToolSettings {
     return this;
   }
 
-  /**
-   * Add an arbitrary flag. With a value it renders `--name value`; without one
-   * it renders the bare `--name`. Repeatable.
-   */
-  flag(name: string, value?: string | number): this {
-    this.#flags.push(`--${name}`);
-    if (value !== undefined) this.#flags.push(String(value));
-    return this;
-  }
-
-  /** Assemble the `gcloud` argv from the command path and global flags. */
-  protected override buildArgs(): string[] {
-    const argv = [...this.#command];
+  /** Emit gcloud's common global flags between the command path and the flags. */
+  protected override middleTokens(): string[] {
+    const argv: string[] = [];
     if (this.#project !== undefined) argv.push("--project", this.#project);
     if (this.#account !== undefined) argv.push("--account", this.#account);
     if (this.#configuration !== undefined) {
@@ -139,7 +125,6 @@ export class GcloudSettings extends ToolSettings {
       argv.push("--verbosity", this.#verbosity);
     }
     if (this.#noPrompt) argv.push("--quiet");
-    argv.push(...this.#flags);
     return argv;
   }
 }
