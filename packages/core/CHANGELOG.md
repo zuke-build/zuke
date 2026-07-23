@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.31.0](https://github.com/zuke-build/zuke/compare/core-v1.30.4...core-v1.31.0) (2026-07-23)
+
+
+### Features
+
+* **core:** add a SubcommandSettings base and single-source the HCL wrappers ([#258](https://github.com/zuke-build/zuke/issues/258)) ([53b2719](https://github.com/zuke-build/zuke/commit/53b2719d25f48400c757ac40b7df9f53dd10f7d0))
+
 ## [1.30.4](https://github.com/zuke-build/zuke/compare/core-v1.30.3...core-v1.30.4) (2026-07-22)
 
 

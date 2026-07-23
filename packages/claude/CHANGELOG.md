@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/zuke-build/zuke/compare/claude-v1.0.2...claude-v1.1.0) (2026-07-23)
+
+
+### Features
+
+* **core:** add a SubcommandSettings base and single-source the HCL wrappers ([#258](https://github.com/zuke-build/zuke/issues/258)) ([53b2719](https://github.com/zuke-build/zuke/commit/53b2719d25f48400c757ac40b7df9f53dd10f7d0))
+
 ## [1.0.2](https://github.com/zuke-build/zuke/compare/claude-v1.0.1...claude-v1.0.2) (2026-07-20)
 
 

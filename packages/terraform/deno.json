@@ -1,6 +1,6 @@
 {
   "name": "@zuke/terraform",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "license": "MIT",
   "description": "Typed Terraform CLI task wrappers for Zuke builds — init, validate, plan, apply, destroy, fmt, and output via an injection-free settings-lambda API.",
   "exports": {
