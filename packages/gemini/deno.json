@@ -1,6 +1,6 @@
 {
   "name": "@zuke/gemini",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "license": "MIT",
   "description": "Typed Gemini CLI task wrapper for Zuke builds — run prompts non-interactively and manage MCP/extensions via an injection-free, settings-lambda API.",
   "exports": {

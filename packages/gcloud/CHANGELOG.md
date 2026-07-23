@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/zuke-build/zuke/compare/gcloud-v0.3.0...gcloud-v0.3.1) (2026-07-23)
+
+
+### Bug Fixes
+
+* raise the @zuke/core floor to 1.31.0 in wrappers using SubcommandSettings ([#260](https://github.com/zuke-build/zuke/issues/260)) ([d8f51c0](https://github.com/zuke-build/zuke/commit/d8f51c0939d26faa6eb5d7d4bb75bbba241890bb))
+
 ## [0.3.0](https://github.com/zuke-build/zuke/compare/gcloud-v0.2.2...gcloud-v0.3.0) (2026-07-23)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.1](https://github.com/zuke-build/zuke/compare/claude-v1.1.0...claude-v1.1.1) (2026-07-23)
+
+
+### Bug Fixes
+
+* raise the @zuke/core floor to 1.31.0 in wrappers using SubcommandSettings ([#260](https://github.com/zuke-build/zuke/issues/260)) ([d8f51c0](https://github.com/zuke-build/zuke/commit/d8f51c0939d26faa6eb5d7d4bb75bbba241890bb))
+
 ## [1.1.0](https://github.com/zuke-build/zuke/compare/claude-v1.0.2...claude-v1.1.0) (2026-07-23)
 
 
