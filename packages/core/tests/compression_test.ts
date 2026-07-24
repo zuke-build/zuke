@@ -408,6 +408,59 @@ Deno.test("extractTarGzip contains a symlink chain hidden behind case variation"
   ], "pwned.txt");
 });
 
+Deno.test("extractTarGzip does not follow a leaf symlink when a later file entry has the same name", async () => {
+  if (Deno.build.os === "windows") return; // symlink creation is privileged there
+  const dir = await Deno.makeTempDir();
+  try {
+    // A symlink planted AT the leaf (target lexically in-bounds via one hop),
+    // then a file of the same name: without unlinking the leaf first, writeFile
+    // follows the symlink and lands OUTSIDE destDir.
+    const archive = `${dir}/evil.tar.gz`;
+    await Deno.writeFile(
+      archive,
+      await gzip(tar([
+        { name: "d/up", data: new Uint8Array(0), linkname: ".." },
+        { name: "d/pwn", data: new Uint8Array(0), linkname: "up/../pwned" },
+        { name: "d/pwn", data: enc("PWNED") },
+      ])),
+    );
+    await extractTarGzip(archive, `${dir}/out`);
+    // Nothing landed outside the destination, and the file wrote at its own path.
+    assertEquals(
+      await Deno.stat(`${dir}/pwned`).then(() => true).catch(() => false),
+      false,
+    );
+    const leaf = await Deno.lstat(`${dir}/out/d/pwn`);
+    assertEquals(leaf.isFile, true); // a real file now, not the symlink
+    assertEquals(await Deno.readTextFile(`${dir}/out/d/pwn`), "PWNED");
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("extractTarGzip does not follow a symlink left in a reused destination", async () => {
+  if (Deno.build.os === "windows") return; // symlink creation is privileged there
+  const dir = await Deno.makeTempDir();
+  try {
+    // A reused destDir already holding a symlink that points outside it; a plain
+    // file entry of that name must overwrite the link in place, not through it.
+    const out = `${dir}/out`;
+    await Deno.mkdir(out, { recursive: true });
+    await Deno.writeTextFile(`${dir}/secret.txt`, "ORIGINAL");
+    await Deno.symlink(`${dir}/secret.txt`, `${out}/ext`, { type: "file" });
+    const archive = `${dir}/a.tar.gz`;
+    await Deno.writeFile(
+      archive,
+      await gzip(tar([{ name: "ext", data: enc("SAFE") }])),
+    );
+    await extractTarGzip(archive, out);
+    assertEquals(await Deno.readTextFile(`${dir}/secret.txt`), "ORIGINAL"); // untouched
+    assertEquals(await Deno.readTextFile(`${out}/ext`), "SAFE"); // wrote in place
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
 Deno.test("extractTarGzip lets a directory entry replace an existing file at that path", async () => {
   if (Deno.build.os === "windows") return; // symlink-adjacent edge; keep POSIX
   const dir = await Deno.makeTempDir();
