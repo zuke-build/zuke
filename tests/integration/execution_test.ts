@@ -47,6 +47,25 @@ Deno.test("a diamond runs the shared dependency exactly once", async () => {
   assertEquals(log[log.length - 1], "top");
 });
 
+Deno.test("a body returning a value runs, and its promise is awaited before dependents", async () => {
+  // TargetFn accepts any return, so `.executes(() => SomeTasks.run())` — which
+  // resolves to a CommandOutput — needs no async wrapper; the returned promise
+  // is still awaited before dependents start.
+  const log: string[] = [];
+  class B extends Build {
+    produce = target().executes(() =>
+      new Promise((resolve) => setTimeout(resolve, 10))
+        .then(() => log.push("produce")) // resolves to a number, not void
+    );
+    consume = target().dependsOn(this.produce).executes(() =>
+      log.push("consume")
+    );
+  }
+  const { code } = await runCli(B, ["consume"]);
+  assertEquals(code, 0);
+  assertEquals(log, ["produce", "consume"]);
+});
+
 Deno.test("--parallel still honours dependency order", async () => {
   const log: string[] = [];
   class B extends Build {

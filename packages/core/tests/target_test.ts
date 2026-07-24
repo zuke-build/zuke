@@ -163,6 +163,16 @@ Deno.test("target() builder is chainable and records configuration", () => {
   assertEquals(typeof t.fn_, "function");
 });
 
+Deno.test("executes accepts a body that returns a value", () => {
+  // The DX regression: every *Tasks wrapper resolves to a CommandOutput, so
+  // `.executes(() => DenoTasks.lint())` must type-check without an async
+  // wrapper that exists only to discard the result.
+  const sync = target().executes(() => 42);
+  const wrapped = target().executes(() => Promise.resolve({ code: 0 }));
+  assertEquals(typeof sync.fn_, "function");
+  assertEquals(typeof wrapped.fn_, "function");
+});
+
 Deno.test("before/after record soft ordering hints", () => {
   const a = target();
   const b = target();

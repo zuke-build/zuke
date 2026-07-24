@@ -2,6 +2,7 @@ import { assertEquals, assertRejects } from "./_assert.ts";
 import { type DownloadFn, installTree } from "../src/install.ts";
 import { gzip, tar, type TarEntry } from "../src/compression.ts";
 import { makeZip, STORED } from "./_zip.ts";
+import { GNU, longLink, ustarArchive } from "./_tar.ts";
 
 const enc = (s: string) => new TextEncoder().encode(s);
 const POSIX = Deno.build.os !== "windows";
@@ -87,6 +88,49 @@ Deno.test("installTree unpacks a runtime tree, strips, and returns the root", as
         0;
       assertEquals(targetMode & 0o111, 0o111);
     }
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("installTree unpacks a GNU tarball with @LongLink long paths (Node's Linux form)", async () => {
+  // The consumer-reported crash: Node's Linux tarball is GNU format, so a
+  // >100-byte path arrives as a @LongLink pseudo-entry plus a truncated header.
+  // One name here truncates exactly at a "/", which used to make the extractor
+  // writeFile onto a directory — "Is a directory (os error 21)".
+  const dir = await Deno.makeTempDir();
+  try {
+    const parent = `node-v1/lib/node_modules/npm/node_modules/${
+      "x".repeat(57)
+    }/`; // exactly 100 bytes
+    const onSlash = `${parent}skipFirst.js`;
+    const midName = `${parent}delay.base.js`;
+    const raw = ustarArchive([
+      { name: "node-v1/bin/node", prefix: "", data: enc("ELF"), magic: GNU },
+      longLink(onSlash),
+      { name: onSlash.slice(0, 100), prefix: "", data: enc("a"), magic: GNU },
+      longLink(midName),
+      { name: midName.slice(0, 100), prefix: "", data: enc("b"), magic: GNU },
+    ]);
+    const root = await installTree({
+      name: "node",
+      destDir: dir,
+      archive: "tar.gz",
+      strip: 1,
+      url: () => "https://example.com/node.tar.gz",
+      download: fakeDownload(await gzip(raw)),
+    });
+    const lib = onSlash.slice("node-v1/".length, -"skipFirst.js".length);
+    assertEquals(
+      await Deno.readTextFile(String(root(...`${lib}skipFirst.js`.split("/")))),
+      "a",
+    );
+    assertEquals(
+      await Deno.readTextFile(
+        String(root(...`${lib}delay.base.js`.split("/"))),
+      ),
+      "b",
+    );
   } finally {
     await Deno.remove(dir, { recursive: true });
   }

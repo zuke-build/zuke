@@ -54,7 +54,10 @@ await run(CI);
    only when no typed wrapper exists. (If a build delegates its side effects to
    your own tested modules behind injected clients, the wrapper rule still
    governs whatever those modules run in the target body.)
-4. **A body is required.** Set `.executes(...)`; it may be sync or async.
+4. **A body is required.** Set `.executes(...)`; it may be sync or async, and
+   its return value is ignored — `.executes(() => DenoTasks.lint())` is fine
+   as-is; never wrap a single wrapper call in an `async` block just to discard
+   its result.
 
 ## Find the exact signature first
 

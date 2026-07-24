@@ -283,8 +283,16 @@ export interface TargetContext {
   readonly dryRun: boolean;
 }
 
-/** The executable body of a target. May be synchronous or asynchronous. */
-export type TargetFn = (ctx: TargetContext) => void | Promise<void>;
+/**
+ * The executable body of a target. May be synchronous or asynchronous, and any
+ * returned value is ignored — so a body can return a tool-wrapper call directly
+ * (`.executes(() => DenoTasks.lint())`, which resolves to a `CommandOutput`)
+ * without wrapping it in an `async` block just to discard the result. A single
+ * returned promise is awaited before dependents run; a returned *array* of
+ * promises is not (it is not a thenable), so `await Promise.all([...])` inside
+ * the body when you fan work out, rather than returning the array.
+ */
+export type TargetFn = (ctx: TargetContext) => unknown | Promise<unknown>;
 
 /** A predicate gating whether a target runs; may be synchronous or async. */
 export type Condition = () => boolean | Promise<boolean>;

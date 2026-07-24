@@ -233,12 +233,9 @@ function isZeroBlock(archive: Uint8Array, offset: number): boolean {
  * tarball (npm's bundled deps) so `npm` could not resolve them. The prefix is
  * honoured only for the POSIX `ustar\0` magic at byte 257; the older GNU format
  * reuses that byte region for other fields (and encodes long names via
- * `@LongLink` pseudo-entries instead), so `readString` there yields `"ustar "`
- * (trailing space), not `"ustar"`, and the prefix is skipped.
- *
- * caveat: GNU `@LongLink` (typeflag `'L'`) long names are not reconstructed —
- * the release tarballs Zuke provisions use the ustar prefix split; add LongLink
- * handling if a consumed archive ever needs it.
+ * `@LongLink` pseudo-entries instead, which {@link untar} reconstructs), so
+ * `readString` there yields `"ustar "` (trailing space), not `"ustar"`, and the
+ * prefix is skipped.
  */
 function entryName(archive: Uint8Array, offset: number): string {
   const name = readString(archive, offset, 100);
@@ -247,26 +244,119 @@ function entryName(archive: Uint8Array, offset: number): string {
   return prefix === "" ? name : `${prefix}/${name}`;
 }
 
-/** Extract the entries from a `ustar` archive (regular files only). */
+/**
+ * Parse a pax extended-header block for the `path` and `linkpath` records that
+ * override the following member's name / link target. Each record is
+ * `"<len> key=value\n"`, where `len` counts the whole record's bytes. Only the
+ * two records that affect extraction are read; any other (mtime, uid, …) is
+ * skipped, and a malformed length ends parsing rather than looping.
+ */
+function parsePaxOverrides(
+  block: Uint8Array,
+): { path?: string; linkpath?: string } {
+  const overrides: { path?: string; linkpath?: string } = {};
+  let i = 0;
+  while (i < block.length) {
+    let space = i;
+    while (space < block.length && block[space] !== 0x20) space++;
+    if (space >= block.length) break;
+    const len = Number(readString(block, i, space - i));
+    if (!Number.isInteger(len) || len <= 0 || i + len > block.length) break;
+    // The value runs from just past the space to just before the record's
+    // trailing newline.
+    const record = readString(block, space + 1, i + len - 1 - (space + 1));
+    const eq = record.indexOf("=");
+    if (eq !== -1) {
+      const key = record.slice(0, eq);
+      if (key === "path") overrides.path = record.slice(eq + 1);
+      else if (key === "linkpath") overrides.linkpath = record.slice(eq + 1);
+    }
+    i += len;
+  }
+  return overrides;
+}
+
+/**
+ * Extract the entries from a tar archive — regular files, symlinks, and
+ * directories. A path longer than the 100-byte `name` field is reconstructed
+ * from whichever long-name form the archive uses: the POSIX `ustar` `prefix`
+ * split, GNU tar's `@LongLink` pseudo-entries (typeflags `'L'` name / `'K'`
+ * link target, whose *data* is the following member's value — Node's Linux
+ * release tarballs use this), or pax extended headers (typeflag `'x'`, with
+ * `path=`/`linkpath=` records — bsdtar/macOS use this). These metadata
+ * pseudo-entries accumulate onto the next real member, matching GNU/bsdtar, so a
+ * mixed archive is read correctly; a pax record wins over a GNU long name, which
+ * wins over the header's own fields.
+ */
 export function untar(archive: Uint8Array): TarEntry[] {
   const entries: TarEntry[] = [];
   let offset = 0;
+  let longName: string | undefined; // GNU 'L'
+  let longLinkname: string | undefined; // GNU 'K'
+  let paxPath: string | undefined; // pax 'x'/'g' path=
+  let paxLinkpath: string | undefined; // pax 'x'/'g' linkpath=
   while (offset + BLOCK <= archive.length) {
     if (isZeroBlock(archive, offset)) break;
-    const name = entryName(archive, offset);
+    const header = offset;
     // Read the full 12-byte size field; the trailing byte is a NUL terminator.
-    const size = readOctal(archive, offset + 124, 12);
-    const typeflag = archive[offset + 156];
-    const linkname = readString(archive, offset + 157, 100);
-    offset += BLOCK;
+    const size = readOctal(archive, header + 124, 12);
+    const typeflag = archive[header + 156];
+    const dataStart = header + BLOCK;
+    // Clamp the data window so a malformed (huge) size can neither scan past the
+    // archive nor be used to slice out of bounds.
+    const dataLen = Math.min(size, Math.max(0, archive.length - dataStart));
+    offset = dataStart + padded(size);
+    if (typeflag === 0x4c || typeflag === 0x4b) {
+      // GNU 'L'/'K': the data block is the next member's full, NUL-terminated
+      // name / link target; the header's own name is the placeholder
+      // "././@LongLink". An empty value is ignored, not stored (so it can't
+      // blank the following name via the `??` below).
+      const value = readString(archive, dataStart, dataLen);
+      if (value !== "") {
+        if (typeflag === 0x4c) longName = value;
+        else longLinkname = value;
+      }
+      continue;
+    }
+    if (typeflag === 0x78 || typeflag === 0x67) {
+      // pax 'x' (per-file) / 'g' (global) extended header. Accumulate its
+      // path/linkpath overrides WITHOUT clearing a pending GNU long name, so
+      // L/K/x headers stack onto the same member (as real tar does).
+      const p = parsePaxOverrides(
+        archive.subarray(dataStart, dataStart + dataLen),
+      );
+      if (p.path !== undefined) paxPath = p.path;
+      if (p.linkpath !== undefined) paxLinkpath = p.linkpath;
+      continue;
+    }
+    // A real member consumes every pending override (pax wins over GNU wins over
+    // the header) and resets them, so nothing leaks onto a later member.
+    const name = paxPath ?? longName ?? entryName(archive, header);
+    const linkname = paxLinkpath ?? longLinkname ??
+      readString(archive, header + 157, 100);
+    longName =
+      longLinkname =
+      paxPath =
+      paxLinkpath =
+        undefined;
     if (typeflag === 0x32) {
       // '2' → a symbolic link: the target is the linkname; it carries no data.
       entries.push({ name, data: new Uint8Array(0), linkname });
-    } else if (typeflag === 0x30 || typeflag === 0) {
-      // Regular files ('0' or legacy '\0') carry extractable data.
-      entries.push({ name, data: archive.slice(offset, offset + size) });
+    } else if (typeflag === 0x35) {
+      // '5' → a directory. Keep the trailing slash so writeEntries creates it
+      // (and empty directories survive, not only those implied by a file).
+      entries.push({
+        name: name.endsWith("/") ? name : `${name}/`,
+        data: new Uint8Array(0),
+      });
+    } else if (typeflag === 0x30 || typeflag === 0 || typeflag === 0x37) {
+      // Regular files ('0', legacy NUL, or '7' contiguous) carry data.
+      entries.push({
+        name,
+        data: archive.slice(dataStart, dataStart + dataLen),
+      });
     }
-    offset += padded(size);
+    // Other typeflags (hardlink '1', device/fifo nodes) are not extractable.
   }
   return entries;
 }
@@ -304,8 +394,8 @@ export interface ExtractOptions {
 /**
  * Read the `.tar.gz` at `src`, gunzip and unpack it, and write each entry under
  * `destDir` (creating parent directories as needed). Symlink entries are
- * recreated as symlinks; pass {@link ExtractOptions.strip} to drop leading path
- * components.
+ * recreated as symlinks and directory entries as directories; pass
+ * {@link ExtractOptions.strip} to drop leading path components.
  */
 export async function extractTarGzip(
   src: PathLike,
@@ -323,12 +413,50 @@ function stripComponents(name: string, n: number): string {
 }
 
 /**
+ * Refuse to extract an entry whose on-disk parent path passes through a symlink
+ * an earlier entry planted — the second half of zip-slip defence. A symlink's
+ * own target is bounded lexically by {@link assertSafeLinkTarget}, but a
+ * *chain* (one entry symlinks a directory, a later entry writes through it) can
+ * redirect a parent out of `destDir`; and a lexical ancestor check is defeated
+ * by `.` segments or a case-insensitive / Unicode-normalising filesystem
+ * (macOS, Windows) where the archive's string differs from the path the OS
+ * actually opens. So this walks the real filesystem: it `lstat`s each existing
+ * ancestor directory and rejects if one is a symlink — catching every alias
+ * because it resolves the true inode, and touching nothing outside `destDir`
+ * (it never `mkdir`s or writes through the symlink it finds).
+ */
+async function assertNoSymlinkAncestor(
+  root: string,
+  name: string,
+): Promise<void> {
+  const parts = name.replace(/\/+$/, "").split("/").slice(0, -1);
+  let current = root;
+  for (const part of parts) {
+    current = `${current}/${part}`;
+    let info: Deno.FileInfo;
+    try {
+      info = await Deno.lstat(current);
+    } catch {
+      return; // not yet created — nothing deeper exists to traverse
+    }
+    if (info.isSymlink) {
+      throw new Error(
+        `archive: refusing to extract "${name}" through the symlink ` +
+          `"${current.slice(root.length + 1)}" — a symlink in the archive ` +
+          `would redirect it out of the destination.`,
+      );
+    }
+  }
+}
+
+/**
  * Write each archive `entry` under `destDir`, creating parent directories as
- * needed. Every entry name is validated first ({@link assertSafeEntryName}), and
- * a symlink's target is validated ({@link assertSafeLinkTarget}), so a malicious
- * archive cannot plant or point a file outside `destDir` (a "zip slip"). With
- * {@link ExtractOptions.strip}, leading path components are dropped and any entry
- * left with an empty path is skipped.
+ * needed. Every entry name is validated first ({@link assertSafeEntryName}), a
+ * symlink's target is validated ({@link assertSafeLinkTarget}), and no entry is
+ * written through an ancestor symlink ({@link assertNoSymlinkAncestor}), so a
+ * malicious archive cannot plant, point, or chain its way to a file outside
+ * `destDir` (a "zip slip"). With {@link ExtractOptions.strip}, leading path
+ * components are dropped and any entry left with an empty path is skipped.
  */
 async function writeEntries(
   entries: TarEntry[],
@@ -338,10 +466,23 @@ async function writeEntries(
   const strip = options.strip ?? 0;
   for (const entry of entries) assertSafeEntryName(entry.name);
   const root = String(destDir);
+  await Deno.mkdir(root, { recursive: true });
   for (const entry of entries) {
     const name = stripComponents(entry.name, strip);
     if (name === "") continue; // fully stripped (e.g. the top-level directory)
+    await assertNoSymlinkAncestor(root, name);
     const path = `${root}/${name}`;
+    if (name.endsWith("/")) {
+      // A directory entry (typeflag '5', or old tar's trailing-slash "file"):
+      // create it rather than crash writing a file over it. Drop the trailing
+      // slash for the filesystem ops, and replace a prior *non-directory* at the
+      // path so a malformed duplicate is "last wins" (removing a populated
+      // directory fails and is ignored, so its contents are kept).
+      const dirPath = path.replace(/\/+$/, "");
+      await Deno.remove(dirPath).catch(() => {});
+      await Deno.mkdir(dirPath, { recursive: true });
+      continue;
+    }
     const slash = path.lastIndexOf("/");
     if (slash !== -1) {
       await Deno.mkdir(path.slice(0, slash), { recursive: true });
