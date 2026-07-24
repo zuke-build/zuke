@@ -413,26 +413,50 @@ function stripComponents(name: string, n: number): string {
 }
 
 /**
- * The ancestor path components of an on-disk entry name, longest last: for
- * `a/b/c` → `["a", "a/b"]` (the entry itself is excluded). A trailing slash on a
- * directory name is ignored.
+ * Refuse to extract an entry whose on-disk parent path passes through a symlink
+ * an earlier entry planted — the second half of zip-slip defence. A symlink's
+ * own target is bounded lexically by {@link assertSafeLinkTarget}, but a
+ * *chain* (one entry symlinks a directory, a later entry writes through it) can
+ * redirect a parent out of `destDir`; and a lexical ancestor check is defeated
+ * by `.` segments or a case-insensitive / Unicode-normalising filesystem
+ * (macOS, Windows) where the archive's string differs from the path the OS
+ * actually opens. So this walks the real filesystem: it `lstat`s each existing
+ * ancestor directory and rejects if one is a symlink — catching every alias
+ * because it resolves the true inode, and touching nothing outside `destDir`
+ * (it never `mkdir`s or writes through the symlink it finds).
  */
-function ancestors(name: string): string[] {
-  const parts = name.replace(/\/+$/, "").split("/");
-  return parts.slice(0, -1).map((_, i) => parts.slice(0, i + 1).join("/"));
+async function assertNoSymlinkAncestor(
+  root: string,
+  name: string,
+): Promise<void> {
+  const parts = name.replace(/\/+$/, "").split("/").slice(0, -1);
+  let current = root;
+  for (const part of parts) {
+    current = `${current}/${part}`;
+    let info: Deno.FileInfo;
+    try {
+      info = await Deno.lstat(current);
+    } catch {
+      return; // not yet created — nothing deeper exists to traverse
+    }
+    if (info.isSymlink) {
+      throw new Error(
+        `archive: refusing to extract "${name}" through the symlink ` +
+          `"${current.slice(root.length + 1)}" — a symlink in the archive ` +
+          `would redirect it out of the destination.`,
+      );
+    }
+  }
 }
 
 /**
  * Write each archive `entry` under `destDir`, creating parent directories as
- * needed. Every entry name is validated first ({@link assertSafeEntryName}), and
- * a symlink's target is validated ({@link assertSafeLinkTarget}), so a malicious
- * archive cannot plant or point a file outside `destDir` (a "zip slip"). A
- * second escape — chaining in-tree symlinks so one entry's symlink redirects a
- * later entry's parent directory out of `destDir` (the lexical target check
- * can't see an ancestor a *different* entry planted) — is blocked by refusing to
- * write any entry through a symlink this extraction created. With
- * {@link ExtractOptions.strip}, leading path components are dropped and any entry
- * left with an empty path is skipped.
+ * needed. Every entry name is validated first ({@link assertSafeEntryName}), a
+ * symlink's target is validated ({@link assertSafeLinkTarget}), and no entry is
+ * written through an ancestor symlink ({@link assertNoSymlinkAncestor}), so a
+ * malicious archive cannot plant, point, or chain its way to a file outside
+ * `destDir` (a "zip slip"). With {@link ExtractOptions.strip}, leading path
+ * components are dropped and any entry left with an empty path is skipped.
  */
 async function writeEntries(
   entries: TarEntry[],
@@ -442,20 +466,11 @@ async function writeEntries(
   const strip = options.strip ?? 0;
   for (const entry of entries) assertSafeEntryName(entry.name);
   const root = String(destDir);
-  // On-disk names created as symlinks. No later entry may be written *through*
-  // one (i.e. have it as an ancestor), so a poisoned archive can't use a symlink
-  // it planted to redirect a parent directory outside `destDir`.
-  const symlinks = new Set<string>();
+  await Deno.mkdir(root, { recursive: true });
   for (const entry of entries) {
     const name = stripComponents(entry.name, strip);
     if (name === "") continue; // fully stripped (e.g. the top-level directory)
-    const via = ancestors(name).find((a) => symlinks.has(a));
-    if (via !== undefined) {
-      throw new Error(
-        `archive: refusing to extract "${name}" through the symlink "${via}" ` +
-          `— a symlink in the archive would redirect it out of the destination.`,
-      );
-    }
+    await assertNoSymlinkAncestor(root, name);
     const path = `${root}/${name}`;
     if (name.endsWith("/")) {
       // A directory entry (typeflag '5', or old tar's trailing-slash "file"):
@@ -484,7 +499,6 @@ async function writeEntries(
       // caveat: assume "file"; a directory symlink in a tar unpacked on Windows
       // would get the wrong type — rare (runtimes ship .zip on Windows).
       await Deno.symlink(entry.linkname, path, { type: "file" });
-      symlinks.add(name.replace(/\/+$/, ""));
     } else {
       await Deno.writeFile(path, entry.data);
     }

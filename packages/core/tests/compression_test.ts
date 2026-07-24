@@ -334,12 +334,36 @@ Deno.test("untar clamps a malformed huge @LongLink size (no out-of-bounds scan o
   assertEquals(out.length, 0);
 });
 
+// The confirmed zip-slip escape: chain in-tree symlinks so a later entry's
+// parent is redirected above the destination. Each link target passes the
+// lexical check; the escape only exists once the symlinks are on disk, so the
+// guard has to consult the real filesystem — a lexical ancestor check is
+// defeated by "." segments and by case-insensitive filesystems (macOS/Windows).
+async function assertSymlinkChainContained(
+  entries: TarEntry[],
+  outsideName: string,
+): Promise<void> {
+  const dir = await Deno.makeTempDir();
+  try {
+    const archive = `${dir}/evil.tar.gz`;
+    await Deno.writeFile(archive, await gzip(tar(entries)));
+    // Either it throws, or it does not — but in NO case may a file land in the
+    // parent of the destination.
+    await extractTarGzip(archive, `${dir}/out`).catch(() => {});
+    assertEquals(
+      await Deno.stat(`${dir}/${outsideName}`).then(() => true).catch(() =>
+        false
+      ),
+      false,
+    );
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+}
+
 Deno.test("extractTarGzip refuses to extract through an archive-planted symlink chain", async () => {
   const dir = await Deno.makeTempDir();
   try {
-    // The confirmed high-severity escape: chain in-tree symlinks so a later
-    // entry's parent is redirected above the destination. Each link target
-    // passes the lexical check; the escape only exists once both are on disk.
     const archive = `${dir}/evil.tar.gz`;
     await Deno.writeFile(
       archive,
@@ -354,7 +378,6 @@ Deno.test("extractTarGzip refuses to extract through an archive-planted symlink 
       Error,
       "through the symlink",
     );
-    // Nothing was planted in the parent of the destination.
     assertEquals(
       await Deno.stat(`${dir}/pwned.txt`).then(() => true).catch(() => false),
       false,
@@ -362,6 +385,27 @@ Deno.test("extractTarGzip refuses to extract through an archive-planted symlink 
   } finally {
     await Deno.remove(dir, { recursive: true });
   }
+});
+
+Deno.test("extractTarGzip contains a symlink chain hidden behind '.' segments", async () => {
+  // "." segments keep the archive string different from the resolved path, so a
+  // lexical ancestor check misses them; the on-disk chain still escapes.
+  await assertSymlinkChainContained([
+    { name: "sub/a", data: new Uint8Array(0), linkname: ".." },
+    { name: "sub/./a/b", data: new Uint8Array(0), linkname: ".." },
+    { name: "sub/./a/./b/pwned.txt", data: enc("PWNED") },
+  ], "pwned.txt");
+});
+
+Deno.test("extractTarGzip contains a symlink chain hidden behind case variation", async () => {
+  // On a case-insensitive filesystem (macOS/Windows), "sub/A" aliases the
+  // symlink planted at "sub/a"; on a case-sensitive one the chain simply stays
+  // inside the destination. Either way, nothing escapes.
+  await assertSymlinkChainContained([
+    { name: "sub/a", data: new Uint8Array(0), linkname: ".." },
+    { name: "sub/A/b", data: new Uint8Array(0), linkname: ".." },
+    { name: "sub/A/B/pwned.txt", data: enc("PWNED-CASE") },
+  ], "pwned.txt");
 });
 
 Deno.test("extractTarGzip lets a directory entry replace an existing file at that path", async () => {
