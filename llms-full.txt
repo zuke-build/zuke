@@ -564,7 +564,13 @@ function toolchain(configure?: (t: Toolchain) => void): Toolchain
   ```
 
 function untar(archive: Uint8Array): TarEntry[]
-  Extract the entries from a `ustar` archive (regular files only).
+  Extract the entries from a tar archive — regular files and symlinks. A
+
+  │ 100-byte path is reconstructed from either long-name form in the wild: the
+  │ POSIX `ustar` `prefix` field, or GNU tar's `@LongLink` pseudo-entries
+  │ (typeflags `'L'`/`'K'`, whose data is the next entry's full name / link
+  │ target) — Node's Linux release tarballs use the GNU form.
+  │
 
 async function unzip(archive: Uint8Array): Promise<TarEntry[]>
   Read the entries of a `.zip` archive, decompressing `stored` and `deflate`

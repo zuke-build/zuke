@@ -233,12 +233,9 @@ function isZeroBlock(archive: Uint8Array, offset: number): boolean {
  * tarball (npm's bundled deps) so `npm` could not resolve them. The prefix is
  * honoured only for the POSIX `ustar\0` magic at byte 257; the older GNU format
  * reuses that byte region for other fields (and encodes long names via
- * `@LongLink` pseudo-entries instead), so `readString` there yields `"ustar "`
- * (trailing space), not `"ustar"`, and the prefix is skipped.
- *
- * caveat: GNU `@LongLink` (typeflag `'L'`) long names are not reconstructed —
- * the release tarballs Zuke provisions use the ustar prefix split; add LongLink
- * handling if a consumed archive ever needs it.
+ * `@LongLink` pseudo-entries instead, which {@link untar} reconstructs), so
+ * `readString` there yields `"ustar "` (trailing space), not `"ustar"`, and the
+ * prefix is skipped.
  */
 function entryName(archive: Uint8Array, offset: number): string {
   const name = readString(archive, offset, 100);
@@ -247,26 +244,53 @@ function entryName(archive: Uint8Array, offset: number): string {
   return prefix === "" ? name : `${prefix}/${name}`;
 }
 
-/** Extract the entries from a `ustar` archive (regular files only). */
+/**
+ * Extract the entries from a tar archive — regular files and symlinks. A
+ * >100-byte path is reconstructed from either long-name form in the wild: the
+ * POSIX `ustar` `prefix` field, or GNU tar's `@LongLink` pseudo-entries
+ * (typeflags `'L'`/`'K'`, whose *data* is the next entry's full name / link
+ * target) — Node's Linux release tarballs use the GNU form.
+ */
 export function untar(archive: Uint8Array): TarEntry[] {
   const entries: TarEntry[] = [];
   let offset = 0;
+  let longName: string | undefined;
+  let longLinkname: string | undefined;
   while (offset + BLOCK <= archive.length) {
     if (isZeroBlock(archive, offset)) break;
-    const name = entryName(archive, offset);
+    const header = offset;
     // Read the full 12-byte size field; the trailing byte is a NUL terminator.
-    const size = readOctal(archive, offset + 124, 12);
-    const typeflag = archive[offset + 156];
-    const linkname = readString(archive, offset + 157, 100);
-    offset += BLOCK;
+    const size = readOctal(archive, header + 124, 12);
+    const typeflag = archive[header + 156];
+    offset = header + BLOCK + padded(size);
+    if (typeflag === 0x4c || typeflag === 0x4b) {
+      // GNU 'L' (@LongLink name) / 'K' (long link target): the data block is
+      // the NEXT entry's full, NUL-terminated value; its own header carries
+      // only the placeholder name "././@LongLink". The width is clamped so a
+      // malformed size can't scan past the archive.
+      const value = readString(
+        archive,
+        header + BLOCK,
+        Math.min(size, archive.length - header - BLOCK),
+      );
+      if (typeflag === 0x4c) longName = value;
+      else longLinkname = value;
+      continue;
+    }
+    const name = longName ?? entryName(archive, header);
+    const linkname = longLinkname ?? readString(archive, header + 157, 100);
+    longName = undefined;
+    longLinkname = undefined;
     if (typeflag === 0x32) {
       // '2' → a symbolic link: the target is the linkname; it carries no data.
       entries.push({ name, data: new Uint8Array(0), linkname });
     } else if (typeflag === 0x30 || typeflag === 0) {
       // Regular files ('0' or legacy '\0') carry extractable data.
-      entries.push({ name, data: archive.slice(offset, offset + size) });
+      entries.push({
+        name,
+        data: archive.slice(header + BLOCK, header + BLOCK + size),
+      });
     }
-    offset += padded(size);
   }
   return entries;
 }
@@ -342,6 +366,12 @@ async function writeEntries(
     const name = stripComponents(entry.name, strip);
     if (name === "") continue; // fully stripped (e.g. the top-level directory)
     const path = `${root}/${name}`;
+    if (name.endsWith("/")) {
+      // A directory entry (old tar marks these as trailing-slash "files"):
+      // create it rather than crash trying to write a file over it.
+      await Deno.mkdir(path, { recursive: true });
+      continue;
+    }
     const slash = path.lastIndexOf("/");
     if (slash !== -1) {
       await Deno.mkdir(path.slice(0, slash), { recursive: true });

@@ -13,6 +13,7 @@ import {
   unzip,
 } from "../src/compression.ts";
 import { DEFLATE, makeZip, STORED } from "./_zip.ts";
+import { GNU, longLink, ustarArchive } from "./_tar.ts";
 
 const enc = (s: string) => new TextEncoder().encode(s);
 const dec = (b: Uint8Array) => new TextDecoder().decode(b);
@@ -66,42 +67,6 @@ Deno.test("untar stops at the zero-block trailer and ignores non-files", () => {
   assertEquals(out[0].name, "only.txt");
 });
 
-/**
- * Build a raw `ustar` archive by hand, splitting long paths across the `prefix`
- * (bytes 345-499) and `name` (bytes 0-99) fields the way POSIX tar does — the
- * production `tar()` writer refuses names over 100 bytes, so a long-path archive
- * (e.g. Node's release tarball) can only be synthesised directly.
- */
-function ustarArchive(
-  entries: { name: string; prefix: string; data: Uint8Array; magic?: string }[],
-): Uint8Array {
-  const blocks: Uint8Array[] = [];
-  for (const e of entries) {
-    const header = new Uint8Array(512);
-    const put = (offset: number, s: string) =>
-      header.set(new TextEncoder().encode(s), offset);
-    put(0, e.name);
-    put(124, e.data.length.toString(8).padStart(11, "0")); // size, octal
-    header[156] = 0x30; // typeflag '0' — regular file
-    put(257, e.magic ?? "ustar\0"); // POSIX magic (a trailing space → non-ustar)
-    put(263, "00"); // version
-    put(345, e.prefix);
-    blocks.push(header);
-    const body = new Uint8Array(Math.ceil(e.data.length / 512) * 512);
-    body.set(e.data);
-    blocks.push(body);
-  }
-  blocks.push(new Uint8Array(512)); // zero-block trailer
-  const total = blocks.reduce((n, b) => n + b.length, 0);
-  const out = new Uint8Array(total);
-  let off = 0;
-  for (const b of blocks) {
-    out.set(b, off);
-    off += b.length;
-  }
-  return out;
-}
-
 Deno.test("untar reconstructs a long path from the ustar prefix field", () => {
   // A >100-byte path POSIX tar split across prefix + name (as Node's tarball
   // does for npm's deeply-nested bundled deps).
@@ -128,6 +93,78 @@ Deno.test("untar ignores the prefix field for a non-ustar (GNU) header", () => {
   ]));
   assertEquals(out.length, 1);
   assertEquals(out[0].name, "short.js"); // prefix not prepended
+});
+
+// GNU tar (which builds Node's Linux tarballs) stores a >100-byte path as a
+// `@LongLink` pseudo-entry (typeflag 'L') whose *data* is the full name; the
+// following real header carries the name truncated to 100 bytes.
+Deno.test("untar reconstructs a GNU @LongLink long name", () => {
+  const full =
+    "node-v1/lib/node_modules/npm/node_modules/exponential-backoff/dist/delay/always/alwaysDelayStrategy.class.js";
+  const out = untar(ustarArchive([
+    longLink(full),
+    { name: full.slice(0, 100), prefix: "", data: enc("long"), magic: GNU },
+    // The long name applies only to the entry right after it.
+    { name: "short.js", prefix: "", data: enc("short"), magic: GNU },
+  ]));
+  assertEquals(out.map((e) => e.name), [full, "short.js"]);
+  assertEquals(dec(out[0].data), "long");
+});
+
+Deno.test("untar reconstructs a GNU @LongLink symlink target (typeflag K)", () => {
+  const target = `../${"t".repeat(100)}/npm-cli.js`; // > 100 bytes
+  const out = untar(ustarArchive([
+    longLink(target, 0x4b), // 'K' — the next entry's link target
+    {
+      name: "bin/npm",
+      prefix: "",
+      data: new Uint8Array(0),
+      magic: GNU,
+      typeflag: 0x32,
+    },
+  ]));
+  assertEquals(out.length, 1);
+  assertEquals(out[0].linkname, target);
+});
+
+Deno.test("extractTarGzip handles a @LongLink name whose 100-byte truncation ends on a slash", async () => {
+  // The consumer-reported crash: the truncated name ends exactly at a "/", so
+  // the un-fixed reader mkdir'd that path and then writeFile'd the directory —
+  // "Is a directory (os error 21)".
+  const dir = await Deno.makeTempDir();
+  try {
+    const parent = `node-v1/lib/${"x".repeat(87)}/`; // exactly 100 bytes
+    const full = `${parent}file.js`;
+    const raw = ustarArchive([
+      longLink(full),
+      { name: full.slice(0, 100), prefix: "", data: enc("ok"), magic: GNU },
+    ]);
+    const archive = `${dir}/node.tar.gz`;
+    await Deno.writeFile(archive, await gzip(raw));
+    await extractTarGzip(archive, `${dir}/out`);
+    assertEquals(await Deno.readTextFile(`${dir}/out/${full}`), "ok");
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("extractTarGzip creates a trailing-slash directory entry instead of writing a file", async () => {
+  // Old (pre-ustar) tar marks a directory as a size-0 *file* entry with a
+  // trailing slash; writing it as a file would crash on the just-created dir.
+  const dir = await Deno.makeTempDir();
+  try {
+    const raw = ustarArchive([
+      { name: "pkg/lib/", prefix: "", data: new Uint8Array(0) },
+      { name: "pkg/lib/a.js", prefix: "", data: enc("a") },
+    ]);
+    const archive = `${dir}/v7.tar.gz`;
+    await Deno.writeFile(archive, await gzip(raw));
+    await extractTarGzip(archive, `${dir}/out`);
+    assertEquals((await Deno.stat(`${dir}/out/pkg/lib`)).isDirectory, true);
+    assertEquals(await Deno.readTextFile(`${dir}/out/pkg/lib/a.js`), "a");
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
 });
 
 Deno.test("extractTarGzip lands a >100-byte prefixed path at its full location", async () => {
