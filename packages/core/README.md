@@ -3327,8 +3327,11 @@ type Target = TargetBuilder
   A configured target. Alias of {@link TargetBuilder} — the same object both
   builds and represents the target. Exposed as `Target` for use in signatures.
 
-type TargetFn = (ctx: TargetContext) => void | Promise<void>
-  The executable body of a target. May be synchronous or asynchronous.
+type TargetFn = (ctx: TargetContext) => unknown | Promise<unknown>
+  The executable body of a target. May be synchronous or asynchronous, and any
+  returned value is ignored — so a body can return a tool-wrapper call directly
+  (`.executes(() => DenoTasks.lint())`, which resolves to a `CommandOutput`)
+  without wrapping it in an `async` block just to discard the result.
 
 type TargetRunStatus = "pending" | "running" | "waiting" | "succeeded" | "failed" | "skipped"
   The status of one target within a run record. `waiting` (a suspended

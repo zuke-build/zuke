@@ -80,6 +80,19 @@ Deno.test("runWithTimeout rejects with a timeout error when fn overruns", async 
   );
 });
 
+Deno.test("runWithTimeout awaits a non-void fn's thenable and discards its value", async () => {
+  // A body may return a value (e.g. a *Tasks call's CommandOutput promise);
+  // the result is awaited — so a timeout still bounds it — then dropped.
+  let settled = false;
+  const out = await runWithTimeout(async () => {
+    await delay(1);
+    settled = true;
+    return 42;
+  }, 1000);
+  assertEquals(settled, true);
+  assertEquals(out, undefined);
+});
+
 Deno.test("runWithTimeout propagates a rejection from fn", async () => {
   await assertRejects(
     () => runWithTimeout(() => Promise.reject(new Error("inner")), 1000),

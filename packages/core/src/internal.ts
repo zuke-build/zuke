@@ -50,10 +50,13 @@ export async function sha256Hex(text: string): Promise<string> {
  * `timed out after <ms>ms` error).
  */
 export function runWithTimeout(
-  fn: () => void | Promise<void>,
+  fn: () => unknown,
   timeoutMs: number | undefined,
 ): Promise<void> {
-  const result = Promise.resolve().then(fn);
+  // `.then(fn)` awaits a returned thenable (so the timeout still bounds an
+  // async body); the second `.then` discards the value — a body's return is
+  // ignored (see `TargetFn`).
+  const result = Promise.resolve().then(fn).then(() => undefined);
   if (timeoutMs === undefined) return result;
   return new Promise<void>((resolve, reject) => {
     const timer = setTimeout(
