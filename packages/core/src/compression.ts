@@ -424,15 +424,24 @@ function stripComponents(name: string, n: number): string {
  * ancestor directory and rejects if one is a symlink — catching every alias
  * because it resolves the true inode, and touching nothing outside `destDir`
  * (it never `mkdir`s or writes through the symlink it finds).
+ *
+ * `realDirs` caches the ancestors already confirmed to be real directories so
+ * a deep tree isn't re-`lstat`ed once per file (thousands of redundant calls on
+ * a real runtime tarball). It is a cache of a *live* invariant, so the caller
+ * must evict a path from it the moment that path stops being a plain directory
+ * — i.e. when a symlink or file is created there — or a later entry could skip
+ * the check on a path that has since become a symlink.
  */
 async function assertNoSymlinkAncestor(
   root: string,
   name: string,
+  realDirs: Set<string>,
 ): Promise<void> {
   const parts = name.replace(/\/+$/, "").split("/").slice(0, -1);
   let current = root;
   for (const part of parts) {
     current = `${current}/${part}`;
+    if (realDirs.has(current)) continue;
     let info: Deno.FileInfo;
     try {
       info = await Deno.lstat(current);
@@ -446,17 +455,20 @@ async function assertNoSymlinkAncestor(
           `would redirect it out of the destination.`,
       );
     }
+    if (info.isDirectory) realDirs.add(current);
   }
 }
 
 /**
  * Write each archive `entry` under `destDir`, creating parent directories as
  * needed. Every entry name is validated first ({@link assertSafeEntryName}), a
- * symlink's target is validated ({@link assertSafeLinkTarget}), and no entry is
- * written through an ancestor symlink ({@link assertNoSymlinkAncestor}), so a
- * malicious archive cannot plant, point, or chain its way to a file outside
- * `destDir` (a "zip slip"). With {@link ExtractOptions.strip}, leading path
- * components are dropped and any entry left with an empty path is skipped.
+ * symlink's target is validated ({@link assertSafeLinkTarget}), no entry is
+ * written through an ancestor symlink ({@link assertNoSymlinkAncestor}), and a
+ * pre-existing symlink at an entry's own path is removed before the write — so a
+ * malicious archive can neither plant, point, nor chain its way (nor follow a
+ * symlink left in a reused `destDir`) to a file outside `destDir` (a "zip
+ * slip"). With {@link ExtractOptions.strip}, leading path components are dropped
+ * and any entry left with an empty path is skipped.
  */
 async function writeEntries(
   entries: TarEntry[],
@@ -467,10 +479,11 @@ async function writeEntries(
   for (const entry of entries) assertSafeEntryName(entry.name);
   const root = String(destDir);
   await Deno.mkdir(root, { recursive: true });
+  const realDirs = new Set<string>([root]);
   for (const entry of entries) {
     const name = stripComponents(entry.name, strip);
     if (name === "") continue; // fully stripped (e.g. the top-level directory)
-    await assertNoSymlinkAncestor(root, name);
+    await assertNoSymlinkAncestor(root, name, realDirs);
     const path = `${root}/${name}`;
     if (name.endsWith("/")) {
       // A directory entry (typeflag '5', or old tar's trailing-slash "file"):
@@ -481,19 +494,25 @@ async function writeEntries(
       const dirPath = path.replace(/\/+$/, "");
       await Deno.remove(dirPath).catch(() => {});
       await Deno.mkdir(dirPath, { recursive: true });
+      realDirs.add(dirPath);
       continue;
     }
     const slash = path.lastIndexOf("/");
     if (slash !== -1) {
       await Deno.mkdir(path.slice(0, slash), { recursive: true });
+      realDirs.add(path.slice(0, slash));
     }
+    // Remove any node already at the leaf before writing. This is not only
+    // "last one wins" for a duplicate entry: it unlinks a symlink sitting at the
+    // path — one this archive planted, or one left in a reused `destDir` — so
+    // the write lands at the leaf itself and cannot follow the link outside
+    // `destDir`. `Deno.remove` on a symlink drops the link, not its target.
+    await Deno.remove(path).catch(() => {});
+    // The path is about to become a file or symlink, so it is no longer a plain
+    // directory the ancestor check may trust (an empty dir can be replaced here).
+    realDirs.delete(path);
     if (entry.linkname !== undefined) {
       assertSafeLinkTarget(name, entry.linkname);
-      // `Deno.symlink` throws if the path already exists, whereas a file write
-      // silently overwrites; remove any prior entry first so a duplicate name in
-      // a malformed archive is "last one wins" (like a file) rather than a raw
-      // AlreadyExists crash.
-      await Deno.remove(path).catch(() => {});
       // Windows requires an explicit link `type`; POSIX ignores it. Runtime bins
       // (Node's bin/npm → npm-cli.js) are file symlinks.
       // caveat: assume "file"; a directory symlink in a tar unpacked on Windows
