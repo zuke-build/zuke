@@ -93,6 +93,17 @@ Deno.test("runWithTimeout awaits a non-void fn's thenable and discards its value
   assertEquals(out, undefined);
 });
 
+Deno.test("runWithTimeout discards a returned value on the no-bound (undefined timeout) path", async () => {
+  // The unbounded branch returns the mapped promise directly, so its own
+  // `.then(() => undefined)` — not the timeout branch's `resolve()` — is what
+  // drops the value here.
+  const out = await runWithTimeout(
+    () => Promise.resolve({ code: 0 }),
+    undefined,
+  );
+  assertEquals(out, undefined);
+});
+
 Deno.test("runWithTimeout propagates a rejection from fn", async () => {
   await assertRejects(
     () => runWithTimeout(() => Promise.reject(new Error("inner")), 1000),

@@ -230,8 +230,8 @@ function externalSignal(name: string): WaitTrigger
 async function extractTarGzip(src: PathLike, destDir: PathLike, options: ExtractOptions): Promise<void>
   Read the `.tar.gz` at `src`, gunzip and unpack it, and write each entry under
   `destDir` (creating parent directories as needed). Symlink entries are
-  recreated as symlinks; pass {@link ExtractOptions.strip} to drop leading path
-  components.
+  recreated as symlinks and directory entries as directories; pass
+  {@link ExtractOptions.strip} to drop leading path components.
 
 async function extractZip(src: PathLike, destDir: PathLike, options: ExtractOptions): Promise<void>
   Read the `.zip` at `src`, unpack it, and write each entry under `destDir`
@@ -564,13 +564,16 @@ function toolchain(configure?: (t: Toolchain) => void): Toolchain
   ```
 
 function untar(archive: Uint8Array): TarEntry[]
-  Extract the entries from a tar archive — regular files and symlinks. A
-
-  │ 100-byte path is reconstructed from either long-name form in the wild: the
-  │ POSIX `ustar` `prefix` field, or GNU tar's `@LongLink` pseudo-entries
-  │ (typeflags `'L'`/`'K'`, whose data is the next entry's full name / link
-  │ target) — Node's Linux release tarballs use the GNU form.
-  │
+  Extract the entries from a tar archive — regular files, symlinks, and
+  directories. A path longer than the 100-byte `name` field is reconstructed
+  from whichever long-name form the archive uses: the POSIX `ustar` `prefix`
+  split, GNU tar's `@LongLink` pseudo-entries (typeflags `'L'` name / `'K'`
+  link target, whose data is the following member's value — Node's Linux
+  release tarballs use this), or pax extended headers (typeflag `'x'`, with
+  `path=`/`linkpath=` records — bsdtar/macOS use this). These metadata
+  pseudo-entries accumulate onto the next real member, matching GNU/bsdtar, so a
+  mixed archive is read correctly; a pax record wins over a GNU long name, which
+  wins over the header's own fields.
 
 async function unzip(archive: Uint8Array): Promise<TarEntry[]>
   Read the entries of a `.zip` archive, decompressing `stored` and `deflate`
@@ -3277,7 +3280,10 @@ type TargetFn = (ctx: TargetContext) => unknown | Promise<unknown>
   The executable body of a target. May be synchronous or asynchronous, and any
   returned value is ignored — so a body can return a tool-wrapper call directly
   (`.executes(() => DenoTasks.lint())`, which resolves to a `CommandOutput`)
-  without wrapping it in an `async` block just to discard the result.
+  without wrapping it in an `async` block just to discard the result. A single
+  returned promise is awaited before dependents run; a returned array of
+  promises is not (it is not a thenable), so `await Promise.all([...])` inside
+  the body when you fan work out, rather than returning the array.
 
 type TargetRunStatus = "pending" | "running" | "waiting" | "succeeded" | "failed" | "skipped"
   The status of one target within a run record. `waiting` (a suspended

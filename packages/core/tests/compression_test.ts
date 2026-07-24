@@ -127,6 +127,58 @@ Deno.test("untar reconstructs a GNU @LongLink symlink target (typeflag K)", () =
   assertEquals(out[0].linkname, target);
 });
 
+Deno.test("extractTarGzip refuses a @LongLink symlink target that escapes or is absolute", async () => {
+  // A 'K'-provided long target goes through the same assertSafeLinkTarget as a
+  // short one — a poisoned GNU tarball can't use @LongLink to smuggle an
+  // escaping or absolute symlink past the guard.
+  const dir = await Deno.makeTempDir();
+  try {
+    const escaping = `../../${"e".repeat(100)}/etc/passwd`;
+    const evil = `${dir}/evil.tar.gz`;
+    await Deno.writeFile(
+      evil,
+      await gzip(ustarArchive([
+        longLink(escaping, 0x4b),
+        {
+          name: "bin/pwn",
+          prefix: "",
+          data: new Uint8Array(0),
+          magic: GNU,
+          typeflag: 0x32,
+        },
+      ])),
+    );
+    await assertRejects(
+      () => extractTarGzip(evil, `${dir}/out`),
+      Error,
+      "escapes the destination",
+    );
+
+    const absolute = `/etc/${"a".repeat(100)}/passwd`;
+    const abs = `${dir}/abs.tar.gz`;
+    await Deno.writeFile(
+      abs,
+      await gzip(ustarArchive([
+        longLink(absolute, 0x4b),
+        {
+          name: "bin/pwn2",
+          prefix: "",
+          data: new Uint8Array(0),
+          magic: GNU,
+          typeflag: 0x32,
+        },
+      ])),
+    );
+    await assertRejects(
+      () => extractTarGzip(abs, `${dir}/out`),
+      Error,
+      "absolute path",
+    );
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
 Deno.test("extractTarGzip handles a @LongLink name whose 100-byte truncation ends on a slash", async () => {
   // The consumer-reported crash: the truncated name ends exactly at a "/", so
   // the un-fixed reader mkdir'd that path and then writeFile'd the directory —
@@ -143,6 +195,193 @@ Deno.test("extractTarGzip handles a @LongLink name whose 100-byte truncation end
     await Deno.writeFile(archive, await gzip(raw));
     await extractTarGzip(archive, `${dir}/out`);
     assertEquals(await Deno.readTextFile(`${dir}/out/${full}`), "ok");
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("untar ignores an empty @LongLink and keeps the following entry's real name", () => {
+  // A zero-size 'L' pseudo-entry must not blank the next name: `longName = ""`
+  // would defeat the `?? entryName(...)` fallback and drop the file.
+  const out = untar(ustarArchive([
+    {
+      name: "././@LongLink",
+      prefix: "",
+      data: enc(""),
+      magic: GNU,
+      typeflag: 0x4c,
+    },
+    { name: "real-file.txt", prefix: "", data: enc("hello"), magic: GNU },
+  ]));
+  assertEquals(out.map((e) => e.name), ["real-file.txt"]);
+  assertEquals(dec(out[0].data), "hello");
+});
+
+Deno.test("untar reconstructs a pax path= long name and lets pax win over a GNU name", () => {
+  const paxPath = `deep/${"p".repeat(120)}/module.js`; // > 100 bytes
+  const paxRecord = (key: string, value: string) => {
+    // A pax record is "<len> key=value\n", where len counts the whole record —
+    // including its own digits, so solve for the fixed point.
+    const body = ` ${key}=${value}\n`;
+    let len = body.length;
+    while (`${len}`.length + body.length !== len) {
+      len = `${len}`.length + body.length;
+    }
+    return `${len}${body}`;
+  };
+  // 'x' path= alone → the file takes the pax path.
+  const outPax = untar(ustarArchive([
+    {
+      name: "PaxHeader",
+      prefix: "",
+      data: enc(paxRecord("path", paxPath)),
+      magic: GNU,
+      typeflag: 0x78,
+    },
+    { name: "short.js", prefix: "", data: enc("body"), magic: GNU },
+  ]));
+  assertEquals(outPax.map((e) => e.name), [paxPath]);
+  assertEquals(dec(outPax[0].data), "body");
+
+  // 'L' then 'x' path= then the file → pax wins over the GNU long name.
+  const outBoth = untar(ustarArchive([
+    longLink("gnu/name/ignored.js"),
+    {
+      name: "PaxHeader",
+      prefix: "",
+      data: enc(paxRecord("path", paxPath)),
+      magic: GNU,
+      typeflag: 0x78,
+    },
+    { name: "short.js", prefix: "", data: enc("both"), magic: GNU },
+  ]));
+  assertEquals(outBoth.map((e) => e.name), [paxPath]);
+});
+
+Deno.test("untar keeps a GNU long name across a pax metadata header (accumulation)", () => {
+  const full = `keep/${"k".repeat(120)}/index.js`; // > 100 bytes
+  // 'L' (name) then an 'x' header carrying only mtime (no path=) then the file:
+  // the long name must survive the intervening metadata, not be dropped.
+  const out = untar(ustarArchive([
+    longLink(full),
+    {
+      name: "PaxHeader",
+      prefix: "",
+      data: enc("30 mtime=1700000000.000000000\n"),
+      magic: GNU,
+      typeflag: 0x78,
+    },
+    { name: full.slice(0, 100), prefix: "", data: enc("kept"), magic: GNU },
+  ]));
+  assertEquals(out.map((e) => e.name), [full]);
+  assertEquals(dec(out[0].data), "kept");
+});
+
+Deno.test("untar emits a '5' directory entry (with the GNU long name consumed by it)", () => {
+  const longDir = `d/${"l".repeat(120)}`; // > 100 bytes, a long-named directory
+  const out = untar(ustarArchive([
+    longLink(`${longDir}/`),
+    {
+      name: `${longDir.slice(0, 99)}/`,
+      prefix: "",
+      data: new Uint8Array(0),
+      magic: GNU,
+      typeflag: 0x35,
+    },
+    // The long name was consumed by the directory, so this file keeps its own.
+    { name: "plain.txt", prefix: "", data: enc("f"), magic: GNU },
+  ]));
+  assertEquals(out.map((e) => e.name), [`${longDir}/`, "plain.txt"]);
+  assertEquals(out[0].data.length, 0);
+});
+
+Deno.test("untar attaches a 'K' long target to a symlink and does not leak it to a regular file", () => {
+  const target = `../${"t".repeat(120)}/npm-cli.js`; // > 100 bytes
+  // 'K' then a regular file (not a symlink): the file has no linkname and the
+  // pending target is consumed, not leaked onto a later symlink.
+  const out = untar(ustarArchive([
+    longLink(target, 0x4b),
+    { name: "not-a-link.txt", prefix: "", data: enc("x"), magic: GNU },
+    {
+      name: "later-link",
+      prefix: "",
+      data: new Uint8Array(0),
+      magic: GNU,
+      typeflag: 0x32,
+    },
+  ]));
+  assertEquals(out.map((e) => e.name), ["not-a-link.txt", "later-link"]);
+  assertEquals(out[0].linkname, undefined); // regular file, no target
+  assertEquals(out[1].linkname, ""); // its own (empty) header target, not the 'K'
+});
+
+Deno.test("untar clamps a malformed huge @LongLink size (no out-of-bounds scan or hang)", () => {
+  // A hand-built 'L' header whose size field claims far more than the archive
+  // holds, with no trailing NUL: the clamp bounds the read to what's present.
+  const header = new Uint8Array(512);
+  header.set(enc("././@LongLink"), 0);
+  header.set(enc("77777777777"), 124); // ~8.5e9 bytes claimed
+  header[156] = 0x4c; // 'L'
+  header.set(enc(GNU), 257);
+  const data = enc("abc/def"); // far short of the claimed size, no NUL padding
+  const archive = new Uint8Array(512 + data.length);
+  archive.set(header, 0);
+  archive.set(data, 512);
+  // Must return promptly without throwing; the truncated archive yields no
+  // real member after the clamped long-name block. (Without the clamp,
+  // readString scans to the ~8.5e9-byte claimed width — a multi-second hang.)
+  const out = untar(archive);
+  assertEquals(out.length, 0);
+});
+
+Deno.test("extractTarGzip refuses to extract through an archive-planted symlink chain", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    // The confirmed high-severity escape: chain in-tree symlinks so a later
+    // entry's parent is redirected above the destination. Each link target
+    // passes the lexical check; the escape only exists once both are on disk.
+    const archive = `${dir}/evil.tar.gz`;
+    await Deno.writeFile(
+      archive,
+      await gzip(tar([
+        { name: "w/link", data: new Uint8Array(0), linkname: ".." },
+        { name: "w/link/escape", data: new Uint8Array(0), linkname: ".." },
+        { name: "w/link/escape/pwned.txt", data: enc("PWNED") },
+      ])),
+    );
+    await assertRejects(
+      () => extractTarGzip(archive, `${dir}/out`),
+      Error,
+      "through the symlink",
+    );
+    // Nothing was planted in the parent of the destination.
+    assertEquals(
+      await Deno.stat(`${dir}/pwned.txt`).then(() => true).catch(() => false),
+      false,
+    );
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("extractTarGzip lets a directory entry replace an existing file at that path", async () => {
+  if (Deno.build.os === "windows") return; // symlink-adjacent edge; keep POSIX
+  const dir = await Deno.makeTempDir();
+  try {
+    const archive = `${dir}/dup.tar.gz`;
+    // A malformed duplicate: a file "pkg" then a directory "pkg/". The dir must
+    // win (last one wins) rather than crash with "Not a directory".
+    await Deno.writeFile(
+      archive,
+      await gzip(ustarArchive([
+        { name: "pkg", prefix: "", data: enc("i am a file") },
+        { name: "pkg/", prefix: "", data: new Uint8Array(0), typeflag: 0x35 },
+        { name: "pkg/child.txt", prefix: "", data: enc("child") },
+      ])),
+    );
+    await extractTarGzip(archive, `${dir}/out`);
+    assertEquals((await Deno.stat(`${dir}/out/pkg`)).isDirectory, true);
+    assertEquals(await Deno.readTextFile(`${dir}/out/pkg/child.txt`), "child");
   } finally {
     await Deno.remove(dir, { recursive: true });
   }
