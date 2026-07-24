@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.31.1](https://github.com/zuke-build/zuke/compare/core-v1.31.0...core-v1.31.1) (2026-07-24)
+
+
+### Bug Fixes
+
+* **core:** reconstruct GNU @LongLink tar names and accept any target-body return ([#262](https://github.com/zuke-build/zuke/issues/262)) ([06a5525](https://github.com/zuke-build/zuke/commit/06a5525f31138be2911e77eecc4bb11a3dc7defc))
+* **core:** unlink a leaf symlink before writing, and cache ancestor lstats ([#264](https://github.com/zuke-build/zuke/issues/264)) ([76591d5](https://github.com/zuke-build/zuke/commit/76591d5fe5c5253ded3b3e7bce04f51d0a92d7b6))
+
 ## [1.31.0](https://github.com/zuke-build/zuke/compare/core-v1.30.4...core-v1.31.0) (2026-07-23)
 
 
