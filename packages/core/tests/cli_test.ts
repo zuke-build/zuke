@@ -1,4 +1,4 @@
-import { assertEquals, assertStringIncludes } from "./_assert.ts";
+import { assertEquals, assertStringIncludes, assertThrows } from "./_assert.ts";
 import { Build, cicd, group, type Plugin, target } from "../mod.ts";
 import {
   formatGraph,
@@ -262,8 +262,33 @@ Deno.test("parseArgs collects declared parameter flags", () => {
   const inline = parseArgs(["--environment=dev"], greetFlags);
   assertEquals(inline.values, { environment: "dev" });
 
-  // Unknown flags are ignored, not treated as parameters.
-  assertEquals(parseArgs(["--nope", "x"], greetFlags).values, {});
+  // An unrecognized flag is rejected, not silently treated as absent.
+  assertThrows(() => parseArgs(["--nope", "x"], greetFlags), Error, "--nope");
+});
+
+Deno.test("parseArgs rejects an unknown flag with a did-you-mean suggestion", () => {
+  const error = assertThrows(
+    () => parseArgs(["build", "--dry-rn"]),
+    Error,
+    '"--dry-rn"',
+  );
+  assertStringIncludes(error.message, 'Did you mean "--dry-run"?');
+});
+
+Deno.test("parseArgs rejects an unknown flag with no near match, no suggestion offered", () => {
+  const error = assertThrows(
+    () => parseArgs(["build", "--no-such-flag"]),
+    Error,
+    '"--no-such-flag"',
+  );
+  assertEquals(error.message.includes("Did you mean"), false);
+});
+
+Deno.test("parseArgs still accepts a declared parameter flag", () => {
+  assertEquals(
+    parseArgs(["greet", "--environment", "prod"], greetFlags).values,
+    { environment: "prod" },
+  );
 });
 
 Deno.test("parseArgs reads the --parallel flag and count", () => {

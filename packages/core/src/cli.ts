@@ -25,6 +25,7 @@ import {
   isCompletionShell,
 } from "./completions.ts";
 import {
+  BUILTIN_FLAGS,
   CANCEL_COMMAND,
   COMPLETIONS_COMMAND,
   DEFAULT_TARGET,
@@ -194,9 +195,70 @@ function parsePositiveInt(value: string | undefined): number | undefined {
 }
 
 /**
+ * Levenshtein edit distance between two strings, used only to power the
+ * unknown-flag "did you mean" suggestion below — not exported, since it isn't
+ * part of the CLI's public surface.
+ */
+function editDistance(a: string, b: string): number {
+  const rows = a.length + 1;
+  const cols = b.length + 1;
+  const dp: number[][] = Array.from({ length: rows }, () => new Array(cols));
+  for (let i = 0; i < rows; i++) dp[i][0] = i;
+  for (let j = 0; j < cols; j++) dp[0][j] = j;
+  for (let i = 1; i < rows; i++) {
+    for (let j = 1; j < cols; j++) {
+      dp[i][j] = a[i - 1] === b[j - 1] ? dp[i - 1][j - 1] : 1 + Math.min(
+        dp[i - 1][j],
+        dp[i][j - 1],
+        dp[i - 1][j - 1],
+      );
+    }
+  }
+  return dp[a.length][b.length];
+}
+
+/**
+ * The nearest match for `flag` among `known` (flag names, no leading dashes)
+ * within edit distance 2, or `undefined` if none is close enough. Ties go to
+ * whichever candidate `known` lists first, so the suggestion is deterministic.
+ */
+function nearestFlag(
+  flag: string,
+  known: readonly string[],
+): string | undefined {
+  let best: string | undefined;
+  let bestDistance = 3; // only distances of 1 or 2 count as "close enough"
+  for (const candidate of known) {
+    const distance = editDistance(flag, candidate);
+    if (distance < bestDistance) {
+      best = candidate;
+      bestDistance = distance;
+    }
+  }
+  return best;
+}
+
+/**
+ * The friendly error for a `--flag` that is neither a built-in flag nor a
+ * declared build parameter: names the offending flag and, when one is close
+ * enough (edit distance ≤ 2), suggests the flag it was probably meant to be.
+ */
+function unknownFlagError(flag: string, known: readonly string[]): Error {
+  const suggestion = nearestFlag(flag, known);
+  const hint = suggestion !== undefined
+    ? ` Did you mean "--${suggestion}"?`
+    : " Run --help to see the available flags.";
+  return new Error(`Unknown flag "--${flag}".${hint}`);
+}
+
+/**
  * Parse `zuke` arguments. Built-in flags are recognised first; `paramFlags`
  * lets the caller pass the build's declared parameter flags so their values are
- * collected. Unknown flags are ignored.
+ * collected. A `--flag` that is neither a built-in nor a declared parameter
+ * throws, naming the flag and suggesting the nearest known flag if one is
+ * close enough.
+ *
+ * @throws {Error} for an unrecognized `--flag`.
  */
 export function parseArgs(
   args: string[],
@@ -230,6 +292,10 @@ export function parseArgs(
   };
   const byFlag = new Map<string, ParamFlag>();
   for (const pf of paramFlags) byFlag.set(pf.flag, pf);
+  const knownFlags = [
+    ...BUILTIN_FLAGS.map((f) => f.name.slice(2)),
+    ...paramFlags.map((pf) => pf.flag),
+  ];
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -369,8 +435,9 @@ export function parseArgs(
             ? `${parsed.values[pf.name]},${value}`
             : value;
         }
+      } else {
+        throw unknownFlagError(flag, knownFlags);
       }
-      // Unknown flags are ignored.
     } else if (
       parsed.completions && parsed.completionsAction === undefined
     ) {
@@ -1026,7 +1093,13 @@ export async function main(
     boolean: p.kind_ === "boolean",
     array: p.array_,
   }));
-  const parsed = parseArgs(args, paramFlags);
+  let parsed: ParsedArgs;
+  try {
+    parsed = parseArgs(args, paramFlags);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    return 1;
+  }
 
   if (parsed.help) {
     console.log(formatHelp(targets, params));
