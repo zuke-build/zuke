@@ -93,6 +93,41 @@ Deno.test("killAfter() kills a slow tool run", async () => {
   );
 });
 
+Deno.test("maxCapturedBytes() caps a tool run's captured output at the tail", async () => {
+  // Every wrapper funnels through ToolSettings, so the cap has to be settable
+  // there too — otherwise a wrapper whose whole output is parsed is stuck with
+  // the 8 MiB default and silently receives only the tail.
+  const emit =
+    `for (let i = 0; i < 40; i++) console.log(String(i).padStart(4, "0") + "x".repeat(1019));`;
+  const out = await new EvalSettings()
+    .script(emit)
+    .quiet()
+    .maxCapturedBytes(4096)
+    .run();
+  assertEquals(out.truncated, true);
+  assertEquals(out.maxCapturedBytes, 4096);
+  assertEquals(out.stdout.length <= 4096, true, `kept ${out.stdout.length}`);
+  assertEquals(out.stdout.includes("0039"), true); // the tail survived…
+  assertEquals(out.stdout.includes("0000"), false); // …not the head.
+});
+
+Deno.test("maxCapturedBytes() leaves output under the cap whole", async () => {
+  const out = await new EvalSettings()
+    .quiet()
+    .maxCapturedBytes(64 * 1024 * 1024) // raised well above the default
+    .run();
+  assertEquals(out.truncated, false);
+  assertEquals(out.stdout.includes("tool-ok"), true);
+});
+
+Deno.test("maxCapturedBytes() rejects a cap capture cannot honour", () => {
+  const err = assertThrows(
+    () => new EvalSettings().maxCapturedBytes(-1),
+    RangeError,
+  );
+  assertEquals(messageOf(err).includes("maxCapturedBytes"), true);
+});
+
 Deno.test("noThrow() suppresses the non-zero throw", async () => {
   const out = await new EvalSettings()
     .script("Deno.exit(3)")

@@ -2,6 +2,8 @@ import {
   assertEquals,
   assertRejects,
   assertStringIncludes,
+  assertThrows,
+  messageOf,
 } from "./_assert.ts";
 import {
   $,
@@ -189,6 +191,20 @@ Deno.test("$ leaves output under the cap untouched and not truncated", async () 
     .then();
   assertEquals(out.truncated, false);
   assertEquals(out.text(), "small");
+});
+
+Deno.test("$ .maxCapturedBytes() rejects a cap capture cannot honour", () => {
+  // `-1` is the conventional "no limit" idiom and used to spin the trim loop
+  // into an internal TypeError mid-stream; a fractional cap hit a RangeError
+  // deep in a subarray. Both must fail at the setter, naming the setting.
+  for (const bad of [-1, 0, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+    const err = assertThrows(
+      () => $`${DENO} eval ${"1"}`.maxCapturedBytes(bad),
+      RangeError,
+    );
+    assertStringIncludes(messageOf(err), "maxCapturedBytes");
+    assertStringIncludes(messageOf(err), String(bad));
+  }
 });
 
 Deno.test("$ caps stderr independently of stdout", async () => {

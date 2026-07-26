@@ -45,6 +45,29 @@ export function truncationNotice(maxBytes: number): string {
 }
 
 /**
+ * Reject a capture cap {@link captureStream} cannot honour — anything that is
+ * not a positive whole number of bytes — at the setter, before a process is
+ * spawned, rather than letting the trim loop fail mid-stream with an opaque
+ * internal error.
+ *
+ * There is deliberately no "unlimited" sentinel: a caller that must keep every
+ * byte passes a cap larger than the output it expects (`Number.MAX_SAFE_INTEGER`
+ * for "however much there is"), so the ceiling is always visible in the code.
+ *
+ * @param bytes The requested cap.
+ * @throws {RangeError} If `bytes` is not a positive integer.
+ */
+export function checkMaxCapturedBytes(bytes: number): void {
+  if (Number.isInteger(bytes) && bytes > 0) return;
+  throw new RangeError(
+    `maxCapturedBytes must be a positive whole number of bytes, got ${bytes}. ` +
+      `Pass the number of bytes to keep per stream, e.g. 8 * 1024 * 1024. ` +
+      `There is no unlimited value: to keep everything, pass a cap larger ` +
+      `than the output you expect, such as Number.MAX_SAFE_INTEGER.`,
+  );
+}
+
+/**
  * Drain `stream`, writing every chunk to `sink` when one is given, and capture
  * at most `maxBytes` of it — dropping from the FRONT so the newest output
  * survives.

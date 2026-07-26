@@ -32,7 +32,11 @@ stdout).
 cannot grow the buffer until the run dies. Past the cap the **newest** bytes are
 kept, `truncated` is `true`, and `.text()` prefixes
 `[output truncated to last 8 MiB]`. Raise or lower it per command with
-`.maxCapturedBytes(bytes)`; live streaming to the terminal is never capped.
+`.maxCapturedBytes(bytes)` — the same setting exists on every tool wrapper's
+settings lambda, so `SomeTasks.run((s) => s.maxCapturedBytes(64 * 1024 * 1024))`
+raises it for a tool whose whole output must be parsed. The cap must be a
+positive whole number of bytes; there is no unlimited value, so pass a cap larger
+than the output you expect. Live streaming to the terminal is never capped.
 
 **Safety:** interpolated values become **discrete argv entries** — they are
 never spliced into a shell string — so there is no injection surface. Arrays

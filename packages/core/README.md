@@ -3475,6 +3475,10 @@ class Command implements PromiseLike<CommandOutput>
     {@link CommandOutput.text} prefixes a notice. Raise it for a command whose
     whole output you must parse; lower it to bound a chatty one. Live streaming
     to the terminal is never capped — every byte still reaches it.
+
+    @throws {RangeError}
+        If `bytes` is not a positive whole number.
+
   signal(signal: AbortSignal): this
     Terminate the process (via `SIGTERM`) when `signal` aborts — for example
     when the enclosing run is cancelled. Overrides the executor's ambient
@@ -3719,6 +3723,17 @@ abstract class ToolSettings
   killAfter(ms: number): this
     Kill the tool if it runs longer than `ms` milliseconds, raising a
     `CommandTimeoutError`. Fires even under {@link noThrow}.
+  maxCapturedBytes(bytes: number): this
+    Cap how much of each captured stream the run keeps in memory, in bytes
+    (default 8 MiB). Once the cap is reached the oldest bytes are dropped,
+    `CommandOutput.truncated` is set, and `CommandOutput.text` prefixes a
+    notice. Raise it for a tool whose whole output must be parsed — a coverage
+    report, a `--json` dump — and lower it to bound a chatty one. Live
+    streaming to the terminal is never capped.
+
+    @throws {RangeError}
+        If `bytes` is not a positive whole number.
+
   toolPath(path: PathLike): this
     Override the binary to run (e.g. an absolute path to the tool).
   fromNodeModules(): this

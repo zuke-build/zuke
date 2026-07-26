@@ -23,6 +23,7 @@ import { redactLine } from "./ambient_redactor.ts";
 import { terminateProcess, TERMINATION_GRACE_MS } from "./terminate.ts";
 import {
   captureStream,
+  checkMaxCapturedBytes,
   DEFAULT_MAX_CAPTURED_BYTES,
   truncationNotice,
 } from "./capture.ts";
@@ -228,8 +229,11 @@ export class Command implements PromiseLike<CommandOutput> {
    * {@link CommandOutput.text} prefixes a notice. Raise it for a command whose
    * whole output you must parse; lower it to bound a chatty one. Live streaming
    * to the terminal is never capped — every byte still reaches it.
+   *
+   * @throws {RangeError} If `bytes` is not a positive whole number.
    */
   maxCapturedBytes(bytes: number): this {
+    checkMaxCapturedBytes(bytes);
     this.#maxCapturedBytes = bytes;
     return this;
   }
