@@ -126,9 +126,11 @@ The script is a static snapshot of the build it was generated from, so
 regenerate and re-source it when you add, rename, or remove targets — the same
 model as `deno completions`. A missing or unknown sub-action or shell prints a
 usage line and exits `1`. `completions` is a reserved command name: a target
-called `completions` can't be run by name. The completions attach to whichever
-word you sourced them for — `./zuke`, `zuke`, or `deno task zuke` all work, as
-long as the printed script's word matches how you invoke the build.
+called `completions` can't be run by name. The printed script registers the
+completion against the words `zuke` and `./zuke`, so both of those forms
+complete. `deno task zuke <target>` does not: a shell picks the completion from
+the first word of the line, which is `deno` there — invoke the launcher
+directly when you want completion.
 
 ### Installing
 

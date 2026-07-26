@@ -97,6 +97,42 @@ Deno.test("formatCompletions defaults to no parameters", () => {
   assertEquals(script.includes("--dry-mode"), false);
 });
 
+/**
+ * The command words a generated script binds completion to, deduped and
+ * sorted — the registration lines only, never a candidate's description (one
+ * reserved command's description mentions `deno doc`).
+ */
+function registeredWords(script: string): string[] {
+  const words = new Set<string>();
+  for (const m of script.matchAll(/^complete -F _zuke_complete (\S+)$/gm)) {
+    words.add(m[1]);
+  }
+  for (const m of script.matchAll(/^(?:#compdef| {2}compdef _zuke) (.+)$/gm)) {
+    for (const w of m[1].trim().split(/\s+/)) words.add(w);
+  }
+  for (const m of script.matchAll(/^complete -c (\S+)/gm)) words.add(m[1]);
+  return [...words].sort();
+}
+
+Deno.test("completion binds the launcher words only, never `deno`", () => {
+  // What the docs promise: `zuke <TAB>` and `./zuke <TAB>` complete, and
+  // `deno task zuke <TAB>` does not — a shell picks the completion from the
+  // line's first word, so binding `deno` would be the only way, and nothing
+  // does (it would hijack deno's own completion). See docs/cli.md's
+  // `zuke completions` section, which states exactly this.
+  const expected: Record<string, string[]> = {
+    bash: ["./zuke", "zuke"],
+    zsh: ["./zuke", "zuke"],
+    fish: ["zuke"], // fish matches on the basename, so `./zuke` is covered
+  };
+  for (const shell of COMPLETION_SHELLS) {
+    assertEquals(
+      registeredWords(formatCompletions(shell, targets, params)),
+      expected[shell],
+    );
+  }
+});
+
 Deno.test("every shared command and flag is completed (no drift)", () => {
   // Completion derives its command/flag set from cli_spec, so adding one there
   // surfaces it here automatically — nothing to keep in sync by hand.
