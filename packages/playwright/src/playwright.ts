@@ -41,8 +41,10 @@ export class PlaywrightTestSettings extends PlaywrightSettings {
   #projects: string[] = [];
   #grep?: string;
   #headed = false;
+  #ui = false;
   #workers?: number;
   #reporter?: string;
+  #updateSnapshots = false;
   #config?: string;
   #paths: string[] = [];
 
@@ -64,6 +66,12 @@ export class PlaywrightTestSettings extends PlaywrightSettings {
     return this;
   }
 
+  /** Open the interactive UI mode (`--ui`). */
+  ui(): this {
+    this.#ui = true;
+    return this;
+  }
+
   /** Set the number of parallel workers (`--workers=`). */
   workers(count: number): this {
     this.#workers = count;
@@ -73,6 +81,12 @@ export class PlaywrightTestSettings extends PlaywrightSettings {
   /** Choose the reporter (`--reporter=`). */
   reporter(name: string): this {
     this.#reporter = name;
+    return this;
+  }
+
+  /** Update snapshots instead of failing on a mismatch (`--update-snapshots`). */
+  updateSnapshots(): this {
+    this.#updateSnapshots = true;
     return this;
   }
 
@@ -94,8 +108,10 @@ export class PlaywrightTestSettings extends PlaywrightSettings {
     for (const p of this.#projects) argv.push(`--project=${p}`);
     if (this.#grep !== undefined) argv.push("--grep", this.#grep);
     if (this.#headed) argv.push("--headed");
+    if (this.#ui) argv.push("--ui");
     if (this.#workers !== undefined) argv.push(`--workers=${this.#workers}`);
     if (this.#reporter !== undefined) argv.push(`--reporter=${this.#reporter}`);
+    if (this.#updateSnapshots) argv.push("--update-snapshots");
     if (this.#config !== undefined) argv.push(`--config=${this.#config}`);
     argv.push(...this.#paths);
     return argv;

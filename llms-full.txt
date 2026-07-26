@@ -5539,6 +5539,10 @@ class DockerComposeUpSettings extends DockerComposeSettings
     Remove containers for services no longer defined (`--remove-orphans`).
   wait(): this
     Wait until services are running/healthy (`--wait`).
+  abortOnContainerExit(): this
+    Stop all containers if any container stops (`--abort-on-container-exit`).
+  exitCodeFrom(service: string): this
+    Exit with this service's container's exit code (`--exit-code-from`).
   scale(service: string, instances: number): this
     Scale a service to N instances (`--scale service=N`); repeatable.
   services(...names: string[]): this
@@ -6509,6 +6513,12 @@ class VitestSettings extends ToolSettings
     Update snapshots (`-u`/`--update`).
   forceRun(): this
     Force one-shot mode even under watch (`--run`).
+  pool(name: VitestPool): this
+    Choose the worker pool implementation (`--pool`).
+  maxWorkers(count: number): this
+    Cap the number of parallel workers (`--maxWorkers`).
+  minWorkers(count: number): this
+    Set the minimum number of parallel workers (`--minWorkers`).
   bail(count: number): this
     Stop after N failed tests (`--bail`).
   retry(count: number): this
@@ -6537,6 +6547,9 @@ interface VitestTasksApi
 
   run(configure?: Configure<VitestSettings>): Promise<CommandOutput>
     Run tests with `vitest` (one-shot `run` unless {@link VitestSettings.watch}).
+
+type VitestPool = "threads" | "forks" | "vmThreads" | "vmForks"
+  The Vitest worker pool implementation (`--pool`).
 
 ========================================================================
 # @zuke/playwright
@@ -6603,10 +6616,14 @@ class PlaywrightTestSettings extends PlaywrightSettings
     Only run tests matching the pattern (`--grep`).
   headed(): this
     Run in headed browsers (`--headed`).
+  ui(): this
+    Open the interactive UI mode (`--ui`).
   workers(count: number): this
     Set the number of parallel workers (`--workers=`).
   reporter(name: string): this
     Choose the reporter (`--reporter=`).
+  updateSnapshots(): this
+    Update snapshots instead of failing on a mismatch (`--update-snapshots`).
   config(path: string): this
     Use a specific config file (`--config=`).
   paths(...filters: string[]): this
@@ -7485,6 +7502,12 @@ class TscBuildSettings extends TscBaseSettings
 
   projects(...values: PathLike[]): this
     Project config files or directories to build (positional); repeatable.
+  noEmit(): this
+    Type-check without emitting output (`--noEmit`). `tsc --build` accepts the
+    same compiler-option overrides as a plain compile, applied on top of each
+    project's build; this is not inherited from {@link TscBaseSettings} —
+    {@link TscSettings.noEmit} is a separate, unrelated field on the other
+    subclass.
   clean(): this
     Delete the outputs of all projects (`--clean`).
   force(): this

@@ -28,6 +28,9 @@ import {
 } from "@zuke/core/tooling";
 import type { CommandOutput } from "@zuke/core/shell";
 
+/** The Vitest worker pool implementation (`--pool`). */
+export type VitestPool = "threads" | "forks" | "vmThreads" | "vmForks";
+
 /** Settings for a `vitest` run. */
 export class VitestSettings extends ToolSettings {
   #filters: string[] = [];
@@ -39,6 +42,9 @@ export class VitestSettings extends ToolSettings {
   #ui = false;
   #update = false;
   #run = false;
+  #pool?: VitestPool;
+  #maxWorkers?: number;
+  #minWorkers?: number;
   #bail?: number;
   #retry?: number;
   #shard?: string;
@@ -114,6 +120,24 @@ export class VitestSettings extends ToolSettings {
     return this;
   }
 
+  /** Choose the worker pool implementation (`--pool`). */
+  pool(name: VitestPool): this {
+    this.#pool = name;
+    return this;
+  }
+
+  /** Cap the number of parallel workers (`--maxWorkers`). */
+  maxWorkers(count: number): this {
+    this.#maxWorkers = count;
+    return this;
+  }
+
+  /** Set the minimum number of parallel workers (`--minWorkers`). */
+  minWorkers(count: number): this {
+    this.#minWorkers = count;
+    return this;
+  }
+
   /** Stop after N failed tests (`--bail`). */
   bail(count: number): this {
     this.#bail = count;
@@ -184,6 +208,13 @@ export class VitestSettings extends ToolSettings {
     if (this.#ui) argv.push("--ui");
     if (this.#update) argv.push("-u");
     if (this.#run) argv.push("--run");
+    if (this.#pool !== undefined) argv.push("--pool", this.#pool);
+    if (this.#maxWorkers !== undefined) {
+      argv.push("--maxWorkers", String(this.#maxWorkers));
+    }
+    if (this.#minWorkers !== undefined) {
+      argv.push("--minWorkers", String(this.#minWorkers));
+    }
     if (this.#bail !== undefined) argv.push("--bail", String(this.#bail));
     if (this.#retry !== undefined) argv.push("--retry", String(this.#retry));
     if (this.#shard !== undefined) argv.push("--shard", this.#shard);

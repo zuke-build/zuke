@@ -194,6 +194,8 @@ export class DockerComposeUpSettings extends DockerComposeSettings {
   #forceRecreate = false;
   #removeOrphans = false;
   #wait = false;
+  #abortOnContainerExit = false;
+  #exitCodeFrom?: string;
   #scale: string[] = [];
   #services: string[] = [];
 
@@ -227,6 +229,18 @@ export class DockerComposeUpSettings extends DockerComposeSettings {
     return this;
   }
 
+  /** Stop all containers if any container stops (`--abort-on-container-exit`). */
+  abortOnContainerExit(): this {
+    this.#abortOnContainerExit = true;
+    return this;
+  }
+
+  /** Exit with this service's container's exit code (`--exit-code-from`). */
+  exitCodeFrom(service: string): this {
+    this.#exitCodeFrom = service;
+    return this;
+  }
+
   /** Scale a service to N instances (`--scale service=N`); repeatable. */
   scale(service: string, instances: number): this {
     this.#scale.push("--scale", `${service}=${instances}`);
@@ -247,6 +261,10 @@ export class DockerComposeUpSettings extends DockerComposeSettings {
     if (this.#forceRecreate) argv.push("--force-recreate");
     if (this.#removeOrphans) argv.push("--remove-orphans");
     if (this.#wait) argv.push("--wait");
+    if (this.#abortOnContainerExit) argv.push("--abort-on-container-exit");
+    if (this.#exitCodeFrom !== undefined) {
+      argv.push("--exit-code-from", this.#exitCodeFrom);
+    }
     argv.push(...this.#scale, ...this.#services);
     return argv;
   }

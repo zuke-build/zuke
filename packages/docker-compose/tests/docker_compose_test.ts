@@ -72,6 +72,7 @@ Deno.test("global options precede the subcommand", () => {
 Deno.test("up: all flags, scale, and services", () => {
   const argv = new DockerComposeUpSettings()
     .detach().build().forceRecreate().removeOrphans().wait()
+    .abortOnContainerExit().exitCodeFrom("web")
     .scale("web", 3).services("web", "db").argv();
   assertEquals(argv, [
     "docker",
@@ -82,6 +83,9 @@ Deno.test("up: all flags, scale, and services", () => {
     "--force-recreate",
     "--remove-orphans",
     "--wait",
+    "--abort-on-container-exit",
+    "--exit-code-from",
+    "web",
     "--scale",
     "web=3",
     "web",

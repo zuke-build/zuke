@@ -13,7 +13,8 @@ Deno.test("watch() switches to the watch subcommand", () => {
 Deno.test("vitest: every option renders, filters last", () => {
   const argv = new VitestSettings()
     .config("vitest.config.ts").root(".").dir("src").coverage().ui().update()
-    .forceRun().bail(1).retry(2).shard("1/4").reporter("dot", "junit")
+    .forceRun().pool("forks").maxWorkers(4).minWorkers(1).bail(1).retry(2)
+    .shard("1/4").reporter("dot", "junit")
     .outputFile("out.xml").testNamePattern("renders").environment("jsdom")
     .globals().passWithNoTests().silent().filters("math", "string").argv();
   assertEquals(argv, [
@@ -29,6 +30,12 @@ Deno.test("vitest: every option renders, filters last", () => {
     "--ui",
     "-u",
     "--run",
+    "--pool",
+    "forks",
+    "--maxWorkers",
+    "4",
+    "--minWorkers",
+    "1",
     "--bail",
     "1",
     "--retry",

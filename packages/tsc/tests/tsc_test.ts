@@ -44,11 +44,12 @@ Deno.test("tsc: minimal checks the given file", () => {
 
 Deno.test("build: every option renders, projects last", () => {
   const argv = new TscBuildSettings()
-    .clean().force().dry().watch().verbose().incremental()
+    .noEmit().clean().force().dry().watch().verbose().incremental()
     .projects("packages/a", "packages/b").argv();
   assertEquals(argv, [
     "tsc",
     "--build",
+    "--noEmit",
     "--clean",
     "--force",
     "--dry",

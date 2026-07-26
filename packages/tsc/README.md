@@ -64,6 +64,12 @@ class TscBuildSettings extends TscBaseSettings
 
   projects(...values: PathLike[]): this
     Project config files or directories to build (positional); repeatable.
+  noEmit(): this
+    Type-check without emitting output (`--noEmit`). `tsc --build` accepts the
+    same compiler-option overrides as a plain compile, applied on top of each
+    project's build; this is not inherited from {@link TscBaseSettings} —
+    {@link TscSettings.noEmit} is a separate, unrelated field on the other
+    subclass.
   clean(): this
     Delete the outputs of all projects (`--clean`).
   force(): this

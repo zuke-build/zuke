@@ -286,6 +286,10 @@ class DockerComposeUpSettings extends DockerComposeSettings
     Remove containers for services no longer defined (`--remove-orphans`).
   wait(): this
     Wait until services are running/healthy (`--wait`).
+  abortOnContainerExit(): this
+    Stop all containers if any container stops (`--abort-on-container-exit`).
+  exitCodeFrom(service: string): this
+    Exit with this service's container's exit code (`--exit-code-from`).
   scale(service: string, instances: number): this
     Scale a service to N instances (`--scale service=N`); repeatable.
   services(...names: string[]): this

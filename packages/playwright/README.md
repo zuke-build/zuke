@@ -80,10 +80,14 @@ class PlaywrightTestSettings extends PlaywrightSettings
     Only run tests matching the pattern (`--grep`).
   headed(): this
     Run in headed browsers (`--headed`).
+  ui(): this
+    Open the interactive UI mode (`--ui`).
   workers(count: number): this
     Set the number of parallel workers (`--workers=`).
   reporter(name: string): this
     Choose the reporter (`--reporter=`).
+  updateSnapshots(): this
+    Update snapshots instead of failing on a mismatch (`--update-snapshots`).
   config(path: string): this
     Use a specific config file (`--config=`).
   paths(...filters: string[]): this

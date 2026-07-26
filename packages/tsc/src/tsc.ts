@@ -176,6 +176,7 @@ export class TscSettings extends TscBaseSettings {
 /** Settings for a `tsc --build` project-references run. */
 export class TscBuildSettings extends TscBaseSettings {
   #projects: string[] = [];
+  #noEmit = false;
   #clean = false;
   #force = false;
   #dry = false;
@@ -186,6 +187,18 @@ export class TscBuildSettings extends TscBaseSettings {
   /** Project config files or directories to build (positional); repeatable. */
   projects(...values: PathLike[]): this {
     this.#projects.push(...values.map(String));
+    return this;
+  }
+
+  /**
+   * Type-check without emitting output (`--noEmit`). `tsc --build` accepts the
+   * same compiler-option overrides as a plain compile, applied on top of each
+   * project's build; this is not inherited from {@link TscBaseSettings} —
+   * {@link TscSettings.noEmit} is a separate, unrelated field on the other
+   * subclass.
+   */
+  noEmit(): this {
+    this.#noEmit = true;
     return this;
   }
 
@@ -228,6 +241,7 @@ export class TscBuildSettings extends TscBaseSettings {
   /** Assemble the `tsc --build` argv from the configured options. */
   protected override buildArgs(): string[] {
     const argv: string[] = ["--build"];
+    if (this.#noEmit) argv.push("--noEmit");
     if (this.#clean) argv.push("--clean");
     if (this.#force) argv.push("--force");
     if (this.#dry) argv.push("--dry");
