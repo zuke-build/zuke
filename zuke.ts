@@ -60,6 +60,7 @@ import { writeApiJson } from "./build/api_reference.ts";
 import { runWebsiteSync } from "./build/website_sync.ts";
 import { checkSnippets, formatSnippetFailures } from "./build/snippets.ts";
 import { checkHclWrappers, generateHclWrappers } from "./build/hcl_gen.ts";
+import { lintPrBody } from "./build/pr_body_lint.ts";
 
 class ZukeBuild extends Build {
   clean = target()
@@ -414,6 +415,41 @@ class ZukeBuild extends Build {
       ConsoleTasks.info("Terraform/OpenTofu wrappers are in sync.");
     });
 
+  // Only meaningful on a `pull_request`-triggered run (the workflow passes it
+  // via env from `github.event.pull_request.body` — never interpolated into
+  // a shell line, so an adversarial PR body can't inject a command). Unset
+  // locally and empty on a `push` run, where `prBodyLint` is then a no-op.
+  prBody = parameter(
+    "Pull request body to lint for code fragments that break release-please's parser",
+  )
+    .env("PR_BODY");
+
+  prBodyLint = target()
+    .description(
+      "Fail if the PR body has code release-please's parser can't handle",
+    )
+    .executes(() => {
+      const body = this.prBody.value;
+      // The workflow sets PR_BODY to "" on a non-`pull_request` run (a GitHub
+      // Actions `env:` value can't be conditionally absent), so treat an
+      // empty body the same as an unset one.
+      if (body === undefined || body === "") {
+        ConsoleTasks.info("No PR body to lint (not a pull_request run).");
+        return;
+      }
+      const findings = lintPrBody(body);
+      if (findings.length > 0) {
+        throw new Error(
+          `The PR body has ${findings.length} issue(s) release-please's ` +
+            `parser can choke on and silently drop from the release:\n  ${
+              findings.join("\n  ")
+            }\n` +
+            "Describe the change in prose; see RELEASING.md.",
+        );
+      }
+      ConsoleTasks.info("PR body is clean.");
+    });
+
   ci = target()
     .description("Full pre-commit / CI gate")
     .dependsOn(
@@ -426,6 +462,7 @@ class ZukeBuild extends Build {
       this.docLint,
       this.snippetsCheck,
       this.hclSyncCheck,
+      this.prBodyLint,
     )
     .executes(() => {});
 

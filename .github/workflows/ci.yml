@@ -85,12 +85,20 @@ jobs:
       # downloads the Codecov CLI itself and uploads cov.lcov — no separate CI
       # step. The token is a masked secret build input; absent on fork PRs, where
       # the upload skips.
+      #
+      # PR_BODY feeds the ci target's prBodyLint step, which fails the gate if
+      # the PR body has code fragments release-please's parser would choke on
+      # and silently drop from the release. Empty (not the PR body) on a push
+      # run, where prBodyLint then no-ops. It rides through the env map, never
+      # interpolated into this (or any) shell line, so an adversarial PR body
+      # cannot inject a command.
       - name: Run the full gate with Zuke
         run: ./zuke ci
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+          PR_BODY: ${{ github.event_name == 'pull_request' && github.event.pull_request.body || '' }}
 
   test-os:
     name: Tests (${{ matrix.os }})
