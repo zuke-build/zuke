@@ -3486,7 +3486,7 @@ class SpawnedProcess
     The operating-system process id (`-1` for a dry-run stub).
   get status(): Promise<Deno.CommandStatus>
     Resolves when the process exits (immediate success for a dry-run stub).
-  async stop(signal: Deno.Signal, graceMs: number): Promise<void>
+  stop(signal: Deno.Signal, graceMs: number): Promise<void>
     Terminate the process and wait for it to exit. Sends `signal` (default
     `SIGTERM`); if the process has not exited within `graceMs` (default 5s), it
     escalates to `SIGKILL` so a process that ignores `SIGTERM` cannot hang

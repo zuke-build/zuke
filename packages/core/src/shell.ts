@@ -19,6 +19,7 @@
 import type { AbsolutePath, PathLike } from "./path.ts";
 import { ambientSignal } from "./ambient_signal.ts";
 import { ambientEcho } from "./ambient_echo.ts";
+import { terminateProcess, TERMINATION_GRACE_MS } from "./terminate.ts";
 
 /**
  * Split an already-written command string into argv with POSIX quoting rules —
@@ -26,15 +27,6 @@ import { ambientEcho } from "./ambient_echo.ts";
  * recipe) rather than being constructed with `$`.
  */
 export { ShellArgsError, splitShellArgs } from "./split_args.ts";
-
-/** Combine an optional timeout signal and an optional cancellation signal. */
-function combineSignals(
-  a: AbortSignal | undefined,
-  b: AbortSignal | undefined,
-): AbortSignal | undefined {
-  if (a !== undefined && b !== undefined) return AbortSignal.any([a, b]);
-  return a ?? b;
-}
 
 /** A value that may be interpolated into a `$` template. */
 export type Interpolatable =
@@ -138,34 +130,13 @@ export class SpawnedProcess {
    * teardown. A process that has already exited is treated as stopped. A
    * dry-run stub (no child) is a no-op.
    */
-  async stop(
+  stop(
     signal: Deno.Signal = "SIGTERM",
-    graceMs = 5000,
+    graceMs: number = TERMINATION_GRACE_MS,
   ): Promise<void> {
     const child = this.#child;
-    if (child === undefined) return; // dry-run stub: nothing to stop.
-    try {
-      child.kill(signal);
-    } catch {
-      return; // Already exited: nothing to signal.
-    }
-    // Race the process's exit against a grace timer; escalate to SIGKILL if the
-    // timer wins. The timer is always cleared so it never leaks.
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const graceExpired = new Promise<boolean>((resolve) => {
-      timer = setTimeout(() => resolve(true), graceMs);
-    });
-    const exited = child.status.then(() => false);
-    const shouldKill = await Promise.race([exited, graceExpired]);
-    if (timer !== undefined) clearTimeout(timer);
-    if (shouldKill) {
-      try {
-        child.kill("SIGKILL");
-      } catch {
-        // Raced to exit between the timeout and the kill.
-      }
-    }
-    await child.status;
+    if (child === undefined) return Promise.resolve(); // stub: nothing to stop.
+    return terminateProcess(child, signal, graceMs);
   }
 }
 
@@ -301,23 +272,11 @@ export class Command implements PromiseLike<CommandOutput> {
     const [cmd, ...args] = this.#argv;
     if (!cmd) throw new Error("Cannot run an empty command.");
 
-    // A timeout aborts the child via an AbortSignal; `timedOut` distinguishes
-    // that kill from an ordinary non-zero exit so we can raise a dedicated error.
     const ms = this.#timeoutMs;
-    const controller = ms === undefined ? undefined : new AbortController();
+    // `timedOut` distinguishes a timeout kill from an ordinary non-zero exit so
+    // we can raise a dedicated error.
     let timedOut = false;
-    const timer = ms === undefined ? undefined : setTimeout(() => {
-      timedOut = true;
-      controller?.abort();
-    }, ms);
-
-    // The timeout's own signal is folded together with the cancellation signal
-    // (an explicit `.signal()`, else the executor's ambient run signal), so an
-    // aborted run terminates the child even when a timeout is also armed.
-    const signal = combineSignals(
-      controller?.signal,
-      this.#signal ?? ambientSignal(),
-    );
+    let timer: ReturnType<typeof setTimeout> | undefined;
 
     try {
       const child = new Deno.Command(cmd, {
@@ -326,8 +285,21 @@ export class Command implements PromiseLike<CommandOutput> {
         env: this.#env,
         stdout: "piped",
         stderr: "piped",
-        signal,
+        // Cancellation (an explicit `.signal()`, else the executor's ambient run
+        // signal) terminates the child too, independently of the timeout below.
+        signal: this.#signal ?? ambientSignal(),
       }).spawn();
+
+      // A timeout terminates the child itself rather than aborting the spawn
+      // signal, because that only ever delivers SIGTERM: a child that ignores it
+      // would keep the streams open and hang the run forever. The escalating
+      // sequence guarantees the process dies and this promise settles.
+      if (ms !== undefined) {
+        timer = setTimeout(() => {
+          timedOut = true;
+          void terminateProcess(child);
+        }, ms);
+      }
 
       // When capturing programmatically, don't echo stdout to the terminal.
       const streamStdout = !this.#quiet && !this.#capturing;
