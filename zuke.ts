@@ -160,17 +160,12 @@ class ZukeBuild extends Build {
   integration = target()
     .description("Run the subprocess e2e suite (real processes, OS matrix)")
     .executes(async () => {
-      await DenoTasks.test((s) =>
-        s.allowAll().paths(
-          "tests/e2e/race_e2e.ts",
-          "tests/e2e/mcp_e2e.ts",
-          "tests/e2e/cancel_e2e.ts",
-          "tests/e2e/otel_e2e.ts",
-          "tests/e2e/gh_workflow_e2e.ts",
-          "tests/e2e/registry_e2e.ts",
-          "tests/e2e/registry_mcp_e2e.ts",
-        )
-      );
+      // Discovered by glob (sorted, so run order stays deterministic) rather
+      // than a hardcoded list — a new `*_e2e.ts` file is picked up on its own
+      // instead of silently running nowhere until someone remembers to add it
+      // here.
+      const paths = await glob("tests/e2e/*_e2e.ts");
+      await DenoTasks.test((s) => s.allowAll().paths(...paths));
     });
 
   // The dedicated workflow for the `integration` target, generated from this
