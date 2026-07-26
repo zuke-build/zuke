@@ -325,12 +325,13 @@ deno task check       # type-check
 deno task fmt         # format (fmt:check to verify only)
 deno task lint        # lint
 deno task spell       # spell-check (cspell)
-deno task ci          # local gate: fmt:check, lint, spell, check, cov
+deno task ci          # the full gate — deno run -A zuke.ts ci
 ```
 
-CI runs `./zuke ci` on every push and pull request — the same checks plus
-`coverageUpload` and `apiDocsCheck` (see
-[`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
+`deno task ci` **is** `./zuke ci`, the same gate the `quality` job in
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every push and
+pull request — see [`AGENTS.md`](./AGENTS.md#commands) for the full check
+list.
 
 ## Contributing
 
