@@ -137,6 +137,43 @@ Deno.test("zuke cancel runs each fan-out item's own onCancel compensation", asyn
   });
 });
 
+Deno.test("zuke cancel compensates a declared target reused as a fan-out stage", async () => {
+  await withStateDir(async (dir) => {
+    const undone: string[] = [];
+    class CD extends Build {
+      // A build may reuse a declared target as the fan-out's stage. Cancel
+      // re-materialises the fan-out, and doing that must not rename `seed` —
+      // the walk reaches it afterwards and finds its record row by name.
+      seed = target()
+        .executes(() => {})
+        .onCancel(() => target().executes(() => void undone.push("seed")));
+      deployBatch = target()
+        .dependsOn(this.seed)
+        .forEach(() => ["repo-a"], () => ({ seed: this.seed }));
+      gate = target()
+        .dependsOn(this.deployBatch)
+        .waitsFor((s) => s.on(externalSignal("approved")));
+    }
+
+    const first = await runCli(CD, ["gate"]);
+    assertEquals(first.code, 0, first.err);
+    const id = await onlyRunId(dir);
+    assertEquals((await loadRun(dir, id)).status, "suspended");
+
+    const cancelled = await runCli(CD, ["cancel", id]);
+    assertEquals(cancelled.code, 0, cancelled.err);
+    // Both the fan-out item and the declared target are undone, each recorded
+    // under its own name — not the item's name twice.
+    assertEquals(undone, ["seed", "seed"]);
+    const record = await loadRun(dir, id);
+    const compensated = record.events
+      .filter((e) => e.tool === "compensate")
+      .map((e) => e.args.target)
+      .sort();
+    assertEquals(compensated, ["deployBatch[repo-a].seed", "seed"]);
+  });
+});
+
 Deno.test("zuke cancel of a finished run is a no-op", async () => {
   await withStateDir(async (dir) => {
     const log: string[] = [];

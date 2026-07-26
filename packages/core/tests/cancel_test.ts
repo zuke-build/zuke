@@ -982,6 +982,40 @@ Deno.test("cancel runs a nested fan-out item's onCancel without false-warning", 
   );
 });
 
+Deno.test("a declared target reused as a fan-out stage keeps its own name at cancel", async () => {
+  const undone: string[] = [];
+  class CD extends Build {
+    // `seed` is both a target of its own and the factory's stage builder, which a
+    // build is free to do. Re-materialising the fan-out must not rename it: the
+    // walk reaches `seed` afterwards and looks its compensation decision up by
+    // name.
+    seed = target().executes(() => {}).onCancel(() =>
+      target().executes(() => void undone.push("seed"))
+    );
+    deployBatch = target().forEach(() => ["a"], () => ({ seed: this.seed }));
+  }
+  const build = new CD();
+  discoverTargets(build);
+  // `seed` itself succeeded; the fan-out's only item failed — which is why the
+  // run is being cancelled — so the item has nothing to undo.
+  const record = craftRecord("deployBatch", {
+    "seed": { status: "succeeded", meta: {} },
+    "deployBatch[a].seed": { status: "failed", meta: {} },
+  });
+  const outcome = await runCompensations(
+    [build.seed, build.deployBatch],
+    record,
+    {
+      runId: "run",
+      signals: new Map(),
+      reporter: capturingReporter().reporter,
+    },
+  );
+  assertEquals(build.seed.name_, "seed"); // the factory's builder is untouched
+  assertEquals(undone, ["seed"]); // …so its own compensation still runs
+  assertEquals(outcome.attempts.map((a) => a.forTarget), ["seed"]);
+});
+
 Deno.test("a fan-out parent's own onCancel runs after its item compensations", async () => {
   const seq: string[] = [];
   class CD extends Build {

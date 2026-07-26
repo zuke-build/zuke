@@ -30,12 +30,13 @@ import type { Reporter } from "./executor.ts";
 import { type OrderingEdge, planGraph } from "./graph.ts";
 import { discoverParameters, resolveParameters } from "./params.ts";
 import { Redactor } from "./redact.ts";
-import type {
-  ForEachSpec,
-  JsonValue,
-  TargetBuilder,
-  TargetContext,
-  TargetStateHandle,
+import {
+  cloneTarget,
+  type ForEachSpec,
+  type JsonValue,
+  type TargetBuilder,
+  type TargetContext,
+  type TargetStateHandle,
 } from "./target.ts";
 import { absolutePath } from "./path.ts";
 import { findConfigDir, pathExists } from "./config.ts";
@@ -380,11 +381,15 @@ function collectForEachInto(
     return;
   }
   for (const { key, stages } of items) {
-    for (const [stage, sub] of Object.entries(stages)) {
+    for (const [stage, declared] of Object.entries(stages)) {
       const subName = `${parentName}[${key}].${stage}`;
-      // Name the sub as the executor does, so a nested fan-out reconstructs its
+      // Name a clone, as the executor does, so a nested fan-out reconstructs its
       // grandchildren under the same `parent[key].stage[innerKey].innerStage`
-      // names.
+      // names — without renaming the factory's own builder. The factory may hand
+      // back a builder the build also declares as a target, and renaming it in
+      // place would make the rest of this walk look that target's compensation
+      // decision up under the sub-target's name.
+      const sub = cloneTarget(declared);
       sub.name_ = subName;
       materialised.add(subName);
       // A stage that is itself a fan-out: recurse so nested items' onCancel runs.
