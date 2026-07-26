@@ -45,41 +45,48 @@ export function starterConfig(name: string): string {
   return `${JSON.stringify({ name }, null, 2)}\n`;
 }
 
+/**
+ * The URL the launchers point at when Deno is missing. They deliberately do not
+ * install it themselves: piping an install script straight into a shell
+ * downloads and executes code with no integrity check, and a scaffolded
+ * launcher has no pinned per-platform checksum to verify against (Zuke's own
+ * `./zuke` carries one because it pins the Deno version it bootstraps). Telling
+ * the user which one command to run keeps the scaffold honest about that.
+ */
+const DENO_INSTALL_DOCS =
+  "https://docs.deno.com/runtime/getting_started/installation/";
+
 /* cspell:disable */
 
-/** The bash bootstrap launcher (`./zuke`). Installs Deno on first use. */
+/** The bash launcher (`./zuke`). Runs `zuke.ts` with the Deno on `PATH`. */
 export function launcherBash(): string {
   return `#!/usr/bin/env bash
-# Zuke launcher — installs Deno if missing, then runs zuke.ts.
+# Zuke launcher — runs zuke.ts with Deno.
 set -euo pipefail
 dir="$(cd "$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
 cd "$dir"
-if command -v deno >/dev/null 2>&1; then
-  deno run -A zuke.ts "$@"
-else
-  echo "zuke: Deno not found — installing to ~/.deno ..." >&2
-  curl -fsSL https://deno.land/install.sh | sh >/dev/null
-  "$HOME/.deno/bin/deno" run -A zuke.ts "$@"
+if ! command -v deno >/dev/null 2>&1; then
+  echo "zuke: Deno not found on PATH. Install it, then re-run this launcher:" >&2
+  echo "      ${DENO_INSTALL_DOCS}" >&2
+  exit 1
 fi
+deno run -A zuke.ts "$@"
 `;
 }
 
-/** The PowerShell bootstrap launcher (`.\\zuke.ps1`). */
+/** The PowerShell launcher (`.\\zuke.ps1`). */
 export function launcherPwsh(): string {
   return `#!/usr/bin/env pwsh
-# Zuke launcher — installs Deno if missing, then runs zuke.ts.
+# Zuke launcher — runs zuke.ts with Deno.
 $ErrorActionPreference = "Stop"
 $dir = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $dir
 $found = Get-Command deno -ErrorAction SilentlyContinue
-if ($found) {
-  $deno = $found.Source
-} else {
-  Write-Host "zuke: Deno not found - installing ..."
-  Invoke-RestMethod https://deno.land/install.ps1 | Invoke-Expression
-  $deno = Join-Path $HOME ".deno\\bin\\deno.exe"
+if (-not $found) {
+  Write-Error "zuke: Deno not found on PATH. Install it, then re-run this launcher: ${DENO_INSTALL_DOCS}"
+  exit 1
 }
-& $deno run -A (Join-Path $dir "zuke.ts") @args
+& $found.Source run -A (Join-Path $dir "zuke.ts") @args
 exit $LASTEXITCODE
 `;
 }

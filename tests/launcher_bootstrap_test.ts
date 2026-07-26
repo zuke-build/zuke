@@ -1,4 +1,5 @@
 import { assertEquals } from "../packages/core/tests/_assert.ts";
+import { defaultHost, runSetup } from "../packages/cli/src/setup.ts";
 
 /**
  * Guards against the launchers' Deno bootstrap regressing back to an
@@ -118,6 +119,43 @@ Deno.test("the PowerShell launcher rejects DENO_VERSION=latest", async () => {
     true,
     "zuke.ps1 must explain why DENO_VERSION=latest is rejected",
   );
+});
+
+Deno.test("a scaffolded launcher fails closed when Deno is missing", async () => {
+  // `zuke setup` stamps its own launchers into every new project, so they must
+  // not reintroduce the unverified `curl | sh` bootstrap either. Scaffold for
+  // real and run the generated script with no Deno on PATH: it must explain
+  // itself and exit non-zero rather than download anything.
+  if (Deno.build.os === "windows") return; // the generated bash launcher
+  for (const path of ["/usr/bin/deno", "/bin/deno"]) {
+    try {
+      await Deno.lstat(path);
+      return; // a Deno on the bare PATH would make the check meaningless
+    } catch {
+      // expected: nothing to skip for
+    }
+  }
+  const dir = await Deno.makeTempDir({ prefix: "zuke-scaffold-" });
+  try {
+    await runSetup({ dir, force: false, name: "Scaffolded" }, {
+      ...defaultHost,
+      log: () => {},
+    });
+    const { code, stderr } = await new Deno.Command("/bin/bash", {
+      args: [`${dir}/zuke`, "--help"],
+      clearEnv: true,
+      env: { PATH: "/usr/bin:/bin", HOME: dir },
+    }).output();
+    const err = new TextDecoder().decode(stderr);
+    assertEquals(code, 1, `expected a fail-fast exit; stderr: ${err}`);
+    assertEquals(
+      err.includes("Deno not found on PATH"),
+      true,
+      `expected the scaffolded launcher to report missing Deno; got: ${err}`,
+    );
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
 });
 
 Deno.test("both launchers pin the same default Deno version", async () => {
