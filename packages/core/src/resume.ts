@@ -31,6 +31,7 @@ import { resolveActor } from "./state/record.ts";
 import type {
   RunGraphNode,
   RunRecord,
+  TargetRunState,
   WaitDisposition,
   WaitState,
 } from "./state/types.ts";
@@ -74,6 +75,14 @@ export interface ResumeOptions {
   actor?: string;
   /** Continue even if the build graph changed since the run was suspended. */
   forceGraph?: boolean;
+  /**
+   * Resume even though the record is {@link "./state/types.ts".RunRecord.degraded}
+   * — a state write was dropped, so its progress may be incomplete. Only a
+   * settlement the record fully stamped is then trusted; every other target
+   * re-runs, on the grounds that running a succeeded target twice is the lesser
+   * evil against silently skipping one that never ran.
+   */
+  resumeDegraded?: boolean;
   /** Suppress banner/summary output. */
   silent?: boolean;
   /** Custom reporter; overrides `silent`. */
@@ -97,7 +106,8 @@ const MAX_RETRIES = 10;
  *
  * @throws {AlreadyResumedError} if another process already resumed it.
  * @throws if the run does not exist, is not suspended, the build lacks its root
- *   target, or the graph drifted (unless {@link ResumeOptions.forceGraph}).
+ *   target, the graph drifted (unless {@link ResumeOptions.forceGraph}), or the
+ *   record is degraded (unless {@link ResumeOptions.resumeDegraded}).
  */
 export async function resumeRun(
   build: Build,
@@ -156,6 +166,9 @@ export async function resumeRun(
       initial.record.graph,
     );
   }
+  if (initial.record.degraded && options.resumeDegraded !== true) {
+    throw degradedRecordError(options.runId);
+  }
 
   // Transition suspended → running (exactly one resumer wins).
   const { record, version } = await transitionToRunning(
@@ -168,10 +181,12 @@ export async function resumeRun(
     options.data ?? {},
   );
 
-  // Targets recorded `succeeded` do not re-run; everything else does.
+  // Targets recorded `succeeded` do not re-run; everything else does. On a
+  // degraded record (only reachable with the override) a `succeeded` status is
+  // not enough on its own — see settlementProven.
   const done = new Set(
     Object.entries(record.targets)
-      .filter(([, state]) => state.status === "succeeded")
+      .filter(([, state]) => settlementProven(state, record.degraded))
       .map(([name]) => name),
   );
 
@@ -246,6 +261,34 @@ async function transitionToRunning(
     version = fresh.version;
   }
   throw new Error(`resume: gave up resuming ${id} after repeated conflicts.`);
+}
+
+/**
+ * The refusal for a record that lost a state write. Names the run, the risk
+ * (re-running an already-succeeded, possibly non-idempotent target) and the
+ * override, because the operator — not Zuke — knows whether that is safe.
+ */
+function degradedRecordError(id: string): Error {
+  return new Error(
+    `resume: run ${id} is recorded as degraded — at least one state write was ` +
+      `dropped while it ran, so its per-target progress may be incomplete. ` +
+      `Resuming could re-run a target that already succeeded, which for a ` +
+      `non-idempotent one (a deploy, a release) means doing it twice. Check ` +
+      `what the run actually did (zuke runs show ${id}), then re-run with ` +
+      `--resume-degraded to continue anyway — every target whose settlement ` +
+      `the record cannot prove is re-run.`,
+  );
+}
+
+/**
+ * Whether the record proves `state` settled successfully — the test for "do not
+ * re-run this target". A `succeeded` status is proof on its own; on a `degraded`
+ * record it must also carry the `endedAt` the writer stamps in the same write,
+ * so an entry that may have been left half-written re-runs instead.
+ */
+function settlementProven(state: TargetRunState, degraded: boolean): boolean {
+  if (state.status !== "succeeded") return false;
+  return !degraded || state.endedAt !== undefined;
 }
 
 /** Fail with a descriptive error if the current graph differs from the record's. */

@@ -128,6 +128,7 @@ export function buildRunRecord(input: RunRecordInput): RunRecord {
     targets,
     signals: {},
     events: [],
+    degraded: false,
   };
 }
 

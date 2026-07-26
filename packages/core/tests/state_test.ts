@@ -57,6 +57,7 @@ function sampleRecord(overrides: Partial<RunRecord> = {}): RunRecord {
       { deploy: { status: "pending", meta: {} } },
     signals: overrides.signals ?? {},
     events: overrides.events ?? [],
+    degraded: overrides.degraded ?? false,
   };
 }
 
@@ -179,6 +180,10 @@ Deno.test("parseRunRecord rejects malformed records", () => {
       '"signals" is not an object',
     ],
     [
+      JSON.stringify({ ...sampleRecord(), degraded: "yes" }),
+      '"degraded" is not a boolean',
+    ],
+    [
       JSON.stringify({
         ...sampleRecord(),
         targets: {
@@ -221,6 +226,18 @@ Deno.test("parseRunRecord round-trips signals and a waiting target", () => {
 Deno.test("parseRunRecord defaults missing signals to empty (backwards compat)", () => {
   const { signals: _signals, ...withoutSignals } = sampleRecord();
   assertEquals(parseRunRecord(JSON.stringify(withoutSignals)).signals, {});
+});
+
+Deno.test("parseRunRecord defaults a missing degraded flag to false", () => {
+  // A record written before the flag existed carries no dropped write we can
+  // know about, so it reads back as trustworthy rather than failing to parse.
+  const { degraded: _degraded, ...older } = sampleRecord();
+  assertEquals(parseRunRecord(JSON.stringify(older)).degraded, false);
+  assertEquals(
+    parseRunRecord(stringifyRunRecord(sampleRecord({ degraded: true })))
+      .degraded,
+    true,
+  );
 });
 
 // A minimal WaitContext for the built-in triggers, which ignore it.
@@ -837,6 +854,39 @@ Deno.test("RunStateWriter survives a store error without throwing", async () => 
   assertEquals(warnings.some((w) => w.includes("failed to persist")), true);
 });
 
+Deno.test("a dropped write flags the record degraded for the next write to carry", async () => {
+  const store = new MemStore();
+  const writer = await RunStateWriter.open(
+    store,
+    sampleRecord(),
+    () => "t",
+    new Redactor(),
+  );
+  assertEquals(store.record?.degraded, false);
+  store.failNextPut = true;
+  await writer.markTargetSettled("deploy", "passed"); // dropped, never persisted
+  assertEquals(store.record?.degraded, false); // the failing write can't record it
+  await writer.markRunFinished(true);
+  assertEquals(store.record?.degraded, true); // the next write that lands does
+});
+
+Deno.test("the degraded flag survives a conflict re-read", async () => {
+  const store = new MemStore();
+  const writer = await RunStateWriter.open(
+    store,
+    sampleRecord(),
+    () => "t",
+    new Redactor(),
+  );
+  store.failNextPut = true;
+  await writer.markTargetRunning("deploy"); // dropped
+  // The next write conflicts and re-reads a stored record that predates the
+  // loss — adopting it must not silently drop the flag.
+  store.forceConflicts = 1;
+  await writer.markRunFinished(true);
+  assertEquals(store.record?.degraded, true);
+});
+
 Deno.test("RunStateWriter re-reads and retries on a conflict", async () => {
   const store = new MemStore();
   const writer = await RunStateWriter.open(
@@ -863,6 +913,7 @@ Deno.test("RunStateWriter warns and gives up after repeated conflicts", async ()
   store.forceConflicts = 99; // exceeds the retry budget
   await writer.markRunFinished(true);
   assertEquals(warnings.some((w) => w.includes("gave up")), true);
+  assertEquals(writer.snapshot().degraded, true); // the update was lost
 });
 
 Deno.test("inMemoryStateHandle stores within the run but persists nothing", async () => {
@@ -1144,6 +1195,7 @@ Deno.test("RunStateWriter drops a write when the run vanishes after a conflict",
   await writer.markRunFinished(true);
   assertEquals(warnings.some((w) => w.includes("vanished")), true);
   assertEquals(store.record, null); // vanished run is not resurrected
+  assertEquals(writer.snapshot().degraded, true); // the update was lost
 });
 
 Deno.test("acquireCancelLock renews on a heartbeat and blocks a second holder", async () => {

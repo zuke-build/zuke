@@ -41,6 +41,7 @@ export function makeRecord(overrides: Partial<RunRecord> = {}): RunRecord {
     targets: {},
     signals: {},
     events: [],
+    degraded: false,
     ...overrides,
   };
 }

@@ -140,6 +140,10 @@ export const BUILTIN_FLAGS: readonly BuiltinFlag[] = [
     description: "With resume, continue even if the build graph changed",
   },
   {
+    name: "--resume-degraded",
+    description: "With resume, continue even if a state write was dropped",
+  },
+  {
     name: "--status",
     description: "With runs list, keep only runs with this status",
   },

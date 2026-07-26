@@ -142,6 +142,18 @@ export interface RunRecord {
   signals: Record<string, SignalRecord>;
   /** Append-only audit trail of MCP tool calls against this run (see {@link RunEvent}). */
   events: RunEvent[];
+  /**
+   * True when at least one state write for this run was **dropped** — the store
+   * was briefly unavailable, or a conflicting write could not be re-applied.
+   * Writes are best-effort, so the run itself carried on; the flag is how a
+   * later reader learns that the recorded per-target progress may be incomplete.
+   * A resume refuses a degraded record unless `--resume-degraded` overrides it
+   * (see {@link "../resume.ts".ResumeOptions.resumeDegraded}).
+   *
+   * It is set by the writer on the failing write and persisted by the **next**
+   * write that lands — the failing one, by definition, could not carry it.
+   */
+  degraded: boolean;
 }
 
 /** A compact run listing row, returned by {@link "./store.ts".StateStore.listRuns}. */
@@ -251,6 +263,23 @@ function optionalStr(
   if (value === undefined) return undefined;
   if (typeof value !== "string") {
     throw new Error(`state: run record field "${field}" is not a string`);
+  }
+  return value;
+}
+
+/**
+ * Read an optional boolean field, defaulting to `false` when absent — so a
+ * record written before the field existed still parses — and throwing if it is
+ * present but not a boolean.
+ */
+function optionalFlag(
+  object: Record<string, unknown>,
+  field: string,
+): boolean {
+  const value = object[field];
+  if (value === undefined) return false;
+  if (typeof value !== "boolean") {
+    throw new Error(`state: run record field "${field}" is not a boolean`);
   }
   return value;
 }
@@ -478,6 +507,9 @@ export function parseRunRecord(text: string): RunRecord {
     targets,
     signals,
     events,
+    // Newer than the records above — absent means no dropped write is known of,
+    // so an older record reads back as trustworthy.
+    degraded: optionalFlag(object, "degraded"),
   };
 }
 

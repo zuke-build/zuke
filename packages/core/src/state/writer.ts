@@ -6,7 +6,9 @@
  * targets never race each other's compare-and-swap; a conflict from *another*
  * process is handled by re-reading and re-applying. Every write is best-effort:
  * a store hiccup is reported through `warn` but never crashes the build — the
- * build's real work outweighs its bookkeeping. Every value written through
+ * build's real work outweighs its bookkeeping. A write that had to be dropped
+ * marks the record {@link RunRecord.degraded}, so a later resume can refuse to
+ * trust progress the record may not have captured. Every value written through
  * {@link "../target.ts".TargetStateHandle} is passed through the run's
  * {@link Redactor} first, so a secret that slips into `ctx.state` is masked
  * before it is persisted.
@@ -298,6 +300,18 @@ export class RunStateWriter {
     return this.#chain;
   }
 
+  /**
+   * Report a write this writer had to drop, and mark the record `degraded` so a
+   * later reader — a resume above all — knows its per-target progress may be
+   * incomplete. The flag rides along with the next write that *does* land: the
+   * failing write could not carry it. Dropping a write stays non-fatal; this
+   * only records that it happened.
+   */
+  #dropped(message: string): void {
+    this.#record.degraded = true;
+    this.#warn?.(message);
+  }
+
   /** Apply `mutator` and CAS-write, re-reading and retrying on conflict. */
   async #applyAndPersist(mutator: (record: RunRecord) => void): Promise<void> {
     try {
@@ -317,13 +331,17 @@ export class RunStateWriter {
         // Drop this best-effort write instead (F12).
         const fresh = await this.#store.getRun(this.#record.id);
         if (fresh === null) {
-          this.#warn?.(
+          this.#dropped(
             `state: run "${this.#record.id}" vanished from the store ` +
               `mid-write; dropping one update`,
           );
           return;
         }
+        // Adopt the fresh base, but carry a degraded flag across: whoever wrote
+        // the record in the store never saw the write we already lost.
+        const degraded = this.#record.degraded;
         this.#record = fresh.record;
+        this.#record.degraded ||= degraded;
         this.#version = fresh.version;
         // The other writer may be a `zuke cancel` in another process. If it has
         // moved the run to cancelling/cancelled, re-apply our (target-level)
@@ -349,12 +367,12 @@ export class RunStateWriter {
           return;
         }
       }
-      this.#warn?.(
+      this.#dropped(
         `state: gave up persisting run "${this.#record.id}" after ` +
           `${MAX_RETRIES} conflicting writes`,
       );
     } catch (error) {
-      this.#warn?.(
+      this.#dropped(
         `state: failed to persist run "${this.#record.id}": ${
           messageOf(error)
         }`,

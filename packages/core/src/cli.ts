@@ -145,6 +145,8 @@ export interface ParsedArgs {
   data?: string;
   /** Continue a resume even if the build graph changed (`--force-graph`). */
   forceGraph: boolean;
+  /** Continue a resume even if the record lost a state write (`--resume-degraded`). */
+  resumeDegraded: boolean;
   /** The `runs` command was requested (list/show persisted runs). */
   runs: boolean;
   /** The `runs` sub-action (`list` or `show`); the first positional after `runs`. */
@@ -282,6 +284,7 @@ export function parseArgs(
     state: false,
     resume: false,
     forceGraph: false,
+    resumeDegraded: false,
     runs: false,
     cancel: false,
     register: false,
@@ -335,6 +338,8 @@ export function parseArgs(
       parsed.data = arg.slice("--data=".length);
     } else if (arg === "--force-graph") {
       parsed.forceGraph = true;
+    } else if (arg === "--resume-degraded") {
+      parsed.resumeDegraded = true;
     } else if (arg === "--status") {
       const value = args[++i];
       if (value) parsed.runStatus = value;
@@ -582,6 +587,11 @@ Options:
   --data <json>     With resume --signal, the signal's JSON payload (default {}).
   --force-graph     With resume, continue even if the build graph changed since
                     the run was suspended.
+  --resume-degraded With resume, continue even though the record is degraded — a
+                    state write was dropped while the run executed, so its
+                    per-target progress may be incomplete. Every target whose
+                    settlement the record cannot prove is re-run, so only use it
+                    once you know those targets are safe to repeat.
   runs              Inspect persisted run records from the state store. 'list'
                     prints one row per run (newest first); 'show <run-id>'
                     reconstructs a run's full per-target status and metadata.
@@ -835,6 +845,7 @@ async function runResume(
         params: parsed.values,
         actor: parsed.actor,
         forceGraph: parsed.forceGraph,
+        resumeDegraded: parsed.resumeDegraded,
         plugins,
       });
       console.log(`Checked ${checked} suspended run(s); ${failed} failed.`);
@@ -854,6 +865,7 @@ async function runResume(
       params: parsed.values,
       actor: parsed.actor,
       forceGraph: parsed.forceGraph,
+      resumeDegraded: parsed.resumeDegraded,
       plugins,
     });
     return result.ok ? 0 : 1;

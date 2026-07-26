@@ -563,7 +563,8 @@ async function resumeRun(build: Build, options: ResumeOptions): Promise<BuildRes
 
   @throws
       if the run does not exist, is not suspended, the build lacks its root
-      target, or the graph drifted (unless {@link ResumeOptions.forceGraph}).
+      target, the graph drifted (unless {@link ResumeOptions.forceGraph}), or the
+      record is degraded (unless {@link ResumeOptions.resumeDegraded}).
 
 function resumeWhen(check: () => boolean | Promise<boolean>, options: ResumeWhenOptions): WaitTrigger
   A trigger satisfied when an async `check` predicate returns `true`. Zuke does
@@ -2805,6 +2806,12 @@ interface ResumeOptions
     Who to attribute the resumption to (stamped on the run).
   forceGraph?: boolean
     Continue even if the build graph changed since the run was suspended.
+  resumeDegraded?: boolean
+    Resume even though the record is {@link "./state/types.ts".RunRecord.degraded}
+    — a state write was dropped, so its progress may be incomplete. Only a
+    settlement the record fully stamped is then trusted; every other target
+    re-runs, on the grounds that running a succeeded target twice is the lesser
+    evil against silently skipping one that never ran.
   silent?: boolean
     Suppress banner/summary output.
   reporter?: Reporter
@@ -2920,6 +2927,16 @@ interface RunRecord
     External signals received so far, keyed by name (see `.waitsFor(...)`).
   events: RunEvent[]
     Append-only audit trail of MCP tool calls against this run (see {@link RunEvent}).
+  degraded: boolean
+    True when at least one state write for this run was dropped — the store
+    was briefly unavailable, or a conflicting write could not be re-applied.
+    Writes are best-effort, so the run itself carried on; the flag is how a
+    later reader learns that the recorded per-target progress may be incomplete.
+    A resume refuses a degraded record unless `--resume-degraded` overrides it
+    (see {@link "../resume.ts".ResumeOptions.resumeDegraded}).
+
+    It is set by the writer on the failing write and persisted by the next
+    write that lands — the failing one, by definition, could not carry it.
 
 interface RunSummary
   A compact run listing row, returned by {@link "./store.ts".StateStore.listRuns}.

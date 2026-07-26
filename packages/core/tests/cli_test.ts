@@ -32,6 +32,7 @@ function sampleRunRecord(overrides: Partial<RunRecord> = {}): RunRecord {
     targets: overrides.targets ?? { build: { status: "succeeded", meta: {} } },
     signals: overrides.signals ?? {},
     events: overrides.events ?? [],
+    degraded: overrides.degraded ?? false,
   };
 }
 
@@ -320,12 +321,16 @@ Deno.test("parseArgs reads resume with its run id, signal, data, and flags", () 
     "--data",
     '{"by":"qa"}',
     "--force-graph",
+    // A registered builtin: the parser must accept it, not reject it as unknown.
+    "--resume-degraded",
   ]);
   assertEquals(p.resume, true);
   assertEquals(p.resumeRunId, "run-9");
   assertEquals(p.signal, "approved");
   assertEquals(p.data, '{"by":"qa"}');
   assertEquals(p.forceGraph, true);
+  assertEquals(p.resumeDegraded, true);
+  assertEquals(parseArgs(["resume", "run-9"]).resumeDegraded, false);
 
   const check = parseArgs(["resume", "--check"]);
   assertEquals(check.resume, true);

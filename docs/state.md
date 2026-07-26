@@ -75,7 +75,8 @@ Each run is stored as one JSON document:
       "startedAt": "…",
       "endedAt": "…"
     }
-  }
+  },
+  "degraded": false // true if a state write was dropped (see below)
 }
 ```
 
@@ -175,6 +176,28 @@ only arise across processes (which a later milestone — resuming a suspended ru
 State writes are **best-effort**: a store that is briefly unavailable is
 reported through the run's reporter but never crashes the build. The build's
 real work outweighs its bookkeeping.
+
+### Degraded records
+
+Best-effort writes mean a transition can go unrecorded — so a record's
+per-target progress is not always the whole truth. When a write has to be
+dropped, the writer sets **`degraded: true`** on the record, and the next write
+that _does_ land persists the flag (the failing write, by definition, could not
+carry it). `zuke runs show` prints it.
+
+A degraded record is still fine to read, but not to _act_ on: a resume seeds its
+"already done" set from the recorded statuses, so a lost `succeeded` would make
+it re-run a target that already ran — a deploy, twice. `zuke resume` therefore
+**refuses** a degraded record and names the risk; `--resume-degraded` overrides
+it, and then only a settlement the record fully stamped is trusted. Every other
+target re-runs, on the grounds that repeating a succeeded target is the lesser
+evil against silently skipping one that never ran. See
+[the CLI reference](./cli.md#resuming-suspended-runs).
+
+If _no_ later write ever lands — a store that stays down for the rest of the run
+— the flag never reaches the store. That run also never records its transition
+to `suspended`, so there is nothing for a resume to continue: it reports the run
+as missing or not suspended rather than resuming a record it cannot trust.
 
 ## Inspecting runs
 

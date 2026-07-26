@@ -61,6 +61,7 @@ function sampleRecord(overrides: Partial<RunRecord> = {}): RunRecord {
     targets: overrides.targets ?? { deploy: { status: "succeeded", meta: {} } },
     signals: overrides.signals ?? {},
     events: overrides.events ?? [],
+    degraded: overrides.degraded ?? false,
   };
 }
 
@@ -144,6 +145,15 @@ Deno.test("formatRunDetail handles no params, no signals, no targets", () => {
   assertEquals(text.includes("Parameters:"), false);
   assertEquals(text.includes("Signals:"), false);
   assertStringIncludes(text, "(none recorded)");
+});
+
+Deno.test("formatRunDetail flags a degraded record", () => {
+  // What an operator sees after a resume refuses the record.
+  assertStringIncludes(
+    formatRunDetail(sampleRecord({ degraded: true })),
+    "degraded: yes",
+  );
+  assertEquals(formatRunDetail(sampleRecord()).includes("degraded"), false);
 });
 
 Deno.test("formatRunDetail renders a waiting target without a deadline", () => {

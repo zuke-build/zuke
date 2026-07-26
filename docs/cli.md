@@ -282,6 +282,13 @@ the targets that hadn't yet succeeded. `--force-graph` continues even if the
 build graph changed since the run was suspended. See
 [Orchestration](./orchestration.md).
 
+A resume **refuses** a run whose record is
+[degraded](./state.md#degraded-records) — a state write was dropped while it ran,
+so a target it shows as unfinished may in fact have succeeded, and continuing
+could repeat it. `--resume-degraded` overrides the refusal: every target whose
+settlement the record cannot prove is then re-run, so use it once you know those
+targets are safe to repeat.
+
 ## Cancelling runs
 
 `zuke cancel <run-id>` cancels a run and runs its

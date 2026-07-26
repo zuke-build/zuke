@@ -165,6 +165,100 @@ Deno.test("resumeRun rejects a drifted graph unless forced", async () => {
   });
 });
 
+/**
+ * Suspend a `deploy → gate → promote` run in `store` and mark its record
+ * degraded, optionally rewriting the recorded `deploy` state — the shape a
+ * resume has to distrust. Returns the run id and a live count of deploy runs.
+ */
+async function suspendedDegradedRun(
+  store: FileSystemStateStore,
+  amendDeploy: (state: { endedAt?: string }) => void = () => {},
+): Promise<{ runId: string; log: string[]; makeBuild: () => Build }> {
+  const log: string[] = [];
+  // A deploy behind a gate: the non-idempotent target a resume must not re-run
+  // on a hunch.
+  const makeBuild = () => {
+    class CD extends Build {
+      deploy = target().executes(() => void log.push("deploy"));
+      gate = target().dependsOn(this.deploy).waitsFor((s) =>
+        s.on(externalSignal("approve"))
+      );
+      promote = target().dependsOn(this.gate).executes(() =>
+        void log.push("promote")
+      );
+    }
+    const build = new CD();
+    discoverTargets(build);
+    return build;
+  };
+  const a = makeBuild();
+  await execute(a, a.promote, { silent: true, stateStore: store });
+  const runId = (await store.listRuns({}))[0].id;
+
+  const loaded = await store.getRun(runId);
+  if (loaded === null) throw new Error("expected the suspended run");
+  amendDeploy(loaded.record.targets.deploy);
+  loaded.record.degraded = true; // a state write was dropped during the run
+  const put = await store.putRun(loaded.record, loaded.version);
+  if (!put.ok) throw new Error("expected the degraded write to land");
+  return { runId, log, makeBuild };
+}
+
+Deno.test("resumeRun refuses a degraded record unless overridden", async () => {
+  await withTempStore(async (store) => {
+    const { runId, log, makeBuild } = await suspendedDegradedRun(store);
+    assertEquals(log, ["deploy"]);
+
+    const error = await assertRejects(
+      () =>
+        resumeRun(makeBuild(), {
+          runId,
+          signal: "approve",
+          stateStore: store,
+          silent: true,
+        }),
+      Error,
+      "degraded",
+    );
+    // Names the run, the risk, and the override.
+    assertEquals(messageOf(error).includes(runId), true);
+    assertEquals(messageOf(error).includes("--resume-degraded"), true);
+    // The refusal leaves the run suspended, so the override can still resume it.
+    assertEquals((await store.getRun(runId))?.record.status, "suspended");
+
+    const result = await resumeRun(makeBuild(), {
+      runId,
+      signal: "approve",
+      stateStore: store,
+      resumeDegraded: true,
+      silent: true,
+    });
+    assertEquals(result.ok, true);
+    // deploy settled with an endedAt, so the record proves it: it does not re-run.
+    assertEquals(log, ["deploy", "promote"]);
+  });
+});
+
+Deno.test("the degraded override re-runs a target whose settlement is unproven", async () => {
+  await withTempStore(async (store) => {
+    // `succeeded` with no endedAt: the writer stamps both together, so this
+    // record cannot prove the target actually settled.
+    const { runId, log, makeBuild } = await suspendedDegradedRun(
+      store,
+      (state) => delete state.endedAt,
+    );
+    const result = await resumeRun(makeBuild(), {
+      runId,
+      signal: "approve",
+      stateStore: store,
+      resumeDegraded: true,
+      silent: true,
+    });
+    assertEquals(result.ok, true);
+    assertEquals(log, ["deploy", "deploy", "promote"]); // deploy re-ran
+  });
+});
+
 Deno.test("resumeRun times out a wait past its deadline", async () => {
   await withTempStore(async (store) => {
     class B extends Build {
@@ -300,6 +394,7 @@ Deno.test("resumeCheck isolates a per-run error and keeps sweeping", async () =>
       targets: { ghost: { status: "waiting", meta: {} } },
       signals: {},
       events: [],
+      degraded: false,
     }, null);
 
     ready = true; // the good run's predicate is now satisfied

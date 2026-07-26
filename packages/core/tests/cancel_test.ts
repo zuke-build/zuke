@@ -35,6 +35,7 @@ function craftRecord(
     targets,
     signals: {},
     events: [],
+    degraded: false,
   };
 }
 
