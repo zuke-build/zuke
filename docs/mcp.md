@@ -1,10 +1,12 @@
 # MCP server
 
-`zuke mcp` runs a [Model Context Protocol](https://modelcontextprotocol.io)
+`./zuke mcp` — a command on **your build's own CLI**, not the globally
+installed `jsr:@zuke/cli` (see the [CLI reference](./cli.md) for the
+difference) — runs a [Model Context Protocol](https://modelcontextprotocol.io)
 server over your build. MCP is the open standard that lets an AI client — Claude
 Desktop, Claude Code, an IDE, any agent — discover a server's **tools** (typed,
-schema-described functions) and call them. Pointing a client at `zuke mcp` lets
-an agent **operate the pipeline through typed calls** — list the targets,
+schema-described functions) and call them. Pointing a client at `./zuke mcp`
+lets an agent **operate the pipeline through typed calls** — list the targets,
 inspect the graph, run one with the right parameters — instead of guessing shell
 invocations.
 
@@ -18,14 +20,13 @@ newline-delimited JSON-RPC 2.0 on stdio, the standard MCP local transport.
 ## Running it
 
 ```sh
-zuke mcp              # read-only: inspect the build, never execute
-zuke mcp --allow-run  # also expose run:<target> tools that execute targets
+./zuke mcp              # read-only: inspect the build, never execute
+./zuke mcp --allow-run  # also expose run:<target> tools that execute targets
 ```
 
 The process reads JSON-RPC from stdin and writes responses to stdout; its one
 startup line goes to stderr so it never corrupts the protocol stream. It runs
-until stdin closes. (Read `zuke` as `deno run -A zuke.ts` until the launcher
-binary ships.)
+until stdin closes.
 
 ### Registering with a client
 
@@ -45,8 +46,8 @@ For a client that connects over the network rather than launching the process,
 `--http` serves MCP's **streamable-HTTP** transport instead of stdio:
 
 ```sh
-zuke mcp --http 7777                 # bind 127.0.0.1:7777 (local only)
-zuke mcp --http 0.0.0.0:7777         # bind all interfaces — needs a token
+./zuke mcp --http 7777                 # bind 127.0.0.1:7777 (local only)
+./zuke mcp --http 0.0.0.0:7777         # bind all interfaces — needs a token
 ```
 
 Each request is a `POST` whose body is one JSON-RPC message; the response is
@@ -117,7 +118,7 @@ With `--allow-run` a store also exposes three **mutating** run-state tools:
 exactly-once), `resume_check` (re-check suspended runs — predicate waits and
 timeouts), and `cancel_run` (cancel a run and run its
 [compensations](./orchestration.md#cancellation--compensation-oncancel)). They
-are the MCP counterparts of `zuke resume` and `zuke cancel`. Each runs the
+are the MCP counterparts of `./zuke resume` and `./zuke cancel`. Each runs the
 target's code (a resume continues it; a cancel runs its compensations), so it is
 gated by the same [allow-list and operator-token](#authorization) policy as a
 `run:` tool and appended to the [audit log](#audit-log).
@@ -154,7 +155,7 @@ token".
 ```sh
 # Expose everything to run, but gate promoteToProd behind an operator token
 # and make every destructive run confirm first:
-ZUKE_OPERATOR_TOKEN=… zuke mcp --http 7777 \
+ZUKE_OPERATOR_TOKEN=… ./zuke mcp --http 7777 \
   --allow-run --protect promoteToProd --confirm-destructive
 ```
 
@@ -167,7 +168,7 @@ and the call's arguments. Arguments are **redacted** — the operator token is
 dropped and every `.secret()` parameter's value is masked — before anything is
 persisted.
 
-The trail lives in a store-level record; read it with `zuke runs show mcp-audit`
+The trail lives in a store-level record; read it with `./zuke runs show mcp-audit`
 (or the `show_run` tool). The actor resolves by precedence: the **identity
 hook** (below) → `--actor` → `ZUKE_ACTOR` → the CI actor → the connecting
 client's `initialize` name → `"anonymous"`. The client name is an **untrusted
@@ -207,15 +208,15 @@ header stripping are the proxy's job, not Zuke's.
 
 ## Registry mode (dynamic discovery)
 
-By default `zuke mcp` serves the single build its process was launched with.
+By default `./zuke mcp` serves the single build its process was launched with.
 With `--registry` it instead serves the [build registry](./registry.md) — the
-catalog `zuke register` writes to — and **re-reads it on every `tools/list` and
-`tools/call`**. So a pipeline registered by another process appears as a tool in
-an already-running server with **no restart**:
+catalog `./zuke register` writes to — and **re-reads it on every `tools/list`
+and `tools/call`**. So a pipeline registered by another process appears as a
+tool in an already-running server with **no restart**:
 
 ```sh
 # Serve every registered pipeline, execution enabled:
-zuke mcp --registry --allow-run
+./zuke mcp --registry --allow-run
 ```
 
 - **Discovery.** `list_builds` returns the catalog; `describe_build` (with a
@@ -223,7 +224,7 @@ zuke mcp --registry --allow-run
   a `run:<buildId>:<target>` tool, re-read live.
 - **Execution is a spawn.** A registered build has no live instance in the
   server, so a run tool **spawns the build's registered launch location** (the
-  `deno run <module> <target>` `zuke register` recorded, or an explicit command)
+  `deno run <module> <target>` `./zuke register` recorded, or an explicit command)
   and returns its captured output. This is code execution, so it is off unless
   `--allow-run`, and it honours the same [authorization](#authorization) tiers —
   the allow-list and `--protect` globs match the **qualified**
@@ -240,7 +241,7 @@ zuke mcp --registry --allow-run
   call omits it. Because a descriptor does not record whether a target is
   read-only, every registry run tool is treated as destructive.
 - **Secrets never cross the boundary.** `.secret()` parameters are omitted from
-  the descriptor entirely (`zuke register` writes the secret-free surface), so a
+  the descriptor entirely (`./zuke register` writes the secret-free surface), so a
   secret can neither be requested nor forwarded — it is rejected as an unknown
   parameter if a client tries. The spawned build resolves a secret from its own
   environment / `.from()` source instead. In the [audit log](#audit-log) only a
@@ -270,7 +271,7 @@ The registry resolves like the run store: `ZUKE_REGISTRY_URL`/`_TOKEN` or
 
 **Trust model.** On the default stdio transport the server has no network
 endpoint: it speaks only over the stdin/stdout of a process the client launches,
-so its trust boundary is the local machine — anyone who can start `zuke mcp`
+so its trust boundary is the local machine — anyone who can start `./zuke mcp`
 already has a shell there and could run `deno run -A zuke.ts <target>` directly.
 The [HTTP transport](#http-transport) adds a network endpoint, so it moves that
 boundary: it binds loopback by default, requires a bearer token off loopback,
