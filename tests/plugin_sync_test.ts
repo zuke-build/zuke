@@ -10,6 +10,7 @@
 import { assertEquals } from "../packages/core/tests/_assert.ts";
 import {
   checkPluginSkillsSync,
+  SKILLS_SOURCE,
   syncPluginSkills,
 } from "../build/plugin_sync.ts";
 
@@ -18,9 +19,22 @@ Deno.test("the committed plugin skills copy matches skills/ exactly", async () =
 });
 
 Deno.test("syncPluginSkills round-trips through generate then check", async () => {
-  const written = await syncPluginSkills();
-  assertEquals(written.length > 0, true);
-  assertEquals(await checkPluginSkillsSync(), []);
+  const dir = await Deno.makeTempDir();
+  try {
+    // Never sync into the committed default destination: syncPluginSkills
+    // removes the destination before copying it back, so a run interrupted
+    // between those two steps would leave the real, tracked
+    // plugins/zuke/skills deleted from the working tree. Read the real
+    // skills/ tree as the source, write only into the temp dir — and assert
+    // that, so re-introducing the default destination fails the test.
+    const dest = `${dir}/plugin-skills`;
+    const written = await syncPluginSkills(SKILLS_SOURCE, dest);
+    assertEquals(written.length > 0, true);
+    assertEquals(written.every((path) => path.startsWith(`${dest}/`)), true);
+    assertEquals(await checkPluginSkillsSync(SKILLS_SOURCE, dest), []);
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
 });
 
 Deno.test("a missing destination file is reported", async () => {
