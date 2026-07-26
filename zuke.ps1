@@ -13,10 +13,12 @@
 #   DENO_INSTALL   where Deno is installed/looked for (default: ~/.deno)
 #   DENO_VERSION   which Deno to install on bootstrap. Defaults to a pinned,
 #                  known-good version ($DefaultDenoVersion) for reproducible and
-#                  more predictable installs. A different version (or "latest")
-#                  is only installed if DENO_SHA256 also supplies the matching
-#                  per-platform checksum (see below) - this launcher never
-#                  downloads an unverified binary.
+#                  more predictable installs. An override must name an exact
+#                  release tag (e.g. v2.8.3) - "latest" is rejected, because a
+#                  moving target has no checksum to pin - and is only installed
+#                  if DENO_SHA256 also supplies the matching per-platform
+#                  checksum (see below); this launcher never downloads an
+#                  unverified binary.
 #   DENO_SHA256    required alongside a DENO_VERSION override: the expected
 #                  SHA-256 of the release zip for the *current* platform (see
 #                  the asset name printed on a checksum mismatch).
@@ -60,6 +62,15 @@ if (-not $deno) {
   Write-Host "zuke: Deno not found - installing it now..."
 
   $denoVersion = if ($env:DENO_VERSION) { $env:DENO_VERSION } else { $DefaultDenoVersion }
+  if ($denoVersion -eq "latest") {
+    # There is no `latest` release tag to download, and a moving target has no
+    # checksum to pin - so name the release you want instead.
+    throw "zuke: DENO_VERSION=latest is not supported: this launcher verifies the " +
+      "download against a pinned SHA-256, and ""latest"" has no fixed hash. Set " +
+      "DENO_VERSION to an exact release tag (e.g. v2.8.3) plus DENO_SHA256 with that " +
+      "release's deno-<target>.zip hash, or unset DENO_VERSION to install the " +
+      "verified default $DefaultDenoVersion."
+  }
   $vTag = if ($denoVersion.StartsWith("v")) { $denoVersion } else { "v$denoVersion" }
   $bareVersion = $vTag.Substring(1)
 

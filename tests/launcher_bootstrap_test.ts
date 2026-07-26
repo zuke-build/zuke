@@ -6,8 +6,9 @@ import { assertEquals } from "../packages/core/tests/_assert.ts";
  * checksums silently drifting out of shape. The download-and-verify path
  * itself needs the network (fetching a real Deno release), so it is exercised
  * manually (see `docs/installing-tools.md`) and by CI, which bootstraps every
- * job through these same launchers — these tests only check the committed
- * source text, hermetically.
+ * job through these same launchers. These tests stay hermetic: they check the
+ * committed source text, and run the real bash launcher only down paths that
+ * exit before any download.
  */
 
 const BASH_LAUNCHER = "zuke";
@@ -62,6 +63,61 @@ Deno.test("the PowerShell launcher pins well-formed per-platform checksums", asy
       `"${hash}" is not a well-formed 64-character hex SHA-256`,
     );
   }
+});
+
+Deno.test("the bash launcher rejects DENO_VERSION=latest instead of fetching vlatest", async () => {
+  // `latest` used to be normalised to the non-existent tag "vlatest" and 404 on
+  // every retry. There is nothing to pin a checksum to, so it must fail fast
+  // with an explanation. Runs the real script — but exits before any network
+  // call, so the test stays hermetic.
+  if (Deno.build.os === "windows") return; // bash script; see the ps1 test below
+  const home = await Deno.makeTempDir({ prefix: "zuke-launcher-" });
+  try {
+    const command = new Deno.Command("/bin/bash", {
+      args: ["./zuke", "--help"],
+      clearEnv: true,
+      env: {
+        // No Deno on this PATH, and an empty DENO_INSTALL, so the script takes
+        // the bootstrap branch.
+        PATH: "/usr/bin:/bin",
+        HOME: home,
+        DENO_INSTALL: `${home}/deno`,
+        DENO_VERSION: "latest",
+        DENO_SHA256: "deadbeef",
+      },
+    });
+    const { code, stderr } = await command.output();
+    const err = new TextDecoder().decode(stderr);
+    assertEquals(code, 1, `expected a fail-fast exit; stderr: ${err}`);
+    assertEquals(
+      err.includes("DENO_VERSION=latest is not supported"),
+      true,
+      `expected a friendly rejection of DENO_VERSION=latest; got: ${err}`,
+    );
+    assertEquals(
+      err.includes("vlatest"),
+      false,
+      'the launcher must not build a download URL for the tag "vlatest"',
+    );
+  } finally {
+    await Deno.remove(home, { recursive: true });
+  }
+});
+
+Deno.test("the PowerShell launcher rejects DENO_VERSION=latest", async () => {
+  // pwsh is not guaranteed on every runner, so assert on the committed source:
+  // the guard must sit in zuke.ps1 too, or Windows keeps fetching "vlatest".
+  const script = await Deno.readTextFile(PS_LAUNCHER);
+  assertEquals(
+    script.includes(`if ($denoVersion -eq "latest")`),
+    true,
+    "zuke.ps1 must reject DENO_VERSION=latest before building a download URL",
+  );
+  assertEquals(
+    script.includes("DENO_VERSION=latest is not supported"),
+    true,
+    "zuke.ps1 must explain why DENO_VERSION=latest is rejected",
+  );
 });
 
 Deno.test("both launchers pin the same default Deno version", async () => {

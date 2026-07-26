@@ -13,10 +13,12 @@
 #   DENO_INSTALL   where Deno is installed/looked for (default: ~/.deno)
 #   DENO_VERSION   which Deno to install on bootstrap. Defaults to a pinned,
 #                  known-good version (see DEFAULT_DENO_VERSION) for reproducible
-#                  and more predictable installs. A different version (or
-#                  "latest") is only installed if DENO_SHA256 also supplies the
-#                  matching per-platform checksum (see below) — this launcher
-#                  never downloads an unverified binary.
+#                  and more predictable installs. An override must name an exact
+#                  release tag (e.g. v2.8.3) — "latest" is rejected, because a
+#                  moving target has no checksum to pin — and is only installed
+#                  if DENO_SHA256 also supplies the matching per-platform
+#                  checksum (see below); this launcher never downloads an
+#                  unverified binary.
 #   DENO_SHA256    required alongside a DENO_VERSION override: the expected
 #                  SHA-256 of the release zip for the *current* platform (see
 #                  the asset name printed on a checksum mismatch).
@@ -70,6 +72,16 @@ else
 
   deno_version="${DENO_VERSION:-$DEFAULT_DENO_VERSION}"
   case "$deno_version" in
+    latest)
+      # There is no `latest` release tag to download, and a moving target has no
+      # checksum to pin — so name the release you want instead.
+      echo "zuke: DENO_VERSION=latest is not supported: this launcher verifies the" >&2
+      echo "      download against a pinned SHA-256, and \"latest\" has no fixed hash." >&2
+      echo "      Set DENO_VERSION to an exact release tag (e.g. v2.8.3) plus DENO_SHA256" >&2
+      echo "      with that release's deno-<target>.zip hash, or unset DENO_VERSION to" >&2
+      echo "      install the verified default $DEFAULT_DENO_VERSION." >&2
+      exit 1
+      ;;
     v*) ;;
     *) deno_version="v$deno_version" ;;
   esac
