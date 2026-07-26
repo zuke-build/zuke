@@ -7,7 +7,13 @@ on:
   # `pull_request` job for the same commit) for no extra signal.
   push:
     branches: [master]
+  # `edited` is on top of the three defaults (opened, synchronize, reopened)
+  # because the `prBodyLint` gate reads the PR description: editing the
+  # description changes what release-please will parse without pushing a
+  # commit, so without `edited` the stale green status for the unchanged head
+  # SHA would still let a code-bearing body reach the squash-merge.
   pull_request:
+    types: [opened, synchronize, reopened, edited]
 
 # Default to read-only; the quality job opts into pull-requests:write below for
 # the lint self-healing comment. The cross-OS test job stays secret-free.
