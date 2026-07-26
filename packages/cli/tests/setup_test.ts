@@ -34,20 +34,12 @@ Deno.test("starterConfig records the build name as JSON", () => {
   assertEquals(starterConfig("Acme").endsWith("\n"), true);
 });
 
-Deno.test("launchers carry a shebang and run zuke.ts with a frozen lockfile", () => {
+Deno.test("launchers carry a shebang and run zuke.ts", () => {
   const bash = launcherBash();
   assertEquals(bash.startsWith("#!/usr/bin/env bash"), true);
-  // Every deno invocation the launcher makes gets --frozen — otherwise the
-  // module graph resolves unlocked before a build's own --frozen check ever
-  // runs, and the check validates a lockfile that was already rewritten a
-  // moment earlier.
-  const bashRunCount = bash.split("run -A ").length - 1;
-  const bashFrozenCount = bash.split("run -A --frozen zuke.ts").length - 1;
-  assertEquals(bashFrozenCount, bashRunCount);
-  assertEquals(bashFrozenCount, 1);
+  assertEquals(bash.includes("run -A zuke.ts"), true);
   const pwsh = launcherPwsh();
   assertEquals(pwsh.startsWith("#!/usr/bin/env pwsh"), true);
-  assertEquals(pwsh.includes("run -A --frozen "), true);
   assertEquals(pwsh.includes("zuke.ts"), true);
 });
 
@@ -69,12 +61,35 @@ Deno.test("scaffolded launchers never pipe an unverified install script", () => 
   }
 });
 
+Deno.test("launchers pass --frozen only once a deno.lock exists", () => {
+  // A fresh scaffold has no lockfile, and `deno run --frozen` against a
+  // missing one fails outright rather than writing it — so an unconditional
+  // --frozen breaks the very first `./zuke` the CLI tells the user to run.
+  // Every --frozen must therefore sit behind a lockfile check, with a
+  // plain (lock-writing) invocation as the other branch.
+  const bash = launcherBash();
+  assertEquals(bash.includes("if [ -f deno.lock ]; then"), true);
+  assertEquals(bash.split("run -A --frozen zuke.ts").length - 1, 1);
+  assertEquals(bash.split(`run -A zuke.ts "$@"`).length - 1, 1);
+  // The frozen branch comes first, the bootstrap branch after the `else`.
+  assertEquals(
+    bash.indexOf("--frozen") < bash.indexOf("else\n  deno run -A zuke.ts"),
+    true,
+  );
+
+  const pwsh = launcherPwsh();
+  assertEquals(pwsh.includes(`Test-Path (Join-Path $dir "deno.lock")`), true);
+  assertEquals(pwsh.split(`$denoArgs += "--frozen"`).length - 1, 1);
+  // --frozen is only ever appended inside that check, never in the base argv.
+  assertEquals(pwsh.includes(`@("run", "-A")`), true);
+});
+
 Deno.test("mergeDenoJson seeds tasks from scratch", () => {
   const text = mergeDenoJson(null);
   const parsed: unknown = JSON.parse(text);
   assertEquals(isRecord(parsed) && isRecord(parsed.tasks), true);
   if (isRecord(parsed) && isRecord(parsed.tasks)) {
-    assertEquals(parsed.tasks.zuke, "deno run -A --frozen zuke.ts");
+    assertEquals(parsed.tasks.zuke, "deno run -A zuke.ts");
     assertEquals(parsed.tasks.test, "deno test -A");
   }
   assertEquals(text.endsWith("\n"), true);
@@ -87,7 +102,7 @@ Deno.test("mergeDenoJson preserves existing keys and tasks", () => {
   if (isRecord(parsed) && isRecord(parsed.tasks)) {
     assertEquals(parsed.name, "x");
     assertEquals(parsed.tasks.fmt, "custom");
-    assertEquals(parsed.tasks.zuke, "deno run -A --frozen zuke.ts");
+    assertEquals(parsed.tasks.zuke, "deno run -A zuke.ts");
   }
 });
 
@@ -95,7 +110,7 @@ Deno.test("mergeDenoJson ignores a non-object document", () => {
   const parsed: unknown = JSON.parse(mergeDenoJson("[]"));
   assertEquals(isRecord(parsed) && isRecord(parsed.tasks), true);
   if (isRecord(parsed) && isRecord(parsed.tasks)) {
-    assertEquals(parsed.tasks.zuke, "deno run -A --frozen zuke.ts");
+    assertEquals(parsed.tasks.zuke, "deno run -A zuke.ts");
   }
 });
 

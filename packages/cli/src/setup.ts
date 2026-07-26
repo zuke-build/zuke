@@ -58,7 +58,15 @@ const DENO_INSTALL_DOCS =
 
 /* cspell:disable */
 
-/** The bash launcher (`./zuke`). Runs `zuke.ts` with the Deno on `PATH`. */
+/**
+ * The bash launcher (`./zuke`). Runs `zuke.ts` with the Deno on `PATH`.
+ *
+ * `--frozen` is passed only when a `deno.lock` is already there: a freshly
+ * scaffolded project has none, and `deno run --frozen` against a missing
+ * lockfile fails outright ("The lockfile is out of date") instead of writing
+ * one. So the first run resolves and records the graph, and every run after
+ * that verifies it and fails loudly if it changed.
+ */
 export function launcherBash(): string {
   return `#!/usr/bin/env bash
 # Zuke launcher — runs zuke.ts with Deno.
@@ -70,11 +78,20 @@ if ! command -v deno >/dev/null 2>&1; then
   echo "      ${DENO_INSTALL_DOCS}" >&2
   exit 1
 fi
-deno run -A --frozen zuke.ts "$@"
+# The first run has no lockfile to verify against, so let Deno write one; from
+# then on --frozen fails the build if the module graph changed.
+if [ -f deno.lock ]; then
+  deno run -A --frozen zuke.ts "$@"
+else
+  deno run -A zuke.ts "$@"
+fi
 `;
 }
 
-/** The PowerShell launcher (`.\\zuke.ps1`). */
+/**
+ * The PowerShell launcher (`.\\zuke.ps1`). Mirrors {@link launcherBash},
+ * including its conditional `--frozen`.
+ */
 export function launcherPwsh(): string {
   return `#!/usr/bin/env pwsh
 # Zuke launcher — runs zuke.ts with Deno.
@@ -86,16 +103,30 @@ if (-not $found) {
   Write-Error "zuke: Deno not found on PATH. Install it, then re-run this launcher: ${DENO_INSTALL_DOCS}"
   exit 1
 }
-& $found.Source run -A --frozen (Join-Path $dir "zuke.ts") @args
+# The first run has no lockfile to verify against, so let Deno write one; from
+# then on --frozen fails the build if the module graph changed.
+$denoArgs = @("run", "-A")
+if (Test-Path (Join-Path $dir "deno.lock")) { $denoArgs += "--frozen" }
+$denoArgs += (Join-Path $dir "zuke.ts")
+& $found.Source @denoArgs @args
 exit $LASTEXITCODE
 `;
 }
 
 /* cspell:enable */
 
-/** The task names `setup` writes into `deno.json`, with their commands. */
+/**
+ * The task names `setup` writes into `deno.json`, with their commands.
+ *
+ * The `zuke` task deliberately omits `--frozen`, unlike the launchers: a task
+ * command runs in `deno task`'s own shell, which has no conditionals, so it
+ * cannot skip the flag on the first run when no `deno.lock` exists yet — and
+ * hard-coding it would make a fresh scaffold fail before it could ever write
+ * one. The launcher (`./zuke`, the advertised entry point) does the lockfile
+ * check and enforces `--frozen` from the second run onward.
+ */
 const DEFAULT_TASKS: ReadonlyArray<readonly [string, string]> = [
-  ["zuke", "deno run -A --frozen zuke.ts"],
+  ["zuke", "deno run -A zuke.ts"],
   ["fmt", "deno fmt"],
   ["lint", "deno lint"],
   ["test", "deno test -A"],
