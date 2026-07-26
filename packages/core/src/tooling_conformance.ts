@@ -11,8 +11,8 @@
  * wrapper that quietly forgets the resolution check keeps passing.
  *
  * {@link assertWrapperConformance} runs all three, hermetically (nothing real is
- * ever spawned), and takes the expected resolution mode as an argument so each
- * wrapper *asserts* its default instead of remembering it:
+ * ever spawned), and takes the expected resolution mode as a *required*
+ * argument so each wrapper *asserts* its default instead of remembering it:
  *
  * ```ts
  * Deno.test("biome conforms", async () => {
@@ -36,11 +36,16 @@ export interface WrapperConformanceOptions {
   /**
    * The resolution strategy the wrapper must use when nothing overrides it:
    * `"node_modules"` for a JS-ecosystem tool installed under `node_modules`,
-   * `"path"` (the default) for a natively installed one. Whichever a wrapper
-   * declares, stating it here makes it asserted rather than assumed.
+   * `"path"` for a natively installed one. Required, with no default: an
+   * npm-distributed wrapper that forgot to override `defaultResolution()` is
+   * exactly the bug this kit exists to catch, and a default would let that
+   * wrapper's test pass by saying nothing.
    */
-  resolution?: ToolResolution;
+  resolution: ToolResolution;
 }
+
+/** The binary name {@link missingTool} points settings at — it cannot exist. */
+const MISSING = "zuke-no-such-tool-xyz";
 
 /**
  * Point `settings` at a binary that cannot exist, so running it raises a
@@ -58,25 +63,32 @@ export interface WrapperConformanceOptions {
  */
 export function missingTool<S extends ToolSettings>(settings: S): S {
   settings.os_ = "linux";
-  return settings.toolPath("zuke-no-such-tool-xyz");
+  return settings.toolPath(MISSING);
 }
 
 /**
  * Assert that a tool wrapper conforms: `makeSettings()` spawns `tool`, resolves
- * it per `options.resolution` (default `"path"`), and reports a missing binary
- * as a {@link "./tooling.ts".ToolNotFoundError}.
+ * it per `options.resolution`, and reports a missing binary as a
+ * {@link "./tooling.ts".ToolNotFoundError}.
  *
  * `makeSettings` is called once per check, so each check gets a pristine
  * instance. The resolution check runs against a throwaway temp directory holding
  * a fake `node_modules/.bin/<tool>` shim, with `ZUKE_TOOL_RESOLUTION` unset for
  * the duration and restored afterwards; no real subprocess is ever launched.
  *
+ * A wrapper whose `run()` resolves something at run time must have that pinned
+ * inside `makeSettings` — `() => new DockerComposeUpSettings().usePlugin()`,
+ * say — or the missing-binary check would probe the ambient host. It reports a
+ * `ToolNotFoundError` raised for any binary other than the planted one as a
+ * failure, so such a wrapper cannot pass by accident on a host that lacks the
+ * real tool.
+ *
  * @throws {Error} naming the wrapper and the fix, on the first failed check.
  */
 export async function assertWrapperConformance(
   makeSettings: () => ToolSettings,
   tool: string,
-  options: WrapperConformanceOptions = {},
+  options: WrapperConformanceOptions,
 ): Promise<void> {
   const spawned = head(makeSettings().argv());
   if (spawned !== tool) {
@@ -86,7 +98,7 @@ export async function assertWrapperConformance(
         `or pass the binary the wrapper really runs as the tool argument.`,
     );
   }
-  assertResolution(makeSettings, tool, options.resolution ?? "path");
+  assertResolution(makeSettings, tool, options.resolution);
   await assertToolNotFound(makeSettings, tool);
 }
 
@@ -118,8 +130,8 @@ function assertResolution(
         `Wrapper conformance for "${tool}": expected npx-style resolution, ` +
           `but the wrapper spawned "${resolved}" with a ` +
           `node_modules/.bin/${tool} shim in the working directory. Override ` +
-          `defaultResolution() to return "node_modules", or drop the ` +
-          `resolution option if this tool really is a PATH install.`,
+          `defaultResolution() to return "node_modules", or pass ` +
+          `{ resolution: "path" } if this tool really is a PATH install.`,
       );
     }
     if (expected === "path" && resolved !== tool) {
@@ -145,7 +157,17 @@ async function assertToolNotFound(
   try {
     await missingTool(makeSettings()).run();
   } catch (error) {
-    if (error instanceof ToolNotFoundError) return;
+    if (error instanceof ToolNotFoundError) {
+      if (error.tool === MISSING) return;
+      throw new Error(
+        `Wrapper conformance for "${tool}": the missing-binary check raised a ` +
+          `ToolNotFoundError for "${error.tool}", not for the planted ` +
+          `"${MISSING}" — so run() resolved some other tool before spawning, ` +
+          `by probing the host. Pin that resolution inside the makeSettings ` +
+          `lambda (Compose's .usePlugin(), for instance) so the check stays ` +
+          `hermetic and really exercises the missing binary.`,
+      );
+    }
     const name = error instanceof Error ? error.name : String(error);
     throw new Error(
       `Wrapper conformance for "${tool}": running a binary that does not ` +

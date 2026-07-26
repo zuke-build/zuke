@@ -195,9 +195,11 @@ ambient tools.
    third-party assert library). For a tool wrapper, assert the **pure
    `buildArgs()` argv** — do not run the real tool — and call
    `assertWrapperConformance` from `@zuke/core/tooling/conformance`, which
-   asserts the wrapper's binary name, its **declared** resolution mode
-   (`{ resolution: "node_modules" }` for a JS-ecosystem tool) and its
-   `ToolNotFoundError` path, so a wrapper cannot silently omit those checks.
+   asserts the wrapper's binary name, its **declared** resolution mode — the
+   `resolution` option is required, `"node_modules"` for a JS-ecosystem tool and
+   `"path"` for a native one, so every wrapper states its mode rather than
+   inheriting a default that could hide a missing `defaultResolution()` — and
+   its `ToolNotFoundError` path, so a wrapper cannot silently omit those checks.
    This layer covers a module's
    branches and a wrapper's flags, and carries the bulk of the 95% coverage
    gate.

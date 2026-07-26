@@ -46,6 +46,7 @@ Deno.test("a PATH wrapper conforms", async () => {
   await assertWrapperConformance(
     () => new PathToolSettings(),
     "zuke-fake-tool",
+    { resolution: "path" },
   );
 });
 
@@ -54,10 +55,11 @@ Deno.test("an ambient ZUKE_TOOL_RESOLUTION is ignored, then restored", async () 
   Deno.env.set("ZUKE_TOOL_RESOLUTION", "node_modules");
   try {
     // The ambient override would make the PATH wrapper resolve npx-style; the
-    // kit unsets it for the duration so the wrapper's own default is asserted.
+    // kit clears it for the duration so the wrapper's own default is asserted.
     await assertWrapperConformance(
       () => new PathToolSettings(),
       "zuke-fake-tool",
+      { resolution: "path" },
     );
     assertEquals(Deno.env.get("ZUKE_TOOL_RESOLUTION"), "node_modules");
   } finally {
@@ -74,12 +76,13 @@ Deno.test("a node_modules wrapper conforms when it declares so", async () => {
   );
 });
 
-Deno.test("a node_modules wrapper fails the default PATH expectation", async () => {
+Deno.test("a node_modules wrapper fails a declared PATH expectation", async () => {
   await assertRejects(
     () =>
       assertWrapperConformance(
         () => new NodeToolSettings(),
         "zuke-fake-tool",
+        { resolution: "path" },
       ),
     Error,
     'resolution: "node_modules"',
@@ -103,6 +106,7 @@ Deno.test("a mismatched default binary is reported", async () => {
       assertWrapperConformance(
         () => new MisnamedToolSettings(),
         "zuke-fake-tool",
+        { resolution: "path" },
       ),
     Error,
     'spawns "zuke-other-tool"',
@@ -121,6 +125,7 @@ Deno.test("a wrapper that swallows a missing binary is reported", async () => {
       assertWrapperConformance(
         () => new SwallowingSettings(),
         "zuke-fake-tool",
+        { resolution: "path" },
       ),
     Error,
     "did not fail",
@@ -139,6 +144,7 @@ Deno.test("a wrapper that raises the wrong error is reported", async () => {
       assertWrapperConformance(
         () => new WrongErrorSettings(),
         "zuke-fake-tool",
+        { resolution: "path" },
       ),
     Error,
     "RangeError",
@@ -158,8 +164,34 @@ Deno.test("a non-Error rejection is reported by its value", async () => {
       assertWrapperConformance(
         () => new ThrowsLiteralSettings(),
         "zuke-fake-tool",
+        { resolution: "path" },
       ),
     Error,
     "just a string",
+  );
+});
+
+Deno.test("a ToolNotFoundError for another binary is not a pass", async () => {
+  /**
+   * A wrapper that resolves its real invocation by probing the host before
+   * spawning — the `docker compose` / `docker-compose` shape — and so reports a
+   * *different* tool missing than the planted one. Accepting that would let the
+   * check pass on a host lacking the tool without ever exercising the
+   * missing-binary path.
+   */
+  class DetectingSettings extends PathToolSettings {
+    override run(): Promise<CommandOutput> {
+      return Promise.reject(new ToolNotFoundError("some-other-tool"));
+    }
+  }
+  await assertRejects(
+    () =>
+      assertWrapperConformance(
+        () => new DetectingSettings(),
+        "zuke-fake-tool",
+        { resolution: "path" },
+      ),
+    Error,
+    "not for the planted",
   );
 });
