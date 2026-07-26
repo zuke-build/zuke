@@ -24,8 +24,15 @@ await $`build`.env({ NODE_ENV: "prod" }).cwd("./app").quiet();
 | `.cwd(path)`   | Set the working directory.                                                                                     |
 | `.quiet()`     | Suppress live stdout/stderr streaming.                                                                         |
 
-Awaiting a command resolves to a `CommandOutput` (`{ code, stdout, stderr }`,
-plus a `.text()` helper for trimmed stdout).
+Awaiting a command resolves to a `CommandOutput`
+(`{ code, stdout, stderr, truncated }`, plus a `.text()` helper for trimmed
+stdout).
+
+**Bounded capture:** each captured stream keeps at most 8 MiB, so a runaway child
+cannot grow the buffer until the run dies. Past the cap the **newest** bytes are
+kept, `truncated` is `true`, and `.text()` prefixes
+`[output truncated to last 8 MiB]`. Raise or lower it per command with
+`.maxCapturedBytes(bytes)`; live streaming to the terminal is never capped.
 
 **Safety:** interpolated values become **discrete argv entries** — they are
 never spliced into a shell string — so there is no injection surface. Arrays

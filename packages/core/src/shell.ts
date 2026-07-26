@@ -20,6 +20,11 @@ import type { AbsolutePath, PathLike } from "./path.ts";
 import { ambientSignal } from "./ambient_signal.ts";
 import { ambientEcho } from "./ambient_echo.ts";
 import { terminateProcess, TERMINATION_GRACE_MS } from "./terminate.ts";
+import {
+  captureStream,
+  DEFAULT_MAX_CAPTURED_BYTES,
+  truncationNotice,
+} from "./capture.ts";
 
 /**
  * Split an already-written command string into argv with POSIX quoting rules —
@@ -84,11 +89,24 @@ export class CommandOutput {
     readonly stdout: string,
     /** Captured standard error. */
     readonly stderr: string,
+    /**
+     * Whether either captured stream hit the capture cap, in which case it holds
+     * only its tail — the newest bytes — and its beginning is gone. See
+     * {@link Command.maxCapturedBytes}.
+     */
+    readonly truncated: boolean = false,
+    /** The per-stream capture cap that applied, in bytes. */
+    readonly maxCapturedBytes: number = DEFAULT_MAX_CAPTURED_BYTES,
   ) {}
 
-  /** Trimmed stdout. */
+  /**
+   * Trimmed stdout, prefixed with a one-line notice when {@link truncated} — so
+   * a caller reading the output cannot mistake a tail for the whole of it.
+   */
   text(): string {
-    return this.stdout.trim();
+    const text = this.stdout.trim();
+    if (!this.truncated) return text;
+    return `${truncationNotice(this.maxCapturedBytes)}\n${text}`;
   }
 }
 
@@ -144,39 +162,7 @@ interface RunResult {
   code: number;
   stdout: string;
   stderr: string;
-}
-
-/** Concatenate byte chunks into one buffer and decode as UTF-8. */
-function decodeChunks(chunks: Uint8Array[]): string {
-  let total = 0;
-  for (const c of chunks) total += c.length;
-  const merged = new Uint8Array(total);
-  let offset = 0;
-  for (const c of chunks) {
-    merged.set(c, offset);
-    offset += c.length;
-  }
-  return new TextDecoder().decode(merged);
-}
-
-/** Drain a stream, optionally tee-ing each chunk to a live sink, and capture. */
-async function collect(
-  stream: ReadableStream<Uint8Array>,
-  sink: { writeSync(p: Uint8Array): number } | null,
-): Promise<string> {
-  const reader = stream.getReader();
-  const chunks: Uint8Array[] = [];
-  try {
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      chunks.push(value);
-      if (sink) sink.writeSync(value);
-    }
-  } finally {
-    reader.releaseLock();
-  }
-  return decodeChunks(chunks);
+  truncated: boolean;
 }
 
 /**
@@ -193,6 +179,7 @@ export class Command implements PromiseLike<CommandOutput> {
   #capturing = false;
   #timeoutMs?: number;
   #signal?: AbortSignal;
+  #maxCapturedBytes = DEFAULT_MAX_CAPTURED_BYTES;
   #result?: Promise<RunResult>;
 
   /** Build a command from a discrete argv array (binary first). */
@@ -234,6 +221,19 @@ export class Command implements PromiseLike<CommandOutput> {
   }
 
   /**
+   * Cap how much of **each** captured stream is kept in memory, in bytes
+   * (default 8 MiB). Capture keeps the newest bytes: once the cap is reached the
+   * oldest are dropped, {@link CommandOutput.truncated} is set, and
+   * {@link CommandOutput.text} prefixes a notice. Raise it for a command whose
+   * whole output you must parse; lower it to bound a chatty one. Live streaming
+   * to the terminal is never capped — every byte still reaches it.
+   */
+  maxCapturedBytes(bytes: number): this {
+    this.#maxCapturedBytes = bytes;
+    return this;
+  }
+
+  /**
    * Terminate the process (via `SIGTERM`) when `signal` aborts — for example
    * when the enclosing run is cancelled. Overrides the executor's ambient
    * run signal for this command. Composes with {@link killAfter}: either the
@@ -263,7 +263,12 @@ export class Command implements PromiseLike<CommandOutput> {
     const echo = ambientEcho();
     if (echo !== undefined) {
       echo(this.commandLine);
-      return Promise.resolve({ code: 0, stdout: "", stderr: "" });
+      return Promise.resolve({
+        code: 0,
+        stdout: "",
+        stderr: "",
+        truncated: false,
+      });
     }
     return this.#spawn();
   }
@@ -305,15 +310,23 @@ export class Command implements PromiseLike<CommandOutput> {
       const streamStdout = !this.#quiet && !this.#capturing;
       const streamStderr = !this.#quiet;
 
+      // Capture is bounded (per stream) so a runaway child cannot grow the buffer
+      // until the run dies; the tee to the terminal above stays unbounded.
+      const cap = this.#maxCapturedBytes;
       const [stdout, stderr] = await Promise.all([
-        collect(child.stdout, streamStdout ? Deno.stdout : null),
-        collect(child.stderr, streamStderr ? Deno.stderr : null),
+        captureStream(child.stdout, streamStdout ? Deno.stdout : null, cap),
+        captureStream(child.stderr, streamStderr ? Deno.stderr : null, cap),
       ]);
       const status = await child.status;
       if (timedOut && ms !== undefined) {
         throw new CommandTimeoutError(this.commandLine, ms);
       }
-      return { code: status.code, stdout, stderr };
+      return {
+        code: status.code,
+        stdout: stdout.text,
+        stderr: stderr.text,
+        truncated: stdout.truncated || stderr.truncated,
+      };
     } finally {
       if (timer !== undefined) clearTimeout(timer);
     }
@@ -340,15 +353,22 @@ export class Command implements PromiseLike<CommandOutput> {
   async #output(): Promise<CommandOutput> {
     const r = await this.#run();
     this.#maybeThrow(r);
-    return new CommandOutput(r.code, r.stdout, r.stderr);
+    return new CommandOutput(
+      r.code,
+      r.stdout,
+      r.stderr,
+      r.truncated,
+      this.#maxCapturedBytes,
+    );
   }
 
-  /** Run and resolve to trimmed stdout. Throws on non-zero unless `noThrow`. */
+  /**
+   * Run and resolve to trimmed stdout — prefixed with a truncation notice if the
+   * capture cap was hit. Throws on non-zero unless `noThrow`.
+   */
   async text(): Promise<string> {
     this.#capturing = true;
-    const r = await this.#run();
-    this.#maybeThrow(r);
-    return r.stdout.trim();
+    return (await this.#output()).text();
   }
 
   /** Run and resolve to stdout split into lines (trailing blank dropped). */

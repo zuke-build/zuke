@@ -158,6 +158,43 @@ Deno.test("$ .killAfter() fires even under .noThrow()", async () => {
   );
 });
 
+Deno.test("$ caps captured output and keeps the tail", async () => {
+  // 40 lines of 1 KiB, numbered, into a 4 KiB cap: only the last few survive.
+  const emit =
+    `for (let i = 0; i < 40; i++) console.log(String(i).padStart(4, "0") + "x".repeat(1019));`;
+  const out = await $`${DENO} eval ${emit}`
+    .quiet()
+    .maxCapturedBytes(4096)
+    .then();
+  assertEquals(out.truncated, true);
+  // The bytes kept are the LAST ones written…
+  assertEquals(out.stdout.trimEnd().endsWith("x".repeat(1019)), true);
+  assertEquals(out.stdout.includes("0039"), true);
+  // …not the first, and the buffer really is bounded (a memory proxy).
+  assertEquals(out.stdout.includes("0000"), false);
+  assertEquals(out.stdout.length <= 4096, true, `kept ${out.stdout.length}`);
+  // The notice makes the loss visible instead of silently truncating.
+  assertEquals(out.text().startsWith("[output truncated to last 4 KiB]"), true);
+});
+
+Deno.test("$ leaves output under the cap untouched and not truncated", async () => {
+  const out = await $`${DENO} eval ${"console.log('small')"}`
+    .maxCapturedBytes(4096)
+    .then();
+  assertEquals(out.truncated, false);
+  assertEquals(out.text(), "small");
+});
+
+Deno.test("$ caps stderr independently of stdout", async () => {
+  const emit =
+    `console.log("out"); for (let i = 0; i < 8; i++) console.error("e".repeat(1024));`;
+  const out = await $`${DENO} eval ${emit}`.quiet().maxCapturedBytes(2048)
+    .then();
+  assertEquals(out.truncated, true);
+  assertEquals(out.stdout.includes("out"), true); // stdout was never over cap
+  assertEquals(out.stderr.length <= 2048, true);
+});
+
 Deno.test("$ .signal() terminates a running command when it aborts", async () => {
   const controller = new AbortController();
   const running = $`${DENO} eval ${SLEEP}`

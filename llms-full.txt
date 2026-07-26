@@ -3414,6 +3414,13 @@ class Command implements PromiseLike<CommandOutput>
   killAfter(ms: number): this
     Kill the process if it runs longer than `ms` milliseconds, raising a
     {@link CommandTimeoutError}. Fires even under {@link noThrow}.
+  maxCapturedBytes(bytes: number): this
+    Cap how much of each captured stream is kept in memory, in bytes
+    (default 8 MiB). Capture keeps the newest bytes: once the cap is reached the
+    oldest are dropped, {@link CommandOutput.truncated} is set, and
+    {@link CommandOutput.text} prefixes a notice. Raise it for a command whose
+    whole output you must parse; lower it to bound a chatty one. Live streaming
+    to the terminal is never capped — every byte still reaches it.
   signal(signal: AbortSignal): this
     Terminate the process (via `SIGTERM`) when `signal` aborts — for example
     when the enclosing run is cancelled. Overrides the executor's ambient
@@ -3424,7 +3431,8 @@ class Command implements PromiseLike<CommandOutput>
   then(onfulfilled?: ((value: CommandOutput) => TResult1 | PromiseLike<TResult1>) | null, onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null): PromiseLike<TResult1 | TResult2>
     Await support: run the command and resolve to a {@link CommandOutput}.
   async text(): Promise<string>
-    Run and resolve to trimmed stdout. Throws on non-zero unless `noThrow`.
+    Run and resolve to trimmed stdout — prefixed with a truncation notice if the
+    capture cap was hit. Throws on non-zero unless `noThrow`.
   async lines(): Promise<string[]>
     Run and resolve to stdout split into lines (trailing blank dropped).
   async code(): Promise<number>
@@ -3447,10 +3455,11 @@ class CommandError extends Error
 class CommandOutput
   The resolved result of a command, available when awaiting a {@link Command}.
 
-  constructor(readonly code: number, readonly stdout: string, readonly stderr: string)
+  constructor(readonly code: number, readonly stdout: string, readonly stderr: string, readonly truncated: boolean, readonly maxCapturedBytes: number)
     Build the output from the process exit code and captured streams.
   text(): string
-    Trimmed stdout.
+    Trimmed stdout, prefixed with a one-line notice when {@link truncated} — so
+    a caller reading the output cannot mistake a tail for the whole of it.
 
 class CommandTimeoutError extends Error
   Raised when a command is killed for exceeding its {@link Command.killAfter}
