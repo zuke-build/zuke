@@ -53,6 +53,10 @@ class DenoCacheSettings extends DenoSettings
 
   reload(): this
     Reload remote modules instead of using the cache (`--reload`).
+  frozen(): this
+    Error out if the lockfile is out of date (`--frozen`). See
+    {@link DenoPermissionSettings.frozen} for why the name mirrors the real
+    Deno flag rather than `PnpmSettings.frozenLockfile()`'s naming.
   paths(...paths: PathLike[]): this
     The entry points to cache (at least one is required).
   override protected buildArgs(): string[]
@@ -63,6 +67,10 @@ class DenoCheckSettings extends DenoSettings
 
   paths(...paths: PathLike[]): this
     The files to type-check (at least one is required).
+  frozen(): this
+    Error out if the lockfile is out of date (`--frozen`). See
+    {@link DenoPermissionSettings.frozen} for why the name mirrors the real
+    Deno flag rather than `PnpmSettings.frozenLockfile()`'s naming.
   override protected buildArgs(): string[]
     Assemble the `deno check` argv.
 
@@ -104,6 +112,10 @@ class DenoDocSettings extends DenoSettings
     The source files (entry points) to document.
   json(): this
     Output the documentation as JSON (`--json`).
+  frozen(): this
+    Error out if the lockfile is out of date (`--frozen`). See
+    {@link DenoPermissionSettings.frozen} for why the name mirrors the real
+    Deno flag rather than `PnpmSettings.frozenLockfile()`'s naming.
   html(): this
     Generate static HTML documentation (`--html`).
   name(title: string): this
@@ -164,8 +176,20 @@ abstract class DenoPermissionSettings extends DenoSettings
     Grant all permissions (`--allow-all`).
   allow(permission: DenoPermission, ...values: string[]): this
     Grant one permission, optionally scoped to values (`--allow-read=a,b`).
+  frozen(): this
+    Error out if the lockfile is out of date instead of silently updating it
+    (`--frozen`). Use it whenever the module graph must match the committed
+    `deno.lock` exactly — running an `npm:` tool in CI, say, so its transitive
+    tree stays pinned to the audited integrity hashes rather than being
+    resolved afresh. Named `frozen` — not `frozenLockfile` — to mirror the real
+    Deno CLI flag exactly. This is a deliberate divergence from
+    `PnpmSettings.frozenLockfile()` in `@zuke/pnpm`, which follows pnpm's own
+    flag name instead: guideline 7 (mirror the real CLI) takes priority over
+    cross-package naming symmetry.
   protected get permissionArgs(): string[]
     The accumulated permission flags, in declaration order.
+  protected get frozenArgs(): string[]
+    The `--frozen` flag, if set; read by subclasses assembling their argv.
 
 class DenoPublishSettings extends DenoSettings
   Settings for `deno publish`.
@@ -196,11 +220,6 @@ class DenoRunSettings extends DenoPermissionSettings
     Use an explicit config file (`--config`).
   reload(): this
     Reload the module cache (`--reload`).
-  frozen(): this
-    Fail if the lockfile is out of date (`--frozen`) instead of updating it. Use
-    it whenever the module graph must match the committed `deno.lock` exactly —
-    running an `npm:` tool in CI, say, so its transitive tree stays pinned to
-    the audited integrity hashes rather than being resolved afresh.
   override protected buildArgs(): string[]
     Assemble the `deno run` argv.
 
@@ -217,6 +236,10 @@ class DenoTaskSettings extends DenoSettings
     The task name from deno.json (required).
   taskArgs(...args: Array<string | number>): this
     Arguments forwarded to the task.
+  frozen(): this
+    Error out if the lockfile is out of date (`--frozen`). See
+    {@link DenoPermissionSettings.frozen} for why the name mirrors the real
+    Deno flag rather than `PnpmSettings.frozenLockfile()`'s naming.
   override protected buildArgs(): string[]
     Assemble the `deno task` argv.
 

@@ -23,6 +23,7 @@ Deno.test("isRecord distinguishes plain objects", () => {
 Deno.test("starterBuild embeds the class name and entry point", () => {
   const out = starterBuild("Acme");
   assertEquals(out.includes("import { Build, run, target }"), true);
+  assertEquals(out.includes('jsr:@zuke/core@^1"'), true);
   assertEquals(out.includes("class Acme extends Build"), true);
   assertEquals(out.includes("await run(Acme)"), true);
 });
@@ -33,12 +34,20 @@ Deno.test("starterConfig records the build name as JSON", () => {
   assertEquals(starterConfig("Acme").endsWith("\n"), true);
 });
 
-Deno.test("launchers carry a shebang and run zuke.ts", () => {
+Deno.test("launchers carry a shebang and run zuke.ts with a frozen lockfile", () => {
   const bash = launcherBash();
   assertEquals(bash.startsWith("#!/usr/bin/env bash"), true);
-  assertEquals(bash.includes("deno run -A zuke.ts"), true);
+  // Every deno invocation the launcher makes gets --frozen — otherwise the
+  // module graph resolves unlocked before a build's own --frozen check ever
+  // runs, and the check validates a lockfile that was already rewritten a
+  // moment earlier.
+  const bashRunCount = bash.split("run -A ").length - 1;
+  const bashFrozenCount = bash.split("run -A --frozen zuke.ts").length - 1;
+  assertEquals(bashFrozenCount, bashRunCount);
+  assertEquals(bashFrozenCount, 1);
   const pwsh = launcherPwsh();
   assertEquals(pwsh.startsWith("#!/usr/bin/env pwsh"), true);
+  assertEquals(pwsh.includes("run -A --frozen "), true);
   assertEquals(pwsh.includes("zuke.ts"), true);
 });
 
@@ -65,7 +74,7 @@ Deno.test("mergeDenoJson seeds tasks from scratch", () => {
   const parsed: unknown = JSON.parse(text);
   assertEquals(isRecord(parsed) && isRecord(parsed.tasks), true);
   if (isRecord(parsed) && isRecord(parsed.tasks)) {
-    assertEquals(parsed.tasks.zuke, "deno run -A zuke.ts");
+    assertEquals(parsed.tasks.zuke, "deno run -A --frozen zuke.ts");
     assertEquals(parsed.tasks.test, "deno test -A");
   }
   assertEquals(text.endsWith("\n"), true);
@@ -78,7 +87,7 @@ Deno.test("mergeDenoJson preserves existing keys and tasks", () => {
   if (isRecord(parsed) && isRecord(parsed.tasks)) {
     assertEquals(parsed.name, "x");
     assertEquals(parsed.tasks.fmt, "custom");
-    assertEquals(parsed.tasks.zuke, "deno run -A zuke.ts");
+    assertEquals(parsed.tasks.zuke, "deno run -A --frozen zuke.ts");
   }
 });
 
@@ -86,7 +95,7 @@ Deno.test("mergeDenoJson ignores a non-object document", () => {
   const parsed: unknown = JSON.parse(mergeDenoJson("[]"));
   assertEquals(isRecord(parsed) && isRecord(parsed.tasks), true);
   if (isRecord(parsed) && isRecord(parsed.tasks)) {
-    assertEquals(parsed.tasks.zuke, "deno run -A zuke.ts");
+    assertEquals(parsed.tasks.zuke, "deno run -A --frozen zuke.ts");
   }
 });
 

@@ -15,7 +15,7 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
 
 /** The starter `zuke.ts`, with the build class named `name`. */
 export function starterBuild(name: string): string {
-  return `import { Build, run, target } from "jsr:@zuke/core";
+  return `import { Build, run, target } from "jsr:@zuke/core@^1";
 
 /** Your project's build. Run a target with \`./zuke <target>\`. */
 class ${name} extends Build {
@@ -70,7 +70,7 @@ if ! command -v deno >/dev/null 2>&1; then
   echo "      ${DENO_INSTALL_DOCS}" >&2
   exit 1
 fi
-deno run -A zuke.ts "$@"
+deno run -A --frozen zuke.ts "$@"
 `;
 }
 
@@ -86,7 +86,7 @@ if (-not $found) {
   Write-Error "zuke: Deno not found on PATH. Install it, then re-run this launcher: ${DENO_INSTALL_DOCS}"
   exit 1
 }
-& $found.Source run -A (Join-Path $dir "zuke.ts") @args
+& $found.Source run -A --frozen (Join-Path $dir "zuke.ts") @args
 exit $LASTEXITCODE
 `;
 }
@@ -95,7 +95,7 @@ exit $LASTEXITCODE
 
 /** The task names `setup` writes into `deno.json`, with their commands. */
 const DEFAULT_TASKS: ReadonlyArray<readonly [string, string]> = [
-  ["zuke", "deno run -A zuke.ts"],
+  ["zuke", "deno run -A --frozen zuke.ts"],
   ["fmt", "deno fmt"],
   ["lint", "deno lint"],
   ["test", "deno test -A"],
