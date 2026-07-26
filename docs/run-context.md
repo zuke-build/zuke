@@ -29,8 +29,9 @@ class Deploy extends Build {
 | `dryRun`     | `boolean`           | `true` when the run is a dry run (bodies don't execute in a dry run). |
 
 `runId` is minted once per run (`crypto.randomUUID()`), so it correlates every
-target, the run record ([Durable run state](./state.md)), and — in later
-milestones — spans and resumptions.
+target, the run record ([Durable run state](./state.md)), a resumed run's
+spans ([Observability](./observability.md)), and a
+[resumption](./orchestration.md) of a suspended run.
 
 ## Cancellation
 
@@ -72,9 +73,10 @@ When the signal aborts:
   — the timeout or the cancellation — terminates the process.
 
 A body that ignores its signal and never touches the shell still runs to
-completion; Zuke does not forcibly interrupt arbitrary JavaScript. Turning
-cancellation into a first-class graph operation — compensations that run in
-reverse order, `zuke cancel <run-id>`, `Ctrl-C` — is a later milestone.
+completion; Zuke does not forcibly interrupt arbitrary JavaScript. Cancellation
+is also a first-class **graph operation**: `zuke cancel <run-id>` (or `Ctrl-C`)
+unwinds every succeeded target's declared `.onCancel(...)` compensation in
+reverse order — see [Orchestration](./orchestration.md#cancellation--compensation-oncancel).
 
 ### Scope of the ambient signal
 

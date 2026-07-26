@@ -63,7 +63,11 @@ await run(CI);
 
 Before calling any task or settings method, confirm the real shape:
 
-- **Whole surface:** read `llms-full.txt` at the repo root (index: `llms.txt`).
+- **Whole surface:** `llms-full.txt` (index: `llms.txt`) — in the Zuke repo
+  itself it's at the repo root; in a consumer repo (where this skill actually
+  runs) fetch it from
+  <https://raw.githubusercontent.com/zuke-build/zuke/master/llms-full.txt>
+  (index: <https://raw.githubusercontent.com/zuke-build/zuke/master/llms.txt>).
 - **One package:** `deno doc jsr:@zuke/<package>` (e.g.
   `deno doc jsr:@zuke/deno`).
 - A quick map of the most common methods and task objects is in
