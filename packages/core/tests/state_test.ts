@@ -907,6 +907,41 @@ Deno.test("FileSystemStateStore errors when a lock is permanently held", async (
   );
 });
 
+Deno.test("FileSystemStateStore takes over a mutex marker left past its TTL", async () => {
+  // A holder killed mid-write leaves its marker behind. Once the marker is older
+  // than the mutex TTL, the next writer reclaims it instead of wedging forever.
+  const host = new FakeStateHost();
+  const marker = "/runs/run-1.json.lock";
+  host.locks.add(marker);
+  host.files.set(marker, String(host.time)); // stamped when it was acquired
+  host.time += 60_000; // …and never released
+
+  const store = new FileSystemStateStore("/runs", host);
+  const result = await store.putRun(sampleRecord(), null);
+  assertEquals(result.ok, true);
+  assertEquals(host.locks.has(marker), false); // released again after the write
+  assertEquals(host.files.get("/runs/run-1.json") === undefined, false);
+});
+
+Deno.test("FileSystemStateStore never steals a live mutex marker", async () => {
+  // A marker stamped just now belongs to a live holder; one with no readable
+  // stamp (a holder killed between creating and stamping it) is treated the same
+  // way. Both keep the existing behaviour: spin, then fail with guidance.
+  for (const stamp of [String(new FakeStateHost().time), ""]) {
+    const host = new FakeStateHost();
+    const marker = "/runs/run-1.json.lock";
+    host.locks.add(marker);
+    host.files.set(marker, stamp);
+    const store = new FileSystemStateStore("/runs", host);
+    await assertRejects(
+      () => store.putRun(sampleRecord(), null),
+      Error,
+      "could not acquire",
+    );
+    assertEquals(host.locks.has(marker), true); // the holder kept its marker
+  }
+});
+
 // ---------------------------------------------------------------- duration
 
 Deno.test("parseDuration parses units and passes numbers through", () => {

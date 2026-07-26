@@ -159,6 +159,39 @@ Deno.test("listRuns can filter persisted runs by status", async () => {
   });
 });
 
+Deno.test("a lock acquire recovers from a mutex marker a killed run left behind", async () => {
+  await withStateDir(async (dir) => {
+    const log: string[] = [];
+    // A previous run was killed while acquiring: its `.acq` mutex marker is still
+    // there, stamped long enough ago to be past the mutex TTL. Every later run
+    // that touches this lock used to wedge and fail; now the marker is reclaimed.
+    const marker = `${dir}/locks/deploy-lock.acq`;
+    await Deno.mkdir(`${dir}/locks`, { recursive: true });
+    await Deno.writeTextFile(marker, String(Date.now() - 600_000));
+
+    class B extends Build {
+      deploy = target()
+        .lock((s) => s.key("deploy-lock").withTtl("1h"))
+        .executes(() => void log.push("deploy"));
+    }
+    const { code, err } = await runCli(B, ["deploy"]);
+    assertEquals(code, 0, err);
+    assertEquals(log, ["deploy"]);
+    // Reclaimed, held for the acquire, then released — not left behind again.
+    assertEquals(await exists(marker), false);
+  });
+});
+
+/** Whether `path` exists, for asserting a marker was cleaned up. */
+async function exists(path: string): Promise<boolean> {
+  try {
+    await Deno.lstat(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 Deno.test("a target loses a held lock and fails with the conflict guidance", async () => {
   await withStateDir(async (dir) => {
     const log: string[] = [];
