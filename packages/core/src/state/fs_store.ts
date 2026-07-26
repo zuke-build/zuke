@@ -249,8 +249,10 @@ export class FileSystemStateStore implements StateStore {
    * Hold the exclusive `marker` file (spinning briefly on contention) for the
    * duration of `fn`, then release it. `subject` names what is being guarded,
    * for the error raised if the marker cannot be taken. A marker whose holder
-   * was killed is reclaimed once it passes {@link MUTEX_TTL_MS}, so a single
-   * crashed writer cannot wedge the directory for every later one.
+   * was killed is reclaimed once it passes {@link MUTEX_TTL_MS} — or, when it
+   * carries no stamp to age, once the spin has run long enough to rule out a
+   * holder still writing one — so a single crashed writer cannot wedge the
+   * directory for every later one.
    */
   async #withMutex<T>(
     marker: string,
@@ -259,23 +261,27 @@ export class FileSystemStateStore implements StateStore {
   ): Promise<T> {
     for (let attempt = 0; attempt < LOCK_ATTEMPTS; attempt++) {
       if (await this.#host.createExclusive(marker)) {
-        // Stamp the marker with the acquire time so a later waiter can tell a
-        // live holder from one that died holding it. Written after the exclusive
-        // create, so the stamp never weakens the create's mutual exclusion.
-        await this.#host.writeText(marker, String(this.#host.now()));
         try {
+          // Stamp the marker with the acquire time so a later waiter can tell a
+          // live holder from one that died holding it. Inside the `try`, so a
+          // rejected write releases the marker instead of leaving an unstamped
+          // one behind — which would read as a live holder for good.
+          await this.#host.writeText(marker, String(this.#host.now()));
           return await fn();
         } finally {
           await this.#host.remove(marker);
         }
       }
-      if (await this.#markerExpired(marker)) {
-        // Remove, then re-create exclusively on the next attempt: the same
-        // compare-and-swap the marker already relies on, so two waiters racing a
-        // takeover still end with exactly one holder. Losing that race is
-        // success, not an error — `remove` treats an already-gone marker as done.
-        await this.#host.remove(marker);
-        continue;
+      // Half the spin budget is far longer than the microseconds between a
+      // holder's create and its stamp, so past that point an unstamped marker is
+      // a leftover — including one from a zuke that never stamped at all — and
+      // may be reclaimed. Earlier than that, treat it as a holder mid-stamp.
+      const unstampedIsStale = attempt >= LOCK_ATTEMPTS / 2;
+      if (
+        await this.#markerExpired(marker, unstampedIsStale) &&
+        await this.#steal(marker)
+      ) {
+        continue; // reclaimed: retry the exclusive create straight away
       }
       await delay(LOCK_DELAY_MS);
     }
@@ -286,17 +292,40 @@ export class FileSystemStateStore implements StateStore {
   }
 
   /**
-   * Whether `marker` was acquired longer ago than {@link MUTEX_TTL_MS} — its
-   * holder is gone and left it behind. A marker with no readable stamp counts as
-   * live: a holder killed in the instant between creating and stamping one is
-   * indistinguishable from a holder still writing its stamp, so the spin ends in
-   * the error naming the file rather than a waiter stealing a marker that may
-   * still be in use.
+   * Reclaim the abandoned `marker`, reporting whether this caller was the one
+   * that removed it.
+   *
+   * The marker is moved aside with an atomic rename before being deleted. A bare
+   * `remove` is not a compare-and-swap: two waiters that both read the same stale
+   * stamp would both delete a marker, the second deleting the one the first had
+   * just taken, and both would then be inside the critical section. Only one
+   * rename can find the marker, so at most one waiter reclaims it; the loser gets
+   * `false` and goes back to spinning, where it re-reads the new holder's stamp.
    */
-  async #markerExpired(marker: string): Promise<boolean> {
+  async #steal(marker: string): Promise<boolean> {
+    const stolen = `${marker}.steal-${crypto.randomUUID()}`;
+    try {
+      await this.#host.rename(marker, stolen);
+    } catch {
+      return false; // another waiter reclaimed it first, or the holder released
+    }
+    await this.#host.remove(stolen);
+    return true;
+  }
+
+  /**
+   * Whether `marker` was acquired longer ago than {@link MUTEX_TTL_MS} — its
+   * holder is gone and left it behind. A marker with no readable numeric stamp
+   * has no age to compare, so `unstampedIsStale` decides it: the caller passes
+   * `false` while a holder could still be writing its stamp, and `true` once it
+   * has spun long enough that no live holder could still be in that window.
+   */
+  async #markerExpired(
+    marker: string,
+    unstampedIsStale: boolean,
+  ): Promise<boolean> {
     const stamp = await this.#host.readText(marker);
-    // Released while we were spinning, or never stamped: not ours to reclaim.
-    if (stamp === null || !/^\d+$/.test(stamp)) return false;
+    if (stamp === null || !/^\d+$/.test(stamp)) return unstampedIsStale;
     return this.#host.now() - Number(stamp) > MUTEX_TTL_MS;
   }
 }

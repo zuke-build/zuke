@@ -182,6 +182,27 @@ Deno.test("a lock acquire recovers from a mutex marker a killed run left behind"
   });
 });
 
+Deno.test("a lock acquire recovers from an unstamped mutex marker", async () => {
+  await withStateDir(async (dir) => {
+    const log: string[] = [];
+    // A marker left behind by a zuke that never stamped its markers: it carries
+    // no age, so it must not read as a live holder for the life of the directory.
+    const marker = `${dir}/locks/deploy-lock.acq`;
+    await Deno.mkdir(`${dir}/locks`, { recursive: true });
+    await Deno.writeTextFile(marker, "");
+
+    class B extends Build {
+      deploy = target()
+        .lock((s) => s.key("deploy-lock").withTtl("1h"))
+        .executes(() => void log.push("deploy"));
+    }
+    const { code, err } = await runCli(B, ["deploy"]);
+    assertEquals(code, 0, err);
+    assertEquals(log, ["deploy"]);
+    assertEquals(await exists(marker), false);
+  });
+});
+
 /** Whether `path` exists, for asserting a marker was cleaned up. */
 async function exists(path: string): Promise<boolean> {
   try {

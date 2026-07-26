@@ -73,11 +73,18 @@ class FakeStateHost implements StateHost {
     return Promise.resolve();
   }
   rename(from: string, to: string): Promise<void> {
+    // A real rename rejects when the source is gone, and moves an exclusively
+    // created (empty) file just as it moves one with content — the store relies
+    // on both when it reclaims an abandoned mutex marker.
     const content = this.files.get(from);
+    if (content === undefined && !this.locks.has(from)) {
+      return Promise.reject(new Deno.errors.NotFound(`rename ${from}`));
+    }
     if (content !== undefined) {
       this.files.set(to, content);
       this.files.delete(from);
     }
+    if (this.locks.delete(from)) this.locks.add(to);
     return Promise.resolve();
   }
   createExclusive(path: string): Promise<boolean> {
@@ -898,13 +905,16 @@ Deno.test("defaultStateHost performs real filesystem effects", async () => {
 
 Deno.test("FileSystemStateStore errors when a lock is permanently held", async () => {
   const host = new FakeStateHost();
-  host.locks.add("/runs/run-1.json.lock"); // never released
+  const marker = "/runs/run-1.json.lock";
+  host.locks.add(marker);
+  host.files.set(marker, String(host.time)); // a live holder, never released
   const store = new FileSystemStateStore("/runs", host);
   await assertRejects(
     () => store.putRun(sampleRecord(), null),
     Error,
     "could not acquire",
   );
+  assertEquals(host.locks.has(marker), true); // never stolen from a live holder
 });
 
 Deno.test("FileSystemStateStore takes over a mutex marker left past its TTL", async () => {
@@ -923,23 +933,85 @@ Deno.test("FileSystemStateStore takes over a mutex marker left past its TTL", as
   assertEquals(host.files.get("/runs/run-1.json") === undefined, false);
 });
 
-Deno.test("FileSystemStateStore never steals a live mutex marker", async () => {
-  // A marker stamped just now belongs to a live holder; one with no readable
-  // stamp (a holder killed between creating and stamping it) is treated the same
-  // way. Both keep the existing behaviour: spin, then fail with guidance.
-  for (const stamp of [String(new FakeStateHost().time), ""]) {
+Deno.test("FileSystemStateStore releases a mutex marker it could not stamp", async () => {
+  // The stamp write lives inside the marker's `try`, so a filesystem that
+  // rejects it (a full disk, a scanner holding the freshly created file) still
+  // releases the marker. Leaving an unstamped one behind would wedge the next
+  // writer instead.
+  const marker = "/runs/run-1.json.lock";
+  class FlakyStampHost extends FakeStateHost {
+    failStamp = true;
+    override writeText(path: string, content: string): Promise<void> {
+      if (path === marker && this.failStamp) {
+        this.failStamp = false;
+        return Promise.reject(new Error("ENOSPC: no space left on device"));
+      }
+      return super.writeText(path, content);
+    }
+  }
+  const host = new FlakyStampHost();
+  const store = new FileSystemStateStore("/runs", host);
+  await assertRejects(
+    () => store.putRun(sampleRecord(), null),
+    Error,
+    "ENOSPC",
+  );
+  assertEquals(host.locks.has(marker), false); // released, not left behind
+  // …so the next write takes the mutex straight away rather than wedging.
+  assertEquals((await store.putRun(sampleRecord(), null)).ok, true);
+});
+
+Deno.test("FileSystemStateStore reclaims an unstamped mutex marker", async () => {
+  // A marker left by a zuke that never stamped its markers — or by a holder
+  // killed in the instant between creating and stamping one — carries no age to
+  // compare. It must not read as a live holder for the life of the directory:
+  // once a waiter has spun far longer than that create→stamp window, it
+  // reclaims the marker instead of wedging. Both shapes a real filesystem can
+  // show: an empty file, and a file whose read comes back as nothing at all.
+  for (const content of ["", undefined]) {
     const host = new FakeStateHost();
     const marker = "/runs/run-1.json.lock";
     host.locks.add(marker);
-    host.files.set(marker, stamp);
+    if (content !== undefined) host.files.set(marker, content);
     const store = new FileSystemStateStore("/runs", host);
-    await assertRejects(
-      () => store.putRun(sampleRecord(), null),
-      Error,
-      "could not acquire",
-    );
-    assertEquals(host.locks.has(marker), true); // the holder kept its marker
+    const result = await store.putRun(sampleRecord(), null);
+    assertEquals(result.ok, true);
+    assertEquals(host.locks.has(marker), false); // reclaimed, then released
   }
+});
+
+Deno.test("two writers never both reclaim the same stale mutex marker", async () => {
+  // Reclaiming with a bare `remove` is not a compare-and-swap: two writers that
+  // read the same stale stamp would both delete a marker — the second deleting
+  // the one the first had just taken — and both would run inside the mutex. The
+  // trace of every hold and release of the marker must stay strictly alternating.
+  const marker = "/runs/run-1.json.lock";
+  const trace: string[] = [];
+  class TracingHost extends FakeStateHost {
+    override async createExclusive(path: string): Promise<boolean> {
+      const created = await super.createExclusive(path);
+      if (created && path === marker) trace.push("hold");
+      return created;
+    }
+    override async remove(path: string): Promise<void> {
+      const held = this.locks.has(path);
+      await super.remove(path);
+      if (held && path === marker) trace.push("free");
+    }
+  }
+  const host = new TracingHost();
+  host.locks.add(marker);
+  host.files.set(marker, String(host.time - 60_000)); // abandoned 60s ago
+
+  const store = new FileSystemStateStore("/runs", host);
+  const results = await Promise.all([
+    store.putRun(sampleRecord(), null),
+    store.putRun(sampleRecord({ status: "succeeded" }), null),
+  ]);
+  assertEquals(trace, ["hold", "free", "hold", "free"]);
+  // One writer publishes; the other sees the version has moved on.
+  assertEquals(results.filter((r) => r.ok).length, 1);
+  assertEquals(host.locks.has(marker), false);
 });
 
 // ---------------------------------------------------------------- duration
