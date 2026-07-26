@@ -1,4 +1,8 @@
-import { assertEquals, assertRejects } from "./_assert.ts";
+import {
+  assertEquals,
+  assertRejects,
+  assertStringIncludes,
+} from "./_assert.ts";
 import {
   $,
   CommandError,
@@ -7,6 +11,8 @@ import {
 } from "../src/shell.ts";
 import { withAmbientSignal } from "../src/ambient_signal.ts";
 import { withAmbientEcho } from "../src/ambient_echo.ts";
+import { withAmbientRedactor } from "../src/ambient_redactor.ts";
+import { REDACTED, Redactor } from "../src/redact.ts";
 
 /** A command that sleeps far longer than any test would wait. */
 const SLEEP = "await new Promise((r) => setTimeout(r, 30000))";
@@ -247,6 +253,53 @@ Deno.test("$ .killAfter() and .signal() combine — either can end it", async ()
   setTimeout(() => controller.abort(), 50);
   const result = await running;
   assertEquals(result.code !== 0, true);
+});
+
+Deno.test("commandLine masks an ambient secret but the OS still gets it raw", async () => {
+  const redactor = new Redactor();
+  redactor.add("hunter2");
+  await withAmbientRedactor(redactor, async () => {
+    const cmd = $`${DENO} eval ${"console.log(Deno.args[0])"} -- ${"hunter2"}`;
+    // The rendered line is masked…
+    assertStringIncludes(cmd.commandLine, REDACTED);
+    assertEquals(cmd.commandLine.includes("hunter2"), false);
+    // …while the argv handed to the process is untouched: the child echoes the
+    // real value back.
+    assertEquals(await cmd.text(), "hunter2");
+  });
+});
+
+Deno.test("a failed command's error message masks an ambient secret", async () => {
+  const redactor = new Redactor();
+  redactor.add("hunter2");
+  await withAmbientRedactor(redactor, async () => {
+    const err = await assertRejects(
+      () => $`${DENO} eval ${"Deno.exit(9)"} -- ${"hunter2"}`.quiet().then(),
+      CommandError,
+    );
+    assertEquals(err.message.includes("hunter2"), false);
+    assertStringIncludes(err.message, REDACTED);
+  });
+});
+
+Deno.test("a dry-run echo of a secret argv token is masked", async () => {
+  const redactor = new Redactor();
+  redactor.add("hunter2");
+  const echoed: string[] = [];
+  await withAmbientRedactor(
+    redactor,
+    () =>
+      withAmbientEcho(
+        (line) => echoed.push(line),
+        async () => await $`login --password ${"hunter2"}`,
+      ),
+  );
+  assertEquals(echoed, [`login --password ${REDACTED}`]);
+});
+
+Deno.test("without an ambient redactor the command line is verbatim", () => {
+  const cmd = $`login --password ${"hunter2"}`;
+  assertEquals(cmd.commandLine, "login --password hunter2");
 });
 
 Deno.test("under an ambient echo sink, a command is echoed, not spawned", async () => {

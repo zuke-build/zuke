@@ -3481,7 +3481,11 @@ class Command implements PromiseLike<CommandOutput>
     run signal for this command. Composes with {@link killAfter}: either the
     timeout or the abort kills the process, whichever fires first.
   get commandLine(): string
-    The command line, for diagnostics.
+    The command line, for diagnostics — argv joined by spaces, with the resolved
+    value of every `secret` parameter of the enclosing run masked. This is the
+    only rendered form of the command (the echo under `--dry-run`, a
+    {@link CommandError} message), so a secret passed as an argv token cannot
+    leak through one. The argv given to the operating system is unchanged.
   then(onfulfilled?: ((value: CommandOutput) => TResult1 | PromiseLike<TResult1>) | null, onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null): PromiseLike<TResult1 | TResult2>
     Await support: run the command and resolve to a {@link CommandOutput}.
   async text(): Promise<string>

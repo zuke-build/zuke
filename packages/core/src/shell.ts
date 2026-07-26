@@ -19,6 +19,7 @@
 import type { AbsolutePath, PathLike } from "./path.ts";
 import { ambientSignal } from "./ambient_signal.ts";
 import { ambientEcho } from "./ambient_echo.ts";
+import { redactLine } from "./ambient_redactor.ts";
 import { terminateProcess, TERMINATION_GRACE_MS } from "./terminate.ts";
 import {
   captureStream,
@@ -244,9 +245,15 @@ export class Command implements PromiseLike<CommandOutput> {
     return this;
   }
 
-  /** The command line, for diagnostics. */
+  /**
+   * The command line, for diagnostics — argv joined by spaces, with the resolved
+   * value of every `secret` parameter of the enclosing run masked. This is the
+   * only rendered form of the command (the echo under `--dry-run`, a
+   * {@link CommandError} message), so a secret passed as an argv token cannot
+   * leak through one. The argv given to the operating system is unchanged.
+   */
   get commandLine(): string {
-    return this.#argv.join(" ");
+    return redactLine(this.#argv.join(" "));
   }
 
   #run(): Promise<RunResult> {
