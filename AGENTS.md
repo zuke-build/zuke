@@ -259,9 +259,10 @@ the three test layers above and the "read every reviewer comment" rule below.
 from it. `zuke.ts`'s `ci` target depends on: `format` (`deno fmt --check`),
 `lint` (`deno lint`), `spell` (cspell), `coverage` (type-check, then the test
 suite with the 95% coverage gate), `coverageUpload` (skips locally without a
-`CODECOV_TOKEN`), `apiDocsCheck`, `docLint`, `snippetsCheck`, and
-`hclSyncCheck`. Read `zuke.ts`'s `ci` target for the current, authoritative
-list — this is a snapshot, not a second source of truth.
+`CODECOV_TOKEN`), `apiDocsCheck`, `docLint`, `snippetsCheck`, `hclSyncCheck`,
+`pluginSyncCheck`, and `prBodyLint`. Read `zuke.ts`'s `ci` target for the
+current, authoritative list — this is a snapshot, not a second source of
+truth.
 
 ## Repository layout
 

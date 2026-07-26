@@ -61,6 +61,10 @@ import { runWebsiteSync } from "./build/website_sync.ts";
 import { checkSnippets, formatSnippetFailures } from "./build/snippets.ts";
 import { checkHclWrappers, generateHclWrappers } from "./build/hcl_gen.ts";
 import { lintPrBody } from "./build/pr_body_lint.ts";
+import {
+  checkPluginSkillsSync,
+  syncPluginSkills,
+} from "./build/plugin_sync.ts";
 
 class ZukeBuild extends Build {
   clean = target()
@@ -415,6 +419,32 @@ class ZukeBuild extends Build {
       ConsoleTasks.info("Terraform/OpenTofu wrappers are in sync.");
     });
 
+  pluginSync = target()
+    .description(
+      "Sync plugins/zuke/skills/ from skills/ (real copies, not a symlink)",
+    )
+    .executes(async () => {
+      const written = await syncPluginSkills();
+      ConsoleTasks.info(
+        `Synced ${written.length} file(s):\n  ${written.join("\n  ")}`,
+      );
+    });
+
+  pluginSyncCheck = target()
+    .description("Verify plugins/zuke/skills/ matches skills/ (no drift)")
+    .executes(async () => {
+      const stale = await checkPluginSkillsSync();
+      if (stale.length > 0) {
+        throw new Error(
+          `plugins/zuke/skills/ has drifted from skills/:\n  ${
+            stale.join("\n  ")
+          }\n` +
+            "Run `./zuke pluginSync` and commit the result.",
+        );
+      }
+      ConsoleTasks.info("plugins/zuke/skills/ is in sync with skills/.");
+    });
+
   // Only meaningful on a `pull_request`-triggered run (the workflow passes it
   // via env from `github.event.pull_request.body` — never interpolated into
   // a shell line, so an adversarial PR body can't inject a command). Unset
@@ -462,6 +492,7 @@ class ZukeBuild extends Build {
       this.docLint,
       this.snippetsCheck,
       this.hclSyncCheck,
+      this.pluginSyncCheck,
       this.prBodyLint,
     )
     .executes(() => {});
