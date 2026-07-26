@@ -3350,6 +3350,44 @@ function $(strings: TemplateStringsArray, ...values: Interpolatable[]): Command
   @example
       `await $\`deno test -A``
 
+function splitShellArgs(input: string): string[]
+  Split `input` into argv the way a POSIX shell would, honouring the quoting
+  rules only:
+
+  - Unquoted runs of whitespace separate arguments; leading, trailing, and
+    repeated whitespace produce no empty arguments.
+  - Single quotes are fully literal — no escape sequences at all, so `'a\b'`
+    yields `a\b`.
+  - Inside double quotes a backslash escapes only `"`, `\`, ```, `$`, and a
+    newline; before anything else it stays literal, so `"\d+"` yields `\d+`
+    rather than silently losing the backslash.
+  - Outside quotes a backslash escapes the following character, so `a\ b` is one
+    argument.
+  - A backslash-newline pair is a line continuation and is removed, both
+    unquoted and inside double quotes; a backslash at the very end of the input
+    is a dangling continuation and is dropped.
+  - Adjacent segments concatenate (`a"b c"d` → `ab cd`) and a quoted empty
+    string is a real, empty argument (`''` → `[""]`).
+
+  Non-goals, deliberately not implemented — the input is turned into argv,
+  never interpreted: no variable expansion (`"$HOME"` stays `$HOME`), no
+  globbing, no tilde expansion, no command substitution, and no operator
+  handling of any kind (`|`, `&&`, `;`, `>` are ordinary characters). A caller
+  that needs those must split on them itself, or run a real shell.
+
+  `\r` is treated as a separator alongside space, tab, and newline so a command
+  line read from a CRLF file cannot smuggle an invisible carriage return into an
+  argument.
+
+  @param input
+      The command string to split.
+
+  @return
+      The argv entries, in order; an empty array for blank input.
+
+  @throws {ShellArgsError}
+      If a single or double quote is never closed.
+
 function tokenize(strings: ReadonlyArray<string>, values: ReadonlyArray<Interpolatable>): string[]
   Tokenise a tagged-template invocation into an argv array.
 
@@ -3421,6 +3459,16 @@ class CommandTimeoutError extends Error
 
   constructor(readonly command: string, readonly timeoutMs: number)
     Build the error from the command line and the elapsed-time budget.
+  override name: string
+    The error name.
+
+class ShellArgsError extends Error
+  Raised when {@link splitShellArgs} reaches the end of the input with a quote
+  still open. Names the offending quote character and the offset at which it was
+  opened so the bad spot in a long command line is findable.
+
+  constructor(readonly quote: string, readonly offset: number)
+    Build the error from the unclosed quote character and its offset.
   override name: string
     The error name.
 

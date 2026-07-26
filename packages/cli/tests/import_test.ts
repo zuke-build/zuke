@@ -132,6 +132,33 @@ Deno.test("translateCommand keeps quoted arguments together", () => {
   );
 });
 
+Deno.test("translateCommand keeps a backslash inside a double-quoted argument", () => {
+  // The old hand-rolled splitter had no backslash handling, so `"\d+"` imported
+  // as `d+` — a test-selection pattern that silently matches other tests.
+  const items = translateCommand(String.raw`vitest run -t "\d+"`);
+  assertEquals(
+    items[0].code,
+    String.raw`CmdTasks.exec("vitest", (s) => s.args("run", "-t", "\\d+"))`,
+  );
+});
+
+Deno.test("translateCommand preserves a segment whose quoting is unbalanced", () => {
+  const items = translateCommand('echo "oops');
+  assertEquals(items.length, 1);
+  assertEquals(items[0].runnable, false);
+  assertStringIncludes(items[0].code, `echo "oops`);
+});
+
+Deno.test("parsePackageJson keeps an unbalanced delegation as a command", () => {
+  // `delegatedScript` cannot tokenise it, so it is not mistaken for a `npm run`
+  // delegation and stays a (TODO-preserved) command.
+  const tasks = parsePackageJson(
+    JSON.stringify({ scripts: { lint: "eslint .", all: `npm run 'lint` } }),
+  );
+  assertEquals(tasks[1].deps, []);
+  assertEquals(tasks[1].command, `npm run 'lint`);
+});
+
 // --- toIdentifier ---
 
 Deno.test("toIdentifier produces valid camelCase field names", () => {

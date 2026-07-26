@@ -20,6 +20,13 @@ import type { AbsolutePath, PathLike } from "./path.ts";
 import { ambientSignal } from "./ambient_signal.ts";
 import { ambientEcho } from "./ambient_echo.ts";
 
+/**
+ * Split an already-written command string into argv with POSIX quoting rules —
+ * for input that arrives as one line (a `package.json` script, a Makefile
+ * recipe) rather than being constructed with `$`.
+ */
+export { ShellArgsError, splitShellArgs } from "./split_args.ts";
+
 /** Combine an optional timeout signal and an optional cancellation signal. */
 function combineSignals(
   a: AbortSignal | undefined,
