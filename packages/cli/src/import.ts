@@ -147,8 +147,35 @@ interface BodyItem {
 function needsShell(segment: string): boolean {
   if (/[|<>;`$]/.test(segment)) return true; // pipe, redirect, subst, env expand
   if (/(^|\s)&(\s|$)/.test(segment)) return true; // background job
+  if (hasUnquotedBackslash(segment)) return true; // escape or Windows separator?
   const first = segment.trim().split(/\s+/)[0] ?? "";
   return /^[A-Za-z_][A-Za-z0-9_]*=/.test(first); // leading VAR=value assignment
+}
+
+/**
+ * Whether `segment` contains a backslash outside quotes, which is ambiguous and
+ * therefore not translatable: a POSIX shell reads it as an escape (`a\ b` is one
+ * argument), while a `package.json` script written on Windows — where npm runs
+ * scripts through `cmd.exe` — uses it as a path separator (`node scripts\b.js`).
+ * Picking either reading silently changes the command, so the segment is
+ * preserved verbatim for a human to resolve. A backslash inside quotes is
+ * unambiguous and stays translatable.
+ */
+function hasUnquotedBackslash(segment: string): boolean {
+  let quote: string | undefined;
+  for (let i = 0; i < segment.length; i++) {
+    const ch = segment[i];
+    if (quote !== undefined) {
+      // Inside double quotes a backslash escapes the next character, so skip it
+      // and keep tracking the quote state accurately.
+      if (quote === '"' && ch === "\\") i++;
+      else if (ch === quote) quote = undefined;
+      continue;
+    }
+    if (ch === '"' || ch === "'") quote = ch;
+    else if (ch === "\\") return true;
+  }
+  return false;
 }
 
 /**

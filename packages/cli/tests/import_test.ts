@@ -142,6 +142,29 @@ Deno.test("translateCommand keeps a backslash inside a double-quoted argument", 
   );
 });
 
+Deno.test("translateCommand preserves a segment with an unquoted backslash", () => {
+  // A Windows-authored script (npm runs scripts through cmd.exe there) uses the
+  // backslash as a path separator, while POSIX argv splitting reads it as an
+  // escape and drops it, gluing the two path segments together into a silently
+  // broken path. Ambiguous, so the segment is preserved for a human instead.
+  const items = translateCommand(String.raw`node scripts\build.js`);
+  assertEquals(items.length, 1);
+  assertEquals(items[0].runnable, false);
+  assertStringIncludes(items[0].code, String.raw`node scripts\build.js`);
+});
+
+Deno.test("translateCommand still translates a backslash that is quoted", () => {
+  // Quoting removes the ambiguity, so these must NOT be pushed into a TODO —
+  // and the unquoted check must not be fooled by an escaped closing quote.
+  const items = translateCommand(String.raw`grep "a\"b" '\d+'`);
+  assertEquals(items.length, 1);
+  assertEquals(items[0].runnable, true);
+  assertEquals(
+    items[0].code,
+    String.raw`CmdTasks.exec("grep", (s) => s.args("a\"b", "\\d+"))`,
+  );
+});
+
 Deno.test("translateCommand preserves a segment whose quoting is unbalanced", () => {
   const items = translateCommand('echo "oops');
   assertEquals(items.length, 1);
@@ -247,6 +270,22 @@ Deno.test("runImport auto-detects package.json and scaffolds", async () => {
   assertEquals(result.taskCount, 1);
   assertStringIncludes(host.files.get("zuke.ts") ?? "", "build = target()");
   assertEquals(host.files.has("zuke"), true); // launcher scaffolded too
+});
+
+Deno.test("runImport keeps a Windows-style script path intact in the scaffold", async () => {
+  const host = new FakeHost({
+    "package.json": JSON.stringify({
+      scripts: { build: String.raw`node scripts\build.js` },
+    }),
+  });
+  const result = await runImport({ dir: ".", force: true, name: "B" }, host);
+  assertEquals(result.taskCount, 1);
+  const zuke = host.files.get("zuke.ts") ?? "";
+  // The path separator survives into the generated file, flagged for a human,
+  // instead of being silently swallowed by POSIX escape handling.
+  assertStringIncludes(zuke, String.raw`node scripts\build.js`);
+  assertStringIncludes(zuke, "// TODO"); // flagged, not silently mistranslated
+  assertEquals(zuke.includes("CmdTasks.exec"), false);
 });
 
 Deno.test("runImport falls back to a Makefile", async () => {
