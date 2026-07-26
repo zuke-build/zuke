@@ -100,8 +100,9 @@ export async function collectPackageDocs(): Promise<PackageDoc[]> {
   const docs: PackageDoc[] = [];
   for (const dir of PACKAGES) {
     // Document every declared entrypoint, not just `mod.ts`, so a package with
-    // secondary exports (core's `./shell`, `./tooling`, `./render`,
-    // `./conformance`) has its whole typed surface in `llms-full.txt` and its
+    // secondary exports (core's `./shell`, `./tooling`,
+    // `./tooling/conformance`, `./render`, `./conformance`) has its whole
+    // typed surface in `llms-full.txt` and its
     // README — the "whole typed surface" the docs claim to carry.
     const entrypoints = await packageEntrypoints(dir);
     const { stdout } = await DenoTasks.doc((s) =>

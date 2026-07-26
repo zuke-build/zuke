@@ -7,6 +7,7 @@
     ".": "./mod.ts",
     "./shell": "./src/shell.ts",
     "./tooling": "./src/tooling.ts",
+    "./tooling/conformance": "./src/tooling_conformance.ts",
     "./render": "./src/render.ts",
     "./conformance": "./src/conformance.ts"
   },
