@@ -76,7 +76,7 @@ Each run is stored as one JSON document:
       "endedAt": "…"
     }
   },
-  "degraded": false // true if a state write was dropped (see below)
+  "degraded": false // optional; true if a state write was lost (see below)
 }
 ```
 
@@ -179,19 +179,30 @@ real work outweighs its bookkeeping.
 
 ### Degraded records
 
-Best-effort writes mean a transition can go unrecorded — so a record's
-per-target progress is not always the whole truth. When a write has to be
-dropped, the writer sets **`degraded: true`** on the record, and the next write
-that _does_ land persists the flag (the failing write, by definition, could not
-carry it). `zuke runs show` prints it.
+Most dropped writes lose nothing. The writer applies its mutation at the top of
+its retry loop, so a compare-and-swap that conflicts is simply re-applied to the
+freshly-read record on the next attempt; and when it gives up because the run
+vanished from the store, or because the store threw, the mutation is still held in
+memory for any later write to re-persist. Those paths warn and carry on.
 
-A degraded record is still fine to read, but not to _act_ on: a resume seeds its
-"already done" set from the recorded statuses, so a lost `succeeded` would make
-it re-run a target that already ran — a deploy, twice. `zuke resume` therefore
-**refuses** a degraded record and names the risk; `--resume-degraded` overrides
-it, and then only a settlement the record fully stamped is trusted. Every other
-target re-runs, on the grounds that repeating a succeeded target is the lesser
-evil against silently skipping one that never ran. See
+One path genuinely loses a write. If a **foreign writer** — an MCP audit append,
+a concurrent `zuke cancel` — wins the compare-and-swap race often enough to
+exhaust the writer's retry budget, the last attempt's mutation is discarded along
+with the base it was applied to. The writer then sets **`degraded: true`** on the
+record, and the next write that _does_ land persists the flag (the failing write,
+by definition, could not carry it). `zuke runs show` prints it. So `degraded`
+means exactly one thing: **a mutation was permanently lost.**
+
+The concrete consequence is a target that succeeded but is still recorded
+`running` or `pending`. A resume trusts the record as written and re-runs every
+target it does not show as `succeeded` — so that target would run a **second
+time**, which for a deploy or a release means doing it twice. `zuke resume`
+therefore **refuses** a degraded record and names that risk; `--resume-degraded`
+accepts it and continues, because the operator — not Zuke — knows whether the
+target is safe to repeat. `zuke resume --check` counts a degraded run as failed
+on every sweep until an operator resolves it: a sweep cannot make that decision,
+and a non-zero result is the only channel a cron watches. The run stays
+`suspended` either way, so it remains resumable. See
 [the CLI reference](./cli.md#resuming-suspended-runs).
 
 If _no_ later write ever lands — a store that stays down for the rest of the run

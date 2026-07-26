@@ -6,9 +6,11 @@
  * targets never race each other's compare-and-swap; a conflict from *another*
  * process is handled by re-reading and re-applying. Every write is best-effort:
  * a store hiccup is reported through `warn` but never crashes the build — the
- * build's real work outweighs its bookkeeping. A write that had to be dropped
- * marks the record {@link RunRecord.degraded}, so a later resume can refuse to
- * trust progress the record may not have captured. Every value written through
+ * build's real work outweighs its bookkeeping. A dropped write whose mutation is
+ * **permanently lost** marks the record {@link RunRecord.degraded}, so a later
+ * resume can refuse to trust progress the record never captured; a drop that
+ * leaves the mutation in memory for a later write to carry only warns. Every
+ * value written through
  * {@link "../target.ts".TargetStateHandle} is passed through the run's
  * {@link Redactor} first, so a secret that slips into `ctx.state` is masked
  * before it is persisted.
@@ -301,14 +303,34 @@ export class RunStateWriter {
   }
 
   /**
-   * Report a write this writer had to drop, and mark the record `degraded` so a
-   * later reader — a resume above all — knows its per-target progress may be
-   * incomplete. The flag rides along with the next write that *does* land: the
-   * failing write could not carry it. Dropping a write stays non-fatal; this
-   * only records that it happened.
+   * Report a dropped write whose mutation is **permanently lost**, and mark the
+   * record `degraded` so a later reader — a resume above all — knows its
+   * per-target progress may be missing a transition that really happened.
+   *
+   * Only two sites are lossy. Giving up after `MAX_RETRIES` conflicts is one:
+   * the final attempt applied the mutation to a base that was then replaced by
+   * the freshly-read record, so nothing carries it forward. A failed re-apply
+   * onto a cancelling record is the other: the canceller owns finalisation from
+   * there, so no later write of ours will land to re-persist it.
+   *
+   * The flag rides along with the next write that *does* land — the failing
+   * write, by definition, could not carry it. Losing a write stays non-fatal;
+   * this only records that it happened.
    */
-  #dropped(message: string): void {
+  #lostWrite(message: string): void {
     this.#record.degraded = true;
+    this.#warn?.(message);
+  }
+
+  /**
+   * Report a dropped write whose mutation is **retained**: both the vanished-run
+   * path and the store-error path leave the mutation applied to `this.#record`,
+   * so any later write that lands re-persists it. Nothing was lost, so the
+   * record is deliberately *not* marked `degraded` — that flag means "a mutation
+   * was permanently lost", and setting it here would make a resume refuse a
+   * record with nothing missing.
+   */
+  #retainedWrite(message: string): void {
     this.#warn?.(message);
   }
 
@@ -331,7 +353,7 @@ export class RunStateWriter {
         // Drop this best-effort write instead (F12).
         const fresh = await this.#store.getRun(this.#record.id);
         if (fresh === null) {
-          this.#dropped(
+          this.#retainedWrite(
             `state: run "${this.#record.id}" vanished from the store ` +
               `mid-write; dropping one update`,
           );
@@ -362,17 +384,27 @@ export class RunStateWriter {
             this.#record,
             this.#version,
           );
-          if (reapply.ok) this.#version = reapply.version;
+          if (reapply.ok) {
+            this.#version = reapply.version;
+          } else {
+            // The canceller finalises the run from here, so no later write of
+            // ours lands to carry this mutation: it is gone for good.
+            this.#lostWrite(
+              `state: run "${this.#record.id}" is being cancelled elsewhere ` +
+                `and re-applying one update onto its record conflicted; ` +
+                `losing that update`,
+            );
+          }
           this.#onExternalCancel?.();
           return;
         }
       }
-      this.#dropped(
+      this.#lostWrite(
         `state: gave up persisting run "${this.#record.id}" after ` +
           `${MAX_RETRIES} conflicting writes`,
       );
     } catch (error) {
-      this.#dropped(
+      this.#retainedWrite(
         `state: failed to persist run "${this.#record.id}": ${
           messageOf(error)
         }`,

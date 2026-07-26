@@ -46,7 +46,6 @@ Deno.test("runs show renders the MCP audit trail", async () => {
         outcome: "ok",
         args: { environment: "dev" },
       }],
-      degraded: false,
     };
     const put = await store.putRun(record, null);
     assertEquals(put.ok, true);

@@ -4,7 +4,8 @@ import { target } from "../src/target.ts";
 import { execute } from "../src/executor.ts";
 import { AlreadyResumedError, resumeCheck, resumeRun } from "../src/resume.ts";
 import { FileSystemStateStore } from "../src/state/fs_store.ts";
-import { defaultStateHost } from "../src/state/store.ts";
+import { defaultStateHost, type PutResult } from "../src/state/store.ts";
+import type { RunRecord } from "../src/state/types.ts";
 import { externalSignal, resumeWhen } from "../src/wait.ts";
 
 /** Run `fn` with a temp directory, cleaned up afterwards. */
@@ -166,14 +167,37 @@ Deno.test("resumeRun rejects a drifted graph unless forced", async () => {
 });
 
 /**
- * Suspend a `deploy → gate → promote` run in `store` and mark its record
- * degraded, optionally rewriting the recorded `deploy` state — the shape a
- * resume has to distrust. Returns the run id and a live count of deploy runs.
+ * A store that makes every compare-and-swap write recording `deploy` as
+ * `succeeded` conflict. A foreign writer winning `MAX_RETRIES` races in a row —
+ * an MCP audit append, a concurrent `zuke cancel` — is how a record really goes
+ * degraded: the writer exhausts its retries, adopts the freshly-read record and
+ * permanently loses that settlement. No manufactured record shape is needed.
+ */
+class LosesDeploySettlement extends FileSystemStateStore {
+  override putRun(
+    record: RunRecord,
+    expectedVersion: string | null,
+  ): Promise<PutResult> {
+    if (record.targets.deploy?.status === "succeeded") {
+      return Promise.resolve({ ok: false, conflict: true });
+    }
+    return super.putRun(record, expectedVersion);
+  }
+}
+
+/**
+ * Suspend a `deploy → gate → promote` run in `store`, losing `deploy`'s
+ * settlement write for real. Returns the run id, a live log of what executed,
+ * and a factory for a fresh build to resume with.
  */
 async function suspendedDegradedRun(
-  store: FileSystemStateStore,
-  amendDeploy: (state: { endedAt?: string }) => void = () => {},
-): Promise<{ runId: string; log: string[]; makeBuild: () => Build }> {
+  dir: string,
+): Promise<{
+  store: FileSystemStateStore;
+  runId: string;
+  log: string[];
+  makeBuild: () => Build;
+}> {
   const log: string[] = [];
   // A deploy behind a gate: the non-idempotent target a resume must not re-run
   // on a hunch.
@@ -192,21 +216,29 @@ async function suspendedDegradedRun(
     return build;
   };
   const a = makeBuild();
-  await execute(a, a.promote, { silent: true, stateStore: store });
+  await execute(a, a.promote, {
+    silent: true,
+    stateStore: new LosesDeploySettlement(dir, defaultStateHost),
+  });
+  // Resume reads through a normal store; only the original run lost writes.
+  const store = new FileSystemStateStore(dir, defaultStateHost);
   const runId = (await store.listRuns({}))[0].id;
-
   const loaded = await store.getRun(runId);
   if (loaded === null) throw new Error("expected the suspended run");
-  amendDeploy(loaded.record.targets.deploy);
-  loaded.record.degraded = true; // a state write was dropped during the run
-  const put = await store.putRun(loaded.record, loaded.version);
-  if (!put.ok) throw new Error("expected the degraded write to land");
-  return { runId, log, makeBuild };
+  // The lost write really did leave the record degraded, and really did leave a
+  // succeeded target recorded as still running — the risk the refusal names.
+  assertEquals(loaded.record.degraded, true);
+  assertEquals(loaded.record.targets.deploy.status, "running");
+  assertEquals(loaded.record.status, "suspended");
+  return { store, runId, log, makeBuild };
 }
 
 Deno.test("resumeRun refuses a degraded record unless overridden", async () => {
-  await withTempStore(async (store) => {
-    const { runId, log, makeBuild } = await suspendedDegradedRun(store);
+  const dir = await Deno.makeTempDir();
+  try {
+    const { store, runId, log, makeBuild } = await suspendedDegradedRun(
+      `${dir}/runs`,
+    );
     assertEquals(log, ["deploy"]);
 
     const error = await assertRejects(
@@ -220,8 +252,10 @@ Deno.test("resumeRun refuses a degraded record unless overridden", async () => {
       Error,
       "degraded",
     );
-    // Names the run, the risk, and the override.
+    // Names the run, the concrete mechanism, the risk, and the override.
     assertEquals(messageOf(error).includes(runId), true);
+    assertEquals(messageOf(error).includes(`"running"`), true);
+    assertEquals(messageOf(error).includes("run a second time"), true);
     assertEquals(messageOf(error).includes("--resume-degraded"), true);
     // The refusal leaves the run suspended, so the override can still resume it.
     assertEquals((await store.getRun(runId))?.record.status, "suspended");
@@ -234,29 +268,45 @@ Deno.test("resumeRun refuses a degraded record unless overridden", async () => {
       silent: true,
     });
     assertEquals(result.ok, true);
-    // deploy settled with an endedAt, so the record proves it: it does not re-run.
-    assertEquals(log, ["deploy", "promote"]);
-  });
+    // The override accepts the risk, and the risk is real: deploy succeeded but
+    // is recorded `running`, so it runs a second time.
+    assertEquals(log, ["deploy", "deploy", "promote"]);
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
 });
 
-Deno.test("the degraded override re-runs a target whose settlement is unproven", async () => {
-  await withTempStore(async (store) => {
-    // `succeeded` with no endedAt: the writer stamps both together, so this
-    // record cannot prove the target actually settled.
-    const { runId, log, makeBuild } = await suspendedDegradedRun(
-      store,
-      (state) => delete state.endedAt,
+Deno.test("resume --check counts a degraded run as failed and reports why", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const { store, runId, makeBuild } = await suspendedDegradedRun(
+      `${dir}/runs`,
     );
-    const result = await resumeRun(makeBuild(), {
-      runId,
-      signal: "approve",
+    const errors: string[] = [];
+    // A sweep cannot decide whether a target is safe to repeat, so a degraded
+    // run counts as failed — non-zero is the only channel a cron watches — and
+    // the refusal is reported so the cause is visible rather than a bare count.
+    const swept = await resumeCheck(makeBuild(), {
       stateStore: store,
-      resumeDegraded: true,
-      silent: true,
+      reporter: { info: () => {}, error: (m) => void errors.push(m) },
     });
-    assertEquals(result.ok, true);
-    assertEquals(log, ["deploy", "deploy", "promote"]); // deploy re-ran
-  });
+    assertEquals(swept, { checked: 1, failed: 1 });
+    assertEquals(errors.length, 1);
+    assertEquals(errors[0].includes(runId), true);
+    assertEquals(errors[0].includes("--resume-degraded"), true);
+    // It stays suspended, so a later sweep with the override still picks it up.
+    assertEquals((await store.getRun(runId))?.record.status, "suspended");
+    assertEquals(
+      await resumeCheck(makeBuild(), {
+        stateStore: store,
+        resumeDegraded: true,
+        silent: true,
+      }),
+      { checked: 1, failed: 0 },
+    );
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
 });
 
 Deno.test("resumeRun times out a wait past its deadline", async () => {

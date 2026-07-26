@@ -31,10 +31,10 @@ import { resolveActor } from "./state/record.ts";
 import type {
   RunGraphNode,
   RunRecord,
-  TargetRunState,
   WaitDisposition,
   WaitState,
 } from "./state/types.ts";
+import { consoleReporter, silentReporter } from "./reporter.ts";
 
 /** Raised when a run has already been resumed by another process. */
 export class AlreadyResumedError extends Error {
@@ -77,10 +77,11 @@ export interface ResumeOptions {
   forceGraph?: boolean;
   /**
    * Resume even though the record is {@link "./state/types.ts".RunRecord.degraded}
-   * — a state write was dropped, so its progress may be incomplete. Only a
-   * settlement the record fully stamped is then trusted; every other target
-   * re-runs, on the grounds that running a succeeded target twice is the lesser
-   * evil against silently skipping one that never ran.
+   * — a state write was permanently lost, so a target that succeeded may still
+   * be recorded `running` or `pending`. The resume trusts the record as written,
+   * which means such a target **runs again**; passing this accepts that risk,
+   * on the grounds that the operator — not Zuke — knows whether the target is
+   * safe to repeat.
    */
   resumeDegraded?: boolean;
   /** Suppress banner/summary output. */
@@ -182,11 +183,12 @@ export async function resumeRun(
   );
 
   // Targets recorded `succeeded` do not re-run; everything else does. On a
-  // degraded record (only reachable with the override) a `succeeded` status is
-  // not enough on its own — see settlementProven.
+  // degraded record (only reachable with the override) that is exactly the risk
+  // the operator accepted: a lost settlement leaves its target recorded
+  // `running`/`pending`, so it runs a second time.
   const done = new Set(
     Object.entries(record.targets)
-      .filter(([, state]) => settlementProven(state, record.degraded))
+      .filter(([, state]) => state.status === "succeeded")
       .map(([name]) => name),
   );
 
@@ -264,31 +266,22 @@ async function transitionToRunning(
 }
 
 /**
- * The refusal for a record that lost a state write. Names the run, the risk
- * (re-running an already-succeeded, possibly non-idempotent target) and the
- * override, because the operator — not Zuke — knows whether that is safe.
+ * The refusal for a record that lost a state write. Names the run, the concrete
+ * mechanism (a lost settlement leaves its target recorded `running`/`pending`,
+ * so a resume re-runs it) and the override, because the operator — not Zuke —
+ * knows whether that target is safe to repeat.
  */
 function degradedRecordError(id: string): Error {
   return new Error(
     `resume: run ${id} is recorded as degraded — at least one state write was ` +
-      `dropped while it ran, so its per-target progress may be incomplete. ` +
-      `Resuming could re-run a target that already succeeded, which for a ` +
-      `non-idempotent one (a deploy, a release) means doing it twice. Check ` +
-      `what the run actually did (zuke runs show ${id}), then re-run with ` +
-      `--resume-degraded to continue anyway — every target whose settlement ` +
-      `the record cannot prove is re-run.`,
+      `permanently lost while it ran, so a target that actually succeeded may ` +
+      `still be recorded as "running" or "pending". A resume re-runs every ` +
+      `target the record does not show as succeeded, so such a target would ` +
+      `run a second time — for a non-idempotent one, a deploy or a release, ` +
+      `that means doing it twice. Check what the run actually did with ` +
+      `"zuke runs show ${id}", then re-run with --resume-degraded to accept ` +
+      `that risk and continue.`,
   );
-}
-
-/**
- * Whether the record proves `state` settled successfully — the test for "do not
- * re-run this target". A `succeeded` status is proof on its own; on a `degraded`
- * record it must also carry the `endedAt` the writer stamps in the same write,
- * so an entry that may have been left half-written re-runs instead.
- */
-function settlementProven(state: TargetRunState, degraded: boolean): boolean {
-  if (state.status !== "succeeded") return false;
-  return !degraded || state.endedAt !== undefined;
 }
 
 /** Fail with a descriptive error if the current graph differs from the record's. */
@@ -472,6 +465,14 @@ async function cancelTimedOut(
  * waits are re-evaluated and expired waits time out. Signal-based waits with no
  * new signal simply re-suspend. Returns the number of runs that ended in
  * failure. This is the sweep a cron or webhook drives (`zuke resume --check`).
+ *
+ * A run whose record is {@link "./state/types.ts".RunRecord.degraded} is
+ * **counted as failed** on every sweep until an operator resolves it: it cannot
+ * be advanced without deciding whether its targets are safe to repeat, and a
+ * non-zero result is the only channel a cron watches. Its refusal is reported
+ * through the reporter (the console unless silenced) so the cause is visible,
+ * and it stays `suspended`, so a later sweep with
+ * {@link ResumeOptions.resumeDegraded} still picks it up.
  */
 export async function resumeCheck(
   build: Build,
@@ -480,6 +481,11 @@ export async function resumeCheck(
   },
 ): Promise<{ checked: number; failed: number }> {
   const readEnv = options.readEnv ?? defaultReadEnv;
+  // A per-run refusal (a degraded record above all) is the sweep's only
+  // explanation of a non-zero result, so default the sink to the console the
+  // same way execute() does instead of swallowing it when no reporter is given.
+  const reporter = options.reporter ??
+    (options.silent === true ? silentReporter : consoleReporter);
   const store = resolveResumeStore({ ...options, runId: "" }, build, readEnv);
   if (store === undefined) {
     throw new Error("resume --check: no state store is configured.");
@@ -497,7 +503,7 @@ export async function resumeCheck(
       // Isolate a per-run failure: one run erroring (a bad graph, a throwing
       // compensation) must not abort the sweep and strand every run behind it.
       failed += 1;
-      options.reporter?.error(
+      reporter.error(
         `resume --check: run ${id} errored: ${
           error instanceof Error ? error.message : String(error)
         }`,

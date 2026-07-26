@@ -1,9 +1,10 @@
 /**
- * Integration: a run whose state store dropped one write is recorded
+ * Integration: a run that **permanently lost** a state write is recorded
  * `degraded`, and `zuke resume` refuses it until `--resume-degraded` overrides
- * the refusal. Driven through the real CLI `main()` (via {@link runCli}) against
- * a store that fails one `putRun` and then heals — the store hiccup that leaves
- * the record's per-target progress unprovable.
+ * the refusal. Driven through the real CLI `main()` (via {@link runCli}) against a
+ * store that conflicts every write settling `deploy` — a foreign writer winning
+ * the compare-and-swap race until the writer's retry budget runs out, which is
+ * how a settlement is really lost.
  */
 
 import {
@@ -21,23 +22,21 @@ import type { RunRecord } from "../../packages/core/mod.ts";
 import { runCli, withStateDir } from "./_harness.ts";
 
 /**
- * A real store that drops the first write recording `deploy` as succeeded, then
- * behaves normally — the best-effort write loss the `degraded` flag exists for.
+ * A real store whose compare-and-swap always conflicts on a write recording
+ * `deploy` as succeeded, so the writer exhausts its retries, adopts the
+ * freshly-read record and loses that settlement for good. Every other write
+ * persists normally.
  */
-class FlakyStore extends FileSystemStateStore {
-  /** Cleared once the write has been dropped, so the store heals. */
-  dropDeploySettled = true;
-  /** Fail the targeted write once; otherwise persist for real. */
+class LosesDeploySettlement extends FileSystemStateStore {
+  /** Clear before the resume, so only the original run loses a write. */
+  losing = true;
+  /** Conflict on the targeted write; otherwise persist for real. */
   override putRun(
     record: RunRecord,
     expected: string | null,
   ): Promise<{ ok: true; version: string } | { ok: false; conflict: true }> {
-    if (
-      this.dropDeploySettled &&
-      record.targets.deploy?.status === "succeeded"
-    ) {
-      this.dropDeploySettled = false;
-      return Promise.reject(new Error("store hiccup"));
+    if (this.losing && record.targets.deploy?.status === "succeeded") {
+      return Promise.resolve({ ok: false, conflict: true });
     }
     return super.putRun(record, expected);
   }
@@ -46,7 +45,7 @@ class FlakyStore extends FileSystemStateStore {
 Deno.test("a resume refuses a degraded record and proceeds with --resume-degraded", async () => {
   await withStateDir(async (dir) => {
     const log: string[] = [];
-    const store = new FlakyStore(`${dir}/runs`, defaultStateHost);
+    const store = new LosesDeploySettlement(`${dir}/runs`, defaultStateHost);
     class CD extends Build {
       override stateStore() {
         return store;
@@ -60,12 +59,18 @@ Deno.test("a resume refuses a degraded record and proceeds with --resume-degrade
       );
     }
 
-    // The run suspends at the gate; the dropped write leaves it degraded.
+    // The run suspends at the gate; the lost write leaves it degraded, and
+    // leaves the succeeded deploy recorded as still running.
     const first = await runCli(CD, ["promote"]);
     assertEquals(first.code, 0);
     assertEquals(log, ["deploy"]);
     const runId = (await store.listRuns({}))[0].id;
     assertEquals((await store.getRun(runId))?.record.degraded, true);
+    assertEquals(
+      (await store.getRun(runId))?.record.targets.deploy.status,
+      "running",
+    );
+    store.losing = false; // the racing writer is gone by the time we resume
 
     // `runs show` surfaces it, so the operator can decide.
     const shown = await runCli(CD, ["runs", "show", runId]);
@@ -85,8 +90,8 @@ Deno.test("a resume refuses a degraded record and proceeds with --resume-degrade
     assertEquals(log, ["deploy"]); // nothing ran
     assertEquals((await store.getRun(runId))?.record.status, "suspended");
 
-    // With the override the run continues; deploy settled with an endedAt, so
-    // the record proves it and it is not repeated.
+    // With the override the run continues, and the risk the refusal named is
+    // real: deploy is recorded `running`, so the resume runs it a second time.
     const forced = await runCli(CD, [
       "resume",
       runId,
@@ -95,7 +100,7 @@ Deno.test("a resume refuses a degraded record and proceeds with --resume-degrade
       "--resume-degraded",
     ]);
     assertEquals(forced.code, 0);
-    assertEquals(log, ["deploy", "promote"]);
+    assertEquals(log, ["deploy", "deploy", "promote"]);
     assertEquals((await store.getRun(runId))?.record.status, "succeeded");
   });
 });

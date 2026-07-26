@@ -30,6 +30,14 @@
 
 (Read `zuke` as `deno run -A zuke.ts` until the launcher binary ships.)
 
+An unrecognised `--flag` is a **hard error**: Zuke names it, suggests the nearest
+known flag when one is within two edits (`--dry-rn` → `--dry-run`), and exits `1`
+without running anything. A typo used to be silently ignored, which meant
+`--dry-rn` ran the build for real. The same applies to an unknown target name.
+`--help` still wins when it appears alongside a bad flag, a bare `--` separator is
+skipped, and a built-in given an inline value it does not accept (`--skip=lint`)
+is told to pass the value as the next argument instead.
+
 ## `zuke graph`
 
 Shows the build's dependency graph. By default it prints the terminal adjacency
@@ -283,11 +291,14 @@ build graph changed since the run was suspended. See
 [Orchestration](./orchestration.md).
 
 A resume **refuses** a run whose record is
-[degraded](./state.md#degraded-records) — a state write was dropped while it ran,
-so a target it shows as unfinished may in fact have succeeded, and continuing
-could repeat it. `--resume-degraded` overrides the refusal: every target whose
-settlement the record cannot prove is then re-run, so use it once you know those
-targets are safe to repeat.
+[degraded](./state.md#degraded-records) — a state write was permanently lost
+while it ran, so a target that actually succeeded may still be recorded `running`
+or `pending`. A resume re-runs every target the record does not show as
+`succeeded`, so continuing would run that target a **second time**.
+`--resume-degraded` accepts that risk and continues; use it once you know those
+targets are safe to repeat. `resume --check` counts a degraded run as failed on
+every sweep — it cannot make that call for you — and prints the refusal so the
+cause is visible; pass `--resume-degraded` to the sweep to let it through.
 
 ## Cancelling runs
 

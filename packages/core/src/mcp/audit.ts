@@ -58,7 +58,6 @@ export async function openAuditLog(
     targets: {},
     signals: {},
     events: [],
-    degraded: false,
   };
   return await RunStateWriter.open(store, record, now, redactor, warn);
 }

@@ -328,8 +328,8 @@ export function formatRunDetail(record: RunRecord): string {
   if (record.degraded) {
     // The one thing an operator asked to override a refused resume needs to see.
     lines.push(
-      "  degraded: yes — a state write was dropped; the per-target progress " +
-        "below may be incomplete",
+      "  degraded: yes — a state write was permanently lost; a target below " +
+        "may have succeeded despite what its status says",
     );
   }
 

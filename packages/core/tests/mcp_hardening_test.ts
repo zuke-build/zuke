@@ -308,7 +308,6 @@ async function seedSuspended(
     targets: { [rootTarget]: { status: "waiting", meta: {} } },
     signals: {},
     events: [],
-    degraded: false,
   };
   const put = await store.putRun(record, null);
   if (!put.ok) throw new Error("failed to seed suspended run");

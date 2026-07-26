@@ -94,7 +94,6 @@ function record(id: string, over: Partial<RunRecord> = {}): RunRecord {
     targets: { deploy: { status: "pending", meta: {} } },
     signals: {},
     events: [],
-    degraded: false,
     ...over,
   };
 }

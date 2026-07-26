@@ -143,17 +143,22 @@ export interface RunRecord {
   /** Append-only audit trail of MCP tool calls against this run (see {@link RunEvent}). */
   events: RunEvent[];
   /**
-   * True when at least one state write for this run was **dropped** — the store
-   * was briefly unavailable, or a conflicting write could not be re-applied.
-   * Writes are best-effort, so the run itself carried on; the flag is how a
-   * later reader learns that the recorded per-target progress may be incomplete.
-   * A resume refuses a degraded record unless `--resume-degraded` overrides it
-   * (see {@link "../resume.ts".ResumeOptions.resumeDegraded}).
+   * True when at least one state write for this run was **permanently lost** —
+   * a conflicting write from another process could not be re-applied within the
+   * writer's retry budget. Writes are best-effort, so the run itself carried on;
+   * the flag is how a later reader learns that a transition which really
+   * happened may be missing from the record. In particular a target that
+   * succeeded can still be recorded `running` or `pending`, so a resume would
+   * re-run it — which is why a resume refuses a degraded record unless
+   * `--resume-degraded` overrides it (see
+   * {@link "../resume.ts".ResumeOptions.resumeDegraded}).
    *
-   * It is set by the writer on the failing write and persisted by the **next**
-   * write that lands — the failing one, by definition, could not carry it.
+   * It is set by the writer when it loses a write and persisted by the **next**
+   * write that lands — the failing one, by definition, could not carry it. A
+   * drop that leaves the mutation in memory for a later write to re-persist does
+   * *not* set it. Absent (or `false`) means no write is known to be missing.
    */
-  degraded: boolean;
+  degraded?: boolean;
 }
 
 /** A compact run listing row, returned by {@link "./store.ts".StateStore.listRuns}. */
