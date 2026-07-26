@@ -184,7 +184,14 @@ class ZukeBuild extends Build {
     path: ".github/workflows/integration.yml",
     pipeline: {
       name: "Integration",
-      triggers: { push: ["master"], pullRequest: [] },
+      triggers: {
+        push: ["master"],
+        pullRequest: [],
+        // Weekly run with no code change, so a drifting runner image (a new
+        // Deno patch release's own transitive npm resolution, an OS image
+        // update) surfaces on its own instead of waiting for the next PR.
+        schedule: [{ cron: "0 6 * * 1" }],
+      },
       permissions: { contents: "read" },
       concurrency: {
         group: "integration-${{ github.ref }}",
@@ -219,11 +226,18 @@ class ZukeBuild extends Build {
             name: "Set up Deno",
             uses:
               "denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed",
-            with: { "deno-version": "v2.x" },
+            // Pinned to the same version the `./zuke`/`zuke.ps1` launchers
+            // bootstrap (DEFAULT_DENO_VERSION), so this job runs the exact
+            // Deno the repo is reproducible against rather than a floating
+            // `v2.x` that can pick up a new patch release unannounced.
+            with: { "deno-version": "v2.8.3" },
           },
           {
             name: "Run the subprocess e2e suite",
-            run: "deno run -A zuke.ts integration",
+            // `--frozen` fails the run if the e2e suite's own resolution would
+            // otherwise diverge from the committed deno.lock, matching the
+            // `--frozen` already on the `test`/`check` tasks in deno.json.
+            run: "deno run -A --frozen zuke.ts integration",
           },
         ],
       }],
