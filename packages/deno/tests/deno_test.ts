@@ -296,6 +296,24 @@ Deno.test("install: global executable from an npm module, with perms", () => {
   ]);
 });
 
+Deno.test("run: --frozen sits before the script, after the permissions", () => {
+  assertEquals(
+    new DenoRunSettings()
+      .allowAll()
+      .frozen()
+      .script("npm:cspell@9")
+      .scriptArgs("--version")
+      .argv()
+      .slice(1),
+    ["run", "--allow-all", "--frozen", "npm:cspell@9", "--version"],
+  );
+  // Opt-in only: a plain run must not start failing on a stale lockfile.
+  assertEquals(
+    new DenoRunSettings().script("x.ts").argv().slice(1),
+    ["run", "x.ts"],
+  );
+});
+
 Deno.test("install: bare run is just the subcommand", () => {
   assertEquals(new DenoInstallSettings().argv().slice(1), ["install"]);
 });

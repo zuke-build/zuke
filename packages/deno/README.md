@@ -196,6 +196,11 @@ class DenoRunSettings extends DenoPermissionSettings
     Use an explicit config file (`--config`).
   reload(): this
     Reload the module cache (`--reload`).
+  frozen(): this
+    Fail if the lockfile is out of date (`--frozen`) instead of updating it. Use
+    it whenever the module graph must match the committed `deno.lock` exactly —
+    running an `npm:` tool in CI, say, so its transitive tree stays pinned to
+    the audited integrity hashes rather than being resolved afresh.
   override protected buildArgs(): string[]
     Assemble the `deno run` argv.
 
