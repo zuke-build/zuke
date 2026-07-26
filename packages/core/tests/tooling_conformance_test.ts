@@ -49,6 +49,23 @@ Deno.test("a PATH wrapper conforms", async () => {
   );
 });
 
+Deno.test("an ambient ZUKE_TOOL_RESOLUTION is ignored, then restored", async () => {
+  const previous = Deno.env.get("ZUKE_TOOL_RESOLUTION");
+  Deno.env.set("ZUKE_TOOL_RESOLUTION", "node_modules");
+  try {
+    // The ambient override would make the PATH wrapper resolve npx-style; the
+    // kit unsets it for the duration so the wrapper's own default is asserted.
+    await assertWrapperConformance(
+      () => new PathToolSettings(),
+      "zuke-fake-tool",
+    );
+    assertEquals(Deno.env.get("ZUKE_TOOL_RESOLUTION"), "node_modules");
+  } finally {
+    if (previous === undefined) Deno.env.delete("ZUKE_TOOL_RESOLUTION");
+    else Deno.env.set("ZUKE_TOOL_RESOLUTION", previous);
+  }
+});
+
 Deno.test("a node_modules wrapper conforms when it declares so", async () => {
   await assertWrapperConformance(
     () => new NodeToolSettings(),
@@ -127,4 +144,22 @@ Deno.test("a wrapper that raises the wrong error is reported", async () => {
     "RangeError",
   );
   assertEquals(error instanceof ToolNotFoundError, false);
+});
+
+Deno.test("a non-Error rejection is reported by its value", async () => {
+  /** A wrapper that rejects with something that is not an Error at all. */
+  class ThrowsLiteralSettings extends PathToolSettings {
+    override run(): Promise<CommandOutput> {
+      return Promise.reject("just a string");
+    }
+  }
+  await assertRejects(
+    () =>
+      assertWrapperConformance(
+        () => new ThrowsLiteralSettings(),
+        "zuke-fake-tool",
+      ),
+    Error,
+    "just a string",
+  );
 });
