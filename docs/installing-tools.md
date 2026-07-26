@@ -380,6 +380,14 @@ The [`./zuke` launcher](./getting-started.md) bootstraps Deno, and the build
 fetches its tools on demand inside the target that needs them — so a CI job
 needs no "set up tool X" step:
 
+- **The bootstrap itself is checksum-verified.** `./zuke`/`zuke.ps1` download the
+  pinned Deno release (`DEFAULT_DENO_VERSION`/`$DefaultDenoVersion`) as a zip and
+  verify it against a hardcoded per-platform SHA-256 before unpacking it — the
+  same pin-and-verify model as `installRelease` below, applied to Deno itself.
+  `DENO_VERSION` can still request a different release, but the launcher then
+  requires `DENO_SHA256` (the expected hash for the current platform) too; it
+  never installs an unverified binary.
+
 ```yaml
 steps:
   - uses: actions/checkout@v4
