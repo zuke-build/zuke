@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.1](https://github.com/zuke-build/zuke/compare/cli-v0.8.0...cli-v0.8.1) (2026-07-27)
+
+
+### Bug Fixes
+
+* **cli:** raise the core floor to the version that has splitShellArgs ([#275](https://github.com/zuke-build/zuke/issues/275)) ([0c84ba3](https://github.com/zuke-build/zuke/commit/0c84ba380b82387b5611e9fccf27b61ee2ff8af5))
+
 ## [0.8.0](https://github.com/zuke-build/zuke/compare/cli-v0.7.0...cli-v0.8.0) (2026-07-27)
 
 
