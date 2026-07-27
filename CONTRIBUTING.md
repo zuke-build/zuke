@@ -38,12 +38,14 @@ deno task ci   # run the full gate to confirm a clean baseline
 | Format / check formatting     | `deno task fmt` / `deno task fmt:check` |
 | Lint                          | `deno task lint`                        |
 | Spell-check                   | `deno task spell`                       |
-| Full pre-commit / CI gate     | `deno task ci`                          |
+| Full pre-commit / CI gate     | `deno task ci` / `./zuke ci`            |
 
-**Run `deno task ci` before opening a pull request — it must be green.** CI runs
-`./zuke ci`, a superset that also runs `coverageUpload` and `apiDocsCheck`, so
-if you change a public API, regenerate the docs (`./zuke apiDocs`) — otherwise
-CI can fail on `apiDocsCheck` even when `deno task ci` was green locally.
+**Run `deno task ci` before opening a pull request — it must be green.**
+`deno task ci` is `deno run -A zuke.ts ci`, the same gate CI's `quality` job
+runs (see [`AGENTS.md`](./AGENTS.md#commands) for the full check list) — so a
+green `deno task ci` locally means a green CI run. If you change a public API,
+regenerate the docs in the same change (`./zuke apiDocs`) — `ci` includes
+`apiDocsCheck`, which fails on stale generated docs.
 
 ## Coding standards (non-negotiable)
 

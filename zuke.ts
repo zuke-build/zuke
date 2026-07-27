@@ -60,6 +60,11 @@ import { writeApiJson } from "./build/api_reference.ts";
 import { runWebsiteSync } from "./build/website_sync.ts";
 import { checkSnippets, formatSnippetFailures } from "./build/snippets.ts";
 import { checkHclWrappers, generateHclWrappers } from "./build/hcl_gen.ts";
+import { lintPrBody } from "./build/pr_body_lint.ts";
+import {
+  checkPluginSkillsSync,
+  syncPluginSkills,
+} from "./build/plugin_sync.ts";
 
 class ZukeBuild extends Build {
   clean = target()
@@ -160,17 +165,12 @@ class ZukeBuild extends Build {
   integration = target()
     .description("Run the subprocess e2e suite (real processes, OS matrix)")
     .executes(async () => {
-      await DenoTasks.test((s) =>
-        s.allowAll().paths(
-          "tests/e2e/race_e2e.ts",
-          "tests/e2e/mcp_e2e.ts",
-          "tests/e2e/cancel_e2e.ts",
-          "tests/e2e/otel_e2e.ts",
-          "tests/e2e/gh_workflow_e2e.ts",
-          "tests/e2e/registry_e2e.ts",
-          "tests/e2e/registry_mcp_e2e.ts",
-        )
-      );
+      // Discovered by glob (sorted, so run order stays deterministic) rather
+      // than a hardcoded list — a new `*_e2e.ts` file is picked up on its own
+      // instead of silently running nowhere until someone remembers to add it
+      // here.
+      const paths = await glob("tests/e2e/*_e2e.ts");
+      await DenoTasks.test((s) => s.allowAll().paths(...paths));
     });
 
   // The dedicated workflow for the `integration` target, generated from this
@@ -419,6 +419,67 @@ class ZukeBuild extends Build {
       ConsoleTasks.info("Terraform/OpenTofu wrappers are in sync.");
     });
 
+  pluginSync = target()
+    .description(
+      "Sync plugins/zuke/skills/ from skills/ (real copies, not a symlink)",
+    )
+    .executes(async () => {
+      const written = await syncPluginSkills();
+      ConsoleTasks.info(
+        `Synced ${written.length} file(s):\n  ${written.join("\n  ")}`,
+      );
+    });
+
+  pluginSyncCheck = target()
+    .description("Verify plugins/zuke/skills/ matches skills/ (no drift)")
+    .executes(async () => {
+      const stale = await checkPluginSkillsSync();
+      if (stale.length > 0) {
+        throw new Error(
+          `plugins/zuke/skills/ has drifted from skills/:\n  ${
+            stale.join("\n  ")
+          }\n` +
+            "Run `./zuke pluginSync` and commit the result.",
+        );
+      }
+      ConsoleTasks.info("plugins/zuke/skills/ is in sync with skills/.");
+    });
+
+  // Only meaningful on a `pull_request`-triggered run (the workflow passes it
+  // via env from `github.event.pull_request.body` — never interpolated into
+  // a shell line, so an adversarial PR body can't inject a command). Unset
+  // locally and empty on a `push` run, where `prBodyLint` is then a no-op.
+  prBody = parameter(
+    "Pull request body to lint for code fragments that break release-please's parser",
+  )
+    .env("PR_BODY");
+
+  prBodyLint = target()
+    .description(
+      "Fail if the PR body has code release-please's parser can't handle",
+    )
+    .executes(() => {
+      const body = this.prBody.value;
+      // The workflow sets PR_BODY to "" on a non-`pull_request` run (a GitHub
+      // Actions `env:` value can't be conditionally absent), so treat an
+      // empty body the same as an unset one.
+      if (body === undefined || body === "") {
+        ConsoleTasks.info("No PR body to lint (not a pull_request run).");
+        return;
+      }
+      const findings = lintPrBody(body);
+      if (findings.length > 0) {
+        throw new Error(
+          `The PR body has ${findings.length} issue(s) release-please's ` +
+            `parser can choke on and silently drop from the release:\n  ${
+              findings.join("\n  ")
+            }\n` +
+            "Describe the change in prose; see RELEASING.md.",
+        );
+      }
+      ConsoleTasks.info("PR body is clean.");
+    });
+
   ci = target()
     .description("Full pre-commit / CI gate")
     .dependsOn(
@@ -431,6 +492,8 @@ class ZukeBuild extends Build {
       this.docLint,
       this.snippetsCheck,
       this.hclSyncCheck,
+      this.pluginSyncCheck,
+      this.prBodyLint,
     )
     .executes(() => {});
 

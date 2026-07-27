@@ -113,7 +113,8 @@ update the `check` task and CI accordingly. Do not bolt on a parallel
      deliberately exercises a runtime guard against type-unsafe input, with a
      comment explaining why. Do not use it in `src/`.
 2. **All linting, formatting, type-checking, and tests must always pass.** Run
-   `deno task ci` before committing; it must be green.
+   `deno task ci` (which delegates to `./zuke ci`, the same gate CI runs) before
+   committing; it must be green.
 3. **Keep test coverage at 95%+ (lines and branches) at all times.** Enforced by
    the coverage gate built into `DenoTasks.coverage` (a `.threshold()` parses
    the lcov report and fails the build), wired up in the `cov` task /
@@ -251,8 +252,17 @@ the three test layers above and the "read every reviewer comment" rule below.
 | Format / check formatting     | `deno task fmt` / `deno task fmt:check`              |
 | Lint                          | `deno task lint`                                     |
 | Spell-check                   | `deno task spell`                                    |
-| Local pre-commit gate         | `deno task ci` (fmt, lint, spell, check, cov)        |
-| Full CI gate (as CI runs it)  | `./zuke ci` (adds `coverageUpload` + `apiDocsCheck`) |
+| Pre-commit gate (same as CI)  | `deno task ci` / `./zuke ci`                         |
+
+`deno task ci` is `deno run -A zuke.ts ci` — the exact gate the `quality` job in
+`ci.yml` runs, so there is one gate, not a hand-maintained subset that can drift
+from it. `zuke.ts`'s `ci` target depends on: `format` (`deno fmt --check`),
+`lint` (`deno lint`), `spell` (cspell), `coverage` (type-check, then the test
+suite with the 95% coverage gate), `coverageUpload` (skips locally without a
+`CODECOV_TOKEN`), `apiDocsCheck`, `docLint`, `snippetsCheck`, `hclSyncCheck`,
+`pluginSyncCheck`, and `prBodyLint`. Read `zuke.ts`'s `ci` target for the
+current, authoritative list — this is a snapshot, not a second source of
+truth.
 
 ## Repository layout
 
