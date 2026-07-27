@@ -42,6 +42,24 @@ Deno.test("launchers carry a shebang and run zuke.ts", () => {
   assertEquals(pwsh.includes("zuke.ts"), true);
 });
 
+Deno.test("scaffolded launchers never pipe an unverified install script", () => {
+  // A launcher that pipes `deno.land/install.sh` into a shell downloads and
+  // executes code with nothing verifying it, in every project `zuke setup`
+  // scaffolds. Missing Deno must be reported, not silently installed.
+  for (const script of [launcherBash(), launcherPwsh()]) {
+    assertEquals(script.includes("deno.land/install"), false);
+    assertEquals(script.includes("| sh"), false);
+    assertEquals(script.includes("Invoke-Expression"), false);
+    assertEquals(script.includes("Deno not found on PATH"), true);
+    assertEquals(
+      script.includes(
+        "https://docs.deno.com/runtime/getting_started/installation/",
+      ),
+      true,
+    );
+  }
+});
+
 Deno.test("mergeDenoJson seeds tasks from scratch", () => {
   const text = mergeDenoJson(null);
   const parsed: unknown = JSON.parse(text);

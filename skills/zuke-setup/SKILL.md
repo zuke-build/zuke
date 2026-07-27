@@ -59,10 +59,10 @@ typed `*Tasks` wrappers.
 ### What `zuke setup` writes
 
 - **`zuke.ts`** — a starter build class with a sample target and a `default`.
-- **`./zuke`** + **`./zuke.ps1`** — bootstrap launchers that locate the project
-  and **install Deno on first use if it's missing** (override the version with
-  `DENO_VERSION`), then run `zuke.ts`. A fresh checkout needs nothing but the
-  script.
+- **`./zuke`** + **`./zuke.ps1`** — launchers that locate the project and run
+  `zuke.ts` with the Deno on `PATH`. If Deno is missing they point at the
+  official install docs and exit rather than piping an install script into a
+  shell, which would download and execute code unverified.
 - **`deno.json`** — merged to add a `zuke` task (and `fmt`/`lint`/`test` if
   absent).
 - **`zuke.json`** — `{ "name": "..." }`, which marks the repo root.
@@ -84,9 +84,9 @@ calls, `zuke mcp` runs a Model Context Protocol server over it (register with
 `claude mcp add zuke -- deno run -A zuke.ts mcp`; add `--allow-run` to let the
 agent execute targets, not just inspect them).
 
-If Deno is already installed you can equivalently use
-`deno task zuke <target>` or `deno run -A zuke.ts <target>`. The `-A` flag
-grants permissions, since targets typically run processes and touch files.
+If Deno is already installed you can equivalently use `deno task zuke <target>`
+or `deno run -A zuke.ts <target>`. The `-A` flag grants permissions, since
+targets typically run processes and touch files.
 
 ## Manual setup (no CLI)
 
@@ -108,7 +108,7 @@ await run(CI);
 ```
 
 Run with `deno run -A zuke.ts test`. (For the `./zuke` launcher experience,
-prefer `zuke setup`, which drops the bootstrap scripts in for you.)
+prefer `zuke setup`, which drops the launcher scripts in for you.)
 
 ## Finding the exact API — never guess
 

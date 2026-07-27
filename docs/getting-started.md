@@ -72,14 +72,20 @@ files, etc.).
 For a one-command `./build.sh`-style experience, drop the bootstrap launchers
 [`zuke`](../zuke) (bash) and [`zuke.ps1`](../zuke.ps1) (PowerShell) in your repo
 root. They locate the project, **install Deno on first use if it's missing**
-(pinned by default; override with `DENO_VERSION`), then run `zuke.ts` — so a
-fresh checkout needs nothing but the script:
+(pinned by default, and verified against a per-platform SHA-256; override with
+`DENO_VERSION` plus its `DENO_SHA256`), then run `zuke.ts` — so a fresh checkout
+needs nothing but the script:
 
 ```sh
 ./zuke ci          # full gate          (Windows: .\zuke.ps1 ci)
 ./zuke test        # type-check + tests  (Windows: .\zuke.ps1 test)
 ./zuke --list      # list every target
 ```
+
+The launchers `zuke setup` scaffolds are simpler: they run `zuke.ts` with the
+Deno on `PATH` and point at Deno's install docs when it is missing, since a
+generated launcher has no pinned checksum to verify a download against. Copy the
+two launchers above into your repo when you want the verified bootstrap too.
 
 If you already have Deno, `deno task zuke <target>` (via the `zuke` task in
 `deno.json`) does the same thing.

@@ -10,12 +10,12 @@ Tools are provisioned in Zuke's fluent settings-lambda style — the same
 `(s) => s.method(...)` shape the [tool wrappers](./tools.md) use — through two
 entry points in `@zuke/core`:
 
-| API                                                          | Installs      | Reach for it when                    |
-| ------------------------------------------------------------ | ------------- | ------------------------------------ |
-| [`ToolTasks.install((s) => …)`](#tooltasksinstall--one-tool) | one binary    | you need a single release binary     |
+| API                                                                           | Installs         | Reach for it when                                    |
+| ----------------------------------------------------------------------------- | ---------------- | ---------------------------------------------------- |
+| [`ToolTasks.install((s) => …)`](#tooltasksinstall--one-tool)                  | one binary       | you need a single release binary                     |
 | [`ToolTasks.installTree((s) => …)`](#tooltasksinstalltree--a-multi-file-tree) | one runtime tree | the tool ships as a multi-file tree (a JDK, Node.js) |
-| [`toolchain()`](#toolchain--many-tools)                      | many tools    | a build depends on several tools     |
-| [`ToolTasks.npm(...)` / `.npm(...)`](#npm-package-tools)      | an npm package | the tool ships on the npm registry   |
+| [`toolchain()`](#toolchain--many-tools)                                       | many tools       | a build depends on several tools                     |
+| [`ToolTasks.npm(...)` / `.npm(...)`](#npm-package-tools)                      | an npm package   | the tool ships on the npm registry                   |
 
 Both return the installed binary's [`AbsolutePath`](./paths.md); hand it to a
 **[wrapper](./tools.md)** (`.toolPath(...)`), to `CmdTasks`, or to `defineTool`
@@ -57,16 +57,16 @@ await CmdTasks.exec(String(bin), (s) => s.args("--version"));
 
 ### Settings
 
-| Method                       | Purpose                                                                                                            |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `.name(name)`                | The tool name, and the installed filename (`.exe` is appended on Windows). **Required.**                           |
-| `.url((platform) => string)` | Resolve the download URL for the target platform (see [platforms](#cross-platform-url-resolution)). **Required.**  |
-| `.destDir(dir)`              | Directory to install into (created if missing). Defaults to `.zuke/tools`.                                         |
-| `.archive("tar.gz" \| "zip")` | Unpack a gzipped tarball or a zip; the default `"raw"` treats the download as the binary.                         |
-| `.binaryPath(path)`          | For an archive, the binary's path _inside_ it. Defaults to the name.                                               |
-| `.checksum(sha256)`          | Expected SHA-256, or a `(platform) => string` resolver — [verifies and caches](#pinning-verification-and-caching). |
-| `.platform({ os, arch })`    | Resolve for a specific platform instead of the host.                                                               |
-| `.download(fn)`              | Override the downloader (defaults to an HTTPS download); mainly a test seam.                                       |
+| Method                        | Purpose                                                                                                            |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `.name(name)`                 | The tool name, and the installed filename (`.exe` is appended on Windows). **Required.**                           |
+| `.url((platform) => string)`  | Resolve the download URL for the target platform (see [platforms](#cross-platform-url-resolution)). **Required.**  |
+| `.destDir(dir)`               | Directory to install into (created if missing). Defaults to `.zuke/tools`.                                         |
+| `.archive("tar.gz" \| "zip")` | Unpack a gzipped tarball or a zip; the default `"raw"` treats the download as the binary.                          |
+| `.binaryPath(path)`           | For an archive, the binary's path _inside_ it. Defaults to the name.                                               |
+| `.checksum(sha256)`           | Expected SHA-256, or a `(platform) => string` resolver — [verifies and caches](#pinning-verification-and-caching). |
+| `.platform({ os, arch })`     | Resolve for a specific platform instead of the host.                                                               |
+| `.download(fn)`               | Override the downloader (defaults to an HTTPS download); mainly a test seam.                                       |
 
 ### Raw binaries vs. archives
 
@@ -174,21 +174,22 @@ accessor: `root("bin", "node")` is a binary and `root("bin")` a directory to add
 to `PATH`. It takes the same settings-lambda as `install()`, plus two that only
 apply to a tree:
 
-| Method             | Purpose                                                                                                                                                      |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `.strip(n)`        | Drop `n` leading path components while unpacking (tar's `--strip-components`) — `1` unwraps a release tarball's `tool-v1.2.3/` directory. Defaults to `0`.    |
-| `.bins(...paths)`  | Paths (relative to the stripped root) to mark executable on POSIX — the tar reader doesn't preserve mode bits, so a runtime's `bin/node`, `bin/npm`, … need it. Following a symlink chmods its real target too. |
+| Method            | Purpose                                                                                                                                                                                                         |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `.strip(n)`       | Drop `n` leading path components while unpacking (tar's `--strip-components`) — `1` unwraps a release tarball's `tool-v1.2.3/` directory. Defaults to `0`.                                                      |
+| `.bins(...paths)` | Paths (relative to the stripped root) to mark executable on POSIX — the tar reader doesn't preserve mode bits, so a runtime's `bin/node`, `bin/npm`, … need it. Following a symlink chmods its real target too. |
 
 A tree always ships packed, so `.archive(...)` defaults to `"tar.gz"` and
-`"raw"` is rejected (`a tree install needs an archive ("tar.gz" or "zip"), not
-"raw"`). Everything else — `.name(...)`, `.url(...)`, `.destDir(...)`,
-`.checksum(...)`, `.platform(...)`, `.download(...)` — behaves as for
-[`install()`](#settings); the tree lands at `<destDir>/<name>`. Pinning,
-verification, and caching work the same, except the checksum is always the
-SHA-256 of the **archive** and a cache hit additionally requires the declared
-`.bins(...)` to still be present. For a one-off outside a toolchain use
-`ToolTasks.installTree`; group several with
-[`Toolchain.tree`](#toolchain--many-tools), or drop to the
+`"raw"` is rejected
+(`a tree install needs an archive ("tar.gz" or "zip"), not
+"raw"`). Everything
+else — `.name(...)`, `.url(...)`, `.destDir(...)`, `.checksum(...)`,
+`.platform(...)`, `.download(...)` — behaves as for [`install()`](#settings);
+the tree lands at `<destDir>/<name>`. Pinning, verification, and caching work
+the same, except the checksum is always the SHA-256 of the **archive** and a
+cache hit additionally requires the declared `.bins(...)` to still be present.
+For a one-off outside a toolchain use `ToolTasks.installTree`; group several
+with [`Toolchain.tree`](#toolchain--many-tools), or drop to the
 [`installTree`](#the-installrelease-primitive) primitive directly.
 
 ## `toolchain()` — many tools
@@ -196,11 +197,11 @@ SHA-256 of the **archive** and a cache hit additionally requires the declared
 When a build needs several tools, `toolchain()` declares them in one place so
 the build file fully describes its environment. Add tools with `.tool((s) => …)`
 (a single binary), `.tree((s) => …)` (a
-[multi-file runtime](#tooltasksinstalltree--a-multi-file-tree)), or
-`.npm(...)` (an [npm package](#npm-package-tools)) — all the same
-settings-lambda — then `install()` fetches them all **concurrently** — pinned,
-verified, and cached — and returns a `Map<name, AbsolutePath>` (a tree's entry
-is its extracted root directory).
+[multi-file runtime](#tooltasksinstalltree--a-multi-file-tree)), or `.npm(...)`
+(an [npm package](#npm-package-tools)) — all the same settings-lambda — then
+`install()` fetches them all **concurrently** — pinned, verified, and cached —
+and returns a `Map<name, AbsolutePath>` (a tree's entry is its extracted root
+directory).
 
 ```ts
 import { Build, target, toolchain } from "jsr:@zuke/core";
@@ -249,8 +250,9 @@ class Deploy extends Build {
   tool — a test seam — and a per-tool `.download(...)` applies when the
   toolchain sets none.
 - **Introspection.** `chain.tools` returns the configured release settings in
-  order; `chain.trees` the [runtime trees](#tooltasksinstalltree--a-multi-file-tree);
-  `chain.npmTools` the [npm-package tools](#npm-package-tools).
+  order; `chain.trees` the
+  [runtime trees](#tooltasksinstalltree--a-multi-file-tree); `chain.npmTools`
+  the [npm-package tools](#npm-package-tools).
 - **Cheap to re-run.** Because a matching checksum is a cache hit, calling
   `install()` again (locally or on CI) is a no-op once the tools are present.
 
@@ -264,9 +266,9 @@ const tools = toolchain()
 
 ## npm-package tools
 
-Not every tool ships a release binary — many (`vitest`, `dprint`,
-`@nestjs/cli`, …) are published on the **npm registry**. `Toolchain.npm(...)`
-provisions one as a version-pinned, cached tool without an ambient `npm ci`:
+Not every tool ships a release binary — many (`vitest`, `dprint`, `@nestjs/cli`,
+…) are published on the **npm registry**. `Toolchain.npm(...)` provisions one as
+a version-pinned, cached tool without an ambient `npm ci`:
 
 ```ts
 import { Build, target, toolchain } from "jsr:@zuke/core";
@@ -291,8 +293,8 @@ one-off outside a toolchain, `ToolTasks.npm(spec, options?)` (or the underlying
 - **npm is the one ambient requirement.** It resolves and downloads the package;
   everything else is Zuke's. Nothing else needs to be on `PATH`.
 - **Pinned and cached.** A marker file records the `{ name, version }`, so a
-  later `install()` whose marker matches — and whose bin is still present — skips
-  npm entirely.
+  later `install()` whose marker matches — and whose bin is still present —
+  skips npm entirely.
 - **Different bin name.** When a package's bin differs from its name, set `bin`:
   `{ name: "@nestjs/cli", version: "10.4.0", bin: "nest" }` resolves the `nest`
   bin.
@@ -379,6 +381,15 @@ const cpu = hostPlatform().archLabel({ x86_64: "amd64", aarch64: "arm64" });
 The [`./zuke` launcher](./getting-started.md) bootstraps Deno, and the build
 fetches its tools on demand inside the target that needs them — so a CI job
 needs no "set up tool X" step:
+
+- **The bootstrap itself is checksum-verified.** `./zuke`/`zuke.ps1` download
+  the pinned Deno release (`DEFAULT_DENO_VERSION`/`$DefaultDenoVersion`) as a
+  zip and verify it against a hardcoded per-platform SHA-256 before unpacking it
+  — the same pin-and-verify model as `installRelease` below, applied to Deno
+  itself. `DENO_VERSION` can still request a different release — an exact
+  release tag (`v2.9.0`), never `latest`, which has no fixed hash to pin — but
+  the launcher then requires `DENO_SHA256` (the expected hash for the current
+  platform) too; it never installs an unverified binary.
 
 ```yaml
 steps:

@@ -149,3 +149,27 @@ Deno.test("the build/packages.ts publish list covers every workspace package", a
     [...PACKAGES].sort(),
   );
 });
+
+Deno.test("deno.lock captures release-please's full npm tree", async () => {
+  // `zuke.ts`'s `release` target provisions release-please through a launcher
+  // that runs `deno run --frozen npm:release-please@16.18.0` from the repository
+  // root (see `installCli`), so the lock is what pins its transitive tree — and
+  // `--frozen` fails the release outright if the specifier is missing from the
+  // lock. Assert both the top-level pin and one of its transitive dependencies,
+  // so a `deno.lock` regenerated without re-caching that specifier (dropping the
+  // tree) is caught here rather than at release time.
+  const lock = await Deno.readTextFile("deno.lock");
+  if (!lock.includes('"npm:release-please@16.18.0"')) {
+    throw new Error(
+      'deno.lock is missing the "npm:release-please@16.18.0" specifier pin — ' +
+        "run `deno cache npm:release-please@16.18.0` and commit the updated lock.",
+    );
+  }
+  if (!lock.includes('"js-yaml@4.3.0"')) {
+    throw new Error(
+      "deno.lock is missing release-please's transitive npm tree " +
+        '(expected "js-yaml@4.3.0") — run ' +
+        "`deno cache npm:release-please@16.18.0` and commit the updated lock.",
+    );
+  }
+});

@@ -73,6 +73,7 @@ export class DenoRunSettings extends DenoPermissionSettings {
   #scriptArgs: string[] = [];
   #config?: string;
   #reload = false;
+  #frozen = false;
 
   /** The script to run (required). */
   script(path: PathLike): this {
@@ -98,12 +99,24 @@ export class DenoRunSettings extends DenoPermissionSettings {
     return this;
   }
 
+  /**
+   * Fail if the lockfile is out of date (`--frozen`) instead of updating it. Use
+   * it whenever the module graph must match the committed `deno.lock` exactly —
+   * running an `npm:` tool in CI, say, so its transitive tree stays pinned to
+   * the audited integrity hashes rather than being resolved afresh.
+   */
+  frozen(): this {
+    this.#frozen = true;
+    return this;
+  }
+
   /** Assemble the `deno run` argv. */
   protected override buildArgs(): string[] {
     if (this.#script === undefined) {
       throw new Error("DenoTasks.run: .script() is required.");
     }
     const argv = ["run", ...this.permissionArgs];
+    if (this.#frozen) argv.push("--frozen");
     if (this.#config !== undefined) argv.push("--config", this.#config);
     if (this.#reload) argv.push("--reload");
     argv.push(this.#script, ...this.#scriptArgs);
