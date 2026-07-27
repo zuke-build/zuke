@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/zuke-build/zuke/compare/deno-v0.6.1...deno-v0.7.0) (2026-07-27)
+
+
+### Features
+
+* add missing typed builders, DenoSettings.frozen, and --frozen scaffolding ([#268](https://github.com/zuke-build/zuke/issues/268)) ([8549b12](https://github.com/zuke-build/zuke/commit/8549b127216a37fd176cfc2e091d558de43c98a8))
+
 ## [0.6.1](https://github.com/zuke-build/zuke/compare/deno-v0.6.0...deno-v0.6.1) (2026-07-20)
 
 

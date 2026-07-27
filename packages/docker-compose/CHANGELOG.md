@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/zuke-build/zuke/compare/docker-compose-v0.3.2...docker-compose-v0.4.0) (2026-07-27)
+
+
+### Features
+
+* add missing typed builders, DenoSettings.frozen, and --frozen scaffolding ([#268](https://github.com/zuke-build/zuke/issues/268)) ([8549b12](https://github.com/zuke-build/zuke/commit/8549b127216a37fd176cfc2e091d558de43c98a8))
+
 ## [0.3.2](https://github.com/zuke-build/zuke/compare/docker-compose-v0.3.1...docker-compose-v0.3.2) (2026-07-20)
 
 

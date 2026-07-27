@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.32.0](https://github.com/zuke-build/zuke/compare/core-v1.31.1...core-v1.32.0) (2026-07-27)
+
+
+### Features
+
+* **core:** add a wrapper conformance test helper ([#272](https://github.com/zuke-build/zuke/issues/272)) ([0848174](https://github.com/zuke-build/zuke/commit/08481740d176f5fc2b0035f7c4bf6d67200f3090))
+* **core:** add splitShellArgs, cap captured output, escalate kills, redact echoes ([#267](https://github.com/zuke-build/zuke/issues/267)) ([08f63fd](https://github.com/zuke-build/zuke/commit/08f63fd33fa2b1010e586637d66aaf8fe435a745))
+* **core:** reject unknown CLI flags and refuse degraded resumes ([#265](https://github.com/zuke-build/zuke/issues/265)) ([6168b93](https://github.com/zuke-build/zuke/commit/6168b939096afc446c3eefdd8f2f05a2326248bf))
+
+
+### Bug Fixes
+
+* **core:** clone forEach builders and expire stale fs-store mutexes ([#266](https://github.com/zuke-build/zuke/issues/266)) ([df52c5e](https://github.com/zuke-build/zuke/commit/df52c5e0862f03a472b426189857849e5385e20f))
+
 ## [1.31.1](https://github.com/zuke-build/zuke/compare/core-v1.31.0...core-v1.31.1) (2026-07-24)
 
 
