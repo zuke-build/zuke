@@ -520,13 +520,23 @@ the full task list and settings methods of each):
 | `@zuke/claude`, `@zuke/codex`, `@zuke/gemini`                                                                                                  | `ClaudeTasks`, ...                               | headless AI CLIs                                                                    |
 | `@zuke/ai`                                                                                                                                     | `securityReviewer`, ..., `aiFixer`, `agentFixer` | AI review gates + self-healing (see below)                                          |
 
-The catalog keeps growing — `deno doc jsr:@zuke/<pkg>` (or the package list in
-`llms.txt`) is the source of truth for what exists.
+The catalog keeps growing — the package list in `llms.txt`'s `## Packages`
+catalogue (or the table above) is the source of truth for **whether a wrapper
+exists**; `deno doc jsr:@zuke/<pkg>` only confirms the **shape** of a package
+whose name you already know, it cannot tell you one exists. Check the
+catalogue before reaching for the fallback below — using `CmdTasks.exec`/`$`
+for a tool that has a `@zuke/<tool>` package is a bug, not a style choice.
 
 ```ts
 await DenoTasks.test((s) => s.allowAll().coverage("cov_profile"));
 await DenoTasks.fmt((s) => s.check().paths("mod.ts"));
-await CmdTasks.exec("my-tool", (s) => s.args("--flag", "value")); // no wrapper? use cmd
+await CmdTasks.exec("my-tool", (s) => s.args("--flag", "value")); // no wrapper in the catalogue? last resort: cmd
+
+// Wrong — @zuke/docker has a typed wrapper, so this discards typed flags,
+// argv purity, and tool resolution:
+await CmdTasks.exec("docker", (s) => s.args("build", "-t", "app", "."));
+// Right — check the catalogue, find @zuke/docker, use it:
+await DockerTasks.build((s) => s.tag("app").context("."));
 ```
 
 ## AI review & self-healing — `@zuke/ai`

@@ -47,14 +47,20 @@ zuke import                  # auto-detects package.json, then a Makefile
 zuke import --from makefile   # or pin the source (package.json | makefile)
 ```
 
-Each script/target becomes a `target()`; a command maps to `CmdTasks.exec(...)`,
-an `&&` chain becomes sequential steps, a `run`/prerequisite delegation becomes
-`.dependsOn(...)`, and anything too shell-specific to translate (pipes,
-redirects, env assignments) is preserved behind a `// TODO` so the file still
-compiles. It scaffolds the launchers and `deno.json` exactly like `setup`, and
-takes the same `--dir`, `--name`, `--force`, `--yes` flags. Afterwards, use the
-**zuke-write-build** skill to replace the generated `CmdTasks.exec` calls with
-typed `*Tasks` wrappers.
+Each script/target becomes a `target()`; a command maps to `CmdTasks.exec(...)`
+— a **placeholder**, not the destination: before accepting it, check the
+package catalogue (`llms.txt`'s `## Packages` list, or the table in
+[`zuke-write-build`'s cheatsheet](../zuke-write-build/references/cheatsheet.md))
+for a `@zuke/<tool>` wrapper matching that command and replace the placeholder
+with it — leaving `CmdTasks.exec` in place for a tool that has a typed wrapper
+is a bug, not a shortcut. An `&&` chain becomes sequential steps, a
+`run`/prerequisite delegation becomes `.dependsOn(...)`, and anything too
+shell-specific to translate (pipes, redirects, env assignments) is preserved
+behind a `// TODO` so the file still compiles. It scaffolds the launchers and
+`deno.json` exactly like `setup`, and takes the same `--dir`, `--name`,
+`--force`, `--yes` flags. Afterwards, use the **zuke-write-build** skill to
+finish replacing any remaining generated `CmdTasks.exec` calls with typed
+`*Tasks` wrappers.
 
 ### What `zuke setup` writes
 
@@ -113,7 +119,12 @@ prefer `zuke setup`, which drops the launcher scripts in for you.)
 ## Finding the exact API — never guess
 
 Every external tool has a typed `*Tasks` wrapper; **do not fall back to
-`Deno.Command` or hand-rolled shell.** To get exact signatures:
+`Deno.Command` or hand-rolled shell.** First confirm a wrapper exists at all —
+`llms.txt`'s `## Packages` catalogue or the table in
+[`zuke-write-build`'s cheatsheet](../zuke-write-build/references/cheatsheet.md)
+is the only way to answer that; a per-package `deno doc` needs a name to
+target, so it cannot reveal that one exists. Once you know the package name,
+get its exact signatures:
 
 - A single package on the command line: `deno doc jsr:@zuke/<package>`. Prefer
   this in a consumer repo — it resolves the version the project actually has

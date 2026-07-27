@@ -15,6 +15,18 @@ If you are wiring Zuke into a project, **do not guess the API and do not fall
 back to `Deno.Command`/shell.** Every operation has a typed wrapper, and the
 exact signatures are published — read them:
 
+- **Check the package catalogue before writing any command.** `llms.txt`'s
+  `## Packages` catalogue (raw:
+  <https://raw.githubusercontent.com/zuke-build/zuke/master/llms.txt>) and the
+  grouped table in
+  [`skills/zuke-write-build/references/cheatsheet.md`](./skills/zuke-write-build/references/cheatsheet.md)
+  are the only ways to answer "does a `@zuke/<tool>` wrapper exist for this
+  CLI?" — per-package `deno doc jsr:@zuke/<package>` can only describe a
+  package whose name you already know; it cannot reveal that a package
+  *exists*. Reaching for `CmdTasks.exec` (`jsr:@zuke/cmd`) or a raw
+  `$`/`Deno.Command` for a tool that has a `@zuke/<tool>` package is a **bug**,
+  not a style choice — it discards typed flags, argv purity, and tool
+  resolution.
 - **One file with the whole typed surface of every package:**
   [`llms-full.txt`](./llms-full.txt) at the repo root. [`llms.txt`](./llms.txt)
   is the short index.
