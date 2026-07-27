@@ -3,7 +3,8 @@ import {
   assertRejects,
   assertThrows,
 } from "../../core/tests/_assert.ts";
-import { ToolNotFoundError, type ToolSettings } from "@zuke/core/tooling";
+import { ToolNotFoundError } from "@zuke/core/tooling";
+import { missingTool } from "@zuke/core/tooling/conformance";
 import {
   GitAddSettings,
   GitBranchSettings,
@@ -182,11 +183,6 @@ Deno.test("run executes an arbitrary command", () => {
   );
 });
 
-const missing = <S extends ToolSettings>(s: S): S => {
-  s.os_ = "linux";
-  return s.toolPath("zz-no-such-git-zz");
-};
-
 Deno.test("GitTasks.status reaches execution", async () => {
-  await assertRejects(() => GitTasks.status(missing), ToolNotFoundError);
+  await assertRejects(() => GitTasks.status(missingTool), ToolNotFoundError);
 });

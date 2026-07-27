@@ -3,7 +3,8 @@ import {
   assertRejects,
   assertThrows,
 } from "../../core/tests/_assert.ts";
-import { ToolNotFoundError, type ToolSettings } from "@zuke/core/tooling";
+import { ToolNotFoundError } from "@zuke/core/tooling";
+import { missingTool } from "@zuke/core/tooling/conformance";
 import {
   HelmDependencyUpdateSettings,
   HelmInstallSettings,
@@ -208,42 +209,37 @@ Deno.test("package: requires chart; destination, version, app-version", () => {
   );
 });
 
-const missing = <S extends ToolSettings>(s: S): S => {
-  s.os_ = "linux";
-  return s.toolPath("zuke-no-such-helm-xyz");
-};
-
 Deno.test("every HelmTasks function reaches execution", async () => {
   await assertRejects(
-    () => HelmTasks.install((s) => missing(s).release("a").chart("c")),
+    () => HelmTasks.install((s) => missingTool(s).release("a").chart("c")),
     ToolNotFoundError,
   );
   await assertRejects(
-    () => HelmTasks.upgrade((s) => missing(s).release("a").chart("c")),
+    () => HelmTasks.upgrade((s) => missingTool(s).release("a").chart("c")),
     ToolNotFoundError,
   );
   await assertRejects(
-    () => HelmTasks.uninstall((s) => missing(s).release("a")),
+    () => HelmTasks.uninstall((s) => missingTool(s).release("a")),
     ToolNotFoundError,
   );
   await assertRejects(
-    () => HelmTasks.template((s) => missing(s).release("a").chart("c")),
+    () => HelmTasks.template((s) => missingTool(s).release("a").chart("c")),
     ToolNotFoundError,
   );
   await assertRejects(
-    () => HelmTasks.lint((s) => missing(s).chart("c")),
+    () => HelmTasks.lint((s) => missingTool(s).chart("c")),
     ToolNotFoundError,
   );
   await assertRejects(
-    () => HelmTasks.dependencyUpdate((s) => missing(s).chart("c")),
+    () => HelmTasks.dependencyUpdate((s) => missingTool(s).chart("c")),
     ToolNotFoundError,
   );
   await assertRejects(
-    () => HelmTasks.repoAdd((s) => missing(s).name("n").url("u")),
+    () => HelmTasks.repoAdd((s) => missingTool(s).name("n").url("u")),
     ToolNotFoundError,
   );
   await assertRejects(
-    () => HelmTasks.package((s) => missing(s).chart("c")),
+    () => HelmTasks.package((s) => missingTool(s).chart("c")),
     ToolNotFoundError,
   );
 });

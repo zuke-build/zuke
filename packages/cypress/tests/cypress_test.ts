@@ -1,5 +1,9 @@
 import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
-import { ToolNotFoundError, type ToolSettings } from "@zuke/core/tooling";
+import { ToolNotFoundError } from "@zuke/core/tooling";
+import {
+  assertWrapperConformance,
+  missingTool,
+} from "@zuke/core/tooling/conformance";
 import {
   CypressInfoSettings,
   CypressInstallSettings,
@@ -13,23 +17,10 @@ Deno.test("the default binary is cypress", () => {
   assertEquals(new CypressRunSettings().argv()[0], "cypress");
 });
 
-Deno.test("cypress: resolves its binary from node_modules by default", () => {
-  const prevRes = Deno.env.get("ZUKE_TOOL_RESOLUTION");
-  Deno.env.delete("ZUKE_TOOL_RESOLUTION");
-  const root = Deno.makeTempDirSync();
-  try {
-    const binDir = `${root}/node_modules/.bin`;
-    Deno.mkdirSync(binDir, { recursive: true });
-    const bin = `${binDir}/cypress`;
-    Deno.writeTextFileSync(bin, "#!/bin/sh\n");
-    const s = new CypressRunSettings();
-    s.os_ = "linux"; // pin so the planted bare shim matches on any host
-    assertEquals(s.cwd(root).resolvedArgv()[0], bin.replace(/\\/g, "/"));
-  } finally {
-    Deno.removeSync(root, { recursive: true });
-    if (prevRes === undefined) Deno.env.delete("ZUKE_TOOL_RESOLUTION");
-    else Deno.env.set("ZUKE_TOOL_RESOLUTION", prevRes);
-  }
+Deno.test("cypress: resolves its binary from node_modules by default", async () => {
+  await assertWrapperConformance(() => new CypressRunSettings(), "cypress", {
+    resolution: "node_modules",
+  });
 });
 
 Deno.test("run: bare and all options (shared + run-specific)", () => {
@@ -93,15 +84,16 @@ Deno.test("verify and info are fixed argv", () => {
   assertEquals(new CypressInfoSettings().argv().slice(1), ["info"]);
 });
 
-const missing = <S extends ToolSettings>(s: S): S => {
-  s.os_ = "linux";
-  return s.toolPath("zuke-no-such-cypress-xyz");
-};
-
 Deno.test("every CypressTasks function reaches execution", async () => {
-  await assertRejects(() => CypressTasks.run(missing), ToolNotFoundError);
-  await assertRejects(() => CypressTasks.open(missing), ToolNotFoundError);
-  await assertRejects(() => CypressTasks.install(missing), ToolNotFoundError);
-  await assertRejects(() => CypressTasks.verify(missing), ToolNotFoundError);
-  await assertRejects(() => CypressTasks.info(missing), ToolNotFoundError);
+  await assertRejects(() => CypressTasks.run(missingTool), ToolNotFoundError);
+  await assertRejects(() => CypressTasks.open(missingTool), ToolNotFoundError);
+  await assertRejects(
+    () => CypressTasks.install(missingTool),
+    ToolNotFoundError,
+  );
+  await assertRejects(
+    () => CypressTasks.verify(missingTool),
+    ToolNotFoundError,
+  );
+  await assertRejects(() => CypressTasks.info(missingTool), ToolNotFoundError);
 });

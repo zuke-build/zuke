@@ -1,5 +1,9 @@
 import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
-import { ToolNotFoundError, type ToolSettings } from "@zuke/core/tooling";
+import { ToolNotFoundError } from "@zuke/core/tooling";
+import {
+  assertWrapperConformance,
+  missingTool,
+} from "@zuke/core/tooling/conformance";
 import { VitestSettings, VitestTasks } from "../src/vitest.ts";
 
 Deno.test("the default invocation is a one-shot run", () => {
@@ -60,30 +64,12 @@ Deno.test("vitest: every option renders, filters last", () => {
   ]);
 });
 
-const missing = <S extends ToolSettings>(s: S): S => {
-  s.os_ = "linux";
-  return s.toolPath("zz-no-such-vitest-zz");
-};
-
 Deno.test("VitestTasks.run reaches execution", async () => {
-  await assertRejects(() => VitestTasks.run(missing), ToolNotFoundError);
+  await assertRejects(() => VitestTasks.run(missingTool), ToolNotFoundError);
 });
 
-Deno.test("vitest: resolves its binary from node_modules by default", () => {
-  const prevRes = Deno.env.get("ZUKE_TOOL_RESOLUTION");
-  Deno.env.delete("ZUKE_TOOL_RESOLUTION");
-  const root = Deno.makeTempDirSync();
-  try {
-    const binDir = `${root}/node_modules/.bin`;
-    Deno.mkdirSync(binDir, { recursive: true });
-    const bin = `${binDir}/vitest`;
-    Deno.writeTextFileSync(bin, "#!/bin/sh\n");
-    const s = new VitestSettings();
-    s.os_ = "linux";
-    assertEquals(s.cwd(root).resolvedArgv()[0], bin.replace(/\\/g, "/"));
-  } finally {
-    Deno.removeSync(root, { recursive: true });
-    if (prevRes === undefined) Deno.env.delete("ZUKE_TOOL_RESOLUTION");
-    else Deno.env.set("ZUKE_TOOL_RESOLUTION", prevRes);
-  }
+Deno.test("vitest: resolves its binary from node_modules by default", async () => {
+  await assertWrapperConformance(() => new VitestSettings(), "vitest", {
+    resolution: "node_modules",
+  });
 });

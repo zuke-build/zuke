@@ -3,7 +3,8 @@ import {
   assertRejects,
   assertThrows,
 } from "../../core/tests/_assert.ts";
-import { ToolNotFoundError, type ToolSettings } from "@zuke/core/tooling";
+import { ToolNotFoundError } from "@zuke/core/tooling";
+import { missingTool } from "@zuke/core/tooling/conformance";
 import {
   GeminiExtensionsSettings,
   GeminiMcpSettings,
@@ -116,28 +117,23 @@ Deno.test("extensions: numeric operands and bare/valued flags", () => {
   ]);
 });
 
-const missing = <S extends ToolSettings>(s: S): S => {
-  s.os_ = "linux";
-  return s.toolPath("zz-no-such-gemini-zz");
-};
-
 Deno.test("GeminiTasks.run reaches execution", async () => {
   await assertRejects(
-    () => GeminiTasks.run((s) => missing(s.prompt("hi"))),
+    () => GeminiTasks.run((s) => missingTool(s.prompt("hi"))),
     ToolNotFoundError,
   );
 });
 
 Deno.test("GeminiTasks.mcp reaches execution", async () => {
   await assertRejects(
-    () => GeminiTasks.mcp((s) => missing(s.command("list"))),
+    () => GeminiTasks.mcp((s) => missingTool(s.command("list"))),
     ToolNotFoundError,
   );
 });
 
 Deno.test("GeminiTasks.extensions reaches execution", async () => {
   await assertRejects(
-    () => GeminiTasks.extensions((s) => missing(s.command("list"))),
+    () => GeminiTasks.extensions((s) => missingTool(s.command("list"))),
     ToolNotFoundError,
   );
 });

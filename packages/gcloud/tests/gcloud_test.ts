@@ -1,5 +1,6 @@
 import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
-import { ToolNotFoundError, type ToolSettings } from "@zuke/core/tooling";
+import { ToolNotFoundError } from "@zuke/core/tooling";
+import { missingTool } from "@zuke/core/tooling/conformance";
 import { GcloudSettings, GcloudTasks } from "../src/gcloud.ts";
 
 Deno.test("the default binary is gcloud", () => {
@@ -43,14 +44,9 @@ Deno.test("gcloud: minimal runs just the command", () => {
   ]);
 });
 
-const missing = <S extends ToolSettings>(s: S): S => {
-  s.os_ = "linux";
-  return s.toolPath("zz-no-such-gcloud-zz");
-};
-
 Deno.test("GcloudTasks.run reaches execution", async () => {
   await assertRejects(
-    () => GcloudTasks.run((s) => missing(s.command("version"))),
+    () => GcloudTasks.run((s) => missingTool(s.command("version"))),
     ToolNotFoundError,
   );
 });

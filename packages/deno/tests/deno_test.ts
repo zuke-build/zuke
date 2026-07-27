@@ -3,7 +3,8 @@ import {
   assertRejects,
   assertThrows,
 } from "../../core/tests/_assert.ts";
-import { ToolNotFoundError, type ToolSettings } from "@zuke/core/tooling";
+import { ToolNotFoundError } from "@zuke/core/tooling";
+import { missingTool } from "@zuke/core/tooling/conformance";
 import {
   DenoCacheSettings,
   DenoCheckSettings,
@@ -364,32 +365,22 @@ Deno.test("publish: bare and all options", () => {
   );
 });
 
-/**
- * Point a settings object at a guaranteed-missing binary with the shim
- * fallback disabled, so the task function reaches execution without running
- * anything real. Keeps the remaining DenoTasks functions covered, hermetic.
- */
-const missing = <S extends ToolSettings>(s: S): S => {
-  s.os_ = "linux";
-  return s.toolPath("zuke-no-such-tool-xyz");
-};
-
 Deno.test("every remaining DenoTasks function reaches execution", async () => {
-  await assertRejects(() => DenoTasks.test(missing), ToolNotFoundError);
-  await assertRejects(() => DenoTasks.fmt(missing), ToolNotFoundError);
-  await assertRejects(() => DenoTasks.lint(missing), ToolNotFoundError);
+  await assertRejects(() => DenoTasks.test(missingTool), ToolNotFoundError);
+  await assertRejects(() => DenoTasks.fmt(missingTool), ToolNotFoundError);
+  await assertRejects(() => DenoTasks.lint(missingTool), ToolNotFoundError);
   await assertRejects(
-    () => DenoTasks.cache((s) => missing(s).paths("x.ts")),
+    () => DenoTasks.cache((s) => missingTool(s).paths("x.ts")),
     ToolNotFoundError,
   );
-  await assertRejects(() => DenoTasks.coverage(missing), ToolNotFoundError);
+  await assertRejects(() => DenoTasks.coverage(missingTool), ToolNotFoundError);
   await assertRejects(
-    () => DenoTasks.install((s) => missing(s).module("npm:x")),
+    () => DenoTasks.install((s) => missingTool(s).module("npm:x")),
     ToolNotFoundError,
   );
-  await assertRejects(() => DenoTasks.publish(missing), ToolNotFoundError);
+  await assertRejects(() => DenoTasks.publish(missingTool), ToolNotFoundError);
   await assertRejects(
-    () => DenoTasks.task((s) => missing(s).name("x")),
+    () => DenoTasks.task((s) => missingTool(s).name("x")),
     ToolNotFoundError,
   );
 });

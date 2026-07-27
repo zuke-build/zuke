@@ -3,7 +3,8 @@ import {
   assertRejects,
   assertThrows,
 } from "../../core/tests/_assert.ts";
-import { ToolNotFoundError, type ToolSettings } from "@zuke/core/tooling";
+import { ToolNotFoundError } from "@zuke/core/tooling";
+import { missingTool } from "@zuke/core/tooling/conformance";
 import {
   NpmCiSettings,
   NpmExecSettings,
@@ -141,30 +142,20 @@ Deno.test("version: bump required; message and --no-git-tag-version", () => {
   );
 });
 
-/**
- * Point a settings object at a guaranteed-missing binary with the shim
- * fallback disabled, so each NpmTasks function reaches execution WITHOUT
- * ever invoking a real npm (tests must stay hermetic).
- */
-const missing = <S extends ToolSettings>(s: S): S => {
-  s.os_ = "linux";
-  return s.toolPath("zuke-no-such-npm-xyz");
-};
-
 Deno.test("every NpmTasks function reaches execution", async () => {
-  await assertRejects(() => NpmTasks.install(missing), ToolNotFoundError);
-  await assertRejects(() => NpmTasks.ci(missing), ToolNotFoundError);
+  await assertRejects(() => NpmTasks.install(missingTool), ToolNotFoundError);
+  await assertRejects(() => NpmTasks.ci(missingTool), ToolNotFoundError);
   await assertRejects(
-    () => NpmTasks.run((s) => missing(s).script("x")),
+    () => NpmTasks.run((s) => missingTool(s).script("x")),
     ToolNotFoundError,
   );
   await assertRejects(
-    () => NpmTasks.exec((s) => missing(s).command("x")),
+    () => NpmTasks.exec((s) => missingTool(s).command("x")),
     ToolNotFoundError,
   );
-  await assertRejects(() => NpmTasks.publish(missing), ToolNotFoundError);
+  await assertRejects(() => NpmTasks.publish(missingTool), ToolNotFoundError);
   await assertRejects(
-    () => NpmTasks.version((s) => missing(s).bump("patch")),
+    () => NpmTasks.version((s) => missingTool(s).bump("patch")),
     ToolNotFoundError,
   );
 });

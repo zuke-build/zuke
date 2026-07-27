@@ -1,5 +1,6 @@
 import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
-import { ToolNotFoundError, type ToolSettings } from "@zuke/core/tooling";
+import { ToolNotFoundError } from "@zuke/core/tooling";
+import { missingTool } from "@zuke/core/tooling/conformance";
 import {
   ReleasePleaseGithubReleaseSettings,
   ReleasePleaseReleasePrSettings,
@@ -54,18 +55,13 @@ Deno.test("github-release: subcommand token", () => {
   );
 });
 
-const missing = <S extends ToolSettings>(s: S): S => {
-  s.os_ = "linux";
-  return s.toolPath("zuke-no-such-release-please-xyz");
-};
-
 Deno.test("every ReleasePleaseTasks function reaches execution", async () => {
   await assertRejects(
-    () => ReleasePleaseTasks.releasePr(missing),
+    () => ReleasePleaseTasks.releasePr(missingTool),
     ToolNotFoundError,
   );
   await assertRejects(
-    () => ReleasePleaseTasks.githubRelease(missing),
+    () => ReleasePleaseTasks.githubRelease(missingTool),
     ToolNotFoundError,
   );
 });

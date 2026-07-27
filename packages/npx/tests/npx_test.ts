@@ -3,7 +3,8 @@ import {
   assertRejects,
   assertThrows,
 } from "../../core/tests/_assert.ts";
-import { ToolNotFoundError, type ToolSettings } from "@zuke/core/tooling";
+import { ToolNotFoundError } from "@zuke/core/tooling";
+import { missingTool } from "@zuke/core/tooling/conformance";
 import { NpxSettings, NpxTasks } from "../src/npx.ts";
 
 Deno.test("the default binary is npx", () => {
@@ -58,19 +59,9 @@ Deno.test("npx: --call runs a string without a command", () => {
   );
 });
 
-/**
- * Point a settings object at a guaranteed-missing binary with the shim
- * fallback disabled, so the NpxTasks function reaches execution WITHOUT ever
- * invoking a real npx (tests must stay hermetic).
- */
-const missing = <S extends ToolSettings>(s: S): S => {
-  s.os_ = "linux";
-  return s.toolPath("zuke-no-such-npx-xyz");
-};
-
 Deno.test("NpxTasks.npx reaches execution", async () => {
   await assertRejects(
-    () => NpxTasks.npx((s) => missing(s).command("x")),
+    () => NpxTasks.npx((s) => missingTool(s).command("x")),
     ToolNotFoundError,
   );
 });

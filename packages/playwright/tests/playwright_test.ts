@@ -1,5 +1,9 @@
 import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
-import { ToolNotFoundError, type ToolSettings } from "@zuke/core/tooling";
+import { ToolNotFoundError } from "@zuke/core/tooling";
+import {
+  assertWrapperConformance,
+  missingTool,
+} from "@zuke/core/tooling/conformance";
 import {
   PlaywrightCodegenSettings,
   PlaywrightInstallSettings,
@@ -79,47 +83,31 @@ Deno.test("codegen: bare, --target, --output, and a url", () => {
   );
 });
 
-/**
- * Point a settings object at a guaranteed-missing binary with the shim
- * fallback disabled, so each PlaywrightTasks function reaches execution WITHOUT
- * ever invoking a real playwright (tests must stay hermetic).
- */
-const missing = <S extends ToolSettings>(s: S): S => {
-  s.os_ = "linux";
-  return s.toolPath("zuke-no-such-playwright-xyz");
-};
-
-Deno.test("playwright: resolves its binary from node_modules by default", () => {
-  const prevRes = Deno.env.get("ZUKE_TOOL_RESOLUTION");
-  Deno.env.delete("ZUKE_TOOL_RESOLUTION");
-  const root = Deno.makeTempDirSync();
-  try {
-    const binDir = `${root}/node_modules/.bin`;
-    Deno.mkdirSync(binDir, { recursive: true });
-    const bin = `${binDir}/playwright`;
-    Deno.writeTextFileSync(bin, "#!/bin/sh\n");
-    const s = new PlaywrightTestSettings();
-    s.os_ = "linux"; // pin so the planted bare shim matches on any host
-    assertEquals(s.cwd(root).resolvedArgv()[0], bin.replace(/\\/g, "/"));
-  } finally {
-    Deno.removeSync(root, { recursive: true });
-    if (prevRes === undefined) Deno.env.delete("ZUKE_TOOL_RESOLUTION");
-    else Deno.env.set("ZUKE_TOOL_RESOLUTION", prevRes);
-  }
+Deno.test("playwright: resolves its binary from node_modules by default", async () => {
+  await assertWrapperConformance(
+    () => new PlaywrightTestSettings(),
+    "playwright",
+    {
+      resolution: "node_modules",
+    },
+  );
 });
 
 Deno.test("every PlaywrightTasks function reaches execution", async () => {
-  await assertRejects(() => PlaywrightTasks.test(missing), ToolNotFoundError);
   await assertRejects(
-    () => PlaywrightTasks.install(missing),
+    () => PlaywrightTasks.test(missingTool),
     ToolNotFoundError,
   );
   await assertRejects(
-    () => PlaywrightTasks.showReport(missing),
+    () => PlaywrightTasks.install(missingTool),
     ToolNotFoundError,
   );
   await assertRejects(
-    () => PlaywrightTasks.codegen(missing),
+    () => PlaywrightTasks.showReport(missingTool),
+    ToolNotFoundError,
+  );
+  await assertRejects(
+    () => PlaywrightTasks.codegen(missingTool),
     ToolNotFoundError,
   );
 });

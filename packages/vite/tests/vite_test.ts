@@ -1,5 +1,9 @@
 import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
-import { ToolNotFoundError, type ToolSettings } from "@zuke/core/tooling";
+import { ToolNotFoundError } from "@zuke/core/tooling";
+import {
+  assertWrapperConformance,
+  missingTool,
+} from "@zuke/core/tooling/conformance";
 import {
   ViteBuildSettings,
   ViteDevSettings,
@@ -74,32 +78,14 @@ Deno.test("preview: bare and all options", () => {
   );
 });
 
-const missing = <S extends ToolSettings>(s: S): S => {
-  s.os_ = "linux";
-  return s.toolPath("zuke-no-such-vite-xyz");
-};
-
-Deno.test("vite: resolves its binary from node_modules by default", () => {
-  const prevRes = Deno.env.get("ZUKE_TOOL_RESOLUTION");
-  Deno.env.delete("ZUKE_TOOL_RESOLUTION");
-  const root = Deno.makeTempDirSync();
-  try {
-    const binDir = `${root}/node_modules/.bin`;
-    Deno.mkdirSync(binDir, { recursive: true });
-    const bin = `${binDir}/vite`;
-    Deno.writeTextFileSync(bin, "#!/bin/sh\n");
-    const s = new ViteDevSettings();
-    s.os_ = "linux";
-    assertEquals(s.cwd(root).resolvedArgv()[0], bin.replace(/\\/g, "/"));
-  } finally {
-    Deno.removeSync(root, { recursive: true });
-    if (prevRes === undefined) Deno.env.delete("ZUKE_TOOL_RESOLUTION");
-    else Deno.env.set("ZUKE_TOOL_RESOLUTION", prevRes);
-  }
+Deno.test("vite: resolves its binary from node_modules by default", async () => {
+  await assertWrapperConformance(() => new ViteDevSettings(), "vite", {
+    resolution: "node_modules",
+  });
 });
 
 Deno.test("every ViteTasks function reaches execution", async () => {
-  await assertRejects(() => ViteTasks.dev(missing), ToolNotFoundError);
-  await assertRejects(() => ViteTasks.build(missing), ToolNotFoundError);
-  await assertRejects(() => ViteTasks.preview(missing), ToolNotFoundError);
+  await assertRejects(() => ViteTasks.dev(missingTool), ToolNotFoundError);
+  await assertRejects(() => ViteTasks.build(missingTool), ToolNotFoundError);
+  await assertRejects(() => ViteTasks.preview(missingTool), ToolNotFoundError);
 });

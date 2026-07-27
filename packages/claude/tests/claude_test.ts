@@ -3,7 +3,8 @@ import {
   assertRejects,
   assertThrows,
 } from "../../core/tests/_assert.ts";
-import { ToolNotFoundError, type ToolSettings } from "@zuke/core/tooling";
+import { ToolNotFoundError } from "@zuke/core/tooling";
+import { missingTool } from "@zuke/core/tooling/conformance";
 import {
   ClaudeConfigSettings,
   ClaudeMcpSettings,
@@ -140,35 +141,30 @@ Deno.test("update: builds the update subcommand", () => {
   assertEquals(new ClaudeUpdateSettings().argv(), ["claude", "update"]);
 });
 
-const missing = <S extends ToolSettings>(s: S): S => {
-  s.os_ = "linux";
-  return s.toolPath("zz-no-such-claude-zz");
-};
-
 Deno.test("ClaudeTasks.run reaches execution", async () => {
   await assertRejects(
-    () => ClaudeTasks.run((s) => missing(s.prompt("hi"))),
+    () => ClaudeTasks.run((s) => missingTool(s.prompt("hi"))),
     ToolNotFoundError,
   );
 });
 
 Deno.test("ClaudeTasks.mcp reaches execution", async () => {
   await assertRejects(
-    () => ClaudeTasks.mcp((s) => missing(s.command("list"))),
+    () => ClaudeTasks.mcp((s) => missingTool(s.command("list"))),
     ToolNotFoundError,
   );
 });
 
 Deno.test("ClaudeTasks.config reaches execution", async () => {
   await assertRejects(
-    () => ClaudeTasks.config((s) => missing(s.command("list"))),
+    () => ClaudeTasks.config((s) => missingTool(s.command("list"))),
     ToolNotFoundError,
   );
 });
 
 Deno.test("ClaudeTasks.update reaches execution", async () => {
   await assertRejects(
-    () => ClaudeTasks.update((s) => missing(s)),
+    () => ClaudeTasks.update((s) => missingTool(s)),
     ToolNotFoundError,
   );
 });

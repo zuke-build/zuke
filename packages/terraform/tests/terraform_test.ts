@@ -1,5 +1,6 @@
 import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
-import { ToolNotFoundError, type ToolSettings } from "@zuke/core/tooling";
+import { ToolNotFoundError } from "@zuke/core/tooling";
+import { missingTool } from "@zuke/core/tooling/conformance";
 import {
   TerraformApplySettings,
   TerraformDestroySettings,
@@ -116,25 +117,30 @@ Deno.test("output: bare, -json, -raw, and a name", () => {
   );
 });
 
-/**
- * Point a settings object at a guaranteed-missing binary with the shim
- * fallback disabled, so each TerraformTasks function reaches execution WITHOUT
- * ever invoking a real terraform (tests must stay hermetic).
- */
-const missing = <S extends ToolSettings>(s: S): S => {
-  s.os_ = "linux";
-  return s.toolPath("zuke-no-such-terraform-xyz");
-};
-
 Deno.test("every TerraformTasks function reaches execution", async () => {
-  await assertRejects(() => TerraformTasks.init(missing), ToolNotFoundError);
   await assertRejects(
-    () => TerraformTasks.validate(missing),
+    () => TerraformTasks.init(missingTool),
     ToolNotFoundError,
   );
-  await assertRejects(() => TerraformTasks.plan(missing), ToolNotFoundError);
-  await assertRejects(() => TerraformTasks.apply(missing), ToolNotFoundError);
-  await assertRejects(() => TerraformTasks.destroy(missing), ToolNotFoundError);
-  await assertRejects(() => TerraformTasks.fmt(missing), ToolNotFoundError);
-  await assertRejects(() => TerraformTasks.output(missing), ToolNotFoundError);
+  await assertRejects(
+    () => TerraformTasks.validate(missingTool),
+    ToolNotFoundError,
+  );
+  await assertRejects(
+    () => TerraformTasks.plan(missingTool),
+    ToolNotFoundError,
+  );
+  await assertRejects(
+    () => TerraformTasks.apply(missingTool),
+    ToolNotFoundError,
+  );
+  await assertRejects(
+    () => TerraformTasks.destroy(missingTool),
+    ToolNotFoundError,
+  );
+  await assertRejects(() => TerraformTasks.fmt(missingTool), ToolNotFoundError);
+  await assertRejects(
+    () => TerraformTasks.output(missingTool),
+    ToolNotFoundError,
+  );
 });

@@ -3,7 +3,8 @@ import {
   assertRejects,
   assertThrows,
 } from "../../core/tests/_assert.ts";
-import { ToolNotFoundError, type ToolSettings } from "@zuke/core/tooling";
+import { ToolNotFoundError } from "@zuke/core/tooling";
+import { missingTool } from "@zuke/core/tooling/conformance";
 import {
   JsrAddSettings,
   JsrPublishSettings,
@@ -67,19 +68,14 @@ Deno.test("remove: names required", () => {
   );
 });
 
-const missing = <S extends ToolSettings>(s: S): S => {
-  s.os_ = "linux";
-  return s.toolPath("zuke-no-such-jsr-xyz");
-};
-
 Deno.test("every JsrTasks function reaches execution", async () => {
-  await assertRejects(() => JsrTasks.publish(missing), ToolNotFoundError);
+  await assertRejects(() => JsrTasks.publish(missingTool), ToolNotFoundError);
   await assertRejects(
-    () => JsrTasks.add((s) => missing(s).packages("@std/assert")),
+    () => JsrTasks.add((s) => missingTool(s).packages("@std/assert")),
     ToolNotFoundError,
   );
   await assertRejects(
-    () => JsrTasks.remove((s) => missing(s).packages("@std/assert")),
+    () => JsrTasks.remove((s) => missingTool(s).packages("@std/assert")),
     ToolNotFoundError,
   );
 });

@@ -3,7 +3,8 @@ import {
   assertRejects,
   assertThrows,
 } from "../../core/tests/_assert.ts";
-import { ToolNotFoundError, type ToolSettings } from "@zuke/core/tooling";
+import { ToolNotFoundError } from "@zuke/core/tooling";
+import { missingTool } from "@zuke/core/tooling/conformance";
 import {
   BunAddSettings,
   BunInstallSettings,
@@ -91,33 +92,23 @@ Deno.test("test: bare, --coverage, --bail, and paths", () => {
   );
 });
 
-/**
- * Point a settings object at a guaranteed-missing binary with the shim
- * fallback disabled, so each BunTasks function reaches execution WITHOUT
- * ever invoking a real bun (tests must stay hermetic).
- */
-const missing = <S extends ToolSettings>(s: S): S => {
-  s.os_ = "linux";
-  return s.toolPath("zuke-no-such-bun-xyz");
-};
-
 Deno.test("every BunTasks function reaches execution", async () => {
-  await assertRejects(() => BunTasks.install(missing), ToolNotFoundError);
+  await assertRejects(() => BunTasks.install(missingTool), ToolNotFoundError);
   await assertRejects(
-    () => BunTasks.add((s) => missing(s).packages("x")),
+    () => BunTasks.add((s) => missingTool(s).packages("x")),
     ToolNotFoundError,
   );
   await assertRejects(
-    () => BunTasks.remove((s) => missing(s).packages("x")),
+    () => BunTasks.remove((s) => missingTool(s).packages("x")),
     ToolNotFoundError,
   );
   await assertRejects(
-    () => BunTasks.run((s) => missing(s).script("x")),
+    () => BunTasks.run((s) => missingTool(s).script("x")),
     ToolNotFoundError,
   );
   await assertRejects(
-    () => BunTasks.x((s) => missing(s).command("x")),
+    () => BunTasks.x((s) => missingTool(s).command("x")),
     ToolNotFoundError,
   );
-  await assertRejects(() => BunTasks.test(missing), ToolNotFoundError);
+  await assertRejects(() => BunTasks.test(missingTool), ToolNotFoundError);
 });

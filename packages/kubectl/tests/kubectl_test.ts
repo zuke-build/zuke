@@ -4,7 +4,8 @@ import {
   assertStringIncludes,
   assertThrows,
 } from "../../core/tests/_assert.ts";
-import { ToolNotFoundError, type ToolSettings } from "@zuke/core/tooling";
+import { ToolNotFoundError } from "@zuke/core/tooling";
+import { missingTool } from "@zuke/core/tooling/conformance";
 import { withAmbientEcho } from "../../core/src/ambient_echo.ts";
 import {
   KubectlAnnotateSettings,
@@ -897,94 +898,94 @@ Deno.test("top: requires pods or nodes; all options", () => {
   );
 });
 
-/**
- * Point a settings object at a guaranteed-missing binary with the shim
- * fallback disabled, so each KubectlTasks function reaches execution WITHOUT
- * ever invoking a real kubectl (tests must stay hermetic).
- */
-const missing = <S extends ToolSettings>(s: S): S => {
-  s.os_ = "linux";
-  return s.toolPath("zuke-no-such-kubectl-xyz");
-};
-
 Deno.test("every KubectlTasks function reaches execution", async () => {
   await assertRejects(
-    () => KubectlTasks.apply((s) => missing(s).file("a.yaml")),
-    ToolNotFoundError,
-  );
-  await assertRejects(() => KubectlTasks.create(missing), ToolNotFoundError);
-  await assertRejects(
-    () => KubectlTasks.delete((s) => missing(s).resource("pod", "web")),
+    () => KubectlTasks.apply((s) => missingTool(s).file("a.yaml")),
     ToolNotFoundError,
   );
   await assertRejects(
-    () => KubectlTasks.get((s) => missing(s).resource("pods")),
+    () => KubectlTasks.create(missingTool),
     ToolNotFoundError,
   );
   await assertRejects(
-    () => KubectlTasks.describe((s) => missing(s).resource("pod/web")),
+    () => KubectlTasks.delete((s) => missingTool(s).resource("pod", "web")),
     ToolNotFoundError,
   );
   await assertRejects(
-    () => KubectlTasks.logs((s) => missing(s).resource("web-0")),
+    () => KubectlTasks.get((s) => missingTool(s).resource("pods")),
     ToolNotFoundError,
   );
   await assertRejects(
-    () => KubectlTasks.exec((s) => missing(s).resource("web-0").command("sh")),
+    () => KubectlTasks.describe((s) => missingTool(s).resource("pod/web")),
     ToolNotFoundError,
   );
   await assertRejects(
-    () =>
-      KubectlTasks.rollout((s) => missing(s).status().resource("deploy/api")),
+    () => KubectlTasks.logs((s) => missingTool(s).resource("web-0")),
     ToolNotFoundError,
   );
   await assertRejects(
     () =>
-      KubectlTasks.scale((s) => missing(s).replicas(2).resource("deploy/api")),
+      KubectlTasks.exec((s) => missingTool(s).resource("web-0").command("sh")),
+    ToolNotFoundError,
+  );
+  await assertRejects(
+    () =>
+      KubectlTasks.rollout((s) =>
+        missingTool(s).status().resource("deploy/api")
+      ),
+    ToolNotFoundError,
+  );
+  await assertRejects(
+    () =>
+      KubectlTasks.scale((s) =>
+        missingTool(s).replicas(2).resource("deploy/api")
+      ),
     ToolNotFoundError,
   );
   await assertRejects(
     () =>
       KubectlTasks.setImage((s) =>
-        missing(s).resource("deploy/api").image("api", "api:1")
+        missingTool(s).resource("deploy/api").image("api", "api:1")
       ),
     ToolNotFoundError,
   );
   await assertRejects(
     () =>
       KubectlTasks.annotate((s) =>
-        missing(s).resource("deploy", "api").annotation("team", "payments")
+        missingTool(s).resource("deploy", "api").annotation("team", "payments")
       ),
     ToolNotFoundError,
   );
   await assertRejects(
     () =>
       KubectlTasks.label((s) =>
-        missing(s).resource("deploy", "api").label("team", "payments")
+        missingTool(s).resource("deploy", "api").label("team", "payments")
       ),
     ToolNotFoundError,
   );
   await assertRejects(
     () =>
-      KubectlTasks.patch((s) => missing(s).resource("deploy/api").patch("{}")),
+      KubectlTasks.patch((s) =>
+        missingTool(s).resource("deploy/api").patch("{}")
+      ),
     ToolNotFoundError,
   );
   await assertRejects(
     () =>
       KubectlTasks.portForward((s) =>
-        missing(s).resource("svc/api").port("80")
+        missingTool(s).resource("svc/api").port("80")
       ),
     ToolNotFoundError,
   );
   await assertRejects(
     () =>
       KubectlTasks.wait((s) =>
-        missing(s).resource("pod/web").forCondition("delete")
+        missingTool(s).resource("pod/web").forCondition("delete")
       ),
     ToolNotFoundError,
   );
   await assertRejects(
-    () => KubectlTasks.top((s) => missing(s).nodes()),
+    () => KubectlTasks.top((s) => missingTool(s).nodes()),
     ToolNotFoundError,
   );
 });
