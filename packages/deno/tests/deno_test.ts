@@ -22,6 +22,7 @@ import {
 Deno.test("run: script, permissions, config, reload, script args", () => {
   const argv = new DenoRunSettings()
     .allowAll()
+    .frozen()
     .config("deno.json")
     .reload()
     .script("main.ts")
@@ -31,6 +32,7 @@ Deno.test("run: script, permissions, config, reload, script args", () => {
   assertEquals(argv, [
     "run",
     "--allow-all",
+    "--frozen",
     "--config",
     "deno.json",
     "--reload",
@@ -66,6 +68,7 @@ Deno.test("run: .script() is required", () => {
 Deno.test("test: coverage, filter, parallel, fail-fast, paths", () => {
   const argv = new DenoTestSettings()
     .allowAll()
+    .frozen()
     .coverage("cov_profile")
     .filter("graph")
     .parallel()
@@ -76,6 +79,7 @@ Deno.test("test: coverage, filter, parallel, fail-fast, paths", () => {
   assertEquals(argv, [
     "test",
     "--allow-all",
+    "--frozen",
     "--coverage=cov_profile",
     "--filter",
     "graph",
@@ -100,6 +104,10 @@ Deno.test("check: paths are required", () => {
     "check",
     "mod.ts",
   ]);
+  assertEquals(
+    new DenoCheckSettings().frozen().paths("mod.ts").argv().slice(1),
+    ["check", "--frozen", "mod.ts"],
+  );
 });
 
 Deno.test("fmt: optional --check and paths", () => {
@@ -126,6 +134,7 @@ Deno.test("doc: flags precede the source paths", () => {
   assertEquals(
     new DenoDocSettings()
       .json()
+      .frozen()
       .private()
       .filter("MyClass.method")
       .paths("mod.ts", "src/extra.ts")
@@ -134,6 +143,7 @@ Deno.test("doc: flags precede the source paths", () => {
     [
       "doc",
       "--json",
+      "--frozen",
       "--private",
       "--filter",
       "MyClass.method",
@@ -175,6 +185,10 @@ Deno.test("cache: paths required, optional --reload", () => {
   assertEquals(
     new DenoCacheSettings().reload().paths("mod.ts").argv().slice(1),
     ["cache", "--reload", "mod.ts"],
+  );
+  assertEquals(
+    new DenoCacheSettings().frozen().paths("mod.ts").argv().slice(1),
+    ["cache", "--frozen", "mod.ts"],
   );
 });
 
@@ -236,6 +250,10 @@ Deno.test("task: name required, then task args", () => {
     new DenoTaskSettings().name("test").taskArgs("--quiet").argv().slice(1),
     ["task", "test", "--quiet"],
   );
+  assertEquals(
+    new DenoTaskSettings().frozen().name("test").argv().slice(1),
+    ["task", "--frozen", "test"],
+  );
 });
 
 Deno.test("the default binary is the running deno executable", () => {
@@ -276,6 +294,7 @@ Deno.test("install: global executable from an npm module, with perms", () => {
     .allow("read")
     .allow("env")
     .allow("sys")
+    .frozen()
     .module("npm:cspell@9")
     .moduleArgs("--version")
     .argv()
@@ -285,6 +304,7 @@ Deno.test("install: global executable from an npm module, with perms", () => {
     "--allow-read",
     "--allow-env",
     "--allow-sys",
+    "--frozen",
     "--global",
     "--force",
     "--root",

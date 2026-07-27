@@ -15,7 +15,7 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
 
 /** The starter `zuke.ts`, with the build class named `name`. */
 export function starterBuild(name: string): string {
-  return `import { Build, run, target } from "jsr:@zuke/core";
+  return `import { Build, run, target } from "jsr:@zuke/core@^1";
 
 /** Your project's build. Run a target with \`./zuke <target>\`. */
 class ${name} extends Build {
@@ -58,7 +58,19 @@ const DENO_INSTALL_DOCS =
 
 /* cspell:disable */
 
-/** The bash launcher (`./zuke`). Runs `zuke.ts` with the Deno on `PATH`. */
+/**
+ * The bash launcher (`./zuke`). Runs `zuke.ts` with the Deno on `PATH`.
+ *
+ * `--frozen` is passed only when a `deno.lock` is already there: a freshly
+ * scaffolded project has none, and `deno run --frozen` against a missing
+ * lockfile fails outright ("The lockfile is out of date") instead of writing
+ * one. So the first run resolves and records the graph, and every run after
+ * that verifies it and fails loudly if it changed.
+ *
+ * The unfrozen branch prints a notice to stderr. The same branch is taken if a
+ * `deno.lock` is later removed, which drops integrity verification, so it says
+ * so rather than running unverified in silence.
+ */
 export function launcherBash(): string {
   return `#!/usr/bin/env bash
 # Zuke launcher — runs zuke.ts with Deno.
@@ -70,11 +82,23 @@ if ! command -v deno >/dev/null 2>&1; then
   echo "      ${DENO_INSTALL_DOCS}" >&2
   exit 1
 fi
-deno run -A zuke.ts "$@"
+# The first run has no lockfile to verify against, so let Deno write one; from
+# then on --frozen fails the build if the module graph changed. Say so when
+# skipping, so a deleted lockfile downgrades verification visibly instead of
+# silently.
+if [ -f deno.lock ]; then
+  deno run -A --frozen zuke.ts "$@"
+else
+  echo "zuke: no deno.lock here yet — running without lockfile verification so Deno can write one." >&2
+  deno run -A zuke.ts "$@"
+fi
 `;
 }
 
-/** The PowerShell launcher (`.\\zuke.ps1`). */
+/**
+ * The PowerShell launcher (`.\\zuke.ps1`). Mirrors {@link launcherBash},
+ * including its conditional `--frozen`.
+ */
 export function launcherPwsh(): string {
   return `#!/usr/bin/env pwsh
 # Zuke launcher — runs zuke.ts with Deno.
@@ -86,14 +110,34 @@ if (-not $found) {
   Write-Error "zuke: Deno not found on PATH. Install it, then re-run this launcher: ${DENO_INSTALL_DOCS}"
   exit 1
 }
-& $found.Source run -A (Join-Path $dir "zuke.ts") @args
+# The first run has no lockfile to verify against, so let Deno write one; from
+# then on --frozen fails the build if the module graph changed. Say so when
+# skipping, so a deleted lockfile downgrades verification visibly instead of
+# silently.
+$denoArgs = @("run", "-A")
+if (Test-Path (Join-Path $dir "deno.lock")) {
+  $denoArgs += "--frozen"
+} else {
+  Write-Warning "zuke: no deno.lock here yet - running without lockfile verification so Deno can write one."
+}
+$denoArgs += (Join-Path $dir "zuke.ts")
+& $found.Source @denoArgs @args
 exit $LASTEXITCODE
 `;
 }
 
 /* cspell:enable */
 
-/** The task names `setup` writes into `deno.json`, with their commands. */
+/**
+ * The task names `setup` writes into `deno.json`, with their commands.
+ *
+ * The `zuke` task deliberately omits `--frozen`, unlike the launchers: a task
+ * command runs in `deno task`'s own shell, which has no conditionals, so it
+ * cannot skip the flag on the first run when no `deno.lock` exists yet — and
+ * hard-coding it would make a fresh scaffold fail before it could ever write
+ * one. The launcher (`./zuke`, the advertised entry point) does the lockfile
+ * check and enforces `--frozen` from the second run onward.
+ */
 const DEFAULT_TASKS: ReadonlyArray<readonly [string, string]> = [
   ["zuke", "deno run -A zuke.ts"],
   ["fmt", "deno fmt"],

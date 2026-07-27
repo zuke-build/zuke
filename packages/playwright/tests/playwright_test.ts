@@ -19,8 +19,10 @@ Deno.test("test: bare, projects, grep, headed, workers, reporter, config, paths"
       .project("chromium", "firefox")
       .grep("@smoke")
       .headed()
+      .ui()
       .workers(4)
       .reporter("dot")
+      .updateSnapshots()
       .config("pw.config.ts")
       .paths("tests/e2e")
       .argv()
@@ -32,8 +34,10 @@ Deno.test("test: bare, projects, grep, headed, workers, reporter, config, paths"
       "--grep",
       "@smoke",
       "--headed",
+      "--ui",
       "--workers=4",
       "--reporter=dot",
+      "--update-snapshots",
       "--config=pw.config.ts",
       "tests/e2e",
     ],

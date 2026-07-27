@@ -68,6 +68,12 @@ class VitestSettings extends ToolSettings
     Update snapshots (`-u`/`--update`).
   forceRun(): this
     Force one-shot mode even under watch (`--run`).
+  pool(name: VitestPool): this
+    Choose the worker pool implementation (`--pool`).
+  maxWorkers(count: number): this
+    Cap the number of parallel workers (`--maxWorkers`).
+  minWorkers(count: number): this
+    Set the minimum number of parallel workers (`--minWorkers`).
   bail(count: number): this
     Stop after N failed tests (`--bail`).
   retry(count: number): this
@@ -96,6 +102,9 @@ interface VitestTasksApi
 
   run(configure?: Configure<VitestSettings>): Promise<CommandOutput>
     Run tests with `vitest` (one-shot `run` unless {@link VitestSettings.watch}).
+
+type VitestPool = "threads" | "forks" | "vmThreads" | "vmForks"
+  The Vitest worker pool implementation (`--pool`).
 ````
 
 </details>

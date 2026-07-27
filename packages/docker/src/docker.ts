@@ -377,7 +377,12 @@ export class DockerLoginSettings extends DockerSettings {
     return this;
   }
 
-  /** The password (`-p`); prefer {@link passwordStdin} in CI. */
+  /**
+   * The password (`-p`). This lands directly in the process argv, where it
+   * can leak through `ps`/process listings, shell history, or CI job logs —
+   * {@link passwordStdin} is the safe choice in CI (and generally), since it
+   * pipes the secret through STDIN instead of putting it on the command line.
+   */
   password(value: string): this {
     this.#password = value;
     return this;

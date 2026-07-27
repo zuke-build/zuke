@@ -44,6 +44,7 @@ export abstract class DenoSettings extends ToolSettings {
 /** Base for subcommands that accept `--allow-*` permission flags. */
 export abstract class DenoPermissionSettings extends DenoSettings {
   #permissions: string[] = [];
+  #frozen = false;
 
   /** Grant all permissions (`--allow-all`). */
   allowAll(): this {
@@ -61,9 +62,30 @@ export abstract class DenoPermissionSettings extends DenoSettings {
     return this;
   }
 
+  /**
+   * Error out if the lockfile is out of date instead of silently updating it
+   * (`--frozen`). Use it whenever the module graph must match the committed
+   * `deno.lock` exactly — running an `npm:` tool in CI, say, so its transitive
+   * tree stays pinned to the audited integrity hashes rather than being
+   * resolved afresh. Named `frozen` — not `frozenLockfile` — to mirror the real
+   * Deno CLI flag exactly. This is a deliberate divergence from
+   * `PnpmSettings.frozenLockfile()` in `@zuke/pnpm`, which follows pnpm's own
+   * flag name instead: guideline 7 (mirror the real CLI) takes priority over
+   * cross-package naming symmetry.
+   */
+  frozen(): this {
+    this.#frozen = true;
+    return this;
+  }
+
   /** The accumulated permission flags, in declaration order. */
   protected get permissionArgs(): string[] {
     return [...this.#permissions];
+  }
+
+  /** The `--frozen` flag, if set; read by subclasses assembling their argv. */
+  protected get frozenArgs(): string[] {
+    return this.#frozen ? ["--frozen"] : [];
   }
 }
 
@@ -73,7 +95,6 @@ export class DenoRunSettings extends DenoPermissionSettings {
   #scriptArgs: string[] = [];
   #config?: string;
   #reload = false;
-  #frozen = false;
 
   /** The script to run (required). */
   script(path: PathLike): this {
@@ -99,24 +120,12 @@ export class DenoRunSettings extends DenoPermissionSettings {
     return this;
   }
 
-  /**
-   * Fail if the lockfile is out of date (`--frozen`) instead of updating it. Use
-   * it whenever the module graph must match the committed `deno.lock` exactly —
-   * running an `npm:` tool in CI, say, so its transitive tree stays pinned to
-   * the audited integrity hashes rather than being resolved afresh.
-   */
-  frozen(): this {
-    this.#frozen = true;
-    return this;
-  }
-
   /** Assemble the `deno run` argv. */
   protected override buildArgs(): string[] {
     if (this.#script === undefined) {
       throw new Error("DenoTasks.run: .script() is required.");
     }
-    const argv = ["run", ...this.permissionArgs];
-    if (this.#frozen) argv.push("--frozen");
+    const argv = ["run", ...this.permissionArgs, ...this.frozenArgs];
     if (this.#config !== undefined) argv.push("--config", this.#config);
     if (this.#reload) argv.push("--reload");
     argv.push(this.#script, ...this.#scriptArgs);
@@ -164,7 +173,7 @@ export class DenoTestSettings extends DenoPermissionSettings {
 
   /** Assemble the `deno test` argv. */
   protected override buildArgs(): string[] {
-    const argv = ["test", ...this.permissionArgs];
+    const argv = ["test", ...this.permissionArgs, ...this.frozenArgs];
     if (this.#coverage !== undefined) {
       argv.push(`--coverage=${this.#coverage}`);
     }
@@ -179,10 +188,21 @@ export class DenoTestSettings extends DenoPermissionSettings {
 /** Settings for `deno check`. */
 export class DenoCheckSettings extends DenoSettings {
   #paths: string[] = [];
+  #frozen = false;
 
   /** The files to type-check (at least one is required). */
   paths(...paths: PathLike[]): this {
     this.#paths.push(...paths.map(String));
+    return this;
+  }
+
+  /**
+   * Error out if the lockfile is out of date (`--frozen`). See
+   * {@link DenoPermissionSettings.frozen} for why the name mirrors the real
+   * Deno flag rather than `PnpmSettings.frozenLockfile()`'s naming.
+   */
+  frozen(): this {
+    this.#frozen = true;
     return this;
   }
 
@@ -193,7 +213,10 @@ export class DenoCheckSettings extends DenoSettings {
         "DenoTasks.check: at least one path is required (use .paths()).",
       );
     }
-    return ["check", ...this.#paths];
+    const argv = ["check"];
+    if (this.#frozen) argv.push("--frozen");
+    argv.push(...this.#paths);
+    return argv;
   }
 }
 
@@ -266,6 +289,16 @@ export class DenoDocSettings extends DenoSettings {
     return this;
   }
 
+  /**
+   * Error out if the lockfile is out of date (`--frozen`). See
+   * {@link DenoPermissionSettings.frozen} for why the name mirrors the real
+   * Deno flag rather than `PnpmSettings.frozenLockfile()`'s naming.
+   */
+  frozen(): this {
+    this.#flags.push("--frozen");
+    return this;
+  }
+
   /** Generate static HTML documentation (`--html`). */
   html(): this {
     this.#flags.push("--html");
@@ -311,11 +344,22 @@ export class DenoDocSettings extends DenoSettings {
 /** Settings for `deno cache`. */
 export class DenoCacheSettings extends DenoSettings {
   #reload = false;
+  #frozen = false;
   #paths: string[] = [];
 
   /** Reload remote modules instead of using the cache (`--reload`). */
   reload(): this {
     this.#reload = true;
+    return this;
+  }
+
+  /**
+   * Error out if the lockfile is out of date (`--frozen`). See
+   * {@link DenoPermissionSettings.frozen} for why the name mirrors the real
+   * Deno flag rather than `PnpmSettings.frozenLockfile()`'s naming.
+   */
+  frozen(): this {
+    this.#frozen = true;
     return this;
   }
 
@@ -333,6 +377,7 @@ export class DenoCacheSettings extends DenoSettings {
       );
     }
     const argv = ["cache"];
+    if (this.#frozen) argv.push("--frozen");
     if (this.#reload) argv.push("--reload");
     argv.push(...this.#paths);
     return argv;
@@ -486,7 +531,7 @@ export class DenoInstallSettings extends DenoPermissionSettings {
 
   /** Assemble the `deno install` argv. */
   protected override buildArgs(): string[] {
-    const argv = ["install", ...this.permissionArgs];
+    const argv = ["install", ...this.permissionArgs, ...this.frozenArgs];
     if (this.#global) argv.push("--global");
     if (this.#force) argv.push("--force");
     if (this.#root !== undefined) argv.push("--root", this.#root);
@@ -559,6 +604,7 @@ export class DenoPublishSettings extends DenoSettings {
 export class DenoTaskSettings extends DenoSettings {
   #name?: string;
   #taskArgs: string[] = [];
+  #frozen = false;
 
   /** The task name from deno.json (required). */
   name(value: string): this {
@@ -572,12 +618,25 @@ export class DenoTaskSettings extends DenoSettings {
     return this;
   }
 
+  /**
+   * Error out if the lockfile is out of date (`--frozen`). See
+   * {@link DenoPermissionSettings.frozen} for why the name mirrors the real
+   * Deno flag rather than `PnpmSettings.frozenLockfile()`'s naming.
+   */
+  frozen(): this {
+    this.#frozen = true;
+    return this;
+  }
+
   /** Assemble the `deno task` argv. */
   protected override buildArgs(): string[] {
     if (this.#name === undefined) {
       throw new Error("DenoTasks.task: .name() is required.");
     }
-    return ["task", this.#name, ...this.#taskArgs];
+    const argv = ["task"];
+    if (this.#frozen) argv.push("--frozen");
+    argv.push(this.#name, ...this.#taskArgs);
+    return argv;
   }
 }
 
