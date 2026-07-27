@@ -15,7 +15,11 @@ import {
 import { resumeRun } from "../src/resume.ts";
 import type { OrderingEdge } from "../src/graph.ts";
 import { FileSystemStateStore } from "../src/state/fs_store.ts";
-import { defaultStateHost, type StateStore } from "../src/state/store.ts";
+import {
+  defaultStateHost,
+  type PutResult,
+  type StateStore,
+} from "../src/state/store.ts";
 import { lockKey } from "../src/state/lock.ts";
 import type { RunRecord } from "../src/state/types.ts";
 import type { Reporter } from "../src/executor.ts";
@@ -1386,3 +1390,75 @@ Deno.test("a degraded record compensates a pending fan-out item", async () => {
   assertEquals(undone, ["b", "a"]);
   assertEquals(outcome.attempts.length, 2);
 });
+
+Deno.test("cancelRun re-reads the record after transitioning to cancelling", async () => {
+  // The transition's compare-and-swap returns the record as it looked *before*
+  // the write, so a settlement that lands in that window is invisible in it —
+  // and the owning process lands exactly one there: when its own write loses to
+  // the cancel, it re-applies the just-finished target onto the cancelling
+  // record. Deciding from the pre-transition snapshot leaves that deploy, which
+  // really happened, un-rolled-back.
+  const dir = await Deno.makeTempDir();
+  try {
+    const undone: string[] = [];
+    let slot: unknown;
+    class CD extends Build {
+      deploy = target().executes(() => {}).onCancel(() => this.rollback);
+      rollback = target().executes((ctx) => {
+        undone.push("deploy");
+        slot = ctx.state.get().slot;
+      });
+    }
+    const build = new CD();
+    discoverTargets(build);
+    const store = new SettlesAfterCancelling(`${dir}/runs`, defaultStateHost);
+    const seeded: RunRecord = {
+      ...craftRecord("deploy", { deploy: { status: "running", meta: {} } }),
+      id: "run-late",
+      status: "suspended",
+    };
+    assertEquals((await store.putRun(seeded, null)).ok, true);
+
+    const result = await cancelRun(build, {
+      runId: "run-late",
+      stateStore: store,
+      silent: true,
+      actor: "ops",
+    });
+    assertEquals(result.status, "cancelled");
+    // Compensated from the settlement that landed after the transition, and from
+    // the metadata that came with it.
+    assertEquals(undone, ["deploy"]);
+    assertEquals(slot, "sit-9");
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+/**
+ * A store that lands one extra write the instant the run turns `cancelling`,
+ * settling `deploy` — what the owning process's writer does when its own
+ * compare-and-swap loses to the canceller's: it re-applies the mutation onto the
+ * cancelling record, after the canceller's snapshot was taken.
+ */
+class SettlesAfterCancelling extends FileSystemStateStore {
+  #landed = false;
+  /** Persist normally, then land the racing settlement exactly once. */
+  override async putRun(
+    record: RunRecord,
+    expected: string | null,
+  ): Promise<PutResult> {
+    const result = await super.putRun(record, expected);
+    if (!result.ok || this.#landed || record.status !== "cancelling") {
+      return result;
+    }
+    this.#landed = true;
+    const loaded = await this.getRun(record.id);
+    if (loaded !== null) {
+      const next = structuredClone(loaded.record);
+      next.targets.deploy = { status: "succeeded", meta: { slot: "sit-9" } };
+      await super.putRun(next, loaded.version);
+    }
+    return result;
+  }
+}

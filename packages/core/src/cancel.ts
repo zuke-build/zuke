@@ -516,6 +516,18 @@ function isItemCompensable(
  * happened is a no-op for an idempotent compensation, while skipping one for
  * work that did happen leaves a real side effect behind. `failed` and `skipped`
  * are settlements that were recorded, so they are never unproven.
+ *
+ * `running` is the state a lost settlement usually leaves behind (the target's
+ * `markTargetRunning` write landed and the write recording how it ended did
+ * not), so it carries the same overlap window {@link isItemCompensable}
+ * documents one level down: an out-of-process `zuke cancel` compensates from a
+ * record, and if that target's body is in fact still live in the owning process
+ * — which aborts only on its next state write or lock heartbeat — the cleanup
+ * can run alongside the body's tail. Bodies that checkpoint via
+ * `ctx.state.set(...)` or hold a `.lock()` close the window; the full fix is
+ * prompt abort-propagation in the executor, the same cancellation-hardening
+ * follow-up. The executor's own in-process walk has no such window: it runs
+ * after every body has settled.
  */
 function isUnproven(status: TargetRunStatus | undefined): boolean {
   return status === undefined || status === "pending" ||
@@ -678,7 +690,16 @@ export async function cancelRun(
         failures: [],
       };
     }
-    const record = transitioned.record;
+    // The CAS wrote — and returned — the record as it looked *before* the
+    // transition. The owning process may have landed a write since: when its own
+    // compare-and-swap loses to ours it re-applies the mutation onto our
+    // cancelling record (see `./state/writer.ts`), so a target that had just
+    // finished can settle `succeeded`, or the record can be marked `degraded`,
+    // after our snapshot was taken. Re-read, so the walk decides on the newest
+    // account of what ran rather than one that predates the transition. A run
+    // that has vanished from the store leaves our own snapshot as the last word.
+    const reread = await store.getRun(runId);
+    const record = reread?.record ?? transitioned.record;
 
     // Resolve compensation targets by reference, and make `this.<param>.value`
     // available to their bodies (from the record's non-secret params; secrets
