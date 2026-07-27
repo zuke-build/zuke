@@ -25,6 +25,13 @@
 > assistance, then reviewed, type-checked, and tested in CI. Sharing how it was
 > made so you know what you're getting.
 
+> [!NOTE]
+> **Maturity.** `@zuke/core` (and a handful of others — `@zuke/ai`,
+> `@zuke/console`, `@zuke/otel`, …) are `1.x` and follow full semver; the 50+
+> tool wrappers are `0.x` and may still change within `0.x`. See
+> [Versioning & compatibility](./docs/versioning.md) for the pinning guidance
+> and how to diagnose a version mismatch.
+
 Zuke lets you define builds as a **TypeScript class**. Each target is a class
 field declared with a fluent API; targets reference each other by `this.x` (not
 strings), forming a dependency graph that Zuke resolves and runs in topological
@@ -331,6 +338,8 @@ Full documentation lives in [`docs/`](./docs/):
 - [CLI reference](./docs/cli.md) — commands and flags.
 - [Programmatic API](./docs/programmatic-api.md) — drive Zuke from your own
   code.
+- [Versioning & compatibility](./docs/versioning.md) — core semver vs. 0.x
+  wrappers, the `@zuke/core` floor, and pinning guidance.
 
 ## Development
 

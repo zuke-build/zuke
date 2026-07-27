@@ -8,10 +8,11 @@ By participating, you agree to abide by our
 [Code of Conduct](./CODE_OF_CONDUCT.md).
 
 > [!NOTE]
-> Zuke's packages sit at different maturity levels: `@zuke/core` (1.x) and
-> several others follow semver, while the 0.x tool wrappers may still change
-> within `0.x`. If you are planning a large change, please open an issue first
-> so we can agree on the direction before you invest the effort.
+> Zuke's packages sit at different maturity levels — see
+> [Versioning & compatibility](./docs/versioning.md) for which packages follow
+> semver and which 0.x wrappers may still change within `0.x`. If you are
+> planning a large change, please open an issue first so we can agree on the
+> direction before you invest the effort.
 
 ## Prerequisites
 
