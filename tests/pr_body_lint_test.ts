@@ -90,6 +90,27 @@ Deno.test("a bare call statement line outside a fence is flagged", () => {
   assertEquals(findings[0].includes("line 1"), true);
 });
 
+Deno.test("a member-call fragment outside a fence is flagged", () => {
+  // The exact shape that reached a commit body in the wrapper-catalogue work:
+  // no arrow function and no bare `();`, so only the member-call rule catches
+  // it, and release-please's parser still chokes on its parentheses.
+  const findings = lintPrBody(
+    'Show the anti-pattern CmdTasks.exec("docker", args) beside the typed ' +
+      "replacement DockerTasks.build(settings).",
+  );
+  assertEquals(findings.length, 1);
+  assertEquals(findings[0].includes("line 1"), true);
+});
+
+Deno.test("a filename with a following parenthetical is not flagged", () => {
+  assertEquals(
+    lintPrBody(
+      "Links the new guide from docs/README.md (both documentation indexes).",
+    ),
+    [],
+  );
+});
+
 Deno.test("the CI workflow re-runs on an edited PR description", () => {
   // Without an explicit `types:`, `pull_request` fires only on opened,
   // synchronize and reopened — so editing the description after the last push
