@@ -25,6 +25,7 @@ import { withAmbientEcho } from "./ambient_echo.ts";
 import { type Style, type TargetReport, targetWaitFooter } from "./report.ts";
 import type { Renderer } from "./renderer.ts";
 import {
+  cloneTarget,
   type ForEachItem,
   ForEachSettings,
   type ForEachSpec,
@@ -409,7 +410,11 @@ async function runForEachTarget(
     items = spec.materialize();
     for (const { key, stages } of items) {
       let prev: TargetBuilder | undefined;
-      for (const [stage, sub] of Object.entries(stages)) {
+      for (const [stage, declared] of Object.entries(stages)) {
+        // Work on a clone: the factory may hand back the same builder for every
+        // item (or on every run of a long-lived process), and renaming/chaining
+        // it in place would corrupt that object and pile up duplicate edges.
+        const sub = cloneTarget(declared);
         sub.name_ = `${name}[${key}].${stage}`;
         // Isolating item failures means a failed stage stays lenient: its
         // siblings keep running, only this item's later stages are blocked.

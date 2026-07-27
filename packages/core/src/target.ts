@@ -904,6 +904,29 @@ export class TargetBuilder {
 }
 
 /**
+ * Shallow-copy a {@link TargetBuilder} so the copy can be renamed and re-wired
+ * without touching the original. Array fields become fresh arrays; everything
+ * else (the body, the group, the settings lambdas) is shared — the copy is the
+ * same target, with its own identity.
+ *
+ * Used by the fan-out materialiser: a `.forEach(...)` factory may legitimately
+ * return the same builder for every item (a memoised or module-level pipeline),
+ * and naming/chaining it in place would corrupt that object and accumulate
+ * duplicate dependency edges across runs. Module-internal: never re-exported
+ * from `mod.ts`.
+ */
+export function cloneTarget(source: TargetBuilder): TargetBuilder {
+  const clone = Object.assign(new TargetBuilder(), source);
+  // `Object.assign` copies array *references*; give the clone its own copies so
+  // pushing a dependency onto it can never reach back into the original.
+  for (const key of Object.keys(clone)) {
+    const value: unknown = Reflect.get(clone, key);
+    if (Array.isArray(value)) Reflect.set(clone, key, [...value]);
+  }
+  return clone;
+}
+
+/**
  * A configured target. Alias of {@link TargetBuilder} — the same object both
  * builds and represents the target. Exposed as `Target` for use in signatures.
  */

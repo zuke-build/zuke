@@ -327,6 +327,72 @@ Deno.test("a throwing forEach items thunk settles the run record to failed", asy
   });
 });
 
+Deno.test("forEach clones the factory's builders instead of mutating them", async () => {
+  // A factory is free to hand back the same builder objects for every item (a
+  // memoised or module-level pipeline). Materialising must not rename or re-wire
+  // those objects: the fan-out works on clones, so the factory's builders are
+  // untouched and repeated runs add no duplicate dependency edges.
+  const log: string[] = [];
+  const checks = target().executes(() => void log.push("checks"));
+  const deploy = target().executes(() => void log.push("deploy"));
+  class Batch extends Build {
+    batch = target().forEach(
+      () => ["a", "b"],
+      () => ({ checks, deploy }),
+      (s) => s.concurrency(1),
+    );
+  }
+
+  // Twice, as a long-lived MCP server would run the same build again.
+  for (const run of [1, 2]) {
+    log.length = 0;
+    const b = new Batch();
+    discoverTargets(b);
+    const { lines, reporter } = recorder();
+    const result = await execute(b, b.batch, { reporter, github: false });
+    assertEquals(result.ok, true, `run ${run} failed`);
+
+    // Every item ran every stage, under its own name.
+    assertEquals(log, ["checks", "deploy", "checks", "deploy"]);
+    const out = lines.join("\n");
+    for (
+      const name of ["batch[a].checks", "batch[a].deploy", "batch[b].checks"]
+    ) {
+      assertStringIncludes(out, name);
+    }
+    assertStringIncludes(out, "batch[b].deploy");
+
+    // The factory's own objects are pristine after the run.
+    assertEquals(checks.name_, undefined);
+    assertEquals(deploy.name_, undefined);
+    assertEquals(deploy.dependsOn_.length, 0);
+    assertEquals(deploy.proceedAfterFailure_, false);
+  }
+});
+
+Deno.test("forEach clones carry the stage's own configuration", async () => {
+  // The clone must behave like the original: its body, retries and lenient flag
+  // all come across, so a reused stage still retries and isolates as declared.
+  let attempts = 0;
+  const flaky = target()
+    .retry(1)
+    .proceedAfterFailure()
+    .executes(() => {
+      attempts++;
+      if (attempts === 1) throw new Error("first attempt");
+    });
+  class Batch extends Build {
+    batch = target().forEach(() => ["only"], () => ({ flaky }));
+  }
+  const b = new Batch();
+  discoverTargets(b);
+  const result = await execute(b, b.batch, { silent: true });
+  assertEquals(result.ok, true);
+  assertEquals(attempts, 2); // retried, not failed outright
+  assertEquals(flaky.retries_, 1);
+  assertEquals(flaky.proceedAfterFailure_, true);
+});
+
 Deno.test("--list and graph annotate a fan-out target", () => {
   class Batch extends Build {
     plain = target().description("plain").executes(() => {});
