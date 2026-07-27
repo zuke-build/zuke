@@ -72,8 +72,9 @@ Deno.test("launchers pass --frozen only once a deno.lock exists", () => {
   assertEquals(bash.split("run -A --frozen zuke.ts").length - 1, 1);
   assertEquals(bash.split(`run -A zuke.ts "$@"`).length - 1, 1);
   // The frozen branch comes first, the bootstrap branch after the `else`.
+  assertEquals(bash.indexOf("--frozen") < bash.indexOf("else\n"), true);
   assertEquals(
-    bash.indexOf("--frozen") < bash.indexOf("else\n  deno run -A zuke.ts"),
+    bash.indexOf("else\n") < bash.indexOf(`run -A zuke.ts "$@"`),
     true,
   );
 
@@ -82,6 +83,28 @@ Deno.test("launchers pass --frozen only once a deno.lock exists", () => {
   assertEquals(pwsh.split(`$denoArgs += "--frozen"`).length - 1, 1);
   // --frozen is only ever appended inside that check, never in the base argv.
   assertEquals(pwsh.includes(`@("run", "-A")`), true);
+});
+
+Deno.test("the unfrozen branch says so, so a deleted lockfile is not silent", () => {
+  // Skipping --frozen is correct on a fresh scaffold, but the same branch is
+  // taken if someone removes deno.lock later — which drops integrity
+  // verification. Both launchers must announce that on stderr rather than
+  // quietly running unverified.
+  const bash = launcherBash();
+  assertEquals(bash.includes("without lockfile verification"), true);
+  // On stderr, and only in the branch that skips --frozen.
+  assertEquals(
+    bash.indexOf("without lockfile verification") > bash.indexOf("else\n"),
+    true,
+  );
+  assertEquals(
+    bash.slice(bash.indexOf("without lockfile verification")).includes(">&2"),
+    true,
+  );
+
+  const pwsh = launcherPwsh();
+  assertEquals(pwsh.includes("without lockfile verification"), true);
+  assertEquals(pwsh.includes("Write-Warning"), true);
 });
 
 Deno.test("mergeDenoJson seeds tasks from scratch", () => {

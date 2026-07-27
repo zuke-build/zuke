@@ -66,6 +66,10 @@ const DENO_INSTALL_DOCS =
  * lockfile fails outright ("The lockfile is out of date") instead of writing
  * one. So the first run resolves and records the graph, and every run after
  * that verifies it and fails loudly if it changed.
+ *
+ * The unfrozen branch prints a notice to stderr. The same branch is taken if a
+ * `deno.lock` is later removed, which drops integrity verification, so it says
+ * so rather than running unverified in silence.
  */
 export function launcherBash(): string {
   return `#!/usr/bin/env bash
@@ -79,10 +83,13 @@ if ! command -v deno >/dev/null 2>&1; then
   exit 1
 fi
 # The first run has no lockfile to verify against, so let Deno write one; from
-# then on --frozen fails the build if the module graph changed.
+# then on --frozen fails the build if the module graph changed. Say so when
+# skipping, so a deleted lockfile downgrades verification visibly instead of
+# silently.
 if [ -f deno.lock ]; then
   deno run -A --frozen zuke.ts "$@"
 else
+  echo "zuke: no deno.lock here yet — running without lockfile verification so Deno can write one." >&2
   deno run -A zuke.ts "$@"
 fi
 `;
@@ -104,9 +111,15 @@ if (-not $found) {
   exit 1
 }
 # The first run has no lockfile to verify against, so let Deno write one; from
-# then on --frozen fails the build if the module graph changed.
+# then on --frozen fails the build if the module graph changed. Say so when
+# skipping, so a deleted lockfile downgrades verification visibly instead of
+# silently.
 $denoArgs = @("run", "-A")
-if (Test-Path (Join-Path $dir "deno.lock")) { $denoArgs += "--frozen" }
+if (Test-Path (Join-Path $dir "deno.lock")) {
+  $denoArgs += "--frozen"
+} else {
+  Write-Warning "zuke: no deno.lock here yet - running without lockfile verification so Deno can write one."
+}
 $denoArgs += (Join-Path $dir "zuke.ts")
 & $found.Source @denoArgs @args
 exit $LASTEXITCODE
