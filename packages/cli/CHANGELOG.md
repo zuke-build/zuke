@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.0](https://github.com/zuke-build/zuke/compare/cli-v0.7.0...cli-v0.8.0) (2026-07-27)
+
+
+### Features
+
+* add missing typed builders, DenoSettings.frozen, and --frozen scaffolding ([#268](https://github.com/zuke-build/zuke/issues/268)) ([8549b12](https://github.com/zuke-build/zuke/commit/8549b127216a37fd176cfc2e091d558de43c98a8))
+* **core:** add splitShellArgs, cap captured output, escalate kills, redact echoes ([#267](https://github.com/zuke-build/zuke/issues/267)) ([08f63fd](https://github.com/zuke-build/zuke/commit/08f63fd33fa2b1010e586637d66aaf8fe435a745))
+
 ## [0.7.0](https://github.com/zuke-build/zuke/compare/cli-v0.6.0...cli-v0.7.0) (2026-07-19)
 
 

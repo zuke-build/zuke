@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/zuke-build/zuke/compare/vitest-v0.2.3...vitest-v0.3.0) (2026-07-27)
+
+
+### Features
+
+* add missing typed builders, DenoSettings.frozen, and --frozen scaffolding ([#268](https://github.com/zuke-build/zuke/issues/268)) ([8549b12](https://github.com/zuke-build/zuke/commit/8549b127216a37fd176cfc2e091d558de43c98a8))
+
 ## [0.2.3](https://github.com/zuke-build/zuke/compare/vitest-v0.2.2...vitest-v0.2.3) (2026-07-20)
 
 
