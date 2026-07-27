@@ -1,4 +1,8 @@
-import { assertEquals, assertRejects } from "./_assert.ts";
+import {
+  assertEquals,
+  assertRejects,
+  assertStringIncludes,
+} from "./_assert.ts";
 import { Build, discoverTargets } from "../src/build.ts";
 import { parameter } from "../src/params.ts";
 import { target } from "../src/target.ts";
@@ -1282,4 +1286,103 @@ Deno.test("the executor defers when another process already holds the cancel loc
     assertEquals(undone, []); // the lock holder owns the compensation walk
     await store.releaseLock(lockKey("zuke-cancel", id), held.token);
   });
+});
+
+Deno.test("a degraded record compensates targets whose settlement was lost", async () => {
+  // The record lost a state write for good, so a target that really did succeed
+  // can still be recorded `pending` — or have no row at all. Skipping those
+  // leaves real side effects un-rolled-back, so cancel treats every target whose
+  // success cannot be ruled out as possibly-succeeded and compensates it.
+  const undone: string[] = [];
+  const info: string[] = [];
+  class CD extends Build {
+    deploy = target().executes(() => {}).onCancel(() => this.rollbackDeploy);
+    rollbackDeploy = target().executes(() => void undone.push("deploy"));
+    migrate = target()
+      .dependsOn(this.deploy)
+      .executes(() => {})
+      .onCancel(() => this.rollbackMigrate);
+    rollbackMigrate = target().executes(() => void undone.push("migrate"));
+  }
+  const build = new CD();
+  discoverTargets(build);
+  const record: RunRecord = {
+    ...craftRecord("migrate", {
+      // Recorded pending, but its meta proves the body got as far as writing it.
+      deploy: { status: "pending", meta: { slot: "sit-7" } },
+      // migrate has no row at all — the lost write took it with it.
+    }),
+    degraded: true,
+  };
+  const outcome = await runCompensations(
+    [build.deploy, build.migrate],
+    record,
+    {
+      runId: "run",
+      signals: new Map(),
+      reporter: { info: (l) => void info.push(l), error: () => {} },
+    },
+  );
+  assertEquals(undone, ["migrate", "deploy"]);
+  assertEquals(outcome.compensated.length, 2);
+  // The output says plainly why each cleanup ran.
+  assertStringIncludes(info.join("\n"), "record is incomplete");
+  assertStringIncludes(info.join("\n"), 'deploy" is recorded pending');
+  assertStringIncludes(info.join("\n"), 'migrate" is not recorded');
+});
+
+Deno.test("a healthy record still skips a pending target's compensation", async () => {
+  // The flag is what licenses the extra cleanup: a record with nothing missing
+  // keeps exactly the settled behaviour — a target that never ran is not undone.
+  const undone: string[] = [];
+  class CD extends Build {
+    deploy = target().executes(() => {}).onCancel(() => this.rollbackDeploy);
+    rollbackDeploy = target().executes(() => void undone.push("deploy"));
+  }
+  const build = new CD();
+  discoverTargets(build);
+  const record = craftRecord("deploy", {
+    deploy: { status: "pending", meta: {} },
+  });
+  const outcome = await runCompensations([build.deploy], record, {
+    runId: "run",
+    signals: new Map(),
+    reporter: { info: () => {}, error: () => {} },
+  });
+  assertEquals(undone, []);
+  assertEquals(outcome.attempts, []);
+});
+
+Deno.test("a degraded record compensates a pending fan-out item", async () => {
+  // Same defect one level down: an item recorded pending on a degraded record
+  // may have deployed. A failed one is not compensated either way — its
+  // settlement landed, so nothing about it is unproven.
+  const undone: string[] = [];
+  class CD extends Build {
+    deployBatch = target().forEach(
+      () => ["a", "b", "c"],
+      (repo) => ({
+        deploy: target().executes(() => {}).onCancel(() =>
+          target().executes(() => void undone.push(repo))
+        ),
+      }),
+    );
+  }
+  const build = new CD();
+  discoverTargets(build);
+  const record: RunRecord = {
+    ...craftRecord("deployBatch", {
+      "deployBatch[a].deploy": { status: "succeeded", meta: {} },
+      "deployBatch[b].deploy": { status: "pending", meta: {} },
+      "deployBatch[c].deploy": { status: "failed", meta: {} },
+    }),
+    degraded: true,
+  };
+  const outcome = await runCompensations([build.deployBatch], record, {
+    runId: "run",
+    signals: new Map(),
+    reporter: { info: () => {}, error: () => {} },
+  });
+  assertEquals(undone, ["b", "a"]);
+  assertEquals(outcome.attempts.length, 2);
 });

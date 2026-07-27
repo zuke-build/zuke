@@ -188,8 +188,10 @@ deploy = target()
   cleanup/teardown. It still waits for its own dependencies to complete.
 - **`.onCancel(target | () => target)`** — register a **compensation** that
   undoes this target when the run is [cancelled](./orchestration.md#cancellation--compensation--oncancel).
-  It runs only if this target **succeeded**; on cancel, compensations run in
-  reverse order. The compensation body's `ctx.state` exposes _this_ target's
+  It runs only if this target **succeeded** — or, on a
+  [degraded record](./state.md#degraded-records), if its success cannot be ruled
+  out; on cancel, compensations run in reverse order. The compensation body's
+  `ctx.state` exposes _this_ target's
   persisted metadata (so a rollback reads what the deploy recorded). Use the
   thunk form to reference a compensation declared below. Needs a state store.
 - **`.unlisted()`** — hide a helper target from `--list`/`--help`; it can still
