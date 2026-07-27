@@ -78,8 +78,8 @@ regenerate them in the same PR.
   CLI. No Node, npm, or external build tools.
 - **Language:** TypeScript, strict mode (Deno's default).
 - **Distribution:** [JSR](https://jsr.io/) as a workspace of 55 packages:
-  `@zuke/core` (exports `.`, `./shell`, `./tooling`, `./render`,
-  `./conformance`) plus the `@zuke/cli` command, a generic `@zuke/cmd` fallback,
+  `@zuke/core` (exports `.`, `./shell`, `./tooling`, `./tooling/conformance`,
+  `./render`, `./conformance`) plus the `@zuke/cli` command, a generic `@zuke/cmd` fallback,
   and 50+ typed tool wrappers and plugins (`@zuke/deno`, `@zuke/npm`,
   `@zuke/docker`, `@zuke/ai`, …). The npm org `@zuke-build` is reserved for
   future npm distribution (1:1 name mapping).
@@ -130,7 +130,8 @@ update the `check` task and CI accordingly. Do not bolt on a parallel
    — never leave a `private-type-ref` to one of the package's own types. Verify
    with `deno doc --lint` run over **all of a package's entrypoints in one
    invocation** (a multi-entrypoint package like `@zuke/core` has `.`,
-   `./shell`, `./tooling`, `./render`, `./conformance`, so
+   `./shell`, `./tooling`, `./tooling/conformance`, `./render`,
+   `./conformance`, so
    `deno doc --lint packages/core/mod.ts packages/core/src/shell.ts …` — linting
    them together lets cross-entrypoint references resolve). The bar: zero
    `missing-jsdoc` and zero `private-type-ref` to a first-party type. The one
@@ -193,7 +194,14 @@ ambient tools.
 1. **Unit — `packages/<pkg>/tests/*_test.ts`.** One module in isolation, with
    fakes and the local `packages/core/tests/_assert.ts` helper (never a
    third-party assert library). For a tool wrapper, assert the **pure
-   `buildArgs()` argv** — do not run the real tool. This layer covers a module's
+   `buildArgs()` argv** — do not run the real tool — and call
+   `assertWrapperConformance` from `@zuke/core/tooling/conformance`, which
+   asserts the wrapper's binary name, its **declared** resolution mode — the
+   `resolution` option is required, `"node_modules"` for a JS-ecosystem tool and
+   `"path"` for a native one, so every wrapper states its mode rather than
+   inheriting a default that could hide a missing `defaultResolution()` — and
+   its `ToolNotFoundError` path, so a wrapper cannot silently omit those checks.
+   This layer covers a module's
    branches and a wrapper's flags, and carries the bulk of the 95% coverage
    gate.
 
@@ -269,7 +277,7 @@ truth.
 ```
 deno.json                 # workspace root: tasks, fmt/lint config
 packages/
-  core/                   # @zuke/core — mod.ts, src/, tests/ (+ ./shell, ./tooling, ./render, ./conformance)
+  core/                   # @zuke/core — mod.ts, src/, tests/ (+ ./shell, ./tooling, ./tooling/conformance, ./render, ./conformance)
   deno/                   # @zuke/deno — DenoTasks
   npm/                    # @zuke/npm  — NpmTasks
   cmd/                    # @zuke/cmd  — CmdTasks (generic fallback)

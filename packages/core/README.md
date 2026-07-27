@@ -3703,6 +3703,75 @@ type ToolResolution = "node_modules" | "path"
 type ToolTask = (configure?: Configure<DynamicToolSettings>) => Promise<CommandOutput>
   A ready-to-run task for a {@link defineTool} tool.
 
+A conformance kit for tool-wrapper tests.
+
+Every `@zuke/*` wrapper package owes its unit test the same three checks: the
+settings class spawns the binary it claims to, it resolves that binary the way
+the wrapper intends (bare on `PATH`, or npx-style from `node_modules/.bin`),
+and a missing binary surfaces as a
+{@link "./tooling.ts".ToolNotFoundError} rather than some raw
+`Deno.errors.NotFound`. Hand-written per package, that is a temp-directory /
+`ZUKE_TOOL_RESOLUTION` save-and-restore dance copied dozens of times — and a
+wrapper that quietly forgets the resolution check keeps passing.
+
+{@link assertWrapperConformance} runs all three, hermetically (nothing real is
+ever spawned), and takes the expected resolution mode as a required
+argument so each wrapper asserts its default instead of remembering it:
+
+```ts
+Deno.test("biome conforms", async () => {
+  await assertWrapperConformance(() => new BiomeCheckSettings(), "biome", {
+    resolution: "node_modules",
+  });
+});
+```
+@module
+
+async function assertWrapperConformance(makeSettings: () => ToolSettings, tool: string, options: WrapperConformanceOptions): Promise<void>
+  Assert that a tool wrapper conforms: `makeSettings()` spawns `tool`, resolves
+  it per `options.resolution`, and reports a missing binary as a
+  {@link "./tooling.ts".ToolNotFoundError}.
+
+  `makeSettings` is called once per check, so each check gets a pristine
+  instance. The resolution check runs against a throwaway temp directory holding
+  a fake `node_modules/.bin/<tool>` shim, with `ZUKE_TOOL_RESOLUTION` unset for
+  the duration and restored afterwards; no real subprocess is ever launched.
+
+  A wrapper whose `run()` resolves something at run time must have that pinned
+  inside `makeSettings` — `() => new DockerComposeUpSettings().usePlugin()`,
+  say — or the missing-binary check would probe the ambient host. It reports a
+  `ToolNotFoundError` raised for any binary other than the planted one as a
+  failure, so such a wrapper cannot pass by accident on a host that lacks the
+  real tool.
+
+  @throws {Error}
+      naming the wrapper and the fix, on the first failed check.
+
+function missingTool<S extends ToolSettings>(settings: S): S
+  Point `settings` at a binary that cannot exist, so running it raises a
+  {@link "./tooling.ts".ToolNotFoundError} without ever launching a real
+  process — the way a wrapper test proves each of its task functions reaches
+  execution.
+
+  The platform is pinned to `linux` because on Windows a missing binary is
+  retried through `cmd /c`, which exists, so the failure would surface as a
+  command error instead:
+
+  ```ts
+  await assertRejects(() => BiomeTasks.check(missingTool), ToolNotFoundError);
+  ```
+
+interface WrapperConformanceOptions
+  Options for {@link assertWrapperConformance}.
+
+  resolution: ToolResolution
+    The resolution strategy the wrapper must use when nothing overrides it:
+    `"node_modules"` for a JS-ecosystem tool installed under `node_modules`,
+    `"path"` for a natively installed one. Required, with no default: an
+    npm-distributed wrapper that forgot to override `defaultResolution()` is
+    exactly the bug this kit exists to catch, and a default would let that
+    wrapper's test pass by saying nothing.
+
 Primitive terminal rendering, shared by the executor's build reporting
 (`./report.ts`) and the `@zuke/console` package: ANSI styling, terminal-width
 detection, duration formatting, and the reusable `line`/`box`/`table`
