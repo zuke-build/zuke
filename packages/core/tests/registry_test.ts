@@ -34,11 +34,18 @@ class FakeStateHost implements StateHost {
     return Promise.resolve();
   }
   rename(from: string, to: string): Promise<void> {
+    // A real rename rejects when the source is gone, and moves an exclusively
+    // created (empty) file just as it moves one with content — the mutex relies
+    // on both when it reclaims an abandoned marker.
     const content = this.files.get(from);
+    if (content === undefined && !this.locks.has(from)) {
+      return Promise.reject(new Deno.errors.NotFound(`rename ${from}`));
+    }
     if (content !== undefined) {
       this.files.set(to, content);
       this.files.delete(from);
     }
+    if (this.locks.delete(from)) this.locks.add(to);
     return Promise.resolve();
   }
   createExclusive(path: string): Promise<boolean> {
@@ -62,8 +69,10 @@ class FakeStateHost implements StateHost {
   mkdirp(): Promise<void> {
     return Promise.resolve();
   }
+  /** A controllable clock for the mutex-TTL tests; advance it with `time`. */
+  time = 1_000_000;
   now(): number {
-    return 1_000_000;
+    return this.time;
   }
 }
 
@@ -471,14 +480,47 @@ Deno.test("FileSystemBuildRegistry listBuilds skips a vanished file", async () =
 
 Deno.test("FileSystemBuildRegistry gives up on a permanently held mutex", async () => {
   const host = new FakeStateHost();
-  // Pre-hold the lock marker so createExclusive never succeeds.
-  host.locks.add("/builds/CI.json.lock");
+  // Pre-hold the lock marker so createExclusive never succeeds, stamped now so
+  // it reads as a live holder that is never stolen from.
+  const marker = "/builds/CI.json.lock";
+  host.locks.add(marker);
+  host.files.set(marker, String(host.time));
   const registry = new FileSystemBuildRegistry("/builds", host);
   await assertRejects(
     () => registry.register(sampleDescriptor(), null),
     Error,
     "could not acquire the mutex",
   );
+  assertEquals(host.locks.has(marker), true); // never stolen from a live holder
+});
+
+Deno.test("FileSystemBuildRegistry takes over a mutex marker left past its TTL", async () => {
+  // A `zuke register` killed mid-write leaves its marker behind. Without an
+  // expiry that marker wedges every later writer until a human deletes it, so
+  // the registry shares the state store's mutex: past the TTL it is reclaimed.
+  const host = new FakeStateHost();
+  const marker = "/builds/CI.json.lock";
+  host.locks.add(marker);
+  host.files.set(marker, String(host.time)); // stamped when it was acquired
+  host.time += 60_000; // …and never released
+
+  const registry = new FileSystemBuildRegistry("/builds", host);
+  const result = await registry.register(sampleDescriptor(), null);
+  assertEquals(result.ok, true);
+  assertEquals(host.locks.has(marker), false); // released again after the write
+  assertEquals(host.files.has("/builds/CI.json"), true);
+});
+
+Deno.test("FileSystemBuildRegistry reclaims an unstamped mutex marker", async () => {
+  // A marker left by an older zuke that never stamped its markers carries no age
+  // to compare; once a waiter has spun far longer than the create→stamp window it
+  // reclaims it rather than wedging the directory for good.
+  const host = new FakeStateHost();
+  const marker = "/builds/CI.json.lock";
+  host.locks.add(marker);
+  const registry = new FileSystemBuildRegistry("/builds", host);
+  assertEquals((await registry.register(sampleDescriptor(), null)).ok, true);
+  assertEquals(host.locks.has(marker), false);
 });
 
 Deno.test("FileSystemBuildRegistry round-trips through the real filesystem", async () => {

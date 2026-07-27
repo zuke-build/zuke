@@ -70,6 +70,35 @@ Deno.test("zuke register writes a descriptor a reader can load", async () => {
   });
 });
 
+Deno.test("zuke register recovers from a mutex marker a killed register left behind", async () => {
+  await withRegistryDir(async (dir) => {
+    // A previous `zuke register` was killed mid-write: its lock marker is still
+    // there, stamped long enough ago to be past the mutex TTL. Every later
+    // register used to wedge and fail until a human deleted the file; the shared
+    // mutex reclaims it instead.
+    const marker = `${dir}/RegBuild.json.lock`;
+    await Deno.writeTextFile(marker, String(Date.now() - 600_000));
+
+    const res = await runCli(RegBuild, ["register"]);
+    assertEquals(res.code, 0, res.err);
+    assertStringIncludes(res.out, "Registered build");
+    const loaded = await new FileSystemBuildRegistry(dir).getBuild("RegBuild");
+    assertEquals(loaded?.descriptor.id, "RegBuild");
+    // Reclaimed, held for the write, then released — not left behind again.
+    assertEquals(await exists(marker), false);
+  });
+});
+
+/** Whether `path` exists, for asserting a marker was cleaned up. */
+async function exists(path: string): Promise<boolean> {
+  try {
+    await Deno.lstat(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 Deno.test("zuke register --json prints the written descriptor", async () => {
   await withRegistryDir(async () => {
     const res = await runCli(RegBuild, ["register", "--json"]);
