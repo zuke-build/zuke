@@ -17,6 +17,7 @@
  * @module
  */
 
+import { splitShellArgs } from "@zuke/core/shell";
 import {
   isRecord,
   joinPath,
@@ -71,6 +72,7 @@ function delegatedScript(
   scripts: Set<string>,
 ): string | undefined {
   const tokens = tokenize(segment.trim());
+  if (tokens === undefined) return undefined;
   if (tokens.length === 0 || !RUNNERS.includes(tokens[0])) return undefined;
   const rest = tokens[1] === "run" ? tokens.slice(2) : tokens.slice(1);
   // A pure delegation is exactly the runner and one known script name.
@@ -145,8 +147,35 @@ interface BodyItem {
 function needsShell(segment: string): boolean {
   if (/[|<>;`$]/.test(segment)) return true; // pipe, redirect, subst, env expand
   if (/(^|\s)&(\s|$)/.test(segment)) return true; // background job
+  if (hasUnquotedBackslash(segment)) return true; // escape or Windows separator?
   const first = segment.trim().split(/\s+/)[0] ?? "";
   return /^[A-Za-z_][A-Za-z0-9_]*=/.test(first); // leading VAR=value assignment
+}
+
+/**
+ * Whether `segment` contains a backslash outside quotes, which is ambiguous and
+ * therefore not translatable: a POSIX shell reads it as an escape (`a\ b` is one
+ * argument), while a `package.json` script written on Windows — where npm runs
+ * scripts through `cmd.exe` — uses it as a path separator (`node scripts\b.js`).
+ * Picking either reading silently changes the command, so the segment is
+ * preserved verbatim for a human to resolve. A backslash inside quotes is
+ * unambiguous and stays translatable.
+ */
+function hasUnquotedBackslash(segment: string): boolean {
+  let quote: string | undefined;
+  for (let i = 0; i < segment.length; i++) {
+    const ch = segment[i];
+    if (quote !== undefined) {
+      // Inside double quotes a backslash escapes the next character, so skip it
+      // and keep tracking the quote state accurately.
+      if (quote === '"' && ch === "\\") i++;
+      else if (ch === quote) quote = undefined;
+      continue;
+    }
+    if (ch === '"' || ch === "'") quote = ch;
+    else if (ch === "\\") return true;
+  }
+  return false;
 }
 
 /**
@@ -159,7 +188,10 @@ export function translateCommand(command: string): BodyItem[] {
   for (const raw of splitChain(command)) {
     const segment = raw.trim();
     if (segment === "") continue;
-    if (needsShell(segment)) {
+    // A shell-specific segment, or one whose quoting does not balance, is
+    // preserved verbatim instead of being mistranslated.
+    const tokens = needsShell(segment) ? undefined : tokenize(segment);
+    if (tokens === undefined) {
       // Collapse whitespace so an embedded newline cannot break the raw command
       // out of its single-line `//` comment in the generated source.
       const oneLine = segment.replace(/\s+/g, " ").trim();
@@ -169,7 +201,6 @@ export function translateCommand(command: string): BodyItem[] {
       });
       continue;
     }
-    const tokens = tokenize(segment);
     const bin = tokens[0];
     if (bin === undefined) continue;
     const args = tokens.slice(1);
@@ -212,35 +243,18 @@ function splitChain(command: string): string[] {
   return parts;
 }
 
-/** Split a command segment into argv, honouring single/double quotes. */
-function tokenize(segment: string): string[] {
-  const tokens: string[] = [];
-  let current = "";
-  let quote: string | undefined;
-  let has = false;
-  for (const ch of segment) {
-    if (quote !== undefined) {
-      if (ch === quote) quote = undefined;
-      else {
-        current += ch;
-        has = true;
-      }
-    } else if (ch === '"' || ch === "'") {
-      quote = ch;
-      has = true;
-    } else if (ch === " " || ch === "\t") {
-      if (has) {
-        tokens.push(current);
-        current = "";
-        has = false;
-      }
-    } else {
-      current += ch;
-      has = true;
-    }
+/**
+ * Split a command segment into argv with POSIX quoting rules, or `undefined`
+ * when the segment's quoting is unbalanced. An unterminated quote is not
+ * translatable, so the caller falls back to preserving the raw text — the
+ * scaffold must never silently drop half a command.
+ */
+function tokenize(segment: string): string[] | undefined {
+  try {
+    return splitShellArgs(segment);
+  } catch {
+    return undefined; // Only ShellArgsError can escape splitShellArgs.
   }
-  if (has) tokens.push(current);
-  return tokens;
 }
 
 /** A double-quoted TypeScript string literal for `value`. */

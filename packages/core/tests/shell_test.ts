@@ -1,4 +1,10 @@
-import { assertEquals, assertRejects } from "./_assert.ts";
+import {
+  assertEquals,
+  assertRejects,
+  assertStringIncludes,
+  assertThrows,
+  messageOf,
+} from "./_assert.ts";
 import {
   $,
   CommandError,
@@ -7,6 +13,8 @@ import {
 } from "../src/shell.ts";
 import { withAmbientSignal } from "../src/ambient_signal.ts";
 import { withAmbientEcho } from "../src/ambient_echo.ts";
+import { withAmbientRedactor } from "../src/ambient_redactor.ts";
+import { REDACTED, Redactor } from "../src/redact.ts";
 
 /** A command that sleeps far longer than any test would wait. */
 const SLEEP = "await new Promise((r) => setTimeout(r, 30000))";
@@ -158,6 +166,57 @@ Deno.test("$ .killAfter() fires even under .noThrow()", async () => {
   );
 });
 
+Deno.test("$ caps captured output and keeps the tail", async () => {
+  // 40 lines of 1 KiB, numbered, into a 4 KiB cap: only the last few survive.
+  const emit =
+    `for (let i = 0; i < 40; i++) console.log(String(i).padStart(4, "0") + "x".repeat(1019));`;
+  const out = await $`${DENO} eval ${emit}`
+    .quiet()
+    .maxCapturedBytes(4096)
+    .then();
+  assertEquals(out.truncated, true);
+  // The bytes kept are the LAST ones written…
+  assertEquals(out.stdout.trimEnd().endsWith("x".repeat(1019)), true);
+  assertEquals(out.stdout.includes("0039"), true);
+  // …not the first, and the buffer really is bounded (a memory proxy).
+  assertEquals(out.stdout.includes("0000"), false);
+  assertEquals(out.stdout.length <= 4096, true, `kept ${out.stdout.length}`);
+  // The notice makes the loss visible instead of silently truncating.
+  assertEquals(out.text().startsWith("[output truncated to last 4 KiB]"), true);
+});
+
+Deno.test("$ leaves output under the cap untouched and not truncated", async () => {
+  const out = await $`${DENO} eval ${"console.log('small')"}`
+    .maxCapturedBytes(4096)
+    .then();
+  assertEquals(out.truncated, false);
+  assertEquals(out.text(), "small");
+});
+
+Deno.test("$ .maxCapturedBytes() rejects a cap capture cannot honour", () => {
+  // `-1` is the conventional "no limit" idiom and used to spin the trim loop
+  // into an internal TypeError mid-stream; a fractional cap hit a RangeError
+  // deep in a subarray. Both must fail at the setter, naming the setting.
+  for (const bad of [-1, 0, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+    const err = assertThrows(
+      () => $`${DENO} eval ${"1"}`.maxCapturedBytes(bad),
+      RangeError,
+    );
+    assertStringIncludes(messageOf(err), "maxCapturedBytes");
+    assertStringIncludes(messageOf(err), String(bad));
+  }
+});
+
+Deno.test("$ caps stderr independently of stdout", async () => {
+  const emit =
+    `console.log("out"); for (let i = 0; i < 8; i++) console.error("e".repeat(1024));`;
+  const out = await $`${DENO} eval ${emit}`.quiet().maxCapturedBytes(2048)
+    .then();
+  assertEquals(out.truncated, true);
+  assertEquals(out.stdout.includes("out"), true); // stdout was never over cap
+  assertEquals(out.stderr.length <= 2048, true);
+});
+
 Deno.test("$ .signal() terminates a running command when it aborts", async () => {
   const controller = new AbortController();
   const running = $`${DENO} eval ${SLEEP}`
@@ -210,6 +269,53 @@ Deno.test("$ .killAfter() and .signal() combine — either can end it", async ()
   setTimeout(() => controller.abort(), 50);
   const result = await running;
   assertEquals(result.code !== 0, true);
+});
+
+Deno.test("commandLine masks an ambient secret but the OS still gets it raw", async () => {
+  const redactor = new Redactor();
+  redactor.add("hunter2");
+  await withAmbientRedactor(redactor, async () => {
+    const cmd = $`${DENO} eval ${"console.log(Deno.args[0])"} -- ${"hunter2"}`;
+    // The rendered line is masked…
+    assertStringIncludes(cmd.commandLine, REDACTED);
+    assertEquals(cmd.commandLine.includes("hunter2"), false);
+    // …while the argv handed to the process is untouched: the child echoes the
+    // real value back.
+    assertEquals(await cmd.text(), "hunter2");
+  });
+});
+
+Deno.test("a failed command's error message masks an ambient secret", async () => {
+  const redactor = new Redactor();
+  redactor.add("hunter2");
+  await withAmbientRedactor(redactor, async () => {
+    const err = await assertRejects(
+      () => $`${DENO} eval ${"Deno.exit(9)"} -- ${"hunter2"}`.quiet().then(),
+      CommandError,
+    );
+    assertEquals(err.message.includes("hunter2"), false);
+    assertStringIncludes(err.message, REDACTED);
+  });
+});
+
+Deno.test("a dry-run echo of a secret argv token is masked", async () => {
+  const redactor = new Redactor();
+  redactor.add("hunter2");
+  const echoed: string[] = [];
+  await withAmbientRedactor(
+    redactor,
+    () =>
+      withAmbientEcho(
+        (line) => echoed.push(line),
+        async () => await $`login --password ${"hunter2"}`,
+      ),
+  );
+  assertEquals(echoed, [`login --password ${REDACTED}`]);
+});
+
+Deno.test("without an ambient redactor the command line is verbatim", () => {
+  const cmd = $`login --password ${"hunter2"}`;
+  assertEquals(cmd.commandLine, "login --password hunter2");
 });
 
 Deno.test("under an ambient echo sink, a command is echoed, not spawned", async () => {

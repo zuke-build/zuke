@@ -1558,6 +1558,11 @@
           "jsr:@zuke/core@^1.31.0"
         ]
       },
+      "packages/cli": {
+        "dependencies": [
+          "jsr:@zuke/core@^1.31.0"
+        ]
+      },
       "packages/cmd": {
         "dependencies": [
           "jsr:@zuke/core@^1.25.0"

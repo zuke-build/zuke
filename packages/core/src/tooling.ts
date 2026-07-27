@@ -20,6 +20,7 @@
  */
 
 import { Command, type CommandOutput } from "./shell.ts";
+import { checkMaxCapturedBytes } from "./capture.ts";
 import { type AbsolutePath, absolutePath, type PathLike } from "./path.ts";
 
 export type { PathLike };
@@ -205,6 +206,7 @@ export abstract class ToolSettings {
   #throwOnError = true;
   #quiet = false;
   #timeoutMs?: number;
+  #maxCapturedBytes?: number;
   #toolPath?: string;
   #resolution?: ToolResolution;
   #extraArgs: string[] = [];
@@ -266,6 +268,22 @@ export abstract class ToolSettings {
    */
   killAfter(ms: number): this {
     this.#timeoutMs = ms;
+    return this;
+  }
+
+  /**
+   * Cap how much of **each** captured stream the run keeps in memory, in bytes
+   * (default 8 MiB). Once the cap is reached the oldest bytes are dropped,
+   * `CommandOutput.truncated` is set, and `CommandOutput.text` prefixes a
+   * notice. Raise it for a tool whose whole output must be parsed — a coverage
+   * report, a `--json` dump — and lower it to bound a chatty one. Live
+   * streaming to the terminal is never capped.
+   *
+   * @throws {RangeError} If `bytes` is not a positive whole number.
+   */
+  maxCapturedBytes(bytes: number): this {
+    checkMaxCapturedBytes(bytes);
+    this.#maxCapturedBytes = bytes;
     return this;
   }
 
@@ -352,6 +370,9 @@ export abstract class ToolSettings {
     if (!this.#throwOnError) command.noThrow();
     if (this.#quiet) command.quiet();
     if (this.#timeoutMs !== undefined) command.killAfter(this.#timeoutMs);
+    if (this.#maxCapturedBytes !== undefined) {
+      command.maxCapturedBytes(this.#maxCapturedBytes);
+    }
     return command;
   }
 

@@ -60,6 +60,7 @@ import { absolutePath } from "./path.ts";
 import type { TargetBuilder } from "./target.ts";
 import type { RunRecord, SignalRecord, WaitState } from "./state/types.ts";
 import { withAmbientSignal } from "./ambient_signal.ts";
+import { withAmbientRedactor } from "./ambient_redactor.ts";
 import { defaultStateHost, type StateStore } from "./state/store.ts";
 import { resolveStateStore } from "./state/resolve.ts";
 import { buildRunRecord, ciRunUrl, resolveActor } from "./state/record.ts";
@@ -677,7 +678,13 @@ export async function execute(
     // the plan throws — nothing to restore. Both schedulers convert every
     // target-path reject into a failed outcome (never rejecting themselves), so
     // the run always settles here rather than stranding the record `running`.
-    run = await withAmbientSignal(runController.signal, runPlan);
+    // The same scope installs the redactor the shell renders command lines
+    // through, so a secret passed to `$` as an argv token is masked in the echo
+    // and in any error message that quotes the command.
+    run = await withAmbientSignal(
+      runController.signal,
+      () => withAmbientRedactor(redactor, runPlan),
+    );
   } finally {
     if (options.signal !== undefined) {
       options.signal.removeEventListener("abort", onCancel);

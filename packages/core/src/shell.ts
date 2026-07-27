@@ -19,15 +19,21 @@
 import type { AbsolutePath, PathLike } from "./path.ts";
 import { ambientSignal } from "./ambient_signal.ts";
 import { ambientEcho } from "./ambient_echo.ts";
+import { redactLine } from "./ambient_redactor.ts";
+import { terminateProcess, TERMINATION_GRACE_MS } from "./terminate.ts";
+import {
+  captureStream,
+  checkMaxCapturedBytes,
+  DEFAULT_MAX_CAPTURED_BYTES,
+  truncationNotice,
+} from "./capture.ts";
 
-/** Combine an optional timeout signal and an optional cancellation signal. */
-function combineSignals(
-  a: AbortSignal | undefined,
-  b: AbortSignal | undefined,
-): AbortSignal | undefined {
-  if (a !== undefined && b !== undefined) return AbortSignal.any([a, b]);
-  return a ?? b;
-}
+/**
+ * Split an already-written command string into argv with POSIX quoting rules —
+ * for input that arrives as one line (a `package.json` script, a Makefile
+ * recipe) rather than being constructed with `$`.
+ */
+export { ShellArgsError, splitShellArgs } from "./split_args.ts";
 
 /** A value that may be interpolated into a `$` template. */
 export type Interpolatable =
@@ -85,11 +91,24 @@ export class CommandOutput {
     readonly stdout: string,
     /** Captured standard error. */
     readonly stderr: string,
+    /**
+     * Whether either captured stream hit the capture cap, in which case it holds
+     * only its tail — the newest bytes — and its beginning is gone. See
+     * {@link Command.maxCapturedBytes}.
+     */
+    readonly truncated: boolean = false,
+    /** The per-stream capture cap that applied, in bytes. */
+    readonly maxCapturedBytes: number = DEFAULT_MAX_CAPTURED_BYTES,
   ) {}
 
-  /** Trimmed stdout. */
+  /**
+   * Trimmed stdout, prefixed with a one-line notice when {@link truncated} — so
+   * a caller reading the output cannot mistake a tail for the whole of it.
+   */
   text(): string {
-    return this.stdout.trim();
+    const text = this.stdout.trim();
+    if (!this.truncated) return text;
+    return `${truncationNotice(this.maxCapturedBytes)}\n${text}`;
   }
 }
 
@@ -131,34 +150,13 @@ export class SpawnedProcess {
    * teardown. A process that has already exited is treated as stopped. A
    * dry-run stub (no child) is a no-op.
    */
-  async stop(
+  stop(
     signal: Deno.Signal = "SIGTERM",
-    graceMs = 5000,
+    graceMs: number = TERMINATION_GRACE_MS,
   ): Promise<void> {
     const child = this.#child;
-    if (child === undefined) return; // dry-run stub: nothing to stop.
-    try {
-      child.kill(signal);
-    } catch {
-      return; // Already exited: nothing to signal.
-    }
-    // Race the process's exit against a grace timer; escalate to SIGKILL if the
-    // timer wins. The timer is always cleared so it never leaks.
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const graceExpired = new Promise<boolean>((resolve) => {
-      timer = setTimeout(() => resolve(true), graceMs);
-    });
-    const exited = child.status.then(() => false);
-    const shouldKill = await Promise.race([exited, graceExpired]);
-    if (timer !== undefined) clearTimeout(timer);
-    if (shouldKill) {
-      try {
-        child.kill("SIGKILL");
-      } catch {
-        // Raced to exit between the timeout and the kill.
-      }
-    }
-    await child.status;
+    if (child === undefined) return Promise.resolve(); // stub: nothing to stop.
+    return terminateProcess(child, signal, graceMs);
   }
 }
 
@@ -166,39 +164,7 @@ interface RunResult {
   code: number;
   stdout: string;
   stderr: string;
-}
-
-/** Concatenate byte chunks into one buffer and decode as UTF-8. */
-function decodeChunks(chunks: Uint8Array[]): string {
-  let total = 0;
-  for (const c of chunks) total += c.length;
-  const merged = new Uint8Array(total);
-  let offset = 0;
-  for (const c of chunks) {
-    merged.set(c, offset);
-    offset += c.length;
-  }
-  return new TextDecoder().decode(merged);
-}
-
-/** Drain a stream, optionally tee-ing each chunk to a live sink, and capture. */
-async function collect(
-  stream: ReadableStream<Uint8Array>,
-  sink: { writeSync(p: Uint8Array): number } | null,
-): Promise<string> {
-  const reader = stream.getReader();
-  const chunks: Uint8Array[] = [];
-  try {
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      chunks.push(value);
-      if (sink) sink.writeSync(value);
-    }
-  } finally {
-    reader.releaseLock();
-  }
-  return decodeChunks(chunks);
+  truncated: boolean;
 }
 
 /**
@@ -215,6 +181,7 @@ export class Command implements PromiseLike<CommandOutput> {
   #capturing = false;
   #timeoutMs?: number;
   #signal?: AbortSignal;
+  #maxCapturedBytes = DEFAULT_MAX_CAPTURED_BYTES;
   #result?: Promise<RunResult>;
 
   /** Build a command from a discrete argv array (binary first). */
@@ -256,6 +223,22 @@ export class Command implements PromiseLike<CommandOutput> {
   }
 
   /**
+   * Cap how much of **each** captured stream is kept in memory, in bytes
+   * (default 8 MiB). Capture keeps the newest bytes: once the cap is reached the
+   * oldest are dropped, {@link CommandOutput.truncated} is set, and
+   * {@link CommandOutput.text} prefixes a notice. Raise it for a command whose
+   * whole output you must parse; lower it to bound a chatty one. Live streaming
+   * to the terminal is never capped — every byte still reaches it.
+   *
+   * @throws {RangeError} If `bytes` is not a positive whole number.
+   */
+  maxCapturedBytes(bytes: number): this {
+    checkMaxCapturedBytes(bytes);
+    this.#maxCapturedBytes = bytes;
+    return this;
+  }
+
+  /**
    * Terminate the process (via `SIGTERM`) when `signal` aborts — for example
    * when the enclosing run is cancelled. Overrides the executor's ambient
    * run signal for this command. Composes with {@link killAfter}: either the
@@ -266,9 +249,15 @@ export class Command implements PromiseLike<CommandOutput> {
     return this;
   }
 
-  /** The command line, for diagnostics. */
+  /**
+   * The command line, for diagnostics — argv joined by spaces, with the resolved
+   * value of every `secret` parameter of the enclosing run masked. This is the
+   * only rendered form of the command (the echo under `--dry-run`, a
+   * {@link CommandError} message), so a secret passed as an argv token cannot
+   * leak through one. The argv given to the operating system is unchanged.
+   */
   get commandLine(): string {
-    return this.#argv.join(" ");
+    return redactLine(this.#argv.join(" "));
   }
 
   #run(): Promise<RunResult> {
@@ -285,7 +274,12 @@ export class Command implements PromiseLike<CommandOutput> {
     const echo = ambientEcho();
     if (echo !== undefined) {
       echo(this.commandLine);
-      return Promise.resolve({ code: 0, stdout: "", stderr: "" });
+      return Promise.resolve({
+        code: 0,
+        stdout: "",
+        stderr: "",
+        truncated: false,
+      });
     }
     return this.#spawn();
   }
@@ -294,23 +288,11 @@ export class Command implements PromiseLike<CommandOutput> {
     const [cmd, ...args] = this.#argv;
     if (!cmd) throw new Error("Cannot run an empty command.");
 
-    // A timeout aborts the child via an AbortSignal; `timedOut` distinguishes
-    // that kill from an ordinary non-zero exit so we can raise a dedicated error.
     const ms = this.#timeoutMs;
-    const controller = ms === undefined ? undefined : new AbortController();
+    // `timedOut` distinguishes a timeout kill from an ordinary non-zero exit so
+    // we can raise a dedicated error.
     let timedOut = false;
-    const timer = ms === undefined ? undefined : setTimeout(() => {
-      timedOut = true;
-      controller?.abort();
-    }, ms);
-
-    // The timeout's own signal is folded together with the cancellation signal
-    // (an explicit `.signal()`, else the executor's ambient run signal), so an
-    // aborted run terminates the child even when a timeout is also armed.
-    const signal = combineSignals(
-      controller?.signal,
-      this.#signal ?? ambientSignal(),
-    );
+    let timer: ReturnType<typeof setTimeout> | undefined;
 
     try {
       const child = new Deno.Command(cmd, {
@@ -319,22 +301,43 @@ export class Command implements PromiseLike<CommandOutput> {
         env: this.#env,
         stdout: "piped",
         stderr: "piped",
-        signal,
+        // Cancellation (an explicit `.signal()`, else the executor's ambient run
+        // signal) terminates the child too, independently of the timeout below.
+        signal: this.#signal ?? ambientSignal(),
       }).spawn();
+
+      // A timeout terminates the child itself rather than aborting the spawn
+      // signal, because that only ever delivers SIGTERM: a child that ignores it
+      // would keep the streams open and hang the run forever. The escalating
+      // sequence guarantees the process dies and this promise settles.
+      if (ms !== undefined) {
+        timer = setTimeout(() => {
+          timedOut = true;
+          void terminateProcess(child);
+        }, ms);
+      }
 
       // When capturing programmatically, don't echo stdout to the terminal.
       const streamStdout = !this.#quiet && !this.#capturing;
       const streamStderr = !this.#quiet;
 
+      // Capture is bounded (per stream) so a runaway child cannot grow the buffer
+      // until the run dies; the tee to the terminal above stays unbounded.
+      const cap = this.#maxCapturedBytes;
       const [stdout, stderr] = await Promise.all([
-        collect(child.stdout, streamStdout ? Deno.stdout : null),
-        collect(child.stderr, streamStderr ? Deno.stderr : null),
+        captureStream(child.stdout, streamStdout ? Deno.stdout : null, cap),
+        captureStream(child.stderr, streamStderr ? Deno.stderr : null, cap),
       ]);
       const status = await child.status;
       if (timedOut && ms !== undefined) {
         throw new CommandTimeoutError(this.commandLine, ms);
       }
-      return { code: status.code, stdout, stderr };
+      return {
+        code: status.code,
+        stdout: stdout.text,
+        stderr: stderr.text,
+        truncated: stdout.truncated || stderr.truncated,
+      };
     } finally {
       if (timer !== undefined) clearTimeout(timer);
     }
@@ -361,15 +364,22 @@ export class Command implements PromiseLike<CommandOutput> {
   async #output(): Promise<CommandOutput> {
     const r = await this.#run();
     this.#maybeThrow(r);
-    return new CommandOutput(r.code, r.stdout, r.stderr);
+    return new CommandOutput(
+      r.code,
+      r.stdout,
+      r.stderr,
+      r.truncated,
+      this.#maxCapturedBytes,
+    );
   }
 
-  /** Run and resolve to trimmed stdout. Throws on non-zero unless `noThrow`. */
+  /**
+   * Run and resolve to trimmed stdout — prefixed with a truncation notice if the
+   * capture cap was hit. Throws on non-zero unless `noThrow`.
+   */
   async text(): Promise<string> {
     this.#capturing = true;
-    const r = await this.#run();
-    this.#maybeThrow(r);
-    return r.stdout.trim();
+    return (await this.#output()).text();
   }
 
   /** Run and resolve to stdout split into lines (trailing blank dropped). */

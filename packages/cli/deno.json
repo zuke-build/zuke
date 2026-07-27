@@ -6,6 +6,9 @@
   "exports": {
     ".": "./mod.ts"
   },
+  "imports": {
+    "@zuke/core": "jsr:@zuke/core@^1.31.0"
+  },
   "publish": {
     "exclude": [
       "tests/"

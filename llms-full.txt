@@ -3350,6 +3350,44 @@ function $(strings: TemplateStringsArray, ...values: Interpolatable[]): Command
   @example
       `await $\`deno test -A``
 
+function splitShellArgs(input: string): string[]
+  Split `input` into argv the way a POSIX shell would, honouring the quoting
+  rules only:
+
+  - Unquoted runs of whitespace separate arguments; leading, trailing, and
+    repeated whitespace produce no empty arguments.
+  - Single quotes are fully literal — no escape sequences at all, so `'a\b'`
+    yields `a\b`.
+  - Inside double quotes a backslash escapes only `"`, `\`, ```, `$`, and a
+    newline; before anything else it stays literal, so `"\d+"` yields `\d+`
+    rather than silently losing the backslash.
+  - Outside quotes a backslash escapes the following character, so `a\ b` is one
+    argument.
+  - A backslash-newline pair is a line continuation and is removed, both
+    unquoted and inside double quotes; a backslash at the very end of the input
+    is a dangling continuation and is dropped.
+  - Adjacent segments concatenate (`a"b c"d` → `ab cd`) and a quoted empty
+    string is a real, empty argument (`''` → `[""]`).
+
+  Non-goals, deliberately not implemented — the input is turned into argv,
+  never interpreted: no variable expansion (`"$HOME"` stays `$HOME`), no
+  globbing, no tilde expansion, no command substitution, and no operator
+  handling of any kind (`|`, `&&`, `;`, `>` are ordinary characters). A caller
+  that needs those must split on them itself, or run a real shell.
+
+  `\r` is treated as a separator alongside space, tab, and newline so a command
+  line read from a CRLF file cannot smuggle an invisible carriage return into an
+  argument.
+
+  @param input
+      The command string to split.
+
+  @return
+      The argv entries, in order; an empty array for blank input.
+
+  @throws {ShellArgsError}
+      If a single or double quote is never closed.
+
 function tokenize(strings: ReadonlyArray<string>, values: ReadonlyArray<Interpolatable>): string[]
   Tokenise a tagged-template invocation into an argv array.
 
@@ -3376,17 +3414,33 @@ class Command implements PromiseLike<CommandOutput>
   killAfter(ms: number): this
     Kill the process if it runs longer than `ms` milliseconds, raising a
     {@link CommandTimeoutError}. Fires even under {@link noThrow}.
+  maxCapturedBytes(bytes: number): this
+    Cap how much of each captured stream is kept in memory, in bytes
+    (default 8 MiB). Capture keeps the newest bytes: once the cap is reached the
+    oldest are dropped, {@link CommandOutput.truncated} is set, and
+    {@link CommandOutput.text} prefixes a notice. Raise it for a command whose
+    whole output you must parse; lower it to bound a chatty one. Live streaming
+    to the terminal is never capped — every byte still reaches it.
+
+    @throws {RangeError}
+        If `bytes` is not a positive whole number.
+
   signal(signal: AbortSignal): this
     Terminate the process (via `SIGTERM`) when `signal` aborts — for example
     when the enclosing run is cancelled. Overrides the executor's ambient
     run signal for this command. Composes with {@link killAfter}: either the
     timeout or the abort kills the process, whichever fires first.
   get commandLine(): string
-    The command line, for diagnostics.
+    The command line, for diagnostics — argv joined by spaces, with the resolved
+    value of every `secret` parameter of the enclosing run masked. This is the
+    only rendered form of the command (the echo under `--dry-run`, a
+    {@link CommandError} message), so a secret passed as an argv token cannot
+    leak through one. The argv given to the operating system is unchanged.
   then(onfulfilled?: ((value: CommandOutput) => TResult1 | PromiseLike<TResult1>) | null, onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null): PromiseLike<TResult1 | TResult2>
     Await support: run the command and resolve to a {@link CommandOutput}.
   async text(): Promise<string>
-    Run and resolve to trimmed stdout. Throws on non-zero unless `noThrow`.
+    Run and resolve to trimmed stdout — prefixed with a truncation notice if the
+    capture cap was hit. Throws on non-zero unless `noThrow`.
   async lines(): Promise<string[]>
     Run and resolve to stdout split into lines (trailing blank dropped).
   async code(): Promise<number>
@@ -3409,10 +3463,11 @@ class CommandError extends Error
 class CommandOutput
   The resolved result of a command, available when awaiting a {@link Command}.
 
-  constructor(readonly code: number, readonly stdout: string, readonly stderr: string)
+  constructor(readonly code: number, readonly stdout: string, readonly stderr: string, readonly truncated: boolean, readonly maxCapturedBytes: number)
     Build the output from the process exit code and captured streams.
   text(): string
-    Trimmed stdout.
+    Trimmed stdout, prefixed with a one-line notice when {@link truncated} — so
+    a caller reading the output cannot mistake a tail for the whole of it.
 
 class CommandTimeoutError extends Error
   Raised when a command is killed for exceeding its {@link Command.killAfter}
@@ -3421,6 +3476,16 @@ class CommandTimeoutError extends Error
 
   constructor(readonly command: string, readonly timeoutMs: number)
     Build the error from the command line and the elapsed-time budget.
+  override name: string
+    The error name.
+
+class ShellArgsError extends Error
+  Raised when {@link splitShellArgs} reaches the end of the input with a quote
+  still open. Names the offending quote character and the offset at which it was
+  opened so the bad spot in a long command line is findable.
+
+  constructor(readonly quote: string, readonly offset: number)
+    Build the error from the unclosed quote character and its offset.
   override name: string
     The error name.
 
@@ -3438,7 +3503,7 @@ class SpawnedProcess
     The operating-system process id (`-1` for a dry-run stub).
   get status(): Promise<Deno.CommandStatus>
     Resolves when the process exits (immediate success for a dry-run stub).
-  async stop(signal: Deno.Signal, graceMs: number): Promise<void>
+  stop(signal: Deno.Signal, graceMs: number): Promise<void>
     Terminate the process and wait for it to exit. Sends `signal` (default
     `SIGTERM`); if the process has not exited within `graceMs` (default 5s), it
     escalates to `SIGKILL` so a process that ignores `SIGTERM` cannot hang
@@ -3604,6 +3669,17 @@ abstract class ToolSettings
   killAfter(ms: number): this
     Kill the tool if it runs longer than `ms` milliseconds, raising a
     `CommandTimeoutError`. Fires even under {@link noThrow}.
+  maxCapturedBytes(bytes: number): this
+    Cap how much of each captured stream the run keeps in memory, in bytes
+    (default 8 MiB). Once the cap is reached the oldest bytes are dropped,
+    `CommandOutput.truncated` is set, and `CommandOutput.text` prefixes a
+    notice. Raise it for a tool whose whole output must be parsed — a coverage
+    report, a `--json` dump — and lower it to bound a chatty one. Live
+    streaming to the terminal is never capped.
+
+    @throws {RangeError}
+        If `bytes` is not a positive whole number.
+
   toolPath(path: PathLike): this
     Override the binary to run (e.g. an absolute path to the tool).
   fromNodeModules(): this

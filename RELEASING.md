@@ -50,6 +50,19 @@ the packages publish themselves.
 > built from the PR description/commits, so keep illustrative code in the PR
 > _discussion_, not in the commit body. Describe the change in prose instead.
 
+> [!IMPORTANT]
+> **A package that starts using a brand-new `@zuke/core` symbol needs a
+> follow-up floor bump.** The workspace only resolves the local `packages/core`
+> member while its version still satisfies the dependent's `jsr:@zuke/core@^x.y.z`
+> pin, so the PR that introduces the usage **cannot** raise that pin — doing so
+> makes Deno ignore the workspace member and try to download a version that is
+> not published yet, and the whole build fails to resolve. Land the usage against
+> the existing floor, then once the core release publishes, raise the floor in a
+> small follow-up `fix:` PR (see `fix: raise the @zuke/core floor to 1.31.0 in
+> wrappers using SubcommandSettings`). Until that lands, a consumer whose lockfile
+> already resolves the older core can hit a missing-export error, so treat the
+> follow-up as part of the change, not optional cleanup.
+
 ## Manual trigger
 
 `release.yml` also has a `workflow_dispatch` trigger, so you can run

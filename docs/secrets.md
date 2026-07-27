@@ -40,6 +40,12 @@ value wherever it prints:
 - Every line the executor writes through its reporter — banners, per-target
   status, the build summary, and **error messages** (including a target that
   throws with the secret in its message, or a parse error on a malformed value).
+- The rendered **command line** of any `$` command: the echo under `--dry-run`, a
+  `CommandError`/`CommandTimeoutError` message, and a spawned service's recorded
+  line. A secret passed to a command as an argv token is masked there even if the
+  build prints the line itself, because the masking happens where the line is
+  built rather than at the reporter. The argv handed to the operating system is
+  unchanged — the command still works.
 - Under GitHub Actions, Zuke additionally emits `::add-mask::<value>` so the
   runner masks the value in its own log stream.
 
