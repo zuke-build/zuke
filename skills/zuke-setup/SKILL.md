@@ -115,12 +115,16 @@ prefer `zuke setup`, which drops the launcher scripts in for you.)
 Every external tool has a typed `*Tasks` wrapper; **do not fall back to
 `Deno.Command` or hand-rolled shell.** To get exact signatures:
 
+- A single package on the command line: `deno doc jsr:@zuke/<package>`. Prefer
+  this in a consumer repo — it resolves the version the project actually has
+  installed, so it cannot describe an API that version lacks.
 - The whole typed surface of every package is in **`llms-full.txt`** (indexed
-  by `llms.txt`) — in the Zuke repo itself it's at the repo root; in a
-  consumer repo (where this skill actually runs) fetch it from
-  <https://raw.githubusercontent.com/zuke-build/zuke/master/llms-full.txt>
+  by `llms.txt`) — at the repo root in the Zuke repo itself, or from a consumer
+  repo <https://raw.githubusercontent.com/zuke-build/zuke/master/llms-full.txt>
   (index: <https://raw.githubusercontent.com/zuke-build/zuke/master/llms.txt>).
-- A single package on the command line: `deno doc jsr:@zuke/<package>`.
+  Both track `master`, so they may document symbols that are merged but not yet
+  released; use them to find what exists, then confirm the signature with
+  `deno doc`.
 
 Once the project is scaffolded, use the **zuke-write-build** skill to add and
 edit targets.

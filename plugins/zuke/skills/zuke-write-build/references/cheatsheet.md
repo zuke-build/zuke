@@ -1,8 +1,12 @@
 # Zuke authoring cheatsheet
 
-A quick map for writing targets. **Always confirm exact signatures** against
-`llms-full.txt` (repo root) or `deno doc jsr:@zuke/<package>` — this is a
-summary, not the source of truth.
+A quick map for writing targets. **Always confirm exact signatures** with
+`deno doc jsr:@zuke/<package>`, which resolves the version the project actually
+has installed. For breadth — which packages and tasks exist — use
+`llms-full.txt`: at the repo root in the Zuke repo itself, or from a consumer
+repo <https://raw.githubusercontent.com/zuke-build/zuke/master/llms-full.txt>,
+which tracks `master` and so may list symbols not yet in any published release.
+This cheatsheet is a summary, not the source of truth.
 
 ## `target()` — the fluent builder
 

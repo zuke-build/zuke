@@ -63,13 +63,17 @@ await run(CI);
 
 Before calling any task or settings method, confirm the real shape:
 
-- **Whole surface:** `llms-full.txt` (index: `llms.txt`) — in the Zuke repo
-  itself it's at the repo root; in a consumer repo (where this skill actually
-  runs) fetch it from
+- **One package — prefer this in a consumer repo:**
+  `deno doc jsr:@zuke/<package>` (e.g. `deno doc jsr:@zuke/deno`). It resolves
+  the version the project actually has installed, so it cannot describe an API
+  that version lacks.
+- **Whole surface:** `llms-full.txt` (index: `llms.txt`) — at the repo root in
+  the Zuke repo itself. From a consumer repo, fetch
   <https://raw.githubusercontent.com/zuke-build/zuke/master/llms-full.txt>
   (index: <https://raw.githubusercontent.com/zuke-build/zuke/master/llms.txt>).
-- **One package:** `deno doc jsr:@zuke/<package>` (e.g.
-  `deno doc jsr:@zuke/deno`).
+  Both track `master`, so they can document symbols that are merged but not yet
+  in any published release. Use them for breadth — which packages and tasks
+  exist — and confirm a signature with `deno doc` before relying on it.
 - A quick map of the most common methods and task objects is in
   [`references/cheatsheet.md`](references/cheatsheet.md) next to this file —
   read it when wiring targets, then verify specifics against the sources above.
