@@ -511,16 +511,21 @@ Deno.test("FileSystemBuildRegistry takes over a mutex marker left past its TTL",
   assertEquals(host.files.has("/builds/CI.json"), true);
 });
 
-Deno.test("FileSystemBuildRegistry reclaims an unstamped mutex marker", async () => {
-  // A marker left by an older zuke that never stamped its markers carries no age
-  // to compare; once a waiter has spun far longer than the create→stamp window it
-  // reclaims it rather than wedging the directory for good.
+Deno.test("FileSystemBuildRegistry never steals an unstamped mutex marker", async () => {
+  // An unstamped marker reads exactly like a holder that has created its marker
+  // and not yet stamped it, so reclaiming one could put two registrations inside
+  // the mutex at once — both then winning the same compare-and-swap. The gain in
+  // expiry must not cost the exclusion: an unstamped marker is left alone.
   const host = new FakeStateHost();
   const marker = "/builds/CI.json.lock";
   host.locks.add(marker);
   const registry = new FileSystemBuildRegistry("/builds", host);
-  assertEquals((await registry.register(sampleDescriptor(), null)).ok, true);
-  assertEquals(host.locks.has(marker), false);
+  await assertRejects(
+    () => registry.register(sampleDescriptor(), null),
+    Error,
+    "could not acquire the mutex",
+  );
+  assertEquals(host.locks.has(marker), true); // left for its holder
 });
 
 Deno.test("FileSystemBuildRegistry round-trips through the real filesystem", async () => {
