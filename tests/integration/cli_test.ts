@@ -154,6 +154,15 @@ Deno.test("generate-ci writes a timezone-aware scheduled workflow", async () => 
   });
 });
 
+// The line each shell's script uses to bind the completion to the launcher —
+// the word a user must type for completion to fire, which is why the docs say
+// `zuke`/`./zuke` complete and `deno task zuke` does not.
+const BINDING: Record<string, string> = {
+  bash: "complete -F _zuke_complete ./zuke",
+  zsh: "compdef _zuke zuke ./zuke",
+  fish: "complete -c zuke -f",
+};
+
 for (const shell of ["bash", "zsh", "fish"]) {
   Deno.test(`completions print ${shell} emits a non-empty script naming the targets`, async () => {
     const { code, out } = await runCli(Demo, ["completions", "print", shell]);
@@ -161,6 +170,7 @@ for (const shell of ["bash", "zsh", "fish"]) {
     assertEquals(out.length > 0, true);
     assertStringIncludes(out, "zuke");
     assertStringIncludes(out, "build");
+    assertStringIncludes(out, BINDING[shell]);
   });
 }
 

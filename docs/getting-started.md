@@ -90,6 +90,14 @@ two launchers above into your repo when you want the verified bootstrap too.
 If you already have Deno, `deno task zuke <target>` (via the `zuke` task in
 `deno.json`) does the same thing.
 
+`zuke setup`/`zuke import` scaffold this launcher for you, so once it's in
+place run every target with `./zuke <target>` — the bare `zuke` you installed
+globally only knows `setup`/`import`/`doc` (see the
+[CLI reference](./cli.md) for the full split). Shell completions
+(`./zuke completions install <shell>`) register the words `zuke` and `./zuke`,
+so those two forms complete targets; `deno task zuke <target>` does not,
+because the shell matches the completion on the first word of the line.
+
 ## Quick start
 
 ```ts
@@ -124,7 +132,7 @@ class MyBuild extends Build {
       await DenoTasks.test((s) => s.allowAll());
     });
 
-  // Optional: runs when you invoke `zuke` with no target.
+  // Optional: runs when you invoke `./zuke` with no target.
   default = target().dependsOn(this.test).executes(() => {});
 }
 

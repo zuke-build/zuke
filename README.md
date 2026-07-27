@@ -57,7 +57,8 @@ class MyBuild extends Build {
 - **Ergonomic shell.** The `$` tagged template runs processes with sane defaults
   (throw on failure, capture output) and is injection-safe.
 - **Small and explicit.** A tiny core: discover targets, build a graph, sort,
-  run. No magic, no plugins to learn (yet).
+  run. No magic, and no plugins to learn for a basic build — the
+  [plugin contract](./docs/extending.md) is there once you want one.
 - **Code-first CI.** Declare your pipeline in the build with
   `cicd({ provider: "github" })` — the provider is the only required field — and
   Zuke generates GitHub Actions, GitLab CI, or Azure Pipelines YAML,
@@ -290,6 +291,10 @@ Full documentation lives in [`docs/`](./docs/):
   code-first CI generation (`cicd()`), and gotchas.
 - [Run context & cancellation](./docs/run-context.md) — the `TargetContext` a
   body receives (`runId`, `signal`, `state`) and cancelling a run.
+- [Secrets](./docs/secrets.md) — source secret values from a manager with
+  `.from(...)`, with guaranteed redaction from every output.
+- [Service targets](./docs/services.md) — `service()` for long-lived processes
+  (a dev server, a database) kept running while dependents execute.
 - [Caching](./docs/caching.md) — the incremental build cache
   (`.inputs()`/`.outputs()`) and the AI response cache (`aiCache`).
 - [Durable run state](./docs/state.md) — persist a run's status and per-target
@@ -299,18 +304,30 @@ Full documentation lives in [`docs/`](./docs/):
   across runs and machines, with a TTL backstop and typed `LockConflictError`s.
 - [Orchestration: waits](./docs/orchestration.md) — `.waitsFor()` suspends a run
   until an external signal or predicate, saving its state to be resumed later.
+- [Build registry](./docs/registry.md) — `zuke register` catalogs a build for
+  dynamic, agentic discovery by an MCP server.
+- [Console output](./docs/console.md) — `@zuke/console`: the levelled logger,
+  markup, boxes/tables/rules, and the renderer behind Zuke's own build log.
 - [Shell wrapper (`$`)](./docs/shell.md) — ergonomic, injection-safe process
   execution.
 - [Paths (`absolutePath`)](./docs/paths.md) — the fluent path type.
 - [Tools](./docs/tools.md) — the typed tool-wrapper packages and their tasks.
+- [Installing tools](./docs/installing-tools.md) — fetch pinned,
+  checksum-verified CLIs with `installRelease()` and `toolchain()`.
+- [Extending Zuke](./docs/extending.md) — the plugin contract: lifecycle
+  plugins, tool wrappers, and reusable target bundles.
+- [Observability (OpenTelemetry)](./docs/observability.md) — `@zuke/otel`
+  exports run and target spans plus counters as OTLP/HTTP JSON.
+- [MCP server](./docs/mcp.md) — `./zuke mcp` exposes the build to AI agents as
+  typed tools over the Model Context Protocol.
 - [AI code review](./docs/ai-review.md) — gate the build on a structured LLM
   assessment of the diff (`@zuke/ai`).
 - [Self-healing builds](./docs/self-healing.md) — diagnose and fix failing
   targets with `recoverWith` and `aiFixer`, including Copilot-style suggestions.
-- [Extending Zuke](./docs/extending.md) — the plugin contract: lifecycle
-  plugins, tool wrappers, and reusable target bundles.
 - [Using Zuke in a Node/npm project](./docs/node-projects.md) — drive a Node
   build with Deno.
+- [Scheduled runs](./docs/schedules.md) — `triggers.schedule` (`{ cron, tz }`)
+  compiled to UTC cron with a daylight-saving wall-clock guard.
 - [CLI reference](./docs/cli.md) — commands and flags.
 - [Programmatic API](./docs/programmatic-api.md) — drive Zuke from your own
   code.

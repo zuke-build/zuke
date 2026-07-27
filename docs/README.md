@@ -23,6 +23,8 @@
   suspends a run until an external event, to be resumed later.
 - [State HTTP API](./state-api.md) — the REST contract for hosting a production
   state backend.
+- [Build registry](./registry.md) — `zuke register` catalogs a build for
+  dynamic, agentic discovery by an MCP server.
 - [Console output](./console.md) — `@zuke/console`: the levelled logger, markup,
   boxes/tables/rules, and the renderer behind Zuke's own build log.
 - [Shell wrapper (`$`)](./shell.md) — ergonomic, injection-safe process

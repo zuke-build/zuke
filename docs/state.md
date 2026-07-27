@@ -80,9 +80,9 @@ Each run is stored as one JSON document:
 ```
 
 A target's `status` is one of `pending`, `running`, `succeeded`, `failed`,
-`skipped` (and `waiting`, from a later milestone). This is a **separate
-vocabulary** from the console's `passed`/`cached`: both of those map to
-`succeeded` in the record.
+`skipped`, and `waiting` (parked at a [`.waitsFor()`](./orchestration.md) gate).
+This is a **separate vocabulary** from the console's `passed`/`cached`: both of
+those map to `succeeded` in the record.
 
 The executor writes the record when it is created, on each target's start and
 finish, and when the run ends. So if the process is killed mid-run, the record
@@ -110,8 +110,8 @@ deploy = target().executes(async (ctx) => {
 `set` merges a JSON patch into the target's `meta` and awaits the write; `get`
 returns the current metadata. When no store is configured, the handle is an
 in-memory no-op — `set`/`get` are consistent within the run, but nothing is
-persisted. It is the carrier for anything that must survive across a
-suspend/resume boundary in later milestones.
+persisted. It is the carrier for anything that must survive a
+[suspend/resume](./orchestration.md) boundary.
 
 ### Secrets never touch state
 
@@ -169,8 +169,9 @@ Writes are **compare-and-swap**: each write carries the version the writer last
 read, and only lands if the stored version still matches. Two writers racing at
 the same version → exactly one wins; the loser gets a typed conflict and
 re-reads. Within a single process, Zuke serialises its own writes, so conflicts
-only arise across processes (which a later milestone — resuming a suspended run
-— relies on).
+only arise across processes — which is exactly what
+[resuming a suspended run](./orchestration.md) relies on: concurrent resumers
+race this same compare-and-swap, and all but one get `AlreadyResumedError`.
 
 State writes are **best-effort**: a store that is briefly unavailable is
 reported through the run's reporter but never crashes the build. The build's
