@@ -36,6 +36,13 @@ Deno.test("the default binary is git and global options precede the subcommand",
   ]);
 });
 
+Deno.test("status: --porcelain and --branch render alongside --short", () => {
+  assertEquals(
+    new GitStatusSettings().porcelain().branch().argv(),
+    ["git", "status", "--porcelain", "--branch"],
+  );
+});
+
 Deno.test("init and clone render their options", () => {
   assertEquals(
     new GitInitSettings().bare().initialBranch("main").argv(),
@@ -176,6 +183,13 @@ Deno.test("push, pull, and fetch render their options", () => {
   );
 });
 
+Deno.test("push: --delete renders the remote ref removal", () => {
+  assertEquals(
+    new GitPushSettings().deleteRef().remote("origin").ref("stale").argv(),
+    ["git", "push", "--delete", "origin", "stale"],
+  );
+});
+
 Deno.test("run executes an arbitrary command", () => {
   assertEquals(
     new GitRunSettings().command("rev-parse", "--short", "HEAD").argv(),
@@ -185,4 +199,60 @@ Deno.test("run executes an arbitrary command", () => {
 
 Deno.test("GitTasks.status reaches execution", async () => {
   await assertRejects(() => GitTasks.status(missingTool), ToolNotFoundError);
+});
+
+Deno.test("GitTasks.init reaches execution", async () => {
+  await assertRejects(() => GitTasks.init(missingTool), ToolNotFoundError);
+});
+
+Deno.test("GitTasks.clone reaches execution", async () => {
+  await assertRejects(
+    () => GitTasks.clone((s) => missingTool(s).repository("git@host:r.git")),
+    ToolNotFoundError,
+  );
+});
+
+Deno.test("GitTasks.add reaches execution", async () => {
+  await assertRejects(() => GitTasks.add(missingTool), ToolNotFoundError);
+});
+
+Deno.test("GitTasks.commit reaches execution", async () => {
+  await assertRejects(
+    () => GitTasks.commit((s) => missingTool(s).message("msg")),
+    ToolNotFoundError,
+  );
+});
+
+Deno.test("GitTasks.checkout reaches execution", async () => {
+  await assertRejects(
+    () => GitTasks.checkout((s) => missingTool(s).ref("main")),
+    ToolNotFoundError,
+  );
+});
+
+Deno.test("GitTasks.branch reaches execution", async () => {
+  await assertRejects(() => GitTasks.branch(missingTool), ToolNotFoundError);
+});
+
+Deno.test("GitTasks.tag reaches execution", async () => {
+  await assertRejects(() => GitTasks.tag(missingTool), ToolNotFoundError);
+});
+
+Deno.test("GitTasks.push reaches execution", async () => {
+  await assertRejects(() => GitTasks.push(missingTool), ToolNotFoundError);
+});
+
+Deno.test("GitTasks.pull reaches execution", async () => {
+  await assertRejects(() => GitTasks.pull(missingTool), ToolNotFoundError);
+});
+
+Deno.test("GitTasks.fetch reaches execution", async () => {
+  await assertRejects(() => GitTasks.fetch(missingTool), ToolNotFoundError);
+});
+
+Deno.test("GitTasks.run reaches execution", async () => {
+  await assertRejects(
+    () => GitTasks.run((s) => missingTool(s).command("rev-parse", "HEAD")),
+    ToolNotFoundError,
+  );
 });
