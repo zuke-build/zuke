@@ -1,4 +1,4 @@
-import { assertEquals, assertStringIncludes } from "./_assert.ts";
+import { assertEquals, assertStringIncludes, assertThrows } from "./_assert.ts";
 import { Build, cicd, group, type Plugin, target } from "../mod.ts";
 import {
   formatGraph,
@@ -32,6 +32,7 @@ function sampleRunRecord(overrides: Partial<RunRecord> = {}): RunRecord {
     targets: overrides.targets ?? { build: { status: "succeeded", meta: {} } },
     signals: overrides.signals ?? {},
     events: overrides.events ?? [],
+    degraded: overrides.degraded,
   };
 }
 
@@ -262,8 +263,80 @@ Deno.test("parseArgs collects declared parameter flags", () => {
   const inline = parseArgs(["--environment=dev"], greetFlags);
   assertEquals(inline.values, { environment: "dev" });
 
-  // Unknown flags are ignored, not treated as parameters.
-  assertEquals(parseArgs(["--nope", "x"], greetFlags).values, {});
+  // An unrecognized flag is rejected, not silently treated as absent.
+  assertThrows(() => parseArgs(["--nope", "x"], greetFlags), Error, "--nope");
+});
+
+Deno.test("parseArgs rejects an unknown flag with a did-you-mean suggestion", () => {
+  const error = assertThrows(
+    () => parseArgs(["build", "--dry-rn"]),
+    Error,
+    '"--dry-rn"',
+  );
+  assertStringIncludes(error.message, 'Did you mean "--dry-run"?');
+});
+
+Deno.test("parseArgs rejects an unknown flag with no near match, no suggestion offered", () => {
+  const error = assertThrows(
+    () => parseArgs(["build", "--no-such-flag"]),
+    Error,
+    '"--no-such-flag"',
+  );
+  assertEquals(error.message.includes("Did you mean"), false);
+});
+
+Deno.test("parseArgs accepts every flag it advertises in help", () => {
+  // Now that an unknown flag is fatal, a flag listed in cli_spec.ts without a
+  // parser branch would be advertised in help and completions and then hard
+  // rejected. Every entry must parse.
+  const rejected = BUILTIN_FLAGS.filter((flag) => {
+    try {
+      parseArgs([flag.name]);
+      return false;
+    } catch {
+      return true;
+    }
+  }).map((flag) => flag.name);
+  assertEquals(rejected, []);
+});
+
+Deno.test("parseArgs rejects --builtin=value naming the real fix, not itself", () => {
+  // Fifteen built-ins take no inline value, so `--skip=lint` never parsed. It
+  // must not suggest "--skip" as the fix for "--skip".
+  for (const arg of ["--skip=lint", "--dry-run=true", "--json=1"]) {
+    const flag = arg.slice(0, arg.indexOf("="));
+    const error = assertThrows(() => parseArgs(["build", arg]), Error, arg);
+    assertStringIncludes(error.message, `"${flag}" is a flag`);
+    assertStringIncludes(error.message, 'does not take an inline "=value"');
+    assertEquals(error.message.includes("Did you mean"), false);
+  }
+  // The built-ins that *do* accept `=value` keep working.
+  assertEquals(parseArgs(["graph", "--output=html"]).output, "html");
+  assertEquals(parseArgs(["build", "--actor=bo"]).actor, "bo");
+  assertEquals(parseArgs(["build", "--affected=main"]).affectedBase, "main");
+  assertEquals(parseArgs(["build", "--parallel=2"]).parallel, 2);
+});
+
+Deno.test("parseArgs lets --help win over an unknown flag", () => {
+  // Help is exactly what someone who mistyped a flag is asking for, so it must
+  // not be pre-empted by the rejection.
+  assertEquals(parseArgs(["--help", "--bogus"]).help, true);
+  assertEquals(parseArgs(["--bogus", "--help"]).help, true);
+  assertEquals(parseArgs(["build", "-h", "--dry-rn"]).help, true);
+});
+
+Deno.test("parseArgs skips a bare -- argument separator", () => {
+  // Wrappers insert one on their own; it is not an unknown flag.
+  assertEquals(parseArgs(["--", "build"]).target, "build");
+  assertEquals(parseArgs(["build", "--"]).target, "build");
+  assertEquals(parseArgs(["--"]).target, undefined);
+});
+
+Deno.test("parseArgs still accepts a declared parameter flag", () => {
+  assertEquals(
+    parseArgs(["greet", "--environment", "prod"], greetFlags).values,
+    { environment: "prod" },
+  );
 });
 
 Deno.test("parseArgs reads the --parallel flag and count", () => {
@@ -295,12 +368,16 @@ Deno.test("parseArgs reads resume with its run id, signal, data, and flags", () 
     "--data",
     '{"by":"qa"}',
     "--force-graph",
+    // A registered builtin: the parser must accept it, not reject it as unknown.
+    "--resume-degraded",
   ]);
   assertEquals(p.resume, true);
   assertEquals(p.resumeRunId, "run-9");
   assertEquals(p.signal, "approved");
   assertEquals(p.data, '{"by":"qa"}');
   assertEquals(p.forceGraph, true);
+  assertEquals(p.resumeDegraded, true);
+  assertEquals(parseArgs(["resume", "run-9"]).resumeDegraded, false);
 
   const check = parseArgs(["resume", "--check"]);
   assertEquals(check.resume, true);
@@ -772,6 +849,22 @@ Deno.test("main reports an unknown target and returns 1", async () => {
   const { code, err } = await capture(() => main(Demo, ["nope"]));
   assertEquals(code, 1);
   assertEquals(err.join("\n").includes("Unknown target: nope"), true);
+  assertEquals(err.join("\n").includes("Did you mean"), false);
+});
+
+Deno.test("main suggests the nearest target for a typo", async () => {
+  // cspell:ignore biuld
+  // Same courtesy an unknown flag gets.
+  const { code, err } = await capture(() => main(Demo, ["biuld"]));
+  assertEquals(code, 1);
+  assertStringIncludes(err.join("\n"), "Unknown target: biuld.");
+  assertStringIncludes(err.join("\n"), 'Did you mean "build"?');
+});
+
+Deno.test("main prints help when an unknown flag is on the line too", async () => {
+  const { code, out } = await capture(() => main(Demo, ["--help", "--bogus"]));
+  assertEquals(code, 0);
+  assertStringIncludes(out.join("\n"), "Usage:");
 });
 
 Deno.test("main reports a dependency cycle and returns 1", async () => {

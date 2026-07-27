@@ -6,6 +6,7 @@
 import { type Build, discoverGroups, discoverTargets } from "./build.ts";
 import { discoverCiFiles, syncCiFiles } from "./ci.ts";
 import { isEntryModule } from "./entry.ts";
+import { messageOf } from "./internal.ts";
 import { isCI } from "./host.ts";
 import { GraphError, validateGraph } from "./graph.ts";
 import { execute } from "./executor.ts";
@@ -25,6 +26,7 @@ import {
   isCompletionShell,
 } from "./completions.ts";
 import {
+  BUILTIN_FLAGS,
   CANCEL_COMMAND,
   COMPLETIONS_COMMAND,
   DEFAULT_TARGET,
@@ -144,6 +146,8 @@ export interface ParsedArgs {
   data?: string;
   /** Continue a resume even if the build graph changed (`--force-graph`). */
   forceGraph: boolean;
+  /** Continue a resume even if the record lost a state write (`--resume-degraded`). */
+  resumeDegraded: boolean;
   /** The `runs` command was requested (list/show persisted runs). */
   runs: boolean;
   /** The `runs` sub-action (`list` or `show`); the first positional after `runs`. */
@@ -194,9 +198,93 @@ function parsePositiveInt(value: string | undefined): number | undefined {
 }
 
 /**
+ * Levenshtein edit distance between two strings, used only to power the
+ * "did you mean" suggestions below — not exported, since it isn't part of the
+ * CLI's public surface.
+ */
+function editDistance(a: string, b: string): number {
+  const rows = a.length + 1;
+  const cols = b.length + 1;
+  const dp: number[][] = Array.from(
+    { length: rows },
+    () => new Array<number>(cols),
+  );
+  for (let i = 0; i < rows; i++) dp[i][0] = i;
+  for (let j = 0; j < cols; j++) dp[0][j] = j;
+  for (let i = 1; i < rows; i++) {
+    for (let j = 1; j < cols; j++) {
+      dp[i][j] = a[i - 1] === b[j - 1] ? dp[i - 1][j - 1] : 1 + Math.min(
+        dp[i - 1][j],
+        dp[i][j - 1],
+        dp[i - 1][j - 1],
+      );
+    }
+  }
+  return dp[a.length][b.length];
+}
+
+/**
+ * The nearest match for `name` among `known` (flag names without their leading
+ * dashes, or target names) within edit distance 2, or `undefined` if none is
+ * close enough. A distance of 0 never counts: `name` *is* that candidate, and
+ * naming a word as the fix for itself helps nobody. Ties go to whichever
+ * candidate `known` lists first, so the suggestion is deterministic.
+ */
+function nearestName(
+  name: string,
+  known: readonly string[],
+): string | undefined {
+  let best: string | undefined;
+  let bestDistance = 3; // only distances of 1 or 2 count as "close enough"
+  for (const candidate of known) {
+    const distance = editDistance(name, candidate);
+    if (distance > 0 && distance < bestDistance) {
+      best = candidate;
+      bestDistance = distance;
+    }
+  }
+  return best;
+}
+
+/**
+ * The friendly error for a `--flag` that is neither a built-in flag nor a
+ * declared build parameter: names the offending flag and, when one is close
+ * enough (edit distance ≤ 2), suggests the flag it was probably meant to be.
+ *
+ * `arg` is the argument as typed, so a rejected `--flag=value` is quoted back in
+ * full; `flag` is its name with the leading dashes and any `=value` stripped.
+ * When that bare name *is* a known flag, the flag simply takes no inline value —
+ * a distinct mistake with a distinct fix, so it gets its own message rather than
+ * a "did you mean" pointing at the flag the operator already typed.
+ */
+function unknownFlagError(
+  arg: string,
+  flag: string,
+  known: readonly string[],
+): Error {
+  if (arg !== `--${flag}` && known.includes(flag)) {
+    return new Error(
+      `Unknown flag "${arg}": "--${flag}" is a flag, but it does not take an ` +
+        `inline "=value". Pass "--${flag}" on its own if it is a switch, or ` +
+        `with its value as the next argument.`,
+    );
+  }
+  const suggestion = nearestName(flag, known);
+  const hint = suggestion !== undefined
+    ? ` Did you mean "--${suggestion}"?`
+    : " Run --help to see the available flags.";
+  return new Error(`Unknown flag "--${flag}".${hint}`);
+}
+
+/**
  * Parse `zuke` arguments. Built-in flags are recognised first; `paramFlags`
  * lets the caller pass the build's declared parameter flags so their values are
- * collected. Unknown flags are ignored.
+ * collected. A `--flag` that is neither a built-in nor a declared parameter
+ * throws, naming the flag and suggesting the nearest known flag if one is
+ * close enough — unless `--help` is also on the line, in which case help wins,
+ * since help is exactly what someone who mistyped a flag is asking for.
+ *
+ * @throws {Error} for an unrecognized `--flag`, when help was not requested.
  */
 export function parseArgs(
   args: string[],
@@ -220,6 +308,7 @@ export function parseArgs(
     state: false,
     resume: false,
     forceGraph: false,
+    resumeDegraded: false,
     runs: false,
     cancel: false,
     register: false,
@@ -230,6 +319,13 @@ export function parseArgs(
   };
   const byFlag = new Map<string, ParamFlag>();
   for (const pf of paramFlags) byFlag.set(pf.flag, pf);
+  const knownFlags = [
+    ...BUILTIN_FLAGS.map((f) => f.name.slice(2)),
+    ...paramFlags.map((pf) => pf.flag),
+  ];
+  // The first unrecognized flag, thrown only after the whole line is parsed so
+  // that a `--help` further along still wins.
+  let unknown: Error | undefined;
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -269,6 +365,8 @@ export function parseArgs(
       parsed.data = arg.slice("--data=".length);
     } else if (arg === "--force-graph") {
       parsed.forceGraph = true;
+    } else if (arg === "--resume-degraded") {
+      parsed.resumeDegraded = true;
     } else if (arg === "--status") {
       const value = args[++i];
       if (value) parsed.runStatus = value;
@@ -354,6 +452,11 @@ export function parseArgs(
       if (value) parsed.output = parseOutput(value);
     } else if (arg.startsWith("--output=")) {
       parsed.output = parseOutput(arg.slice("--output=".length));
+    } else if (arg === "--") {
+      // A bare `--` is the conventional argument separator, and wrappers insert
+      // one on their own (`deno run -A zuke.ts -- ci` passes it straight
+      // through). This parser has no options-terminator semantics to apply, and
+      // no target name starts with a dash, so skip it rather than reject it.
     } else if (arg.startsWith("--")) {
       const eq = arg.indexOf("=");
       const flag = eq === -1 ? arg.slice(2) : arg.slice(2, eq);
@@ -369,8 +472,9 @@ export function parseArgs(
             ? `${parsed.values[pf.name]},${value}`
             : value;
         }
+      } else {
+        unknown ??= unknownFlagError(arg, flag, knownFlags);
       }
-      // Unknown flags are ignored.
     } else if (
       parsed.completions && parsed.completionsAction === undefined
     ) {
@@ -411,6 +515,7 @@ export function parseArgs(
       else parsed.target = arg;
     }
   }
+  if (unknown !== undefined && !parsed.help) throw unknown;
   return parsed;
 }
 
@@ -515,6 +620,11 @@ Options:
   --data <json>     With resume --signal, the signal's JSON payload (default {}).
   --force-graph     With resume, continue even if the build graph changed since
                     the run was suspended.
+  --resume-degraded With resume, continue even though the record is degraded — a
+                    state write was permanently lost while the run executed, so a
+                    target that succeeded may still be recorded running. Such a
+                    target is re-run, so only use this once you know it is safe
+                    to repeat.
   runs              Inspect persisted run records from the state store. 'list'
                     prints one row per run (newest first); 'show <run-id>'
                     reconstructs a run's full per-target status and metadata.
@@ -768,6 +878,7 @@ async function runResume(
         params: parsed.values,
         actor: parsed.actor,
         forceGraph: parsed.forceGraph,
+        resumeDegraded: parsed.resumeDegraded,
         plugins,
       });
       console.log(`Checked ${checked} suspended run(s); ${failed} failed.`);
@@ -787,6 +898,7 @@ async function runResume(
       params: parsed.values,
       actor: parsed.actor,
       forceGraph: parsed.forceGraph,
+      resumeDegraded: parsed.resumeDegraded,
       plugins,
     });
     return result.ok ? 0 : 1;
@@ -1026,7 +1138,15 @@ export async function main(
     boolean: p.kind_ === "boolean",
     array: p.array_,
   }));
-  const parsed = parseArgs(args, paramFlags);
+  let parsed: ParsedArgs;
+  try {
+    parsed = parseArgs(args, paramFlags);
+  } catch (error) {
+    // parseArgs only ever throws Error; messageOf narrows `unknown` without a
+    // second branch here that no input can reach.
+    console.error(messageOf(error));
+    return 1;
+  }
 
   if (parsed.help) {
     console.log(formatHelp(targets, params));
@@ -1112,7 +1232,13 @@ export async function main(
 
   const root = targets.get(name);
   if (!root) {
-    console.error(`Unknown target: ${name}\n`);
+    // Same courtesy an unknown flag gets: a typo one edit away is named, and the
+    // Map's declaration order keeps the suggestion deterministic.
+    const suggestion = nearestName(name, [...targets.keys()]);
+    const hint = suggestion === undefined
+      ? ""
+      : ` Did you mean "${suggestion}"?`;
+    console.error(`Unknown target: ${name}.${hint}\n`);
     console.error(formatList(targets, params));
     return 1;
   }

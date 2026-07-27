@@ -57,6 +57,7 @@ function sampleRecord(overrides: Partial<RunRecord> = {}): RunRecord {
       { deploy: { status: "pending", meta: {} } },
     signals: overrides.signals ?? {},
     events: overrides.events ?? [],
+    degraded: overrides.degraded ?? false,
   };
 }
 
@@ -186,6 +187,10 @@ Deno.test("parseRunRecord rejects malformed records", () => {
       '"signals" is not an object',
     ],
     [
+      JSON.stringify({ ...sampleRecord(), degraded: "yes" }),
+      '"degraded" is not a boolean',
+    ],
+    [
       JSON.stringify({
         ...sampleRecord(),
         targets: {
@@ -228,6 +233,18 @@ Deno.test("parseRunRecord round-trips signals and a waiting target", () => {
 Deno.test("parseRunRecord defaults missing signals to empty (backwards compat)", () => {
   const { signals: _signals, ...withoutSignals } = sampleRecord();
   assertEquals(parseRunRecord(JSON.stringify(withoutSignals)).signals, {});
+});
+
+Deno.test("parseRunRecord defaults a missing degraded flag to false", () => {
+  // A record written before the flag existed carries no dropped write we can
+  // know about, so it reads back as trustworthy rather than failing to parse.
+  const { degraded: _degraded, ...older } = sampleRecord();
+  assertEquals(parseRunRecord(JSON.stringify(older)).degraded, false);
+  assertEquals(
+    parseRunRecord(stringifyRunRecord(sampleRecord({ degraded: true })))
+      .degraded,
+    true,
+  );
 });
 
 // A minimal WaitContext for the built-in triggers, which ignore it.
@@ -844,6 +861,92 @@ Deno.test("RunStateWriter survives a store error without throwing", async () => 
   assertEquals(warnings.some((w) => w.includes("failed to persist")), true);
 });
 
+Deno.test("a permanently lost write flags the record degraded for the next write to carry", async () => {
+  const store = new MemStore();
+  const writer = await RunStateWriter.open(
+    store,
+    sampleRecord(),
+    () => "t",
+    new Redactor(),
+  );
+  assertEquals(store.record?.degraded, false);
+  // Exhausting the retry budget is the one genuinely lossy path: the final
+  // attempt's mutation is applied to a base that is then replaced by the
+  // freshly-read record, so nothing carries the settlement forward.
+  store.forceConflicts = 99;
+  await writer.markTargetSettled("deploy", "passed");
+  store.forceConflicts = 0;
+  assertEquals(store.record?.degraded, false); // the failing write can't record it
+  assertEquals(store.record?.targets.deploy.status, "pending"); // settlement lost
+  await writer.markRunFinished(true);
+  assertEquals(store.record?.degraded, true); // the next write that lands does
+});
+
+Deno.test("the degraded flag survives a conflict re-read", async () => {
+  const store = new MemStore();
+  const writer = await RunStateWriter.open(
+    store,
+    sampleRecord(),
+    () => "t",
+    new Redactor(),
+  );
+  store.forceConflicts = 99;
+  await writer.markTargetRunning("deploy"); // lost for good
+  // The next write conflicts and re-reads a stored record that predates the
+  // loss — adopting it must not silently drop the flag.
+  store.forceConflicts = 1;
+  await writer.markRunFinished(true);
+  assertEquals(store.record?.degraded, true);
+});
+
+Deno.test("a store error does not flag the record degraded — the mutation is retained", async () => {
+  const store = new MemStore();
+  const warnings: string[] = [];
+  const writer = await RunStateWriter.open(
+    store,
+    sampleRecord(),
+    () => "t",
+    new Redactor(),
+    (m) => warnings.push(m),
+  );
+  store.failNextPut = true;
+  await writer.markTargetSettled("deploy", "passed"); // dropped, but still in memory
+  assertEquals(warnings.some((w) => w.includes("failed to persist")), true);
+  assertEquals(writer.snapshot().degraded, false);
+  // The next write that lands re-persists the settlement, so nothing was lost
+  // and a later resume has nothing to distrust.
+  await writer.markRunFinished(true);
+  assertEquals(store.record?.targets.deploy.status, "succeeded");
+  assertEquals(store.record?.degraded, false);
+});
+
+Deno.test("a conflicting re-apply onto a cancelling record loses the write", async () => {
+  const store = new MemStore();
+  const warnings: string[] = [];
+  let aborted = false;
+  const writer = await RunStateWriter.open(
+    store,
+    sampleRecord(),
+    () => "t",
+    new Redactor(),
+    (m) => warnings.push(m),
+    () => {
+      aborted = true;
+    },
+  );
+  if (store.record === null) throw new Error("expected the opened record");
+  // Another process moved the run to `cancelling`, and re-applying onto its
+  // record conflicts too. The canceller finalises the run from here, so this
+  // settlement never lands anywhere — and a compensation walk that cannot see it
+  // is exactly what the degraded flag has to warn a later reader about.
+  store.record.status = "cancelling";
+  store.forceConflicts = 2;
+  await writer.markTargetSettled("deploy", "passed");
+  assertEquals(warnings.some((w) => w.includes("cancelled elsewhere")), true);
+  assertEquals(writer.snapshot().degraded, true);
+  assertEquals(aborted, true);
+});
+
 Deno.test("RunStateWriter re-reads and retries on a conflict", async () => {
   const store = new MemStore();
   const writer = await RunStateWriter.open(
@@ -870,6 +973,7 @@ Deno.test("RunStateWriter warns and gives up after repeated conflicts", async ()
   store.forceConflicts = 99; // exceeds the retry budget
   await writer.markRunFinished(true);
   assertEquals(warnings.some((w) => w.includes("gave up")), true);
+  assertEquals(writer.snapshot().degraded, true); // the update was lost
 });
 
 Deno.test("inMemoryStateHandle stores within the run but persists nothing", async () => {
@@ -1251,6 +1355,9 @@ Deno.test("RunStateWriter drops a write when the run vanishes after a conflict",
   await writer.markRunFinished(true);
   assertEquals(warnings.some((w) => w.includes("vanished")), true);
   assertEquals(store.record, null); // vanished run is not resurrected
+  // Not degraded: the mutation is still applied to the in-memory record, so any
+  // later write that lands re-persists it. Nothing was permanently lost.
+  assertEquals(writer.snapshot().degraded, false);
 });
 
 Deno.test("acquireCancelLock renews on a heartbeat and blocks a second holder", async () => {

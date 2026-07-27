@@ -69,6 +69,7 @@ Option flags:
 - `--signal` — With resume, deliver a named external signal
 - `--data` — With resume --signal, the signal's JSON payload
 - `--force-graph` — With resume, continue even if the build graph changed
+- `--resume-degraded` — With resume, continue even if a state write was dropped
 - `--status` — With runs list, keep only runs with this status
 - `--target` — With runs list, keep only runs whose graph has this target
 - `--since` — With runs list, keep only runs created at/after this time

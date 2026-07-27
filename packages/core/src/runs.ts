@@ -325,6 +325,13 @@ export function formatRunDetail(record: RunRecord): string {
     `  created:  ${record.createdAt}`,
     `  updated:  ${record.updatedAt}`,
   ];
+  if (record.degraded) {
+    // The one thing an operator asked to override a refused resume needs to see.
+    lines.push(
+      "  degraded: yes — a state write was permanently lost; a target below " +
+        "may have succeeded despite what its status says",
+    );
+  }
 
   const params = Object.entries(record.params);
   if (params.length > 0) {

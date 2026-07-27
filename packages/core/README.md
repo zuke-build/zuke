@@ -552,6 +552,14 @@ async function resumeCheck(build: Build, options: Omit<ResumeOptions, "runId" | 
   new signal simply re-suspend. Returns the number of runs that ended in
   failure. This is the sweep a cron or webhook drives (`zuke resume --check`).
 
+  A run whose record is {@link "./state/types.ts".RunRecord.degraded} is
+  counted as failed on every sweep until an operator resolves it: it cannot
+  be advanced without deciding whether its targets are safe to repeat, and a
+  non-zero result is the only channel a cron watches. Its refusal is reported
+  through the reporter (the console unless silenced) so the cause is visible,
+  and it stays `suspended`, so a later sweep with
+  {@link ResumeOptions.resumeDegraded} still picks it up.
+
 async function resumeRun(build: Build, options: ResumeOptions): Promise<BuildResult>
   Resume the suspended run `options.runId` for `build`. Transitions it to
   `running` (exactly one resumer wins), optionally delivers a signal, checks the
@@ -563,7 +571,8 @@ async function resumeRun(build: Build, options: ResumeOptions): Promise<BuildRes
 
   @throws
       if the run does not exist, is not suspended, the build lacks its root
-      target, or the graph drifted (unless {@link ResumeOptions.forceGraph}).
+      target, the graph drifted (unless {@link ResumeOptions.forceGraph}), or the
+      record is degraded (unless {@link ResumeOptions.resumeDegraded}).
 
 function resumeWhen(check: () => boolean | Promise<boolean>, options: ResumeWhenOptions): WaitTrigger
   A trigger satisfied when an async `check` predicate returns `true`. Zuke does
@@ -2805,6 +2814,13 @@ interface ResumeOptions
     Who to attribute the resumption to (stamped on the run).
   forceGraph?: boolean
     Continue even if the build graph changed since the run was suspended.
+  resumeDegraded?: boolean
+    Resume even though the record is {@link "./state/types.ts".RunRecord.degraded}
+    — a state write was permanently lost, so a target that succeeded may still
+    be recorded `running` or `pending`. The resume trusts the record as written,
+    which means such a target runs again; passing this accepts that risk,
+    on the grounds that the operator — not Zuke — knows whether the target is
+    safe to repeat.
   silent?: boolean
     Suppress banner/summary output.
   reporter?: Reporter
@@ -2920,6 +2936,21 @@ interface RunRecord
     External signals received so far, keyed by name (see `.waitsFor(...)`).
   events: RunEvent[]
     Append-only audit trail of MCP tool calls against this run (see {@link RunEvent}).
+  degraded?: boolean
+    True when at least one state write for this run was permanently lost —
+    a conflicting write from another process could not be re-applied within the
+    writer's retry budget. Writes are best-effort, so the run itself carried on;
+    the flag is how a later reader learns that a transition which really
+    happened may be missing from the record. In particular a target that
+    succeeded can still be recorded `running` or `pending`, so a resume would
+    re-run it — which is why a resume refuses a degraded record unless
+    `--resume-degraded` overrides it (see
+    {@link "../resume.ts".ResumeOptions.resumeDegraded}).
+
+    It is set by the writer when it loses a write and persisted by the next
+    write that lands — the failing one, by definition, could not carry it. A
+    drop that leaves the mutation in memory for a later write to re-persist does
+    not set it. Absent (or `false`) means no write is known to be missing.
 
 interface RunSummary
   A compact run listing row, returned by {@link "./store.ts".StateStore.listRuns}.
