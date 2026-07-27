@@ -156,7 +156,7 @@ interface ApiReference {
  * `Promise`/`Array` would otherwise lose its `<T>`. Everything exotic falls
  * back to the pre-rendered `repr` (safe), then to `"unknown"`.
  */
-function renderType(t: DocTsType | undefined): string {
+export function renderType(t: DocTsType | undefined): string {
   if (t === undefined) return "unknown";
   const value = t.value;
   if (
@@ -180,7 +180,7 @@ function renderType(t: DocTsType | undefined): string {
 }
 
 /** Render one parameter as `name: Type` (with `...`/`?` as appropriate). */
-function renderParam(p: DocParam): string {
+export function renderParam(p: DocParam): string {
   if (p.kind === "rest") {
     return `...${p.arg?.name ?? "args"}: ${renderType(p.tsType)}`;
   }
@@ -193,14 +193,17 @@ function renderParam(p: DocParam): string {
 }
 
 /** `[async ]function name(params): Return` for one function declaration. */
-function functionSignature(name: string, def: DocDef | undefined): string {
+export function functionSignature(
+  name: string,
+  def: DocDef | undefined,
+): string {
   const params = (def?.params ?? []).map(renderParam).join(", ");
   const prefix = def?.isAsync === true ? "async " : "";
   return `${prefix}function ${name}(${params}): ${renderType(def?.returnType)}`;
 }
 
 /** Build the one-line signature for a symbol from its declaration(s). */
-function symbolSignature(
+export function symbolSignature(
   name: string,
   kind: string,
   decls: DocDeclaration[],
@@ -235,12 +238,12 @@ function symbolSignature(
 }
 
 /** A member is public unless explicitly `private`/`protected`. */
-function isPublicMember(accessibility: string | undefined): boolean {
+export function isPublicMember(accessibility: string | undefined): boolean {
   return accessibility === undefined || accessibility === "public";
 }
 
 /** Render a method member as `name(params): Return`. */
-function memberMethod(m: DocMethod): ApiMember {
+export function memberMethod(m: DocMethod): ApiMember {
   // Class methods nest under `functionDef`; interface methods are flat.
   const fn = m.functionDef ?? m;
   const params = (fn.params ?? []).map(renderParam).join(", ");
@@ -258,7 +261,7 @@ function memberMethod(m: DocMethod): ApiMember {
 }
 
 /** Render a property member as `name: Type`. */
-function memberProperty(p: DocProperty): ApiMember {
+export function memberProperty(p: DocProperty): ApiMember {
   const optional = p.optional === true;
   const name = p.name ?? "";
   return {
@@ -271,7 +274,7 @@ function memberProperty(p: DocProperty): ApiMember {
 }
 
 /** Public methods then properties of a class/interface def. */
-function symbolMembers(def: DocDef | undefined): ApiMember[] {
+export function symbolMembers(def: DocDef | undefined): ApiMember[] {
   const members: ApiMember[] = [];
   for (const m of def?.methods ?? []) {
     if (isPublicMember(m.accessibility)) members.push(memberMethod(m));
@@ -283,7 +286,7 @@ function symbolMembers(def: DocDef | undefined): ApiMember[] {
 }
 
 /** Reshape one documented symbol into its `api.json` entry. */
-function buildSymbol(sym: DocSymbol): ApiSymbol {
+export function buildSymbol(sym: DocSymbol): ApiSymbol {
   const decls = sym.declarations ?? [];
   const first = decls[0];
   const kind = first?.kind ?? "variable";
@@ -303,7 +306,7 @@ function buildSymbol(sym: DocSymbol): ApiSymbol {
 }
 
 /** The package summary: the first non-empty line of any module doc. */
-function moduleSummary(nodes: DocNode[]): string {
+export function moduleSummary(nodes: DocNode[]): string {
   for (const node of nodes) {
     const doc = node.module_doc?.doc;
     if (doc !== undefined && doc.trim() !== "") {
@@ -314,7 +317,7 @@ function moduleSummary(nodes: DocNode[]): string {
 }
 
 /** Reshape a package's whole `deno doc --json` output into `api.json` form. */
-function transformPackage(dir: string, root: DocRoot): ApiPackage {
+export function transformPackage(dir: string, root: DocRoot): ApiPackage {
   const nodes = Object.values(root.nodes ?? {});
   // Aggregate symbols across every entrypoint, first-seen wins (a re-export
   // can surface the same symbol from more than one entrypoint file).

@@ -149,8 +149,11 @@ export async function crossPackageTypesOf(dir: string): Promise<string[]> {
           if (local !== undefined) names.add(local);
         }
       } else {
-        // A bare default import: `import Foo from "@zuke/…"`.
-        const def = clause.match(/^([A-Za-z_$][\w$]*)\s*$/);
+        // A bare default import: `import Foo from "@zuke/…"`. The capture
+        // group between `import` and `from` always carries the separating
+        // whitespace (`\bimport\b` doesn't consume it), so the match must
+        // tolerate leading space too, not just trailing.
+        const def = clause.match(/^\s*([A-Za-z_$][\w$]*)\s*$/);
         if (def !== null) names.add(def[1]);
       }
     }

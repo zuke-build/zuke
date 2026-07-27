@@ -62,7 +62,7 @@ export async function installCli(
  * `deno` discovers the workspace `deno.lock`) with the caller's own arguments
  * appended. Every word is quoted, because the repository path is arbitrary.
  */
-function launcherScript(argv: string[], onWindows: boolean): string {
+export function launcherScript(argv: string[], onWindows: boolean): string {
   const root = String(repoRoot());
   if (onWindows) {
     const line = argv.map((word) => `"${word.replaceAll('"', '""')}"`).join(
@@ -108,4 +108,52 @@ export async function publishPackage(pkg: string): Promise<boolean> {
     if (error instanceof CommandTimeoutError) return false;
     throw error;
   }
+}
+
+/**
+ * The dependencies {@link publishOne} needs, injected so its skip/publish/
+ * re-check decision is unit-testable without a real `deno publish` or a
+ * network call to JSR.
+ */
+export interface PublishOneDeps {
+  /** Whether `pkg`@`version` is already on JSR. */
+  isPublished(pkg: string, version: string): Promise<boolean>;
+  /** Publish `pkg`; `false` means the upload timed out (see {@link publishPackage}). */
+  publishPackage(pkg: string): Promise<boolean>;
+  /** Report an in-progress/skip status line. */
+  info(message: string): void;
+  /** Report that a stalled publish is confirmed to have landed. */
+  success(message: string): void;
+}
+
+/**
+ * Publish one package's pending version to JSR: skip it if already published,
+ * otherwise publish it — and, if the publish itself times out, re-check JSR
+ * once before deciding whether the timeout was fatal. JSR's post-upload
+ * provenance finalization occasionally hangs *after* the upload completes, so
+ * a `false` from {@link PublishOneDeps.publishPackage} isn't necessarily a
+ * failed publish.
+ *
+ * @throws {Error} naming the package/version, if the publish times out and the
+ * re-check still doesn't find it on JSR.
+ */
+export async function publishOne(
+  pkg: string,
+  version: string,
+  deps: PublishOneDeps,
+): Promise<void> {
+  const name = `@zuke/${pkg}@${version}`;
+  if (await deps.isPublished(`@zuke/${pkg}`, version)) {
+    deps.info(`${name} is already on JSR.`);
+    return;
+  }
+  deps.info(`Publishing ${name} to JSR...`);
+  if (await deps.publishPackage(pkg)) return;
+  // Timed out: the upload usually lands before JSR's finalization hangs, so a
+  // re-check tells us whether it actually published.
+  if (await deps.isPublished(`@zuke/${pkg}`, version)) {
+    deps.success(`${name} uploaded (provenance stalled).`);
+    return;
+  }
+  throw new Error(`Publishing ${name} timed out before reaching JSR.`);
 }

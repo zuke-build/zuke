@@ -13,81 +13,164 @@ import { collectPackageDocs, docsOptions } from "./docs.ts";
 import { writeApiJson } from "./api_reference.ts";
 import { localVersion } from "./packages.ts";
 
+/** The website repo the sync targets, absent an override. */
+export const DEFAULT_WEBSITE_REPO = "zuke-build/zuke-build.github.io";
+
+/** Where the sync pushes and opens its PR: a cross-repo token plus a repo slug. */
+export interface SyncTarget {
+  /** The fine-grained PAT / GitHub App token authorizing the cross-repo push. */
+  token: string;
+  /** The `owner/repo` slug of the website repository. */
+  repo: string;
+}
+
 /**
- * Open a PR to the website with refreshed llms.txt + api.json. Takes the build
- * so it can render the live CLI block via {@link docsOptions}.
+ * The sync's target, derived from env — or `null` when the cross-repo token
+ * isn't set. `GITHUB_TOKEN` cannot push to another repo, so this needs a
+ * fine-grained PAT / GitHub App token (contents + pull-requests write on the
+ * website repo); it is absent locally and on fork PRs, where the sync skips
+ * cleanly rather than failing.
  */
-export async function runWebsiteSync(build: Build): Promise<void> {
-  // The push is cross-repo, which GITHUB_TOKEN cannot do — it needs a
-  // fine-grained PAT / GitHub App token (contents + pull-requests write on
-  // the website repo). Absent locally and on fork PRs: skip cleanly.
-  const token = Deno.env.get("WEBSITE_SYNC_TOKEN");
-  if (token === undefined || token === "") {
-    ConsoleTasks.warn(
-      "WEBSITE_SYNC_TOKEN not set — skipping the website sync.",
-    );
-    return;
-  }
-  const repo = Deno.env.get("WEBSITE_REPO") ??
-    "zuke-build/zuke-build.github.io";
+export function resolveSyncTarget(
+  env: { token?: string; repo?: string },
+): SyncTarget | null {
+  if (env.token === undefined || env.token === "") return null;
+  return { token: env.token, repo: env.repo ?? DEFAULT_WEBSITE_REPO };
+}
 
-  // Regenerate exactly what the website consumes: the llms.txt /
-  // llms-full.txt indexes (the `apiDocs` flow) and the structured
-  // dist/api.json (the `apiReference` flow).
-  await DocsTasks.apiDocs(await collectPackageDocs(), docsOptions(build));
-  await writeApiJson();
+/** The sync branch name and commit message for a given `core` version. */
+export function syncBranchInfo(
+  coreVersion: string,
+): { branch: string; message: string } {
+  return {
+    branch: `zuke-sync/${coreVersion}`,
+    message: `chore: sync docs + api reference for core@${coreVersion}`,
+  };
+}
 
-  // Shallow-clone the website (a public repo — the clone needs no credential)
-  // into a throwaway temp dir, deleted in `finally`.
-  const coreVersion = await localVersion("core");
-  const branch = `zuke-sync/${coreVersion}`;
-  const message = `chore: sync docs + api reference for core@${coreVersion}`;
-  const dir = await Deno.makeTempDir({ prefix: "zuke-sync-" });
-  // The push carries the token as a one-off HTTP Authorization header rather
-  // than embedding it in the remote URL — so it is never persisted in
-  // .git/config or echoed back by git. Mirrors how actions/checkout injects
-  // credentials.
-  const authHeader = `AUTHORIZATION: basic ${btoa(`x-access-token:${token}`)}`;
-  try {
+/** The outcome of opening (or finding an already-open) sync PR. */
+export interface OpenPrResult {
+  /** The `gh pr create` exit code: `0` on a freshly opened PR. */
+  code: number;
+  /** The command's trimmed text output (the PR URL on success). */
+  text: string;
+}
+
+/**
+ * The I/O `runWebsiteSync` performs, injected so its skip/idempotent/PR
+ * decisions are unit-testable without a real clone, push, or `gh` call —
+ * mirroring the seam style {@link "../packages/core/src/conformance.ts"} uses
+ * for its own CLI dependencies.
+ */
+export interface WebsiteSyncDeps {
+  /** Regenerate llms.txt / llms-full.txt (the `apiDocs` flow). */
+  regenerateDocs(build: Build): Promise<void>;
+  /** Regenerate `dist/api.json` (the `apiReference` flow). */
+  regenerateApiJson(): Promise<void>;
+  /** A fresh temp directory to clone the website into. */
+  makeTempDir(): Promise<string>;
+  /** Recursively remove `dir`. */
+  removeDir(dir: string): Promise<void>;
+  /** Shallow-clone `repo` into `dir`. */
+  cloneWebsite(repo: string, dir: string): Promise<void>;
+  /** Create the sync branch in `dir`, off the freshly-cloned default branch. */
+  createSyncBranch(dir: string, branch: string): Promise<void>;
+  /** Copy the regenerated artifacts into `dir`'s expected locations. */
+  copyArtifacts(dir: string): Promise<void>;
+  /** Stage every change in `dir`. */
+  stageAll(dir: string): Promise<void>;
+  /** Whether `dir` has any staged change (idempotency check). */
+  hasStagedChanges(dir: string): Promise<boolean>;
+  /** Commit the staged changes in `dir` with `message`, under a bot identity. */
+  commitStaged(dir: string, message: string): Promise<void>;
+  /** Force-push `branch` from `dir`, authenticated with `token`. */
+  pushBranch(dir: string, branch: string, token: string): Promise<void>;
+  /** Open the sync PR, or note the one a push to the same head already refreshed. */
+  openOrRefreshPr(
+    repo: string,
+    branch: string,
+    message: string,
+    dir: string,
+    token: string,
+  ): Promise<OpenPrResult>;
+  /** Report an in-progress/skip status line. */
+  info(message: string): void;
+  /** Report a freshly opened PR. */
+  success(message: string): void;
+  /** Report that the sync itself is being skipped. */
+  warn(message: string): void;
+}
+
+/** The PR body posted for every sync — idempotent, so its text never varies. */
+const PR_BODY = "Automated docs sync from the Zuke framework: refreshed " +
+  "`public/llms.txt`, `public/llms-full.txt`, and " +
+  "`src/data/api.json`. Idempotent — regenerated each release.";
+
+/** The bot identity commits are authored under (no human git identity in CI). */
+const BOT_NAME = "github-actions[bot]";
+/** The bot email paired with {@link BOT_NAME}. */
+const BOT_EMAIL = "41898282+github-actions[bot]@users.noreply.github.com";
+
+/**
+ * The real {@link WebsiteSyncDeps}: an actual clone, push, and `gh pr create`
+ * against GitHub. This is what `runWebsiteSync` uses in production; a test
+ * substitutes a fake instead.
+ */
+const REAL_DEPS: WebsiteSyncDeps = {
+  regenerateDocs: async (build) => {
+    await DocsTasks.apiDocs(await collectPackageDocs(), docsOptions(build));
+  },
+  regenerateApiJson: async () => {
+    await writeApiJson();
+  },
+  makeTempDir: () => Deno.makeTempDir({ prefix: "zuke-sync-" }),
+  removeDir: async (dir) => {
+    await FileTasks.remove(dir, { recursive: true });
+  },
+  cloneWebsite: async (repo, dir) => {
+    // A public repo — the clone needs no credential.
     await GitTasks.clone((s) =>
       s.repository(`https://github.com/${repo}.git`).directory(dir).depth(1)
     );
-
-    // Reset the sync branch off the freshly-cloned default branch.
+  },
+  createSyncBranch: async (dir, branch) => {
     await GitTasks.checkout((s) => s.dir(dir).ref(branch).create());
-
-    // Copy the artifacts into the website's expected locations.
+  },
+  copyArtifacts: async (dir) => {
     await FileTasks.createDirectory(`${dir}/public`);
     await FileTasks.createDirectory(`${dir}/src/data`);
     await FileTasks.copy("llms.txt", `${dir}/public/llms.txt`);
     await FileTasks.copy("llms-full.txt", `${dir}/public/llms-full.txt`);
     await FileTasks.copy("dist/api.json", `${dir}/src/data/api.json`);
-
-    // Idempotent: bail out before committing if nothing changed — no empty
-    // PR. `api.json`'s `generated` is `core@<version>` (no timestamp) and
-    // the llms files are deterministic, so re-runs diff to nothing.
+  },
+  stageAll: async (dir) => {
     await GitTasks.add((s) => s.dir(dir).all());
+  },
+  hasStagedChanges: async (dir) => {
     const { stdout } = await GitTasks.status((s) =>
       s.dir(dir).porcelain().quiet()
     );
-    if (stdout.trim() === "") {
-      ConsoleTasks.info("website already in sync — no PR needed.");
-      return;
-    }
-
+    return stdout.trim() !== "";
+  },
+  commitStaged: async (dir, message) => {
     // A non-interactive CI runner has no git identity, so set one.
     await GitTasks.commit((s) =>
       s
         .dir(dir)
-        .config("user.name", "github-actions[bot]")
-        .config(
-          "user.email",
-          "41898282+github-actions[bot]@users.noreply.github.com",
-        )
+        .config("user.name", BOT_NAME)
+        .config("user.email", BOT_EMAIL)
         .message(message)
     );
-    // Force-push so the branch is create-or-reset on every release. The token
-    // rides as a one-off `-c http.extraheader`, never in the remote URL.
+  },
+  pushBranch: async (dir, branch, token) => {
+    // The token rides as a one-off HTTP Authorization header rather than
+    // embedding it in the remote URL — so it is never persisted in
+    // .git/config or echoed back by git. Mirrors how actions/checkout
+    // injects credentials. Force-push so the branch is create-or-reset on
+    // every release.
+    const authHeader = `AUTHORIZATION: basic ${
+      btoa(`x-access-token:${token}`)
+    }`;
     await GitTasks.run((s) =>
       s.dir(dir).config("http.extraheader", authHeader).command(
         "push",
@@ -96,33 +179,84 @@ export async function runWebsiteSync(build: Build): Promise<void> {
         branch,
       )
     );
-
-    // Open the PR, or note the existing one — a push to the same head
-    // branch already refreshed it, and `gh` rejects a duplicate.
+  },
+  openOrRefreshPr: async (repo, branch, message, dir, token) => {
+    // `gh` rejects a duplicate PR — a push to the same head branch already
+    // refreshed the existing one, so a non-zero exit here just means that.
     const pr = await GhTasks.run((s) =>
       s
         .command("pr", "create")
         .repo(repo)
         .flag("head", branch)
         .flag("title", message)
-        .flag(
-          "body",
-          "Automated docs sync from the Zuke framework: refreshed " +
-            "`public/llms.txt`, `public/llms-full.txt`, and " +
-            "`src/data/api.json`. Idempotent — regenerated each release.",
-        )
+        .flag("body", PR_BODY)
         .cwd(dir)
         .env({ GH_TOKEN: token })
         .noThrow()
     );
+    return { code: pr.code, text: pr.text() };
+  },
+  info: (message) => ConsoleTasks.info(message),
+  success: (message) => ConsoleTasks.success(message),
+  warn: (message) => ConsoleTasks.warn(message),
+};
+
+/**
+ * Open a PR to the website with refreshed llms.txt + api.json. Takes the build
+ * so it can render the live CLI block via {@link docsOptions}. `deps` defaults
+ * to the real clone/push/`gh` implementation; a test overrides it.
+ */
+export async function runWebsiteSync(
+  build: Build,
+  deps: WebsiteSyncDeps = REAL_DEPS,
+): Promise<void> {
+  const target = resolveSyncTarget({
+    token: Deno.env.get("WEBSITE_SYNC_TOKEN"),
+    repo: Deno.env.get("WEBSITE_REPO"),
+  });
+  if (target === null) {
+    deps.warn("WEBSITE_SYNC_TOKEN not set — skipping the website sync.");
+    return;
+  }
+  const { token, repo } = target;
+
+  // Regenerate exactly what the website consumes: the llms.txt /
+  // llms-full.txt indexes (the `apiDocs` flow) and the structured
+  // dist/api.json (the `apiReference` flow).
+  await deps.regenerateDocs(build);
+  await deps.regenerateApiJson();
+
+  const coreVersion = await localVersion("core");
+  const { branch, message } = syncBranchInfo(coreVersion);
+  // Shallow-clone the website into a throwaway temp dir, deleted in `finally`.
+  const dir = await deps.makeTempDir();
+  try {
+    await deps.cloneWebsite(repo, dir);
+    await deps.createSyncBranch(dir, branch);
+    await deps.copyArtifacts(dir);
+    await deps.stageAll(dir);
+
+    // Idempotent: bail out before committing if nothing changed — no empty
+    // PR. `api.json`'s `generated` is `core@<version>` (no timestamp) and the
+    // llms files are deterministic, so re-runs diff to nothing.
+    if (!(await deps.hasStagedChanges(dir))) {
+      deps.info("website already in sync — no PR needed.");
+      return;
+    }
+
+    await deps.commitStaged(dir, message);
+    await deps.pushBranch(dir, branch, token);
+
+    // Open the PR, or note the existing one.
+    const pr = await deps.openOrRefreshPr(repo, branch, message, dir, token);
     if (pr.code === 0) {
-      ConsoleTasks.success(`Opened website sync PR: ${pr.text()}`);
+      deps.success(`Opened website sync PR: ${pr.text}`);
     } else {
-      ConsoleTasks.info(
+      deps.info(
         `Website sync PR for ${branch} already open — updated by the push.`,
       );
     }
   } finally {
-    await FileTasks.remove(dir, { recursive: true });
+    await deps.removeDir(dir);
   }
 }
