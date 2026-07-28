@@ -122,9 +122,14 @@ export const ALLOWED_PREFIX = "jsr:@zuke/";
  * without a restriction a PR could point an import at any URL and have CI fetch
  * it, unpinned by the committed lock. Every package in this workspace depends
  * only on `jsr:@zuke/*` (the library is dependency-free), so allowing just that
- * costs nothing and removes the arbitrary-fetch capability. Type-checking never
- * executes the fetched code, but making the runner fetch attacker-chosen URLs is
- * a capability worth not granting.
+ * costs nothing. Type-checking never executes the fetched code, but making the
+ * runner fetch attacker-chosen URLs is a capability worth not granting.
+ *
+ * This is necessary and **not sufficient**: it governs the import map only. A
+ * source file can import an absolute URL directly, which `deno check` follows
+ * whatever the map says. The blocked egress allowlist on the `core-floors` job
+ * in `ci.yml` is what covers that case; the two are layers of one control, so
+ * neither should be removed on the assumption the other suffices.
  */
 export function isAllowedSpecifier(specifier: string): boolean {
   return specifier.startsWith(ALLOWED_PREFIX);
