@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.32.1](https://github.com/zuke-build/zuke/compare/core-v1.32.0...core-v1.32.1) (2026-07-28)
+
+
+### Bug Fixes
+
+* **core:** run compensations for unproven targets and share one filesystem mutex ([#277](https://github.com/zuke-build/zuke/issues/277)) ([7b4b143](https://github.com/zuke-build/zuke/commit/7b4b14325df24561e9aaea530de1616d6cdf6631))
+
 ## [1.32.0](https://github.com/zuke-build/zuke/compare/core-v1.31.1...core-v1.32.0) (2026-07-27)
 
 
