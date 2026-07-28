@@ -37,3 +37,5 @@ docs may simply be silent.
 | Machine-readable self-description | `--list --json`, generated `llms.txt`       | —                              | `npm pkg get scripts`          | —                       | workspace/graph tools over MCP    | —                             | typed API + MCP                    |
 
 </div>
+
+Checked against official documentation on 2026-07-28.
