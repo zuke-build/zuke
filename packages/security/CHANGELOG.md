@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/zuke-build/zuke/compare/security-v0.2.2...security-v0.3.0) (2026-07-28)
+
+
+### Features
+
+* **security:** scope the pull-request secret scan and keep a readable report ([#281](https://github.com/zuke-build/zuke/issues/281)) ([6af153e](https://github.com/zuke-build/zuke/commit/6af153e607f9bff1dbd66b0722d263d9c3854f05))
+
 ## [0.2.2](https://github.com/zuke-build/zuke/compare/security-v0.2.1...security-v0.2.2) (2026-07-20)
 
 
