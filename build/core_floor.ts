@@ -111,8 +111,27 @@ export function exactFloorSpecifier(specifier: string): string | undefined {
   return `${name}@${version}`;
 }
 
+/** The only specifier prefix the generated config is allowed to carry. */
+export const ALLOWED_PREFIX = "jsr:@zuke/";
+
 /**
- * Render the throwaway config for one package: its own imports with the core
+ * Whether a specifier may be carried into the generated config.
+ *
+ * The config is built from a package's own `deno.json`, which on a pull request
+ * is attacker-controlled, and the check resolves it with `--no-lock` — so
+ * without a restriction a PR could point an import at any URL and have CI fetch
+ * it, unpinned by the committed lock. Every package in this workspace depends
+ * only on `jsr:@zuke/*` (the library is dependency-free), so allowing just that
+ * costs nothing and removes the arbitrary-fetch capability. Type-checking never
+ * executes the fetched code, but making the runner fetch attacker-chosen URLs is
+ * a capability worth not granting.
+ */
+export function isAllowedSpecifier(specifier: string): boolean {
+  return specifier.startsWith(ALLOWED_PREFIX);
+}
+
+/**
+ * Render the throwaway config for one package: its allowed imports with the core
  * specifier pinned to its exact floor, and no `workspace` field.
  *
  * The absence of `workspace` is the whole mechanism — with it, Deno would
@@ -127,10 +146,12 @@ export function exactFloorSpecifier(specifier: string): string | undefined {
  * declaring a fresh core would fail spuriously for a day after each release.
  */
 export function floorConfig(floor: CoreFloor, pinned: string): string {
-  const config = {
-    imports: { ...floor.imports, [CORE_PACKAGE]: pinned },
-    minimumDependencyAge: 0,
-  };
+  const imports: Record<string, string> = {};
+  for (const [name, specifier] of Object.entries(floor.imports)) {
+    if (isAllowedSpecifier(specifier)) imports[name] = specifier;
+  }
+  imports[CORE_PACKAGE] = pinned;
+  const config = { imports, minimumDependencyAge: 0 };
   return `${JSON.stringify(config, null, 2)}\n`;
 }
 
@@ -184,6 +205,19 @@ export async function checkCoreFloors(
         detail: `Cannot determine a minimum version from this range, so the ` +
           `floor cannot be verified. Declare it as a caret range over an ` +
           `exact version, e.g. ${CORE_PACKAGE}@^1.32.0.`,
+      });
+      continue;
+    }
+    // The mapping's *target* is as attacker-controlled as the rest of the file
+    // on a pull request, so the entry named `@zuke/core` must actually resolve
+    // core and not some other package wearing its name.
+    if (!pinned.startsWith(`${ALLOWED_PREFIX}core@`)) {
+      results.push({
+        package: pkg,
+        specifier: floor.specifier,
+        ok: false,
+        detail: `The ${CORE_PACKAGE} entry must resolve ` +
+          `${ALLOWED_PREFIX}core, not ${pinned}.`,
       });
       continue;
     }
