@@ -169,6 +169,7 @@ export class GitleaksDetectSettings extends ToolSettings {
   #redact = false;
   #noGit = false;
   #verbose = false;
+  #logOpts?: string;
 
   /** The binary this settings object drives (`gitleaks`). */
   protected override defaultTool(): string {
@@ -217,6 +218,25 @@ export class GitleaksDetectSettings extends ToolSettings {
     return this;
   }
 
+  /**
+   * Restrict which commits are scanned, passed straight through to `git log`
+   * (`--log-opts`).
+   *
+   * Without this, `gitleaks detect` walks the whole history reachable from the
+   * refs present in the checkout — so on a pull request, where CI typically
+   * fetches every branch, a secret-shaped string on an unrelated branch fails
+   * the scan and the failure appears on whichever pull request is looked at.
+   * Passing a range such as `origin/main..HEAD` scopes the scan to the commits
+   * under review.
+   *
+   * Has no effect alongside {@linkcode noGit}, which makes gitleaks treat the
+   * source as a plain directory and ignore history entirely.
+   */
+  logOpts(opts: string): this {
+    this.#logOpts = opts;
+    return this;
+  }
+
   /** Assemble the `gitleaks detect` argv. */
   protected override buildArgs(): string[] {
     const argv = ["detect"];
@@ -231,6 +251,7 @@ export class GitleaksDetectSettings extends ToolSettings {
     if (this.#redact) argv.push("--redact");
     if (this.#noGit) argv.push("--no-git");
     if (this.#verbose) argv.push("--verbose");
+    if (this.#logOpts !== undefined) argv.push("--log-opts", this.#logOpts);
     return argv;
   }
 }

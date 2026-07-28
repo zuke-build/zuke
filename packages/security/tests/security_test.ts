@@ -73,6 +73,29 @@ Deno.test("gitleaks: full and minimal argv", () => {
   assertEquals(new GitleaksDetectSettings().argv(), ["gitleaks", "detect"]);
 });
 
+Deno.test("gitleaks: logOpts scopes the commits scanned", () => {
+  // Without a range, `detect` walks the history reachable from every ref in the
+  // checkout, so a secret on an unrelated branch fails the scan.
+  assertEquals(
+    new GitleaksDetectSettings()
+      .source(".").redact().logOpts("origin/master..HEAD").argv(),
+    [
+      "gitleaks",
+      "detect",
+      "--source",
+      ".",
+      "--redact",
+      "--log-opts",
+      "origin/master..HEAD",
+    ],
+  );
+  // Absent by default: a full-history scan stays the default behaviour.
+  assertEquals(
+    new GitleaksDetectSettings().source(".").argv().includes("--log-opts"),
+    false,
+  );
+});
+
 Deno.test("osv-scanner: full and minimal argv", () => {
   assertEquals(
     new OsvScannerSettings()

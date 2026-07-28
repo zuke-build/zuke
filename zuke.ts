@@ -67,6 +67,13 @@ import {
   syncPluginSkills,
 } from "./build/plugin_sync.ts";
 
+/**
+ * Where the `security` target writes gitleaks' findings. The security workflow
+ * uploads this path as an artifact, so the two must agree; it is git-ignored
+ * because a local `./zuke security` writes it too.
+ */
+const GITLEAKS_REPORT = "gitleaks-report.json";
+
 class ZukeBuild extends Build {
   clean = target()
     .description("Remove build artifacts")
@@ -530,9 +537,27 @@ class ZukeBuild extends Build {
         SecurityTasks.zizmor((s) => s.paths(".github/workflows").noThrow()),
       );
       await gate("actionlint", SecurityTasks.actionlint((s) => s.noThrow()));
+      // `gitleaks detect` walks the history reachable from every ref in the
+      // checkout, and the security workflow fetches all of them — so without a
+      // range, one secret-shaped string on any branch fails the scan on every
+      // open pull request, blaming whichever one is looked at. On a pull request
+      // (`GITHUB_BASE_REF` is set only there) the scan is scoped to the commits
+      // under review; a push to the default branch and the weekly schedule still
+      // walk the whole history, so nothing stops being covered.
+      const prBase = Deno.env.get("GITHUB_BASE_REF");
+      // The report stays redacted — it carries the file, line, rule and
+      // fingerprint of each finding but not the secret itself, which is what
+      // makes a failure diagnosable from the uploaded artifact instead of only
+      // from a bare count in the log.
       await gate(
         "gitleaks",
-        SecurityTasks.gitleaks((s) => s.source(".").redact().noThrow()),
+        SecurityTasks.gitleaks((s) => {
+          const settings = s.source(".").redact()
+            .reportFormat("json").reportPath(GITLEAKS_REPORT).noThrow();
+          return prBase === undefined || prBase === ""
+            ? settings
+            : settings.logOpts(`origin/${prBase}..HEAD`);
+        }),
       );
       // osv-scanner is omitted here: it has no extractor for Deno's lockfile.
       // The @zuke/security wrapper still ships it for projects with npm/cargo/

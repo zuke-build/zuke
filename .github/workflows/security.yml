@@ -8,7 +8,10 @@ on:
     - cron: "42 5 * * 3"
 
 # The scanners run as a Zuke build gate (./zuke security) and fail the job on
-# findings; results are in the job log. Code-level SARIF for the Security tab
+# findings. gitleaks runs redacted, so its log line is only a count; the target
+# also writes a redacted JSON report, uploaded below, which names the file, line,
+# rule and fingerprint of each finding. Without it a failure is undiagnosable
+# without reproducing the scan locally. Code-level SARIF for the Security tab
 # comes from CodeQL's default setup and the Scorecard workflow.
 permissions:
   contents: read
@@ -25,7 +28,11 @@ jobs:
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # Full history so gitleaks scans past commits, not just the tip.
+          # Full history so gitleaks scans past commits, not just the tip. This
+          # also fetches every branch, which is why the target scopes the scan to
+          # the pull request's own commits — otherwise a secret-shaped string on
+          # an unrelated branch fails the scan on every open pull request. A push
+          # to master and the weekly run still walk the whole history.
           fetch-depth: 0
           persist-credentials: false
 
@@ -43,3 +50,15 @@ jobs:
       # typed `security` target (zizmor, actionlint, gitleaks).
       - name: Run security scanners with Zuke
         run: ./zuke security
+
+      # Uploaded even when the scan failed — that is the case where it is needed.
+      # The report is redacted, so it carries locations and rule ids rather than
+      # secret values.
+      - name: Upload the gitleaks report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: gitleaks-report
+          path: gitleaks-report.json
+          if-no-files-found: ignore
+          retention-days: 14

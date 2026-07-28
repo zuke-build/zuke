@@ -28,3 +28,6 @@ plans/
 
 # OMC session state
 .omc/
+
+# Redacted gitleaks findings from `./zuke security` (uploaded as a CI artifact)
+/gitleaks-report.json
