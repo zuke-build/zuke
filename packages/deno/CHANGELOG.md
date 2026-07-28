@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/zuke-build/zuke/compare/deno-v0.7.0...deno-v0.8.0) (2026-07-28)
+
+
+### Features
+
+* **deno:** add config and no-lock to deno check, verify declared core floors ([#285](https://github.com/zuke-build/zuke/issues/285)) ([3877d2f](https://github.com/zuke-build/zuke/commit/3877d2fdaed6d459c7e9c8a5f1b44203b7b13467))
+
 ## [0.7.0](https://github.com/zuke-build/zuke/compare/deno-v0.6.1...deno-v0.7.0) (2026-07-27)
 
 

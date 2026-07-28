@@ -1,6 +1,6 @@
 {
   "packages/core": "1.32.1",
-  "packages/deno": "0.7.0",
+  "packages/deno": "0.8.0",
   "packages/docs": "0.3.2",
   "packages/npm": "0.3.2",
   "packages/npx": "0.2.2",
