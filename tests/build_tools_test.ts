@@ -509,6 +509,31 @@ Deno.test("resolveSyncTarget: the default repo, or an explicit override", () => 
   });
 });
 
+Deno.test("resolveSyncTarget: refuses an override that is not an owner/repo slug", () => {
+  // This is the one place a cross-repo write token leaves for another
+  // repository, so the slug is checked before it reaches `git push` and
+  // `gh pr create` rather than after.
+  for (
+    const repo of [
+      "https://evil.example/x/y", // a URL, not a slug
+      "user:token@github.com/o/r", // embedded credential
+      "owner/repo/extra", // an extra path segment
+      "owner", // no repo half
+      "/repo", // no owner half
+      "owner/", // empty repo half
+      "-owner/repo", // segment may not start with a dash
+      "owner/repo with space",
+      "", // set but empty: not the same as unset
+    ]
+  ) {
+    assertThrows(
+      () => resolveSyncTarget({ token: "abc", repo }),
+      Error,
+      "owner/repo",
+    );
+  }
+});
+
 Deno.test("syncBranchInfo: names the branch and commit message from a version", () => {
   assertEquals(syncBranchInfo("1.2.3"), {
     branch: "zuke-sync/1.2.3",

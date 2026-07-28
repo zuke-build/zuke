@@ -25,16 +25,36 @@ export interface SyncTarget {
 }
 
 /**
+ * A GitHub `owner/repo` slug: exactly two non-empty segments of the characters
+ * GitHub allows in an owner or repository name.
+ */
+const REPO_SLUG = /^[A-Za-z0-9][A-Za-z0-9._-]*\/[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
+/**
  * The sync's target, derived from env — or `null` when the cross-repo token
  * isn't set. `GITHUB_TOKEN` cannot push to another repo, so this needs a
  * fine-grained PAT / GitHub App token (contents + pull-requests write on the
  * website repo); it is absent locally and on fork PRs, where the sync skips
  * cleanly rather than failing.
+ *
+ * An overridden repo is checked against {@link REPO_SLUG} before it is returned.
+ * This is the one place a cross-repo write token leaves for another repository,
+ * so a slug that is not a plain `owner/repo` — anything carrying a URL, a host,
+ * a credential, or an extra path segment — is refused rather than handed to
+ * `git push` and `gh pr create`.
+ *
+ * @throws if `env.repo` is set but is not a valid `owner/repo` slug.
  */
 export function resolveSyncTarget(
   env: { token?: string; repo?: string },
 ): SyncTarget | null {
   if (env.token === undefined || env.token === "") return null;
+  if (env.repo !== undefined && !REPO_SLUG.test(env.repo)) {
+    throw new Error(
+      `website sync: WEBSITE_REPO must be an "owner/repo" slug, got ` +
+        `"${env.repo}". Unset it to target ${DEFAULT_WEBSITE_REPO}.`,
+    );
+  }
   return { token: env.token, repo: env.repo ?? DEFAULT_WEBSITE_REPO };
 }
 
