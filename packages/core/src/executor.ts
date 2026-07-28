@@ -29,8 +29,9 @@ import {
   reportDanglingEdges,
   resolveRunParameters,
 } from "./execute_plan.ts";
+import { openRunState } from "./execute_state.ts";
 import { makeLifecycle } from "./lifecycle.ts";
-import type { RunEnv, RunOutcome } from "./run_support.ts";
+import type { RunOutcome } from "./run_support.ts";
 import {
   cpuCount,
   resolveConcurrency,
@@ -54,13 +55,10 @@ import { type RemoteCacheStore, resolveRemoteStore } from "./remote_cache.ts";
 import { ServiceRegistry } from "./service.ts";
 import { absolutePath } from "./path.ts";
 import type { TargetBuilder } from "./target.ts";
-import type { RunRecord, SignalRecord, WaitState } from "./state/types.ts";
+import type { RunRecord } from "./state/types.ts";
 import { withAmbientSignal } from "./ambient_signal.ts";
 import { withAmbientRedactor } from "./ambient_redactor.ts";
-import { defaultStateHost, type StateStore } from "./state/store.ts";
-import { resolveStateStore } from "./state/resolve.ts";
-import { buildRunRecord, ciRunUrl, resolveActor } from "./state/record.ts";
-import { RunStateWriter } from "./state/writer.ts";
+import type { StateStore } from "./state/store.ts";
 import { cancelEvent, compensationEvents, runCompensations } from "./cancel.ts";
 import type { Plugin, RunInfo } from "./plugin.ts";
 import type { Renderer } from "./renderer.ts";
@@ -208,19 +206,6 @@ export interface ResumeState {
 }
 
 /**
- * The still-waiting targets of a resumed run, mapped to the {@link WaitState}
- * they last recorded — the source of the original timeout deadline that a
- * re-suspend must preserve (see {@link RunEnv.priorWaits}).
- */
-function priorWaitsOf(record: RunRecord): ReadonlyMap<string, WaitState> {
-  const waits = new Map<string, WaitState>();
-  for (const [name, state] of Object.entries(record.targets)) {
-    if (state.waitingFor !== undefined) waits.set(name, state.waitingFor);
-  }
-  return waits;
-}
-
-/**
  * Execute the requested target and its transitive dependencies.
  *
  * Runs the build's `onStart`/`onFinish` lifecycle hooks around the plan. By
@@ -359,91 +344,32 @@ export async function execute(
     runController.abort();
   };
 
-  // Resolve the durable state store (if any) and open a writer that records the
-  // run and its per-target transitions. Never for a dry run — no body executes,
-  // so there is no run to persist. State writes are best-effort: a store hiccup
-  // is reported, never fatal (see RunStateWriter).
-  // A build that uses a durable feature (a cross-run lock; later, waits and
-  // compensations) turns the filesystem store on by default, so state "just
-  // works" without --state. Plain builds still opt in explicitly.
-  const usesDurableFeature = order.some((t) =>
-    t.lock_ !== undefined || t.waitsFor_ !== undefined ||
-    t.onCancel_ !== undefined
-  );
-  const stateStore = dryRun ? undefined : resolveStateStore(
-    options.stateStore,
-    build.stateStore(),
-    {
-      readEnv,
-      host: defaultStateHost,
-      defaultDir: absolutePath(
-        findConfigDir(Deno.cwd(), pathExists) ?? Deno.cwd(),
-      )(ARTIFACT_DIR, "runs").path,
-      enableDefault: (options.state ?? false) || usesDurableFeature,
-    },
-  );
-  // A wait needs somewhere to persist the suspension; without a store it could
-  // never be resumed. Fail fast with guidance instead of suspending into the
-  // void. (enableDefault turns the FS store on for waits, so this only triggers
-  // when state was explicitly disabled.)
-  if (
-    !dryRun && stateStore === undefined &&
-    order.some((t) => t.waitsFor_ !== undefined)
-  ) {
-    const error = new Error(
-      "A target uses .waitsFor(...), which needs a state store to persist the " +
-        "suspended run — but state is disabled. Enable it (drop stateStore: " +
-        "false, pass --state, or set ZUKE_STATE_DIR / ZUKE_STATE_URL).",
-    );
-    reporter.error(error.message);
-    return { ok: false, executed: [], error };
-  }
-  const actor = resolveActor(options.actor, readEnv);
-  const runUrl = ciRunUrl(readEnv);
   const nowIso = () => new Date().toISOString();
-  const warn = (message: string) => reporter.info(message);
-  const writer = stateStore === undefined
-    ? undefined
-    : options.resume !== undefined
-    // A resume continues the existing record (already transitioned to running).
-    ? RunStateWriter.adopt(
-      stateStore,
-      options.resume.record,
-      options.resume.version,
-      nowIso,
-      redactor,
-      warn,
-      onExternalCancel,
-    )
-    : await RunStateWriter.open(
-      stateStore,
-      buildRunRecord({
-        runId,
-        build: build.constructor.name,
-        rootTarget: root.name_ ?? "<unnamed>",
-        actor,
-        now: nowIso(),
-        order,
-        params: params.values(),
-      }),
-      nowIso,
-      redactor,
-      warn,
-      onExternalCancel,
-    );
-  const env: RunEnv = {
+  const opened = await openRunState({
+    build,
+    root,
+    order,
+    params: params.values(),
     runId,
+    dryRun,
     signal: runController.signal,
-    writer,
-    store: stateStore,
-    actor,
-    runUrl,
-    signals: writer ? writer.signals() : new Map<string, SignalRecord>(),
-    done: options.resume?.done,
-    priorWaits: options.resume
-      ? priorWaitsOf(options.resume.record)
-      : undefined,
-  };
+    redactor,
+    reporter,
+    readEnv,
+    nowIso,
+    onExternalCancel,
+    stateStore: options.stateStore,
+    state: options.state,
+    actor: options.actor,
+    resume: options.resume,
+    artifactDir: ARTIFACT_DIR,
+  });
+  if (!opened.ok) {
+    reporter.error(opened.error.message);
+    return { ok: false, executed: [], error: opened.error };
+  }
+  const { writer, env } = opened.state;
+  const actor = env.actor;
 
   // Announce the run's initial durable state (`running`) to plugins — a no-op
   // without a store. Terminal transitions are announced once the plan settles.
