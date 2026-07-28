@@ -2319,8 +2319,8 @@ interface ExecuteOptions
     outside GitHub Actions) when omitted; off by default with a custom reporter.
   renderer?: Renderer
     Renderer for the per-target banners and the end-of-build summary. Defaults
-    to Zuke's built-in {@link defaultRenderer}; `@zuke/console` exports an
-    alternative a build can inject to restyle its output.
+    to Zuke's built-in {@link "./renderer.ts".defaultRenderer}; `@zuke/console`
+    exports an alternative a build can inject to restyle its output.
   signal?: AbortSignal
     Cancel the run when this signal aborts (wired to Ctrl-C/SIGTERM by the CLI,
     or fired by another process running `zuke cancel`). Every target body's

@@ -5,8 +5,12 @@
  * Visual rendering — colour, the ruled per-target headers, the end-of-build
  * summary table, the GitHub Actions `::group::` commands, and the Markdown
  * job-summary file — lives in `./report.ts`. The executor only decides what to
- * run and feeds the renderer; this module owns orchestration, parameter
- * resolution, caching, lifecycle hooks, and the sequential/parallel scheduler.
+ * run and feeds the renderer; this module owns orchestration — caching,
+ * lifecycle hooks, and the sequential/parallel scheduler — and delegates each
+ * other concern to a sibling: the reporting surface and job summary to
+ * `./execute_output.ts`, parameter resolution and the skip sets to
+ * `./execute_plan.ts`, the durable run record and its writer to
+ * `./execute_state.ts`, and the cancellation handshake to `./execute_cancel.ts`.
  *
  * Sequencing and de-duplication are handled by {@link plan} — the returned
  * order already contains each target exactly once, so diamond dependencies run
@@ -15,16 +19,24 @@
 
 import type { Build, BuildResult } from "./build.ts";
 import { defaultReadEnv } from "./internal.ts";
-import {
-  consoleReporter,
-  redactingReporter,
-  type Reporter,
-  safeReporter,
-  silentReporter,
-} from "./reporter.ts";
+import type { Reporter } from "./reporter.ts";
 export type { Reporter } from "./reporter.ts";
+import {
+  composeOutput,
+  emitActionsMasks,
+  writeJobSummary,
+} from "./execute_output.ts";
+import {
+  applyAffectedSkips,
+  conditionSkips,
+  defaultPrompt,
+  reportDanglingEdges,
+  resolveRunParameters,
+} from "./execute_plan.ts";
+import { openRunState } from "./execute_state.ts";
+import { settleCancelledRun } from "./execute_cancel.ts";
 import { makeLifecycle } from "./lifecycle.ts";
-import type { RunEnv, RunOutcome } from "./run_support.ts";
+import type { RunOutcome } from "./run_support.ts";
 import {
   cpuCount,
   resolveConcurrency,
@@ -34,11 +46,7 @@ import {
 } from "./scheduler.ts";
 import { discoverTargets, resolveOrderingEdges } from "./build.ts";
 import { type OrderingEdge, planGraph } from "./graph.ts";
-import {
-  discoverParameters,
-  ParameterError,
-  resolveParameters,
-} from "./params.ts";
+import { ParameterError } from "./params.ts";
 import {
   type BuildCache,
   CACHE_FILE,
@@ -47,28 +55,17 @@ import {
   openCache,
 } from "./cache.ts";
 import { findConfigDir, pathExists } from "./config.ts";
-import {
-  type AffectedOptions,
-  affectedTargets,
-  gitChangedFiles,
-} from "./affected.ts";
+import type { AffectedOptions } from "./affected.ts";
 import { type RemoteCacheStore, resolveRemoteStore } from "./remote_cache.ts";
-import { isCI } from "./host.ts";
 import { ServiceRegistry } from "./service.ts";
-import { Redactor } from "./redact.ts";
 import { absolutePath } from "./path.ts";
 import type { TargetBuilder } from "./target.ts";
-import type { RunRecord, SignalRecord, WaitState } from "./state/types.ts";
+import type { RunRecord } from "./state/types.ts";
 import { withAmbientSignal } from "./ambient_signal.ts";
 import { withAmbientRedactor } from "./ambient_redactor.ts";
-import { defaultStateHost, type StateStore } from "./state/store.ts";
-import { resolveStateStore } from "./state/resolve.ts";
-import { buildRunRecord, ciRunUrl, resolveActor } from "./state/record.ts";
-import { RunStateWriter } from "./state/writer.ts";
-import { cancelEvent, compensationEvents, runCompensations } from "./cancel.ts";
+import type { StateStore } from "./state/store.ts";
 import type { Plugin, RunInfo } from "./plugin.ts";
-import { detectWidth, type Style, type TargetReport } from "./report.ts";
-import { defaultRenderer, type Renderer } from "./renderer.ts";
+import type { Renderer } from "./renderer.ts";
 
 /** The artifact directory (under the repo root) for the cache store. */
 const ARTIFACT_DIR = ".zuke";
@@ -156,8 +153,8 @@ export interface ExecuteOptions {
   color?: boolean;
   /**
    * Renderer for the per-target banners and the end-of-build summary. Defaults
-   * to Zuke's built-in {@link defaultRenderer}; `@zuke/console` exports an
-   * alternative a build can inject to restyle its output.
+   * to Zuke's built-in {@link "./renderer.ts".defaultRenderer}; `@zuke/console`
+   * exports an alternative a build can inject to restyle its output.
    */
   renderer?: Renderer;
   /**
@@ -213,130 +210,6 @@ export interface ResumeState {
 }
 
 /**
- * The still-waiting targets of a resumed run, mapped to the {@link WaitState}
- * they last recorded — the source of the original timeout deadline that a
- * re-suspend must preserve (see {@link RunEnv.priorWaits}).
- */
-function priorWaitsOf(record: RunRecord): ReadonlyMap<string, WaitState> {
-  const waits = new Map<string, WaitState>();
-  for (const [name, state] of Object.entries(record.targets)) {
-    if (state.waitingFor !== undefined) waits.set(name, state.waitingFor);
-  }
-  return waits;
-}
-
-/** Whether the build is running inside a GitHub Actions runner. */
-function inGitHubActions(): boolean {
-  try {
-    return Deno.env.get("GITHUB_ACTIONS") === "true";
-  } catch {
-    return false;
-  }
-}
-
-/** Prompt for a missing required parameter, only at an interactive (non-CI) TTY. */
-function defaultPrompt(
-  flag: string,
-  description: string | undefined,
-): string | undefined {
-  let interactive = false;
-  try {
-    interactive = Deno.stdin.isTerminal();
-  } catch {
-    interactive = false;
-  }
-  if (!interactive || isCI()) return undefined;
-  const label = description ? `--${flag} (${description})` : `--${flag}`;
-  return prompt(`${label}:`) ?? undefined;
-}
-
-/**
- * Evaluate up-front conditions for `whenSkipped("skip-dependencies")` targets;
- * return the names to skip — those targets plus any dependencies that no other
- * target in the plan needs.
- */
-async function conditionSkips(
-  root: TargetBuilder,
-  order: TargetBuilder[],
-): Promise<Set<string>> {
-  const pruned = new Set<TargetBuilder>();
-  for (const t of order) {
-    if (!t.skipDependencies_ || t.onlyWhen_.length === 0) continue;
-    let run = true;
-    for (const condition of t.onlyWhen_) {
-      if (!(await condition())) {
-        run = false;
-        break;
-      }
-    }
-    if (!run) pruned.add(t);
-  }
-  if (pruned.size === 0) return new Set();
-
-  // Everything still reachable from the root without pulling dependencies in
-  // *through* a pruned target.
-  const kept = new Set<TargetBuilder>();
-  const walk = (node: TargetBuilder) => {
-    if (node === undefined || kept.has(node)) return;
-    kept.add(node);
-    if (pruned.has(node)) return;
-    for (const dep of node.dependsOn_) walk(dep);
-    for (const trigger of node.triggers_) walk(trigger);
-  };
-  walk(root);
-
-  const names = new Set<string>();
-  for (const t of pruned) names.add(t.name_ ?? "");
-  for (const t of order) if (!kept.has(t)) names.add(t.name_ ?? "");
-  return names;
-}
-
-/** Whether terminal colour should be used (TTY, and `NO_COLOR` unset). */
-function autoColor(): boolean {
-  try {
-    if (Deno.env.get("NO_COLOR")) return false;
-  } catch {
-    return false;
-  }
-  return Deno.stdout.isTerminal();
-}
-
-/** Resolve the output style from the options and the detected environment. */
-function resolveStyle(options: ExecuteOptions, github: boolean): Style {
-  const color = options.color ??
-    (github || options.reporter !== undefined ? false : autoColor());
-  return { github, color, width: detectWidth() };
-}
-
-/** Append the Markdown job-summary table to `GITHUB_STEP_SUMMARY`, if set. */
-function writeJobSummary(
-  renderer: Renderer,
-  reports: TargetReport[],
-  totalMs: number,
-  ok: boolean,
-): void {
-  let path: string | undefined;
-  try {
-    path = Deno.env.get("GITHUB_STEP_SUMMARY");
-  } catch {
-    return;
-  }
-  if (path === undefined || path === "") return;
-  try {
-    // Append, not overwrite: validations like the AI reviewers/fixer write their
-    // own sections to this same file during the run, and overwriting here would
-    // wipe them. GitHub provisions a fresh summary file per step, so a single
-    // run's appends never accumulate across steps.
-    Deno.writeTextFileSync(
-      path,
-      renderer.jobSummaryMarkdown(reports, totalMs, ok),
-      { append: true },
-    );
-  } catch {
-    // Best-effort: an unwritable summary file must never fail the build.
-  }
-}
-/**
  * Execute the requested target and its transitive dependencies.
  *
  * Runs the build's `onStart`/`onFinish` lifecycle hooks around the plan. By
@@ -350,65 +223,33 @@ export async function execute(
   root: TargetBuilder,
   options: ExecuteOptions = {},
 ): Promise<BuildResult> {
-  const baseReporter = options.reporter ??
-    (options.silent ? silentReporter : consoleReporter);
-  // Every line Zuke prints passes through the redactor, which masks the
-  // resolved value of each `secret` parameter. The redactor is populated during
-  // parameter resolution below; since nothing meaningful is reported before
-  // then, wrapping the reporter up-front is safe.
-  const redactor = new Redactor();
-  // …and every write is best-effort (see safeReporter): a throwing sink (a buggy
-  // custom reporter, or EPIPE on a piped stdout) must never escape `failTarget`
-  // and reject out of a scheduler, which would strand the run record `running`.
-  const reporter = safeReporter(redactingReporter(baseReporter, redactor));
-  // The GitHub job summary is a real-world output side effect (it appends to a
-  // shared file named by GITHUB_STEP_SUMMARY). Only write it when output goes to
-  // the default console — i.e. neither silenced nor redirected to a custom
-  // reporter. This keeps embedded/test runs (a build's own test suite calls
-  // `execute` with `silent`/a custom reporter) from polluting the workflow
-  // summary, while a normal CLI run still writes it.
-  const writesToConsole = options.reporter === undefined && !options.silent;
-  const github = options.github ?? inGitHubActions();
-  const style = resolveStyle(options, github);
-  const renderer = options.renderer ?? defaultRenderer;
+  const {
+    baseReporter,
+    reporter,
+    redactor,
+    writesToConsole,
+    style,
+    renderer,
+  } = composeOutput(options);
   const skip = new Set(options.skip ?? []);
 
-  // Resolve declared parameters (CLI value → environment → default) before any
-  // target runs, so a target body can read `this.param.value`. A missing
-  // required parameter or an invalid value fails the build before it starts.
-  const params = discoverParameters(build);
   const readEnv = options.readEnv ?? defaultReadEnv;
-  const paramErrors = await resolveParameters(
-    params,
+  const { params, errors: paramErrors } = await resolveRunParameters(
+    build,
     options.params ?? {},
     readEnv,
     options.prompt ?? defaultPrompt,
     redactor,
   );
-  // Register each secret's final parsed value too — its raw form was already
-  // added during resolution, but a source that trims or a parser that
-  // normalises could yield a slightly different printed string.
-  for (const p of params.values()) {
-    if (!p.secret_) continue;
-    const value = p.stringValue_();
-    if (value !== undefined && value !== "") redactor.add(value);
-  }
-  // Under GitHub Actions, also emit `::add-mask::` with the real value so the
-  // runner masks it in its own logs. This goes through the base reporter, which
-  // is not wrapped in the redactor — a masked directive would hide nothing. Gate
-  // it on `writesToConsole` too: when a custom reporter is supplied it *is* the
-  // base reporter, so an embedded `execute()` must never be handed the raw
-  // secret — only the real runner stdout should receive the directive.
+  // Gated on `writesToConsole` so an embedded `execute()` is never handed a raw
+  // secret — see emitActionsMasks for why the directive bypasses the redactor.
   if (style.github && writesToConsole) {
-    const maskReporter = safeReporter(baseReporter);
+    const secrets: string[] = [];
     for (const p of params.values()) {
       const value = p.secret_ ? p.stringValue_() : undefined;
-      if (value !== undefined && value !== "") {
-        // Straight to the base reporter (not redacted, so the directive works),
-        // but best-effort: an EPIPE here must not abort the run either.
-        maskReporter.info(`::add-mask::${value}`);
-      }
+      if (value !== undefined && value !== "") secrets.push(value);
     }
+    emitActionsMasks(secrets, baseReporter);
   }
   if (paramErrors.length > 0) {
     reporter.error("Invalid or missing parameters:");
@@ -440,35 +281,7 @@ export async function execute(
     return { ok: false, executed: [], error };
   }
   const { order, predecessors } = planGraph(root, extraEdges);
-  // Flag ordering edges that can never apply: an endpoint that is neither in this
-  // run's execution set nor a declared build target is dead weight (silently
-  // dropped otherwise). A declared target simply not in this run — a conditional
-  // target — is legitimately ignored, so it is not flagged. This catches feeding
-  // ad-hoc or fan-out per-item names into orderWith/extraEdges: per-item fan-out
-  // ordering is not expressible (order whole fan-out waves with .dependsOn).
-  if (extraEdges.length > 0) {
-    const inRun = new Set(order);
-    const declared = new Set(discovered.values());
-    const dangling = new Set<string>();
-    for (const edge of extraEdges) {
-      for (const endpoint of edge) {
-        // `endpoint &&` tolerates a malformed edge (a consumer bypassing the
-        // OrderingEdge type to pass a nullish endpoint) instead of crashing on
-        // `.name_`, matching planEdges' silent tolerance of such edges.
-        if (endpoint && !inRun.has(endpoint) && !declared.has(endpoint)) {
-          dangling.add(endpoint.name_ ?? "<unnamed>");
-        }
-      }
-    }
-    for (const name of dangling) {
-      reporter.info(
-        `ordering: an edge references "${name}", which is not a target in this ` +
-          `build — the edge is ignored. orderWith/extraEdges see only ` +
-          `class-field targets, not fan-out sub-targets (order whole fan-out ` +
-          `waves with .dependsOn instead).`,
-      );
-    }
-  }
+  reportDanglingEdges(extraEdges, order, discovered.values(), reporter);
   // Evaluate up-front conditions for `whenSkipped("skip-dependencies")` targets
   // and skip them plus any dependencies that nothing else needs.
   for (const name of await conditionSkips(root, order)) skip.add(name);
@@ -477,15 +290,7 @@ export async function execute(
   // targets still unblock their dependents (their prior outputs are assumed
   // current), so an affected target downstream of an unaffected one still runs.
   if (options.affected !== undefined) {
-    const base = options.affected.base ?? "HEAD";
-    const changedFiles = options.affected.changedFiles ?? gitChangedFiles;
-    const affected = affectedTargets(order, await changedFiles(base));
-    for (const t of order) {
-      if (!affected.has(t)) skip.add(t.name_ ?? "<unnamed>");
-    }
-    if (affected.size === 0) {
-      reporter.info(`No targets affected by changes since ${base}.`);
-    }
+    await applyAffectedSkips(options.affected, order, skip, reporter);
   }
 
   const limit = resolveConcurrency(options.parallel);
@@ -545,91 +350,32 @@ export async function execute(
     runController.abort();
   };
 
-  // Resolve the durable state store (if any) and open a writer that records the
-  // run and its per-target transitions. Never for a dry run — no body executes,
-  // so there is no run to persist. State writes are best-effort: a store hiccup
-  // is reported, never fatal (see RunStateWriter).
-  // A build that uses a durable feature (a cross-run lock; later, waits and
-  // compensations) turns the filesystem store on by default, so state "just
-  // works" without --state. Plain builds still opt in explicitly.
-  const usesDurableFeature = order.some((t) =>
-    t.lock_ !== undefined || t.waitsFor_ !== undefined ||
-    t.onCancel_ !== undefined
-  );
-  const stateStore = dryRun ? undefined : resolveStateStore(
-    options.stateStore,
-    build.stateStore(),
-    {
-      readEnv,
-      host: defaultStateHost,
-      defaultDir: absolutePath(
-        findConfigDir(Deno.cwd(), pathExists) ?? Deno.cwd(),
-      )(ARTIFACT_DIR, "runs").path,
-      enableDefault: (options.state ?? false) || usesDurableFeature,
-    },
-  );
-  // A wait needs somewhere to persist the suspension; without a store it could
-  // never be resumed. Fail fast with guidance instead of suspending into the
-  // void. (enableDefault turns the FS store on for waits, so this only triggers
-  // when state was explicitly disabled.)
-  if (
-    !dryRun && stateStore === undefined &&
-    order.some((t) => t.waitsFor_ !== undefined)
-  ) {
-    const error = new Error(
-      "A target uses .waitsFor(...), which needs a state store to persist the " +
-        "suspended run — but state is disabled. Enable it (drop stateStore: " +
-        "false, pass --state, or set ZUKE_STATE_DIR / ZUKE_STATE_URL).",
-    );
-    reporter.error(error.message);
-    return { ok: false, executed: [], error };
-  }
-  const actor = resolveActor(options.actor, readEnv);
-  const runUrl = ciRunUrl(readEnv);
   const nowIso = () => new Date().toISOString();
-  const warn = (message: string) => reporter.info(message);
-  const writer = stateStore === undefined
-    ? undefined
-    : options.resume !== undefined
-    // A resume continues the existing record (already transitioned to running).
-    ? RunStateWriter.adopt(
-      stateStore,
-      options.resume.record,
-      options.resume.version,
-      nowIso,
-      redactor,
-      warn,
-      onExternalCancel,
-    )
-    : await RunStateWriter.open(
-      stateStore,
-      buildRunRecord({
-        runId,
-        build: build.constructor.name,
-        rootTarget: root.name_ ?? "<unnamed>",
-        actor,
-        now: nowIso(),
-        order,
-        params: params.values(),
-      }),
-      nowIso,
-      redactor,
-      warn,
-      onExternalCancel,
-    );
-  const env: RunEnv = {
+  const opened = await openRunState({
+    build,
+    root,
+    order,
+    params: [...params.values()],
     runId,
+    dryRun,
     signal: runController.signal,
-    writer,
-    store: stateStore,
-    actor,
-    runUrl,
-    signals: writer ? writer.signals() : new Map<string, SignalRecord>(),
-    done: options.resume?.done,
-    priorWaits: options.resume
-      ? priorWaitsOf(options.resume.record)
-      : undefined,
-  };
+    redactor,
+    reporter,
+    readEnv,
+    nowIso,
+    onExternalCancel,
+    stateStore: options.stateStore,
+    state: options.state,
+    actor: options.actor,
+    resume: options.resume,
+    artifactDir: ARTIFACT_DIR,
+  });
+  if (!opened.ok) {
+    reporter.error(opened.error.message);
+    return { ok: false, executed: [], error: opened.error };
+  }
+  const { writer, env } = opened.state;
+  const actor = env.actor;
 
   // Announce the run's initial durable state (`running`) to plugins — a no-op
   // without a store. Terminal transitions are announced once the plan settles.
@@ -716,66 +462,18 @@ export async function execute(
         `Run ${runId} cancelled by another process — stopping.`,
       );
     } else if (writer !== undefined) {
-      // Hold the per-run cancel lock while we compensate, so a concurrent
-      // `zuke cancel` can't settle the run (declaring "no compensations") over
-      // our live cleanup. We only reach here with `externallyCancelled` false
-      // (the true case stopped above), so always attempt the acquire; a `null`
-      // result means another process already holds the lock and owns the walk —
-      // we stop and drain (F7).
-      const cancelLock = await writer.acquireCancelLock(actor);
-      if (cancelLock === null) {
-        await writer.drain();
-        reporter.info(
-          `Run ${runId} cancelled by another process — stopping.`,
-        );
-      } else {
-        try {
-          // We initiated it (Ctrl-C / options.signal): mark cancelling (which
-          // also drains every pending per-target write, so the snapshot is
-          // current).
-          await writer.markRunCancelling();
-          // markRunCancelling drains the write chain, so if another process's
-          // `zuke cancel` won the race in the meantime, the conflict has already
-          // fired onExternalCancel. Re-check before walking, so we never run the
-          // compensations twice (that canceller owns them now).
-          if (externallyCancelled) {
-            await writer.drain();
-            reporter.info(
-              `Run ${runId} cancelled by another process — stopping.`,
-            );
-          } else {
-            // Announce the intermediate `cancelling` transition (the record was
-            // just moved there) before compensations run, so a plugin sees the
-            // full running → cancelling → cancelled sequence.
-            await life.runStateChange(writer.snapshot());
-            // Run the succeeded targets' compensations in reverse order, record
-            // the cancellation in the audit trail (as `zuke cancel` does), then
-            // settle.
-            const comp = await runCompensations(order, writer.snapshot(), {
-              runId,
-              signals: env.signals,
-              reporter,
-              redactor,
-            });
-            const at = nowIso();
-            for (const event of compensationEvents(comp.attempts, actor, at)) {
-              await writer.appendEvent(event);
-            }
-            await writer.appendEvent(cancelEvent(actor, comp, at));
-            await writer.markRunCancelled();
-            reporter.info(
-              `Run ${runId} cancelled — ${comp.compensated.length} ` +
-                `compensation(s) ran${
-                  comp.failures.length > 0
-                    ? `, ${comp.failures.length} failed`
-                    : ""
-                }.`,
-            );
-          }
-        } finally {
-          await cancelLock?.release();
-        }
-      }
+      await settleCancelledRun({
+        writer,
+        life,
+        order,
+        runId,
+        actor,
+        signals: env.signals,
+        reporter,
+        redactor,
+        nowIso,
+        isExternallyCancelled: () => externallyCancelled,
+      });
     }
   } else {
     result = run.aborted
