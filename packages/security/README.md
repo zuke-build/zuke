@@ -99,6 +99,19 @@ class GitleaksDetectSettings extends ToolSettings
     Treat the source as a plain directory, not a git repo (`--no-git`).
   verbose(): this
     Verbose output (`--verbose`).
+  logOpts(opts: string): this
+    Restrict which commits are scanned, passed straight through to `git log`
+    (`--log-opts`).
+
+    Without this, `gitleaks detect` walks the whole history reachable from the
+    refs present in the checkout — so on a pull request, where CI typically
+    fetches every branch, a secret-shaped string on an unrelated branch fails
+    the scan and the failure appears on whichever pull request is looked at.
+    Passing a range such as `origin/main..HEAD` scopes the scan to the commits
+    under review.
+
+    Has no effect alongside {@linkcode noGit}, which makes gitleaks treat the
+    source as a plain directory and ignore history entirely.
   override protected buildArgs(): string[]
     Assemble the `gitleaks detect` argv.
 
