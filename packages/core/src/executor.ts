@@ -30,6 +30,7 @@ import {
   resolveRunParameters,
 } from "./execute_plan.ts";
 import { openRunState } from "./execute_state.ts";
+import { settleCancelledRun } from "./execute_cancel.ts";
 import { makeLifecycle } from "./lifecycle.ts";
 import type { RunOutcome } from "./run_support.ts";
 import {
@@ -59,7 +60,6 @@ import type { RunRecord } from "./state/types.ts";
 import { withAmbientSignal } from "./ambient_signal.ts";
 import { withAmbientRedactor } from "./ambient_redactor.ts";
 import type { StateStore } from "./state/store.ts";
-import { cancelEvent, compensationEvents, runCompensations } from "./cancel.ts";
 import type { Plugin, RunInfo } from "./plugin.ts";
 import type { Renderer } from "./renderer.ts";
 
@@ -237,6 +237,8 @@ export async function execute(
     options.prompt ?? defaultPrompt,
     redactor,
   );
+  // Gated on `writesToConsole` so an embedded `execute()` is never handed a raw
+  // secret — see emitActionsMasks for why the directive bypasses the redactor.
   if (style.github && writesToConsole) {
     const secrets: string[] = [];
     for (const p of params.values()) {
@@ -456,66 +458,18 @@ export async function execute(
         `Run ${runId} cancelled by another process — stopping.`,
       );
     } else if (writer !== undefined) {
-      // Hold the per-run cancel lock while we compensate, so a concurrent
-      // `zuke cancel` can't settle the run (declaring "no compensations") over
-      // our live cleanup. We only reach here with `externallyCancelled` false
-      // (the true case stopped above), so always attempt the acquire; a `null`
-      // result means another process already holds the lock and owns the walk —
-      // we stop and drain (F7).
-      const cancelLock = await writer.acquireCancelLock(actor);
-      if (cancelLock === null) {
-        await writer.drain();
-        reporter.info(
-          `Run ${runId} cancelled by another process — stopping.`,
-        );
-      } else {
-        try {
-          // We initiated it (Ctrl-C / options.signal): mark cancelling (which
-          // also drains every pending per-target write, so the snapshot is
-          // current).
-          await writer.markRunCancelling();
-          // markRunCancelling drains the write chain, so if another process's
-          // `zuke cancel` won the race in the meantime, the conflict has already
-          // fired onExternalCancel. Re-check before walking, so we never run the
-          // compensations twice (that canceller owns them now).
-          if (externallyCancelled) {
-            await writer.drain();
-            reporter.info(
-              `Run ${runId} cancelled by another process — stopping.`,
-            );
-          } else {
-            // Announce the intermediate `cancelling` transition (the record was
-            // just moved there) before compensations run, so a plugin sees the
-            // full running → cancelling → cancelled sequence.
-            await life.runStateChange(writer.snapshot());
-            // Run the succeeded targets' compensations in reverse order, record
-            // the cancellation in the audit trail (as `zuke cancel` does), then
-            // settle.
-            const comp = await runCompensations(order, writer.snapshot(), {
-              runId,
-              signals: env.signals,
-              reporter,
-              redactor,
-            });
-            const at = nowIso();
-            for (const event of compensationEvents(comp.attempts, actor, at)) {
-              await writer.appendEvent(event);
-            }
-            await writer.appendEvent(cancelEvent(actor, comp, at));
-            await writer.markRunCancelled();
-            reporter.info(
-              `Run ${runId} cancelled — ${comp.compensated.length} ` +
-                `compensation(s) ran${
-                  comp.failures.length > 0
-                    ? `, ${comp.failures.length} failed`
-                    : ""
-                }.`,
-            );
-          }
-        } finally {
-          await cancelLock?.release();
-        }
-      }
+      await settleCancelledRun({
+        writer,
+        life,
+        order,
+        runId,
+        actor,
+        signals: env.signals,
+        reporter,
+        redactor,
+        nowIso,
+        isExternallyCancelled: () => externallyCancelled,
+      });
     }
   } else {
     result = run.aborted
