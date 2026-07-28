@@ -143,5 +143,7 @@ if (-not $deno) {
 # bootstrapped to a non-PATH location.
 $env:PATH = (Split-Path -Parent $deno) + [IO.Path]::PathSeparator + $env:PATH
 
-& $deno run -A (Join-Path $scriptDir "zuke.ts") @args
+# --frozen so this invocation cannot rewrite deno.lock; see the comment in the
+# POSIX launcher. Regenerate deliberately with `deno install`, then commit it.
+& $deno run -A --frozen (Join-Path $scriptDir "zuke.ts") @args
 exit $LASTEXITCODE

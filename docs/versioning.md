@@ -97,7 +97,11 @@ missing export at runtime:
   every package (core included) that your build actually runs against — the
   caret range in `deno.json` only bounds what's *allowed*, the lockfile fixes
   what's *used*. Regenerate it (`deno install` or a fresh `deno.lock` write)
-  whenever you deliberately take an upgrade, and review the diff.
+  whenever you deliberately take an upgrade, and review the diff. In this repo
+  that is `deno task lock`, and the gate enforces it: every entrypoint that
+  loads `zuke.ts` runs `--frozen`, and the `lockCheck` target fails if a run
+  modified the lock — so a stale lock is caught before it reaches CI rather
+  than being silently healed on the machine that happened to run the gate.
 
 ## Upgrade notes
 
