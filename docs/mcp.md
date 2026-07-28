@@ -117,7 +117,7 @@ With `--allow-run` a store also exposes three **mutating** run-state tools:
 `signal_run` (deliver an external signal and resume a suspended run,
 exactly-once), `resume_check` (re-check suspended runs — predicate waits and
 timeouts), and `cancel_run` (cancel a run and run its
-[compensations](./orchestration.md#cancellation--compensation-oncancel)). They
+[compensations](./orchestration.md#cancellation--compensation--oncancel)). They
 are the MCP counterparts of `./zuke resume` and `./zuke cancel`. Each runs the
 target's code (a resume continues it; a cancel runs its compensations), so it is
 gated by the same [allow-list and operator-token](#authorization) policy as a

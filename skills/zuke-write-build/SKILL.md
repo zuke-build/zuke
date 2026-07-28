@@ -45,15 +45,24 @@ await run(CI);
    initialise top-to-bottom; a forward reference is `undefined` and is reported
    as an error (TypeScript also flags it, `TS2729`). Order fields so
    dependencies come first.
-3. **Inside a target body, never guess the API or shell out by hand.** Whatever
-   runs in an `.executes(...)` body drives an external tool through its
-   namespaced `*Tasks` object, configured with a **settings lambda** that mirrors
-   the real CLI's flags — `DenoTasks`, `NpmTasks`, `DockerTasks`, `GitTasks`, and
-   30+ more — never a raw `Deno.Command` or shell string. Reach for
-   `jsr:@zuke/cmd` (`CmdTasks.exec`) or the `$` shell from `jsr:@zuke/core/shell`
-   only when no typed wrapper exists. (If a build delegates its side effects to
-   your own tested modules behind injected clients, the wrapper rule still
-   governs whatever those modules run in the target body.)
+3. **Check the package catalogue before writing any command.** `llms.txt`'s
+   `## Packages` catalogue (raw:
+   <https://raw.githubusercontent.com/zuke-build/zuke/master/llms.txt>) and the
+   package table in [`references/cheatsheet.md`](references/cheatsheet.md) are
+   the only ways to answer "does a `@zuke/<tool>` wrapper exist for this CLI?"
+   — per-package `deno doc jsr:@zuke/<pkg>` only describes a package whose name
+   you already know; it cannot tell you a wrapper exists. Whatever runs in an
+   `.executes(...)` body drives an external tool through its namespaced
+   `*Tasks` object, configured with a **settings lambda** that mirrors the real
+   CLI's flags — `DenoTasks`, `NpmTasks`, `DockerTasks`, `GitTasks`, and 30+
+   more — never a raw `Deno.Command` or shell string. `jsr:@zuke/cmd`
+   (`CmdTasks.exec`) or the `$` shell from `jsr:@zuke/core/shell` is the
+   **last resort**, reached for only once the catalogue confirms no typed
+   wrapper exists — using it for a tool that has a `@zuke/<tool>` package is a
+   **bug**, not a style choice: it discards typed flags, argv purity, and tool
+   resolution. (If a build delegates its side effects to your own tested
+   modules behind injected clients, the wrapper rule still governs whatever
+   those modules run in the target body.)
 4. **A body is required.** Set `.executes(...)`; it may be sync or async, and
    its return value is ignored — `.executes(() => DenoTasks.lint())` is fine
    as-is; never wrap a single wrapper call in an `async` block just to discard
@@ -61,9 +70,12 @@ await run(CI);
 
 ## Find the exact signature first
 
-Before calling any task or settings method, confirm the real shape:
+Before calling any task or settings method, confirm the real shape — but first
+confirm a wrapper exists at all: `deno doc` needs a package name to target, so
+it cannot answer "does one exist for this tool?"; only the catalogue
+(`llms.txt`'s `## Packages` list or the cheatsheet table below) can.
 
-- **One package — prefer this in a consumer repo:**
+- **One package — prefer this in a consumer repo, once you know its name:**
   `deno doc jsr:@zuke/<package>` (e.g. `deno doc jsr:@zuke/deno`). It resolves
   the version the project actually has installed, so it cannot describe an API
   that version lacks.

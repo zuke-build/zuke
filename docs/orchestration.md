@@ -204,7 +204,7 @@ its recorded `onTimeout` disposition:
 
 - **`"fail"`** (the default) — the waiting target is failed and the run fails.
 - **`"cancel-run"`** — the run is **cancelled**: every succeeded target's
-  compensation runs (see [Cancellation](#cancellation--compensation-oncancel))
+  compensation runs (see [Cancellation](#cancellation--compensation--oncancel))
   and the record settles `cancelled`. This is what unwinds a stuck deploy → wait
   and releases its locks, rather than leaving them held until their TTL.
 - **a sibling target** (`.onTimeout(() => this.rollback)`) — that specific

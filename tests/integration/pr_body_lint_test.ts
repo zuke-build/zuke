@@ -63,6 +63,15 @@ Deno.test("a clean PR body passes the gate", async () => {
   assertStringIncludes(out, "PR body is clean");
 });
 
+Deno.test("a PR body with a member-call fragment fails the gate", async () => {
+  const { code, err } = await runWithPrBody(
+    'Names the anti-pattern CmdTasks.exec("docker", args) in the cheatsheet.',
+  );
+  assertEquals(code, 1);
+  assertStringIncludes(err, "RELEASING.md");
+  assertStringIncludes(err, "code fragment");
+});
+
 Deno.test("a PR body with a fenced code block fails the gate and points to RELEASING.md", async () => {
   const { code, err } = await runWithPrBody(
     ["Summary.", "```ts", 'const x = () => "y";', "```"].join("\n"),

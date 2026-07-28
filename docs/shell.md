@@ -38,9 +38,9 @@ raises it for a tool whose whole output must be parsed. The cap must be a
 positive whole number of bytes; there is no unlimited value, so pass a cap larger
 than the output you expect. Live streaming to the terminal is never capped.
 
-**Safety:** interpolated values become **discrete argv entries** — they are
-never spliced into a shell string — so there is no injection surface. Arrays
-expand to multiple arguments:
+**Safety:** interpolated values become **discrete argv entries** — they are never
+spliced into a shell string, and no shell is involved at all — so there is **no
+shell-injection surface**. Arrays expand to multiple arguments:
 
 ```ts
 const files = ["a.ts", "b.ts"];
@@ -48,6 +48,20 @@ await $`deno fmt ${files}`; // → ["deno", "fmt", "a.ts", "b.ts"]
 const dirty = "; rm -rf /";
 await $`echo ${dirty}`; // prints the literal string; runs nothing else
 ```
+
+That is shell injection, and only shell injection. **Argument injection is still
+yours to validate:** a value beginning with `-` is passed through faithfully as
+one argv entry, and the invoked tool reads it as a **flag**, not as data.
+
+```ts
+const ref = "--output=/tmp/leak"; // untrusted
+await $`git diff --name-only ${ref}`; // git honours it as an option
+```
+
+So validate any untrusted value you interpolate into a leading position —
+reject a leading `-`, or separate data from options with `--` where the tool
+supports it. Zuke does this for the inputs it accepts itself: `--affected`
+rejects a base revision starting with `-` for exactly this reason.
 
 By default a command streams its output live to your terminal and captures
 stdout; `.text()`/`.lines()` capture without echoing; `.quiet()` does neither.

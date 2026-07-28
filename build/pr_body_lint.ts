@@ -9,16 +9,25 @@
  *
  * The heuristic is deliberately dumb, on purpose: it flags a fenced ```
  * block wholesale, and — outside fences — a line containing an arrow
- * function (`=>`) or a zero-argument call statement (`();`). Ordinary prose
- * parentheses, e.g. `(see #241)`, are never flagged; only code-shaped
- * constructs are.
+ * function (`=>`), a zero-argument call statement (`();`), or a member call
+ * whose receiver and method are identifiers, as in a `Tasks.method(` fragment.
+ * Ordinary prose parentheses, e.g. `(see #241)`, are never flagged; a
+ * parenthetical that follows a filename keeps its space, so `cli.md (the
+ * reference)` reads as prose while `CmdTasks.exec("docker")` reads as code.
  *
  * @module
  */
 
-/** A code-shaped line contains an arrow function or a bare call statement. */
+/** A member call, `Receiver.method(`, with no space before the parenthesis. */
+const MEMBER_CALL = /[A-Za-z_$][\w$]*\.[A-Za-z_$][\w$]*\(/;
+
+/**
+ * A code-shaped line contains an arrow function, a bare call statement, or a
+ * member call.
+ */
 function isCodeShapedLine(line: string): boolean {
-  return line.includes("=>") || /\(\s*\)\s*;/.test(line);
+  return line.includes("=>") || /\(\s*\)\s*;/.test(line) ||
+    MEMBER_CALL.test(line);
 }
 
 /**

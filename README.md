@@ -25,6 +25,13 @@
 > assistance, then reviewed, type-checked, and tested in CI. Sharing how it was
 > made so you know what you're getting.
 
+> [!NOTE]
+> **Maturity.** `@zuke/core` (and a handful of others — `@zuke/ai`,
+> `@zuke/console`, `@zuke/otel`, …) are `1.x` and follow full semver; the 50+
+> tool wrappers are `0.x` and may still change within `0.x`. See
+> [Versioning & compatibility](./docs/versioning.md) for the pinning guidance
+> and how to diagnose a version mismatch.
+
 Zuke lets you define builds as a **TypeScript class**. Each target is a class
 field declared with a fluent API; targets reference each other by `this.x` (not
 strings), forming a dependency graph that Zuke resolves and runs in topological
@@ -63,6 +70,10 @@ class MyBuild extends Build {
   `cicd({ provider: "github" })` — the provider is the only required field — and
   Zuke generates GitHub Actions, GitLab CI, or Azure Pipelines YAML,
   regenerating it whenever the build runs (and verifying it on CI).
+
+See **[How Zuke compares](./docs/comparison.md)** for a capability-by-capability
+matrix against `deno task`, npm scripts, Make, Nx, Turborepo, and Dagger, on
+the capabilities Zuke was built to provide.
 
 ## Install
 
@@ -331,6 +342,11 @@ Full documentation lives in [`docs/`](./docs/):
 - [CLI reference](./docs/cli.md) — commands and flags.
 - [Programmatic API](./docs/programmatic-api.md) — drive Zuke from your own
   code.
+- [Versioning & compatibility](./docs/versioning.md) — core semver vs. 0.x
+  wrappers, the `@zuke/core` floor, and pinning guidance.
+- [How Zuke compares](./docs/comparison.md) — a capability matrix against
+  `deno task`, npm scripts, Make, Nx, Turborepo, and Dagger, on the
+  capabilities Zuke provides.
 
 ## Development
 
