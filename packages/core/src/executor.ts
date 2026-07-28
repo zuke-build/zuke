@@ -15,14 +15,13 @@
 
 import type { Build, BuildResult } from "./build.ts";
 import { defaultReadEnv } from "./internal.ts";
-import {
-  consoleReporter,
-  redactingReporter,
-  type Reporter,
-  safeReporter,
-  silentReporter,
-} from "./reporter.ts";
+import type { Reporter } from "./reporter.ts";
 export type { Reporter } from "./reporter.ts";
+import {
+  composeOutput,
+  emitActionsMasks,
+  writeJobSummary,
+} from "./execute_output.ts";
 import { makeLifecycle } from "./lifecycle.ts";
 import type { RunEnv, RunOutcome } from "./run_support.ts";
 import {
@@ -55,7 +54,6 @@ import {
 import { type RemoteCacheStore, resolveRemoteStore } from "./remote_cache.ts";
 import { isCI } from "./host.ts";
 import { ServiceRegistry } from "./service.ts";
-import { Redactor } from "./redact.ts";
 import { absolutePath } from "./path.ts";
 import type { TargetBuilder } from "./target.ts";
 import type { RunRecord, SignalRecord, WaitState } from "./state/types.ts";
@@ -67,8 +65,7 @@ import { buildRunRecord, ciRunUrl, resolveActor } from "./state/record.ts";
 import { RunStateWriter } from "./state/writer.ts";
 import { cancelEvent, compensationEvents, runCompensations } from "./cancel.ts";
 import type { Plugin, RunInfo } from "./plugin.ts";
-import { detectWidth, type Style, type TargetReport } from "./report.ts";
-import { defaultRenderer, type Renderer } from "./renderer.ts";
+import type { Renderer } from "./renderer.ts";
 
 /** The artifact directory (under the repo root) for the cache store. */
 const ARTIFACT_DIR = ".zuke";
@@ -225,15 +222,6 @@ function priorWaitsOf(record: RunRecord): ReadonlyMap<string, WaitState> {
   return waits;
 }
 
-/** Whether the build is running inside a GitHub Actions runner. */
-function inGitHubActions(): boolean {
-  try {
-    return Deno.env.get("GITHUB_ACTIONS") === "true";
-  } catch {
-    return false;
-  }
-}
-
 /** Prompt for a missing required parameter, only at an interactive (non-CI) TTY. */
 function defaultPrompt(
   flag: string,
@@ -291,51 +279,6 @@ async function conditionSkips(
   return names;
 }
 
-/** Whether terminal colour should be used (TTY, and `NO_COLOR` unset). */
-function autoColor(): boolean {
-  try {
-    if (Deno.env.get("NO_COLOR")) return false;
-  } catch {
-    return false;
-  }
-  return Deno.stdout.isTerminal();
-}
-
-/** Resolve the output style from the options and the detected environment. */
-function resolveStyle(options: ExecuteOptions, github: boolean): Style {
-  const color = options.color ??
-    (github || options.reporter !== undefined ? false : autoColor());
-  return { github, color, width: detectWidth() };
-}
-
-/** Append the Markdown job-summary table to `GITHUB_STEP_SUMMARY`, if set. */
-function writeJobSummary(
-  renderer: Renderer,
-  reports: TargetReport[],
-  totalMs: number,
-  ok: boolean,
-): void {
-  let path: string | undefined;
-  try {
-    path = Deno.env.get("GITHUB_STEP_SUMMARY");
-  } catch {
-    return;
-  }
-  if (path === undefined || path === "") return;
-  try {
-    // Append, not overwrite: validations like the AI reviewers/fixer write their
-    // own sections to this same file during the run, and overwriting here would
-    // wipe them. GitHub provisions a fresh summary file per step, so a single
-    // run's appends never accumulate across steps.
-    Deno.writeTextFileSync(
-      path,
-      renderer.jobSummaryMarkdown(reports, totalMs, ok),
-      { append: true },
-    );
-  } catch {
-    // Best-effort: an unwritable summary file must never fail the build.
-  }
-}
 /**
  * Execute the requested target and its transitive dependencies.
  *
@@ -350,27 +293,14 @@ export async function execute(
   root: TargetBuilder,
   options: ExecuteOptions = {},
 ): Promise<BuildResult> {
-  const baseReporter = options.reporter ??
-    (options.silent ? silentReporter : consoleReporter);
-  // Every line Zuke prints passes through the redactor, which masks the
-  // resolved value of each `secret` parameter. The redactor is populated during
-  // parameter resolution below; since nothing meaningful is reported before
-  // then, wrapping the reporter up-front is safe.
-  const redactor = new Redactor();
-  // …and every write is best-effort (see safeReporter): a throwing sink (a buggy
-  // custom reporter, or EPIPE on a piped stdout) must never escape `failTarget`
-  // and reject out of a scheduler, which would strand the run record `running`.
-  const reporter = safeReporter(redactingReporter(baseReporter, redactor));
-  // The GitHub job summary is a real-world output side effect (it appends to a
-  // shared file named by GITHUB_STEP_SUMMARY). Only write it when output goes to
-  // the default console — i.e. neither silenced nor redirected to a custom
-  // reporter. This keeps embedded/test runs (a build's own test suite calls
-  // `execute` with `silent`/a custom reporter) from polluting the workflow
-  // summary, while a normal CLI run still writes it.
-  const writesToConsole = options.reporter === undefined && !options.silent;
-  const github = options.github ?? inGitHubActions();
-  const style = resolveStyle(options, github);
-  const renderer = options.renderer ?? defaultRenderer;
+  const {
+    baseReporter,
+    reporter,
+    redactor,
+    writesToConsole,
+    style,
+    renderer,
+  } = composeOutput(options);
   const skip = new Set(options.skip ?? []);
 
   // Resolve declared parameters (CLI value → environment → default) before any
@@ -393,22 +323,13 @@ export async function execute(
     const value = p.stringValue_();
     if (value !== undefined && value !== "") redactor.add(value);
   }
-  // Under GitHub Actions, also emit `::add-mask::` with the real value so the
-  // runner masks it in its own logs. This goes through the base reporter, which
-  // is not wrapped in the redactor — a masked directive would hide nothing. Gate
-  // it on `writesToConsole` too: when a custom reporter is supplied it *is* the
-  // base reporter, so an embedded `execute()` must never be handed the raw
-  // secret — only the real runner stdout should receive the directive.
   if (style.github && writesToConsole) {
-    const maskReporter = safeReporter(baseReporter);
+    const secrets: string[] = [];
     for (const p of params.values()) {
       const value = p.secret_ ? p.stringValue_() : undefined;
-      if (value !== undefined && value !== "") {
-        // Straight to the base reporter (not redacted, so the directive works),
-        // but best-effort: an EPIPE here must not abort the run either.
-        maskReporter.info(`::add-mask::${value}`);
-      }
+      if (value !== undefined && value !== "") secrets.push(value);
     }
+    emitActionsMasks(secrets, baseReporter);
   }
   if (paramErrors.length > 0) {
     reporter.error("Invalid or missing parameters:");
