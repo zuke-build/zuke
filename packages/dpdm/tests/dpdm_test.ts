@@ -1,5 +1,9 @@
 import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
-import { ToolNotFoundError, type ToolSettings } from "@zuke/core/tooling";
+import { ToolNotFoundError } from "@zuke/core/tooling";
+import {
+  assertWrapperConformance,
+  missingTool,
+} from "@zuke/core/tooling/conformance";
 import { DpdmAnalyzeSettings, DpdmTasks } from "../src/dpdm.ts";
 
 Deno.test("the default binary is dpdm", () => {
@@ -73,30 +77,12 @@ Deno.test("analyze: all options render in order", () => {
   );
 });
 
-const missing = <S extends ToolSettings>(s: S): S => {
-  s.os_ = "linux";
-  return s.toolPath("zuke-no-such-dpdm-xyz");
-};
-
 Deno.test("DpdmTasks.analyze reaches execution", async () => {
-  await assertRejects(() => DpdmTasks.analyze(missing), ToolNotFoundError);
+  await assertRejects(() => DpdmTasks.analyze(missingTool), ToolNotFoundError);
 });
 
-Deno.test("dpdm: resolves its binary from node_modules by default", () => {
-  const prevRes = Deno.env.get("ZUKE_TOOL_RESOLUTION");
-  Deno.env.delete("ZUKE_TOOL_RESOLUTION");
-  const root = Deno.makeTempDirSync();
-  try {
-    const binDir = `${root}/node_modules/.bin`;
-    Deno.mkdirSync(binDir, { recursive: true });
-    const bin = `${binDir}/dpdm`;
-    Deno.writeTextFileSync(bin, "#!/bin/sh\n");
-    const s = new DpdmAnalyzeSettings();
-    s.os_ = "linux";
-    assertEquals(s.cwd(root).resolvedArgv()[0], bin.replace(/\\/g, "/"));
-  } finally {
-    Deno.removeSync(root, { recursive: true });
-    if (prevRes === undefined) Deno.env.delete("ZUKE_TOOL_RESOLUTION");
-    else Deno.env.set("ZUKE_TOOL_RESOLUTION", prevRes);
-  }
+Deno.test("dpdm: resolves its binary from node_modules by default", async () => {
+  await assertWrapperConformance(() => new DpdmAnalyzeSettings(), "dpdm", {
+    resolution: "node_modules",
+  });
 });

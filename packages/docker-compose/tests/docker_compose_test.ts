@@ -3,7 +3,8 @@ import {
   assertRejects,
   assertThrows,
 } from "../../core/tests/_assert.ts";
-import { ToolNotFoundError, type ToolSettings } from "@zuke/core/tooling";
+import { ToolNotFoundError } from "@zuke/core/tooling";
+import { missingTool } from "@zuke/core/tooling/conformance";
 import {
   defaultComposeProbe,
   DockerComposeBuildSettings,
@@ -409,18 +410,6 @@ Deno.test("defaultComposeProbe reports presence by exit code", async () => {
   assertEquals(await defaultComposeProbe(["zz-no-such-binary-zz"]), false);
 });
 
-const M = "zz-no-such-compose-binary-zz";
-
-/**
- * Point a settings object at a guaranteed-missing binary with the Windows shim
- * fallback disabled, so each task reaches execution and raises a
- * {@link ToolNotFoundError} on every platform — without invoking real Compose.
- */
-const missing = <S extends ToolSettings>(s: S): S => {
-  s.os_ = "linux";
-  return s.toolPath(M);
-};
-
 Deno.test("every DockerComposeTasks function reaches execution", async () => {
   // Seed the cache so the detection path resolves without touching the host.
   resetComposeInvocationCache_();
@@ -428,20 +417,20 @@ Deno.test("every DockerComposeTasks function reaches execution", async () => {
     Promise.resolve(argv[0] === "docker-compose")
   );
   const calls: Array<() => Promise<unknown>> = [
-    () => DockerComposeTasks.up(missing),
-    () => DockerComposeTasks.down(missing),
-    () => DockerComposeTasks.build(missing),
-    () => DockerComposeTasks.pull(missing),
-    () => DockerComposeTasks.push(missing),
-    () => DockerComposeTasks.run((s) => missing(s).service("web")),
-    () => DockerComposeTasks.exec((s) => missing(s).service("web")),
-    () => DockerComposeTasks.logs(missing),
-    () => DockerComposeTasks.ps(missing),
-    () => DockerComposeTasks.config(missing),
-    () => DockerComposeTasks.start(missing),
-    () => DockerComposeTasks.stop(missing),
-    () => DockerComposeTasks.restart(missing),
-    () => DockerComposeTasks.rm(missing),
+    () => DockerComposeTasks.up(missingTool),
+    () => DockerComposeTasks.down(missingTool),
+    () => DockerComposeTasks.build(missingTool),
+    () => DockerComposeTasks.pull(missingTool),
+    () => DockerComposeTasks.push(missingTool),
+    () => DockerComposeTasks.run((s) => missingTool(s).service("web")),
+    () => DockerComposeTasks.exec((s) => missingTool(s).service("web")),
+    () => DockerComposeTasks.logs(missingTool),
+    () => DockerComposeTasks.ps(missingTool),
+    () => DockerComposeTasks.config(missingTool),
+    () => DockerComposeTasks.start(missingTool),
+    () => DockerComposeTasks.stop(missingTool),
+    () => DockerComposeTasks.restart(missingTool),
+    () => DockerComposeTasks.rm(missingTool),
   ];
   for (const call of calls) {
     await assertRejects(call, ToolNotFoundError);
@@ -453,11 +442,11 @@ Deno.test("a pinned invocation skips detection", async () => {
   // No cache seeded: usePlugin/useStandalone must not consult the resolver.
   resetComposeInvocationCache_();
   await assertRejects(
-    () => DockerComposeTasks.up((s) => missing(s).usePlugin()),
+    () => DockerComposeTasks.up((s) => missingTool(s).usePlugin()),
     ToolNotFoundError,
   );
   await assertRejects(
-    () => DockerComposeTasks.down((s) => missing(s).useStandalone()),
+    () => DockerComposeTasks.down((s) => missingTool(s).useStandalone()),
     ToolNotFoundError,
   );
 });

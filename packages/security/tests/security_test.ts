@@ -1,5 +1,6 @@
 import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
-import { ToolNotFoundError, type ToolSettings } from "@zuke/core/tooling";
+import { ToolNotFoundError } from "@zuke/core/tooling";
+import { missingTool } from "@zuke/core/tooling/conformance";
 import {
   ActionlintSettings,
   GitleaksDetectSettings,
@@ -165,27 +166,15 @@ Deno.test("trivy config: full and minimal argv", () => {
   assertEquals(new TrivyConfigSettings().argv(), ["trivy", "config", "."]);
 });
 
-const M = "zz-no-such-security-binary-zz";
-
-/**
- * Point a settings object at a guaranteed-missing binary with the Windows shim
- * fallback disabled, so each SecurityTasks function reaches execution and raises
- * a {@link ToolNotFoundError} on every platform — without invoking real tools.
- */
-const missing = <S extends ToolSettings>(s: S): S => {
-  s.os_ = "linux";
-  return s.toolPath(M);
-};
-
 Deno.test("every SecurityTasks function reaches execution", async () => {
   const calls: Array<() => Promise<unknown>> = [
-    () => SecurityTasks.zizmor(missing),
-    () => SecurityTasks.actionlint(missing),
-    () => SecurityTasks.gitleaks(missing),
-    () => SecurityTasks.osvScanner(missing),
-    () => SecurityTasks.semgrep(missing),
-    () => SecurityTasks.trivyFs(missing),
-    () => SecurityTasks.trivyConfig(missing),
+    () => SecurityTasks.zizmor(missingTool),
+    () => SecurityTasks.actionlint(missingTool),
+    () => SecurityTasks.gitleaks(missingTool),
+    () => SecurityTasks.osvScanner(missingTool),
+    () => SecurityTasks.semgrep(missingTool),
+    () => SecurityTasks.trivyFs(missingTool),
+    () => SecurityTasks.trivyConfig(missingTool),
   ];
   for (const call of calls) {
     await assertRejects(call, ToolNotFoundError);

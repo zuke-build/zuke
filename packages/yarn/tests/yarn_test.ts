@@ -3,7 +3,8 @@ import {
   assertRejects,
   assertThrows,
 } from "../../core/tests/_assert.ts";
-import { ToolNotFoundError, type ToolSettings } from "@zuke/core/tooling";
+import { ToolNotFoundError } from "@zuke/core/tooling";
+import { missingTool } from "@zuke/core/tooling/conformance";
 import {
   YarnAddSettings,
   YarnDlxSettings,
@@ -85,32 +86,22 @@ Deno.test("dlx: command required; --package and forwarded args", () => {
   );
 });
 
-/**
- * Point a settings object at a guaranteed-missing binary with the shim
- * fallback disabled, so each YarnTasks function reaches execution WITHOUT
- * ever invoking a real yarn (tests must stay hermetic).
- */
-const missing = <S extends ToolSettings>(s: S): S => {
-  s.os_ = "linux";
-  return s.toolPath("zuke-no-such-yarn-xyz");
-};
-
 Deno.test("every YarnTasks function reaches execution", async () => {
-  await assertRejects(() => YarnTasks.install(missing), ToolNotFoundError);
+  await assertRejects(() => YarnTasks.install(missingTool), ToolNotFoundError);
   await assertRejects(
-    () => YarnTasks.add((s) => missing(s).packages("x")),
+    () => YarnTasks.add((s) => missingTool(s).packages("x")),
     ToolNotFoundError,
   );
   await assertRejects(
-    () => YarnTasks.remove((s) => missing(s).packages("x")),
+    () => YarnTasks.remove((s) => missingTool(s).packages("x")),
     ToolNotFoundError,
   );
   await assertRejects(
-    () => YarnTasks.run((s) => missing(s).script("x")),
+    () => YarnTasks.run((s) => missingTool(s).script("x")),
     ToolNotFoundError,
   );
   await assertRejects(
-    () => YarnTasks.dlx((s) => missing(s).command("x")),
+    () => YarnTasks.dlx((s) => missingTool(s).command("x")),
     ToolNotFoundError,
   );
 });

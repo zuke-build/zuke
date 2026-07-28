@@ -1,5 +1,9 @@
 import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
-import { ToolNotFoundError, type ToolSettings } from "@zuke/core/tooling";
+import { ToolNotFoundError } from "@zuke/core/tooling";
+import {
+  assertWrapperConformance,
+  missingTool,
+} from "@zuke/core/tooling/conformance";
 import {
   TsdownBuildSettings,
   TsdownMigrateSettings,
@@ -75,34 +79,19 @@ Deno.test("migrate: every option renders", () => {
   );
 });
 
-const missing = <S extends ToolSettings>(s: S): S => {
-  s.os_ = "linux";
-  return s.toolPath("zz-no-such-tsdown-zz");
-};
-
 Deno.test("TsdownTasks.build reaches execution", async () => {
-  await assertRejects(() => TsdownTasks.build(missing), ToolNotFoundError);
+  await assertRejects(() => TsdownTasks.build(missingTool), ToolNotFoundError);
 });
 
 Deno.test("TsdownTasks.migrate reaches execution", async () => {
-  await assertRejects(() => TsdownTasks.migrate(missing), ToolNotFoundError);
+  await assertRejects(
+    () => TsdownTasks.migrate(missingTool),
+    ToolNotFoundError,
+  );
 });
 
-Deno.test("tsdown: resolves its binary from node_modules by default", () => {
-  const prevRes = Deno.env.get("ZUKE_TOOL_RESOLUTION");
-  Deno.env.delete("ZUKE_TOOL_RESOLUTION");
-  const root = Deno.makeTempDirSync();
-  try {
-    const binDir = `${root}/node_modules/.bin`;
-    Deno.mkdirSync(binDir, { recursive: true });
-    const bin = `${binDir}/tsdown`;
-    Deno.writeTextFileSync(bin, "#!/bin/sh\n");
-    const s = new TsdownBuildSettings();
-    s.os_ = "linux"; // pin so the planted bare shim matches on any host
-    assertEquals(s.cwd(root).resolvedArgv()[0], bin.replace(/\\/g, "/"));
-  } finally {
-    Deno.removeSync(root, { recursive: true });
-    if (prevRes === undefined) Deno.env.delete("ZUKE_TOOL_RESOLUTION");
-    else Deno.env.set("ZUKE_TOOL_RESOLUTION", prevRes);
-  }
+Deno.test("tsdown: resolves its binary from node_modules by default", async () => {
+  await assertWrapperConformance(() => new TsdownBuildSettings(), "tsdown", {
+    resolution: "node_modules",
+  });
 });

@@ -1,5 +1,6 @@
 import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
-import { ToolNotFoundError, type ToolSettings } from "@zuke/core/tooling";
+import { ToolNotFoundError } from "@zuke/core/tooling";
+import { missingTool } from "@zuke/core/tooling/conformance";
 import {
   CodexExecSettings,
   CodexMcpSettings,
@@ -96,21 +97,16 @@ Deno.test("mcp: command then bare and valued flags", () => {
   ]);
 });
 
-const missing = <S extends ToolSettings>(s: S): S => {
-  s.os_ = "linux";
-  return s.toolPath("zz-no-such-codex-zz");
-};
-
 Deno.test("CodexTasks.exec reaches execution", async () => {
   await assertRejects(
-    () => CodexTasks.exec((s) => missing(s.prompt("hi"))),
+    () => CodexTasks.exec((s) => missingTool(s.prompt("hi"))),
     ToolNotFoundError,
   );
 });
 
 Deno.test("CodexTasks.mcp reaches execution", async () => {
   await assertRejects(
-    () => CodexTasks.mcp((s) => missing(s.command("list"))),
+    () => CodexTasks.mcp((s) => missingTool(s.command("list"))),
     ToolNotFoundError,
   );
 });

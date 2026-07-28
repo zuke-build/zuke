@@ -1,5 +1,9 @@
 import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
-import { ToolNotFoundError, type ToolSettings } from "@zuke/core/tooling";
+import { ToolNotFoundError } from "@zuke/core/tooling";
+import {
+  assertWrapperConformance,
+  missingTool,
+} from "@zuke/core/tooling/conformance";
 import {
   BiomeCheckSettings,
   BiomeCiSettings,
@@ -60,33 +64,15 @@ Deno.test("ci: bare", () => {
   assertEquals(new BiomeCiSettings().argv().slice(1), ["ci"]);
 });
 
-const missing = <S extends ToolSettings>(s: S): S => {
-  s.os_ = "linux";
-  return s.toolPath("zuke-no-such-biome-xyz");
-};
-
-Deno.test("biome: resolves its binary from node_modules by default", () => {
-  const prevRes = Deno.env.get("ZUKE_TOOL_RESOLUTION");
-  Deno.env.delete("ZUKE_TOOL_RESOLUTION");
-  const root = Deno.makeTempDirSync();
-  try {
-    const binDir = `${root}/node_modules/.bin`;
-    Deno.mkdirSync(binDir, { recursive: true });
-    const bin = `${binDir}/biome`;
-    Deno.writeTextFileSync(bin, "#!/bin/sh\n");
-    const s = new BiomeCheckSettings();
-    s.os_ = "linux";
-    assertEquals(s.cwd(root).resolvedArgv()[0], bin.replace(/\\/g, "/"));
-  } finally {
-    Deno.removeSync(root, { recursive: true });
-    if (prevRes === undefined) Deno.env.delete("ZUKE_TOOL_RESOLUTION");
-    else Deno.env.set("ZUKE_TOOL_RESOLUTION", prevRes);
-  }
+Deno.test("biome: resolves its binary from node_modules by default", async () => {
+  await assertWrapperConformance(() => new BiomeCheckSettings(), "biome", {
+    resolution: "node_modules",
+  });
 });
 
 Deno.test("every BiomeTasks function reaches execution", async () => {
-  await assertRejects(() => BiomeTasks.check(missing), ToolNotFoundError);
-  await assertRejects(() => BiomeTasks.format(missing), ToolNotFoundError);
-  await assertRejects(() => BiomeTasks.lint(missing), ToolNotFoundError);
-  await assertRejects(() => BiomeTasks.ci(missing), ToolNotFoundError);
+  await assertRejects(() => BiomeTasks.check(missingTool), ToolNotFoundError);
+  await assertRejects(() => BiomeTasks.format(missingTool), ToolNotFoundError);
+  await assertRejects(() => BiomeTasks.lint(missingTool), ToolNotFoundError);
+  await assertRejects(() => BiomeTasks.ci(missingTool), ToolNotFoundError);
 });

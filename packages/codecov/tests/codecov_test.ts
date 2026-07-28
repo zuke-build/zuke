@@ -1,5 +1,6 @@
 import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
-import { ToolNotFoundError, type ToolSettings } from "@zuke/core/tooling";
+import { ToolNotFoundError } from "@zuke/core/tooling";
+import { missingTool } from "@zuke/core/tooling/conformance";
 import { CodecovTasks, CodecovUploadSettings } from "../src/codecov.ts";
 
 Deno.test("default tool is codecovcli, subcommand upload-process", () => {
@@ -78,16 +79,9 @@ Deno.test("codecov: pullRequest accepts a string too", () => {
   ]);
 });
 
-// Force a missing binary on a known OS so the run reaches execution and fails
-// with ToolNotFoundError rather than depending on an ambient `codecovcli`.
-const missing = <S extends ToolSettings>(s: S): S => {
-  s.os_ = "linux";
-  return s.toolPath("zz-no-such-codecovcli-zz");
-};
-
 Deno.test("CodecovTasks.upload reaches execution", async () => {
   await assertRejects(
-    () => CodecovTasks.upload((s) => missing(s.files("cov.lcov"))),
+    () => CodecovTasks.upload((s) => missingTool(s.files("cov.lcov"))),
     ToolNotFoundError,
   );
 });

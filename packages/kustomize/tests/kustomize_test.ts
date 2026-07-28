@@ -3,7 +3,8 @@ import {
   assertRejects,
   assertThrows,
 } from "../../core/tests/_assert.ts";
-import { ToolNotFoundError, type ToolSettings } from "@zuke/core/tooling";
+import { ToolNotFoundError } from "@zuke/core/tooling";
+import { missingTool } from "@zuke/core/tooling/conformance";
 import {
   KustomizeBuildSettings,
   KustomizeEditSetImageSettings,
@@ -52,15 +53,14 @@ Deno.test("editSetImage: requires an image; renders name=ref pairs", () => {
   );
 });
 
-const missing = <S extends ToolSettings>(s: S): S => {
-  s.os_ = "linux";
-  return s.toolPath("zuke-no-such-kustomize-xyz");
-};
-
 Deno.test("every KustomizeTasks function reaches execution", async () => {
-  await assertRejects(() => KustomizeTasks.build(missing), ToolNotFoundError);
   await assertRejects(
-    () => KustomizeTasks.editSetImage((s) => missing(s).image("api", "api:1")),
+    () => KustomizeTasks.build(missingTool),
+    ToolNotFoundError,
+  );
+  await assertRejects(
+    () =>
+      KustomizeTasks.editSetImage((s) => missingTool(s).image("api", "api:1")),
     ToolNotFoundError,
   );
 });

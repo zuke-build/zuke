@@ -1,5 +1,6 @@
 import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
-import { ToolNotFoundError, type ToolSettings } from "@zuke/core/tooling";
+import { ToolNotFoundError } from "@zuke/core/tooling";
+import { missingTool } from "@zuke/core/tooling/conformance";
 import { GhSettings, GhTasks } from "../src/gh.ts";
 
 Deno.test("the default binary is gh", () => {
@@ -34,14 +35,9 @@ Deno.test("gh: minimal runs just the command", () => {
   ]);
 });
 
-const missing = <S extends ToolSettings>(s: S): S => {
-  s.os_ = "linux";
-  return s.toolPath("zz-no-such-gh-zz");
-};
-
 Deno.test("GhTasks.run reaches execution", async () => {
   await assertRejects(
-    () => GhTasks.run((s) => missing(s.command("auth", "status"))),
+    () => GhTasks.run((s) => missingTool(s.command("auth", "status"))),
     ToolNotFoundError,
   );
 });

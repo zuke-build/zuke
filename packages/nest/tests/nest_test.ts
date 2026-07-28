@@ -3,7 +3,11 @@ import {
   assertRejects,
   assertThrows,
 } from "../../core/tests/_assert.ts";
-import { ToolNotFoundError, type ToolSettings } from "@zuke/core/tooling";
+import { ToolNotFoundError } from "@zuke/core/tooling";
+import {
+  assertWrapperConformance,
+  missingTool,
+} from "@zuke/core/tooling/conformance";
 import {
   NestBuildSettings,
   NestGenerateSettings,
@@ -17,23 +21,10 @@ Deno.test("the default binary is nest and the subcommand follows", () => {
   assertEquals(new NestInfoSettings().argv(), ["nest", "info"]);
 });
 
-Deno.test("nest: resolves its binary from node_modules by default", () => {
-  const prevRes = Deno.env.get("ZUKE_TOOL_RESOLUTION");
-  Deno.env.delete("ZUKE_TOOL_RESOLUTION");
-  const root = Deno.makeTempDirSync();
-  try {
-    const binDir = `${root}/node_modules/.bin`;
-    Deno.mkdirSync(binDir, { recursive: true });
-    const bin = `${binDir}/nest`;
-    Deno.writeTextFileSync(bin, "#!/bin/sh\n");
-    const s = new NestInfoSettings();
-    s.os_ = "linux";
-    assertEquals(s.cwd(root).resolvedArgv()[0], bin.replace(/\\/g, "/"));
-  } finally {
-    Deno.removeSync(root, { recursive: true });
-    if (prevRes === undefined) Deno.env.delete("ZUKE_TOOL_RESOLUTION");
-    else Deno.env.set("ZUKE_TOOL_RESOLUTION", prevRes);
-  }
+Deno.test("nest: resolves its binary from node_modules by default", async () => {
+  await assertWrapperConformance(() => new NestInfoSettings(), "nest", {
+    resolution: "node_modules",
+  });
 });
 
 Deno.test("new renders every option and requires a name", () => {
@@ -176,33 +167,28 @@ Deno.test("start renders every option with the app positional last", () => {
   );
 });
 
-const missing = <S extends ToolSettings>(s: S): S => {
-  s.os_ = "linux";
-  return s.toolPath("zz-no-such-nest-zz");
-};
-
 Deno.test("NestTasks.new reaches execution", async () => {
   await assertRejects(
-    () => NestTasks.new((s) => missing(s.name("my-app"))),
+    () => NestTasks.new((s) => missingTool(s.name("my-app"))),
     ToolNotFoundError,
   );
 });
 
 Deno.test("NestTasks.generate reaches execution", async () => {
   await assertRejects(
-    () => NestTasks.generate((s) => missing(s.schematic("module"))),
+    () => NestTasks.generate((s) => missingTool(s.schematic("module"))),
     ToolNotFoundError,
   );
 });
 
 Deno.test("NestTasks.build reaches execution", async () => {
-  await assertRejects(() => NestTasks.build(missing), ToolNotFoundError);
+  await assertRejects(() => NestTasks.build(missingTool), ToolNotFoundError);
 });
 
 Deno.test("NestTasks.start reaches execution", async () => {
-  await assertRejects(() => NestTasks.start(missing), ToolNotFoundError);
+  await assertRejects(() => NestTasks.start(missingTool), ToolNotFoundError);
 });
 
 Deno.test("NestTasks.info reaches execution", async () => {
-  await assertRejects(() => NestTasks.info(missing), ToolNotFoundError);
+  await assertRejects(() => NestTasks.info(missingTool), ToolNotFoundError);
 });

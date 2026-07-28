@@ -3,7 +3,8 @@ import {
   assertRejects,
   assertThrows,
 } from "../../core/tests/_assert.ts";
-import { ToolNotFoundError, type ToolSettings } from "@zuke/core/tooling";
+import { ToolNotFoundError } from "@zuke/core/tooling";
+import { missingTool } from "@zuke/core/tooling/conformance";
 import {
   NodeEvalSettings,
   NodeRunSettings,
@@ -126,28 +127,23 @@ Deno.test("test renders every option in order", () => {
   ]);
 });
 
-const missing = <S extends ToolSettings>(s: S): S => {
-  s.os_ = "linux";
-  return s.toolPath("zz-no-such-node-zz");
-};
-
 Deno.test("NodeTasks.run reaches execution", async () => {
   await assertRejects(
-    () => NodeTasks.run((s) => missing(s).script("main.js")),
+    () => NodeTasks.run((s) => missingTool(s).script("main.js")),
     ToolNotFoundError,
   );
 });
 
 Deno.test("NodeTasks.eval reaches execution", async () => {
   await assertRejects(
-    () => NodeTasks.eval((s) => missing(s).code("1")),
+    () => NodeTasks.eval((s) => missingTool(s).code("1")),
     ToolNotFoundError,
   );
 });
 
 Deno.test("NodeTasks.test reaches execution", async () => {
   await assertRejects(
-    () => NodeTasks.test((s) => missing(s)),
+    () => NodeTasks.test((s) => missingTool(s)),
     ToolNotFoundError,
   );
 });

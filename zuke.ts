@@ -48,6 +48,7 @@ import { localVersion, PACKAGES } from "./build/packages.ts";
 import {
   CODECOV_CLI_VERSION,
   installCli,
+  publishOne,
   publishPackage,
   TOOLS_ROOT,
 } from "./build/publish.ts";
@@ -684,23 +685,12 @@ class ZukeBuild extends Build {
           ConsoleTasks.info(`@zuke/${pkg} has no released version yet.`);
           continue;
         }
-        if (await isPublished(`@zuke/${pkg}`, version)) {
-          ConsoleTasks.info(`@zuke/${pkg}@${version} is already on JSR.`);
-          continue;
-        }
-        ConsoleTasks.info(`Publishing @zuke/${pkg}@${version} to JSR...`);
-        if (await publishPackage(pkg)) continue;
-        // Timed out: the upload usually lands before JSR's finalization hangs,
-        // so a re-check tells us whether it actually published.
-        if (await isPublished(`@zuke/${pkg}`, version)) {
-          ConsoleTasks.success(
-            `@zuke/${pkg}@${version} uploaded (provenance stalled).`,
-          );
-          continue;
-        }
-        throw new Error(
-          `Publishing @zuke/${pkg}@${version} timed out before reaching JSR.`,
-        );
+        await publishOne(pkg, version, {
+          isPublished,
+          publishPackage,
+          info: ConsoleTasks.info,
+          success: ConsoleTasks.success,
+        });
       }
     });
 
