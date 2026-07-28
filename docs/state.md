@@ -215,7 +215,7 @@ incomplete, not that the target had succeeded. Under-cleanup is the more
 dangerous direction: a compensation that runs for work which never happened is a
 no-op for an idempotent rollback (a delete of what was never created), while one
 that is skipped leaves the side effect in place. See
-[Cancellation](./orchestration.md#cancellation--compensation-oncancel).
+[Cancellation](./orchestration.md#cancellation--compensation--oncancel).
 
 If _no_ later write ever lands — a store that stays down for the rest of the run
 — the flag never reaches the store. That run also never records its transition
