@@ -189,10 +189,39 @@ export class DenoTestSettings extends DenoPermissionSettings {
 export class DenoCheckSettings extends DenoSettings {
   #paths: string[] = [];
   #frozen = false;
+  #config?: string;
+  #noLock = false;
 
   /** The files to type-check (at least one is required). */
   paths(...paths: PathLike[]): this {
     this.#paths.push(...paths.map(String));
+    return this;
+  }
+
+  /**
+   * Type-check against a specific configuration file (`--config`) instead of the
+   * one Deno would discover by walking up from the checked files.
+   *
+   * The discovered config decides how bare specifiers resolve, so pointing at
+   * another one type-checks the same sources against a different dependency
+   * set — for example checking a workspace member against the *published*
+   * version of a sibling it declares, rather than the local member that
+   * workspace resolution would substitute.
+   */
+  config(path: PathLike): this {
+    this.#config = String(path);
+    return this;
+  }
+
+  /**
+   * Ignore the lockfile entirely (`--no-lock`), neither reading nor writing it.
+   *
+   * Use it for a check whose resolutions are deliberately not the project's:
+   * writing them into the committed lock would corrupt it, and reading it would
+   * pin the very versions the check is trying to vary.
+   */
+  noLock(): this {
+    this.#noLock = true;
     return this;
   }
 
@@ -214,6 +243,8 @@ export class DenoCheckSettings extends DenoSettings {
       );
     }
     const argv = ["check"];
+    if (this.#config !== undefined) argv.push("--config", this.#config);
+    if (this.#noLock) argv.push("--no-lock");
     if (this.#frozen) argv.push("--frozen");
     argv.push(...this.#paths);
     return argv;

@@ -106,6 +106,26 @@ jobs:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
           PR_BODY: ${{ github.event_name == 'pull_request' && github.event.pull_request.body || '' }}
 
+  # Verifies each package against the @zuke/core version it *declares*, not the
+  # workspace-local core. Its own job because it reaches JSR for the published
+  # core, and the `./zuke ci` gate must stay runnable offline. Secret-free and
+  # read-only: it only type-checks.
+  core-floors:
+    name: Core version floors
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check declared core floors with Zuke
+        run: ./zuke coreFloorCheck
+
   test-os:
     name: Tests (${{ matrix.os }})
     runs-on: ${{ matrix.os }}

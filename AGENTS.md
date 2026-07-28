@@ -274,6 +274,7 @@ the three test layers above and the "read every reviewer comment" rule below.
 | Spell-check                   | `deno task spell`                                    |
 | Pre-commit gate (same as CI)  | `deno task ci` / `./zuke ci`                         |
 | Regenerate `deno.lock`        | `deno task lock`                                     |
+| Verify declared core floors   | `./zuke coreFloorCheck` (needs network)              |
 
 `deno task ci` is `deno run -A --frozen zuke.ts ci` — the exact gate the
 `quality` job in `ci.yml` runs, so there is one gate, not a hand-maintained
