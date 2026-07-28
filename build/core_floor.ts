@@ -41,7 +41,14 @@ export interface CoreFloor {
   package: string;
   /** The specifier the package declares, e.g. `jsr:@zuke/core@^1.31.0`. */
   specifier: string;
-  /** The package's full import map, copied into the throwaway config. */
+  /**
+   * The package's import map as declared, unfiltered.
+   *
+   * Held raw on purpose: the core entry has to be inspected as written so a
+   * mapping that names core but resolves something else can be reported. It is
+   * **not** what reaches the generated config — {@link floorConfig} copies only
+   * the entries {@link isAllowedSpecifier} permits.
+   */
   imports: Record<string, string>;
 }
 
