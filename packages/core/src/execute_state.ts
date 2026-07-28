@@ -39,10 +39,8 @@ function priorWaitsOf(record: RunRecord): ReadonlyMap<string, WaitState> {
   return waits;
 }
 
-/** Durable-state plumbing for one run: the store, its writer, and the RunEnv. */
+/** Durable-state plumbing for one run: the writer and the RunEnv. */
 export interface RunState {
-  /** The resolved store, or `undefined` when state is off. */
-  store?: StateStore;
   /** The writer recording transitions, or `undefined` without a store. */
   writer?: RunStateWriter;
   /** The environment handed to the scheduler. */
@@ -58,7 +56,12 @@ export async function openRunState(opts: {
   build: Build;
   root: TargetBuilder;
   order: TargetBuilder[];
-  params: Iterable<AnyParameter>;
+  /**
+   * The run's resolved parameters, copied into the record. An array rather than
+   * an `Iterable` on purpose: a `MapIterator` is one-shot, so a second read
+   * inside this function would silently see an empty list.
+   */
+  params: readonly AnyParameter[];
   runId: string;
   dryRun: boolean;
   signal: AbortSignal;
@@ -153,5 +156,5 @@ export async function openRunState(opts: {
     done: resume?.done,
     priorWaits: resume ? priorWaitsOf(resume.record) : undefined,
   };
-  return { ok: true, state: { store: stateStore, writer, env } };
+  return { ok: true, state: { writer, env } };
 }

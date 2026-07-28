@@ -5,8 +5,12 @@
  * Visual rendering — colour, the ruled per-target headers, the end-of-build
  * summary table, the GitHub Actions `::group::` commands, and the Markdown
  * job-summary file — lives in `./report.ts`. The executor only decides what to
- * run and feeds the renderer; this module owns orchestration, parameter
- * resolution, caching, lifecycle hooks, and the sequential/parallel scheduler.
+ * run and feeds the renderer; this module owns orchestration — caching,
+ * lifecycle hooks, and the sequential/parallel scheduler — and delegates each
+ * other concern to a sibling: the reporting surface and job summary to
+ * `./execute_output.ts`, parameter resolution and the skip sets to
+ * `./execute_plan.ts`, the durable run record and its writer to
+ * `./execute_state.ts`, and the cancellation handshake to `./execute_cancel.ts`.
  *
  * Sequencing and de-duplication are handled by {@link plan} — the returned
  * order already contains each target exactly once, so diamond dependencies run
@@ -149,8 +153,8 @@ export interface ExecuteOptions {
   color?: boolean;
   /**
    * Renderer for the per-target banners and the end-of-build summary. Defaults
-   * to Zuke's built-in {@link defaultRenderer}; `@zuke/console` exports an
-   * alternative a build can inject to restyle its output.
+   * to Zuke's built-in {@link "./renderer.ts".defaultRenderer}; `@zuke/console`
+   * exports an alternative a build can inject to restyle its output.
    */
   renderer?: Renderer;
   /**
@@ -351,7 +355,7 @@ export async function execute(
     build,
     root,
     order,
-    params: params.values(),
+    params: [...params.values()],
     runId,
     dryRun,
     signal: runController.signal,

@@ -78,9 +78,9 @@ export function composeOutput(opts: {
   const baseReporter = opts.reporter ??
     (opts.silent ? silentReporter : consoleReporter);
   // Every line Zuke prints passes through the redactor, which masks the
-  // resolved value of each `secret` parameter. The redactor is populated during
-  // parameter resolution below; since nothing meaningful is reported before
-  // then, wrapping the reporter up-front is safe.
+  // resolved value of each `secret` parameter. The redactor is populated later,
+  // during parameter resolution (see `./execute_plan.ts`); since nothing
+  // meaningful is reported before then, wrapping the reporter up-front is safe.
   const redactor = new Redactor();
   // …and every write is best-effort (see safeReporter): a throwing sink (a buggy
   // custom reporter, or EPIPE on a piped stdout) must never escape `failTarget`
