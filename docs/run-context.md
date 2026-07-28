@@ -76,7 +76,7 @@ A body that ignores its signal and never touches the shell still runs to
 completion; Zuke does not forcibly interrupt arbitrary JavaScript. Cancellation
 is also a first-class **graph operation**: `zuke cancel <run-id>` (or `Ctrl-C`)
 unwinds every succeeded target's declared `.onCancel(...)` compensation in
-reverse order — see [Orchestration](./orchestration.md#cancellation--compensation-oncancel).
+reverse order — see [Orchestration](./orchestration.md#cancellation--compensation--oncancel).
 
 ### Scope of the ambient signal
 

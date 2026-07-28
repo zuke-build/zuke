@@ -187,7 +187,7 @@ deploy = target()
 - **`.always()`** — run even after the build has already failed, for
   cleanup/teardown. It still waits for its own dependencies to complete.
 - **`.onCancel(target | () => target)`** — register a **compensation** that
-  undoes this target when the run is [cancelled](./orchestration.md#cancellation--compensation-oncancel).
+  undoes this target when the run is [cancelled](./orchestration.md#cancellation--compensation--oncancel).
   It runs only if this target **succeeded**; on cancel, compensations run in
   reverse order. The compensation body's `ctx.state` exposes _this_ target's
   persisted metadata (so a rollback reads what the deploy recorded). Use the

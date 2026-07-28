@@ -71,9 +71,9 @@ class MyBuild extends Build {
   Zuke generates GitHub Actions, GitLab CI, or Azure Pipelines YAML,
   regenerating it whenever the build runs (and verifying it on CI).
 
-See **[How Zuke compares](./docs/comparison.md)** for an honest look at
-`deno task`, Nx/Turborepo, Dagger, and NUKE — including when NOT to reach for
-Zuke.
+See **[How Zuke compares](./docs/comparison.md)** for a capability-by-capability
+matrix against `deno task`, npm scripts, Make, Nx, Turborepo, Dagger, and NUKE —
+where each of them is ahead, and when NOT to reach for Zuke.
 
 ## Install
 
@@ -344,8 +344,9 @@ Full documentation lives in [`docs/`](./docs/):
   code.
 - [Versioning & compatibility](./docs/versioning.md) — core semver vs. 0.x
   wrappers, the `@zuke/core` floor, and pinning guidance.
-- [How Zuke compares](./docs/comparison.md) — honest comparisons against
-  `deno task`, Nx/Turborepo, Dagger, and NUKE.
+- [How Zuke compares](./docs/comparison.md) — a capability matrix against
+  `deno task`, npm scripts, Make, Nx, Turborepo, Dagger, and NUKE, with where
+  each is ahead.
 
 ## Development
 

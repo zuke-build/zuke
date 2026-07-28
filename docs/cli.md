@@ -60,7 +60,7 @@ below) attach to whichever launcher word you install them for.
 | `./zuke runs list [--status/-target/-since/-limit] [--counts] [--json]` | List persisted run records (or `--counts` for a status tally), newest first ([details](./state.md)).        |
 | `./zuke runs show <id> [--json]`                                        | Show one run's full per-target status and metadata.                                                         |
 | `./zuke runs prune [--keep <age>] [--keep-last <n>] [--dry-run]`        | Delete old terminal run records; never touches non-terminal runs.                                           |
-| `./zuke cancel <id> [--actor <name>]`                                   | Cancel a run and run its compensations ([details](./orchestration.md#cancellation--compensation-oncancel)). |
+| `./zuke cancel <id> [--actor <name>]`                                   | Cancel a run and run its compensations ([details](./orchestration.md#cancellation--compensation--oncancel)). |
 | `./zuke register`                                                       | Register this build in the build registry (dynamic pipeline discovery).                                     |
 | `./zuke doc <spec>`                                                     | Print a package's API docs (`deno doc <spec>`) from an isolated empty directory.                            |
 | `./zuke --help` / `-h`                                                  | Usage.                                                                                                      |
@@ -348,7 +348,7 @@ cause is visible; pass `--resume-degraded` to the sweep to let it through.
 ## Cancelling runs
 
 `./zuke cancel <run-id>` cancels a run and runs its
-[compensations](./orchestration.md#cancellation--compensation-oncancel): every
+[compensations](./orchestration.md#cancellation--compensation--oncancel): every
 target that had **succeeded** and declared `.onCancel(...)` is unwound in
 reverse order, then the record settles `cancelled`. `--actor <name>` attributes
 the cancellation in the audit trail. Cancelling a run another process is
