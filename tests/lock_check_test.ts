@@ -3,6 +3,7 @@ import {
   LOCK_FILE,
   lockDriftMessage,
   lockIsDirty,
+  noRepository,
 } from "../build/lock_check.ts";
 
 Deno.test("lockIsDirty: a clean listing is not dirty", () => {
@@ -57,6 +58,26 @@ Deno.test("lockIsDirty: a truncated line cannot index out of bounds", () => {
   assertEquals(lockIsDirty("M"), false);
   assertEquals(lockIsDirty(" M"), false);
   assertEquals(lockIsDirty(" M "), false);
+});
+
+Deno.test("noRepository: only a missing repository excuses skipping", () => {
+  // The honest skip: there is nothing to compare against.
+  assertEquals(
+    noRepository(
+      "fatal: not a git repository (or any of the parent directories): .git",
+    ),
+    true,
+  );
+  // Everything else must be loud. Treating a broken git as "nothing changed"
+  // would make this guard incapable of failing while still reporting success —
+  // which is worse than having no guard at all.
+  assertEquals(
+    noRepository("fatal: detected dubious ownership in repository at '/src'"),
+    false,
+  );
+  assertEquals(noRepository("fatal: unable to read index"), false);
+  assertEquals(noRepository("error: permission denied"), false);
+  assertEquals(noRepository(""), false);
 });
 
 Deno.test("lockDriftMessage: names the file and both recovery routes", () => {

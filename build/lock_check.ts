@@ -18,9 +18,31 @@
  */
 
 import { GitTasks } from "@zuke/git";
+import { ToolNotFoundError } from "@zuke/core/tooling";
 
 /** The lock file whose integrity the gate asserts. */
 export const LOCK_FILE = "deno.lock";
+
+/** What {@link assertLockUnchanged} concluded, for the caller to report. */
+export interface LockVerdict {
+  /** Whether the lock was actually compared. `false` means nothing was proven. */
+  checked: boolean;
+  /** Why the comparison was skipped, when it was. */
+  reason?: string;
+}
+
+/**
+ * Whether a failed `git status` means there is simply no repository to compare
+ * against — the one condition under which skipping the check is honest.
+ *
+ * Every other failure (a broken install, a dubious-ownership refusal, a
+ * permissions problem) must be loud: silently treating it as "nothing changed"
+ * turns this guard into a check that cannot fail, which is worse than no guard
+ * because it reports success.
+ */
+export function noRepository(stderr: string): boolean {
+  return /not a git repository/i.test(stderr);
+}
 
 /**
  * Whether a `git status --porcelain` listing reports {@link LOCK_FILE} as
@@ -62,15 +84,36 @@ export function lockDriftMessage(lockFile: string = LOCK_FILE): string {
  * Assert the run has not modified {@link LOCK_FILE}, throwing
  * {@link lockDriftMessage} when it has.
  *
- * Skips silently when `git status` cannot report — an exported tarball or a
- * checkout without git is not a lock problem, and the gate must stay usable
- * there.
+ * Skips only where there is genuinely nothing to compare against: no `git`
+ * binary, or no repository (an exported tarball). Both are reported in the
+ * returned verdict rather than passing quietly, so a run that proved nothing
+ * never looks like a run that proved the lock clean. Any other `git` failure
+ * throws — see {@link noRepository}.
  */
 export async function assertLockUnchanged(
   lockFile: string = LOCK_FILE,
-): Promise<void> {
-  const status = await GitTasks.status((s) => s.porcelain().noThrow());
-  if (status.code !== 0) return;
-  if (!lockIsDirty(status.text(), lockFile)) return;
-  throw new Error(lockDriftMessage(lockFile));
+): Promise<LockVerdict> {
+  let status;
+  try {
+    status = await GitTasks.status((s) => s.porcelain().noThrow());
+  } catch (error) {
+    if (error instanceof ToolNotFoundError) {
+      return { checked: false, reason: "git is not installed" };
+    }
+    throw error;
+  }
+  if (status.code !== 0) {
+    if (noRepository(status.stderr)) {
+      return { checked: false, reason: "this is not a git repository" };
+    }
+    throw new Error(
+      `Cannot verify ${lockFile}: \`git status\` failed with exit ` +
+        `${status.code}, so whether the run rewrote the lock is unknown.\n` +
+        `${status.stderr.trim()}`,
+    );
+  }
+  if (lockIsDirty(status.text(), lockFile)) {
+    throw new Error(lockDriftMessage(lockFile));
+  }
+  return { checked: true };
 }

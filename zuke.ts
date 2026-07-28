@@ -516,8 +516,12 @@ class ZukeBuild extends Build {
     // would be a lie — it needs nothing these produce, only their side effects.
     .after(this.coverage, this.apiDocsCheck, this.prBodyLint)
     .executes(async () => {
-      await assertLockUnchanged();
-      ConsoleTasks.info("deno.lock is unchanged.");
+      const verdict = await assertLockUnchanged();
+      ConsoleTasks.info(
+        verdict.checked
+          ? "deno.lock is unchanged."
+          : `Skipped the deno.lock check — ${verdict.reason}.`,
+      );
     });
 
   ci = target()
