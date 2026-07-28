@@ -106,6 +106,45 @@ jobs:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
           PR_BODY: ${{ github.event_name == 'pull_request' && github.event.pull_request.body || '' }}
 
+  # Verifies each package against the @zuke/core version it *declares*, not the
+  # workspace-local core. Its own job because it reaches JSR for the published
+  # core, and the `./zuke ci` gate must stay runnable offline. Secret-free and
+  # read-only: it only type-checks.
+  core-floors:
+    name: Core version floors
+    runs-on: ubuntu-latest
+    steps:
+      # Egress is blocked, not audited, because this is the one job that resolves
+      # modules with `--no-lock`. The generated config carries only `jsr:@zuke/*`
+      # specifiers, but that allowlist governs the *import map* — it cannot stop a
+      # source file in a pull request from importing an absolute URL directly,
+      # which `deno check` would then follow, unpinned by the committed lock.
+      # Blocking egress is what actually closes that: an arbitrary host is
+      # dropped at the network layer regardless of what the checked-out code asks
+      # for. The allowlist is the minimum this job needs — the launcher's Deno
+      # bootstrap, JSR for the published core, and GitHub for the checkout. Add a
+      # host here if a run reports it blocked.
+      - name: Harden the runner
+        uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            deno.land:443
+            dl.deno.land:443
+            jsr.io:443
+            github.com:443
+            api.github.com:443
+            codeload.github.com:443
+            objects.githubusercontent.com:443
+            release-assets.githubusercontent.com:443
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check declared core floors with Zuke
+        run: ./zuke coreFloorCheck
+
   test-os:
     name: Tests (${{ matrix.os }})
     runs-on: ${{ matrix.os }}

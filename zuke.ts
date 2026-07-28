@@ -63,6 +63,7 @@ import { checkSnippets, formatSnippetFailures } from "./build/snippets.ts";
 import { checkHclWrappers, generateHclWrappers } from "./build/hcl_gen.ts";
 import { lintPrBody } from "./build/pr_body_lint.ts";
 import { assertLockUnchanged } from "./build/lock_check.ts";
+import { checkCoreFloors, formatFloorFailures } from "./build/core_floor.ts";
 import {
   checkPluginSkillsSync,
   syncPluginSkills,
@@ -507,6 +508,22 @@ class ZukeBuild extends Build {
         );
       }
       ConsoleTasks.info("PR body is clean.");
+    });
+
+  coreFloorCheck = target()
+    .description(
+      "Type-check every package against the @zuke/core version it declares",
+    )
+    .executes(async () => {
+      // Deliberately not part of `ci`: this reaches JSR for the published core,
+      // and the gate must stay runnable offline.
+      const results = await checkCoreFloors(PACKAGES);
+      const failures = formatFloorFailures(results);
+      if (failures.length > 0) throw new Error(failures.join("\n"));
+      ConsoleTasks.info(
+        `${results.length} package(s) type-check against their declared ` +
+          `@zuke/core floor.`,
+      );
     });
 
   lockCheck = target()

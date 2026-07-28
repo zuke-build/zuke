@@ -35,7 +35,10 @@ Each tool wrapper's `deno.json` pins a minimum core version it needs, e.g.
 }
 ```
 
-That floor is **hand-maintained** — nothing regenerates it — and it exists
+That floor is **hand-maintained** — nothing regenerates it — but it is no longer
+unverified: the `coreFloorCheck` target type-checks every package against the
+core version it declares, and the `Core version floors` CI job runs it on every
+PR. See [Verifying the floors](#verifying-the-floors) below. The floor exists
 because a wrapper often imports a symbol that only exists from some specific
 core release onward (a new settings class, a new exported type). If the floor
 is under-declared, a consumer can pin a wrapper version whose code needs core
@@ -87,6 +90,34 @@ missing export at runtime:
    the version that introduced the symbol as a workaround) and expect the fix
    to look like `d8f51c0`: a small `fix:` PR raising the floor in every
    affected `deno.json`.
+
+### Verifying the floors
+
+`./zuke coreFloorCheck` type-checks every package against the core version it
+declares, so the gap above is now caught before release rather than by a
+consumer at runtime. It runs as its own CI job on every PR.
+
+It works by writing a throwaway config per package containing that package's own
+imports and **no `workspace` field**, then type-checking the package's `mod.ts`
+with `deno check --config` pointed at it. Without a workspace to resolve
+against, `@zuke/core` comes from JSR instead of the local `packages/core` member
+— which is precisely the substitution that made the ordinary type-check blind
+to this class of bug.
+
+Two details matter, and both are load-bearing:
+
+- **The floor is pinned to the range's exact minimum.** A caret range resolves
+  to the *newest* matching version, so checking `^1.25.0` as written would
+  exercise the current core and pass no matter how new a symbol the package
+  uses. Verified against `1.25.0` exactly, it tests the actual claim.
+- **`minimumDependencyAge` is zeroed** in the generated config. Deno otherwise
+  refuses a version published within the last day as a supply-chain
+  precaution — sensible when installing dependencies to run, wrong here, where
+  the case most needing verification is a floor naming the core just released
+  alongside it.
+
+Because it reaches JSR, it is deliberately **not** part of `./zuke ci`, which
+stays runnable offline.
 
 ## Pinning guidance
 

@@ -109,6 +109,24 @@ Deno.test("check: paths are required", () => {
     new DenoCheckSettings().frozen().paths("mod.ts").argv().slice(1),
     ["check", "--frozen", "mod.ts"],
   );
+  // --config and --no-lock precede --frozen and the paths.
+  assertEquals(
+    new DenoCheckSettings()
+      .config("/tmp/floor/deno.json").noLock().paths("packages/gh/mod.ts")
+      .argv().slice(1),
+    [
+      "check",
+      "--config",
+      "/tmp/floor/deno.json",
+      "--no-lock",
+      "packages/gh/mod.ts",
+    ],
+  );
+  // Absent by default, so an ordinary check still uses the discovered config
+  // and the committed lock.
+  const plain = new DenoCheckSettings().paths("mod.ts").argv();
+  assertEquals(plain.includes("--config"), false);
+  assertEquals(plain.includes("--no-lock"), false);
 });
 
 Deno.test("fmt: optional --check and paths", () => {
