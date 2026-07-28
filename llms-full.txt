@@ -2891,7 +2891,10 @@ interface RunRecord
     succeeded can still be recorded `running` or `pending`, so a resume would
     re-run it — which is why a resume refuses a degraded record unless
     `--resume-degraded` overrides it (see
-    {@link "../resume.ts".ResumeOptions.resumeDegraded}).
+    {@link "../resume.ts".ResumeOptions.resumeDegraded}) — and why a
+    cancellation compensates every target whose success the record cannot rule
+    out, rather than only those recorded `succeeded` (see
+    {@link "../cancel.ts".runCompensations}).
 
     It is set by the writer when it loses a write and persisted by the next
     write that lands — the failing one, by definition, could not carry it. A

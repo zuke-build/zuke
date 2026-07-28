@@ -4,9 +4,11 @@
  *
  * It is single-host by design (fine for dev, per the requirement); production
  * uses {@link "./http_registry.ts".HttpBuildRegistry}. Compare-and-swap is
- * enforced with an `O_EXCL` lock marker plus an atomic temp-file rename — the
- * same trick as {@link "../state/fs_store.ts".FileSystemStateStore} — so two
- * registrations racing at the same version cannot both win. The version is a
+ * enforced with the shared {@link "../state/mutex.ts".withFileMutex} marker plus
+ * an atomic temp-file rename — the same primitive
+ * {@link "../state/fs_store.ts".FileSystemStateStore} holds — so two
+ * registrations racing at the same version cannot both win, and a marker left by
+ * a killed writer expires instead of wedging the directory. The version is a
  * content hash, mirroring the ETag the HTTP backend uses.
  *
  * @module
@@ -22,7 +24,8 @@ import {
   toBuildSummary,
 } from "./descriptor.ts";
 import type { BuildRegistry, PutBuildResult } from "./registry.ts";
-import { delay, sha256Hex } from "../internal.ts";
+import { withFileMutex } from "../state/mutex.ts";
+import { sha256Hex } from "../internal.ts";
 
 /**
  * Reject a build id that could escape the builds directory. Ids are build class
@@ -34,10 +37,6 @@ function assertSafeId(id: string): void {
     throw new Error(`registry: unsafe build id "${id}"`);
   }
 }
-
-/** How long to wait for a contended lock before giving up. */
-const LOCK_ATTEMPTS = 100;
-const LOCK_DELAY_MS = 10;
 
 /**
  * A {@link BuildRegistry} that writes one `<id>.json` file per build under a
@@ -142,22 +141,21 @@ export class FileSystemBuildRegistry implements BuildRegistry {
     return sortNewestFirst(summaries);
   }
 
-  /** Take the build's lock (spinning briefly on contention), run `fn`, release. */
-  async #withLock<T>(id: string, fn: () => Promise<T>): Promise<T> {
-    const marker = this.#lock(id);
-    for (let attempt = 0; attempt < LOCK_ATTEMPTS; attempt++) {
-      if (await this.#host.createExclusive(marker)) {
-        try {
-          return await fn();
-        } finally {
-          await this.#host.remove(marker);
-        }
-      }
-      await delay(LOCK_DELAY_MS);
-    }
-    throw new Error(
-      `registry: could not acquire the mutex for build "${id}" — ` +
-        `a stale ${marker} may need removing.`,
+  /**
+   * Take the build's lock (spinning briefly on contention), run `fn`, release —
+   * through the same {@link withFileMutex} primitive the state store uses, so a
+   * marker left behind by a killed `zuke register` is reclaimed once it expires
+   * instead of wedging every later writer.
+   */
+  #withLock<T>(id: string, fn: () => Promise<T>): Promise<T> {
+    return withFileMutex(
+      {
+        host: this.#host,
+        marker: this.#lock(id),
+        scope: "registry",
+        subject: `build "${id}"`,
+      },
+      fn,
     );
   }
 }

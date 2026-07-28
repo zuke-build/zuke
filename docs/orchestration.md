@@ -256,6 +256,14 @@ What a cancellation does:
   skipped, or failed has nothing to undo. Compensations run in **reverse order**
   of the targets that succeeded, so later work is unwound before the work it was
   built on.
+- **…unless the record is [degraded](./state.md#degraded-records).** A record
+  that lost a state write cannot be read as an account of what ran: a target that
+  really did deploy may still be recorded `pending` or `running`. Cancel then
+  compensates every target whose success it cannot rule out (anything not
+  recorded `failed` or `skipped`) and names that reason in its output — a
+  rollback that runs for work which never happened is a no-op for an idempotent
+  compensation, while skipping one for work that did happen leaves the side
+  effect behind.
 - **Each compensation reads its target's persisted state.** The compensation
   body gets a normal `ctx` whose `ctx.state` exposes **the original target's**
   metadata — the `deploy` above rolls back from exactly the `slot` it recorded.

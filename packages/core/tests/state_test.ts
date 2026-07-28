@@ -1065,22 +1065,25 @@ Deno.test("FileSystemStateStore releases a mutex marker it could not stamp", asy
   assertEquals((await store.putRun(sampleRecord(), null)).ok, true);
 });
 
-Deno.test("FileSystemStateStore reclaims an unstamped mutex marker", async () => {
-  // A marker left by a zuke that never stamped its markers — or by a holder
-  // killed in the instant between creating and stamping one — carries no age to
-  // compare. It must not read as a live holder for the life of the directory:
-  // once a waiter has spun far longer than that create→stamp window, it
-  // reclaims the marker instead of wedging. Both shapes a real filesystem can
-  // show: an empty file, and a file whose read comes back as nothing at all.
+Deno.test("FileSystemStateStore never steals an unstamped mutex marker", async () => {
+  // An unstamped marker carries no age — and reads exactly like a live holder in
+  // the instant between creating its marker and stamping it, two syscalls a
+  // waiter cannot time. Reclaiming one would put two writers inside the mutex at
+  // once and let both win the same compare-and-swap, so it is left alone: the
+  // write wedges and the error names the file to delete. Both shapes a real
+  // filesystem can show: an empty file, and a read that comes back as nothing.
   for (const content of ["", undefined]) {
     const host = new FakeStateHost();
     const marker = "/runs/run-1.json.lock";
     host.locks.add(marker);
     if (content !== undefined) host.files.set(marker, content);
     const store = new FileSystemStateStore("/runs", host);
-    const result = await store.putRun(sampleRecord(), null);
-    assertEquals(result.ok, true);
-    assertEquals(host.locks.has(marker), false); // reclaimed, then released
+    await assertRejects(
+      () => store.putRun(sampleRecord(), null),
+      Error,
+      "could not acquire the mutex",
+    );
+    assertEquals(host.locks.has(marker), true); // left for its holder
   }
 });
 

@@ -18,6 +18,11 @@
  * `{ slot: "sit-7" }` can be rolled back from exactly that slot. Compensation
  * failures are recorded but never stop the walk (cleanup is maximal).
  *
+ * On a record marked {@link "./state/types.ts".RunRecord.degraded} — one that
+ * lost a state write for good — a target's recorded status is no longer proof of
+ * what happened, so the walk also compensates every target whose success cannot
+ * be ruled out, and says in its output why (see {@link isUnproven}).
+ *
  * The same {@link runCompensations} walk is reused by the executor for an
  * in-process cancellation (Ctrl-C / an aborted `options.signal`).
  *
@@ -49,6 +54,7 @@ import type {
   RunRecord,
   RunStatus,
   SignalRecord,
+  TargetRunStatus,
 } from "./state/types.ts";
 
 /** How many times a conflicting cancel CAS is re-read and retried. */
@@ -90,6 +96,13 @@ interface CompensationStep {
   forTarget: string;
   /** The original target's persisted metadata, exposed to the body via `ctx.state`. */
   meta: Record<string, JsonValue>;
+  /**
+   * How `forTarget` is recorded when the step was selected **only** because the
+   * record is {@link "./state/types.ts".RunRecord.degraded} — its settlement was
+   * never proven. Absent for a step whose target is recorded `succeeded` (or an
+   * in-flight fan-out item), which is compensated on any record.
+   */
+  unproven?: string;
 }
 
 /** A compensation that threw during the cancel walk (recorded, non-fatal). */
@@ -160,10 +173,11 @@ function seededStateHandle(seed: Record<string, JsonValue>): TargetStateHandle {
 /**
  * Run the compensations for a cancelled run: every succeeded target that
  * declared `.onCancel(...)`, in reverse topological order (later successes
- * unwound first). Each compensation body gets a normal {@link TargetContext}
- * whose `state` exposes the original target's persisted metadata. A compensation
- * that throws is recorded and the walk continues. Shared by {@link cancelRun}
- * and the executor's in-process cancellation.
+ * unwound first) — plus, on a `degraded` record, every target whose settlement
+ * was never proven ({@link isUnproven}). Each compensation body gets a normal
+ * {@link TargetContext} whose `state` exposes the original target's persisted
+ * metadata. A compensation that throws is recorded and the walk continues.
+ * Shared by {@link cancelRun} and the executor's in-process cancellation.
  */
 export async function runCompensations(
   order: TargetBuilder[],
@@ -176,6 +190,17 @@ export async function runCompensations(
   const failures: CompensationFailure[] = [];
   const attempts: CompensationAttempt[] = [];
   const steps: CompensationStep[] = [...(deps.extra ?? [])];
+  // A record that lost a state write for good cannot be read as a settled
+  // account of what ran, so the walk widens: anything whose success cannot be
+  // ruled out is compensated. Say so once, up front.
+  const degraded = record.degraded === true;
+  if (degraded) {
+    deps.reporter.info(
+      `cancel: this run's record is incomplete — a state write was ` +
+        `permanently lost, so every target whose success cannot be ruled out ` +
+        `is compensated.`,
+    );
+  }
   // Reverse topological order: undo the work that ran last before the work it
   // was built on.
   for (const t of [...order].reverse()) {
@@ -197,7 +222,9 @@ export async function runCompensations(
         ),
       );
     }
-    if (record.targets[name]?.status !== "succeeded") continue;
+    const status = record.targets[name]?.status;
+    const possiblySucceeded = degraded && isUnproven(status);
+    if (status !== "succeeded" && !possiblySucceeded) continue;
     if (t.onCancel_ === undefined) continue;
     // The thunk is user code: a throw here must be recorded, not allowed to
     // escape and wedge the run mid-cancel (cleanup stays maximal).
@@ -234,6 +261,7 @@ export async function runCompensations(
       compensation,
       forTarget: name,
       meta: record.targets[name]?.meta ?? {},
+      ...(possiblySucceeded ? { unproven: describeUnproven(status) } : {}),
     });
   }
 
@@ -261,7 +289,12 @@ export async function runCompensations(
       dryRun: false,
     };
     try {
-      deps.reporter.info(`↩ compensating ${step.forTarget} → ${compName}`);
+      deps.reporter.info(
+        `↩ compensating ${step.forTarget} → ${compName}` +
+          (step.unproven === undefined ? "" : ` — the run record is ` +
+            `incomplete and "${step.forTarget}" is ${step.unproven}, so its ` +
+            `success could not be ruled out`),
+      );
       // Honour the compensation's own `.timeout()` so a hung cleanup can't wedge
       // the walk (and leave the record non-terminal); no default, like a body.
       await runWithTimeout(() => body(ctx), step.compensation.timeout_);
@@ -331,7 +364,7 @@ function collectForEachSteps(
   const prefix = `${parent.name_ ?? ""}[`;
   for (const [rowName, row] of Object.entries(record.targets)) {
     if (!rowName.startsWith(prefix) || materialised.has(rowName)) continue;
-    if (!isItemCompensable(row.status)) continue;
+    if (!isItemCompensable(row.status, record.degraded === true)) continue;
     reporter.error(
       `cancel: fan-out item "${rowName}" has no matching re-materialised item ` +
         `— its compensation is skipped (is the item list deterministic?).`,
@@ -405,7 +438,9 @@ function collectForEachInto(
           out,
         );
       }
-      if (!isItemCompensable(record.targets[subName]?.status)) continue;
+      const status = record.targets[subName]?.status;
+      const degraded = record.degraded === true;
+      if (!isItemCompensable(status, degraded)) continue;
       if (sub.onCancel_ === undefined) continue;
       let compensation: TargetBuilder | undefined;
       try {
@@ -437,6 +472,11 @@ function collectForEachInto(
         compensation,
         forTarget: subName,
         meta: record.targets[subName]?.meta ?? {},
+        // `succeeded`/`running` items are compensated on any record; anything
+        // else here got in only because the record is degraded.
+        ...(status === "succeeded" || status === "running"
+          ? {}
+          : { unproven: describeUnproven(status) }),
       });
     }
   }
@@ -445,7 +485,9 @@ function collectForEachInto(
 /**
  * A fan-out item is worth compensating if it succeeded, or was still running
  * when the cancel landed — an item mid-flight may have partial side effects
- * (a started deploy) its `.onCancel(...)` needs to unwind.
+ * (a started deploy) its `.onCancel(...)` needs to unwind. On a degraded record
+ * an item whose settlement was never proven counts too (see
+ * {@link isUnproven}).
  *
  * An out-of-process `zuke cancel` compensates a `running` item from a
  * record snapshot, so if that item's body is still live in the owning process
@@ -455,8 +497,46 @@ function collectForEachInto(
  * full fix is prompt abort-propagation in the executor (background run-status
  * poll) — a cancellation-hardening follow-up, out of this milestone's scope.
  */
-function isItemCompensable(status: string | undefined): boolean {
-  return status === "succeeded" || status === "running";
+function isItemCompensable(
+  status: TargetRunStatus | undefined,
+  degraded: boolean,
+): boolean {
+  return status === "succeeded" || status === "running" ||
+    (degraded && isUnproven(status));
+}
+
+/**
+ * Whether `status` leaves a target's **settlement unproven**: no write recording
+ * how it ended ever landed, so a target that really did succeed reads exactly
+ * like one that never ran (`pending`, `running`, `waiting`, or no row at all).
+ *
+ * Only consulted on a {@link "./state/types.ts".RunRecord.degraded} record — one
+ * that lost a state write for good. There, an unproven target is treated as
+ * *possibly succeeded* and compensated: running a cleanup for work that never
+ * happened is a no-op for an idempotent compensation, while skipping one for
+ * work that did happen leaves a real side effect behind. `failed` and `skipped`
+ * are settlements that were recorded, so they are never unproven.
+ *
+ * `running` is the state a lost settlement usually leaves behind (the target's
+ * `markTargetRunning` write landed and the write recording how it ended did
+ * not), so it carries the same overlap window {@link isItemCompensable}
+ * documents one level down: an out-of-process `zuke cancel` compensates from a
+ * record, and if that target's body is in fact still live in the owning process
+ * — which aborts only on its next state write or lock heartbeat — the cleanup
+ * can run alongside the body's tail. Bodies that checkpoint via
+ * `ctx.state.set(...)` or hold a `.lock()` close the window; the full fix is
+ * prompt abort-propagation in the executor, the same cancellation-hardening
+ * follow-up. The executor's own in-process walk has no such window: it runs
+ * after every body has settled.
+ */
+function isUnproven(status: TargetRunStatus | undefined): boolean {
+  return status === undefined || status === "pending" ||
+    status === "running" || status === "waiting";
+}
+
+/** How an unproven target reads in the record, for the reporter's explanation. */
+function describeUnproven(status: TargetRunStatus | undefined): string {
+  return status === undefined ? "not recorded" : `recorded ${status}`;
 }
 
 /**
@@ -610,7 +690,16 @@ export async function cancelRun(
         failures: [],
       };
     }
-    const record = transitioned.record;
+    // The CAS wrote — and returned — the record as it looked *before* the
+    // transition. The owning process may have landed a write since: when its own
+    // compare-and-swap loses to ours it re-applies the mutation onto our
+    // cancelling record (see `./state/writer.ts`), so a target that had just
+    // finished can settle `succeeded`, or the record can be marked `degraded`,
+    // after our snapshot was taken. Re-read, so the walk decides on the newest
+    // account of what ran rather than one that predates the transition. A run
+    // that has vanished from the store leaves our own snapshot as the last word.
+    const reread = await store.getRun(runId);
+    const record = reread?.record ?? transitioned.record;
 
     // Resolve compensation targets by reference, and make `this.<param>.value`
     // available to their bodies (from the record's non-secret params; secrets

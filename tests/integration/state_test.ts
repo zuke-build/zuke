@@ -182,11 +182,13 @@ Deno.test("a lock acquire recovers from a mutex marker a killed run left behind"
   });
 });
 
-Deno.test("a lock acquire recovers from an unstamped mutex marker", async () => {
+Deno.test("an unstamped mutex marker is left alone, with the file named", async () => {
   await withStateDir(async (dir) => {
     const log: string[] = [];
-    // A marker left behind by a zuke that never stamped its markers: it carries
-    // no age, so it must not read as a live holder for the life of the directory.
+    // An unstamped marker carries no age, and reads exactly like a holder in the
+    // instant between creating its marker and stamping it. Taking it over would
+    // let two processes hold the mutex at once, so it is never reclaimed: the
+    // acquire gives up and the error names the file a human should delete.
     const marker = `${dir}/locks/deploy-lock.acq`;
     await Deno.mkdir(`${dir}/locks`, { recursive: true });
     await Deno.writeTextFile(marker, "");
@@ -197,9 +199,11 @@ Deno.test("a lock acquire recovers from an unstamped mutex marker", async () => 
         .executes(() => void log.push("deploy"));
     }
     const { code, err } = await runCli(B, ["deploy"]);
-    assertEquals(code, 0, err);
-    assertEquals(log, ["deploy"]);
-    assertEquals(await exists(marker), false);
+    assertEquals(code, 1);
+    assertStringIncludes(err, "could not acquire the mutex");
+    assertStringIncludes(err, marker);
+    assertEquals(log, []);
+    assertEquals(await exists(marker), true); // not stolen from its holder
   });
 });
 

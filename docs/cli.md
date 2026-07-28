@@ -350,7 +350,11 @@ cause is visible; pass `--resume-degraded` to the sweep to let it through.
 `./zuke cancel <run-id>` cancels a run and runs its
 [compensations](./orchestration.md#cancellation--compensation--oncancel): every
 target that had **succeeded** and declared `.onCancel(...)` is unwound in
-reverse order, then the record settles `cancelled`. `--actor <name>` attributes
+reverse order, then the record settles `cancelled`. On a
+[degraded record](./state.md#degraded-records) it also unwinds every target whose
+success the record cannot rule out — anything not recorded `failed` or `skipped`
+— and says so per compensation, because a lost write can hide a deploy that
+really happened. `--actor <name>` attributes
 the cancellation in the audit trail. Cancelling a run another process is
 executing stops it (a live run aborts on its next state write); cancelling an
 already-finished run is a friendly no-op. `Ctrl-C` (or `SIGTERM`) cancels the

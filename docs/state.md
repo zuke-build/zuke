@@ -206,6 +206,17 @@ and a non-zero result is the only channel a cron watches. The run stays
 `suspended` either way, so it remains resumable. See
 [the CLI reference](./cli.md#resuming-suspended-runs).
 
+A **cancellation** faces the same missing transition from the other side. It
+normally compensates the targets recorded `succeeded`; on a degraded record that
+test would skip a deploy that really happened, leaving it un-rolled-back. So
+cancel widens the walk to every target whose success it cannot rule out —
+anything not recorded `failed` or `skipped` — and its output says the record was
+incomplete, not that the target had succeeded. Under-cleanup is the more
+dangerous direction: a compensation that runs for work which never happened is a
+no-op for an idempotent rollback (a delete of what was never created), while one
+that is skipped leaves the side effect in place. See
+[Cancellation](./orchestration.md#cancellation--compensation--oncancel).
+
 If _no_ later write ever lands — a store that stays down for the rest of the run
 — the flag never reaches the store. That run also never records its transition
 to `suspended`, so there is nothing for a resume to continue: it reports the run
