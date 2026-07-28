@@ -273,16 +273,28 @@ the three test layers above and the "read every reviewer comment" rule below.
 | Lint                          | `deno task lint`                                     |
 | Spell-check                   | `deno task spell`                                    |
 | Pre-commit gate (same as CI)  | `deno task ci` / `./zuke ci`                         |
+| Regenerate `deno.lock`        | `deno task lock`                                     |
 
-`deno task ci` is `deno run -A zuke.ts ci` — the exact gate the `quality` job in
-`ci.yml` runs, so there is one gate, not a hand-maintained subset that can drift
-from it. `zuke.ts`'s `ci` target depends on: `format` (`deno fmt --check`),
-`lint` (`deno lint`), `spell` (cspell), `coverage` (type-check, then the test
-suite with the 95% coverage gate), `coverageUpload` (skips locally without a
-`CODECOV_TOKEN`), `apiDocsCheck`, `docLint`, `snippetsCheck`, `hclSyncCheck`,
-`pluginSyncCheck`, and `prBodyLint`. Read `zuke.ts`'s `ci` target for the
-current, authoritative list — this is a snapshot, not a second source of
-truth.
+`deno task ci` is `deno run -A --frozen zuke.ts ci` — the exact gate the
+`quality` job in `ci.yml` runs, so there is one gate, not a hand-maintained
+subset that can drift from it. `zuke.ts`'s `ci` target depends on: `format`
+(`deno fmt --check`), `lint` (`deno lint`), `spell` (cspell), `coverage`
+(type-check, then the test suite with the 95% coverage gate), `coverageUpload`
+(skips locally without a `CODECOV_TOKEN`), `apiDocsCheck`, `docLint`,
+`snippetsCheck`, `hclSyncCheck`, `pluginSyncCheck`, `prBodyLint`, and
+`lockCheck`. Read `zuke.ts`'s `ci` target for the current, authoritative list —
+this is a snapshot, not a second source of truth.
+
+**The lock is part of the gate.** Every entrypoint that loads `zuke.ts` — both
+launchers and the root tasks — passes `--frozen`, so a run cannot quietly heal a
+stale `deno.lock` by writing the resolutions it is missing. That mattered: a
+green gate used to be able to mean "the lock resolves *now that we fixed it*"
+while CI, whose checkout has the committed lock, failed with "The lockfile is out
+of date". `deno task` resolves the workspace before running its command, so it
+can still rewrite the lock ahead of a frozen run; `lockCheck` closes that from
+the other side by failing if the run left the lock modified. When you
+deliberately change a dependency, run `deno task lock`, review the diff, and
+commit the lock **in the same change**.
 
 ## Repository layout
 

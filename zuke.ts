@@ -62,6 +62,7 @@ import { runWebsiteSync } from "./build/website_sync.ts";
 import { checkSnippets, formatSnippetFailures } from "./build/snippets.ts";
 import { checkHclWrappers, generateHclWrappers } from "./build/hcl_gen.ts";
 import { lintPrBody } from "./build/pr_body_lint.ts";
+import { assertLockUnchanged } from "./build/lock_check.ts";
 import {
   checkPluginSkillsSync,
   syncPluginSkills,
@@ -85,7 +86,13 @@ class ZukeBuild extends Build {
     .description("Warm the module cache")
     .executes(async () => {
       const mods = PACKAGES.map((p) => `packages/${p}/mod.ts`);
-      await DenoTasks.cache((s) => s.paths(...mods));
+      // Frozen so warming the cache can never *heal* a stale `deno.lock` by
+      // writing the resolutions it is missing. These entrypoints reach a wider
+      // module graph than loading `zuke.ts` does, so this covers a dependency
+      // that only a package's `mod.ts` pulls in. The outer `deno run` that
+      // loads this file is frozen too — see the launchers and the root tasks —
+      // which is what stops the lock being rewritten before the build starts.
+      await DenoTasks.cache((s) => s.frozen().paths(...mods));
     });
 
   format = target()
@@ -157,7 +164,7 @@ class ZukeBuild extends Build {
       // to the real Actions summary, polluting it. The parent `./zuke ci` run
       // keeps the env var and still writes the build table and any fixer section.
       await DenoTasks.test((s) =>
-        s.allowAll().coverage("cov_profile").args("--frozen").env({
+        s.allowAll().coverage("cov_profile").frozen().env({
           GITHUB_STEP_SUMMARY: "",
         })
       );
@@ -502,6 +509,17 @@ class ZukeBuild extends Build {
       ConsoleTasks.info("PR body is clean.");
     });
 
+  lockCheck = target()
+    .description("Verify the run did not rewrite deno.lock")
+    // Soft-ordered last: it reports what the whole run did to the lock, so
+    // every step that resolves modules must already have run. A `dependsOn`
+    // would be a lie — it needs nothing these produce, only their side effects.
+    .after(this.coverage, this.apiDocsCheck, this.prBodyLint)
+    .executes(async () => {
+      await assertLockUnchanged();
+      ConsoleTasks.info("deno.lock is unchanged.");
+    });
+
   ci = target()
     .description("Full pre-commit / CI gate")
     .dependsOn(
@@ -516,6 +534,9 @@ class ZukeBuild extends Build {
       this.hclSyncCheck,
       this.pluginSyncCheck,
       this.prBodyLint,
+      // Last: it asserts what the whole run did to the lock, so anything that
+      // rewrites it must already have run.
+      this.lockCheck,
     )
     .executes(() => {});
 

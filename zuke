@@ -175,4 +175,10 @@ fi
 # bootstrapped to a non-PATH location (e.g. ~/.deno/bin).
 export PATH="$(dirname "$deno_bin"):$PATH"
 
-exec "$deno_bin" run -A zuke.ts "$@"
+# `--frozen` so this invocation cannot rewrite `deno.lock`. Loading zuke.ts
+# resolves the whole workspace, and an unfrozen `deno run` silently writes any
+# resolution the committed lock is missing — which made a green gate mean
+# "the lock resolves *after* we fixed it" rather than "the committed lock
+# resolves". Regenerating the lock is a deliberate act: `deno install`, then
+# commit and review the diff (docs/versioning.md).
+exec "$deno_bin" run -A --frozen zuke.ts "$@"

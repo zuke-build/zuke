@@ -57,16 +57,17 @@
     "packages/otel"
   ],
   "tasks": {
-    "zuke": "deno run -A zuke.ts",
+    "zuke": "deno run -A --frozen zuke.ts",
     "test": "GITHUB_STEP_SUMMARY= deno test -A --frozen",
-    "cov": "deno run -A zuke.ts coverage",
+    "cov": "deno run -A --frozen zuke.ts coverage",
     "cov:report": "deno coverage cov_profile '--exclude=tests/'",
     "check": "deno check --frozen zuke.ts build/*.ts tests/**/*.ts packages/*/mod.ts packages/*/src/**/*.ts packages/*/tests/**/*.ts",
     "fmt": "deno fmt",
     "fmt:check": "deno fmt --check",
     "lint": "deno lint",
     "spell": "deno run --allow-read --allow-env --allow-sys npm:cspell@9 lint --no-progress '**'",
-    "ci": "deno run -A zuke.ts ci"
+    "ci": "deno run -A --frozen zuke.ts ci",
+    "lock": "deno install"
   },
   "fmt": {
     "include": [
