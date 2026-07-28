@@ -53,4 +53,4 @@
 - [Versioning & compatibility](./versioning.md) — core semver vs. 0.x wrappers,
   the `@zuke/core` floor, and pinning guidance.
 - [How Zuke compares](./comparison.md) — a capability matrix against `deno task`,
-  npm scripts, Make, Nx, Turborepo, and Dagger, with where each is ahead.
+  npm scripts, Make, Nx, Turborepo, and Dagger, on the capabilities Zuke provides.
