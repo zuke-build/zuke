@@ -661,26 +661,23 @@ class ZukeBuild extends Build {
       // duplicated `TscSettings`. The migration is documented in the root
       // CHANGELOG; the residual cost is that the package's JSR page keeps its
       // last-published README.
-      // `27b6343dtit6d` — the automated website merge running with "broad
-      // GitHub App privileges" — is a false positive on the privilege claim.
-      // The minted token's scope is unchanged by automating the merge: it has
-      // held `contents: write` on the website repo since the sync existed (it
-      // has to, to push the branch), and that repo's default branch has no
-      // protection — so the token could already write anything there directly.
-      // The human merge it replaces was a checkpoint on a path the token could
-      // already bypass, not a privilege boundary. A real gate would be branch
-      // protection plus a required check on the website repo, which is a
-      // change over there, not here.
-      // `22uhzbksic6rf` is that same privilege finding re-raised at high
-      // severity after the merge-failure fix; the token-scope answer above is
-      // unchanged. `3lk27fag8hqxu` claims release.yml "now grants" the sync job
-      // the ability to finalize changes — false about the diff: the only
-      // release.yml changes are comments and a step name, with `permissions:`
-      // and every `permission-*` input byte-identical to before. Removing a
-      // human merge on generated docs is a deliberate owner decision, recorded
-      // in the workflow next to the job.
+      // `27b6343dtit6d`, `22uhzbksic6rf`, `trsbgqqlurzb` and `3u2ilv23j9jb2`
+      // all say the automated website merge removes the approval on that repo.
+      // They are right that it does — an earlier answer here claimed the repo's
+      // default branch was unprotected and the token could already write to it
+      // directly, which was wrong: protection lives in a *ruleset* (invisible
+      // to the branch-protection API), and it required an approving review.
+      // They are suppressed because the gate was replaced, not deleted: that
+      // ruleset now requires the website's own `Build the site` check instead
+      // of an approval, and the sync merges with `--auto`, so a PR lands only
+      // when that build accepts the artifacts. The trade and its limits are
+      // written next to the job in release.yml.
+      // `3lk27fag8hqxu` additionally claims release.yml "now grants" the sync
+      // job new ability — false about the diff: `permissions:` and every
+      // `permission-*` input are byte-identical; only comments and a step name
+      // changed.
       // cspell:ignore myee fmcx ownw eav zbigfl oldslqkyj vnfjvb bja rj xp dtit
-      // cspell:ignore uhzbksic lk fag hqxu
+      // cspell:ignore uhzbksic lk fag hqxu trsbgqqlurzb ilv
       .suppress(
         suppressions((s) =>
           s.add(
@@ -698,6 +695,8 @@ class ZukeBuild extends Build {
             "27b6343dtit6d",
             "22uhzbksic6rf",
             "3lk27fag8hqxu",
+            "trsbgqqlurzb",
+            "3u2ilv23j9jb2",
           )
         ),
       )

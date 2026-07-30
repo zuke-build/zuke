@@ -79,14 +79,22 @@ jobs:
   # token. The target is idempotent (no diff → no PR), so running it every
   # release is safe.
   #
-  # The merge is deliberately unreviewed. The diff is generated output —
-  # llms.txt, llms-full.txt, api.json — built from artifacts this repo's gate
-  # already verified, and the token has held `contents: write` on an unprotected
-  # default branch since the sync existed, so a human merge was a checkpoint on
-  # a path the token could bypass rather than a privilege boundary. To make it a
-  # real gate, add branch protection plus a required check on the website repo
-  # and switch the merge to `--auto`; do not add an approval step here, which
-  # would only gate the path that was never the risk.
+  # The merge is deliberately unreviewed, but it is not ungated. The website
+  # repo's `main` ruleset requires its `Build the site` check — the same
+  # `./zuke build` its deploy runs — and the sync merges with `--auto`, so the
+  # PR lands only once that build accepts the artifacts this job pushed and
+  # stays open if it rejects them. The human approval that requirement replaced
+  # (the ruleset asked for one until 2026-07-30) reviewed generated output it
+  # could not meaningfully check by eye; the build can.
+  #
+  # This is a real trade, not a free one, and it rests on a stated assumption:
+  # the website repo is single-maintainer by design, its only writers being its
+  # owner and this app. With approvals at zero, any *other* write-access account
+  # could merge its own PR there — and could edit `.github/workflows/pr.yml` in
+  # that same PR, since a same-repo PR runs the workflow from its own branch, so
+  # the check gates artifacts rather than whoever can rewrite the check. If that
+  # repo ever takes on collaborators, this needs a CODEOWNERS review on
+  # `.github/**` (or the approval back) before it is sound again.
   sync-website:
     name: Sync website docs + API reference
     needs: publish

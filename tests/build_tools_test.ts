@@ -702,9 +702,9 @@ Deno.test("runWebsiteSync: a freshly opened PR reports success", async () => {
     const { branch } = syncBranchInfo(await localVersion("core"));
     assertEquals(calls.success, [
       "Opened website sync PR: https://pr/1",
-      `Merged the website sync PR for ${branch}.`,
+      `Website sync PR for ${branch} will merge once its build check passes.`,
     ]);
-    // Opening it is only half the job — the release merges it too.
+    // Opening it is only half the job — the release queues the merge too.
     assertEquals(calls.mergePr, [{ repo: "me/site", branch }]);
     assertEquals(calls.cloneWebsite, [{
       repo: "me/site",
@@ -733,7 +733,7 @@ Deno.test("runWebsiteSync: an already-open PR is reported, not treated as a fail
     // by head branch rather than by the number this run happened to open.
     assertEquals(calls.mergePr.length, 1);
     assertEquals(
-      calls.success.some((m) => m.startsWith("Merged the website sync PR")),
+      calls.success.some((m) => m.includes("will merge once its build check")),
       true,
     );
   });
@@ -754,11 +754,12 @@ Deno.test("runWebsiteSync: a failed merge fails the job and still cleans up", as
       () => runWebsiteSync(new Build(), deps),
       Error,
       "merge it by hand",
+      // The message names the queue-it-to-merge step that failed, not a merge.
     );
     assertEquals(calls.warn.length, 1);
     assertEquals(calls.warn[0].includes("Pull request is not mergeable"), true);
     assertEquals(
-      calls.success.some((m) => m.startsWith("Merged the")),
+      calls.success.some((m) => m.includes("will merge once")),
       false,
     );
     // The `finally` still runs on the throw — no leaked temp clone.
