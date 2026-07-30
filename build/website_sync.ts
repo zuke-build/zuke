@@ -1,7 +1,8 @@
 /**
  * The release → website sync: regenerate the docs the website consumes
  * (llms.txt / llms-full.txt + api.json), then open (or refresh) a PR against
- * the website repo with the updated artifacts.
+ * the website repo with the updated artifacts and squash-merge it, so a release
+ * needs no manual merge on the website side.
  */
 
 import { type Build, FileTasks } from "@zuke/core";
@@ -113,6 +114,13 @@ export interface WebsiteSyncDeps {
     dir: string,
     token: string,
   ): Promise<OpenPrResult>;
+  /** Squash-merge the sync PR for `branch`, so the release needs no human merge. */
+  mergePr(
+    repo: string,
+    branch: string,
+    dir: string,
+    token: string,
+  ): Promise<OpenPrResult>;
   /** Report an in-progress/skip status line. */
   info(message: string): void;
   /** Report a freshly opened PR. */
@@ -216,13 +224,31 @@ const REAL_DEPS: WebsiteSyncDeps = {
     );
     return { code: pr.code, text: pr.text() };
   },
+  mergePr: async (repo, branch, dir, token) => {
+    // Selected by head branch rather than PR number, so the same call merges a
+    // PR this run opened and one an earlier run left open. Squash keeps the
+    // website history one commit per release; `--delete-branch` is explicit
+    // because the website repo does not delete merged branches on its own.
+    const merged = await GhTasks.run((s) =>
+      s
+        .command("pr", "merge", branch)
+        .repo(repo)
+        .flag("squash")
+        .flag("delete-branch")
+        .cwd(dir)
+        .env({ GH_TOKEN: token })
+        .noThrow()
+    );
+    return { code: merged.code, text: merged.text() };
+  },
   info: (message) => ConsoleTasks.info(message),
   success: (message) => ConsoleTasks.success(message),
   warn: (message) => ConsoleTasks.warn(message),
 };
 
 /**
- * Open a PR to the website with refreshed llms.txt + api.json. Takes the build
+ * Open and merge a PR to the website with refreshed llms.txt + api.json. Takes
+ * the build
  * so it can render the live CLI block via {@link docsOptions}. `deps` defaults
  * to the real clone/push/`gh` implementation; a test overrides it.
  */
@@ -274,6 +300,20 @@ export async function runWebsiteSync(
     } else {
       deps.info(
         `Website sync PR for ${branch} already open — updated by the push.`,
+      );
+    }
+
+    // Merge it too: the diff is generated output that was just verified by the
+    // gate on this repo, so a human merge adds a manual step and no signal.
+    // A failed merge is reported but does not fail the release — the packages
+    // are already published by then, and the PR stays open to merge by hand.
+    const merged = await deps.mergePr(repo, branch, dir, token);
+    if (merged.code === 0) {
+      deps.success(`Merged the website sync PR for ${branch}.`);
+    } else {
+      deps.warn(
+        `Could not merge the website sync PR for ${branch} — merge it by ` +
+          `hand: ${merged.text}`,
       );
     }
   } finally {

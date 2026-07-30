@@ -381,7 +381,7 @@ class ZukeBuild extends Build {
 
   syncWebsite = target()
     .description(
-      "Open a PR to the website with refreshed llms.txt + api.json",
+      "Open and merge a website PR with refreshed llms.txt + api.json",
     )
     .executes(async () => {
       await runWebsiteSync(this);
