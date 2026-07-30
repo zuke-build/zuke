@@ -647,13 +647,21 @@ class ZukeBuild extends Build {
       // `3ud7i3zbigfl0` is a false positive: a static, author-written workflow
       // comment documenting the website-sync job — it does not execute and
       // feeds no runtime model, so there is no prompt-injection surface.
-      // `pm3oldslqkyj` is a false positive on its own terms: it reads the
-      // `jsr:@zuke/core@^1` pin in the `import` scaffold as able to "pull in
-      // future major releases", but `^1` is `>=1.0.0 <2.0.0` — a 2.0.0 can
-      // never satisfy it. The line it flags replaced an *unpinned* specifier,
-      // which did resolve any future major, so the change narrows exposure
-      // rather than widening it.
-      // cspell:ignore myee fmcx ownw eav zbigfl oldslqkyj
+      // `pm3oldslqkyj` and `io22vnfjvb1t` are two phrasings of one false
+      // positive on the `jsr:@zuke/core@^1` pin in the `import` scaffold: it
+      // cannot "pull in future major releases" (`^1` is `>=1.0.0 <2.0.0`, so a
+      // 2.0.0 never satisfies it) and it cannot "bypass lockfile pinning" (a
+      // range in a source file is resolved *through* the consumer's lock). The
+      // line replaced an unpinned specifier that did resolve any future major,
+      // so the change narrows exposure rather than widening it.
+      // `3bja5rj1xp93t` — dropping `@zuke/tsgo` with no in-repo shim — is a
+      // deliberate decision, not an oversight: JSR versions are immutable, so
+      // `@zuke/tsgo@0.1.3` keeps resolving for anyone pinned to it, and a shim
+      // package would have to carry its own semver promise for a wrapper that
+      // duplicated `TscSettings`. The migration is documented in the root
+      // CHANGELOG; the residual cost is that the package's JSR page keeps its
+      // last-published README.
+      // cspell:ignore myee fmcx ownw eav zbigfl oldslqkyj vnfjvb bja rj xp
       .suppress(
         suppressions((s) =>
           s.add(
@@ -666,6 +674,8 @@ class ZukeBuild extends Build {
             "1eav335",
             "3ud7i3zbigfl0",
             "pm3oldslqkyj",
+            "io22vnfjvb1t",
+            "3bja5rj1xp93t",
           )
         ),
       )
