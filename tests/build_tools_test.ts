@@ -562,6 +562,7 @@ function unreachableDeps(warnings: string[]): WebsiteSyncDeps {
     commitStaged: boom("commitStaged"),
     pushBranch: boom("pushBranch"),
     openOrRefreshPr: boom("openOrRefreshPr"),
+    mergePr: boom("mergePr"),
     info: boom("info"),
     success: boom("success"),
     warn: (m) => warnings.push(m),
@@ -574,6 +575,7 @@ interface SyncCalls {
   commitStaged: number;
   pushBranch: number;
   openOrRefreshPr: number;
+  mergePr: Array<{ repo: string; branch: string }>;
   removeDir: string[];
   info: string[];
   success: string[];
@@ -589,6 +591,7 @@ function fakeSyncDeps(
     commitStaged: 0,
     pushBranch: 0,
     openOrRefreshPr: 0,
+    mergePr: [],
     removeDir: [],
     info: [],
     success: [],
@@ -620,6 +623,10 @@ function fakeSyncDeps(
     },
     openOrRefreshPr: () => {
       calls.openOrRefreshPr++;
+      return Promise.resolve({ code: 0, text: "" });
+    },
+    mergePr: (repo, branch) => {
+      calls.mergePr.push({ repo, branch });
       return Promise.resolve({ code: 0, text: "" });
     },
     info: (m) => calls.info.push(m),
@@ -680,6 +687,7 @@ Deno.test("runWebsiteSync: already in sync — no commit, push, or PR", async ()
     assertEquals(calls.commitStaged, 0);
     assertEquals(calls.pushBranch, 0);
     assertEquals(calls.openOrRefreshPr, 0);
+    assertEquals(calls.mergePr, []);
     assertEquals(calls.removeDir, ["/tmp/fake-sync-dir"]);
   });
 });
@@ -691,7 +699,13 @@ Deno.test("runWebsiteSync: a freshly opened PR reports success", async () => {
       openOrRefreshPr: () => Promise.resolve({ code: 0, text: "https://pr/1" }),
     });
     await runWebsiteSync(new Build(), deps);
-    assertEquals(calls.success, ["Opened website sync PR: https://pr/1"]);
+    const { branch } = syncBranchInfo(await localVersion("core"));
+    assertEquals(calls.success, [
+      "Opened website sync PR: https://pr/1",
+      `Website sync PR for ${branch} will merge once its build check passes.`,
+    ]);
+    // Opening it is only half the job — the release queues the merge too.
+    assertEquals(calls.mergePr, [{ repo: "me/site", branch }]);
     assertEquals(calls.cloneWebsite, [{
       repo: "me/site",
       dir: "/tmp/fake-sync-dir",
@@ -711,11 +725,45 @@ Deno.test("runWebsiteSync: an already-open PR is reported, not treated as a fail
       openOrRefreshPr: () => Promise.resolve({ code: 1, text: "" }),
     });
     await runWebsiteSync(new Build(), deps);
-    assertEquals(calls.success, []);
     assertEquals(
       calls.info.some((m) => m.includes("already open")),
       true,
     );
+    // The refreshed PR still gets merged — that is the whole point of merging
+    // by head branch rather than by the number this run happened to open.
+    assertEquals(calls.mergePr.length, 1);
+    assertEquals(
+      calls.success.some((m) => m.includes("will merge once its build check")),
+      true,
+    );
+  });
+});
+
+Deno.test("runWebsiteSync: a failed merge fails the job and still cleans up", async () => {
+  await withSyncEnv({ token: "tok" }, async () => {
+    const { deps, calls } = fakeSyncDeps({
+      hasStagedChanges: () => Promise.resolve(true),
+      openOrRefreshPr: () => Promise.resolve({ code: 0, text: "https://pr/2" }),
+      mergePr: () =>
+        Promise.resolve({ code: 1, text: "Pull request is not mergeable" }),
+    });
+    // Must throw: nobody watches the website repo once the merge is automated,
+    // so a merge left undone has to turn the job red rather than log a warning
+    // into a passing run.
+    await assertRejects(
+      () => runWebsiteSync(new Build(), deps),
+      Error,
+      "merge it by hand",
+      // The message names the queue-it-to-merge step that failed, not a merge.
+    );
+    assertEquals(calls.warn.length, 1);
+    assertEquals(calls.warn[0].includes("Pull request is not mergeable"), true);
+    assertEquals(
+      calls.success.some((m) => m.includes("will merge once")),
+      false,
+    );
+    // The `finally` still runs on the throw — no leaked temp clone.
+    assertEquals(calls.removeDir, ["/tmp/fake-sync-dir"]);
   });
 });
 

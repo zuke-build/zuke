@@ -1,7 +1,8 @@
 /**
  * The release → website sync: regenerate the docs the website consumes
  * (llms.txt / llms-full.txt + api.json), then open (or refresh) a PR against
- * the website repo with the updated artifacts.
+ * the website repo with the updated artifacts and squash-merge it, so a release
+ * needs no manual merge on the website side.
  */
 
 import { type Build, FileTasks } from "@zuke/core";
@@ -113,6 +114,13 @@ export interface WebsiteSyncDeps {
     dir: string,
     token: string,
   ): Promise<OpenPrResult>;
+  /** Squash-merge the sync PR for `branch`, so the release needs no human merge. */
+  mergePr(
+    repo: string,
+    branch: string,
+    dir: string,
+    token: string,
+  ): Promise<OpenPrResult>;
   /** Report an in-progress/skip status line. */
   info(message: string): void;
   /** Report a freshly opened PR. */
@@ -216,13 +224,39 @@ const REAL_DEPS: WebsiteSyncDeps = {
     );
     return { code: pr.code, text: pr.text() };
   },
+  mergePr: async (repo, branch, dir, token) => {
+    // Selected by head branch rather than PR number, so the same call merges a
+    // PR this run opened and one an earlier run left open. Squash keeps the
+    // website history one commit per release; `--delete-branch` is explicit
+    // because the website repo does not delete merged branches on its own.
+    //
+    // `--auto` rather than a straight merge: the website repo's ruleset
+    // requires its `Build the site` check, which builds the very artifacts this
+    // sync just pushed. Auto-merge lands the PR when that check passes and
+    // leaves it open if the build rejects them, so a broken llms.txt or
+    // api.json cannot reach the live site. Note the exit code then reports
+    // whether auto-merge was *enabled*, not whether the PR merged.
+    const merged = await GhTasks.run((s) =>
+      s
+        .command("pr", "merge", branch)
+        .repo(repo)
+        .flag("auto")
+        .flag("squash")
+        .flag("delete-branch")
+        .cwd(dir)
+        .env({ GH_TOKEN: token })
+        .noThrow()
+    );
+    return { code: merged.code, text: merged.text() };
+  },
   info: (message) => ConsoleTasks.info(message),
   success: (message) => ConsoleTasks.success(message),
   warn: (message) => ConsoleTasks.warn(message),
 };
 
 /**
- * Open a PR to the website with refreshed llms.txt + api.json. Takes the build
+ * Open and merge a PR to the website with refreshed llms.txt + api.json. Takes
+ * the build
  * so it can render the live CLI block via {@link docsOptions}. `deps` defaults
  * to the real clone/push/`gh` implementation; a test overrides it.
  */
@@ -275,6 +309,29 @@ export async function runWebsiteSync(
       deps.info(
         `Website sync PR for ${branch} already open — updated by the push.`,
       );
+    }
+
+    // Queue the merge too. The human click this replaces reviewed generated
+    // output — llms.txt, llms-full.txt, api.json — that the website's own
+    // `Build the site` check re-builds anyway, so the gate that matters is
+    // automated and the click was not adding signal.
+    // Failing to *enable* auto-merge FAILS this job. The published packages are
+    // unaffected (`publish` already ran and succeeded), but the point of
+    // automating the merge is that nobody watches the website repo — so a
+    // buried warning would silently hand the job back to someone not looking.
+    // A PR that auto-merge holds back because the build rejected the artifacts
+    // is the gate doing its job, and shows up as a red check on that PR.
+    const merged = await deps.mergePr(repo, branch, dir, token);
+    if (merged.code === 0) {
+      deps.success(
+        `Website sync PR for ${branch} will merge once its build check passes.`,
+      );
+    } else {
+      const detail =
+        `Could not queue the website sync PR for ${branch} to merge — merge ` +
+        `it by hand: ${merged.text}`;
+      deps.warn(detail);
+      throw new Error(detail);
     }
   } finally {
     await deps.removeDir(dir);

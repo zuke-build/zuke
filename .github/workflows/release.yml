@@ -71,12 +71,30 @@ jobs:
         run: ./zuke publishJsr
 
   # Push refreshed docs (llms.txt/llms-full.txt) and api.json to the website by
-  # opening a PR on the separate `zuke-build.github.io` repo. The default
-  # GITHUB_TOKEN cannot push cross-repo, so we mint a short-lived installation
-  # token from the "Zuke Build" GitHub App (ZUKE_BUILD_APP_ID/_KEY org secrets),
-  # scoped to just the website repo. `contents: read` here is enough — the
-  # cross-repo write rides on the app token. The target is idempotent
-  # (no diff → no PR), so running it every release is safe.
+  # opening a PR on the separate `zuke-build.github.io` repo — and merging it, so
+  # a release needs no manual step there. The default GITHUB_TOKEN cannot push
+  # cross-repo, so we mint a short-lived installation token from the "Zuke Build"
+  # GitHub App (ZUKE_BUILD_APP_ID/_KEY org secrets), scoped to just the website
+  # repo. `contents: read` here is enough — the cross-repo write rides on the app
+  # token. The target is idempotent (no diff → no PR), so running it every
+  # release is safe.
+  #
+  # The merge is deliberately unreviewed, but it is not ungated. The website
+  # repo's `main` ruleset requires its `Build the site` check — the same
+  # `./zuke build` its deploy runs — and the sync merges with `--auto`, so the
+  # PR lands only once that build accepts the artifacts this job pushed and
+  # stays open if it rejects them. The human approval that requirement replaced
+  # (the ruleset asked for one until 2026-07-30) reviewed generated output it
+  # could not meaningfully check by eye; the build can.
+  #
+  # This is a real trade, not a free one, and it rests on a stated assumption:
+  # the website repo is single-maintainer by design, its only writers being its
+  # owner and this app. With approvals at zero, any *other* write-access account
+  # could merge its own PR there — and could edit `.github/workflows/pr.yml` in
+  # that same PR, since a same-repo PR runs the workflow from its own branch, so
+  # the check gates artifacts rather than whoever can rewrite the check. If that
+  # repo ever takes on collaborators, this needs a CODEOWNERS review on
+  # `.github/**` (or the approval back) before it is sound again.
   sync-website:
     name: Sync website docs + API reference
     needs: publish
@@ -107,13 +125,15 @@ jobs:
           owner: zuke-build
           repositories: zuke-build.github.io
           # Narrow the minted token to exactly what syncWebsite needs — a branch
-          # push and a PR — rather than the app's full permission set.
+          # push, a PR, and the squash-merge of that PR — rather than the app's
+          # full permission set. The merge needs no third permission: the merge
+          # API is a contents write, and `--delete-branch` rides on the same.
           permission-contents: write
           permission-pull-requests: write
 
       # The ./zuke launcher bootstraps a pinned Deno version (override with
       # DENO_VERSION); no separate setup-deno step.
-      - name: Open the website sync PR with Zuke
+      - name: Open and merge the website sync PR with Zuke
         run: ./zuke syncWebsite
         env:
           WEBSITE_SYNC_TOKEN: ${{ steps.app-token.outputs.token }}
