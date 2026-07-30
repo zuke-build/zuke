@@ -739,7 +739,7 @@ Deno.test("runWebsiteSync: an already-open PR is reported, not treated as a fail
   });
 });
 
-Deno.test("runWebsiteSync: a failed merge warns and leaves the release green", async () => {
+Deno.test("runWebsiteSync: a failed merge fails the job and still cleans up", async () => {
   await withSyncEnv({ token: "tok" }, async () => {
     const { deps, calls } = fakeSyncDeps({
       hasStagedChanges: () => Promise.resolve(true),
@@ -747,16 +747,21 @@ Deno.test("runWebsiteSync: a failed merge warns and leaves the release green", a
       mergePr: () =>
         Promise.resolve({ code: 1, text: "Pull request is not mergeable" }),
     });
-    // Must not throw: the packages are already published by this point, so a
-    // merge that needs a human is a warning, not a failed release.
-    await runWebsiteSync(new Build(), deps);
+    // Must throw: nobody watches the website repo once the merge is automated,
+    // so a merge left undone has to turn the job red rather than log a warning
+    // into a passing run.
+    await assertRejects(
+      () => runWebsiteSync(new Build(), deps),
+      Error,
+      "merge it by hand",
+    );
     assertEquals(calls.warn.length, 1);
-    assertEquals(calls.warn[0].includes("merge it by hand"), true);
     assertEquals(calls.warn[0].includes("Pull request is not mergeable"), true);
     assertEquals(
       calls.success.some((m) => m.startsWith("Merged the")),
       false,
     );
+    // The `finally` still runs on the throw — no leaked temp clone.
     assertEquals(calls.removeDir, ["/tmp/fake-sync-dir"]);
   });
 });

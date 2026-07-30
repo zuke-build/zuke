@@ -305,16 +305,20 @@ export async function runWebsiteSync(
 
     // Merge it too: the diff is generated output that was just verified by the
     // gate on this repo, so a human merge adds a manual step and no signal.
-    // A failed merge is reported but does not fail the release — the packages
-    // are already published by then, and the PR stays open to merge by hand.
+    // A merge that fails FAILS this job. The published packages are unaffected
+    // (`publish` already ran and succeeded), but the whole point of merging here
+    // is that nobody has to watch the website repo — so a buried warning would
+    // silently hand the job back to a human who is not looking. Red, with the
+    // PR left open, is the signal.
     const merged = await deps.mergePr(repo, branch, dir, token);
     if (merged.code === 0) {
       deps.success(`Merged the website sync PR for ${branch}.`);
     } else {
-      deps.warn(
+      const detail =
         `Could not merge the website sync PR for ${branch} — merge it by ` +
-          `hand: ${merged.text}`,
-      );
+        `hand: ${merged.text}`;
+      deps.warn(detail);
+      throw new Error(detail);
     }
   } finally {
     await deps.removeDir(dir);
