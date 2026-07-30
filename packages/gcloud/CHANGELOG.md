@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.0](https://github.com/zuke-build/zuke/compare/gcloud-v0.3.1...gcloud-v1.0.0) (2026-07-30)
+
+
+### Miscellaneous Chores
+
+* graduate `@zuke/gcloud` to 1.0.0 — the package now follows full semver, so a breaking change bumps its major version
+
 ## [0.3.1](https://github.com/zuke-build/zuke/compare/gcloud-v0.3.0...gcloud-v0.3.1) (2026-07-23)
 
 

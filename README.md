@@ -26,11 +26,11 @@
 > made so you know what you're getting.
 
 > [!NOTE]
-> **Maturity.** `@zuke/core` (and a handful of others — `@zuke/ai`,
-> `@zuke/console`, `@zuke/otel`, …) are `1.x` and follow full semver; the 50+
-> tool wrappers are `0.x` and may still change within `0.x`. See
-> [Versioning & compatibility](./docs/versioning.md) for the pinning guidance
-> and how to diagnose a version mismatch.
+> **Maturity.** Every one of the 54 packages is `1.x` and follows full semver —
+> `@zuke/core`, the `@zuke/cli` command, and all the tool wrappers. A minor or
+> patch release never breaks a public symbol; a breaking change bumps the major.
+> See [Versioning & compatibility](./docs/versioning.md) for the pinning
+> guidance and how to diagnose a version mismatch.
 
 Zuke lets you define builds as a **TypeScript class**. Each target is a class
 field declared with a fluent API; targets reference each other by `this.x` (not
@@ -163,7 +163,6 @@ latest release on JSR.
 | [`@zuke/tsc`](https://jsr.io/@zuke/tsc)                       | [![JSR](https://jsr.io/badges/@zuke/tsc)](https://jsr.io/@zuke/tsc) [![JSR score](https://jsr.io/badges/@zuke/tsc/score)](https://jsr.io/@zuke/tsc)                                             |
 | [`@zuke/tsc-alias`](https://jsr.io/@zuke/tsc-alias)           | [![JSR](https://jsr.io/badges/@zuke/tsc-alias)](https://jsr.io/@zuke/tsc-alias) [![JSR score](https://jsr.io/badges/@zuke/tsc-alias/score)](https://jsr.io/@zuke/tsc-alias)                     |
 | [`@zuke/tsdown`](https://jsr.io/@zuke/tsdown)                 | [![JSR](https://jsr.io/badges/@zuke/tsdown)](https://jsr.io/@zuke/tsdown) [![JSR score](https://jsr.io/badges/@zuke/tsdown/score)](https://jsr.io/@zuke/tsdown)                                 |
-| [`@zuke/tsgo`](https://jsr.io/@zuke/tsgo)                     | [![JSR](https://jsr.io/badges/@zuke/tsgo)](https://jsr.io/@zuke/tsgo) [![JSR score](https://jsr.io/badges/@zuke/tsgo/score)](https://jsr.io/@zuke/tsgo)                                         |
 | [`@zuke/tsup`](https://jsr.io/@zuke/tsup)                     | [![JSR](https://jsr.io/badges/@zuke/tsup)](https://jsr.io/@zuke/tsup) [![JSR score](https://jsr.io/badges/@zuke/tsup/score)](https://jsr.io/@zuke/tsup)                                         |
 | [`@zuke/tsx`](https://jsr.io/@zuke/tsx)                       | [![JSR](https://jsr.io/badges/@zuke/tsx)](https://jsr.io/@zuke/tsx) [![JSR score](https://jsr.io/badges/@zuke/tsx/score)](https://jsr.io/@zuke/tsx)                                             |
 | [`@zuke/turbo`](https://jsr.io/@zuke/turbo)                   | [![JSR](https://jsr.io/badges/@zuke/turbo)](https://jsr.io/@zuke/turbo) [![JSR score](https://jsr.io/badges/@zuke/turbo/score)](https://jsr.io/@zuke/turbo)                                     |

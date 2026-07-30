@@ -122,7 +122,6 @@ Full reference: [docs/cli.md](./docs/cli.md).
 - [@zuke/turbo](https://jsr.io/@zuke/turbo) — typed `TurboTasks` wrappers for the
 - [@zuke/nx](https://jsr.io/@zuke/nx) — typed `NxTasks` wrappers for the Nx (https://nx.dev) CLI, for
 - [@zuke/tsx](https://jsr.io/@zuke/tsx) — typed `tsx` task wrappers for Zuke builds
-- [@zuke/tsgo](https://jsr.io/@zuke/tsgo) — typed `tsgo` task wrappers for Zuke builds
 - [@zuke/tsc](https://jsr.io/@zuke/tsc) — typed `tsc` task wrappers for Zuke builds
 - [@zuke/tsc-alias](https://jsr.io/@zuke/tsc-alias) — typed `tsc-alias` task wrappers for Zuke builds
 - [@zuke/tsdown](https://jsr.io/@zuke/tsdown) — a typed `TsdownTasks` wrapper for the

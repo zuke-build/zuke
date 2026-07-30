@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.0](https://github.com/zuke-build/zuke/compare/git-v0.2.3...git-v1.0.0) (2026-07-30)
+
+
+### Miscellaneous Chores
+
+* graduate `@zuke/git` to 1.0.0 — the package now follows full semver, so a breaking change bumps its major version
+
 ## [0.2.3](https://github.com/zuke-build/zuke/compare/git-v0.2.2...git-v0.2.3) (2026-07-22)
 
 

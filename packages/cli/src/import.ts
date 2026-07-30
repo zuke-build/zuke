@@ -388,8 +388,11 @@ export function generateBuild(
     return chain.join("\n");
   });
 
-  const imports = [`import { Build, run, target } from "jsr:@zuke/core";`];
-  if (usesCmd) imports.push(`import { CmdTasks } from "jsr:@zuke/cmd";`);
+  // Pin the caret major, matching what `zuke setup` scaffolds: every package is
+  // 1.x on full semver, so `@^1` takes minors and patches and stops a future
+  // major from landing in an imported build unannounced.
+  const imports = [`import { Build, run, target } from "jsr:@zuke/core@^1";`];
+  if (usesCmd) imports.push(`import { CmdTasks } from "jsr:@zuke/cmd@^1";`);
 
   const body = fields.length > 0
     ? fields.join("\n\n")

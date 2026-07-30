@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.0](https://github.com/zuke-build/zuke/compare/security-v0.3.0...security-v1.0.0) (2026-07-30)
+
+
+### Miscellaneous Chores
+
+* graduate `@zuke/security` to 1.0.0 — the package now follows full semver, so a breaking change bumps its major version
+
 ## [0.3.0](https://github.com/zuke-build/zuke/compare/security-v0.2.2...security-v0.3.0) (2026-07-28)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.0](https://github.com/zuke-build/zuke/compare/docker-v0.4.0...docker-v1.0.0) (2026-07-30)
+
+
+### Miscellaneous Chores
+
+* graduate `@zuke/docker` to 1.0.0 — the package now follows full semver, so a breaking change bumps its major version
+
 ## [0.4.0](https://github.com/zuke-build/zuke/compare/docker-v0.3.2...docker-v0.4.0) (2026-07-27)
 
 

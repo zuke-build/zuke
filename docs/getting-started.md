@@ -4,7 +4,7 @@ You need [Deno](https://deno.com/) installed. There's nothing else to install �
 Zuke is imported straight from JSR.
 
 > [!NOTE]
-> All `@zuke/*` packages — the 55-package workspace: `@zuke/core`, the
+> All `@zuke/*` packages — the 54-package workspace: `@zuke/core`, the
 > `@zuke/cli` command, a generic `@zuke/cmd` fallback, and 50+ typed tool
 > wrappers and plugins (`@zuke/deno`, `@zuke/npm`, `@zuke/docker`, `@zuke/ai`,
 > …) — publish to [JSR](https://jsr.io/@zuke) from CI via release-please and

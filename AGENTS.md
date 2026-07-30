@@ -89,7 +89,7 @@ regenerate them in the same PR.
   runner, formatter, linter, type-checker, coverage — is the built-in `deno`
   CLI. No Node, npm, or external build tools.
 - **Language:** TypeScript, strict mode (Deno's default).
-- **Distribution:** [JSR](https://jsr.io/) as a workspace of 55 packages:
+- **Distribution:** [JSR](https://jsr.io/) as a workspace of 54 packages:
   `@zuke/core` (exports `.`, `./shell`, `./tooling`, `./tooling/conformance`,
   `./render`, `./conformance`) plus the `@zuke/cli` command, a generic `@zuke/cmd` fallback,
   and 50+ typed tool wrappers and plugins (`@zuke/deno`, `@zuke/npm`,
@@ -101,18 +101,25 @@ regenerate them in the same PR.
 
 ### TypeScript 7 / `tsgo`
 
-The request is to use `tsgo` (the native TypeScript port, a.k.a. TypeScript 7)
-**if Deno supports it.** As of the current toolchain it does **not**: Deno
-type-checks with its own embedded TypeScript via `deno check` and provides no
-hook to delegate checking to an external `tsc`/`tsgo` binary. `tsgo`
-(`@typescript/native-preview`) is a standalone preview that also does not
-understand Deno's module resolution (`jsr:`/`https:` specifiers, the `Deno`
-global) out of the box.
+The request is to use `tsgo` (the native TypeScript port) **if Deno supports
+it.** Status as of 2026-07-30:
 
-**Therefore:** `deno check` is the authoritative type-checker for this repo.
-Adopt `tsgo`/TS7 only once Deno can use it as its checker — at that point,
-update the `check` task and CI accordingly. Do not bolt on a parallel
-`tsc`/`tsgo` pass that can't see Deno's module graph.
+- **TypeScript 7.0 shipped (2026-07-08)** and the native Go compiler is no
+  longer a side channel: it is the `tsc` in the ordinary `typescript` package.
+  `@typescript/native-preview` and the `tsgo` binary name now mean the
+  bleeding-edge nightly channel, not "the native compiler".
+- **Deno can use it, but only unstably.** `deno check --unstable-tsgo`
+  (`DENO_UNSTABLE_TSGO=1`, or `"unstable": ["tsgo"]` in `deno.json`) runs the
+  native compiler with Deno's own module resolution. Deno's docs call it "an
+  unstable, preview feature" that is not feature-complete — programs that pass
+  the default checker can report different results — and say "Don't rely on it
+  for CI or release builds yet."
+
+**Therefore:** `deno check` (default compiler) stays the authoritative
+type-checker for this repo and for CI. Try `--unstable-tsgo` locally when a
+type-check feels slow, but do not put it in the `check` task or the gate until
+Deno drops the unstable flag. Do not bolt on a parallel `tsc`/`tsgo` pass that
+can't see Deno's module graph.
 
 ## Coding guidelines (non-negotiable)
 
@@ -306,7 +313,7 @@ packages/
   deno/                   # @zuke/deno — DenoTasks
   npm/                    # @zuke/npm  — NpmTasks
   cmd/                    # @zuke/cmd  — CmdTasks (generic fallback)
-  …                       # + 51 more: @zuke/cli, @zuke/docs, @zuke/ai, and tool wrappers (55 total)
+  …                       # + 50 more: @zuke/cli, @zuke/docs, @zuke/ai, and tool wrappers (54 total)
 tests/
   integration/            # in-process: real builds via the CLI main() + _harness.ts
   e2e/                    # subprocess: *_e2e.ts + fixtures/ (run by the `integration` target)

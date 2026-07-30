@@ -1,6 +1,6 @@
 # Releasing
 
-Zuke publishes 55 packages to [JSR](https://jsr.io/@zuke) from a single
+Zuke publishes 54 packages to [JSR](https://jsr.io/@zuke) from a single
 workspace — `@zuke/core`, the `@zuke/cli` command, a generic `@zuke/cmd`
 fallback, and 50+ typed tool wrappers and plugins (`@zuke/deno`, `@zuke/npm`,
 `@zuke/ai`, …). Releases are automated end to end; you only ever merge a pull
@@ -10,11 +10,10 @@ request.
 
 1. **Conventional commits drive versions.** Land work on `master` with
    Conventional Commits (`feat:`, `fix:`, `feat!:` / `BREAKING CHANGE:`).
-   Versions are per-package. `bump-minor-pre-major` is enabled, so a package
-   still in `0.x` (most tool wrappers) takes a **minor** bump on a breaking
-   change and stays in `0.x`. Packages that have reached 1.0 — `@zuke/core`,
-   plus `@zuke/ai`, `@zuke/console`, `@zuke/otel`, and others — follow full
-   semver: a breaking change bumps the **major** version.
+   Versions are per-package, and every package is `1.x` on full semver: a
+   breaking change bumps the **major** version. `bump-minor-pre-major` is
+   **off**, so a package that starts life at `0.x` graduates to `1.0.0` on its
+   first breaking change rather than absorbing it into a minor bump.
 
 2. **Zuke runs the whole release.** `.github/workflows/release.yml` is itself
    driven by Zuke: on every push to `master` it runs a single command,

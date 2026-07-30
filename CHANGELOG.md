@@ -4,6 +4,29 @@ Project-level highlights. Per-package release notes live in each package's own
 `CHANGELOG.md` and are generated automatically by release-please; this file
 captures the milestones worth calling out.
 
+## 2026-07-30 — every package 1.0.0 🎉
+
+All 55 packages are now `1.x`: `@zuke/core`, the `@zuke/cli` command, and all 50+
+tool wrappers and plugins. There is no pre-1.0 tier left — `bump-minor-pre-major`
+is off, so every package makes the same promise: a minor or patch release never
+breaks a public symbol, and a breaking change bumps the major version. Depend on
+`jsr:@zuke/<package>@^1` and take minors without reading the diff. See
+[Versioning & compatibility](docs/versioning.md).
+
+A wrapper's `1.x` promise covers its own typed surface, not the upstream CLI it
+drives: if a tool renames a flag, the wrapper keeps the old method working
+(deprecated) or bumps its major.
+
+**`@zuke/tsgo` is dropped** in the same change — 54 packages, not 55. TypeScript
+7.0 (2026-07-08) ships the native Go compiler as the `tsc` of the ordinary
+`typescript` package, so [`@zuke/tsc`](https://jsr.io/@zuke/tsc) already drives
+it and `TsgoSettings` was a duplicate of `TscSettings`. To drive the `tsgo`
+nightly instead, point the `tsc` wrapper's `toolPath` at
+`node_modules/.bin/tsgo` — the CLI surface is the same.
+
+`@zuke/tsgo@0.1.3` stays resolvable on JSR for anyone already pinned to it; no
+`1.0.0` was published and the package is archived there.
+
 ## 2026-06-22 — `@zuke/core` 1.0.0 🎉
 
 The first **stable** release of Zuke's core: a code-first, strongly-typed build

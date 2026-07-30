@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.0](https://github.com/zuke-build/zuke/compare/playwright-v0.2.0...playwright-v1.0.0) (2026-07-30)
+
+
+### Miscellaneous Chores
+
+* graduate `@zuke/playwright` to 1.0.0 — the package now follows full semver, so a breaking change bumps its major version
+
 ## [0.2.0](https://github.com/zuke-build/zuke/compare/playwright-v0.1.3...playwright-v0.2.0) (2026-07-27)
 
 

@@ -200,7 +200,13 @@ Deno.test("generateBuild emits a runnable class with ordered deps", () => {
     { name: "test", command: "jest", deps: ["build"] },
     { name: "build", command: "tsc", deps: [] },
   ]);
-  assertStringIncludes(out, `import { CmdTasks } from "jsr:@zuke/cmd";`);
+  // Both imports pin the caret major, like the `setup` scaffold — an imported
+  // build must not silently resolve a future @zuke major.
+  assertStringIncludes(
+    out,
+    `import { Build, run, target } from "jsr:@zuke/core@^1";`,
+  );
+  assertStringIncludes(out, `import { CmdTasks } from "jsr:@zuke/cmd@^1";`);
   assertStringIncludes(out, "class MyBuild extends Build");
   assertStringIncludes(out, "await run(MyBuild);");
   // A dependency must be declared before its dependent (topological order).

@@ -1,6 +1,6 @@
 {
   "name": "@zuke/eslint",
-  "version": "0.2.3",
+  "version": "1.0.0",
   "license": "MIT",
   "description": "Typed eslint task wrappers for Zuke builds — lint, fix, caching, and reporters via an injection-free settings-lambda API.",
   "exports": {
