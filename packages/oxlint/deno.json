@@ -1,6 +1,6 @@
 {
   "name": "@zuke/oxlint",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "license": "MIT",
   "description": "Typed oxlint task wrappers for Zuke builds — fast Rust-based linting via an injection-free settings-lambda API.",
   "exports": {

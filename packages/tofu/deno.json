@@ -1,6 +1,6 @@
 {
   "name": "@zuke/tofu",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "license": "MIT",
   "description": "Typed OpenTofu CLI task wrappers for Zuke builds — init, validate, plan, apply, destroy, fmt, and output via an injection-free settings-lambda API.",
   "exports": {

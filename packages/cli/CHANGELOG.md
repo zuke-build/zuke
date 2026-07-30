@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.1.1](https://github.com/zuke-build/zuke/compare/cli-v1.0.0...cli-v0.1.1) (2026-07-30)
+
+
+### Features
+
+* add `zuke graph` visualisation and repoRoot config ([#41](https://github.com/zuke-build/zuke/issues/41)) ([a40fbea](https://github.com/zuke-build/zuke/commit/a40fbea0a52b620f07211b15355c903cdb40159e))
+* add missing typed builders, DenoSettings.frozen, and --frozen scaffolding ([#268](https://github.com/zuke-build/zuke/issues/268)) ([8549b12](https://github.com/zuke-build/zuke/commit/8549b127216a37fd176cfc2e091d558de43c98a8))
+* add oxlint, eslint, cspell, jest, and vitest tool wrappers ([#26](https://github.com/zuke-build/zuke/issues/26)) ([69a8871](https://github.com/zuke-build/zuke/commit/69a88712439c7396e175c7fa6ca6636a5bed8f45))
+* **cli:** add a --dir flag to scaffold into a chosen directory ([#11](https://github.com/zuke-build/zuke/issues/11)) ([0524413](https://github.com/zuke-build/zuke/commit/05244136ff125f4304036b4397756a67104ef5bc))
+* **cli:** add zuke import to scaffold a build from package.json or a Makefile ([#159](https://github.com/zuke-build/zuke/issues/159)) ([5fa7605](https://github.com/zuke-build/zuke/commit/5fa7605004451822f6c2576981dd681d1c68d3d7))
+* **cli:** node-repo ergonomics — npm workspaces, setup collision guard, zuke doc ([#209](https://github.com/zuke-build/zuke/issues/209)) ([c0e3e38](https://github.com/zuke-build/zuke/commit/c0e3e382696add8747303f7b6f6b10318b0bdc3c))
+* **core:** add splitShellArgs, cap captured output, escalate kills, redact echoes ([#267](https://github.com/zuke-build/zuke/issues/267)) ([08f63fd](https://github.com/zuke-build/zuke/commit/08f63fd33fa2b1010e586637d66aaf8fe435a745))
+* **core:** document all public API symbols to raise JSR score ([#163](https://github.com/zuke-build/zuke/issues/163)) ([6e21b1b](https://github.com/zuke-build/zuke/commit/6e21b1bf312e39faac95473e34c87eeee7398eef))
+* **core:** make run() entry-aware so builds drop the import.meta.main guard ([#114](https://github.com/zuke-build/zuke/issues/114)) ([a9dac17](https://github.com/zuke-build/zuke/commit/a9dac1728ea1de5f6d5abfc8400e57b41bc1d9a7))
+
+
+### Bug Fixes
+
+* **cli:** raise the core floor to the version that has splitShellArgs ([#275](https://github.com/zuke-build/zuke/issues/275)) ([0c84ba3](https://github.com/zuke-build/zuke/commit/0c84ba380b82387b5611e9fccf27b61ee2ff8af5))
+* **release:** bump deno.json via package-relative extra-files (nothing was publishing) ([#13](https://github.com/zuke-build/zuke/issues/13)) ([bdc4ee6](https://github.com/zuke-build/zuke/commit/bdc4ee630ce08b0cbdf67228f3cdb06fc31e24e9))
+
+
+### Documentation
+
+* add a README to every package (forces 0.1.1) ([#17](https://github.com/zuke-build/zuke/issues/17)) ([6098b4f](https://github.com/zuke-build/zuke/commit/6098b4f63f93ce45155c5f25779aa293135de938))
+
 ## [1.0.0](https://github.com/zuke-build/zuke/compare/cli-v0.8.1...cli-v1.0.0) (2026-07-30)
 
 

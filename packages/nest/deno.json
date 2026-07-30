@@ -1,6 +1,6 @@
 {
   "name": "@zuke/nest",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "license": "MIT",
   "description": "Typed NestJS CLI (nest) task wrappers for Zuke builds — scaffold, generate, build, and start NestJS projects via an injection-free settings-lambda API.",
   "exports": {

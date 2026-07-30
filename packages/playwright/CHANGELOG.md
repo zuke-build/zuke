@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.1.0](https://github.com/zuke-build/zuke/compare/playwright-v1.0.0...playwright-v1.1.0) (2026-07-30)
+
+
+### Features
+
+* add missing typed builders, DenoSettings.frozen, and --frozen scaffolding ([#268](https://github.com/zuke-build/zuke/issues/268)) ([8549b12](https://github.com/zuke-build/zuke/commit/8549b127216a37fd176cfc2e091d558de43c98a8))
+* add playwright, terraform, and tofu tool wrapper packages ([#61](https://github.com/zuke-build/zuke/issues/61)) ([d3d4cc7](https://github.com/zuke-build/zuke/commit/d3d4cc78237cdeb360226bbcd3296d34e51fafed))
+
+
+### Bug Fixes
+
+* default JS-ecosystem wrappers to node_modules binary resolution ([#231](https://github.com/zuke-build/zuke/issues/231)) ([51d7206](https://github.com/zuke-build/zuke/commit/51d72060c8b8bb55d302483a0f68c5c5ab46acf3))
+* pin @zuke/core ^1.25.0 across wrappers so fromNodeModules resolves ([#213](https://github.com/zuke-build/zuke/issues/213)) ([ef9baa5](https://github.com/zuke-build/zuke/commit/ef9baa50e64fa7b2382520c970d255534dbb6daa))
+* satisfy deno doc --lint across all packages and gate it ([#230](https://github.com/zuke-build/zuke/issues/230)) ([28aa1aa](https://github.com/zuke-build/zuke/commit/28aa1aa9833a69ee2ef63c3f1566ce975867f010))
+
 ## [1.0.0](https://github.com/zuke-build/zuke/compare/playwright-v0.2.0...playwright-v1.0.0) (2026-07-30)
 
 

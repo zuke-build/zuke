@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.1.0](https://github.com/zuke-build/zuke/compare/docker-v1.0.0...docker-v1.1.0) (2026-07-30)
+
+
+### Features
+
+* add missing typed builders, DenoSettings.frozen, and --frozen scaffolding ([#268](https://github.com/zuke-build/zuke/issues/268)) ([8549b12](https://github.com/zuke-build/zuke/commit/8549b127216a37fd176cfc2e091d558de43c98a8))
+* add oxlint, eslint, cspell, jest, and vitest tool wrappers ([#26](https://github.com/zuke-build/zuke/issues/26)) ([69a8871](https://github.com/zuke-build/zuke/commit/69a88712439c7396e175c7fa6ca6636a5bed8f45))
+* **docker:** add @zuke/docker tool-wrapper package ([#21](https://github.com/zuke-build/zuke/issues/21)) ([96a46ec](https://github.com/zuke-build/zuke/commit/96a46ec38f55f85d6149f6e228fa853d736f0eb8))
+* document AbsolutePath support across the tool-wrapper packages ([#37](https://github.com/zuke-build/zuke/issues/37)) ([94c8ccb](https://github.com/zuke-build/zuke/commit/94c8ccb22dde1ccddc7264bff7bdb3b4a2cb5d5e))
+
+
+### Bug Fixes
+
+* pin @zuke/core ^1.25.0 across wrappers so fromNodeModules resolves ([#213](https://github.com/zuke-build/zuke/issues/213)) ([ef9baa5](https://github.com/zuke-build/zuke/commit/ef9baa50e64fa7b2382520c970d255534dbb6daa))
+* satisfy deno doc --lint across all packages and gate it ([#230](https://github.com/zuke-build/zuke/issues/230)) ([28aa1aa](https://github.com/zuke-build/zuke/commit/28aa1aa9833a69ee2ef63c3f1566ce975867f010))
+
 ## [1.0.0](https://github.com/zuke-build/zuke/compare/docker-v0.4.0...docker-v1.0.0) (2026-07-30)
 
 

@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.1.0](https://github.com/zuke-build/zuke/compare/security-v1.0.0...security-v1.1.0) (2026-07-30)
+
+
+### Features
+
+* document AbsolutePath support across the tool-wrapper packages ([#37](https://github.com/zuke-build/zuke/issues/37)) ([94c8ccb](https://github.com/zuke-build/zuke/commit/94c8ccb22dde1ccddc7264bff7bdb3b4a2cb5d5e))
+* **security:** scope the pull-request secret scan and keep a readable report ([#281](https://github.com/zuke-build/zuke/issues/281)) ([6af153e](https://github.com/zuke-build/zuke/commit/6af153e607f9bff1dbd66b0722d263d9c3854f05))
+* **security:** support a zizmor config file and cut the first release ([#30](https://github.com/zuke-build/zuke/issues/30)) ([1559e1e](https://github.com/zuke-build/zuke/commit/1559e1e2fdc3660e9d5a3c8d3b6905d34b160107))
+
+
+### Bug Fixes
+
+* pin @zuke/core ^1.25.0 across wrappers so fromNodeModules resolves ([#213](https://github.com/zuke-build/zuke/issues/213)) ([ef9baa5](https://github.com/zuke-build/zuke/commit/ef9baa50e64fa7b2382520c970d255534dbb6daa))
+* satisfy deno doc --lint across all packages and gate it ([#230](https://github.com/zuke-build/zuke/issues/230)) ([28aa1aa](https://github.com/zuke-build/zuke/commit/28aa1aa9833a69ee2ef63c3f1566ce975867f010))
+
 ## [1.0.0](https://github.com/zuke-build/zuke/compare/security-v0.3.0...security-v1.0.0) (2026-07-30)
 
 

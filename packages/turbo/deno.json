@@ -1,6 +1,6 @@
 {
   "name": "@zuke/turbo",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "license": "MIT",
   "description": "Typed Turborepo CLI task wrappers for Zuke builds — run and prune via an injection-free settings-lambda API.",
   "exports": {

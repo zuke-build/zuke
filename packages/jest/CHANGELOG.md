@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.1.0](https://github.com/zuke-build/zuke/compare/jest-v1.0.0...jest-v1.1.0) (2026-07-30)
+
+
+### Features
+
+* add oxlint, eslint, cspell, jest, and vitest tool wrappers ([#26](https://github.com/zuke-build/zuke/issues/26)) ([69a8871](https://github.com/zuke-build/zuke/commit/69a88712439c7396e175c7fa6ca6636a5bed8f45))
+* document AbsolutePath support across the tool-wrapper packages ([#37](https://github.com/zuke-build/zuke/issues/37)) ([94c8ccb](https://github.com/zuke-build/zuke/commit/94c8ccb22dde1ccddc7264bff7bdb3b4a2cb5d5e))
+
+
+### Bug Fixes
+
+* align kubectl/jest/git wrapper argv with the real CLIs ([#229](https://github.com/zuke-build/zuke/issues/229)) ([0a78d84](https://github.com/zuke-build/zuke/commit/0a78d8437651611de6c6d3b76676af9907536c6b))
+* default JS-ecosystem wrappers to node_modules binary resolution ([#231](https://github.com/zuke-build/zuke/issues/231)) ([51d7206](https://github.com/zuke-build/zuke/commit/51d72060c8b8bb55d302483a0f68c5c5ab46acf3))
+* pin @zuke/core ^1.25.0 across wrappers so fromNodeModules resolves ([#213](https://github.com/zuke-build/zuke/issues/213)) ([ef9baa5](https://github.com/zuke-build/zuke/commit/ef9baa50e64fa7b2382520c970d255534dbb6daa))
+* satisfy deno doc --lint across all packages and gate it ([#230](https://github.com/zuke-build/zuke/issues/230)) ([28aa1aa](https://github.com/zuke-build/zuke/commit/28aa1aa9833a69ee2ef63c3f1566ce975867f010))
+
 ## [1.0.0](https://github.com/zuke-build/zuke/compare/jest-v0.2.3...jest-v1.0.0) (2026-07-30)
 
 
