@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.0](https://github.com/zuke-build/zuke/compare/gh-v0.4.1...gh-v1.0.0) (2026-07-30)
+
+
+### Miscellaneous Chores
+
+* graduate `@zuke/gh` to 1.0.0 — the package now follows full semver, so a breaking change bumps its major version
+
 ## [0.4.1](https://github.com/zuke-build/zuke/compare/gh-v0.4.0...gh-v0.4.1) (2026-07-23)
 
 

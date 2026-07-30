@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.0](https://github.com/zuke-build/zuke/compare/husky-v0.2.3...husky-v1.0.0) (2026-07-30)
+
+
+### Miscellaneous Chores
+
+* graduate `@zuke/husky` to 1.0.0 — the package now follows full semver, so a breaking change bumps its major version
+
 ## [0.2.3](https://github.com/zuke-build/zuke/compare/husky-v0.2.2...husky-v0.2.3) (2026-07-20)
 
 

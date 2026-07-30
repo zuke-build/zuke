@@ -32,7 +32,6 @@
     "packages/turbo",
     "packages/nx",
     "packages/tsx",
-    "packages/tsgo",
     "packages/tsc",
     "packages/tsc-alias",
     "packages/tsdown",

@@ -33,7 +33,6 @@ const PACKAGES = [
   "packages/nx",
   "packages/jsr",
   "packages/tsx",
-  "packages/tsgo",
   "packages/tsc",
   "packages/tsc-alias",
   "packages/tsdown",
@@ -89,6 +88,46 @@ Deno.test("manifest versions match each package deno.json", async () => {
       pkg.version,
       `manifest ${path} must match ${path}/deno.json version`,
     );
+  }
+});
+
+Deno.test("extra-file version markers match the manifest version", async () => {
+  // A package may list files beyond its deno.json — @zuke/cli embeds its
+  // version in src/version.ts so `zuke --version` can print it. release-please
+  // rewrites the line tagged `x-release-please-version`, so a version set by
+  // hand (a graduation, a bootstrap) has to update it too or the CLI reports a
+  // version it no longer has.
+  interface ReleaseConfig {
+    packages: Record<string, { "extra-files"?: unknown }>;
+  }
+  const config: ReleaseConfig = JSON.parse(await Deno.readTextFile(CONFIG));
+  const manifest = await readJson(".release-please-manifest.json");
+  for (const [path, entry] of Object.entries(config.packages)) {
+    const extras = entry["extra-files"];
+    if (!Array.isArray(extras)) continue;
+    for (const extra of extras) {
+      // Object entries are the json updaters, which target deno.json's
+      // $.version; only the plain string paths carry an inline marker.
+      if (typeof extra !== "string") continue;
+      const text = await Deno.readTextFile(`${path}/${extra}`);
+      const marked = text.split("\n").filter((line) =>
+        line.includes("x-release-please-version")
+      );
+      assertEquals(
+        marked.length > 0,
+        true,
+        `${path}/${extra} is a release-please extra-file but marks no line ` +
+          `with x-release-please-version`,
+      );
+      for (const line of marked) {
+        assertEquals(
+          line.includes(`"${manifest[path]}"`),
+          true,
+          `${path}/${extra} must carry version ${manifest[path]}; got: ` +
+            line.trim(),
+        );
+      }
+    }
   }
 });
 

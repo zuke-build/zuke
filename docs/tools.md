@@ -81,7 +81,6 @@ actually spawn (the resolved shim or the bare fallback) for diagnostics.
 | `@zuke/nx`             | `run`, `runMany`, `affected`                                                                                                          |
 | `@zuke/jsr`            | `publish`, `add`, `remove`                                                                                                            |
 | `@zuke/tsx`            | `tsx`, `watch`                                                                                                                        |
-| `@zuke/tsgo`           | `tsgo`                                                                                                                                |
 | `@zuke/tsc`            | `tsc`, `build`                                                                                                                        |
 | `@zuke/tsc-alias`      | `run`                                                                                                                                 |
 | `@zuke/tsdown`         | `build`, `migrate`                                                                                                                    |

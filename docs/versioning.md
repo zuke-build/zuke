@@ -1,25 +1,30 @@
 # Versioning & compatibility
 
-Zuke publishes 55 independent JSR packages from one workspace. They don't all
+Zuke publishes 54 independent JSR packages from one workspace. They don't all
 move at the same speed, and knowing which promise each package makes — and how
 they interlock — is what keeps an upgrade from surprising you at runtime
 instead of at `deno check` time.
 
-## Two maturity tiers
+## One tier: every package follows full semver
 
-- **`@zuke/core` (and a handful of others that have reached 1.0 — `@zuke/ai`,
-  `@zuke/console`, `@zuke/otel`, …) follow full semver.** A `1.x` release never
-  breaks a public symbol; a breaking change bumps the major version. Depend on
-  `jsr:@zuke/core@^1` and a minor/patch upgrade is safe to take without reading
-  the diff.
-- **The 0.x tool wrappers (`@zuke/deno`, `@zuke/docker`, `@zuke/npm`, …) can
-  still change within `0.x`.** Per semver convention, a `0.x` minor bump may
-  carry a breaking change — `release-please`'s `bump-minor-pre-major` setting
-  means a wrapper's breaking change bumps its minor, not its major, until it
-  graduates to `1.0`. Read a wrapper's `CHANGELOG.md` before taking a minor
-  upgrade, the same way you would for any other pre-1.0 dependency.
+**All 54 packages are `1.x`.** `@zuke/core`, the `@zuke/cli` command, and every
+tool wrapper make the same promise: a `1.x` release never breaks a public
+symbol, so a minor or patch upgrade is safe to take without reading the diff,
+and a breaking change bumps the **major** version. Depend on
+`jsr:@zuke/core@^1` (and `jsr:@zuke/deno@^1`, …) and let minors resolve.
 
-Check a specific package's current maturity from its badge on the
+There is no longer a pre-1.0 tier: `release-please`'s `bump-minor-pre-major` is
+off, so nothing silently ships a breaking change under a minor bump. Read a
+package's `CHANGELOG.md` when its major moves — that is the only release that
+can require a code change on your side.
+
+What a wrapper's `1.x` promise does **not** cover is the upstream CLI it drives:
+its flags track a tool that can rename or drop one. When upstream changes, the
+wrapper keeps the old method working (deprecated) or bumps its major — the
+promise is about the wrapper's own typed surface, not about upstream's
+stability.
+
+Check a specific package's current version from its badge on the
 [Packages table](../README.md#packages) or its JSR page — score and version
 are both visible there.
 
@@ -122,8 +127,8 @@ stays runnable offline.
 ## Pinning guidance
 
 - Depend on the caret range, not an exact version: `jsr:@zuke/core@^1` (or a
-  wrapper's own `jsr:@zuke/<tool>@^0.x`) so patch and, for `1.x`, non-breaking
-  minor releases resolve automatically.
+  wrapper's own `jsr:@zuke/<tool>@^1`) so patch and non-breaking minor releases
+  resolve automatically.
 - **Always commit `deno.lock`.** It is what pins the exact resolved version of
   every package (core included) that your build actually runs against — the
   caret range in `deno.json` only bounds what's *allowed*, the lockfile fixes

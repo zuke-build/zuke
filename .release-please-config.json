@@ -3,7 +3,7 @@
   "release-type": "simple",
   "tag-separator": "-",
   "separate-pull-requests": false,
-  "bump-minor-pre-major": true,
+  "bump-minor-pre-major": false,
   "packages": {
     "packages/core": {
       "component": "core",
@@ -349,17 +349,6 @@
     },
     "packages/tsx": {
       "component": "tsx",
-      "changelog-path": "CHANGELOG.md",
-      "extra-files": [
-        {
-          "type": "json",
-          "path": "deno.json",
-          "jsonpath": "$.version"
-        }
-      ]
-    },
-    "packages/tsgo": {
-      "component": "tsgo",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
         {

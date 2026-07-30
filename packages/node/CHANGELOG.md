@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.0](https://github.com/zuke-build/zuke/compare/node-v0.2.2...node-v1.0.0) (2026-07-30)
+
+
+### Miscellaneous Chores
+
+* graduate `@zuke/node` to 1.0.0 — the package now follows full semver, so a breaking change bumps its major version
+
 ## [0.2.2](https://github.com/zuke-build/zuke/compare/node-v0.2.1...node-v0.2.2) (2026-07-20)
 
 

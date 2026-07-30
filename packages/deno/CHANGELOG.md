@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.0](https://github.com/zuke-build/zuke/compare/deno-v0.8.0...deno-v1.0.0) (2026-07-30)
+
+
+### Miscellaneous Chores
+
+* graduate `@zuke/deno` to 1.0.0 — the package now follows full semver, so a breaking change bumps its major version
+
 ## [0.8.0](https://github.com/zuke-build/zuke/compare/deno-v0.7.0...deno-v0.8.0) (2026-07-28)
 
 

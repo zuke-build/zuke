@@ -39,7 +39,6 @@ export const PACKAGES = [
   "turbo",
   "nx",
   "tsx",
-  "tsgo",
   "tsc",
   "tsc-alias",
   "tsdown",

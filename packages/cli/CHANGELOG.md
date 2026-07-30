@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.0](https://github.com/zuke-build/zuke/compare/cli-v0.8.1...cli-v1.0.0) (2026-07-30)
+
+
+### Miscellaneous Chores
+
+* graduate `@zuke/cli` to 1.0.0 — the package now follows full semver, so a breaking change bumps its major version
+
 ## [0.8.1](https://github.com/zuke-build/zuke/compare/cli-v0.8.0...cli-v0.8.1) (2026-07-27)
 
 

@@ -1773,11 +1773,6 @@
           "jsr:@zuke/core@^1.25.0"
         ]
       },
-      "packages/tsgo": {
-        "dependencies": [
-          "jsr:@zuke/core@^1.25.0"
-        ]
-      },
       "packages/tsup": {
         "dependencies": [
           "jsr:@zuke/core@^1.25.0"

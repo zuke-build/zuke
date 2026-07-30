@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.0](https://github.com/zuke-build/zuke/compare/pnpm-v0.1.2...pnpm-v1.0.0) (2026-07-30)
+
+
+### Miscellaneous Chores
+
+* graduate `@zuke/pnpm` to 1.0.0 — the package now follows full semver, so a breaking change bumps its major version
+
 ## [0.1.2](https://github.com/zuke-build/zuke/compare/pnpm-v0.1.1...pnpm-v0.1.2) (2026-07-20)
 
 
