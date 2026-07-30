@@ -227,8 +227,12 @@ const REAL_DEPS: WebsiteSyncDeps = {
   mergePr: async (repo, branch, dir, token) => {
     // Selected by head branch rather than PR number, so the same call merges a
     // PR this run opened and one an earlier run left open. Squash keeps the
-    // website history one commit per release; `--delete-branch` is explicit
-    // because the website repo does not delete merged branches on its own.
+    // website history one commit per release.
+    //
+    // No `--delete-branch`: `gh` implements that by deleting the branch itself
+    // once the merge returns, which never happens under `--auto` — it hands the
+    // merge to GitHub and exits. The website repo has `delete_branch_on_merge`
+    // instead, which is what actually reaps `zuke-sync/*`.
     //
     // `--auto` rather than a straight merge: the website repo's ruleset
     // requires its `Build the site` check, which builds the very artifacts this
@@ -242,7 +246,6 @@ const REAL_DEPS: WebsiteSyncDeps = {
         .repo(repo)
         .flag("auto")
         .flag("squash")
-        .flag("delete-branch")
         .cwd(dir)
         .env({ GH_TOKEN: token })
         .noThrow()
