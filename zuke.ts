@@ -647,7 +647,13 @@ class ZukeBuild extends Build {
       // `3ud7i3zbigfl0` is a false positive: a static, author-written workflow
       // comment documenting the website-sync job — it does not execute and
       // feeds no runtime model, so there is no prompt-injection surface.
-      // cspell:ignore myee fmcx ownw eav zbigfl
+      // `pm3oldslqkyj` is a false positive on its own terms: it reads the
+      // `jsr:@zuke/core@^1` pin in the `import` scaffold as able to "pull in
+      // future major releases", but `^1` is `>=1.0.0 <2.0.0` — a 2.0.0 can
+      // never satisfy it. The line it flags replaced an *unpinned* specifier,
+      // which did resolve any future major, so the change narrows exposure
+      // rather than widening it.
+      // cspell:ignore myee fmcx ownw eav zbigfl oldslqkyj
       .suppress(
         suppressions((s) =>
           s.add(
@@ -659,6 +665,7 @@ class ZukeBuild extends Build {
             "1ownw8s",
             "1eav335",
             "3ud7i3zbigfl0",
+            "pm3oldslqkyj",
           )
         ),
       )
