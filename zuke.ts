@@ -671,7 +671,16 @@ class ZukeBuild extends Build {
       // already bypass, not a privilege boundary. A real gate would be branch
       // protection plus a required check on the website repo, which is a
       // change over there, not here.
+      // `22uhzbksic6rf` is that same privilege finding re-raised at high
+      // severity after the merge-failure fix; the token-scope answer above is
+      // unchanged. `3lk27fag8hqxu` claims release.yml "now grants" the sync job
+      // the ability to finalize changes — false about the diff: the only
+      // release.yml changes are comments and a step name, with `permissions:`
+      // and every `permission-*` input byte-identical to before. Removing a
+      // human merge on generated docs is a deliberate owner decision, recorded
+      // in the workflow next to the job.
       // cspell:ignore myee fmcx ownw eav zbigfl oldslqkyj vnfjvb bja rj xp dtit
+      // cspell:ignore uhzbksic lk fag hqxu
       .suppress(
         suppressions((s) =>
           s.add(
@@ -687,6 +696,8 @@ class ZukeBuild extends Build {
             "io22vnfjvb1t",
             "3bja5rj1xp93t",
             "27b6343dtit6d",
+            "22uhzbksic6rf",
+            "3lk27fag8hqxu",
           )
         ),
       )

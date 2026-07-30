@@ -78,6 +78,15 @@ jobs:
   # repo. `contents: read` here is enough — the cross-repo write rides on the app
   # token. The target is idempotent (no diff → no PR), so running it every
   # release is safe.
+  #
+  # The merge is deliberately unreviewed. The diff is generated output —
+  # llms.txt, llms-full.txt, api.json — built from artifacts this repo's gate
+  # already verified, and the token has held `contents: write` on an unprotected
+  # default branch since the sync existed, so a human merge was a checkpoint on
+  # a path the token could bypass rather than a privilege boundary. To make it a
+  # real gate, add branch protection plus a required check on the website repo
+  # and switch the merge to `--auto`; do not add an approval step here, which
+  # would only gate the path that was never the risk.
   sync-website:
     name: Sync website docs + API reference
     needs: publish
