@@ -12,7 +12,8 @@ import { GitTasks } from "@zuke/git";
 import { GhTasks } from "@zuke/gh";
 import { collectPackageDocs, docsOptions } from "./docs.ts";
 import { writeApiJson } from "./api_reference.ts";
-import { localVersion } from "./packages.ts";
+import { localVersion, PACKAGES } from "./packages.ts";
+import { renderToolsModule } from "./website_tools.ts";
 
 /** The website repo the sync targets, absent an override. */
 export const DEFAULT_WEBSITE_REPO = "zuke-build/zuke-build.github.io";
@@ -170,6 +171,13 @@ const REAL_DEPS: WebsiteSyncDeps = {
     await FileTasks.copy("llms.txt", `${dir}/public/llms.txt`);
     await FileTasks.copy("llms-full.txt", `${dir}/public/llms-full.txt`);
     await FileTasks.copy("dist/api.json", `${dir}/src/data/api.json`);
+    // The landing page's package grid. Generated from this repo's catalogue so
+    // dropping a package updates the site in the same release, rather than the
+    // website keeping its own list that quietly advertises a dead package.
+    await FileTasks.writeText(
+      `${dir}/src/data/tools.ts`,
+      renderToolsModule(PACKAGES),
+    );
   },
   stageAll: async (dir) => {
     await GitTasks.add((s) => s.dir(dir).all());

@@ -375,14 +375,18 @@ plugins/zuke/             # Claude Code plugin wrapping the skills
   version is bumped. The repo squash-merges, so the squash body comes from the
   PR description/commits: put illustrative code in the PR discussion, and keep
   commit bodies to prose. See [`RELEASING.md`](RELEASING.md).
-- **A new package must be added everywhere.** Membership is declared in six
+- **A new package must be added everywhere.** Membership is declared in seven
   places that must stay in lock-step: the `deno.json` workspace,
   `.release-please-config.json`, `.release-please-manifest.json`, the `PACKAGES`
   array in `zuke.ts` (the JSR publish loop), the package table in `README.md`,
-  and the list in `tests/release_config_test.ts`. `tests/release_config_test.ts`
-  enforces that all six agree — run it after adding a package. Omitting
-  `zuke.ts` means the package is released but never published; omitting the
-  `README.md` table means it is invisible to anyone browsing the repo.
+  the list in `tests/release_config_test.ts`, and the landing-page catalogue in
+  `build/website_tools.ts` (`TOOL_GROUPS` for a CLI wrapper, `CORE_PACKAGES` for
+  an engine or plugin package). `tests/release_config_test.ts` and
+  `tests/build_tools_test.ts` enforce that all seven agree — run them after
+  adding a package. Omitting `zuke.ts` means the package is released but never
+  published; omitting the `README.md` table means it is invisible to anyone
+  browsing the repo; omitting `build/website_tools.ts` fails the gate, because
+  the website's package grid is generated from it by `syncWebsite`.
 - **Update docs with code.** If behaviour changes, update `README.md`, JSDoc,
   and the spec/acceptance criteria in the same PR.
 - **Always read the reviewer comments on every PR.** This repo runs AI reviewers
