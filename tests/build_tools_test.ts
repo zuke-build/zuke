@@ -12,6 +12,7 @@ import { Build } from "@zuke/core";
 import {
   assertEquals,
   assertRejects,
+  assertStringIncludes,
   assertThrows,
 } from "../packages/core/tests/_assert.ts";
 import {
@@ -41,6 +42,11 @@ import {
   syncBranchInfo,
   type WebsiteSyncDeps,
 } from "../build/website_sync.ts";
+import {
+  catalogueDrift,
+  curatedPackages,
+  renderToolsModule,
+} from "../build/website_tools.ts";
 import {
   cliReference,
   crossPackageTypesOf,
@@ -765,6 +771,56 @@ Deno.test("runWebsiteSync: a failed merge fails the job and still cleans up", as
     // The `finally` still runs on the throw — no leaked temp clone.
     assertEquals(calls.removeDir, ["/tmp/fake-sync-dir"]);
   });
+});
+
+// ---------------------------------------------------------------------------
+// build/website_tools.ts
+// ---------------------------------------------------------------------------
+
+Deno.test("the landing-page catalogue covers exactly the published packages", () => {
+  // The guard that makes the website self-updating worth anything: add a
+  // package without landing-page copy, or drop one and leave its entry, and the
+  // gate fails here rather than the site quietly advertising the wrong set.
+  assertEquals(catalogueDrift(PACKAGES), { missing: [], unknown: [] });
+});
+
+Deno.test("catalogueDrift names a package with no entry and an entry with no package", () => {
+  const drift = catalogueDrift(["core", "brand-new-tool"]);
+  assertEquals(drift.missing, ["@zuke/brand-new-tool"]);
+  // Everything curated beyond `core` is now unknown — spot-check one.
+  assertEquals(drift.unknown.includes("@zuke/deno"), true);
+  assertEquals(drift.unknown.includes("@zuke/core"), false);
+});
+
+Deno.test("renderToolsModule refuses to render a stale catalogue", () => {
+  assertThrows(
+    () => renderToolsModule([...PACKAGES, "brand-new-tool"]),
+    Error,
+    "no landing-page entry for @zuke/brand-new-tool",
+  );
+  assertThrows(
+    () => renderToolsModule(PACKAGES.filter((pkg) => pkg !== "deno")),
+    Error,
+    "packages that no longer exist: @zuke/deno",
+  );
+});
+
+Deno.test("renderToolsModule emits the exports the landing page imports", () => {
+  const module = renderToolsModule(PACKAGES);
+  // index.astro imports these three by name; renaming one breaks the site.
+  assertStringIncludes(module, "export const toolGroups: ToolGroup[] = [");
+  assertStringIncludes(module, "export const corePackages = [");
+  assertStringIncludes(module, "export const packageCount = new Set([");
+  assertStringIncludes(module, "do not edit by hand");
+  // A dropped package must not survive anywhere in the generated copy.
+  assertEquals(module.includes("@zuke/tsgo"), false);
+  assertEquals(curatedPackages().has("@zuke/deno"), true);
+});
+
+Deno.test("renderToolsModule output is deterministic", () => {
+  // The sync diffs this file against the website's copy to decide whether a PR
+  // is needed, so unstable output would open an empty PR every release.
+  assertEquals(renderToolsModule(PACKAGES), renderToolsModule(PACKAGES));
 });
 
 // ---------------------------------------------------------------------------

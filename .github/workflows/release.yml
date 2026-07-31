@@ -70,7 +70,8 @@ jobs:
       - name: Publish new versions to JSR with Zuke
         run: ./zuke publishJsr
 
-  # Push refreshed docs (llms.txt/llms-full.txt) and api.json to the website by
+  # Push refreshed docs (llms.txt/llms-full.txt), api.json, and the landing
+  # page's generated package grid (src/data/tools.ts) to the website by
   # opening a PR on the separate `zuke-build.github.io` repo — and merging it, so
   # a release needs no manual step there. The default GITHUB_TOKEN cannot push
   # cross-repo, so we mint a short-lived installation token from the "Zuke Build"
