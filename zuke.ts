@@ -1233,8 +1233,8 @@ class ZukeBuild extends Build {
     // regenerates it from the stale constant, and the bump is reverted. That has
     // already happened once here — the constant had to be hand-updated to match
     // what Dependabot set.
-    hardenRunner: actionPin("step-security/harden-runner"),
-    checkout: actionPin("actions/checkout"),
+    hardenRunner: actionPin("step-security/harden-runner").ref,
+    checkout: actionPin("actions/checkout").ref,
   });
 
   release = target()
