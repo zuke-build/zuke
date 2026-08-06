@@ -357,3 +357,30 @@ Deno.test("bitbucket: target and timeoutMinutes overrides apply", () => {
   assertStringIncludes(yaml, "- ./zuke audit");
   assertStringIncludes(yaml, "max-time: 30");
 });
+
+Deno.test("fetchBase: false drops the fetch step and the FETCH_HEAD override", () => {
+  class B extends Build {
+    key = parameter("OpenAI key").secret().env("OPENAI_API_KEY");
+    rev = securityReviewer((r) => r.provider("openai").apiKey(this.key));
+    review = target().validateBefore(this.rev).executes(() => {});
+    wf = aiReviewWorkflow({ reviewers: [this.rev], fetchBase: false });
+  }
+  const b = new B();
+  discoverParameters(b);
+  const yaml = b.wf.render();
+
+  // The build's own target fetches the base, so the workflow must neither
+  // duplicate the fetch nor override the base the target set up.
+  assertEquals(yaml.includes("git fetch"), false);
+  assertEquals(yaml.includes("ZUKE_REVIEW_BASE"), false);
+  // Everything else is unchanged: hardening, checkout, and the review run.
+  assertStringIncludes(yaml, "harden-runner@");
+  assertStringIncludes(yaml, "actions/checkout@");
+  assertStringIncludes(yaml, "run: ./zuke review");
+});
+
+Deno.test("fetchBase defaults to true, since a PR checkout has no base", () => {
+  const yaml = dualBuild().wf.render();
+  assertStringIncludes(yaml, "git fetch --no-tags --depth=1 origin master");
+  assertStringIncludes(yaml, "ZUKE_REVIEW_BASE: FETCH_HEAD");
+});

@@ -592,6 +592,15 @@ interface AiReviewWorkflowSpec
   baseBranch?: string
     The base branch the diff is taken against (used by the GitHub workflow's
     fetch step). Defaults to `"master"`.
+  fetchBase?: boolean
+    Emit the `git fetch` step that makes the base branch available, and point
+    the reviewers at what it fetched. Defaults to `true`, because a pull-request
+    checkout is shallow and has no base to diff against.
+
+    Set it to `false` when the build's review target fetches its own base — then
+    the workflow drops the step, and the reviewers use their own configured base
+    rather than the fetched `FETCH_HEAD`. Preferable where it applies: the same
+    `zuke review` then works locally, where no workflow step exists to run.
   path?: string
     Output path. Defaults to the host's conventional location.
   name?: string

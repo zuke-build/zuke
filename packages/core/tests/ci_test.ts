@@ -686,3 +686,143 @@ Deno.test("gitlab and bitbucket ignore schedules (configured in the provider UI)
   assertEquals(generateCi({ triggers }, "gitlab").includes("cron"), false);
   assertEquals(generateCi({ triggers }, "bitbucket").includes("cron"), false);
 });
+
+Deno.test("github: harden and checkout are emitted before a job's own steps", () => {
+  const yaml = generateCi({
+    harden: {
+      action: "step-security/harden-runner@abc123",
+      egress: "block",
+      allowedEndpoints: ["jsr.io:443", "deno.land:443"],
+    },
+    checkout: { action: "actions/checkout@def456" },
+    jobs: [{ id: "gate", steps: [{ name: "Gate", run: "./zuke ci" }] }],
+  }, "github");
+
+  // The order is the whole point: hardening constrains everything after it, so
+  // it cannot come after the checkout that fetches the code it constrains.
+  const hardenAt = yaml.indexOf("harden-runner@abc123");
+  const checkoutAt = yaml.indexOf("checkout@def456");
+  const buildAt = yaml.indexOf("./zuke ci");
+  assertEquals(hardenAt < checkoutAt && checkoutAt < buildAt, true);
+  assertStringIncludes(yaml, "egress-policy: block");
+  // The allowlist stays one host per line, so it remains reviewable.
+  assertStringIncludes(yaml, "jsr.io:443\n");
+  assertStringIncludes(yaml, 'persist-credentials: "false"');
+});
+
+Deno.test("github: an audit policy is the default and emits no allowlist", () => {
+  const yaml = generateCi({
+    harden: { action: "step-security/harden-runner@abc123" },
+    jobs: [{ steps: [{ run: "x" }] }],
+  }, "github");
+  assertStringIncludes(yaml, "egress-policy: audit");
+  assertEquals(yaml.includes("allowed-endpoints"), false);
+});
+
+Deno.test("github: a job overrides or opts out of the pipeline prelude", () => {
+  const yaml = generateCi({
+    harden: { action: "harden@pipeline" },
+    checkout: { action: "checkout@pipeline" },
+    jobs: [
+      // Opts out of hardening entirely, and takes a deeper checkout.
+      {
+        id: "bare",
+        harden: false,
+        checkout: { action: "checkout@job", fetchDepth: 0 },
+        steps: [{ run: "a" }],
+      },
+      // Inherits both from the pipeline.
+      { id: "inherits", steps: [{ run: "b" }] },
+    ],
+  }, "github");
+
+  const bare = yaml.slice(yaml.indexOf("bare:"), yaml.indexOf("inherits:"));
+  assertEquals(bare.includes("harden@"), false);
+  assertStringIncludes(bare, "checkout@job");
+  assertStringIncludes(bare, 'fetch-depth: "0"');
+
+  const inherits = yaml.slice(yaml.indexOf("inherits:"));
+  assertStringIncludes(inherits, "harden@pipeline");
+  assertStringIncludes(inherits, "checkout@pipeline");
+});
+
+Deno.test("github: per-job permissions isolate what each token can do", () => {
+  const yaml = generateCi({
+    permissions: { contents: "read" },
+    jobs: [
+      {
+        id: "release",
+        permissions: { contents: "write", "pull-requests": "write" },
+        steps: [{ run: "a" }],
+      },
+      {
+        id: "publish",
+        permissions: { "id-token": "write" },
+        steps: [{ run: "b" }],
+      },
+    ],
+  }, "github");
+  const release = yaml.slice(
+    yaml.indexOf("release:"),
+    yaml.indexOf("publish:"),
+  );
+  assertStringIncludes(release, "pull-requests: write");
+  assertEquals(release.includes("id-token"), false);
+  assertStringIncludes(yaml.slice(yaml.indexOf("publish:")), "id-token: write");
+});
+
+Deno.test("github: a step carries id, if, shell, and continue-on-error", () => {
+  const yaml = generateCi({
+    jobs: [{
+      steps: [
+        { name: "Mint", id: "token", run: "./zuke mint" },
+        {
+          name: "Windows only",
+          if: "runner.os == 'Windows'",
+          shell: "pwsh",
+          run: "./zuke.ps1 test",
+        },
+        {
+          name: "Always",
+          if: "always()",
+          run: "./zuke report",
+          continueOnError: true,
+        },
+      ],
+    }],
+  }, "github");
+  assertStringIncludes(yaml, "id: token");
+  assertStringIncludes(yaml, `if: "runner.os == 'Windows'"`);
+  assertStringIncludes(yaml, "shell: pwsh");
+  assertStringIncludes(yaml, `if: "always()"`);
+  assertStringIncludes(yaml, "continue-on-error: true");
+});
+
+Deno.test("github: failFast is emitted only when declared", () => {
+  const kept = generateCi({
+    jobs: [{
+      matrix: { os: ["macos-latest"] },
+      failFast: false,
+      steps: [{ run: "x" }],
+    }],
+  }, "github");
+  assertStringIncludes(kept, "fail-fast: false");
+  const untouched = generateCi({
+    jobs: [{ matrix: { os: ["macos-latest"] }, steps: [{ run: "x" }] }],
+  }, "github");
+  assertEquals(untouched.includes("fail-fast"), false);
+});
+
+Deno.test("github: pull-request types and branch protection triggers render", () => {
+  const yaml = generateCi({
+    triggers: {
+      pullRequest: [],
+      pullRequestTypes: ["opened", "synchronize", "reopened", "edited"],
+      branchProtectionRule: true,
+    },
+    jobs: [{ steps: [{ run: "x" }] }],
+  }, "github");
+  assertStringIncludes(yaml, "types:");
+  assertStringIncludes(yaml, "- edited");
+  assertStringIncludes(yaml, "branch_protection_rule: {}");
+});

@@ -49,6 +49,23 @@ export type CiProvider = "github" | "gitlab" | "azure" | "bitbucket";
 export interface CiStep {
   /** Human-readable step name. */
   name?: string;
+  /**
+   * A stable identifier for the step, so later steps can read its outputs
+   * (`${{ steps.<id>.outputs.x }}`). GitHub only.
+   */
+  id?: string;
+  /**
+   * A condition gating this step — a raw provider expression, e.g.
+   * `runner.os == 'Windows'` or `always()`. GitHub only.
+   */
+  if?: string;
+  /**
+   * The shell to run `run` with (`bash`, `pwsh`, `sh`, …). Omit for the runner's
+   * default, which differs per OS. GitHub only.
+   */
+  shell?: string;
+  /** Continue the job even when this step fails (`continue-on-error`). GitHub only. */
+  continueOnError?: boolean;
   /** A shell command to run. Portable across all providers. */
   run?: string;
   /**
@@ -64,6 +81,63 @@ export interface CiStep {
    * variables from project settings, not the job YAML).
    */
   env?: Record<string, string>;
+}
+
+/**
+ * Runner hardening, emitted as a `step-security/harden-runner` step before
+ * anything else in the job.
+ *
+ * This cannot move into the build: the point of the step is to install an egress
+ * control *before* build code runs, so a build that set it up itself would be
+ * the very code it is meant to contain. Generating it is the next best thing —
+ * the policy is declared in one place, in code, next to the job it protects.
+ *
+ * The pinned {@link action} reference is required rather than defaulted. A
+ * default would mean either a floating tag (which supply-chain scanners reject
+ * as an unpinned use) or a commit SHA baked into `@zuke/core` that goes stale
+ * between releases. Passing it makes the pin the caller's — and lets a build
+ * source it from wherever its bumps are automated.
+ */
+export interface CiHardenRunner {
+  /** The pinned action reference, e.g. `step-security/harden-runner@<sha>`. */
+  action: string;
+  /**
+   * `"audit"` records outbound connections; `"block"` drops everything outside
+   * {@link allowedEndpoints}. Defaults to `"audit"` — the safe choice for a job
+   * with no secrets, where a false block would be worse than an unrecorded call.
+   */
+  egress?: "audit" | "block";
+  /**
+   * The hosts a `"block"` policy permits, as `host:port`. Ignored when auditing.
+   * Every entry should be traceable to something the build actually reaches.
+   */
+  allowedEndpoints?: string[];
+  /** The step name. Defaults to `"Harden the runner"`. */
+  name?: string;
+}
+
+/**
+ * The repository checkout, emitted as an `actions/checkout` step after any
+ * {@link CiHardenRunner} and before the job's own steps. Like hardening, the
+ * pinned {@link action} reference is required.
+ */
+export interface CiCheckout {
+  /** The pinned action reference, e.g. `actions/checkout@<sha>`. */
+  action: string;
+  /**
+   * Keep the token in git config so a later step can push. Defaults to `false`:
+   * a job that does not push should not leave a credential behind.
+   */
+  persistCredentials?: boolean;
+  /** The ref to check out. Defaults to the one that triggered the run. */
+  ref?: string;
+  /**
+   * How much history to fetch. `0` means the full history — needed by anything
+   * that walks past commits, such as a secret scan.
+   */
+  fetchDepth?: number;
+  /** The step name. Defaults to `"Checkout"`. */
+  name?: string;
 }
 
 /** A job: a named unit of work with steps, optionally fanned out by a matrix. */
@@ -82,6 +156,29 @@ export interface CiJob {
   needs?: string[];
   /** A build matrix: each key fans out over its values. */
   matrix?: Record<string, Array<string | number>>;
+  /**
+   * Let the other matrix legs finish when one fails (`fail-fast: false`). Default
+   * GitHub behaviour cancels them, which hides whether a failure is
+   * platform-specific — the thing a cross-OS matrix exists to answer.
+   */
+  failFast?: boolean;
+  /**
+   * The token permissions this job's `GITHUB_TOKEN` carries. Set it per job
+   * rather than pipeline-wide so a job holds only what it needs — the isolation
+   * that lets one job push commits while another only reads. GitHub only.
+   */
+  permissions?: Record<string, string>;
+  /**
+   * Harden the runner before this job's steps. Overrides
+   * {@link CiPipeline.harden}; pass `false` to opt this job out of a
+   * pipeline-wide default.
+   */
+  harden?: CiHardenRunner | false;
+  /**
+   * Check the repository out before this job's steps. Overrides
+   * {@link CiPipeline.checkout}; pass `false` to opt out.
+   */
+  checkout?: CiCheckout | false;
   /** Environment variables for the job. */
   env?: Record<string, string>;
   /**
@@ -107,8 +204,21 @@ export interface CiTriggers {
    * means every branch (no filter); omit the field to disable the trigger.
    */
   pullRequest?: string[];
+  /**
+   * Which pull-request activity types fire the pipeline, on top of the branch
+   * filter — GitHub's default is `opened`, `synchronize`, `reopened`. Add
+   * `edited` when a gate reads the pull request's own description, since editing
+   * it changes what a check should see without pushing a commit. GitHub only.
+   */
+  pullRequestTypes?: string[];
   /** Allow manual runs (workflow dispatch / web). */
   manual?: boolean;
+  /**
+   * Run when a branch protection rule is created, edited, or deleted
+   * (`branch_protection_rule`) — a supply-chain scan wants to re-score when the
+   * repository's own protections change. GitHub only.
+   */
+  branchProtectionRule?: boolean;
   /**
    * Timezone-aware scheduled runs. Each entry is a 5-field cron in an optional
    * IANA timezone (`{ cron: "30 9 * * 1-5", tz: "Europe/Sofia" }`). Fully
@@ -144,6 +254,17 @@ export interface CiPipeline {
   permissions?: Record<string, string>;
   /** Limit concurrent runs (GitHub only). Ignored elsewhere. */
   concurrency?: CiConcurrency;
+  /**
+   * Harden every job's runner, unless a job overrides it or opts out with
+   * `harden: false`. Declared once here rather than repeated per job, since the
+   * policy is usually uniform across a workflow. GitHub only.
+   */
+  harden?: CiHardenRunner;
+  /**
+   * Check the repository out in every job, unless a job overrides it or opts out
+   * with `checkout: false`. GitHub only.
+   */
+  checkout?: CiCheckout;
   /** The jobs to run. Defaults to a single `build` job that runs the build. */
   jobs?: CiJob[];
 }
@@ -208,10 +329,67 @@ function runCommands(steps: CiStep[]): string[] {
 
 /**
  * A GitHub trigger filter: `{ branches: [...] }` for a non-empty branch list,
- * or `{}` (no filter — every branch) for an empty one.
+ * or `{}` (no filter — every branch) for an empty one. `types` is added when the
+ * trigger declares activity types.
  */
-function githubTrigger(branches: string[]): YamlValue {
-  return branches.length > 0 ? { branches } : {};
+function githubTrigger(branches: string[], types?: string[]): YamlValue {
+  const filter: Record<string, YamlValue> = {};
+  if (branches.length > 0) filter.branches = branches;
+  if (types !== undefined && types.length > 0) filter.types = types;
+  return filter;
+}
+
+/** The `harden-runner` step a job's {@link CiHardenRunner} describes. */
+function hardenStep(harden: CiHardenRunner): CiStep {
+  const inputs: Record<string, string> = {
+    "egress-policy": harden.egress ?? "audit",
+  };
+  const allowed = harden.allowedEndpoints ?? [];
+  if (allowed.length > 0) {
+    // One host per line: the list is long and each entry earns its place, so it
+    // has to stay reviewable in the generated file.
+    inputs["allowed-endpoints"] = allowed.join("\n");
+  }
+  return {
+    name: harden.name ?? "Harden the runner",
+    uses: harden.action,
+    with: inputs,
+  };
+}
+
+/** The `checkout` step a job's {@link CiCheckout} describes. */
+function checkoutStep(checkout: CiCheckout): CiStep {
+  const inputs: Record<string, string> = {
+    // Always explicit: whether a checkout leaves a usable credential behind is
+    // exactly the kind of thing that should not be left to a default.
+    "persist-credentials": String(checkout.persistCredentials ?? false),
+  };
+  if (checkout.ref !== undefined) inputs.ref = checkout.ref;
+  if (checkout.fetchDepth !== undefined) {
+    inputs["fetch-depth"] = String(checkout.fetchDepth);
+  }
+  return {
+    name: checkout.name ?? "Checkout",
+    uses: checkout.action,
+    with: inputs,
+  };
+}
+
+/**
+ * A job's steps, with the hardening and checkout preludes prepended in the only
+ * order that works: hardening must precede the checkout (it is what constrains
+ * everything after it), and the checkout must precede the build.
+ */
+function jobSteps(job: CiJob, pipeline: CiPipeline): CiStep[] {
+  const harden = job.harden === undefined ? pipeline.harden : job.harden;
+  const checkout = job.checkout === undefined
+    ? pipeline.checkout
+    : job.checkout;
+  return [
+    ...(harden ? [hardenStep(harden)] : []),
+    ...(checkout ? [checkoutStep(checkout)] : []),
+    ...(job.steps ?? DEFAULT_STEPS),
+  ];
 }
 
 /** Render a GitHub Actions workflow object. */
@@ -220,9 +398,13 @@ function github(pipeline: CiPipeline): YamlValue {
   const on: Record<string, YamlValue> = {};
   if (triggers.push) on.push = githubTrigger(triggers.push);
   if (triggers.pullRequest) {
-    on.pull_request = githubTrigger(triggers.pullRequest);
+    on.pull_request = githubTrigger(
+      triggers.pullRequest,
+      triggers.pullRequestTypes,
+    );
   }
   if (triggers.manual) on.workflow_dispatch = {};
+  if (triggers.branchProtectionRule) on.branch_protection_rule = {};
   // A tz-aware schedule compiles to UTC cron(s); a DST zone adds a guard job.
   const scheduleCrons = [
     ...new Set((triggers.schedule ?? []).flatMap(utcCronsFor)),
@@ -243,23 +425,35 @@ function github(pipeline: CiPipeline): YamlValue {
   const jobs: Record<string, YamlValue> = {};
   for (const job of pipeline.jobs ?? DEFAULT_JOBS) {
     const matrixOs = job.matrix !== undefined && "os" in job.matrix;
-    const steps = (job.steps ?? DEFAULT_STEPS).map((step): YamlValue => ({
+    const steps = jobSteps(job, pipeline).map((step): YamlValue => ({
       name: step.name,
+      id: step.id,
+      if: step.if,
       uses: step.uses,
       with: step.with,
+      shell: step.shell,
       run: step.run,
       env: step.env,
+      "continue-on-error": step.continueOnError,
     }));
     jobs[job.id ?? DEFAULT_JOB_ID] = {
       name: job.name,
       "runs-on": matrixOs ? "${{ matrix.os }}" : (job.runsOn ?? DEFAULT_RUNNER),
+      permissions: job.permissions,
       // A guarded schedule makes every job wait on the guard and run only when
       // the guard cleared this firing (the correct wall-clock, or a non-schedule
       // event).
       needs: guarded ? [...(job.needs ?? []), GUARD_JOB_ID] : job.needs,
       if: guarded ? guardedIf(job.if) : job.if,
       "timeout-minutes": job.timeoutMinutes,
-      strategy: job.matrix ? { matrix: job.matrix } : undefined,
+      strategy: job.matrix
+        ? {
+          // `fail-fast` only when explicitly declared, so an existing matrix
+          // keeps GitHub's default rather than gaining a redundant `true`.
+          "fail-fast": job.failFast,
+          matrix: job.matrix,
+        }
+        : undefined,
       env: job.env,
       steps,
     };

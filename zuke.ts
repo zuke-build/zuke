@@ -16,6 +16,8 @@
  */
 
 import {
+  type AbsolutePath,
+  appendJobSummary,
   Build,
   cicd,
   FileTasks,
@@ -25,6 +27,8 @@ import {
   target,
   toolchain,
 } from "@zuke/core";
+import { GitTasks } from "@zuke/git";
+import { GhTasks } from "@zuke/gh";
 import { consoleRenderer, ConsoleTasks } from "@zuke/console";
 import {
   aiFixer,
@@ -59,6 +63,10 @@ import {
 } from "./build/docs.ts";
 import { writeApiJson } from "./build/api_reference.ts";
 import { runWebsiteSync } from "./build/website_sync.ts";
+import {
+  gitleaksSummary,
+  parseGitleaksReport,
+} from "./build/gitleaks_report.ts";
 import { checkSnippets, formatSnippetFailures } from "./build/snippets.ts";
 import { checkHclWrappers, generateHclWrappers } from "./build/hcl_gen.ts";
 import { lintPrBody } from "./build/pr_body_lint.ts";
@@ -68,6 +76,7 @@ import {
   checkPluginSkillsSync,
   syncPluginSkills,
 } from "./build/plugin_sync.ts";
+import { actionlintTool, gitleaksTool, zizmorTool } from "./build/scanners.ts";
 
 /**
  * Where the `security` target writes gitleaks' findings. The security workflow
@@ -302,6 +311,13 @@ class ZukeBuild extends Build {
           }`
         )
     )
+      // The three scanners the `security` target drives, pinned and
+      // checksum-verified in build/scanners.ts. Declaring them here is what
+      // lets the security workflow drop its install step — and what makes
+      // `./zuke security` runnable on a laptop with nothing installed.
+      .tool((s) => zizmorTool(s).destDir(TOOLS_ROOT))
+      .tool((s) => actionlintTool(s).destDir(TOOLS_ROOT))
+      .tool((s) => gitleaksTool(s).destDir(TOOLS_ROOT))
   );
 
   // Publish the coverage report to Codecov, dogfooding @zuke/codecov. True to
@@ -541,30 +557,10 @@ class ZukeBuild extends Build {
       );
     });
 
-  ci = target()
-    .description("Full pre-commit / CI gate")
-    .dependsOn(
-      this.format,
-      this.lint,
-      this.spell,
-      this.coverage,
-      this.coverageUpload,
-      this.apiDocsCheck,
-      this.docLint,
-      this.snippetsCheck,
-      this.hclSyncCheck,
-      this.pluginSyncCheck,
-      this.prBodyLint,
-      // Last: it asserts what the whole run did to the lock, so anything that
-      // rewrites it must already have run.
-      this.lockCheck,
-    )
-    .executes(() => {});
-
-  // Supply-chain scanning, dogfooding @zuke/security. Kept out of `ci` so the
-  // core gate stays runnable without the scanner binaries installed; the
-  // dedicated security workflow installs them and runs this target. Every
-  // scanner runs (noThrow) so one finding doesn't mask the rest, then the
+  // Supply-chain scanning, dogfooding @zuke/security. The scanners come from
+  // the `tools` toolchain above — pinned, checksum-verified, and cached — so
+  // this target needs nothing on PATH and the workflow needs no install step.
+  // Every scanner runs (noThrow) so one finding doesn't mask the rest, then the
   // target fails if any reported issues.
   security = target()
     .description("Run supply-chain security scanners (zuke/security)")
@@ -574,11 +570,26 @@ class ZukeBuild extends Build {
         const { code } = await output;
         if (code !== 0) failures.push(`${name} (exit ${code})`);
       };
+      const installed = await this.tools.install();
+      const scanner = (name: string): AbsolutePath => {
+        const bin = installed.get(name);
+        if (bin === undefined) {
+          throw new Error(`${name} was not provisioned by the toolchain.`);
+        }
+        return bin;
+      };
       await gate(
         "zizmor",
-        SecurityTasks.zizmor((s) => s.paths(".github/workflows").noThrow()),
+        SecurityTasks.zizmor((s) =>
+          s.toolPath(scanner("zizmor")).paths(".github/workflows").noThrow()
+        ),
       );
-      await gate("actionlint", SecurityTasks.actionlint((s) => s.noThrow()));
+      await gate(
+        "actionlint",
+        SecurityTasks.actionlint((s) =>
+          s.toolPath(scanner("actionlint")).noThrow()
+        ),
+      );
       // `gitleaks detect` walks the history reachable from every ref in the
       // checkout, and the security workflow fetches all of them — so without a
       // range, one secret-shaped string on any branch fails the scan on every
@@ -594,7 +605,7 @@ class ZukeBuild extends Build {
       await gate(
         "gitleaks",
         SecurityTasks.gitleaks((s) => {
-          const settings = s.source(".").redact()
+          const settings = s.toolPath(scanner("gitleaks")).source(".").redact()
             .reportFormat("json").reportPath(GITLEAKS_REPORT).noThrow();
           return prBase === undefined || prBase === ""
             ? settings
@@ -604,11 +615,65 @@ class ZukeBuild extends Build {
       // osv-scanner is omitted here: it has no extractor for Deno's lockfile.
       // The @zuke/security wrapper still ships it for projects with npm/cargo/
       // go/etc. lockfiles it does understand.
+      //
+      // Publish the redacted findings to the job summary. This replaced the
+      // workflow's `upload-artifact` step: the artifact existed only so a
+      // failure was diagnosable (the log carries a bare count), and the summary
+      // carries the same file/line/rule/fingerprint with no step, no retention
+      // window, and no download.
+      const report = await FileTasks.exists(GITLEAKS_REPORT)
+        ? await FileTasks.readText(GITLEAKS_REPORT)
+        : "";
+      const summary = gitleaksSummary(parseGitleaksReport(report));
+      if (summary !== null) appendJobSummary(summary);
       if (failures.length > 0) {
         throw new Error(
           `Security scan reported issues: ${failures.join("; ")}`,
         );
       }
+    });
+
+  ci = target()
+    .description("Full pre-commit / CI gate")
+    .dependsOn(
+      this.format,
+      this.lint,
+      this.spell,
+      this.coverage,
+      this.coverageUpload,
+      this.apiDocsCheck,
+      this.docLint,
+      this.snippetsCheck,
+      this.hclSyncCheck,
+      this.pluginSyncCheck,
+      this.prBodyLint,
+      // In the gate now that the scanners are provisioned by the `tools`
+      // toolchain rather than assumed on PATH — the reason it used to be
+      // excluded. The dedicated security workflow still runs it separately,
+      // where a full-depth checkout lets gitleaks walk the whole history.
+      this.security,
+      // Last: it asserts what the whole run did to the lock, so anything that
+      // rewrites it must already have run.
+      this.lockCheck,
+    )
+    .executes(() => {});
+
+  // Publish the OpenSSF Scorecard run's SARIF to code scanning, dogfooding
+  // @zuke/gh's `uploadSarif`. This replaced two steps in scorecard.yml — the
+  // `upload-artifact` and the `codeql-action/upload-sarif` — with one target;
+  // the scorecard action itself stays, because publishing the public score
+  // (`publish_results`) is something only it can do.
+  scorecardSarif = target()
+    .description("Upload the Scorecard SARIF to GitHub code scanning")
+    .executes(async () => {
+      const report = "results.sarif";
+      if (!await FileTasks.exists(report)) {
+        throw new Error(
+          `${report} is missing — run the scorecard step before this target.`,
+        );
+      }
+      const { url } = await GhTasks.uploadSarif((s) => s.file(report));
+      ConsoleTasks.success(`Uploaded ${report} to code scanning (${url}).`);
     });
 
   // Dogfood @zuke/ai: two reviewers on different providers gate the `review`
@@ -730,8 +795,38 @@ class ZukeBuild extends Build {
       .onError("warn")
   );
 
+  // The reviewers diff against `origin/master`, which a shallow pull-request
+  // checkout does not have — so the base has to be fetched first. This used to
+  // be a `git fetch` step in ai-review.yml; as a target it works the same way
+  // locally. The refspec updates the remote-tracking ref, so the reviewers'
+  // default base resolves and no `ZUKE_REVIEW_BASE` env is needed.
+  reviewBase = target()
+    .description("Fetch the base branch the AI review diffs against")
+    .executes(async () => {
+      const { code } = await GitTasks.fetch((s) =>
+        s
+          .remote("origin")
+          // Forced (`+`): with `--depth=1` the fetched commit is not a
+          // fast-forward of whatever shallow `origin/master` the checkout
+          // already has, and git refuses such an update without it — which
+          // would leave the review diffing against a stale base.
+          .refspec("+master:refs/remotes/origin/master")
+          .noTags()
+          .depth(1)
+          .noThrow()
+          .quiet()
+      );
+      ConsoleTasks.info(
+        code === 0
+          ? "Fetched origin/master for the review diff."
+          : `Could not fetch origin/master (exit ${code}) — the review will ` +
+            "diff against whatever base is already present.",
+      );
+    });
+
   review = target()
     .description("AI review of the diff (security + code quality)")
+    .dependsOn(this.reviewBase)
     .validateBefore(this.securityReview, this.generalReview)
     .executes(() => {});
 
@@ -742,6 +837,10 @@ class ZukeBuild extends Build {
   // it is current.
   aiReviewYaml = aiReviewWorkflow({
     reviewers: [this.securityReview, this.generalReview],
+    // No fetch step: the `review` target depends on `reviewBase`, which fetches
+    // the base itself — so the same command works locally, where no workflow
+    // step exists to do it.
+    fetchBase: false,
   });
 
   release = target()

@@ -34,14 +34,12 @@ jobs:
           results_format: sarif
           publish_results: true
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: scorecard-results
-          path: results.sarif
-          retention-days: 5
-
-      - name: Upload to code scanning
-        uses: github/codeql-action/upload-sarif@f205ea1c3313d32999d8d6a48b4f6530d4437b38 # v4.37.4
-        with:
-          sarif_file: results.sarif
+      # The `scorecardSarif` target uploads results.sarif to code scanning
+      # itself (a plain REST call, dogfooding @zuke/gh), replacing both the
+      # artifact upload and the codeql-action/upload-sarif step. The scorecard
+      # action above stays: publishing the public score (`publish_results`) is
+      # something only it can do.
+      - name: Upload the results to code scanning with Zuke
+        run: ./zuke scorecardSarif
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

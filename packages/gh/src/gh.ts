@@ -28,6 +28,18 @@ import {
   SubcommandSettings,
 } from "@zuke/core/tooling";
 import type { CommandOutput } from "@zuke/core/shell";
+import {
+  type GhAppTokenApi,
+  type GhAppTokenResult,
+  type GhAppTokenSettings,
+  mintAppToken,
+} from "./app_token.ts";
+import {
+  type GhSarifApi,
+  type GhSarifSettings,
+  type GhSarifUploadResult,
+  uploadSarifReport,
+} from "./sarif.ts";
 
 /** Settings for a `gh` invocation. */
 export class GhSettings extends SubcommandSettings {
@@ -50,15 +62,29 @@ export class GhSettings extends SubcommandSettings {
   }
 }
 
-/** The shape of {@link GhTasks}. */
-export interface GhTasksApi {
+/**
+ * The shape of {@link GhTasks}: the `gh` CLI plus the GitHub operations that
+ * have no CLI subcommand (see {@link GhAppTokenApi}, {@link GhSarifApi}) and
+ * would otherwise force a build back to a marketplace action.
+ */
+export interface GhTasksApi extends GhAppTokenApi, GhSarifApi {
   /** Run a `gh` command. */
   run(configure?: Configure<GhSettings>): Promise<CommandOutput>;
 }
 
-/** Typed task functions for the `gh` GitHub CLI. */
+/** Typed task functions for GitHub: the `gh` CLI and the REST-only operations. */
 export const GhTasks: GhTasksApi = {
   run(configure?: Configure<GhSettings>): Promise<CommandOutput> {
     return runSettings(new GhSettings(), configure);
+  },
+  appToken(
+    configure?: Configure<GhAppTokenSettings>,
+  ): Promise<GhAppTokenResult> {
+    return mintAppToken(configure);
+  },
+  uploadSarif(
+    configure?: Configure<GhSarifSettings>,
+  ): Promise<GhSarifUploadResult> {
+    return uploadSarifReport(configure);
   },
 };

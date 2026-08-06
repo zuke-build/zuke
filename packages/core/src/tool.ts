@@ -36,7 +36,9 @@
 
 import type { AbsolutePath, PathLike } from "./path.ts";
 import {
+  type ArchiveFormat,
   type DownloadFn,
+  type DownloadFormat,
   type InstallPlatform,
   installRelease,
   type InstallReleaseOptions,
@@ -56,6 +58,20 @@ import type { Configure } from "./tooling.ts";
 export const DEFAULT_TOOLS_DIR = ".zuke/tools";
 
 /**
+ * Assert a declared download format is packed, as a tree install requires.
+ * Rejects `"raw"` — the whole point of a tree is that it unpacks to many files.
+ */
+function requirePacked(name: string, format: DownloadFormat): ArchiveFormat {
+  if (format === "raw") {
+    throw new Error(
+      `tool "${name}": a tree install needs an archive ` +
+        `("tar.gz" or "zip"), not "raw".`,
+    );
+  }
+  return format;
+}
+
+/**
  * Fluent settings for installing a release tool. Configure it in a
  * settings-lambda (`(s) => s.name(...).url(...)`), the same shape as Zuke's tool
  * wrappers. `name` and `url` are required; everything else is optional and
@@ -68,10 +84,10 @@ export class ToolInstallSettings {
   url_?: (platform: Platform) => string;
   /** Install directory (overrides the toolchain's). Set by {@link destDir}. */
   destDir_?: PathLike;
-  /** Download format. Set by {@link archive}. */
-  archive_?: "raw" | "tar.gz" | "zip";
-  /** The binary's path within a `tar.gz`. Set by {@link binaryPath}. */
-  binaryPath_?: string;
+  /** Download format (or a per-platform resolver). Set by {@link archive}. */
+  archive_?: DownloadFormat | ((platform: Platform) => DownloadFormat);
+  /** The binary's path within an archive (or a resolver). Set by {@link binaryPath}. */
+  binaryPath_?: string | ((platform: Platform) => string);
   /** Leading path components to strip on a tree install. Set by {@link strip}. */
   strip_?: number;
   /** Executable bins within a tree install. Set by {@link bins}. */
@@ -103,15 +119,24 @@ export class ToolInstallSettings {
 
   /**
    * Treat the download as a `"tar.gz"` or `"zip"` to unpack (default `"raw"`,
-   * the bare binary). Pair with {@link binaryPath} for the binary inside.
+   * the bare binary). Pair with {@link binaryPath} for the binary inside. Pass a
+   * `(platform) => format` resolver when the format is per-platform, as it is
+   * for most Go and Rust releases — `.tar.gz` on Linux and macOS, `.zip` on
+   * Windows (see {@link InstallReleaseOptions.archive}).
    */
-  archive(format: "raw" | "tar.gz" | "zip"): this {
+  archive(
+    format: DownloadFormat | ((platform: Platform) => DownloadFormat),
+  ): this {
     this.archive_ = format;
     return this;
   }
 
-  /** For an archive, the binary's path within it (defaults to the name). */
-  binaryPath(path: string): this {
+  /**
+   * For an archive, the binary's path within it (defaults to the name). Also
+   * accepts a `(platform) => path` resolver, for the usual case of a `.exe`
+   * inside the Windows archive only.
+   */
+  binaryPath(path: string | ((platform: Platform) => string)): this {
     this.binaryPath_ = path;
     return this;
   }
@@ -194,17 +219,17 @@ export class ToolInstallSettings {
     if (this.url_ === undefined) {
       throw new Error(`tool "${this.name_}" requires .url(...).`);
     }
-    if (this.archive_ === "raw") {
-      throw new Error(
-        `tool "${this.name_}": a tree install needs an archive ` +
-          `("tar.gz" or "zip"), not "raw".`,
-      );
-    }
+    const name = this.name_;
+    const declared = this.archive_ ?? "tar.gz";
+    // A resolver is checked when it resolves, not here — same error, later.
+    const archive = typeof declared === "function"
+      ? (platform: Platform) => requirePacked(name, declared(platform))
+      : requirePacked(name, declared);
     return {
       name: this.name_,
       url: this.url_,
       destDir: this.destDir_ ?? fallbackDestDir,
-      archive: this.archive_ ?? "tar.gz",
+      archive,
       strip: this.strip_,
       bins: this.bins_,
       checksum: this.checksum_,

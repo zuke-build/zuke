@@ -233,6 +233,10 @@ export function skipMarkdown(
  * Best-effort: a missing or unwritable file never fails the review.
  */
 export function writeStepSummary(markdown: string): void {
+  // Deliberately not delegating to `@zuke/core`'s `appendJobSummary`: this
+  // package declares an older core floor than the release that introduced it,
+  // and a consumer installing that floor from JSR would get a missing export.
+  // Revisit once this package's declared floor has moved past it.
   let path: string | undefined;
   try {
     path = Deno.env.get("GITHUB_STEP_SUMMARY");

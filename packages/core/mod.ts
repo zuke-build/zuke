@@ -280,7 +280,9 @@ export {
   unzip,
 } from "./src/compression.ts";
 export {
+  type ArchiveFormat,
   type DownloadFn,
+  type DownloadFormat,
   hostPlatform,
   type InstallPlatform,
   installRelease,
@@ -290,6 +292,7 @@ export {
   type Platform,
 } from "./src/install.ts";
 export { prependPath } from "./src/env.ts";
+export { appendJobSummary } from "./src/job_summary.ts";
 export {
   installNpmTool,
   type InstallNpmToolOptions,
@@ -307,16 +310,23 @@ export {
 } from "./src/tool.ts";
 export {
   cicd,
+  type CiCheckout,
   type CiConcurrency,
   CiFile,
   type CiFileSpec,
+  type CiHardenRunner,
   type CiJob,
   type CiPipeline,
   type CiProvider,
   type CiStep,
+  type CiSyncOptions,
+  type CiSyncResult,
+  type CiSyncStatus,
   type CiTriggers,
+  discoverCiFiles,
   type FanOutOptions,
   fanOutPipeline,
   generateCi,
+  syncCiFiles,
 } from "./src/ci.ts";
 export { type ScheduleEntry } from "./src/ci_schedule.ts";

@@ -95,7 +95,9 @@ export async function assertLockUnchanged(
 ): Promise<LockVerdict> {
   let status;
   try {
-    status = await GitTasks.status((s) => s.porcelain().noThrow());
+    // Quiet: this is a probe, and the caller reports the verdict. Echoing the
+    // whole working-tree listing into the build log buries it.
+    status = await GitTasks.status((s) => s.porcelain().noThrow().quiet());
   } catch (error) {
     if (error instanceof ToolNotFoundError) {
       return { checked: false, reason: "git is not installed" };
