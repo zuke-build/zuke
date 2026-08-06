@@ -113,3 +113,36 @@ Deno.test("a pipe in a value cannot break out of the table cell", () => {
   if (summary === null) throw new Error("expected a summary");
   assertStringIncludes(summary, "a\\|b.ts");
 });
+
+Deno.test("a backtick in a path cannot end its code span early", () => {
+  // A path may contain a backtick, and this table is the only place a failing
+  // scan reports where a secret is — a row garbled by its own filename would
+  // hide the location it exists to show.
+  const summary = gitleaksSummary([
+    { rule: "r", file: "we`ird.ts", line: 1, commit: "c", fingerprint: "f" },
+  ]);
+  if (summary === null) throw new Error("expected a summary");
+  // Delimited by two backticks, so the single one inside cannot close it.
+  assertStringIncludes(summary, "``we`ird.ts``");
+  // The row still has exactly five cells: the span never leaked into the table.
+  const row = summary.split("\n").find((l) => l.includes("we`ird.ts"));
+  assertEquals(row?.split("|").length, 7); // 5 cells + the leading/trailing pipes
+});
+
+Deno.test("a value that begins or ends with a backtick is padded, not broken", () => {
+  const summary = gitleaksSummary([
+    { rule: "r", file: "`quoted`", line: 1, commit: "c", fingerprint: "f" },
+  ]);
+  if (summary === null) throw new Error("expected a summary");
+  // CommonMark strips one leading and trailing space, so the padding keeps the
+  // span valid without changing what a reader sees.
+  assertStringIncludes(summary, "`` `quoted` ``");
+});
+
+Deno.test("a run of backticks is out-sized by the delimiter", () => {
+  const summary = gitleaksSummary([
+    { rule: "a``b", file: "f.ts", line: 1, commit: "c", fingerprint: "f" },
+  ]);
+  if (summary === null) throw new Error("expected a summary");
+  assertStringIncludes(summary, "```a``b```");
+});

@@ -90,6 +90,29 @@ function cell(value: string): string {
 }
 
 /**
+ * Render `value` as a Markdown code span, sized so its own content cannot end
+ * it early.
+ *
+ * A path may legitimately contain a backtick, and this table is the only place a
+ * failing scan reports *where* a secret is — a row garbled by its own filename
+ * would hide the location it exists to show. CommonMark's rule is that a code
+ * span delimited by N backticks ends at the next run of exactly N, so a
+ * delimiter one longer than the longest run inside always closes correctly. A
+ * space pads a value that starts or ends with a backtick, which the renderer
+ * strips back out.
+ */
+function code(value: string): string {
+  if (value === "") return "—";
+  const longest = Math.max(
+    0,
+    ...[...value.matchAll(/`+/g)].map((match) => match[0].length),
+  );
+  const fence = "`".repeat(longest + 1);
+  const pad = value.startsWith("`") || value.endsWith("`") ? " " : "";
+  return `${fence}${pad}${cell(value)}${pad}${fence}`;
+}
+
+/**
  * The job-summary section for a set of findings. Returns `null` for a clean
  * scan: a summary that says "nothing found" on every green run is noise, and the
  * build's own table already reports that the scan passed.
@@ -99,9 +122,9 @@ export function gitleaksSummary(
 ): string | null {
   if (findings.length === 0) return null;
   const rows = findings.map((f) =>
-    `| \`${cell(f.rule)}\` | \`${cell(f.file)}\` | ${
-      f.line > 0 ? f.line : "—"
-    } | \`${cell(f.commit.slice(0, 12))}\` | \`${cell(f.fingerprint)}\` |`
+    `| ${code(f.rule)} | ${code(f.file)} | ${f.line > 0 ? f.line : "—"} | ${
+      code(f.commit.slice(0, 12))
+    } | ${code(f.fingerprint)} |`
   );
   return [
     `## 🔑 gitleaks — ${findings.length} finding${
