@@ -104,10 +104,32 @@ jobs:
     permissions:
       contents: read
     steps:
+      # Egress is blocked here, not audited, because this is the one job that
+      # hands build code an app *private key* rather than a token minted from
+      # it. A minted token is narrow and expires in an hour; the key mints more
+      # of them, so it is the one credential in this repository whose exfil
+      # would matter beyond a single release. Nothing untrusted runs here (the
+      # job triggers only on a push to master and workflow_dispatch, and fork
+      # pull requests receive no secrets at all), so this is defence in depth
+      # against a compromised dependency in the build graph rather than against
+      # a pull request. The allowlist is the minimum `syncWebsite` needs: the
+      # launcher's Deno bootstrap, module resolution, and GitHub for the app
+      # token, the website clone/push, and the pull request. Add a host here if
+      # a run reports it blocked — the target is idempotent, so a rerun is safe.
       - name: Harden the runner
         uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
         with:
-          egress-policy: audit
+          egress-policy: block
+          allowed-endpoints: >
+            deno.land:443
+            dl.deno.land:443
+            jsr.io:443
+            registry.npmjs.org:443
+            api.github.com:443
+            github.com:443
+            codeload.github.com:443
+            objects.githubusercontent.com:443
+            release-assets.githubusercontent.com:443
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
