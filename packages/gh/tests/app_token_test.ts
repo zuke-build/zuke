@@ -139,8 +139,39 @@ Deno.test("appToken signs a JWT, resolves the installation, and mints a token", 
   // The mint narrows to exactly the requested repositories and permissions.
   assertEquals(JSON.parse(seen[1].body ?? "{}"), {
     repositories: ["zuke-build.github.io"],
-    permissions: { "contents": "write", "pull-requests": "write" },
+    permissions: { contents: "write", pull_requests: "write" },
   });
+});
+
+Deno.test("a hyphenated permission is sent under the API's own spelling", async () => {
+  // The trap: `create-github-app-token` takes `permission-pull-requests`, and
+  // passing that spelling to the API is refused as a permission the
+  // installation does not grant — a 422 that reads as a misconfigured app
+  // rather than a misspelled key. Asserting the *shape* of every key is what
+  // catches this class of mistake, since a fake transport accepts anything.
+  const { pkcs8 } = await testKeys();
+  const seen: Seen[] = [];
+  await GhTasks.appToken((s) =>
+    s
+      .appId("1")
+      .privateKey(pkcs8)
+      .owner("acme")
+      .permission("pull-requests", "write")
+      .permission("secret-scanning-alerts", "read")
+      .fetch(fakeGithub(seen))
+  );
+  const body: unknown = JSON.parse(seen[1].body ?? "{}");
+  if (
+    typeof body !== "object" || body === null || !("permissions" in body) ||
+    typeof body.permissions !== "object" || body.permissions === null
+  ) {
+    throw new Error("expected a permissions object");
+  }
+  const keys = Object.keys(body.permissions).sort();
+  assertEquals(keys, ["pull_requests", "secret_scanning_alerts"]);
+  // Every key the API accepts is lower-case with underscores; a hyphen in any
+  // of them is the bug this guards.
+  for (const key of keys) assertEquals(/^[a-z_]+$/.test(key), true, key);
 });
 
 Deno.test("appToken reads the PKCS#1 PEM GitHub actually issues", async () => {
