@@ -97,6 +97,32 @@ export function resolveAppCredentials(
 }
 
 /**
+ * Whether a token may be *minted* for `repo`.
+ *
+ * Minting is the powerful path, so it is restricted to the one repository this
+ * sync exists to update. Before the token was minted in code its scope was a
+ * literal in the workflow's action inputs, and `WEBSITE_REPO` could only
+ * misdirect the push — which then failed, because the token did not cover the
+ * new target. Deriving the minted scope from that variable instead would turn a
+ * redirect into a redirect *with a working credential* for wherever it pointed,
+ * anywhere the app happens to be installed.
+ *
+ * Overriding the target is still supported; it just requires supplying
+ * `WEBSITE_SYNC_TOKEN`, so whoever redirects the sync provides the credential
+ * for it rather than borrowing the app's.
+ */
+export function mintableFor(repo: string): boolean {
+  return repo === DEFAULT_WEBSITE_REPO;
+}
+
+/** The refusal when a redirected sync tries to borrow the app's credential. */
+export function mintRefusal(repo: string): string {
+  return `website sync: WEBSITE_REPO points at "${repo}", but a minted app ` +
+    `token is only ever scoped to ${DEFAULT_WEBSITE_REPO}. Set ` +
+    `WEBSITE_SYNC_TOKEN to sync a different repository, or unset WEBSITE_REPO.`;
+}
+
+/**
  * Mint a token scoped to just the website repository, from the app credentials.
  *
  * This is what replaced the `actions/create-github-app-token` step: the
@@ -361,6 +387,9 @@ export async function runWebsiteSync(
       );
       return;
     }
+    // Refuse rather than mint for a redirected target: an env var must not be
+    // able to decide what the app's credential reaches.
+    if (!mintableFor(repo)) throw new Error(mintRefusal(repo));
     token = await deps.mintToken(credentials, repo);
     deps.info(`Minted a website-scoped token for ${repo} from the GitHub App.`);
   }

@@ -37,6 +37,7 @@ import {
 import { launcherScript, publishOne } from "../build/publish.ts";
 import {
   DEFAULT_WEBSITE_REPO,
+  mintableFor,
   resolveSyncTarget,
   runWebsiteSync,
   syncBranchInfo,
@@ -722,6 +723,42 @@ Deno.test("runWebsiteSync: mints an app token scoped to the website repo", async
       repo: "zuke-build/zuke-build.github.io",
     }]);
   });
+});
+
+Deno.test("runWebsiteSync: refuses to mint for a redirected target", async () => {
+  // An env var must not decide what the app's credential reaches. Redirecting
+  // the sync is still allowed — it just cannot borrow the app's token.
+  await withSyncEnv({
+    repo: "attacker/elsewhere",
+    appId: "12345",
+    appKey: "pem",
+  }, async () => {
+    const { deps, calls } = fakeSyncDeps({});
+    await assertRejects(
+      () => runWebsiteSync(new Build(), deps),
+      Error,
+      "only ever scoped to zuke-build/zuke-build.github.io",
+    );
+    // It refused before minting anything, not after.
+    assertEquals(calls.mintToken, []);
+  });
+});
+
+Deno.test("runWebsiteSync: a redirected target still works with its own token", async () => {
+  await withSyncEnv({ repo: "acme/site", token: "tok" }, async () => {
+    const { deps, calls } = fakeSyncDeps({
+      hasStagedChanges: () => Promise.resolve(false),
+    });
+    await runWebsiteSync(new Build(), deps);
+    assertEquals(calls.mintToken, []);
+    assertEquals(calls.cloneWebsite[0].repo, "acme/site");
+  });
+});
+
+Deno.test("mintableFor: only the default target may borrow the app credential", () => {
+  assertEquals(mintableFor(DEFAULT_WEBSITE_REPO), true);
+  assertEquals(mintableFor("zuke-build/something-else"), false);
+  assertEquals(mintableFor("attacker/zuke-build.github.io"), false);
 });
 
 Deno.test("runWebsiteSync: an explicit token wins and mints nothing", async () => {
