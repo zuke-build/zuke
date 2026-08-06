@@ -15,19 +15,27 @@ import { glob } from "../packages/core/mod.ts";
 
 const ZUKE_SOURCE = await Deno.readTextFile("zuke.ts");
 
-/** The source text of the `integration` target's field initializer. */
+/**
+ * The source text of the `integration` target's field initializer.
+ *
+ * The end is found by the next field declaration rather than by naming a
+ * specific sibling: this test used to look for `integrationCi`, so renaming that
+ * field broke it with an error about the *integration target* — which is not
+ * where the problem was.
+ */
 function integrationTargetBody(source: string): string {
   const start = source.indexOf("integration = target()");
   if (start === -1) {
     throw new Error("could not find the `integration` target in zuke.ts");
   }
-  const end = source.indexOf("integrationCi = cicd(", start);
-  if (end === -1) {
+  // A class field at the class's own indent level, i.e. `  <name> = `.
+  const next = /\n {2}\w+ = /.exec(source.slice(start + 1));
+  if (next === null) {
     throw new Error(
       "could not find the end of the `integration` target in zuke.ts",
     );
   }
-  return source.slice(start, end);
+  return source.slice(start, start + 1 + next.index);
 }
 
 Deno.test("the integration target discovers e2e suites by glob, not a hardcoded list", () => {

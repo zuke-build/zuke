@@ -9,7 +9,7 @@ name: Security scanners
 permissions:
   contents: read
 jobs:
-  scan:
+  security:
     name: "Scan with Zuke (zuke/security)"
     runs-on: ubuntu-latest
     steps:
@@ -22,5 +22,5 @@ jobs:
         with:
           persist-credentials: "false"
           fetch-depth: "0"
-      - name: Run security scanners with Zuke
+      - name: Run security with Zuke
         run: ./zuke security

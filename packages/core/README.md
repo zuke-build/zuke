@@ -972,9 +972,14 @@ class CiFile
     The base pipeline (pipeline-level fields, and the jobs unless fanning out).
   readonly fanOut?: FanOutOptions
     Fan-out options, when this file expands the build's targets into jobs.
+  readonly invokes?: readonly CiInvokes[]
+    The targets this file runs as jobs, when declared with `invokes`.
+  get derived(): boolean
+    Whether this file's jobs are derived from the build rather than declared.
   pipelineFor(targets: Map<string, TargetBuilder>): CiPipeline
-    The pipeline this file renders. With fan-out, the build's `targets` are
-    expanded into one job per target; otherwise the declared {@link pipeline}.
+    The pipeline this file renders. Jobs come from the invoked targets, or from
+    a full fan-out of the graph, or — failing both — from the declared
+    {@link pipeline}.
   render(): string
     Render the file's YAML content (the base pipeline; fan-out is resolved at discovery).
 
@@ -2143,6 +2148,28 @@ interface CiFileSpec
     dependencies (see {@link fanOutPipeline}). `true` uses the defaults; pass
     {@link FanOutOptions} to customise. When set, {@link pipeline} supplies the
     pipeline-level fields (name, triggers, …) and its `jobs` are ignored.
+  invokes?: readonly CiInvokes[]
+    The targets this workflow runs — one job each, in place of hand-written
+    {@link CiPipeline.jobs}.
+
+    This is the intended way to declare a workflow. A job is almost entirely
+    implied by its target, so naming the targets is usually the whole
+    declaration: the id, the display name, the `./zuke <target>` command, and
+    the `needs:` edges between jobs all come from the build graph. Pass a
+    {@link CiInvocation} instead of a bare target only for what the runner
+    decides rather than the build — a matrix, token scopes, an egress policy.
+
+    Each job runs its target's whole subgraph in one process, exactly as
+    `./zuke <target>` does locally — so dependencies inside a target run
+    in-process and need no cache to share their output. Use {@link fanOut}
+    instead to give every target in the graph its own job, which does need a
+    remote cache.
+
+    Targets are passed as references (`this.ci`), not names, so a rename is a
+    compile error rather than a workflow that silently runs nothing. As with
+    `dependsOn`, that means the declaration must appear below the targets it
+    invokes — class fields initialise top-to-bottom, so a forward reference is
+    `undefined`. Declaring workflows last is the simplest way to satisfy it.
 
 interface CiHardenRunner
   Runner hardening, emitted as a `step-security/harden-runner` step before
@@ -2170,6 +2197,58 @@ interface CiHardenRunner
     Every entry should be traceable to something the build actually reaches.
   name?: string
     The step name. Defaults to `"Harden the runner"`.
+
+interface CiInvocation
+  One job's worth of a workflow, derived from a target.
+
+  A job's shape is almost entirely implied by the target it runs: the id and
+  display name come from the target, the command is `./zuke <target>`, and the
+  `needs:` edges come from the target's `dependsOn`. So an invoked target
+  usually needs nothing said about it at all — pass the target and the job is
+  generated.
+
+  The fields here are the residue that genuinely cannot be inferred, because
+  they are properties of the runner rather than of the work: which OS matrix
+  to fan out over, which token scopes the job needs, how much egress to permit,
+  how long to allow. Set one only when the default is wrong.
+
+  target: TargetBuilder
+    The target this job runs.
+  id?: string
+    Override the job id (defaults to the target's name, CI-sanitised).
+  name?: string
+    Override the display name (defaults to the target's description, else its name).
+  runsOn?: string
+    The runner, when it differs from the pipeline default.
+  matrix?: Record<string, Array<string | number>>
+    A build matrix — fanning one target out over several OSes, say.
+  failFast?: boolean
+    Let the other matrix legs finish when one fails.
+  permissions?: Record<string, string>
+    The token permissions this job needs (see {@link CiJob.permissions}).
+  timeoutMinutes?: number
+    Fail the job after this many minutes.
+  harden?: CiHardenRunner | false
+    Harden this job's runner, overriding the pipeline default.
+  checkout?: CiCheckout | false
+    Check out in this job, overriding the pipeline default.
+  if?: string
+    A condition gating the job.
+  env?: Record<string, string>
+    Environment variables for the target's own step — where a secret is mapped
+    in, e.g. `{ GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }`.
+  after?: readonly TargetBuilder[]
+    Extra `needs:` edges beyond those implied by the target's `dependsOn`. Use
+    it to order two invoked targets that are independent in the build graph but
+    must not run concurrently in CI.
+  before?: CiStep[]
+    Steps to run before the target, for something no target can do (see below).
+  then?: CiStep[]
+    Steps to run after the target.
+  steps?: CiStep[]
+    Replace the generated `./zuke <target>` step entirely. The escape hatch of
+    last resort — prefer {@link before}/{@link then}, and prefer moving the work
+    into the target over either.
 
 interface CiJob
   A job: a named unit of work with steps, optionally fanned out by a matrix.
@@ -3439,6 +3518,9 @@ type CiHost = "github" | "gitlab" | "azure" | "bitbucket" | "local"
   The CI host a build is running on, or `"local"` when not on CI. The names
   match {@link CiProvider} so they compose with CI generation and per-host
   integrations (e.g. posting a review to the right pull-request API).
+
+type CiInvokes = TargetBuilder | CiInvocation
+  A target to invoke, bare when the derived job needs no adjustment.
 
 type CiProvider = "github" | "gitlab" | "azure" | "bitbucket"
   The CI providers {@link generateCi} can target.

@@ -9,7 +9,7 @@ name: Scorecard supply-chain
 permissions:
   contents: read
 jobs:
-  analysis:
+  scorecardSarif:
     name: OpenSSF Scorecard
     runs-on: ubuntu-latest
     permissions:
@@ -30,7 +30,7 @@ jobs:
           results_file: results.sarif
           results_format: sarif
           publish_results: "true"
-      - name: Upload the results to code scanning with Zuke
+      - name: Run scorecardSarif with Zuke
         run: ./zuke scorecardSarif
         env:
           GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"

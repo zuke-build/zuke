@@ -25,11 +25,11 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: "false"
-      - name: Run release-please with Zuke
+      - name: Run release with Zuke
         run: ./zuke release
         env:
           GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
-  publish:
+  publishJsr:
     name: Publish to JSR
     runs-on: ubuntu-latest
     permissions:
@@ -47,15 +47,15 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: "false"
-      - name: Publish new versions to JSR with Zuke
+      - name: Run publishJsr with Zuke
         run: ./zuke publishJsr
-  sync-website:
+  syncWebsite:
     name: "Sync website docs + API reference"
     runs-on: ubuntu-latest
     permissions:
       contents: read
     needs:
-      - publish
+      - publishJsr
     timeout-minutes: 15
     steps:
       - name: Harden the runner
@@ -67,7 +67,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: "false"
-      - name: Open and merge the website sync PR with Zuke
+      - name: Run syncWebsite with Zuke
         run: ./zuke syncWebsite
         env:
           ZUKE_BUILD_APP_ID: "${{ secrets.ZUKE_BUILD_APP_ID }}"

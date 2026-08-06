@@ -316,6 +316,8 @@ export {
   CiFile,
   type CiFileSpec,
   type CiHardenRunner,
+  type CiInvocation,
+  type CiInvokes,
   type CiJob,
   type CiPipeline,
   type CiProvider,

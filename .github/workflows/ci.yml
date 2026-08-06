@@ -15,7 +15,7 @@ concurrency:
   group: "ci-${{ github.workflow }}-${{ github.ref }}"
   cancel-in-progress: true
 jobs:
-  quality:
+  ci:
     name: "Build & verify with Zuke"
     runs-on: ubuntu-latest
     permissions:
@@ -32,14 +32,14 @@ jobs:
         with:
           persist-credentials: "true"
           ref: "${{ (github.event.pull_request.head.repo.full_name == github.repository) && github.head_ref || '' }}"
-      - name: Run the full gate with Zuke
+      - name: Run ci with Zuke
         run: ./zuke ci
         env:
           OPENAI_API_KEY: "${{ secrets.OPENAI_API_KEY }}"
           GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
           CODECOV_TOKEN: "${{ secrets.CODECOV_TOKEN }}"
           PR_BODY: "${{ github.event_name == 'pull_request' && github.event.pull_request.body || '' }}"
-  core-floors:
+  coreFloorCheck:
     name: Core version floors
     runs-on: ubuntu-latest
     steps:
@@ -52,9 +52,9 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: "false"
-      - name: Check declared core floors with Zuke
+      - name: Run coreFloorCheck with Zuke
         run: ./zuke coreFloorCheck
-  test-os:
+  test:
     name: "Tests (${{ matrix.os }})"
     runs-on: "${{ matrix.os }}"
     strategy:

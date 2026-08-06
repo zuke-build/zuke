@@ -33,7 +33,7 @@
 
 import { annotated, toYaml, type YamlValue } from "./yaml.ts";
 import { type Build, discoverTargets, forEachField } from "./build.ts";
-import type { TargetBuilder } from "./target.ts";
+import { TargetBuilder } from "./target.ts";
 import {
   anyScheduleNeedsGuard,
   guardShell,
@@ -725,6 +725,100 @@ function jobId(name: string): string {
   return name.replace(/[^A-Za-z0-9_-]/g, "-");
 }
 
+/** The command an invoked job runs: the launcher, which bootstraps Deno itself. */
+const DEFAULT_INVOKE_COMMAND = (target: string) => `./zuke ${target}`;
+
+/** Normalise an invocation, so a bare target reads as one with no overrides. */
+function invocationOf(invokes: CiInvokes): CiInvocation {
+  return invokes instanceof TargetBuilder ? { target: invokes } : invokes;
+}
+
+/**
+ * The name a target was discovered under, by identity.
+ *
+ * Targets are declared as class fields and named by {@link discoverTargets}
+ * after construction, so a `cicd({...})` field initialiser holds a reference
+ * whose name is not yet assigned. Resolving by identity at render time is what
+ * lets a workflow be declared with `this.ci` rather than `"ci"`.
+ */
+function nameOf(
+  target: TargetBuilder,
+  targets: Map<string, TargetBuilder>,
+): string | undefined {
+  if (target.name_ !== undefined) return target.name_;
+  for (const [name, candidate] of targets) {
+    if (candidate === target) return name;
+  }
+  return undefined;
+}
+
+/**
+ * Expand invoked targets into one job each: id, display name, `needs:` edges,
+ * and the command all derived from the build graph.
+ *
+ * `needs:` covers only edges between *invoked* targets. A dependency that is not
+ * itself a job is not an edge — it runs inside its dependant's own process, the
+ * way `./zuke ci` runs the whole gate locally.
+ */
+function invokedPipeline(
+  invokes: readonly CiInvokes[],
+  targets: Map<string, TargetBuilder>,
+  base: CiPipeline,
+  command: (target: string) => string,
+): CiPipeline {
+  const resolved = invokes.map((i) => {
+    const invocation = invocationOf(i);
+    const name = nameOf(invocation.target, targets);
+    if (name === undefined) {
+      throw new Error(
+        `cicd: an invoked target is not a field on this build, so it has no ` +
+          `name to run. Pass a target declared on the build (\`this.<field>\`).`,
+      );
+    }
+    return { invocation, name };
+  });
+
+  const invokedNames = new Set(resolved.map((r) => r.name));
+  const jobs: CiJob[] = resolved.map(({ invocation, name }) => {
+    // Edges the build graph already implies, plus any explicitly ordered after.
+    const implied = invocation.target.dependsOn_
+      .map((d) => nameOf(d, targets))
+      .filter((n): n is string => n !== undefined && invokedNames.has(n));
+    const explicit = (invocation.after ?? [])
+      .map((d) => nameOf(d, targets))
+      .filter((n): n is string => n !== undefined);
+    const needs = [...new Set([...implied, ...explicit])].map(jobId);
+
+    const run = invocation.steps ??
+      [{
+        name: `Run ${name} with Zuke`,
+        run: command(name),
+        env: invocation.env,
+      }];
+
+    return {
+      id: invocation.id ?? jobId(name),
+      name: invocation.name ?? invocation.target.description_ ?? name,
+      runsOn: invocation.runsOn,
+      needs: needs.length > 0 ? needs : undefined,
+      matrix: invocation.matrix,
+      failFast: invocation.failFast,
+      permissions: invocation.permissions,
+      timeoutMinutes: invocation.timeoutMinutes,
+      harden: invocation.harden,
+      checkout: invocation.checkout,
+      if: invocation.if,
+      steps: [
+        ...(invocation.before ?? []),
+        ...run,
+        ...(invocation.then ?? []),
+      ],
+    };
+  });
+
+  return { ...base, jobs };
+}
+
 /**
  * Expand a build's target graph into a **fanned-out** pipeline: one CI job per
  * runnable target, wired together with `needs:` edges that mirror the targets'
@@ -778,6 +872,69 @@ export function fanOutPipeline(
   };
 }
 
+/**
+ * One job's worth of a workflow, derived from a target.
+ *
+ * A job's shape is almost entirely implied by the target it runs: the id and
+ * display name come from the target, the command is `./zuke <target>`, and the
+ * `needs:` edges come from the target's `dependsOn`. So an invoked target
+ * usually needs nothing said about it at all — pass the target and the job is
+ * generated.
+ *
+ * The fields here are the residue that genuinely cannot be inferred, because
+ * they are properties of the *runner* rather than of the work: which OS matrix
+ * to fan out over, which token scopes the job needs, how much egress to permit,
+ * how long to allow. Set one only when the default is wrong.
+ */
+export interface CiInvocation {
+  /** The target this job runs. */
+  target: TargetBuilder;
+  /** Override the job id (defaults to the target's name, CI-sanitised). */
+  id?: string;
+  /** Override the display name (defaults to the target's description, else its name). */
+  name?: string;
+  /** The runner, when it differs from the pipeline default. */
+  runsOn?: string;
+  /** A build matrix — fanning one target out over several OSes, say. */
+  matrix?: Record<string, Array<string | number>>;
+  /** Let the other matrix legs finish when one fails. */
+  failFast?: boolean;
+  /** The token permissions this job needs (see {@link CiJob.permissions}). */
+  permissions?: Record<string, string>;
+  /** Fail the job after this many minutes. */
+  timeoutMinutes?: number;
+  /** Harden this job's runner, overriding the pipeline default. */
+  harden?: CiHardenRunner | false;
+  /** Check out in this job, overriding the pipeline default. */
+  checkout?: CiCheckout | false;
+  /** A condition gating the job. */
+  if?: string;
+  /**
+   * Environment variables for the target's own step — where a secret is mapped
+   * in, e.g. `{ GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }`.
+   */
+  env?: Record<string, string>;
+  /**
+   * Extra `needs:` edges beyond those implied by the target's `dependsOn`. Use
+   * it to order two invoked targets that are independent in the build graph but
+   * must not run concurrently in CI.
+   */
+  after?: readonly TargetBuilder[];
+  /** Steps to run before the target, for something no target can do (see below). */
+  before?: CiStep[];
+  /** Steps to run after the target. */
+  then?: CiStep[];
+  /**
+   * Replace the generated `./zuke <target>` step entirely. The escape hatch of
+   * last resort — prefer {@link before}/{@link then}, and prefer moving the work
+   * into the target over either.
+   */
+  steps?: CiStep[];
+}
+
+/** A target to invoke, bare when the derived job needs no adjustment. */
+export type CiInvokes = TargetBuilder | CiInvocation;
+
 /** A CI configuration file declared on a build: a pipeline bound to a path. */
 export interface CiFileSpec {
   /** The provider to render for — the one field you must choose. */
@@ -797,6 +954,30 @@ export interface CiFileSpec {
    * pipeline-level fields (name, triggers, …) and its `jobs` are ignored.
    */
   fanOut?: boolean | FanOutOptions;
+  /**
+   * The targets this workflow runs — one job each, in place of hand-written
+   * {@link CiPipeline.jobs}.
+   *
+   * This is the intended way to declare a workflow. A job is almost entirely
+   * implied by its target, so naming the targets is usually the whole
+   * declaration: the id, the display name, the `./zuke <target>` command, and
+   * the `needs:` edges between jobs all come from the build graph. Pass a
+   * {@link CiInvocation} instead of a bare target only for what the runner
+   * decides rather than the build — a matrix, token scopes, an egress policy.
+   *
+   * Each job runs its target's *whole* subgraph in one process, exactly as
+   * `./zuke <target>` does locally — so dependencies inside a target run
+   * in-process and need no cache to share their output. Use {@link fanOut}
+   * instead to give every target in the graph its own job, which does need a
+   * remote cache.
+   *
+   * Targets are passed as references (`this.ci`), not names, so a rename is a
+   * compile error rather than a workflow that silently runs nothing. As with
+   * `dependsOn`, that means the declaration must appear **below** the targets it
+   * invokes — class fields initialise top-to-bottom, so a forward reference is
+   * `undefined`. Declaring workflows last is the simplest way to satisfy it.
+   */
+  invokes?: readonly CiInvokes[];
 }
 
 /**
@@ -812,6 +993,8 @@ export class CiFile {
   readonly pipeline: CiPipeline;
   /** Fan-out options, when this file expands the build's targets into jobs. */
   readonly fanOut?: FanOutOptions;
+  /** The targets this file runs as jobs, when declared with `invokes`. */
+  readonly invokes?: readonly CiInvokes[];
 
   /** Build the CI file from its spec, filling in the provider's default path. */
   constructor(spec: CiFileSpec) {
@@ -820,13 +1003,34 @@ export class CiFile {
     this.pipeline = spec.pipeline ?? {};
     if (spec.fanOut === true) this.fanOut = {};
     else if (spec.fanOut) this.fanOut = spec.fanOut;
+    this.invokes = spec.invokes;
+    if (this.invokes !== undefined && this.fanOut !== undefined) {
+      throw new Error(
+        "cicd: use either `invokes` (one job per named target) or `fanOut` " +
+          "(one job per target in the graph), not both.",
+      );
+    }
+  }
+
+  /** Whether this file's jobs are derived from the build rather than declared. */
+  get derived(): boolean {
+    return this.fanOut !== undefined || this.invokes !== undefined;
   }
 
   /**
-   * The pipeline this file renders. With fan-out, the build's `targets` are
-   * expanded into one job per target; otherwise the declared {@link pipeline}.
+   * The pipeline this file renders. Jobs come from the invoked targets, or from
+   * a full fan-out of the graph, or — failing both — from the declared
+   * {@link pipeline}.
    */
   pipelineFor(targets: Map<string, TargetBuilder>): CiPipeline {
+    if (this.invokes !== undefined) {
+      return invokedPipeline(
+        this.invokes,
+        targets,
+        this.pipeline,
+        DEFAULT_INVOKE_COMMAND,
+      );
+    }
     return this.fanOut === undefined
       ? this.pipeline
       : fanOutPipeline(targets, this.pipeline, this.fanOut);
@@ -869,10 +1073,10 @@ export function discoverCiFiles(build: Build): CiFile[] {
   forEachField(build, (_path, value) => {
     if (value instanceof CiFile) found.push(value);
   });
-  if (!found.some((f) => f.fanOut !== undefined)) return found;
+  if (!found.some((f) => f.derived)) return found;
   const targets = discoverTargets(build);
   return found.map((f) =>
-    f.fanOut === undefined ? f : new CiFile({
+    !f.derived ? f : new CiFile({
       provider: f.provider,
       path: f.path,
       pipeline: f.pipelineFor(targets),
