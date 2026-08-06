@@ -508,11 +508,44 @@ export class GitFetchSettings extends GitSettings {
   #remote?: string;
   #all = false;
   #tags = false;
+  #noTags = false;
   #prune = false;
+  #depth?: number;
+  #refspecs: string[] = [];
 
   /** The remote to fetch from. */
   remote(name: string): this {
     this.#remote = name;
+    return this;
+  }
+
+  /**
+   * Add a refspec to fetch, after the remote — `master`, or
+   * `master:refs/remotes/origin/master` to also update the remote-tracking ref
+   * (which is what makes `origin/master` resolvable in a shallow CI checkout
+   * that never fetched it). Repeatable.
+   *
+   * Prefix the source with `+` to force the update. Pair it with
+   * {@link depth}: a shallow fetch is not a fast-forward of the history already
+   * present, and git rejects such an update unless it is forced.
+   */
+  refspec(...specs: string[]): this {
+    this.#refspecs.push(...specs);
+    return this;
+  }
+
+  /** Skip fetching tags (`--no-tags`). */
+  noTags(): this {
+    this.#noTags = true;
+    return this;
+  }
+
+  /**
+   * Limit history to this many commits (`--depth`). `1` is enough to diff
+   * against a base branch and avoids pulling a whole history into a CI job.
+   */
+  depth(commits: number): this {
+    this.#depth = commits;
     return this;
   }
 
@@ -539,8 +572,12 @@ export class GitFetchSettings extends GitSettings {
     const argv = ["fetch"];
     if (this.#all) argv.push("--all");
     if (this.#tags) argv.push("--tags");
+    if (this.#noTags) argv.push("--no-tags");
     if (this.#prune) argv.push("--prune");
+    if (this.#depth !== undefined) argv.push("--depth", String(this.#depth));
     if (this.#remote !== undefined) argv.push(this.#remote);
+    // Refspecs are positional and must follow the remote they belong to.
+    argv.push(...this.#refspecs);
     return argv;
   }
 }

@@ -9,10 +9,10 @@ on:
 
 # The scanners run as a Zuke build gate (./zuke security) and fail the job on
 # findings. gitleaks runs redacted, so its log line is only a count; the target
-# also writes a redacted JSON report, uploaded below, which names the file, line,
-# rule and fingerprint of each finding. Without it a failure is undiagnosable
-# without reproducing the scan locally. Code-level SARIF for the Security tab
-# comes from CodeQL's default setup and the Scorecard workflow.
+# publishes the redacted findings — file, line, rule and fingerprint — to the job
+# summary, so a failure is diagnosable without reproducing the scan locally.
+# Code-level SARIF for the Security tab comes from CodeQL's default setup and the
+# Scorecard workflow.
 permissions:
   contents: read
 
@@ -36,29 +36,19 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      # Install the scanner CLIs that `./zuke security` drives, pinned to exact
-      # versions. Go and pipx are preinstalled on the runner.
-      - name: Install scanners
-        run: |
-          pipx install zizmor==1.25.2
-          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
-          go install github.com/zricethezav/gitleaks/v8@v8.30.1
-          echo "$HOME/go/bin" >> "$GITHUB_PATH"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-
+      # No "install scanners" step: the `security` target provisions zizmor,
+      # actionlint and gitleaks itself from the build's declared toolchain
+      # (pinned versions, checksum-verified, cached), so the scanner versions
+      # live in build/scanners.ts rather than in this YAML — and
+      # `./zuke security` behaves identically on a laptop.
+      #
       # The ./zuke launcher bootstraps a pinned Deno version, then runs the
       # typed `security` target (zizmor, actionlint, gitleaks).
       - name: Run security scanners with Zuke
         run: ./zuke security
 
-      # Uploaded even when the scan failed — that is the case where it is needed.
-      # The report is redacted, so it carries locations and rule ids rather than
-      # secret values.
-      - name: Upload the gitleaks report
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: gitleaks-report
-          path: gitleaks-report.json
-          if-no-files-found: ignore
-          retention-days: 14
+      # No "upload the gitleaks report" step: the `security` target writes the
+      # redacted findings (file, line, rule, fingerprint) to the job summary
+      # itself, which is what the artifact was for — a bare count in the log is
+      # not diagnosable. The summary needs no step, no retention window, and no
+      # download.

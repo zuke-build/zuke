@@ -556,6 +556,7 @@ function unreachableDeps(warnings: string[]): WebsiteSyncDeps {
     throw new Error(`unexpected call: ${name}`);
   };
   return {
+    mintToken: boom("mintToken"),
     regenerateDocs: boom("regenerateDocs"),
     regenerateApiJson: boom("regenerateApiJson"),
     makeTempDir: boom("makeTempDir"),
@@ -577,6 +578,7 @@ function unreachableDeps(warnings: string[]): WebsiteSyncDeps {
 
 /** What a {@link fakeSyncDeps} run recorded, for assertions without `unknown` indexing. */
 interface SyncCalls {
+  mintToken: Array<{ appId: string; repo: string }>;
   cloneWebsite: Array<{ repo: string; dir: string }>;
   commitStaged: number;
   pushBranch: number;
@@ -599,11 +601,16 @@ function fakeSyncDeps(
     openOrRefreshPr: 0,
     mergePr: [],
     removeDir: [],
+    mintToken: [],
     info: [],
     success: [],
     warn: [],
   };
   const deps: WebsiteSyncDeps = {
+    mintToken: (credentials, repo) => {
+      calls.mintToken.push({ appId: credentials.appId, repo });
+      return Promise.resolve("minted-token");
+    },
     regenerateDocs: () => Promise.resolve(),
     regenerateApiJson: () => Promise.resolve(),
     makeTempDir: () => Promise.resolve("/tmp/fake-sync-dir"),
@@ -643,44 +650,91 @@ function fakeSyncDeps(
   return { deps, calls };
 }
 
-/** Run `fn` with `WEBSITE_SYNC_TOKEN`/`WEBSITE_REPO` set, restoring both after. */
+/**
+ * Run `fn` with the sync's environment set to exactly `env`, restoring it after.
+ *
+ * Every variable the sync reads is set or cleared — including the app
+ * credentials — so a value in the developer's own environment cannot change what
+ * a test exercises.
+ */
 async function withSyncEnv(
-  env: { token?: string; repo?: string },
+  env: { token?: string; repo?: string; appId?: string; appKey?: string },
   fn: () => Promise<void>,
 ): Promise<void> {
-  const prevToken = Deno.env.get("WEBSITE_SYNC_TOKEN");
-  const prevRepo = Deno.env.get("WEBSITE_REPO");
-  if (env.token === undefined) {
-    Deno.env.delete("WEBSITE_SYNC_TOKEN");
-  } else {
-    Deno.env.set("WEBSITE_SYNC_TOKEN", env.token);
-  }
-  if (env.repo === undefined) {
-    Deno.env.delete("WEBSITE_REPO");
-  } else {
-    Deno.env.set("WEBSITE_REPO", env.repo);
+  const names = {
+    WEBSITE_SYNC_TOKEN: env.token,
+    WEBSITE_REPO: env.repo,
+    ZUKE_BUILD_APP_ID: env.appId,
+    ZUKE_BUILD_APP_KEY: env.appKey,
+  };
+  const saved = new Map<string, string | undefined>();
+  for (const [name, value] of Object.entries(names)) {
+    saved.set(name, Deno.env.get(name));
+    if (value === undefined) Deno.env.delete(name);
+    else Deno.env.set(name, value);
   }
   try {
     await fn();
   } finally {
-    if (prevToken === undefined) Deno.env.delete("WEBSITE_SYNC_TOKEN");
-    else Deno.env.set("WEBSITE_SYNC_TOKEN", prevToken);
-    if (prevRepo === undefined) Deno.env.delete("WEBSITE_REPO");
-    else Deno.env.set("WEBSITE_REPO", prevRepo);
+    for (const [name, value] of saved) {
+      if (value === undefined) Deno.env.delete(name);
+      else Deno.env.set(name, value);
+    }
   }
 }
 
-Deno.test("runWebsiteSync: skips cleanly with no token, touching no deps", async () => {
-  await withSyncEnv({ token: undefined }, async () => {
+Deno.test("runWebsiteSync: skips cleanly with no credentials at all", async () => {
+  await withSyncEnv({}, async () => {
     // unreachableDeps throws if anything beyond the warn ran, proving the
     // function returns right after the guard without touching a real
     // dependency.
     const warnings: string[] = [];
     await runWebsiteSync(new Build(), unreachableDeps(warnings));
     assertEquals(warnings, [
-      "WEBSITE_SYNC_TOKEN not set — skipping the website sync.",
+      "Neither WEBSITE_SYNC_TOKEN nor ZUKE_BUILD_APP_ID/_KEY is set — " +
+      "skipping the website sync.",
     ]);
   });
+});
+
+Deno.test("runWebsiteSync: half a set of app credentials is not enough", async () => {
+  // An app id with no key (or the reverse) cannot mint anything, so it must skip
+  // rather than reach the minting call and fail there.
+  for (const half of [{ appId: "123" }, { appKey: "pem" }]) {
+    await withSyncEnv(half, async () => {
+      const warnings: string[] = [];
+      await runWebsiteSync(new Build(), unreachableDeps(warnings));
+      assertEquals(warnings.length, 1);
+    });
+  }
+});
+
+Deno.test("runWebsiteSync: mints an app token scoped to the website repo", async () => {
+  await withSyncEnv({ appId: "12345", appKey: "-----BEGIN…" }, async () => {
+    const { deps, calls } = fakeSyncDeps({
+      hasStagedChanges: () => Promise.resolve(false),
+    });
+    await runWebsiteSync(new Build(), deps);
+    // Minted for exactly the repository the sync targets — that scoping is what
+    // replaced the create-github-app-token step.
+    assertEquals(calls.mintToken, [{
+      appId: "12345",
+      repo: "zuke-build/zuke-build.github.io",
+    }]);
+  });
+});
+
+Deno.test("runWebsiteSync: an explicit token wins and mints nothing", async () => {
+  await withSyncEnv(
+    { token: "tok", appId: "12345", appKey: "pem" },
+    async () => {
+      const { deps, calls } = fakeSyncDeps({
+        hasStagedChanges: () => Promise.resolve(false),
+      });
+      await runWebsiteSync(new Build(), deps);
+      assertEquals(calls.mintToken, []);
+    },
+  );
 });
 
 Deno.test("runWebsiteSync: already in sync — no commit, push, or PR", async () => {

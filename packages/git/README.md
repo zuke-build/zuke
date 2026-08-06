@@ -152,6 +152,20 @@ class GitFetchSettings extends GitSettings
 
   remote(name: string): this
     The remote to fetch from.
+  refspec(...specs: string[]): this
+    Add a refspec to fetch, after the remote — `master`, or
+    `master:refs/remotes/origin/master` to also update the remote-tracking ref
+    (which is what makes `origin/master` resolvable in a shallow CI checkout
+    that never fetched it). Repeatable.
+
+    Prefix the source with `+` to force the update. Pair it with
+    {@link depth}: a shallow fetch is not a fast-forward of the history already
+    present, and git rejects such an update unless it is forced.
+  noTags(): this
+    Skip fetching tags (`--no-tags`).
+  depth(commits: number): this
+    Limit history to this many commits (`--depth`). `1` is enough to diff
+    against a base branch and avoids pulling a whole history into a CI job.
   all(): this
     Fetch from all remotes (`--all`).
   tags(): this

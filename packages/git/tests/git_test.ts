@@ -183,6 +183,39 @@ Deno.test("push, pull, and fetch render their options", () => {
   );
 });
 
+Deno.test("fetch: a shallow refspec fetch without tags renders in git's own order", () => {
+  // What a CI job needs to diff against a base branch it never cloned: one
+  // commit of the base, no tags, and a refspec that also updates the
+  // remote-tracking ref so `origin/master` resolves afterwards.
+  assertEquals(
+    new GitFetchSettings()
+      .noTags()
+      .depth(1)
+      .remote("origin")
+      // Forced, because a shallow fetch is not a fast-forward of the history
+      // already in the checkout and git would otherwise refuse the update.
+      .refspec("+master:refs/remotes/origin/master")
+      .argv(),
+    [
+      "git",
+      "fetch",
+      "--no-tags",
+      "--depth",
+      "1",
+      "origin",
+      "+master:refs/remotes/origin/master",
+    ],
+  );
+});
+
+Deno.test("fetch: refspecs are repeatable and always follow the remote", () => {
+  assertEquals(
+    new GitFetchSettings().remote("upstream").refspec("main").refspec("dev")
+      .argv(),
+    ["git", "fetch", "upstream", "main", "dev"],
+  );
+});
+
 Deno.test("push: --delete renders the remote ref removal", () => {
   assertEquals(
     new GitPushSettings().deleteRef().remote("origin").ref("stale").argv(),

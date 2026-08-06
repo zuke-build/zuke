@@ -113,28 +113,17 @@ jobs:
         with:
           persist-credentials: false
 
-      # Mint a short-lived, website-scoped installation token from the GitHub
-      # App. The default GITHUB_TOKEN is scoped to this repo only and cannot
-      # push to zuke-build.github.io; this token can (contents + pull-requests
-      # write, limited to that one repo) and expires in an hour.
-      - name: Mint a website-scoped token from the Zuke Build app
-        id: app-token
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
-        with:
-          app-id: ${{ secrets.ZUKE_BUILD_APP_ID }}
-          private-key: ${{ secrets.ZUKE_BUILD_APP_KEY }}
-          owner: zuke-build
-          repositories: zuke-build.github.io
-          # Narrow the minted token to exactly what syncWebsite needs — a branch
-          # push, a PR, and the squash-merge of that PR — rather than the app's
-          # full permission set. The merge needs no third permission: the merge
-          # API is a contents write, and `--delete-branch` rides on the same.
-          permission-contents: write
-          permission-pull-requests: write
-
+      # No "mint a token" step: `syncWebsite` mints the installation token
+      # itself from the app credentials below, scoped to the website repository
+      # and to exactly the permissions the sync performs — a branch push, a pull
+      # request, and the squash-merge of it (the merge API is a contents write,
+      # so it needs no third permission). The default GITHUB_TOKEN cannot reach
+      # another repository at all, which is why an app is involved.
+      #
       # The ./zuke launcher bootstraps a pinned Deno version (override with
       # DENO_VERSION); no separate setup-deno step.
       - name: Open and merge the website sync PR with Zuke
         run: ./zuke syncWebsite
         env:
-          WEBSITE_SYNC_TOKEN: ${{ steps.app-token.outputs.token }}
+          ZUKE_BUILD_APP_ID: ${{ secrets.ZUKE_BUILD_APP_ID }}
+          ZUKE_BUILD_APP_KEY: ${{ secrets.ZUKE_BUILD_APP_KEY }}

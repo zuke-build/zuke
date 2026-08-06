@@ -111,6 +111,15 @@ export function hostPlatform(): Platform {
 /** A download function: fetch `url` into the file at `dest`. */
 export type DownloadFn = (url: string, dest: PathLike) => Promise<void>;
 
+/** A packed download format, unpacked after the checksum is verified. */
+export type ArchiveFormat = "tar.gz" | "zip";
+
+/**
+ * How a downloaded artifact is treated: `"raw"` is the binary itself, an
+ * {@link ArchiveFormat} is unpacked and one path taken from inside.
+ */
+export type DownloadFormat = "raw" | ArchiveFormat;
+
 /** Options for {@link installRelease}. */
 export interface InstallReleaseOptions {
   /** The tool name; also the installed binary's filename (`.exe` on Windows). */
@@ -123,13 +132,25 @@ export interface InstallReleaseOptions {
    * The download format. `"raw"` (default) treats the download as the binary
    * itself; `"tar.gz"` and `"zip"` unpack it and take {@link binaryPath} from
    * inside. Many release assets ship one or the other.
+   *
+   * Like {@link url} and {@link checksum} this accepts a resolver, because the
+   * format is routinely per-platform: a Go or Rust project typically publishes
+   * `.tar.gz` for Linux and macOS and `.zip` for Windows. Pass
+   * `(p) => p.os === "windows" ? "zip" : "tar.gz"` rather than declaring one
+   * format that is wrong on a third of the platforms.
    */
-  archive?: "raw" | "tar.gz" | "zip";
+  archive?: DownloadFormat | ((platform: Platform) => DownloadFormat);
   /**
    * For a `"tar.gz"` or `"zip"` archive, the binary's path within the archive.
    * Defaults to {@link name}.
+   *
+   * Also resolver-friendly, for the same reason: the same release usually names
+   * the binary `tool` inside its Unix archive and `tool.exe` inside its Windows
+   * one, so `(p) => p.os === "windows" ? "tool.exe" : "tool"` is the common
+   * shape. (The *installed* filename gets its `.exe` automatically — this is the
+   * path to copy **out of** the archive.)
    */
-  binaryPath?: string;
+  binaryPath?: string | ((platform: Platform) => string);
   /**
    * The platform to resolve the URL for. Defaults to {@link hostPlatform}.
    * Override it to install a foreign binary or to unit-test URL resolution.
@@ -227,6 +248,18 @@ async function writeMarker(
  * actionable message rather than a confusing "mismatch" (or, for a resolver that
  * returns nothing for the platform, a bare `TypeError`).
  */
+/**
+ * Resolve a value that may be declared per-platform — the shape `archive` and
+ * `binaryPath` share with {@link InstallReleaseOptions.url}. A plain value is
+ * used as-is; a resolver is called with the target platform.
+ */
+function forPlatform<T extends string>(
+  value: T | ((platform: Platform) => T),
+  platform: Platform,
+): T {
+  return typeof value === "function" ? value(platform) : value;
+}
+
 function resolveChecksum(
   checksum: InstallReleaseOptions["checksum"],
   platform: Platform,
@@ -300,7 +333,7 @@ export async function installRelease(
   const url = options.url(platform);
   await Deno.mkdir(String(dir), { recursive: true });
 
-  const archive = options.archive ?? "raw";
+  const archive = forPlatform(options.archive ?? "raw", platform);
   if (archive === "tar.gz" || archive === "zip") {
     const scratch = await Deno.makeTempDir();
     try {
@@ -316,10 +349,11 @@ export async function installRelease(
       const unpacked = `${scratch}/unpacked`;
       if (archive === "zip") await extractZip(archivePath, unpacked);
       else await extractTarGzip(archivePath, unpacked);
-      await Deno.copyFile(
-        `${unpacked}/${options.binaryPath ?? options.name}`,
-        String(target),
+      const inArchive = forPlatform(
+        options.binaryPath ?? options.name,
+        platform,
       );
+      await Deno.copyFile(`${unpacked}/${inArchive}`, String(target));
     } finally {
       await Deno.remove(scratch, { recursive: true });
     }
@@ -404,8 +438,12 @@ export interface InstallTreeOptions {
   url: (platform: Platform) => string;
   /** The directory the tree is installed under (created if missing). */
   destDir: PathLike;
-  /** The archive format — a multi-file runtime always ships packed. */
-  archive: "tar.gz" | "zip";
+  /**
+   * The archive format — a multi-file runtime always ships packed. Accepts a
+   * per-platform resolver for the usual `.tar.gz` on Unix / `.zip` on Windows
+   * split (see {@link InstallReleaseOptions.archive}).
+   */
+  archive: ArchiveFormat | ((platform: Platform) => ArchiveFormat);
   /**
    * Leading path components to drop while unpacking (tar's `--strip-components`).
    * A release tarball wraps everything in a `tool-v1.2.3/` directory, so `1`
@@ -464,9 +502,10 @@ export async function installTree(
   }
 
   const url = options.url(platform);
+  const archive = forPlatform(options.archive, platform);
   const scratch = await Deno.makeTempDir();
   try {
-    const archivePath = `${scratch}/download.${options.archive}`;
+    const archivePath = `${scratch}/download.${archive}`;
     await download(url, archivePath);
     if (checksum !== undefined) {
       await verifyChecksum(
@@ -479,7 +518,7 @@ export async function installTree(
     // re-install never collides with leftover files (or symlinks).
     await Deno.remove(String(treeRoot), { recursive: true }).catch(() => {});
     await Deno.mkdir(String(treeRoot), { recursive: true });
-    const extract = options.archive === "zip" ? extractZip : extractTarGzip;
+    const extract = archive === "zip" ? extractZip : extractTarGzip;
     await extract(archivePath, String(treeRoot), { strip: options.strip });
   } finally {
     await Deno.remove(scratch, { recursive: true });

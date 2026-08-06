@@ -102,14 +102,109 @@ function githubWorkflow(configure: (settings: GithubWorkflowSettings) => GithubW
   githubWorkflow((g) => g.repo("acme/app").workflow("e2e.yml").ref("main"))
   ```
 
+async function mintAppToken(configure?: Configure<GhAppTokenSettings>): Promise<GhAppTokenResult>
+  Mint an installation token from the settings a lambda configures.
+
 function readWorkflowResult(state: TargetStateHandle): WorkflowResult | undefined
   Read the {@link WorkflowResult} a completed {@link githubWorkflow} wait wrote
   to a target's state, or `undefined` if the wait has not completed (or this is
   not a github-workflow gate). Call it from a dependent target's body with
   the gate's handle: `readWorkflowResult(ctx.stateOf("<gate-target>"))`.
 
+async function uploadSarifReport(configure?: Configure<GhSarifSettings>): Promise<GhSarifUploadResult>
+  Upload the SARIF report the settings describe.
+
 const GhTasks: GhTasksApi
-  Typed task functions for the `gh` GitHub CLI.
+  Typed task functions for GitHub: the `gh` CLI and the REST-only operations.
+
+class GhAppTokenSettings
+  Settings for {@link GhAppTokenApi.appToken}.
+
+  appId_?: string
+    The app's numeric id. Set by {@link appId}.
+  privateKey_?: string
+    The app's PEM private key. Set by {@link privateKey}.
+  owner_?: string
+    The account the app is installed on. Set by {@link owner}.
+  repositories_: string[]
+    Repositories to scope the token to. Set by {@link repositories}.
+  permissions_: Record<string, GhPermissionLevel>
+    Requested permissions. Set by {@link permission}.
+  baseUrl_: string
+    REST base URL. Set by {@link baseUrl}.
+  fetch_: typeof fetch
+    The `fetch` implementation. Set by {@link fetch}.
+  now_: () => number
+    Seconds since the epoch, for the JWT's claims. Set by {@link now}.
+  appId(id: string | number): this
+    The GitHub App's id (the `App ID` on its settings page).
+  privateKey(pem: string): this
+    The app's private key, as the PEM's contents — GitHub issues PKCS#1
+    (`BEGIN RSA PRIVATE KEY`); PKCS#8 is accepted too.
+  owner(login: string): this
+    The user or organisation the app is installed on.
+  repositories(...names: string[]): this
+    Scope the token to these repositories (names only, without the owner).
+    Omit to cover every repository the installation can reach — prefer naming
+    them, so a leaked token is narrow.
+  permission(name: string, level: GhPermissionLevel): this
+    Request one permission, e.g. `.permission("contents", "write")`. Repeatable.
+    Narrowing to what the target needs beats inheriting the app's full set;
+    requesting more than the installation grants is an error from GitHub.
+  baseUrl(url: string): this
+    Use a different REST base (GitHub Enterprise Server).
+  fetch(fn: typeof fetch): this
+    Override the `fetch` implementation (a test seam).
+  now(seconds: () => number): this
+    Override the clock, in seconds since the epoch (a test seam).
+  async jwt_(): Promise<string>
+    Sign the app JWT this settings object describes.
+  installationPath_(): string
+    The path that resolves this app's installation id.
+  tokenRequest_(): Record<string, unknown>
+    The `access_tokens` request body — only the fields that were narrowed.
+
+class GhSarifSettings
+  Settings for {@link GhSarifApi.uploadSarif}.
+
+  file_?: string
+    The SARIF file to upload. Set by {@link file}.
+  repo_?: string
+    `owner/repo` to upload for. Set by {@link repo}.
+  commit_?: string
+    The commit the results describe. Set by {@link commit}.
+  ref_?: string
+    The ref the results describe. Set by {@link ref}.
+  token_?: string
+    The token to authenticate with. Set by {@link token}.
+  checkoutUri_?: string
+    Where the checkout that produced the results lives. Set by {@link checkoutUri}.
+  baseUrl_: string
+    REST base URL. Set by {@link baseUrl}.
+  fetch_: typeof fetch
+    The `fetch` implementation. Set by {@link fetch}.
+  file(path: PathLike): this
+    The SARIF report to upload (required).
+  repo(slug: string): this
+    The `owner/repo` to upload for. Defaults to `GITHUB_REPOSITORY`.
+  commit(sha: string): this
+    The commit SHA the results describe. Defaults to `GITHUB_SHA`.
+  ref(ref: string): this
+    The full ref the results describe (`refs/heads/main`). Defaults to `GITHUB_REF`.
+  token(value: string): this
+    The token to authenticate with — needs `security-events: write`. Defaults to
+    `GITHUB_TOKEN` in the environment, so it never has to reach argv.
+  checkoutUri(uri: string): this
+    The URI of the checkout the results are relative to (`file:///…`).
+  baseUrl(url: string): this
+    Use a different REST base (GitHub Enterprise Server).
+  fetch(fn: typeof fetch): this
+    Override the `fetch` implementation (a test seam).
+  repoSlug_(): string
+    The effective `owner/repo`, from the setting or the Actions environment.
+  async body_(): Promise<Record<string, string>>
+    The request body. The `sarif` field is the report gzipped then base64'd,
+    which is what the endpoint accepts — a plain JSON body is rejected.
 
 class GhSettings extends SubcommandSettings
   Settings for a `gh` invocation.
@@ -176,8 +271,43 @@ class WorkflowCorrelationError extends Error
   override name: string
     The error name, `"WorkflowCorrelationError"`.
 
-interface GhTasksApi
-  The shape of {@link GhTasks}.
+interface GhAppTokenApi
+  The shape of the app-token task, mixed into `GhTasks`.
+
+  appToken(configure?: Configure<GhAppTokenSettings>): Promise<GhAppTokenResult>
+    Mint a GitHub App installation token, scoped to the repositories and
+    permissions the settings request. The returned token is registered with the
+    Actions log masker, so it is safe to pass onward through `env`.
+
+interface GhAppTokenResult
+  A minted installation token and when it stops working.
+
+  token: string
+    The installation token, usable as a bearer token or a git password.
+  expiresAt: string
+    ISO-8601 expiry — one hour out, as GitHub issues it.
+  installationId: number
+    The installation the token was minted for.
+
+interface GhSarifApi
+  The shape of the SARIF task, mixed into `GhTasks`.
+
+  uploadSarif(configure?: Configure<GhSarifSettings>): Promise<GhSarifUploadResult>
+    Upload a SARIF report to GitHub code scanning, so its findings land in the
+    repository's Security tab. Needs a token with `security-events: write`.
+
+interface GhSarifUploadResult
+  What GitHub returns for an accepted SARIF upload.
+
+  id: string
+    The opaque id of the upload, for polling its processing status.
+  url: string
+    The URL that reports whether GitHub finished processing the report.
+
+interface GhTasksApi extends GhAppTokenApi, GhSarifApi
+  The shape of {@link GhTasks}: the `gh` CLI plus the GitHub operations that
+  have no CLI subcommand (see {@link GhAppTokenApi}, {@link GhSarifApi}) and
+  would otherwise force a build back to a marketplace action.
 
   run(configure?: Configure<GhSettings>): Promise<CommandOutput>
     Run a `gh` command.
@@ -215,6 +345,9 @@ type CorrelateMode = "marker" | "created-window"
   - `"created-window"` — claim the `workflow_dispatch` run on the dispatch ref
     created just after dispatch; best-effort, for workflows that can't echo
     the marker (fails loudly if two candidates are in the window).
+
+type GhPermissionLevel = "read" | "write" | "admin"
+  A permission level an installation token can be narrowed to.
 ````
 
 </details>

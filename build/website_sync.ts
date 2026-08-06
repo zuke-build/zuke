@@ -51,13 +51,74 @@ export function resolveSyncTarget(
   env: { token?: string; repo?: string },
 ): SyncTarget | null {
   if (env.token === undefined || env.token === "") return null;
+  return { token: env.token, repo: resolveSyncRepo(env) };
+}
+
+/**
+ * The `owner/repo` the sync targets, validated. Separate from
+ * {@link resolveSyncTarget} because the repository has to be known *before* a
+ * token exists: an app-minted token is scoped to that one repository, so the
+ * slug is an input to minting rather than a companion of it.
+ *
+ * @throws if `env.repo` is set but is not a valid `owner/repo` slug.
+ */
+export function resolveSyncRepo(env: { repo?: string }): string {
   if (env.repo !== undefined && !REPO_SLUG.test(env.repo)) {
     throw new Error(
       `website sync: WEBSITE_REPO must be an "owner/repo" slug, got ` +
         `"${env.repo}". Unset it to target ${DEFAULT_WEBSITE_REPO}.`,
     );
   }
-  return { token: env.token, repo: env.repo ?? DEFAULT_WEBSITE_REPO };
+  return env.repo ?? DEFAULT_WEBSITE_REPO;
+}
+
+/**
+ * The credentials of the GitHub App the sync mints its cross-repo token from,
+ * when no explicit `WEBSITE_SYNC_TOKEN` is supplied.
+ */
+export interface AppCredentials {
+  /** The app's id (`ZUKE_BUILD_APP_ID`). */
+  appId: string;
+  /** The app's PEM private key (`ZUKE_BUILD_APP_KEY`). */
+  privateKey: string;
+}
+
+/**
+ * The app credentials in `env`, or `null` when either half is missing — absent
+ * locally and on fork PRs, where the sync skips rather than fails.
+ */
+export function resolveAppCredentials(
+  env: { appId?: string; privateKey?: string },
+): AppCredentials | null {
+  const { appId, privateKey } = env;
+  if (appId === undefined || appId === "") return null;
+  if (privateKey === undefined || privateKey === "") return null;
+  return { appId, privateKey };
+}
+
+/**
+ * Mint a token scoped to just the website repository, from the app credentials.
+ *
+ * This is what replaced the `actions/create-github-app-token` step: the
+ * permissions requested here are exactly what the sync performs — a branch push,
+ * a pull request, and the squash-merge of it (the merge API is a contents write,
+ * so it needs no third permission).
+ */
+export async function mintWebsiteToken(
+  credentials: AppCredentials,
+  repo: string,
+): Promise<string> {
+  const [owner, name] = repo.split("/");
+  const { token } = await GhTasks.appToken((s) =>
+    s
+      .appId(credentials.appId)
+      .privateKey(credentials.privateKey)
+      .owner(owner)
+      .repositories(name)
+      .permission("contents", "write")
+      .permission("pull-requests", "write")
+  );
+  return token;
 }
 
 /** The sync branch name and commit message for a given `core` version. */
@@ -93,6 +154,11 @@ export interface WebsiteSyncDeps {
   makeTempDir(): Promise<string>;
   /** Recursively remove `dir`. */
   removeDir(dir: string): Promise<void>;
+  /**
+   * Mint the cross-repo token from the app credentials, scoped to `repo`. Its
+   * own seam so the sync is testable without an app or a network call.
+   */
+  mintToken(credentials: AppCredentials, repo: string): Promise<string>;
   /** Shallow-clone `repo` into `dir`. */
   cloneWebsite(repo: string, dir: string): Promise<void>;
   /** Create the sync branch in `dir`, off the freshly-cloned default branch. */
@@ -156,6 +222,7 @@ const REAL_DEPS: WebsiteSyncDeps = {
   removeDir: async (dir) => {
     await FileTasks.remove(dir, { recursive: true });
   },
+  mintToken: (credentials, repo) => mintWebsiteToken(credentials, repo),
   cloneWebsite: async (repo, dir) => {
     // A public repo — the clone needs no credential.
     await GitTasks.clone((s) =>
@@ -275,15 +342,28 @@ export async function runWebsiteSync(
   build: Build,
   deps: WebsiteSyncDeps = REAL_DEPS,
 ): Promise<void> {
-  const target = resolveSyncTarget({
-    token: Deno.env.get("WEBSITE_SYNC_TOKEN"),
-    repo: Deno.env.get("WEBSITE_REPO"),
-  });
-  if (target === null) {
-    deps.warn("WEBSITE_SYNC_TOKEN not set — skipping the website sync.");
-    return;
+  const repo = resolveSyncRepo({ repo: Deno.env.get("WEBSITE_REPO") });
+  // An explicit token wins; otherwise mint one from the app credentials, scoped
+  // to this repository alone. Either way no workflow step is involved.
+  const explicit = Deno.env.get("WEBSITE_SYNC_TOKEN");
+  let token: string;
+  if (explicit !== undefined && explicit !== "") {
+    token = explicit;
+  } else {
+    const credentials = resolveAppCredentials({
+      appId: Deno.env.get("ZUKE_BUILD_APP_ID"),
+      privateKey: Deno.env.get("ZUKE_BUILD_APP_KEY"),
+    });
+    if (credentials === null) {
+      deps.warn(
+        "Neither WEBSITE_SYNC_TOKEN nor ZUKE_BUILD_APP_ID/_KEY is set — " +
+          "skipping the website sync.",
+      );
+      return;
+    }
+    token = await deps.mintToken(credentials, repo);
+    deps.info(`Minted a website-scoped token for ${repo} from the GitHub App.`);
   }
-  const { token, repo } = target;
 
   // Regenerate exactly what the website consumes: the llms.txt /
   // llms-full.txt indexes (the `apiDocs` flow) and the structured

@@ -116,6 +116,15 @@ function affectedTargets(order: readonly TargetBuilder[], changed: readonly stri
   affected), when a dependency is affected, or when an affected target triggers
   it.
 
+function appendJobSummary(markdown: string): boolean
+  Append `markdown` to the Actions job summary, returning whether it was
+  written. Outside Actions (no `GITHUB_STEP_SUMMARY`) it is a no-op returning
+  `false`, so the same code path works locally.
+
+  Best-effort by design: an unwritable summary file reports `false` rather than
+  throwing. A report that could not be displayed must never fail the build
+  that produced it — the build's own result is the signal that matters.
+
 async function archiveOutputs(outputs: readonly string[], host: OutputHost): Promise<Uint8Array>
   Archive a target's `outputs` into a gzipped tar of their current contents.
 
@@ -209,6 +218,11 @@ function detectCiHost(env: (name: string) => string | undefined): CiHost
   (`GITHUB_ACTIONS`), GitLab CI (`GITLAB_CI`), Azure Pipelines (`TF_BUILD`), and
   Bitbucket Pipelines (`BITBUCKET_BUILD_NUMBER`); anything else is `"local"`.
   The reader is injectable so detection can be unit-tested hermetically.
+
+function discoverCiFiles(build: Build): CiFile[]
+  Find every {@link CiFile} declared on a build instance. A fan-out file is
+  resolved here — its jobs are expanded from the build's targets — so the
+  returned files render the same whether they fan out or not.
 
 function discoverGroups(build: Build): Map<string, Group>
   Discover all parallel {@link Group} batches declared on a build instance,
@@ -598,6 +612,11 @@ function service(): ServiceBuilder
   Create a service target — a long-lived process kept running while its
   dependents execute. Configure it with {@link ServiceBuilder.start} /
   {@link ServiceBuilder.readyWhen} and depend on it from a {@link target}.
+
+async function syncCiFiles(files: readonly CiFile[], options: CiSyncOptions): Promise<CiSyncResult[]>
+  Bring each declared {@link CiFile} on disk in line with its definition. By
+  default a changed file is rewritten; in `check` mode it is reported `stale`
+  instead (so CI can fail when the committed config has drifted).
 
 function tar(entries: TarEntry[]): Uint8Array
   Create a `ustar` archive from the given entries (in order).
@@ -1717,10 +1736,10 @@ class ToolInstallSettings
     Resolves the per-platform download URL. Set by {@link url}.
   destDir_?: PathLike
     Install directory (overrides the toolchain's). Set by {@link destDir}.
-  archive_?: "raw" | "tar.gz" | "zip"
-    Download format. Set by {@link archive}.
-  binaryPath_?: string
-    The binary's path within a `tar.gz`. Set by {@link binaryPath}.
+  archive_?: DownloadFormat | ((platform: Platform) => DownloadFormat)
+    Download format (or a per-platform resolver). Set by {@link archive}.
+  binaryPath_?: string | ((platform: Platform) => string)
+    The binary's path within an archive (or a resolver). Set by {@link binaryPath}.
   strip_?: number
     Leading path components to strip on a tree install. Set by {@link strip}.
   bins_?: string[]
@@ -1737,11 +1756,16 @@ class ToolInstallSettings
     Resolve the download URL for the target {@link Platform}.
   destDir(dir: PathLike): this
     The directory to install the binary into (created if missing).
-  archive(format: "raw" | "tar.gz" | "zip"): this
+  archive(format: DownloadFormat | ((platform: Platform) => DownloadFormat)): this
     Treat the download as a `"tar.gz"` or `"zip"` to unpack (default `"raw"`,
-    the bare binary). Pair with {@link binaryPath} for the binary inside.
-  binaryPath(path: string): this
-    For an archive, the binary's path within it (defaults to the name).
+    the bare binary). Pair with {@link binaryPath} for the binary inside. Pass a
+    `(platform) => format` resolver when the format is per-platform, as it is
+    for most Go and Rust releases — `.tar.gz` on Linux and macOS, `.zip` on
+    Windows (see {@link InstallReleaseOptions.archive}).
+  binaryPath(path: string | ((platform: Platform) => string)): this
+    For an archive, the binary's path within it (defaults to the name). Also
+    accepts a `(platform) => path` resolver, for the usual case of a `.exe`
+    inside the Windows archive only.
   strip(components: number): this
     For a tree install ({@link ToolTasksApi.installTree} / {@link Toolchain.tree}),
     drop this many leading path components while unpacking — `1` unwraps a
@@ -2064,6 +2088,24 @@ interface CancelResult
   failures: CompensationFailure[]
     Compensations that threw (recorded, non-fatal).
 
+interface CiCheckout
+  The repository checkout, emitted as an `actions/checkout` step after any
+  {@link CiHardenRunner} and before the job's own steps. Like hardening, the
+  pinned {@link action} reference is required.
+
+  action: string
+    The pinned action reference, e.g. `actions/checkout@<sha>`.
+  persistCredentials?: boolean
+    Keep the token in git config so a later step can push. Defaults to `false`:
+    a job that does not push should not leave a credential behind.
+  ref?: string
+    The ref to check out. Defaults to the one that triggered the run.
+  fetchDepth?: number
+    How much history to fetch. `0` means the full history — needed by anything
+    that walks past commits, such as a secret scan.
+  name?: string
+    The step name. Defaults to `"Checkout"`.
+
 interface CiConcurrency
   A concurrency group: at most one run per group, optionally cancelling the prior one.
 
@@ -2089,6 +2131,33 @@ interface CiFileSpec
     {@link FanOutOptions} to customise. When set, {@link pipeline} supplies the
     pipeline-level fields (name, triggers, …) and its `jobs` are ignored.
 
+interface CiHardenRunner
+  Runner hardening, emitted as a `step-security/harden-runner` step before
+  anything else in the job.
+
+  This cannot move into the build: the point of the step is to install an egress
+  control before build code runs, so a build that set it up itself would be
+  the very code it is meant to contain. Generating it is the next best thing —
+  the policy is declared in one place, in code, next to the job it protects.
+
+  The pinned {@link action} reference is required rather than defaulted. A
+  default would mean either a floating tag (which supply-chain scanners reject
+  as an unpinned use) or a commit SHA baked into `@zuke/core` that goes stale
+  between releases. Passing it makes the pin the caller's — and lets a build
+  source it from wherever its bumps are automated.
+
+  action: string
+    The pinned action reference, e.g. `step-security/harden-runner@<sha>`.
+  egress?: "audit" | "block"
+    `"audit"` records outbound connections; `"block"` drops everything outside
+    {@link allowedEndpoints}. Defaults to `"audit"` — the safe choice for a job
+    with no secrets, where a false block would be worse than an unrecorded call.
+  allowedEndpoints?: string[]
+    The hosts a `"block"` policy permits, as `host:port`. Ignored when auditing.
+    Every entry should be traceable to something the build actually reaches.
+  name?: string
+    The step name. Defaults to `"Harden the runner"`.
+
 interface CiJob
   A job: a named unit of work with steps, optionally fanned out by a matrix.
 
@@ -2104,6 +2173,21 @@ interface CiJob
     Other jobs (by {@link id}) that must finish before this one.
   matrix?: Record<string, Array<string | number>>
     A build matrix: each key fans out over its values.
+  failFast?: boolean
+    Let the other matrix legs finish when one fails (`fail-fast: false`). Default
+    GitHub behaviour cancels them, which hides whether a failure is
+    platform-specific — the thing a cross-OS matrix exists to answer.
+  permissions?: Record<string, string>
+    The token permissions this job's `GITHUB_TOKEN` carries. Set it per job
+    rather than pipeline-wide so a job holds only what it needs — the isolation
+    that lets one job push commits while another only reads. GitHub only.
+  harden?: CiHardenRunner | false
+    Harden the runner before this job's steps. Overrides
+    {@link CiPipeline.harden}; pass `false` to opt this job out of a
+    pipeline-wide default.
+  checkout?: CiCheckout | false
+    Check the repository out before this job's steps. Overrides
+    {@link CiPipeline.checkout}; pass `false` to opt out.
   env?: Record<string, string>
     Environment variables for the job.
   if?: string
@@ -2127,6 +2211,13 @@ interface CiPipeline
     `{ contents: "read", "pull-requests": "write" }`. Ignored elsewhere.
   concurrency?: CiConcurrency
     Limit concurrent runs (GitHub only). Ignored elsewhere.
+  harden?: CiHardenRunner
+    Harden every job's runner, unless a job overrides it or opts out with
+    `harden: false`. Declared once here rather than repeated per job, since the
+    policy is usually uniform across a workflow. GitHub only.
+  checkout?: CiCheckout
+    Check the repository out in every job, unless a job overrides it or opts out
+    with `checkout: false`. GitHub only.
   jobs?: CiJob[]
     The jobs to run. Defaults to a single `build` job that runs the build.
 
@@ -2135,6 +2226,17 @@ interface CiStep
 
   name?: string
     Human-readable step name.
+  id?: string
+    A stable identifier for the step, so later steps can read its outputs
+    (`${{ steps.<id>.outputs.x }}`). GitHub only.
+  if?: string
+    A condition gating this step — a raw provider expression, e.g.
+    `runner.os == 'Windows'` or `always()`. GitHub only.
+  shell?: string
+    The shell to run `run` with (`bash`, `pwsh`, `sh`, …). Omit for the runner's
+    default, which differs per OS. GitHub only.
+  continueOnError?: boolean
+    Continue the job even when this step fails (`continue-on-error`). GitHub only.
   run?: string
     A shell command to run. Portable across all providers.
   uses?: string
@@ -2147,6 +2249,25 @@ interface CiStep
     and on Azure Pipelines `script` steps; ignored on GitLab (which sources
     variables from project settings, not the job YAML).
 
+interface CiSyncOptions
+  Filesystem seams for {@link syncCiFiles} (overridable for tests).
+
+  check?: boolean
+    Verify instead of write: report an out-of-date file as `stale` rather than
+    overwriting it. Intended for CI, where committed config must match the build.
+  read?: (path: string) => Promise<string | null>
+    Read a file's contents, or `null` when it does not exist.
+  write?: (path: string, content: string) => Promise<void>
+    Write a file, creating parent directories as needed.
+
+interface CiSyncResult
+  The outcome of syncing one {@link CiFile}.
+
+  path: string
+    The file's path.
+  status: CiSyncStatus
+    Whether it was written, already current, or (in check mode) out of date.
+
 interface CiTriggers
   When the pipeline runs.
 
@@ -2156,8 +2277,17 @@ interface CiTriggers
   pullRequest?: string[]
     Branches whose pull/merge requests trigger the pipeline. An empty array
     means every branch (no filter); omit the field to disable the trigger.
+  pullRequestTypes?: string[]
+    Which pull-request activity types fire the pipeline, on top of the branch
+    filter — GitHub's default is `opened`, `synchronize`, `reopened`. Add
+    `edited` when a gate reads the pull request's own description, since editing
+    it changes what a check should see without pushing a commit. GitHub only.
   manual?: boolean
     Allow manual runs (workflow dispatch / web).
+  branchProtectionRule?: boolean
+    Run when a branch protection rule is created, edited, or deleted
+    (`branch_protection_rule`) — a supply-chain scan wants to re-score when the
+    repository's own protections change. GitHub only.
   schedule?: ScheduleEntry[]
     Timezone-aware scheduled runs. Each entry is a 5-field cron in an optional
     IANA timezone (`{ cron: "30 9 * * 1-5", tz: "Europe/Sofia" }`). Fully
@@ -2514,13 +2644,25 @@ interface InstallReleaseOptions
     Resolve the download URL for the target {@link Platform}.
   destDir: PathLike
     The directory to install the binary into (created if missing).
-  archive?: "raw" | "tar.gz" | "zip"
+  archive?: DownloadFormat | ((platform: Platform) => DownloadFormat)
     The download format. `"raw"` (default) treats the download as the binary
     itself; `"tar.gz"` and `"zip"` unpack it and take {@link binaryPath} from
     inside. Many release assets ship one or the other.
-  binaryPath?: string
+
+    Like {@link url} and {@link checksum} this accepts a resolver, because the
+    format is routinely per-platform: a Go or Rust project typically publishes
+    `.tar.gz` for Linux and macOS and `.zip` for Windows. Pass
+    `(p) => p.os === "windows" ? "zip" : "tar.gz"` rather than declaring one
+    format that is wrong on a third of the platforms.
+  binaryPath?: string | ((platform: Platform) => string)
     For a `"tar.gz"` or `"zip"` archive, the binary's path within the archive.
     Defaults to {@link name}.
+
+    Also resolver-friendly, for the same reason: the same release usually names
+    the binary `tool` inside its Unix archive and `tool.exe` inside its Windows
+    one, so `(p) => p.os === "windows" ? "tool.exe" : "tool"` is the common
+    shape. (The installed filename gets its `.exe` automatically — this is the
+    path to copy out of the archive.)
   platform?: InstallPlatform
     The platform to resolve the URL for. Defaults to {@link hostPlatform}.
     Override it to install a foreign binary or to unit-test URL resolution.
@@ -2549,8 +2691,10 @@ interface InstallTreeOptions
     Resolve the download URL for the target {@link Platform}.
   destDir: PathLike
     The directory the tree is installed under (created if missing).
-  archive: "tar.gz" | "zip"
-    The archive format — a multi-file runtime always ships packed.
+  archive: ArchiveFormat | ((platform: Platform) => ArchiveFormat)
+    The archive format — a multi-file runtime always ships packed. Accepts a
+    per-platform resolver for the usual `.tar.gz` on Unix / `.zip` on Windows
+    split (see {@link InstallReleaseOptions.archive}).
   strip?: number
     Leading path components to drop while unpacking (tar's `--strip-components`).
     A release tarball wraps everything in a `tool-v1.2.3/` directory, so `1`
@@ -3263,6 +3407,9 @@ type AnnouncementLevel = "success" | "failure" | "warning" | "info"
 type Architecture = "x86_64" | "aarch64"
   The CPU architectures Zuke recognises.
 
+type ArchiveFormat = "tar.gz" | "zip"
+  A packed download format, unpacked after the checksum is verified.
+
 type BuildLocation = { kind: "module"; module: string; cwd: string; repo?: string; } | { kind: "command"; command: string[]; cwd: string; repo?: string; }
   Where a registered build lives, so a runner can launch it. Two forms: a
   `module` (the entry file `deno run` executes — the form `zuke register`
@@ -3283,11 +3430,18 @@ type CiHost = "github" | "gitlab" | "azure" | "bitbucket" | "local"
 type CiProvider = "github" | "gitlab" | "azure" | "bitbucket"
   The CI providers {@link generateCi} can target.
 
+type CiSyncStatus = "written" | "unchanged" | "stale"
+  What {@link syncCiFiles} did to a file.
+
 type Condition = () => boolean | Promise<boolean>
   A predicate gating whether a target runs; may be synchronous or async.
 
 type DownloadFn = (url: string, dest: PathLike) => Promise<void>
   A download function: fetch `url` into the file at `dest`.
+
+type DownloadFormat = "raw" | ArchiveFormat
+  How a downloaded artifact is treated: `"raw"` is the binary itself, an
+  {@link ArchiveFormat} is unpacked and one path taken from inside.
 
 type ForEachFactory<Item> = (item: Item, index: number) => Record<string, TargetBuilder>
   Builds one item's ordered pipeline of sub-targets for {@link TargetBuilder.forEach}.

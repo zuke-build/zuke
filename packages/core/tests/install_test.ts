@@ -191,6 +191,58 @@ Deno.test("installRelease (tar.gz) defaults binaryPath to the tool name", async 
   }
 });
 
+Deno.test("installRelease resolves a per-platform archive and binaryPath", async () => {
+  const root = await Deno.makeTempDir();
+  try {
+    // The shape almost every Go/Rust release has: .zip on Windows carrying
+    // `tool.exe`, .tar.gz elsewhere carrying `tool`. One declaration, both.
+    const zipped = await makeZip([
+      { name: "mytool.exe", data: new TextEncoder().encode("windows-binary") },
+    ]);
+    await Deno.writeFile(
+      `${root}/mytool`,
+      new TextEncoder().encode("unix-binary"),
+    );
+    await createTarGzip(["mytool"], `${root}/mytool.tar.gz`, { cwd: root });
+    const tarred = await Deno.readFile(`${root}/mytool.tar.gz`);
+
+    const seen: { url?: string } = {};
+    const declare = (platform: InstallPlatform, body: Uint8Array) => ({
+      name: "mytool",
+      destDir: `${root}/install-${platform.os}`,
+      platform,
+      archive: (p: Platform) =>
+        p.os === "windows" ? "zip" as const : "tar.gz" as const,
+      binaryPath: (p: Platform) => p.os === "windows" ? "mytool.exe" : "mytool",
+      url: (p: Platform) =>
+        `https://example.com/mytool.${p.os === "windows" ? "zip" : "tar.gz"}`,
+      download: fakeDownload(body, seen),
+    });
+
+    const win = await installRelease(
+      declare({ os: "windows", arch: "x86_64" }, zipped),
+    );
+    assertEquals(seen.url, "https://example.com/mytool.zip");
+    assertEquals(win.path.endsWith("/mytool.exe"), true);
+    assertEquals(
+      new TextDecoder().decode(await Deno.readFile(String(win))),
+      "windows-binary",
+    );
+
+    const nix = await installRelease(
+      declare({ os: "linux", arch: "x86_64" }, tarred),
+    );
+    assertEquals(seen.url, "https://example.com/mytool.tar.gz");
+    assertEquals(nix.path.endsWith("/mytool"), true);
+    assertEquals(
+      new TextDecoder().decode(await Deno.readFile(String(nix))),
+      "unix-binary",
+    );
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
 Deno.test("installRelease (zip) unpacks and installs the inner binary", async () => {
   const root = await Deno.makeTempDir();
   try {

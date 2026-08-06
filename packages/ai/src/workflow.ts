@@ -91,6 +91,17 @@ export interface AiReviewWorkflowSpec {
    * fetch step). Defaults to `"master"`.
    */
   baseBranch?: string;
+  /**
+   * Emit the `git fetch` step that makes the base branch available, and point
+   * the reviewers at what it fetched. Defaults to `true`, because a pull-request
+   * checkout is shallow and has no base to diff against.
+   *
+   * Set it to `false` when the build's review target fetches its own base — then
+   * the workflow drops the step, and the reviewers use their own configured base
+   * rather than the fetched `FETCH_HEAD`. Preferable where it applies: the same
+   * `zuke review` then works locally, where no workflow step exists to run.
+   */
+  fetchBase?: boolean;
   /** Output path. Defaults to the host's conventional location. */
   path?: string;
   /** Workflow name shown in the host's UI. Defaults to `"AI Review"`. */
@@ -215,7 +226,11 @@ class AiReviewWorkflow extends CiFile {
       const tokens = commentEnvs.length > 0 ? commentEnvs : ["GITHUB_TOKEN"];
       for (const name of tokens) env[name] = githubRef(name);
     }
-    env.ZUKE_REVIEW_BASE = "FETCH_HEAD";
+    // Only when this workflow is the thing that fetched the base: pointing the
+    // reviewers at FETCH_HEAD would otherwise override a base the build resolves
+    // for itself.
+    const fetchBase = this.#spec.fetchBase ?? true;
+    if (fetchBase) env.ZUKE_REVIEW_BASE = "FETCH_HEAD";
 
     const job: CiJob = {
       id: "review",
@@ -232,10 +247,12 @@ class AiReviewWorkflow extends CiFile {
           with: { "egress-policy": "audit" },
         },
         { uses: CHECKOUT, with: { "persist-credentials": "false" } },
-        {
-          name: "Fetch the base branch",
-          run: `git fetch --no-tags --depth=1 origin ${baseBranch}`,
-        },
+        ...(fetchBase
+          ? [{
+            name: "Fetch the base branch",
+            run: `git fetch --no-tags --depth=1 origin ${baseBranch}`,
+          }]
+          : []),
         { name: "AI review with Zuke", run: `./zuke ${target}`, env },
       ],
     };

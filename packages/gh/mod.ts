@@ -19,6 +19,19 @@
 
 export * from "./src/gh.ts";
 export {
+  type GhAppTokenApi,
+  type GhAppTokenResult,
+  GhAppTokenSettings,
+  type GhPermissionLevel,
+  mintAppToken,
+} from "./src/app_token.ts";
+export {
+  type GhSarifApi,
+  GhSarifSettings,
+  type GhSarifUploadResult,
+  uploadSarifReport,
+} from "./src/sarif.ts";
+export {
   type CorrelateMode,
   githubWorkflow,
   GithubWorkflowSettings,

@@ -1,5 +1,5 @@
 import { assertEquals, assertThrows } from "./_assert.ts";
-import type { DownloadFn } from "../src/install.ts";
+import type { DownloadFn, InstallPlatform, Platform } from "../src/install.ts";
 import type { NpmRunner } from "../src/npm_tool.ts";
 import { gzip, tar } from "../src/compression.ts";
 import {
@@ -15,6 +15,15 @@ function toolTarball(): Promise<Uint8Array> {
   return gzip(tar([
     { name: "pkg/bin/tool", data: new TextEncoder().encode("TREE-BIN") },
   ]));
+}
+
+/** Enrich `{ os, arch }` into the {@link Platform} a resolver is called with. */
+function platformFor(data: InstallPlatform): Platform {
+  return {
+    ...data,
+    osLabel: (aliases) => aliases?.[data.os] ?? data.os,
+    archLabel: (aliases) => aliases?.[data.arch] ?? data.arch,
+  };
 }
 
 /** A download seam that writes prepared archive bytes to `dest`. */
@@ -368,6 +377,40 @@ Deno.test("treeOptions_ carries strip/bins and defaults the archive to tar.gz", 
   assertEquals(spec.archive, "tar.gz"); // defaulted, since a tree ships packed
   assertEquals(spec.strip, 1);
   assertEquals(spec.bins, ["bin/node", "bin/npm"]);
+});
+
+Deno.test("archive and binaryPath carry a per-platform resolver through", () => {
+  const archive = (p: { os: string }) =>
+    p.os === "windows" ? ("zip" as const) : ("tar.gz" as const);
+  const binaryPath = (p: { os: string }) => p.os === "windows" ? "t.exe" : "t";
+  const spec = new ToolInstallSettings()
+    .name("t")
+    .url(() => "u")
+    .archive(archive)
+    .binaryPath(binaryPath)
+    .options_(".fallback");
+  // The resolvers reach the install spec unevaluated — installRelease calls
+  // them with the platform it is installing for.
+  assertEquals(spec.archive, archive);
+  assertEquals(spec.binaryPath, binaryPath);
+});
+
+Deno.test("a tree archive resolver is rejected when it resolves to raw", () => {
+  const spec = new ToolInstallSettings()
+    .name("node")
+    .url(() => "u")
+    // Legal at declaration time (the type allows "raw"), caught when it
+    // resolves — a tree has to unpack, so "raw" is meaningless for one.
+    .archive((p) => p.os === "windows" ? "raw" : "tar.gz")
+    .treeOptions_(".fallback");
+  const resolve = spec.archive;
+  if (typeof resolve !== "function") throw new Error("expected a resolver");
+  assertEquals(resolve(platformFor({ os: "linux", arch: "x86_64" })), "tar.gz");
+  assertThrows(
+    () => resolve(platformFor({ os: "windows", arch: "x86_64" })),
+    Error,
+    'not "raw"',
+  );
 });
 
 Deno.test("the default tools directory is .zuke/tools", () => {

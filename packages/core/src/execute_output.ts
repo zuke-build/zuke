@@ -18,6 +18,7 @@ import {
   safeReporter,
   silentReporter,
 } from "./reporter.ts";
+import { appendJobSummary } from "./job_summary.ts";
 import { Redactor } from "./redact.ts";
 import { detectWidth, type Style, type TargetReport } from "./report.ts";
 import { defaultRenderer, type Renderer } from "./renderer.ts";
@@ -135,24 +136,8 @@ export function writeJobSummary(
   totalMs: number,
   ok: boolean,
 ): void {
-  let path: string | undefined;
-  try {
-    path = Deno.env.get("GITHUB_STEP_SUMMARY");
-  } catch {
-    return;
-  }
-  if (path === undefined || path === "") return;
-  try {
-    // Append, not overwrite: validations like the AI reviewers/fixer write their
-    // own sections to this same file during the run, and overwriting here would
-    // wipe them. GitHub provisions a fresh summary file per step, so a single
-    // run's appends never accumulate across steps.
-    Deno.writeTextFileSync(
-      path,
-      renderer.jobSummaryMarkdown(reports, totalMs, ok),
-      { append: true },
-    );
-  } catch {
-    // Best-effort: an unwritable summary file must never fail the build.
-  }
+  // Append, not overwrite: validations like the AI reviewers/fixer write their
+  // own sections to this same file during the run, and overwriting would wipe
+  // them. Best-effort — an unwritable summary must never fail the build.
+  appendJobSummary(renderer.jobSummaryMarkdown(reports, totalMs, ok));
 }
