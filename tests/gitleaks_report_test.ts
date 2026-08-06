@@ -139,6 +139,46 @@ Deno.test("a value that begins or ends with a backtick is padded, not broken", (
   assertStringIncludes(summary, "`` `quoted` ``");
 });
 
+Deno.test("a newline in a path cannot end the row or forge another", () => {
+  // Reachable from outside the repository: a path may contain a newline on
+  // POSIX, and a pull request can add one. Left raw it would end the table row
+  // and let whatever followed render as its own Markdown — fabricating content
+  // in the one report that says where a secret is.
+  const summary = gitleaksSummary([
+    {
+      rule: "r",
+      file: "a\n| `forged` | 1 | `x` | `y` |",
+      line: 1,
+      commit: "c",
+      fingerprint: "f",
+    },
+  ]);
+  if (summary === null) throw new Error("expected a summary");
+  // The whole value stays on one physical line, shown as a visible escape.
+  assertStringIncludes(summary, "a\\n");
+  assertEquals(summary.includes("a\n|"), false);
+  // Header, separator, and exactly one finding row — no forged fourth.
+  const rows = summary.split("\n").filter((line) => line.startsWith("|"));
+  assertEquals(rows.length, 3);
+});
+
+Deno.test("a carriage return or tab is escaped the same way", () => {
+  const summary = gitleaksSummary([
+    { rule: "r\t", file: "b\r", line: 1, commit: "c", fingerprint: "f" },
+  ]);
+  if (summary === null) throw new Error("expected a summary");
+  assertStringIncludes(summary, "r\\t");
+  assertStringIncludes(summary, "b\\r");
+});
+
+Deno.test("an exotic control character renders as a hex escape", () => {
+  const summary = gitleaksSummary([
+    { rule: "r", file: "c\u0007d", line: 1, commit: "x", fingerprint: "f" },
+  ]);
+  if (summary === null) throw new Error("expected a summary");
+  assertStringIncludes(summary, "c\\x07d");
+});
+
 Deno.test("a run of backticks is out-sized by the delimiter", () => {
   const summary = gitleaksSummary([
     { rule: "a``b", file: "f.ts", line: 1, commit: "c", fingerprint: "f" },

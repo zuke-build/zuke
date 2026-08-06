@@ -84,9 +84,35 @@ export function parseGitleaksReport(json: string): GitleaksFinding[] {
   return findings;
 }
 
-/** Escape the one character that would break out of a Markdown table cell. */
+/**
+ * Render a control character as a visible escape.
+ *
+ * A newline in a path is legal on POSIX, and a pull request can introduce one,
+ * so this is reachable from outside the repository. Left as-is it would end the
+ * table row and let whatever followed render as its own Markdown — fabricating
+ * content in the one report that says where a secret is. Escaping keeps every
+ * value on a single line and still shows what the path really contains.
+ */
+function visible(ch: string): string {
+  const named: Record<string, string> = {
+    "\n": "\\n",
+    "\r": "\\r",
+    "\t": "\\t",
+  };
+  return named[ch] ??
+    `\\x${ch.charCodeAt(0).toString(16).padStart(2, "0")}`;
+}
+
+/**
+ * Escape what would break out of a Markdown table cell: the pipe that separates
+ * cells, and any control character that would end the row outright.
+ */
 function cell(value: string): string {
-  return value === "" ? "—" : value.replace(/\|/g, "\\|");
+  if (value === "") return "—";
+  return value
+    // deno-lint-ignore no-control-regex -- catching these is the point.
+    .replace(/[\u0000-\u001f\u007f]/g, visible)
+    .replace(/\|/g, "\\|");
 }
 
 /**
