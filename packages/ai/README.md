@@ -601,6 +601,16 @@ interface AiReviewWorkflowSpec
     the workflow drops the step, and the reviewers use their own configured base
     rather than the fetched `FETCH_HEAD`. Preferable where it applies: the same
     `zuke review` then works locally, where no workflow step exists to run.
+  hardenRunner?: CiUses
+    The pinned `step-security/harden-runner@<sha>` to harden the runner with.
+    Defaults to a pin baked in here.
+
+    Pass it when the build sources pins from somewhere that stays current — a
+    generated workflow whose SHA comes from a constant in a published package is
+    a trap: a bot bumps the committed file, the next run regenerates it from the
+    stale constant, and the bump is silently reverted.
+  checkout?: CiUses
+    The pinned `actions/checkout@<sha>` to check the repository out with.
   path?: string
     Output path. Defaults to the host's conventional location.
   name?: string

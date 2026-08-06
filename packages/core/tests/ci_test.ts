@@ -705,8 +705,10 @@ Deno.test("github: harden and checkout are emitted before a job's own steps", ()
   const buildAt = yaml.indexOf("./zuke ci");
   assertEquals(hardenAt < checkoutAt && checkoutAt < buildAt, true);
   assertStringIncludes(yaml, "egress-policy: block");
-  // The allowlist stays one host per line, so it remains reviewable.
-  assertStringIncludes(yaml, "jsr.io:443\n");
+  // Space-separated on one line — exactly what a folded scalar collapses to,
+  // which is the form already known to enforce correctly. The action documents
+  // no delimiter, so the gate's egress control must not depend on a guess.
+  assertStringIncludes(yaml, 'allowed-endpoints: "jsr.io:443 deno.land:443"');
   assertStringIncludes(yaml, 'persist-credentials: "false"');
 });
 

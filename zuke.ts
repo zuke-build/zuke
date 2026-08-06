@@ -76,6 +76,7 @@ import {
   checkPluginSkillsSync,
   syncPluginSkills,
 } from "./build/plugin_sync.ts";
+import { actionPin } from "./build/action_pins.ts";
 import { actionlintTool, gitleaksTool, zizmorTool } from "./build/scanners.ts";
 
 /**
@@ -84,6 +85,61 @@ import { actionlintTool, gitleaksTool, zizmorTool } from "./build/scanners.ts";
  * because a local `./zuke security` writes it too.
  */
 const GITLEAKS_REPORT = "gitleaks-report.json";
+
+/**
+ * The hosts `./zuke ci` legitimately reaches, for the one job that runs build
+ * code while holding live secrets and a write-scoped token. Egress is blocked
+ * rather than audited there: even if untrusted code in the gate read a token
+ * from the environment, it could not POST it anywhere. Each entry is traceable
+ * to something the build does — the Deno bootstrap, module resolution (JSR, plus
+ * npm for the cspell tooling), the OpenAI API for the lint fixer, GitHub for the
+ * fixer's comment and push, and Codecov's CDN, API, and upload bucket.
+ */
+const GATE_ENDPOINTS = [
+  "deno.land:443",
+  "dl.deno.land:443",
+  "jsr.io:443",
+  "registry.npmjs.org:443",
+  "api.openai.com:443",
+  "api.github.com:443",
+  "github.com:443",
+  "codeload.github.com:443",
+  "objects.githubusercontent.com:443",
+  "release-assets.githubusercontent.com:443",
+  "cli.codecov.io:443",
+  "api.codecov.io:443",
+  "ingest.codecov.io:443",
+  "storage.googleapis.com:443",
+];
+
+/** What the core-floor check needs: the Deno bootstrap, JSR, and GitHub. */
+const FLOOR_CHECK_ENDPOINTS = [
+  "deno.land:443",
+  "dl.deno.land:443",
+  "jsr.io:443",
+  "github.com:443",
+  "api.github.com:443",
+  "codeload.github.com:443",
+  "objects.githubusercontent.com:443",
+  "release-assets.githubusercontent.com:443",
+];
+
+/**
+ * What the website sync needs. Checked against the hosts a real release run
+ * actually contacted, which were `github.com` and `api.github.com`; the rest
+ * cover the launcher's bootstrap and module resolution.
+ */
+const WEBSITE_SYNC_ENDPOINTS = [
+  "deno.land:443",
+  "dl.deno.land:443",
+  "jsr.io:443",
+  "registry.npmjs.org:443",
+  "api.github.com:443",
+  "github.com:443",
+  "codeload.github.com:443",
+  "objects.githubusercontent.com:443",
+  "release-assets.githubusercontent.com:443",
+];
 
 class ZukeBuild extends Build {
   clean = target()
@@ -213,6 +269,330 @@ class ZukeBuild extends Build {
   // + `deno` rather than the `./zuke` bash launcher because a generated step has
   // no per-step shell/if to special-case Windows, and `deno` is identical on
   // every OS. Kept separate from `ci.yml` so the fast gate is untouched.
+  // ── Generated workflows ───────────────────────────────────────────────────
+  //
+  // Every workflow below is declared here and written by `zuke generate-ci`, so
+  // the repository contains no hand-written CI YAML. The rationale that used to
+  // live in comments inside each file lives beside the declaration instead; the
+  // generated files are the artifact, not the source.
+  //
+  // Pinned action SHAs come from `actionPin(...)`, which reads them back out of
+  // the committed workflows — see build/action_pins.ts for why the direction is
+  // inverted. In short: Dependabot can only see workflow YAML, so letting it
+  // remain the source of truth for pins is what keeps its weekly bumps working
+  // after generation.
+
+  ciWorkflow = cicd({
+    provider: "github",
+    path: ".github/workflows/ci.yml",
+    pipeline: {
+      name: "CI",
+      triggers: {
+        // Once per change: `pullRequest` covers every PR branch and `push`
+        // covers the post-merge commit. Triggering `push` on all branches too
+        // would double every PR run for no extra signal.
+        push: ["master"],
+        pullRequest: [],
+        // `edited` on top of the three defaults because the `prBodyLint` gate
+        // reads the PR description: editing it changes what release-please will
+        // parse without pushing a commit, so without this the stale green status
+        // for the unchanged head SHA would let a code-bearing body reach the
+        // squash-merge.
+        pullRequestTypes: ["opened", "synchronize", "reopened", "edited"],
+      },
+      // Read-only by default; the quality job opts into more below.
+      permissions: { contents: "read" },
+      concurrency: {
+        group: "ci-${{ github.workflow }}-${{ github.ref }}",
+        cancelInProgress: true,
+      },
+      checkout: { action: actionPin("actions/checkout") },
+      jobs: [
+        {
+          id: "quality",
+          name: "Build & verify with Zuke",
+          // The lint fixer auto-applies its fix and pushes it to the PR branch,
+          // so this job needs `contents: write` for the push and
+          // `pull-requests: write` for the comment. The OpenAI key is a
+          // same-repo secret, so on a fork PR it is absent, the token is
+          // read-only, and the fixer skips.
+          permissions: { contents: "write", "pull-requests": "write" },
+          harden: {
+            action: actionPin("step-security/harden-runner"),
+            egress: "block",
+            allowedEndpoints: GATE_ENDPOINTS,
+          },
+          checkout: {
+            action: actionPin("actions/checkout"),
+            // Keeps the token in git config so the fixer can push. For a
+            // same-repo PR, check out the head branch rather than the detached
+            // merge ref so the push targets it; for a fork PR (or a push), fall
+            // back to the default — the fixer cannot and will not push there.
+            persistCredentials: true,
+            ref:
+              "${{ (github.event.pull_request.head.repo.full_name == github.repository) && github.head_ref || '' }}",
+          },
+          steps: [{
+            name: "Run the full gate with Zuke",
+            // No setup-deno step: the ./zuke launcher bootstraps a pinned Deno,
+            // so CI exercises the same entry point everyone else uses.
+            //
+            // OPENAI_API_KEY powers the lint fixer; CODECOV_TOKEN powers the
+            // gate's coverage upload, which downloads the Codecov CLI itself;
+            // PR_BODY feeds prBodyLint and is empty on a push run. PR_BODY rides
+            // through this env map and is never interpolated into a shell line,
+            // so an adversarial PR body cannot inject a command.
+            run: "./zuke ci",
+            env: {
+              OPENAI_API_KEY: "${{ secrets.OPENAI_API_KEY }}",
+              GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
+              CODECOV_TOKEN: "${{ secrets.CODECOV_TOKEN }}",
+              PR_BODY:
+                "${{ github.event_name == 'pull_request' && github.event.pull_request.body || '' }}",
+            },
+          }],
+        },
+        {
+          // Verifies each package against the @zuke/core version it *declares*,
+          // not the workspace-local core. Its own job because it reaches JSR for
+          // the published core, and the `./zuke ci` gate must stay offline-ish.
+          id: "core-floors",
+          name: "Core version floors",
+          harden: {
+            action: actionPin("step-security/harden-runner"),
+            // Blocked, not audited, because this is the one job that resolves
+            // modules with `--no-lock`. The generated config carries only
+            // `jsr:@zuke/*` specifiers, but that governs the *import map* — it
+            // cannot stop a source file in a PR from importing an absolute URL,
+            // which `deno check` would then follow unpinned. Blocking egress is
+            // what actually closes that.
+            egress: "block",
+            allowedEndpoints: FLOOR_CHECK_ENDPOINTS,
+          },
+          steps: [{
+            name: "Check declared core floors with Zuke",
+            run: "./zuke coreFloorCheck",
+          }],
+        },
+        {
+          id: "test-os",
+          name: "Tests (${{ matrix.os }})",
+          matrix: { os: ["macos-latest", "windows-latest"] },
+          // Let both platforms report: cancelling the sibling hides whether a
+          // failure is platform-specific, which is the question this job exists
+          // to answer.
+          failFast: false,
+          // No hardening here: this job deliberately exercises the user-facing
+          // bootstrap launchers, which install a pinned Deno themselves. The
+          // token is read-only and no secrets are present, so the residual risk
+          // of the bootstrap is low.
+          harden: false,
+          steps: [
+            {
+              name: "Run tests with the bash launcher",
+              if: "runner.os != 'Windows'",
+              run: "./zuke test",
+              env: { DENO_VERSION: "v2.8.3" },
+            },
+            {
+              name: "Run tests with the PowerShell launcher",
+              if: "runner.os == 'Windows'",
+              shell: "pwsh",
+              run: "./zuke.ps1 test",
+            },
+          ],
+        },
+      ],
+    },
+  });
+
+  releaseWorkflow = cicd({
+    provider: "github",
+    path: ".github/workflows/release.yml",
+    pipeline: {
+      name: "Release",
+      triggers: { push: ["master"], manual: true },
+      // No permissions by default; each job opts into exactly what it needs.
+      permissions: {},
+      concurrency: {
+        group: "release-${{ github.ref }}",
+        cancelInProgress: false,
+      },
+      harden: {
+        action: actionPin("step-security/harden-runner"),
+        egress: "audit",
+      },
+      checkout: { action: actionPin("actions/checkout") },
+      jobs: [
+        {
+          // release-please maintains the release PR and cuts releases/tags. It
+          // writes contents and PRs, but must NOT hold the JSR OIDC token —
+          // that lives only in `publish`.
+          id: "release",
+          name: "Maintain releases (release-please)",
+          timeoutMinutes: 15,
+          permissions: { contents: "write", "pull-requests": "write" },
+          steps: [{
+            name: "Run release-please with Zuke",
+            run: "./zuke release",
+            env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" },
+          }],
+        },
+        {
+          // Publish to JSR via OIDC. The only job with `id-token: write`, and it
+          // gets no GITHUB_TOKEN and only read access to contents — so the
+          // publishing credential is isolated from release-please's write
+          // scopes. `publishJsr` skips versions already on JSR, so it is a safe
+          // no-op when a push did not actually release anything.
+          id: "publish",
+          name: "Publish to JSR",
+          needs: ["release"],
+          // Backstop: publishJsr already times out a stalled `deno publish` per
+          // package; this caps the whole job in case anything else hangs.
+          timeoutMinutes: 30,
+          permissions: { contents: "read", "id-token": "write" },
+          steps: [{
+            name: "Publish new versions to JSR with Zuke",
+            run: "./zuke publishJsr",
+          }],
+        },
+        {
+          // Push refreshed docs, api.json, and the generated package grid to the
+          // website by opening and merging a PR on the separate repo. The default
+          // GITHUB_TOKEN cannot reach another repository, so `syncWebsite` mints
+          // an installation token from the "Zuke Build" app, scoped to that one
+          // repository and to exactly what the sync performs. The target is
+          // idempotent (no diff → no PR), so running it every release is safe.
+          //
+          // The merge is unreviewed but gated: the website repo's ruleset
+          // requires its own `Build the site` check, and the sync merges with
+          // `--auto`, so the PR lands only once that build accepts these
+          // artifacts. That rests on a stated assumption — the website repo is
+          // single-maintainer by design. If it takes on collaborators, this
+          // needs a CODEOWNERS review on `.github/**` before it is sound again.
+          id: "sync-website",
+          name: "Sync website docs + API reference",
+          needs: ["publish"],
+          timeoutMinutes: 15,
+          permissions: { contents: "read" },
+          harden: {
+            action: actionPin("step-security/harden-runner"),
+            // Blocked here, not audited, because this is the one job that hands
+            // build code an app *private key* rather than a token minted from
+            // it. A minted token is narrow and expires in an hour; the key mints
+            // more of them. Nothing untrusted runs here — the workflow triggers
+            // only on a push to master and workflow_dispatch, and fork PRs get
+            // no secrets — so this is defence in depth against a compromised
+            // dependency in the build graph. Verified against the hosts a real
+            // release contacted; add one here if a run reports it blocked, since
+            // the target is idempotent and a rerun is safe.
+            egress: "block",
+            allowedEndpoints: WEBSITE_SYNC_ENDPOINTS,
+          },
+          steps: [{
+            name: "Open and merge the website sync PR with Zuke",
+            run: "./zuke syncWebsite",
+            env: {
+              ZUKE_BUILD_APP_ID: "${{ secrets.ZUKE_BUILD_APP_ID }}",
+              ZUKE_BUILD_APP_KEY: "${{ secrets.ZUKE_BUILD_APP_KEY }}",
+            },
+          }],
+        },
+      ],
+    },
+  });
+
+  securityWorkflow = cicd({
+    provider: "github",
+    path: ".github/workflows/security.yml",
+    pipeline: {
+      name: "Security scanners",
+      triggers: {
+        push: ["master"],
+        pullRequest: [],
+        schedule: [{ cron: "42 5 * * 3" }],
+      },
+      permissions: { contents: "read" },
+      harden: {
+        action: actionPin("step-security/harden-runner"),
+        egress: "audit",
+      },
+      checkout: {
+        action: actionPin("actions/checkout"),
+        // Full history so gitleaks scans past commits, not just the tip. This
+        // also fetches every branch, which is why the target scopes the scan to
+        // the pull request's own commits — otherwise a secret-shaped string on
+        // an unrelated branch fails the scan on every open PR. A push to master
+        // and the weekly run still walk the whole history.
+        fetchDepth: 0,
+      },
+      jobs: [{
+        id: "scan",
+        name: "Scan with Zuke (zuke/security)",
+        // The scanners come from the build's declared toolchain — pinned,
+        // checksum-verified, cached — so there is no install step. The target
+        // fails the job on findings and publishes the redacted findings (file,
+        // line, rule, fingerprint) to the job summary, which is what makes a
+        // failure diagnosable without reproducing the scan locally.
+        steps: [{
+          name: "Run security scanners with Zuke",
+          run: "./zuke security",
+        }],
+      }],
+    },
+  });
+
+  scorecardWorkflow = cicd({
+    provider: "github",
+    path: ".github/workflows/scorecard.yml",
+    pipeline: {
+      name: "Scorecard supply-chain",
+      triggers: {
+        push: ["master"],
+        // Re-score when the repository's own protections change.
+        branchProtectionRule: true,
+        schedule: [{ cron: "18 3 * * 2" }],
+      },
+      permissions: { contents: "read" },
+      harden: {
+        action: actionPin("step-security/harden-runner"),
+        egress: "audit",
+      },
+      checkout: { action: actionPin("actions/checkout") },
+      jobs: [{
+        id: "analysis",
+        name: "OpenSSF Scorecard",
+        permissions: {
+          // Upload the SARIF result to the Security tab, and publish the score
+          // to the public Scorecard API.
+          "security-events": "write",
+          "id-token": "write",
+        },
+        steps: [
+          {
+            // The one marketplace action that stays: publishing the public score
+            // is something only it can do.
+            name: "Run Scorecard",
+            uses: actionPin("ossf/scorecard-action"),
+            with: {
+              results_file: "results.sarif",
+              results_format: "sarif",
+              publish_results: "true",
+            },
+          },
+          {
+            // Uploads results.sarif to code scanning itself, dogfooding
+            // @zuke/gh — replacing both an artifact upload and the
+            // codeql-action/upload-sarif step.
+            name: "Upload the results to code scanning with Zuke",
+            run: "./zuke scorecardSarif",
+            env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" },
+          },
+        ],
+      }],
+    },
+  });
+
   integrationCi = cicd({
     provider: "github",
     path: ".github/workflows/integration.yml",
@@ -244,22 +624,19 @@ class ZukeBuild extends Build {
             // records outbound calls without risking a false-block of the
             // cross-OS Deno bootstrap.
             name: "Harden the runner",
-            uses:
-              "step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920",
+            uses: actionPin("step-security/harden-runner"),
             with: { "egress-policy": "audit" },
           },
           {
             name: "Checkout",
-            uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+            uses: actionPin("actions/checkout"),
             with: { "persist-credentials": "false" },
           },
           {
-            // denoland/setup-deno v2.0.5, pinned to its commit SHA (repo
-            // convention — see the SHA-pinned checkout above; a bare tag trips
-            // the zizmor `unpinned-uses` gate in the security scan).
+            // Pinned to a commit SHA, as everything else is — a bare tag trips
+            // the zizmor `unpinned-uses` gate in the security scan.
             name: "Set up Deno",
-            uses:
-              "denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed",
+            uses: actionPin("denoland/setup-deno"),
             // Pinned to the same version the `./zuke`/`zuke.ps1` launchers
             // bootstrap (DEFAULT_DENO_VERSION), so this job runs the exact
             // Deno the repo is reproducible against rather than a floating
@@ -850,6 +1227,14 @@ class ZukeBuild extends Build {
     // the base itself — so the same command works locally, where no workflow
     // step exists to do it.
     fetchBase: false,
+    // Pins from the committed workflows rather than @zuke/ai's own constants.
+    // Without this the file is the one generated workflow whose SHA comes from a
+    // published package: a Dependabot bump lands in ai-review.yml, the next run
+    // regenerates it from the stale constant, and the bump is reverted. That has
+    // already happened once here — the constant had to be hand-updated to match
+    // what Dependabot set.
+    hardenRunner: actionPin("step-security/harden-runner"),
+    checkout: actionPin("actions/checkout"),
   });
 
   release = target()

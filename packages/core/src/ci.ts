@@ -31,7 +31,7 @@
  * @module
  */
 
-import { toYaml, type YamlValue } from "./yaml.ts";
+import { annotated, toYaml, type YamlValue } from "./yaml.ts";
 import { type Build, discoverTargets, forEachField } from "./build.ts";
 import type { TargetBuilder } from "./target.ts";
 import {
@@ -44,6 +44,32 @@ import {
 
 /** The CI providers {@link generateCi} can target. */
 export type CiProvider = "github" | "gitlab" | "azure" | "bitbucket";
+
+/**
+ * A pinned action reference, and the version its commit corresponds to.
+ *
+ * The version is emitted as a trailing `# v1.2.3` comment, which is not
+ * decoration: Dependabot reads it to know which version a pinned SHA is, and
+ * rewrites both together when it bumps. A generated workflow that dropped it
+ * would leave automated bumps with no version to track.
+ */
+export interface CiActionRef {
+  /** The pinned reference, `owner/repo@<sha>`. */
+  ref: string;
+  /** The version the SHA corresponds to, e.g. `v7.0.1`. */
+  version?: string;
+}
+
+/** A step's `uses:` value — a bare reference, or one carrying its version. */
+export type CiUses = string | CiActionRef;
+
+/** Render a `uses:` value, attaching the version comment when there is one. */
+function usesValue(uses: CiUses): YamlValue {
+  if (typeof uses === "string") return uses;
+  return uses.version === undefined
+    ? uses.ref
+    : annotated(uses.ref, uses.version);
+}
 
 /** A single step in a job. */
 export interface CiStep {
@@ -72,7 +98,7 @@ export interface CiStep {
    * A GitHub Action reference (e.g. `actions/checkout@v4`). Rendered only for
    * GitHub; skipped for GitLab and Azure.
    */
-  uses?: string;
+  uses?: CiUses;
   /** Inputs for a {@link uses} Action (GitHub only). */
   with?: Record<string, string>;
   /**
@@ -100,7 +126,7 @@ export interface CiStep {
  */
 export interface CiHardenRunner {
   /** The pinned action reference, e.g. `step-security/harden-runner@<sha>`. */
-  action: string;
+  action: CiUses;
   /**
    * `"audit"` records outbound connections; `"block"` drops everything outside
    * {@link allowedEndpoints}. Defaults to `"audit"` — the safe choice for a job
@@ -123,7 +149,7 @@ export interface CiHardenRunner {
  */
 export interface CiCheckout {
   /** The pinned action reference, e.g. `actions/checkout@<sha>`. */
-  action: string;
+  action: CiUses;
   /**
    * Keep the token in git config so a later step can push. Defaults to `false`:
    * a job that does not push should not leave a credential behind.
@@ -346,9 +372,13 @@ function hardenStep(harden: CiHardenRunner): CiStep {
   };
   const allowed = harden.allowedEndpoints ?? [];
   if (allowed.length > 0) {
-    // One host per line: the list is long and each entry earns its place, so it
-    // has to stay reviewable in the generated file.
-    inputs["allowed-endpoints"] = allowed.join("\n");
+    // Space-separated on one line, which is exactly what the folded scalar
+    // (`allowed-endpoints: >`) in every hand-written example collapses to. The
+    // action passes this input to its agent as an opaque string and documents no
+    // delimiter, so the safe choice for the control that gates a secret-bearing
+    // job is the form already known to enforce correctly — not a newline-
+    // separated list that merely looks tidier.
+    inputs["allowed-endpoints"] = allowed.join(" ");
   }
   return {
     name: harden.name ?? "Harden the runner",
@@ -429,7 +459,7 @@ function github(pipeline: CiPipeline): YamlValue {
       name: step.name,
       id: step.id,
       if: step.if,
-      uses: step.uses,
+      uses: step.uses === undefined ? undefined : usesValue(step.uses),
       with: step.with,
       shell: step.shell,
       run: step.run,

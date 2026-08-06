@@ -1,5 +1,5 @@
 import { assertEquals } from "./_assert.ts";
-import { toYaml } from "../src/yaml.ts";
+import { annotated, toYaml } from "../src/yaml.ts";
 
 Deno.test("toYaml renders scalars with type-correct tokens", () => {
   assertEquals(toYaml("hello"), "hello\n");
@@ -76,4 +76,36 @@ Deno.test("toYaml renders multi-line strings as block literals", () => {
   );
   // Blank interior lines stay blank (no trailing indentation).
   assertEquals(toYaml({ script: "a\n\nb" }), "script: |\n  a\n\n  b\n");
+});
+
+Deno.test("an annotated scalar carries a trailing comment", () => {
+  // The one case comments exist for: Dependabot reads the version beside a
+  // pinned SHA and rewrites both together, so the generated file must carry it.
+  assertEquals(
+    toYaml({ uses: annotated("actions/checkout@abc123", "v7.0.1") }),
+    "uses: actions/checkout@abc123 # v7.0.1\n",
+  );
+});
+
+Deno.test("an annotated scalar is not mistaken for a mapping", () => {
+  // It is a class precisely so a map with `value`/`comment` keys still renders
+  // as a map.
+  assertEquals(
+    toYaml({ plain: { value: "x", comment: "y" } }),
+    "plain:\n  value: x\n  comment: y\n",
+  );
+});
+
+Deno.test("an annotated scalar renders inside a sequence and at the root", () => {
+  assertEquals(
+    toYaml([annotated("a@1", "v1"), annotated("b@2", "v2")]),
+    "- a@1 # v1\n- b@2 # v2\n",
+  );
+  assertEquals(toYaml(annotated(3, "three")), "3 # three\n");
+});
+
+Deno.test("an annotated value is still quoted when the scalar needs it", () => {
+  // The comment must not smuggle an unquoted `on` or a numeric-looking string
+  // past the quoting rules.
+  assertEquals(toYaml({ k: annotated("on", "note") }), 'k: "on" # note\n');
 });

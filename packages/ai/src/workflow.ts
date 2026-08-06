@@ -31,6 +31,7 @@ import {
   type CiJob,
   type CiPipeline,
   type CiProvider,
+  type CiUses,
   envVarName,
   generateCi,
 } from "@zuke/core";
@@ -102,6 +103,18 @@ export interface AiReviewWorkflowSpec {
    * `zuke review` then works locally, where no workflow step exists to run.
    */
   fetchBase?: boolean;
+  /**
+   * The pinned `step-security/harden-runner@<sha>` to harden the runner with.
+   * Defaults to a pin baked in here.
+   *
+   * Pass it when the build sources pins from somewhere that stays current — a
+   * generated workflow whose SHA comes from a constant in a published package is
+   * a trap: a bot bumps the committed file, the next run regenerates it from the
+   * stale constant, and the bump is silently reverted.
+   */
+  hardenRunner?: CiUses;
+  /** The pinned `actions/checkout@<sha>` to check the repository out with. */
+  checkout?: CiUses;
   /** Output path. Defaults to the host's conventional location. */
   path?: string;
   /** Workflow name shown in the host's UI. Defaults to `"AI Review"`. */
@@ -243,10 +256,13 @@ class AiReviewWorkflow extends CiFile {
       steps: [
         {
           name: "Harden the runner",
-          uses: HARDEN_RUNNER,
+          uses: this.#spec.hardenRunner ?? HARDEN_RUNNER,
           with: { "egress-policy": "audit" },
         },
-        { uses: CHECKOUT, with: { "persist-credentials": "false" } },
+        {
+          uses: this.#spec.checkout ?? CHECKOUT,
+          with: { "persist-credentials": "false" },
+        },
         ...(fetchBase
           ? [{
             name: "Fetch the base branch",

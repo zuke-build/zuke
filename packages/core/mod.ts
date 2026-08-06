@@ -309,6 +309,7 @@ export {
   type ToolTasksApi,
 } from "./src/tool.ts";
 export {
+  type CiActionRef,
   cicd,
   type CiCheckout,
   type CiConcurrency,
@@ -323,6 +324,7 @@ export {
   type CiSyncResult,
   type CiSyncStatus,
   type CiTriggers,
+  type CiUses,
   discoverCiFiles,
   type FanOutOptions,
   fanOutPipeline,

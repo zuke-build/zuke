@@ -2088,12 +2088,25 @@ interface CancelResult
   failures: CompensationFailure[]
     Compensations that threw (recorded, non-fatal).
 
+interface CiActionRef
+  A pinned action reference, and the version its commit corresponds to.
+
+  The version is emitted as a trailing `# v1.2.3` comment, which is not
+  decoration: Dependabot reads it to know which version a pinned SHA is, and
+  rewrites both together when it bumps. A generated workflow that dropped it
+  would leave automated bumps with no version to track.
+
+  ref: string
+    The pinned reference, `owner/repo@<sha>`.
+  version?: string
+    The version the SHA corresponds to, e.g. `v7.0.1`.
+
 interface CiCheckout
   The repository checkout, emitted as an `actions/checkout` step after any
   {@link CiHardenRunner} and before the job's own steps. Like hardening, the
   pinned {@link action} reference is required.
 
-  action: string
+  action: CiUses
     The pinned action reference, e.g. `actions/checkout@<sha>`.
   persistCredentials?: boolean
     Keep the token in git config so a later step can push. Defaults to `false`:
@@ -2146,7 +2159,7 @@ interface CiHardenRunner
   between releases. Passing it makes the pin the caller's — and lets a build
   source it from wherever its bumps are automated.
 
-  action: string
+  action: CiUses
     The pinned action reference, e.g. `step-security/harden-runner@<sha>`.
   egress?: "audit" | "block"
     `"audit"` records outbound connections; `"block"` drops everything outside
@@ -2239,7 +2252,7 @@ interface CiStep
     Continue the job even when this step fails (`continue-on-error`). GitHub only.
   run?: string
     A shell command to run. Portable across all providers.
-  uses?: string
+  uses?: CiUses
     A GitHub Action reference (e.g. `actions/checkout@v4`). Rendered only for
     GitHub; skipped for GitLab and Azure.
   with?: Record<string, string>
@@ -3432,6 +3445,9 @@ type CiProvider = "github" | "gitlab" | "azure" | "bitbucket"
 
 type CiSyncStatus = "written" | "unchanged" | "stale"
   What {@link syncCiFiles} did to a file.
+
+type CiUses = string | CiActionRef
+  A step's `uses:` value — a bare reference, or one carrying its version.
 
 type Condition = () => boolean | Promise<boolean>
   A predicate gating whether a target runs; may be synchronous or async.

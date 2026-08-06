@@ -1,54 +1,26 @@
 name: Security scanners
-
-on:
+"on":
   push:
-    branches: [master]
-  pull_request:
+    branches:
+      - master
+  pull_request: {}
   schedule:
     - cron: "42 5 * * 3"
-
-# The scanners run as a Zuke build gate (./zuke security) and fail the job on
-# findings. gitleaks runs redacted, so its log line is only a count; the target
-# publishes the redacted findings — file, line, rule and fingerprint — to the job
-# summary, so a failure is diagnosable without reproducing the scan locally.
-# Code-level SARIF for the Security tab comes from CodeQL's default setup and the
-# Scorecard workflow.
 permissions:
   contents: read
-
 jobs:
   scan:
-    name: Scan with Zuke (zuke/security)
+    name: "Scan with Zuke (zuke/security)"
     runs-on: ubuntu-latest
     steps:
       - name: Harden the runner
         uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
         with:
           egress-policy: audit
-
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # Full history so gitleaks scans past commits, not just the tip. This
-          # also fetches every branch, which is why the target scopes the scan to
-          # the pull request's own commits — otherwise a secret-shaped string on
-          # an unrelated branch fails the scan on every open pull request. A push
-          # to master and the weekly run still walk the whole history.
-          fetch-depth: 0
-          persist-credentials: false
-
-      # No "install scanners" step: the `security` target provisions zizmor,
-      # actionlint and gitleaks itself from the build's declared toolchain
-      # (pinned versions, checksum-verified, cached), so the scanner versions
-      # live in build/scanners.ts rather than in this YAML — and
-      # `./zuke security` behaves identically on a laptop.
-      #
-      # The ./zuke launcher bootstraps a pinned Deno version, then runs the
-      # typed `security` target (zizmor, actionlint, gitleaks).
+          persist-credentials: "false"
+          fetch-depth: "0"
       - name: Run security scanners with Zuke
         run: ./zuke security
-
-      # No "upload the gitleaks report" step: the `security` target writes the
-      # redacted findings (file, line, rule, fingerprint) to the job summary
-      # itself, which is what the artifact was for — a bare count in the log is
-      # not diagnosable. The summary needs no step, no retention window, and no
-      # download.

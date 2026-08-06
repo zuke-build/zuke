@@ -1,151 +1,74 @@
 name: Release
-
-on:
+"on":
   push:
-    branches: [master]
-  workflow_dispatch:
-
-# Default to no permissions; each job opts into exactly what it needs.
+    branches:
+      - master
+  workflow_dispatch: {}
 permissions: {}
-
 concurrency:
-  group: release-${{ github.ref }}
+  group: "release-${{ github.ref }}"
   cancel-in-progress: false
-
 jobs:
-  # release-please maintains the release PR and cuts GitHub releases/tags.
-  # It needs to write repo contents and PRs, but must NOT hold the JSR OIDC
-  # token — that lives only in the separate `publish` job below.
   release:
-    name: Maintain releases (release-please)
+    name: "Maintain releases (release-please)"
     runs-on: ubuntu-latest
-    timeout-minutes: 15
     permissions:
       contents: write
       pull-requests: write
+    timeout-minutes: 15
     steps:
       - name: Harden the runner
         uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
         with:
           egress-policy: audit
-
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          persist-credentials: false
-
-      # The ./zuke launcher bootstraps a pinned Deno version (override with
-      # DENO_VERSION); no separate setup-deno step.
+          persist-credentials: "false"
       - name: Run release-please with Zuke
         run: ./zuke release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  # Publish to JSR via OIDC. This is the only job with `id-token: write`, and it
-  # gets no GITHUB_TOKEN and only read access to contents — so the publishing
-  # credential is isolated from the release-please write scopes. `publishJsr`
-  # is idempotent (it skips versions already on JSR), so it is a safe no-op when
-  # a push didn't actually release anything.
+          GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
   publish:
     name: Publish to JSR
-    needs: release
     runs-on: ubuntu-latest
-    # Backstop: `publishJsr` already times out a stalled `deno publish` per
-    # package; this caps the whole job in case anything else hangs.
-    timeout-minutes: 30
     permissions:
       contents: read
       id-token: write
+    needs:
+      - release
+    timeout-minutes: 30
     steps:
       - name: Harden the runner
         uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
         with:
           egress-policy: audit
-
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          persist-credentials: false
-
-      # The ./zuke launcher bootstraps a pinned Deno version (override with
-      # DENO_VERSION); no separate setup-deno step.
+          persist-credentials: "false"
       - name: Publish new versions to JSR with Zuke
         run: ./zuke publishJsr
-
-  # Push refreshed docs (llms.txt/llms-full.txt), api.json, and the landing
-  # page's generated package grid (src/data/tools.ts) to the website by
-  # opening a PR on the separate `zuke-build.github.io` repo — and merging it, so
-  # a release needs no manual step there. The default GITHUB_TOKEN cannot push
-  # cross-repo, so we mint a short-lived installation token from the "Zuke Build"
-  # GitHub App (ZUKE_BUILD_APP_ID/_KEY org secrets), scoped to just the website
-  # repo. `contents: read` here is enough — the cross-repo write rides on the app
-  # token. The target is idempotent (no diff → no PR), so running it every
-  # release is safe.
-  #
-  # The merge is deliberately unreviewed, but it is not ungated. The website
-  # repo's `main` ruleset requires its `Build the site` check — the same
-  # `./zuke build` its deploy runs — and the sync merges with `--auto`, so the
-  # PR lands only once that build accepts the artifacts this job pushed and
-  # stays open if it rejects them. The human approval that requirement replaced
-  # (the ruleset asked for one until 2026-07-30) reviewed generated output it
-  # could not meaningfully check by eye; the build can.
-  #
-  # This is a real trade, not a free one, and it rests on a stated assumption:
-  # the website repo is single-maintainer by design, its only writers being its
-  # owner and this app. With approvals at zero, any *other* write-access account
-  # could merge its own PR there — and could edit `.github/workflows/pr.yml` in
-  # that same PR, since a same-repo PR runs the workflow from its own branch, so
-  # the check gates artifacts rather than whoever can rewrite the check. If that
-  # repo ever takes on collaborators, this needs a CODEOWNERS review on
-  # `.github/**` (or the approval back) before it is sound again.
   sync-website:
-    name: Sync website docs + API reference
-    needs: publish
+    name: "Sync website docs + API reference"
     runs-on: ubuntu-latest
-    timeout-minutes: 15
     permissions:
       contents: read
+    needs:
+      - publish
+    timeout-minutes: 15
     steps:
-      # Egress is blocked here, not audited, because this is the one job that
-      # hands build code an app *private key* rather than a token minted from
-      # it. A minted token is narrow and expires in an hour; the key mints more
-      # of them, so it is the one credential in this repository whose exfil
-      # would matter beyond a single release. Nothing untrusted runs here (the
-      # job triggers only on a push to master and workflow_dispatch, and fork
-      # pull requests receive no secrets at all), so this is defence in depth
-      # against a compromised dependency in the build graph rather than against
-      # a pull request. The allowlist is the minimum `syncWebsite` needs: the
-      # launcher's Deno bootstrap, module resolution, and GitHub for the app
-      # token, the website clone/push, and the pull request. Add a host here if
-      # a run reports it blocked — the target is idempotent, so a rerun is safe.
       - name: Harden the runner
         uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
         with:
           egress-policy: block
-          allowed-endpoints: >
-            deno.land:443
-            dl.deno.land:443
-            jsr.io:443
-            registry.npmjs.org:443
-            api.github.com:443
-            github.com:443
-            codeload.github.com:443
-            objects.githubusercontent.com:443
-            release-assets.githubusercontent.com:443
-
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+          allowed-endpoints: "deno.land:443 dl.deno.land:443 jsr.io:443 registry.npmjs.org:443 api.github.com:443 github.com:443 codeload.github.com:443 objects.githubusercontent.com:443 release-assets.githubusercontent.com:443"
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          persist-credentials: false
-
-      # No "mint a token" step: `syncWebsite` mints the installation token
-      # itself from the app credentials below, scoped to the website repository
-      # and to exactly the permissions the sync performs — a branch push, a pull
-      # request, and the squash-merge of it (the merge API is a contents write,
-      # so it needs no third permission). The default GITHUB_TOKEN cannot reach
-      # another repository at all, which is why an app is involved.
-      #
-      # The ./zuke launcher bootstraps a pinned Deno version (override with
-      # DENO_VERSION); no separate setup-deno step.
+          persist-credentials: "false"
       - name: Open and merge the website sync PR with Zuke
         run: ./zuke syncWebsite
         env:
-          ZUKE_BUILD_APP_ID: ${{ secrets.ZUKE_BUILD_APP_ID }}
-          ZUKE_BUILD_APP_KEY: ${{ secrets.ZUKE_BUILD_APP_KEY }}
+          ZUKE_BUILD_APP_ID: "${{ secrets.ZUKE_BUILD_APP_ID }}"
+          ZUKE_BUILD_APP_KEY: "${{ secrets.ZUKE_BUILD_APP_KEY }}"
