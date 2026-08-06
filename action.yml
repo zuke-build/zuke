@@ -1,0 +1,72 @@
+name: "Zuke build"
+description: "Harden the runner, check out the repository, and run a Zuke target."
+
+# This file is the repository's pinned-action manifest, and the one YAML here
+# that is *not* generated — deliberately, because that is what removes a
+# circularity. Dependabot scans `.github/workflows` and a root `action.yml`, and
+# nothing else; it bumps the SHAs below and the `# vX.Y.Z` beside each one.
+# `build/action_pins.ts` reads them, and the workflow generator writes its files
+# from them. So the flow is one-directional: a bot edits this file, the generator
+# reads it, and no generated file is ever the source of its own pins.
+#
+# It is also a usable composite action in its own right. A repository that builds
+# with Zuke can make this its first step — `uses: zuke-build/zuke@<sha>` needs no
+# prior checkout, since a remote action is fetched by the runner. This repository
+# cannot use it that way for hardening: `uses: ./` resolves inside the workspace,
+# so it would require the checkout it is meant to precede.
+
+inputs:
+  target:
+    description: "The Zuke target to run. Omit to harden and check out only."
+    required: false
+    default: ""
+  egress-policy:
+    description: "harden-runner policy: `audit` to record, `block` to enforce."
+    required: false
+    default: "audit"
+  allowed-endpoints:
+    description: "Space-separated `host:port` list permitted under `block`."
+    required: false
+    default: ""
+  persist-credentials:
+    description: "Leave the token in git config, for a later push."
+    required: false
+    default: "false"
+  fetch-depth:
+    description: "Commits to fetch. `0` is the full history, which a secret scan needs."
+    required: false
+    default: "1"
+  deno-version:
+    description: "Install this Deno instead of letting the ./zuke launcher bootstrap one."
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    # First, before any other step: the point of an egress policy is to be in
+    # place before anything it governs runs.
+    - name: Harden the runner
+      uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
+      with:
+        egress-policy: ${{ inputs.egress-policy }}
+        allowed-endpoints: ${{ inputs.allowed-endpoints }}
+
+    - name: Checkout
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: ${{ inputs.persist-credentials }}
+        fetch-depth: ${{ inputs.fetch-depth }}
+
+    # Only when asked. The ./zuke launcher bootstraps a pinned Deno itself, so
+    # this is for a job that runs `deno` directly instead of through it.
+    - name: Set up Deno
+      if: inputs.deno-version != ''
+      uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+      with:
+        deno-version: ${{ inputs.deno-version }}
+
+    - name: Run the Zuke target
+      if: inputs.target != ''
+      shell: bash
+      run: ./zuke ${{ inputs.target }}

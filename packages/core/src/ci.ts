@@ -125,8 +125,13 @@ export interface CiStep {
  * source it from wherever its bumps are automated.
  */
 export interface CiHardenRunner {
-  /** The pinned action reference, e.g. `step-security/harden-runner@<sha>`. */
-  action: CiUses;
+  /**
+   * The pinned action reference, e.g. `step-security/harden-runner@<sha>`.
+   * Omit it when the file supplies a {@link CiFileSpec.pins} resolver, which is
+   * the better arrangement: the SHA is then stated once for the repository
+   * rather than at every use.
+   */
+  action?: CiUses;
   /**
    * `"audit"` records outbound connections; `"block"` drops everything outside
    * {@link allowedEndpoints}. Defaults to `"audit"` — the safe choice for a job
@@ -148,8 +153,8 @@ export interface CiHardenRunner {
  * pinned {@link action} reference is required.
  */
 export interface CiCheckout {
-  /** The pinned action reference, e.g. `actions/checkout@<sha>`. */
-  action: CiUses;
+  /** The pinned action reference. Omit it when the file supplies a `pins` resolver. */
+  action?: CiUses;
   /**
    * Keep the token in git config so a later step can push. Defaults to `false`:
    * a job that does not push should not leave a credential behind.
@@ -276,6 +281,11 @@ export interface CiPipeline {
   /**
    * Workflow-level token permissions (GitHub only), e.g.
    * `{ contents: "read", "pull-requests": "write" }`. Ignored elsewhere.
+   *
+   * Defaults to `{ contents: "read" }` — least privilege, and what a workflow
+   * that only reads the repository needs. A job that needs more declares it, so
+   * the wider scope sits next to the job that justifies it. Pass `{}` for no
+   * permissions at all, which is stricter than the default rather than absent.
    */
   permissions?: Record<string, string>;
   /** Limit concurrent runs (GitHub only). Ignored elsewhere. */
@@ -297,6 +307,12 @@ export interface CiPipeline {
 
 /** The default runner image used when a job does not set {@link CiJob.runsOn}. */
 const DEFAULT_RUNNER = "ubuntu-latest";
+
+/**
+ * Least-privilege workflow permissions: read the repository, nothing more. A job
+ * that needs to write declares it, so the wider scope is stated where it is used.
+ */
+const DEFAULT_PERMISSIONS: Record<string, string> = { contents: "read" };
 
 /** The default pipeline name. */
 const DEFAULT_NAME = "CI";
@@ -365,6 +381,40 @@ function githubTrigger(branches: string[], types?: string[]): YamlValue {
   return filter;
 }
 
+/**
+ * Fill in any action reference a resolver can supply, and default the prelude
+ * itself: with pins available, every job is hardened and checked out unless it
+ * says otherwise, because that is the prelude nearly every job needs.
+ */
+function withPins(pipeline: CiPipeline, pins?: CiPinResolver): CiPipeline {
+  if (pins === undefined) return pipeline;
+  const harden = pipeline.harden ?? {};
+  const checkout = pipeline.checkout ?? {};
+  return {
+    ...pipeline,
+    harden: { ...harden, action: harden.action ?? pins(HARDEN_RUNNER_ACTION) },
+    checkout: {
+      ...checkout,
+      action: checkout.action ?? pins(CHECKOUT_ACTION),
+    },
+    jobs: pipeline.jobs?.map((job) => ({
+      ...job,
+      harden: job.harden
+        ? {
+          ...job.harden,
+          action: job.harden.action ?? pins(HARDEN_RUNNER_ACTION),
+        }
+        : job.harden,
+      checkout: job.checkout
+        ? {
+          ...job.checkout,
+          action: job.checkout.action ?? pins(CHECKOUT_ACTION),
+        }
+        : job.checkout,
+    })),
+  };
+}
+
 /** The `harden-runner` step a job's {@link CiHardenRunner} describes. */
 function hardenStep(harden: CiHardenRunner): CiStep {
   const inputs: Record<string, string> = {
@@ -379,6 +429,12 @@ function hardenStep(harden: CiHardenRunner): CiStep {
     // job is the form already known to enforce correctly — not a newline-
     // separated list that merely looks tidier.
     inputs["allowed-endpoints"] = allowed.join(" ");
+  }
+  if (harden.action === undefined) {
+    throw new Error(
+      `cicd: hardening needs a pinned action — set \`action\` on it, or give ` +
+        `the file a \`pins\` resolver so it can be looked up once.`,
+    );
   }
   return {
     name: harden.name ?? "Harden the runner",
@@ -397,6 +453,12 @@ function checkoutStep(checkout: CiCheckout): CiStep {
   if (checkout.ref !== undefined) inputs.ref = checkout.ref;
   if (checkout.fetchDepth !== undefined) {
     inputs["fetch-depth"] = String(checkout.fetchDepth);
+  }
+  if (checkout.action === undefined) {
+    throw new Error(
+      `cicd: the checkout needs a pinned action — set \`action\` on it, or ` +
+        `give the file a \`pins\` resolver so it can be looked up once.`,
+    );
   }
   return {
     name: checkout.name ?? "Checkout",
@@ -505,7 +567,7 @@ function github(pipeline: CiPipeline): YamlValue {
   return {
     name: pipeline.name ?? DEFAULT_NAME,
     on,
-    permissions: pipeline.permissions,
+    permissions: pipeline.permissions ?? DEFAULT_PERMISSIONS,
     concurrency,
     jobs,
   };
@@ -719,6 +781,25 @@ export interface FanOutOptions {
 
 /** The default per-job setup: check out the repo (GitHub only; others auto-checkout). */
 const DEFAULT_SETUP_STEPS: CiStep[] = [{ uses: "actions/checkout@v4" }];
+
+/**
+ * The workflow path a field name implies: `releaseWorkflow` →
+ * `.github/workflows/release.yml`.
+ *
+ * A trailing `Workflow`, `Ci`, or `Yaml` is noise once the file is a workflow,
+ * and camelCase reads better as kebab-case in a filename. A name that reduces to
+ * nothing (a field called just `workflow`) keeps the provider's default.
+ */
+function pathForField(field: string, provider: CiProvider): string {
+  const leaf = field.split(".").pop() ?? field;
+  const base = leaf
+    .replace(/(Workflow|Ci|Yaml|Yml)$/, "")
+    .replace(/([a-z0-9])([A-Z])/g, "$1-$2")
+    .toLowerCase();
+  if (base === "") return DEFAULT_PATHS[provider];
+  const dir = DEFAULT_PATHS[provider].replace(/\/[^/]+$/, "");
+  return provider === "github" ? `${dir}/${base}.yml` : DEFAULT_PATHS[provider];
+}
 
 /** A CI-safe job id derived from a (possibly dotted) target name. */
 function jobId(name: string): string {
@@ -935,14 +1016,50 @@ export interface CiInvocation {
 /** A target to invoke, bare when the derived job needs no adjustment. */
 export type CiInvokes = TargetBuilder | CiInvocation;
 
+/**
+ * Resolves an action's pinned reference by name, e.g. `"actions/checkout"`.
+ *
+ * Supplying one is what lets a workflow declare hardening and checkout by
+ * *intent* rather than by repeating a SHA at every use. Without it each
+ * {@link CiHardenRunner} and {@link CiCheckout} must carry its own `action`.
+ */
+export type CiPinResolver = (action: string) => CiUses;
+
+/** The action a {@link CiHardenRunner} is generated from when pins are resolved. */
+export const HARDEN_RUNNER_ACTION = "step-security/harden-runner";
+
+/** The action a {@link CiCheckout} is generated from when pins are resolved. */
+export const CHECKOUT_ACTION = "actions/checkout";
+
 /** A CI configuration file declared on a build: a pipeline bound to a path. */
 export interface CiFileSpec {
-  /** The provider to render for — the one field you must choose. */
-  provider: CiProvider;
   /**
-   * The output path (relative to the working directory). Defaults to the
-   * provider's conventional location (`.github/workflows/ci.yml`,
-   * `.gitlab-ci.yml`, or `azure-pipelines.yml`).
+   * The provider to render for. Defaults to `"github"`, which is what the
+   * `.github/workflows` default path assumes anyway.
+   */
+  provider?: CiProvider;
+  /**
+   * Resolves each action's pinned reference by name, so hardening and checkout
+   * can be requested without restating a SHA.
+   *
+   * With a resolver, every job is hardened and checked out by default — the
+   * prelude nearly every job needs — and a job opts out with `harden: false` or
+   * adjusts the policy without naming the action again.
+   */
+  pins?: CiPinResolver;
+  /**
+   * The output path (relative to the working directory).
+   *
+   * Defaults to the **field name** the file is declared on, in the provider's
+   * conventional directory: `releaseWorkflow = cicd({...})` writes
+   * `.github/workflows/release.yml`. A trailing `Workflow`/`Ci`/`Yaml` is
+   * dropped, and camelCase becomes kebab-case. Recovering the name from the
+   * field is how `target()` works too, so a workflow needs no more ceremony
+   * than a target.
+   *
+   * Falls back to the provider's single conventional file
+   * (`.github/workflows/ci.yml`, `.gitlab-ci.yml`, …) when the name is not
+   * available — a file built outside a build class.
    */
   path?: string;
   /** The pipeline to render. Defaults to a single `build` job that runs the build. */
@@ -987,23 +1104,29 @@ export interface CiFileSpec {
 export class CiFile {
   /** The provider this file renders for. */
   readonly provider: CiProvider;
-  /** The output path. */
+  /** The output path, once resolved. */
   readonly path: string;
+  /** Whether {@link path} came from the spec rather than a default. */
+  readonly explicitPath: boolean;
   /** The base pipeline (pipeline-level fields, and the jobs unless fanning out). */
   readonly pipeline: CiPipeline;
   /** Fan-out options, when this file expands the build's targets into jobs. */
   readonly fanOut?: FanOutOptions;
   /** The targets this file runs as jobs, when declared with `invokes`. */
   readonly invokes?: readonly CiInvokes[];
+  /** Resolves pinned action references, so a SHA is stated once per repository. */
+  readonly pins?: CiPinResolver;
 
   /** Build the CI file from its spec, filling in the provider's default path. */
   constructor(spec: CiFileSpec) {
-    this.provider = spec.provider;
+    this.provider = spec.provider ?? "github";
     this.path = spec.path ?? DEFAULT_PATHS[this.provider];
+    this.explicitPath = spec.path !== undefined;
     this.pipeline = spec.pipeline ?? {};
     if (spec.fanOut === true) this.fanOut = {};
     else if (spec.fanOut) this.fanOut = spec.fanOut;
     this.invokes = spec.invokes;
+    this.pins = spec.pins;
     if (this.invokes !== undefined && this.fanOut !== undefined) {
       throw new Error(
         "cicd: use either `invokes` (one job per named target) or `fanOut` " +
@@ -1024,21 +1147,39 @@ export class CiFile {
    */
   pipelineFor(targets: Map<string, TargetBuilder>): CiPipeline {
     if (this.invokes !== undefined) {
-      return invokedPipeline(
-        this.invokes,
-        targets,
-        this.pipeline,
-        DEFAULT_INVOKE_COMMAND,
+      return withPins(
+        invokedPipeline(
+          this.invokes,
+          targets,
+          this.pipeline,
+          DEFAULT_INVOKE_COMMAND,
+        ),
+        this.pins,
       );
     }
-    return this.fanOut === undefined
-      ? this.pipeline
-      : fanOutPipeline(targets, this.pipeline, this.fanOut);
+    return withPins(
+      this.fanOut === undefined
+        ? this.pipeline
+        : fanOutPipeline(targets, this.pipeline, this.fanOut),
+      this.pins,
+    );
+  }
+
+  /** The same file bound to `path` — used to name a file from its field. */
+  at(path: string): CiFile {
+    return new CiFile({
+      provider: this.provider,
+      path,
+      pipeline: this.pipeline,
+      pins: this.pins,
+      invokes: this.invokes,
+      fanOut: this.fanOut,
+    });
   }
 
   /** Render the file's YAML content (the base pipeline; fan-out is resolved at discovery). */
   render(): string {
-    return generateCi(this.pipeline, this.provider);
+    return generateCi(withPins(this.pipeline, this.pins), this.provider);
   }
 }
 
@@ -1070,8 +1211,13 @@ export function cicd(spec: CiFileSpec): CiFile {
  */
 export function discoverCiFiles(build: Build): CiFile[] {
   const found: CiFile[] = [];
-  forEachField(build, (_path, value) => {
-    if (value instanceof CiFile) found.push(value);
+  forEachField(build, (field, value) => {
+    if (!(value instanceof CiFile)) return;
+    found.push(
+      value.explicitPath
+        ? value
+        : value.at(pathForField(field, value.provider)),
+    );
   });
   if (!found.some((f) => f.derived)) return found;
   const targets = discoverTargets(build);
@@ -1079,6 +1225,7 @@ export function discoverCiFiles(build: Build): CiFile[] {
     !f.derived ? f : new CiFile({
       provider: f.provider,
       path: f.path,
+      // Already resolved by pipelineFor, so the rebuilt file needs no resolver.
       pipeline: f.pipelineFor(targets),
     })
   );

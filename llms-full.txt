@@ -622,6 +622,9 @@ function validateGraph(targets: Map<string, TargetBuilder>): void
 const AnnounceTasks: AnnounceTasksApi
   Announcement task functions for posting build status to chat platforms.
 
+const CHECKOUT_ACTION: "actions/checkout"
+  The action a {@link CiCheckout} is generated from when pins are resolved.
+
 const CONFIG_FILE: "zuke.json"
   The Zuke config file name; its presence marks a repository root.
 
@@ -636,6 +639,9 @@ const DEFAULT_TOOLS_DIR: ".zuke/tools"
 
 const FileTasks: FileTasksApi
   Filesystem task functions for build scripts.
+
+const HARDEN_RUNNER_ACTION: "step-security/harden-runner"
+  The action a {@link CiHardenRunner} is generated from when pins are resolved.
 
 const REDACTED: "[redacted]"
   The placeholder a {@link Redactor} substitutes for each secret value.
@@ -913,19 +919,25 @@ class CiFile
   readonly provider: CiProvider
     The provider this file renders for.
   readonly path: string
-    The output path.
+    The output path, once resolved.
+  readonly explicitPath: boolean
+    Whether {@link path} came from the spec rather than a default.
   readonly pipeline: CiPipeline
     The base pipeline (pipeline-level fields, and the jobs unless fanning out).
   readonly fanOut?: FanOutOptions
     Fan-out options, when this file expands the build's targets into jobs.
   readonly invokes?: readonly CiInvokes[]
     The targets this file runs as jobs, when declared with `invokes`.
+  readonly pins?: CiPinResolver
+    Resolves pinned action references, so a SHA is stated once per repository.
   get derived(): boolean
     Whether this file's jobs are derived from the build rather than declared.
   pipelineFor(targets: Map<string, TargetBuilder>): CiPipeline
     The pipeline this file renders. Jobs come from the invoked targets, or from
     a full fan-out of the graph, or — failing both — from the declared
     {@link pipeline}.
+  at(path: string): CiFile
+    The same file bound to `path` — used to name a file from its field.
   render(): string
     Render the file's YAML content (the base pipeline; fan-out is resolved at discovery).
 
@@ -2057,8 +2069,8 @@ interface CiCheckout
   {@link CiHardenRunner} and before the job's own steps. Like hardening, the
   pinned {@link action} reference is required.
 
-  action: CiUses
-    The pinned action reference, e.g. `actions/checkout@<sha>`.
+  action?: CiUses
+    The pinned action reference. Omit it when the file supplies a `pins` resolver.
   persistCredentials?: boolean
     Keep the token in git config so a later step can push. Defaults to `false`:
     a job that does not push should not leave a credential behind.
@@ -2081,12 +2093,29 @@ interface CiConcurrency
 interface CiFileSpec
   A CI configuration file declared on a build: a pipeline bound to a path.
 
-  provider: CiProvider
-    The provider to render for — the one field you must choose.
+  provider?: CiProvider
+    The provider to render for. Defaults to `"github"`, which is what the
+    `.github/workflows` default path assumes anyway.
+  pins?: CiPinResolver
+    Resolves each action's pinned reference by name, so hardening and checkout
+    can be requested without restating a SHA.
+
+    With a resolver, every job is hardened and checked out by default — the
+    prelude nearly every job needs — and a job opts out with `harden: false` or
+    adjusts the policy without naming the action again.
   path?: string
-    The output path (relative to the working directory). Defaults to the
-    provider's conventional location (`.github/workflows/ci.yml`,
-    `.gitlab-ci.yml`, or `azure-pipelines.yml`).
+    The output path (relative to the working directory).
+
+    Defaults to the field name the file is declared on, in the provider's
+    conventional directory: `releaseWorkflow = cicd({...})` writes
+    `.github/workflows/release.yml`. A trailing `Workflow`/`Ci`/`Yaml` is
+    dropped, and camelCase becomes kebab-case. Recovering the name from the
+    field is how `target()` works too, so a workflow needs no more ceremony
+    than a target.
+
+    Falls back to the provider's single conventional file
+    (`.github/workflows/ci.yml`, `.gitlab-ci.yml`, …) when the name is not
+    available — a file built outside a build class.
   pipeline?: CiPipeline
     The pipeline to render. Defaults to a single `build` job that runs the build.
   fanOut?: boolean | FanOutOptions
@@ -2132,8 +2161,11 @@ interface CiHardenRunner
   between releases. Passing it makes the pin the caller's — and lets a build
   source it from wherever its bumps are automated.
 
-  action: CiUses
+  action?: CiUses
     The pinned action reference, e.g. `step-security/harden-runner@<sha>`.
+    Omit it when the file supplies a {@link CiFileSpec.pins} resolver, which is
+    the better arrangement: the SHA is then stated once for the repository
+    rather than at every use.
   egress?: "audit" | "block"
     `"audit"` records outbound connections; `"block"` drops everything outside
     {@link allowedEndpoints}. Defaults to `"audit"` — the safe choice for a job
@@ -2247,6 +2279,11 @@ interface CiPipeline
   permissions?: Record<string, string>
     Workflow-level token permissions (GitHub only), e.g.
     `{ contents: "read", "pull-requests": "write" }`. Ignored elsewhere.
+
+    Defaults to `{ contents: "read" }` — least privilege, and what a workflow
+    that only reads the repository needs. A job that needs more declares it, so
+    the wider scope sits next to the job that justifies it. Pass `{}` for no
+    permissions at all, which is stricter than the default rather than absent.
   concurrency?: CiConcurrency
     Limit concurrent runs (GitHub only). Ignored elsewhere.
   harden?: CiHardenRunner
@@ -3467,6 +3504,13 @@ type CiHost = "github" | "gitlab" | "azure" | "bitbucket" | "local"
 
 type CiInvokes = TargetBuilder | CiInvocation
   A target to invoke, bare when the derived job needs no adjustment.
+
+type CiPinResolver = (action: string) => CiUses
+  Resolves an action's pinned reference by name, e.g. `"actions/checkout"`.
+
+  Supplying one is what lets a workflow declare hardening and checkout by
+  intent rather than by repeating a SHA at every use. Without it each
+  {@link CiHardenRunner} and {@link CiCheckout} must carry its own `action`.
 
 type CiProvider = "github" | "gitlab" | "azure" | "bitbucket"
   The CI providers {@link generateCi} can target.

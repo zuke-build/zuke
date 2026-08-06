@@ -978,3 +978,84 @@ Deno.test("invokes: discoverCiFiles resolves the jobs, so render() sees them", (
   assertStringIncludes(file.render(), "run: ./zuke gate");
   assertStringIncludes(file.render(), "name: The gate");
 });
+
+Deno.test("pins: hardening and checkout are the default prelude", () => {
+  // With a resolver, a workflow says nothing about hardening or checkout and
+  // gets both — the prelude nearly every job needs.
+  class B extends Build {
+    gate = target().executes(() => {});
+    wf = cicd({
+      pins: (action) => `${action}@${"a".repeat(40)}`,
+      invokes: [this.gate],
+    });
+  }
+  const [file] = discoverCiFiles(new B());
+  const yaml = file.render();
+  assertStringIncludes(yaml, `step-security/harden-runner@${"a".repeat(40)}`);
+  assertStringIncludes(yaml, `actions/checkout@${"a".repeat(40)}`);
+  assertStringIncludes(yaml, "egress-policy: audit");
+});
+
+Deno.test("pins: a job adjusts the policy without naming the action again", () => {
+  class B extends Build {
+    gate = target().executes(() => {});
+    wf = cicd({
+      pins: (action) => `${action}@${"b".repeat(40)}`,
+      invokes: [{
+        target: this.gate,
+        harden: { egress: "block", allowedEndpoints: ["jsr.io:443"] },
+      }],
+    });
+  }
+  const [file] = discoverCiFiles(new B());
+  const yaml = file.render();
+  assertStringIncludes(yaml, `harden-runner@${"b".repeat(40)}`);
+  assertStringIncludes(yaml, 'allowed-endpoints: "jsr.io:443"');
+});
+
+Deno.test("pins: a missing pin is a friendly error, never an unpinned use", () => {
+  // Emitting `uses:` with no ref would produce a floating reference that
+  // supply-chain scanners reject, so this must fail rather than degrade.
+  let threw = "";
+  try {
+    generateCi({
+      harden: {},
+      jobs: [{ steps: [{ run: "x" }] }],
+    }, "github");
+  } catch (error) {
+    threw = error instanceof Error ? error.message : String(error);
+  }
+  assertStringIncludes(threw, "needs a pinned action");
+});
+
+Deno.test("the workflow path comes from the field it is declared on", () => {
+  class B extends Build {
+    gate = target().executes(() => {});
+    // `Workflow` is noise once the file is a workflow; camelCase reads better
+    // kebab-cased in a filename.
+    releaseWorkflow = cicd({ invokes: [this.gate] });
+    coreFloorsWorkflow = cicd({ invokes: [this.gate] });
+    explicit = cicd({
+      path: ".github/workflows/kept.yml",
+      invokes: [this.gate],
+    });
+  }
+  const paths = discoverCiFiles(new B()).map((f) => f.path).sort();
+  assertEquals(paths, [
+    ".github/workflows/core-floors.yml",
+    ".github/workflows/kept.yml",
+    ".github/workflows/release.yml",
+  ]);
+});
+
+Deno.test("provider defaults to github, and permissions to read-only", () => {
+  const yaml = generateCi({ jobs: [{ steps: [{ run: "x" }] }] }, "github");
+  // Least privilege by default; a job that writes declares it.
+  assertStringIncludes(yaml, "permissions:\n  contents: read");
+  // An explicit empty map is stricter than the default, not absent.
+  const none = generateCi({
+    permissions: {},
+    jobs: [{ steps: [{ run: "x" }] }],
+  }, "github");
+  assertStringIncludes(none, "permissions: {}");
+});

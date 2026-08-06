@@ -263,60 +263,6 @@ class ZukeBuild extends Build {
       );
     });
 
-  // The dedicated workflow for the `integration` target, generated from this
-  // definition (and kept in sync by `generate-ci`). It fans out over the three
-  // OS runners so the subprocess races run on Windows too. It uses `setup-deno`
-  // + `deno` rather than the `./zuke` bash launcher because a generated step has
-  // no per-step shell/if to special-case Windows, and `deno` is identical on
-  // every OS. Kept separate from `ci.yml` so the fast gate is untouched.
-  integrationWorkflow = cicd({
-    provider: "github",
-    path: ".github/workflows/integration.yml",
-    pipeline: {
-      name: "Integration",
-      triggers: {
-        push: ["master"],
-        pullRequest: [],
-        // Weekly with no code change, so a drifting runner image (a new Deno
-        // patch release's own transitive npm resolution, an OS image update)
-        // surfaces on its own instead of waiting for the next PR.
-        schedule: [{ cron: "0 6 * * 1" }],
-      },
-      permissions: { contents: "read" },
-      concurrency: {
-        group: "integration-${{ github.ref }}",
-        cancelInProgress: true,
-      },
-      // Audit rather than block: this job carries no secrets and a read-only
-      // token, so recording outbound calls beats risking a false block of the
-      // cross-OS Deno bootstrap.
-      harden: { action: actionPin("step-security/harden-runner") },
-      checkout: { action: actionPin("actions/checkout") },
-    },
-    invokes: [{
-      target: this.integration,
-      id: "e2e",
-      name: "E2E (${{ matrix.os }})",
-      matrix: { os: ["ubuntu-latest", "macos-latest", "windows-latest"] },
-      // `setup-deno` rather than the ./zuke launcher: a generated step has no
-      // per-OS shell to switch on, and `deno` is identical everywhere. Pinned to
-      // the version the launchers bootstrap, so this runs the exact Deno the
-      // repo is reproducible against rather than a floating `v2.x`.
-      before: [{
-        name: "Set up Deno",
-        uses: actionPin("denoland/setup-deno"),
-        with: { "deno-version": "v2.8.3" },
-      }],
-      // Runs `deno` directly for the same reason, so it replaces the derived
-      // launcher step. `--frozen` fails the run if the e2e suite's resolution
-      // would diverge from the committed lock.
-      steps: [{
-        name: "Run the subprocess e2e suite",
-        run: "deno run -A --frozen zuke.ts integration",
-      }],
-    }],
-  });
-
   coverage = target()
     .description("Enforce the 95% coverage gate")
     .dependsOn(this.test)
@@ -971,61 +917,49 @@ class ZukeBuild extends Build {
 
   // ── Generated workflows ───────────────────────────────────────────────────
   //
-  // Every workflow is declared here and written by `zuke generate-ci`, so the
-  // repository contains no hand-written CI YAML.
+  // Each workflow names the *targets* it runs; the jobs and steps are derived
+  // from the build graph — ids and names from the targets, `needs:` edges from
+  // their `dependsOn`, `./zuke <target>` as the command, and a hardened runner
+  // and checkout in front of each. The file name comes from the field name.
   //
-  // Each one names the *targets* it runs; the jobs and steps are derived from
-  // the build graph — job ids and names from the targets, `needs:` edges from
-  // their `dependsOn`, and `./zuke <target>` as the command. What remains
-  // declared is only what the runner decides rather than the build: which OS
-  // matrix, which token scopes, how much egress to permit.
-  //
-  // Pinned action SHAs come from `actionPin(...)`, which reads them back out of
-  // the committed workflows so Dependabot's weekly bumps keep working — see
-  // build/action_pins.ts.
+  // So what is written here is only what the runner decides rather than the
+  // build: when to run, which OS matrix, which token scopes, how much egress to
+  // permit. `pins` resolves each action's SHA from the root `action.yml`
+  // manifest, which Dependabot bumps and nothing generated ever overwrites.
 
   ciWorkflow = cicd({
-    provider: "github",
-    path: ".github/workflows/ci.yml",
+    pins: actionPin,
     pipeline: {
       name: "CI",
       triggers: {
-        // Once per change: `pullRequest` covers every PR branch, `push` covers
-        // the post-merge commit. Both on all branches would double every run.
+        // Once per change: `pullRequest` covers every PR branch, `push` the
+        // post-merge commit. Both on all branches would double every run.
         push: ["master"],
         pullRequest: [],
         // `edited` on top of the defaults because `prBodyLint` reads the PR
         // description: editing it changes what release-please will parse without
-        // pushing a commit, so the stale green status would otherwise let a
+        // pushing a commit, so a stale green status would otherwise let a
         // code-bearing body reach the squash-merge.
         pullRequestTypes: ["opened", "synchronize", "reopened", "edited"],
       },
-      permissions: { contents: "read" },
       concurrency: {
         group: "ci-${{ github.workflow }}-${{ github.ref }}",
         cancelInProgress: true,
       },
-      harden: { action: actionPin("step-security/harden-runner") },
-      checkout: { action: actionPin("actions/checkout") },
     },
     invokes: [
       {
         target: this.ci,
         name: "Build & verify with Zuke",
         // The lint fixer pushes its fix to the PR branch and comments, so this
-        // job needs `contents: write` and `pull-requests: write`. On a fork PR
-        // the OpenAI key is absent, the token is read-only, and the fixer skips.
+        // job needs both scopes. On a fork PR the key is absent, the token is
+        // read-only whatever is asked for, and the fixer skips.
         permissions: { contents: "write", "pull-requests": "write" },
-        // This job runs build code while holding live secrets and a write-scoped
-        // token, so block egress rather than audit it: even if untrusted code in
-        // the gate read a token, it could not POST it anywhere.
-        harden: {
-          action: actionPin("step-security/harden-runner"),
-          egress: "block",
-          allowedEndpoints: GATE_ENDPOINTS,
-        },
+        // Runs build code while holding live secrets and a write-scoped token,
+        // so block egress rather than audit it: even if untrusted code in the
+        // gate read a token, it could not POST it anywhere.
+        harden: { egress: "block", allowedEndpoints: GATE_ENDPOINTS },
         checkout: {
-          action: actionPin("actions/checkout"),
           // Keeps the token in git config so the fixer can push, and checks out
           // the head branch rather than the detached merge ref so the push
           // targets it. A fork PR falls back to the default — the fixer cannot
@@ -1049,16 +983,12 @@ class ZukeBuild extends Build {
         target: this.coreFloorCheck,
         name: "Core version floors",
         // Its own job because it reaches JSR for each published core, which the
-        // offline `ci` gate must not. Egress is blocked, not audited, because
-        // this is the one job that resolves modules with `--no-lock`: the
-        // generated config carries only `jsr:@zuke/*` specifiers, but that
-        // governs the import map and cannot stop a source file in a PR from
-        // importing an absolute URL that `deno check` would then follow.
-        harden: {
-          action: actionPin("step-security/harden-runner"),
-          egress: "block",
-          allowedEndpoints: FLOOR_CHECK_ENDPOINTS,
-        },
+        // offline `ci` gate must not. Egress is blocked because this is the one
+        // job that resolves modules with `--no-lock`: the generated config
+        // carries only `jsr:@zuke/*` specifiers, but that governs the import map
+        // and cannot stop a source file in a PR importing an absolute URL that
+        // `deno check` would then follow.
+        harden: { egress: "block", allowedEndpoints: FLOOR_CHECK_ENDPOINTS },
       },
       {
         target: this.test,
@@ -1067,12 +997,12 @@ class ZukeBuild extends Build {
         // Let both platforms report: cancelling the sibling hides whether a
         // failure is platform-specific, which is what this job exists to answer.
         failFast: false,
-        // No hardening: this job deliberately exercises the user-facing bootstrap
-        // launchers, which install a pinned Deno themselves. The token is
-        // read-only and no secrets are present.
+        // No hardening: this job deliberately exercises the user-facing
+        // bootstrap launchers, which install a pinned Deno themselves. The token
+        // is read-only and no secrets are present.
         harden: false,
         // The launchers are the point, so each OS runs its own rather than the
-        // derived `./zuke test` — the one place a step replaces the default.
+        // derived command.
         steps: [
           {
             name: "Run tests with the bash launcher",
@@ -1092,28 +1022,23 @@ class ZukeBuild extends Build {
   });
 
   releaseWorkflow = cicd({
-    provider: "github",
-    path: ".github/workflows/release.yml",
+    pins: actionPin,
     pipeline: {
       name: "Release",
       triggers: { push: ["master"], manual: true },
-      // No permissions by default; each job opts into exactly what it needs.
+      // Nothing by default here: each job below opts into exactly what it needs,
+      // which is what keeps the JSR credential away from the release scopes.
       permissions: {},
       concurrency: {
         group: "release-${{ github.ref }}",
         cancelInProgress: false,
       },
-      harden: { action: actionPin("step-security/harden-runner") },
-      checkout: { action: actionPin("actions/checkout") },
     },
-    // The `needs:` chain is the build graph's: `publish` depends on `release`,
-    // `syncWebsite` on `publish`. Nothing states the order here.
     invokes: [
       {
         target: this.release,
         name: "Maintain releases (release-please)",
-        // Writes contents and PRs, but must NOT hold the JSR OIDC token — that
-        // lives only in the publish job below.
+        // Writes contents and PRs, but must NOT hold the JSR OIDC token.
         permissions: { contents: "write", "pull-requests": "write" },
         timeoutMinutes: 15,
         env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" },
@@ -1129,27 +1054,25 @@ class ZukeBuild extends Build {
         // only read access to contents — so the publishing credential is
         // isolated from release-please's write scopes.
         permissions: { contents: "read", "id-token": "write" },
-        // Backstop: publishJsr already times out a stalled publish per package;
-        // this caps the whole job in case anything else hangs.
+        // Backstop: publishJsr already times out a stalled publish per package.
         timeoutMinutes: 30,
       },
       {
         target: this.syncWebsite,
         name: "Sync website docs + API reference",
         after: [this.publishJsr],
+        // Explicit even though it is the least this job could have: the
+        // workflow-level default is `{}` here, so an omitted job scope means no
+        // token at all — and the checkout needs to read the repository.
         permissions: { contents: "read" },
         timeoutMinutes: 15,
-        // Blocked, not audited, because this is the one job that hands build
-        // code an app *private key* rather than a token minted from it. A minted
-        // token is narrow and expires in an hour; the key mints more of them.
-        // Nothing untrusted runs here — the workflow triggers only on a push to
-        // master and workflow_dispatch, and fork PRs get no secrets — so this is
+        // Blocked because this is the one job that hands build code an app
+        // *private key* rather than a token minted from it. A minted token is
+        // narrow and expires in an hour; the key mints more of them. Nothing
+        // untrusted runs here — this workflow triggers only on a push to master
+        // and workflow_dispatch, and fork PRs get no secrets — so this is
         // defence in depth against a compromised dependency in the build graph.
-        harden: {
-          action: actionPin("step-security/harden-runner"),
-          egress: "block",
-          allowedEndpoints: WEBSITE_SYNC_ENDPOINTS,
-        },
+        harden: { egress: "block", allowedEndpoints: WEBSITE_SYNC_ENDPOINTS },
         env: {
           ZUKE_BUILD_APP_ID: "${{ secrets.ZUKE_BUILD_APP_ID }}",
           ZUKE_BUILD_APP_KEY: "${{ secrets.ZUKE_BUILD_APP_KEY }}",
@@ -1159,8 +1082,7 @@ class ZukeBuild extends Build {
   });
 
   securityWorkflow = cicd({
-    provider: "github",
-    path: ".github/workflows/security.yml",
+    pins: actionPin,
     pipeline: {
       name: "Security scanners",
       triggers: {
@@ -1168,10 +1090,7 @@ class ZukeBuild extends Build {
         pullRequest: [],
         schedule: [{ cron: "42 5 * * 3" }],
       },
-      permissions: { contents: "read" },
-      harden: { action: actionPin("step-security/harden-runner") },
       checkout: {
-        action: actionPin("actions/checkout"),
         // Full history so gitleaks scans past commits, not just the tip. That
         // also fetches every branch, which is why the target scopes the scan to
         // the pull request's own commits — otherwise a secret-shaped string on
@@ -1190,8 +1109,7 @@ class ZukeBuild extends Build {
   });
 
   scorecardWorkflow = cicd({
-    provider: "github",
-    path: ".github/workflows/scorecard.yml",
+    pins: actionPin,
     pipeline: {
       name: "Scorecard supply-chain",
       triggers: {
@@ -1200,9 +1118,6 @@ class ZukeBuild extends Build {
         branchProtectionRule: true,
         schedule: [{ cron: "18 3 * * 2" }],
       },
-      permissions: { contents: "read" },
-      harden: { action: actionPin("step-security/harden-runner") },
-      checkout: { action: actionPin("actions/checkout") },
     },
     invokes: [{
       target: this.scorecardSarif,
@@ -1214,8 +1129,8 @@ class ZukeBuild extends Build {
         "id-token": "write",
       },
       // The one marketplace action that stays: publishing the public score is
-      // something only it can do. It has to run before the target that uploads
-      // its output, which is exactly what `before` is for.
+      // something only it can do, and it must run before the target that
+      // uploads its output.
       before: [{
         name: "Run Scorecard",
         uses: actionPin("ossf/scorecard-action"),
@@ -1226,6 +1141,46 @@ class ZukeBuild extends Build {
         },
       }],
       env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" },
+    }],
+  });
+
+  integrationWorkflow = cicd({
+    pins: actionPin,
+    pipeline: {
+      name: "Integration",
+      triggers: {
+        push: ["master"],
+        pullRequest: [],
+        // Weekly with no code change, so a drifting runner image (a new Deno
+        // patch release's own transitive npm resolution, an OS image update)
+        // surfaces on its own instead of waiting for the next PR.
+        schedule: [{ cron: "0 6 * * 1" }],
+      },
+      concurrency: {
+        group: "integration-${{ github.ref }}",
+        cancelInProgress: true,
+      },
+    },
+    invokes: [{
+      target: this.integration,
+      id: "e2e",
+      name: "E2E (${{ matrix.os }})",
+      matrix: { os: ["ubuntu-latest", "macos-latest", "windows-latest"] },
+      // `setup-deno` rather than the ./zuke launcher: a generated step has no
+      // per-OS shell to switch on, and `deno` is identical everywhere. Pinned to
+      // the version the launchers bootstrap, so this runs the exact Deno the
+      // repo is reproducible against rather than a floating `v2.x`.
+      before: [{
+        name: "Set up Deno",
+        uses: actionPin("denoland/setup-deno"),
+        with: { "deno-version": "v2.8.3" },
+      }],
+      // Runs `deno` directly for the same reason. `--frozen` fails the run if
+      // the e2e suite's resolution would diverge from the committed lock.
+      steps: [{
+        name: "Run the subprocess e2e suite",
+        run: "deno run -A --frozen zuke.ts integration",
+      }],
     }],
   });
 }

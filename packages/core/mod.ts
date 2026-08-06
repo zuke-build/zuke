@@ -309,6 +309,7 @@ export {
   type ToolTasksApi,
 } from "./src/tool.ts";
 export {
+  CHECKOUT_ACTION,
   type CiActionRef,
   cicd,
   type CiCheckout,
@@ -319,6 +320,7 @@ export {
   type CiInvocation,
   type CiInvokes,
   type CiJob,
+  type CiPinResolver,
   type CiPipeline,
   type CiProvider,
   type CiStep,
@@ -331,6 +333,7 @@ export {
   type FanOutOptions,
   fanOutPipeline,
   generateCi,
+  HARDEN_RUNNER_ACTION,
   syncCiFiles,
 } from "./src/ci.ts";
 export { type ScheduleEntry } from "./src/ci_schedule.ts";

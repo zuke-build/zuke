@@ -28,6 +28,17 @@ async function workflows(files: Record<string, string>): Promise<string> {
   return dir;
 }
 
+/**
+ * Collect pins from `dir` alone, with no manifest.
+ *
+ * The manifest argument defaults to the repository's own `action.yml`, so a
+ * single-argument call would read the real file and make these tests depend on
+ * it. Pointing at a path inside the temp directory keeps each case isolated.
+ */
+function pinsFrom(dir: string): Map<string, { ref: string; version?: string }> {
+  return collectActionPins(dir, `${dir}/__no_manifest__.yml`);
+}
+
 Deno.test("a pinned uses line yields its action, sha, and version", async () => {
   const dir = await workflows({
     "ci.yml": [
@@ -39,7 +50,7 @@ Deno.test("a pinned uses line yields its action, sha, and version", async () => 
     ].join("\n"),
   });
   try {
-    const pins = collectActionPins(dir);
+    const pins = pinsFrom(dir);
     assertEquals(pins.get("actions/checkout"), {
       ref: `actions/checkout@${SHA_A}`,
       version: "v7.0.1",
@@ -59,7 +70,7 @@ Deno.test("a pin with no version comment is still collected", async () => {
     "a.yml": `      - uses: actions/checkout@${SHA_A}\n`,
   });
   try {
-    assertEquals(collectActionPins(dir).get("actions/checkout"), {
+    assertEquals(pinsFrom(dir).get("actions/checkout"), {
       ref: `actions/checkout@${SHA_A}`,
       version: undefined,
     });
@@ -78,7 +89,7 @@ Deno.test("the file that names the version wins over one that omits it", async (
   });
   try {
     assertEquals(
-      collectActionPins(dir).get("actions/checkout")?.version,
+      pinsFrom(dir).get("actions/checkout")?.version,
       "v7.0.1",
     );
   } finally {
@@ -95,7 +106,7 @@ Deno.test("two files pinning one action to different SHAs is an error", async ()
   });
   try {
     const error = assertThrows(
-      () => collectActionPins(dir),
+      () => pinsFrom(dir),
       Error,
       "action pins disagree for actions/checkout",
     );
@@ -118,7 +129,7 @@ Deno.test("a floating tag or a short sha is not treated as a pin", async () => {
     ].join("\n"),
   });
   try {
-    const pins = collectActionPins(dir);
+    const pins = pinsFrom(dir);
     assertEquals(pins.has("actions/checkout"), false);
     assertEquals(pins.has("actions/setup-node"), false);
     assertEquals(pins.has("actions/cache"), true);
@@ -134,7 +145,7 @@ Deno.test("a missing workflow directory yields no pins rather than throwing", as
   await Deno.remove(dir);
   // Generating into a repository with no workflows yet must fall back to the
   // seed, not fail.
-  assertEquals(collectActionPins(dir).size, 0);
+  assertEquals(pinsFrom(dir).size, 0);
 });
 
 Deno.test("non-YAML files in the directory are ignored", async () => {
@@ -146,7 +157,7 @@ Deno.test("non-YAML files in the directory are ignored", async () => {
     // The .yaml extension counts; the .md does not — otherwise documentation
     // showing an example pin would fight the real one.
     assertEquals(
-      collectActionPins(dir).get("actions/checkout")?.ref.endsWith(SHA_A),
+      pinsFrom(dir).get("actions/checkout")?.ref.endsWith(SHA_A),
       true,
     );
   } finally {
@@ -208,5 +219,85 @@ Deno.test("every generated workflow pin carries its version comment", async () =
         `${entry.name} pins without a version comment: ${line.trim()}`,
       );
     }
+  }
+});
+
+Deno.test("the action.yml manifest outranks a generated workflow", () => {
+  // The point of the manifest: the generator never writes it, so a bump landing
+  // there cannot be undone by regenerating. A workflow disagreeing with it is
+  // not a conflict — it is a file about to be rewritten.
+  const dir = Deno.makeTempDirSync();
+  const manifest = `${dir}/action.yml`;
+  Deno.writeTextFileSync(
+    manifest,
+    `runs:\n  steps:\n    - uses: actions/checkout@${SHA_B} # v9.9.9\n`,
+  );
+  const workflows = Deno.makeTempDirSync();
+  Deno.writeTextFileSync(
+    `${workflows}/ci.yml`,
+    `      - uses: actions/checkout@${SHA_A} # v7.0.1\n`,
+  );
+  try {
+    const pins = collectActionPins(workflows, manifest);
+    assertEquals(
+      pins.get("actions/checkout")?.ref,
+      `actions/checkout@${SHA_B}`,
+    );
+    assertEquals(pins.get("actions/checkout")?.version, "v9.9.9");
+  } finally {
+    Deno.removeSync(dir, { recursive: true });
+    Deno.removeSync(workflows, { recursive: true });
+  }
+});
+
+Deno.test("a manifest pin silences the disagreement between two workflows", () => {
+  // With an authoritative source there is nothing to disagree about — the
+  // half-applied-bump error is for when no such source names the action.
+  const dir = Deno.makeTempDirSync();
+  const manifest = `${dir}/action.yml`;
+  Deno.writeTextFileSync(manifest, `    - uses: actions/checkout@${SHA_B}\n`);
+  const workflows = Deno.makeTempDirSync();
+  Deno.writeTextFileSync(
+    `${workflows}/a.yml`,
+    `  - uses: actions/checkout@${SHA_A}\n`,
+  );
+  Deno.writeTextFileSync(
+    `${workflows}/b.yml`,
+    `  - uses: actions/checkout@${"c".repeat(40)}\n`,
+  );
+  try {
+    assertEquals(
+      collectActionPins(workflows, manifest).get("actions/checkout")?.ref,
+      `actions/checkout@${SHA_B}`,
+    );
+  } finally {
+    Deno.removeSync(dir, { recursive: true });
+    Deno.removeSync(workflows, { recursive: true });
+  }
+});
+
+Deno.test("an absent manifest falls back to the workflows", () => {
+  const workflows = Deno.makeTempDirSync();
+  Deno.writeTextFileSync(
+    `${workflows}/a.yml`,
+    `  - uses: actions/checkout@${SHA_A}\n`,
+  );
+  try {
+    assertEquals(
+      collectActionPins(workflows, `${workflows}/missing.yml`)
+        .get("actions/checkout")?.ref,
+      `actions/checkout@${SHA_A}`,
+    );
+  } finally {
+    Deno.removeSync(workflows, { recursive: true });
+  }
+});
+
+Deno.test("the committed action.yml pins every action the build uses", () => {
+  // The manifest is only a useful source for actions it actually names, so a
+  // new pinned action must be added there rather than left to the workflows.
+  const manifest = Deno.readTextFileSync("action.yml");
+  for (const action of ["step-security/harden-runner", "actions/checkout"]) {
+    assertStringIncludes(manifest, `uses: ${action}@`);
   }
 });

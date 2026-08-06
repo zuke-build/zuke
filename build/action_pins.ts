@@ -1,6 +1,6 @@
 /**
  * Where the pinned GitHub Action SHAs come from once the workflows are
- * generated: the committed workflow files themselves.
+ * generated: the root `action.yml` manifest, which the generator never writes.
  *
  * This exists to keep one piece of working automation working. Dependabot bumps
  * SHA-pinned actions weekly, and it can only see `.github/workflows/*.yml` and a
@@ -8,17 +8,16 @@
  * lived in code, generating the workflows would have silently ended those bumps,
  * and stale pins mean missing the security fixes the actions themselves ship.
  *
- * So the direction is inverted. Dependabot edits the committed workflow, and the
- * generator reads each action's SHA back out of it, which makes regeneration
- * reproduce whatever Dependabot last wrote: no drift, no human step, and the
- * bump PR lands exactly as it does today.
+ * So the pins live in the one file Dependabot can see that is *not* generated.
+ * A bot edits `action.yml`, this module reads it, and the generator writes the
+ * workflows from it — one direction, no file that is the source of its own
+ * pins.
  *
- * The one oddity is that the generator reads its own output. That is deliberate
- * and narrow — it applies to the pin *only*, which is the single field
- * Dependabot owns. Everything else about a workflow still comes from the
- * declaration in `zuke.ts`, so structure cannot drift while the pin stays
- * current. {@link SEED_PINS} covers the bootstrap case where no committed file
- * has the action yet.
+ * A generated workflow is still read, for any action the manifest does not
+ * mention, and {@link SEED_PINS} covers an action neither has yet. Those two
+ * paths keep working for a build that has no manifest, but the manifest is the
+ * arrangement worth having: it is the only one where nothing the generator wrote
+ * feeds back into what it writes.
  *
  * @module
  */
@@ -27,6 +26,17 @@ import type { CiActionRef } from "@zuke/core";
 
 /** Where the committed workflows live. */
 const WORKFLOW_DIR = ".github/workflows";
+
+/**
+ * The root composite action, which is the repository's pinned-action manifest.
+ *
+ * This is the file that makes the arrangement one-directional. Dependabot scans
+ * `.github/workflows` and a root `action.yml`; the generator *writes* the former
+ * and only ever *reads* the latter, so a bot's bump to `action.yml` can never be
+ * reverted by a regeneration. Pins found here therefore win over pins found in a
+ * generated workflow.
+ */
+const ACTION_MANIFEST = "action.yml";
 
 /**
  * A `uses:` line: the action (with any subpath), its pinned SHA, and the version
@@ -80,6 +90,16 @@ function pinsIn(text: string, source: string): Map<string, FoundPin> {
   return found;
 }
 
+/** A file's text, or `""` when it does not exist. */
+function readFileOrEmpty(path: string): string {
+  try {
+    return Deno.readTextFileSync(path);
+  } catch (error) {
+    if (error instanceof Deno.errors.NotFound) return "";
+    throw error;
+  }
+}
+
 /** Every workflow file's text, keyed by path, sorted for deterministic errors. */
 function readWorkflows(dir: string): Map<string, string> {
   const files = new Map<string, string>();
@@ -110,10 +130,23 @@ function readWorkflows(dir: string): Map<string, string> {
  */
 export function collectActionPins(
   dir: string = WORKFLOW_DIR,
+  manifest: string = ACTION_MANIFEST,
 ): Map<string, CiActionRef> {
   const pins = new Map<string, FoundPin>();
+
+  // The manifest first, and authoritatively: the generator never writes it, so a
+  // bump landing there cannot be undone by regenerating. A generated workflow
+  // disagreeing with it is not a conflict to report but a file about to be
+  // rewritten, so the manifest simply wins.
+  const manifestText = readFileOrEmpty(manifest);
+  const fromManifest = pinsIn(manifestText, manifest);
+  for (const [action, pin] of fromManifest) pins.set(action, pin);
+
   for (const [path, text] of readWorkflows(dir)) {
     for (const [action, pin] of pinsIn(text, path)) {
+      // Already pinned by the manifest: that value stands, and this file will be
+      // regenerated from it.
+      if (fromManifest.has(action)) continue;
       const seen = pins.get(action);
       if (seen !== undefined && seen.ref !== pin.ref) {
         throw new Error(
@@ -123,7 +156,8 @@ export function collectActionPins(
             `pin to generate from — and guessing would either revert the bump ` +
             `or spread a half-applied one. Edit the workflow YAML so both name ` +
             `the same SHA (keep the newer one unless you know otherwise), then ` +
-            `regenerate.`,
+            `regenerate — or pin it in ${ACTION_MANIFEST}, which wins over ` +
+            `every generated file.`,
         );
       }
       // Same SHA in both, but only one names the version: keep the one that
