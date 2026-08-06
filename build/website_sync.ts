@@ -142,7 +142,7 @@ export async function mintWebsiteToken(
       .owner(owner)
       .repositories(name)
       .permission("contents", "write")
-      .permission("pull-requests", "write")
+      .permission("pull_requests", "write")
   );
   return token;
 }

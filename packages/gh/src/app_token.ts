@@ -208,9 +208,16 @@ export class GhAppTokenSettings {
    * Request one permission, e.g. `.permission("contents", "write")`. Repeatable.
    * Narrowing to what the target needs beats inheriting the app's full set;
    * requesting more than the installation grants is an error from GitHub.
+   *
+   * The API names multi-word permissions with underscores (`pull_requests`), so
+   * a hyphen is normalised to one. That spelling is the trap here:
+   * `create-github-app-token` takes its inputs as `permission-pull-requests`,
+   * and passing that form straight through is rejected as a permission the
+   * installation does not grant — which reads as a misconfigured app rather
+   * than a misspelled key.
    */
   permission(name: string, level: GhPermissionLevel): this {
-    this.permissions_[name] = level;
+    this.permissions_[name.replace(/-/g, "_")] = level;
     return this;
   }
 

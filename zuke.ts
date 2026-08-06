@@ -195,7 +195,16 @@ class ZukeBuild extends Build {
       // instead of silently running nowhere until someone remembers to add it
       // here.
       const paths = await glob("tests/e2e/*_e2e.ts");
-      await DenoTasks.test((s) => s.allowAll().paths(...paths));
+      // Blank GITHUB_STEP_SUMMARY for the suite, as the `test` target does.
+      // These fixtures are whole builds run as real subprocesses, so each one
+      // appends its own result table to the Actions summary — including the
+      // ones that are *meant* to fail or suspend (a target reaped by a timeout,
+      // a `waitsFor` gate that never opens). The job then displays a red,
+      // half-finished build table while passing, which reads as a broken suite
+      // and buries the one table that describes the actual run.
+      await DenoTasks.test((s) =>
+        s.allowAll().paths(...paths).env({ GITHUB_STEP_SUMMARY: "" })
+      );
     });
 
   // The dedicated workflow for the `integration` target, generated from this
