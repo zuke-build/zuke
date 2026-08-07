@@ -1,4 +1,4 @@
-name: "Zuke"
+name: "Zuke Build"
 description: "Harden the runner, check out the repository, and run a Zuke target."
 branding:
   icon: terminal
