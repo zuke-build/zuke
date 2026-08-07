@@ -1,5 +1,8 @@
-name: "Zuke build"
+name: "Zuke"
 description: "Harden the runner, check out the repository, and run a Zuke target."
+branding:
+  icon: terminal
+  color: purple
 
 # This file is the repository's pinned-action manifest, and the one YAML here
 # that is *not* generated — deliberately, because that is what removes a
@@ -9,11 +12,18 @@ description: "Harden the runner, check out the repository, and run a Zuke target
 # from them. So the flow is one-directional: a bot edits this file, the generator
 # reads it, and no generated file is ever the source of its own pins.
 #
-# It is also a usable composite action in its own right. A repository that builds
-# with Zuke can make this its first step — `uses: zuke-build/zuke@<sha>` needs no
-# prior checkout, since a remote action is fetched by the runner. This repository
-# cannot use it that way for hardening: `uses: ./` resolves inside the workspace,
-# so it would require the checkout it is meant to precede.
+# It is also a usable composite action in its own right, published to the GitHub
+# Marketplace. A repository that builds with Zuke can make this its first step —
+# `uses: zuke-build/zuke@<sha>` needs no prior checkout, since a remote action is
+# fetched by the runner. This repository cannot use it that way for hardening:
+# `uses: ./` resolves inside the workspace, so it would require the checkout it
+# is meant to precede.
+#
+# The action is versioned by a plain `v1` tag (and the `v1.x.y` it points at),
+# which is the tag consumers write. That namespace is the action's alone: the
+# packages release under component tags (`core-v1.9.0`, `cli-v1.0.0`, …) via
+# release-please, which has no root package, so `v1` here means this action and
+# never "Zuke 1.0".
 
 inputs:
   target:
@@ -21,7 +31,7 @@ inputs:
     required: false
     default: ""
   egress-policy:
-    description: "harden-runner policy: `audit` to record, `block` to enforce."
+    description: "harden-runner policy: `audit` to record, `block` to enforce. Note this defaults to `audit`; harden-runner's own default is `block`."
     required: false
     default: "audit"
   allowed-endpoints:
@@ -77,4 +87,9 @@ runs:
       shell: bash
       env:
         ZUKE_TARGET: ${{ inputs.target }}
-      run: ./zuke "$ZUKE_TARGET"
+      run: |
+        if [ ! -f ./zuke ]; then
+          echo "::error::No ./zuke launcher in this repository. Scaffold one with 'deno install -A -g -n zuke jsr:@zuke/cli' then 'zuke setup', and commit what it writes: https://github.com/zuke-build/zuke#install"
+          exit 1
+        fi
+        ./zuke "$ZUKE_TARGET"
