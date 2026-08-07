@@ -72,8 +72,8 @@ class MyBuild extends Build {
   regenerating it whenever the build runs (and verifying it on CI).
 
 See **[How Zuke compares](./docs/comparison.md)** for a capability-by-capability
-matrix against `deno task`, npm scripts, Make, Nx, Turborepo, and Dagger, on
-the capabilities Zuke was built to provide.
+matrix against `deno task`, npm scripts, Make, Nx, Turborepo, and Dagger, on the
+capabilities Zuke was built to provide.
 
 ## Install
 
@@ -89,6 +89,20 @@ zuke setup                                 # in your project
 
 See **[Getting started](./docs/getting-started.md)** for the full walkthrough
 (scaffolding, the `./zuke` launcher, a first build, and GitHub Actions output).
+
+On GitHub Actions, the
+[`zuke-build/zuke` action](./docs/getting-started.md#the-zuke-buildzuke-action)
+hardens the runner, checks out, and runs a target in one step:
+
+```yaml
+- uses: zuke-build/zuke@v1
+  with:
+    target: ci
+```
+
+Pin the full commit SHA rather than the moving `v1` tag when you commit it —
+[the action section](./docs/getting-started.md#pin-it-as-you-would-any-other-action)
+covers why, and why `egress-policy` starts at `audit`.
 
 > [!NOTE]
 > All packages publish to [JSR](https://jsr.io/@zuke) from CI via release-please
@@ -344,8 +358,8 @@ Full documentation lives in [`docs/`](./docs/):
 - [Versioning & compatibility](./docs/versioning.md) — core semver vs. 0.x
   wrappers, the `@zuke/core` floor, and pinning guidance.
 - [How Zuke compares](./docs/comparison.md) — a capability matrix against
-  `deno task`, npm scripts, Make, Nx, Turborepo, and Dagger, on the
-  capabilities Zuke provides.
+  `deno task`, npm scripts, Make, Nx, Turborepo, and Dagger, on the capabilities
+  Zuke provides.
 
 ## Development
 
@@ -362,8 +376,7 @@ deno task ci          # the full gate — deno run -A zuke.ts ci
 
 `deno task ci` **is** `./zuke ci`, the same gate the `quality` job in
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every push and
-pull request — see [`AGENTS.md`](./AGENTS.md#commands) for the full check
-list.
+pull request — see [`AGENTS.md`](./AGENTS.md#commands) for the full check list.
 
 ## Contributing
 

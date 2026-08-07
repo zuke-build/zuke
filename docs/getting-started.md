@@ -90,13 +90,13 @@ two launchers above into your repo when you want the verified bootstrap too.
 If you already have Deno, `deno task zuke <target>` (via the `zuke` task in
 `deno.json`) does the same thing.
 
-`zuke setup`/`zuke import` scaffold this launcher for you, so once it's in
-place run every target with `./zuke <target>` — the bare `zuke` you installed
-globally only knows `setup`/`import`/`doc` (see the
-[CLI reference](./cli.md) for the full split). Shell completions
-(`./zuke completions install <shell>`) register the words `zuke` and `./zuke`,
-so those two forms complete targets; `deno task zuke <target>` does not,
-because the shell matches the completion on the first word of the line.
+`zuke setup`/`zuke import` scaffold this launcher for you, so once it's in place
+run every target with `./zuke <target>` — the bare `zuke` you installed globally
+only knows `setup`/`import`/`doc` (see the [CLI reference](./cli.md) for the
+full split). Shell completions (`./zuke completions install <shell>`) register
+the words `zuke` and `./zuke`, so those two forms complete targets;
+`deno task zuke <target>` does not, because the shell matches the completion on
+the first word of the line.
 
 ## Quick start
 
@@ -183,6 +183,88 @@ switches to that runner's log conventions automatically — no configuration:
 - a failing target emits an **`::error::` annotation** (surfaced on the run and
   in the diff); and
 - the per-target summary is also written to the **job summary** as a table.
+
+### The `zuke-build/zuke` action
+
+The steps every Zuke job starts with — harden the runner, check out, run a
+target — are published as a composite action, so a workflow does not repeat
+them:
+
+```yaml
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: zuke-build/zuke@v1
+        with:
+          target: ci
+```
+
+It is the **first** step: a remote action is fetched by the runner, not from
+your workspace, so it needs no checkout before it — which is the point, since
+[`step-security/harden-runner`](https://github.com/step-security/harden-runner)
+only governs what runs after it.
+
+| Input                 | Default | What it does                                                                       |
+| --------------------- | ------- | ---------------------------------------------------------------------------------- |
+| `target`              | `""`    | The Zuke target to run. Omit to harden and check out only.                         |
+| `egress-policy`       | `audit` | `audit` records outbound traffic; `block` enforces `allowed-endpoints`.            |
+| `allowed-endpoints`   | `""`    | Space-separated `host:port` list permitted under `block`.                          |
+| `persist-credentials` | `false` | Leave the token in git config, for a later push.                                   |
+| `fetch-depth`         | `1`     | Commits to fetch. `0` is the full history, which a secret scan needs.              |
+| `deno-version`        | `""`    | Install this Deno. Usually unnecessary — the `./zuke` launcher bootstraps its own. |
+
+Running a target needs a committed `./zuke` launcher in the repository (that is
+what `zuke setup` writes); the step fails with an annotation saying so if there
+isn't one. A job that only wants the hardening and the checkout omits `target`
+and gets neither requirement.
+
+#### Pin it, as you would any other action
+
+`@v1` is a tag that moves. Whoever can move it can run code in your job — and
+because you have delegated your hardening to this step, a moved tag could simply
+not harden. Pin the full commit SHA, with the version beside it, exactly as this
+repository pins the actions it consumes and as
+[its Scorecard](https://scorecard.dev/viewer/?uri=github.com/zuke-build/zuke)
+grades it for:
+
+```yaml
+- uses: zuke-build/zuke@<40-character-sha> # v1.0.0
+  with:
+    target: ci
+```
+
+Dependabot bumps that line for you and writes the new version into the comment.
+The `@v1` form above is the shorter thing to read in a snippet; it is not the
+thing to commit.
+
+#### `egress-policy` starts at `audit`, not `block`
+
+Note the divergence: harden-runner's own default is `block`, and this action's
+is `audit`. That is deliberate — `block` with an empty `allowed-endpoints` fails
+a build on its first outbound request, which is a poor first run — but it means
+the default configuration **records** egress rather than enforcing it. To
+actually enforce, run once on `audit`, take the endpoint list from the run's
+insights, and then set both:
+
+```yaml
+- uses: zuke-build/zuke@<40-character-sha> # v1.0.0
+  with:
+    target: ci
+    egress-policy: block
+    allowed-endpoints: "jsr.io:443 deno.land:443 dl.deno.land:443"
+```
+
+One caveat worth confirming before you rely on it: harden-runner's blocking
+support has historically been Linux-only on GitHub-hosted runners, degrading to
+audit on macOS and Windows rather than failing. A matrix job that sets `block`
+may therefore be enforcing on one leg and recording on the others. Check
+[harden-runner's own docs](https://github.com/step-security/harden-runner) for
+the version you have pinned.
+
+Zuke's own workflows do **not** use it — `uses: ./` resolves inside the
+workspace, so it would need the very checkout it exists to precede. They inline
+the same steps, generated from the pins in `action.yml` itself.
 
 ---
 
