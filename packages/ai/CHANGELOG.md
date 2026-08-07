@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.7.0](https://github.com/zuke-build/zuke/compare/ai-v1.6.1...ai-v1.7.0) (2026-08-07)
+
+
+### Features
+
+* **core:** generate every workflow, sourcing pins from the committed files ([#298](https://github.com/zuke-build/zuke/issues/298)) ([dc12a61](https://github.com/zuke-build/zuke/commit/dc12a61e191f48b13f6f51c9fa7b52228d12c9be))
+* **core:** prepare every workflow step for generation ([#295](https://github.com/zuke-build/zuke/issues/295)) ([29e54ee](https://github.com/zuke-build/zuke/commit/29e54ee51335c26d9e50acc0bc69d5d8c0152e95))
+
 ## [1.6.1](https://github.com/zuke-build/zuke/compare/ai-v1.6.0...ai-v1.6.1) (2026-07-22)
 
 

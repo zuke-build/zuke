@@ -1,5 +1,5 @@
 {
-  "packages/core": "1.32.1",
+  "packages/core": "1.33.0",
   "packages/deno": "1.0.0",
   "packages/docs": "1.0.0",
   "packages/npm": "1.0.0",
@@ -41,8 +41,8 @@
   "packages/node": "1.0.0",
   "packages/dprint": "1.0.0",
   "packages/gcloud": "1.0.0",
-  "packages/git": "1.0.0",
-  "packages/gh": "1.0.0",
+  "packages/git": "1.1.0",
+  "packages/gh": "1.1.0",
   "packages/codecov": "1.0.2",
   "packages/claude": "1.1.1",
   "packages/codex": "1.1.1",
@@ -51,6 +51,6 @@
   "packages/tofu": "1.0.0",
   "packages/release-please": "1.0.2",
   "packages/security": "1.0.0",
-  "packages/ai": "1.6.1",
+  "packages/ai": "1.7.0",
   "packages/otel": "1.0.1"
 }

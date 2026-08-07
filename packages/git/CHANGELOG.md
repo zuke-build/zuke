@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/zuke-build/zuke/compare/git-v1.0.0...git-v1.1.0) (2026-08-07)
+
+
+### Features
+
+* **core:** prepare every workflow step for generation ([#295](https://github.com/zuke-build/zuke/issues/295)) ([29e54ee](https://github.com/zuke-build/zuke/commit/29e54ee51335c26d9e50acc0bc69d5d8c0152e95))
+
 ## [1.0.0](https://github.com/zuke-build/zuke/compare/git-v0.2.3...git-v1.0.0) (2026-07-30)
 
 

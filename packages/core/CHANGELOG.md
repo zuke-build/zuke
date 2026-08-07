@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.33.0](https://github.com/zuke-build/zuke/compare/core-v1.32.1...core-v1.33.0) (2026-08-07)
+
+
+### Features
+
+* **core:** generate every workflow, sourcing pins from the committed files ([#298](https://github.com/zuke-build/zuke/issues/298)) ([dc12a61](https://github.com/zuke-build/zuke/commit/dc12a61e191f48b13f6f51c9fa7b52228d12c9be))
+* **core:** prepare every workflow step for generation ([#295](https://github.com/zuke-build/zuke/issues/295)) ([29e54ee](https://github.com/zuke-build/zuke/commit/29e54ee51335c26d9e50acc0bc69d5d8c0152e95))
+
 ## [1.32.1](https://github.com/zuke-build/zuke/compare/core-v1.32.0...core-v1.32.1) (2026-07-28)
 
 
