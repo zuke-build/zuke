@@ -1,45 +1,36 @@
 name: Scorecard supply-chain
-
-on:
-  branch_protection_rule:
+"on":
   push:
-    branches: [master]
+    branches:
+      - master
+  branch_protection_rule: {}
   schedule:
     - cron: "18 3 * * 2"
-
 permissions:
   contents: read
-
 jobs:
-  analysis:
+  scorecardSarif:
     name: OpenSSF Scorecard
     runs-on: ubuntu-latest
     permissions:
-      security-events: write # upload the SARIF result to the Security tab
-      id-token: write # publish results to the public Scorecard API
+      security-events: write
+      id-token: write
     steps:
       - name: Harden the runner
         uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
         with:
           egress-policy: audit
-
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          persist-credentials: false
-
+          persist-credentials: "false"
       - name: Run Scorecard
         uses: ossf/scorecard-action@2d1146689b8cda280b9bc96326124645441f03bc # v2.4.4
         with:
           results_file: results.sarif
           results_format: sarif
-          publish_results: true
-
-      # The `scorecardSarif` target uploads results.sarif to code scanning
-      # itself (a plain REST call, dogfooding @zuke/gh), replacing both the
-      # artifact upload and the codeql-action/upload-sarif step. The scorecard
-      # action above stays: publishing the public score (`publish_results`) is
-      # something only it can do.
-      - name: Upload the results to code scanning with Zuke
+          publish_results: "true"
+      - name: Run scorecardSarif with Zuke
         run: ./zuke scorecardSarif
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"

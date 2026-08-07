@@ -102,6 +102,23 @@ export interface AiReviewWorkflowSpec {
    * `zuke review` then works locally, where no workflow step exists to run.
    */
   fetchBase?: boolean;
+  /**
+   * The pinned `step-security/harden-runner@<sha>` to harden the runner with.
+   * Defaults to a pin baked in here.
+   *
+   * Pass it when the build sources pins from somewhere that stays current — a
+   * generated workflow whose SHA comes from a constant in a published package is
+   * a trap: a bot bumps the committed file, the next run regenerates it from the
+   * stale constant, and the bump is silently reverted.
+   *
+   * A bare `owner/repo@<sha>`, without the `# vX.Y.Z` comment the other
+   * generated workflows carry: attaching one needs a core newer than this
+   * package's declared floor, and Dependabot bumps a comment-less pin anyway.
+   * Adopt the richer form once the floor moves past that release.
+   */
+  hardenRunner?: string;
+  /** The pinned `actions/checkout@<sha>` to check the repository out with. */
+  checkout?: string;
   /** Output path. Defaults to the host's conventional location. */
   path?: string;
   /** Workflow name shown in the host's UI. Defaults to `"AI Review"`. */
@@ -243,10 +260,13 @@ class AiReviewWorkflow extends CiFile {
       steps: [
         {
           name: "Harden the runner",
-          uses: HARDEN_RUNNER,
+          uses: this.#spec.hardenRunner ?? HARDEN_RUNNER,
           with: { "egress-policy": "audit" },
         },
-        { uses: CHECKOUT, with: { "persist-credentials": "false" } },
+        {
+          uses: this.#spec.checkout ?? CHECKOUT,
+          with: { "persist-credentials": "false" },
+        },
         ...(fetchBase
           ? [{
             name: "Fetch the base branch",

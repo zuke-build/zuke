@@ -705,8 +705,10 @@ Deno.test("github: harden and checkout are emitted before a job's own steps", ()
   const buildAt = yaml.indexOf("./zuke ci");
   assertEquals(hardenAt < checkoutAt && checkoutAt < buildAt, true);
   assertStringIncludes(yaml, "egress-policy: block");
-  // The allowlist stays one host per line, so it remains reviewable.
-  assertStringIncludes(yaml, "jsr.io:443\n");
+  // Space-separated on one line — exactly what a folded scalar collapses to,
+  // which is the form already known to enforce correctly. The action documents
+  // no delimiter, so the gate's egress control must not depend on a guess.
+  assertStringIncludes(yaml, 'allowed-endpoints: "jsr.io:443 deno.land:443"');
   assertStringIncludes(yaml, 'persist-credentials: "false"');
 });
 
@@ -825,4 +827,235 @@ Deno.test("github: pull-request types and branch protection triggers render", ()
   assertStringIncludes(yaml, "types:");
   assertStringIncludes(yaml, "- edited");
   assertStringIncludes(yaml, "branch_protection_rule: {}");
+});
+
+Deno.test("invokes: one job per target, wired from the build graph", () => {
+  // The point of the feature: naming targets is the whole declaration. Ids,
+  // display names, commands, and needs edges all come from the graph.
+  class B extends Build {
+    lint = target().description("Lint it").executes(() => {});
+    build = target().description("Build it").dependsOn(this.lint).executes(
+      () => {},
+    );
+    wf = cicd({
+      provider: "github",
+      pipeline: { name: "CI" },
+      invokes: [this.lint, this.build],
+    });
+  }
+  const b = new B();
+  const pipeline = b.wf.pipelineFor(discoverTargets(b));
+
+  assertEquals(pipeline.jobs?.length, 2);
+  assertEquals(pipeline.jobs?.[0].id, "lint");
+  assertEquals(pipeline.jobs?.[0].name, "Lint it");
+  assertEquals(pipeline.jobs?.[0].steps?.[0].run, "./zuke lint");
+  assertEquals(pipeline.jobs?.[0].needs, undefined);
+  // The edge mirrors dependsOn — nothing declared it.
+  assertEquals(pipeline.jobs?.[1].id, "build");
+  assertEquals(pipeline.jobs?.[1].needs, ["lint"]);
+});
+
+Deno.test("invokes: a dependency that is not itself a job is not an edge", () => {
+  // `./zuke release` runs its own dependencies in-process, exactly as it does
+  // locally — so an uninvoked dependency must not become a `needs:` edge that
+  // waits for a job nobody generated.
+  class B extends Build {
+    prep = target().executes(() => {});
+    ship = target().dependsOn(this.prep).executes(() => {});
+    wf = cicd({ provider: "github", invokes: [this.ship] });
+  }
+  const b = new B();
+  const pipeline = b.wf.pipelineFor(discoverTargets(b));
+  assertEquals(pipeline.jobs?.length, 1);
+  assertEquals(pipeline.jobs?.[0].needs, undefined);
+});
+
+Deno.test("invokes: `after` orders jobs the build graph leaves independent", () => {
+  // Publishing after a release is a property of the pipeline, not a build
+  // dependency — the targets stay independently runnable.
+  class B extends Build {
+    release = target().executes(() => {});
+    publish = target().executes(() => {});
+    wf = cicd({
+      provider: "github",
+      invokes: [this.release, { target: this.publish, after: [this.release] }],
+    });
+  }
+  const b = new B();
+  const pipeline = b.wf.pipelineFor(discoverTargets(b));
+  assertEquals(pipeline.jobs?.[1].needs, ["release"]);
+  // The build graph is untouched: `publish` still has no dependency.
+  assertEquals(b.publish.dependsOn_.length, 0);
+});
+
+Deno.test("invokes: overrides cover what the runner decides, not the work", () => {
+  class B extends Build {
+    test = target().description("Run tests").executes(() => {});
+    wf = cicd({
+      provider: "github",
+      invokes: [{
+        target: this.test,
+        name: "Tests (${{ matrix.os }})",
+        matrix: { os: ["macos-latest", "windows-latest"] },
+        failFast: false,
+        permissions: { contents: "read" },
+        timeoutMinutes: 20,
+        env: { TOKEN: "${{ secrets.TOKEN }}" },
+      }],
+    });
+  }
+  const b = new B();
+  const job = b.wf.pipelineFor(discoverTargets(b)).jobs?.[0];
+  assertEquals(job?.name, "Tests (${{ matrix.os }})");
+  assertEquals(job?.matrix, { os: ["macos-latest", "windows-latest"] });
+  assertEquals(job?.failFast, false);
+  assertEquals(job?.timeoutMinutes, 20);
+  // The secret is mapped onto the target's own step, not the job.
+  assertEquals(job?.steps?.[0].env, { TOKEN: "${{ secrets.TOKEN }}" });
+});
+
+Deno.test("invokes: before and then wrap the derived step", () => {
+  class B extends Build {
+    upload = target().executes(() => {});
+    wf = cicd({
+      provider: "github",
+      invokes: [{
+        target: this.upload,
+        before: [{ name: "Produce it", uses: "acme/produce@sha" }],
+        then: [{ name: "Announce", run: "echo done" }],
+      }],
+    });
+  }
+  const b = new B();
+  const steps = b.wf.pipelineFor(discoverTargets(b)).jobs?.[0].steps;
+  assertEquals(steps?.length, 3);
+  assertEquals(steps?.[0].uses, "acme/produce@sha");
+  assertEquals(steps?.[1].run, "./zuke upload");
+  assertEquals(steps?.[2].run, "echo done");
+});
+
+Deno.test("invokes: a target that is not a build field is a friendly error", () => {
+  // A stray builder has no name, so there is nothing to run — say so rather
+  // than emitting `./zuke undefined`.
+  class B extends Build {
+    real = target().executes(() => {});
+    wf = cicd({ provider: "github", invokes: [target().executes(() => {})] });
+  }
+  const b = new B();
+  const targets = discoverTargets(b);
+  let threw = "";
+  try {
+    b.wf.pipelineFor(targets);
+  } catch (error) {
+    threw = error instanceof Error ? error.message : String(error);
+  }
+  assertStringIncludes(threw, "not a field on this build");
+});
+
+Deno.test("invokes and fanOut are mutually exclusive", () => {
+  class B extends Build {
+    a = target().executes(() => {});
+  }
+  const b = new B();
+  let threw = "";
+  try {
+    cicd({ provider: "github", invokes: [b.a], fanOut: true });
+  } catch (error) {
+    threw = error instanceof Error ? error.message : String(error);
+  }
+  assertStringIncludes(threw, "not both");
+});
+
+Deno.test("invokes: discoverCiFiles resolves the jobs, so render() sees them", () => {
+  // The declaration holds target references whose names are assigned after
+  // construction, so resolution has to happen at discovery.
+  class B extends Build {
+    gate = target().description("The gate").executes(() => {});
+    wf = cicd({ provider: "github", invokes: [this.gate] });
+  }
+  const [file] = discoverCiFiles(new B());
+  assertStringIncludes(file.render(), "run: ./zuke gate");
+  assertStringIncludes(file.render(), "name: The gate");
+});
+
+Deno.test("pins: hardening and checkout are the default prelude", () => {
+  // With a resolver, a workflow says nothing about hardening or checkout and
+  // gets both — the prelude nearly every job needs.
+  class B extends Build {
+    gate = target().executes(() => {});
+    wf = cicd({
+      pins: (action) => `${action}@${"a".repeat(40)}`,
+      invokes: [this.gate],
+    });
+  }
+  const [file] = discoverCiFiles(new B());
+  const yaml = file.render();
+  assertStringIncludes(yaml, `step-security/harden-runner@${"a".repeat(40)}`);
+  assertStringIncludes(yaml, `actions/checkout@${"a".repeat(40)}`);
+  assertStringIncludes(yaml, "egress-policy: audit");
+});
+
+Deno.test("pins: a job adjusts the policy without naming the action again", () => {
+  class B extends Build {
+    gate = target().executes(() => {});
+    wf = cicd({
+      pins: (action) => `${action}@${"b".repeat(40)}`,
+      invokes: [{
+        target: this.gate,
+        harden: { egress: "block", allowedEndpoints: ["jsr.io:443"] },
+      }],
+    });
+  }
+  const [file] = discoverCiFiles(new B());
+  const yaml = file.render();
+  assertStringIncludes(yaml, `harden-runner@${"b".repeat(40)}`);
+  assertStringIncludes(yaml, 'allowed-endpoints: "jsr.io:443"');
+});
+
+Deno.test("pins: a missing pin is a friendly error, never an unpinned use", () => {
+  // Emitting `uses:` with no ref would produce a floating reference that
+  // supply-chain scanners reject, so this must fail rather than degrade.
+  let threw = "";
+  try {
+    generateCi({
+      harden: {},
+      jobs: [{ steps: [{ run: "x" }] }],
+    }, "github");
+  } catch (error) {
+    threw = error instanceof Error ? error.message : String(error);
+  }
+  assertStringIncludes(threw, "needs a pinned action");
+});
+
+Deno.test("the workflow path comes from the field it is declared on", () => {
+  class B extends Build {
+    gate = target().executes(() => {});
+    // `Workflow` is noise once the file is a workflow; camelCase reads better
+    // kebab-cased in a filename.
+    releaseWorkflow = cicd({ invokes: [this.gate] });
+    coreFloorsWorkflow = cicd({ invokes: [this.gate] });
+    explicit = cicd({
+      path: ".github/workflows/kept.yml",
+      invokes: [this.gate],
+    });
+  }
+  const paths = discoverCiFiles(new B()).map((f) => f.path).sort();
+  assertEquals(paths, [
+    ".github/workflows/core-floors.yml",
+    ".github/workflows/kept.yml",
+    ".github/workflows/release.yml",
+  ]);
+});
+
+Deno.test("provider defaults to github, and permissions to read-only", () => {
+  const yaml = generateCi({ jobs: [{ steps: [{ run: "x" }] }] }, "github");
+  // Least privilege by default; a job that writes declares it.
+  assertStringIncludes(yaml, "permissions:\n  contents: read");
+  // An explicit empty map is stricter than the default, not absent.
+  const none = generateCi({
+    permissions: {},
+    jobs: [{ steps: [{ run: "x" }] }],
+  }, "github");
+  assertStringIncludes(none, "permissions: {}");
 });

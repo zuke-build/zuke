@@ -384,3 +384,30 @@ Deno.test("fetchBase defaults to true, since a PR checkout has no base", () => {
   assertStringIncludes(yaml, "git fetch --no-tags --depth=1 origin master");
   assertStringIncludes(yaml, "ZUKE_REVIEW_BASE: FETCH_HEAD");
 });
+
+Deno.test("pinned action refs can be supplied instead of the baked-in ones", () => {
+  // A generated workflow whose SHA comes from a constant in a published package
+  // silently reverts a bot's bump on the next run. Overriding lets the build
+  // source pins from somewhere that stays current.
+  class B extends Build {
+    key = parameter("OpenAI key").secret().env("OPENAI_API_KEY");
+    rev = securityReviewer((r) => r.provider("openai").apiKey(this.key));
+    review = target().validateBefore(this.rev).executes(() => {});
+    wf = aiReviewWorkflow({
+      reviewers: [this.rev],
+      hardenRunner: "step-security/harden-runner@" + "a".repeat(40),
+      checkout: "actions/checkout@" + "b".repeat(40),
+    });
+  }
+  const b = new B();
+  discoverParameters(b);
+  const yaml = b.wf.render();
+  assertStringIncludes(yaml, `harden-runner@${"a".repeat(40)}`);
+  assertStringIncludes(yaml, `checkout@${"b".repeat(40)}`);
+});
+
+Deno.test("the baked-in pins are used when none are supplied", () => {
+  const yaml = dualBuild().wf.render();
+  assertStringIncludes(yaml, "step-security/harden-runner@");
+  assertStringIncludes(yaml, "actions/checkout@");
+});

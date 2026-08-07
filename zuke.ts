@@ -19,7 +19,6 @@ import {
   type AbsolutePath,
   appendJobSummary,
   Build,
-  cicd,
   FileTasks,
   glob,
   parameter,
@@ -76,7 +75,9 @@ import {
   checkPluginSkillsSync,
   syncPluginSkills,
 } from "./build/plugin_sync.ts";
+import { actionPin } from "./build/action_pins.ts";
 import { actionlintTool, gitleaksTool, zizmorTool } from "./build/scanners.ts";
+import { githubWorkflows } from "./build/workflows.ts";
 
 /**
  * Where the `security` target writes gitleaks' findings. The security workflow
@@ -206,77 +207,6 @@ class ZukeBuild extends Build {
         s.allowAll().paths(...paths).env({ GITHUB_STEP_SUMMARY: "" })
       );
     });
-
-  // The dedicated workflow for the `integration` target, generated from this
-  // definition (and kept in sync by `generate-ci`). It fans out over the three
-  // OS runners so the subprocess races run on Windows too. It uses `setup-deno`
-  // + `deno` rather than the `./zuke` bash launcher because a generated step has
-  // no per-step shell/if to special-case Windows, and `deno` is identical on
-  // every OS. Kept separate from `ci.yml` so the fast gate is untouched.
-  integrationCi = cicd({
-    provider: "github",
-    path: ".github/workflows/integration.yml",
-    pipeline: {
-      name: "Integration",
-      triggers: {
-        push: ["master"],
-        pullRequest: [],
-        // Weekly run with no code change, so a drifting runner image (a new
-        // Deno patch release's own transitive npm resolution, an OS image
-        // update) surfaces on its own instead of waiting for the next PR.
-        schedule: [{ cron: "0 6 * * 1" }],
-      },
-      permissions: { contents: "read" },
-      concurrency: {
-        group: "integration-${{ github.ref }}",
-        cancelInProgress: true,
-      },
-      jobs: [{
-        id: "e2e",
-        name: "E2E (${{ matrix.os }})",
-        matrix: { os: ["ubuntu-latest", "macos-latest", "windows-latest"] },
-        steps: [
-          {
-            // Audit runner egress on the e2e matrix, matching every other
-            // workflow (only secret-bearing `ci.yml` blocks) and SECURITY.md's
-            // stated posture. This job carries no secrets and a read-only token,
-            // so `audit` — observe, don't block — is the right trade-off: it
-            // records outbound calls without risking a false-block of the
-            // cross-OS Deno bootstrap.
-            name: "Harden the runner",
-            uses:
-              "step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920",
-            with: { "egress-policy": "audit" },
-          },
-          {
-            name: "Checkout",
-            uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
-            with: { "persist-credentials": "false" },
-          },
-          {
-            // denoland/setup-deno v2.0.5, pinned to its commit SHA (repo
-            // convention — see the SHA-pinned checkout above; a bare tag trips
-            // the zizmor `unpinned-uses` gate in the security scan).
-            name: "Set up Deno",
-            uses:
-              "denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed",
-            // Pinned to the same version the `./zuke`/`zuke.ps1` launchers
-            // bootstrap (DEFAULT_DENO_VERSION), so this job runs the exact
-            // Deno the repo is reproducible against rather than a floating
-            // `v2.x` that can pick up a new patch release unannounced.
-            with: { "deno-version": "v2.8.3" },
-          },
-          {
-            name: "Run the subprocess e2e suite",
-            // `--frozen` fails the run if the e2e suite's own resolution would
-            // otherwise diverge from the committed deno.lock, matching the
-            // `--frozen` already on the `test`/`check` tasks in deno.json.
-            run: "deno run -A --frozen zuke.ts integration",
-          },
-        ],
-      }],
-    },
-  });
 
   coverage = target()
     .description("Enforce the 95% coverage gate")
@@ -589,8 +519,15 @@ class ZukeBuild extends Build {
       };
       await gate(
         "zizmor",
+        // `action.yml` as well as the workflows: the root composite action is
+        // audited by the same rules and is *more* exposed, since another
+        // repository can consume it. Scoping the scan to the workflow directory
+        // let a template injection in it reach CI — the finding that added this
+        // path.
         SecurityTasks.zizmor((s) =>
-          s.toolPath(scanner("zizmor")).paths(".github/workflows").noThrow()
+          s.toolPath(scanner("zizmor"))
+            .paths(".github/workflows", "action.yml")
+            .noThrow()
         ),
       );
       await gate(
@@ -850,6 +787,14 @@ class ZukeBuild extends Build {
     // the base itself — so the same command works locally, where no workflow
     // step exists to do it.
     fetchBase: false,
+    // Pins from the committed workflows rather than @zuke/ai's own constants.
+    // Without this the file is the one generated workflow whose SHA comes from a
+    // published package: a Dependabot bump lands in ai-review.yml, the next run
+    // regenerates it from the stale constant, and the bump is reverted. That has
+    // already happened once here — the constant had to be hand-updated to match
+    // what Dependabot set.
+    hardenRunner: actionPin("step-security/harden-runner").ref,
+    checkout: actionPin("actions/checkout").ref,
   });
 
   release = target()
@@ -921,6 +866,16 @@ class ZukeBuild extends Build {
     .description("Default: run the full CI gate")
     .dependsOn(this.ci)
     .executes(() => {});
+
+  /**
+   * Every generated GitHub workflow, declared in `build/workflows.ts`.
+   *
+   * One field, because the entries nest: each is discovered as
+   * `workflows.<key>` and writes `.github/workflows/<key>.yml`. It sits last
+   * because it references the targets above it — class fields initialise
+   * top-to-bottom, the same constraint `dependsOn` has.
+   */
+  workflows = githubWorkflows(this);
 }
 
 await run(ZukeBuild, { renderer: consoleRenderer });

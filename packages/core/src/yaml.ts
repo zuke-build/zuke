@@ -15,9 +15,41 @@
 /** A scalar value emittable as YAML. */
 export type YamlScalar = string | number | boolean | null;
 
+/**
+ * A scalar carrying a trailing `# comment`.
+ *
+ * Comments are otherwise deliberately absent from this emitter — prose belongs
+ * with the code that generates a file, not in the generated file. This exists
+ * for the one case where the comment is *data*: a SHA-pinned GitHub Action is
+ * written `owner/repo@<sha> # v1.2.3`, and Dependabot reads that comment to know
+ * which version the SHA is, rewriting both together when it bumps. Drop it and
+ * an automated bump loses the version it is tracking.
+ *
+ * A class rather than a plain object so it can never be mistaken for a mapping
+ * that happens to have `value` and `comment` keys.
+ */
+export class YamlAnnotated {
+  /** The scalar to emit. */
+  readonly value: YamlScalar;
+  /** The comment emitted after it, following a `#`. */
+  readonly comment: string;
+
+  /** Pair a scalar with the trailing comment it must carry. */
+  constructor(value: YamlScalar, comment: string) {
+    this.value = value;
+    this.comment = comment;
+  }
+}
+
+/** Pair a scalar with a trailing `# comment`. See {@link YamlAnnotated}. */
+export function annotated(value: YamlScalar, comment: string): YamlAnnotated {
+  return new YamlAnnotated(value, comment);
+}
+
 /** Any value emittable as YAML: a scalar, a sequence, or a mapping. */
 export type YamlValue =
   | YamlScalar
+  | YamlAnnotated
   | readonly YamlValue[]
   | { readonly [key: string]: YamlValue | undefined };
 
@@ -65,7 +97,13 @@ function isSeq(value: YamlValue): value is readonly YamlValue[] {
 function isMap(
   value: YamlValue,
 ): value is { readonly [key: string]: YamlValue | undefined } {
-  return typeof value === "object" && value !== null && !isSeq(value);
+  return typeof value === "object" && value !== null && !isSeq(value) &&
+    !(value instanceof YamlAnnotated);
+}
+
+/** Render an annotated scalar as `value # comment`. */
+function annotatedToken(value: YamlAnnotated): string {
+  return `${token(value.value)} # ${value.comment}`;
 }
 
 const pad = (indent: number): string => "  ".repeat(indent);
@@ -86,6 +124,9 @@ function renderMap(
 /** Render a single `key: value` entry, recursing for containers. */
 function renderEntry(name: string, value: YamlValue, indent: number): string[] {
   const prefix = `${pad(indent)}${quoted(name)}:`;
+  if (value instanceof YamlAnnotated) {
+    return [`${prefix} ${annotatedToken(value)}`];
+  }
   if (typeof value === "string" && value.includes("\n")) {
     const child = pad(indent + 1);
     const body = value.split("\n").map((l) => l === "" ? "" : child + l);
@@ -107,7 +148,9 @@ function renderEntry(name: string, value: YamlValue, indent: number): string[] {
 function renderSeq(seq: readonly YamlValue[], indent: number): string[] {
   const lines: string[] = [];
   for (const item of seq) {
-    if (isSeq(item)) {
+    if (item instanceof YamlAnnotated) {
+      lines.push(`${pad(indent)}- ${annotatedToken(item)}`);
+    } else if (isSeq(item)) {
       lines.push(`${pad(indent)}-`, ...renderSeq(item, indent + 1));
     } else if (isMap(item)) {
       const block = renderMap(item, indent + 1);
@@ -131,6 +174,8 @@ export function toYaml(value: YamlValue): string {
     ? renderSeq(value, 0)
     : isMap(value)
     ? renderMap(value, 0)
+    : value instanceof YamlAnnotated
+    ? [annotatedToken(value)]
     : [token(value)];
   return lines.join("\n") + "\n";
 }
