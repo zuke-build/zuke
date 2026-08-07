@@ -66,7 +66,15 @@ runs:
       with:
         deno-version: ${{ inputs.deno-version }}
 
+    # The target rides in through the environment and is quoted in the shell,
+    # rather than being interpolated into the script text. Expanding
+    # `${{ inputs.target }}` there would splice a caller's string straight into
+    # the command — and a caller who derives that value from something untrusted,
+    # a pull-request title say, would be handing arbitrary code to this action.
+    # An env var is a value; template expansion is code.
     - name: Run the Zuke target
       if: inputs.target != ''
       shell: bash
-      run: ./zuke ${{ inputs.target }}
+      env:
+        ZUKE_TARGET: ${{ inputs.target }}
+      run: ./zuke "$ZUKE_TARGET"

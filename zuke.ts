@@ -519,8 +519,15 @@ class ZukeBuild extends Build {
       };
       await gate(
         "zizmor",
+        // `action.yml` as well as the workflows: the root composite action is
+        // audited by the same rules and is *more* exposed, since another
+        // repository can consume it. Scoping the scan to the workflow directory
+        // let a template injection in it reach CI — the finding that added this
+        // path.
         SecurityTasks.zizmor((s) =>
-          s.toolPath(scanner("zizmor")).paths(".github/workflows").noThrow()
+          s.toolPath(scanner("zizmor"))
+            .paths(".github/workflows", "action.yml")
+            .noThrow()
         ),
       );
       await gate(
