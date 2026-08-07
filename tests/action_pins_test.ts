@@ -301,3 +301,35 @@ Deno.test("the committed action.yml pins every action the build uses", () => {
     assertStringIncludes(manifest, `uses: ${action}@`);
   }
 });
+
+Deno.test("the manifest's own pins resolve from it, not by fallback", () => {
+  // Closes the gap in "the manifest is authoritative": a mangled SHA would not
+  // match the pin pattern, so the action would quietly fall through to a
+  // workflow or the seed and the manifest would stop being the source without
+  // anything saying so. Asserting the pins come *from the manifest alone* is
+  // what makes an incorrect edit fail loudly here.
+  const fromManifest = collectActionPins(
+    "__no_workflows__",
+    "action.yml",
+  );
+  for (const action of ["step-security/harden-runner", "actions/checkout"]) {
+    const pin = fromManifest.get(action);
+    assertEquals(
+      pin !== undefined,
+      true,
+      `${action} is not pinned in action.yml`,
+    );
+    const sha = pin?.ref.split("@")[1] ?? "";
+    assertEquals(
+      /^[0-9a-f]{40}$/.test(sha),
+      true,
+      `${action} has no full 40-character SHA in action.yml: ${sha}`,
+    );
+    // The version comment is what Dependabot rewrites alongside the SHA.
+    assertEquals(
+      /^v?\d/.test(pin?.version ?? ""),
+      true,
+      `${action} has no version comment in action.yml`,
+    );
+  }
+});
