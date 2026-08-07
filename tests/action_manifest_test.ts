@@ -91,10 +91,14 @@ function brandingValue(key: string): string | undefined {
 Deno.test("the manifest names the action as the Marketplace listing does", () => {
   // The listing's unique identifier. Changing it is not a rename but a new
   // listing, so it is worth pinning to the value that was actually published.
+  // "Zuke" alone is rejected: the uniqueness check spans users and
+  // organizations as well as listings, and github.com/zuke is a real account.
+  // "Zuke Build" slugs to this repository's own org, which the rule exempts
+  // because that owner is the one publishing.
   assertEquals(
-    /^name: "Zuke"$/m.test(MANIFEST),
+    /^name: "Zuke Build"$/m.test(MANIFEST),
     true,
-    'action.yml does not declare `name: "Zuke"`',
+    'action.yml does not declare `name: "Zuke Build"`',
   );
 });
 
