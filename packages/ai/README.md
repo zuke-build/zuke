@@ -603,19 +603,14 @@ interface AiReviewWorkflowSpec
     `zuke review` then works locally, where no workflow step exists to run.
   hardenRunner?: string
     The pinned `step-security/harden-runner@<sha>` to harden the runner with.
-    Defaults to a pin baked in here.
 
-    Pass it when the build sources pins from somewhere that stays current — a
-    generated workflow whose SHA comes from a constant in a published package is
-    a trap: a bot bumps the committed file, the next run regenerates it from the
-    stale constant, and the bump is silently reverted.
-
-    A bare `owner/repo@<sha>`, without the `# vX.Y.Z` comment the other
-    generated workflows carry: attaching one needs a core newer than this
-    package's declared floor, and Dependabot bumps a comment-less pin anyway.
-    Adopt the richer form once the floor moves past that release.
+    Supplying this — or {@link checkout} — renders the two separate steps
+    instead of the prelude action, because naming an action means those
+    specific actions were asked for. Leave both unset for the default, which
+    is the one action that does both and carries its own pin.
   checkout?: string
     The pinned `actions/checkout@<sha>` to check the repository out with.
+    Like {@link hardenRunner}, supplying it renders the separate steps.
   path?: string
     Output path. Defaults to the host's conventional location.
   name?: string

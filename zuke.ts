@@ -83,7 +83,6 @@ import {
   checkPluginSkillsSync,
   syncPluginSkills,
 } from "./build/plugin_sync.ts";
-import { actionPin } from "./build/action_pins.ts";
 import { actionlintTool, gitleaksTool, zizmorTool } from "./build/scanners.ts";
 import { githubWorkflows } from "./build/workflows.ts";
 
@@ -815,20 +814,17 @@ class ZukeBuild extends Build {
     // the base itself — so the same command works locally, where no workflow
     // step exists to do it.
     fetchBase: false,
-    // Pins from the committed workflows rather than @zuke/ai's own constants.
-    // Without this the file is the one generated workflow whose SHA comes from a
-    // published package: a Dependabot bump lands in ai-review.yml, the next run
-    // regenerates it from the stale constant, and the bump is reverted. That has
-    // already happened once here — the constant had to be hand-updated to match
-    // what Dependabot set.
+    // Nothing about the prelude: core renders it as the one action that hardens
+    // and checks out, and that action's pin resolves through the same `pins`
+    // hook as every other. Naming either action here would opt back out to the
+    // two separate steps.
     //
-    // Still the two separate steps, unlike every other workflow here, because
-    // @zuke/ai cannot declare the prelude until it can name the core that has
-    // it: its floor is `^1.25.0`, which has no `harden`/`checkout` on a job at
-    // all. Raising that floor needs the core released from this change, so the
-    // switch is the follow-up to it.
-    hardenRunner: actionPin("step-security/harden-runner").ref,
-    checkout: actionPin("actions/checkout").ref,
+    // This file used to name both SHAs to avoid @zuke/ai's own constants, which
+    // lived inside a published package — so ai-review.yml's pins came from a
+    // release rather than from the file Dependabot edits, and a bump landed in
+    // the workflow only for the next regeneration to write the stale constant
+    // back. Both constants are now deleted, and the pins live in `action.yml`
+    // where nothing overwrites them.
   });
 
   release = target()
