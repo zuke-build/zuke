@@ -154,30 +154,68 @@ export function majorTag(version: string): string {
 }
 
 /**
+ * Refuse a flow mapping, e.g. `with: { ref: main }`.
+ *
+ * These readers handle the block style this repository's own renderer writes.
+ * Flow style is equally valid YAML and would read as a block with no entries,
+ * so the inputs inside it would go uncounted — and a workflow using one the
+ * release lacks would pass. Under-reporting is the one outcome worth ruling
+ * out, so a shape these cannot read is an error rather than an empty answer.
+ */
+function assertNotFlowMapping(line: string, key: string): void {
+  if (/:\s*[{[]/.test(line)) {
+    throw new Error(
+      `cannot read \`${key}\` written in flow style: ${line.trim()}. The ` +
+        `check reads the block style the generator writes; a flow mapping ` +
+        `would read as empty and its entries would go unchecked.`,
+    );
+  }
+}
+
+/** Refuse a quoted key, which would otherwise be skipped and go unchecked. */
+function assertNotQuotedKey(line: string, key: string): void {
+  if (/^\s*["'][^"']+["']\s*:/.test(line)) {
+    throw new Error(
+      `cannot read a quoted key under \`${key}\`: ${line.trim()}. Unquote it, ` +
+        `or the input it names is not checked against the release.`,
+    );
+  }
+}
+
+/**
  * The input names an action manifest declares.
  *
- * Parsed rather than loaded through a YAML library, because the shape being
- * read is two levels deep and fixed: `inputs:` at the left margin, then one
- * key per line indented two spaces. Anything less indented ends the block.
+ * Read line by line rather than through a YAML library, because the shape is
+ * fixed and shallow: `inputs:` at the left margin, then one key per line at a
+ * consistent indent. The indent is taken from the first entry rather than
+ * assumed, so a manifest written with four spaces is read correctly instead of
+ * silently yielding nothing; anything deeper is a field of an input.
  */
 export function declaredInputs(source: string): string[] {
   const names: string[] = [];
+  let indent: string | undefined;
   let inBlock = false;
   for (const line of source.replace(/\r\n/g, "\n").split("\n")) {
-    if (/^inputs:\s*$/.test(line)) {
+    if (/^inputs:/.test(line)) {
+      assertNotFlowMapping(line, "inputs");
       inBlock = true;
       continue;
     }
     if (!inBlock) continue;
-    // A blank line or a comment does not end the block; a key at any lesser
-    // indent does.
+    // A blank line or a comment does not end the block; a key at the left
+    // margin does, being the next top-level section.
     if (/^\s*(#.*)?$/.test(line)) continue;
-    const entry = /^ {2}([A-Za-z0-9_-]+):\s*$/.exec(line);
+    if (/^\S/.test(line)) break;
+    const entry = /^(\s+)([A-Za-z0-9_-]+):\s*$/.exec(line);
     if (entry !== null) {
-      names.push(entry[1]);
+      const [, lead, name] = entry;
+      indent ??= lead;
+      if (lead === indent) names.push(name);
       continue;
     }
-    if (/^\S/.test(line)) break;
+    // Not an entry and not a nested field: the one shape that would drop an
+    // input without saying so.
+    assertNotQuotedKey(line, "inputs");
   }
   return names;
 }
@@ -266,14 +304,18 @@ export function workflowActionInputs(yaml: string): string[] {
       inWith = false;
       continue;
     }
-    if (/^\s*with:\s*$/.test(line)) {
+    if (/^\s*with:/.test(line)) {
+      assertNotFlowMapping(line, "with");
       inWith = true;
       continue;
     }
     if (!inWith) continue;
     const entry = /^\s*([A-Za-z0-9_-]+):/.exec(line);
     if (entry !== null) names.push(entry[1]);
-    else if (/^\s*\S/.test(line)) inWith = false;
+    else if (/^\s*\S/.test(line)) {
+      assertNotQuotedKey(line, "with");
+      inWith = false;
+    }
   }
   return names;
 }

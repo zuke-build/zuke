@@ -390,3 +390,37 @@ Deno.test("the committed pin lists the inputs action.yml declares", () => {
     );
   }
 });
+
+Deno.test("a shape the readers cannot parse is an error, not an empty answer", () => {
+  // Flow style and quoted keys are valid YAML that these line readers do not
+  // handle. Returning fewer inputs would be the worst outcome: the check
+  // compares what the workflows use against the release, so an input it failed
+  // to see is an input nobody checks. Under-reporting is the one result worth
+  // ruling out, so an unreadable shape fails loudly.
+  assertThrows(() =>
+    workflowActionInputs(
+      `steps:\n  - uses: zuke-build/zuke@${SHA}\n    with: { ref: main }\n`,
+    )
+  );
+  assertThrows(() =>
+    workflowActionInputs(
+      `steps:\n  - uses: zuke-build/zuke@${SHA}\n    with:\n      "ref": main\n`,
+    )
+  );
+  assertThrows(() => declaredInputs("name: x\ninputs: { target: {} }\n"));
+});
+
+Deno.test("the manifest's indent is taken from its first entry", () => {
+  // Assuming two spaces made a four-space manifest read as having no inputs at
+  // all, which `pinFor` would then reject with a message about the release
+  // rather than about the indent.
+  assertEquals(
+    declaredInputs("name: x\ninputs:\n    target:\n        description: y\n"),
+    ["target"],
+  );
+  // A nested field is not another input, whatever the block's indent.
+  assertEquals(
+    declaredInputs("name: x\ninputs:\n  target:\n    description: y\n  ref:\n"),
+    ["target", "ref"],
+  );
+});
