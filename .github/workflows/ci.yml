@@ -23,7 +23,7 @@ jobs:
       pull-requests: write
     steps:
       - name: Harden and check out with Zuke
-        uses: zuke-build/zuke@7a62523bb4569e4d90e972dee74bf9cf09cd436f # v1.0.1
+        uses: zuke-build/zuke@5400f044d0b56206b0fa48c90b30486df205c7c6 # v1.0.2
         with:
           egress-policy: block
           persist-credentials: "true"
@@ -41,7 +41,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Harden and check out with Zuke
-        uses: zuke-build/zuke@7a62523bb4569e4d90e972dee74bf9cf09cd436f # v1.0.1
+        uses: zuke-build/zuke@5400f044d0b56206b0fa48c90b30486df205c7c6 # v1.0.2
         with:
           egress-policy: block
           persist-credentials: "false"

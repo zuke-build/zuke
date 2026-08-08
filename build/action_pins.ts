@@ -145,6 +145,14 @@ export function collectActionPins(
 
   for (const [path, text] of readWorkflows(dir)) {
     for (const [action, pin] of pinsIn(text, path)) {
+      // This repository's own action is never sourced from a workflow — see
+      // {@link actionPin}, which answers it from `build/action_version.json`
+      // before consulting anything here. Collecting it anyway made a release
+      // brick the build: `actionRelease` rewrites the workflows, and between
+      // the first file and the last they disagree, so the throw below fired
+      // while the build's fields were still initialising and *every* target
+      // failed, including the ones that would have finished the job.
+      if (action === ACTION_SLUG) continue;
       // Already pinned by the manifest: that value stands, and this file will be
       // regenerated from it.
       if (fromManifest.has(action)) continue;
