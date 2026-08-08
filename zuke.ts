@@ -866,10 +866,23 @@ class ZukeBuild extends Build {
           // is none — and an empty list reads as "no release yet", which would
           // re-cut v1.0.0 over a tag that exists.
           await GitTasks.fetch((s) => s.remote("origin").tags().quiet());
-          const { stdout } = await GitTasks.run((s) =>
-            s.command("tag", "--list")
+          const listed = await GitTasks.run((s) => s.command("tag", "--list"));
+          // Raw stdout rather than `text()`: on a truncated capture `text()`
+          // prefixes a human-readable notice, which would parse as a tag. The
+          // cap is 8 MiB against a few kilobytes of tags, so this cannot
+          // happen today — but a partial list is the one failure mode with no
+          // symptom. `latestVersion` would silently pick an older base and
+          // re-cut a version that already exists.
+          if (listed.truncated) {
+            throw new Error(
+              "the tag list was truncated, so the newest action release " +
+                "cannot be identified. Releasing from a partial list would " +
+                "re-cut a version that already exists.",
+            );
+          }
+          return listed.stdout.split("\n").map((line) => line.trim()).filter(
+            Boolean,
           );
-          return stdout.split("\n").map((line) => line.trim()).filter(Boolean);
         },
         changedSince: async (ref) => {
           // `--quiet` makes the exit code the answer: 0 identical, 1 differ.

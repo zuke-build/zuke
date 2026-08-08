@@ -81,17 +81,25 @@ runs:
     # mistake rather than the mistake.
     #
     # Hence: the refusal ignores `target`, and names the events rather than the
-    # steps. `pull_request` and `push` are absent from the list deliberately — a
-    # fork pull request receives no secrets and a read-only token, and pushing
-    # requires write access already. `workflow_dispatch`, `schedule` and
-    # `release` are absent too: their ref is chosen by someone who can already
-    # push.
+    # steps. It is an allowlist, not a denylist, because a denylist of the
+    # events that are dangerous today is wrong the moment GitHub adds one —
+    # and the failure is silent, since the guard simply does not fire. Listing
+    # the events where the ref can only come from someone who can already push
+    # means anything unrecognised is refused instead.
+    #
+    # Why each of these is safe: `pull_request` gives a fork no secrets and a
+    # read-only token; `push` and `merge_group` require write access;
+    # `workflow_dispatch`, `schedule` and `release` are triggered by someone
+    # who could push the same code directly. Everything else — `issue_comment`
+    # and the `/build` slash-command pattern, `workflow_run`,
+    # `pull_request_target`, the discussion and review events — lets a
+    # contributor's text choose what gets checked out while the job holds this
+    # repository's secrets.
     - name: Refuse an untrusted checkout on a secret-bearing event
       if: >-
-        inputs.ref != '' && contains(fromJSON('[
-          "pull_request_target", "issue_comment", "issues", "workflow_run",
-          "discussion", "discussion_comment", "pull_request_review",
-          "pull_request_review_comment"
+        inputs.ref != '' && !contains(fromJSON('[
+          "pull_request", "push", "merge_group",
+          "workflow_dispatch", "schedule", "release"
         ]'), github.event_name)
       shell: bash
       # Through the environment, not the script text — the same rule the run

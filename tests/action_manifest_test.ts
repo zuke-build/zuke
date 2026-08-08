@@ -181,24 +181,39 @@ Deno.test("a custom ref is refused on every secret-bearing event", () => {
   assertStringIncludes(MANIFEST, "inputs.ref != ''");
   assertStringIncludes(MANIFEST, "::error::Refusing to check out a custom ref");
 
-  // Every event whose trigger content a contributor can write, and which runs
-  // with the repository's own secrets. Asserted as a set because the first
-  // version of this guard named only `pull_request_target` — which reads as a
-  // safety property while `issue_comment` and `workflow_run` walk straight
-  // past it.
+  // An allowlist, negated — not a denylist. A denylist of what is dangerous
+  // today is wrong the moment GitHub adds an event, and wrong silently, since
+  // the guard just does not fire. This assertion is the one that would fail if
+  // someone "simplified" it back: the `!` and the safe-event names must both
+  // be present.
+  assertStringIncludes(MANIFEST, "!contains(fromJSON(");
+  for (
+    const event of [
+      "pull_request",
+      "push",
+      "merge_group",
+      "workflow_dispatch",
+      "schedule",
+      "release",
+    ]
+  ) {
+    assertStringIncludes(MANIFEST, `"${event}"`);
+  }
+  // The dangerous ones must NOT appear: naming them would mean the list had
+  // been flipped back to a denylist.
   for (
     const event of [
       "pull_request_target",
       "issue_comment",
-      "issues",
       "workflow_run",
-      "discussion",
       "discussion_comment",
-      "pull_request_review",
-      "pull_request_review_comment",
     ]
   ) {
-    assertStringIncludes(MANIFEST, `"${event}"`);
+    assertEquals(
+      MANIFEST.includes(`"${event}"`),
+      false,
+      `${event} is named in the guard, so it has become a denylist again`,
+    );
   }
 
   // NOT keyed on `target`. A caller who omits it and writes `run: ./zuke ci`
@@ -217,13 +232,9 @@ Deno.test("a custom ref is refused on every secret-bearing event", () => {
   // Refused, not warned: a step that printed and continued would still leave
   // the untrusted code in the workspace for whatever runs next.
   assertStringIncludes(guard, "exit 1");
-  // The events that are safe by construction must stay off the list, or the
-  // guard would refuse this repository's own gate job.
-  assertEquals(
-    /"(pull_request|push|workflow_dispatch|schedule|release)"/.test(guard),
-    false,
-    "the refusal names an event that carries no untrusted content",
-  );
+  // `pull_request` must be allowed, or the guard would refuse this
+  // repository's own gate job — the reason the `ref` input exists at all.
+  assertStringIncludes(guard, '"pull_request"');
 });
 
 Deno.test("the checkout honours the ref input", () => {
