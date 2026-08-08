@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.8.0](https://github.com/zuke-build/zuke/compare/ai-v1.7.0...ai-v1.8.0) (2026-08-08)
+
+
+### Features
+
+* **ai:** let core render the review workflow's prelude ([#305](https://github.com/zuke-build/zuke/issues/305)) ([a292fa7](https://github.com/zuke-build/zuke/commit/a292fa7b331080d4bf6dab6fa01dc6cc434d37c7))
+
 ## [1.7.0](https://github.com/zuke-build/zuke/compare/ai-v1.6.1...ai-v1.7.0) (2026-08-07)
 
 
