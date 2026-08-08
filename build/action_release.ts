@@ -310,9 +310,13 @@ export function workflowActionInputs(yaml: string): string[] {
       continue;
     }
     if (!inWith) continue;
+    // A comment or a blank line does not end the block. Treating a comment as
+    // the end dropped every input after it — silently, which is the failure
+    // this whole check exists to avoid.
+    if (/^\s*(#.*)?$/.test(line)) continue;
     const entry = /^\s*([A-Za-z0-9_-]+):/.exec(line);
     if (entry !== null) names.push(entry[1]);
-    else if (/^\s*\S/.test(line)) {
+    else {
       assertNotQuotedKey(line, "with");
       inWith = false;
     }

@@ -424,3 +424,23 @@ Deno.test("the manifest's indent is taken from its first entry", () => {
     ["target", "ref"],
   );
 });
+
+Deno.test("a comment inside a with block does not hide the inputs after it", () => {
+  // A comment was treated as the end of the block, so every input below it
+  // went uncounted — `ref` here — and an input the check cannot see is an
+  // input nobody checks. Blank lines were already handled; comments were not.
+  const yaml = `steps:
+  - uses: zuke-build/zuke@${SHA}
+    with:
+      egress-policy: block
+      # why this job needs a specific ref
+      ref: main
+
+      fetch-depth: "0"
+`;
+  assertEquals(workflowActionInputs(yaml), [
+    "egress-policy",
+    "ref",
+    "fetch-depth",
+  ]);
+});
