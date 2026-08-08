@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.8.1](https://github.com/zuke-build/zuke/compare/ai-v1.8.0...ai-v1.8.1) (2026-08-08)
+
+
+### Bug Fixes
+
+* release v1.0.2, and repair what cutting it exposed ([#308](https://github.com/zuke-build/zuke/issues/308)) ([87ce09d](https://github.com/zuke-build/zuke/commit/87ce09ddae03558efb01fab657e316b362df89f7))
+
 ## [1.8.0](https://github.com/zuke-build/zuke/compare/ai-v1.7.0...ai-v1.8.0) (2026-08-08)
 
 
