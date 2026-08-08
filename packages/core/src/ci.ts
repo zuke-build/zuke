@@ -497,12 +497,18 @@ function withPins(pipeline: CiPipeline, pins?: CiPinResolver): CiPipeline {
  * with. Every consumer pinned to an older floor is in the same position.
  */
 function stepsCoverPrelude(steps: readonly CiStep[] | undefined): boolean {
-  return (steps ?? []).some((step) => {
-    if (step.uses === undefined) return false;
-    const ref = typeof step.uses === "string" ? step.uses : step.uses.ref;
-    return ref.startsWith(`${HARDEN_RUNNER_ACTION}@`) ||
-      ref.startsWith(`${CHECKOUT_ACTION}@`);
-  });
+  // The *first* step only, because a prelude is positional: it is what a job
+  // does before anything else, and hardening that ran after a build step would
+  // not have hardened it. Matching anywhere in the list would read a job that
+  // checks out a second repository half way through — vendoring a dependency,
+  // say — as having built its own prelude, and strip the hardening and the
+  // primary checkout it was relying on. Silently, since the job would still
+  // have a checkout in it.
+  const first = steps?.[0];
+  if (first?.uses === undefined) return false;
+  const ref = typeof first.uses === "string" ? first.uses : first.uses.ref;
+  return ref.startsWith(`${HARDEN_RUNNER_ACTION}@`) ||
+    ref.startsWith(`${CHECKOUT_ACTION}@`);
 }
 
 /**

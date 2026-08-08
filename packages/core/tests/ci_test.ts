@@ -1211,3 +1211,27 @@ Deno.test("a job with unrelated `uses:` steps still gets the prelude", () => {
   assertStringIncludes(yaml, "uses: zuke-build/zuke@");
   assertStringIncludes(yaml, `setup-deno@${"c".repeat(40)}`);
 });
+
+Deno.test("a checkout part-way through a job does not strip its prelude", () => {
+  // The prelude is positional: it is what a job does before anything else, so
+  // only the first step can be one. A job that checks a second repository out
+  // half way through — vendoring a dependency, say — has not built its own
+  // prelude, and reading it as one would strip the hardening and the primary
+  // checkout it relies on. Silently, since the job still has a checkout in it.
+  const yaml = generateCi({
+    jobs: [{
+      id: "vendor",
+      steps: [
+        { run: "echo prepare" },
+        {
+          uses: `actions/checkout@${"a".repeat(40)}`,
+          with: { repository: "other/repo", path: "vendor" },
+        },
+        { run: "./zuke build" },
+      ],
+    }],
+  }, "github");
+  assertStringIncludes(yaml, "uses: zuke-build/zuke@");
+  // And the job's own second checkout survives untouched.
+  assertStringIncludes(yaml, "repository: other/repo");
+});
