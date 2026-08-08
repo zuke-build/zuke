@@ -651,6 +651,10 @@ const ToolTasks: ToolTasksApi
   single release binary and `ToolTasks.npm(...)` a single npm package; group
   several of either with {@link toolchain}.
 
+const ZUKE_ACTION: "zuke-build/zuke"
+  The name a {@link CiPinResolver} is asked for the prelude action, so a
+  repository that pins its own actions can pin this one the same way.
+
 const defaultRenderer: Renderer
   The built-in renderer: Zuke's ruled headers and summary table.
 
@@ -2064,6 +2068,34 @@ interface CiActionRef
   version?: string
     The version the SHA corresponds to, e.g. `v7.0.1`.
 
+interface CiBootstrap
+  The single step every GitHub job starts with: the `zuke-build/zuke` composite
+  action, which hardens the runner, checks the repository out, and installs
+  Deno if asked — the three steps a Zuke job used to spell out separately.
+
+  It is the default because those three are not three decisions. They are one
+  prelude whose parts only work in one order, and writing them out three times
+  per workflow meant three pinned SHAs to keep current in every generated file
+  rather than one, inside an action that is itself versioned and tested.
+
+  The {@link CiHardenRunner} and {@link CiCheckout} options are still how a job
+  configures it — they become the action's inputs. What changes is how many
+  steps that renders, not what a build declares. A job that opts out of either
+  with `harden: false` or `checkout: false` falls back to the separate steps,
+  since one action cannot do half of itself.
+
+  action?: CiUses
+    The pinned action reference. Defaults to the release this version of Zuke
+    was built against, or to whatever a `pins` resolver returns for
+    {@link ZUKE_ACTION} — which is the form to prefer, because a pin baked into
+    a published package goes stale between releases and a bot's bump to the
+    generated file would be reverted by the next regeneration.
+  denoVersion?: string
+    Install this Deno version, for a job that runs `deno` directly rather than
+    through the `./zuke` launcher (which bootstraps its own).
+  name?: string
+    The step name. Defaults to `"Harden and check out with Zuke"`.
+
 interface CiCheckout
   The repository checkout, emitted as an `actions/checkout` step after any
   {@link CiHardenRunner} and before the job's own steps. Like hardening, the
@@ -2210,6 +2242,8 @@ interface CiInvocation
     Harden this job's runner, overriding the pipeline default.
   checkout?: CiCheckout | false
     Check out in this job, overriding the pipeline default.
+  bootstrap?: CiBootstrap | false
+    The prelude action for this job, overriding the pipeline default.
   if?: string
     A condition gating the job.
   env?: Record<string, string>
@@ -2258,6 +2292,9 @@ interface CiJob
   checkout?: CiCheckout | false
     Check the repository out before this job's steps. Overrides
     {@link CiPipeline.checkout}; pass `false` to opt out.
+  bootstrap?: CiBootstrap | false
+    The prelude action for this job. Overrides {@link CiPipeline.bootstrap};
+    pass `false` to render hardening and checkout as separate steps instead.
   env?: Record<string, string>
     Environment variables for the job.
   if?: string
@@ -2293,6 +2330,10 @@ interface CiPipeline
   checkout?: CiCheckout
     Check the repository out in every job, unless a job overrides it or opts out
     with `checkout: false`. GitHub only.
+  bootstrap?: CiBootstrap | false
+    The prelude action every job starts with, unless a job says otherwise with
+    `bootstrap: false`. Defaults to the `zuke-build/zuke` action; see
+    {@link CiBootstrap}. GitHub only.
   jobs?: CiJob[]
     The jobs to run. Defaults to a single `build` job that runs the build.
 

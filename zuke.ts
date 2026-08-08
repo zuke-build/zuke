@@ -48,7 +48,13 @@ import {
 } from "@zuke/release-please";
 import { SecurityTasks } from "@zuke/security";
 import { DocsTasks } from "@zuke/docs";
-import { ACTION_VERSION_FILE, releaseAction } from "./build/action_release.ts";
+import {
+  ACTION_PIN,
+  ACTION_VERSION_FILE,
+  assertPinnedActionMatches,
+  pinnedSha,
+  releaseAction,
+} from "./build/action_release.ts";
 import { localVersion, PACKAGES } from "./build/packages.ts";
 import {
   CODECOV_CLI_VERSION,
@@ -581,6 +587,25 @@ class ZukeBuild extends Build {
       }
     });
 
+  actionPinCheck = target()
+    .description("Verify the pinned action release matches this action.yml")
+    .executes(async () => {
+      // Against the recorded digest, not against git. The first version of
+      // this asked git for the pinned commit's copy, which is absent from a
+      // shallow CI checkout — so it skipped itself and reported success,
+      // verifying nothing in the one place the drift would land. The pinned
+      // SHA is still validated, since a malformed one means the generated
+      // workflows are unpinned whatever the digest says.
+      pinnedSha(ACTION_PIN);
+      await assertPinnedActionMatches(
+        ACTION_PIN,
+        await FileTasks.readText(repoRoot("action.yml")),
+      );
+      ConsoleTasks.success(
+        `action.yml matches the pinned release ${ACTION_PIN.version}.`,
+      );
+    });
+
   ci = target()
     .description("Full pre-commit / CI gate")
     .dependsOn(
@@ -595,6 +620,7 @@ class ZukeBuild extends Build {
       this.hclSyncCheck,
       this.pluginSyncCheck,
       this.prBodyLint,
+      this.actionPinCheck,
       // In the gate now that the scanners are provisioned by the `tools`
       // toolchain rather than assumed on PATH — the reason it used to be
       // excluded. The dedicated security workflow still runs it separately,
@@ -795,6 +821,12 @@ class ZukeBuild extends Build {
     // regenerates it from the stale constant, and the bump is reverted. That has
     // already happened once here — the constant had to be hand-updated to match
     // what Dependabot set.
+    //
+    // Still the two separate steps, unlike every other workflow here, because
+    // @zuke/ai cannot declare the prelude until it can name the core that has
+    // it: its floor is `^1.25.0`, which has no `harden`/`checkout` on a job at
+    // all. Raising that floor needs the core released from this change, so the
+    // switch is the follow-up to it.
     hardenRunner: actionPin("step-security/harden-runner").ref,
     checkout: actionPin("actions/checkout").ref,
   });
@@ -922,6 +954,7 @@ class ZukeBuild extends Build {
               : s.command("push", "origin", name)
           );
         },
+        actionSource: () => FileTasks.readText(repoRoot("action.yml")),
         writePin: async (pin) => {
           await FileTasks.writeText(
             repoRoot(ACTION_VERSION_FILE),

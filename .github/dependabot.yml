@@ -10,5 +10,14 @@ updates:
     groups:
       actions:
         patterns: ["*"]
+    ignore:
+      # This repository's own action, which every generated workflow now opens
+      # with. Its pin lives in `build/action_version.json` and is written by the
+      # `actionRelease` target when the action is tagged; a Dependabot bump would
+      # edit the generated workflows instead, drifting them from that file. The
+      # pins Dependabot exists to bump are the ones *inside* `action.yml`, which
+      # it still sees and still bumps — and which reach consumers when that
+      # target cuts the next version.
+      - dependency-name: "zuke-build/zuke"
     commit-message:
       prefix: "ci"

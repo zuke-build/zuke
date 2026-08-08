@@ -352,15 +352,14 @@ export function githubWorkflows(
         id: "e2e",
         name: "E2E (${{ matrix.os }})",
         matrix: { os: ["ubuntu-latest", "macos-latest", "windows-latest"] },
-        // `setup-deno` rather than the ./zuke launcher: a generated step has no
-        // per-OS shell to switch on, and `deno` is identical everywhere. Pinned to
-        // the version the launchers bootstrap, so this runs the exact Deno the
-        // repo is reproducible against rather than a floating `v2.x`.
-        before: [{
-          name: "Set up Deno",
-          uses: actionPin("denoland/setup-deno"),
-          with: { "deno-version": "v2.8.3" },
-        }],
+        // Deno rather than the ./zuke launcher: a generated step has no per-OS
+        // shell to switch on, and `deno` is identical everywhere. Pinned to the
+        // version the launchers bootstrap, so this runs the exact Deno the repo
+        // is reproducible against rather than a floating `v2.x`. It rides in the
+        // prelude action, which installs it — so this job's opening is one step
+        // like every other, and `setup-deno`'s pin lives in `action.yml` with
+        // the rest rather than being named here.
+        bootstrap: { denoVersion: "v2.8.3" },
         // Runs `deno` directly for the same reason. `--frozen` fails the run if
         // the e2e suite's resolution would diverge from the committed lock.
         steps: [{

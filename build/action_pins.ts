@@ -23,6 +23,7 @@
  */
 
 import type { CiActionRef } from "@zuke/core";
+import { ACTION_PIN, ACTION_SLUG } from "./action_release.ts";
 
 /** Where the committed workflows live. */
 const WORKFLOW_DIR = ".github/workflows";
@@ -204,6 +205,12 @@ function committedPins(): Map<string, CiActionRef> {
  * reject — better to fail than to quietly unpin an action.
  */
 export function actionPin(action: string): CiActionRef {
+  // This repository's own action is the one pin that cannot come from here.
+  // `action.yml` is the manifest for every *other* action and cannot pin itself,
+  // and reading it back out of a generated workflow is the feedback loop this
+  // module exists to prevent. It lives in `build/action_version.json`, written
+  // only when the action is actually tagged.
+  if (action === ACTION_SLUG) return ACTION_PIN;
   const committed = committedPins().get(action);
   const seed = SEED_PINS[action];
   // A committed pin wins, but it may predate comment support and carry no

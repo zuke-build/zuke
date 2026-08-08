@@ -1,4 +1,5 @@
 {
-  "ref": "zuke-build/zuke@04ec1c67b0937db3bb5d19fe2b6f62a506e04432",
-  "version": "v1.0.0"
+  "ref": "zuke-build/zuke@7a62523bb4569e4d90e972dee74bf9cf09cd436f",
+  "version": "v1.0.1",
+  "digest": "763aa73b8dffd150de6c426c5a70b196ed1930e78f0ead919e4a8e6e25faf177"
 }
