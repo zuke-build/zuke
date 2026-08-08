@@ -590,24 +590,16 @@ class ZukeBuild extends Build {
   actionPinCheck = target()
     .description("Verify the pinned action release matches this action.yml")
     .executes(async () => {
-      const sha = pinnedSha(ACTION_PIN);
-      const pinned = await GitTasks.run((s) =>
-        s.command("show", `${sha}:action.yml`).noThrow()
-      );
-      if (pinned.code !== 0) {
-        // A shallow checkout may not have the commit. Say so rather than
-        // failing the gate on a fetch depth, which would be an unfixable
-        // failure for whoever hits it.
-        ConsoleTasks.info(
-          `Pinned action commit ${sha.slice(0, 7)} is not in this checkout — ` +
-            `skipping the comparison.`,
-        );
-        return;
-      }
-      assertPinnedActionMatches(
-        pinned.stdout,
+      // Against the recorded digest, not against git. The first version of
+      // this asked git for the pinned commit's copy, which is absent from a
+      // shallow CI checkout — so it skipped itself and reported success,
+      // verifying nothing in the one place the drift would land. The pinned
+      // SHA is still validated, since a malformed one means the generated
+      // workflows are unpinned whatever the digest says.
+      pinnedSha(ACTION_PIN);
+      await assertPinnedActionMatches(
+        ACTION_PIN,
         await FileTasks.readText(repoRoot("action.yml")),
-        ACTION_PIN.version,
       );
       ConsoleTasks.success(
         `action.yml matches the pinned release ${ACTION_PIN.version}.`,
@@ -962,6 +954,7 @@ class ZukeBuild extends Build {
               : s.command("push", "origin", name)
           );
         },
+        actionSource: () => FileTasks.readText(repoRoot("action.yml")),
         writePin: async (pin) => {
           await FileTasks.writeText(
             repoRoot(ACTION_VERSION_FILE),

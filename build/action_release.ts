@@ -47,6 +47,16 @@ export interface ActionPinFile {
   ref: string;
   /** The tag that SHA was released as, e.g. `v1.0.0`. */
   version: string;
+  /**
+   * SHA-256 of `action.yml` as that release contains it.
+   *
+   * Recorded so the drift check needs nothing but this file and the working
+   * tree. Asking git for the pinned commit's copy seemed equivalent and was
+   * not: a CI checkout is shallow, so the commit is absent, and the check
+   * skipped itself and reported success — verifying nothing in the one place
+   * the drift would actually land.
+   */
+  digest: string;
 }
 
 /** Where the committed self-pin lives, relative to the repository root. */
@@ -136,8 +146,31 @@ export function majorTag(version: string): string {
   return `v${parsed.major}`;
 }
 
+/**
+ * SHA-256 of the action's source, hex-encoded.
+ *
+ * Line endings are normalised first. A checkout on Windows can materialise the
+ * file with CRLF, and a digest that changed with the checkout's line-ending
+ * config would fail the gate on one platform and pass on another — reporting a
+ * drift that does not exist, which is the fastest way to get a check ignored.
+ */
+export async function actionDigest(source: string): Promise<string> {
+  const normalised = source.replace(/\r\n/g, "\n");
+  const bytes = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(normalised),
+  );
+  return [...new Uint8Array(bytes)]
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 /** The pin file's contents for a release of `sha` as `version`. */
-export function pinFor(sha: string, version: string): ActionPinFile {
+export function pinFor(
+  sha: string,
+  version: string,
+  digest: string,
+): ActionPinFile {
   if (!/^[0-9a-f]{40}$/.test(sha)) {
     throw new Error(
       `refusing to pin a reference that is not a full commit SHA: ${sha}. A ` +
@@ -157,7 +190,15 @@ export function pinFor(sha: string, version: string): ActionPinFile {
         `unescaped, so it must be exactly \`v<major>.<minor>.<patch>\`.`,
     );
   }
-  return { ref: `${ACTION_SLUG}@${sha}`, version };
+  if (!/^[0-9a-f]{64}$/.test(digest)) {
+    throw new Error(
+      `refusing to pin a digest that is not a SHA-256: ${
+        JSON.stringify(digest)
+      }. It is what the drift check compares, so an unrecognised value would ` +
+        `make that check fail against every possible action.yml.`,
+    );
+  }
+  return { ref: `${ACTION_SLUG}@${sha}`, version, digest };
 }
 
 /**
@@ -198,12 +239,12 @@ export function pinnedSha(pin: ActionPinFile): string {
  *
  * @throws if the two differ, naming the target that fixes it.
  */
-export function assertPinnedActionMatches(
-  pinned: string,
+export async function assertPinnedActionMatches(
+  pin: ActionPinFile,
   workingTree: string,
-  version: string,
-): void {
-  if (pinned === workingTree) return;
+): Promise<void> {
+  const { version } = pin;
+  if (await actionDigest(workingTree) === pin.digest) return;
   throw new Error(
     `action.yml has changed since ${version}, which is the release every ` +
       `generated workflow runs. Until it is re-released those jobs use the ` +
@@ -287,6 +328,8 @@ export interface ReleaseActionDeps {
   tag(tag: string, message: string, force: boolean): Promise<void>;
   /** Push `tag` to the remote, replacing it when `force`. */
   push(tag: string, force: boolean): Promise<void>;
+  /** The action's source, as the tree being released contains it. */
+  actionSource(): Promise<string>;
   /** Write the committed self-pin. */
   writePin(pin: ActionPinFile): Promise<void>;
   /** Report progress. */
@@ -330,7 +373,9 @@ export async function releaseAction(
   // The pin lands before the tag, so a failure between them leaves a tree that
   // names a version nobody can resolve — loud — rather than a published tag
   // that nothing references, which would look like success.
-  await deps.writePin(pinFor(sha, version));
+  await deps.writePin(
+    pinFor(sha, version, await actionDigest(await deps.actionSource())),
+  );
 
   await deps.tag(version, `Zuke Build action ${version}`, false);
   await deps.push(version, false);

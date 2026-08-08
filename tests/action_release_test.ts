@@ -16,6 +16,7 @@ import {
 } from "../packages/core/tests/_assert.ts";
 import {
   ACTION_VERSION_FILE,
+  actionDigest,
   type ActionPinFile,
   assertPinnedActionMatches,
   assertReleasable,
@@ -31,6 +32,9 @@ import {
 } from "../build/action_release.ts";
 
 const SHA = "a".repeat(40);
+
+/** A well-formed SHA-256, for the pin-file digest. */
+const DIGEST = "b".repeat(64);
 
 /** A recording set of dependencies, with everything defaulted to a no-op. */
 function fakeDeps(overrides: Partial<ReleaseActionDeps> = {}): {
@@ -50,6 +54,7 @@ function fakeDeps(overrides: Partial<ReleaseActionDeps> = {}): {
     tags: () => Promise.resolve([]),
     changedSince: () => Promise.resolve(true),
     headSha: () => Promise.resolve(SHA),
+    actionSource: () => Promise.resolve('name: "Zuke Build"\n'),
     tag: (t, _m, force) => {
       calls.push(`tag:${t}${force ? ":force" : ""}`);
       return Promise.resolve();
@@ -105,10 +110,10 @@ Deno.test("a pin must carry a full commit SHA", () => {
   // A short SHA or a tag in the generated workflows would be an unpinned
   // reference, which is the thing the pin arrangement exists to prevent — and
   // supply-chain scanners flag it.
-  assertEquals(pinFor(SHA, "v1.0.0").ref, `zuke-build/zuke@${SHA}`);
-  assertEquals(pinFor(SHA, "v1.0.0").version, "v1.0.0");
-  assertThrows(() => pinFor("abc1234", "v1.0.0"));
-  assertThrows(() => pinFor("v1.0.0", "v1.0.0"));
+  assertEquals(pinFor(SHA, "v1.0.0", DIGEST).ref, `zuke-build/zuke@${SHA}`);
+  assertEquals(pinFor(SHA, "v1.0.0", DIGEST).version, "v1.0.0");
+  assertThrows(() => pinFor("abc1234", "v1.0.0", DIGEST));
+  assertThrows(() => pinFor("v1.0.0", "v1.0.0", DIGEST));
 });
 
 Deno.test("an unchanged action.yml releases nothing", async () => {
@@ -229,34 +234,41 @@ Deno.test("a pin version must be exactly a release tag", () => {
   // and that comment is not escaped — so a newline would emit a stray line
   // into six workflow files. JavaScript's `$` matches before a trailing
   // newline, which is exactly how such a value would slip through.
-  assertEquals(pinFor(SHA, "v1.2.3").version, "v1.2.3");
-  assertThrows(() => pinFor(SHA, "v1.0.0\n"));
-  assertThrows(() => pinFor(SHA, "v1.0.0 # comment"));
-  assertThrows(() => pinFor(SHA, "latest"));
-  assertThrows(() => pinFor(SHA, ""));
+  assertEquals(pinFor(SHA, "v1.2.3", DIGEST).version, "v1.2.3");
+  assertThrows(() => pinFor(SHA, "v1.0.0\n", DIGEST));
+  assertThrows(() => pinFor(SHA, "v1.0.0 # comment", DIGEST));
+  assertThrows(() => pinFor(SHA, "latest", DIGEST));
+  assertThrows(() => pinFor(SHA, "", DIGEST));
 });
 
-Deno.test("a pinned release that differs from this action.yml is rejected", () => {
+Deno.test("a pinned release that differs from this action.yml is rejected", async () => {
   // The generated workflows run the *pinned* action, not the file beside them.
   // Nothing else notices when the two diverge, and every other test in this
   // repository asserts against the working tree — so they stay green while an
   // input added here is silently ignored there and a guard added here protects
   // nobody.
   const yaml = 'name: "Zuke Build"\n';
-  assertReleasable({ branch: "master", dirty: false, syncedWithRemote: true });
-  assertPinnedActionMatches(yaml, yaml, "v1.0.0");
-  assertThrows(() =>
-    assertPinnedActionMatches(yaml, `${yaml}inputs:\n  ref:\n`, "v1.0.0")
-  );
-  // The message has to name the fix; a bare mismatch tells nobody what to do.
+  const pin = pinFor(SHA, "v1.2.3", await actionDigest(yaml));
+
+  // Identical content passes.
+  await assertPinnedActionMatches(pin, yaml);
+
+  // A drift — an input added but not yet released — does not.
   let message = "";
   try {
-    assertPinnedActionMatches(yaml, "different\n", "v1.2.3");
+    await assertPinnedActionMatches(pin, `${yaml}inputs:\n  ref:\n`);
   } catch (error) {
     message = error instanceof Error ? error.message : String(error);
   }
+  // The message has to name the version and the fix; a bare mismatch tells
+  // nobody what to do.
   assertStringIncludes(message, "v1.2.3");
   assertStringIncludes(message, "actionRelease");
+
+  // Line endings do not count as a drift. A Windows checkout can materialise
+  // the file with CRLF, and a digest that moved with it would fail the gate on
+  // one platform and pass on another — reporting a drift that does not exist.
+  await assertPinnedActionMatches(pin, yaml.replace(/\n/g, "\r\n"));
 });
 
 Deno.test("a malformed pin names the file rather than throwing a TypeError", () => {
@@ -266,12 +278,12 @@ Deno.test("a malformed pin names the file rather than throwing a TypeError", () 
   // lines later, from inside the gate check — the least useful place to learn
   // that a file needs fixing.
   assertEquals(
-    pinnedSha({ ref: `zuke-build/zuke@${SHA}`, version: "v1" }),
+    pinnedSha({ ref: `zuke-build/zuke@${SHA}`, version: "v1", digest: DIGEST }),
     SHA,
   );
   let message = "";
   try {
-    pinnedSha({ ref: "zuke-build/zuke", version: "v1.0.0" });
+    pinnedSha({ ref: "zuke-build/zuke", version: "v1.0.0", digest: DIGEST });
   } catch (error) {
     message = error instanceof Error ? error.message : String(error);
   }
@@ -279,6 +291,6 @@ Deno.test("a malformed pin names the file rather than throwing a TypeError", () 
   assertStringIncludes(message, "40-character-sha");
   // A short SHA is malformed for the same reason `pinFor` rejects one.
   assertThrows(() =>
-    pinnedSha({ ref: "zuke-build/zuke@abc1234", version: "v1" })
+    pinnedSha({ ref: "zuke-build/zuke@abc1234", version: "v1", digest: DIGEST })
   );
 });
