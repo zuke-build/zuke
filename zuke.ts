@@ -54,6 +54,7 @@ import {
   assertWorkflowInputsAvailable,
   pinnedSha,
   releaseAction,
+  releaseIsOwed,
   workflowActionInputs,
 } from "./build/action_release.ts";
 import { localVersion, PACKAGES } from "./build/packages.ts";
@@ -611,6 +612,27 @@ class ZukeBuild extends Build {
         `the workflows use ${used.size} input(s), all present in ` +
           `${ACTION_PIN.version}.`,
       );
+
+      // Reported, not failed. A change that adds no input breaks no workflow —
+      // it simply has not reached consumers yet, and it cannot until the tag
+      // moves, which cannot happen until it has merged. Failing on it is what
+      // made the first version of this check unpassable on any pull request
+      // that touched the file, Dependabot's included.
+      if (
+        await releaseIsOwed(
+          ACTION_PIN,
+          await FileTasks.readText(
+            repoRoot("action.yml"),
+          ),
+        )
+      ) {
+        ConsoleTasks.warn(
+          `action.yml has changed since ${ACTION_PIN.version} in a way no ` +
+            `workflow passes — a guard, a step, a bumped pin. Consumers get ` +
+            `it when the tag moves: run \`./zuke actionRelease\` on master ` +
+            `after this merges.`,
+        );
+      }
     });
 
   ci = target()

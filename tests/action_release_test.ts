@@ -16,6 +16,7 @@ import {
 } from "../packages/core/tests/_assert.ts";
 import {
   ACTION_VERSION_FILE,
+  actionDigest,
   type ActionPinFile,
   assertReleasable,
   assertWorkflowInputsAvailable,
@@ -29,6 +30,7 @@ import {
   pinnedSha,
   releaseAction,
   type ReleaseActionDeps,
+  releaseIsOwed,
   workflowActionInputs,
 } from "../build/action_release.ts";
 
@@ -36,6 +38,9 @@ const SHA = "a".repeat(40);
 
 /** The inputs a pin records, for tests that do not care which. */
 const INPUTS = ["target", "ref"];
+
+/** A well-formed SHA-256, for the pin file digest. */
+const DIGEST = "c".repeat(64);
 
 /** A manifest declaring {@link INPUTS}, for the release fakes. */
 const MANIFEST = `name: "Zuke Build"
@@ -123,10 +128,13 @@ Deno.test("a pin must carry a full commit SHA", () => {
   // A short SHA or a tag in the generated workflows would be an unpinned
   // reference, which is the thing the pin arrangement exists to prevent — and
   // supply-chain scanners flag it.
-  assertEquals(pinFor(SHA, "v1.0.0", INPUTS).ref, `zuke-build/zuke@${SHA}`);
-  assertEquals(pinFor(SHA, "v1.0.0", INPUTS).version, "v1.0.0");
-  assertThrows(() => pinFor("abc1234", "v1.0.0", INPUTS));
-  assertThrows(() => pinFor("v1.0.0", "v1.0.0", INPUTS));
+  assertEquals(
+    pinFor(SHA, "v1.0.0", INPUTS, DIGEST).ref,
+    `zuke-build/zuke@${SHA}`,
+  );
+  assertEquals(pinFor(SHA, "v1.0.0", INPUTS, DIGEST).version, "v1.0.0");
+  assertThrows(() => pinFor("abc1234", "v1.0.0", INPUTS, DIGEST));
+  assertThrows(() => pinFor("v1.0.0", "v1.0.0", INPUTS, DIGEST));
 });
 
 Deno.test("an unchanged action.yml releases nothing", async () => {
@@ -247,11 +255,11 @@ Deno.test("a pin version must be exactly a release tag", () => {
   // and that comment is not escaped — so a newline would emit a stray line
   // into six workflow files. JavaScript's `$` matches before a trailing
   // newline, which is exactly how such a value would slip through.
-  assertEquals(pinFor(SHA, "v1.2.3", INPUTS).version, "v1.2.3");
-  assertThrows(() => pinFor(SHA, "v1.0.0\n", INPUTS));
-  assertThrows(() => pinFor(SHA, "v1.0.0 # comment", INPUTS));
-  assertThrows(() => pinFor(SHA, "latest", INPUTS));
-  assertThrows(() => pinFor(SHA, "", INPUTS));
+  assertEquals(pinFor(SHA, "v1.2.3", INPUTS, DIGEST).version, "v1.2.3");
+  assertThrows(() => pinFor(SHA, "v1.0.0\n", INPUTS, DIGEST));
+  assertThrows(() => pinFor(SHA, "v1.0.0 # comment", INPUTS, DIGEST));
+  assertThrows(() => pinFor(SHA, "latest", INPUTS, DIGEST));
+  assertThrows(() => pinFor(SHA, "", INPUTS, DIGEST));
 });
 
 Deno.test("a malformed pin names the file rather than throwing a TypeError", () => {
@@ -261,12 +269,22 @@ Deno.test("a malformed pin names the file rather than throwing a TypeError", () 
   // lines later, from inside the gate check — the least useful place to learn
   // that a file needs fixing.
   assertEquals(
-    pinnedSha({ ref: `zuke-build/zuke@${SHA}`, version: "v1", inputs: INPUTS }),
+    pinnedSha({
+      ref: `zuke-build/zuke@${SHA}`,
+      version: "v1",
+      inputs: INPUTS,
+      digest: DIGEST,
+    }),
     SHA,
   );
   let message = "";
   try {
-    pinnedSha({ ref: "zuke-build/zuke", version: "v1.0.0", inputs: INPUTS });
+    pinnedSha({
+      ref: "zuke-build/zuke",
+      version: "v1.0.0",
+      inputs: INPUTS,
+      digest: DIGEST,
+    });
   } catch (error) {
     message = error instanceof Error ? error.message : String(error);
   }
@@ -274,7 +292,12 @@ Deno.test("a malformed pin names the file rather than throwing a TypeError", () 
   assertStringIncludes(message, "40-character-sha");
   // A short SHA is malformed for the same reason `pinFor` rejects one.
   assertThrows(() =>
-    pinnedSha({ ref: "zuke-build/zuke@abc1234", version: "v1", inputs: INPUTS })
+    pinnedSha({
+      ref: "zuke-build/zuke@abc1234",
+      version: "v1",
+      inputs: INPUTS,
+      digest: DIGEST,
+    })
   );
 });
 
@@ -326,7 +349,7 @@ Deno.test("an input the pinned release lacks fails, naming it", () => {
   // The failure this exists for, and it is a quiet one: GitHub warns on an
   // undeclared input and carries on, so the job runs without it and nothing
   // says why.
-  const pin = pinFor(SHA, "v1.0.0", ["target", "egress-policy"]);
+  const pin = pinFor(SHA, "v1.0.0", ["target", "egress-policy"], DIGEST);
   assertWorkflowInputsAvailable(pin, ["target", "egress-policy"]);
   let message = "";
   try {
@@ -356,6 +379,7 @@ runs:
   steps:
     - uses: step-security/harden-runner@${"a".repeat(40)}
 `),
+    DIGEST,
   );
   const afterBump = declaredInputs(`inputs:
   target:
@@ -371,7 +395,7 @@ runs:
 Deno.test("a release must declare at least one input", () => {
   // The check compares what the workflows pass against this list, so an empty
   // one would reject every workflow that configures anything.
-  assertThrows(() => pinFor(SHA, "v1.0.0", []));
+  assertThrows(() => pinFor(SHA, "v1.0.0", [], DIGEST));
 });
 
 Deno.test("the committed pin lists the inputs action.yml declares", () => {
@@ -469,4 +493,25 @@ Deno.test("a multiline or nested value is not read as more inputs", () => {
       ref: main
 `;
   assertEquals(workflowActionInputs(nested), ["config", "ref"]);
+});
+
+Deno.test("a change no workflow can see is reported, not failed", () => {
+  // The counterpart to the input check, and the reason both exist. Inputs cover
+  // what breaks a workflow now; this covers what a workflow cannot see at all —
+  // a guard added to the action, a step reordered — which reaches consumers
+  // only when the tag moves. Left unreleased that is release lag, not a fault,
+  // and failing on it is what made the first version of this check unpassable
+  // on any pull request that touched the file.
+  const source = 'name: "Zuke Build"\ninputs:\n  target:\n';
+  return actionDigest(source).then(async (digest) => {
+    const pin = pinFor(SHA, "v1.0.1", ["target"], digest);
+    assertEquals(await releaseIsOwed(pin, source), false);
+    assertEquals(await releaseIsOwed(pin, `${source}# a new guard\n`), true);
+    // CRLF is not a change. A Windows checkout would otherwise report a drift
+    // that does not exist, on one platform and not the other.
+    assertEquals(
+      await releaseIsOwed(pin, source.replace(/\n/g, "\r\n")),
+      false,
+    );
+  });
 });

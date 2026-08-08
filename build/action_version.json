@@ -9,5 +9,6 @@
     "fetch-depth",
     "ref",
     "deno-version"
-  ]
+  ],
+  "digest": "763aa73b8dffd150de6c426c5a70b196ed1930e78f0ead919e4a8e6e25faf177"
 }

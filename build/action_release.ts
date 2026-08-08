@@ -61,9 +61,21 @@ export interface ActionPinFile {
    * A digest also fires on a change that alters no input at all — a Dependabot
    * bump to one of the action's own pins, say — and that bump cannot be
    * released until it has merged, so the check blocked the very automation the
-   * pin manifest exists to serve.
+   * pin manifest exists to serve. See {@link digest}, which keeps what that
+   * approach was good at without the deadlock.
    */
   inputs: string[];
+  /**
+   * SHA-256 of `action.yml` as that release contains it.
+   *
+   * Not a gate. {@link inputs} covers what breaks a workflow *now*; this covers
+   * what a workflow cannot see at all — a guard added to the action, a step
+   * reordered — which reaches consumers only when the tag moves. Left
+   * unreleased that is release lag rather than a fault, so it is reported and
+   * not failed: failing it is what made the first version of this check
+   * unpassable on any pull request that touched the file.
+   */
+  digest: string;
 }
 
 /** Where the committed self-pin lives, relative to the repository root. */
@@ -220,11 +232,45 @@ export function declaredInputs(source: string): string[] {
   return names;
 }
 
+/**
+ * SHA-256 of the action's source, hex-encoded.
+ *
+ * Line endings are normalised first. A checkout on Windows can materialise the
+ * file with CRLF, and a value that moved with the checkout's line-ending config
+ * would report a drift that does not exist on one platform and not the other.
+ */
+export async function actionDigest(source: string): Promise<string> {
+  const bytes = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(source.replace(/\r\n/g, "\n")),
+  );
+  return [...new Uint8Array(bytes)]
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+/**
+ * Whether the action has changed since its release in a way no workflow can
+ * see — a guard added, a step reordered, a pin bumped.
+ *
+ * Reported rather than failed. It is release lag, not a fault: the change
+ * reaches consumers when the tag moves, and the tag cannot move until the
+ * change has merged. Failing on it is what made the first version of this
+ * check unpassable on any pull request that touched the file.
+ */
+export async function releaseIsOwed(
+  pin: ActionPinFile,
+  workingTree: string,
+): Promise<boolean> {
+  return await actionDigest(workingTree) !== pin.digest;
+}
+
 /** The pin file's contents for a release of `sha` as `version`. */
 export function pinFor(
   sha: string,
   version: string,
   inputs: readonly string[],
+  digest: string,
 ): ActionPinFile {
   if (!/^[0-9a-f]{40}$/.test(sha)) {
     throw new Error(
@@ -252,7 +298,15 @@ export function pinFor(
         `would reject every workflow that configures anything.`,
     );
   }
-  return { ref: `${ACTION_SLUG}@${sha}`, version, inputs: [...inputs] };
+  if (!/^[0-9a-f]{64}$/.test(digest)) {
+    throw new Error(
+      `refusing to pin a digest that is not a SHA-256: ${
+        JSON.stringify(digest)
+      }. It is what tells the gate a release is owed, and an unrecognised ` +
+        `value would say so on every run.`,
+    );
+  }
+  return { ref: `${ACTION_SLUG}@${sha}`, version, inputs: [...inputs], digest };
 }
 
 /**
@@ -491,11 +545,19 @@ export async function releaseAction(
   const major = majorTag(version);
   const sha = await deps.headSha();
 
+  // Read once, so the inputs and the digest describe the same bytes.
+  const source = await deps.actionSource();
+
   // The pin lands before the tag, so a failure between them leaves a tree that
   // names a version nobody can resolve — loud — rather than a published tag
   // that nothing references, which would look like success.
   await deps.writePin(
-    pinFor(sha, version, declaredInputs(await deps.actionSource())),
+    pinFor(
+      sha,
+      version,
+      declaredInputs(source),
+      await actionDigest(source),
+    ),
   );
 
   await deps.tag(version, `Zuke Build action ${version}`, false);
