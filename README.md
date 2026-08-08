@@ -90,19 +90,59 @@ zuke setup                                 # in your project
 See **[Getting started](./docs/getting-started.md)** for the full walkthrough
 (scaffolding, the `./zuke` launcher, a first build, and GitHub Actions output).
 
-On GitHub Actions, the
-[`zuke-build/zuke` action](./docs/getting-started.md#the-zuke-buildzuke-action)
-hardens the runner, checks out, and runs a target in one step:
+## GitHub Actions
+
+The [**Zuke Build**](https://github.com/marketplace/actions/zuke-build) action
+on the Marketplace is the whole prelude a Zuke job needs — it hardens the
+runner, checks the repository out, optionally installs Deno, and runs a target,
+in one step:
 
 ```yaml
-- uses: zuke-build/zuke@v1
-  with:
-    target: ci
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: zuke-build/zuke@v1
+        with:
+          target: ci
 ```
 
-Pin the full commit SHA rather than the moving `v1` tag when you commit it —
-[the action section](./docs/getting-started.md#pin-it-as-you-would-any-other-action)
-covers why, and why `egress-policy` starts at `audit`.
+It goes **first**, before any checkout of your own: a remote action is fetched
+by the runner, not from your workspace, which is what lets it install an egress
+policy before the code that policy governs is ever fetched.
+
+| Input                 | Default | What it does                                                                       |
+| --------------------- | ------- | ---------------------------------------------------------------------------------- |
+| `target`              | `""`    | The Zuke target to run. Omit to harden and check out only.                         |
+| `egress-policy`       | `audit` | `audit` records outbound traffic; `block` enforces `allowed-endpoints`.            |
+| `allowed-endpoints`   | `""`    | Space-separated `host:port` list permitted under `block`.                          |
+| `persist-credentials` | `false` | Leave the token in git config, for a job that pushes.                              |
+| `fetch-depth`         | `1`     | Commits to fetch. `0` is the full history, which a secret scan needs.              |
+| `ref`                 | `""`    | Branch, tag or SHA to check out. Refused on a secret-bearing event — see below.    |
+| `deno-version`        | `""`    | Install this Deno. Usually unnecessary — the `./zuke` launcher bootstraps its own. |
+
+Two things worth knowing before you rely on it:
+
+- **`egress-policy` starts at `audit`, not `block`** — the opposite of
+  harden-runner's own default. That is deliberate, since `block` with an empty
+  allowlist fails a build on its first outbound request, but it means the
+  default **records** egress rather than enforcing it. Run once on `audit`, take
+  the endpoint list from the run's insights, then set both.
+- **`ref` is refused on an event whose content a contributor writes** —
+  `pull_request_target`, `issue_comment`, `workflow_run` and the rest. Those run
+  with your secrets and a writable token, so checking out a ref someone else
+  controls hands them both. `pull_request` and `push` are unaffected.
+
+Pin the full commit SHA rather than the moving `v1` tag when you commit it, the
+way you would any other action:
+
+```yaml
+- uses: zuke-build/zuke@<40-character-sha> # v1.0.2
+```
+
+[The action section](./docs/getting-started.md#the-zuke-buildzuke-action) covers
+the rest. Zuke's own six workflows all open with it, generated from the build —
+so the version documented here is the version this repository runs on itself.
 
 > [!NOTE]
 > All packages publish to [JSR](https://jsr.io/@zuke) from CI via release-please
