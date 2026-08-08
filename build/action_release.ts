@@ -18,6 +18,8 @@
  * @module
  */
 
+import { parse as parseYaml } from "@std/yaml";
+
 import actionVersion from "./action_version.json" with { type: "json" };
 
 /** A parsed `v<major>.<minor>.<patch>` action tag. */
@@ -48,13 +50,32 @@ export interface ActionPinFile {
   /** The tag that SHA was released as, e.g. `v1.0.0`. */
   version: string;
   /**
+   * The input names that release accepts.
+   *
+   * Recorded because this is what a generated workflow can actually depend on.
+   * A workflow that passes an input the pinned release lacks does not fail —
+   * GitHub warns and carries on — so the job silently gets the event's default
+   * behaviour instead of the one the build asked for. That is the failure this
+   * arrangement exists to prevent, and it is invisible without a list to check
+   * against.
+   *
+   * Names rather than a digest of the whole file, which was the first attempt.
+   * A digest also fires on a change that alters no input at all — a Dependabot
+   * bump to one of the action's own pins, say — and that bump cannot be
+   * released until it has merged, so the check blocked the very automation the
+   * pin manifest exists to serve. See {@link digest}, which keeps what that
+   * approach was good at without the deadlock.
+   */
+  inputs: string[];
+  /**
    * SHA-256 of `action.yml` as that release contains it.
    *
-   * Recorded so the drift check needs nothing but this file and the working
-   * tree. Asking git for the pinned commit's copy seemed equivalent and was
-   * not: a CI checkout is shallow, so the commit is absent, and the check
-   * skipped itself and reported success — verifying nothing in the one place
-   * the drift would actually land.
+   * Not a gate. {@link inputs} covers what breaks a workflow *now*; this covers
+   * what a workflow cannot see at all — a guard added to the action, a step
+   * reordered — which reaches consumers only when the tag moves. Left
+   * unreleased that is release lag rather than a fault, so it is reported and
+   * not failed: failing it is what made the first version of this check
+   * unpassable on any pull request that touched the file.
    */
   digest: string;
 }
@@ -146,29 +167,64 @@ export function majorTag(version: string): string {
   return `v${parsed.major}`;
 }
 
+/** Whether a parsed YAML node is a mapping. */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * The input names an action manifest declares.
+ *
+ * Parsed rather than read line by line. The reader this replaces needed four
+ * corrections — a comment ended the block, flow style read as empty, a folded
+ * scalar ended the block, a nested value contributed its own keys — and three
+ * were silent under-reports, which is the one outcome this check cannot
+ * afford: an input it fails to see is an input nobody checks.
+ */
+export function declaredInputs(source: string): string[] {
+  const doc = parseYaml(source);
+  if (!isRecord(doc)) return [];
+  return isRecord(doc.inputs) ? Object.keys(doc.inputs) : [];
+}
+
 /**
  * SHA-256 of the action's source, hex-encoded.
  *
  * Line endings are normalised first. A checkout on Windows can materialise the
- * file with CRLF, and a digest that changed with the checkout's line-ending
- * config would fail the gate on one platform and pass on another — reporting a
- * drift that does not exist, which is the fastest way to get a check ignored.
+ * file with CRLF, and a value that moved with the checkout's line-ending config
+ * would report a drift that does not exist on one platform and not the other.
  */
 export async function actionDigest(source: string): Promise<string> {
-  const normalised = source.replace(/\r\n/g, "\n");
   const bytes = await crypto.subtle.digest(
     "SHA-256",
-    new TextEncoder().encode(normalised),
+    new TextEncoder().encode(source.replace(/\r\n/g, "\n")),
   );
   return [...new Uint8Array(bytes)]
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
 }
 
+/**
+ * Whether the action has changed since its release in a way no workflow can
+ * see — a guard added, a step reordered, a pin bumped.
+ *
+ * Reported rather than failed. It is release lag, not a fault: the change
+ * reaches consumers when the tag moves, and the tag cannot move until the
+ * change has merged. Failing on it is what made the first version of this
+ * check unpassable on any pull request that touched the file.
+ */
+export async function releaseIsOwed(
+  pin: ActionPinFile,
+  workingTree: string,
+): Promise<boolean> {
+  return await actionDigest(workingTree) !== pin.digest;
+}
+
 /** The pin file's contents for a release of `sha` as `version`. */
 export function pinFor(
   sha: string,
   version: string,
+  inputs: readonly string[],
   digest: string,
 ): ActionPinFile {
   if (!/^[0-9a-f]{40}$/.test(sha)) {
@@ -190,15 +246,22 @@ export function pinFor(
         `unescaped, so it must be exactly \`v<major>.<minor>.<patch>\`.`,
     );
   }
+  if (inputs.length === 0) {
+    throw new Error(
+      `refusing to pin a release that declares no inputs: the check compares ` +
+        `what the generated workflows pass against this list, so an empty one ` +
+        `would reject every workflow that configures anything.`,
+    );
+  }
   if (!/^[0-9a-f]{64}$/.test(digest)) {
     throw new Error(
       `refusing to pin a digest that is not a SHA-256: ${
         JSON.stringify(digest)
-      }. It is what the drift check compares, so an unrecognised value would ` +
-        `make that check fail against every possible action.yml.`,
+      }. It is what tells the gate a release is owed, and an unrecognised ` +
+        `value would say so on every run.`,
     );
   }
-  return { ref: `${ACTION_SLUG}@${sha}`, version, digest };
+  return { ref: `${ACTION_SLUG}@${sha}`, version, inputs: [...inputs], digest };
 }
 
 /**
@@ -224,34 +287,65 @@ export function pinnedSha(pin: ActionPinFile): string {
 }
 
 /**
- * Assert that the pinned release of the action is the action in this tree.
+ * The inputs a generated workflow passes to the action.
  *
- * The generated workflows run `{@link ACTION_SLUG}@<pinned sha>`, not the
- * `action.yml` sitting next to them. Nothing else notices when those diverge,
- * and the failure is quiet in both directions:
- *
- * - a change to `action.yml` that is not yet released means the jobs run the
- *   *old* action. An input added here is silently ignored there — GitHub warns
- *   and carries on — so a job asking for `ref` gets the event's default
- *   checkout instead, and a guard added here protects nobody.
- * - the tests in `tests/action_manifest_test.ts` assert against this file, so
- *   they stay green either way. They describe the tree, not the artifact.
- *
- * @throws if the two differ, naming the target that fixes it.
+ * Scoped to the action's own steps: a workflow's other steps have `with:`
+ * blocks of their own, and counting those would compare `actions/checkout`'s
+ * inputs against this action's list and reject every workflow. So the scan
+ * starts at a `uses:` naming this action and stops at the next step.
  */
-export async function assertPinnedActionMatches(
+export function workflowActionInputs(yaml: string): string[] {
+  const doc = parseYaml(yaml);
+  if (!isRecord(doc) || !isRecord(doc.jobs)) return [];
+  const names: string[] = [];
+  for (const job of Object.values(doc.jobs)) {
+    if (!isRecord(job) || !Array.isArray(job.steps)) continue;
+    for (const step of job.steps) {
+      if (!isRecord(step)) continue;
+      // Scoped to this action's own steps. Every step has a `with:` of its
+      // own, and counting them all would compare `actions/checkout`'s inputs
+      // against this action's list and reject every workflow for having a
+      // checkout in it.
+      const uses = step.uses;
+      if (typeof uses !== "string") continue;
+      if (!uses.startsWith(`${ACTION_SLUG}@`)) continue;
+      if (isRecord(step.with)) names.push(...Object.keys(step.with));
+    }
+  }
+  return names;
+}
+
+/**
+ * Assert that no generated workflow passes the action an input its pinned
+ * release does not have.
+ *
+ * This is the failure worth catching, and it is a quiet one. GitHub does not
+ * fail a job that passes an undeclared input — it warns and carries on — so the
+ * step runs with that input simply absent. A job asking for a specific `ref`
+ * gets the event's default checkout instead, and nothing in the run says why.
+ *
+ * It is deliberately narrower than comparing the whole file. Most changes to
+ * `action.yml` are bumps to the actions it wraps, which alter no input and
+ * break no workflow; failing on those would block Dependabot's bumps, and
+ * those bumps cannot be released until they have merged, so the gate would be
+ * unpassable for exactly the automation the pin manifest exists to serve.
+ *
+ * @throws naming the inputs that are not in the release yet.
+ */
+export function assertWorkflowInputsAvailable(
   pin: ActionPinFile,
-  workingTree: string,
-): Promise<void> {
-  const { version } = pin;
-  if (await actionDigest(workingTree) === pin.digest) return;
+  used: Iterable<string>,
+): void {
+  const available = new Set(pin.inputs);
+  const missing = [...new Set(used)].filter((name) => !available.has(name))
+    .sort();
+  if (missing.length === 0) return;
   throw new Error(
-    `action.yml has changed since ${version}, which is the release every ` +
-      `generated workflow runs. Until it is re-released those jobs use the ` +
-      `old action: a new input is ignored rather than honoured, and a new ` +
-      `guard is absent rather than enforcing. Run \`./zuke actionRelease\` ` +
-      `on master to cut the next version, then commit the pin and the ` +
-      `regenerated workflows.`,
+    `the generated workflows pass ${missing.join(", ")} to ${ACTION_SLUG}, ` +
+      `which ${pin.version} does not accept. GitHub ignores an undeclared ` +
+      `input rather than failing on it, so those jobs would quietly run ` +
+      `without it. Run \`./zuke actionRelease\` on master to release the ` +
+      `current action.yml, then commit the pin and regenerate.`,
   );
 }
 
@@ -370,11 +464,19 @@ export async function releaseAction(
   const major = majorTag(version);
   const sha = await deps.headSha();
 
+  // Read once, so the inputs and the digest describe the same bytes.
+  const source = await deps.actionSource();
+
   // The pin lands before the tag, so a failure between them leaves a tree that
   // names a version nobody can resolve — loud — rather than a published tag
   // that nothing references, which would look like success.
   await deps.writePin(
-    pinFor(sha, version, await actionDigest(await deps.actionSource())),
+    pinFor(
+      sha,
+      version,
+      declaredInputs(source),
+      await actionDigest(source),
+    ),
   );
 
   await deps.tag(version, `Zuke Build action ${version}`, false);

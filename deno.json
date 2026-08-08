@@ -55,6 +55,9 @@
     "packages/ai",
     "packages/otel"
   ],
+  "imports": {
+    "@std/yaml": "jsr:@std/yaml@^1.2.0"
+  },
   "tasks": {
     "zuke": "deno run -A --frozen zuke.ts",
     "test": "GITHUB_STEP_SUMMARY= deno test -A --frozen",

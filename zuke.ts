@@ -51,9 +51,11 @@ import { DocsTasks } from "@zuke/docs";
 import {
   ACTION_PIN,
   ACTION_VERSION_FILE,
-  assertPinnedActionMatches,
+  assertWorkflowInputsAvailable,
   pinnedSha,
   releaseAction,
+  releaseIsOwed,
+  workflowActionInputs,
 } from "./build/action_release.ts";
 import { localVersion, PACKAGES } from "./build/packages.ts";
 import {
@@ -587,22 +589,50 @@ class ZukeBuild extends Build {
     });
 
   actionPinCheck = target()
-    .description("Verify the pinned action release matches this action.yml")
+    .description("Verify the workflows only use inputs the released action has")
     .executes(async () => {
-      // Against the recorded digest, not against git. The first version of
-      // this asked git for the pinned commit's copy, which is absent from a
-      // shallow CI checkout — so it skipped itself and reported success,
-      // verifying nothing in the one place the drift would land. The pinned
-      // SHA is still validated, since a malformed one means the generated
-      // workflows are unpinned whatever the digest says.
+      // A malformed pin means the generated workflows are unpinned whatever
+      // else is true, so that is checked first and separately.
       pinnedSha(ACTION_PIN);
-      await assertPinnedActionMatches(
-        ACTION_PIN,
-        await FileTasks.readText(repoRoot("action.yml")),
-      );
+
+      // What the workflows actually pass, read back out of the committed
+      // files rather than from the build that wrote them — the point is to
+      // catch a workflow that is on disk asking for something the pinned
+      // release cannot honour.
+      const used = new Set<string>();
+      for (const file of await glob(".github/workflows/*.yml")) {
+        for (
+          const name of workflowActionInputs(await FileTasks.readText(file))
+        ) {
+          used.add(name);
+        }
+      }
+      assertWorkflowInputsAvailable(ACTION_PIN, used);
       ConsoleTasks.success(
-        `action.yml matches the pinned release ${ACTION_PIN.version}.`,
+        `the workflows use ${used.size} input(s), all present in ` +
+          `${ACTION_PIN.version}.`,
       );
+
+      // Reported, not failed. A change that adds no input breaks no workflow —
+      // it simply has not reached consumers yet, and it cannot until the tag
+      // moves, which cannot happen until it has merged. Failing on it is what
+      // made the first version of this check unpassable on any pull request
+      // that touched the file, Dependabot's included.
+      if (
+        await releaseIsOwed(
+          ACTION_PIN,
+          await FileTasks.readText(
+            repoRoot("action.yml"),
+          ),
+        )
+      ) {
+        ConsoleTasks.warn(
+          `action.yml has changed since ${ACTION_PIN.version} in a way no ` +
+            `workflow passes — a guard, a step, a bumped pin. Consumers get ` +
+            `it when the tag moves: run \`./zuke actionRelease\` on master ` +
+            `after this merges.`,
+        );
+      }
     });
 
   ci = target()

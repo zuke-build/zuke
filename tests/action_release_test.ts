@@ -18,8 +18,9 @@ import {
   ACTION_VERSION_FILE,
   actionDigest,
   type ActionPinFile,
-  assertPinnedActionMatches,
   assertReleasable,
+  assertWorkflowInputsAvailable,
+  declaredInputs,
   draftReleaseUrl,
   latestVersion,
   majorTag,
@@ -29,12 +30,29 @@ import {
   pinnedSha,
   releaseAction,
   type ReleaseActionDeps,
+  releaseIsOwed,
+  workflowActionInputs,
 } from "../build/action_release.ts";
 
 const SHA = "a".repeat(40);
 
-/** A well-formed SHA-256, for the pin-file digest. */
-const DIGEST = "b".repeat(64);
+/** The inputs a pin records, for tests that do not care which. */
+const INPUTS = ["target", "ref"];
+
+/** A well-formed SHA-256, for the pin file digest. */
+const DIGEST = "c".repeat(64);
+
+/** A manifest declaring {@link INPUTS}, for the release fakes. */
+const MANIFEST = `name: "Zuke Build"
+inputs:
+  target:
+    description: "x"
+  ref:
+    description: "y"
+
+runs:
+  using: composite
+`;
 
 /** A recording set of dependencies, with everything defaulted to a no-op. */
 function fakeDeps(overrides: Partial<ReleaseActionDeps> = {}): {
@@ -54,7 +72,7 @@ function fakeDeps(overrides: Partial<ReleaseActionDeps> = {}): {
     tags: () => Promise.resolve([]),
     changedSince: () => Promise.resolve(true),
     headSha: () => Promise.resolve(SHA),
-    actionSource: () => Promise.resolve('name: "Zuke Build"\n'),
+    actionSource: () => Promise.resolve(MANIFEST),
     tag: (t, _m, force) => {
       calls.push(`tag:${t}${force ? ":force" : ""}`);
       return Promise.resolve();
@@ -110,10 +128,13 @@ Deno.test("a pin must carry a full commit SHA", () => {
   // A short SHA or a tag in the generated workflows would be an unpinned
   // reference, which is the thing the pin arrangement exists to prevent — and
   // supply-chain scanners flag it.
-  assertEquals(pinFor(SHA, "v1.0.0", DIGEST).ref, `zuke-build/zuke@${SHA}`);
-  assertEquals(pinFor(SHA, "v1.0.0", DIGEST).version, "v1.0.0");
-  assertThrows(() => pinFor("abc1234", "v1.0.0", DIGEST));
-  assertThrows(() => pinFor("v1.0.0", "v1.0.0", DIGEST));
+  assertEquals(
+    pinFor(SHA, "v1.0.0", INPUTS, DIGEST).ref,
+    `zuke-build/zuke@${SHA}`,
+  );
+  assertEquals(pinFor(SHA, "v1.0.0", INPUTS, DIGEST).version, "v1.0.0");
+  assertThrows(() => pinFor("abc1234", "v1.0.0", INPUTS, DIGEST));
+  assertThrows(() => pinFor("v1.0.0", "v1.0.0", INPUTS, DIGEST));
 });
 
 Deno.test("an unchanged action.yml releases nothing", async () => {
@@ -234,41 +255,11 @@ Deno.test("a pin version must be exactly a release tag", () => {
   // and that comment is not escaped — so a newline would emit a stray line
   // into six workflow files. JavaScript's `$` matches before a trailing
   // newline, which is exactly how such a value would slip through.
-  assertEquals(pinFor(SHA, "v1.2.3", DIGEST).version, "v1.2.3");
-  assertThrows(() => pinFor(SHA, "v1.0.0\n", DIGEST));
-  assertThrows(() => pinFor(SHA, "v1.0.0 # comment", DIGEST));
-  assertThrows(() => pinFor(SHA, "latest", DIGEST));
-  assertThrows(() => pinFor(SHA, "", DIGEST));
-});
-
-Deno.test("a pinned release that differs from this action.yml is rejected", async () => {
-  // The generated workflows run the *pinned* action, not the file beside them.
-  // Nothing else notices when the two diverge, and every other test in this
-  // repository asserts against the working tree — so they stay green while an
-  // input added here is silently ignored there and a guard added here protects
-  // nobody.
-  const yaml = 'name: "Zuke Build"\n';
-  const pin = pinFor(SHA, "v1.2.3", await actionDigest(yaml));
-
-  // Identical content passes.
-  await assertPinnedActionMatches(pin, yaml);
-
-  // A drift — an input added but not yet released — does not.
-  let message = "";
-  try {
-    await assertPinnedActionMatches(pin, `${yaml}inputs:\n  ref:\n`);
-  } catch (error) {
-    message = error instanceof Error ? error.message : String(error);
-  }
-  // The message has to name the version and the fix; a bare mismatch tells
-  // nobody what to do.
-  assertStringIncludes(message, "v1.2.3");
-  assertStringIncludes(message, "actionRelease");
-
-  // Line endings do not count as a drift. A Windows checkout can materialise
-  // the file with CRLF, and a digest that moved with it would fail the gate on
-  // one platform and pass on another — reporting a drift that does not exist.
-  await assertPinnedActionMatches(pin, yaml.replace(/\n/g, "\r\n"));
+  assertEquals(pinFor(SHA, "v1.2.3", INPUTS, DIGEST).version, "v1.2.3");
+  assertThrows(() => pinFor(SHA, "v1.0.0\n", INPUTS, DIGEST));
+  assertThrows(() => pinFor(SHA, "v1.0.0 # comment", INPUTS, DIGEST));
+  assertThrows(() => pinFor(SHA, "latest", INPUTS, DIGEST));
+  assertThrows(() => pinFor(SHA, "", INPUTS, DIGEST));
 });
 
 Deno.test("a malformed pin names the file rather than throwing a TypeError", () => {
@@ -278,12 +269,22 @@ Deno.test("a malformed pin names the file rather than throwing a TypeError", () 
   // lines later, from inside the gate check — the least useful place to learn
   // that a file needs fixing.
   assertEquals(
-    pinnedSha({ ref: `zuke-build/zuke@${SHA}`, version: "v1", digest: DIGEST }),
+    pinnedSha({
+      ref: `zuke-build/zuke@${SHA}`,
+      version: "v1",
+      inputs: INPUTS,
+      digest: DIGEST,
+    }),
     SHA,
   );
   let message = "";
   try {
-    pinnedSha({ ref: "zuke-build/zuke", version: "v1.0.0", digest: DIGEST });
+    pinnedSha({
+      ref: "zuke-build/zuke",
+      version: "v1.0.0",
+      inputs: INPUTS,
+      digest: DIGEST,
+    });
   } catch (error) {
     message = error instanceof Error ? error.message : String(error);
   }
@@ -291,6 +292,253 @@ Deno.test("a malformed pin names the file rather than throwing a TypeError", () 
   assertStringIncludes(message, "40-character-sha");
   // A short SHA is malformed for the same reason `pinFor` rejects one.
   assertThrows(() =>
-    pinnedSha({ ref: "zuke-build/zuke@abc1234", version: "v1", digest: DIGEST })
+    pinnedSha({
+      ref: "zuke-build/zuke@abc1234",
+      version: "v1",
+      inputs: INPUTS,
+      digest: DIGEST,
+    })
   );
+});
+
+Deno.test("input names are read out of an action manifest", () => {
+  const manifest = `name: "Zuke Build"
+inputs:
+  target:
+    description: "x"
+    default: ""
+  # a comment inside the block
+
+  egress-policy:
+    description: "y"
+
+runs:
+  using: composite
+  steps:
+    - name: not-an-input
+`;
+  // The keys of `inputs:`, and nothing from `runs:` — a step's name is two
+  // levels deep in a different block and would otherwise read as an input.
+  assertEquals(declaredInputs(manifest), ["target", "egress-policy"]);
+  assertEquals(declaredInputs('name: "x"\nruns:\n  using: composite\n'), []);
+});
+
+Deno.test("a workflow's inputs are read only from the action's own steps", () => {
+  const yaml = `jobs:
+  gate:
+    steps:
+      - name: Harden and check out with Zuke
+        uses: zuke-build/zuke@${SHA} # v1.0.1
+        with:
+          egress-policy: block
+          ref: main
+      - name: Something else
+        uses: actions/checkout@${SHA}
+        with:
+          fetch-depth: "0"
+          repository: other/repo
+      - run: ./zuke ci
+`;
+  // Counting every `with:` in the file would compare another action's inputs
+  // against this action's list and reject the workflow for having a checkout
+  // in it.
+  assertEquals(workflowActionInputs(yaml), ["egress-policy", "ref"]);
+});
+
+Deno.test("an input the pinned release lacks fails, naming it", () => {
+  // The failure this exists for, and it is a quiet one: GitHub warns on an
+  // undeclared input and carries on, so the job runs without it and nothing
+  // says why.
+  const pin = pinFor(SHA, "v1.0.0", ["target", "egress-policy"], DIGEST);
+  assertWorkflowInputsAvailable(pin, ["target", "egress-policy"]);
+  let message = "";
+  try {
+    assertWorkflowInputsAvailable(pin, ["target", "ref", "deno-version"]);
+  } catch (error) {
+    message = error instanceof Error ? error.message : String(error);
+  }
+  assertStringIncludes(message, "deno-version, ref");
+  assertStringIncludes(message, "v1.0.0");
+  assertStringIncludes(message, "actionRelease");
+});
+
+Deno.test("a change that alters no input does not fail the check", () => {
+  // The reason this is not a digest of the whole file. Most changes to
+  // action.yml are bumps to the actions it wraps — Dependabot's weekly work —
+  // which alter no input and break no workflow. Failing on those blocked the
+  // bot's own pull requests, and those bumps cannot be released until they
+  // have merged, so the gate was unpassable for the automation the pin
+  // manifest exists to serve.
+  const before = pinFor(
+    SHA,
+    "v1.0.1",
+    declaredInputs(`inputs:
+  target:
+    description: "x"
+runs:
+  steps:
+    - uses: step-security/harden-runner@${"a".repeat(40)}
+`),
+    DIGEST,
+  );
+  const afterBump = declaredInputs(`inputs:
+  target:
+    description: "x"
+runs:
+  steps:
+    - uses: step-security/harden-runner@${"b".repeat(40)}
+`);
+  assertEquals(before.inputs, afterBump);
+  assertWorkflowInputsAvailable(before, afterBump);
+});
+
+Deno.test("a release must declare at least one input", () => {
+  // The check compares what the workflows pass against this list, so an empty
+  // one would reject every workflow that configures anything.
+  assertThrows(() => pinFor(SHA, "v1.0.0", [], DIGEST));
+});
+
+Deno.test("the committed pin lists the inputs action.yml declares", () => {
+  // The two are written together by `actionRelease`, and drift between them is
+  // exactly what the gate check reads. This asserts the committed pair agree
+  // on the *shape* — the gate asserts the workflows fit inside it.
+  const pin: ActionPinFile = JSON.parse(
+    Deno.readTextFileSync(ACTION_VERSION_FILE),
+  );
+  assertEquals(pin.inputs.length > 0, true);
+  for (const name of pin.inputs) {
+    assertEquals(
+      /^[a-z][a-z0-9-]*$/.test(name),
+      true,
+      `${ACTION_VERSION_FILE} records an input that is not a name: ${name}`,
+    );
+  }
+});
+
+Deno.test("every YAML shape that broke the line reader now parses", () => {
+  // Five review findings and four fixes came out of reading these files line by
+  // line: a comment ended the block, flow style read as empty, a folded scalar
+  // ended the block, a nested value contributed its own keys. Three were silent
+  // under-reports, which is the outcome this check cannot afford — an input it
+  // fails to see is an input nobody checks. Parsing removes the class, and this
+  // is the list it has to stay removed for.
+  const wf = (withBlock: string) =>
+    `name: CI
+jobs:
+  gate:
+    steps:
+      - uses: zuke-build/zuke@${SHA}
+${withBlock}      - run: ./zuke ci
+`;
+
+  const plain =
+    "        with:\n          egress-policy: block\n          ref: main\n";
+  assertEquals(workflowActionInputs(wf(plain)), ["egress-policy", "ref"]);
+
+  // A comment used to end the block, hiding every input below it.
+  assertEquals(
+    workflowActionInputs(
+      wf(
+        "        with:\n          egress-policy: block\n          # why\n          ref: main\n",
+      ),
+    ),
+    ["egress-policy", "ref"],
+  );
+
+  // A folded scalar's lines are host:port pairs, which used to look like the
+  // end of the block and lose everything after it.
+  assertEquals(
+    workflowActionInputs(
+      wf(
+        "        with:\n          allowed-endpoints: >\n            deno.land:443\n            jsr.io:443\n          ref: main\n",
+      ),
+    ),
+    ["allowed-endpoints", "ref"],
+  );
+
+  // Flow style and quoted keys used to be refused outright, because reading
+  // them wrong would have under-reported. They simply work now.
+  assertEquals(
+    workflowActionInputs(
+      wf("        with: { egress-policy: block, ref: main }\n"),
+    ),
+    ["egress-policy", "ref"],
+  );
+  assertEquals(
+    workflowActionInputs(
+      wf(
+        '        with:\n          "egress-policy": block\n          ref: main\n',
+      ),
+    ),
+    ["egress-policy", "ref"],
+  );
+
+  // A nested value used to contribute its own keys as inputs nobody passes.
+  assertEquals(
+    workflowActionInputs(
+      wf(
+        "        with:\n          config:\n            key: value\n          ref: main\n",
+      ),
+    ),
+    ["config", "ref"],
+  );
+});
+
+Deno.test("only this action's own steps count", () => {
+  // Every step has a `with:`. Counting them all would compare another action's
+  // inputs against this action's list and reject every workflow for having a
+  // checkout in it.
+  const yaml = `name: CI
+jobs:
+  gate:
+    steps:
+      - uses: zuke-build/zuke@${SHA}
+        with:
+          ref: main
+      - uses: actions/checkout@${SHA}
+        with:
+          fetch-depth: "0"
+          repository: other/repo
+      - run: ./zuke ci
+`;
+  assertEquals(workflowActionInputs(yaml), ["ref"]);
+});
+
+Deno.test("a manifest's inputs parse whatever the style", () => {
+  assertEquals(
+    declaredInputs("name: x\ninputs:\n  target:\n    description: y\n  ref:\n"),
+    ["target", "ref"],
+  );
+  // Four-space indent, which the line reader silently returned nothing for
+  // until it learnt to take the indent from the first entry.
+  assertEquals(
+    declaredInputs("name: x\ninputs:\n    target:\n        description: y\n"),
+    ["target"],
+  );
+  // Flow style, which the line reader had to refuse.
+  assertEquals(declaredInputs("name: x\ninputs: { target: {} }\n"), ["target"]);
+  // No inputs at all is an empty list, not an error — `pinFor` is what refuses
+  // to pin that, with a message about the release.
+  assertEquals(declaredInputs("name: x\nruns:\n  using: composite\n"), []);
+});
+
+Deno.test("a change no workflow can see is reported, not failed", () => {
+  // The counterpart to the input check, and the reason both exist. Inputs cover
+  // what breaks a workflow now; this covers what a workflow cannot see at all —
+  // a guard added to the action, a step reordered — which reaches consumers
+  // only when the tag moves. Left unreleased that is release lag, not a fault,
+  // and failing on it is what made the first version of this check unpassable
+  // on any pull request that touched the file.
+  const source = 'name: "Zuke Build"\ninputs:\n  target:\n';
+  return actionDigest(source).then(async (digest) => {
+    const pin = pinFor(SHA, "v1.0.1", ["target"], digest);
+    assertEquals(await releaseIsOwed(pin, source), false);
+    assertEquals(await releaseIsOwed(pin, `${source}# a new guard\n`), true);
+    // CRLF is not a change. A Windows checkout would otherwise report a drift
+    // that exists on one platform and not the other.
+    assertEquals(
+      await releaseIsOwed(pin, source.replace(/\n/g, "\r\n")),
+      false,
+    );
+  });
 });
