@@ -22,17 +22,11 @@ jobs:
           - macos-latest
           - windows-latest
     steps:
-      - name: Harden the runner
-        uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
+      - name: Harden and check out with Zuke
+        uses: zuke-build/zuke@7a62523bb4569e4d90e972dee74bf9cf09cd436f # v1.0.1
         with:
           egress-policy: audit
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
           persist-credentials: "false"
-      - name: Set up Deno
-        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
-        with:
           deno-version: v2.8.3
       - name: Run the subprocess e2e suite
         run: deno run -A --frozen zuke.ts integration

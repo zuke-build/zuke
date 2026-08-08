@@ -616,6 +616,11 @@ interface AiReviewWorkflowSpec
     Adopt the richer form once the floor moves past that release.
   checkout?: string
     The pinned `actions/checkout@<sha>` to check the repository out with.
+  bootstrap?: CiBootstrap | false
+    The prelude action the job starts with — one step that hardens and checks
+    out. Defaults to the `zuke-build/zuke` action core renders; pass `false` to
+    get {@link hardenRunner} and {@link checkout} as two separate steps
+    instead, which is what those two options configure.
   path?: string
     Output path. Defaults to the host's conventional location.
   name?: string

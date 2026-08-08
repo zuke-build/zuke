@@ -979,9 +979,10 @@ Deno.test("invokes: discoverCiFiles resolves the jobs, so render() sees them", (
   assertStringIncludes(file.render(), "name: The gate");
 });
 
-Deno.test("pins: hardening and checkout are the default prelude", () => {
-  // With a resolver, a workflow says nothing about hardening or checkout and
-  // gets both — the prelude nearly every job needs.
+Deno.test("the prelude is one action, resolved through the pins hook", () => {
+  // Hardening, checkout and Deno setup are one prelude, not three decisions,
+  // so they render as the one action that performs them. The resolver is asked
+  // for it by name like any other, which is what lets a repository pin it.
   class B extends Build {
     gate = target().executes(() => {});
     wf = cicd({
@@ -991,8 +992,10 @@ Deno.test("pins: hardening and checkout are the default prelude", () => {
   }
   const [file] = discoverCiFiles(new B());
   const yaml = file.render();
-  assertStringIncludes(yaml, `step-security/harden-runner@${"a".repeat(40)}`);
-  assertStringIncludes(yaml, `actions/checkout@${"a".repeat(40)}`);
+  assertStringIncludes(yaml, `zuke-build/zuke@${"a".repeat(40)}`);
+  // The steps it replaces must be gone, not merely joined by a third.
+  assertEquals(yaml.includes("step-security/harden-runner"), false);
+  assertEquals(yaml.includes("actions/checkout"), false);
   assertStringIncludes(yaml, "egress-policy: audit");
 });
 
@@ -1009,16 +1012,24 @@ Deno.test("pins: a job adjusts the policy without naming the action again", () =
   }
   const [file] = discoverCiFiles(new B());
   const yaml = file.render();
-  assertStringIncludes(yaml, `harden-runner@${"b".repeat(40)}`);
+  // The `harden` option is unchanged as the authoring surface; what changed is
+  // that it configures the prelude action rather than a step of its own.
+  assertStringIncludes(yaml, `zuke-build/zuke@${"b".repeat(40)}`);
+  assertStringIncludes(yaml, "egress-policy: block");
   assertStringIncludes(yaml, 'allowed-endpoints: "jsr.io:443"');
 });
 
 Deno.test("pins: a missing pin is a friendly error, never an unpinned use", () => {
   // Emitting `uses:` with no ref would produce a floating reference that
   // supply-chain scanners reject, so this must fail rather than degrade.
+  //
+  // Only reachable with the prelude action turned off: with it on, an
+  // unpinned `harden: {}` is rendered by an action that carries its own pin,
+  // which is the point of it being the default.
   let threw = "";
   try {
     generateCi({
+      bootstrap: false,
       harden: {},
       jobs: [{ steps: [{ run: "x" }] }],
     }, "github");
@@ -1026,6 +1037,13 @@ Deno.test("pins: a missing pin is a friendly error, never an unpinned use", () =
     threw = error instanceof Error ? error.message : String(error);
   }
   assertStringIncludes(threw, "needs a pinned action");
+
+  // And with the prelude on, the same declaration is pinned rather than fatal.
+  const yaml = generateCi({
+    harden: {},
+    jobs: [{ steps: [{ run: "x" }] }],
+  }, "github");
+  assertEquals(/uses: zuke-build\/zuke@[0-9a-f]{40}/.test(yaml), true);
 });
 
 Deno.test("the workflow path comes from the field it is declared on", () => {
@@ -1058,4 +1076,101 @@ Deno.test("provider defaults to github, and permissions to read-only", () => {
     jobs: [{ steps: [{ run: "x" }] }],
   }, "github");
   assertStringIncludes(none, "permissions: {}");
+});
+
+Deno.test("the prelude action needs no resolver, since it carries its own pin", () => {
+  // Hardening and checkout stay off without a resolver, because there is no
+  // reference to render them with. The prelude action is different: it ships a
+  // pin, so a build that configures nothing still gets the standard opening.
+  class B extends Build {
+    gate = target().executes(() => {});
+    wf = cicd({ invokes: [this.gate] });
+  }
+  const yaml = discoverCiFiles(new B())[0].render();
+  assertStringIncludes(yaml, "uses: zuke-build/zuke@");
+  // With its version comment, so a bot's bump to this file reads as newer than
+  // the constant and is not reverted by the next regeneration.
+  assertEquals(/uses: zuke-build\/zuke@[0-9a-f]{40} # v\d/.test(yaml), true);
+});
+
+Deno.test("bootstrap: false renders the separate steps it replaced", () => {
+  // The escape hatch for a repository that cannot use a Marketplace action.
+  class B extends Build {
+    gate = target().executes(() => {});
+    wf = cicd({
+      pins: (action) => `${action}@${"c".repeat(40)}`,
+      pipeline: { bootstrap: false },
+      invokes: [this.gate],
+    });
+  }
+  const yaml = discoverCiFiles(new B())[0].render();
+  assertEquals(yaml.includes("zuke-build/zuke"), false);
+  assertStringIncludes(yaml, `step-security/harden-runner@${"c".repeat(40)}`);
+  assertStringIncludes(yaml, `actions/checkout@${"c".repeat(40)}`);
+});
+
+Deno.test("a job that declines either half falls back to the separate steps", () => {
+  // One action cannot do half of itself, so `harden: false` — a job that
+  // deliberately exercises the bootstrap launchers, say — must still be able to
+  // opt out. Falling back is what keeps every pre-existing opt-out working.
+  class B extends Build {
+    gate = target().executes(() => {});
+    other = target().executes(() => {});
+    wf = cicd({
+      pins: (action) => `${action}@${"d".repeat(40)}`,
+      invokes: [
+        { target: this.gate, harden: false },
+        { target: this.other, checkout: false },
+      ],
+    });
+  }
+  const yaml = discoverCiFiles(new B())[0].render();
+  // Neither job may render the action, and each keeps the half it wanted.
+  assertEquals(yaml.includes("zuke-build/zuke"), false);
+  assertStringIncludes(yaml, `actions/checkout@${"d".repeat(40)}`);
+  assertStringIncludes(yaml, `step-security/harden-runner@${"d".repeat(40)}`);
+});
+
+Deno.test("every prelude option maps onto the action's own input names", () => {
+  // The point of the substitution: a build declares the same things it always
+  // did, and only the step count changes.
+  class B extends Build {
+    gate = target().executes(() => {});
+    wf = cicd({
+      pins: (action) => `${action}@${"e".repeat(40)}`,
+      invokes: [{
+        target: this.gate,
+        harden: { egress: "block", allowedEndpoints: ["jsr.io:443", "x:443"] },
+        checkout: { persistCredentials: true, fetchDepth: 0, ref: "main" },
+        bootstrap: { denoVersion: "v2.8.3" },
+      }],
+    });
+  }
+  const yaml = discoverCiFiles(new B())[0].render();
+  assertStringIncludes(yaml, "egress-policy: block");
+  assertStringIncludes(yaml, 'allowed-endpoints: "jsr.io:443 x:443"');
+  assertStringIncludes(yaml, 'persist-credentials: "true"');
+  assertStringIncludes(yaml, 'fetch-depth: "0"');
+  assertStringIncludes(yaml, "ref: main");
+  // Deno setup folds in too, so the third step disappears with the other two.
+  assertStringIncludes(yaml, "deno-version: v2.8.3");
+  assertEquals(yaml.includes("denoland/setup-deno"), false);
+});
+
+Deno.test("the two security-relevant inputs are always stated", () => {
+  // Even when they match the action's own defaults, exactly as the two steps
+  // this replaced stated them. Whether a job records egress or enforces it, and
+  // whether it leaves a usable credential behind, are what a reader of a
+  // generated workflow most needs to see without opening the action to find out
+  // what an absent input means.
+  class B extends Build {
+    gate = target().executes(() => {});
+    wf = cicd({
+      pins: (action) => `${action}@${"f".repeat(40)}`,
+      invokes: [this.gate],
+    });
+  }
+  const yaml = discoverCiFiles(new B())[0].render();
+  assertStringIncludes(yaml, "egress-policy: audit");
+  assertStringIncludes(yaml, 'persist-credentials: "false"');
 });

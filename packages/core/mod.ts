@@ -311,6 +311,7 @@ export {
 export {
   CHECKOUT_ACTION,
   type CiActionRef,
+  type CiBootstrap,
   cicd,
   type CiCheckout,
   type CiConcurrency,
@@ -335,5 +336,6 @@ export {
   generateCi,
   HARDEN_RUNNER_ACTION,
   syncCiFiles,
+  ZUKE_ACTION,
 } from "./src/ci.ts";
 export { type ScheduleEntry } from "./src/ci_schedule.ts";

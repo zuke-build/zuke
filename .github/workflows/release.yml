@@ -17,13 +17,10 @@ jobs:
       pull-requests: write
     timeout-minutes: 15
     steps:
-      - name: Harden the runner
-        uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
+      - name: Harden and check out with Zuke
+        uses: zuke-build/zuke@7a62523bb4569e4d90e972dee74bf9cf09cd436f # v1.0.1
         with:
           egress-policy: audit
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
           persist-credentials: "false"
       - name: Run release with Zuke
         run: ./zuke release
@@ -39,13 +36,10 @@ jobs:
       - release
     timeout-minutes: 30
     steps:
-      - name: Harden the runner
-        uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
+      - name: Harden and check out with Zuke
+        uses: zuke-build/zuke@7a62523bb4569e4d90e972dee74bf9cf09cd436f # v1.0.1
         with:
           egress-policy: audit
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
           persist-credentials: "false"
       - name: Run publishJsr with Zuke
         run: ./zuke publishJsr
@@ -58,15 +52,12 @@ jobs:
       - publishJsr
     timeout-minutes: 15
     steps:
-      - name: Harden the runner
-        uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
+      - name: Harden and check out with Zuke
+        uses: zuke-build/zuke@7a62523bb4569e4d90e972dee74bf9cf09cd436f # v1.0.1
         with:
           egress-policy: block
-          allowed-endpoints: "deno.land:443 dl.deno.land:443 jsr.io:443 registry.npmjs.org:443 api.github.com:443 github.com:443 codeload.github.com:443 objects.githubusercontent.com:443 release-assets.githubusercontent.com:443"
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
           persist-credentials: "false"
+          allowed-endpoints: "deno.land:443 dl.deno.land:443 jsr.io:443 registry.npmjs.org:443 api.github.com:443 github.com:443 codeload.github.com:443 objects.githubusercontent.com:443 release-assets.githubusercontent.com:443"
       - name: Run syncWebsite with Zuke
         run: ./zuke syncWebsite
         env:

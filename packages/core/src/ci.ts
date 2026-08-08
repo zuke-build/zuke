@@ -171,6 +171,40 @@ export interface CiCheckout {
   name?: string;
 }
 
+/**
+ * The single step every GitHub job starts with: the `zuke-build/zuke` composite
+ * action, which hardens the runner, checks the repository out, and installs
+ * Deno if asked — the three steps a Zuke job used to spell out separately.
+ *
+ * It is the default because those three are not three decisions. They are one
+ * prelude whose parts only work in one order, and writing them out three times
+ * per workflow meant three pinned SHAs to keep current in every generated file
+ * rather than one, inside an action that is itself versioned and tested.
+ *
+ * The {@link CiHardenRunner} and {@link CiCheckout} options are still how a job
+ * configures it — they become the action's inputs. What changes is how many
+ * steps that renders, not what a build declares. A job that opts out of either
+ * with `harden: false` or `checkout: false` falls back to the separate steps,
+ * since one action cannot do half of itself.
+ */
+export interface CiBootstrap {
+  /**
+   * The pinned action reference. Defaults to the release this version of Zuke
+   * was built against, or to whatever a `pins` resolver returns for
+   * {@link ZUKE_ACTION} — which is the form to prefer, because a pin baked into
+   * a published package goes stale between releases and a bot's bump to the
+   * generated file would be reverted by the next regeneration.
+   */
+  action?: CiUses;
+  /**
+   * Install this Deno version, for a job that runs `deno` directly rather than
+   * through the `./zuke` launcher (which bootstraps its own).
+   */
+  denoVersion?: string;
+  /** The step name. Defaults to `"Harden and check out with Zuke"`. */
+  name?: string;
+}
+
 /** A job: a named unit of work with steps, optionally fanned out by a matrix. */
 export interface CiJob {
   /** Stable identifier, used as the job key and as a dependency target. Defaults to `"build"`. */
@@ -210,6 +244,11 @@ export interface CiJob {
    * {@link CiPipeline.checkout}; pass `false` to opt out.
    */
   checkout?: CiCheckout | false;
+  /**
+   * The prelude action for this job. Overrides {@link CiPipeline.bootstrap};
+   * pass `false` to render hardening and checkout as separate steps instead.
+   */
+  bootstrap?: CiBootstrap | false;
   /** Environment variables for the job. */
   env?: Record<string, string>;
   /**
@@ -301,6 +340,12 @@ export interface CiPipeline {
    * with `checkout: false`. GitHub only.
    */
   checkout?: CiCheckout;
+  /**
+   * The prelude action every job starts with, unless a job says otherwise with
+   * `bootstrap: false`. Defaults to the `zuke-build/zuke` action; see
+   * {@link CiBootstrap}. GitHub only.
+   */
+  bootstrap?: CiBootstrap | false;
   /** The jobs to run. Defaults to a single `build` job that runs the build. */
   jobs?: CiJob[];
 }
@@ -387,11 +432,30 @@ function githubTrigger(branches: string[], types?: string[]): YamlValue {
  * says otherwise, because that is the prelude nearly every job needs.
  */
 function withPins(pipeline: CiPipeline, pins?: CiPinResolver): CiPipeline {
-  if (pins === undefined) return pipeline;
+  // The prelude action defaults on whether or not a resolver exists, because it
+  // carries its own pin — unlike hardening and checkout, which have no
+  // reference to render without one and so stay off below.
+  //
+  // Decided from the pipeline as the caller wrote it, before the resolver fills
+  // anything in: once `harden.action` has been filled from `pins`, there is no
+  // way to tell it apart from one the caller pinned deliberately — and those
+  // two mean opposite things.
+  const pinnedSeparately = pipeline.harden?.action !== undefined ||
+    pipeline.checkout?.action !== undefined;
+  const bootstrap = pipeline.bootstrap === undefined
+    ? (pinnedSeparately ? false : {})
+    : pipeline.bootstrap;
+  const resolved = bootstrap === false ? false : {
+    ...bootstrap,
+    action: bootstrap.action ?? pins?.(ZUKE_ACTION) ?? DEFAULT_ZUKE_ACTION,
+  };
+
+  if (pins === undefined) return { ...pipeline, bootstrap: resolved };
   const harden = pipeline.harden ?? {};
   const checkout = pipeline.checkout ?? {};
   return {
     ...pipeline,
+    bootstrap: resolved,
     harden: { ...harden, action: harden.action ?? pins(HARDEN_RUNNER_ACTION) },
     checkout: {
       ...checkout,
@@ -411,7 +475,88 @@ function withPins(pipeline: CiPipeline, pins?: CiPinResolver): CiPipeline {
           action: job.checkout.action ?? pins(CHECKOUT_ACTION),
         }
         : job.checkout,
+      // Same rule per job: an action named on either half means those two
+      // actions were asked for by name.
+      bootstrap: jobBootstrap(job, pins),
     })),
+  };
+}
+
+/**
+ * A job's prelude action once the same rule the pipeline uses has been applied
+ * to it: an action named on either half means those two actions were asked for
+ * by name, so the job renders them rather than the one that replaces both.
+ */
+function jobBootstrap(
+  job: CiJob,
+  pins?: CiPinResolver,
+): CiBootstrap | false | undefined {
+  const pinnedSeparately = (job.harden !== false &&
+    job.harden?.action !== undefined) ||
+    (job.checkout !== false && job.checkout?.action !== undefined);
+  const declared = job.bootstrap === undefined
+    ? (pinnedSeparately ? false : undefined)
+    : job.bootstrap;
+  if (declared === false || declared === undefined) return declared;
+  return {
+    ...declared,
+    action: declared.action ?? pins?.(ZUKE_ACTION) ?? DEFAULT_ZUKE_ACTION,
+  };
+}
+
+/**
+ * The prelude action's pin, as this release of Zuke was built against it.
+ *
+ * A fallback, not the intended source. It carries its version comment so that
+ * a bot's bump to a generated workflow reads as newer than this constant — the
+ * failure otherwise is quiet and specific: the bump lands in the file, the next
+ * regeneration writes this stale value back, and the upgrade is silently
+ * reverted. Supplying a `pins` resolver avoids the whole question.
+ */
+const DEFAULT_ZUKE_ACTION: CiUses = {
+  // Spelled out rather than built from {@link ZUKE_ACTION}, which is declared
+  // further down with the other action names and would be in its temporal dead
+  // zone here.
+  ref: "zuke-build/zuke@7a62523bb4569e4d90e972dee74bf9cf09cd436f",
+  version: "v1.0.1",
+};
+
+/**
+ * The one step that stands in for hardening, checkout and Deno setup.
+ *
+ * The inputs are the same values {@link hardenStep} and {@link checkoutStep}
+ * would have rendered, under the names the action publishes them as — so a
+ * build's declaration is unchanged and only the step count differs.
+ */
+function bootstrapStep(
+  bootstrap: CiBootstrap,
+  harden: CiHardenRunner | undefined,
+  checkout: CiCheckout | undefined,
+): CiStep {
+  const inputs: Record<string, string> = {
+    // Both are stated even when they match the action's own defaults, exactly
+    // as the two steps this replaces stated them. Whether a job records egress
+    // or enforces it, and whether it leaves a usable credential behind, are the
+    // two things a reader of a generated workflow most needs to see without
+    // opening the action to look up what an absent input means.
+    "egress-policy": harden?.egress ?? "audit",
+    "persist-credentials": String(checkout?.persistCredentials ?? false),
+  };
+  const allowed = harden?.allowedEndpoints ?? [];
+  // Space-separated on one line: see hardenStep for why this form and not a
+  // newline-separated list.
+  if (allowed.length > 0) inputs["allowed-endpoints"] = allowed.join(" ");
+  if (checkout?.fetchDepth !== undefined) {
+    inputs["fetch-depth"] = String(checkout.fetchDepth);
+  }
+  if (checkout?.ref !== undefined) inputs.ref = checkout.ref;
+  if (bootstrap.denoVersion !== undefined) {
+    inputs["deno-version"] = bootstrap.denoVersion;
+  }
+  return {
+    name: bootstrap.name ?? "Harden and check out with Zuke",
+    uses: bootstrap.action ?? DEFAULT_ZUKE_ACTION,
+    with: inputs,
   };
 }
 
@@ -477,6 +622,41 @@ function jobSteps(job: CiJob, pipeline: CiPipeline): CiStep[] {
   const checkout = job.checkout === undefined
     ? pipeline.checkout
     : job.checkout;
+  // Defaulted here as well as in `withPins`, because not every caller goes
+  // through it: `@zuke/ai` builds its pipeline and calls `generateCi` directly,
+  // and a prelude that appeared only for callers who happened to pass a `pins`
+  // resolver would be a default in name only. `bootstrapStep` supplies the pin
+  // when nothing else has.
+  //
+  // Naming an action on either half opts out, though. Someone who pinned
+  // `harden.action` or `checkout.action` asked for those two actions
+  // specifically, and rendering one action that runs neither would discard a
+  // pin they chose — silently, since the workflow would still look hardened.
+  const declared = job.bootstrap === undefined
+    ? pipeline.bootstrap
+    : job.bootstrap;
+  const pinnedSeparately = (harden !== false && harden?.action !== undefined) ||
+    (checkout !== false && checkout?.action !== undefined);
+  const bootstrap = declared === undefined
+    ? (pinnedSeparately ? false : {})
+    : declared;
+
+  // One action does hardening and checkout together, so it can only stand in
+  // for a job that wants both. A job that declined either — `harden: false` for
+  // one that deliberately exercises the bootstrap launchers, say — gets the
+  // separate steps, because there is no way to ask the action for half of
+  // itself. Every existing opt-out therefore keeps working unchanged.
+  if (bootstrap && harden !== false && checkout !== false) {
+    return [
+      bootstrapStep(
+        bootstrap,
+        harden === undefined ? undefined : harden,
+        checkout === undefined ? undefined : checkout,
+      ),
+      ...(job.steps ?? DEFAULT_STEPS),
+    ];
+  }
+
   return [
     ...(harden ? [hardenStep(harden)] : []),
     ...(checkout ? [checkoutStep(checkout)] : []),
@@ -888,6 +1068,7 @@ function invokedPipeline(
       timeoutMinutes: invocation.timeoutMinutes,
       harden: invocation.harden,
       checkout: invocation.checkout,
+      bootstrap: invocation.bootstrap,
       if: invocation.if,
       steps: [
         ...(invocation.before ?? []),
@@ -988,6 +1169,8 @@ export interface CiInvocation {
   harden?: CiHardenRunner | false;
   /** Check out in this job, overriding the pipeline default. */
   checkout?: CiCheckout | false;
+  /** The prelude action for this job, overriding the pipeline default. */
+  bootstrap?: CiBootstrap | false;
   /** A condition gating the job. */
   if?: string;
   /**
@@ -1030,6 +1213,12 @@ export const HARDEN_RUNNER_ACTION = "step-security/harden-runner";
 
 /** The action a {@link CiCheckout} is generated from when pins are resolved. */
 export const CHECKOUT_ACTION = "actions/checkout";
+
+/**
+ * The name a {@link CiPinResolver} is asked for the prelude action, so a
+ * repository that pins its own actions can pin this one the same way.
+ */
+export const ZUKE_ACTION = "zuke-build/zuke";
 
 /** A CI configuration file declared on a build: a pipeline bound to a path. */
 export interface CiFileSpec {

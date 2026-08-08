@@ -48,7 +48,12 @@ import {
 } from "@zuke/release-please";
 import { SecurityTasks } from "@zuke/security";
 import { DocsTasks } from "@zuke/docs";
-import { ACTION_VERSION_FILE, releaseAction } from "./build/action_release.ts";
+import {
+  ACTION_PIN,
+  ACTION_VERSION_FILE,
+  assertPinnedActionMatches,
+  releaseAction,
+} from "./build/action_release.ts";
 import { localVersion, PACKAGES } from "./build/packages.ts";
 import {
   CODECOV_CLI_VERSION,
@@ -77,7 +82,6 @@ import {
   checkPluginSkillsSync,
   syncPluginSkills,
 } from "./build/plugin_sync.ts";
-import { actionPin } from "./build/action_pins.ts";
 import { actionlintTool, gitleaksTool, zizmorTool } from "./build/scanners.ts";
 import { githubWorkflows } from "./build/workflows.ts";
 
@@ -581,6 +585,33 @@ class ZukeBuild extends Build {
       }
     });
 
+  actionPinCheck = target()
+    .description("Verify the pinned action release matches this action.yml")
+    .executes(async () => {
+      const sha = ACTION_PIN.ref.split("@")[1];
+      const pinned = await GitTasks.run((s) =>
+        s.command("show", `${sha}:action.yml`).noThrow()
+      );
+      if (pinned.code !== 0) {
+        // A shallow checkout may not have the commit. Say so rather than
+        // failing the gate on a fetch depth, which would be an unfixable
+        // failure for whoever hits it.
+        ConsoleTasks.info(
+          `Pinned action commit ${sha.slice(0, 7)} is not in this checkout — ` +
+            `skipping the comparison.`,
+        );
+        return;
+      }
+      assertPinnedActionMatches(
+        pinned.stdout,
+        await FileTasks.readText(repoRoot("action.yml")),
+        ACTION_PIN.version,
+      );
+      ConsoleTasks.success(
+        `action.yml matches the pinned release ${ACTION_PIN.version}.`,
+      );
+    });
+
   ci = target()
     .description("Full pre-commit / CI gate")
     .dependsOn(
@@ -595,6 +626,7 @@ class ZukeBuild extends Build {
       this.hclSyncCheck,
       this.pluginSyncCheck,
       this.prBodyLint,
+      this.actionPinCheck,
       // In the gate now that the scanners are provisioned by the `tools`
       // toolchain rather than assumed on PATH — the reason it used to be
       // excluded. The dedicated security workflow still runs it separately,
@@ -789,14 +821,17 @@ class ZukeBuild extends Build {
     // the base itself — so the same command works locally, where no workflow
     // step exists to do it.
     fetchBase: false,
-    // Pins from the committed workflows rather than @zuke/ai's own constants.
-    // Without this the file is the one generated workflow whose SHA comes from a
-    // published package: a Dependabot bump lands in ai-review.yml, the next run
-    // regenerates it from the stale constant, and the bump is reverted. That has
-    // already happened once here — the constant had to be hand-updated to match
-    // what Dependabot set.
-    hardenRunner: actionPin("step-security/harden-runner").ref,
-    checkout: actionPin("actions/checkout").ref,
+    // Nothing about the prelude, because there is nothing left to say: core
+    // renders it as the one action that hardens and checks out, and that
+    // action's pin resolves through the same `pins` hook as every other.
+    //
+    // This is what settled the file's sharpest edge. ai-review.yml used to name
+    // its two SHAs here to avoid @zuke/ai's own constants — a generated workflow
+    // whose pins came from inside a published package, so a Dependabot bump
+    // landed in the file and the next regeneration reverted it from the stale
+    // constant. That happened, and the constant had to be hand-updated to match.
+    // The pins now live in `action.yml`, where a bot edits them and no generator
+    // overwrites them.
   });
 
   release = target()
