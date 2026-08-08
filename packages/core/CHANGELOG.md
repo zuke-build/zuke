@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.34.0](https://github.com/zuke-build/zuke/compare/core-v1.33.0...core-v1.34.0) (2026-08-08)
+
+
+### Features
+
+* **core:** generate the Zuke action as every job's prelude ([#302](https://github.com/zuke-build/zuke/issues/302)) ([0b050e2](https://github.com/zuke-build/zuke/commit/0b050e206bbc65ad8e437ca520923ac7cdfa0fa3))
+
 ## [1.33.0](https://github.com/zuke-build/zuke/compare/core-v1.32.1...core-v1.33.0) (2026-08-07)
 
 
