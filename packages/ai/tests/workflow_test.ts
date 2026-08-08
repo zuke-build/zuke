@@ -413,3 +413,25 @@ Deno.test("the prelude carries a pin without this package holding one", () => {
   const yaml = dualBuild().wf.render();
   assertEquals(/uses: zuke-build\/zuke@[0-9a-f]{40}/.test(yaml), true);
 });
+
+Deno.test("the prelude pin comes from the resolver, not core's fallback", () => {
+  // Without a resolver the prelude falls back to the reference baked into the
+  // core this package resolved against — a release behind the moment the action
+  // is released again, and silently: this file would name a different commit
+  // from every other generated workflow in the repository, and only a diff
+  // would show it. That happened once here, between v1.0.1 and v1.0.2.
+  class B extends Build {
+    key = parameter("OpenAI key").secret().env("OPENAI_API_KEY");
+    security = securityReviewer((r) => r.provider("openai").apiKey(this.key));
+    review = target().validateBefore(this.security).executes(() => {});
+    wf = aiReviewWorkflow({
+      reviewers: [this.security],
+      pins: (action) => ({ ref: `${action}@${"e".repeat(40)}`, version: "v9" }),
+    });
+  }
+  const b = new B();
+  discoverParameters(b);
+  const yaml = b.wf.render();
+
+  assertStringIncludes(yaml, `zuke-build/zuke@${"e".repeat(40)} # v9`);
+});

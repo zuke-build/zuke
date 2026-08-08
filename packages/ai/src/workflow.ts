@@ -29,10 +29,12 @@ import {
   type AnyParameter,
   CiFile,
   type CiJob,
+  type CiPinResolver,
   type CiPipeline,
   type CiProvider,
   envVarName,
   generateCi,
+  ZUKE_ACTION,
 } from "@zuke/core";
 import type { Reviewer } from "./reviewer.ts";
 
@@ -109,6 +111,18 @@ export interface AiReviewWorkflowSpec {
    * Like {@link hardenRunner}, supplying it renders the separate steps.
    */
   checkout?: string;
+  /**
+   * Resolves each action's pinned reference by name, exactly as `cicd`'s own
+   * option does.
+   *
+   * Supply it when the build sources pins from somewhere that stays current.
+   * Without it the prelude action falls back to the reference baked into the
+   * core this package resolved against — which is a release behind as soon as
+   * the action is released again, and silently so: this file would name a
+   * different commit from every other generated workflow in the repository,
+   * and only a diff would show it.
+   */
+  pins?: CiPinResolver;
   /** Output path. Defaults to the host's conventional location. */
   path?: string;
   /** Workflow name shown in the host's UI. Defaults to `"AI Review"`. */
@@ -191,7 +205,11 @@ class AiReviewWorkflow extends CiFile {
 
   constructor(spec: AiReviewWorkflowSpec) {
     const host = spec.host ?? "github";
-    super({ provider: host, path: spec.path ?? DEFAULT_PATHS[host] });
+    super({
+      provider: host,
+      path: spec.path ?? DEFAULT_PATHS[host],
+      pins: spec.pins,
+    });
     // Both are interpolated into shell commands in the generated YAML; reject
     // anything that isn't a plain branch/target name up front.
     if (spec.baseBranch !== undefined) {
@@ -260,6 +278,18 @@ class AiReviewWorkflow extends CiFile {
       // constant had to be hand-updated to match.
       harden: { egress: "audit", action: this.#spec.hardenRunner },
       checkout: { persistCredentials: false, action: this.#spec.checkout },
+      // Resolved here rather than left to core, whose fallback is the reference
+      // baked into the release this package resolved against — a release behind
+      // as soon as the action is released again, and silently so: this file
+      // would name a different commit from every other generated workflow, and
+      // only a diff would show it.
+      // Left alone when either action is named, so core applies its own rule:
+      // naming one means those specific actions were asked for, and the prelude
+      // that runs neither would discard a pin the caller chose.
+      bootstrap: this.#spec.hardenRunner === undefined &&
+          this.#spec.checkout === undefined
+        ? { action: this.#spec.pins?.(ZUKE_ACTION) }
+        : undefined,
       steps: [
         ...(fetchBase
           ? [{

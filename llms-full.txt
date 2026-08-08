@@ -10686,6 +10686,16 @@ interface AiReviewWorkflowSpec
   checkout?: string
     The pinned `actions/checkout@<sha>` to check the repository out with.
     Like {@link hardenRunner}, supplying it renders the separate steps.
+  pins?: CiPinResolver
+    Resolves each action's pinned reference by name, exactly as `cicd`'s own
+    option does.
+
+    Supply it when the build sources pins from somewhere that stays current.
+    Without it the prelude action falls back to the reference baked into the
+    core this package resolved against — which is a release behind as soon as
+    the action is released again, and silently so: this file would name a
+    different commit from every other generated workflow in the repository,
+    and only a diff would show it.
   path?: string
     Output path. Defaults to the host's conventional location.
   name?: string

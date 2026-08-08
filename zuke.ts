@@ -85,6 +85,7 @@ import {
   checkPluginSkillsSync,
   syncPluginSkills,
 } from "./build/plugin_sync.ts";
+import { actionPin } from "./build/action_pins.ts";
 import { actionlintTool, gitleaksTool, zizmorTool } from "./build/scanners.ts";
 import { githubWorkflows } from "./build/workflows.ts";
 
@@ -844,6 +845,11 @@ class ZukeBuild extends Build {
     // the base itself — so the same command works locally, where no workflow
     // step exists to do it.
     fetchBase: false,
+    // The same resolver every other workflow uses, so this file names the same
+    // commit they do. Without it the prelude falls back to the reference baked
+    // into core, which is a release behind the moment the action is released
+    // again — and nothing says so but a diff.
+    pins: actionPin,
     // Nothing about the prelude: core renders it as the one action that hardens
     // and checks out, and that action's pin resolves through the same `pins`
     // hook as every other. Naming either action here would opt back out to the
