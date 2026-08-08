@@ -483,6 +483,29 @@ function withPins(pipeline: CiPipeline, pins?: CiPinResolver): CiPipeline {
 }
 
 /**
+ * Whether a job's own steps already harden or check out.
+ *
+ * The prelude is a default that turned on for pipelines that never asked for
+ * one, so it has to notice a job that was already doing the job itself — the
+ * alternative is hardening twice and checking out twice, with the second
+ * checkout quietly undoing whatever the first was configured to fetch. A
+ * pipeline that spells these steps out has said what it wants as plainly as one
+ * that names an action.
+ *
+ * `@zuke/ai` is the case in hand: it builds those two steps directly, and it
+ * cannot say otherwise until its declared core floor has a field to say it
+ * with. Every consumer pinned to an older floor is in the same position.
+ */
+function stepsCoverPrelude(steps: readonly CiStep[] | undefined): boolean {
+  return (steps ?? []).some((step) => {
+    if (step.uses === undefined) return false;
+    const ref = typeof step.uses === "string" ? step.uses : step.uses.ref;
+    return ref.startsWith(`${HARDEN_RUNNER_ACTION}@`) ||
+      ref.startsWith(`${CHECKOUT_ACTION}@`);
+  });
+}
+
+/**
  * A job's prelude action once the same rule the pipeline uses has been applied
  * to it: an action named on either half means those two actions were asked for
  * by name, so the job renders them rather than the one that replaces both.
@@ -493,7 +516,8 @@ function jobBootstrap(
 ): CiBootstrap | false | undefined {
   const pinnedSeparately = (job.harden !== false &&
     job.harden?.action !== undefined) ||
-    (job.checkout !== false && job.checkout?.action !== undefined);
+    (job.checkout !== false && job.checkout?.action !== undefined) ||
+    stepsCoverPrelude(job.steps);
   const declared = job.bootstrap === undefined
     ? (pinnedSeparately ? false : undefined)
     : job.bootstrap;
@@ -636,7 +660,8 @@ function jobSteps(job: CiJob, pipeline: CiPipeline): CiStep[] {
     ? pipeline.bootstrap
     : job.bootstrap;
   const pinnedSeparately = (harden !== false && harden?.action !== undefined) ||
-    (checkout !== false && checkout?.action !== undefined);
+    (checkout !== false && checkout?.action !== undefined) ||
+    stepsCoverPrelude(job.steps);
   const bootstrap = declared === undefined
     ? (pinnedSeparately ? false : {})
     : declared;

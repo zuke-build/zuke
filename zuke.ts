@@ -82,6 +82,7 @@ import {
   checkPluginSkillsSync,
   syncPluginSkills,
 } from "./build/plugin_sync.ts";
+import { actionPin } from "./build/action_pins.ts";
 import { actionlintTool, gitleaksTool, zizmorTool } from "./build/scanners.ts";
 import { githubWorkflows } from "./build/workflows.ts";
 
@@ -821,17 +822,20 @@ class ZukeBuild extends Build {
     // the base itself — so the same command works locally, where no workflow
     // step exists to do it.
     fetchBase: false,
-    // Nothing about the prelude, because there is nothing left to say: core
-    // renders it as the one action that hardens and checks out, and that
-    // action's pin resolves through the same `pins` hook as every other.
+    // Pins from the committed workflows rather than @zuke/ai's own constants.
+    // Without this the file is the one generated workflow whose SHA comes from a
+    // published package: a Dependabot bump lands in ai-review.yml, the next run
+    // regenerates it from the stale constant, and the bump is reverted. That has
+    // already happened once here — the constant had to be hand-updated to match
+    // what Dependabot set.
     //
-    // This is what settled the file's sharpest edge. ai-review.yml used to name
-    // its two SHAs here to avoid @zuke/ai's own constants — a generated workflow
-    // whose pins came from inside a published package, so a Dependabot bump
-    // landed in the file and the next regeneration reverted it from the stale
-    // constant. That happened, and the constant had to be hand-updated to match.
-    // The pins now live in `action.yml`, where a bot edits them and no generator
-    // overwrites them.
+    // Still the two separate steps, unlike every other workflow here, because
+    // @zuke/ai cannot declare the prelude until it can name the core that has
+    // it: its floor is `^1.25.0`, which has no `harden`/`checkout` on a job at
+    // all. Raising that floor needs the core released from this change, so the
+    // switch is the follow-up to it.
+    hardenRunner: actionPin("step-security/harden-runner").ref,
+    checkout: actionPin("actions/checkout").ref,
   });
 
   release = target()

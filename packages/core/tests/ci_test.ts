@@ -1174,3 +1174,40 @@ Deno.test("the two security-relevant inputs are always stated", () => {
   assertStringIncludes(yaml, "egress-policy: audit");
   assertStringIncludes(yaml, 'persist-credentials: "false"');
 });
+
+Deno.test("a job whose own steps already harden or check out gets no prelude", () => {
+  // The prelude became a default for pipelines that never asked for one, so it
+  // has to notice a job already doing the work itself — otherwise hardening
+  // runs twice and the second checkout quietly undoes what the first fetched.
+  // `@zuke/ai` is the case in hand: it builds those two steps directly and
+  // cannot say otherwise until its declared core floor has a field to say it
+  // with, and every consumer pinned to an older floor is in the same position.
+  const yaml = generateCi({
+    jobs: [{
+      id: "review",
+      steps: [
+        { uses: `step-security/harden-runner@${"a".repeat(40)}` },
+        { uses: `actions/checkout@${"b".repeat(40)}` },
+        { run: "./zuke review" },
+      ],
+    }],
+  }, "github");
+  assertEquals(yaml.includes("zuke-build/zuke"), false);
+  assertStringIncludes(yaml, `harden-runner@${"a".repeat(40)}`);
+});
+
+Deno.test("a job with unrelated `uses:` steps still gets the prelude", () => {
+  // The guard keys on the two actions the prelude replaces, not on any action:
+  // a job that sets up a toolchain has said nothing about hardening.
+  const yaml = generateCi({
+    jobs: [{
+      id: "build",
+      steps: [
+        { uses: `denoland/setup-deno@${"c".repeat(40)}` },
+        { run: "./zuke build" },
+      ],
+    }],
+  }, "github");
+  assertStringIncludes(yaml, "uses: zuke-build/zuke@");
+  assertStringIncludes(yaml, `setup-deno@${"c".repeat(40)}`);
+});

@@ -60,17 +60,18 @@ Deno.test("the generated YAML carries the right triggers, permissions, concurren
   assertStringIncludes(yaml, "timeout-minutes: 15");
 });
 
-Deno.test("the steps are: the Zuke prelude, fetch base, run ./zuke <target>", () => {
+Deno.test("the steps are: harden, checkout (no credentials), fetch base, run ./zuke <target>", () => {
   const yaml = dualBuild().wf.render();
-  // One prelude step, rendered by core, rather than a harden and a checkout
-  // spelled out here from this package's own pinned constants.
-  assertStringIncludes(yaml, "uses: zuke-build/zuke@");
-  assertEquals(yaml.includes("step-security/harden-runner"), false);
-  assertEquals(yaml.includes("actions/checkout"), false);
-  // Both stated, as the two steps this replaced stated them: whether a job
-  // records egress or enforces it, and whether it leaves a credential behind,
-  // are what a reader needs to see without opening the action.
+  assertStringIncludes(
+    yaml,
+    "uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920",
+  );
   assertStringIncludes(yaml, "egress-policy: audit");
+  assertStringIncludes(
+    yaml,
+    "uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+  );
+  // `false` is a string here so YAML doesn't read it as a boolean.
   assertStringIncludes(yaml, 'persist-credentials: "false"');
   // `=` in the command forces YAML to quote the run scalar.
   assertStringIncludes(yaml, '"git fetch --no-tags --depth=1 origin master"');
@@ -372,8 +373,9 @@ Deno.test("fetchBase: false drops the fetch step and the FETCH_HEAD override", (
   // duplicate the fetch nor override the base the target set up.
   assertEquals(yaml.includes("git fetch"), false);
   assertEquals(yaml.includes("ZUKE_REVIEW_BASE"), false);
-  // Everything else is unchanged: the prelude and the review run.
-  assertStringIncludes(yaml, "uses: zuke-build/zuke@");
+  // Everything else is unchanged: hardening, checkout, and the review run.
+  assertStringIncludes(yaml, "harden-runner@");
+  assertStringIncludes(yaml, "actions/checkout@");
   assertStringIncludes(yaml, "run: ./zuke review");
 });
 
@@ -383,17 +385,16 @@ Deno.test("fetchBase defaults to true, since a PR checkout has no base", () => {
   assertStringIncludes(yaml, "ZUKE_REVIEW_BASE: FETCH_HEAD");
 });
 
-Deno.test("bootstrap: false restores the separate harden and checkout steps", () => {
-  // The escape hatch for a repository that cannot consume a Marketplace
-  // action. `hardenRunner` and `checkout` are what configure those two steps,
-  // so they only have an effect on this path.
+Deno.test("pinned action refs can be supplied instead of the baked-in ones", () => {
+  // A generated workflow whose SHA comes from a constant in a published package
+  // silently reverts a bot's bump on the next run. Overriding lets the build
+  // source pins from somewhere that stays current.
   class B extends Build {
     key = parameter("OpenAI key").secret().env("OPENAI_API_KEY");
     rev = securityReviewer((r) => r.provider("openai").apiKey(this.key));
     review = target().validateBefore(this.rev).executes(() => {});
     wf = aiReviewWorkflow({
       reviewers: [this.rev],
-      bootstrap: false,
       hardenRunner: "step-security/harden-runner@" + "a".repeat(40),
       checkout: "actions/checkout@" + "b".repeat(40),
     });
@@ -401,18 +402,12 @@ Deno.test("bootstrap: false restores the separate harden and checkout steps", ()
   const b = new B();
   discoverParameters(b);
   const yaml = b.wf.render();
-  assertEquals(yaml.includes("zuke-build/zuke"), false);
   assertStringIncludes(yaml, `harden-runner@${"a".repeat(40)}`);
   assertStringIncludes(yaml, `checkout@${"b".repeat(40)}`);
-  // The policy those two steps carried is spelled out again on this path,
-  // because a separate step has no action defaults to fall back on.
-  assertStringIncludes(yaml, "egress-policy: audit");
-  assertStringIncludes(yaml, 'persist-credentials: "false"');
 });
 
-Deno.test("the prelude action carries a pin without any being supplied", () => {
-  // The reason this package no longer needs constants of its own: core's
-  // prelude ships its pin, so nothing here can go stale against it.
+Deno.test("the baked-in pins are used when none are supplied", () => {
   const yaml = dualBuild().wf.render();
-  assertEquals(/uses: zuke-build\/zuke@[0-9a-f]{40}/.test(yaml), true);
+  assertStringIncludes(yaml, "step-security/harden-runner@");
+  assertStringIncludes(yaml, "actions/checkout@");
 });

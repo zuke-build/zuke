@@ -27,7 +27,6 @@
 
 import {
   type AnyParameter,
-  type CiBootstrap,
   CiFile,
   type CiJob,
   type CiPipeline,
@@ -36,6 +35,13 @@ import {
   generateCi,
 } from "@zuke/core";
 import type { Reviewer } from "./reviewer.ts";
+
+/** SHA-pinned `step-security/harden-runner` (v2.20.0). */
+const HARDEN_RUNNER =
+  "step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920";
+
+/** SHA-pinned `actions/checkout` (v7.0.0). */
+const CHECKOUT = "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1";
 
 /** Default output paths per host — see {@link AiReviewWorkflowSpec}. */
 const DEFAULT_PATHS: Record<CiProvider, string> = {
@@ -113,13 +119,6 @@ export interface AiReviewWorkflowSpec {
   hardenRunner?: string;
   /** The pinned `actions/checkout@<sha>` to check the repository out with. */
   checkout?: string;
-  /**
-   * The prelude action the job starts with — one step that hardens and checks
-   * out. Defaults to the `zuke-build/zuke` action core renders; pass `false` to
-   * get {@link hardenRunner} and {@link checkout} as two separate steps
-   * instead, which is what those two options configure.
-   */
-  bootstrap?: CiBootstrap | false;
   /** Output path. Defaults to the host's conventional location. */
   path?: string;
   /** Workflow name shown in the host's UI. Defaults to `"AI Review"`. */
@@ -258,17 +257,16 @@ class AiReviewWorkflow extends CiFile {
       // no secrets, so the reviewers would skip there anyway.
       if: "${{ github.event.pull_request.head.repo.fork == false }}",
       timeoutMinutes: this.#spec.timeoutMinutes ?? DEFAULT_TIMEOUT_MINUTES,
-      // Declared rather than spelled out as steps, so the prelude is whatever
-      // core renders for one — today a single `zuke-build/zuke` step doing both.
-      // This file used to build those two steps itself from its own pinned
-      // constants, which made it the one generated workflow whose SHAs came
-      // from inside a published package: a bot's bump landed in the file and
-      // the next regeneration reverted it from the stale constant. That has
-      // happened here. Deferring to core means there is one prelude to pin.
-      harden: { egress: "audit", action: this.#spec.hardenRunner },
-      checkout: { persistCredentials: false, action: this.#spec.checkout },
-      bootstrap: this.#spec.bootstrap,
       steps: [
+        {
+          name: "Harden the runner",
+          uses: this.#spec.hardenRunner ?? HARDEN_RUNNER,
+          with: { "egress-policy": "audit" },
+        },
+        {
+          uses: this.#spec.checkout ?? CHECKOUT,
+          with: { "persist-credentials": "false" },
+        },
         ...(fetchBase
           ? [{
             name: "Fetch the base branch",

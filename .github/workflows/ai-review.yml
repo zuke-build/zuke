@@ -14,10 +14,12 @@ jobs:
     if: "${{ github.event.pull_request.head.repo.fork == false }}"
     timeout-minutes: 15
     steps:
-      - name: Harden and check out with Zuke
-        uses: zuke-build/zuke@7a62523bb4569e4d90e972dee74bf9cf09cd436f # v1.0.1
+      - name: Harden the runner
+        uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920
         with:
           egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
           persist-credentials: "false"
       - name: AI review with Zuke
         run: ./zuke review
