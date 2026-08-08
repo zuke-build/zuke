@@ -289,12 +289,14 @@ export function workflowActionInputs(yaml: string): string[] {
   const names: string[] = [];
   let inStep = false;
   let inWith = false;
+  let withIndent: string | undefined;
   for (const line of yaml.replace(/\r\n/g, "\n").split("\n")) {
     if (/^\s*(?:-\s+)?uses:/.test(line)) {
       // Entering a step's `uses:` — this action's, or another's, which ends
       // any block we were reading.
       inStep = new RegExp(`uses:\\s*${ACTION_SLUG}@`).test(line);
       inWith = false;
+      withIndent = undefined;
       continue;
     }
     if (!inStep) continue;
@@ -314,8 +316,24 @@ export function workflowActionInputs(yaml: string): string[] {
     // the end dropped every input after it — silently, which is the failure
     // this whole check exists to avoid.
     if (/^\s*(#.*)?$/.test(line)) continue;
-    const entry = /^\s*([A-Za-z0-9_-]+):/.exec(line);
-    if (entry !== null) names.push(entry[1]);
+    const entry = /^(\s*)([A-Za-z0-9_-]+):/.exec(line);
+    // Indent decides what a line is, because a value can look like a key. The
+    // first entry sets the block's own indent; anything deeper belongs to that
+    // entry — the lines of a folded scalar, or a nested mapping — and anything
+    // shallower has left the block.
+    //
+    // Reading by pattern alone got this wrong in both directions at once: a
+    // folded `allowed-endpoints` whose lines are host:port pairs ended the
+    // block, losing every input below it, while a nested value contributed its
+    // own keys as inputs that were never passed.
+    const lead = entry?.[1] ?? /^(\s*)/.exec(line)?.[1] ?? "";
+    withIndent ??= lead;
+    if (lead.length > withIndent.length) continue;
+    if (lead.length < withIndent.length) {
+      inWith = false;
+      continue;
+    }
+    if (entry !== null) names.push(entry[2]);
     else {
       assertNotQuotedKey(line, "with");
       inWith = false;

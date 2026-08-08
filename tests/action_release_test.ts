@@ -444,3 +444,29 @@ Deno.test("a comment inside a with block does not hide the inputs after it", () 
     "fetch-depth",
   ]);
 });
+
+Deno.test("a multiline or nested value is not read as more inputs", () => {
+  // Indent decides what a line is, because a value can look like a key. Reading
+  // by pattern alone was wrong in both directions at once: the lines of a
+  // folded scalar are `host:port` pairs, which ended the block and lost every
+  // input below it, while a nested mapping contributed its own keys as inputs
+  // that were never passed.
+  const folded = `steps:
+  - uses: zuke-build/zuke@${SHA}
+    with:
+      allowed-endpoints: >
+        deno.land:443
+        jsr.io:443
+      ref: main
+`;
+  assertEquals(workflowActionInputs(folded), ["allowed-endpoints", "ref"]);
+
+  const nested = `steps:
+  - uses: zuke-build/zuke@${SHA}
+    with:
+      config:
+        key: value
+      ref: main
+`;
+  assertEquals(workflowActionInputs(nested), ["config", "ref"]);
+});
