@@ -212,6 +212,7 @@ only governs what runs after it.
 | `allowed-endpoints`   | `""`    | Space-separated `host:port` list permitted under `block`.                          |
 | `persist-credentials` | `false` | Leave the token in git config, for a later push.                                   |
 | `fetch-depth`         | `1`     | Commits to fetch. `0` is the full history, which a secret scan needs.              |
+| `ref`                 | `""`    | Branch, tag or SHA to check out. Empty follows the event. See the warning below.   |
 | `deno-version`        | `""`    | Install this Deno. Usually unnecessary — the `./zuke` launcher bootstraps its own. |
 
 Running a target needs a committed `./zuke` launcher in the repository (that is
@@ -262,7 +263,28 @@ may therefore be enforcing on one leg and recording on the others. Check
 [harden-runner's own docs](https://github.com/step-security/harden-runner) for
 the version you have pinned.
 
-Zuke's own workflows do **not** use it — `uses: ./` resolves inside the
+#### `ref` on `pull_request_target` is refused
+
+`ref` checks out something other than what the event points at — the head
+branch of a pull request, say, so a job can push a fix back to it. On
+`pull_request` that is ordinary: the token is read-only and secrets are absent.
+
+On **`pull_request_target`** it is not. That event runs with the base
+repository's secrets and a writable token, so a `ref` aimed at a contributor's
+head puts *their* `zuke.ts` in the workspace — and the last step executes it.
+No configuration makes that safe, so the action refuses the combination
+outright rather than warning about it:
+
+```
+Error: Refusing to check out a custom ref and run a Zuke target on a
+pull_request_target event: that executes the checked-out repository's build
+file with this repository's secrets.
+```
+
+Checking a ref out *without* running a target is not that bug, and neither is
+any of it on `pull_request`. Both keep working.
+
+Zuke's own workflows do **not** use it yet — `uses: ./` resolves inside the
 workspace, so it would need the very checkout it exists to precede. They inline
 the same steps, generated from the pins in `action.yml` itself.
 

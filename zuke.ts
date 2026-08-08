@@ -22,6 +22,7 @@ import {
   FileTasks,
   glob,
   parameter,
+  repoRoot,
   run,
   target,
   toolchain,
@@ -47,6 +48,7 @@ import {
 } from "@zuke/release-please";
 import { SecurityTasks } from "@zuke/security";
 import { DocsTasks } from "@zuke/docs";
+import { ACTION_VERSION_FILE, releaseAction } from "./build/action_release.ts";
 import { localVersion, PACKAGES } from "./build/packages.ts";
 import {
   CODECOV_CLI_VERSION,
@@ -832,6 +834,102 @@ class ZukeBuild extends Build {
         apply(s);
         return s;
       });
+    });
+
+  actionRelease = target()
+    .description("Tag a new version of the Marketplace action when it changed")
+    .executes(async () => {
+      const result = await releaseAction({
+        state: async () => {
+          const branch = await GitTasks.run((s) =>
+            s.command("symbolic-ref", "--quiet", "--short", "HEAD").noThrow()
+          );
+          const status = await GitTasks.run((s) =>
+            s.command("status", "--porcelain")
+          );
+          // `@{u}` is the tracked upstream. `rev-list --count` of the symmetric
+          // difference is 0 only when the two are the same commit; a missing
+          // upstream exits non-zero, which counts as out of sync rather than
+          // in it.
+          const divergence = await GitTasks.run((s) =>
+            s.command("rev-list", "--count", "HEAD...@{u}").noThrow()
+          );
+          return {
+            branch: branch.code === 0 ? branch.text() : undefined,
+            dirty: status.text() !== "",
+            syncedWithRemote: divergence.code === 0 &&
+              divergence.text() === "0",
+          };
+        },
+        tags: async () => {
+          // The tags a shallow CI checkout has are whatever it fetched, which
+          // is none — and an empty list reads as "no release yet", which would
+          // re-cut v1.0.0 over a tag that exists.
+          await GitTasks.fetch((s) => s.remote("origin").tags().quiet());
+          const { stdout } = await GitTasks.run((s) =>
+            s.command("tag", "--list")
+          );
+          return stdout.split("\n").map((line) => line.trim()).filter(Boolean);
+        },
+        changedSince: async (ref) => {
+          // `--quiet` makes the exit code the answer: 0 identical, 1 differ.
+          // Anything else is git failing (an unknown ref exits 128), and that
+          // must not read as "changed" — failing open here would cut a release
+          // on every run whose tag lookup broke.
+          const { code } = await GitTasks.run((s) =>
+            s
+              .command("diff", "--quiet", ref, "HEAD", "--", "action.yml")
+              .noThrow()
+          );
+          if (code === 0) return false;
+          if (code === 1) return true;
+          throw new Error(
+            `could not diff action.yml against ${ref} (git exited ${code}). ` +
+              `Refusing to guess: treating this as a change would cut a ` +
+              `release, and every run with the same fault would cut another.`,
+          );
+        },
+        headSha: async () =>
+          (await GitTasks.run((s) => s.command("rev-parse", "HEAD"))).text(),
+        tag: async (name, message, force) => {
+          await GitTasks.tag((s) => {
+            const settings = s.name(name).message(message);
+            return force ? settings.force() : settings;
+          });
+        },
+        push: async (name, force) => {
+          // `--force-with-lease` is the typed option, and it is the wrong one
+          // here: a tag has no remote-tracking ref for git to compare against,
+          // so the lease has nothing to check and the push is refused as stale.
+          // Moving `v1` is a deliberate overwrite of a ref only this target
+          // writes, so a plain force is what the operation actually is.
+          await GitTasks.run((s) =>
+            force
+              ? s.command("push", "--force", "origin", name)
+              : s.command("push", "origin", name)
+          );
+        },
+        writePin: async (pin) => {
+          await FileTasks.writeText(
+            repoRoot(ACTION_VERSION_FILE),
+            `${JSON.stringify(pin, null, 2)}\n`,
+          );
+        },
+        info: ConsoleTasks.info,
+      });
+      if (result.released === undefined) return;
+      // The workflows reference the action at the pin that just changed, so
+      // they are now stale — and the gate's `generate-ci --check` would fail on
+      // that drift rather than heal it. Regeneration has to happen in a *fresh*
+      // process: `build/workflows.ts` reads the pin while this build's fields
+      // initialise, so this one is still holding the old value.
+      await DenoTasks.run((s) =>
+        s.allowAll().frozen().script("zuke.ts").scriptArgs("generate-ci")
+      );
+      ConsoleTasks.info(
+        `Regenerated the workflows against ${result.released}. Commit ` +
+          `${ACTION_VERSION_FILE} and .github/workflows together.`,
+      );
     });
 
   publishJsr = target()

@@ -168,6 +168,70 @@ Deno.test("no shell script in the action interpolates a template expression", ()
   assertStringIncludes(MANIFEST, './zuke "$ZUKE_TARGET"');
 });
 
+Deno.test("a custom ref is refused on every secret-bearing event", () => {
+  // The `ref` input exists because this repository's own gate job needs it to
+  // push a fix to a pull request's head branch. It also hands every consumer
+  // the classic escalation: on `pull_request_target` the job holds the base
+  // repository's secrets and a writable token, and a `ref` aimed at a pull
+  // request's head puts a contributor's `zuke.ts` where the last step runs it.
+  //
+  // The refusal is the mitigation, and it is only as good as its condition —
+  // so assert the condition, not just that some guard exists. All three
+  // clauses must be present, or it stops covering the case it was added for.
+  assertStringIncludes(MANIFEST, "inputs.ref != ''");
+  assertStringIncludes(MANIFEST, "::error::Refusing to check out a custom ref");
+
+  // Every event whose trigger content a contributor can write, and which runs
+  // with the repository's own secrets. Asserted as a set because the first
+  // version of this guard named only `pull_request_target` — which reads as a
+  // safety property while `issue_comment` and `workflow_run` walk straight
+  // past it.
+  for (
+    const event of [
+      "pull_request_target",
+      "issue_comment",
+      "issues",
+      "workflow_run",
+      "discussion",
+      "discussion_comment",
+      "pull_request_review",
+      "pull_request_review_comment",
+    ]
+  ) {
+    assertStringIncludes(MANIFEST, `"${event}"`);
+  }
+
+  // NOT keyed on `target`. A caller who omits it and writes `run: ./zuke ci`
+  // in their own next step gets the identical outcome, so a refusal that
+  // required a target would guard one spelling of the mistake, not the
+  // mistake. This assertion is what stops that clause being reintroduced as a
+  // "narrowing".
+  const guard = /- name: Refuse an untrusted checkout[\s\S]*?exit 1/.exec(
+    MANIFEST,
+  )?.[0] ?? "";
+  assertEquals(
+    guard.includes("inputs.target"),
+    false,
+    "the refusal is keyed on `target`, so omitting it bypasses the guard",
+  );
+  // Refused, not warned: a step that printed and continued would still leave
+  // the untrusted code in the workspace for whatever runs next.
+  assertStringIncludes(guard, "exit 1");
+  // The events that are safe by construction must stay off the list, or the
+  // guard would refuse this repository's own gate job.
+  assertEquals(
+    /"(pull_request|push|workflow_dispatch|schedule|release)"/.test(guard),
+    false,
+    "the refusal names an event that carries no untrusted content",
+  );
+});
+
+Deno.test("the checkout honours the ref input", () => {
+  // Without this the input would be accepted, documented, guarded — and
+  // silently ignored, checking out the event's default ref instead.
+  assertStringIncludes(MANIFEST, "ref: ${{ inputs.ref }}");
+});
+
 Deno.test("running a target checks for the launcher it needs", () => {
   // The action checks the caller's repository out and then runs `./zuke` in it,
   // so a caller who found this on Marketplace but has never scaffolded Zuke

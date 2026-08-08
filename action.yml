@@ -15,9 +15,13 @@ branding:
 # It is also a usable composite action in its own right, published to the GitHub
 # Marketplace. A repository that builds with Zuke can make this its first step —
 # `uses: zuke-build/zuke@<sha>` needs no prior checkout, since a remote action is
-# fetched by the runner. This repository cannot use it that way for hardening:
-# `uses: ./` resolves inside the workspace, so it would require the checkout it
-# is meant to precede.
+# fetched by the runner. That is how this repository's own generated workflows
+# now start, so the action is exercised on every run here rather than only by
+# strangers. It is the remote form that makes that possible: `uses: ./` resolves
+# inside the workspace and would need the very checkout this is meant to
+# precede, which is why the workflows inlined these steps until it was
+# published. Their pin comes from `build/action_version.json`, since this file
+# cannot pin the action to itself.
 #
 # The action is versioned by a plain `v1` tag (and the `v1.x.y` it points at),
 # which is the tag consumers write. That namespace is the action's alone: the
@@ -46,6 +50,10 @@ inputs:
     description: "Commits to fetch. `0` is the full history, which a secret scan needs."
     required: false
     default: "1"
+  ref:
+    description: "Branch, tag or SHA to check out. Empty checks out what the event points at. Refused outright on an event whose content a contributor writes (`pull_request_target`, `issue_comment`, `workflow_run`, …) — see the refusal below."
+    required: false
+    default: ""
   deno-version:
     description: "Install this Deno instead of letting the ./zuke launcher bootstrap one."
     required: false
@@ -62,11 +70,45 @@ runs:
         egress-policy: ${{ inputs.egress-policy }}
         allowed-endpoints: ${{ inputs.allowed-endpoints }}
 
+    # `ref` puts something other than the event's own commit in the workspace.
+    # On an event whose trigger is written by anyone who can open a pull
+    # request, a comment or a discussion, that something is attacker-controlled
+    # — and those events run with the base repository's secrets and a writable
+    # token. Checking that code out is already the whole bug: what executes it
+    # afterwards need not be this action. A caller who omits `target` and writes
+    # `run: ./zuke ci` in the next step of their own job gets exactly the same
+    # outcome, so keying the refusal on `target` would guard one spelling of the
+    # mistake rather than the mistake.
+    #
+    # Hence: the refusal ignores `target`, and names the events rather than the
+    # steps. `pull_request` and `push` are absent from the list deliberately — a
+    # fork pull request receives no secrets and a read-only token, and pushing
+    # requires write access already. `workflow_dispatch`, `schedule` and
+    # `release` are absent too: their ref is chosen by someone who can already
+    # push.
+    - name: Refuse an untrusted checkout on a secret-bearing event
+      if: >-
+        inputs.ref != '' && contains(fromJSON('[
+          "pull_request_target", "issue_comment", "issues", "workflow_run",
+          "discussion", "discussion_comment", "pull_request_review",
+          "pull_request_review_comment"
+        ]'), github.event_name)
+      shell: bash
+      # Through the environment, not the script text — the same rule the run
+      # step below follows, and worth following even for a value GitHub picks
+      # from a fixed set.
+      env:
+        ZUKE_EVENT: ${{ github.event_name }}
+      run: |
+        echo "::error::Refusing to check out a custom ref on a $ZUKE_EVENT event: it runs with this repository's secrets and a writable token, so checking out a ref a contributor controls hands them both. Use 'pull_request', or drop the 'ref' input."
+        exit 1
+
     - name: Checkout
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         persist-credentials: ${{ inputs.persist-credentials }}
         fetch-depth: ${{ inputs.fetch-depth }}
+        ref: ${{ inputs.ref }}
 
     # Only when asked. The ./zuke launcher bootstraps a pinned Deno itself, so
     # this is for a job that runs `deno` directly instead of through it.
