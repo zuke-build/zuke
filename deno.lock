@@ -1540,7 +1540,7 @@
     "members": {
       "packages/ai": {
         "dependencies": [
-          "jsr:@zuke/core@^1.25.0"
+          "jsr:@zuke/core@^1.34.0"
         ]
       },
       "packages/biome": {

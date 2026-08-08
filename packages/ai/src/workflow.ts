@@ -36,13 +36,6 @@ import {
 } from "@zuke/core";
 import type { Reviewer } from "./reviewer.ts";
 
-/** SHA-pinned `step-security/harden-runner` (v2.20.0). */
-const HARDEN_RUNNER =
-  "step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920";
-
-/** SHA-pinned `actions/checkout` (v7.0.0). */
-const CHECKOUT = "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1";
-
 /** Default output paths per host — see {@link AiReviewWorkflowSpec}. */
 const DEFAULT_PATHS: Record<CiProvider, string> = {
   github: ".github/workflows/ai-review.yml",
@@ -104,20 +97,17 @@ export interface AiReviewWorkflowSpec {
   fetchBase?: boolean;
   /**
    * The pinned `step-security/harden-runner@<sha>` to harden the runner with.
-   * Defaults to a pin baked in here.
    *
-   * Pass it when the build sources pins from somewhere that stays current — a
-   * generated workflow whose SHA comes from a constant in a published package is
-   * a trap: a bot bumps the committed file, the next run regenerates it from the
-   * stale constant, and the bump is silently reverted.
-   *
-   * A bare `owner/repo@<sha>`, without the `# vX.Y.Z` comment the other
-   * generated workflows carry: attaching one needs a core newer than this
-   * package's declared floor, and Dependabot bumps a comment-less pin anyway.
-   * Adopt the richer form once the floor moves past that release.
+   * Supplying this — or {@link checkout} — renders the two separate steps
+   * instead of the prelude action, because naming an action means those
+   * specific actions were asked for. Leave both unset for the default, which
+   * is the one action that does both and carries its own pin.
    */
   hardenRunner?: string;
-  /** The pinned `actions/checkout@<sha>` to check the repository out with. */
+  /**
+   * The pinned `actions/checkout@<sha>` to check the repository out with.
+   * Like {@link hardenRunner}, supplying it renders the separate steps.
+   */
   checkout?: string;
   /** Output path. Defaults to the host's conventional location. */
   path?: string;
@@ -257,16 +247,20 @@ class AiReviewWorkflow extends CiFile {
       // no secrets, so the reviewers would skip there anyway.
       if: "${{ github.event.pull_request.head.repo.fork == false }}",
       timeoutMinutes: this.#spec.timeoutMinutes ?? DEFAULT_TIMEOUT_MINUTES,
+      // Declared rather than built here, so the prelude is whatever core
+      // renders for one — today a single `zuke-build/zuke` step that hardens
+      // and checks out. Naming either action opts back out to the two separate
+      // steps, which is what `hardenRunner` and `checkout` configure.
+      //
+      // This retires the trap this file used to carry. Its two SHAs were
+      // constants inside a published package, so a generated workflow's pins
+      // came from a release rather than from the file a bot edits: Dependabot
+      // bumped ai-review.yml, the next regeneration wrote the stale constant
+      // back, and the bump was silently reverted. That happened, and the
+      // constant had to be hand-updated to match.
+      harden: { egress: "audit", action: this.#spec.hardenRunner },
+      checkout: { persistCredentials: false, action: this.#spec.checkout },
       steps: [
-        {
-          name: "Harden the runner",
-          uses: this.#spec.hardenRunner ?? HARDEN_RUNNER,
-          with: { "egress-policy": "audit" },
-        },
-        {
-          uses: this.#spec.checkout ?? CHECKOUT,
-          with: { "persist-credentials": "false" },
-        },
         ...(fetchBase
           ? [{
             name: "Fetch the base branch",
