@@ -25,6 +25,7 @@ import {
   nextVersion,
   parseVersion,
   pinFor,
+  pinnedSha,
   releaseAction,
   type ReleaseActionDeps,
 } from "../build/action_release.ts";
@@ -256,4 +257,28 @@ Deno.test("a pinned release that differs from this action.yml is rejected", () =
   }
   assertStringIncludes(message, "v1.2.3");
   assertStringIncludes(message, "actionRelease");
+});
+
+Deno.test("a malformed pin names the file rather than throwing a TypeError", () => {
+  // `ActionPinFile` describes the shape of a committed JSON file, and a type
+  // cannot hold a hand edit to its contents. Reading the SHA off a split and
+  // using whatever comes back surfaced a malformed ref as a TypeError several
+  // lines later, from inside the gate check — the least useful place to learn
+  // that a file needs fixing.
+  assertEquals(
+    pinnedSha({ ref: `zuke-build/zuke@${SHA}`, version: "v1" }),
+    SHA,
+  );
+  let message = "";
+  try {
+    pinnedSha({ ref: "zuke-build/zuke", version: "v1.0.0" });
+  } catch (error) {
+    message = error instanceof Error ? error.message : String(error);
+  }
+  assertStringIncludes(message, ACTION_VERSION_FILE);
+  assertStringIncludes(message, "40-character-sha");
+  // A short SHA is malformed for the same reason `pinFor` rejects one.
+  assertThrows(() =>
+    pinnedSha({ ref: "zuke-build/zuke@abc1234", version: "v1" })
+  );
 });

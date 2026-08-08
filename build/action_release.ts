@@ -161,6 +161,28 @@ export function pinFor(sha: string, version: string): ActionPinFile {
 }
 
 /**
+ * The commit SHA a pin names.
+ *
+ * `ActionPinFile` describes the shape of a committed JSON file, and a type
+ * cannot hold a hand edit to its contents. Splitting on `@` and using whatever
+ * comes back turns a malformed ref into a `TypeError` several lines later, from
+ * the gate check — the least useful place to learn that a file needs fixing.
+ *
+ * @throws if `pin.ref` does not name a full commit SHA.
+ */
+export function pinnedSha(pin: ActionPinFile): string {
+  const sha = pin.ref.split("@")[1];
+  if (sha === undefined || !/^[0-9a-f]{40}$/.test(sha)) {
+    throw new Error(
+      `${ACTION_VERSION_FILE} does not pin a full commit SHA: ${
+        JSON.stringify(pin.ref)
+      }. It must read \`${ACTION_SLUG}@<40-character-sha>\`.`,
+    );
+  }
+  return sha;
+}
+
+/**
  * Assert that the pinned release of the action is the action in this tree.
  *
  * The generated workflows run `{@link ACTION_SLUG}@<pinned sha>`, not the

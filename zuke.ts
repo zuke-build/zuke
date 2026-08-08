@@ -52,6 +52,7 @@ import {
   ACTION_PIN,
   ACTION_VERSION_FILE,
   assertPinnedActionMatches,
+  pinnedSha,
   releaseAction,
 } from "./build/action_release.ts";
 import { localVersion, PACKAGES } from "./build/packages.ts";
@@ -589,7 +590,7 @@ class ZukeBuild extends Build {
   actionPinCheck = target()
     .description("Verify the pinned action release matches this action.yml")
     .executes(async () => {
-      const sha = ACTION_PIN.ref.split("@")[1];
+      const sha = pinnedSha(ACTION_PIN);
       const pinned = await GitTasks.run((s) =>
         s.command("show", `${sha}:action.yml`).noThrow()
       );
