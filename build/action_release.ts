@@ -18,6 +18,8 @@
  * @module
  */
 
+import { parse as parseYaml } from "@std/yaml";
+
 import actionVersion from "./action_version.json" with { type: "json" };
 
 /** A parsed `v<major>.<minor>.<patch>` action tag. */
@@ -165,71 +167,24 @@ export function majorTag(version: string): string {
   return `v${parsed.major}`;
 }
 
-/**
- * Refuse a flow mapping, e.g. `with: { ref: main }`.
- *
- * These readers handle the block style this repository's own renderer writes.
- * Flow style is equally valid YAML and would read as a block with no entries,
- * so the inputs inside it would go uncounted — and a workflow using one the
- * release lacks would pass. Under-reporting is the one outcome worth ruling
- * out, so a shape these cannot read is an error rather than an empty answer.
- */
-function assertNotFlowMapping(line: string, key: string): void {
-  if (/:\s*[{[]/.test(line)) {
-    throw new Error(
-      `cannot read \`${key}\` written in flow style: ${line.trim()}. The ` +
-        `check reads the block style the generator writes; a flow mapping ` +
-        `would read as empty and its entries would go unchecked.`,
-    );
-  }
-}
-
-/** Refuse a quoted key, which would otherwise be skipped and go unchecked. */
-function assertNotQuotedKey(line: string, key: string): void {
-  if (/^\s*["'][^"']+["']\s*:/.test(line)) {
-    throw new Error(
-      `cannot read a quoted key under \`${key}\`: ${line.trim()}. Unquote it, ` +
-        `or the input it names is not checked against the release.`,
-    );
-  }
+/** Whether a parsed YAML node is a mapping. */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /**
  * The input names an action manifest declares.
  *
- * Read line by line rather than through a YAML library, because the shape is
- * fixed and shallow: `inputs:` at the left margin, then one key per line at a
- * consistent indent. The indent is taken from the first entry rather than
- * assumed, so a manifest written with four spaces is read correctly instead of
- * silently yielding nothing; anything deeper is a field of an input.
+ * Parsed rather than read line by line. The reader this replaces needed four
+ * corrections — a comment ended the block, flow style read as empty, a folded
+ * scalar ended the block, a nested value contributed its own keys — and three
+ * were silent under-reports, which is the one outcome this check cannot
+ * afford: an input it fails to see is an input nobody checks.
  */
 export function declaredInputs(source: string): string[] {
-  const names: string[] = [];
-  let indent: string | undefined;
-  let inBlock = false;
-  for (const line of source.replace(/\r\n/g, "\n").split("\n")) {
-    if (/^inputs:/.test(line)) {
-      assertNotFlowMapping(line, "inputs");
-      inBlock = true;
-      continue;
-    }
-    if (!inBlock) continue;
-    // A blank line or a comment does not end the block; a key at the left
-    // margin does, being the next top-level section.
-    if (/^\s*(#.*)?$/.test(line)) continue;
-    if (/^\S/.test(line)) break;
-    const entry = /^(\s+)([A-Za-z0-9_-]+):\s*$/.exec(line);
-    if (entry !== null) {
-      const [, lead, name] = entry;
-      indent ??= lead;
-      if (lead === indent) names.push(name);
-      continue;
-    }
-    // Not an entry and not a nested field: the one shape that would drop an
-    // input without saying so.
-    assertNotQuotedKey(line, "inputs");
-  }
-  return names;
+  const doc = parseYaml(source);
+  if (!isRecord(doc)) return [];
+  return isRecord(doc.inputs) ? Object.keys(doc.inputs) : [];
 }
 
 /**
@@ -340,57 +295,21 @@ export function pinnedSha(pin: ActionPinFile): string {
  * starts at a `uses:` naming this action and stops at the next step.
  */
 export function workflowActionInputs(yaml: string): string[] {
+  const doc = parseYaml(yaml);
+  if (!isRecord(doc) || !isRecord(doc.jobs)) return [];
   const names: string[] = [];
-  let inStep = false;
-  let inWith = false;
-  let withIndent: string | undefined;
-  for (const line of yaml.replace(/\r\n/g, "\n").split("\n")) {
-    if (/^\s*(?:-\s+)?uses:/.test(line)) {
-      // Entering a step's `uses:` — this action's, or another's, which ends
-      // any block we were reading.
-      inStep = new RegExp(`uses:\\s*${ACTION_SLUG}@`).test(line);
-      inWith = false;
-      withIndent = undefined;
-      continue;
-    }
-    if (!inStep) continue;
-    // A new list item is the next step, whatever it declares.
-    if (/^\s*-\s/.test(line)) {
-      inStep = false;
-      inWith = false;
-      continue;
-    }
-    if (/^\s*with:/.test(line)) {
-      assertNotFlowMapping(line, "with");
-      inWith = true;
-      continue;
-    }
-    if (!inWith) continue;
-    // A comment or a blank line does not end the block. Treating a comment as
-    // the end dropped every input after it — silently, which is the failure
-    // this whole check exists to avoid.
-    if (/^\s*(#.*)?$/.test(line)) continue;
-    const entry = /^(\s*)([A-Za-z0-9_-]+):/.exec(line);
-    // Indent decides what a line is, because a value can look like a key. The
-    // first entry sets the block's own indent; anything deeper belongs to that
-    // entry — the lines of a folded scalar, or a nested mapping — and anything
-    // shallower has left the block.
-    //
-    // Reading by pattern alone got this wrong in both directions at once: a
-    // folded `allowed-endpoints` whose lines are host:port pairs ended the
-    // block, losing every input below it, while a nested value contributed its
-    // own keys as inputs that were never passed.
-    const lead = entry?.[1] ?? /^(\s*)/.exec(line)?.[1] ?? "";
-    withIndent ??= lead;
-    if (lead.length > withIndent.length) continue;
-    if (lead.length < withIndent.length) {
-      inWith = false;
-      continue;
-    }
-    if (entry !== null) names.push(entry[2]);
-    else {
-      assertNotQuotedKey(line, "with");
-      inWith = false;
+  for (const job of Object.values(doc.jobs)) {
+    if (!isRecord(job) || !Array.isArray(job.steps)) continue;
+    for (const step of job.steps) {
+      if (!isRecord(step)) continue;
+      // Scoped to this action's own steps. Every step has a `with:` of its
+      // own, and counting them all would compare `actions/checkout`'s inputs
+      // against this action's list and reject every workflow for having a
+      // checkout in it.
+      const uses = step.uses;
+      if (typeof uses !== "string") continue;
+      if (!uses.startsWith(`${ACTION_SLUG}@`)) continue;
+      if (isRecord(step.with)) names.push(...Object.keys(step.with));
     }
   }
   return names;

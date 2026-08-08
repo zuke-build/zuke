@@ -415,84 +415,111 @@ Deno.test("the committed pin lists the inputs action.yml declares", () => {
   }
 });
 
-Deno.test("a shape the readers cannot parse is an error, not an empty answer", () => {
-  // Flow style and quoted keys are valid YAML that these line readers do not
-  // handle. Returning fewer inputs would be the worst outcome: the check
-  // compares what the workflows use against the release, so an input it failed
-  // to see is an input nobody checks. Under-reporting is the one result worth
-  // ruling out, so an unreadable shape fails loudly.
-  assertThrows(() =>
+Deno.test("every YAML shape that broke the line reader now parses", () => {
+  // Five review findings and four fixes came out of reading these files line by
+  // line: a comment ended the block, flow style read as empty, a folded scalar
+  // ended the block, a nested value contributed its own keys. Three were silent
+  // under-reports, which is the outcome this check cannot afford — an input it
+  // fails to see is an input nobody checks. Parsing removes the class, and this
+  // is the list it has to stay removed for.
+  const wf = (withBlock: string) =>
+    `name: CI
+jobs:
+  gate:
+    steps:
+      - uses: zuke-build/zuke@${SHA}
+${withBlock}      - run: ./zuke ci
+`;
+
+  const plain =
+    "        with:\n          egress-policy: block\n          ref: main\n";
+  assertEquals(workflowActionInputs(wf(plain)), ["egress-policy", "ref"]);
+
+  // A comment used to end the block, hiding every input below it.
+  assertEquals(
     workflowActionInputs(
-      `steps:\n  - uses: zuke-build/zuke@${SHA}\n    with: { ref: main }\n`,
-    )
+      wf(
+        "        with:\n          egress-policy: block\n          # why\n          ref: main\n",
+      ),
+    ),
+    ["egress-policy", "ref"],
   );
-  assertThrows(() =>
+
+  // A folded scalar's lines are host:port pairs, which used to look like the
+  // end of the block and lose everything after it.
+  assertEquals(
     workflowActionInputs(
-      `steps:\n  - uses: zuke-build/zuke@${SHA}\n    with:\n      "ref": main\n`,
-    )
+      wf(
+        "        with:\n          allowed-endpoints: >\n            deno.land:443\n            jsr.io:443\n          ref: main\n",
+      ),
+    ),
+    ["allowed-endpoints", "ref"],
   );
-  assertThrows(() => declaredInputs("name: x\ninputs: { target: {} }\n"));
+
+  // Flow style and quoted keys used to be refused outright, because reading
+  // them wrong would have under-reported. They simply work now.
+  assertEquals(
+    workflowActionInputs(
+      wf("        with: { egress-policy: block, ref: main }\n"),
+    ),
+    ["egress-policy", "ref"],
+  );
+  assertEquals(
+    workflowActionInputs(
+      wf(
+        '        with:\n          "egress-policy": block\n          ref: main\n',
+      ),
+    ),
+    ["egress-policy", "ref"],
+  );
+
+  // A nested value used to contribute its own keys as inputs nobody passes.
+  assertEquals(
+    workflowActionInputs(
+      wf(
+        "        with:\n          config:\n            key: value\n          ref: main\n",
+      ),
+    ),
+    ["config", "ref"],
+  );
 });
 
-Deno.test("the manifest's indent is taken from its first entry", () => {
-  // Assuming two spaces made a four-space manifest read as having no inputs at
-  // all, which `pinFor` would then reject with a message about the release
-  // rather than about the indent.
-  assertEquals(
-    declaredInputs("name: x\ninputs:\n    target:\n        description: y\n"),
-    ["target"],
-  );
-  // A nested field is not another input, whatever the block's indent.
+Deno.test("only this action's own steps count", () => {
+  // Every step has a `with:`. Counting them all would compare another action's
+  // inputs against this action's list and reject every workflow for having a
+  // checkout in it.
+  const yaml = `name: CI
+jobs:
+  gate:
+    steps:
+      - uses: zuke-build/zuke@${SHA}
+        with:
+          ref: main
+      - uses: actions/checkout@${SHA}
+        with:
+          fetch-depth: "0"
+          repository: other/repo
+      - run: ./zuke ci
+`;
+  assertEquals(workflowActionInputs(yaml), ["ref"]);
+});
+
+Deno.test("a manifest's inputs parse whatever the style", () => {
   assertEquals(
     declaredInputs("name: x\ninputs:\n  target:\n    description: y\n  ref:\n"),
     ["target", "ref"],
   );
-});
-
-Deno.test("a comment inside a with block does not hide the inputs after it", () => {
-  // A comment was treated as the end of the block, so every input below it
-  // went uncounted — `ref` here — and an input the check cannot see is an
-  // input nobody checks. Blank lines were already handled; comments were not.
-  const yaml = `steps:
-  - uses: zuke-build/zuke@${SHA}
-    with:
-      egress-policy: block
-      # why this job needs a specific ref
-      ref: main
-
-      fetch-depth: "0"
-`;
-  assertEquals(workflowActionInputs(yaml), [
-    "egress-policy",
-    "ref",
-    "fetch-depth",
-  ]);
-});
-
-Deno.test("a multiline or nested value is not read as more inputs", () => {
-  // Indent decides what a line is, because a value can look like a key. Reading
-  // by pattern alone was wrong in both directions at once: the lines of a
-  // folded scalar are `host:port` pairs, which ended the block and lost every
-  // input below it, while a nested mapping contributed its own keys as inputs
-  // that were never passed.
-  const folded = `steps:
-  - uses: zuke-build/zuke@${SHA}
-    with:
-      allowed-endpoints: >
-        deno.land:443
-        jsr.io:443
-      ref: main
-`;
-  assertEquals(workflowActionInputs(folded), ["allowed-endpoints", "ref"]);
-
-  const nested = `steps:
-  - uses: zuke-build/zuke@${SHA}
-    with:
-      config:
-        key: value
-      ref: main
-`;
-  assertEquals(workflowActionInputs(nested), ["config", "ref"]);
+  // Four-space indent, which the line reader silently returned nothing for
+  // until it learnt to take the indent from the first entry.
+  assertEquals(
+    declaredInputs("name: x\ninputs:\n    target:\n        description: y\n"),
+    ["target"],
+  );
+  // Flow style, which the line reader had to refuse.
+  assertEquals(declaredInputs("name: x\ninputs: { target: {} }\n"), ["target"]);
+  // No inputs at all is an empty list, not an error — `pinFor` is what refuses
+  // to pin that, with a message about the release.
+  assertEquals(declaredInputs("name: x\nruns:\n  using: composite\n"), []);
 });
 
 Deno.test("a change no workflow can see is reported, not failed", () => {
@@ -508,7 +535,7 @@ Deno.test("a change no workflow can see is reported, not failed", () => {
     assertEquals(await releaseIsOwed(pin, source), false);
     assertEquals(await releaseIsOwed(pin, `${source}# a new guard\n`), true);
     // CRLF is not a change. A Windows checkout would otherwise report a drift
-    // that does not exist, on one platform and not the other.
+    // that exists on one platform and not the other.
     assertEquals(
       await releaseIsOwed(pin, source.replace(/\n/g, "\r\n")),
       false,
