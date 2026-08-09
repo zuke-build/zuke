@@ -451,6 +451,11 @@ function encodePath(value: string): string {
   return value.split("/").map(encodeURIComponent).join("/");
 }
 
+/** Whether a parsed JSON value is an object that can be indexed. */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
 /**
  * Read a nested string out of an API response, or say which call returned
  * something else.
@@ -461,11 +466,6 @@ function encodePath(value: string): string {
  * flowing into a request path, not as an error naming the call that returned
  * it.
  */
-/** Whether a parsed JSON value is an object that can be indexed. */
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
 function readString(value: unknown, path: string[], what: string): string {
   let cursor = value;
   for (const key of path) {
@@ -480,6 +480,25 @@ function readString(value: unknown, path: string[], what: string): string {
   return cursor;
 }
 
+/**
+ * Reject a repository slug that is not exactly `owner/name`.
+ *
+ * Encoding already stops the slug escaping upwards — a `..` segment survives as
+ * a literal name rather than resolving — so this is not the traversal guard.
+ * What it stops is a slug with the wrong number of segments silently changing
+ * which endpoint is called: `a/b/c` builds `/repos/a/b/c/git/trees`, sending a
+ * token-bearing request somewhere the caller never named. The slug is a trust
+ * boundary like the ref names beside it, and the ref names are checked.
+ */
+function assertRepoSlug(slug: string): void {
+  const parts = slug.split("/");
+  if (parts.length !== 2 || parts.some((part) => part === "")) {
+    throw new Error(
+      `invalid repository ${JSON.stringify(slug)}: expected "owner/name".`,
+    );
+  }
+}
+
 /** A caller bound to one repository, so each call site names only its path. */
 function caller(
   baseUrl: string,
@@ -487,6 +506,9 @@ function caller(
   token: string,
   fetchImpl: typeof fetch,
 ) {
+  // Once, here, rather than in each settings class: every request routes
+  // through this caller, so a check anywhere else could be one path short.
+  assertRepoSlug(repo);
   return async function call(
     method: string,
     path: string,

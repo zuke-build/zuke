@@ -386,8 +386,39 @@ Deno.test("the repository slug is encoded too", async () => {
   }) as typeof fetch;
 
   await commitFiles((s) =>
-    s.repo("acme/%2e%2e/%2e%2e/other").token("t").branch("main").message("m")
+    s.repo("acme/%2e%2e").token("t").branch("main").message("m")
       .fetch(capture)
   );
   assertEquals(seen[0].startsWith("/repos/acme/%252e%252e/"), true);
+  // Every request stayed under the slug, encoded — none climbed out of it.
+  assertEquals(
+    seen.every((path) => path.startsWith("/repos/acme/%252e%252e/")),
+    true,
+  );
+});
+
+Deno.test("a repository slug that is not owner/name is refused", async () => {
+  // Encoding stops the slug climbing out of `/repos/`, so this is not the
+  // traversal guard. It stops a slug with the wrong number of segments
+  // quietly redirecting a token-bearing request: `a/b/c` would build
+  // `/repos/a/b/c/git/trees`, an endpoint the caller never named.
+  const reject = (() => {
+    throw new Error("no request should have been made");
+  }) as typeof fetch;
+
+  for (const slug of ["acme", "acme/app/extra", "/app", "acme/", "", "/"]) {
+    let message = "";
+    try {
+      await commitFiles((s) =>
+        s.repo(slug).token("t").branch("main").message("m").fetch(reject)
+      );
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error);
+    }
+    assertEquals(
+      message.includes('expected "owner/name"'),
+      true,
+      `${JSON.stringify(slug)} should have been refused, got ${message}`,
+    );
+  }
 });
