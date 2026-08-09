@@ -109,6 +109,9 @@ function assertRefName(name: string, what: string): void
 async function commitFiles(configure?: (settings: GhCommitSettings) => GhCommitSettings): Promise<GhCommitResult>
   Perform the configured commit.
 
+async function findPullRequest(configure?: (settings: GhPullRequestSettings) => GhPullRequestSettings): Promise<GhPullRequestResult | undefined>
+  Look for an open pull request without opening one.
+
 function githubWorkflow(configure: (settings: GithubWorkflowSettings) => GithubWorkflowSettings): WaitTrigger
   A {@link "@zuke/core".WaitTrigger} that dispatches a GitHub Actions workflow,
   suspends the run until it finishes, and records its per-job conclusions to the
@@ -489,7 +492,9 @@ interface GhCommitApi
 
     Commits onto `.branch(...)`, or creates it from `.from(...)` when that is
     set. The ref update is not forced, so a commit landing between reading the
-    head and writing it is rejected rather than silently overwritten.
+    head and writing it is rejected rather than silently overwritten — unless
+    `.replace()` is set, which resets an existing branch onto its base and
+    discards whatever was on it.
   tag(configure?: (settings: GhTagSettings) => GhTagSettings): Promise<void>
     Point an annotated tag at a commit, creating or moving its ref.
 
@@ -511,6 +516,18 @@ interface GhPullRequestApi
     Idempotent on purpose. An unattended job that proposes the same branch
     twice — because a later step failed and the whole thing ran again — should
     find its existing proposal rather than fail on it.
+
+    An existing pull request is returned as it stands: the title and body set
+    here are not written over it, since the caller asked for a proposal to
+    exist and one does. `created` says which happened.
+  findPullRequest(configure?: (settings: GhPullRequestSettings) => GhPullRequestSettings): Promise<GhPullRequestResult | undefined>
+    Find the open pull request from `.head(...)` onto `.base(...)`, without
+    opening one.
+
+    For a caller that must know whether a proposal already exists before it
+    writes anything — because the answer changes what it should do, not just
+    what it should report. Opening one to find out is not a substitute: by
+    then the branch it would have to prepare has already been written.
 
 interface GhPullRequestResult
   The pull request a {@link GhPullRequestApi.pullRequest} call resolved to.

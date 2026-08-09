@@ -43,6 +43,7 @@ import {
   tagCommit,
 } from "./commit.ts";
 import {
+  findPullRequest,
   type GhPullRequestApi,
   type GhPullRequestResult,
   type GhPullRequestSettings,
@@ -104,6 +105,11 @@ export const GhTasks: GhTasksApi = {
     configure?: (s: GhPullRequestSettings) => GhPullRequestSettings,
   ): Promise<GhPullRequestResult> {
     return openPullRequest(configure);
+  },
+  findPullRequest(
+    configure?: (s: GhPullRequestSettings) => GhPullRequestSettings,
+  ): Promise<GhPullRequestResult | undefined> {
+    return findPullRequest(configure);
   },
   appToken(
     configure?: Configure<GhAppTokenSettings>,

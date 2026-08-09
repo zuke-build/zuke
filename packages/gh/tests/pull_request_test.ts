@@ -80,9 +80,13 @@ Deno.test("an existing proposal is found rather than failed on", async () => {
       status: 422,
       body: { message: "A pull request already exists for acme:topic." },
     },
-    "GET /pulls?state=open&head=acme%3Atopic": {
+    "GET /pulls?state=open&head=acme%3Atopic&base=master": {
       status: 200,
-      body: [{ number: 4, html_url: "https://github.com/acme/app/pull/4" }],
+      body: [{
+        number: 4,
+        html_url: "https://github.com/acme/app/pull/4",
+        head: { ref: "topic" },
+      }],
     },
   });
   const result = await openPullRequest((s) =>
@@ -105,7 +109,10 @@ Deno.test("a 422 with no open pull request keeps the original error", async () =
       status: 422,
       body: { message: "No commits between master and topic" },
     },
-    "GET /pulls?state=open&head=acme%3Atopic": { status: 200, body: [] },
+    "GET /pulls?state=open&head=acme%3Atopic&base=master": {
+      status: 200,
+      body: [],
+    },
   });
   let message = "";
   try {
@@ -193,4 +200,91 @@ Deno.test("the missing settings are named rather than sent empty", async () => {
     }
     assertStringIncludes(message, expected);
   }
+});
+
+Deno.test("a proposal onto a different base is not reported as this one", async () => {
+  // GitHub allows several pull requests open from one branch at once, provided
+  // they target different bases, and the duplicate 422 is raised for the
+  // head-and-base pair. A lookup filtered only on the head would match the
+  // wrong one and tell the caller its change is up for review against a base
+  // it never named.
+  const { fetch, calls } = fakeFetch({
+    "POST /pulls": {
+      status: 422,
+      body: { message: "No commits between master and topic" },
+    },
+    // Nothing open from `topic` onto `master`; the one open from `topic` onto
+    // `develop` is deliberately not in this table, because the filter must not
+    // ask a question that could match it.
+    "GET /pulls?state=open&head=acme%3Atopic&base=master": {
+      status: 200,
+      body: [],
+    },
+  });
+  let message = "";
+  try {
+    await openPullRequest((s) =>
+      s.repo("acme/app").token("t").head("topic").base("master").title("t")
+        .fetch(fetch)
+    );
+  } catch (error) {
+    message = error instanceof Error ? error.message : String(error);
+  }
+  // The real 422 survives rather than being masked by an unrelated proposal.
+  assertStringIncludes(message, "No commits between master and topic");
+  assertStringIncludes(calls[1].path, "base=master");
+});
+
+Deno.test("a head that is not the one asked for is not accepted", async () => {
+  // The filter is applied by GitHub, and this is the one place where taking
+  // its word for it would mean returning a pull request the caller never
+  // asked about.
+  const { fetch } = fakeFetch({
+    "POST /pulls": { status: 422, body: { message: "original 422" } },
+    "GET /pulls?state=open&head=acme%3Atopic&base=master": {
+      status: 200,
+      body: [{
+        number: 9,
+        html_url: "https://github.com/acme/app/pull/9",
+        head: { ref: "topic-2" },
+      }],
+    },
+  });
+  let message = "";
+  try {
+    await openPullRequest((s) =>
+      s.repo("acme/app").token("t").head("topic").base("master").title("t")
+        .fetch(fetch)
+    );
+  } catch (error) {
+    message = error instanceof Error ? error.message : String(error);
+  }
+  assertStringIncludes(message, "original 422");
+});
+
+Deno.test("a lookup that fails keeps the error that says what was refused", async () => {
+  // The lookup is how this call finds out what the 422 meant. If it fails too,
+  // reporting its failure would replace the diagnosis with a symptom of the
+  // diagnosis — the same defect as retrying a 403 as though it were the
+  // expected case.
+  const { fetch } = fakeFetch({
+    "POST /pulls": {
+      status: 422,
+      body: { message: "Reference update failed" },
+    },
+    "GET /pulls?state=open&head=acme%3Atopic&base=master": {
+      status: 403,
+      body: { message: "Resource not accessible by integration" },
+    },
+  });
+  let message = "";
+  try {
+    await openPullRequest((s) =>
+      s.repo("acme/app").token("t").head("topic").base("master").title("t")
+        .fetch(fetch)
+    );
+  } catch (error) {
+    message = error instanceof Error ? error.message : String(error);
+  }
+  assertStringIncludes(message, "Reference update failed");
 });

@@ -264,7 +264,9 @@ export interface GhCommitApi {
    *
    * Commits onto `.branch(...)`, or creates it from `.from(...)` when that is
    * set. The ref update is not forced, so a commit landing between reading the
-   * head and writing it is rejected rather than silently overwritten.
+   * head and writing it is rejected rather than silently overwritten — unless
+   * `.replace()` is set, which resets an existing branch onto its base and
+   * discards whatever was on it.
    */
   commit(
     configure?: (settings: GhCommitSettings) => GhCommitSettings,
@@ -291,6 +293,16 @@ export async function commitFiles(
   assertRefName(branch, "branch");
   if (settings.from_ !== undefined) {
     assertRefName(settings.from_, "base branch");
+  }
+  if (settings.replace_ && settings.from_ === undefined) {
+    // Silently ignoring it would be the worst of both: the caller asked for a
+    // branch to be reset, the safe path runs instead, and nothing says so.
+    throw new Error(
+      ".replace() only applies together with .from(...): it resets an " +
+        "existing .branch(...) onto the base it would be created from. " +
+        "Committing onto a branch that already exists is what .branch(...) " +
+        "does on its own.",
+    );
   }
 
   const call = caller(

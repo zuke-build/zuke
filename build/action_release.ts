@@ -418,12 +418,25 @@ export interface ReleaseActionDeps {
   changedSince(ref: string): Promise<boolean>;
   /** The commit SHA being released. */
   headSha(): Promise<string>;
-  /** The commit SHA a ref names, used to re-pin an already-cut release. */
-  shaOf(ref: string): Promise<string>;
+  /**
+   * The commit SHA a ref names, or `undefined` when it does not resolve.
+   *
+   * Undefined rather than a throw because "the major tag does not exist yet"
+   * is an ordinary state — the first release of a major — and the caller has
+   * to tell it apart from "it exists and points somewhere else".
+   */
+  shaOf(ref: string): Promise<string | undefined>;
   /** The pin as the working tree currently has it. */
   committedPin(): ActionPinFile;
-  /** Create or move `tag` onto HEAD, annotated with `message`. */
-  tag(tag: string, message: string, force: boolean): Promise<void>;
+  /**
+   * Create or move `tag` onto `sha`, annotated with `message`.
+   *
+   * The commit is named rather than implied. It used to be whatever HEAD was,
+   * which is right for a fresh cut and wrong for repointing a major tag at an
+   * earlier release — the case that exists precisely because the two tag
+   * writes are not atomic.
+   */
+  tag(tag: string, message: string, force: boolean, sha: string): Promise<void>;
   /** Push `tag` to the remote, replacing it when `force`. */
   push(tag: string, force: boolean): Promise<void>;
   /** The action's source, as the tree being released contains it. */
@@ -457,12 +470,74 @@ export interface ReleaseActionResult {
  * makes the second run a no-op instead of the first iteration of a loop, so
  * keep it ahead of any work that writes.
  */
+/**
+ * The message a major pointer carries.
+ *
+ * One definition, because the reconciliation below has to write the same
+ * annotation the cut path does — a pointer that healed should be
+ * indistinguishable from one that was never wrong.
+ */
+function majorMessage(major: string): string {
+  return `Zuke Build action ${major} — the newest ${major}.x.y.`;
+}
+
+/**
+ * Point the major tag at the newest release when it has drifted.
+ *
+ * A release is two tag writes with nothing binding them together: `vX.Y.Z` is
+ * created, then `v1` is moved. If the second fails — a 5xx from the git data
+ * API, a rate limit, the job timing out — the release is half-published, and
+ * `v1` is the half that consumers actually use.
+ *
+ * Nothing else would ever notice. Once `vX.Y.Z` exists, `changedSince` compares
+ * against a tag naming that very commit and answers "unchanged" on every later
+ * run, so the release path is never entered again; and once the pin lands, the
+ * retry path stops too. Both report success. `v1` would stay on the previous
+ * release until somebody happened to edit `action.yml` again — silently
+ * withholding exactly the pinned-dependency bumps the tag exists to deliver.
+ *
+ * So it is checked every run rather than inferred from what this run did, and
+ * it is checked before the "is anything owed" gate, because the answer to that
+ * question is "no" in precisely the state this repairs.
+ */
+export async function reconcileMajorTag(
+  deps: ReleaseActionDeps,
+  releaseTag: string,
+): Promise<boolean> {
+  const major = majorTag(releaseTag);
+  const released = await deps.shaOf(releaseTag);
+  if (released === undefined) {
+    // The tag was listed and then would not resolve. Refusing beats guessing:
+    // moving a major pointer onto the wrong commit is worse than not moving it.
+    throw new Error(
+      `${releaseTag} is in the tag list but does not resolve to a commit, so ` +
+        `${major} cannot be checked against it.`,
+    );
+  }
+  const pointer = await deps.shaOf(major);
+  if (pointer === released) return false;
+
+  deps.info(
+    pointer === undefined
+      ? `${major} does not exist yet; pointing it at ${releaseTag}.`
+      : `${major} points at ${pointer.slice(0, 7)} rather than ${releaseTag} ` +
+        `(${released.slice(0, 7)}) — a release that half-published. Moving it.`,
+  );
+  await deps.tag(major, majorMessage(major), true, released);
+  await deps.push(major, true);
+  return true;
+}
+
 export async function releaseAction(
   deps: ReleaseActionDeps,
 ): Promise<ReleaseActionResult> {
   assertReleasable(await deps.state());
 
   const current = latestVersion(await deps.tags());
+
+  // Before the gate below, not after: the state this repairs is one where the
+  // gate says there is nothing to do.
+  if (current !== undefined) await reconcileMajorTag(deps, current.tag);
   if (current !== undefined && !(await deps.changedSince(current.tag))) {
     // Nothing new to cut. That is not the same as nothing to do: a release is
     // two halves, the tags that reach consumers and the pin that this
@@ -481,18 +556,26 @@ export async function releaseAction(
     }
 
     // The tags exist; the pin never landed. Rebuild it and let the caller
-    // propose it again. No tag is cut or moved here — they are already right,
-    // and re-cutting them would move `v1` onto a commit for a second time to
-    // no effect.
+    // propose it again. No tag is cut here — the release itself is already
+    // published, and re-cutting `vX.Y.Z` over itself would fail. Whether the
+    // major pointer is where it should be is not assumed: `reconcileMajorTag`
+    // above has already checked and moved it if not.
     //
     // The SHA is the tag's, not HEAD's: master may have moved on since, and
     // the pin has to name the commit that was actually released. Everything
     // else can come from the working tree, because reaching this branch at all
     // means `action.yml` here is identical to the tagged one.
     const source = await deps.actionSource();
+    const releasedSha = await deps.shaOf(current.tag);
+    if (releasedSha === undefined) {
+      throw new Error(
+        `${current.tag} is in the tag list but does not resolve to a commit, ` +
+          `so the pin cannot name what it released.`,
+      );
+    }
     await deps.writePin(
       pinFor(
-        await deps.shaOf(current.tag),
+        releasedSha,
         current.tag,
         declaredInputs(source),
         await actionDigest(source),
@@ -525,15 +608,11 @@ export async function releaseAction(
     ),
   );
 
-  await deps.tag(version, `Zuke Build action ${version}`, false);
+  await deps.tag(version, `Zuke Build action ${version}`, false, sha);
   await deps.push(version, false);
   deps.info(`Tagged ${version} at ${sha}.`);
 
-  await deps.tag(
-    major,
-    `Zuke Build action ${major} — the newest ${major}.x.y.`,
-    true,
-  );
+  await deps.tag(major, majorMessage(major), true, sha);
   await deps.push(major, true);
   deps.info(`Moved ${major} to ${version}.`);
 

@@ -95,19 +95,33 @@ const FLOOR_CHECK_ENDPOINTS = [
  * and module resolution.
  *
  * Used by every job here that holds a write-scoped token. Those jobs block
- * egress rather than audit it, which is the point: a token read out of the
- * environment by anything in the build graph has nowhere to be sent.
+ * egress rather than audit it, which bounds where a token read out of the
+ * environment could be *sent* — not what it could do against GitHub itself,
+ * which is what dropping the persisted credential addresses.
  */
 const REPO_WRITE_ENDPOINTS = [
   "deno.land:443",
   "dl.deno.land:443",
   "jsr.io:443",
-  "registry.npmjs.org:443",
   "api.github.com:443",
   "github.com:443",
   "codeload.github.com:443",
   "objects.githubusercontent.com:443",
   "release-assets.githubusercontent.com:443",
+];
+
+/**
+ * The website sync's hosts: {@link REPO_WRITE_ENDPOINTS} plus the npm registry.
+ *
+ * Separate because the npm registry is not in the action release's module
+ * graph — the only `npm:` specifiers in this build are runtime strings in the
+ * `spell` and `release` targets, which it does not run. A shared list would be
+ * the union of two jobs' needs rather than the minimum of either, and the
+ * point of blocking egress is the minimum.
+ */
+const WEBSITE_SYNC_ENDPOINTS = [
+  ...REPO_WRITE_ENDPOINTS,
+  "registry.npmjs.org:443",
 ];
 
 /**
@@ -239,11 +253,25 @@ export function githubWorkflows(
         {
           target: targets.actionRelease,
           name: "Release the composite action",
-          // After release-please, so two jobs are never pushing to the same
-          // repository at once. It needs nothing release-please produces —
-          // the action is versioned on its own tag line — so this is pipeline
-          // ordering rather than a build dependency.
+          // After release-please, because that job pushes tags and this one
+          // reads the tag list to decide the next version — running them at
+          // once would let this read a list mid-write. It needs nothing
+          // release-please *produces*, so this is ordering rather than a build
+          // dependency, which is why the condition below lets it run anyway
+          // when that job did not succeed.
+          //
+          // Not a claim that nothing else writes the repository concurrently:
+          // `publishJsr` runs alongside this one (it writes only JSR), and
+          // `syncWebsite` can overlap it while holding its own write-scoped
+          // token — that is safe because it writes a different repository.
           after: [targets.release],
+          // `needs:` alone would silently *skip* this job whenever
+          // release-please failed or was cancelled, and a skipped job is not a
+          // red workflow — so a release-please outage would suppress action
+          // releases with no signal at all. The state machine is idempotent
+          // across runs, so running anyway is safe; being quietly skipped is
+          // what is not.
+          if: "${{ !cancelled() }}",
           // Nothing is granted to `GITHUB_TOKEN` here, because it is not what
           // does the work: the writes are made with an app installation token
           // minted inside the target. That is not a preference. Two things
@@ -302,13 +330,14 @@ export function githubWorkflows(
           // token at all — and the checkout needs to read the repository.
           permissions: { contents: "read" },
           timeoutMinutes: 15,
-          // Blocked because this is the one job that hands build code an app
-          // *private key* rather than a token minted from it. A minted token is
-          // narrow and expires in an hour; the key mints more of them. Nothing
-          // untrusted runs here — this workflow triggers only on a push to master
-          // and workflow_dispatch, and fork PRs get no secrets — so this is
-          // defence in depth against a compromised dependency in the build graph.
-          harden: { egress: "block", allowedEndpoints: REPO_WRITE_ENDPOINTS },
+          // Blocked because this job hands build code an app *private key*
+          // rather than a token minted from it. A minted token is narrow and
+          // expires in an hour; the key mints more of them. Nothing untrusted
+          // runs here — this workflow triggers only on a push to master and
+          // workflow_dispatch, and fork PRs get no secrets — so this is defence
+          // in depth against a compromised dependency in the build graph. The
+          // action release above now holds the key on the same terms.
+          harden: { egress: "block", allowedEndpoints: WEBSITE_SYNC_ENDPOINTS },
           env: {
             ZUKE_BUILD_APP_ID: "${{ secrets.ZUKE_BUILD_APP_ID }}",
             ZUKE_BUILD_APP_KEY: "${{ secrets.ZUKE_BUILD_APP_KEY }}",

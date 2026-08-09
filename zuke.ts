@@ -913,7 +913,7 @@ class ZukeBuild extends Build {
       // the message together — but the release flow hands them over in two
       // steps, `tag` then `push`, because that is what git needs. Holding the
       // message between the two is the whole of this map.
-      const pendingTags = new Map<string, string>();
+      const pendingTags = new Map<string, { message: string; sha: string }>();
       const headSha = async () =>
         (await GitTasks.run((s) => s.command("rev-parse", "HEAD"))).text();
 
@@ -1041,36 +1041,46 @@ class ZukeBuild extends Build {
         // `rev-list -n 1` resolves an annotated tag through its tag object to
         // the commit; `rev-parse <tag>` would hand back the tag object's own
         // SHA, which is not a commit and would be pinned as though it were.
-        shaOf: async (ref) =>
-          (await GitTasks.run((s) => s.command("rev-list", "-n", "1", ref)))
-            .text(),
+        //
+        // A ref that does not resolve is `undefined` rather than a throw: the
+        // major tag legitimately does not exist before the first release of a
+        // major, and the caller has to tell that apart from it existing and
+        // pointing elsewhere.
+        shaOf: async (ref) => {
+          const resolved = await GitTasks.run((s) =>
+            s.command("rev-list", "-n", "1", ref).noThrow()
+          );
+          return resolved.code === 0 ? resolved.text() : undefined;
+        },
         committedPin: () => ACTION_PIN,
         // Locally this writes the tag into the developer's own clone, which is
         // what they want. On CI it is deferred to `push`, which creates the
         // ref through the API — there is no credential on disk to push with,
         // and creating a local tag nobody can push would only be misleading.
-        tag: async (name, message, force) => {
+        tag: async (name, message, force, sha) => {
           if (isCI()) {
-            pendingTags.set(name, message);
+            pendingTags.set(name, { message, sha });
             return;
           }
-          await GitTasks.tag((s) => {
-            const settings = s.name(name).message(message);
-            return force ? settings.force() : settings;
+          // `GitTasks.tag` tags HEAD, and this has to be able to point a major
+          // tag at an earlier release — the case that exists because the two
+          // tag writes are not atomic. So the commit is named explicitly.
+          await GitTasks.run((s) => {
+            const argv = ["tag", ...(force ? ["--force"] : [])];
+            return s.command(...argv, "-a", "-m", message, name, sha);
           });
         },
         push: async (name, force) => {
           if (isCI()) {
-            const head = await headSha();
-            const message = pendingTags.get(name) ?? name;
+            const pending = pendingTags.get(name);
             const token = await apiToken();
             await GhTasks.tag((s) => {
               const settings = s
                 .repo(actionRepo())
                 .token(token)
                 .name(name)
-                .commit(head)
-                .message(message);
+                .commit(pending?.sha ?? "")
+                .message(pending?.message ?? name);
               // Moving `v1` onto a newer release is the whole point of it, and
               // git calls that a non-fast-forward.
               return force ? settings.move() : settings;
@@ -1101,9 +1111,19 @@ class ZukeBuild extends Build {
       // that drift rather than heal it. Regeneration has to happen in a *fresh*
       // process: `build/workflows.ts` reads the pin while this build's fields
       // initialise, so this one is still holding the old value.
-      await DenoTasks.run((s) =>
-        s.allowAll().frozen().script("zuke.ts").scriptArgs("generate-ci")
-      );
+      // Without the app key. The child is a fully-privileged `deno run -A`, and
+      // Deno merges rather than replaces the environment, so it would inherit
+      // a long-lived private key it has no use for — `generate-ci` writes
+      // workflow files from the pin and talks to nothing.
+      const appKey = Deno.env.get("ZUKE_BUILD_APP_KEY");
+      if (appKey !== undefined) Deno.env.delete("ZUKE_BUILD_APP_KEY");
+      try {
+        await DenoTasks.run((s) =>
+          s.allowAll().frozen().script("zuke.ts").scriptArgs("generate-ci")
+        );
+      } finally {
+        if (appKey !== undefined) Deno.env.set("ZUKE_BUILD_APP_KEY", appKey);
+      }
       const version = result.released;
 
       // Locally the human commits what was just written, after looking at it.
@@ -1143,11 +1163,27 @@ class ZukeBuild extends Build {
       const branch = pinBranch(version);
       const subject = pinSubject(version);
 
-      // `.replace()` because this can be a retry: if a previous run created
-      // the branch and then failed before opening the pull request, the branch
-      // is already there and creating it again would be refused. Only this
-      // target ever writes it, and its contents are regenerated in full, so
-      // resetting it discards nothing anyone wrote.
+      // Look before writing. The retry gate fires on *every* push to master
+      // while the pin is unmerged, not just once — so a proposal that is
+      // already open would otherwise have its branch force-reset by unrelated
+      // traffic, discarding any commit a maintainer pushed to make it
+      // mergeable and moving the head out from under a review.
+      const open = await GhTasks.findPullRequest((s) =>
+        s.repo(repo).token(token).base(RELEASE_BRANCH).head(branch)
+      );
+      if (open !== undefined) {
+        ConsoleTasks.info(
+          `#${open.number} already proposes the ${version} pin: ${open.url}. ` +
+            `Leaving its branch alone — it may carry review commits.`,
+        );
+        return;
+      }
+
+      // `.replace()` because this can still be a retry: if a previous run
+      // created the branch and then failed before opening the pull request,
+      // there is a branch with no proposal on it, and creating it again would
+      // be refused. Reaching here means no pull request is open for it, so
+      // resetting it discards nothing under review.
       await GhTasks.commit((s) => {
         let settings = s
           .repo(repo)

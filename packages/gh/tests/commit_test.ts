@@ -546,3 +546,20 @@ Deno.test("`.replace()` does not turn a permission failure into a force push", a
   assertStringIncludes(message, "403");
   assertEquals(calls.some((c) => c.method === "PATCH"), false);
 });
+
+Deno.test("`.replace()` without `.from(...)` is refused rather than ignored", async () => {
+  // Silently ignoring it would be the worst of both: the caller asked for a
+  // reset, the safe path runs instead, and nothing says so.
+  const { fetch, calls } = fakeFetch({});
+  let message = "";
+  try {
+    await commitFiles((s) =>
+      s.repo("acme/app").token("t").branch("topic").replace().message("m")
+        .fetch(fetch)
+    );
+  } catch (error) {
+    message = error instanceof Error ? error.message : String(error);
+  }
+  assertStringIncludes(message, ".replace() only applies together with .from(");
+  assertEquals(calls.length, 0);
+});

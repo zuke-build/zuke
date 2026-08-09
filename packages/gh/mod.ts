@@ -51,6 +51,7 @@ export {
   type WorkflowResult,
 } from "./src/workflow.ts";
 export {
+  findPullRequest,
   type GhPullRequestApi,
   type GhPullRequestResult,
   GhPullRequestSettings,
