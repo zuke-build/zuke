@@ -76,6 +76,7 @@ export async function commitFiles(
   message: string,
   files: readonly CommitFile[],
 ): Promise<CreatedCommit> {
+  assertRefName(branch, "branch");
   const call = caller(options);
   const head = await call<{ object: { sha: string } }>(
     "GET",
@@ -101,6 +102,8 @@ export async function commitToNewBranch(
   message: string,
   files: readonly CommitFile[],
 ): Promise<CreatedCommit> {
+  assertRefName(base, "base branch");
+  assertRefName(branch, "branch");
   const call = caller(options);
   const baseRef = await call<{ object: { sha: string } }>(
     "GET",
@@ -156,6 +159,7 @@ export async function tagCommit(
   message: string,
   force = false,
 ): Promise<void> {
+  assertRefName(tag, "tag");
   const call = caller(options);
   const object = await call<{ sha: string }>("POST", "/git/tags", {
     tag,
@@ -179,6 +183,47 @@ export async function tagCommit(
       ref: `refs/tags/${tag}`,
       sha: object.sha,
     });
+  }
+}
+
+/**
+ * Reject a branch or tag name that git itself would.
+ *
+ * Not cosmetic. These names are interpolated into request paths, and URL
+ * normalisation resolves `..` before the request is sent — so
+ * `../../../user/repos` as a branch turns
+ * `/repos/o/n/git/ref/heads/<branch>` into `/repos/o/n/user/repos`, sending a
+ * write-scoped token somewhere the caller never named. Validating here rather
+ * than trusting every caller is the difference between a library that is safe
+ * to hand a string and one that is safe only when used carefully.
+ *
+ * The rules are git's own (see `git check-ref-format`), minus the ones that
+ * only matter for multi-level refs.
+ */
+function assertRefName(name: string, what: string): void {
+  const bad = name === "" ||
+    name.includes("..") ||
+    name.startsWith("/") ||
+    name.endsWith("/") ||
+    name.startsWith("-") ||
+    name.endsWith(".lock") ||
+    name.endsWith(".") ||
+    /[~^:?*[\\]/.test(name) ||
+    // Control characters and space, checked by codepoint rather than by a
+    // regex range: a regex spelling them out trips `no-control-regex`, and
+    // suppressing that rule to keep a check git itself makes would be the
+    // wrong trade.
+    [...name].some((c) => {
+      const code = c.codePointAt(0) ?? 0;
+      return code <= 0x20 || code === 0x7f;
+    });
+  if (bad) {
+    throw new Error(
+      `refusing to use ${JSON.stringify(name)} as a ${what}: it is not a ` +
+        `valid git ref name. These are interpolated into request paths, so a ` +
+        `name containing \`..\` would redirect the call somewhere else ` +
+        `entirely — with the token attached.`,
+    );
   }
 }
 

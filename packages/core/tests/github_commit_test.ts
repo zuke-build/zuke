@@ -181,3 +181,66 @@ Deno.test("moving a tag that does not exist yet creates it", async () => {
   const created = calls.find((c) => c.path === "/git/refs");
   assertEquals(created?.body.ref, "refs/tags/v2");
 });
+
+Deno.test("a ref name that would redirect the request is refused", async () => {
+  // The reason this validates rather than trusting callers. URL normalisation
+  // resolves `..` before the request is sent, so this branch name turns
+  // `/repos/acme/app/git/ref/heads/<branch>` into `/repos/acme/app/user/repos`
+  // — a different endpoint entirely, with the write-scoped token attached.
+  const traversal = "../../../user/repos";
+  assertEquals(
+    new URL(`https://api.github.com/repos/acme/app/git/ref/heads/${traversal}`)
+      .pathname,
+    "/repos/acme/app/user/repos",
+  );
+
+  const { fetch, calls } = fakeFetch({});
+  for (
+    const attempt of [
+      () => commitFiles({ ...REPO, fetch }, traversal, "m", []),
+      () => commitToNewBranch({ ...REPO, fetch }, "master", traversal, "m", []),
+      () => commitToNewBranch({ ...REPO, fetch }, traversal, "topic", "m", []),
+      () => tagCommit({ ...REPO, fetch }, traversal, "c", "m"),
+    ]
+  ) {
+    let message = "";
+    try {
+      await attempt();
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error);
+    }
+    assertStringIncludes(message, "not a valid git ref name");
+  }
+  // Refused before anything was sent, which is the point — a request that goes
+  // out and fails has already carried the token somewhere unintended.
+  assertEquals(calls.length, 0);
+});
+
+Deno.test("the other names git rejects are rejected too", async () => {
+  const { fetch } = fakeFetch({});
+  for (
+    const name of [
+      "", // nothing to point at
+      "-leading-dash", // parses as an option to git
+      "has space",
+      "has~tilde",
+      "has^caret",
+      "has:colon",
+      "has?question",
+      "has*star",
+      "has[bracket",
+      "trailing/",
+      "/leading",
+      "ends.lock",
+      "ends.",
+    ]
+  ) {
+    let threw = false;
+    try {
+      await commitFiles({ ...REPO, fetch }, name, "m", []);
+    } catch {
+      threw = true;
+    }
+    assertEquals(threw, true, `${JSON.stringify(name)} was accepted`);
+  }
+});
