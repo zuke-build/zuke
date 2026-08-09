@@ -422,3 +422,50 @@ Deno.test("a repository slug that is not owner/name is refused", async () => {
     );
   }
 });
+
+Deno.test("a 2xx that is not JSON names the call rather than the parser", async () => {
+  // A proxy or gateway answering instead of GitHub. Bare, this surfaces as a
+  // SyntaxError naming no call.
+  const gateway = (() =>
+    Promise.resolve(
+      new Response("<html>gateway timeout</html>", { status: 200 }),
+    )) as typeof fetch;
+
+  let message = "";
+  try {
+    await commitFiles((s) =>
+      s.repo("acme/app").token("t").branch("main").message("m").fetch(gateway)
+    );
+  } catch (error) {
+    message = error instanceof Error ? error.message : String(error);
+  }
+  assertEquals(message.includes("/git/ref/heads/main"), true, message);
+  assertEquals(message.includes("not JSON"), true, message);
+  assertEquals(message.includes("gateway timeout"), true, message);
+});
+
+Deno.test("a non-JSON body is not mistaken for a missing tag ref", async () => {
+  // `tagCommit` creates a tag when the ref is missing. That decision reads a
+  // GhApiError's status, so a parse failure must not enter it: doing so would
+  // retry an unrelated failure as a create.
+  const calls: string[] = [];
+  const gateway = ((url: string | URL | Request) => {
+    calls.push(new URL(String(url)).pathname);
+    return Promise.resolve(new Response("not json at all", { status: 200 }));
+  }) as typeof fetch;
+
+  let message = "";
+  try {
+    await tagCommit((s) =>
+      s.repo("acme/app").token("t").name("v1").commit("c").move().fetch(gateway)
+    );
+  } catch (error) {
+    message = error instanceof Error ? error.message : String(error);
+  }
+  assertEquals(message.includes("not JSON"), true, message);
+  assertEquals(
+    calls.some((path) => path.endsWith("/git/refs")),
+    false,
+    message,
+  );
+});

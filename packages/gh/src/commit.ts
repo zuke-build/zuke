@@ -536,6 +536,21 @@ function caller(
       // unattended — the log is all anyone will have.
       throw new GhApiError(method, path, response.status, text);
     }
-    return text === "" ? {} : JSON.parse(text);
+    if (text === "") return {};
+    try {
+      return JSON.parse(text);
+    } catch {
+      // A 2xx that is not JSON is a proxy or gateway answering instead of
+      // GitHub. Left bare it surfaces as a SyntaxError naming no call, which
+      // is the same dead end `readString` exists to avoid — and the body is
+      // the evidence of who actually answered, so a prefix of it comes along.
+      // Deliberately not a GhApiError: that type means GitHub refused, and
+      // `tagCommit` reads its status to decide whether to create a missing
+      // ref. A parse failure is neither, and must not be mistaken for one.
+      throw new Error(
+        `${method} ${path} returned ${response.status} with a body that is ` +
+          `not JSON. ${text.slice(0, 400)}`,
+      );
+    }
   };
 }
