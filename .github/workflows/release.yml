@@ -26,6 +26,26 @@ jobs:
         run: ./zuke release
         env:
           GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+  actionRelease:
+    name: Release the composite action
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    needs:
+      - release
+    timeout-minutes: 15
+    steps:
+      - name: Harden and check out with Zuke
+        uses: zuke-build/zuke@5400f044d0b56206b0fa48c90b30486df205c7c6 # v1.0.2
+        with:
+          egress-policy: audit
+          persist-credentials: "true"
+          fetch-depth: "0"
+      - name: Run actionRelease with Zuke
+        run: ./zuke actionRelease
+        env:
+          GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
   publishJsr:
     name: Publish to JSR
     runs-on: ubuntu-latest

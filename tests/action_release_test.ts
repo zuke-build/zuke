@@ -26,8 +26,11 @@ import {
   majorTag,
   nextVersion,
   parseVersion,
+  pinBody,
+  pinBranch,
   pinFor,
   pinnedSha,
+  pinSubject,
   releaseAction,
   type ReleaseActionDeps,
   releaseIsOwed,
@@ -541,4 +544,26 @@ Deno.test("a change no workflow can see is reported, not failed", () => {
       false,
     );
   });
+});
+
+Deno.test("the proposed pin branch and subject are derived from the version", () => {
+  assertEquals(pinBranch("v1.0.3"), "chore/action-v1.0.3");
+  assertStringIncludes(pinSubject("v1.0.3"), "v1.0.3");
+  // Both are interpolated into git arguments, so a value that is not a release
+  // tag is refused rather than passed through.
+  assertThrows(() => pinBranch("v1"));
+  assertThrows(() => pinBranch("; rm -rf /"));
+  assertThrows(() => pinSubject("core-v1.0.0"));
+});
+
+Deno.test("the pin commit is a chore, and its body has no fenced block", () => {
+  // `chore:` because this changes no package. release-please parses every
+  // merged subject, so a `feat:`/`fix:` here would cut a package release for a
+  // commit that touched none.
+  assertEquals(pinSubject("v1.0.3").startsWith("chore: "), true);
+  // The repository squash-merges, so the body becomes the commit body, and
+  // prBodyLint rejects fences — release-please's parser can choke on
+  // parentheses inside one and drop the commit silently.
+  assertEquals(pinBody("v1.0.3").includes("```"), false);
+  assertStringIncludes(pinBody("v1.0.3"), "v1.0.3");
 });

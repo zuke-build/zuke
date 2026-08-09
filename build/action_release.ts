@@ -498,3 +498,39 @@ export async function releaseAction(
   );
   return { released: version };
 }
+
+/** The branch a CI-cut release proposes its pin update on. */
+export function pinBranch(version: string): string {
+  // Validated, because it is interpolated into a `git switch -c` argument.
+  majorTag(version);
+  return `chore/action-${version}`;
+}
+
+/**
+ * The commit and pull-request subject for a CI-cut release's pin update.
+ *
+ * `chore:` deliberately. release-please parses every merged subject, and this
+ * changes no package — a `feat:` or `fix:` here would cut a package release for
+ * a commit that touched none.
+ */
+export function pinSubject(version: string): string {
+  majorTag(version);
+  return `chore: use the Zuke action at ${version}`;
+}
+
+/**
+ * The body for that pull request.
+ *
+ * Prose, no fenced blocks: this repository squash-merges, so the body becomes
+ * the commit body, and `prBodyLint` rejects fences because release-please's
+ * parser can choke on parentheses inside them and drop the commit silently.
+ */
+export function pinBody(version: string): string {
+  return `The action was released as ${version} by the release workflow, which ` +
+    `cut the tag and moved \`v1\` — so consumers already have it. This is the ` +
+    `other half: the pin every generated workflow in this repository opens ` +
+    `with, and the workflows regenerated from it.\n\n` +
+    `Opened rather than pushed because master requires a pull request. Nothing ` +
+    `here is hand-written; \`./zuke actionRelease\` produced all of it, and ` +
+    `\`generate-ci\` would produce it again from the same pin.`;
+}

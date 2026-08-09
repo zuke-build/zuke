@@ -21,6 +21,7 @@ import {
   Build,
   FileTasks,
   glob,
+  isCI,
   parameter,
   repoRoot,
   run,
@@ -52,7 +53,10 @@ import {
   ACTION_PIN,
   ACTION_VERSION_FILE,
   assertWorkflowInputsAvailable,
+  pinBody,
+  pinBranch,
   pinnedSha,
+  pinSubject,
   releaseAction,
   releaseIsOwed,
   workflowActionInputs,
@@ -1004,9 +1008,50 @@ class ZukeBuild extends Build {
       await DenoTasks.run((s) =>
         s.allowAll().frozen().script("zuke.ts").scriptArgs("generate-ci")
       );
-      ConsoleTasks.info(
-        `Regenerated the workflows against ${result.released}. Commit ` +
-          `${ACTION_VERSION_FILE} and .github/workflows together.`,
+      const version = result.released;
+
+      // Locally the human commits what was just written, after looking at it.
+      if (!isCI()) {
+        ConsoleTasks.info(
+          `Regenerated the workflows against ${version}. Commit ` +
+            `${ACTION_VERSION_FILE} and .github/workflows together.`,
+        );
+        return;
+      }
+
+      // On CI nobody is there to do it, and master requires a pull request —
+      // so propose one. The tags are already pushed, which is the half that
+      // reaches consumers; this half is the repository catching up with its
+      // own release, and it can wait for a review without anyone being stuck.
+      const branch = pinBranch(version);
+      await GitTasks.run((s) => s.command("switch", "-c", branch));
+      // The identity the release workflow already commits under.
+      await GitTasks.run((s) =>
+        s.command("config", "user.name", "github-actions[bot]")
+      );
+      await GitTasks.run((s) =>
+        s.command(
+          "config",
+          "user.email",
+          "41898282+github-actions[bot]@users.noreply.github.com",
+        )
+      );
+      await GitTasks.add((s) =>
+        s.paths(ACTION_VERSION_FILE, ".github/workflows")
+      );
+      await GitTasks.commit((s) => s.message(pinSubject(version)));
+      await GitTasks.push((s) => s.remote("origin").ref(branch).setUpstream());
+      await GhTasks.run((s) =>
+        s
+          .command("pr", "create")
+          .flag("title", pinSubject(version))
+          .flag("body", pinBody(version))
+          .flag("base", "master")
+          .flag("head", branch)
+      );
+      ConsoleTasks.success(
+        `Opened a pull request with the ${version} pin and the workflows ` +
+          `regenerated from it.`,
       );
     });
 

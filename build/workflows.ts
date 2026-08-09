@@ -36,6 +36,8 @@ export interface WorkflowTargets {
   test: TargetBuilder;
   /** release-please: maintains the release PR and cuts releases. */
   release: TargetBuilder;
+  /** Cuts the composite action release and proposes its pin. */
+  actionRelease: TargetBuilder;
   /** Publishes new package versions to JSR over OIDC. */
   publishJsr: TargetBuilder;
   /** Opens and merges the website documentation sync PR. */
@@ -227,6 +229,24 @@ export function githubWorkflows(
           // Writes contents and PRs, but must NOT hold the JSR OIDC token.
           permissions: { contents: "write", "pull-requests": "write" },
           timeoutMinutes: 15,
+          env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" },
+        },
+        {
+          target: targets.actionRelease,
+          name: "Release the composite action",
+          // After release-please, so two jobs are never pushing to the same
+          // repository at once. It needs nothing release-please produces —
+          // the action is versioned on its own tag line — so this is pipeline
+          // ordering rather than a build dependency.
+          after: [targets.release],
+          // Cuts and moves tags, then opens a pull request with the pin: the
+          // ruleset on master requires one, so a push would be refused.
+          permissions: { contents: "write", "pull-requests": "write" },
+          timeoutMinutes: 15,
+          // The credential has to survive the checkout for the branch push, and
+          // the tags have to be present or every run would read an empty list
+          // and try to re-cut v1.0.0 over a tag that exists.
+          checkout: { persistCredentials: true, fetchDepth: 0 },
           env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" },
         },
         {
