@@ -342,19 +342,13 @@ export async function commitFiles(
   // The commit's parent: the branch being extended, or the one it is created
   // from.
   const source = settings.from_ ?? branch;
-  const head = await call<{ object: { sha: string } }>(
-    "GET",
-    `/git/ref/heads/${encodePath(source)}`,
-  );
-  const parent = head.object.sha;
-  const parentCommit = await call<{ tree: { sha: string } }>(
-    "GET",
-    `/git/commits/${parent}`,
-  );
+  const head = await call("GET", `/git/ref/heads/${encodePath(source)}`);
+  const parent = readString(head, ["object", "sha"], "ref");
+  const parentCommit = await call("GET", `/git/commits/${parent}`);
   // Contents ride inline: the trees API accepts them, so there is no separate
   // blob to create and nothing orphaned if a later call fails.
-  const tree = await call<{ sha: string }>("POST", "/git/trees", {
-    base_tree: parentCommit.tree.sha,
+  const tree = await call("POST", "/git/trees", {
+    base_tree: readString(parentCommit, ["tree", "sha"], "commit"),
     tree: [...settings.files_].map(([path, content]) => ({
       path,
       mode: FILE_MODE,
@@ -362,23 +356,24 @@ export async function commitFiles(
       content,
     })),
   });
-  const commit = await call<{ sha: string }>("POST", "/git/commits", {
+  const commit = await call("POST", "/git/commits", {
     message: settings.message_,
-    tree: tree.sha,
+    tree: readString(tree, ["sha"], "tree"),
     parents: [parent],
   });
+  const commitSha = readString(commit, ["sha"], "commit");
 
   if (settings.from_ === undefined) {
     await call("PATCH", `/git/refs/heads/${encodePath(branch)}`, {
-      sha: commit.sha,
+      sha: commitSha,
     });
   } else {
     await call("POST", "/git/refs", {
       ref: `refs/heads/${branch}`,
-      sha: commit.sha,
+      sha: commitSha,
     });
   }
-  return { sha: commit.sha, branch };
+  return { sha: commitSha, branch };
 }
 
 /** Perform the configured tag. */
@@ -400,22 +395,23 @@ export async function tagCommit(
     settings.authToken_(),
     settings.fetch_,
   );
-  const object = await call<{ sha: string }>("POST", "/git/tags", {
+  const object = await call("POST", "/git/tags", {
     tag: name,
     message: settings.message_ ?? name,
     object: sha,
     type: "commit",
   });
+  const tagObject = readString(object, ["sha"], "tag object");
   if (!settings.move_) {
     await call("POST", "/git/refs", {
       ref: `refs/tags/${name}`,
-      sha: object.sha,
+      sha: tagObject,
     });
     return;
   }
   try {
     await call("PATCH", `/git/refs/tags/${encodePath(name)}`, {
-      sha: object.sha,
+      sha: tagObject,
       force: true,
     });
   } catch (error) {
@@ -429,7 +425,7 @@ export async function tagCommit(
     if (!missing) throw error;
     await call("POST", "/git/refs", {
       ref: `refs/tags/${name}`,
-      sha: object.sha,
+      sha: tagObject,
     });
   }
 }
@@ -455,6 +451,35 @@ function encodePath(value: string): string {
   return value.split("/").map(encodeURIComponent).join("/");
 }
 
+/**
+ * Read a nested string out of an API response, or say which call returned
+ * something else.
+ *
+ * The alternative was asserting the response shape with a type assertion,
+ * which this repository forbids and which would have been the wrong thing
+ * anyway: a field that is missing or renamed would surface as `undefined`
+ * flowing into a request path, not as an error naming the call that returned
+ * it.
+ */
+/** Whether a parsed JSON value is an object that can be indexed. */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function readString(value: unknown, path: string[], what: string): string {
+  let cursor = value;
+  for (const key of path) {
+    if (!isRecord(cursor)) {
+      throw new Error(`the ${what} response has no ${path.join(".")}`);
+    }
+    cursor = cursor[key];
+  }
+  if (typeof cursor !== "string") {
+    throw new Error(`the ${what} response has no ${path.join(".")}`);
+  }
+  return cursor;
+}
+
 /** A caller bound to one repository, so each call site names only its path. */
 function caller(
   baseUrl: string,
@@ -462,11 +487,11 @@ function caller(
   token: string,
   fetchImpl: typeof fetch,
 ) {
-  return async function call<T = unknown>(
+  return async function call(
     method: string,
     path: string,
     body?: unknown,
-  ): Promise<T> {
+  ): Promise<unknown> {
     const response = await fetchImpl(
       `${baseUrl}/repos/${encodePath(repo)}${path}`,
       {
@@ -489,6 +514,6 @@ function caller(
       // unattended — the log is all anyone will have.
       throw new GhApiError(method, path, response.status, text);
     }
-    return (text === "" ? {} : JSON.parse(text)) as T;
+    return text === "" ? {} : JSON.parse(text);
   };
 }
