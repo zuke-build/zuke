@@ -290,7 +290,15 @@ async function findOpenPullRequest(
   // The filter above is applied by GitHub, and this is the one place where
   // taking its word for it would mean returning a pull request the caller did
   // not ask about; an unexpected match falls through to the original error.
-  if (readString(first, ["head", "ref"], "pull request") !== head) {
+  //
+  // Both ends, because both are what makes it the same proposal: a match on
+  // the head alone is the very confusion the base filter was added to avoid,
+  // and verifying one but not the other would leave that gap open whenever the
+  // filter's own behaviour is not what this code assumes.
+  if (
+    readString(first, ["head", "ref"], "pull request") !== head ||
+    readString(first, ["base", "ref"], "pull request") !== base
+  ) {
     return undefined;
   }
   return {

@@ -86,6 +86,7 @@ Deno.test("an existing proposal is found rather than failed on", async () => {
         number: 4,
         html_url: "https://github.com/acme/app/pull/4",
         head: { ref: "topic" },
+        base: { ref: "master" },
       }],
     },
   });
@@ -247,6 +248,7 @@ Deno.test("a head that is not the one asked for is not accepted", async () => {
         number: 9,
         html_url: "https://github.com/acme/app/pull/9",
         head: { ref: "topic-2" },
+        base: { ref: "master" },
       }],
     },
   });
@@ -287,4 +289,32 @@ Deno.test("a lookup that fails keeps the error that says what was refused", asyn
     message = error instanceof Error ? error.message : String(error);
   }
   assertStringIncludes(message, "Reference update failed");
+});
+
+Deno.test("a base that is not the one asked for is not accepted", async () => {
+  // Both ends are what make it the same proposal. Verifying the head but not
+  // the base would leave open the exact confusion the base filter was added to
+  // avoid, for any case where the filter does not behave as assumed.
+  const { fetch } = fakeFetch({
+    "POST /pulls": { status: 422, body: { message: "original 422" } },
+    "GET /pulls?state=open&head=acme%3Atopic&base=master": {
+      status: 200,
+      body: [{
+        number: 9,
+        html_url: "https://github.com/acme/app/pull/9",
+        head: { ref: "topic" },
+        base: { ref: "develop" },
+      }],
+    },
+  });
+  let message = "";
+  try {
+    await openPullRequest((s) =>
+      s.repo("acme/app").token("t").head("topic").base("master").title("t")
+        .fetch(fetch)
+    );
+  } catch (error) {
+    message = error instanceof Error ? error.message : String(error);
+  }
+  assertStringIncludes(message, "original 422");
 });
