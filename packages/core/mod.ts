@@ -245,6 +245,14 @@ export {
   fail,
 } from "./src/assert.ts";
 export {
+  type CommitFile,
+  commitFiles,
+  commitToNewBranch,
+  type CreatedCommit,
+  type GitHubRepoOptions,
+  tagCommit,
+} from "./src/github_commit.ts";
+export {
   httpDownload,
   HttpError,
   httpJson,
