@@ -248,14 +248,20 @@ export function githubWorkflows(
           // ruleset on master requires one, so a push would be refused.
           permissions: { contents: "write", "pull-requests": "write" },
           timeoutMinutes: 15,
-          // The credential has to survive the checkout for the branch push, and
-          // the tags have to be present or every run would read an empty list
-          // and try to re-cut v1.0.0 over a tag that exists.
-          checkout: { persistCredentials: true, fetchDepth: 0 },
-          // Blocked, not audited, for the reason every token-holding job here
-          // is: the credential has to survive the checkout so the branch push
-          // has one, so bound what could be done with it instead. Anything that
-          // read it out of the environment could not send it anywhere.
+          // No persisted credential. The pull request is built through the
+          // API, so nothing here needs a token in `.git/config` — where it
+          // would outlive the step that used it and be readable by every later
+          // one. The tag push is git, but it happens before this and uses the
+          // ambient credential the runner already has for the checkout it did.
+          //
+          // Full history because the tag list is how the next version is
+          // computed; a shallow checkout reads an empty list and tries to
+          // re-cut v1.0.0 over a tag that exists.
+          checkout: { fetchDepth: 0 },
+          // Blocked rather than audited, as every job here that holds a
+          // write-scoped token is. The block bounds where the token could be
+          // sent, not what it could do against GitHub itself — that is what
+          // dropping the persisted credential addresses.
           harden: { egress: "block", allowedEndpoints: REPO_WRITE_ENDPOINTS },
           env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" },
         },

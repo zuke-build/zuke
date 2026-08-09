@@ -57,6 +57,7 @@ import {
   pinBranch,
   pinnedSha,
   pinSubject,
+  RELEASE_BRANCH,
   releaseAction,
   releaseIsOwed,
   workflowActionInputs,
@@ -91,6 +92,7 @@ import {
 } from "./build/plugin_sync.ts";
 import { actionPin } from "./build/action_pins.ts";
 import { actionlintTool, gitleaksTool, zizmorTool } from "./build/scanners.ts";
+import { createTag, moveTag, proposeChange } from "./build/propose_change.ts";
 import { githubWorkflows } from "./build/workflows.ts";
 
 /**
@@ -907,6 +909,29 @@ class ZukeBuild extends Build {
   actionRelease = target()
     .description("Tag a new version of the Marketplace action when it changed")
     .executes(async () => {
+      // On CI the tags are created through the API, which needs the commit and
+      // the message together — but the release flow hands them over in two
+      // steps, `tag` then `push`, because that is what git needs. Holding the
+      // message between the two is the whole of this map.
+      const pendingTags = new Map<
+        string,
+        { message: string; force: boolean }
+      >();
+      const headSha = async () =>
+        (await GitTasks.run((s) => s.command("rev-parse", "HEAD"))).text();
+      const refOptions = () => {
+        const token = Deno.env.get("GITHUB_TOKEN");
+        const repo = Deno.env.get("GITHUB_REPOSITORY");
+        if (token === undefined || repo === undefined) {
+          throw new Error(
+            "actionRelease needs GITHUB_TOKEN and GITHUB_REPOSITORY on CI: " +
+              "the tags and the pull request are created through the API, so " +
+              "that there is no credential written to disk for them.",
+          );
+        }
+        return { repo, token };
+      };
+
       const result = await releaseAction({
         state: async () => {
           const branch = await GitTasks.run((s) =>
@@ -972,18 +997,32 @@ class ZukeBuild extends Build {
         },
         headSha: async () =>
           (await GitTasks.run((s) => s.command("rev-parse", "HEAD"))).text(),
+        // Locally this writes the tag into the developer's own clone, which is
+        // what they want. On CI it is deferred to `push`, which creates the
+        // ref through the API — there is no credential on disk to push with,
+        // and creating a local tag nobody can push would only be misleading.
         tag: async (name, message, force) => {
+          if (isCI()) {
+            pendingTags.set(name, { message, force });
+            return;
+          }
           await GitTasks.tag((s) => {
             const settings = s.name(name).message(message);
             return force ? settings.force() : settings;
           });
         },
         push: async (name, force) => {
-          // `--force-with-lease` is the typed option, and it is the wrong one
-          // here: a tag has no remote-tracking ref for git to compare against,
-          // so the lease has nothing to check and the push is refused as stale.
-          // Moving `v1` is a deliberate overwrite of a ref only this target
-          // writes, so a plain force is what the operation actually is.
+          if (isCI()) {
+            const pending = pendingTags.get(name);
+            const head = await headSha();
+            const message = pending?.message ?? name;
+            if (force) await moveTag(refOptions(), name, head, message);
+            else await createTag(refOptions(), name, head, message);
+            return;
+          }
+          // `--force-with-lease` is the typed option and the wrong one here: a
+          // tag has no remote-tracking ref for git to compare against, so the
+          // lease has nothing to check and the push is refused as stale.
           await GitTasks.run((s) =>
             force
               ? s.command("push", "--force", "origin", name)
@@ -1023,35 +1062,36 @@ class ZukeBuild extends Build {
       // so propose one. The tags are already pushed, which is the half that
       // reaches consumers; this half is the repository catching up with its
       // own release, and it can wait for a review without anyone being stuck.
-      const branch = pinBranch(version);
-      await GitTasks.run((s) => s.command("switch", "-c", branch));
-      // The identity the release workflow already commits under.
-      await GitTasks.run((s) =>
-        s.command("config", "user.name", "github-actions[bot]")
+      //
+      // Built through the API rather than a checkout that persists a
+      // credential and a `git push`. That credential would be written to
+      // `.git/config`, where it outlives the step that needed it: every later
+      // step in the job could read it, and anything archiving the workspace
+      // would carry it out. Here the token is a request header and nothing
+      // else. It is still readable by this step, which is unavoidable — this
+      // step is what uses it — but it stops existing the moment the step ends.
+      const paths = [
+        ACTION_VERSION_FILE,
+        ...await glob(".github/workflows/*.yml"),
+      ];
+      const files = await Promise.all(
+        paths.map(async (path) => ({
+          path,
+          content: await FileTasks.readText(repoRoot(path)),
+        })),
       );
-      await GitTasks.run((s) =>
-        s.command(
-          "config",
-          "user.email",
-          "41898282+github-actions[bot]@users.noreply.github.com",
-        )
-      );
-      await GitTasks.add((s) =>
-        s.paths(ACTION_VERSION_FILE, ".github/workflows")
-      );
-      await GitTasks.commit((s) => s.message(pinSubject(version)));
-      await GitTasks.push((s) => s.remote("origin").ref(branch).setUpstream());
-      await GhTasks.run((s) =>
-        s
-          .command("pr", "create")
-          .flag("title", pinSubject(version))
-          .flag("body", pinBody(version))
-          .flag("base", "master")
-          .flag("head", branch)
-      );
+
+      const pull = await proposeChange({
+        ...refOptions(),
+        base: RELEASE_BRANCH,
+        branch: pinBranch(version),
+        subject: pinSubject(version),
+        body: pinBody(version),
+        files,
+      });
       ConsoleTasks.success(
-        `Opened a pull request with the ${version} pin and the workflows ` +
-          `regenerated from it.`,
+        `Opened #${pull.number} with the ${version} pin and the workflows ` +
+          `regenerated from it: ${pull.url}`,
       );
     });
 
