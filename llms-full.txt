@@ -1138,20 +1138,14 @@ class HttpError extends Error
   message and on {@link url}, so it is passed through {@link redactUrl} first —
   userinfo and credential query params never reach a log.
 
-  constructor(status: number, url: string, body?: string)
-    Build the error from the failing response's status, URL and body.
+  constructor(status: number, url: string)
+    Build the error from the failing response's status and URL.
   override name: string
     The error name.
   readonly status: number
     The HTTP status code of the failing response.
   readonly url: string
     The requested URL, with any credentials redacted.
-  readonly body?: string
-    The start of the response body, when there was one.
-
-    A status alone rarely says which field or which permission was the
-    problem, and an API that explains itself in the body is the common case.
-    Truncated, because this ends up in a build log.
 
 class HttpStateStore implements StateStore
   A {@link StateStore} backed by HTTP.
@@ -2722,10 +2716,6 @@ interface HttpOptions
 
   headers?: Record<string, string>
     Extra request headers (e.g. an `Authorization` token).
-  method?: string
-    The HTTP method. Defaults to `GET`.
-  body?: string
-    A request body, already serialised. Sent as-is.
   fetch?: typeof fetch
     The `fetch` implementation to use. Defaults to the global `fetch`;
     override it to unit-test without network access.

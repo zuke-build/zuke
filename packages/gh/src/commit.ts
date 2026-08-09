@@ -22,8 +22,6 @@
  * @module
  */
 
-import { httpJson } from "@zuke/core";
-
 /** Read an environment variable, tolerating a denied permission. */
 function env(name: string): string | undefined {
   try {
@@ -419,7 +417,7 @@ function caller(
     path: string,
     body?: unknown,
   ): Promise<T> {
-    return await httpJson<T>(`${baseUrl}/repos/${repo}${path}`, {
+    const response = await fetchImpl(`${baseUrl}/repos/${repo}${path}`, {
       method,
       headers: {
         // A header, not a credential store: this exists for the length of the
@@ -430,7 +428,18 @@ function caller(
         ...(body === undefined ? {} : { "content-type": "application/json" }),
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-      fetch: fetchImpl,
     });
+    const text = await response.text();
+    if (!response.ok) {
+      // GitHub's own message is the useful half. A status alone rarely says
+      // which field or which permission was the problem, and this runs
+      // unattended — the log is all anyone will have. The path is included and
+      // the token is not: it never leaves the header.
+      throw new Error(
+        `${method} ${path} failed: ${response.status} ${response.statusText}. ` +
+          `${text.slice(0, 400)}`,
+      );
+    }
+    return (text === "" ? {} : JSON.parse(text)) as T;
   };
 }

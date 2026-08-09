@@ -75,22 +75,12 @@ export class HttpError extends Error {
   readonly status: number;
   /** The requested URL, with any credentials redacted. */
   readonly url: string;
-  /**
-   * The start of the response body, when there was one.
-   *
-   * A status alone rarely says which field or which permission was the
-   * problem, and an API that explains itself in the body is the common case.
-   * Truncated, because this ends up in a build log.
-   */
-  readonly body?: string;
-  /** Build the error from the failing response's status, URL and body. */
-  constructor(status: number, url: string, body?: string) {
+  /** Build the error from the failing response's status and URL. */
+  constructor(status: number, url: string) {
     const safe = redactUrl(url);
-    const detail = body === undefined || body === "" ? "" : `: ${body}`;
-    super(`HTTP ${status} for ${safe}${detail}`);
+    super(`HTTP ${status} for ${safe}`);
     this.status = status;
     this.url = safe;
-    this.body = body;
   }
 }
 
@@ -98,10 +88,6 @@ export class HttpError extends Error {
 export interface HttpOptions {
   /** Extra request headers (e.g. an `Authorization` token). */
   headers?: Record<string, string>;
-  /** The HTTP method. Defaults to `GET`. */
-  method?: string;
-  /** A request body, already serialised. Sent as-is. */
-  body?: string;
   /**
    * The `fetch` implementation to use. Defaults to the global `fetch`;
    * override it to unit-test without network access.
@@ -112,16 +98,11 @@ export interface HttpOptions {
 /** Perform the request and return the response, throwing on a non-2xx status. */
 async function request(url: string, options: HttpOptions): Promise<Response> {
   const doFetch = options.fetch ?? fetch;
-  const response = await doFetch(url, {
-    method: options.method,
-    headers: options.headers,
-    body: options.body,
-  });
+  const response = await doFetch(url, { headers: options.headers });
   if (!response.ok) {
-    // Read rather than cancel: the body is what says *why*, and reading it
-    // releases the connection just as well.
-    const body = await response.text().catch(() => "");
-    throw new HttpError(response.status, url, body.slice(0, 500));
+    // Drain the body so the connection can be reused/closed.
+    await response.body?.cancel();
+    throw new HttpError(response.status, url);
   }
   return response;
 }
