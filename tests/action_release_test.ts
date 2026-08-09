@@ -39,6 +39,9 @@ import {
 
 const SHA = "a".repeat(40);
 
+/** The commit an already-cut tag resolves to, distinct from HEAD. */
+const TAGGED_SHA = "b".repeat(40);
+
 /** The inputs a pin records, for tests that do not care which. */
 const INPUTS = ["target", "ref"];
 
@@ -75,6 +78,11 @@ function fakeDeps(overrides: Partial<ReleaseActionDeps> = {}): {
     tags: () => Promise.resolve([]),
     changedSince: () => Promise.resolve(true),
     headSha: () => Promise.resolve(SHA),
+    // Defaults to the tag the "unchanged" cases use, so those describe a
+    // repository whose pin already matches its newest release — the ordinary
+    // steady state, where there is genuinely nothing to do.
+    committedPin: () => pinFor(SHA, "v1.4.0", INPUTS, DIGEST),
+    shaOf: () => Promise.resolve(TAGGED_SHA),
     actionSource: () => Promise.resolve(MANIFEST),
     tag: (t, _m, force) => {
       calls.push(`tag:${t}${force ? ":force" : ""}`);
@@ -566,4 +574,43 @@ Deno.test("the pin commit is a chore, and its body has no fenced block", () => {
   // parentheses inside one and drop the commit silently.
   assertEquals(pinBody("v1.0.3").includes("```"), false);
   assertStringIncludes(pinBody("v1.0.3"), "v1.0.3");
+});
+
+Deno.test("a tagged release whose pin never landed is proposed again", async () => {
+  // The failure this exists to prevent is silent and permanent. A release is
+  // two halves: the tags, which reach consumers, and the pin, which lands in a
+  // pull request. If that pull request fails after the tags are pushed, asking
+  // only "has action.yml changed since the newest tag?" answers no — the tag
+  // names this very commit — and answers no on every run afterwards. Consumers
+  // are updated, this repository is stale, and the build reports success.
+  const { deps, calls, pins } = fakeDeps({
+    tags: () => Promise.resolve(["v1.4.0"]),
+    changedSince: () => Promise.resolve(false),
+    committedPin: () => pinFor(SHA, "v1.3.0", INPUTS, DIGEST),
+  });
+  const result = await releaseAction(deps);
+
+  // Re-proposed, not re-cut: the tags are already correct.
+  assertEquals(result.released, "v1.4.0");
+  assertEquals(result.retried, true);
+  assertEquals(calls, ["writePin"]);
+
+  // The pin names the commit the tag points at, not HEAD — master may have
+  // moved on since the release, and the pin has to name what was released.
+  assertEquals(pins[0].version, "v1.4.0");
+  assertEquals(pins[0].ref, `zuke-build/zuke@${TAGGED_SHA}`);
+});
+
+Deno.test("a pin that matches the newest tag is left alone", async () => {
+  // The other side of the same guard: with the pin already up to date there is
+  // nothing outstanding, and re-proposing on every push would be a loop.
+  const { deps, calls } = fakeDeps({
+    tags: () => Promise.resolve(["v1.4.0"]),
+    changedSince: () => Promise.resolve(false),
+    committedPin: () => pinFor(SHA, "v1.4.0", INPUTS, DIGEST),
+  });
+  const result = await releaseAction(deps);
+  assertEquals(result.released, undefined);
+  assertEquals(result.retried, undefined);
+  assertEquals(calls, []);
 });

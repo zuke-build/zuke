@@ -418,6 +418,10 @@ export interface ReleaseActionDeps {
   changedSince(ref: string): Promise<boolean>;
   /** The commit SHA being released. */
   headSha(): Promise<string>;
+  /** The commit SHA a ref names, used to re-pin an already-cut release. */
+  shaOf(ref: string): Promise<string>;
+  /** The pin as the working tree currently has it. */
+  committedPin(): ActionPinFile;
   /** Create or move `tag` onto HEAD, annotated with `message`. */
   tag(tag: string, message: string, force: boolean): Promise<void>;
   /** Push `tag` to the remote, replacing it when `force`. */
@@ -436,6 +440,11 @@ export interface ReleaseActionResult {
   released?: string;
   /** Why nothing happened, when nothing did. */
   reason?: string;
+  /**
+   * Whether this re-proposed an already-tagged release rather than cutting a
+   * new one, because the previous run's pull request never landed.
+   */
+  retried?: boolean;
 }
 
 /**
@@ -455,9 +464,46 @@ export async function releaseAction(
 
   const current = latestVersion(await deps.tags());
   if (current !== undefined && !(await deps.changedSince(current.tag))) {
-    const reason = `action.yml is unchanged since ${current.tag}.`;
-    deps.info(`${reason} Nothing to release.`);
-    return { reason };
+    // Nothing new to cut. That is not the same as nothing to do: a release is
+    // two halves, the tags that reach consumers and the pin that this
+    // repository's own workflows open with, and only the first half is atomic.
+    // The pin lands in a pull request, which can fail after the tags are
+    // pushed — and once they are pushed, `changedSince` compares against a tag
+    // that names this very commit and answers "unchanged" forever. Asking
+    // only that question is what would make a failed proposal permanent, with
+    // consumers updated, this repository stale, and every later run reporting
+    // success.
+    const pin = deps.committedPin();
+    if (pin.version === current.tag) {
+      const reason = `action.yml is unchanged since ${current.tag}.`;
+      deps.info(`${reason} Nothing to release.`);
+      return { reason };
+    }
+
+    // The tags exist; the pin never landed. Rebuild it and let the caller
+    // propose it again. No tag is cut or moved here — they are already right,
+    // and re-cutting them would move `v1` onto a commit for a second time to
+    // no effect.
+    //
+    // The SHA is the tag's, not HEAD's: master may have moved on since, and
+    // the pin has to name the commit that was actually released. Everything
+    // else can come from the working tree, because reaching this branch at all
+    // means `action.yml` here is identical to the tagged one.
+    const source = await deps.actionSource();
+    await deps.writePin(
+      pinFor(
+        await deps.shaOf(current.tag),
+        current.tag,
+        declaredInputs(source),
+        await actionDigest(source),
+      ),
+    );
+    deps.info(
+      `${current.tag} is tagged but ${ACTION_VERSION_FILE} still says ` +
+        `${pin.version} — the pin from that release never landed. Proposing ` +
+        `it again; no tag is re-cut.`,
+    );
+    return { released: current.tag, retried: true };
   }
 
   const version = nextVersion(current);

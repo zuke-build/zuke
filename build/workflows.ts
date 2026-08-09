@@ -244,15 +244,26 @@ export function githubWorkflows(
           // the action is versioned on its own tag line — so this is pipeline
           // ordering rather than a build dependency.
           after: [targets.release],
-          // Cuts and moves tags, then opens a pull request with the pin: the
-          // ruleset on master requires one, so a push would be refused.
-          permissions: { contents: "write", "pull-requests": "write" },
+          // Nothing is granted to `GITHUB_TOKEN` here, because it is not what
+          // does the work: the writes are made with an app installation token
+          // minted inside the target. That is not a preference. Two things
+          // this job must do are beyond `GITHUB_TOKEN` by construction — it
+          // may not write `.github/workflows/*`, since there is no `workflows`
+          // permission to grant it, and a pull request it opened would trigger
+          // no workflows, so the required checks could never run and the
+          // proposal could never be merged.
+          // `contents: read` and nothing more. Not zero, because the checkout
+          // still authenticates as `GITHUB_TOKEN` and a job granted nothing
+          // cannot read the repository it is meant to build. Not write,
+          // because it is not what does the writing.
+          permissions: { contents: "read" },
           timeoutMinutes: 15,
-          // No persisted credential. The pull request is built through the
-          // API, so nothing here needs a token in `.git/config` — where it
-          // would outlive the step that used it and be readable by every later
-          // one. The tag push is git, but it happens before this and uses the
-          // ambient credential the runner already has for the checkout it did.
+          // No persisted credential. Every write this job makes — the tags,
+          // the branch, the pull request — goes through the API, so nothing
+          // here needs a token in `.git/config`, where it would outlive the
+          // step that used it and be readable by every later one. Git is still
+          // used, but only to read: the tag list, the diff, and the SHA a tag
+          // resolves to.
           //
           // Full history because the tag list is how the next version is
           // computed; a shallow checkout reads an empty list and tries to
@@ -263,7 +274,10 @@ export function githubWorkflows(
           // sent, not what it could do against GitHub itself — that is what
           // dropping the persisted credential addresses.
           harden: { egress: "block", allowedEndpoints: REPO_WRITE_ENDPOINTS },
-          env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" },
+          env: {
+            ZUKE_BUILD_APP_ID: "${{ secrets.ZUKE_BUILD_APP_ID }}",
+            ZUKE_BUILD_APP_KEY: "${{ secrets.ZUKE_BUILD_APP_KEY }}",
+          },
         },
         {
           target: targets.publishJsr,

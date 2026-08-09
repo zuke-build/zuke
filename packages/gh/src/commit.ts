@@ -22,41 +22,20 @@
  * @module
  */
 
-/** Read an environment variable, tolerating a denied permission. */
-function env(name: string): string | undefined {
-  try {
-    return Deno.env.get(name);
-  } catch {
-    return undefined;
-  }
-}
+import {
+  assertRefName,
+  caller,
+  DEFAULT_BASE_URL,
+  encodePath,
+  env,
+  GhApiError,
+  readString,
+} from "./api.ts";
 
-/** GitHub's public API root. */
-const DEFAULT_BASE_URL = "https://api.github.com";
+export { assertRefName, GhApiError };
 
 /** Blob mode for a non-executable file, as git's tree API spells it. */
 const FILE_MODE = "100644";
-
-/**
- * A GitHub REST call that did not succeed, carrying the status.
- *
- * The status is the point. One caller here recovers from a missing ref, and
- * doing that on a bare `catch` would swallow an expired token or a missing
- * permission and retry them as though the ref simply did not exist — turning an
- * authorisation failure into a confusing one about creating a tag.
- */
-export class GhApiError extends Error {
-  /** The error name. */
-  override name = "GhApiError";
-  /** The HTTP status of the failing response. */
-  readonly status: number;
-  /** Build the error from the failing call's method, path, status and body. */
-  constructor(method: string, path: string, status: number, body: string) {
-    // The token is deliberately absent: it never leaves the request header.
-    super(`${method} ${path} failed: ${status}. ${body.slice(0, 400)}`);
-    this.status = status;
-  }
-}
 
 /** The commit a {@link GhTasksApi.commit} call created. */
 export interface GhCommitResult {
@@ -79,6 +58,8 @@ export class GhCommitSettings {
   branch_?: string;
   /** The branch to create from, when creating one. Set by {@link from}. */
   from_?: string;
+  /** Whether an existing {@link branch} is reset. Set by {@link replace}. */
+  replace_ = false;
   /** The commit message. Set by {@link message}. */
   message_?: string;
   /** `owner/repo`. Set by {@link repo}. */
@@ -109,6 +90,25 @@ export class GhCommitSettings {
    */
   from(base: string): this {
     this.from_ = base;
+    return this;
+  }
+
+  /**
+   * Reset {@link branch} onto {@link from} when it already exists, rather than
+   * failing because it does.
+   *
+   * For a branch only one automated caller ever writes, and whose contents are
+   * regenerated in full each time. Without this, a job that creates the branch
+   * and then fails before opening its pull request can never retry: the second
+   * run is refused because the ref it wants to create is already there, and the
+   * work is stuck until someone deletes the branch by hand.
+   *
+   * Deliberately not the default. Discarding commits on a branch that already
+   * exists is exactly what should not happen to a branch someone is working on,
+   * so it stays something the caller asks for.
+   */
+  replace(): this {
+    this.replace_ = true;
     return this;
   }
 
@@ -257,46 +257,6 @@ export class GhTagSettings {
   }
 }
 
-/**
- * Reject a branch or tag name that git itself would.
- *
- * Not cosmetic. These names are interpolated into request paths, and URL
- * normalisation resolves `..` before the request is sent — so
- * `../../../user/repos` as a branch turns `/repos/o/n/git/ref/heads/<branch>`
- * into `/repos/o/n/user/repos`, sending a write-scoped token somewhere the
- * caller never named. Validating here rather than trusting every caller is the
- * difference between an API that is safe to hand a string and one that is safe
- * only when used carefully.
- *
- * The rules are git's own (see `git check-ref-format`), minus those that only
- * matter for multi-level refs.
- */
-export function assertRefName(name: string, what: string): void {
-  const bad = name === "" ||
-    name.includes("..") ||
-    name.startsWith("/") ||
-    name.endsWith("/") ||
-    name.startsWith("-") ||
-    name.endsWith(".lock") ||
-    name.endsWith(".") ||
-    /[~^:?*[\\]/.test(name) ||
-    // Control characters and space, by codepoint rather than a regex range: a
-    // regex spelling them out trips `no-control-regex`, and suppressing that
-    // to keep a check git itself makes would be the wrong way round.
-    [...name].some((character) => {
-      const code = character.codePointAt(0) ?? 0;
-      return code <= 0x20 || code === 0x7f;
-    });
-  if (bad) {
-    throw new Error(
-      `refusing to use ${JSON.stringify(name)} as a ${what}: it is not a ` +
-        `valid git ref name. These are interpolated into request paths, so a ` +
-        `name containing \`..\` would redirect the call somewhere else ` +
-        `entirely — with the token attached.`,
-    );
-  }
-}
-
 /** The commit and tag operations {@link GhTasks} exposes. */
 export interface GhCommitApi {
   /**
@@ -368,10 +328,23 @@ export async function commitFiles(
       sha: commitSha,
     });
   } else {
-    await call("POST", "/git/refs", {
-      ref: `refs/heads/${branch}`,
-      sha: commitSha,
-    });
+    try {
+      await call("POST", "/git/refs", {
+        ref: `refs/heads/${branch}`,
+        sha: commitSha,
+      });
+    } catch (error) {
+      // 422 is what GitHub returns for a ref that is already there. Only that,
+      // and only when the caller asked for it: a bare catch would turn a
+      // permission failure into a force-update attempt and report whichever of
+      // the two failed second.
+      const exists = error instanceof GhApiError && error.status === 422;
+      if (!exists || !settings.replace_) throw error;
+      await call("PATCH", `/git/refs/heads/${encodePath(branch)}`, {
+        sha: commitSha,
+        force: true,
+      });
+    }
   }
   return { sha: commitSha, branch };
 }
@@ -428,129 +401,4 @@ export async function tagCommit(
       sha: tagObject,
     });
   }
-}
-
-/**
- * Percent-encode each slash-separated segment of a ref or repository path.
- *
- * Validation alone was not enough, and the gap was exactly the one the
- * validator claims to close. It rejects a literal `..`, but `%` is legal in a
- * git ref, so `%2e%2e` passes it — and the URL parser decodes that to a
- * double-dot segment and resolves it, redirecting the request. Encoding turns
- * it into `%252e%252e`, an ordinary segment name.
- *
- * Segment-wise rather than wholesale, because a slash inside a branch name is
- * meaningful — `chore/action-v1.0.3` must stay three path segments, not one
- * escaped blob.
- *
- * Belt and braces on purpose: the validator still runs, because a name git
- * would reject deserves the clearer error, and because a second reader of this
- * code should not have to notice the encoding to conclude it is safe.
- */
-function encodePath(value: string): string {
-  return value.split("/").map(encodeURIComponent).join("/");
-}
-
-/** Whether a parsed JSON value is an object that can be indexed. */
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-/**
- * Read a nested string out of an API response, or say which call returned
- * something else.
- *
- * The alternative was asserting the response shape with a type assertion,
- * which this repository forbids and which would have been the wrong thing
- * anyway: a field that is missing or renamed would surface as `undefined`
- * flowing into a request path, not as an error naming the call that returned
- * it.
- */
-function readString(value: unknown, path: string[], what: string): string {
-  let cursor = value;
-  for (const key of path) {
-    if (!isRecord(cursor)) {
-      throw new Error(`the ${what} response has no ${path.join(".")}`);
-    }
-    cursor = cursor[key];
-  }
-  if (typeof cursor !== "string") {
-    throw new Error(`the ${what} response has no ${path.join(".")}`);
-  }
-  return cursor;
-}
-
-/**
- * Reject a repository slug that is not exactly `owner/name`.
- *
- * Encoding already stops the slug escaping upwards — a `..` segment survives as
- * a literal name rather than resolving — so this is not the traversal guard.
- * What it stops is a slug with the wrong number of segments silently changing
- * which endpoint is called: `a/b/c` builds `/repos/a/b/c/git/trees`, sending a
- * token-bearing request somewhere the caller never named. The slug is a trust
- * boundary like the ref names beside it, and the ref names are checked.
- */
-function assertRepoSlug(slug: string): void {
-  const parts = slug.split("/");
-  if (parts.length !== 2 || parts.some((part) => part === "")) {
-    throw new Error(
-      `invalid repository ${JSON.stringify(slug)}: expected "owner/name".`,
-    );
-  }
-}
-
-/** A caller bound to one repository, so each call site names only its path. */
-function caller(
-  baseUrl: string,
-  repo: string,
-  token: string,
-  fetchImpl: typeof fetch,
-) {
-  // Once, here, rather than in each settings class: every request routes
-  // through this caller, so a check anywhere else could be one path short.
-  assertRepoSlug(repo);
-  return async function call(
-    method: string,
-    path: string,
-    body?: unknown,
-  ): Promise<unknown> {
-    const response = await fetchImpl(
-      `${baseUrl}/repos/${encodePath(repo)}${path}`,
-      {
-        method,
-        headers: {
-          // A header, not a credential store: this exists for the length of the
-          // request and nowhere else.
-          authorization: `Bearer ${token}`,
-          accept: "application/vnd.github+json",
-          "x-github-api-version": "2022-11-28",
-          ...(body === undefined ? {} : { "content-type": "application/json" }),
-        },
-        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-      },
-    );
-    const text = await response.text();
-    if (!response.ok) {
-      // GitHub's own message is the useful half. A status alone rarely says
-      // which field or which permission was the problem, and this runs
-      // unattended — the log is all anyone will have.
-      throw new GhApiError(method, path, response.status, text);
-    }
-    if (text === "") return {};
-    try {
-      return JSON.parse(text);
-    } catch {
-      // A 2xx that is not JSON is a proxy or gateway answering instead of
-      // GitHub. Left bare it surfaces as a SyntaxError naming no call, which
-      // is the same dead end `readString` exists to avoid — and the body is
-      // the evidence of who actually answered, so a prefix of it comes along.
-      // Deliberately not a GhApiError: that type means GitHub refused, and
-      // `tagCommit` reads its status to decide whether to create a missing
-      // ref. A parse failure is neither, and must not be mistaken for one.
-      throw new Error(
-        `${method} ${path} returned ${response.status} with a body that is ` +
-          `not JSON. ${text.slice(0, 400)}`,
-      );
-    }
-  };
 }

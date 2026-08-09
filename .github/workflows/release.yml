@@ -30,8 +30,7 @@ jobs:
     name: Release the composite action
     runs-on: ubuntu-latest
     permissions:
-      contents: write
-      pull-requests: write
+      contents: read
     needs:
       - release
     timeout-minutes: 15
@@ -46,7 +45,8 @@ jobs:
       - name: Run actionRelease with Zuke
         run: ./zuke actionRelease
         env:
-          GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+          ZUKE_BUILD_APP_ID: "${{ secrets.ZUKE_BUILD_APP_ID }}"
+          ZUKE_BUILD_APP_KEY: "${{ secrets.ZUKE_BUILD_APP_KEY }}"
   publishJsr:
     name: Publish to JSR
     runs-on: ubuntu-latest

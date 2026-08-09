@@ -51,6 +51,7 @@ import { SecurityTasks } from "@zuke/security";
 import { DocsTasks } from "@zuke/docs";
 import {
   ACTION_PIN,
+  ACTION_SLUG,
   ACTION_VERSION_FILE,
   assertWorkflowInputsAvailable,
   pinBody,
@@ -92,7 +93,6 @@ import {
 } from "./build/plugin_sync.ts";
 import { actionPin } from "./build/action_pins.ts";
 import { actionlintTool, gitleaksTool, zizmorTool } from "./build/scanners.ts";
-import { createTag, moveTag, proposeChange } from "./build/propose_change.ts";
 import { githubWorkflows } from "./build/workflows.ts";
 
 /**
@@ -913,23 +913,65 @@ class ZukeBuild extends Build {
       // the message together — but the release flow hands them over in two
       // steps, `tag` then `push`, because that is what git needs. Holding the
       // message between the two is the whole of this map.
-      const pendingTags = new Map<
-        string,
-        { message: string; force: boolean }
-      >();
+      const pendingTags = new Map<string, string>();
       const headSha = async () =>
         (await GitTasks.run((s) => s.command("rev-parse", "HEAD"))).text();
-      const refOptions = () => {
-        const token = Deno.env.get("GITHUB_TOKEN");
+
+      const actionRepo = (): string => {
         const repo = Deno.env.get("GITHUB_REPOSITORY");
-        if (token === undefined || repo === undefined) {
+        if (repo === undefined) {
           throw new Error(
-            "actionRelease needs GITHUB_TOKEN and GITHUB_REPOSITORY on CI: " +
-              "the tags and the pull request are created through the API, so " +
-              "that there is no credential written to disk for them.",
+            "actionRelease needs GITHUB_REPOSITORY on CI: the tags and the " +
+              "pull request are created through the API, so there is no " +
+              "credential written to disk for them.",
           );
         }
-        return { repo, token };
+        return repo;
+      };
+
+      // Minted once and reused: each call is a round trip, and this target
+      // makes several writes.
+      let minted: string | undefined;
+      const apiToken = async (): Promise<string> => {
+        if (minted !== undefined) return minted;
+        const appId = Deno.env.get("ZUKE_BUILD_APP_ID");
+        const privateKey = Deno.env.get("ZUKE_BUILD_APP_KEY");
+        if (!appId || !privateKey) {
+          throw new Error(
+            "actionRelease needs ZUKE_BUILD_APP_ID and ZUKE_BUILD_APP_KEY on " +
+              "CI. GITHUB_TOKEN cannot do this job: there is no `workflows` " +
+              "permission to grant it, so it may not write the regenerated " +
+              "`.github/workflows/*`, and a pull request it opened would run " +
+              "no checks and so could never satisfy the branch ruleset.",
+          );
+        }
+        // Refuse rather than mint for a redirected target, as the website sync
+        // does: an environment variable must not decide what the app's
+        // credential reaches.
+        const [owner, name] = actionRepo().split("/");
+        if (`${owner}/${name}` !== ACTION_SLUG) {
+          throw new Error(
+            `refusing to mint the app token for ${owner}/${name}: it is ` +
+              `scoped to ${ACTION_SLUG}, and GITHUB_REPOSITORY naming ` +
+              `anything else means this is not the repository it was meant ` +
+              `for.`,
+          );
+        }
+        const { token } = await GhTasks.appToken((s) =>
+          s
+            .appId(appId)
+            .privateKey(privateKey)
+            .owner(owner)
+            .repositories(name)
+            // Exactly what this target performs: the tags and the branch are
+            // contents, the proposal is pull_requests, and `workflows` is what
+            // makes writing the regenerated workflow files permitted at all.
+            .permission("contents", "write")
+            .permission("pull_requests", "write")
+            .permission("workflows", "write")
+        );
+        minted = token;
+        return token;
       };
 
       const result = await releaseAction({
@@ -995,15 +1037,21 @@ class ZukeBuild extends Build {
               `release, and every run with the same fault would cut another.`,
           );
         },
-        headSha: async () =>
-          (await GitTasks.run((s) => s.command("rev-parse", "HEAD"))).text(),
+        headSha,
+        // `rev-list -n 1` resolves an annotated tag through its tag object to
+        // the commit; `rev-parse <tag>` would hand back the tag object's own
+        // SHA, which is not a commit and would be pinned as though it were.
+        shaOf: async (ref) =>
+          (await GitTasks.run((s) => s.command("rev-list", "-n", "1", ref)))
+            .text(),
+        committedPin: () => ACTION_PIN,
         // Locally this writes the tag into the developer's own clone, which is
         // what they want. On CI it is deferred to `push`, which creates the
         // ref through the API — there is no credential on disk to push with,
         // and creating a local tag nobody can push would only be misleading.
         tag: async (name, message, force) => {
           if (isCI()) {
-            pendingTags.set(name, { message, force });
+            pendingTags.set(name, message);
             return;
           }
           await GitTasks.tag((s) => {
@@ -1013,11 +1061,20 @@ class ZukeBuild extends Build {
         },
         push: async (name, force) => {
           if (isCI()) {
-            const pending = pendingTags.get(name);
             const head = await headSha();
-            const message = pending?.message ?? name;
-            if (force) await moveTag(refOptions(), name, head, message);
-            else await createTag(refOptions(), name, head, message);
+            const message = pendingTags.get(name) ?? name;
+            const token = await apiToken();
+            await GhTasks.tag((s) => {
+              const settings = s
+                .repo(actionRepo())
+                .token(token)
+                .name(name)
+                .commit(head)
+                .message(message);
+              // Moving `v1` onto a newer release is the whole point of it, and
+              // git calls that a non-fast-forward.
+              return force ? settings.move() : settings;
+            });
             return;
           }
           // `--force-with-lease` is the typed option and the wrong one here: a
@@ -1081,17 +1138,42 @@ class ZukeBuild extends Build {
         })),
       );
 
-      const pull = await proposeChange({
-        ...refOptions(),
-        base: RELEASE_BRANCH,
-        branch: pinBranch(version),
-        subject: pinSubject(version),
-        body: pinBody(version),
-        files,
+      const repo = actionRepo();
+      const token = await apiToken();
+      const branch = pinBranch(version);
+      const subject = pinSubject(version);
+
+      // `.replace()` because this can be a retry: if a previous run created
+      // the branch and then failed before opening the pull request, the branch
+      // is already there and creating it again would be refused. Only this
+      // target ever writes it, and its contents are regenerated in full, so
+      // resetting it discards nothing anyone wrote.
+      await GhTasks.commit((s) => {
+        let settings = s
+          .repo(repo)
+          .token(token)
+          .from(RELEASE_BRANCH)
+          .branch(branch)
+          .replace()
+          .message(subject);
+        for (const file of files) {
+          settings = settings.file(file.path, file.content);
+        }
+        return settings;
       });
+      const pull = await GhTasks.pullRequest((s) =>
+        s
+          .repo(repo)
+          .token(token)
+          .base(RELEASE_BRANCH)
+          .head(branch)
+          .title(subject)
+          .body(pinBody(version))
+      );
       ConsoleTasks.success(
-        `Opened #${pull.number} with the ${version} pin and the workflows ` +
-          `regenerated from it: ${pull.url}`,
+        `${pull.created ? "Opened" : "Updated already-open"} #${pull.number} ` +
+          `with the ${version} pin and the workflows regenerated from it: ` +
+          `${pull.url}`,
       );
     });
 
