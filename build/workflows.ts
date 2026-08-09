@@ -89,11 +89,16 @@ const FLOOR_CHECK_ENDPOINTS = [
 ];
 
 /**
- * What the website sync needs. Checked against the hosts a real release run
- * actually contacted, which were `github.com` and `api.github.com`; the rest
- * cover the launcher's bootstrap and module resolution.
+ * What a job that pushes a branch and opens a pull request needs. Checked
+ * against the hosts a real release run actually contacted, which were
+ * `github.com` and `api.github.com`; the rest cover the launcher's bootstrap
+ * and module resolution.
+ *
+ * Used by every job here that holds a write-scoped token. Those jobs block
+ * egress rather than audit it, which is the point: a token read out of the
+ * environment by anything in the build graph has nowhere to be sent.
  */
-const WEBSITE_SYNC_ENDPOINTS = [
+const REPO_WRITE_ENDPOINTS = [
   "deno.land:443",
   "dl.deno.land:443",
   "jsr.io:443",
@@ -247,6 +252,11 @@ export function githubWorkflows(
           // the tags have to be present or every run would read an empty list
           // and try to re-cut v1.0.0 over a tag that exists.
           checkout: { persistCredentials: true, fetchDepth: 0 },
+          // Blocked, not audited, for the reason every token-holding job here
+          // is: the credential has to survive the checkout so the branch push
+          // has one, so bound what could be done with it instead. Anything that
+          // read it out of the environment could not send it anywhere.
+          harden: { egress: "block", allowedEndpoints: REPO_WRITE_ENDPOINTS },
           env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" },
         },
         {
@@ -278,7 +288,7 @@ export function githubWorkflows(
           // untrusted runs here — this workflow triggers only on a push to master
           // and workflow_dispatch, and fork PRs get no secrets — so this is
           // defence in depth against a compromised dependency in the build graph.
-          harden: { egress: "block", allowedEndpoints: WEBSITE_SYNC_ENDPOINTS },
+          harden: { egress: "block", allowedEndpoints: REPO_WRITE_ENDPOINTS },
           env: {
             ZUKE_BUILD_APP_ID: "${{ secrets.ZUKE_BUILD_APP_ID }}",
             ZUKE_BUILD_APP_KEY: "${{ secrets.ZUKE_BUILD_APP_KEY }}",

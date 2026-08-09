@@ -39,8 +39,9 @@ jobs:
       - name: Harden and check out with Zuke
         uses: zuke-build/zuke@5400f044d0b56206b0fa48c90b30486df205c7c6 # v1.0.2
         with:
-          egress-policy: audit
+          egress-policy: block
           persist-credentials: "true"
+          allowed-endpoints: "deno.land:443 dl.deno.land:443 jsr.io:443 registry.npmjs.org:443 api.github.com:443 github.com:443 codeload.github.com:443 objects.githubusercontent.com:443 release-assets.githubusercontent.com:443"
           fetch-depth: "0"
       - name: Run actionRelease with Zuke
         run: ./zuke actionRelease
