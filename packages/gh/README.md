@@ -137,6 +137,21 @@ async function uploadSarifReport(configure?: Configure<GhSarifSettings>): Promis
 const GhTasks: GhTasksApi
   Typed task functions for GitHub: the `gh` CLI and the REST-only operations.
 
+class GhApiError extends Error
+  A GitHub REST call that did not succeed, carrying the status.
+
+  The status is the point. One caller here recovers from a missing ref, and
+  doing that on a bare `catch` would swallow an expired token or a missing
+  permission and retry them as though the ref simply did not exist — turning an
+  authorisation failure into a confusing one about creating a tag.
+
+  constructor(method: string, path: string, status: number, body: string)
+    Build the error from the failing call's method, path, status and body.
+  override name: string
+    The error name.
+  readonly status: number
+    The HTTP status of the failing response.
+
 class GhAppTokenSettings
   Settings for {@link GhAppTokenApi.appToken}.
 

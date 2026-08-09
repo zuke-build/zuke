@@ -26,6 +26,7 @@ interface Call {
 function fakeFetch(
   replies: Record<string, unknown>,
   failing: Set<string> = new Set(),
+  statuses: Record<string, number> = {},
 ): { fetch: typeof fetch; calls: Call[] } {
   const calls: Call[] = [];
   const impl = ((input: string | URL | Request, init?: RequestInit) => {
@@ -45,8 +46,16 @@ function fakeFetch(
     });
     const key = `${method} ${path}`;
     if (failing.has(key)) {
+      const status = statuses[key] ?? 422;
       return Promise.resolve(
-        new Response('{"message":"Reference does not exist"}', { status: 422 }),
+        new Response(
+          JSON.stringify({
+            message: status === 403
+              ? "Resource not accessible by integration"
+              : "Reference does not exist",
+          }),
+          { status },
+        ),
       );
     }
     return Promise.resolve(
@@ -276,4 +285,109 @@ Deno.test("moving a tag that does not exist yet creates it", async () => {
     calls.find((c) => c.path === "/git/refs")?.body.ref,
     "refs/tags/v2",
   );
+});
+
+Deno.test("a permission failure while moving a tag is not retried as a create", async () => {
+  // The recovery below exists for one case: the ref does not exist yet. A bare
+  // catch would also swallow an expired token or a missing permission and retry
+  // it as a create — reporting a confusing error about the tag while hiding the
+  // one that actually mattered. In a release path that runs unattended, that is
+  // the difference between "fix your token" and a wild goose chase.
+  const { fetch, calls } = fakeFetch(
+    { "POST /git/tags": { sha: "obj" } },
+    new Set(["PATCH /git/refs/tags/v1"]),
+    { "PATCH /git/refs/tags/v1": 403 },
+  );
+  let message = "";
+  try {
+    await tagCommit((s) =>
+      s.repo("acme/app").token("t").name("v1").commit("c").move().fetch(fetch)
+    );
+  } catch (error) {
+    message = error instanceof Error ? error.message : String(error);
+  }
+  assertStringIncludes(message, "403");
+  assertStringIncludes(message, "not accessible");
+  // And it did not go on to create the ref.
+  assertEquals(calls.some((c) => c.path === "/git/refs"), false);
+});
+
+Deno.test("a percent-encoded dot segment cannot redirect the request", async () => {
+  // The hole the literal `..` test missed. `%` is legal in a git ref, so the
+  // validator accepts `%2e%2e` — and the URL parser decodes it to a double-dot
+  // segment and resolves it, which is the very redirection the validator exists
+  // to prevent. Encoding each segment is what actually closes it; the validator
+  // stays for the clearer error on names git itself would refuse.
+  const encoded = "%2e%2e/%2e%2e/%2e%2e/user/repos";
+  assertEquals(
+    new URL(`https://api.github.com/repos/acme/app/git/ref/heads/${encoded}`)
+      .pathname,
+    // Out of the ref path entirely: three segments up lands beside it.
+    "/repos/acme/app/user/repos",
+  );
+
+  const seen: string[] = [];
+  const capture = ((url: string | URL | Request) => {
+    seen.push(new URL(String(url)).pathname);
+    return Promise.resolve(
+      new Response(
+        JSON.stringify({ object: { sha: "a" }, tree: { sha: "t" }, sha: "c" }),
+        { status: 200 },
+      ),
+    );
+  }) as typeof fetch;
+
+  await commitFiles((s) =>
+    s.repo("acme/app").token("t").branch(encoded).message("m").fetch(capture)
+  );
+  // Every request stayed under the repository it named.
+  for (const path of seen) {
+    assertEquals(
+      path.startsWith("/repos/acme/app/"),
+      true,
+      `escaped the repository: ${path}`,
+    );
+  }
+});
+
+Deno.test("a slash inside a branch name stays a path separator", async () => {
+  // Encoding wholesale would turn `chore/action-v1.0.3` into one escaped blob
+  // and break every real branch name this repository generates.
+  const seen: string[] = [];
+  const capture = ((url: string | URL | Request) => {
+    seen.push(new URL(String(url)).pathname);
+    return Promise.resolve(
+      new Response(
+        JSON.stringify({ object: { sha: "a" }, tree: { sha: "t" }, sha: "c" }),
+        { status: 200 },
+      ),
+    );
+  }) as typeof fetch;
+
+  await commitFiles((s) =>
+    s.repo("acme/app").token("t").branch("chore/action-v1.0.3").message("m")
+      .fetch(capture)
+  );
+  assertEquals(seen[0], "/repos/acme/app/git/ref/heads/chore/action-v1.0.3");
+});
+
+Deno.test("the repository slug is encoded too", async () => {
+  // It was interpolated into the same path with no validation at all — the
+  // same primitive, one field over.
+  const seen: string[] = [];
+  const capture = ((url: string | URL | Request) => {
+    seen.push(new URL(String(url)).pathname);
+    return Promise.resolve(
+      new Response(
+        JSON.stringify({ object: { sha: "a" }, tree: { sha: "t" }, sha: "c" }),
+        { status: 200 },
+      ),
+    );
+  }) as typeof fetch;
+
+  await commitFiles((s) =>
+    s.repo("acme/%2e%2e/%2e%2e/other").token("t").branch("main").message("m")
+      .fetch(capture)
+  );
+  assertEquals(seen[0].startsWith("/repos/acme/%252e%252e/"), true);
 });

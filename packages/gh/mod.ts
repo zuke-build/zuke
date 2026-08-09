@@ -21,6 +21,7 @@ export * from "./src/gh.ts";
 export {
   assertRefName,
   commitFiles,
+  GhApiError,
   type GhCommitApi,
   type GhCommitResult,
   GhCommitSettings,

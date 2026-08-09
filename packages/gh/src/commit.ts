@@ -37,6 +37,27 @@ const DEFAULT_BASE_URL = "https://api.github.com";
 /** Blob mode for a non-executable file, as git's tree API spells it. */
 const FILE_MODE = "100644";
 
+/**
+ * A GitHub REST call that did not succeed, carrying the status.
+ *
+ * The status is the point. One caller here recovers from a missing ref, and
+ * doing that on a bare `catch` would swallow an expired token or a missing
+ * permission and retry them as though the ref simply did not exist — turning an
+ * authorisation failure into a confusing one about creating a tag.
+ */
+export class GhApiError extends Error {
+  /** The error name. */
+  override name = "GhApiError";
+  /** The HTTP status of the failing response. */
+  readonly status: number;
+  /** Build the error from the failing call's method, path, status and body. */
+  constructor(method: string, path: string, status: number, body: string) {
+    // The token is deliberately absent: it never leaves the request header.
+    super(`${method} ${path} failed: ${status}. ${body.slice(0, 400)}`);
+    this.status = status;
+  }
+}
+
 /** The commit a {@link GhTasksApi.commit} call created. */
 export interface GhCommitResult {
   /** The new commit's SHA. */
@@ -323,7 +344,7 @@ export async function commitFiles(
   const source = settings.from_ ?? branch;
   const head = await call<{ object: { sha: string } }>(
     "GET",
-    `/git/ref/heads/${source}`,
+    `/git/ref/heads/${encodePath(source)}`,
   );
   const parent = head.object.sha;
   const parentCommit = await call<{ tree: { sha: string } }>(
@@ -348,7 +369,9 @@ export async function commitFiles(
   });
 
   if (settings.from_ === undefined) {
-    await call("PATCH", `/git/refs/heads/${branch}`, { sha: commit.sha });
+    await call("PATCH", `/git/refs/heads/${encodePath(branch)}`, {
+      sha: commit.sha,
+    });
   } else {
     await call("POST", "/git/refs", {
       ref: `refs/heads/${branch}`,
@@ -391,18 +414,45 @@ export async function tagCommit(
     return;
   }
   try {
-    await call("PATCH", `/git/refs/tags/${name}`, {
+    await call("PATCH", `/git/refs/tags/${encodePath(name)}`, {
       sha: object.sha,
       force: true,
     });
-  } catch {
-    // No such ref yet — the first release of a major, where moving and
-    // creating are the same intent.
+  } catch (error) {
+    // Only a missing ref means "create it instead" — the first release of a
+    // major, where moving and creating are the same intent. Anything else is a
+    // real failure: a bare catch here would swallow an expired token or a
+    // missing permission and retry it as a create, reporting a confusing error
+    // about the tag and hiding the one that mattered.
+    const missing = error instanceof GhApiError &&
+      (error.status === 404 || error.status === 422);
+    if (!missing) throw error;
     await call("POST", "/git/refs", {
       ref: `refs/tags/${name}`,
       sha: object.sha,
     });
   }
+}
+
+/**
+ * Percent-encode each slash-separated segment of a ref or repository path.
+ *
+ * Validation alone was not enough, and the gap was exactly the one the
+ * validator claims to close. It rejects a literal `..`, but `%` is legal in a
+ * git ref, so `%2e%2e` passes it — and the URL parser decodes that to a
+ * double-dot segment and resolves it, redirecting the request. Encoding turns
+ * it into `%252e%252e`, an ordinary segment name.
+ *
+ * Segment-wise rather than wholesale, because a slash inside a branch name is
+ * meaningful — `chore/action-v1.0.3` must stay three path segments, not one
+ * escaped blob.
+ *
+ * Belt and braces on purpose: the validator still runs, because a name git
+ * would reject deserves the clearer error, and because a second reader of this
+ * code should not have to notice the encoding to conclude it is safe.
+ */
+function encodePath(value: string): string {
+  return value.split("/").map(encodeURIComponent).join("/");
 }
 
 /** A caller bound to one repository, so each call site names only its path. */
@@ -417,28 +467,27 @@ function caller(
     path: string,
     body?: unknown,
   ): Promise<T> {
-    const response = await fetchImpl(`${baseUrl}/repos/${repo}${path}`, {
-      method,
-      headers: {
-        // A header, not a credential store: this exists for the length of the
-        // request and nowhere else.
-        authorization: `Bearer ${token}`,
-        accept: "application/vnd.github+json",
-        "x-github-api-version": "2022-11-28",
-        ...(body === undefined ? {} : { "content-type": "application/json" }),
+    const response = await fetchImpl(
+      `${baseUrl}/repos/${encodePath(repo)}${path}`,
+      {
+        method,
+        headers: {
+          // A header, not a credential store: this exists for the length of the
+          // request and nowhere else.
+          authorization: `Bearer ${token}`,
+          accept: "application/vnd.github+json",
+          "x-github-api-version": "2022-11-28",
+          ...(body === undefined ? {} : { "content-type": "application/json" }),
+        },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    });
+    );
     const text = await response.text();
     if (!response.ok) {
       // GitHub's own message is the useful half. A status alone rarely says
       // which field or which permission was the problem, and this runs
-      // unattended — the log is all anyone will have. The path is included and
-      // the token is not: it never leaves the header.
-      throw new Error(
-        `${method} ${path} failed: ${response.status} ${response.statusText}. ` +
-          `${text.slice(0, 400)}`,
-      );
+      // unattended — the log is all anyone will have.
+      throw new GhApiError(method, path, response.status, text);
     }
     return (text === "" ? {} : JSON.parse(text)) as T;
   };

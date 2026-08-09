@@ -9,14 +9,7 @@
  * escape hatch.
  *
  * ```ts
- * import {
-  commitFiles,
-  type GhCommitApi,
-  GhCommitSettings,
-  GhTagSettings,
-  tagCommit,
-} from "./commit.ts";
-import { GhTasks } from "jsr:@zuke/gh";
+ * import { GhTasks } from "jsr:@zuke/gh";
  * await GhTasks.run((s) =>
  *   s.command("release", "create", "v1.2.3")
  *     .repo("acme/app").flag("title", "v1.2.3").flag("generate-notes")
