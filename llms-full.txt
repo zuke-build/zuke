@@ -139,24 +139,6 @@ function cicd(spec: CiFileSpec): CiFile
   }
   ```
 
-async function commitFiles(options: GitHubRepoOptions, branch: string, message: string, files: readonly CommitFile[]): Promise<CreatedCommit>
-  Commit `files` onto `branch`, which must already exist.
-
-  The parent is whatever the branch points at when this runs, so a commit
-  landing between reading and writing is rejected by GitHub rather than
-  silently overwritten — the ref update is not forced.
-
-  @throws {@link HttpError}
-      carrying GitHub's own message, which is where the
-      useful half of a failure lives.
-
-async function commitToNewBranch(options: GitHubRepoOptions, base: string, branch: string, message: string, files: readonly CommitFile[]): Promise<CreatedCommit>
-  Create `branch` from `base` with `files` applied, and return the commit.
-
-  Separate from {@link commitFiles} because creating a ref and moving one are
-  different API calls, and a caller proposing a change wants the first while a
-  caller amending its own branch wants the second.
-
 async function createTarGzip(files: PathLike[], dest: PathLike, options: { cwd?: string; }): Promise<void>
   Read `files` (relative to `cwd`), pack them into a tar archive named by their
   path relative to `cwd`, gzip it, and write the result to `dest`.
@@ -581,14 +563,6 @@ async function syncCiFiles(files: readonly CiFile[], options: CiSyncOptions): Pr
   Bring each declared {@link CiFile} on disk in line with its definition. By
   default a changed file is rewritten; in `check` mode it is reported `stale`
   instead (so CI can fail when the committed config has drifted).
-
-async function tagCommit(options: GitHubRepoOptions, tag: string, sha: string, message: string, force: boolean): Promise<void>
-  Create an annotated tag at `sha`, or move it there when `force`.
-
-  Annotated rather than lightweight: a lightweight ref resolves identically for
-  a `uses:` reference, but a repository whose other tags carry messages should
-  not grow one that does not. Moving is forced by necessity — pointing a major
-  tag at a newer release is a non-fast-forward by definition.
 
 function tar(entries: TarEntry[]): Uint8Array
   Create a `ustar` archive from the given entries (in order).
@@ -2510,14 +2484,6 @@ interface CliTargetInfo
   readonly unlisted: boolean
     Whether the target is hidden from `--list` (still runnable by name).
 
-interface CommitFile
-  A file to write in a commit.
-
-  path: string
-    Repository-relative path, e.g. `build/action_version.json`.
-  content: string
-    The file's full contents.
-
 interface CompensationFailure
   A compensation that threw during the cancel walk (recorded, non-fatal).
 
@@ -2539,14 +2505,6 @@ interface CreateDirectoryOptions
 
   recursive?: boolean
     Create parent directories as needed (default `true`).
-
-interface CreatedCommit
-  The commit {@link commitFiles} created.
-
-  sha: string
-    The new commit's SHA.
-  branch: string
-    The branch it was committed to.
 
 interface DescribeCliOptions
   Options for {@link describeCli}.
@@ -2732,19 +2690,6 @@ interface ForEachSpec
     Produce the per-item sub-target pipelines from the runtime list.
   configure?: Configure<ForEachSettings>
     Optional fan-out settings (concurrency, per-item failure isolation).
-
-interface GitHubRepoOptions
-  Where to commit, and what to authenticate with.
-
-  repo: string
-    `owner/name`.
-  token: string
-    A token with `contents: write` on that repository.
-  api?: string
-    The API root. Defaults to GitHub's; set it for GitHub Enterprise.
-  fetch?: typeof fetch
-    The `fetch` implementation to use. Defaults to the global; override it to
-    unit-test without network access.
 
 interface GlobOptions
   Options for {@link glob}.
@@ -9094,6 +9039,23 @@ e2e = target().waitsFor((s) =>
 ```
 @module
 
+function assertRefName(name: string, what: string): void
+  Reject a branch or tag name that git itself would.
+
+  Not cosmetic. These names are interpolated into request paths, and URL
+  normalisation resolves `..` before the request is sent — so
+  `../../../user/repos` as a branch turns `/repos/o/n/git/ref/heads/<branch>`
+  into `/repos/o/n/user/repos`, sending a write-scoped token somewhere the
+  caller never named. Validating here rather than trusting every caller is the
+  difference between an API that is safe to hand a string and one that is safe
+  only when used carefully.
+
+  The rules are git's own (see `git check-ref-format`), minus those that only
+  matter for multi-level refs.
+
+async function commitFiles(configure?: (settings: GhCommitSettings) => GhCommitSettings): Promise<GhCommitResult>
+  Perform the configured commit.
+
 function githubWorkflow(configure: (settings: GithubWorkflowSettings) => GithubWorkflowSettings): WaitTrigger
   A {@link "@zuke/core".WaitTrigger} that dispatches a GitHub Actions workflow,
   suspends the run until it finishes, and records its per-job conclusions to the
@@ -9112,6 +9074,9 @@ function readWorkflowResult(state: TargetStateHandle): WorkflowResult | undefine
   to a target's state, or `undefined` if the wait has not completed (or this is
   not a github-workflow gate). Call it from a dependent target's body with
   the gate's handle: `readWorkflowResult(ctx.stateOf("<gate-target>"))`.
+
+async function tagCommit(configure?: (settings: GhTagSettings) => GhTagSettings): Promise<void>
+  Perform the configured tag.
 
 async function uploadSarifReport(configure?: Configure<GhSarifSettings>): Promise<GhSarifUploadResult>
   Upload the SARIF report the settings describe.
@@ -9173,6 +9138,51 @@ class GhAppTokenSettings
   tokenRequest_(): Record<string, unknown>
     The `access_tokens` request body — only the fields that were narrowed.
 
+class GhCommitSettings
+  Settings for committing files through the API.
+
+  `owner/repo` and the token fall back to the Actions environment, so a job
+  that already has them needs to name only what it is committing.
+
+  files_: Map<string, string>
+    The files to write, by path.
+  branch_?: string
+    The branch to commit onto. Set by {@link branch}.
+  from_?: string
+    The branch to create from, when creating one. Set by {@link from}.
+  message_?: string
+    The commit message. Set by {@link message}.
+  repo_?: string
+    `owner/repo`. Set by {@link repo}.
+  token_?: string
+    The token. Set by {@link token}.
+  baseUrl_: string
+    The API root. Set by {@link baseUrl}.
+  fetch_: typeof fetch
+    The `fetch` implementation. Set by {@link fetch}.
+  file(path: string, content: string): this
+    Add a file to the commit, replacing any earlier one at the same path.
+  branch(name: string): this
+    The branch to commit onto. It must exist unless {@link from} is set.
+  from(base: string): this
+    Create {@link branch} from this one rather than committing onto an
+    existing branch. Creating a ref and moving one are different calls, and
+    which is wanted is the caller's to say rather than something to infer.
+  message(text: string): this
+    The commit message.
+  repo(slug: string): this
+    `owner/repo`. Defaults to `GITHUB_REPOSITORY`.
+  token(value: string): this
+    The token to authenticate with. Defaults to `GITHUB_TOKEN`.
+  baseUrl(url: string): this
+    The API root, for GitHub Enterprise.
+  fetch(fn: typeof fetch): this
+    Override the `fetch` implementation (a test seam).
+  repoSlug_(): string
+    The effective `owner/repo`, from the setting or the environment.
+  authToken_(): string
+    The effective token, from the setting or the environment.
+
 class GhSarifSettings
   Settings for {@link GhSarifApi.uploadSarif}.
 
@@ -9224,6 +9234,50 @@ class GhSettings extends SubcommandSettings
     Target repository as `OWNER/REPO` (`-R`/`--repo`).
   override protected middleTokens(): string[]
     Emit `--repo <slug>` between the command path and the flags, when set.
+
+class GhTagSettings
+  Settings for pointing a tag at a commit.
+
+  name_?: string
+    The tag name. Set by {@link name}.
+  commit_?: string
+    The commit the tag points at. Set by {@link commit}.
+  message_?: string
+    The annotation message. Set by {@link message}.
+  move_: boolean
+    Whether to move an existing tag. Set by {@link move}.
+  repo_?: string
+    `owner/repo`. Set by {@link repo}.
+  token_?: string
+    The token. Set by {@link token}.
+  baseUrl_: string
+    The API root. Set by {@link baseUrl}.
+  fetch_: typeof fetch
+    The `fetch` implementation. Set by {@link fetch}.
+  name(value: string): this
+    The tag name, e.g. `v1.2.3`.
+  commit(sha: string): this
+    The commit SHA to tag. Defaults to `GITHUB_SHA`.
+  message(text: string): this
+    The annotation message. Defaults to the tag name.
+  move(): this
+    Move the tag if it already exists, rather than failing.
+
+    Forced by necessity: pointing a major tag at a newer release is a
+    non-fast-forward by definition. A tag that does not exist yet is created,
+    since for the first release of a major those are the same intent.
+  repo(slug: string): this
+    `owner/repo`. Defaults to `GITHUB_REPOSITORY`.
+  token(value: string): this
+    The token to authenticate with. Defaults to `GITHUB_TOKEN`.
+  baseUrl(url: string): this
+    The API root, for GitHub Enterprise.
+  fetch(fn: typeof fetch): this
+    Override the `fetch` implementation (a test seam).
+  repoSlug_(): string
+    The effective `owner/repo`, from the setting or the environment.
+  authToken_(): string
+    The effective token, from the setting or the environment.
 
 class GithubWorkflowSettings
   Configuration for {@link githubWorkflow}, set through a settings lambda. Every
@@ -9298,6 +9352,26 @@ interface GhAppTokenResult
   installationId: number
     The installation the token was minted for.
 
+interface GhCommitApi
+  The commit and tag operations {@link GhTasks} exposes.
+
+  commit(configure?: (settings: GhCommitSettings) => GhCommitSettings): Promise<GhCommitResult>
+    Commit files through the API, with no git credential on disk.
+
+    Commits onto `.branch(...)`, or creates it from `.from(...)` when that is
+    set. The ref update is not forced, so a commit landing between reading the
+    head and writing it is rejected rather than silently overwritten.
+  tag(configure?: (settings: GhTagSettings) => GhTagSettings): Promise<void>
+    Point an annotated tag at a commit, creating or moving its ref.
+
+interface GhCommitResult
+  The commit a {@link GhTasksApi.commit} call created.
+
+  sha: string
+    The new commit's SHA.
+  branch: string
+    The branch it landed on.
+
 interface GhSarifApi
   The shape of the SARIF task, mixed into `GhTasks`.
 
@@ -9313,7 +9387,7 @@ interface GhSarifUploadResult
   url: string
     The URL that reports whether GitHub finished processing the report.
 
-interface GhTasksApi extends GhAppTokenApi, GhSarifApi
+interface GhTasksApi extends GhAppTokenApi, GhSarifApi, GhCommitApi
   The shape of {@link GhTasks}: the `gh` CLI plus the GitHub operations that
   have no CLI subcommand (see {@link GhAppTokenApi}, {@link GhSarifApi}) and
   would otherwise force a build back to a marketplace action.

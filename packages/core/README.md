@@ -193,24 +193,6 @@ function cicd(spec: CiFileSpec): CiFile
   }
   ```
 
-async function commitFiles(options: GitHubRepoOptions, branch: string, message: string, files: readonly CommitFile[]): Promise<CreatedCommit>
-  Commit `files` onto `branch`, which must already exist.
-
-  The parent is whatever the branch points at when this runs, so a commit
-  landing between reading and writing is rejected by GitHub rather than
-  silently overwritten — the ref update is not forced.
-
-  @throws {@link HttpError}
-      carrying GitHub's own message, which is where the
-      useful half of a failure lives.
-
-async function commitToNewBranch(options: GitHubRepoOptions, base: string, branch: string, message: string, files: readonly CommitFile[]): Promise<CreatedCommit>
-  Create `branch` from `base` with `files` applied, and return the commit.
-
-  Separate from {@link commitFiles} because creating a ref and moving one are
-  different API calls, and a caller proposing a change wants the first while a
-  caller amending its own branch wants the second.
-
 async function createTarGzip(files: PathLike[], dest: PathLike, options: { cwd?: string; }): Promise<void>
   Read `files` (relative to `cwd`), pack them into a tar archive named by their
   path relative to `cwd`, gzip it, and write the result to `dest`.
@@ -635,14 +617,6 @@ async function syncCiFiles(files: readonly CiFile[], options: CiSyncOptions): Pr
   Bring each declared {@link CiFile} on disk in line with its definition. By
   default a changed file is rewritten; in `check` mode it is reported `stale`
   instead (so CI can fail when the committed config has drifted).
-
-async function tagCommit(options: GitHubRepoOptions, tag: string, sha: string, message: string, force: boolean): Promise<void>
-  Create an annotated tag at `sha`, or move it there when `force`.
-
-  Annotated rather than lightweight: a lightweight ref resolves identically for
-  a `uses:` reference, but a repository whose other tags carry messages should
-  not grow one that does not. Moving is forced by necessity — pointing a major
-  tag at a newer release is a non-fast-forward by definition.
 
 function tar(entries: TarEntry[]): Uint8Array
   Create a `ustar` archive from the given entries (in order).
@@ -2564,14 +2538,6 @@ interface CliTargetInfo
   readonly unlisted: boolean
     Whether the target is hidden from `--list` (still runnable by name).
 
-interface CommitFile
-  A file to write in a commit.
-
-  path: string
-    Repository-relative path, e.g. `build/action_version.json`.
-  content: string
-    The file's full contents.
-
 interface CompensationFailure
   A compensation that threw during the cancel walk (recorded, non-fatal).
 
@@ -2593,14 +2559,6 @@ interface CreateDirectoryOptions
 
   recursive?: boolean
     Create parent directories as needed (default `true`).
-
-interface CreatedCommit
-  The commit {@link commitFiles} created.
-
-  sha: string
-    The new commit's SHA.
-  branch: string
-    The branch it was committed to.
 
 interface DescribeCliOptions
   Options for {@link describeCli}.
@@ -2786,19 +2744,6 @@ interface ForEachSpec
     Produce the per-item sub-target pipelines from the runtime list.
   configure?: Configure<ForEachSettings>
     Optional fan-out settings (concurrency, per-item failure isolation).
-
-interface GitHubRepoOptions
-  Where to commit, and what to authenticate with.
-
-  repo: string
-    `owner/name`.
-  token: string
-    A token with `contents: write` on that repository.
-  api?: string
-    The API root. Defaults to GitHub's; set it for GitHub Enterprise.
-  fetch?: typeof fetch
-    The `fetch` implementation to use. Defaults to the global; override it to
-    unit-test without network access.
 
 interface GlobOptions
   Options for {@link glob}.

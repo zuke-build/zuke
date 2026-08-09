@@ -9,7 +9,14 @@
  * escape hatch.
  *
  * ```ts
- * import { GhTasks } from "jsr:@zuke/gh";
+ * import {
+  commitFiles,
+  type GhCommitApi,
+  GhCommitSettings,
+  GhTagSettings,
+  tagCommit,
+} from "./commit.ts";
+import { GhTasks } from "jsr:@zuke/gh";
  * await GhTasks.run((s) =>
  *   s.command("release", "create", "v1.2.3")
  *     .repo("acme/app").flag("title", "v1.2.3").flag("generate-notes")
@@ -34,6 +41,14 @@ import {
   type GhAppTokenSettings,
   mintAppToken,
 } from "./app_token.ts";
+import {
+  commitFiles,
+  type GhCommitApi,
+  type GhCommitResult,
+  type GhCommitSettings,
+  type GhTagSettings,
+  tagCommit,
+} from "./commit.ts";
 import {
   type GhSarifApi,
   type GhSarifSettings,
@@ -67,7 +82,7 @@ export class GhSettings extends SubcommandSettings {
  * have no CLI subcommand (see {@link GhAppTokenApi}, {@link GhSarifApi}) and
  * would otherwise force a build back to a marketplace action.
  */
-export interface GhTasksApi extends GhAppTokenApi, GhSarifApi {
+export interface GhTasksApi extends GhAppTokenApi, GhSarifApi, GhCommitApi {
   /** Run a `gh` command. */
   run(configure?: Configure<GhSettings>): Promise<CommandOutput>;
 }
@@ -76,6 +91,14 @@ export interface GhTasksApi extends GhAppTokenApi, GhSarifApi {
 export const GhTasks: GhTasksApi = {
   run(configure?: Configure<GhSettings>): Promise<CommandOutput> {
     return runSettings(new GhSettings(), configure);
+  },
+  commit(
+    configure?: (s: GhCommitSettings) => GhCommitSettings,
+  ): Promise<GhCommitResult> {
+    return commitFiles(configure);
+  },
+  tag(configure?: (s: GhTagSettings) => GhTagSettings): Promise<void> {
+    return tagCommit(configure);
   },
   appToken(
     configure?: Configure<GhAppTokenSettings>,

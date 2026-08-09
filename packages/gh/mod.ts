@@ -19,6 +19,15 @@
 
 export * from "./src/gh.ts";
 export {
+  assertRefName,
+  commitFiles,
+  type GhCommitApi,
+  type GhCommitResult,
+  GhCommitSettings,
+  GhTagSettings,
+  tagCommit,
+} from "./src/commit.ts";
+export {
   type GhAppTokenApi,
   type GhAppTokenResult,
   GhAppTokenSettings,
