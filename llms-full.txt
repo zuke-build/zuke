@@ -3374,6 +3374,42 @@ interface TargetContext
     `.waitsFor(githubWorkflow(...))` gate recorded to its state). `stateOf(this target)` is equivalent to {@link state}. It reads the run's current
     record, so it sees writes a dependency made earlier in the run — including
     across a suspend/resume, since the record is durable.
+  outcomeOf(target: string): TargetOutcomeView | undefined
+    What another target in this run did, or `undefined` if it has no outcome
+    yet — it has not run, or is running now.
+
+    The seam for a target that must decide on the run's results rather than
+    merely follow them: an aggregate gate reporting one verdict for a fan of
+    checks, some of which are allowed to fail. `.dependsOn(...)` alone cannot
+    express that, because a failed dependency never lets its dependents run;
+    pair this with `.always()` and `.proceedAfterFailure()` on the checks.
+
+    It reads what this run has settled so far, whichever process settled it:
+    outcomes from a previous process come back after a resume, because they
+    are in the durable record. A sibling running concurrently has no
+    outcome yet — depend on what you intend to read.
+  outcomes(): ReadonlyMap<string, TargetOutcomeView>
+    Every outcome this run has settled so far, keyed by dotted target name — a
+    snapshot, not a live view. Targets that have not settled are absent rather
+    than present with a placeholder status.
+
+interface TargetOutcomeView
+  What another target in this run did, as {@link TargetContext.outcomeOf}
+  reports it.
+
+  The status is the record's vocabulary, not the summary's: a target whose
+  body ran and one served from the cache both read `"succeeded"`, because that
+  is the distinction the durable record keeps. A body branching on this wants
+  "did it work", which both answer the same way.
+
+  readonly status: TargetRunStatus
+    The target's status: `succeeded`, `failed`, `skipped`, `waiting`, …
+  readonly error?: string
+    The failure's message, when it failed. Redacted like every stored string.
+  readonly startedAt?: string
+    When it started, ISO-8601, if it did.
+  readonly endedAt?: string
+    When it settled, ISO-8601, if it has.
 
 interface TargetReport
   One row of the end-of-build summary.

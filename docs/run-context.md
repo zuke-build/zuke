@@ -25,6 +25,8 @@ class Deploy extends Build {
 | `signal`     | `AbortSignal`       | Aborted when the run is cancelled (see below).                       |
 | `state`      | `TargetStateHandle` | Durable per-target metadata — see [Durable run state](./state.md).   |
 | `stateOf`    | `(t) => …`          | The state handle of **another** target — read a dependency's published metadata (e.g. a wait's result). |
+| `outcomeOf`  | `(t) => …`          | What another target in this run **did** — `succeeded`, `failed`, `skipped`, … or `undefined` if it has none yet. |
+| `outcomes`   | `() => ReadonlyMap` | Every outcome settled so far, keyed by target name. |
 | `signals`    | `ReadonlyMap`       | Payloads of external signals received so far (see [waits](./orchestration.md)). |
 | `dryRun`     | `boolean`           | `true` when the run is a dry run (bodies don't execute in a dry run). |
 
@@ -32,6 +34,41 @@ class Deploy extends Build {
 target, the run record ([Durable run state](./state.md)), a resumed run's
 spans ([Observability](./observability.md)), and a
 [resumption](./orchestration.md) of a suspended run.
+
+## Reading what the rest of the run did
+
+`ctx.outcomeOf(name)` reports another target's status in this run, and
+`ctx.outcomes()` returns all of them. The status is the **run record's**
+vocabulary — `succeeded`, `failed`, `skipped`, `waiting`, `running` — so a
+target whose body ran and one served from the incremental cache both read
+`succeeded`, which is the distinction the record keeps.
+
+<!-- check -->
+
+```ts
+import { Build, target } from "jsr:@zuke/core";
+
+class Ci extends Build {
+  unit = target().executes(() => {});
+  docs = target().onlyWhen(() => false).executes(() => {});
+  report = target().dependsOn(this.unit, this.docs).executes((ctx) => {
+    const skipped = [...ctx.outcomes()]
+      .filter(([, outcome]) => outcome.status === "skipped")
+      .map(([name]) => name);
+    console.log(`skipped: ${skipped.join(", ")}`);
+    console.log(`unit: ${ctx.outcomeOf("unit")?.status}`);
+  });
+}
+```
+
+- **A target that has not settled has no outcome** — `undefined` rather than a
+  placeholder. That includes the target doing the asking, and any sibling still
+  running concurrently. Depend on what you intend to read.
+- **Outcomes survive a resume.** After a suspend, the process that resumes never
+  re-runs what already succeeded, and still reports it — those come from the
+  durable [run record](./state.md).
+- **A store is not required.** A run with no state store answers the same way
+  for everything settled in that process.
 
 ## Cancellation
 
