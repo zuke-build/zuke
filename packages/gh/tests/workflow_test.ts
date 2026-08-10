@@ -101,6 +101,36 @@ class ScriptedApi implements GhWorkflowApi {
   }
 }
 
+/** A {@link ScriptedApi} that snapshots the durable state as it dispatches. */
+class StateObservingApi extends ScriptedApi {
+  /** The target meta as it stood when `dispatch` was called, if it was. */
+  stateAtDispatch: Record<string, JsonValue> | undefined;
+  readonly #state: TargetStateHandle;
+
+  constructor(state: TargetStateHandle) {
+    super();
+    this.#state = state;
+  }
+
+  override dispatch(
+    repo: string,
+    workflow: string,
+    ref: string,
+    inputs: Record<string, string>,
+  ): Promise<void> {
+    this.stateAtDispatch = { ...this.#state.get() };
+    return super.dispatch(repo, workflow, ref, inputs);
+  }
+}
+
+/** Narrow a {@link JsonValue} to a plain object, throwing if it is not one. */
+function recordOf(value: JsonValue | undefined): Record<string, JsonValue> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`expected a JSON object, got ${JSON.stringify(value)}`);
+  }
+  return value;
+}
+
 Deno.test("githubWorkflow requires a repo and a workflow", () => {
   assertThrows(() => githubWorkflow((g) => g), Error, "repo and a workflow");
   assertThrows(
@@ -134,6 +164,26 @@ Deno.test("first evaluation dispatches with a marker and suspends", async () => 
   assertEquals(api.dispatches[0].ref, "release");
   assertEquals(api.dispatches[0].inputs.env, "prod");
   assertEquals(api.dispatches[0].inputs.zuke_marker, "zuke:r1:e2e");
+});
+
+Deno.test("the marker is persisted before the workflow is dispatched", async () => {
+  // Intent before effect: a process killed between the two must re-poll for the
+  // run it may have started, never dispatch a second one.
+  const state = fakeState();
+  const api = new StateObservingApi(state);
+  const trigger = githubWorkflowWith(
+    (g) => g.repo("acme/app").workflow("e2e.yml"),
+    { api },
+  );
+  assertEquals(await trigger.isSatisfied(NO_SIGNALS, ctx(state)), false);
+  assertEquals(api.dispatches.length, 1);
+  // The record the dispatch call saw already carries the marker it dispatched.
+  const seen = api.stateAtDispatch;
+  if (seen === undefined) throw new Error("dispatch was never called");
+  const entry = recordOf(seen.githubWorkflow);
+  assertEquals(entry.dispatched, true);
+  assertEquals(entry.marker, "zuke:r1:e2e");
+  assertEquals(entry.marker, api.dispatches[0].inputs.zuke_marker);
 });
 
 Deno.test("polls until the run completes, then records the per-job result", async () => {
@@ -510,6 +560,37 @@ Deno.test("a persisted record without dispatchedAt (pre-M18) fails fast after ba
     WorkflowCorrelationError,
     "run-name",
   );
+});
+
+Deno.test("a marker persisted without a landed dispatch re-polls, never re-dispatches", async () => {
+  // The record a process killed between the marker write and the dispatch call
+  // leaves behind — the state the reaper now makes reachable. The trigger must
+  // poll for the run it may have started and fail at the discovery deadline,
+  // rather than dispatching a second workflow (for a deploy, a second deploy).
+  const api = new ScriptedApi();
+  api.appears = false; // the dispatch never landed, so no run exists
+  const c = clock(DISPATCH_AT);
+  const state = fakeState({
+    githubWorkflow: {
+      dispatched: true,
+      marker: "zuke:r1:e2e",
+      dispatchedAt: DISPATCH_AT,
+    },
+  });
+  const trigger = githubWorkflowWith(
+    (g) => g.repo("a/b").workflow("e2e.yml").discoveryTimeout("60s"),
+    { api, now: c.now },
+  );
+  const cv = ctx(state);
+  assertEquals(await trigger.isSatisfied(NO_SIGNALS, cv), false);
+  assertEquals(api.dispatches.length, 0);
+  c.advance(61_000);
+  await assertRejects(
+    () => Promise.resolve(trigger.isSatisfied(NO_SIGNALS, cv)),
+    WorkflowCorrelationError,
+    "run-name",
+  );
+  assertEquals(api.dispatches.length, 0);
 });
 
 Deno.test("created-window excludes a run that already existed before dispatch", async () => {
