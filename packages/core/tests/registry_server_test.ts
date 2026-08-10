@@ -391,6 +391,49 @@ Deno.test("a protected target requires a valid operator token", async () => {
   assertEquals(calls.length, 1);
 });
 
+Deno.test("a registry target that depends on a protected one still needs the token", async () => {
+  const registry = new FakeRegistry();
+  // release → deploy, declared in the registered surface. Spawning `release`
+  // runs `deploy` in the child process, so protecting `deploy` has to reach it.
+  const base = descriptor("Api", ["deploy", "release"]);
+  registry.add({
+    ...base,
+    surface: {
+      ...base.surface,
+      targets: base.surface.targets.map((t) =>
+        t.name === "release" ? { ...t, dependsOn: ["deploy"] } : t
+      ),
+    },
+  });
+  const { runner, calls } = recordingRunner();
+  const server = new RegistryMcpServer(registry, {
+    allowRun: true,
+    protectPatterns: ["Api:deploy"],
+    operatorToken: "good-token",
+    runner,
+  });
+
+  // No token → denied, and nothing was spawned.
+  assertStringIncludes(
+    (await call(server, "run:Api:release")).text,
+    "missing_operator_token",
+  );
+  assertEquals(calls.length, 0);
+
+  // The advertised schema tells the client why.
+  const tools = await server.tools();
+  const release = tools.find((t) => t.name === "run:Api:release");
+  const required = (release?.inputSchema as { required?: string[] })?.required;
+  assertEquals(required?.includes("operatorToken"), true);
+
+  // With the token it spawns.
+  const okd = await call(server, "run:Api:release", {
+    operatorToken: "good-token",
+  });
+  assertEquals(okd.isError, false);
+  assertEquals(calls.length, 1);
+});
+
 Deno.test("a protected target with no server token is fail-closed", async () => {
   const registry = new FakeRegistry();
   registry.add(descriptor("Api", ["deploy"]));

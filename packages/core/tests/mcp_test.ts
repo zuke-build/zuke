@@ -357,6 +357,32 @@ Deno.test("serveStdio processes a final line the stream never terminated", async
   assertEquals(messages().length, 1);
 });
 
+Deno.test("serveStdio survives a throwing dispatch and keeps reading", async () => {
+  const { output, messages } = capturingWriter();
+  await serveStdio(
+    (message) => {
+      // The first message blows up inside dispatch. Without a backstop the
+      // rejection escapes the read loop and every later message on the
+      // connection is silently lost.
+      if ((message as { id?: number }).id === 1) {
+        return Promise.reject(new Error("boom"));
+      }
+      return Promise.resolve({ jsonrpc: "2.0" as const, id: 2, result: {} });
+    },
+    streamOf(
+      '{"jsonrpc":"2.0","id":1,"method":"a"}\n{"jsonrpc":"2.0","id":2,"method":"b"}\n',
+    ),
+    output,
+  );
+  const out = messages();
+  assertEquals(out.length, 2);
+  // The failure is reported as an internal error correlated to its own id…
+  assertEquals((out[0] as { id: number }).id, 1);
+  assertEquals((out[0] as { error: { code: number } }).error.code, -32603);
+  // …and the connection carried on.
+  assertEquals((out[1] as { id: number }).id, 2);
+});
+
 Deno.test("serveStdio answers an unparseable line with a parse error", async () => {
   const { output, messages } = capturingWriter();
   await serveStdio(

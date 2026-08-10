@@ -96,12 +96,22 @@ export interface McpServerOptions {
    * Restrict the exposed `run:` tools to targets matching these globs (from
    * `--allow-run=a,b*`). `undefined` (a bare `--allow-run`) exposes every
    * target. A target not matched is not advertised and cannot be run — a call
-   * to it is indistinguishable from a call to a nonexistent tool.
+   * to it is indistinguishable from a call to a nonexistent tool, and the read
+   * tools narrow to the matched targets' dependency closure so it is not
+   * discoverable there either.
+   *
+   * This gates **invocation**, not execution: invoking a target runs its
+   * dependencies, so allow-listing a root allows everything that root does.
+   * Use {@link protectPatterns} to gate an individual operation wherever it is
+   * reached from.
    */
   allowRunPatterns?: readonly string[];
   /**
-   * Targets (globs, from `--protect a,b*`) whose `run:` tool additionally
-   * requires an operator token argument, checked against {@link operatorToken}.
+   * Targets (globs, from `--protect a,b*`) that require an operator token
+   * argument, checked against {@link operatorToken}. Enforced over a run's
+   * whole plan: a call that would execute a protected target — as the root
+   * **or** anywhere in its dependency closure — requires the token, and
+   * advertises it in that run tool's schema.
    */
   protectPatterns?: readonly string[];
   /**
@@ -205,8 +215,12 @@ export class McpServer {
   readonly #version: string;
   /** Matches a target name allowed to run (allow-list glob, or all). */
   readonly #allowMatch: (name: string) => boolean;
+  /** Whether an allow-list was configured at all (a bare `--allow-run` sets none). */
+  readonly #hasAllowList: boolean;
   /** Matches a target name that needs an operator token to run. */
   readonly #isProtected: (name: string) => boolean;
+  /** Memoised visible-target closure, computed on first describe/list. */
+  #visibleNames?: ReadonlySet<string>;
   readonly #operatorToken?: string;
   readonly #confirmDestructive: boolean;
   readonly #store?: StateStore;
@@ -226,6 +240,7 @@ export class McpServer {
     this.#params = discoverParameters(build);
     this.#allowRun = options.allowRun ?? false;
     this.#allowMatch = targetMatcher(options.allowRunPatterns);
+    this.#hasAllowList = options.allowRunPatterns !== undefined;
     this.#isProtected = targetMatcher(options.protectPatterns);
     // An empty protect list means "protect nothing"; targetMatcher(undefined)
     // matches everything, so map the absent/empty case to a never-match.
@@ -247,6 +262,70 @@ export class McpServer {
   /** Whether a `run:<name>` tool is exposed and runnable (allow-list gate). */
   #isRunnable(name: string): boolean {
     return this.#allowRun && this.#targets.has(name) && this.#allowMatch(name);
+  }
+
+  /**
+   * The names of every target invoking `name` would run — the root plus its
+   * whole dependency closure — or `null` when that cannot be determined (an
+   * unknown target, or a graph `planGraph` rejects). A `null` is never treated
+   * as "nothing runs": callers fail closed on it, because an unresolvable plan
+   * is an unknown blast radius.
+   */
+  #plannedNames(name: string): string[] | null {
+    const root = this.#targets.get(name);
+    if (root === undefined) return null;
+    let order: readonly TargetBuilder[];
+    try {
+      order = planGraph(root).order;
+    } catch {
+      return null;
+    }
+    return order
+      .map((t) => t.name_)
+      .filter((n): n is string => n !== undefined);
+  }
+
+  /**
+   * Whether a plan would run any protected target. Protection is a property of
+   * the **operation**, not of the entry point: a protected `deploy` reached as
+   * a dependency of an unprotected `release` must still require the operator
+   * token, or every protected target is one unprotected dependent away from
+   * being run without one.
+   */
+  #planTouchesProtected(planned: readonly string[]): boolean {
+    return planned.some((name) => this.#isProtected(name));
+  }
+
+  /**
+   * The targets a client may see through the read tools.
+   *
+   * Without an allow-list every target is visible — the documented "inspect
+   * only" tier. With one, visibility is the **closure** of the allow-listed
+   * targets: the roots a client may invoke, plus everything invoking them would
+   * run. A target outside that set is genuinely unreachable through this
+   * server, so hiding it is a real boundary rather than cosmetic; a dependency
+   * inside it stays visible, because a client that can already cause it to run
+   * gains nothing from being kept ignorant of it — and an agent asked to invoke
+   * a target should be able to see what that target actually does.
+   */
+  #visibleTargets(): Map<string, TargetBuilder> {
+    if (!this.#hasAllowList) return this.#targets;
+    if (this.#visibleNames === undefined) {
+      const names = new Set<string>();
+      for (const name of this.#targets.keys()) {
+        if (!this.#allowMatch(name)) continue;
+        names.add(name);
+        for (const planned of this.#plannedNames(name) ?? []) {
+          names.add(planned);
+        }
+      }
+      this.#visibleNames = names;
+    }
+    const visible = new Map<string, TargetBuilder>();
+    for (const [name, target] of this.#targets) {
+      if (this.#visibleNames.has(name)) visible.set(name, target);
+    }
+    return visible;
   }
 
   /** The tools advertised to the client, honouring {@link McpServerOptions.allowRun}. */
@@ -274,8 +353,9 @@ export class McpServer {
       },
     ];
     for (const [name, target] of this.#targets) {
-      // Only allow-listed targets are advertised; the rest are invisible, so a
-      // client cannot even discover which protected targets exist.
+      // Only allow-listed targets are advertised as run tools; the read tools
+      // narrow to the same allow-list's closure (see #visibleTargets), so a
+      // target outside it is not discoverable through any tool here.
       if (this.#isRunnable(name)) tools.push(this.#runTool(name, target));
     }
     // Store-backed run tools: read tools whenever a store resolves, mutating
@@ -299,12 +379,17 @@ export class McpServer {
       type: "boolean",
       description: "Plan without executing any target body.",
     };
-    // A protected target's call must carry the operator token.
-    if (this.#isProtected(name)) {
+    // A call that would run a protected target must carry the operator token.
+    // Checked over the whole plan, so a target that merely *depends* on a
+    // protected one advertises the requirement too — otherwise the schema would
+    // omit the very argument the call is then denied for.
+    const planned = this.#plannedNames(name);
+    if (planned === null || this.#planTouchesProtected(planned)) {
       properties.operatorToken = {
         type: "string",
         description:
-          "Operator token (ZUKE_OPERATOR_TOKEN) required to run this protected target.",
+          "Operator token (ZUKE_OPERATOR_TOKEN) required: this target, or one " +
+          "it depends on, is protected.",
       };
       required.push("operatorToken");
     }
@@ -373,7 +458,14 @@ export class McpServer {
       case "ping":
         return ok(id, {});
       case "tools/list":
-        return ok(id, { tools: this.tools() });
+        // Same backstop as tools/call: building the tool list now walks each
+        // target's plan, so an unforeseen throw must not tear down the
+        // transport for every later message on the connection.
+        try {
+          return ok(id, { tools: this.tools() });
+        } catch {
+          return err(id, INTERNAL_ERROR, "Internal error listing tools");
+        }
       case "tools/call":
         // Backstop: no tool call may crash the transport. Expected failures are
         // already structured tool results; this catches anything unforeseen and
@@ -504,7 +596,7 @@ export class McpServer {
 
   /** The three read tools' payloads, as pretty JSON / text. */
   #describe(): { targets: string; full: string; graph: string } {
-    const surface = describeBuildSurface(this.#targets, this.#params);
+    const surface = describeBuildSurface(this.#visibleTargets(), this.#params);
     const graph = surface.targets
       .map((t) =>
         t.dependsOn.length > 0
@@ -548,24 +640,24 @@ export class McpServer {
       return ok(id, textResult(`Unknown tool: ${runName}`, true));
     }
 
-    // Protected target: require a valid operator token. Fail-closed — a target
-    // protected with no server-side token configured is always denied.
-    if (this.#isProtected(targetName)) {
-      const denial = this.#checkOperatorToken(args);
-      if (denial !== null) {
-        await this.#audit(runName, args, "denied", actor, denial);
-        return ok(
-          id,
-          textResult(
-            JSON.stringify(
-              { error: "unauthorized", tool: runName, reason: denial },
-              null,
-              2,
-            ),
-            true,
+    // Protection is enforced over the whole plan, not just the root, so a
+    // protected target reached as a dependency still demands the operator
+    // token. Fail-closed twice over: a plan that cannot be resolved is denied,
+    // and so is a protected target with no server-side token configured.
+    const denial = this.#authorizeTarget(targetName, args);
+    if (denial !== null) {
+      await this.#audit(runName, args, "denied", actor, denial);
+      return ok(
+        id,
+        textResult(
+          JSON.stringify(
+            { error: "unauthorized", tool: runName, reason: denial },
+            null,
+            2,
           ),
-        );
-      }
+          true,
+        ),
+      );
     }
 
     const dryRun = args.dryRun === true;
@@ -661,13 +753,21 @@ export class McpServer {
 
   /**
    * Authorize causing target `name` to run — the shared gate for a `run:` tool
-   * and for a resume (`signal_run`/`resume_check`, which re-run the target's
-   * code). Returns a denial reason (allow-list miss or operator-token failure)
-   * or `null` when allowed.
+   * and for a resume or cancel (`signal_run`/`resume_check`/`cancel_run`, which
+   * re-run the target's code). Returns a denial reason or `null` when allowed.
+   *
+   * The two gates deliberately have different reach. The **allow-list** is an
+   * entry-point control: it decides which targets a client may invoke, and
+   * invoking one necessarily runs its dependencies — that is what a build
+   * target means, so a dependency is not separately allow-listed. The
+   * **operator token** is an operation control: it must hold wherever the
+   * protected target runs, so it is checked across the entire plan.
    */
   #authorizeTarget(name: string, args: Record<string, unknown>): string | null {
     if (!this.#allowMatch(name)) return "not_allowed";
-    if (this.#isProtected(name)) {
+    const planned = this.#plannedNames(name);
+    if (planned === null) return "unresolved_plan";
+    if (this.#planTouchesProtected(planned)) {
       const denial = this.#checkOperatorToken(args);
       if (denial !== null) return denial;
     }
@@ -739,10 +839,12 @@ export class McpServer {
   #auditArgs(args: Record<string, unknown>): Record<string, string> {
     const redactor = new Redactor();
     for (const [key, value] of Object.entries(args)) {
-      if (typeof value !== "string") continue;
-      if (key === "operatorToken" || this.#params.get(key)?.secret_) {
-        redactor.add(value);
-      }
+      if (value === undefined) continue;
+      if (key !== "operatorToken" && !this.#params.get(key)?.secret_) continue;
+      // Seed from the value's *audit* string form, not just from strings: a
+      // secret supplied as a JSON number (or nested in a structure) must still
+      // be masked when it is echoed into some other, non-secret argument.
+      redactor.add(auditText(value));
     }
     const out: Record<string, string> = {};
     for (const [key, value] of Object.entries(args)) {
@@ -751,13 +853,22 @@ export class McpServer {
         out[key] = "[redacted]";
         continue;
       }
-      const text = typeof value === "object" && value !== null
-        ? JSON.stringify(value)
-        : String(value);
-      out[key] = redactor.redact(text);
+      out[key] = redactor.redact(auditText(value));
     }
     return out;
   }
+}
+
+/**
+ * The string form an argument takes in the audit trail: a structure is
+ * serialised, everything else stringified. Used both to seed the redactor and
+ * to render the recorded value, so the two can never disagree about what text
+ * a value produces.
+ */
+function auditText(value: unknown): string {
+  return typeof value === "object" && value !== null
+    ? JSON.stringify(value)
+    : String(value);
 }
 
 /** Extract a JSON-RPC id from a message, defaulting to `null`. */

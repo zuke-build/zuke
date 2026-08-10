@@ -158,6 +158,36 @@ Deno.test("http transport answers unparseable JSON with a 400 parse error", asyn
   }
 });
 
+Deno.test("http transport refuses an oversized body with 413", async () => {
+  const server = new McpServer(new Demo());
+  const s = await startHttp((m) => server.handleMessage(m));
+  try {
+    // A single MCP message is a tool call with a few scalar arguments, so a
+    // body past the cap is either a bug or an attempt to exhaust memory. It is
+    // refused without being buffered whole.
+    const huge = `{"jsonrpc":"2.0","id":1,"method":"ping","params":"${
+      "x".repeat(1024 * 1024 + 64)
+    }"}`;
+    const res = await fetch(`http://127.0.0.1:${s.port}/`, {
+      method: "POST",
+      body: huge,
+    });
+    assertEquals(res.status, 413);
+    const body = await res.json();
+    assertEquals(body.error.code, -32600);
+
+    // A normal message on the same server is unaffected.
+    const fine = await fetch(`http://127.0.0.1:${s.port}/`, {
+      method: "POST",
+      body: rpc("ping", 2),
+    });
+    assertEquals(fine.status, 200);
+    await fine.json();
+  } finally {
+    await s.stop();
+  }
+});
+
 Deno.test("http transport answers a notification with 202 and no body", async () => {
   const server = new McpServer(new Demo());
   const s = await startHttp((m) => server.handleMessage(m));

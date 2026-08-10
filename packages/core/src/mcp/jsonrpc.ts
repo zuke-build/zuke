@@ -129,6 +129,20 @@ export function resolveIdentity(
 const STDIO_CONTEXT: McpRequestContext = { headers: new Headers() };
 
 /**
+ * The JSON-RPC id of a parsed message, or `null` when it carries none — so an
+ * error response raised before dispatch can still be correlated by the client.
+ */
+function messageId(message: unknown): string | number | null {
+  if (
+    typeof message === "object" && message !== null && "id" in message &&
+    (typeof message.id === "string" || typeof message.id === "number")
+  ) {
+    return message.id;
+  }
+  return null;
+}
+
+/**
  * Read newline-delimited JSON-RPC messages from `input`, pass each parsed
  * message to `handle`, and write any non-null response back to `output`
  * (newline-framed). A line that is not valid JSON yields a parse-error response
@@ -157,7 +171,16 @@ export async function serveStdio(
       await send(err(null, PARSE_ERROR, "Parse error"));
       return;
     }
-    const response = await handle(message, STDIO_CONTEXT);
+    // Backstop, mirroring the one inside the server's tools/call: a dispatch
+    // that throws must not end the read loop, or one bad message silently
+    // kills the connection for every message after it.
+    let response: JsonRpcResponse | null;
+    try {
+      response = await handle(message, STDIO_CONTEXT);
+    } catch {
+      await send(err(messageId(message), INTERNAL_ERROR, "Internal error"));
+      return;
+    }
     if (response !== null) await send(response);
   };
 

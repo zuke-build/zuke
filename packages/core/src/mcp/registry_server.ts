@@ -33,7 +33,7 @@ import { resolveActor } from "../state/record.ts";
 import type { RunEvent, RunEventOutcome } from "../state/types.ts";
 import type { StateStore } from "../state/store.ts";
 import type { RunStateWriter } from "../state/writer.ts";
-import type { CliParameterInfo } from "../describe.ts";
+import type { CliParameterInfo, CliTargetInfo } from "../describe.ts";
 import type { BuildLocation } from "../registry/descriptor.ts";
 import type { BuildRegistry } from "../registry/registry.ts";
 import { openAuditLog } from "./audit.ts";
@@ -295,6 +295,29 @@ function validateParamArgs(
 }
 
 /** Whether a JSON value is a plain object (a string-keyed record). */
+/**
+ * `root` plus every target it transitively depends on, read from a registered
+ * build's declared surface. A dependency the surface does not carry is skipped:
+ * the descriptor is the only graph available to the registry host, and the
+ * spawned child resolves the real one itself — so this is a conservative view
+ * of what a run will touch, never an authoritative plan.
+ */
+function closureOf(
+  targets: readonly CliTargetInfo[],
+  root: string,
+): string[] {
+  const byName = new Map(targets.map((t) => [t.name, t]));
+  const seen = new Set<string>();
+  const stack = [root];
+  while (stack.length > 0) {
+    const name = stack.pop();
+    if (name === undefined || seen.has(name)) continue;
+    seen.add(name);
+    for (const dep of byName.get(name)?.dependsOn ?? []) stack.push(dep);
+  }
+  return [...seen];
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -466,6 +489,7 @@ export class RegistryMcpServer {
               target.name,
               target.description,
               loaded.descriptor.surface.parameters,
+              loaded.descriptor.surface.targets,
             ),
           );
         }
@@ -474,12 +498,29 @@ export class RegistryMcpServer {
     return tools;
   }
 
+  /**
+   * Whether spawning `buildId:target` would run any protected target — the one
+   * named, or anything in its declared dependency closure. Spawning a target
+   * runs its dependencies in the child process, so protection has to be checked
+   * across the plan; gating only the named target leaves every protected target
+   * reachable through an unprotected dependent.
+   */
+  #planTouchesProtected(
+    buildId: string,
+    targets: readonly CliTargetInfo[],
+    root: string,
+  ): boolean {
+    return closureOf(targets, root)
+      .some((name) => this.#isProtected(`${buildId}:${name}`));
+  }
+
   /** Build the `run:<buildId>:<target>` tool definition. */
   #runTool(
     buildId: string,
     target: string,
     description: string,
     parameters: readonly CliParameterInfo[],
+    targets: readonly CliTargetInfo[],
   ): McpTool {
     const qualified = `${buildId}:${target}`;
     const properties: Record<string, Record<string, unknown>> = {};
@@ -494,11 +535,12 @@ export class RegistryMcpServer {
       type: "boolean",
       description: "Plan without executing any target body.",
     };
-    if (this.#isProtected(qualified)) {
+    if (this.#planTouchesProtected(buildId, targets, target)) {
       properties.operatorToken = {
         type: "string",
         description:
-          "Operator token (ZUKE_OPERATOR_TOKEN) required to run this protected target.",
+          "Operator token (ZUKE_OPERATOR_TOKEN) required: this target, or one " +
+          "it depends on, is protected.",
       };
       required.push("operatorToken");
     }
@@ -637,7 +679,13 @@ export class RegistryMcpServer {
       loaded.descriptor.surface.parameters.map((p) => p.name),
     );
 
-    if (this.#isProtected(qualified)) {
+    if (
+      this.#planTouchesProtected(
+        buildId,
+        loaded.descriptor.surface.targets,
+        target,
+      )
+    ) {
       const denial = this.#checkOperatorToken(args);
       if (denial !== null) {
         await this.#audit(runName, args, "denied", actor, denial, knownParams);

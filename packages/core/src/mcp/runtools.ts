@@ -22,6 +22,7 @@ import {
   toJsonValue,
 } from "../state/types.ts";
 import type { JsonValue } from "../target.ts";
+import { AUDIT_RUN_ID } from "./audit.ts";
 import type { McpTool } from "./server.ts";
 
 /** What a run-state tool needs to reach the durable surfaces. */
@@ -269,7 +270,10 @@ async function listRuns(
   if (since !== undefined) query.since = since;
   const limit = positiveIntArg(args, "limit");
   if (limit !== undefined) query.limit = limit;
-  return jsonResult(await deps.store.listRuns(query));
+  const runs = await deps.store.listRuns(query);
+  // The audit trail rides on a run record, so it would otherwise surface here
+  // as an ordinary run. Keep it out of the listing to match `show_run`.
+  return jsonResult(runs.filter((run) => run.id !== AUDIT_RUN_ID));
 }
 
 /** `show_run`: return one run's full record, or a structured not-found. */
@@ -280,6 +284,13 @@ async function showRun(
   const runId = stringArg(args, "runId");
   if (runId === undefined) {
     return jsonResult({ error: "missing_argument", argument: "runId" }, true);
+  }
+  // The audit trail records who called what through this very server. Handing
+  // it back through an MCP tool would let the principals it audits read every
+  // actor, argument, and denial reason in it — so it is operator-only, readable
+  // on the host with `zuke runs show mcp-audit`, never over the wire.
+  if (runId === AUDIT_RUN_ID) {
+    return jsonResult({ error: "not_readable", runId }, true);
   }
   const loaded = await deps.store.getRun(runId);
   if (loaded === null) return jsonResult({ error: "no_run", runId }, true);
