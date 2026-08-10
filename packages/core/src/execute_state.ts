@@ -16,19 +16,14 @@ import type { TargetBuilder } from "./target.ts";
 import type { Reporter } from "./reporter.ts";
 import type { Redactor } from "./redact.ts";
 import type { AnyParameter } from "./params.ts";
-import type { RunEnv } from "./run_support.ts";
+import type { RunEnv, TargetSettlement } from "./run_support.ts";
 import { absolutePath } from "./path.ts";
 import { findConfigDir, pathExists } from "./config.ts";
 import { defaultStateHost, type StateStore } from "./state/store.ts";
 import { resolveStateStore } from "./state/resolve.ts";
 import { buildRunRecord, ciRunUrl, resolveActor } from "./state/record.ts";
 import { RunStateWriter } from "./state/writer.ts";
-import type {
-  RunRecord,
-  SignalRecord,
-  TargetRunStatus,
-  WaitState,
-} from "./state/types.ts";
+import type { RunRecord, SignalRecord, WaitState } from "./state/types.ts";
 import type { ResumeState } from "./executor.ts";
 
 /**
@@ -52,14 +47,17 @@ function priorWaitsOf(record: RunRecord): ReadonlyMap<string, WaitState> {
  * run has no outcome, and reporting one would make a body branch on a target
  * that is about to run in this very process.
  */
-function priorStatusesOf(record: RunRecord | undefined): Map<
-  string,
-  TargetRunStatus
-> {
-  const statuses = new Map<string, TargetRunStatus>();
+function priorStatusesOf(
+  record: RunRecord | undefined,
+): Map<string, TargetSettlement> {
+  const statuses = new Map<string, TargetSettlement>();
   if (record === undefined) return statuses;
   for (const [name, state] of Object.entries(record.targets)) {
-    if (state.status !== "pending") statuses.set(name, state.status);
+    if (state.status === "pending") continue;
+    statuses.set(name, {
+      status: state.status,
+      ...(state.error === undefined ? {} : { error: state.error }),
+    });
   }
   return statuses;
 }

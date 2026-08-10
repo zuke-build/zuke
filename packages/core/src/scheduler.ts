@@ -213,7 +213,7 @@ function outcomeOf(
   const row = env.writer?.snapshot().targets[target];
   if (live === undefined) {
     if (row === undefined || row.status === "pending") return undefined;
-    return outcomeView(row.status, row);
+    return outcomeView({ status: row.status }, row);
   }
   return outcomeView(live, row);
 }
@@ -224,10 +224,10 @@ function allOutcomes(env: RunEnv): ReadonlyMap<string, TargetOutcomeView> {
   const rows = env.writer?.snapshot().targets ?? {};
   for (const [name, row] of Object.entries(rows)) {
     if (row.status === "pending") continue; // no outcome yet, so not an entry
-    all.set(name, outcomeView(row.status, row));
+    all.set(name, outcomeView({ status: row.status }, row));
   }
-  for (const [name, status] of env.statuses) {
-    all.set(name, outcomeView(status, rows[name]));
+  for (const [name, settled] of env.statuses) {
+    all.set(name, outcomeView(settled, rows[name]));
   }
   return all;
 }
@@ -350,7 +350,7 @@ async function runTarget(
       passTarget(reporter, renderer, style, name, 0);
       return { status: "passed", ms: 0 };
     }
-    env.statuses.set(name, "waiting");
+    env.statuses.set(name, { status: "waiting" });
     void env.writer?.markTargetWaiting(name, wait.waitState);
     for (const line of targetWaitFooter(style, name, wait.descriptor)) {
       reporter.info(line);
@@ -543,7 +543,7 @@ function settleTarget(
   status: TargetStatus,
   error?: string,
 ): void {
-  env.statuses.set(name, recordStatusOf(status));
+  env.statuses.set(name, { status: recordStatusOf(status), error });
   void env.writer?.markTargetSettled(name, status, error);
 }
 

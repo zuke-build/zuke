@@ -15,7 +15,9 @@ function row(over: Partial<TargetRunState> = {}): TargetRunState {
 }
 
 Deno.test("a status with no record row is the whole view", () => {
-  assertEquals(outcomeView("succeeded", undefined), { status: "succeeded" });
+  assertEquals(outcomeView({ status: "succeeded" }, undefined), {
+    status: "succeeded",
+  });
 });
 
 Deno.test("the row contributes its detail but never its status", () => {
@@ -23,7 +25,7 @@ Deno.test("the row contributes its detail but never its status", () => {
   // so carrying `row.status` over would reintroduce exactly the staleness the
   // caller resolved before calling.
   const view = outcomeView(
-    "failed",
+    { status: "failed" },
     row({
       status: "running",
       error: "boom",
@@ -39,10 +41,28 @@ Deno.test("the row contributes its detail but never its status", () => {
   });
 });
 
+Deno.test("the settlement carries the failure message when there is no record", () => {
+  // No record row exists to read `error` from, so a run with no state store
+  // would otherwise report *that* a target failed but never *why*.
+  assertEquals(outcomeView({ status: "failed", error: "boom" }, undefined), {
+    status: "failed",
+    error: "boom",
+  });
+});
+
+Deno.test("the settlement's message wins over the record's", () => {
+  // Same reason its status does: the row can be a write behind.
+  const view = outcomeView(
+    { status: "failed", error: "this attempt" },
+    row({ status: "failed", error: "a previous attempt" }),
+  );
+  assertEquals(view.error, "this attempt");
+});
+
 Deno.test("absent detail is absent, not undefined-valued", () => {
   // `{ status }` and `{ status, error: undefined }` compare differently, and
   // the second would make `"error" in outcome` true for a target that succeeded.
-  const view = outcomeView("succeeded", row());
+  const view = outcomeView({ status: "succeeded" }, row());
   assertEquals(view, { status: "succeeded" });
   assertEquals("error" in view, false);
   assertEquals("startedAt" in view, false);

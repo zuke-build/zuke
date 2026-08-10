@@ -70,7 +70,7 @@ export interface RunEnv {
   /** External signals received so far, exposed to bodies via `ctx.signals`. */
   signals: ReadonlyMap<string, SignalRecord>;
   /**
-   * Statuses settled in **this** process, in the record's vocabulary — what
+   * What settled in **this** process, in the record's vocabulary — what
    * `ctx.outcomeOf(...)` reads first.
    *
    * The durable record is not enough on its own. Every `markTargetSettled` is
@@ -80,8 +80,12 @@ export interface RunEnv {
    * This map is written synchronously as each target settles, so it cannot lag
    * behind the thing it describes; the record backfills what a *previous*
    * process settled.
+   *
+   * It carries the failure message as well as the status, so a run with no
+   * state store — where there is no record to fall back to — still reports
+   * *why* a target failed and not merely that it did.
    */
-  statuses: Map<string, TargetRunStatus>;
+  statuses: Map<string, TargetSettlement>;
   /** On a resume, target names already succeeded — seeded done, never re-run. */
   done?: ReadonlySet<string>;
   /**
@@ -93,24 +97,32 @@ export interface RunEnv {
   priorWaits?: ReadonlyMap<string, WaitState>;
 }
 
+/** What a target settled to in this process: its status and, if it failed, why. */
+export interface TargetSettlement {
+  /** The status, in the run record's vocabulary. */
+  status: TargetRunStatus;
+  /** The failure's message, when it failed. */
+  error?: string;
+}
+
 /**
- * Build the caller-facing outcome view from a status and the record row it came
- * with, if there is one.
+ * Build the caller-facing outcome view from a settlement and the record row it
+ * came with, if there is one.
  *
  * `status` wins over `row.status` deliberately: the row is the durable copy and
  * can be a write behind, while the status passed here is whatever the caller
  * established is current.
  */
 export function outcomeView(
-  status: TargetRunStatus,
+  settled: TargetSettlement,
   row: TargetRunState | undefined,
 ): TargetOutcomeView {
-  if (row === undefined) return { status };
+  const error = settled.error ?? row?.error;
   return {
-    status,
-    ...(row.error === undefined ? {} : { error: row.error }),
-    ...(row.startedAt === undefined ? {} : { startedAt: row.startedAt }),
-    ...(row.endedAt === undefined ? {} : { endedAt: row.endedAt }),
+    status: settled.status,
+    ...(error === undefined ? {} : { error }),
+    ...(row?.startedAt === undefined ? {} : { startedAt: row.startedAt }),
+    ...(row?.endedAt === undefined ? {} : { endedAt: row.endedAt }),
   };
 }
 
@@ -126,7 +138,7 @@ export function outcomesFromRecord(
   const all = new Map<string, TargetOutcomeView>();
   for (const [name, row] of Object.entries(targets)) {
     if (row.status === "pending") continue;
-    all.set(name, outcomeView(row.status, row));
+    all.set(name, outcomeView({ status: row.status }, row));
   }
   return all;
 }
