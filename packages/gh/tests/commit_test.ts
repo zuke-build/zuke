@@ -469,3 +469,97 @@ Deno.test("a non-JSON body is not mistaken for a missing tag ref", async () => {
     message,
   );
 });
+
+Deno.test("`.replace()` resets a branch a previous attempt left behind", async () => {
+  // Without this a job that creates the branch and then fails before opening
+  // its pull request can never retry: the second run is refused because the
+  // ref it wants to create is already there.
+  const { fetch, calls } = fakeFetch(
+    {
+      "GET /git/ref/heads/master": { object: { sha: "base" } },
+      "GET /git/commits/base": { tree: { sha: "base-tree" } },
+      "POST /git/trees": { sha: "t" },
+      "POST /git/commits": { sha: "c" },
+    },
+    new Set(["POST /git/refs"]),
+    { "POST /git/refs": 422 },
+  );
+  await commitFiles((s) =>
+    s.repo("acme/app").token("t").from("master").branch("topic").replace()
+      .message("m").fetch(fetch)
+  );
+  const patch = calls.find((c) => c.method === "PATCH");
+  assertEquals(patch?.path, "/git/refs/heads/topic");
+  assertEquals(patch?.body.sha, "c");
+  // Forced, because resetting onto the base is not a fast-forward.
+  assertEquals(patch?.body.force, true);
+});
+
+Deno.test("without `.replace()` an existing branch is still refused", async () => {
+  // Discarding commits on a branch that already exists is exactly what should
+  // not happen by default.
+  const { fetch, calls } = fakeFetch(
+    {
+      "GET /git/ref/heads/master": { object: { sha: "base" } },
+      "GET /git/commits/base": { tree: { sha: "base-tree" } },
+      "POST /git/trees": { sha: "t" },
+      "POST /git/commits": { sha: "c" },
+    },
+    new Set(["POST /git/refs"]),
+    { "POST /git/refs": 422 },
+  );
+  let message = "";
+  try {
+    await commitFiles((s) =>
+      s.repo("acme/app").token("t").from("master").branch("topic").message("m")
+        .fetch(fetch)
+    );
+  } catch (error) {
+    message = error instanceof Error ? error.message : String(error);
+  }
+  assertStringIncludes(message, "422");
+  assertEquals(calls.some((c) => c.method === "PATCH"), false);
+});
+
+Deno.test("`.replace()` does not turn a permission failure into a force push", async () => {
+  // A bare catch here would retry a 403 as a force-update and report whichever
+  // of the two failed second.
+  const { fetch, calls } = fakeFetch(
+    {
+      "GET /git/ref/heads/master": { object: { sha: "base" } },
+      "GET /git/commits/base": { tree: { sha: "base-tree" } },
+      "POST /git/trees": { sha: "t" },
+      "POST /git/commits": { sha: "c" },
+    },
+    new Set(["POST /git/refs"]),
+    { "POST /git/refs": 403 },
+  );
+  let message = "";
+  try {
+    await commitFiles((s) =>
+      s.repo("acme/app").token("t").from("master").branch("topic").replace()
+        .message("m").fetch(fetch)
+    );
+  } catch (error) {
+    message = error instanceof Error ? error.message : String(error);
+  }
+  assertStringIncludes(message, "403");
+  assertEquals(calls.some((c) => c.method === "PATCH"), false);
+});
+
+Deno.test("`.replace()` without `.from(...)` is refused rather than ignored", async () => {
+  // Silently ignoring it would be the worst of both: the caller asked for a
+  // reset, the safe path runs instead, and nothing says so.
+  const { fetch, calls } = fakeFetch({});
+  let message = "";
+  try {
+    await commitFiles((s) =>
+      s.repo("acme/app").token("t").branch("topic").replace().message("m")
+        .fetch(fetch)
+    );
+  } catch (error) {
+    message = error instanceof Error ? error.message : String(error);
+  }
+  assertStringIncludes(message, ".replace() only applies together with .from(");
+  assertEquals(calls.length, 0);
+});

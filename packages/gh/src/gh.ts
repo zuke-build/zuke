@@ -43,6 +43,13 @@ import {
   tagCommit,
 } from "./commit.ts";
 import {
+  findPullRequest,
+  type GhPullRequestApi,
+  type GhPullRequestResult,
+  type GhPullRequestSettings,
+  openPullRequest,
+} from "./pull_request.ts";
+import {
   type GhSarifApi,
   type GhSarifSettings,
   type GhSarifUploadResult,
@@ -75,7 +82,8 @@ export class GhSettings extends SubcommandSettings {
  * have no CLI subcommand (see {@link GhAppTokenApi}, {@link GhSarifApi}) and
  * would otherwise force a build back to a marketplace action.
  */
-export interface GhTasksApi extends GhAppTokenApi, GhSarifApi, GhCommitApi {
+export interface GhTasksApi
+  extends GhAppTokenApi, GhSarifApi, GhCommitApi, GhPullRequestApi {
   /** Run a `gh` command. */
   run(configure?: Configure<GhSettings>): Promise<CommandOutput>;
 }
@@ -92,6 +100,16 @@ export const GhTasks: GhTasksApi = {
   },
   tag(configure?: (s: GhTagSettings) => GhTagSettings): Promise<void> {
     return tagCommit(configure);
+  },
+  pullRequest(
+    configure?: (s: GhPullRequestSettings) => GhPullRequestSettings,
+  ): Promise<GhPullRequestResult> {
+    return openPullRequest(configure);
+  },
+  findPullRequest(
+    configure?: (s: GhPullRequestSettings) => GhPullRequestSettings,
+  ): Promise<GhPullRequestResult | undefined> {
+    return findPullRequest(configure);
   },
   appToken(
     configure?: Configure<GhAppTokenSettings>,

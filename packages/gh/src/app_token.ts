@@ -25,6 +25,7 @@
  */
 
 import type { Configure } from "@zuke/core/tooling";
+import { assertRefName, encodePath } from "./api.ts";
 
 /** The GitHub REST base, overridable per call for GHES. */
 const API_BASE = "https://api.github.com";
@@ -275,13 +276,22 @@ export class GhAppTokenSettings {
     if (this.owner_ === undefined || this.owner_ === "") {
       throw new Error("minting an app token requires .owner(...).");
     }
+    // Validated and encoded, like every other caller-supplied path segment in
+    // this package. This request carries the app's private-key JWT — a
+    // longer-lived credential than the installation token it mints — and URL
+    // normalisation resolves a `..` segment before the request is sent, so an
+    // owner or repository name taken from configuration could otherwise
+    // redirect it to a path the caller never named.
+    assertRefName(this.owner_, "owner");
     // With a repository named, ask about that repository: it works for a
     // user-owned and an org-owned installation alike. Otherwise fall back to
     // the org-level lookup.
     const repo = this.repositories_[0];
-    return repo === undefined
-      ? `/orgs/${this.owner_}/installation`
-      : `/repos/${this.owner_}/${repo}/installation`;
+    if (repo === undefined) {
+      return `/orgs/${encodePath(this.owner_)}/installation`;
+    }
+    assertRefName(repo, "repository name");
+    return `/repos/${encodePath(this.owner_)}/${encodePath(repo)}/installation`;
   }
 
   /** The `access_tokens` request body — only the fields that were narrowed. */

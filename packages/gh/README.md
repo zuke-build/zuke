@@ -109,6 +109,9 @@ function assertRefName(name: string, what: string): void
 async function commitFiles(configure?: (settings: GhCommitSettings) => GhCommitSettings): Promise<GhCommitResult>
   Perform the configured commit.
 
+async function findPullRequest(configure?: (settings: GhPullRequestSettings) => GhPullRequestSettings): Promise<GhPullRequestResult | undefined>
+  Look for an open pull request without opening one.
+
 function githubWorkflow(configure: (settings: GithubWorkflowSettings) => GithubWorkflowSettings): WaitTrigger
   A {@link "@zuke/core".WaitTrigger} that dispatches a GitHub Actions workflow,
   suspends the run until it finishes, and records its per-job conclusions to the
@@ -121,6 +124,9 @@ function githubWorkflow(configure: (settings: GithubWorkflowSettings) => GithubW
 
 async function mintAppToken(configure?: Configure<GhAppTokenSettings>): Promise<GhAppTokenResult>
   Mint an installation token from the settings a lambda configures.
+
+async function openPullRequest(configure?: (settings: GhPullRequestSettings) => GhPullRequestSettings): Promise<GhPullRequestResult>
+  Perform the configured pull request.
 
 function readWorkflowResult(state: TargetStateHandle): WorkflowResult | undefined
   Read the {@link WorkflowResult} a completed {@link githubWorkflow} wait wrote
@@ -140,10 +146,10 @@ const GhTasks: GhTasksApi
 class GhApiError extends Error
   A GitHub REST call that did not succeed, carrying the status.
 
-  The status is the point. One caller here recovers from a missing ref, and
-  doing that on a bare `catch` would swallow an expired token or a missing
-  permission and retry them as though the ref simply did not exist — turning an
-  authorisation failure into a confusing one about creating a tag.
+  The status is the point. Callers recover from specific failures — a missing
+  ref, a pull request that already exists — and doing that on a bare `catch`
+  would swallow an expired token or a missing permission and retry it as
+  though it were the expected case.
 
   constructor(method: string, path: string, status: number, body: string)
     Build the error from the failing call's method, path, status and body.
@@ -218,6 +224,8 @@ class GhCommitSettings
     The branch to commit onto. Set by {@link branch}.
   from_?: string
     The branch to create from, when creating one. Set by {@link from}.
+  replace_: boolean
+    Whether an existing {@link branch} is reset. Set by {@link replace}.
   message_?: string
     The commit message. Set by {@link message}.
   repo_?: string
@@ -236,8 +244,64 @@ class GhCommitSettings
     Create {@link branch} from this one rather than committing onto an
     existing branch. Creating a ref and moving one are different calls, and
     which is wanted is the caller's to say rather than something to infer.
+  replace(): this
+    Reset {@link branch} onto {@link from} when it already exists, rather than
+    failing because it does.
+
+    For a branch only one automated caller ever writes, and whose contents are
+    regenerated in full each time. Without this, a job that creates the branch
+    and then fails before opening its pull request can never retry: the second
+    run is refused because the ref it wants to create is already there, and the
+    work is stuck until someone deletes the branch by hand.
+
+    Deliberately not the default. Discarding commits on a branch that already
+    exists is exactly what should not happen to a branch someone is working on,
+    so it stays something the caller asks for.
   message(text: string): this
     The commit message.
+  repo(slug: string): this
+    `owner/repo`. Defaults to `GITHUB_REPOSITORY`.
+  token(value: string): this
+    The token to authenticate with. Defaults to `GITHUB_TOKEN`.
+  baseUrl(url: string): this
+    The API root, for GitHub Enterprise.
+  fetch(fn: typeof fetch): this
+    Override the `fetch` implementation (a test seam).
+  repoSlug_(): string
+    The effective `owner/repo`, from the setting or the environment.
+  authToken_(): string
+    The effective token, from the setting or the environment.
+
+class GhPullRequestSettings
+  Settings for opening a pull request.
+
+  `owner/repo` and the token fall back to the Actions environment, so a job
+  that already has them needs to name only what it is proposing.
+
+  head_?: string
+    The branch being proposed. Set by {@link head}.
+  base_?: string
+    The branch it targets. Set by {@link base}.
+  title_?: string
+    The title. Set by {@link title}.
+  body_: string
+    The body. Set by {@link body}.
+  repo_?: string
+    `owner/repo`. Set by {@link repo}.
+  token_?: string
+    The token. Set by {@link token}.
+  baseUrl_: string
+    The API root. Set by {@link baseUrl}.
+  fetch_: typeof fetch
+    The `fetch` implementation. Set by {@link fetch}.
+  head(branch: string): this
+    The branch being proposed.
+  base(branch: string): this
+    The branch it targets.
+  title(text: string): this
+    The pull request's title.
+  body(text: string): this
+    The pull request's body.
   repo(slug: string): this
     `owner/repo`. Defaults to `GITHUB_REPOSITORY`.
   token(value: string): this
@@ -428,7 +492,9 @@ interface GhCommitApi
 
     Commits onto `.branch(...)`, or creates it from `.from(...)` when that is
     set. The ref update is not forced, so a commit landing between reading the
-    head and writing it is rejected rather than silently overwritten.
+    head and writing it is rejected rather than silently overwritten — unless
+    `.replace()` is set, which resets an existing branch onto its base and
+    discards whatever was on it.
   tag(configure?: (settings: GhTagSettings) => GhTagSettings): Promise<void>
     Point an annotated tag at a commit, creating or moving its ref.
 
@@ -439,6 +505,43 @@ interface GhCommitResult
     The new commit's SHA.
   branch: string
     The branch it landed on.
+
+interface GhPullRequestApi
+  The pull-request operation {@link GhTasks} exposes.
+
+  pullRequest(configure?: (settings: GhPullRequestSettings) => GhPullRequestSettings): Promise<GhPullRequestResult>
+    Open a pull request from `.head(...)` onto `.base(...)`, or return the one
+    already open for that branch.
+
+    Idempotent on purpose. An unattended job that proposes the same branch
+    twice — because a later step failed and the whole thing ran again — should
+    find its existing proposal rather than fail on it.
+
+    An existing pull request is returned as it stands: the title and body set
+    here are not written over it, since the caller asked for a proposal to
+    exist and one does. `created` says which happened.
+  findPullRequest(configure?: (settings: GhPullRequestSettings) => GhPullRequestSettings): Promise<GhPullRequestResult | undefined>
+    Find the open pull request from `.head(...)` onto `.base(...)`, without
+    opening one.
+
+    For a caller that must know whether a proposal already exists before it
+    writes anything — because the answer changes what it should do, not just
+    what it should report. Opening one to find out is not a substitute: by
+    then the branch it would have to prepare has already been written.
+
+interface GhPullRequestResult
+  The pull request a {@link GhPullRequestApi.pullRequest} call resolved to.
+
+  number: number
+    Its number.
+  url: string
+    Its web URL.
+  created: boolean
+    Whether this call opened it, as opposed to finding one already open.
+
+    Worth reporting rather than hiding: "proposed" and "already proposed" are
+    different things to a human reading a build log, even though neither is a
+    failure.
 
 interface GhSarifApi
   The shape of the SARIF task, mixed into `GhTasks`.
@@ -455,7 +558,7 @@ interface GhSarifUploadResult
   url: string
     The URL that reports whether GitHub finished processing the report.
 
-interface GhTasksApi extends GhAppTokenApi, GhSarifApi, GhCommitApi
+interface GhTasksApi extends GhAppTokenApi, GhSarifApi, GhCommitApi, GhPullRequestApi
   The shape of {@link GhTasks}: the `gh` CLI plus the GitHub operations that
   have no CLI subcommand (see {@link GhAppTokenApi}, {@link GhSarifApi}) and
   would otherwise force a build back to a marketplace action.

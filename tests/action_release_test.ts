@@ -26,8 +26,11 @@ import {
   majorTag,
   nextVersion,
   parseVersion,
+  pinBody,
+  pinBranch,
   pinFor,
   pinnedSha,
+  pinSubject,
   releaseAction,
   type ReleaseActionDeps,
   releaseIsOwed,
@@ -35,6 +38,9 @@ import {
 } from "../build/action_release.ts";
 
 const SHA = "a".repeat(40);
+
+/** The commit an already-cut tag resolves to, distinct from HEAD. */
+const TAGGED_SHA = "b".repeat(40);
 
 /** The inputs a pin records, for tests that do not care which. */
 const INPUTS = ["target", "ref"];
@@ -72,9 +78,17 @@ function fakeDeps(overrides: Partial<ReleaseActionDeps> = {}): {
     tags: () => Promise.resolve([]),
     changedSince: () => Promise.resolve(true),
     headSha: () => Promise.resolve(SHA),
+    // Defaults to the tag the "unchanged" cases use, so those describe a
+    // repository whose pin already matches its newest release — the ordinary
+    // steady state, where there is genuinely nothing to do.
+    committedPin: () => pinFor(SHA, "v1.4.0", INPUTS, DIGEST),
+    // Every ref resolves to the same commit by default, so the major pointer
+    // is already aligned and the reconciliation is a no-op unless a test says
+    // otherwise.
+    shaOf: () => Promise.resolve(TAGGED_SHA),
     actionSource: () => Promise.resolve(MANIFEST),
-    tag: (t, _m, force) => {
-      calls.push(`tag:${t}${force ? ":force" : ""}`);
+    tag: (t, _m, force, sha) => {
+      calls.push(`tag:${t}${force ? ":force" : ""}@${sha.slice(0, 4)}`);
       return Promise.resolve();
     },
     push: (t, force) => {
@@ -162,9 +176,9 @@ Deno.test("a changed action.yml tags the next patch and moves the major", async 
   // published tag nothing references, which would look like success.
   assertEquals(calls, [
     "writePin",
-    "tag:v1.4.1",
+    `tag:v1.4.1@${SHA.slice(0, 4)}`,
     "push:v1.4.1",
-    "tag:v1:force",
+    `tag:v1:force@${SHA.slice(0, 4)}`,
     "push:v1:force",
   ]);
   assertEquals(pins[0].ref, `zuke-build/zuke@${SHA}`);
@@ -179,7 +193,7 @@ Deno.test("a repository with no action release yet starts at v1.0.0", async () =
   // the first release must happen unconditionally.
   const result = await releaseAction(deps);
   assertEquals(result.released, "v1.0.0");
-  assertEquals(calls[1], "tag:v1.0.0");
+  assertEquals(calls[1], `tag:v1.0.0@${SHA.slice(0, 4)}`);
 });
 
 Deno.test("the operator is told the one step that stays manual", async () => {
@@ -541,4 +555,138 @@ Deno.test("a change no workflow can see is reported, not failed", () => {
       false,
     );
   });
+});
+
+Deno.test("the proposed pin branch and subject are derived from the version", () => {
+  assertEquals(pinBranch("v1.0.3"), "chore/action-v1.0.3");
+  assertStringIncludes(pinSubject("v1.0.3"), "v1.0.3");
+  // Both are interpolated into git arguments, so a value that is not a release
+  // tag is refused rather than passed through.
+  assertThrows(() => pinBranch("v1"));
+  assertThrows(() => pinBranch("; rm -rf /"));
+  assertThrows(() => pinSubject("core-v1.0.0"));
+});
+
+Deno.test("the pin commit is a chore, and its body has no fenced block", () => {
+  // `chore:` because this changes no package. release-please parses every
+  // merged subject, so a `feat:`/`fix:` here would cut a package release for a
+  // commit that touched none.
+  assertEquals(pinSubject("v1.0.3").startsWith("chore: "), true);
+  // The repository squash-merges, so the body becomes the commit body, and
+  // prBodyLint rejects fences — release-please's parser can choke on
+  // parentheses inside one and drop the commit silently.
+  assertEquals(pinBody("v1.0.3").includes("```"), false);
+  assertStringIncludes(pinBody("v1.0.3"), "v1.0.3");
+});
+
+Deno.test("a tagged release whose pin never landed is proposed again", async () => {
+  // The failure this exists to prevent is silent and permanent. A release is
+  // two halves: the tags, which reach consumers, and the pin, which lands in a
+  // pull request. If that pull request fails after the tags are pushed, asking
+  // only "has action.yml changed since the newest tag?" answers no — the tag
+  // names this very commit — and answers no on every run afterwards. Consumers
+  // are updated, this repository is stale, and the build reports success.
+  const { deps, calls, pins } = fakeDeps({
+    tags: () => Promise.resolve(["v1.4.0"]),
+    changedSince: () => Promise.resolve(false),
+    committedPin: () => pinFor(SHA, "v1.3.0", INPUTS, DIGEST),
+  });
+  const result = await releaseAction(deps);
+
+  // Re-proposed, not re-cut: the tags are already correct.
+  assertEquals(result.released, "v1.4.0");
+  assertEquals(result.retried, true);
+  assertEquals(calls, ["writePin"]);
+
+  // The pin names the commit the tag points at, not HEAD — master may have
+  // moved on since the release, and the pin has to name what was released.
+  assertEquals(pins[0].version, "v1.4.0");
+  assertEquals(pins[0].ref, `zuke-build/zuke@${TAGGED_SHA}`);
+});
+
+Deno.test("a pin that matches the newest tag is left alone", async () => {
+  // The other side of the same guard: with the pin already up to date there is
+  // nothing outstanding, and re-proposing on every push would be a loop.
+  const { deps, calls } = fakeDeps({
+    tags: () => Promise.resolve(["v1.4.0"]),
+    changedSince: () => Promise.resolve(false),
+    committedPin: () => pinFor(SHA, "v1.4.0", INPUTS, DIGEST),
+  });
+  const result = await releaseAction(deps);
+  assertEquals(result.released, undefined);
+  assertEquals(result.retried, undefined);
+  assertEquals(calls, []);
+});
+
+Deno.test("a half-published release has its major pointer repaired", async () => {
+  // The failure this exists to catch: a release is two tag writes with nothing
+  // binding them. `v1.4.1` is created, then `v1` is moved — and if the second
+  // write fails, the release is half-published with `v1`, the tag consumers
+  // actually use, left on the previous one.
+  //
+  // Nothing else would notice. `changedSince` compares against a tag naming
+  // this very commit and answers "unchanged" forever after, so the release
+  // path is never re-entered, and every run reports success while consumers
+  // silently keep the older action.
+  const { deps, calls } = fakeDeps({
+    tags: () => Promise.resolve(["v1.4.1"]),
+    changedSince: () => Promise.resolve(false),
+    committedPin: () => pinFor(SHA, "v1.4.1", INPUTS, DIGEST),
+    // `v1` still points at the previous release's commit.
+    shaOf: (ref) => Promise.resolve(ref === "v1" ? SHA : TAGGED_SHA),
+  });
+  const result = await releaseAction(deps);
+
+  // Repaired, and pointed at the release's commit rather than at HEAD.
+  assertEquals(calls, [
+    `tag:v1:force@${TAGGED_SHA.slice(0, 4)}`,
+    "push:v1:force",
+  ]);
+  // Still nothing to release: the pin matches and action.yml has not moved.
+  assertEquals(result.released, undefined);
+});
+
+Deno.test("an aligned major pointer is left untouched", async () => {
+  // The check runs on every release run, so it has to be silent when there is
+  // nothing wrong — otherwise it would move `v1` onto the same commit forever.
+  const { deps, calls } = fakeDeps({
+    tags: () => Promise.resolve(["v1.4.0"]),
+    changedSince: () => Promise.resolve(false),
+  });
+  await releaseAction(deps);
+  assertEquals(calls, []);
+});
+
+Deno.test("a first release of a major creates the pointer rather than reporting drift", async () => {
+  // A major tag that does not exist yet is an ordinary state, not a
+  // half-published release, and the two must not be conflated.
+  const messages: string[] = [];
+  const { deps, calls } = fakeDeps({
+    tags: () => Promise.resolve(["v2.0.0"]),
+    changedSince: () => Promise.resolve(false),
+    committedPin: () => pinFor(SHA, "v2.0.0", INPUTS, DIGEST),
+    shaOf: (ref) => Promise.resolve(ref === "v2" ? undefined : TAGGED_SHA),
+    info: (m) => messages.push(m),
+  });
+  await releaseAction(deps);
+  assertEquals(calls, [
+    `tag:v2:force@${TAGGED_SHA.slice(0, 4)}`,
+    "push:v2:force",
+  ]);
+  assertStringIncludes(messages.join("\n"), "does not exist yet");
+});
+
+Deno.test("a release tag that does not resolve is refused rather than guessed", async () => {
+  // Moving a major pointer onto the wrong commit is worse than not moving it.
+  const { deps } = fakeDeps({
+    tags: () => Promise.resolve(["v1.4.0"]),
+    shaOf: () => Promise.resolve(undefined),
+  });
+  let message = "";
+  try {
+    await releaseAction(deps);
+  } catch (error) {
+    message = error instanceof Error ? error.message : String(error);
+  }
+  assertStringIncludes(message, "does not resolve to a commit");
 });

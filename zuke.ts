@@ -21,6 +21,7 @@ import {
   Build,
   FileTasks,
   glob,
+  isCI,
   parameter,
   repoRoot,
   run,
@@ -50,9 +51,14 @@ import { SecurityTasks } from "@zuke/security";
 import { DocsTasks } from "@zuke/docs";
 import {
   ACTION_PIN,
+  ACTION_SLUG,
   ACTION_VERSION_FILE,
   assertWorkflowInputsAvailable,
+  pinBody,
+  pinBranch,
   pinnedSha,
+  pinSubject,
+  RELEASE_BRANCH,
   releaseAction,
   releaseIsOwed,
   workflowActionInputs,
@@ -903,6 +909,71 @@ class ZukeBuild extends Build {
   actionRelease = target()
     .description("Tag a new version of the Marketplace action when it changed")
     .executes(async () => {
+      // On CI the tags are created through the API, which needs the commit and
+      // the message together — but the release flow hands them over in two
+      // steps, `tag` then `push`, because that is what git needs. Holding the
+      // message between the two is the whole of this map.
+      const pendingTags = new Map<string, { message: string; sha: string }>();
+      const headSha = async () =>
+        (await GitTasks.run((s) => s.command("rev-parse", "HEAD"))).text();
+
+      const actionRepo = (): string => {
+        const repo = Deno.env.get("GITHUB_REPOSITORY");
+        if (repo === undefined) {
+          throw new Error(
+            "actionRelease needs GITHUB_REPOSITORY on CI: the tags and the " +
+              "pull request are created through the API, so there is no " +
+              "credential written to disk for them.",
+          );
+        }
+        return repo;
+      };
+
+      // Minted once and reused: each call is a round trip, and this target
+      // makes several writes.
+      let minted: string | undefined;
+      const apiToken = async (): Promise<string> => {
+        if (minted !== undefined) return minted;
+        const appId = Deno.env.get("ZUKE_BUILD_APP_ID");
+        const privateKey = Deno.env.get("ZUKE_BUILD_APP_KEY");
+        if (!appId || !privateKey) {
+          throw new Error(
+            "actionRelease needs ZUKE_BUILD_APP_ID and ZUKE_BUILD_APP_KEY on " +
+              "CI. GITHUB_TOKEN cannot do this job: there is no `workflows` " +
+              "permission to grant it, so it may not write the regenerated " +
+              "`.github/workflows/*`, and a pull request it opened would run " +
+              "no checks and so could never satisfy the branch ruleset.",
+          );
+        }
+        // Refuse rather than mint for a redirected target, as the website sync
+        // does: an environment variable must not decide what the app's
+        // credential reaches.
+        const [owner, name] = actionRepo().split("/");
+        if (`${owner}/${name}` !== ACTION_SLUG) {
+          throw new Error(
+            `refusing to mint the app token for ${owner}/${name}: it is ` +
+              `scoped to ${ACTION_SLUG}, and GITHUB_REPOSITORY naming ` +
+              `anything else means this is not the repository it was meant ` +
+              `for.`,
+          );
+        }
+        const { token } = await GhTasks.appToken((s) =>
+          s
+            .appId(appId)
+            .privateKey(privateKey)
+            .owner(owner)
+            .repositories(name)
+            // Exactly what this target performs: the tags and the branch are
+            // contents, the proposal is pull_requests, and `workflows` is what
+            // makes writing the regenerated workflow files permitted at all.
+            .permission("contents", "write")
+            .permission("pull_requests", "write")
+            .permission("workflows", "write")
+        );
+        minted = token;
+        return token;
+      };
+
       const result = await releaseAction({
         state: async () => {
           const branch = await GitTasks.run((s) =>
@@ -966,20 +1037,59 @@ class ZukeBuild extends Build {
               `release, and every run with the same fault would cut another.`,
           );
         },
-        headSha: async () =>
-          (await GitTasks.run((s) => s.command("rev-parse", "HEAD"))).text(),
-        tag: async (name, message, force) => {
-          await GitTasks.tag((s) => {
-            const settings = s.name(name).message(message);
-            return force ? settings.force() : settings;
+        headSha,
+        // `rev-list -n 1` resolves an annotated tag through its tag object to
+        // the commit; `rev-parse <tag>` would hand back the tag object's own
+        // SHA, which is not a commit and would be pinned as though it were.
+        //
+        // A ref that does not resolve is `undefined` rather than a throw: the
+        // major tag legitimately does not exist before the first release of a
+        // major, and the caller has to tell that apart from it existing and
+        // pointing elsewhere.
+        shaOf: async (ref) => {
+          const resolved = await GitTasks.run((s) =>
+            s.command("rev-list", "-n", "1", ref).noThrow()
+          );
+          return resolved.code === 0 ? resolved.text() : undefined;
+        },
+        committedPin: () => ACTION_PIN,
+        // Locally this writes the tag into the developer's own clone, which is
+        // what they want. On CI it is deferred to `push`, which creates the
+        // ref through the API — there is no credential on disk to push with,
+        // and creating a local tag nobody can push would only be misleading.
+        tag: async (name, message, force, sha) => {
+          if (isCI()) {
+            pendingTags.set(name, { message, sha });
+            return;
+          }
+          // `GitTasks.tag` tags HEAD, and this has to be able to point a major
+          // tag at an earlier release — the case that exists because the two
+          // tag writes are not atomic. So the commit is named explicitly.
+          await GitTasks.run((s) => {
+            const argv = ["tag", ...(force ? ["--force"] : [])];
+            return s.command(...argv, "-a", "-m", message, name, sha);
           });
         },
         push: async (name, force) => {
-          // `--force-with-lease` is the typed option, and it is the wrong one
-          // here: a tag has no remote-tracking ref for git to compare against,
-          // so the lease has nothing to check and the push is refused as stale.
-          // Moving `v1` is a deliberate overwrite of a ref only this target
-          // writes, so a plain force is what the operation actually is.
+          if (isCI()) {
+            const pending = pendingTags.get(name);
+            const token = await apiToken();
+            await GhTasks.tag((s) => {
+              const settings = s
+                .repo(actionRepo())
+                .token(token)
+                .name(name)
+                .commit(pending?.sha ?? "")
+                .message(pending?.message ?? name);
+              // Moving `v1` onto a newer release is the whole point of it, and
+              // git calls that a non-fast-forward.
+              return force ? settings.move() : settings;
+            });
+            return;
+          }
+          // `--force-with-lease` is the typed option and the wrong one here: a
+          // tag has no remote-tracking ref for git to compare against, so the
+          // lease has nothing to check and the push is refused as stale.
           await GitTasks.run((s) =>
             force
               ? s.command("push", "--force", "origin", name)
@@ -1001,12 +1111,105 @@ class ZukeBuild extends Build {
       // that drift rather than heal it. Regeneration has to happen in a *fresh*
       // process: `build/workflows.ts` reads the pin while this build's fields
       // initialise, so this one is still holding the old value.
-      await DenoTasks.run((s) =>
-        s.allowAll().frozen().script("zuke.ts").scriptArgs("generate-ci")
+      // Without the app key. The child is a fully-privileged `deno run -A`, and
+      // Deno merges rather than replaces the environment, so it would inherit
+      // a long-lived private key it has no use for — `generate-ci` writes
+      // workflow files from the pin and talks to nothing.
+      const appKey = Deno.env.get("ZUKE_BUILD_APP_KEY");
+      if (appKey !== undefined) Deno.env.delete("ZUKE_BUILD_APP_KEY");
+      try {
+        await DenoTasks.run((s) =>
+          s.allowAll().frozen().script("zuke.ts").scriptArgs("generate-ci")
+        );
+      } finally {
+        if (appKey !== undefined) Deno.env.set("ZUKE_BUILD_APP_KEY", appKey);
+      }
+      const version = result.released;
+
+      // Locally the human commits what was just written, after looking at it.
+      if (!isCI()) {
+        ConsoleTasks.info(
+          `Regenerated the workflows against ${version}. Commit ` +
+            `${ACTION_VERSION_FILE} and .github/workflows together.`,
+        );
+        return;
+      }
+
+      // On CI nobody is there to do it, and master requires a pull request —
+      // so propose one. The tags are already pushed, which is the half that
+      // reaches consumers; this half is the repository catching up with its
+      // own release, and it can wait for a review without anyone being stuck.
+      //
+      // Built through the API rather than a checkout that persists a
+      // credential and a `git push`. That credential would be written to
+      // `.git/config`, where it outlives the step that needed it: every later
+      // step in the job could read it, and anything archiving the workspace
+      // would carry it out. Here the token is a request header and nothing
+      // else. It is still readable by this step, which is unavoidable — this
+      // step is what uses it — but it stops existing the moment the step ends.
+      const paths = [
+        ACTION_VERSION_FILE,
+        ...await glob(".github/workflows/*.yml"),
+      ];
+      const files = await Promise.all(
+        paths.map(async (path) => ({
+          path,
+          content: await FileTasks.readText(repoRoot(path)),
+        })),
       );
-      ConsoleTasks.info(
-        `Regenerated the workflows against ${result.released}. Commit ` +
-          `${ACTION_VERSION_FILE} and .github/workflows together.`,
+
+      const repo = actionRepo();
+      const token = await apiToken();
+      const branch = pinBranch(version);
+      const subject = pinSubject(version);
+
+      // Look before writing. The retry gate fires on *every* push to master
+      // while the pin is unmerged, not just once — so a proposal that is
+      // already open would otherwise have its branch force-reset by unrelated
+      // traffic, discarding any commit a maintainer pushed to make it
+      // mergeable and moving the head out from under a review.
+      const open = await GhTasks.findPullRequest((s) =>
+        s.repo(repo).token(token).base(RELEASE_BRANCH).head(branch)
+      );
+      if (open !== undefined) {
+        ConsoleTasks.info(
+          `#${open.number} already proposes the ${version} pin: ${open.url}. ` +
+            `Leaving its branch alone — it may carry review commits.`,
+        );
+        return;
+      }
+
+      // `.replace()` because this can still be a retry: if a previous run
+      // created the branch and then failed before opening the pull request,
+      // there is a branch with no proposal on it, and creating it again would
+      // be refused. Reaching here means no pull request is open for it, so
+      // resetting it discards nothing under review.
+      await GhTasks.commit((s) => {
+        let settings = s
+          .repo(repo)
+          .token(token)
+          .from(RELEASE_BRANCH)
+          .branch(branch)
+          .replace()
+          .message(subject);
+        for (const file of files) {
+          settings = settings.file(file.path, file.content);
+        }
+        return settings;
+      });
+      const pull = await GhTasks.pullRequest((s) =>
+        s
+          .repo(repo)
+          .token(token)
+          .base(RELEASE_BRANCH)
+          .head(branch)
+          .title(subject)
+          .body(pinBody(version))
+      );
+      ConsoleTasks.success(
+        `${pull.created ? "Opened" : "Updated already-open"} #${pull.number} ` +
+          `with the ${version} pin and the workflows regenerated from it: ` +
+          `${pull.url}`,
       );
     });
 

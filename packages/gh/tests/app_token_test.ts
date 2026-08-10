@@ -320,3 +320,36 @@ Deno.test("a mint with no narrowing sends an empty body, not null fields", async
   // installation's own scope, and GitHub must not see `null` for either.
   assertEquals(seen[1].body, "{}");
 });
+
+Deno.test("an owner or repository that would redirect the mint is refused", () => {
+  // This request carries the app's private-key JWT, which outlives the token
+  // it mints. URL normalisation resolves a `..` segment before the request is
+  // sent, so an owner taken from configuration could otherwise point it at a
+  // path the caller never named.
+  for (
+    const configure of [
+      (s: GhAppTokenSettings) => s.owner("../../.."),
+      (s: GhAppTokenSettings) => s.owner("acme").repositories("../../../app"),
+    ]
+  ) {
+    let message = "";
+    try {
+      configure(new GhAppTokenSettings()).installationPath_();
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error);
+    }
+    assertStringIncludes(message, "not a valid git ref name");
+  }
+});
+
+Deno.test("an ordinary owner and repository still build the usual path", () => {
+  assertEquals(
+    new GhAppTokenSettings().owner("zuke-build").repositories("zuke")
+      .installationPath_(),
+    "/repos/zuke-build/zuke/installation",
+  );
+  assertEquals(
+    new GhAppTokenSettings().owner("zuke-build").installationPath_(),
+    "/orgs/zuke-build/installation",
+  );
+});
