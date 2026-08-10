@@ -42,7 +42,7 @@
   "packages/dprint": "1.0.0",
   "packages/gcloud": "1.0.0",
   "packages/git": "1.1.0",
-  "packages/gh": "1.1.0",
+  "packages/gh": "1.2.0",
   "packages/codecov": "1.0.2",
   "packages/claude": "1.1.1",
   "packages/codex": "1.1.1",
