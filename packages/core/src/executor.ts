@@ -34,6 +34,7 @@ import {
   resolveRunParameters,
 } from "./execute_plan.ts";
 import { openRunState } from "./execute_state.ts";
+import type { HeldLease } from "./state/run_lease.ts";
 import { settleCancelledRun } from "./execute_cancel.ts";
 import { makeLifecycle } from "./lifecycle.ts";
 import type { RunOutcome } from "./run_support.ts";
@@ -207,6 +208,14 @@ export interface ResumeState {
   version: string;
   /** Names of targets recorded `succeeded` — seeded as done, never re-run. */
   done: ReadonlySet<string>;
+  /**
+   * The lease the resumer took before moving the record out of `suspended`.
+   *
+   * Held by the resumer rather than acquired here, because the record must never
+   * read `running` in the store without its lease already held — that pairing is
+   * what tells a sweep the difference between a live run and an abandoned one.
+   */
+  lease?: HeldLease;
 }
 
 /**
@@ -376,6 +385,15 @@ export async function execute(
   }
   const { writer, env } = opened.state;
   const actor = env.actor;
+  // The run's lease: this process's claim that it is the one working on this
+  // run. A fresh run's was taken in openRunState; a resumed run arrives holding
+  // the one its resumer took. Losing it means another process has taken the run
+  // over, so this one stops rather than carrying on in parallel with it.
+  const lease = opened.state.lease ?? options.resume?.lease;
+  if (lease !== undefined) {
+    if (lease.lost.aborted) runController.abort();
+    else lease.lost.addEventListener("abort", onCancel, { once: true });
+  }
 
   // Announce the run's initial durable state (`running`) to plugins — a no-op
   // without a store. Terminal transitions are announced once the plan settles.
@@ -485,6 +503,12 @@ export async function execute(
     // so every per-target transition has landed by the time the run returns.
     if (run.suspended) await writer?.markRunSuspended();
     else await writer?.markRunFinished(result.ok);
+    // Released once the record is terminal (or suspended), so the moment this
+    // run stops being ours to work on is the moment the claim goes. Any earlier
+    // throw leaves the lease to lapse at its TTL, which is correct: the record
+    // is still `running` and the process really is broken, so a sweep should
+    // find it — just a minute later.
+    await lease?.release();
   }
 
   // Announce the run's terminal durable state (succeeded/failed/suspended/

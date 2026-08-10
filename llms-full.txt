@@ -52,6 +52,21 @@ function absolutePath(first: string, ...rest: string[]): AbsolutePath
   @param rest
       Additional segments to append.
 
+async function acquireLease(store: StateStore, prefix: string, runId: string, actor: string, now: () => string, ttlMs: number, runUrl?: string): Promise<HeldLease | null>
+  Take a lease named `prefix` over `runId`, or `null` if a live holder has it.
+
+  While held, the lease renews on a background heartbeat until
+  {@link HeldLease.release}. That timer never keeps the process alive.
+
+  Only an explicit refusal counts as loss. A store reports `false` from a
+  renewal when the claim is demonstrably somebody else's; it throws for a
+  filesystem mutex it could not take in time, or an HTTP 503, or a DNS blip —
+  none of which say anything about who holds the lease. Treating those as loss
+  would abort a healthy build because the state service had a bad second, so
+  they are swallowed and the next tick tries again. A store that stays
+  unreachable lets the claim lapse at its TTL, which is the documented backstop
+  and the honest outcome.
+
 function affectedTargets(order: readonly TargetBuilder[], changed: readonly string[]): Set<TargetBuilder>
   Compute the set of targets in `order` affected by the given `changed` files.
 
@@ -645,6 +660,22 @@ const HARDEN_RUNNER_ACTION: "step-security/harden-runner"
 
 const REDACTED: "[redacted]"
   The placeholder a {@link Redactor} substitutes for each secret value.
+
+const RUN_LEASE_PREFIX: "zuke-run"
+  The lease name a run's own claim is taken under.
+
+  Named once because two places have to agree on it exactly: the process
+  claiming a run, and any sweep deciding whether that run still has an owner.
+
+const RUN_LEASE_TTL_MS: 60000
+  How long a lease lives before a crashed holder's claim lapses.
+
+  The holder renews at half this interval, so a live process keeps its claim
+  indefinitely while a dead one becomes reclaimable within the TTL. Sixty
+  seconds trades promptness for tolerance: long enough that an ordinary pause —
+  a slow step, a busy host, a paused container — does not look like death, short
+  enough that a genuinely dead run is picked up on the next sweep rather than
+  hours later.
 
 const ToolTasks: ToolTasksApi
   Provision external CLIs from a build. `ToolTasks.install((s) => …)` fetches a
@@ -2796,6 +2827,19 @@ interface GlobOptions
   cwd?: string
     Directory to resolve the pattern against (default: `Deno.cwd()`).
 
+interface HeldLease
+  A held lease. Release it when the work it covers is over.
+
+  readonly lost: AbortSignal
+    Aborts if the lease is lost — the store reports the claim is no longer this
+    holder's, which means something else has taken the work over.
+
+    A signal rather than a callback because a holder is not always ready to
+    receive one at the moment it acquires: a resume takes the lease before the
+    run it will drive exists. A signal can be read late and still be true.
+  release(): Promise<void>
+    Stop the heartbeat and release the claim (best-effort).
+
 interface HttpBuildRegistryOptions
   Configuration for an {@link HttpBuildRegistry}.
 
@@ -3204,6 +3248,12 @@ interface ResumeState
     Its current store version, for the writer to continue from.
   done: ReadonlySet<string>
     Names of targets recorded `succeeded` — seeded as done, never re-run.
+  lease?: HeldLease
+    The lease the resumer took before moving the record out of `suspended`.
+
+    Held by the resumer rather than acquired here, because the record must never
+    read `running` in the store without its lease already held — that pairing is
+    what tells a sweep the difference between a live run and an abandoned one.
 
 interface ResumeWhenOptions
   Options for {@link resumeWhen}.

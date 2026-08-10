@@ -23,6 +23,11 @@ import { defaultStateHost, type StateStore } from "./state/store.ts";
 import { resolveStateStore } from "./state/resolve.ts";
 import { buildRunRecord, ciRunUrl, resolveActor } from "./state/record.ts";
 import { RunStateWriter } from "./state/writer.ts";
+import {
+  acquireLease,
+  type HeldLease,
+  RUN_LEASE_PREFIX,
+} from "./state/run_lease.ts";
 import type { RunRecord, SignalRecord, WaitState } from "./state/types.ts";
 import type { ResumeState } from "./executor.ts";
 
@@ -62,12 +67,18 @@ function priorStatusesOf(
   return statuses;
 }
 
-/** Durable-state plumbing for one run: the writer and the RunEnv. */
+/** Durable-state plumbing for one run: the writer, the RunEnv, and the lease. */
 export interface RunState {
   /** The writer recording transitions, or `undefined` without a store. */
   writer?: RunStateWriter;
   /** The environment handed to the scheduler. */
   env: RunEnv;
+  /**
+   * The run's lease, when one was taken here — a fresh run's. A resumed run
+   * arrives holding the lease its resumer took before the record was moved to
+   * `running`, and that one stays the resumer's to release.
+   */
+  lease?: HeldLease;
 }
 
 /**
@@ -157,6 +168,38 @@ export async function openRunState(opts: {
   const actor = resolveActor(opts.actor, readEnv);
   const runUrl = ciRunUrl(readEnv);
   const warn = (message: string) => opts.reporter.info(message);
+  // Take the run's lease *before* the writer, because opening the writer
+  // persists the record as `running` — and "a `running` record whose lease is
+  // free" is exactly what a reaping sweep reads as an owner that died. Acquiring
+  // afterwards would leave a window where a healthy run looks abandoned.
+  //
+  // A resumed run already holds one: its resumer took the lease before moving
+  // the record out of `suspended`, for the same reason.
+  let lease: HeldLease | undefined;
+  if (stateStore !== undefined && resume === undefined) {
+    const held = await acquireLease(
+      stateStore,
+      RUN_LEASE_PREFIX,
+      opts.runId,
+      actor,
+      nowIso,
+      undefined,
+      runUrl,
+    );
+    if (held === null) {
+      // A fresh run's id is newly minted, so a live holder means the id was
+      // reused — worth refusing rather than running two processes under one
+      // record.
+      return {
+        ok: false,
+        error: new Error(
+          `Run "${opts.runId}" is already held by another process. A fresh ` +
+            `run's id is newly minted, so this means the id was reused.`,
+        ),
+      };
+    }
+    lease = held;
+  }
   const writer = stateStore === undefined ? undefined : resume !== undefined
     // A resume continues the existing record (already transitioned to running).
     ? RunStateWriter.adopt(
@@ -198,5 +241,8 @@ export async function openRunState(opts: {
     done: resume?.done,
     priorWaits: resume ? priorWaitsOf(resume.record) : undefined,
   };
-  return { ok: true, state: { writer, env } };
+  return {
+    ok: true,
+    state: { writer, env, ...(lease === undefined ? {} : { lease }) },
+  };
 }

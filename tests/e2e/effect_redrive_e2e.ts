@@ -8,10 +8,11 @@
  * suite is excluded from the fast unit gate and runs on its own OS matrix (see
  * the `integration` target / integration.yml).
  *
- * One seam is stood in for: moving an abandoned `running` run back to
- * `suspended` is the reaper's job, and the reaper does not exist yet. Here the
- * parent does that single transition by hand, and says so — everything either
- * side of it is real processes and real state.
+ * The reaper is stood in for, because it does not exist yet. It has two
+ * observations to make — the owner's lease has lapsed, and the run is stuck
+ * `running` — and the parent makes both by hand here. Everything either side of
+ * that is real processes and real state, including the fact that a resume
+ * *refuses* the run while the dead owner's lease is still live.
  *
  * @module
  */
@@ -101,12 +102,22 @@ Deno.test("a SIGKILL mid-effect leaves a durable intent another process re-drive
     const intentAt = owed?.intentAt;
     assertEquals(typeof intentAt, "string");
 
-    // The reaper's one transition, by hand until it exists: an abandoned
-    // `running` run becomes resumable.
+    // The killed process never released its lease, and a lease outlives its
+    // holder by design — so until it lapses, a resume must refuse this run
+    // rather than start a second process against it. That refusal is the whole
+    // point of holding a lease, so it is asserted rather than worked around.
     const record = structuredClone(killed.record);
     record.status = "suspended";
-    const moved = await store.putRun(record, killed.version);
-    assertEquals(moved.ok, true);
+    assertEquals((await store.putRun(record, killed.version)).ok, true);
+
+    const tooEarly = spawn(["resume", id], dir, marker, false);
+    assertEquals((await tooEarly.status).code, 1);
+    assertEquals(await markerLines(marker), ["announce redriven=false"]);
+
+    // Now let the lease lapse. Removing the lock is what expiry looks like to
+    // the store — the next acquirer finds nothing holding the run — and it is the
+    // second thing the reaper will establish before it moves a run.
+    await Deno.remove(`${dir}/locks/zuke-run-${id}.json`);
 
     // Process 2: a real, separate `resume`. It drives the owed effect again.
     const resumer = spawn(["resume", id], dir, marker, false);

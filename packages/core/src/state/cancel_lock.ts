@@ -10,7 +10,7 @@
  * @module
  */
 
-import { lockKey } from "./lock.ts";
+import { acquireLease } from "./run_lease.ts";
 import type { StateStore } from "./store.ts";
 
 /**
@@ -33,6 +33,13 @@ export interface CancelLock {
  * background, unref'd heartbeat until {@link CancelLock.release}. `ttlMs`
  * defaults to {@link CANCEL_LOCK_TTL_MS}; a shorter value is for tests that need
  * the heartbeat to fire quickly.
+ *
+ * A thin naming of {@link "./run_lease.ts".acquireLease}: a cancel lock is one
+ * lease over a run, and the mechanics — the TTL, the half-TTL heartbeat, the
+ * best-effort release — belong to leases in general rather than to cancellation.
+ * The narrower return type is deliberate: a compensation walk has no use for the
+ * lease's loss signal, since the recovery path a lapsed cancel lock enables is
+ * driven by the *next* canceller, not by this one noticing.
  */
 export async function acquireCancelLock(
   store: StateStore,
@@ -41,29 +48,13 @@ export async function acquireCancelLock(
   now: () => string,
   ttlMs: number = CANCEL_LOCK_TTL_MS,
 ): Promise<CancelLock | null> {
-  const key = lockKey("zuke-cancel", runId);
-  const result = await store.acquireLock(
-    key,
-    { actor, runId, since: now() },
+  const lease = await acquireLease(
+    store,
+    "zuke-cancel",
+    runId,
+    actor,
+    now,
     ttlMs,
   );
-  if (!result.ok) return null;
-  const token = result.token;
-  // Renew at half the TTL so a long compensation walk keeps its lock. The timer
-  // is unref'd so it never keeps the process alive, and renewal is best-effort:
-  // a dropped renew just lets the lock lapse at its TTL (the documented
-  // backstop) rather than crashing on an unhandled rejection from a background
-  // timer.
-  const heartbeat = setInterval(() => {
-    store.renewLock(key, token, ttlMs).catch(() => {});
-  }, Math.max(1000, Math.floor(ttlMs / 2)));
-  Deno.unrefTimer(heartbeat);
-  return {
-    release: async () => {
-      clearInterval(heartbeat);
-      // Best-effort release for the same reason: a failed release must not turn
-      // a completed cancellation into a failure. The TTL reclaims the lock.
-      await store.releaseLock(key, token).catch(() => {});
-    },
-  };
+  return lease === null ? null : { release: () => lease.release() };
 }
