@@ -8,6 +8,7 @@
 import { assertEquals } from "./_assert.ts";
 import { outcomesFromRecord, outcomeView } from "../src/run_support.ts";
 import type { TargetRunState } from "../src/state/types.ts";
+import { parseRunRecord } from "../src/state/types.ts";
 
 /** A record row, with only the fields a case cares about set. */
 function row(over: Partial<TargetRunState> = {}): TargetRunState {
@@ -85,4 +86,41 @@ Deno.test("a record becomes one entry per settled target", () => {
 
 Deno.test("an empty record has no outcomes", () => {
   assertEquals(outcomesFromRecord({}).size, 0);
+});
+
+Deno.test("an effect record claiming zero attempts is refused", () => {
+  // An armed effect has been attempted once by definition, and a zero would make
+  // a genuine re-drive report itself as a first attempt. Records can come from
+  // another writer, so the shape is checked rather than trusted.
+  const bad = {
+    status: "succeeded",
+    meta: {},
+    effects: {
+      post: {
+        status: "pending",
+        intentAt: "2026-08-10T10:00:00.000Z",
+        attempts: 0,
+      },
+    },
+  };
+  let message = "";
+  try {
+    parseRunRecord(JSON.stringify({
+      id: "r",
+      build: "B",
+      rootTarget: "gate",
+      status: "running",
+      actor: "a",
+      createdAt: "2026-08-10T10:00:00.000Z",
+      updatedAt: "2026-08-10T10:00:00.000Z",
+      graph: [],
+      params: {},
+      targets: { gate: bad },
+      signals: {},
+      events: [],
+    }));
+  } catch (error) {
+    message = error instanceof Error ? error.message : String(error);
+  }
+  assertEquals(message.includes("positive integer"), true, message);
 });

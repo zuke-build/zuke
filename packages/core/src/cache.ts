@@ -137,6 +137,11 @@ export async function fingerprint(
 
 /** Whether a target participates in caching (declares inputs or cache keys). */
 export function isCacheable(target: TargetBuilder): boolean {
+  // An effect must run, so a target that declares one is never cache-skipped:
+  // a cache hit returns before the effects are driven, which would drop the
+  // effect entirely — not defer it, drop it, with nothing recorded as owed and
+  // the run reporting success. Correctness over the saved seconds.
+  if (target.effects_.length > 0) return false;
   return target.inputs_.length > 0 || target.cacheKeys_.length > 0;
 }
 

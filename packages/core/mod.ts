@@ -42,6 +42,9 @@ export {
 } from "./src/host.ts";
 export {
   type Condition,
+  type DeclaredEffect,
+  type EffectContext,
+  type EffectFn,
   type ForEachFactory,
   type ForEachItem,
   ForEachSettings,
@@ -141,6 +144,8 @@ export {
 } from "./src/state/lock.ts";
 export { parseDuration } from "./src/duration.ts";
 export {
+  type EffectState,
+  type EffectStatus,
   type RunEvent,
   type RunEventOutcome,
   type RunGraphNode,

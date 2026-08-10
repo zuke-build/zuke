@@ -336,6 +336,35 @@ export interface TargetContext {
  */
 export type TargetFn = (ctx: TargetContext) => unknown | Promise<unknown>;
 
+/**
+ * The context an effect body receives: the target's own context, plus which
+ * effect this is and whether it has been driven before.
+ */
+export interface EffectContext extends TargetContext {
+  /** The effect's declared name. */
+  readonly effect: string;
+  /**
+   * True when a previous attempt at this effect already committed its intent —
+   * so its side effect may have happened, wholly or partly, and this run is
+   * repeating it.
+   *
+   * Effects are at-least-once. A body that can tell the difference should say
+   * so in what it writes, rather than assume it is the first to get here.
+   */
+  readonly redriven: boolean;
+}
+
+/** The body of a declared effect (see {@link TargetBuilder.effect}). */
+export type EffectFn = (ctx: EffectContext) => unknown | Promise<unknown>;
+
+/** One effect declared on a target: its name and its body. */
+export interface DeclaredEffect {
+  /** The effect's name, unique within the target and stable across runs. */
+  name: string;
+  /** The body run once the intent is durably recorded. */
+  fn: EffectFn;
+}
+
 /** A predicate gating whether a target runs; may be synchronous or async. */
 export type Condition = () => boolean | Promise<boolean>;
 
@@ -432,6 +461,8 @@ export class TargetBuilder {
   readonly after_: TargetBuilder[] = [];
   /** The target body. */
   fn_?: TargetFn;
+  /** Crash-durable effects, in declaration order (set by {@link effect}). */
+  readonly effects_: DeclaredEffect[] = [];
   /** Property name, assigned during discovery. Undefined until then. */
   name_?: string;
   /** The parallel batch this target belongs to, if any (set by {@link partOf}). */
@@ -552,6 +583,63 @@ export class TargetBuilder {
    */
   onlyWhen(condition: Condition): this {
     this.onlyWhen_.push(condition);
+    return this;
+  }
+
+  /**
+   * Declare a **crash-durable effect**: `fn` runs only after the intent to run
+   * it has been written to the run record, so a process killed anywhere inside
+   * it leaves evidence that it was owed.
+   *
+   * That evidence is what a resume uses to drive it again. Note the precondition
+   * as it stands today: a resume only picks up a run recorded `suspended`, and a
+   * process killed outright leaves its run `running`, so an effect owed by a
+   * killed process is re-driven once something moves that run back to
+   * `suspended` — a reaping sweep, or an operator. An effect owed by a run that
+   * suspended for any other reason is re-driven by the ordinary resume.
+   *
+   * The guarantee is **at-least-once**, not exactly-once: a process that dies
+   * after the side effect but before recording it will repeat the effect. Write bodies that tolerate that, either because repeating is
+   * harmless or because the far side converges (an upsert rather than an
+   * append).
+   *
+   * ```ts
+   * gate = target().dependsOn(this.checks).always()
+   *   .effect("post-gate", async (ctx) => {
+   *     await postCheckRun(ctx.outcomeOf("checks")?.status === "succeeded");
+   *   });
+   * ```
+   *
+   * **Pin the inputs.** A re-drive happens later, sometimes much later, so a
+   * body that looks up "the current value" of anything acts on a world that has
+   * moved on. Read what the effect acts on from durable state instead —
+   * `ctx.state` or `ctx.stateOf(...)`, written by an earlier target — which is
+   * replayed from the record and cannot be overridden from outside.
+   *
+   * A parameter is *nearly* as good and not quite: the record seeds a resume, so
+   * a parameter nobody re-supplies keeps the value the run started with, but a
+   * resume that passes one explicitly overrides it (the only way to re-supply a
+   * secret, since secrets are kept out of the record). For a value that must not
+   * drift across a re-drive, prefer state.
+   *
+   * Effects run after the body, in declaration order, and are repeatable. A
+   * target may declare effects and no body at all. Requires a state store, which
+   * is enabled automatically — an intent that cannot be recorded is a target
+   * that fails before its effect runs, by design.
+   */
+  effect(name: string, fn: EffectFn): this {
+    // A duplicate name is not a second effect, it is a lost one: both rows are
+    // the same row, so the first to settle `done` makes every later one skip.
+    // That loses a side effect with no error at all, so it is refused here.
+    if (this.effects_.some((declared) => declared.name === name)) {
+      throw new Error(
+        `Target already declares an effect named ${JSON.stringify(name)}. ` +
+          `An effect's name is its identity in the run record, so a second one ` +
+          `under the same name would be skipped once the first completed. Give ` +
+          `them distinct names.`,
+      );
+    }
+    this.effects_.push({ name, fn });
     return this;
   }
 
@@ -931,6 +1019,19 @@ export class TargetBuilder {
               `.dependsOn(...).`,
           );
         }
+        // An effect has the same problem for the same reason: a fan-out target
+        // delegates to its materialised sub-targets and never runs a body of its
+        // own, and those sub-targets are invisible to the machinery that would
+        // enable the state store and re-drive an owed effect. Rejected loudly
+        // rather than dropped.
+        if (this.effects_.length > 0) {
+          throw new Error(
+            `Target "${self}" combines .forEach() with .effect(): a fan-out ` +
+              `target runs no body of its own, so its effect would never be ` +
+              `driven. Put the effect on a separate target that this fan-out ` +
+              `.dependsOn(...).`,
+          );
+        }
         const seen = new Map<string, number>();
         return items().map((item, index) => {
           const base = itemKey(item, index);
@@ -947,6 +1048,15 @@ export class TargetBuilder {
                   `sweep can't reach a materialised sub-target), so it would be ` +
                   `silently swallowed. Put the wait on a separate target that ` +
                   `the fan-out .dependsOn(...).`,
+              );
+            }
+            if (sub.effects_.length > 0) {
+              throw new Error(
+                `Fan-out target "${self}" stage "${stage}" uses .effect(): a ` +
+                  `materialised sub-target is invisible to the state store's ` +
+                  `own enablement and to the resume sweep, so its intent would ` +
+                  `be recorded nowhere and never re-driven. Put the effect on a ` +
+                  `separate target that the fan-out .dependsOn(...).`,
               );
             }
           }

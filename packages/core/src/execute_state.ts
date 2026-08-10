@@ -109,7 +109,7 @@ export async function openRunState(opts: {
   // works" without --state. Plain builds still opt in explicitly.
   const usesDurableFeature = order.some((t) =>
     t.lock_ !== undefined || t.waitsFor_ !== undefined ||
-    t.onCancel_ !== undefined
+    t.onCancel_ !== undefined || t.effects_.length > 0
   );
   const stateStore = dryRun ? undefined : resolveStateStore(
     opts.stateStore,
@@ -135,6 +135,22 @@ export async function openRunState(opts: {
       "A target uses .waitsFor(...), which needs a state store to persist the " +
         "suspended run — but state is disabled. Enable it (drop stateStore: " +
         "false, pass --state, or set ZUKE_STATE_DIR / ZUKE_STATE_URL).",
+    );
+    return { ok: false, error };
+  }
+  // An effect's intent has to be recorded before its body runs, so with nowhere
+  // to record it there is nothing to re-drive from — which is the entire
+  // guarantee. Refuse the run rather than perform side effects that no later
+  // process can discover were owed.
+  if (
+    !dryRun && stateStore === undefined &&
+    order.some((t) => t.effects_.length > 0)
+  ) {
+    const error = new Error(
+      "A target uses .effect(...), which needs a state store to record the " +
+        "effect's intent before it runs — but state is disabled. Enable it " +
+        "(drop stateStore: false, pass --state, or set ZUKE_STATE_DIR / " +
+        "ZUKE_STATE_URL).",
     );
     return { ok: false, error };
   }

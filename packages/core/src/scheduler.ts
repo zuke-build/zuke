@@ -10,7 +10,7 @@
  * @module
  */
 
-import { delay, runWithTimeout } from "./internal.ts";
+import { delay, messageOf, runWithTimeout } from "./internal.ts";
 import { bufferReporter, type Reporter } from "./reporter.ts";
 import type { Lifecycle } from "./lifecycle.ts";
 import { acquireTargetLock, type HeldLock } from "./lock.ts";
@@ -27,6 +27,7 @@ import { type Style, type TargetReport, targetWaitFooter } from "./report.ts";
 import type { Renderer } from "./renderer.ts";
 import {
   cloneTarget,
+  type EffectContext,
   type ForEachItem,
   ForEachSettings,
   type ForEachSpec,
@@ -193,6 +194,121 @@ async function runBodyWithRecovery(
 }
 
 /**
+ * Build the {@link TargetContext} a target's body and effects receive.
+ *
+ * Shared rather than inlined because two paths need it: the ordinary body, and a
+ * `.waitsFor(...)` gate whose trigger is already satisfied — that gate returns
+ * early, and its effects are owed at exactly that moment.
+ */
+function targetContextFor(
+  name: string,
+  env: RunEnv,
+  dryRun: boolean,
+): TargetContext {
+  // One own-state handle, reused for `stateOf(this target)` so the documented
+  // `stateOf(self) === state` invariant holds even store-less (a fresh
+  // inMemoryStateHandle per call would drop writes).
+  const ownState = env.writer
+    ? env.writer.stateHandle(name)
+    : inMemoryStateHandle();
+  return {
+    runId: env.runId,
+    target: name,
+    signal: env.signal,
+    state: ownState,
+    stateOf: (t) =>
+      t === name
+        ? ownState
+        : (env.writer ? env.writer.stateHandle(t) : inMemoryStateHandle()),
+    outcomeOf: (t) => outcomeOf(env, t),
+    outcomes: () => allOutcomes(env),
+    signals: env.signals,
+    dryRun,
+  };
+}
+
+/**
+ * Drive a target's declared effects, each behind a durable intent.
+ *
+ * The order is the whole feature: the intent is written and confirmed *before*
+ * the body runs, so a process killed anywhere inside the body leaves a
+ * `pending` row saying the effect was owed. A resume, or the sweep, drives it
+ * again from there.
+ *
+ * An effect already recorded `done` is skipped rather than repeated — the no-op
+ * that makes re-driving a completed effect free. A failure is recorded and then
+ * re-thrown, so the target fails and the run reports it; the row stays `failed`
+ * and a later attempt re-arms it.
+ *
+ * A write that cannot land throws out of here **without** the body having run,
+ * which is the fail-closed half: no durable intent, no side effect.
+ *
+ * Not driven at all when the target does not run: an `onlyWhen` condition that
+ * fails skips the target, and a skipped target's effects are not owed. Every
+ * *other* path that reaches a target's real execution drives them — including a
+ * `.waitsFor(...)` gate whose trigger is already satisfied, and a target that
+ * would otherwise have been served from the cache (declaring an effect takes a
+ * target out of the cache for exactly that reason). A service and a fan-out run no
+ * body of their own, so they refuse `.effect()` outright rather than silently
+ * dropping it.
+ */
+async function driveEffects(
+  t: TargetBuilder,
+  name: string,
+  ctx: TargetContext,
+  env: RunEnv,
+  reporter: Reporter,
+): Promise<void> {
+  if (t.effects_.length === 0) return;
+  const writer = env.writer;
+  if (writer === undefined) {
+    // Unreachable in practice: a build that declares effects turns the state
+    // store on, and one with state explicitly disabled is refused before the
+    // run starts (see openRunState). Guarded anyway rather than silently
+    // running an effect with nothing recording it.
+    throw new Error(
+      `Target "${name}" declares an effect, which needs a state store to ` +
+        `record its intent — but this run has none.`,
+    );
+  }
+  for (const declared of t.effects_) {
+    const gate = await writer.beginEffect(name, declared.name);
+    if (gate === "skip") continue;
+    const attempts = writer.snapshot().targets[name]?.effects?.[declared.name]
+      ?.attempts ?? 1;
+    const effectCtx: EffectContext = {
+      ...ctx,
+      effect: declared.name,
+      redriven: attempts > 1,
+    };
+    try {
+      await declared.fn(effectCtx);
+    } catch (error) {
+      // Recording the failure must not replace it. If this write is itself
+      // refused — the run cancelled elsewhere, or too many conflicting writes —
+      // the caller would otherwise see a message about bookkeeping instead of
+      // the API error that actually happened, which is the one thing anyone
+      // reading the incident needs.
+      try {
+        await writer.markEffectSettled(
+          name,
+          declared.name,
+          false,
+          messageOf(error),
+        );
+      } catch (settleError) {
+        reporter.info(
+          `effect "${declared.name}" on "${name}" failed, and recording that ` +
+            `failed too: ${messageOf(settleError)}`,
+        );
+      }
+      throw error;
+    }
+    await writer.markEffectSettled(name, declared.name, true);
+  }
+}
+
+/**
  * What one target in this run did, for `ctx.outcomeOf(...)`.
  *
  * This process's own map answers first, and the durable record only fills in
@@ -347,6 +463,22 @@ async function runTarget(
       return { status: "failed", ms: 0, error };
     }
     if (wait.satisfied) {
+      // The gate has opened, so this is the target's real run and its effects
+      // are owed now. Returning here without driving them would drop them
+      // silently — the run reports success and nothing records the effect was
+      // ever due.
+      try {
+        await driveEffects(
+          t,
+          name,
+          targetContextFor(name, env, dryRun),
+          env,
+          reporter,
+        );
+      } catch (error) {
+        failTarget(reporter, renderer, style, name, 0, error);
+        return { status: "failed", ms: 0, error };
+      }
       passTarget(reporter, renderer, style, name, 0);
       return { status: "passed", ms: 0 };
     }
@@ -363,7 +495,7 @@ async function runTarget(
   void env.writer?.markTargetRunning(name);
   const start = performance.now();
 
-  if (!t.fn_) {
+  if (!t.fn_ && t.effects_.length === 0) {
     const error = new Error(
       `Target "${name}" has no body — call .executes(...) before running.`,
     );
@@ -371,26 +503,7 @@ async function runTarget(
     return { status: "failed", ms: 0, error };
   }
 
-  // One own-state handle, reused for `stateOf(this target)` so the documented
-  // `stateOf(self) === state` invariant holds even store-less (a fresh
-  // inMemoryStateHandle per call would drop writes).
-  const ownState = env.writer
-    ? env.writer.stateHandle(name)
-    : inMemoryStateHandle();
-  const targetCtx: TargetContext = {
-    runId: env.runId,
-    target: name,
-    signal: env.signal,
-    state: ownState,
-    stateOf: (t) =>
-      t === name
-        ? ownState
-        : (env.writer ? env.writer.stateHandle(t) : inMemoryStateHandle()),
-    outcomeOf: (t) => outcomeOf(env, t),
-    outcomes: () => allOutcomes(env),
-    signals: env.signals,
-    dryRun,
-  };
+  const targetCtx = targetContextFor(name, env, dryRun);
 
   // Acquire the target's cross-run lock (if any) before the body. A conflict —
   // or a lock declared with no store — fails the target with the guidance.
@@ -406,6 +519,7 @@ async function runTarget(
   try {
     for (const v of t.validateBefore_) await v.validate({ target: name });
     await runBodyWithRecovery(t, name, globalRecovery, targetCtx);
+    await driveEffects(t, name, targetCtx, env, reporter);
     for (const v of t.validateAfter_) await v.validate({ target: name });
     const ms = performance.now() - start;
     if (cache !== undefined) await cache.record(t);

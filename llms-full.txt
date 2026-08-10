@@ -1327,6 +1327,14 @@ class ServiceBuilder extends TargetBuilder
   ordering methods (`dependsOn`, `before`, `after`, `description`) from
   {@link TargetBuilder}; a service has no `.executes` body.
 
+  override effect(name: string, fn: EffectFn): this
+    Refuse a crash-durable effect on a service.
+
+    A service target's whole job is launching a process; it runs no body, so
+    there is no point at which its effects would be driven and they would be
+    dropped without a word. Inherited from {@link TargetBuilder} only because
+    this is a subclass of it, so the refusal is stated here rather than left to
+    be discovered.
   start(fn: () => ServiceHandle | Promise<ServiceHandle>): this
     How to start the process. Return a {@link ServiceHandle} (e.g.
     `$\`…`.spawn()`) so the service can be stopped on teardown; provide a
@@ -1397,6 +1405,8 @@ class TargetBuilder
     Soft ordering: this runs after the listed targets if both are planned.
   fn_?: TargetFn
     The target body.
+  readonly effects_: DeclaredEffect[]
+    Crash-durable effects, in declaration order (set by {@link effect}).
   name_?: string
     Property name, assigned during discovery. Undefined until then.
   group_?: Group
@@ -1477,6 +1487,46 @@ class TargetBuilder
       .onlyWhen(() => this.environment.value === "production")
       .executes(...);
     ```
+  effect(name: string, fn: EffectFn): this
+    Declare a crash-durable effect: `fn` runs only after the intent to run
+    it has been written to the run record, so a process killed anywhere inside
+    it leaves evidence that it was owed.
+
+    That evidence is what a resume uses to drive it again. Note the precondition
+    as it stands today: a resume only picks up a run recorded `suspended`, and a
+    process killed outright leaves its run `running`, so an effect owed by a
+    killed process is re-driven once something moves that run back to
+    `suspended` — a reaping sweep, or an operator. An effect owed by a run that
+    suspended for any other reason is re-driven by the ordinary resume.
+
+    The guarantee is at-least-once, not exactly-once: a process that dies
+    after the side effect but before recording it will repeat the effect. Write bodies that tolerate that, either because repeating is
+    harmless or because the far side converges (an upsert rather than an
+    append).
+
+    ```ts
+    gate = target().dependsOn(this.checks).always()
+      .effect("post-gate", async (ctx) => {
+        await postCheckRun(ctx.outcomeOf("checks")?.status === "succeeded");
+      });
+    ```
+
+    Pin the inputs. A re-drive happens later, sometimes much later, so a
+    body that looks up "the current value" of anything acts on a world that has
+    moved on. Read what the effect acts on from durable state instead —
+    `ctx.state` or `ctx.stateOf(...)`, written by an earlier target — which is
+    replayed from the record and cannot be overridden from outside.
+
+    A parameter is nearly as good and not quite: the record seeds a resume, so
+    a parameter nobody re-supplies keeps the value the run started with, but a
+    resume that passes one explicitly overrides it (the only way to re-supply a
+    secret, since secrets are kept out of the record). For a value that must not
+    drift across a re-drive, prefer state.
+
+    Effects run after the body, in declaration order, and are repeatable. A
+    target may declare effects and no body at all. Requires a state store, which
+    is enabled automatically — an intent that cannot be recorded is a target
+    that fails before its effect runs, by design.
   executes(fn: TargetFn): this
     Set the target body. May be async.
   before(...targets: TargetBuilder[]): this
@@ -2514,11 +2564,52 @@ interface CreateDirectoryOptions
   recursive?: boolean
     Create parent directories as needed (default `true`).
 
+interface DeclaredEffect
+  One effect declared on a target: its name and its body.
+
+  name: string
+    The effect's name, unique within the target and stable across runs.
+  fn: EffectFn
+    The body run once the intent is durably recorded.
+
 interface DescribeCliOptions
   Options for {@link describeCli}.
 
   omitSecrets?: boolean
     Drop `.secret()` parameters from the surface (used for registry descriptors).
+
+interface EffectContext extends TargetContext
+  The context an effect body receives: the target's own context, plus which
+  effect this is and whether it has been driven before.
+
+  readonly effect: string
+    The effect's declared name.
+  readonly redriven: boolean
+    True when a previous attempt at this effect already committed its intent —
+    so its side effect may have happened, wholly or partly, and this run is
+    repeating it.
+
+    Effects are at-least-once. A body that can tell the difference should say
+    so in what it writes, rather than assume it is the first to get here.
+
+interface EffectState
+  The durable intent-and-completion row for one of a target's effects.
+
+  There is no idempotency key here. An effect is identified by where it sits —
+  the run, the target, and its declared name — which the record already spells
+  out structurally, so a key would be a second spelling of the same fact and a
+  place for a secret to end up.
+
+  status: EffectStatus
+    How far the effect got.
+  intentAt: string
+    ISO-8601 time the intent was committed — always before the body ran.
+  settledAt?: string
+    ISO-8601 time it settled, if it has.
+  error?: string
+    The failure message when `status` is `failed`.
+  attempts: number
+    How many times the body has been driven. Above one means it was re-driven.
 
 interface ExecuteOptions
   Options for {@link execute}.
@@ -3450,6 +3541,9 @@ interface TargetRunState
     The failure message when `status` is `failed`.
   waitingFor?: WaitState
     The pending wait when `status` is `waiting` (set by `.waitsFor(...)`).
+  effects?: Record<string, EffectState>
+    The declared effects of this target, keyed by effect name — present only
+    once at least one has been armed.
 
 interface TargetStateHandle
   A target's durable, per-target metadata, surfaced on {@link TargetContext} as
@@ -3621,6 +3715,16 @@ type DownloadFn = (url: string, dest: PathLike) => Promise<void>
 type DownloadFormat = "raw" | ArchiveFormat
   How a downloaded artifact is treated: `"raw"` is the binary itself, an
   {@link ArchiveFormat} is unpacked and one path taken from inside.
+
+type EffectFn = (ctx: EffectContext) => unknown | Promise<unknown>
+  The body of a declared effect (see {@link TargetBuilder.effect}).
+
+type EffectStatus = "pending" | "done" | "failed"
+  Where one declared effect has got to (see `.effect(...)`).
+
+  `pending` is the load-bearing one: it means the intent was committed and the
+  body may or may not have run. A process that dies mid-effect leaves exactly
+  that, which is what tells a later resume to drive it again.
 
 type ForEachFactory<Item> = (item: Item, index: number) => Record<string, TargetBuilder>
   Builds one item's ordered pipeline of sub-targets for {@link TargetBuilder.forEach}.

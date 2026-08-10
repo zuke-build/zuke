@@ -10,6 +10,7 @@ body, which is required before the target can run.
 | `.description(text)`        | `(s: string) => this`                                 | Summary shown in `--list`.                                                                         |
 | `.dependsOn(...targets)`    | `(...t: Target[]) => this`                            | Hard prerequisites; run first, transitively.                                                       |
 | `.executes(fn)`             | `(fn: (ctx) => unknown \| Promise<unknown>) => this`  | The body. May be async; its return is ignored, so `() => DenoTasks.lint()` needs no async wrapper. |
+| `.effect(name, fn)`         | `(name: string, fn: (ctx) => unknown \| Promise<unknown>) => this` | A crash-durable side effect: its intent is recorded before it runs, and it is re-driven after an unclean exit. |
 | `.before(...targets)`       | `(...t: Target[]) => this`                            | Soft ordering: run before these _if both are planned_.                                             |
 | `.after(...targets)`        | `(...t: Target[]) => this`                            | Soft ordering: run after these _if both are planned_.                                              |
 | `.triggers(...targets)`     | `(...t: Target[]) => this`                            | Pull these into the plan and run them _after_ this.                                                |
