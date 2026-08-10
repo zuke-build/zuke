@@ -321,3 +321,41 @@ Deno.test("a stranded run is recovered for a single-run sweep too", async () => 
     assertEquals((await store.getRun("run-1"))?.record.status, "cancelled");
   });
 });
+
+Deno.test("a same-named build without the run's root target is not ours", async () => {
+  // A class name is not an identity: `Ci` is a name half the repos in an
+  // organisation will use, and a shared store holds all of their runs. The root
+  // target has to be here too, because that is what makes the compensations a
+  // settlement would run resolvable.
+  await withStore([record("foreign", "running")], async (store) => {
+    const loaded = await store.getRun("foreign");
+    if (loaded === null) throw new Error("seed missing");
+    const foreign = structuredClone(loaded.record);
+    foreign.rootTarget = "someone-elses-target";
+    assertEquals((await store.putRun(foreign, loaded.version)).ok, true);
+
+    const { reporter } = capturing();
+    const outcome = await reapAbandoned(depsFor(store, reporter));
+    assertEquals(outcome, { reaped: [], settled: [], failed: 0 });
+    assertEquals((await store.getRun("foreign"))?.record.status, "running");
+  });
+});
+
+Deno.test("a stranded run settles into the terminal its settlement intended", async () => {
+  // `recoverStranded` names `cancelled` as a default, and the record overrides
+  // it: the process that began the settlement recorded what it meant, and this
+  // one is not it.
+  await withStore([record("run-1", "cancelling")], async (store) => {
+    const loaded = await store.getRun("run-1");
+    if (loaded === null) throw new Error("seed missing");
+    const intended = structuredClone(loaded.record);
+    intended.intendedTerminal = "failed";
+    assertEquals((await store.putRun(intended, loaded.version)).ok, true);
+
+    const { reporter } = capturing();
+    const outcome = await recoverStranded(depsFor(store, reporter));
+    assertEquals(outcome.settled, ["run-1"]);
+    // `failed`, not the `cancelled` the call named: a sweep was failing this run.
+    assertEquals((await store.getRun("run-1"))?.record.status, "failed");
+  });
+});

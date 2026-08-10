@@ -28,7 +28,7 @@
  * @module
  */
 
-import type { Build } from "./build.ts";
+import { type Build, discoverTargets } from "./build.ts";
 import type { Reporter } from "./executor.ts";
 import { messageOf } from "./internal.ts";
 import { settleExternally } from "./cancel.ts";
@@ -215,9 +215,22 @@ async function examine(id: string, deps: ReapDeps): Promise<Examined> {
  * because the record is no longer live. The suspended sweep is safe here only
  * because a resume *refuses* a build it cannot match; a reap mutates, so it has
  * to check.
+ *
+ * Two things are checked, because a class name is not an identity. `Ci` is a
+ * name half the repos in an organisation will use, and a run record carries
+ * nothing more specific, so the name alone would let one repo's sweep settle
+ * another's runs. Requiring the record's root target to exist here as well is
+ * what makes a collision harmless in practice: the compensations a settlement
+ * runs are resolved by name, so a build that has the run's root target has the
+ * targets that run recorded.
+ *
+ * The residual: two builds that share a class name *and* a root-target name are
+ * still indistinguishable to this. Closing that needs an identity in the record
+ * rather than a better guess here.
  */
 function belongsToBuild(record: RunRecord, deps: ReapDeps): boolean {
-  return record.build === deps.build.constructor.name;
+  if (record.build !== deps.build.constructor.name) return false;
+  return discoverTargets(deps.build).has(record.rootTarget);
 }
 
 /** Whether `record` has a deadline that `now` is past. */
