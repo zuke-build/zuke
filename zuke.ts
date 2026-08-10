@@ -91,6 +91,12 @@ import {
   checkPluginSkillsSync,
   syncPluginSkills,
 } from "./build/plugin_sync.ts";
+import {
+  bumpFailure,
+  checkPluginVersionBump,
+  defaultGitHistory,
+  resolveBaseRef,
+} from "./build/plugin_version_check.ts";
 import { actionPin } from "./build/action_pins.ts";
 import { actionlintTool, gitleaksTool, zizmorTool } from "./build/scanners.ts";
 import { githubWorkflows } from "./build/workflows.ts";
@@ -446,6 +452,41 @@ class ZukeBuild extends Build {
       ConsoleTasks.info("plugins/zuke/skills/ is in sync with skills/.");
     });
 
+  pluginVersionCheck = target()
+    .description("Verify a skills change also bumped the plugin version")
+    .executes(async () => {
+      const base = resolveBaseRef();
+      const verdict = await checkPluginVersionBump(
+        defaultGitHistory(),
+        base,
+        (path) => Deno.readTextFile(path).catch(() => null),
+      );
+      // Unlike the rest of the gate this needs history, so it can genuinely be
+      // unable to run. Say so rather than reporting success — a check that
+      // cannot fail is worse than no check, because it looks like one.
+      if (!verdict.checked) {
+        ConsoleTasks.info(
+          `Plugin version check skipped — ${verdict.reason}. ` +
+            "Set ZUKE_PLUGIN_BASE_REF to compare against a ref you do have.",
+        );
+        return;
+      }
+      if (verdict.headVersion === undefined) {
+        throw new Error(`Plugin version check failed — ${verdict.reason}.`);
+      }
+      if (verdict.changed.length === 0) {
+        ConsoleTasks.info(
+          `No published skill changed against ${base}; nothing to bump.`,
+        );
+        return;
+      }
+      if (!verdict.bumped) throw new Error(bumpFailure(verdict));
+      ConsoleTasks.info(
+        `Skills changed against ${base} and the plugin version moved ` +
+          `${verdict.baseVersion} → ${verdict.headVersion}.`,
+      );
+    });
+
   // Only meaningful on a `pull_request`-triggered run (the workflow passes it
   // via env from `github.event.pull_request.body` — never interpolated into
   // a shell line, so an adversarial PR body can't inject a command). Unset
@@ -655,6 +696,7 @@ class ZukeBuild extends Build {
       this.snippetsCheck,
       this.hclSyncCheck,
       this.pluginSyncCheck,
+      this.pluginVersionCheck,
       this.prBodyLint,
       this.actionPinCheck,
       // In the gate now that the scanners are provisioned by the `tools`

@@ -294,7 +294,8 @@ subset that can drift from it. `zuke.ts`'s `ci` target depends on: `format`
 (`deno fmt --check`), `lint` (`deno lint`), `spell` (cspell), `coverage`
 (type-check, then the test suite with the 95% coverage gate), `coverageUpload`
 (skips locally without a `CODECOV_TOKEN`), `apiDocsCheck`, `docLint`,
-`snippetsCheck`, `hclSyncCheck`, `pluginSyncCheck`, `prBodyLint`, and
+`snippetsCheck`, `hclSyncCheck`, `pluginSyncCheck`, `pluginVersionCheck`,
+`prBodyLint`, `actionPinCheck`, `security`, and
 `lockCheck`. Read `zuke.ts`'s `ci` target for the current, authoritative list —
 this is a snapshot, not a second source of truth.
 
@@ -403,19 +404,24 @@ plugins/zuke/             # Claude Code plugin wrapping the skills
   `skills/zuke-write-build/references/cheatsheet.md` **in the same PR**. The
   cheatsheet is one of the two canonical answers to "does a wrapper exist?", so
   a new package belongs in its catalogue table as well. Then, in order:
-  1. Run `./zuke pluginSync` to regenerate `plugins/zuke/skills/`. Never hand-edit
-     the copies — `pluginSyncCheck` fails on drift, and it is the only part of
-     this that is automated.
+  1. Run `./zuke pluginSync` to regenerate `plugins/zuke/skills/`. Never
+     hand-edit the copies — `pluginSyncCheck` fails on drift.
   2. **Bump the plugin version by hand, in both manifests**:
      `plugins/zuke/.claude-plugin/plugin.json` and the entry in
-     `.claude-plugin/marketplace.json`. They must agree —
-     `tests/plugin_manifest_test.ts` enforces that much, but nothing can tell
-     you that you *forgot* to bump, because that needs the base branch to
-     compare against. Clients use the version to decide whether an installed
-     plugin is stale, so skills edited without a bump simply never reach agents
-     that already hold the old copy. release-please does **not** manage
-     `plugins/` — it is not a workspace package and has no `deno.json`.
-     Additive skill content is a minor bump; a correction is a patch.
+     `.claude-plugin/marketplace.json`. Clients use the version to decide
+     whether an installed plugin is stale, so skills edited without a bump
+     simply never reach agents that already hold the old copy. release-please
+     does **not** manage `plugins/` — it is not a workspace package and has no
+     `deno.json`. Additive skill content is a minor bump; a correction is a
+     patch.
+
+  Two gate targets hold this up, so a miss fails the build rather than shipping
+  quietly: `pluginVersionCheck` fails when a published skill changed against the
+  base branch and the version did not move, and `tests/plugin_manifest_test.ts`
+  fails when the two manifests disagree. `pluginVersionCheck` is the one part of
+  the gate that needs history — it compares against `origin/<PR base>`, or
+  `ZUKE_PLUGIN_BASE_REF` when you set one — and it reports itself *skipped*,
+  never passed, in a clone that has no base to compare against.
 - **Always read the reviewer comments on every PR.** This repo runs AI reviewers
   (`@zuke/ai`) that post their assessments as PR comments (and human reviewers
   do too). Before considering a PR done — and again after each push — fetch and
