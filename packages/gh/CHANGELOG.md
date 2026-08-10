@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/zuke-build/zuke/compare/gh-v1.1.0...gh-v1.2.0) (2026-08-10)
+
+
+### Features
+
+* cut the action release from CI, and propose its pin as a pull request ([#312](https://github.com/zuke-build/zuke/issues/312)) ([4449731](https://github.com/zuke-build/zuke/commit/4449731fcc7a82a0f7b3c6625cbef3ab41f76217))
+
 ## [1.1.0](https://github.com/zuke-build/zuke/compare/gh-v1.0.0...gh-v1.1.0) (2026-08-07)
 
 
