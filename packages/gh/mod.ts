@@ -29,6 +29,13 @@ export {
   tagCommit,
 } from "./src/commit.ts";
 export {
+  type GhCheckConclusion,
+  type GhCheckRunApi,
+  type GhCheckRunResult,
+  GhCheckRunSettings,
+  postCheckRun,
+} from "./src/check_run.ts";
+export {
   type GhAppTokenApi,
   type GhAppTokenResult,
   GhAppTokenSettings,

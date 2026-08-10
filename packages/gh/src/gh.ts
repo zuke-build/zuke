@@ -35,6 +35,12 @@ import {
   mintAppToken,
 } from "./app_token.ts";
 import {
+  type GhCheckRunApi,
+  type GhCheckRunResult,
+  type GhCheckRunSettings,
+  postCheckRun,
+} from "./check_run.ts";
+import {
   commitFiles,
   type GhCommitApi,
   type GhCommitResult,
@@ -83,7 +89,12 @@ export class GhSettings extends SubcommandSettings {
  * would otherwise force a build back to a marketplace action.
  */
 export interface GhTasksApi
-  extends GhAppTokenApi, GhSarifApi, GhCommitApi, GhPullRequestApi {
+  extends
+    GhAppTokenApi,
+    GhSarifApi,
+    GhCommitApi,
+    GhPullRequestApi,
+    GhCheckRunApi {
   /** Run a `gh` command. */
   run(configure?: Configure<GhSettings>): Promise<CommandOutput>;
 }
@@ -110,6 +121,11 @@ export const GhTasks: GhTasksApi = {
     configure?: (s: GhPullRequestSettings) => GhPullRequestSettings,
   ): Promise<GhPullRequestResult | undefined> {
     return findPullRequest(configure);
+  },
+  checkRun(
+    configure?: (s: GhCheckRunSettings) => GhCheckRunSettings,
+  ): Promise<GhCheckRunResult> {
+    return postCheckRun(configure);
   },
   appToken(
     configure?: Configure<GhAppTokenSettings>,
