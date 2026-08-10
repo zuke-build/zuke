@@ -12,7 +12,7 @@
 import { assertEquals } from "./_assert.ts";
 import { Build, discoverTargets } from "../src/build.ts";
 import { target } from "../src/target.ts";
-import { reapAbandoned } from "../src/reap.ts";
+import { reapAbandoned, recoverStranded } from "../src/reap.ts";
 import { FileSystemStateStore } from "../src/state/fs_store.ts";
 import { defaultStateHost } from "../src/state/store.ts";
 import { RUN_LEASE_PREFIX } from "../src/state/run_lease.ts";
@@ -249,4 +249,75 @@ Deno.test("one bad run does not strand the rest of the sweep", async () => {
       assertEquals(lines.some((l) => l.includes("the store hiccuped")), true);
     },
   );
+});
+
+Deno.test("a live run past its deadline is left to whoever is running it", async () => {
+  // The ordering that keeps this safe. Settling a run whose process is still
+  // working would run its compensations beside the work they undo, and leave a
+  // live process reporting on a run somebody else had ended. Every case the
+  // deadline exists for has no live holder, so nothing it should catch escapes.
+  await withStore(
+    [record("run-1", "running", "2026-08-10T11:00:00.000Z")],
+    async (store) => {
+      const held = await store.acquireLock(
+        lockKey(RUN_LEASE_PREFIX, "run-1"),
+        { actor: "the-owner", runId: "run-1", since: NOW },
+        60_000,
+      );
+      assertEquals(held.ok, true);
+
+      const { reporter } = capturing();
+      const outcome = await reapAbandoned(depsFor(store, reporter));
+      assertEquals(outcome, { reaped: [], settled: [], failed: 0 });
+      assertEquals((await store.getRun("run-1"))?.record.status, "running");
+    },
+  );
+});
+
+Deno.test("another build's runs are not touched", async () => {
+  // A store is commonly shared, and a listing has no build filter. Acting on
+  // another build's run is worse than useless: its targets are not in this
+  // build, so a settlement finds no compensations, stamps the record terminal
+  // with the run's side effects never unwound, and nothing retries it.
+  await withStore([record("foreign", "running")], async (store) => {
+    const loaded = await store.getRun("foreign");
+    if (loaded === null) throw new Error("seed missing");
+    const foreign = structuredClone(loaded.record);
+    foreign.build = "SomeOtherBuild";
+    assertEquals((await store.putRun(foreign, loaded.version)).ok, true);
+
+    const { reporter } = capturing();
+    const outcome = await reapAbandoned(depsFor(store, reporter));
+    assertEquals(outcome, { reaped: [], settled: [], failed: 0 });
+    assertEquals((await store.getRun("foreign"))?.record.status, "running");
+  });
+});
+
+Deno.test("another build's stranded run is not settled either", async () => {
+  await withStore([record("foreign", "cancelling")], async (store) => {
+    const loaded = await store.getRun("foreign");
+    if (loaded === null) throw new Error("seed missing");
+    const foreign = structuredClone(loaded.record);
+    foreign.build = "SomeOtherBuild";
+    assertEquals((await store.putRun(foreign, loaded.version)).ok, true);
+
+    const { reporter } = capturing();
+    const outcome = await recoverStranded(depsFor(store, reporter));
+    assertEquals(outcome.settled, []);
+    assertEquals((await store.getRun("foreign"))?.record.status, "cancelling");
+  });
+});
+
+Deno.test("a stranded run is recovered for a single-run sweep too", async () => {
+  // A plane that sweeps one run at a time is exactly the one that would
+  // otherwise never recover it, since nothing else looks at `cancelling`.
+  await withStore([record("run-1", "cancelling")], async (store) => {
+    const { reporter } = capturing();
+    const outcome = await recoverStranded({
+      ...depsFor(store, reporter),
+      runId: "run-1",
+    });
+    assertEquals(outcome.settled, ["run-1"]);
+    assertEquals((await store.getRun("run-1"))?.record.status, "cancelled");
+  });
 });

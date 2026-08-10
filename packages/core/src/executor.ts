@@ -509,6 +509,19 @@ export async function execute(
     // so every per-target transition has landed by the time the run returns.
     if (run.suspended) await writer?.markRunSuspended();
     else await writer?.markRunFinished(result.ok);
+    // Another process settled this run while it was working — a sweep that found
+    // it abandoned or past its deadline, and unwound it. Whatever this process
+    // did, the run did not end the way this process thinks: report the failure
+    // rather than a success nothing else agrees with.
+    if (writer?.settledElsewhere() === true) {
+      const settled = new Error(
+        `Run ${runId} was settled by another process while this one was ` +
+          `working on it (its record says ${writer.snapshot().status}), so ` +
+          `this process's result is not the run's outcome.`,
+      );
+      reporter.error(settled.message);
+      result = { ok: false, executed: run.executed, error: settled, runId };
+    }
     // Released once the record is terminal (or suspended), so the moment this
     // run stops being ours to work on is the moment the claim goes. Any earlier
     // throw leaves this call's own lease to lapse at its TTL, which is correct:

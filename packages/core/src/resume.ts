@@ -289,9 +289,23 @@ async function transitionToRunning(
     const next = structuredClone(record);
     next.status = "running";
     next.actor = resumerActor;
-    next.updatedAt = now();
+    const at = now();
+    // Give back the time the run spent parked. A run's deadline is a budget for
+    // *running*, and a run waiting at a gate is not spending it — a 45-minute
+    // budget behind a 72-hour approval gate would otherwise be exhausted before
+    // anyone could approve, and the run would be settled the instant it woke up.
+    // `updatedAt` is when it suspended, so the gap is exactly what it was parked
+    // for.
+    if (next.deadlineAt !== undefined) {
+      const parked = Date.parse(at) - Date.parse(record.updatedAt);
+      const deadline = Date.parse(next.deadlineAt);
+      if (Number.isFinite(parked) && parked > 0 && Number.isFinite(deadline)) {
+        next.deadlineAt = new Date(deadline + parked).toISOString();
+      }
+    }
+    next.updatedAt = at;
     if (signal !== undefined) {
-      next.signals[signal] = { data, receivedAt: now() };
+      next.signals[signal] = { data, receivedAt: at };
     }
     const result = await store.putRun(next, version);
     if (result.ok) return { record: next, version: result.version };
@@ -546,16 +560,18 @@ export async function resumeCheck(
   });
   // And finish anything a settlement left stranded, which no other sweep looks
   // at either.
-  const recovered = options.runId === undefined
-    ? await recoverStranded({
-      build,
-      store,
-      actor,
-      reporter,
-      now: () => new Date().toISOString(),
-      ...(options.silent === undefined ? {} : { silent: options.silent }),
-    })
-    : { reaped: [], settled: [], failed: 0 };
+  // Also for a single-run sweep: a plane that sweeps one run at a time is
+  // exactly the one that would otherwise never recover it, and a run left
+  // `cancelling` is non-terminal, so nothing else looks at it either.
+  const recovered = await recoverStranded({
+    build,
+    store,
+    actor,
+    reporter,
+    now: () => new Date().toISOString(),
+    ...(options.runId === undefined ? {} : { runId: options.runId }),
+    ...(options.silent === undefined ? {} : { silent: options.silent }),
+  });
 
   const ids = options.runId !== undefined
     ? [options.runId]

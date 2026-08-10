@@ -322,3 +322,38 @@ Deno.test("giving up after repeated conflicts marks the record degraded", async 
   await assertRejects(() => writer.beginEffect("gate", "post"), Error);
   assertEquals(writer.snapshot().degraded, true);
 });
+
+Deno.test("a run settled elsewhere is not reported as succeeded by the process it settled", async () => {
+  // The spurious green. A sweep settles a run it found past its deadline and
+  // unwinds it; the process still working on that run then finishes normally and
+  // would report success — a green result for work another process had already
+  // rolled back. Which, for a merge gate, is the whole thing this must not do.
+  const store = new MemStore();
+  let aborted = 0;
+  const writer = await writerFor(store, "running", () => void aborted++);
+
+  // Another process settles it `failed`, and this writer's next write conflicts.
+  store.forceConflicts = 1;
+  store.freshStatus = "failed";
+  await writer.markTargetSettled("gate", "passed");
+  assertEquals(aborted, 1); // told to stop
+  assertEquals(store.record?.status, "failed"); // and the terminal is untouched
+
+  // The conflict brought this writer's version back into step, so a later
+  // write lands unchallenged — which is why the observation has to be latched.
+  store.freshStatus = undefined;
+  await writer.markRunFinished(true);
+  assertEquals(store.record?.status, "failed");
+  assertEquals(writer.settledElsewhere(), true);
+});
+
+Deno.test("a run settled elsewhere is not marked suspended either", async () => {
+  const store = new MemStore();
+  const writer = await writerFor(store);
+  store.forceConflicts = 1;
+  store.freshStatus = "cancelled";
+  await writer.markTargetSettled("gate", "passed");
+  store.freshStatus = undefined;
+  await writer.markRunSuspended();
+  assertEquals(store.record?.status, "cancelled");
+});

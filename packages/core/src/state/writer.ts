@@ -64,6 +64,20 @@ export class RunNotActiveError extends Error {
   }
 }
 
+/**
+ * Whether `status` means some other process has taken this run's outcome.
+ *
+ * Everything except the two states a run is in while *this* process is working
+ * on it. A settlement from outside — an operator cancelling, a sweep failing an
+ * abandoned or expired run — must never be reverted by the process it settled,
+ * and `succeeded` is in the set for the same reason from the other direction: if
+ * the record already says the run ended, this process is not the one deciding
+ * how.
+ */
+function isSettledElsewhere(status: RunStatus): boolean {
+  return status !== "running" && status !== "suspended";
+}
+
 /** Ensure a target's entry exists in the record, seeding it `pending`. */
 function ensureTarget(record: RunRecord, name: string): TargetRunState {
   const existing = record.targets[name];
@@ -97,6 +111,16 @@ export class RunStateWriter {
   readonly #onExternalCancel?: () => void;
   #record: RunRecord;
   #version: string | null;
+  /**
+   * Latched once a conflicting re-read shows another process settled this run.
+   *
+   * A latch rather than a check, because the guard that notices only runs on a
+   * *conflict*: once this writer has re-synced to the settled record, its later
+   * writes land unchallenged and would happily set a status of their own. The
+   * flag is what stops a run this process merely finished from reporting
+   * `succeeded` over the terminal a sweep already wrote.
+   */
+  #settledElsewhere = false;
   #chain: Promise<void> = Promise.resolve();
 
   private constructor(
@@ -217,9 +241,21 @@ export class RunStateWriter {
     });
   }
 
-  /** Record the run's terminal status. */
+  /**
+   * Whether another process has taken this run's outcome, so this one's view of
+   * how the run ended is no longer authoritative.
+   */
+  settledElsewhere(): boolean {
+    return this.#settledElsewhere;
+  }
+
+  /** Record the run's terminal status, unless another process already has. */
   markRunFinished(ok: boolean): Promise<void> {
     return this.#update((record) => {
+      // Whoever settled this run owns how it ended. The per-target progress
+      // recorded alongside is still worth keeping, so this is a no-op rather
+      // than a refusal.
+      if (this.#settledElsewhere) return;
       record.status = ok ? "succeeded" : "failed";
     });
   }
@@ -240,9 +276,10 @@ export class RunStateWriter {
     });
   }
 
-  /** Record the run as suspended (parked at a `.waitsFor(...)` gate). */
+  /** Record the run as suspended, unless another process already settled it. */
   markRunSuspended(): Promise<void> {
     return this.#update((record) => {
+      if (this.#settledElsewhere) return;
       record.status = "suspended";
     });
   }
@@ -568,20 +605,22 @@ export class RunStateWriter {
         this.#record = fresh.record;
         this.#record.degraded ||= degraded;
         this.#version = fresh.version;
-        // The other writer may be a `zuke cancel` in another process. If it has
-        // moved the run to cancelling/cancelled, re-apply our (target-level)
-        // change onto its record — so a just-settled `succeeded` target isn't
-        // lost to the canceller's compensation walk — but never revert the run's
-        // cancel status. Then signal the run to abort: its compensations are the
-        // canceller's responsibility now. Best-effort (a conflict here is
-        // harmless; the canceller owns finalisation).
-        if (
-          fresh.record.status === "cancelling" ||
-          fresh.record.status === "cancelled"
-        ) {
-          const cancelStatus = fresh.record.status;
+        // Another process has taken the run's outcome: a `zuke cancel`, or a
+        // sweep settling a run it found abandoned or past its deadline. Re-apply
+        // our (target-level) change onto its record — so a just-settled
+        // `succeeded` target isn't lost to the settler's compensation walk — but
+        // never revert the status it wrote. Then signal the run to abort: what
+        // happens next is the settler's to decide.
+        //
+        // Every status but our own two matters here, not just the cancel pair.
+        // A sweep leaves a run `failed`, and a run this process then finishes
+        // would otherwise re-apply `succeeded` over it and report success — a
+        // green result for work another process had already unwound.
+        if (isSettledElsewhere(fresh.record.status)) {
+          const settledStatus = fresh.record.status;
+          this.#settledElsewhere = true;
           mutator(this.#record);
-          this.#record.status = cancelStatus;
+          this.#record.status = settledStatus;
           this.#record.updatedAt = this.#now();
           const reapply = await this.#store.putRun(
             this.#record,
@@ -593,8 +632,8 @@ export class RunStateWriter {
             // The canceller finalises the run from here, so no later write of
             // ours lands to carry this mutation: it is gone for good.
             this.#lostWrite(
-              `state: run "${this.#record.id}" is being cancelled elsewhere ` +
-                `and re-applying one update onto its record conflicted; ` +
+              `state: run "${this.#record.id}" was settled elsewhere and ` +
+                `re-applying one update onto its record conflicted; ` +
                 `losing that update`,
             );
           }

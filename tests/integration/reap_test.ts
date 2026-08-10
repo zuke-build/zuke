@@ -13,6 +13,7 @@ import { assertEquals } from "../../packages/core/tests/_assert.ts";
 import {
   Build,
   defaultStateHost,
+  externalSignal,
   FileSystemStateStore,
   target,
 } from "../../packages/core/mod.ts";
@@ -143,5 +144,78 @@ Deno.test("a run past its deadline is settled failed rather than resumed", async
     const store = new FileSystemStateStore(dir, defaultStateHost);
     const after = await store.getRun(id);
     assertEquals(after?.record.status, "failed");
+  });
+});
+
+Deno.test("time spent parked at a gate is not charged against the deadline", async () => {
+  // The documented contract, and the one it is easiest to get backwards. A
+  // 45-minute budget behind a long approval gate would otherwise be exhausted
+  // before anyone could approve, and the run would be settled the instant it
+  // woke up — killed by the deadline it was never spending.
+  class Cd extends Build {
+    override deadline() {
+      return "45m";
+    }
+    hold = target().waitsFor((s) => s.on(externalSignal("go")));
+    ship = target().dependsOn(this.hold).executes(() => {});
+  }
+
+  await withStateDir(async (dir) => {
+    assertEquals((await runCli(Cd, ["ship"])).code, 0); // suspended at the gate
+    const id = await onlyRunId(dir);
+    const store = new FileSystemStateStore(dir, defaultStateHost);
+
+    // Park it for two hours — well past the 45-minute budget.
+    const loaded = await store.getRun(id);
+    if (loaded === null) throw new Error("the run vanished");
+    const parked = structuredClone(loaded.record);
+    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+    parked.updatedAt = twoHoursAgo;
+    parked.deadlineAt = new Date(
+      Date.parse(twoHoursAgo) + 45 * 60 * 1000,
+    ).toISOString();
+    assertEquals((await store.putRun(parked, loaded.version)).ok, true);
+
+    // Approved: the run resumes, and its budget is pushed forward by what it
+    // spent parked — so it is not already expired the moment it wakes up, which
+    // is what the next sweep would otherwise settle it for.
+    const resumed = await runCli(Cd, ["resume", id, "--signal", "go"]);
+    assertEquals(resumed.code, 0);
+    const after = await store.getRun(id);
+    assertEquals(after?.record.status, "succeeded");
+
+    const deadline = Date.parse(after?.record.deadlineAt ?? "");
+    assertEquals(Number.isFinite(deadline), true);
+    // Still ahead of now: the two parked hours were given back, so roughly the
+    // original 45 minutes of running budget remain.
+    assertEquals(deadline > Date.now(), true);
+  });
+});
+
+Deno.test("a deadline added after a run suspended does not strand it", async () => {
+  // A build gains a deadline between the run suspending and the resume. The
+  // resume adopts the record's own deadline, so nothing parses the build's — a
+  // throw there would leave the run `running` to be reaped, resumed, and
+  // stranded again on every sweep, forever.
+  class Before extends Build {
+    hold = target().waitsFor((s) => s.on(externalSignal("go")));
+    ship = target().dependsOn(this.hold).executes(() => {});
+  }
+  class After extends Build {
+    override deadline() {
+      return "not-a-duration";
+    }
+    hold = target().waitsFor((s) => s.on(externalSignal("go")));
+    ship = target().dependsOn(this.hold).executes(() => {});
+  }
+
+  await withStateDir(async (dir) => {
+    assertEquals((await runCli(Before, ["ship"])).code, 0);
+    const id = await onlyRunId(dir);
+
+    const resumed = await runCli(After, ["resume", id, "--signal", "go"]);
+    assertEquals(resumed.code, 0);
+    const store = new FileSystemStateStore(dir, defaultStateHost);
+    assertEquals((await store.getRun(id))?.record.status, "succeeded");
   });
 });

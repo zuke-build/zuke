@@ -169,7 +169,11 @@ export async function openRunState(opts: {
   // Resolved once, here, so the record carries an absolute instant rather than a
   // duration every later reader would have to re-anchor — and so a build with a
   // malformed deadline is refused before it does any work.
-  const budget = opts.build.deadline();
+  // Only for a fresh run: a resume adopts the record's existing deadline, so
+  // parsing the build's would be work whose result is discarded — and a throw
+  // here on a resume would strand the run `running`, to be reaped and resumed
+  // and stranded again on every sweep, forever.
+  const budget = resume === undefined ? opts.build.deadline() : undefined;
   const deadlineAt = budget === undefined
     ? undefined
     : new Date(Date.parse(nowIso()) + parseDuration(budget)).toISOString();

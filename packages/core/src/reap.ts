@@ -7,15 +7,17 @@
  * work it had recorded as owed, an effect above all, waits for a resume that
  * will never come, because a resume only acts on `suspended`.
  *
- * This closes that. Before the suspended sweep runs, every `running` run is
- * examined:
+ * This closes that. Before the suspended sweep runs, every `running` run of this
+ * build is examined, and the first question is always whether anyone is still
+ * there:
  *
- * - **Past its deadline** — settled `failed`, compensations and all. A run that
- *   has run out of time has an answer, and anything waiting on it needs one.
- * - **Otherwise, is anyone still there?** The run's lease answers it. A live
- *   holder keeps renewing, so a lease that can be acquired means the holder is
- *   gone. A lease that cannot means the run is merely slow, and slow is not
- *   dead — it is left alone.
+ * - **Is anyone still there?** The run's lease answers it. A live holder keeps
+ *   renewing, so a lease that can be acquired means the holder is gone; one that
+ *   cannot means the run is merely slow, and slow is not dead — it is left
+ *   alone, deadline or no deadline.
+ * - **Nobody there, and past its deadline** — settled `failed`, compensations and
+ *   all. A run that has run out of time has an answer, and anything waiting on
+ *   it needs one.
  * - **Nobody there** — the run moves back to `suspended`, which is the state the
  *   existing resume machinery already knows how to drive. The sweep then resumes
  *   it on the same pass, re-driving whatever it was owed.
@@ -104,9 +106,14 @@ export async function reapAbandoned(deps: ReapDeps): Promise<ReapOutcome> {
 export async function recoverStranded(deps: ReapDeps): Promise<ReapOutcome> {
   const { store, reporter } = deps;
   const outcome: ReapOutcome = { reaped: [], settled: [], failed: 0 };
-  const ids = (await store.listRuns({ status: "cancelling" })).map((s) => s.id);
+  const ids = deps.runId !== undefined
+    ? [deps.runId]
+    : (await store.listRuns({ status: "cancelling" })).map((s) => s.id);
   for (const id of ids) {
     try {
+      const loaded = await store.getRun(id);
+      if (loaded === null || loaded.record.status !== "cancelling") continue;
+      if (!belongsToBuild(loaded.record, deps)) continue;
       // The terminal named here is only a default: a record that says which
       // settlement it was in the middle of wins, since this process is not the
       // one that started it.
@@ -134,30 +141,20 @@ type Examined = "reaped" | "settled" | "alive";
 async function examine(id: string, deps: ReapDeps): Promise<Examined> {
   const loaded = await deps.store.getRun(id);
   if (loaded === null || loaded.record.status !== "running") return "alive";
-
-  if (pastDeadline(loaded.record, deps.now())) {
-    // Settled rather than released: a run that has run out of time is not one
-    // to hand back for another attempt. Its compensations still run, because an
-    // abandoned run's side effects need unwinding just as much as a cancelled
-    // one's.
-    deps.reporter.info(
-      `reap: run ${id} passed its deadline (${loaded.record.deadlineAt}) — ` +
-        `settling it failed.`,
-    );
-    await settleExternally(deps.build, {
-      runId: id,
-      stateStore: deps.store,
-      actor: deps.actor,
-      silent: deps.silent,
-      reporter: deps.reporter,
-      terminal: "failed",
-    });
-    return "settled";
-  }
+  if (!belongsToBuild(loaded.record, deps)) return "alive";
 
   // Is anyone still working on it? The lease answers it, and acquiring is the
   // question: a live holder is renewing, so a lease that cannot be taken means
   // the run is merely slow. Slow is not dead.
+  //
+  // This comes first, before the deadline, and that ordering is the whole
+  // safety of the thing. Settling a run whose process is still working would
+  // run its compensations *beside* the work they undo, and leave a live process
+  // reporting on a run somebody else had ended. Every case a deadline is for —
+  // a hung process whose heartbeat has starved, a run killed and abandoned over
+  // and over — has no live holder, so nothing the deadline exists to catch
+  // escapes by checking this first. A genuinely live run that outlasts its
+  // deadline is left alone until whatever is running it stops.
   const lease = await acquireLease(
     deps.store,
     RUN_LEASE_PREFIX,
@@ -168,6 +165,31 @@ async function examine(id: string, deps: ReapDeps): Promise<Examined> {
   if (lease === null) return "alive";
 
   try {
+    // Re-read under the lease: between listing and acquiring, the run may have
+    // been settled or picked up, and acting on the older view would undo that.
+    const held = await deps.store.getRun(id);
+    if (held === null || held.record.status !== "running") return "alive";
+
+    if (pastDeadline(held.record, deps.now())) {
+      // Settled rather than released: a run that has run out of time is not one
+      // to hand back for another attempt. Its compensations still run, because
+      // an abandoned run's side effects need unwinding just as much as a
+      // cancelled one's.
+      deps.reporter.info(
+        `reap: run ${id} passed its deadline (${held.record.deadlineAt}) — ` +
+          `settling it failed.`,
+      );
+      await settleExternally(deps.build, {
+        runId: id,
+        stateStore: deps.store,
+        actor: deps.actor,
+        silent: deps.silent,
+        reporter: deps.reporter,
+        terminal: "failed",
+      });
+      return "settled";
+    }
+
     const moved = await toSuspended(id, deps);
     if (!moved) return "alive";
     deps.reporter.info(
@@ -180,6 +202,22 @@ async function examine(id: string, deps: ReapDeps): Promise<Examined> {
     // holding the claim would make the resumer that follows refuse it.
     await lease.release();
   }
+}
+
+/**
+ * Whether this sweep is entitled to touch `record`.
+ *
+ * A state store is commonly shared across builds, and a listing has no build
+ * filter — so a sweep sees every build's runs, not just its own. Acting on
+ * another build's run is worse than useless: its targets are not in this build,
+ * so a settlement would find no compensations to run and would stamp the record
+ * terminal with the run's side effects never unwound, and nothing would retry it
+ * because the record is no longer live. The suspended sweep is safe here only
+ * because a resume *refuses* a build it cannot match; a reap mutates, so it has
+ * to check.
+ */
+function belongsToBuild(record: RunRecord, deps: ReapDeps): boolean {
+  return record.build === deps.build.constructor.name;
 }
 
 /** Whether `record` has a deadline that `now` is past. */

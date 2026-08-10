@@ -229,17 +229,23 @@ wait forever.
 `zuke resume --check` now looks at `running` runs first, before it sweeps the
 suspended ones:
 
-- **Is anyone still there?** The run's [lease](./locks.md#the-runs-own-lease)
-  answers it. A live process keeps renewing, so a lease that can be acquired
-  means its holder is gone; one that cannot means the run is merely slow, and
-  slow is left alone.
+- **Is anyone still there?** — asked first, always. The run's
+  [lease](./locks.md#the-runs-own-lease) answers it: a live process keeps
+  renewing, so a lease that can be acquired means its holder is gone; one that
+  cannot means the run is merely slow, and slow is left alone. A live run is
+  never settled or moved, deadline or no deadline, because doing so would run its
+  compensations beside the work they undo.
 - **Nobody there** → the run goes back to `suspended`, with a `reap` event on
   its audit trail saying why. The same sweep then resumes it, so an abandoned
   run is recovered in one pass rather than waiting another interval for nothing
   but a state change.
-- **Past its `deadline()`** → the run is settled **`failed`**, compensations and
-  all. It did not stop because anyone asked; it ran out of time, and anything
-  waiting on it needs an answer rather than silence.
+- **Nobody there, and past its `deadline()`** → the run is settled **`failed`**,
+  compensations and all. It did not stop because anyone asked; it ran out of
+  time, and anything waiting on it needs an answer rather than silence.
+- **Only this build's runs.** A state store is commonly shared, and a listing has
+  no build filter, so the sweep skips runs belonging to another build. Acting on
+  one would find none of its targets, settle it with its compensations silently
+  skipped, and leave nothing to retry it.
 
 A run left `cancelling` by a settlement whose own process died is finished too,
 in whichever terminal that settlement was heading for — recorded on the run,
@@ -257,11 +263,18 @@ class Ci extends Build {
 }
 ```
 
-A run parked at a `.waitsFor(...)` gate is not spending it — the budget there is
-the gate's own `.timeout()`, which already exists and already fires. Only the
-sweep over runs still marked `running` consults the deadline, so a build with a
-72-hour approval gate and a 45-minute deadline is not killed the moment it
-suspends.
+A run parked at a `.waitsFor(...)` gate is not spending it: the deadline is
+pushed forward on resume by however long the run was parked, so a build with a
+72-hour approval gate and a 45-minute deadline still has its 45 minutes of
+running time when the approval finally arrives. The gate's own `.timeout()` is
+what bounds the waiting.
+
+A live run is never settled for time, either — the sweep asks whether anyone is
+still working on the run before it looks at the deadline, and leaves it alone if
+someone is. That costs nothing the deadline was for: a process that hangs stops
+renewing its lease, and a run killed and abandoned repeatedly has no holder at
+all. What it rules out is settling a run underneath a process that is still
+working on it.
 
 What it is really for is the run that stops making progress without failing: a
 process that hangs, or one killed so hard that its work is picked up and

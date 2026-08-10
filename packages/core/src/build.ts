@@ -170,10 +170,15 @@ export class Build {
    * `failed` — a duration like `"45m"` or milliseconds. No deadline by default.
    *
    * It bounds *running*, not existing. A run parked at a `.waitsFor(...)` gate
-   * is not spending it; the budget there is the gate's own `.timeout()`, which
-   * already exists and already fires. Only the sweep over runs still marked
-   * `running` consults this, so a build with a 72-hour approval gate and a
-   * 45-minute deadline is not killed the moment it suspends.
+   * is not spending it — the deadline is pushed forward on resume by however
+   * long the run was parked, so a build with a 72-hour approval gate and a
+   * 45-minute deadline still has its 45 minutes when the approval arrives. The
+   * waiting is bounded by the gate's own `.timeout()`.
+   *
+   * A run with a live process working on it is never settled for time either:
+   * the sweep asks whether anyone is still there before it looks at the
+   * deadline. Nothing this is for escapes that — a hung process stops renewing
+   * its lease, and a run killed over and over has no holder at all.
    *
    * What it is really for is the run that stops making progress without failing
    * — a process that hangs, or one killed so hard that its work is repeatedly
