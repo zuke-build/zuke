@@ -387,6 +387,11 @@ export class RunStateWriter {
       const effects = state.effects ?? {};
       state.effects = effects;
       const existing = effects[effect];
+      // Never write over a completed effect. Once two processes can share a
+      // running run, a re-applied `failed` from the slower one would bury a
+      // `done` the faster one already recorded — leaving the record claiming an
+      // effect failed when it had in fact succeeded.
+      if (existing?.status === "done") return;
       effects[effect] = {
         status: ok ? "done" : "failed",
         intentAt: existing?.intentAt ?? at,
@@ -441,9 +446,21 @@ export class RunStateWriter {
       if (this.#record.status !== "running") {
         throw new RunNotActiveError(this.#record.id, this.#record.status);
       }
+      // The mutation is applied to the live record, so a throw would otherwise
+      // leave it there for the next write that lands to persist — recording an
+      // intent for an effect that provably never ran, and making the body's
+      // first execution report itself as a re-drive. Keep a copy of the rows
+      // this touches so a refusal really does leave nothing behind.
+      const before = structuredClone(this.#record.targets);
       mutator(this.#record);
       this.#record.updatedAt = this.#now();
-      const result = await this.#store.putRun(this.#record, this.#version);
+      let result;
+      try {
+        result = await this.#store.putRun(this.#record, this.#version);
+      } catch (error) {
+        this.#record.targets = before;
+        throw error;
+      }
       if (result.ok) {
         this.#version = result.version;
         return;
@@ -451,8 +468,14 @@ export class RunStateWriter {
       // Another writer moved the record on. Re-read a fresh base and re-apply on
       // the next pass — the mutation just applied is discarded with the stale
       // base, exactly as in the best-effort path.
-      const fresh = await this.#store.getRun(this.#record.id);
+      const fresh = await this.#store.getRun(this.#record.id).catch(
+        (error: unknown) => {
+          this.#record.targets = before;
+          throw error;
+        },
+      );
       if (fresh === null) {
+        this.#record.targets = before;
         throw new Error(
           `state: run "${this.#record.id}" vanished from the store while ` +
             `recording an effect; refusing to run it without a durable intent`,
@@ -467,6 +490,15 @@ export class RunStateWriter {
         throw new RunNotActiveError(fresh.record.id, fresh.record.status);
       }
     }
+    // The last attempt's mutation went with the stale base it was applied to,
+    // and no later write carries it — the same permanent loss the best-effort
+    // path marks, so mark it the same way. It matters here because a resume
+    // that cannot trust the record is exactly what `--resume-degraded` makes
+    // an operator opt into before a non-idempotent step is repeated.
+    this.#lostWrite(
+      `state: gave up recording an effect on run "${this.#record.id}" after ` +
+        `${MAX_RETRIES} conflicting writes`,
+    );
     throw new Error(
       `state: gave up recording an effect on run "${this.#record.id}" after ` +
         `${MAX_RETRIES} conflicting writes`,

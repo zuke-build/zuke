@@ -279,3 +279,46 @@ Deno.test("a run with state disabled refuses to start a build that declares an e
   assertEquals(result.ok, false);
   assertEquals(ran, false);
 });
+
+Deno.test("a refused intent leaves nothing behind for a later write to persist", async () => {
+  // The mutation is applied to the live record before the write is attempted, so
+  // a throw that left it there would have the next landing write persist an
+  // intent for an effect that provably never ran — and make the body's first
+  // execution report itself as a re-drive.
+  const store = new MemStore();
+  const writer = await writerFor(store);
+  store.failNextPut = true;
+  await assertRejects(() => writer.beginEffect("gate", "post"), Error);
+
+  // A later best-effort write lands; it must not carry a phantom intent.
+  await writer.markTargetSettled("gate", "failed", "boom");
+  assertEquals(effectOf(store), undefined);
+
+  // And the next real arming is attempt one, not two.
+  assertEquals(await writer.beginEffect("gate", "post"), "run");
+  assertEquals(effectOf(store)?.attempts, 1);
+});
+
+Deno.test("a settlement never writes over an effect another process completed", async () => {
+  // Once two live processes can share a running run, a re-applied `failed` from
+  // the slower one would bury a `done` the faster one recorded, leaving the
+  // record claiming an effect failed when it had in fact succeeded.
+  const store = new MemStore();
+  const writer = await writerFor(store);
+  await writer.beginEffect("gate", "post");
+  await writer.markEffectSettled("gate", "post", true);
+  await writer.markEffectSettled("gate", "post", false, "boom");
+  assertEquals(effectOf(store)?.status, "done");
+  assertEquals(effectOf(store)?.error, undefined);
+});
+
+Deno.test("giving up after repeated conflicts marks the record degraded", async () => {
+  // The last attempt's mutation goes with the stale base it was applied to and
+  // no later write carries it — a permanent loss, and the flag is what makes a
+  // resume demand `--resume-degraded` before repeating a non-idempotent step.
+  const store = new MemStore();
+  const writer = await writerFor(store);
+  store.forceConflicts = 99;
+  await assertRejects(() => writer.beginEffect("gate", "post"), Error);
+  assertEquals(writer.snapshot().degraded, true);
+});

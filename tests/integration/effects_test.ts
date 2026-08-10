@@ -9,7 +9,10 @@
  * @module
  */
 
-import { assertEquals } from "../../packages/core/tests/_assert.ts";
+import {
+  assertEquals,
+  assertStringIncludes,
+} from "../../packages/core/tests/_assert.ts";
 import {
   Build,
   defaultStateHost,
@@ -17,6 +20,8 @@ import {
   externalSignal,
   FileSystemStateStore,
   parameter,
+  resumeWhen,
+  service,
   target,
 } from "../../packages/core/mod.ts";
 import { runCli, withStateDir } from "./_harness.ts";
@@ -328,4 +333,104 @@ Deno.test("state written before an effect is stable across its re-drive", async 
     await runCli(Cd, ["resume", id, "--signal", "go"]);
     assertEquals(seen, ["aaaa1111", "aaaa1111"]);
   });
+});
+
+Deno.test("a cache hit never swallows an effect", async () => {
+  // A cache hit returns before the effects are driven, so a cacheable target
+  // that declares one would drop it outright on the second run — nothing run,
+  // nothing recorded as owed, and the run reporting success.
+  const calls: string[] = [];
+
+  class Ci extends Build {
+    publish = target().inputs("deno.json").executes(() => {}).effect(
+      "announce",
+      () => {
+        calls.push("announce");
+      },
+    );
+  }
+
+  await withStateDir(async (dir) => {
+    assertEquals((await runCli(Ci, ["publish"])).code, 0);
+    assertEquals((await runCli(Ci, ["publish"])).code, 0);
+    // Twice, because a target with an effect is never cache-skipped.
+    assertEquals(calls, ["announce", "announce"]);
+    void dir;
+  });
+});
+
+Deno.test("a wait gate that is already satisfied still drives its effects", async () => {
+  // The gate opened, so this is the target's real run and the effect is owed
+  // now. The satisfied path returns early and used to return past the effects.
+  const calls: string[] = [];
+
+  class Cd extends Build {
+    gate = target()
+      .waitsFor((s) => s.on(resumeWhen(() => true)))
+      .effect("announce", () => {
+        calls.push("announce");
+      });
+  }
+
+  await withStateDir(async (dir) => {
+    const { code } = await runCli(Cd, ["gate"]);
+    assertEquals(code, 0);
+    assertEquals(calls, ["announce"]);
+    const id = await onlyRunId(dir);
+    assertEquals(
+      (await effectRow(dir, id, "gate", "announce"))?.status,
+      "done",
+    );
+  });
+});
+
+Deno.test("two effects of the same name are refused rather than one being lost", () => {
+  // Same name means the same record row, so the first to settle makes the second
+  // skip — a copy-paste losing a side effect with no error at all.
+  let message = "";
+  try {
+    target().effect("post", () => {}).effect("post", () => {});
+  } catch (error) {
+    message = error instanceof Error ? error.message : String(error);
+  }
+  assertStringIncludes(message, "already declares an effect named");
+});
+
+Deno.test("an effect on a fan-out is refused, on the parent and on a stage", () => {
+  // A fan-out parent runs no body of its own, and its materialised sub-targets
+  // are invisible both to the state store's enablement and to any resume — so an
+  // effect there is recorded nowhere and never re-driven.
+  const onParent = target()
+    .forEach(() => ["a"], () => ({ work: target().executes(() => {}) }))
+    .effect("announce", () => {});
+  let parentMessage = "";
+  try {
+    onParent.forEach_?.materialize();
+  } catch (error) {
+    parentMessage = error instanceof Error ? error.message : String(error);
+  }
+  assertStringIncludes(parentMessage, ".forEach() with .effect()");
+
+  const onStage = target().forEach(() => ["a"], () => ({
+    work: target().executes(() => {}).effect("announce", () => {}),
+  }));
+  let stageMessage = "";
+  try {
+    onStage.forEach_?.materialize();
+  } catch (error) {
+    stageMessage = error instanceof Error ? error.message : String(error);
+  }
+  assertStringIncludes(stageMessage, 'stage "work" uses .effect()');
+});
+
+Deno.test("an effect on a service is refused", () => {
+  // A service launches a process and runs no body, so an effect declared on it
+  // would never be driven.
+  let message = "";
+  try {
+    service().start(() => ({ stop: () => {} })).effect("post", () => {});
+  } catch (error) {
+    message = error instanceof Error ? error.message : String(error);
+  }
+  assertStringIncludes(message, "runs no body");
 });

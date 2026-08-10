@@ -1327,6 +1327,14 @@ class ServiceBuilder extends TargetBuilder
   ordering methods (`dependsOn`, `before`, `after`, `description`) from
   {@link TargetBuilder}; a service has no `.executes` body.
 
+  override effect(name: string, fn: EffectFn): this
+    Refuse a crash-durable effect on a service.
+
+    A service target's whole job is launching a process; it runs no body, so
+    there is no point at which its effects would be driven and they would be
+    dropped without a word. Inherited from {@link TargetBuilder} only because
+    this is a subclass of it, so the refusal is stated here rather than left to
+    be discovered.
   start(fn: () => ServiceHandle | Promise<ServiceHandle>): this
     How to start the process. Return a {@link ServiceHandle} (e.g.
     `$\`…`.spawn()`) so the service can be stopped on teardown; provide a
@@ -1484,10 +1492,15 @@ class TargetBuilder
     it has been written to the run record, so a process killed anywhere inside
     it leaves evidence that it was owed.
 
-    That evidence is what a resume — or the `zuke resume --check` sweep — uses
-    to drive it again. The guarantee is at-least-once, not exactly-once: a
-    process that dies after the side effect but before recording it will repeat
-    the effect. Write bodies that tolerate that, either because repeating is
+    That evidence is what a resume uses to drive it again. Note the precondition
+    as it stands today: a resume only picks up a run recorded `suspended`, and a
+    process killed outright leaves its run `running`, so an effect owed by a
+    killed process is re-driven once something moves that run back to
+    `suspended` — a reaping sweep, or an operator. An effect owed by a run that
+    suspended for any other reason is re-driven by the ordinary resume.
+
+    The guarantee is at-least-once, not exactly-once: a process that dies
+    after the side effect but before recording it will repeat the effect. Write bodies that tolerate that, either because repeating is
     harmless or because the far side converges (an upsert rather than an
     append).
 

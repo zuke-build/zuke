@@ -591,10 +591,15 @@ export class TargetBuilder {
    * it has been written to the run record, so a process killed anywhere inside
    * it leaves evidence that it was owed.
    *
-   * That evidence is what a resume — or the `zuke resume --check` sweep — uses
-   * to drive it again. The guarantee is **at-least-once**, not exactly-once: a
-   * process that dies after the side effect but before recording it will repeat
-   * the effect. Write bodies that tolerate that, either because repeating is
+   * That evidence is what a resume uses to drive it again. Note the precondition
+   * as it stands today: a resume only picks up a run recorded `suspended`, and a
+   * process killed outright leaves its run `running`, so an effect owed by a
+   * killed process is re-driven once something moves that run back to
+   * `suspended` — a reaping sweep, or an operator. An effect owed by a run that
+   * suspended for any other reason is re-driven by the ordinary resume.
+   *
+   * The guarantee is **at-least-once**, not exactly-once: a process that dies
+   * after the side effect but before recording it will repeat the effect. Write bodies that tolerate that, either because repeating is
    * harmless or because the far side converges (an upsert rather than an
    * append).
    *
@@ -623,6 +628,17 @@ export class TargetBuilder {
    * that fails before its effect runs, by design.
    */
   effect(name: string, fn: EffectFn): this {
+    // A duplicate name is not a second effect, it is a lost one: both rows are
+    // the same row, so the first to settle `done` makes every later one skip.
+    // That loses a side effect with no error at all, so it is refused here.
+    if (this.effects_.some((declared) => declared.name === name)) {
+      throw new Error(
+        `Target already declares an effect named ${JSON.stringify(name)}. ` +
+          `An effect's name is its identity in the run record, so a second one ` +
+          `under the same name would be skipped once the first completed. Give ` +
+          `them distinct names.`,
+      );
+    }
     this.effects_.push({ name, fn });
     return this;
   }
@@ -1003,6 +1019,19 @@ export class TargetBuilder {
               `.dependsOn(...).`,
           );
         }
+        // An effect has the same problem for the same reason: a fan-out target
+        // delegates to its materialised sub-targets and never runs a body of its
+        // own, and those sub-targets are invisible to the machinery that would
+        // enable the state store and re-drive an owed effect. Rejected loudly
+        // rather than dropped.
+        if (this.effects_.length > 0) {
+          throw new Error(
+            `Target "${self}" combines .forEach() with .effect(): a fan-out ` +
+              `target runs no body of its own, so its effect would never be ` +
+              `driven. Put the effect on a separate target that this fan-out ` +
+              `.dependsOn(...).`,
+          );
+        }
         const seen = new Map<string, number>();
         return items().map((item, index) => {
           const base = itemKey(item, index);
@@ -1019,6 +1048,15 @@ export class TargetBuilder {
                   `sweep can't reach a materialised sub-target), so it would be ` +
                   `silently swallowed. Put the wait on a separate target that ` +
                   `the fan-out .dependsOn(...).`,
+              );
+            }
+            if (sub.effects_.length > 0) {
+              throw new Error(
+                `Fan-out target "${self}" stage "${stage}" uses .effect(): a ` +
+                  `materialised sub-target is invisible to the state store's ` +
+                  `own enablement and to the resume sweep, so its intent would ` +
+                  `be recorded nowhere and never re-driven. Put the effect on a ` +
+                  `separate target that the fan-out .dependsOn(...).`,
               );
             }
           }

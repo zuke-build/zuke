@@ -29,7 +29,7 @@
  * @module
  */
 
-import { TargetBuilder } from "./target.ts";
+import { type EffectFn, TargetBuilder } from "./target.ts";
 import { delay, messageOf } from "./internal.ts";
 
 /** The default time a service is given to become ready before it fails. */
@@ -100,6 +100,25 @@ export class ServiceBuilder extends TargetBuilder {
   #stop?: (handle: ServiceHandle) => void | Promise<void>;
   #readyTimeoutMs = DEFAULT_READY_TIMEOUT_MS;
   #pollIntervalMs = DEFAULT_POLL_INTERVAL_MS;
+
+  /**
+   * Refuse a crash-durable effect on a service.
+   *
+   * A service target's whole job is launching a process; it runs no body, so
+   * there is no point at which its effects would be driven and they would be
+   * dropped without a word. Inherited from {@link TargetBuilder} only because
+   * this is a subclass of it, so the refusal is stated here rather than left to
+   * be discovered.
+   */
+  override effect(name: string, fn: EffectFn): this {
+    void fn;
+    throw new Error(
+      `Service "${this.name_ ?? "<unnamed>"}" declares .effect(` +
+        `${JSON.stringify(name)}): a service launches a process and runs no ` +
+        `body, so its effect would never be driven. Put the effect on a ` +
+        `separate target that depends on this service.`,
+    );
+  }
 
   /**
    * How to start the process. Return a {@link ServiceHandle} (e.g.

@@ -77,8 +77,7 @@ where that matters — posting a required status check, publishing a release,
 telling another system something finished — declare it as an **effect**. The
 intent to run it is written to the [run record](./state.md) and confirmed
 *before* the body runs, so a process killed anywhere inside it leaves evidence
-that the effect was owed, and a resume (or `zuke resume --check`) drives it
-again.
+that the effect was owed, and a resume drives it again.
 
 <!-- check -->
 
@@ -107,6 +106,13 @@ declare function postVerdict(
   attempt already committed its intent.
 - **A completed effect is skipped, not repeated.** Once recorded `done`,
   re-driving the target is free.
+- **What re-drives it, precisely.** A resume acts on a run recorded
+  `suspended`, so an effect owed by a run that suspended at a wait is driven
+  again by the ordinary `zuke resume` / `zuke resume --check`. A process that was
+  *killed* leaves its run `running`, and a run in that state is not resumable
+  until something moves it back to `suspended` — so an effect owed by a killed
+  process waits for a reaping sweep or an operator. The intent itself is durable
+  either way; what differs is what comes along to act on it.
 - **Pin what the effect acts on.** Read it from `ctx.state` /
   `ctx.stateOf(...)`, which is replayed from the record and cannot be overridden
   from outside. A parameter is nearly as good: the record seeds a resume, so one

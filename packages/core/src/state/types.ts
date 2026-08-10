@@ -378,8 +378,14 @@ function parseEffectState(value: unknown): EffectState {
   const object = asObject(value);
   if (object === null) throw new Error("state: effect state is not an object");
   const attempts = object.attempts;
-  if (typeof attempts !== "number" || !Number.isFinite(attempts)) {
-    throw new Error("state: effect attempts is not a number");
+  // At least one, and whole. An armed effect has been attempted once by
+  // definition, and a record claiming zero would make a genuine re-drive report
+  // itself as a first attempt — records can come from another writer, so the
+  // shape is checked rather than trusted.
+  if (
+    typeof attempts !== "number" || !Number.isInteger(attempts) || attempts < 1
+  ) {
+    throw new Error("state: effect attempts is not a positive integer");
   }
   const state: EffectState = {
     status: effectStatus(str(object, "status")),
