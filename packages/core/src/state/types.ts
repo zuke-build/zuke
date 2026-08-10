@@ -89,6 +89,36 @@ export interface WaitState {
   onTimeout: WaitDisposition;
 }
 
+/**
+ * Where one declared effect has got to (see `.effect(...)`).
+ *
+ * `pending` is the load-bearing one: it means the intent was committed and the
+ * body may or may not have run. A process that dies mid-effect leaves exactly
+ * that, which is what tells a later resume to drive it again.
+ */
+export type EffectStatus = "pending" | "done" | "failed";
+
+/**
+ * The durable intent-and-completion row for one of a target's effects.
+ *
+ * There is no idempotency key here. An effect is identified by where it sits —
+ * the run, the target, and its declared name — which the record already spells
+ * out structurally, so a key would be a second spelling of the same fact and a
+ * place for a secret to end up.
+ */
+export interface EffectState {
+  /** How far the effect got. */
+  status: EffectStatus;
+  /** ISO-8601 time the intent was committed — always *before* the body ran. */
+  intentAt: string;
+  /** ISO-8601 time it settled, if it has. */
+  settledAt?: string;
+  /** The failure message when `status` is `failed`. */
+  error?: string;
+  /** How many times the body has been driven. Above one means it was re-driven. */
+  attempts: number;
+}
+
 /** The recorded progress of a single target. */
 export interface TargetRunState {
   /** The target's current status within the run. */
@@ -103,6 +133,11 @@ export interface TargetRunState {
   error?: string;
   /** The pending wait when `status` is `waiting` (set by `.waitsFor(...)`). */
   waitingFor?: WaitState;
+  /**
+   * The declared effects of this target, keyed by effect name — present only
+   * once at least one has been armed.
+   */
+  effects?: Record<string, EffectState>;
 }
 
 /** One entry of a run's graph-shape snapshot. */
@@ -321,7 +356,50 @@ function parseTargetState(value: unknown): TargetRunState {
   if (object.waitingFor !== undefined) {
     state.waitingFor = parseWaitState(object.waitingFor);
   }
+  if (object.effects !== undefined) {
+    state.effects = parseEffects(object.effects);
+  }
   return state;
+}
+
+/** Validate a target's effect rows, keyed by effect name. */
+function parseEffects(value: unknown): Record<string, EffectState> {
+  const object = asObject(value);
+  if (object === null) throw new Error("state: effects is not an object");
+  const effects: Record<string, EffectState> = {};
+  for (const [name, entry] of Object.entries(object)) {
+    effects[name] = parseEffectState(entry);
+  }
+  return effects;
+}
+
+/** Validate and narrow one {@link EffectState}. */
+function parseEffectState(value: unknown): EffectState {
+  const object = asObject(value);
+  if (object === null) throw new Error("state: effect state is not an object");
+  const attempts = object.attempts;
+  if (typeof attempts !== "number" || !Number.isFinite(attempts)) {
+    throw new Error("state: effect attempts is not a number");
+  }
+  const state: EffectState = {
+    status: effectStatus(str(object, "status")),
+    intentAt: str(object, "intentAt"),
+    attempts,
+  };
+  // Optional fields only when present, so a round-trip preserves the key set.
+  const settledAt = optionalStr(object, "settledAt");
+  if (settledAt !== undefined) state.settledAt = settledAt;
+  const error = optionalStr(object, "error");
+  if (error !== undefined) state.error = error;
+  return state;
+}
+
+/** Validate an effect status. */
+function effectStatus(value: string): EffectStatus {
+  if (value === "pending" || value === "done" || value === "failed") {
+    return value;
+  }
+  throw new Error(`state: unknown effect status "${value}"`);
 }
 
 /** Validate a timed-out-wait disposition. */

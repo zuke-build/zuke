@@ -10,7 +10,7 @@
  * @module
  */
 
-import { delay, runWithTimeout } from "./internal.ts";
+import { delay, messageOf, runWithTimeout } from "./internal.ts";
 import { bufferReporter, type Reporter } from "./reporter.ts";
 import type { Lifecycle } from "./lifecycle.ts";
 import { acquireTargetLock, type HeldLock } from "./lock.ts";
@@ -27,6 +27,7 @@ import { type Style, type TargetReport, targetWaitFooter } from "./report.ts";
 import type { Renderer } from "./renderer.ts";
 import {
   cloneTarget,
+  type EffectContext,
   type ForEachItem,
   ForEachSettings,
   type ForEachSpec,
@@ -189,6 +190,65 @@ async function runBodyWithRecovery(
       }
     }
     throw lastError;
+  }
+}
+
+/**
+ * Drive a target's declared effects, each behind a durable intent.
+ *
+ * The order is the whole feature: the intent is written and confirmed *before*
+ * the body runs, so a process killed anywhere inside the body leaves a
+ * `pending` row saying the effect was owed. A resume, or the sweep, drives it
+ * again from there.
+ *
+ * An effect already recorded `done` is skipped rather than repeated — the no-op
+ * that makes re-driving a completed effect free. A failure is recorded and then
+ * re-thrown, so the target fails and the run reports it; the row stays `failed`
+ * and a later attempt re-arms it.
+ *
+ * A write that cannot land throws out of here **without** the body having run,
+ * which is the fail-closed half: no durable intent, no side effect.
+ */
+async function driveEffects(
+  t: TargetBuilder,
+  name: string,
+  ctx: TargetContext,
+  env: RunEnv,
+): Promise<void> {
+  if (t.effects_.length === 0) return;
+  const writer = env.writer;
+  if (writer === undefined) {
+    // Unreachable in practice: a build that declares effects turns the state
+    // store on, and one with state explicitly disabled is refused before the
+    // run starts (see openRunState). Guarded anyway rather than silently
+    // running an effect with nothing recording it.
+    throw new Error(
+      `Target "${name}" declares an effect, which needs a state store to ` +
+        `record its intent — but this run has none.`,
+    );
+  }
+  for (const declared of t.effects_) {
+    const gate = await writer.beginEffect(name, declared.name);
+    if (gate === "skip") continue;
+    const attempts = writer.snapshot().targets[name]?.effects?.[declared.name]
+      ?.attempts ?? 1;
+    const effectCtx: EffectContext = {
+      ...ctx,
+      effect: declared.name,
+      redriven: attempts > 1,
+    };
+    try {
+      await declared.fn(effectCtx);
+    } catch (error) {
+      await writer.markEffectSettled(
+        name,
+        declared.name,
+        false,
+        messageOf(error),
+      );
+      throw error;
+    }
+    await writer.markEffectSettled(name, declared.name, true);
   }
 }
 
@@ -363,7 +423,7 @@ async function runTarget(
   void env.writer?.markTargetRunning(name);
   const start = performance.now();
 
-  if (!t.fn_) {
+  if (!t.fn_ && t.effects_.length === 0) {
     const error = new Error(
       `Target "${name}" has no body — call .executes(...) before running.`,
     );
@@ -406,6 +466,7 @@ async function runTarget(
   try {
     for (const v of t.validateBefore_) await v.validate({ target: name });
     await runBodyWithRecovery(t, name, globalRecovery, targetCtx);
+    await driveEffects(t, name, targetCtx, env);
     for (const v of t.validateAfter_) await v.validate({ target: name });
     const ms = performance.now() - start;
     if (cache !== undefined) await cache.record(t);

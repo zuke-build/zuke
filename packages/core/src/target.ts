@@ -336,6 +336,35 @@ export interface TargetContext {
  */
 export type TargetFn = (ctx: TargetContext) => unknown | Promise<unknown>;
 
+/**
+ * The context an effect body receives: the target's own context, plus which
+ * effect this is and whether it has been driven before.
+ */
+export interface EffectContext extends TargetContext {
+  /** The effect's declared name. */
+  readonly effect: string;
+  /**
+   * True when a previous attempt at this effect already committed its intent —
+   * so its side effect may have happened, wholly or partly, and this run is
+   * repeating it.
+   *
+   * Effects are at-least-once. A body that can tell the difference should say
+   * so in what it writes, rather than assume it is the first to get here.
+   */
+  readonly redriven: boolean;
+}
+
+/** The body of a declared effect (see {@link TargetBuilder.effect}). */
+export type EffectFn = (ctx: EffectContext) => unknown | Promise<unknown>;
+
+/** One effect declared on a target: its name and its body. */
+export interface DeclaredEffect {
+  /** The effect's name, unique within the target and stable across runs. */
+  name: string;
+  /** The body run once the intent is durably recorded. */
+  fn: EffectFn;
+}
+
 /** A predicate gating whether a target runs; may be synchronous or async. */
 export type Condition = () => boolean | Promise<boolean>;
 
@@ -432,6 +461,8 @@ export class TargetBuilder {
   readonly after_: TargetBuilder[] = [];
   /** The target body. */
   fn_?: TargetFn;
+  /** Crash-durable effects, in declaration order (set by {@link effect}). */
+  readonly effects_: DeclaredEffect[] = [];
   /** Property name, assigned during discovery. Undefined until then. */
   name_?: string;
   /** The parallel batch this target belongs to, if any (set by {@link partOf}). */
@@ -552,6 +583,47 @@ export class TargetBuilder {
    */
   onlyWhen(condition: Condition): this {
     this.onlyWhen_.push(condition);
+    return this;
+  }
+
+  /**
+   * Declare a **crash-durable effect**: `fn` runs only after the intent to run
+   * it has been written to the run record, so a process killed anywhere inside
+   * it leaves evidence that it was owed.
+   *
+   * That evidence is what a resume — or the `zuke resume --check` sweep — uses
+   * to drive it again. The guarantee is **at-least-once**, not exactly-once: a
+   * process that dies after the side effect but before recording it will repeat
+   * the effect. Write bodies that tolerate that, either because repeating is
+   * harmless or because the far side converges (an upsert rather than an
+   * append).
+   *
+   * ```ts
+   * gate = target().dependsOn(this.checks).always()
+   *   .effect("post-gate", async (ctx) => {
+   *     await postCheckRun(ctx.outcomeOf("checks")?.status === "succeeded");
+   *   });
+   * ```
+   *
+   * **Pin the inputs.** A re-drive happens later, sometimes much later, so a
+   * body that looks up "the current value" of anything acts on a world that has
+   * moved on. Read what the effect acts on from durable state instead —
+   * `ctx.state` or `ctx.stateOf(...)`, written by an earlier target — which is
+   * replayed from the record and cannot be overridden from outside.
+   *
+   * A parameter is *nearly* as good and not quite: the record seeds a resume, so
+   * a parameter nobody re-supplies keeps the value the run started with, but a
+   * resume that passes one explicitly overrides it (the only way to re-supply a
+   * secret, since secrets are kept out of the record). For a value that must not
+   * drift across a re-drive, prefer state.
+   *
+   * Effects run after the body, in declaration order, and are repeatable. A
+   * target may declare effects and no body at all. Requires a state store, which
+   * is enabled automatically — an intent that cannot be recorded is a target
+   * that fails before its effect runs, by design.
+   */
+  effect(name: string, fn: EffectFn): this {
+    this.effects_.push({ name, fn });
     return this;
   }
 

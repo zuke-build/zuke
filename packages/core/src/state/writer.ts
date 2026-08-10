@@ -25,6 +25,7 @@ import type { StateStore } from "./store.ts";
 import type {
   RunEvent,
   RunRecord,
+  RunStatus,
   SignalRecord,
   TargetRunState,
   WaitState,
@@ -35,6 +36,33 @@ import { messageOf } from "../internal.ts";
 
 /** How many times a conflicting write is re-read and retried before giving up. */
 const MAX_RETRIES = 5;
+
+/**
+ * An effect write was refused because the run is no longer `running` — another
+ * process settled it while this one was still working.
+ *
+ * Its own type because the caller has to tell it apart from a store being
+ * unreachable: this one means "stop, someone else owns the outcome now", and
+ * retrying it would be the bug.
+ */
+export class RunNotActiveError extends Error {
+  /** The error name. */
+  override name = "RunNotActiveError";
+  /** The run that is no longer running. */
+  readonly runId: string;
+  /** The status it is in now. */
+  readonly status: RunStatus;
+  /** Build the error from the run and the status that refused the write. */
+  constructor(runId: string, status: RunStatus) {
+    super(
+      `run "${runId}" is ${status}, not running — refusing to record an ` +
+        `effect on it. Another process has settled this run, and its outcome ` +
+        `is that process's to report.`,
+    );
+    this.runId = runId;
+    this.status = status;
+  }
+}
 
 /** Ensure a target's entry exists in the record, seeding it `pending`. */
 function ensureTarget(record: RunRecord, name: string): TargetRunState {
@@ -296,10 +324,153 @@ export class RunStateWriter {
     };
   }
 
+  /**
+   * Commit the intent to run `effect` on `target`, before its body does
+   * anything.
+   *
+   * Returns `"skip"` when the effect is already recorded `done` — the no-op that
+   * makes a re-drive after a completed effect harmless — and `"run"` once the
+   * intent is armed `pending`. A previous `failed` attempt is re-armed and
+   * `attempts` goes up.
+   *
+   * Unlike every other method here this is **strict**: it resolves only once the
+   * write has landed, and throws otherwise. A caller that cannot record its
+   * intent must not perform the effect, because nothing would then know to
+   * re-drive it — the whole point is that the record leads the side effect
+   * rather than trailing it.
+   *
+   * @throws {RunNotActiveError} if the run is no longer `running` — see
+   * {@link "#applyStrict"} for why that check is what stops a stale process
+   * writing over a settled run.
+   */
+  beginEffect(target: string, effect: string): Promise<"run" | "skip"> {
+    const at = this.#now();
+    let gate: "run" | "skip" = "run";
+    return this.#updateStrict((record) => {
+      const state = ensureTarget(record, target);
+      const effects = state.effects ?? {};
+      state.effects = effects;
+      const existing = effects[effect];
+      if (existing?.status === "done") {
+        gate = "skip";
+        return;
+      }
+      gate = "run";
+      effects[effect] = {
+        status: "pending",
+        intentAt: existing?.intentAt ?? at,
+        attempts: (existing?.attempts ?? 0) + 1,
+      };
+    }).then(() => gate);
+  }
+
+  /**
+   * Record that `effect` on `target` finished, or failed.
+   *
+   * Strict for the same reason as {@link beginEffect}, from the other side: a
+   * lost `done` leaves the effect `pending`, and a later resume drives it again.
+   * That is survivable — the contract is at-least-once — but it should be
+   * reported rather than silently absorbed.
+   */
+  markEffectSettled(
+    target: string,
+    effect: string,
+    ok: boolean,
+    error?: string,
+  ): Promise<void> {
+    const at = this.#now();
+    const message = error === undefined
+      ? undefined
+      : this.#redactor.redact(error);
+    return this.#updateStrict((record) => {
+      const state = ensureTarget(record, target);
+      const effects = state.effects ?? {};
+      state.effects = effects;
+      const existing = effects[effect];
+      effects[effect] = {
+        status: ok ? "done" : "failed",
+        intentAt: existing?.intentAt ?? at,
+        attempts: existing?.attempts ?? 1,
+        settledAt: at,
+        ...(message === undefined ? {} : { error: message }),
+      };
+    });
+  }
+
   /** Serialise `mutator` after all pending writes, then persist (best-effort). */
   #update(mutator: (record: RunRecord) => void): Promise<void> {
     this.#chain = this.#chain.then(() => this.#applyAndPersist(mutator));
     return this.#chain;
+  }
+
+  /**
+   * Serialise `mutator` like {@link "#update"}, but hand its failure to the
+   * caller.
+   *
+   * The chain deliberately does not inherit the rejection. `#chain` is shared by
+   * every write on this writer, so assigning it a rejected promise would make
+   * each later best-effort write reject too — one failed effect intent would
+   * take the run's whole bookkeeping down with it. The caller gets the real
+   * promise; the chain gets a settled copy that only preserves ordering.
+   */
+  #updateStrict(mutator: (record: RunRecord) => void): Promise<void> {
+    const result = this.#chain.then(() => this.#applyStrict(mutator));
+    this.#chain = result.then(() => {}, () => {});
+    return result;
+  }
+
+  /**
+   * Apply `mutator` and CAS-write, refusing to write to a run that is not
+   * `running` and throwing rather than dropping the write.
+   *
+   * The status check is the important half, and it is checked again after every
+   * re-read. A process can be alive and holding a stale view of a run another
+   * process has already settled — a sweeper that reaped it past its deadline,
+   * say. The best-effort path handles that by re-applying its mutation onto the
+   * settling record and carrying on, which is right for bookkeeping and wrong
+   * for an effect: it would arm the intent and let the body post a result over
+   * the one the settler already published. For a merge gate that is a green
+   * check on top of a red one, so an effect write to a non-`running` run is
+   * refused outright.
+   *
+   * The executor is still told, via `onExternalCancel`, so it stops rather than
+   * carrying on to the next target.
+   */
+  async #applyStrict(mutator: (record: RunRecord) => void): Promise<void> {
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      if (this.#record.status !== "running") {
+        throw new RunNotActiveError(this.#record.id, this.#record.status);
+      }
+      mutator(this.#record);
+      this.#record.updatedAt = this.#now();
+      const result = await this.#store.putRun(this.#record, this.#version);
+      if (result.ok) {
+        this.#version = result.version;
+        return;
+      }
+      // Another writer moved the record on. Re-read a fresh base and re-apply on
+      // the next pass — the mutation just applied is discarded with the stale
+      // base, exactly as in the best-effort path.
+      const fresh = await this.#store.getRun(this.#record.id);
+      if (fresh === null) {
+        throw new Error(
+          `state: run "${this.#record.id}" vanished from the store while ` +
+            `recording an effect; refusing to run it without a durable intent`,
+        );
+      }
+      const degraded = this.#record.degraded;
+      this.#record = fresh.record;
+      this.#record.degraded ||= degraded;
+      this.#version = fresh.version;
+      if (fresh.record.status !== "running") {
+        this.#onExternalCancel?.();
+        throw new RunNotActiveError(fresh.record.id, fresh.record.status);
+      }
+    }
+    throw new Error(
+      `state: gave up recording an effect on run "${this.#record.id}" after ` +
+        `${MAX_RETRIES} conflicting writes`,
+    );
   }
 
   /**

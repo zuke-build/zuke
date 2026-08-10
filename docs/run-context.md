@@ -70,6 +70,57 @@ class Ci extends Build {
 - **A store is not required.** A run with no state store answers the same way
   for everything settled in that process.
 
+## Crash-durable effects — `.effect()`
+
+A target body that dies halfway leaves no trace of what it was doing. For work
+where that matters — posting a required status check, publishing a release,
+telling another system something finished — declare it as an **effect**. The
+intent to run it is written to the [run record](./state.md) and confirmed
+*before* the body runs, so a process killed anywhere inside it leaves evidence
+that the effect was owed, and a resume (or `zuke resume --check`) drives it
+again.
+
+<!-- check -->
+
+```ts
+import { Build, target } from "jsr:@zuke/core";
+
+class Ci extends Build {
+  checks = target().proceedAfterFailure().executes(() => {});
+  gate = target().dependsOn(this.checks).always()
+    .effect("post-gate", async (ctx) => {
+      const failed = [...ctx.outcomes()].some(([, o]) => o.status === "failed");
+      await postVerdict(failed ? "failure" : "success", ctx.redriven);
+    });
+}
+
+declare function postVerdict(
+  conclusion: string,
+  redriven: boolean,
+): Promise<void>;
+```
+
+- **At-least-once, not exactly-once.** A process that dies *after* the side
+  effect but before recording it will repeat the effect. Write bodies that
+  tolerate it — because repeating is harmless, or because the far side converges
+  (an upsert rather than an append). `ctx.redriven` is `true` when a previous
+  attempt already committed its intent.
+- **A completed effect is skipped, not repeated.** Once recorded `done`,
+  re-driving the target is free.
+- **Pin what the effect acts on.** Read it from `ctx.state` /
+  `ctx.stateOf(...)`, which is replayed from the record and cannot be overridden
+  from outside. A parameter is nearly as good: the record seeds a resume, so one
+  nobody re-supplies keeps its original value — but a resume that passes it
+  explicitly wins, which is how a secret gets re-supplied. For a value that must
+  not drift, use state.
+- **A store is required**, and enabled automatically. With state explicitly
+  disabled the run is refused rather than performing an effect nothing recorded
+  as owed.
+- **Effects run after the body**, in declaration order, and are repeatable. A
+  target may declare effects and no body.
+- **An intent that cannot be recorded fails the target**, with the body never
+  having run. No durable intent, no side effect.
+
 ## Cancellation
 
 A run can be cancelled by passing an `AbortSignal` to `execute`
