@@ -156,6 +156,14 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   the MCP `cancel_run` tool). Idempotent; a timed-out wait can route its
   `onTimeout` here (`"cancel-run"` or a named target). Needs a state store. See
   `docs/orchestration.md`.
+- **Durable side effects:** `.effect(name, fn)` records the intent to run `fn`
+  before it runs, so a resume re-drives an effect a dead process left owed.
+  Effects run after the body, in declaration order; a target may declare effects
+  and no body. The guarantee is **at-least-once**, so write bodies that tolerate
+  a repeat (an upsert, not an append), and read what the effect acts on from
+  `ctx.state` rather than looking up "the current value" — a re-drive happens
+  later, against a world that moved on. Needs a state store (enabled
+  automatically). See the cheatsheet / `docs/orchestration.md`.
 - **Fan-out over a list:**
   `.forEach(() => this.repos.value, (repo) => ({ checks: target()…, deploy: target()… }), (s) => s.concurrency(3).continueOnItemFailure())`
   runs the same pipeline over a runtime list — items concurrent, each item's

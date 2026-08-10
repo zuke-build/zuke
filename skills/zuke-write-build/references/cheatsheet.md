@@ -23,12 +23,14 @@ Everything is optional except a body (`.executes`).
 | `.inputs(...p)` / `.outputs(...p)`                                                                       | Incremental cache: skip when inputs unchanged and outputs exist.                                    |
 | `.cacheKey(fn)`                                                                                          | Add a non-file value (version, git sha, param) to the cache fingerprint.                            |
 | `.onlyWhen(cond)`                                                                                        | Run only when the (possibly async) predicate holds, else skip.                                      |
+| `.whenSkipped("skip-dependencies")`                                                                      | When `onlyWhen` skips this target, also skip deps no other planned target needs. Condition is evaluated up front, so it must not read run-produced state. |
 | `.requires(...params)`                                                                                   | Fail unless the listed parameters resolved to a value.                                              |
 | `.retry(times, delayMs?)`                                                                                | Retry the body on failure.                                                                          |
 | `.timeout(ms)`                                                                                           | Fail the body if it runs longer than `ms` (per attempt).                                            |
 | `.lock((s) => s.lockKey(...).withTtl(...))`                                                              | Hold a cross-run lock while running; a second run wanting the key fails. See below.                 |
 | `.waitsFor((s) => s.on(externalSignal(...)))`                                                            | Gate (no body): suspend the run until an external event; resume later. See below.                   |
 | `.onCancel(() => this.rollback)`                                                                         | Compensation run (reverse order) iff this target succeeded when the run is cancelled. See below.    |
+| `.effect(name, fn)`                                                                                      | A side effect whose intent is recorded before it runs, so a resume re-drives it. At-least-once. See below. |
 | `.forEach(() => items, (item) => ({stage: target()…}), (s) => s.concurrency(3).continueOnItemFailure())` | Fan out a pipeline over a runtime list: items concurrent, stages sequential per item. See below.    |
 | `.proceedAfterFailure()`                                                                                 | Keep the build going if this target fails.                                                          |
 | `.always()`                                                                                              | Run even after the build failed (cleanup/teardown).                                                 |
@@ -38,6 +40,13 @@ Everything is optional except a body (`.executes`).
 | `.recoverWith(...r)` / `.recoverAttempts(n)`                                                             | Run `Remediation`s if the body fails (self-healing); re-run when one asks to. See AI section.       |
 | `.partOf(group)`                                                                                         | Join a parallel batch (see `group()`).                                                              |
 | `.produces(...p)` / `.consumes(...t)`                                                                    | Declare and consume artifact paths.                                                                 |
+
+**Lifecycle hooks** — `override` on the `Build` to observe a run without wrapping
+every target: `onStart()` once before anything runs, `onFinish(result)` once
+after (success *or* failure), `onTargetStart(name)` just before a body executes
+(not for a skipped or cached target), and `onTargetEnd(name, status)` after each
+target settles. All may be async. For exporting rather than observing, prefer a
+plugin (see `@zuke/otel`).
 
 **External ordering:** `override extraEdges(targets)` on the `Build` returns
 `[before, after]` pairs (from the discovered `targets` map) to impose soft
@@ -139,8 +148,14 @@ deploy = target().executes(async (ctx) => {
   await ctx.state.set({ where: "sit-7" }); // durable metadata — see below
   ctx.stateOf("build").get(); // read ANOTHER target's published state
   ctx.signals.get("approved"); // an external signal's payload (see waits)
+  ctx.outcomeOf("checks")?.status; // one target's settled outcome, or undefined
+  ctx.outcomes(); // every outcome settled SO FAR, keyed by dotted name
 });
 ```
+
+`ctx.outcomes()` is a snapshot, not a live view, and a target that has not
+settled is **absent** rather than present with a placeholder — so depend on what
+you intend to read (an `.always()` gate reads what ran before it).
 
 **Cancellation.** When the run is cancelled, `ctx.signal` fires and any plain
 `` $`…` `` in the body is terminated with `SIGTERM` automatically (the run's
@@ -194,6 +209,12 @@ class CD extends Build {
   non-terminal run (suspended/running) is never pruned. The FS store owns
   pruning via the CLI; for the HTTP backend retention is the server's job
   (`GET /runs` takes `limit`; `DELETE /runs/:id` is optional). See `docs/state.md`.
+- **Run leases.** A run that writes durable state takes a TTL lease on its own
+  id and heartbeats it, so two processes cannot both believe they own one run —
+  a resume that adopts a run whose lease has lapsed takes it over, and the
+  original stops. The lease is a mutual-exclusion guard, not a liveness monitor:
+  nothing currently sweeps lapsed leases, so a run whose process was killed
+  stays `running` until an operator moves it (see `.effect()` above).
 - **Never put secrets in `ctx.state`** — it is stored as plain JSON. Secret
   parameters are excluded from the record and state values are run through the
   redactor, but treat state as a non-secret channel. See `docs/state.md`.
@@ -343,6 +364,38 @@ class CD extends Build {
   cancels the run (running compensations); `.onTimeout(() => this.cleanup)` runs
   that target too. Needs a state store (a build with `.onCancel()` enables
   `.zuke/runs` by default). See `docs/orchestration.md`.
+
+## Durable side effects — `.effect()`
+
+A body that dies partway through leaves no record of what it had already done.
+`.effect(name, fn)` records the **intent** to run `fn` in the run record before
+`fn` runs, so a resume can see the effect was owed and drive it again. Effects
+run after the body, in declaration order; a target may declare effects and no
+body at all. Requires a state store, which is enabled automatically — an intent
+that cannot be recorded fails the target before the effect runs, by design.
+
+```ts
+gate = target().dependsOn(this.checks).always()
+  .effect("post-gate", async (ctx) => {
+    await postCheckRun(ctx.outcomeOf("checks")?.status === "succeeded");
+  });
+```
+
+- **At-least-once, not exactly-once.** A process that dies after the side effect
+  but before recording it repeats the effect on the re-drive. Write bodies that
+  tolerate that — either repeating is harmless, or the far side converges (an
+  upsert, not an append).
+- **Pin the inputs.** A re-drive happens later, sometimes much later, so a body
+  that looks up "the current value" of anything acts on a world that has moved
+  on. Read what the effect acts on from `ctx.state`/`ctx.stateOf(...)`, written
+  by an earlier target and replayed from the record. A parameter is nearly as
+  good: an unsupplied one keeps the value the run started with, but a resume
+  that passes one explicitly overrides it — so prefer state for a value that
+  must not drift.
+- **What re-drives it.** An effect owed by a run that suspended for any ordinary
+  reason is re-driven by the ordinary resume. A process **killed outright**
+  leaves its run `running`, so its owed effect is re-driven only once something
+  moves that run back to `suspended` — an operator, or a reaping sweep.
 
 ## Fan-out over a list — `.forEach()`
 
@@ -502,6 +555,7 @@ the full task list and settings methods of each):
 | Package                                                                                                                                        | Object                                           | Typical tasks                                                                       |
 | ---------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ | ----------------------------------------------------------------------------------- |
 | `@zuke/core`                                                                                                                                   | `FileTasks`, `AnnounceTasks`, `ToolTasks`        | copy/move/remove files; Slack/Teams/Discord posts; install tool binaries            |
+| `@zuke/cli`                                                                                                                                    | the `zuke` command                               | not a wrapper — `deno install -A -g -n zuke jsr:@zuke/cli`, then `zuke setup` scaffolds a project |
 | `@zuke/console`                                                                                                                                | `ConsoleTasks`                                   | themed console output (headings, notices) so a build never hand-rolls `console.log` |
 | `@zuke/deno`                                                                                                                                   | `DenoTasks`                                      | `check`, `test`, `fmt`, `lint`, `cache`, `doc`, `run`, `publish`                    |
 | `@zuke/docs`                                                                                                                                   | `DocsTasks`                                      | turn generated API docs into published output                                       |
@@ -544,6 +598,13 @@ await DockerTasks.build((s) => s.tag("app").context("."));
 A model becomes part of the build graph two ways. Only the provider (`"claude"`
 | `"openai"` | `"gemini"`) and an API key (pass a `parameter().secret()`) are
 required; everything else is defaulted.
+
+Neither interface is AI-specific, and neither needs a base class: a
+**`Validation`** is any object with a `validate(context)` method (throw to fail
+the target), and a **`Remediation`** is any object with a `remediate(...)`
+method that repairs the failure and asks for the body to be re-run — the real
+build command is the verifier. Write your own wherever a check or a fix is
+mechanical rather than a model's job.
 
 **Review gate** — a reviewer is a `Validation`; attach with `.validateBefore` /
 `.validateAfter`. It scores the diff and breaks the build past a threshold.
@@ -745,5 +806,9 @@ proxy's job.
 (skipped and reported `cached` when inputs are unchanged and outputs exist). Add
 a **remote store** to share results across machines — a fresh CI checkout or a
 teammate's clone restores outputs instead of rebuilding; `--no-remote-cache`
-uses the local cache only. `--affected` limits a run to targets touched since a
-git base (great for CI job fan-out).
+uses the local cache only. Declare one with `override remoteCache()` on the
+`Build` (returning `FileSystemCacheStore` or `HttpCacheStore`), or leave it and
+the executor falls back to the `ZUKE_REMOTE_CACHE_*` environment variables; it
+applies only to targets declaring **both** `inputs` and `outputs`. A remote
+store is best-effort — an unreachable one never fails the build. `--affected`
+limits a run to targets touched since a git base (great for CI job fan-out).

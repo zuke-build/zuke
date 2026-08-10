@@ -394,6 +394,28 @@ plugins/zuke/             # Claude Code plugin wrapping the skills
   the website's package grid is generated from it by `syncWebsite`.
 - **Update docs with code.** If behaviour changes, update `README.md`, JSDoc,
   and the spec/acceptance criteria in the same PR.
+- **The agent skills are docs too — and they ship to a marketplace.** `skills/`
+  is the source of truth for `zuke-write-build` and `zuke-setup`, and
+  `plugins/zuke/` is the Claude Code plugin that publishes them. Any change to
+  the authoring surface or to a documented guarantee — a new `target()` method,
+  a new `Build` override, changed CLI or authorization semantics — must be
+  reflected in `skills/zuke-write-build/SKILL.md` and
+  `skills/zuke-write-build/references/cheatsheet.md` **in the same PR**. The
+  cheatsheet is one of the two canonical answers to "does a wrapper exist?", so
+  a new package belongs in its catalogue table as well. Then, in order:
+  1. Run `./zuke pluginSync` to regenerate `plugins/zuke/skills/`. Never hand-edit
+     the copies — `pluginSyncCheck` fails on drift, and it is the only part of
+     this that is automated.
+  2. **Bump the plugin version by hand, in both manifests**:
+     `plugins/zuke/.claude-plugin/plugin.json` and the entry in
+     `.claude-plugin/marketplace.json`. They must agree —
+     `tests/plugin_manifest_test.ts` enforces that much, but nothing can tell
+     you that you *forgot* to bump, because that needs the base branch to
+     compare against. Clients use the version to decide whether an installed
+     plugin is stale, so skills edited without a bump simply never reach agents
+     that already hold the old copy. release-please does **not** manage
+     `plugins/` — it is not a workspace package and has no `deno.json`.
+     Additive skill content is a minor bump; a correction is a patch.
 - **Always read the reviewer comments on every PR.** This repo runs AI reviewers
   (`@zuke/ai`) that post their assessments as PR comments (and human reviewers
   do too). Before considering a PR done — and again after each push — fetch and
