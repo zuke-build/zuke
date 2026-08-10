@@ -248,10 +248,17 @@ function belongsToBuild(record: RunRecord, deps: ReapDeps): boolean {
  * could not be resolved they are skipped for good, leaving a deploy standing
  * behind a record that says the run is over.
  *
- * So the graph has to agree too. Where it does, the two builds are the same
- * build for every purpose a settlement has — compensations resolve by name, and
- * the names are identical. Where it does not, this sweep leaves the run for the
- * one that recognises it.
+ * So the graph has to agree too. Where it does not, this sweep leaves the run for
+ * the one that recognises it.
+ *
+ * Where it does, this is as far as a heuristic reaches: two builds sharing a
+ * class name, a root-target name and a graph shape are indistinguishable in a
+ * record, and their target *bodies* may still do entirely different things. The
+ * answer to that is not a cleverer comparison but a store per build — see
+ * `docs/orchestration.md`. Note the blast radius differs by path: a stranded run
+ * is finalised *without* compensations and into the terminal its own record
+ * names, so a colliding build settles it exactly as the owning one would; a
+ * past-deadline run does run compensations, which is why this check exists.
  */
 function canSettle(record: RunRecord, deps: ReapDeps): boolean {
   if (!belongsToBuild(record, deps)) return false;

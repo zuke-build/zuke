@@ -248,11 +248,19 @@ suspended ones:
   build's run would find none of its targets and settle it with its
   compensations silently skipped.
 
-  Before *settling* a run — which is irreversible — the graph has to agree as
-  well, because a class name is not an identity and `Ci` is a name half an
-  organisation's repos will use. Handing a run back to `suspended` asks only the
-  looser question, since that is reversible and a resume refuses a graph it does
-  not recognise with an error naming the drift.
+  Before *settling* a run — which is irreversible, and runs its compensations —
+  the graph has to agree as well, because a class name is not an identity and
+  `Ci` is a name half an organisation's repos will use. Handing a run back to
+  `suspended` asks only the looser question, since that is reversible and a
+  resume refuses a graph it does not recognise with an error naming the drift.
+
+  What no check here can see: two builds that share a class name, a root-target
+  name **and** a graph shape are indistinguishable in a run record, even though
+  their target *bodies* may do entirely different things. If several repos share
+  one state service and any of them might collide that way, give each its own
+  store — a separate `ZUKE_STATE_DIR`, or a distinct prefix or instance behind
+  `ZUKE_STATE_URL`. That is the only way to make the question unambiguous, and it
+  costs nothing when the runs were never meant to be pooled.
 
 A run left `cancelling` by a settlement whose own process died is finished too,
 in whichever terminal that settlement was heading for — recorded on the run,
