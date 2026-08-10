@@ -359,3 +359,50 @@ Deno.test("a stranded run settles into the terminal its settlement intended", as
     assertEquals((await store.getRun("run-1"))?.record.status, "failed");
   });
 });
+
+Deno.test("a colliding build with a different graph does not settle the run", async () => {
+  // Same class name, same root-target name, different graph — the residual the
+  // name-and-root check cannot see. Settling is irreversible and skips
+  // compensations it cannot resolve, so it asks the stricter question.
+  await withStore(
+    [record("run-1", "running", "2026-08-10T11:00:00.000Z")],
+    async (store) => {
+      const loaded = await store.getRun("run-1");
+      if (loaded === null) throw new Error("seed missing");
+      const other = structuredClone(loaded.record);
+      // Another repo's `Cd`, whose `deploy` depends on something this one has not
+      // got.
+      other.graph = [
+        { name: "build", dependsOn: [] },
+        { name: "deploy", dependsOn: ["build"] },
+      ];
+      assertEquals((await store.putRun(other, loaded.version)).ok, true);
+
+      const { reporter } = capturing();
+      const outcome = await reapAbandoned(depsFor(store, reporter));
+      // Not settled. It is still handed back, because that is reversible and a
+      // resume refuses a graph it does not recognise with a clear error.
+      assertEquals(outcome.settled, []);
+      assertEquals(outcome.reaped, ["run-1"]);
+    },
+  );
+});
+
+Deno.test("a colliding build with a different graph does not finish a stranded run", async () => {
+  await withStore([record("run-1", "cancelling")], async (store) => {
+    const loaded = await store.getRun("run-1");
+    if (loaded === null) throw new Error("seed missing");
+    const other = structuredClone(loaded.record);
+    other.graph = [
+      { name: "build", dependsOn: [] },
+      { name: "deploy", dependsOn: ["build"] },
+    ];
+    assertEquals((await store.putRun(other, loaded.version)).ok, true);
+
+    const { reporter } = capturing();
+    const outcome = await recoverStranded(depsFor(store, reporter));
+    assertEquals(outcome.settled, []);
+    // Left for the build that recognises it.
+    assertEquals((await store.getRun("run-1"))?.record.status, "cancelling");
+  });
+});

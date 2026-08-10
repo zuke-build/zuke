@@ -34,7 +34,8 @@ import { messageOf } from "./internal.ts";
 import { settleExternally } from "./cancel.ts";
 import { acquireLease, RUN_LEASE_PREFIX } from "./state/run_lease.ts";
 import type { StateStore } from "./state/store.ts";
-import type { RunEvent, RunRecord } from "./state/types.ts";
+import { planGraph } from "./graph.ts";
+import type { RunEvent, RunGraphNode, RunRecord } from "./state/types.ts";
 
 /** How many times a conflicting reap CAS is re-read and retried. */
 const MAX_RETRIES = 10;
@@ -113,7 +114,9 @@ export async function recoverStranded(deps: ReapDeps): Promise<ReapOutcome> {
     try {
       const loaded = await store.getRun(id);
       if (loaded === null || loaded.record.status !== "cancelling") continue;
-      if (!belongsToBuild(loaded.record, deps)) continue;
+      // The strict question, because this settles: a run whose graph this build
+      // does not recognise is left for the build that does.
+      if (!canSettle(loaded.record, deps)) continue;
       // The terminal named here is only a default: a record that says which
       // settlement it was in the middle of wins, since this process is not the
       // one that started it.
@@ -170,7 +173,7 @@ async function examine(id: string, deps: ReapDeps): Promise<Examined> {
     const held = await deps.store.getRun(id);
     if (held === null || held.record.status !== "running") return "alive";
 
-    if (pastDeadline(held.record, deps.now())) {
+    if (pastDeadline(held.record, deps.now()) && canSettle(held.record, deps)) {
       // Settled rather than released: a run that has run out of time is not one
       // to hand back for another attempt. Its compensations still run, because
       // an abandoned run's side effects need unwinding just as much as a
@@ -224,13 +227,59 @@ async function examine(id: string, deps: ReapDeps): Promise<Examined> {
  * runs are resolved by name, so a build that has the run's root target has the
  * targets that run recorded.
  *
- * The residual: two builds that share a class name *and* a root-target name are
- * still indistinguishable to this. Closing that needs an identity in the record
- * rather than a better guess here.
+ * Two builds that share a class name *and* a root-target name are still
+ * indistinguishable to this, which is why the destructive path asks
+ * {@link canSettle} as well.
  */
 function belongsToBuild(record: RunRecord, deps: ReapDeps): boolean {
   if (record.build !== deps.build.constructor.name) return false;
   return discoverTargets(deps.build).has(record.rootTarget);
+}
+
+/**
+ * Whether this sweep may settle `record` terminally, as opposed to merely
+ * handing it back.
+ *
+ * A stricter question than {@link belongsToBuild}, because it is asked before
+ * the irreversible thing. Returning a run to `suspended` is recoverable and
+ * self-correcting — a resume refuses a build whose graph does not match, with an
+ * error naming the drift and a documented override. Settling one is neither: the
+ * record becomes terminal, so nothing sweeps it again, and if the compensations
+ * could not be resolved they are skipped for good, leaving a deploy standing
+ * behind a record that says the run is over.
+ *
+ * So the graph has to agree too. Where it does, the two builds are the same
+ * build for every purpose a settlement has — compensations resolve by name, and
+ * the names are identical. Where it does not, this sweep leaves the run for the
+ * one that recognises it.
+ */
+function canSettle(record: RunRecord, deps: ReapDeps): boolean {
+  if (!belongsToBuild(record, deps)) return false;
+  const targets = discoverTargets(deps.build);
+  const root = targets.get(record.rootTarget);
+  if (root === undefined) return false;
+  const planned = planGraph(root).order.map((t) => ({
+    name: t.name_ ?? "",
+    dependsOn: t.dependsOn_.map((d) => d.name_ ?? "").filter((n) => n !== ""),
+  }));
+  return graphAgrees(record.graph, planned);
+}
+
+/** Whether a recorded graph snapshot and a planned one describe the same shape. */
+function graphAgrees(
+  snapshot: readonly RunGraphNode[],
+  planned: readonly RunGraphNode[],
+): boolean {
+  if (snapshot.length !== planned.length) return false;
+  const recorded = new Map(snapshot.map((n) => [n.name, n.dependsOn]));
+  return planned.every((node) => {
+    const deps = recorded.get(node.name);
+    if (deps === undefined || deps.length !== node.dependsOn.length) {
+      return false;
+    }
+    const set = new Set(deps);
+    return node.dependsOn.every((d) => set.has(d));
+  });
 }
 
 /** Whether `record` has a deadline that `now` is past. */

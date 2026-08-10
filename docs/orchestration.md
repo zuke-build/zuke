@@ -243,9 +243,16 @@ suspended ones:
   compensations and all. It did not stop because anyone asked; it ran out of
   time, and anything waiting on it needs an answer rather than silence.
 - **Only this build's runs.** A state store is commonly shared, and a listing has
-  no build filter, so the sweep skips runs belonging to another build. Acting on
-  one would find none of its targets, settle it with its compensations silently
-  skipped, and leave nothing to retry it.
+  no build filter, so the sweep skips runs it does not recognise: the record's
+  build name and its root target must both be this build's. Acting on another
+  build's run would find none of its targets and settle it with its
+  compensations silently skipped.
+
+  Before *settling* a run — which is irreversible — the graph has to agree as
+  well, because a class name is not an identity and `Ci` is a name half an
+  organisation's repos will use. Handing a run back to `suspended` asks only the
+  looser question, since that is reversible and a resume refuses a graph it does
+  not recognise with an error naming the drift.
 
 A run left `cancelling` by a settlement whose own process died is finished too,
 in whichever terminal that settlement was heading for — recorded on the run,
