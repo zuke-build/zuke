@@ -17,6 +17,7 @@ import { acquireTargetLock, type HeldLock } from "./lock.ts";
 import { resolveWait, type WaitResolution } from "./wait_resolution.ts";
 import {
   errorMessage,
+  outcomeView,
   type RunEnv,
   type RunOutcome,
   type TargetOutcome,
@@ -32,10 +33,13 @@ import {
   type Remediation,
   type TargetBuilder,
   type TargetContext,
+  type TargetOutcomeView,
 } from "./target.ts";
 import type { BuildCache } from "./cache.ts";
 import { ServiceBuilder, type ServiceRegistry } from "./service.ts";
 import { inMemoryStateHandle } from "./state/writer.ts";
+import { recordStatusOf } from "./state/record.ts";
+import type { TargetStatus } from "./build.ts";
 
 /**
  * Open a target's section — a collapsible group under GitHub Actions, or a
@@ -189,6 +193,46 @@ async function runBodyWithRecovery(
 }
 
 /**
+ * What one target in this run did, for `ctx.outcomeOf(...)`.
+ *
+ * This process's own map answers first, and the durable record only fills in
+ * what that map has never seen. The order matters and is not an optimisation:
+ * the map is written the instant a target settles, while the record's write is
+ * queued behind every other pending write — so between a failure and its write
+ * landing, the record still says `running`. Reading the record first would let
+ * an aggregating gate call a failed run green, which is the exact outcome the
+ * durable-effects work exists to prevent. The record's turn comes for targets
+ * this process never ran: after a resume, everything an earlier process
+ * settled.
+ */
+function outcomeOf(
+  env: RunEnv,
+  target: string,
+): TargetOutcomeView | undefined {
+  const live = env.statuses.get(target);
+  const row = env.writer?.snapshot().targets[target];
+  if (live === undefined) {
+    if (row === undefined || row.status === "pending") return undefined;
+    return outcomeView(row.status, row);
+  }
+  return outcomeView(live, row);
+}
+
+/** Every settled outcome in this run, this process's map over the record's. */
+function allOutcomes(env: RunEnv): ReadonlyMap<string, TargetOutcomeView> {
+  const all = new Map<string, TargetOutcomeView>();
+  const rows = env.writer?.snapshot().targets ?? {};
+  for (const [name, row] of Object.entries(rows)) {
+    if (row.status === "pending") continue; // no outcome yet, so not an entry
+    all.set(name, outcomeView(row.status, row));
+  }
+  for (const [name, status] of env.statuses) {
+    all.set(name, outcomeView(status, rows[name]));
+  }
+  return all;
+}
+
+/**
  * Run one target: honour its `onlyWhen` conditions and the incremental cache,
  * then (if it must run) open its section, run its body, and report pass/fail.
  * A condition that fails yields `skipped`; an up-to-date target yields `cached`
@@ -234,6 +278,8 @@ async function runTarget(
         signal: env.signal,
         state: echoState,
         stateOf: (t2) => t2 === name ? echoState : inMemoryStateHandle(),
+        outcomeOf: (t2) => outcomeOf(env, t2),
+        outcomes: () => allOutcomes(env),
         signals: env.signals,
         dryRun: true,
       };
@@ -304,6 +350,7 @@ async function runTarget(
       passTarget(reporter, renderer, style, name, 0);
       return { status: "passed", ms: 0 };
     }
+    env.statuses.set(name, "waiting");
     void env.writer?.markTargetWaiting(name, wait.waitState);
     for (const line of targetWaitFooter(style, name, wait.descriptor)) {
       reporter.info(line);
@@ -339,6 +386,8 @@ async function runTarget(
       t === name
         ? ownState
         : (env.writer ? env.writer.stateHandle(t) : inMemoryStateHandle()),
+    outcomeOf: (t) => outcomeOf(env, t),
+    outcomes: () => allOutcomes(env),
     signals: env.signals,
     dryRun,
   };
@@ -477,6 +526,27 @@ export function cpuCount(): number {
   return cpus > 0 ? cpus : 4;
 }
 
+/**
+ * Record a target's terminal status — synchronously for this process, and
+ * durably through the writer.
+ *
+ * Both halves, always, and in that order. The durable write is fire-and-forget
+ * through the writer's serialized chain, so between a target failing and its
+ * write landing the record still says `running`; a gate reading outcomes in
+ * that window would aggregate a failure as though it had not happened yet. The
+ * in-memory map closes that window, and the record is what carries the same
+ * facts across a process boundary.
+ */
+function settleTarget(
+  env: RunEnv,
+  name: string,
+  status: TargetStatus,
+  error?: string,
+): void {
+  env.statuses.set(name, recordStatusOf(status));
+  void env.writer?.markTargetSettled(name, status, error);
+}
+
 /** Sequentially run the plan, aborting (and skipping the rest) on first failure. */
 export async function runSequential(
   ctx: RunContext,
@@ -494,7 +564,7 @@ export async function runSequential(
     const name = t.name_ ?? "<unnamed>";
     if (skip.has(name) || aborted) {
       reports.push({ name, status: "skipped", ms: 0 });
-      void env.writer?.markTargetSettled(name, "skipped");
+      settleTarget(env, name, "skipped");
       continue;
     }
     let outcome: TargetOutcome;
@@ -509,11 +579,7 @@ export async function runSequential(
       failTarget(reporter, renderer, style, name, 0, error);
       outcome = { status: "failed", ms: 0, error };
     }
-    void env.writer?.markTargetSettled(
-      name,
-      outcome.status,
-      errorMessage(outcome.error),
-    );
+    settleTarget(env, name, outcome.status, errorMessage(outcome.error));
     if (outcome.status === "passed" || outcome.status === "failed") opened++;
     reports.push({ name, status: outcome.status, ms: outcome.ms });
     // A fan-out target's sub-targets appear as their own rows beneath it.
@@ -564,7 +630,7 @@ export async function runScheduled(
       outcomes.set(t, { status: "skipped", ms: 0 });
       done.add(t);
       started.add(t);
-      void env.writer?.markTargetSettled(name, "skipped");
+      settleTarget(env, name, "skipped");
     } else if (env.done?.has(name)) {
       // Succeeded in the prior (suspended) run: unblock dependents, don't re-run,
       // and leave its recorded `succeeded` untouched.
@@ -601,7 +667,8 @@ export async function runScheduled(
               // A waiting gate already recorded its `waitingFor` via
               // markTargetWaiting; settling it here would clobber that.
               if (outcome.status !== "waiting") {
-                void env.writer?.markTargetSettled(
+                settleTarget(
+                  env,
                   t.name_ ?? "<unnamed>",
                   outcome.status,
                   errorMessage(outcome.error),
@@ -654,11 +721,7 @@ export async function runScheduled(
             failure ??= error;
             if (!t.proceedAfterFailure_) halted = true;
             failTarget(reporter, renderer, style, targetName, 0, error);
-            void env.writer?.markTargetSettled(
-              targetName,
-              "failed",
-              errorMessage(error),
-            );
+            settleTarget(env, targetName, "failed", errorMessage(error));
             pump();
           });
       }
@@ -673,10 +736,7 @@ export async function runScheduled(
             // them `skipped` — otherwise they linger `pending` inside a terminal
             // `failed` record that no resume sweep reaches (F8).
             if (!anyWaiting || anyFailed) {
-              void env.writer?.markTargetSettled(
-                t.name_ ?? "<unnamed>",
-                "skipped",
-              );
+              settleTarget(env, t.name_ ?? "<unnamed>", "skipped");
             }
           }
         }
@@ -695,7 +755,7 @@ export async function runScheduled(
     for (const [t, outcome] of outcomes) {
       if (outcome.status === "waiting") {
         outcomes.set(t, { status: "skipped", ms: outcome.ms });
-        void env.writer?.markTargetSettled(t.name_ ?? "<unnamed>", "skipped");
+        settleTarget(env, t.name_ ?? "<unnamed>", "skipped");
       }
     }
   }

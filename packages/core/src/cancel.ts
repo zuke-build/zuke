@@ -43,6 +43,7 @@ import {
   type TargetContext,
   type TargetStateHandle,
 } from "./target.ts";
+import { outcomesFromRecord } from "./run_support.ts";
 import { absolutePath } from "./path.ts";
 import { findConfigDir, pathExists } from "./config.ts";
 import { defaultStateHost, type StateStore } from "./state/store.ts";
@@ -265,6 +266,10 @@ export async function runCompensations(
     });
   }
 
+  // One snapshot for the whole walk: the record is not being written while the
+  // compensations run, and a per-step rebuild would say the same thing.
+  const outcomes = outcomesFromRecord(record.targets);
+
   for (const step of steps) {
     const compName = step.compensation.name_ ??
       `${step.forTarget}.onCancel`;
@@ -285,6 +290,11 @@ export async function runCompensations(
       // is available; other targets read as empty here.
       stateOf: (t) =>
         t === compName ? seededStateHandle(step.meta) : seededStateHandle({}),
+      // Outcomes, unlike state, come from the record the walk is reading — so a
+      // compensation can ask what actually happened to the run it is undoing,
+      // including in a process that never executed any of it.
+      outcomeOf: (t) => outcomes.get(t),
+      outcomes: () => outcomes,
       signals: deps.signals,
       dryRun: false,
     };

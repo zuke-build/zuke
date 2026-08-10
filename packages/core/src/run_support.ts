@@ -8,10 +8,16 @@
  */
 
 import type { TargetStatus } from "./build.ts";
+import type { TargetOutcomeView } from "./target.ts";
 import type { TargetReport } from "./report.ts";
 import type { RunStateWriter } from "./state/writer.ts";
 import type { StateStore } from "./state/store.ts";
-import type { SignalRecord, WaitState } from "./state/types.ts";
+import type {
+  SignalRecord,
+  TargetRunState,
+  TargetRunStatus,
+  WaitState,
+} from "./state/types.ts";
 
 /** What running one target produced, fed back to the scheduler and summary. */
 export interface TargetOutcome {
@@ -63,6 +69,19 @@ export interface RunEnv {
   runUrl?: string;
   /** External signals received so far, exposed to bodies via `ctx.signals`. */
   signals: ReadonlyMap<string, SignalRecord>;
+  /**
+   * Statuses settled in **this** process, in the record's vocabulary — what
+   * `ctx.outcomeOf(...)` reads first.
+   *
+   * The durable record is not enough on its own. Every `markTargetSettled` is
+   * fire-and-forget through the writer's serialized chain, so a target that has
+   * just failed can still read `running` in the record for as long as that
+   * write is queued. A gate aggregating outcomes would then see a green run.
+   * This map is written synchronously as each target settles, so it cannot lag
+   * behind the thing it describes; the record backfills what a *previous*
+   * process settled.
+   */
+  statuses: Map<string, TargetRunStatus>;
   /** On a resume, target names already succeeded — seeded done, never re-run. */
   done?: ReadonlySet<string>;
   /**
@@ -72,6 +91,44 @@ export interface RunEnv {
    * `resume --check` and mean the timeout never fires).
    */
   priorWaits?: ReadonlyMap<string, WaitState>;
+}
+
+/**
+ * Build the caller-facing outcome view from a status and the record row it came
+ * with, if there is one.
+ *
+ * `status` wins over `row.status` deliberately: the row is the durable copy and
+ * can be a write behind, while the status passed here is whatever the caller
+ * established is current.
+ */
+export function outcomeView(
+  status: TargetRunStatus,
+  row: TargetRunState | undefined,
+): TargetOutcomeView {
+  if (row === undefined) return { status };
+  return {
+    status,
+    ...(row.error === undefined ? {} : { error: row.error }),
+    ...(row.startedAt === undefined ? {} : { startedAt: row.startedAt }),
+    ...(row.endedAt === undefined ? {} : { endedAt: row.endedAt }),
+  };
+}
+
+/**
+ * Every settled outcome a run record holds, keyed by target name.
+ *
+ * `pending` rows are omitted: a target that has not run has no outcome, and an
+ * entry saying otherwise would invite a body to branch on it.
+ */
+export function outcomesFromRecord(
+  targets: Readonly<Record<string, TargetRunState>>,
+): Map<string, TargetOutcomeView> {
+  const all = new Map<string, TargetOutcomeView>();
+  for (const [name, row] of Object.entries(targets)) {
+    if (row.status === "pending") continue;
+    all.set(name, outcomeView(row.status, row));
+  }
+  return all;
 }
 
 /** A failure's message, or `undefined` when there was none — for the state record. */

@@ -32,7 +32,7 @@ import type { AnyParameter } from "./params.ts";
 import type { Configure } from "./tooling.ts";
 import { type LockHolder, lockKey } from "./state/lock.ts";
 import type { WaitTrigger } from "./wait.ts";
-import type { SignalRecord } from "./state/types.ts";
+import type { SignalRecord, TargetRunStatus } from "./state/types.ts";
 
 /**
  * Fluent configuration for {@link TargetBuilder.lock}, in the settings-lambda
@@ -239,6 +239,26 @@ export interface TargetStateHandle {
 }
 
 /**
+ * What another target in this run did, as {@link TargetContext.outcomeOf}
+ * reports it.
+ *
+ * The status is the **record's** vocabulary, not the summary's: a target whose
+ * body ran and one served from the cache both read `"succeeded"`, because that
+ * is the distinction the durable record keeps. A body branching on this wants
+ * "did it work", which both answer the same way.
+ */
+export interface TargetOutcomeView {
+  /** The target's status: `succeeded`, `failed`, `skipped`, `waiting`, … */
+  readonly status: TargetRunStatus;
+  /** The failure's message, when it failed. Redacted like every stored string. */
+  readonly error?: string;
+  /** When it started, ISO-8601, if it did. */
+  readonly startedAt?: string;
+  /** When it settled, ISO-8601, if it has. */
+  readonly endedAt?: string;
+}
+
+/**
  * The context passed to every target body. Optional to receive — an existing
  * zero-argument `.executes(() => …)` stays valid, since a zero-argument
  * function is assignable to this one-parameter type — but a body that wants the
@@ -273,6 +293,28 @@ export interface TargetContext {
    * across a suspend/resume, since the record is durable.
    */
   stateOf(target: string): TargetStateHandle;
+  /**
+   * What another target in this run did, or `undefined` if it has no outcome
+   * yet — it has not run, or is running now.
+   *
+   * The seam for a target that must **decide** on the run's results rather than
+   * merely follow them: an aggregate gate reporting one verdict for a fan of
+   * checks, some of which are allowed to fail. `.dependsOn(...)` alone cannot
+   * express that, because a failed dependency never lets its dependents run;
+   * pair this with `.always()` and `.proceedAfterFailure()` on the checks.
+   *
+   * It reads what this run has settled so far, whichever process settled it:
+   * outcomes from a previous process come back after a resume, because they
+   * are in the durable record. A sibling running **concurrently** has no
+   * outcome yet — depend on what you intend to read.
+   */
+  outcomeOf(target: string): TargetOutcomeView | undefined;
+  /**
+   * Every outcome this run has settled so far, keyed by dotted target name — a
+   * snapshot, not a live view. Targets that have not settled are absent rather
+   * than present with a placeholder status.
+   */
+  outcomes(): ReadonlyMap<string, TargetOutcomeView>;
   /**
    * Payloads of the external signals received so far, keyed by name (see
    * `.waitsFor(...)` and {@link "./wait.ts".externalSignal}). Empty until a

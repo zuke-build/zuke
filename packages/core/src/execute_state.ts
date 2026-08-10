@@ -23,7 +23,12 @@ import { defaultStateHost, type StateStore } from "./state/store.ts";
 import { resolveStateStore } from "./state/resolve.ts";
 import { buildRunRecord, ciRunUrl, resolveActor } from "./state/record.ts";
 import { RunStateWriter } from "./state/writer.ts";
-import type { RunRecord, SignalRecord, WaitState } from "./state/types.ts";
+import type {
+  RunRecord,
+  SignalRecord,
+  TargetRunStatus,
+  WaitState,
+} from "./state/types.ts";
 import type { ResumeState } from "./executor.ts";
 
 /**
@@ -37,6 +42,26 @@ function priorWaitsOf(record: RunRecord): ReadonlyMap<string, WaitState> {
     if (state.waitingFor !== undefined) waits.set(name, state.waitingFor);
   }
   return waits;
+}
+
+/**
+ * The outcomes a resumed run inherits — what an earlier process settled, as
+ * `ctx.outcomeOf(...)` should report it (see {@link RunEnv.statuses}).
+ *
+ * A fresh run starts empty. `pending` rows are left out: a target that has not
+ * run has no outcome, and reporting one would make a body branch on a target
+ * that is about to run in this very process.
+ */
+function priorStatusesOf(record: RunRecord | undefined): Map<
+  string,
+  TargetRunStatus
+> {
+  const statuses = new Map<string, TargetRunStatus>();
+  if (record === undefined) return statuses;
+  for (const [name, state] of Object.entries(record.targets)) {
+    if (state.status !== "pending") statuses.set(name, state.status);
+  }
+  return statuses;
 }
 
 /** Durable-state plumbing for one run: the writer and the RunEnv. */
@@ -153,6 +178,9 @@ export async function openRunState(opts: {
     actor,
     runUrl,
     signals: writer ? writer.signals() : new Map<string, SignalRecord>(),
+    // Seeded from the record so a resumed run's targets keep the outcomes an
+    // earlier process settled, rather than reading as though they never ran.
+    statuses: priorStatusesOf(resume?.record),
     done: resume?.done,
     priorWaits: resume ? priorWaitsOf(resume.record) : undefined,
   };

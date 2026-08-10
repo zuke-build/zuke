@@ -60,6 +60,7 @@ export {
   TargetBuilder,
   type TargetContext,
   type TargetFn,
+  type TargetOutcomeView,
   type TargetStateHandle,
   type Validation,
   type ValidationContext,
