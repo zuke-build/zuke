@@ -53,6 +53,7 @@ function fakeFetch(
 function listPath(name: string, page = 1): string {
   const query = new URLSearchParams({
     check_name: name,
+    filter: "all",
     per_page: "100",
     page: String(page),
   });
@@ -350,6 +351,133 @@ Deno.test("a branch name or an abbreviated SHA is refused before the call", asyn
   }
   // Nothing was sent: the guard runs before the transport is built.
   assertEquals(calls.length, 0);
+});
+
+Deno.test("the listing asks for every check run, not just the latest per name", async () => {
+  // GitHub's default is filter=latest, which returns at most one run per name.
+  // On a commit that already carries two, the one being looked for may not be
+  // in the response at all — and this would create a third.
+  const { fetch, calls } = fakeFetch({
+    ...noneYet("gate"),
+    "POST /check-runs": { status: 201, body: { id: 1, html_url: "u" } },
+  });
+  await postCheckRun((s) =>
+    s.repo("acme/app").token("t").name("gate").headSha(SHA)
+      .conclusion("success").fetch(fetch)
+  );
+  assertStringIncludes(calls[0].path, "filter=all");
+});
+
+Deno.test("a check run owned by another app is not updated but replaced", async () => {
+  // A check run may only be updated by the app that created it. During a
+  // migration the same name is often still produced by the workflow being
+  // replaced, owned by a different app — and a refusal that propagated would
+  // repeat on every re-drive, leaving a required context never posted at all.
+  const { fetch, calls } = fakeFetch({
+    [listPath("CI / Required checks")]: {
+      status: 200,
+      body: {
+        total_count: 1,
+        check_runs: [{ id: 99, name: "CI / Required checks" }],
+      },
+    },
+    "PATCH /check-runs/99": {
+      status: 403,
+      body: { message: "Resource not accessible by integration" },
+    },
+    "POST /check-runs": { status: 201, body: { id: 100, html_url: "u" } },
+  });
+  const result = await postCheckRun((s) =>
+    s.repo("acme/app").token("t").name("CI / Required checks").headSha(SHA)
+      .conclusion("failure").fetch(fetch)
+  );
+  assertEquals(result.created, true);
+  assertEquals(result.id, 100);
+  assertEquals(calls.map((c) => c.method), ["GET", "PATCH", "POST"]);
+});
+
+Deno.test("a refused create is not masked by the update fallback", async () => {
+  // The fallback must not turn a token that genuinely lacks checks:write into
+  // silence: the create is refused too, and that error is the one to report.
+  const { fetch } = fakeFetch({
+    [listPath("gate")]: {
+      status: 200,
+      body: { total_count: 1, check_runs: [{ id: 99, name: "gate" }] },
+    },
+    "PATCH /check-runs/99": { status: 403, body: { message: "nope" } },
+    "POST /check-runs": { status: 403, body: { message: "still nope" } },
+  });
+  const error = await assertRejects(
+    () =>
+      postCheckRun((s) =>
+        s.repo("acme/app").token("t").name("gate").headSha(SHA)
+          .conclusion("success").fetch(fetch)
+      ),
+    GhApiError,
+  );
+  assertStringIncludes(error.message, "still nope");
+});
+
+Deno.test("an update failure that is not a refusal propagates", async () => {
+  // A 500 says nothing about ownership. Creating a second check run because
+  // the server had a bad minute is the duplicate this function exists to avoid.
+  const { fetch, calls } = fakeFetch({
+    [listPath("gate")]: {
+      status: 200,
+      body: { total_count: 1, check_runs: [{ id: 99, name: "gate" }] },
+    },
+    "PATCH /check-runs/99": { status: 500, body: { message: "server error" } },
+  });
+  await assertRejects(
+    () =>
+      postCheckRun((s) =>
+        s.repo("acme/app").token("t").name("gate").headSha(SHA)
+          .conclusion("success").fetch(fetch)
+      ),
+    GhApiError,
+  );
+  assertEquals(calls.filter((c) => c.method === "POST").length, 0);
+});
+
+Deno.test("an update rewrites the output panel rather than leaving a stale one", async () => {
+  // A partial update would leave the previous attempt's text under this
+  // attempt's conclusion — "12 of 12 checks passed" above a failure.
+  const { fetch, calls } = fakeFetch({
+    [listPath("gate")]: {
+      status: 200,
+      body: { total_count: 1, check_runs: [{ id: 7, name: "gate" }] },
+    },
+    "PATCH /check-runs/7": { status: 200, body: { id: 7, html_url: "u" } },
+  });
+  await postCheckRun((s) =>
+    s.repo("acme/app").token("t").name("gate").headSha(SHA)
+      .conclusion("failure").fetch(fetch)
+  );
+  assertEquals(calls[calls.length - 1].body.output, {
+    title: "gate",
+    summary: "",
+  });
+});
+
+Deno.test("a caller with no external id does not adopt one that has it", async () => {
+  // The isolation has to hold from both sides, or the setting only protects
+  // the caller that remembered to set it.
+  const { fetch, calls } = fakeFetch({
+    [listPath("gate")]: {
+      status: 200,
+      body: {
+        total_count: 1,
+        check_runs: [{ id: 20, name: "gate", external_id: "someone-else" }],
+      },
+    },
+    "POST /check-runs": { status: 201, body: { id: 21, html_url: "u" } },
+  });
+  const result = await postCheckRun((s) =>
+    s.repo("acme/app").token("t").name("gate").headSha(SHA)
+      .conclusion("success").fetch(fetch)
+  );
+  assertEquals(result.created, true);
+  assertEquals(calls.filter((c) => c.method === "PATCH").length, 0);
 });
 
 Deno.test("the repo and token fall back to the Actions environment", async () => {

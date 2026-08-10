@@ -101,11 +101,18 @@ await GhTasks.checkRun((s) =>
 
 - **Upsert by convergence, not atomically.** The lookup and the write are two
   calls, so two callers racing on a commit with no check run yet can both create
-  one. What it removes is the _serial_ duplicate — the retry, the re-drive —
-  which is the case that actually happens.
+  one, and nothing here orders two conclusions written at the same moment. What
+  it removes is the _serial_ duplicate — the retry, the re-drive — which is the
+  case that actually happens. Callers that need one answer must agree on it
+  before they get here.
 - **`externalId` is identity, when set.** Only a check run carrying that id is a
-  candidate, so two callers reporting under one context stay distinct. Without
-  one, the name alone decides, and the newest match wins.
+  candidate, so two callers reporting under one context stay distinct — and the
+  match is symmetric, so a caller that sets no id never adopts one that did.
+  With no id on either side, the name alone decides and the newest wins.
+- **A check run owned by another app is replaced, not updated.** Only the app
+  that created a check run may update it, so a refusal means "not ours" and a
+  new one is posted instead. That is what keeps this working during a migration,
+  while the workflow being replaced still posts the same name.
 - **Completed only.** A conclusion is required: a pending check run whose poster
   dies never settles, and for a required context that is a pull request that can
   never merge.

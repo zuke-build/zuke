@@ -9,10 +9,16 @@
  * and which one is newest is decided by whichever caller happened to finish
  * last.
  *
- * So this operation looks first. It is the piece that lets everything upstream
- * of it be honestly at-least-once: retry as often as you like, and the commit
- * still carries exactly one check run of that name, holding the conclusion of
- * the most recent attempt.
+ * So this operation looks first, and updates what it finds. That is what lets
+ * everything upstream of it be honestly at-least-once: a retry, a re-drive, or
+ * a supervisor finishing a dead process's work converges on one check run
+ * rather than adding another.
+ *
+ * It converges; it does not serialise. The lookup and the write are two calls,
+ * so two callers racing on a commit that has no check run yet can still each
+ * create one, and nothing here orders two conclusions written at the same
+ * moment. Callers that need one answer must agree on it before they get here —
+ * which is exactly what computing it from a run's durable outcomes does.
  *
  * @module
  */
@@ -21,6 +27,7 @@ import {
   caller,
   DEFAULT_BASE_URL,
   env,
+  GhApiError,
   type GhCall,
   isRecord,
   readNumber,
@@ -290,12 +297,26 @@ export async function postCheckRun(
     settings.externalId_,
   );
   if (existing !== undefined) {
-    const updated = await call("PATCH", `/check-runs/${existing}`, body);
-    return {
-      id: readNumber(updated, "id", "check run"),
-      url: readString(updated, ["html_url"], "check run"),
-      created: false,
+    // The output panel is rewritten on every update, even when this call named
+    // neither half of it. A partial update would leave the previous attempt's
+    // text under this attempt's conclusion — "12 of 12 checks passed" above a
+    // failure — which is worse than an empty panel.
+    const update = {
+      ...body,
+      output: {
+        title: settings.title_ ?? name,
+        summary: settings.summary_ ?? "",
+      },
     };
+    const updated = await update_(call, existing, update);
+    if (updated !== undefined) {
+      return {
+        id: readNumber(updated, "id", "check run"),
+        url: readString(updated, ["html_url"], "check run"),
+        created: false,
+      };
+    }
+    // The check run is not ours to update — fall through and post our own.
   }
   // `head_sha` is create-only — an update cannot move a check run to another
   // commit, so it is sent here and nowhere else.
@@ -308,6 +329,39 @@ export async function postCheckRun(
     url: readString(created, ["html_url"], "check run"),
     created: true,
   };
+}
+
+/**
+ * Update `id`, or report that it cannot be updated by this caller.
+ *
+ * A check run may only be updated by the GitHub App that created it; anyone
+ * else is refused. That is not an edge case here — the name this posts under is
+ * a required status context, and during a migration the same name is often
+ * still being produced by the workflow being replaced, owned by a different
+ * app. Left to propagate, the refusal would repeat identically on every
+ * re-drive and the context would never be posted at all, which for a required
+ * check means a pull request nobody can merge.
+ *
+ * So a refusal means "not ours", and posting our own is the answer. A token
+ * that genuinely lacks `checks: write` is not masked: the create that follows
+ * is refused too, and that error is the one the caller sees.
+ */
+async function update_(
+  call: GhCall,
+  id: number,
+  body: Record<string, unknown>,
+): Promise<unknown | undefined> {
+  try {
+    return await call("PATCH", `/check-runs/${id}`, body);
+  } catch (error) {
+    if (
+      error instanceof GhApiError &&
+      (error.status === 403 || error.status === 404)
+    ) {
+      return undefined;
+    }
+    throw error;
+  }
 }
 
 /**
@@ -330,6 +384,12 @@ async function findCheckRun(
 ): Promise<number | undefined> {
   const query = new URLSearchParams({
     check_name: name,
+    // `filter` defaults to `latest`, which returns at most **one** check run per
+    // name — so on a commit that already carries two, the one this call is
+    // looking for may not be in the response at all, and it would create a
+    // third. Everything below (matching on external id, taking the newest of
+    // several) only means anything with the full list.
+    filter: "all",
     per_page: "100",
   });
   let page = 1;
@@ -350,7 +410,10 @@ async function findCheckRun(
     for (const run of runs) {
       if (!isRecord(run)) continue;
       if (run.name !== name) continue;
-      if (externalId !== undefined && run.external_id !== externalId) continue;
+      // Symmetric on purpose. Matching only when *this* call sets an id would
+      // let an id-less caller adopt a check run that belongs to one that does,
+      // which is the isolation the setting is documented to provide.
+      if (String(run.external_id ?? "") !== (externalId ?? "")) continue;
       const id = run.id;
       if (typeof id !== "number") continue;
       if (best === undefined || id > best) best = id;
