@@ -68,6 +68,57 @@ await run(Release);
 - **Auth** uses `GH_TOKEN` / `GITHUB_TOKEN`; the GitHub API is an injectable
   transport, so builds are testable without hitting GitHub.
 
+## Post a check run without duplicating it
+
+`GhTasks.checkRun` posts a **completed** check run for a commit, updating the
+one already there instead of creating a second. The GitHub API is create-only,
+so a caller that retries — a re-run step, a supervisor finishing work a dead
+process started — otherwise leaves several check runs of one name on a commit,
+and the newest silently wins. That matters when the name is a **required status
+context**.
+
+```ts
+import { GhTasks } from "jsr:@zuke/gh";
+
+// A token scoped to this one job: `checks: write` and nothing else.
+const { token } = await GhTasks.appToken((s) =>
+  s.appId(appId).privateKey(key).repositories("acme/app").permission(
+    "checks",
+    "write",
+  )
+);
+
+await GhTasks.checkRun((s) =>
+  s.repo("acme/app")
+    .name("CI / Required checks")
+    .headSha(headSha) // pinned when the work started, not resolved now
+    .conclusion(passed ? "success" : "failure")
+    .summary("11 of 12 checks passed")
+    .externalId(`${runId}/gate`)
+    .token(token)
+);
+```
+
+- **Upsert by convergence, not atomically.** The lookup and the write are two
+  calls, so two callers racing on a commit with no check run yet can both create
+  one, and nothing here orders two conclusions written at the same moment. What
+  it removes is the _serial_ duplicate — the retry, the re-drive — which is the
+  case that actually happens. Callers that need one answer must agree on it
+  before they get here.
+- **`externalId` is identity, when set.** Only a check run carrying that id is a
+  candidate, so two callers reporting under one context stay distinct — and the
+  match is symmetric, so a caller that sets no id never adopts one that did.
+  With no id on either side, the name alone decides and the newest wins.
+- **A check run owned by another app is replaced, not updated.** Only the app
+  that created a check run may update it, so a refusal means "not ours" and a
+  new one is posted instead. That is what keeps this working during a migration,
+  while the workflow being replaced still posts the same name.
+- **Completed only.** A conclusion is required: a pending check run whose poster
+  dies never settles, and for a required context that is a pull request that can
+  never merge.
+- **Pin the head SHA.** Resolving it at post time reports on whatever has been
+  pushed since — a green required check on a commit nothing tested.
+
 <!-- ZUKE:API:START -->
 
 ## API
@@ -127,6 +178,9 @@ async function mintAppToken(configure?: Configure<GhAppTokenSettings>): Promise<
 
 async function openPullRequest(configure?: (settings: GhPullRequestSettings) => GhPullRequestSettings): Promise<GhPullRequestResult>
   Perform the configured pull request.
+
+async function postCheckRun(configure?: (settings: GhCheckRunSettings) => GhCheckRunSettings): Promise<GhCheckRunResult>
+  Perform the configured check run.
 
 function readWorkflowResult(state: TargetStateHandle): WorkflowResult | undefined
   Read the {@link WorkflowResult} a completed {@link githubWorkflow} wait wrote
@@ -211,6 +265,72 @@ class GhAppTokenSettings
     The path that resolves this app's installation id.
   tokenRequest_(): Record<string, unknown>
     The `access_tokens` request body — only the fields that were narrowed.
+
+class GhCheckRunSettings
+  Settings for posting a completed check run.
+
+  `owner/repo` and the token fall back to the Actions environment, so a job
+  that already has them names only what it is reporting.
+
+  name_?: string
+    The check run's name — half of its identity. Set by {@link name}.
+  headSha_?: string
+    The commit it reports on. Set by {@link headSha}.
+  conclusion_?: GhCheckConclusion
+    The conclusion to report. Set by {@link conclusion}.
+  title_?: string
+    The output panel's title. Set by {@link title}.
+  summary_?: string
+    The output panel's markdown body. Set by {@link summary}.
+  externalId_?: string
+    The caller's own correlation id. Set by {@link externalId}.
+  detailsUrl_?: string
+    Where the check run's "Details" link points. Set by {@link detailsUrl}.
+  repo_?: string
+    `owner/repo`. Set by {@link repo}.
+  token_?: string
+    The token. Set by {@link token}.
+  baseUrl_: string
+    The API root. Set by {@link baseUrl}.
+  fetch_: typeof fetch
+    The `fetch` implementation. Set by {@link fetch}.
+  name(value: string): this
+    The check run's name — what appears in the PR's checks list, and what a
+    branch protection rule names as a required status context.
+  headSha(sha: string): this
+    The full SHA of the commit being reported on.
+
+    Pin this at the start of the work, not when the result is posted. A caller
+    that resolves the head of a pull request at post time reports on whatever
+    has been pushed since — which, for a required context, is a green check on
+    a commit nothing ever tested.
+  conclusion(value: GhCheckConclusion): this
+    The conclusion to report.
+  title(text: string): this
+    The output panel's title. Defaults to the check run's name.
+  summary(markdown: string): this
+    The output panel's body, as markdown.
+  externalId(id: string): this
+    A correlation id of the caller's own, stored on the check run.
+
+    Also what this operation matches on when deciding whether a check run is
+    "the same one": with an external id set, two callers writing the same name
+    on the same commit for different reasons stay distinct, and a re-drive of
+    one of them updates its own check run rather than the other's.
+  detailsUrl(url: string): this
+    Where the check run's "Details" link points.
+  repo(slug: string): this
+    `owner/repo`. Defaults to `GITHUB_REPOSITORY`.
+  token(value: string): this
+    The token to authenticate with. Defaults to `GITHUB_TOKEN`.
+  baseUrl(url: string): this
+    The API root, for GitHub Enterprise.
+  fetch(fn: typeof fetch): this
+    Override the `fetch` implementation (a test seam).
+  repoSlug_(): string
+    The effective `owner/repo`, from the setting or the environment.
+  authToken_(): string
+    The effective token, from the setting or the environment.
 
 class GhCommitSettings
   Settings for committing files through the API.
@@ -484,6 +604,33 @@ interface GhAppTokenResult
   installationId: number
     The installation the token was minted for.
 
+interface GhCheckRunApi
+  The check-run operation {@link GhTasks} exposes.
+
+  checkRun(configure?: (settings: GhCheckRunSettings) => GhCheckRunSettings): Promise<GhCheckRunResult>
+    Post a completed check run for `.headSha(...)` named `.name(...)`, updating
+    the one already on that commit if there is one.
+
+    The lookup and the write are two calls, so this is an upsert by
+    convergence, not an atomic one: two callers racing on a commit that has no
+    check run yet can both find nothing and both create one. What it removes is
+    the serial duplicate — the retry, the re-drive, the supervisor finishing
+    a dead process's work — which is the case that actually happens.
+
+interface GhCheckRunResult
+  The check run a {@link GhCheckRunApi.checkRun} call left on the commit.
+
+  id: number
+    Its numeric id.
+  url: string
+    Its web URL.
+  created: boolean
+    Whether this call created it, as opposed to updating one already there.
+
+    Worth reporting rather than hiding: a caller that expected to create and
+    updated instead has learned that something else posted first, which is the
+    difference between a first attempt and a re-drive.
+
 interface GhCommitApi
   The commit and tag operations {@link GhTasks} exposes.
 
@@ -558,7 +705,7 @@ interface GhSarifUploadResult
   url: string
     The URL that reports whether GitHub finished processing the report.
 
-interface GhTasksApi extends GhAppTokenApi, GhSarifApi, GhCommitApi, GhPullRequestApi
+interface GhTasksApi extends GhAppTokenApi, GhSarifApi, GhCommitApi, GhPullRequestApi, GhCheckRunApi
   The shape of {@link GhTasks}: the `gh` CLI plus the GitHub operations that
   have no CLI subcommand (see {@link GhAppTokenApi}, {@link GhSarifApi}) and
   would otherwise force a build back to a marketplace action.
@@ -599,6 +746,12 @@ type CorrelateMode = "marker" | "created-window"
   - `"created-window"` — claim the `workflow_dispatch` run on the dispatch ref
     created just after dispatch; best-effort, for workflows that can't echo
     the marker (fails loudly if two candidates are in the window).
+
+type GhCheckConclusion = "success" | "failure" | "neutral" | "cancelled" | "skipped" | "timed_out" | "action_required"
+  A check run's conclusion, as GitHub spells them.
+
+  `"stale"` is deliberately absent: GitHub sets it itself and rejects it from a
+  caller.
 
 type GhPermissionLevel = "read" | "write" | "admin"
   A permission level an installation token can be narrowed to.

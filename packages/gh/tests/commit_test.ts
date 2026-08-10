@@ -371,42 +371,55 @@ Deno.test("a slash inside a branch name stays a path separator", async () => {
   assertEquals(seen[0], "/repos/acme/app/git/ref/heads/chore/action-v1.0.3");
 });
 
-Deno.test("the repository slug is encoded too", async () => {
-  // It was interpolated into the same path with no validation at all — the
-  // same primitive, one field over.
-  const seen: string[] = [];
-  const capture = ((url: string | URL | Request) => {
-    seen.push(new URL(String(url)).pathname);
-    return Promise.resolve(
-      new Response(
-        JSON.stringify({ object: { sha: "a" }, tree: { sha: "t" }, sha: "c" }),
-        { status: 200 },
-      ),
-    );
-  }) as typeof fetch;
-
-  await commitFiles((s) =>
-    s.repo("acme/%2e%2e").token("t").branch("main").message("m")
-      .fetch(capture)
-  );
-  assertEquals(seen[0].startsWith("/repos/acme/%252e%252e/"), true);
-  // Every request stayed under the slug, encoded — none climbed out of it.
-  assertEquals(
-    seen.every((path) => path.startsWith("/repos/acme/%252e%252e/")),
-    true,
-  );
-});
-
-Deno.test("a repository slug that is not owner/name is refused", async () => {
-  // Encoding stops the slug climbing out of `/repos/`, so this is not the
-  // traversal guard. It stops a slug with the wrong number of segments
-  // quietly redirecting a token-bearing request: `a/b/c` would build
-  // `/repos/a/b/c/git/trees`, an endpoint the caller never named.
+Deno.test("a percent-escaped slug is refused rather than relied on to encode", async () => {
+  // This used to assert that `acme/%2e%2e` was encoded to `%252e%252e` and so
+  // could not climb out of `/repos/`. Encoding does hold, and still runs — but
+  // it was the *only* thing standing between a slug and a redirected
+  // token-bearing request, and it does not cover a literal `..`, which
+  // `encodeURIComponent` leaves alone. A GitHub repository name contains none
+  // of these characters, so the slug is now refused outright and the encoding
+  // is defence in depth rather than the defence.
   const reject = (() => {
     throw new Error("no request should have been made");
   }) as typeof fetch;
 
-  for (const slug of ["acme", "acme/app/extra", "/app", "acme/", "", "/"]) {
+  let message = "";
+  try {
+    await commitFiles((s) =>
+      s.repo("acme/%2e%2e").token("t").branch("main").message("m")
+        .fetch(reject)
+    );
+  } catch (error) {
+    message = error instanceof Error ? error.message : String(error);
+  }
+  assertEquals(message.includes('expected "owner/name"'), true, message);
+});
+
+Deno.test("a repository slug that is not owner/name is refused", async () => {
+  // Two failures, both of which quietly redirect a token-bearing request.
+  // A slug with the wrong number of segments names a different endpoint:
+  // `a/b/c` builds `/repos/a/b/c/git/trees`. And a `..` segment climbs out of
+  // `/repos/` entirely — encoding does not stop that one, because a literal
+  // `..` is left alone by `encodeURIComponent` and the URL parser then
+  // resolves it.
+  const reject = (() => {
+    throw new Error("no request should have been made");
+  }) as typeof fetch;
+
+  for (
+    const slug of [
+      "acme",
+      "acme/app/extra",
+      "/app",
+      "acme/",
+      "",
+      "/",
+      "../app",
+      "acme/..",
+      "./app",
+      "acme/ap p",
+    ]
+  ) {
     let message = "";
     try {
       await commitFiles((s) =>

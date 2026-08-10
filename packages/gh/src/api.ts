@@ -99,18 +99,30 @@ export function encodePath(value: string): string {
 /**
  * Reject a repository slug that is not exactly `owner/name`.
  *
- * Encoding already stops the slug escaping upwards — a `..` segment survives as
- * a literal name rather than resolving — so this is not the traversal guard.
- * What it stops is a slug with the wrong number of segments silently changing
- * which endpoint is called: `a/b/c` builds `/repos/a/b/c/git/trees`, sending a
- * token-bearing request somewhere the caller never named. The slug is a trust
- * boundary like the ref names beside it, and the ref names are checked.
+ * Two things, and the second used to be missing. A slug with the wrong number
+ * of segments silently changes which endpoint is called: `a/b/c` builds
+ * `/repos/a/b/c/git/trees`, sending a token-bearing request somewhere the
+ * caller never named.
+ *
+ * And the segments have to be checked, not just counted. `encodePath` does not
+ * save us here the way it does for `%2e%2e`: a *literal* `..` is left alone by
+ * `encodeURIComponent`, so `../x` passes a count-only check and the URL parser
+ * then resolves `/repos/../x/commits/…` to `/x/commits/…` — a different
+ * endpoint, with the token attached. GitHub's own names are alphanumerics,
+ * dot, dash and underscore, so requiring exactly that costs nothing and makes
+ * the guard mean what it says.
  */
 export function assertRepoSlug(slug: string): void {
   const parts = slug.split("/");
-  if (parts.length !== 2 || parts.some((part) => part === "")) {
+  const wellFormed = parts.length === 2 &&
+    parts.every((part) =>
+      /^[A-Za-z0-9._-]+$/.test(part) && part !== "." && part !== ".."
+    );
+  if (!wellFormed) {
     throw new Error(
-      `invalid repository ${JSON.stringify(slug)}: expected "owner/name".`,
+      `invalid repository ${JSON.stringify(slug)}: expected "owner/name" ` +
+        `(letters, digits, ".", "-", "_"), and neither segment may be "." ` +
+        `or "..".`,
     );
   }
 }
