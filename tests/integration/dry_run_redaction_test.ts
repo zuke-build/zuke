@@ -83,3 +83,36 @@ Deno.test("a failing command's error message masks a secret argv token", async (
     `secret leaked:\n${err}`,
   );
 });
+
+// A multi-line secret is the case a whole-value match cannot cover. Redaction
+// runs a line at a time, so a key registered only as one string matches no line
+// of itself — masked on its header and printed in the clear from line two on.
+// Shaped like a PEM (the `.secret().from(fileSecret(...))` pattern the docs
+// invite) but deliberately not credential-like, for the gitleaks reason above.
+const MULTILINE_SECRET = [
+  "-----BEGIN FAKE TEST KEY-----",
+  "line-one-not-a-real-key-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "line-two-not-a-real-key-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "-----END FAKE TEST KEY-----",
+].join("\n");
+
+Deno.test("every line of a multi-line secret is masked in a command echo", async () => {
+  const { code, out } = await runCli(Deploy, [
+    "push",
+    "--dry-run",
+    "--token",
+    MULTILINE_SECRET,
+  ]);
+  assertEquals(code, 0);
+  const body = withoutMaskDirectives(out);
+  // No line of the key survives anywhere — the continuation lines are the ones
+  // an exact whole-value match would have missed.
+  for (const line of MULTILINE_SECRET.split("\n")) {
+    assertEquals(
+      body.includes(line),
+      false,
+      `secret line leaked: ${line}\n${out}`,
+    );
+  }
+  assertStringIncludes(out, REDACTED);
+});

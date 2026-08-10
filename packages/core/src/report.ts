@@ -53,13 +53,43 @@ export interface TargetReport {
 }
 
 /**
+ * Escape a value interpolated into the body of a GitHub Actions workflow
+ * command (`::error::<data>`).
+ *
+ * A workflow command is terminated by the end of its line, so a value carrying
+ * a newline continues into what the runner parses as a *fresh* command. A
+ * target's failure message embeds a subprocess's stderr verbatim, which is not
+ * ours to trust: a tool that writes `::stop-commands::` on a line of its own
+ * would otherwise suspend the runner's command processing, and one that writes
+ * `::error::` would forge an annotation. Percent-encoding is the escape the
+ * Actions spec defines for exactly this, and `%` is encoded first so the
+ * encoding cannot be spoofed by a literal `%0A` in the input.
+ */
+export function escapeData(value: string): string {
+  return value
+    .replaceAll("%", "%25")
+    .replaceAll("\r", "%0D")
+    .replaceAll("\n", "%0A");
+}
+
+/**
+ * Escape a value interpolated into a workflow command's **property** list
+ * (`::error title=<property>::`). Properties are comma-separated and
+ * colon-terminated, so those two characters need encoding on top of what
+ * {@link escapeData} handles.
+ */
+export function escapeProperty(value: string): string {
+  return escapeData(value).replaceAll(":", "%3A").replaceAll(",", "%2C");
+}
+
+/**
  * The ruled header that opens a target's section in the terminal. Two `═` rules
  * frame the target name (bold cyan), so the stream is easy to scan into blocks.
  * In GitHub Actions, a `::group::` command is used instead — the collapsible
  * group is the visual boundary there.
  */
 export function targetHeader(style: Style, name: string): string[] {
-  if (style.github) return [`::group::${name}`];
+  if (style.github) return [`::group::${escapeData(name)}`];
   const top = line(style);
   const label = paint(style.color, SGR.bold + SGR.cyan, name);
   return [top, label, top];
@@ -102,7 +132,13 @@ export function targetFailFooter(
   if (!style.github) return { info: [], error: [line, detail] };
   return {
     info: ["::endgroup::"],
-    error: [line, detail, `::error title=${name}::${name} failed: ${message}`],
+    error: [
+      line,
+      detail,
+      `::error title=${escapeProperty(name)}::${
+        escapeData(`${name} failed: ${message}`)
+      }`,
+    ],
   };
 }
 

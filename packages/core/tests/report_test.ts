@@ -1,4 +1,4 @@
-import { assertEquals } from "./_assert.ts";
+import { assertEquals, assertStringIncludes } from "./_assert.ts";
 import {
   closingLine,
   formatDuration,
@@ -171,4 +171,49 @@ Deno.test("jobSummaryMarkdown uses ✅ on a successful build", () => {
     true,
   );
   assertEquals(md.startsWith("## ✅ Zuke build — 1/1 targets in 0.0s"), true);
+});
+
+// A workflow command ends at its line break, so any value interpolated into one
+// must not be able to introduce a second. A target's failure message embeds a
+// subprocess's stderr verbatim (see CommandError), which is not ours to trust.
+Deno.test("a failure annotation cannot be broken out of with a newline", () => {
+  const hostile = new Error(
+    "build failed\n::stop-commands::abc\n::error::forged annotation",
+  );
+  const out = targetFailFooter(GITHUB, "deploy", 100, hostile);
+  const annotation = out.error.find((l) => l.startsWith("::error "));
+  assertEquals(annotation !== undefined, true);
+  // Exactly one physical line: nothing the message carried became a command.
+  // The `::stop-commands::` text itself is still there and is meant to be — a
+  // workflow command is only a command at the start of its own line, so once
+  // the newlines are encoded it is inert prose the reader can still see.
+  assertEquals(annotation?.includes("\n"), false);
+  assertEquals(annotation?.split("\n").length, 1);
+  // The text survives, percent-encoded per the Actions spec.
+  assertStringIncludes(annotation ?? "", "%0A");
+  assertStringIncludes(annotation ?? "", "stop-commands");
+});
+
+Deno.test("a percent in a failure message cannot spoof an escape", () => {
+  // `%` is encoded first, so a literal `%0A` in the input stays literal rather
+  // than being handed to the runner as an encoded newline.
+  const out = targetFailFooter(GITHUB, "deploy", 100, new Error("done 100%0A"));
+  const annotation = out.error.find((l) => l.startsWith("::error "));
+  assertStringIncludes(annotation ?? "", "100%250A");
+});
+
+Deno.test("an annotation title escapes the property separators too", () => {
+  // A property list is comma-separated and colon-terminated, so a name carrying
+  // either would otherwise end the title early and inject another property.
+  const out = targetFailFooter(GITHUB, "deploy:1,2", 100, new Error("nope"));
+  const annotation = out.error.find((l) => l.startsWith("::error "));
+  assertStringIncludes(annotation ?? "", "title=deploy%3A1%2C2::");
+});
+
+Deno.test("a group header cannot be broken out of either", () => {
+  // A fan-out child's name is derived from a runtime list, so it is not
+  // guaranteed to be an identifier.
+  const [header] = targetHeader(GITHUB, "deploy[a\n::error::forged]");
+  assertEquals(header.includes("\n"), false);
+  assertStringIncludes(header, "%0A");
 });
