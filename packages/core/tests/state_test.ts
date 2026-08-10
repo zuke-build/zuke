@@ -942,7 +942,9 @@ Deno.test("a conflicting re-apply onto a cancelling record loses the write", asy
   store.record.status = "cancelling";
   store.forceConflicts = 2;
   await writer.markTargetSettled("deploy", "passed");
-  assertEquals(warnings.some((w) => w.includes("cancelled elsewhere")), true);
+  // "settled elsewhere" rather than "cancelled": the same window is now reached
+  // by a sweep failing an abandoned run as well as by an operator cancelling.
+  assertEquals(warnings.some((w) => w.includes("settled elsewhere")), true);
   assertEquals(writer.snapshot().degraded, true);
   assertEquals(aborted, true);
 });

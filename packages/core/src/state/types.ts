@@ -197,6 +197,28 @@ export interface RunRecord {
    * *not* set it. Absent (or `false`) means no write is known to be missing.
    */
   degraded?: boolean;
+  /**
+   * ISO-8601 wall-clock deadline for the whole run, stamped once at creation
+   * from `Build.deadline()`. Absent when the build sets none.
+   *
+   * A budget for *running*, not for existing. A run parked at an approval gate
+   * is not spending it — its budget there is the wait's own timeout — so only a
+   * sweep over `running` runs consults this.
+   */
+  deadlineAt?: string;
+  /**
+   * The terminal status the process that moved this run to `cancelling` means
+   * to leave it in. Absent means `cancelled`, which is what an ordinary
+   * `zuke cancel` intends and what every record written before this field
+   * existed meant.
+   *
+   * Recorded rather than inferred, because the settlement can be finished by a
+   * *different* process than the one that began it: a canceller that crashes
+   * leaves the run `cancelling`, and whoever recovers it has no other way to
+   * know whether an operator was cancelling the run or a sweep was failing an
+   * abandoned one.
+   */
+  intendedTerminal?: RunStatus;
 }
 
 /** A compact run listing row, returned by {@link "./store.ts".StateStore.listRuns}. */
@@ -586,7 +608,7 @@ export function parseRunRecord(text: string): RunRecord {
     for (const value of object.events) events.push(parseRunEvent(value));
   }
 
-  return {
+  const record: RunRecord = {
     id: str(object, "id"),
     build: str(object, "build"),
     rootTarget: str(object, "rootTarget"),
@@ -603,6 +625,19 @@ export function parseRunRecord(text: string): RunRecord {
     // so an older record reads back as trustworthy.
     degraded: optionalFlag(object, "degraded"),
   };
+  // Optional and only when present, so a round-trip preserves the exact key set
+  // and a record written before these existed parses unchanged.
+  const deadlineAt = optionalStr(object, "deadlineAt");
+  if (deadlineAt !== undefined) record.deadlineAt = deadlineAt;
+  const intended = optionalStr(object, "intendedTerminal");
+  if (intended !== undefined) {
+    const found = RUN_STATUSES.find((s) => s === intended);
+    if (found === undefined) {
+      throw new Error(`state: unknown intended terminal status "${intended}"`);
+    }
+    record.intendedTerminal = found;
+  }
+  return record;
 }
 
 /** A `filter` type guard that narrows to `string`. */

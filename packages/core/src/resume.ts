@@ -22,6 +22,7 @@ import { cancelRun } from "./cancel.ts";
 import { execute, type Reporter } from "./executor.ts";
 import type { Plugin } from "./plugin.ts";
 import { planGraph } from "./graph.ts";
+import { reapAbandoned, recoverStranded } from "./reap.ts";
 import { acquireLease, RUN_LEASE_PREFIX } from "./state/run_lease.ts";
 import type { JsonValue, TargetBuilder } from "./target.ts";
 import { absolutePath } from "./path.ts";
@@ -288,9 +289,23 @@ async function transitionToRunning(
     const next = structuredClone(record);
     next.status = "running";
     next.actor = resumerActor;
-    next.updatedAt = now();
+    const at = now();
+    // Give back the time the run spent parked. A run's deadline is a budget for
+    // *running*, and a run waiting at a gate is not spending it — a 45-minute
+    // budget behind a 72-hour approval gate would otherwise be exhausted before
+    // anyone could approve, and the run would be settled the instant it woke up.
+    // `updatedAt` is when it suspended, so the gap is exactly what it was parked
+    // for.
+    if (next.deadlineAt !== undefined) {
+      const parked = Date.parse(at) - Date.parse(record.updatedAt);
+      const deadline = Date.parse(next.deadlineAt);
+      if (Number.isFinite(parked) && parked > 0 && Number.isFinite(deadline)) {
+        next.deadlineAt = new Date(deadline + parked).toISOString();
+      }
+    }
+    next.updatedAt = at;
     if (signal !== undefined) {
-      next.signals[signal] = { data, receivedAt: now() };
+      next.signals[signal] = { data, receivedAt: at };
     }
     const result = await store.putRun(next, version);
     if (result.ok) return { record: next, version: result.version };
@@ -530,10 +545,38 @@ export async function resumeCheck(
   if (store === undefined) {
     throw new Error("resume --check: no state store is configured.");
   }
+  // Reap first, so a run whose process died is back to `suspended` in time for
+  // this same pass to resume it — otherwise every abandoned run would wait a
+  // whole sweep interval for nothing but a state transition.
+  const actor = resolveActor(options.actor, readEnv);
+  const reaped = await reapAbandoned({
+    build,
+    store,
+    actor,
+    reporter,
+    now: () => new Date().toISOString(),
+    ...(options.runId === undefined ? {} : { runId: options.runId }),
+    ...(options.silent === undefined ? {} : { silent: options.silent }),
+  });
+  // And finish anything a settlement left stranded, which no other sweep looks
+  // at either.
+  // Also for a single-run sweep: a plane that sweeps one run at a time is
+  // exactly the one that would otherwise never recover it, and a run left
+  // `cancelling` is non-terminal, so nothing else looks at it either.
+  const recovered = await recoverStranded({
+    build,
+    store,
+    actor,
+    reporter,
+    now: () => new Date().toISOString(),
+    ...(options.runId === undefined ? {} : { runId: options.runId }),
+    ...(options.silent === undefined ? {} : { silent: options.silent }),
+  });
+
   const ids = options.runId !== undefined
     ? [options.runId]
     : (await store.listRuns({ status: "suspended" })).map((s) => s.id);
-  let failed = 0;
+  let failed = reaped.failed + recovered.failed;
   for (const id of ids) {
     try {
       const result = await resumeRun(build, { ...options, runId: id });

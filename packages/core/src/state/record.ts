@@ -88,6 +88,8 @@ export interface RunRecordInput {
   order: TargetBuilder[];
   /** All discovered parameters (secrets are skipped when copying values). */
   params: Iterable<AnyParameter>;
+  /** ISO-8601 deadline for the whole run, when the build sets one. */
+  deadlineAt?: string;
 }
 
 /**
@@ -120,6 +122,10 @@ export function buildRunRecord(input: RunRecordInput): RunRecord {
     build: input.build,
     rootTarget: input.rootTarget,
     status: "running",
+    // Stamped here and never again. A deadline that were recomputed on each
+    // resume would move forward every time, so a run could never reach it —
+    // the same trap the wait deadlines avoid by being recorded once.
+    ...(input.deadlineAt === undefined ? {} : { deadlineAt: input.deadlineAt }),
     actor: input.actor,
     createdAt: input.now,
     updatedAt: input.now,

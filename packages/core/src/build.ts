@@ -166,6 +166,39 @@ export class Build {
   }
 
   /**
+   * A wall-clock budget for a whole run, after which a reaping sweep settles it
+   * `failed` — a duration like `"45m"` or milliseconds. No deadline by default.
+   *
+   * It bounds *running*, not existing. A run parked at a `.waitsFor(...)` gate
+   * is not spending it — the deadline is pushed forward on resume by however
+   * long the run was parked, so a build with a 72-hour approval gate and a
+   * 45-minute deadline still has its 45 minutes when the approval arrives. The
+   * waiting is bounded by the gate's own `.timeout()`.
+   *
+   * A run with a live process working on it is never settled for time either:
+   * the sweep asks whether anyone is still there before it looks at the
+   * deadline. Nothing this is for escapes that — a hung process stops renewing
+   * its lease, and a run killed over and over has no holder at all.
+   *
+   * What it is really for is the run that stops making progress without failing
+   * — a process that hangs, or one killed so hard that its work is repeatedly
+   * picked up and abandoned again. Without a deadline such a run has no end
+   * state at all; with one it reaches a terminal status, which is what anything
+   * downstream is waiting for.
+   *
+   * ```ts
+   * class Ci extends Build {
+   *   override deadline() {
+   *     return "45m";
+   *   }
+   * }
+   * ```
+   */
+  deadline(): string | number | undefined {
+    return undefined;
+  }
+
+  /**
    * Extra **soft ordering edges** to impose on the plan, beyond the `dependsOn`
    * / `before` / `after` declared on targets. Override to feed an external graph
    * — e.g. a monorepo's `dependency-graph.json` — into scheduling without wiring

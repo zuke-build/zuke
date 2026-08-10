@@ -218,6 +218,85 @@ its recorded `onTimeout` disposition:
 Timeouts are enforced lazily on any `zuke resume`/`resume --check`, so a single
 cron that sweeps suspended runs also enforces every deadline.
 
+### Abandoned runs — reaping
+
+A run that ends cleanly settles itself, and a run that suspends is picked up by
+the sweep above. A run whose process was **killed** does neither: it stays
+`running`, and a resume only ever acts on `suspended` runs. Anything that run
+recorded as owed — a [crash-durable effect](./run-context.md) above all — would
+wait forever.
+
+`zuke resume --check` now looks at `running` runs first, before it sweeps the
+suspended ones:
+
+- **Is anyone still there?** — asked first, always. The run's
+  [lease](./locks.md#the-runs-own-lease) answers it: a live process keeps
+  renewing, so a lease that can be acquired means its holder is gone; one that
+  cannot means the run is merely slow, and slow is left alone. A live run is
+  never settled or moved, deadline or no deadline, because doing so would run its
+  compensations beside the work they undo.
+- **Nobody there** → the run goes back to `suspended`, with a `reap` event on
+  its audit trail saying why. The same sweep then resumes it, so an abandoned
+  run is recovered in one pass rather than waiting another interval for nothing
+  but a state change.
+- **Nobody there, and past its `deadline()`** → the run is settled **`failed`**,
+  compensations and all. It did not stop because anyone asked; it ran out of
+  time, and anything waiting on it needs an answer rather than silence.
+- **Only this build's runs.** A state store is commonly shared, and a listing has
+  no build filter, so the sweep skips runs it does not recognise: the record's
+  build name and its root target must both be this build's. Acting on another
+  build's run would find none of its targets and settle it with its
+  compensations silently skipped.
+
+  Before *settling* a run — which is irreversible, and runs its compensations —
+  the graph has to agree as well, because a class name is not an identity and
+  `Ci` is a name half an organisation's repos will use. Handing a run back to
+  `suspended` asks only the looser question, since that is reversible and a
+  resume refuses a graph it does not recognise with an error naming the drift.
+
+  What no check here can see: two builds that share a class name, a root-target
+  name **and** a graph shape are indistinguishable in a run record, even though
+  their target *bodies* may do entirely different things. If several repos share
+  one state service and any of them might collide that way, give each its own
+  store — a separate `ZUKE_STATE_DIR`, or a distinct prefix or instance behind
+  `ZUKE_STATE_URL`. That is the only way to make the question unambiguous, and it
+  costs nothing when the runs were never meant to be pooled.
+
+A run left `cancelling` by a settlement whose own process died is finished too,
+in whichever terminal that settlement was heading for — recorded on the run,
+because the process that finishes it is not the one that began it.
+
+### `Build.deadline()`
+
+A wall-clock budget for a whole run. It bounds **running**, not existing:
+
+```ts
+class Ci extends Build {
+  override deadline() {
+    return "45m";
+  }
+}
+```
+
+A run parked at a `.waitsFor(...)` gate is not spending it: the deadline is
+pushed forward on resume by however long the run was parked, so a build with a
+72-hour approval gate and a 45-minute deadline still has its 45 minutes of
+running time when the approval finally arrives. The gate's own `.timeout()` is
+what bounds the waiting.
+
+A live run is never settled for time, either — the sweep asks whether anyone is
+still working on the run before it looks at the deadline, and leaves it alone if
+someone is. That costs nothing the deadline was for: a process that hangs stops
+renewing its lease, and a run killed and abandoned repeatedly has no holder at
+all. What it rules out is settling a run underneath a process that is still
+working on it.
+
+What it is really for is the run that stops making progress without failing: a
+process that hangs, or one killed so hard that its work is picked up and
+abandoned repeatedly. Without a deadline such a run has no end state at all;
+with one it reaches a terminal status, which is what anything downstream is
+waiting for.
+
 ## State is the only thing that crosses the boundary
 
 A resume is a **fresh process**: the in-memory world of the suspending run is
