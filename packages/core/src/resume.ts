@@ -22,6 +22,7 @@ import { cancelRun } from "./cancel.ts";
 import { execute, type Reporter } from "./executor.ts";
 import type { Plugin } from "./plugin.ts";
 import { planGraph } from "./graph.ts";
+import { acquireLease, RUN_LEASE_PREFIX } from "./state/run_lease.ts";
 import type { JsonValue, TargetBuilder } from "./target.ts";
 import { absolutePath } from "./path.ts";
 import { findConfigDir, pathExists } from "./config.ts";
@@ -171,16 +172,47 @@ export async function resumeRun(
     throw degradedRecordError(options.runId);
   }
 
-  // Transition suspended → running (exactly one resumer wins).
-  const { record, version } = await transitionToRunning(
+  // Take the run's lease before moving it out of `suspended`, so the record is
+  // never `running` in the store without a live holder — the pairing a reaping
+  // sweep reads to tell an abandoned run from a working one. A resumer that
+  // cannot get the lease is not the owner: another process is already driving
+  // this run, which is the same answer `AlreadyResumedError` gives, from the
+  // other side of the same race.
+  const lease = await acquireLease(
     store,
+    RUN_LEASE_PREFIX,
     options.runId,
-    initial,
     resumerActor,
     now,
-    options.signal,
-    options.data ?? {},
   );
+  if (lease === null) {
+    throw new AlreadyResumedError(
+      options.runId,
+      initial.record.actor,
+      initial.record.updatedAt,
+    );
+  }
+
+  // Transition suspended → running (exactly one resumer wins).
+  let record: RunRecord;
+  let version: string;
+  try {
+    ({ record, version } = await transitionToRunning(
+      store,
+      options.runId,
+      initial,
+      resumerActor,
+      now,
+      options.signal,
+      options.data ?? {},
+    ));
+  } catch (error) {
+    // Losing the compare-and-swap means this process never owned the run, so it
+    // must not keep a claim on it — otherwise the winner's own lease attempt, or
+    // a later sweep, would see a holder that is doing nothing.
+    await lease.release();
+    throw error;
+  }
 
   // Targets recorded `succeeded` do not re-run; everything else does. On a
   // degraded record (only reachable with the override) that is exactly the risk
@@ -192,16 +224,24 @@ export async function resumeRun(
       .map(([name]) => name),
   );
 
-  return await execute(build, root, {
-    stateStore: store,
-    params: { ...record.params, ...(options.params ?? {}) },
-    readEnv,
-    actor: resumerActor,
-    silent: options.silent,
-    reporter: options.reporter,
-    plugins: options.plugins,
-    resume: { record, version, done },
-  });
+  // This scope took the lease, so this scope gives it back — on every path out,
+  // including one where `execute` throws before it could settle the run. The
+  // alternative is a claim held by nobody until its TTL lapses, which would make
+  // a run that has demonstrably stopped look like one still being worked on.
+  try {
+    return await execute(build, root, {
+      stateStore: store,
+      params: { ...record.params, ...(options.params ?? {}) },
+      readEnv,
+      actor: resumerActor,
+      silent: options.silent,
+      reporter: options.reporter,
+      plugins: options.plugins,
+      resume: { record, version, done, lease },
+    });
+  } finally {
+    await lease.release();
+  }
 }
 
 /** Resolve the store for a resume — like a normal run, but always defaulting on. */

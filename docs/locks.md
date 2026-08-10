@@ -76,3 +76,44 @@ Acquisition is atomic. Two runs racing for the same free key → **exactly one**
 acquires; the other gets the conflict. An expired lock is taken over atomically.
 The filesystem backend is single-host (an `O_EXCL` marker serialises
 acquisition); the HTTP backend uses the same optimistic model across hosts.
+
+## The run's own lease
+
+Separately from any lock a target declares, a run with a
+[state store](./state.md) holds a **lease** on itself for as long as it is
+running: `zuke-run-<run-id>`, taken before the record is written `running` and
+released when the run settles. It is renewed by a background heartbeat at half
+its 60-second TTL.
+
+Its whole job is to make "slow" and "dead" different things. A run record cannot
+tell them apart on its own — a process mid-step and a process that was
+`SIGKILL`ed both leave a record that says `running` and stops changing. The lease
+answers it: a live holder keeps renewing, so a claim that has lapsed means the
+holder is gone and the run can be taken over.
+
+- **Ordering matters.** The lease is taken *before* the record says `running`,
+  and on a resume before the record leaves `suspended` — so a `running` record
+  always has a live holder. Acquiring afterwards would leave a window in which a
+  perfectly healthy run looked abandoned.
+- **A resume refuses a run whose holder has not let go.** Two processes working
+  one run is worse than a delayed resume, so the claim is checked before the
+  compare-and-swap and a resumer that cannot take it stops.
+- **Losing it stops the run.** If a renewal is refused — the claim is
+  demonstrably somebody else's now — the run aborts rather than carrying on
+  beside whoever took it over.
+- **A refused renewal is loss; a failed one is not.** A store answers "no" when
+  the claim has changed hands, but it *throws* for a filesystem mutex it could
+  not take in time, or an HTTP 503, or a DNS blip. None of those say who holds
+  the lease, so they are retried on the next tick rather than aborting a healthy
+  build over a bad second.
+- **The heartbeat never keeps a process alive** — and, like any timer, it does
+  not fire while the event loop is blocked in synchronous work. A run that blocks for longer than the TTL can therefore have
+  its lease lapse and be taken over; losing the claim then stops it, so the
+  outcome is a stopped run rather than two writers.
+- **Whoever takes the claim gives it back.** A resume releases the lease it took
+  on every path out, including one where the run fails — a claim held by nobody
+  would make a run that has demonstrably stopped look like one still being
+  worked on. A run that took its own lease releases it when it settles; if that
+  process breaks first, the claim lapses at its TTL instead.
+- **A crashed holder's claim lapses at the TTL.** Nothing polls for it: expiry is
+  evaluated by the store the next time somebody tries to acquire.

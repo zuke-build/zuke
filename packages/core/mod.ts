@@ -142,6 +142,12 @@ export {
   type LockHolder,
   lockKey,
 } from "./src/state/lock.ts";
+export {
+  acquireLease,
+  type HeldLease,
+  RUN_LEASE_PREFIX,
+  RUN_LEASE_TTL_MS,
+} from "./src/state/run_lease.ts";
 export { parseDuration } from "./src/duration.ts";
 export {
   type EffectState,
