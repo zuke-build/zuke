@@ -223,24 +223,6 @@ Deno.test("protection over the plan also gates signal_run and cancel_run", async
   );
 });
 
-Deno.test("a run whose root target no longer exists is denied, not authorized", async () => {
-  await withServer(
-    { allowRun: true, protectPatterns: ["deploy"], operatorToken: "swordfish" },
-    async (server, store) => {
-      // The build was refactored and the root target renamed away. Its plan
-      // cannot be resolved, so its blast radius is unknown — fail closed rather
-      // than let an unmatched name slip past a protect glob.
-      const id = await seedSuspended(store, "targetThatWasDeleted");
-      const signal = await call(server, "signal_run", {
-        runId: id,
-        signal: "go",
-      });
-      assertEquals(signal.isError, true);
-      assertEquals(JSON.parse(signal.text).reason, "unresolved_plan");
-    },
-  );
-});
-
 /** A build that reaches a protected target through `.triggers()`, not `dependsOn`. */
 class Triggering extends Build {
   deploy = target().description("Deploy").executes(() => {});
@@ -370,6 +352,47 @@ Deno.test("the audit trail is not readable over MCP", async () => {
       // …and it is not listed as an ordinary run either.
       const listed = await call(server, "list_runs");
       assertEquals(listed.text.includes(AUDIT_RUN_ID), false);
+    },
+  );
+});
+
+Deno.test("the audit trail stays unreadable under a differently-cased id", async () => {
+  // The store maps a run id straight to `<id>.json` and permits capitals, so on
+  // a case-insensitive volume (macOS, Windows) `MCP-AUDIT` opens the very same
+  // file. An exact-match refusal would hold on Linux and serve the trail on the
+  // other two platforms — so the guard is case-insensitive, and this pins it on
+  // every platform rather than only where the filesystem would expose the gap.
+  await withServer({ allowRun: true, actor: "agent" }, async (server) => {
+    await call(server, "run:lint", {});
+    for (const id of ["MCP-AUDIT", "Mcp-Audit", "mcp-AUDIT"]) {
+      const shown = await call(server, "show_run", { runId: id });
+      assertEquals(shown.isError, true, `${id} was not refused`);
+      assertEquals(JSON.parse(shown.text).error, "not_readable");
+    }
+  });
+});
+
+Deno.test("an unresolvable plan is denied without saying so to the caller", async () => {
+  // The denial must not separate "not in the allow-list" from "no longer in the
+  // build" — that distinction is an existence signal the opaque answer exists
+  // to withhold. The caller sees the collapsed reason; the operator still gets
+  // the precise one from the audit trail.
+  await withServer(
+    {
+      allowRun: true,
+      protectPatterns: ["deploy"],
+      operatorToken: "swordfish",
+      actor: "agent",
+    },
+    async (server, store) => {
+      const id = await seedSuspended(store, "targetThatWasDeleted");
+      const signal = await call(server, "signal_run", {
+        runId: id,
+        signal: "go",
+      });
+      assertEquals(signal.isError, true);
+      assertEquals(JSON.parse(signal.text).reason, "not_allowed");
+      assertEquals(signal.text.includes("unresolved_plan"), false);
     },
   );
 });

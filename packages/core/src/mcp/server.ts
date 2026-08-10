@@ -581,8 +581,10 @@ export class McpServer {
         build: this.build,
         actor,
         readEnv: this.#readEnv,
-        authorize: (targetName, callArgs) =>
-          this.#authorizeTarget(targetName, callArgs),
+        authorize: (targetName, callArgs) => {
+          const denial = this.#authorizeTarget(targetName, callArgs);
+          return denial === null ? null : clientDenial(denial);
+        },
       },
       name,
       args,
@@ -646,12 +648,18 @@ export class McpServer {
     // and so is a protected target with no server-side token configured.
     const denial = this.#authorizeTarget(targetName, args);
     if (denial !== null) {
+      // The precise reason goes to the audit trail, which is operator-only; the
+      // caller gets the collapsed one (see clientDenial).
       await this.#audit(runName, args, "denied", actor, denial);
       return ok(
         id,
         textResult(
           JSON.stringify(
-            { error: "unauthorized", tool: runName, reason: denial },
+            {
+              error: "unauthorized",
+              tool: runName,
+              reason: clientDenial(denial),
+            },
             null,
             2,
           ),
@@ -857,6 +865,21 @@ export class McpServer {
     }
     return out;
   }
+}
+
+/**
+ * The denial reason a *client* is told, collapsing `unresolved_plan` into
+ * `not_allowed`.
+ *
+ * Both mean the same thing to a caller — you may not cause this to run — and
+ * telling them apart on the wire separates a target that is merely outside the
+ * allow-list from one that is no longer in the build at all, which is precisely
+ * the kind of existence signal the opaque `Unknown tool` answer exists to
+ * withhold. The precise reason still reaches the audit trail, which is
+ * operator-only, so nothing is lost where it is actually useful for diagnosis.
+ */
+function clientDenial(reason: string): string {
+  return reason === "unresolved_plan" ? "not_allowed" : reason;
 }
 
 /**

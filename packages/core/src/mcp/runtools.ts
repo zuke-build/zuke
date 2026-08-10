@@ -273,7 +273,21 @@ async function listRuns(
   const runs = await deps.store.listRuns(query);
   // The audit trail rides on a run record, so it would otherwise surface here
   // as an ordinary run. Keep it out of the listing to match `show_run`.
-  return jsonResult(runs.filter((run) => run.id !== AUDIT_RUN_ID));
+  return jsonResult(runs.filter((run) => !isAuditRun(run.id)));
+}
+
+/**
+ * Whether `runId` names the audit trail.
+ *
+ * Compared **case-insensitively**, which is the whole point: the filesystem
+ * store maps an id straight to `<id>.json`, and `assertSafeId` permits capitals.
+ * On a case-insensitive volume — macOS and Windows, two of the three supported
+ * platforms — `MCP-AUDIT` therefore opens the very same file as `mcp-audit`, so
+ * an exact-match guard would refuse the trail on Linux and serve it everywhere
+ * else. A guard that holds on one platform is not a guard.
+ */
+function isAuditRun(runId: string): boolean {
+  return runId.toLowerCase() === AUDIT_RUN_ID.toLowerCase();
 }
 
 /** `show_run`: return one run's full record, or a structured not-found. */
@@ -289,7 +303,7 @@ async function showRun(
   // it back through an MCP tool would let the principals it audits read every
   // actor, argument, and denial reason in it — so it is operator-only, readable
   // on the host with `zuke runs show mcp-audit`, never over the wire.
-  if (runId === AUDIT_RUN_ID) {
+  if (isAuditRun(runId)) {
     return jsonResult({ error: "not_readable", runId }, true);
   }
   const loaded = await deps.store.getRun(runId);
