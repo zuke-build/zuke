@@ -1560,9 +1560,23 @@ class TargetBuilder
     runs its real body — so declare it on targets that inspect rather than
     mutate (a status check, a report).
   always(): this
-    Run this target even after the build has failed — for cleanup/teardown that
-    must happen regardless. It still waits for its own dependencies to complete;
-    the build's overall result is unchanged. Repeatable conditions/inputs apply.
+    Run this target even after the build has failed — for cleanup, teardown, or
+    an aggregate that has to report on the failure.
+
+    It still waits for its own dependencies, but waits for them to settle
+    rather than to succeed: a dependency that failed releases it, the same as
+    one that passed or was skipped. Anything else would make the modifier
+    unusable for the case it exists for, since a target that depends on the work
+    it is cleaning up would be held back by exactly the failure that should
+    trigger it. Use {@link TargetContext.outcomeOf} to see what actually
+    happened.
+
+    A dependency parked at a `.waitsFor(...)` gate is the exception: it has not
+    settled, so the target waits for the resume rather than reporting on a run
+    that is still in progress.
+
+    The build's overall result is unchanged — an `always` target that passes
+    does not rescue a failed build. Repeatable conditions/inputs apply.
   dryRunnable(): this
     Run this target's body under `--dry-run` instead of skipping it, with the
     `$` shell in echo mode: each command (awaited or `.spawn()`ed) prints its

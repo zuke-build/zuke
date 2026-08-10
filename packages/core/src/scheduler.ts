@@ -614,6 +614,13 @@ export async function runScheduled(
   const { life, reporter, renderer, style, env } = ctx;
   const outcomes = new Map<TargetBuilder, TargetOutcome>();
   const done = new Set<TargetBuilder>(); // passed/cached/skipped → unblocks dependents
+  // Reached a terminal status, whatever it was — `done` plus the failures. This
+  // is what an `always` target waits for: it runs *because* something failed, so
+  // gating it on `done` (which a failure never enters) is the one thing that
+  // guarantees it cannot. A parked wait is deliberately absent: it has not
+  // finished, it is going to be resumed, and a finalizer that fired before it
+  // resolved would report on a run that is still in progress.
+  const settled = new Set<TargetBuilder>();
   const started = new Set<TargetBuilder>();
   const runningSet = new Set<TargetBuilder>();
   let failure: unknown;
@@ -629,6 +636,7 @@ export async function runScheduled(
     if (skip.has(name)) {
       outcomes.set(t, { status: "skipped", ms: 0 });
       done.add(t);
+      settled.add(t);
       started.add(t);
       settleTarget(env, name, "skipped");
     } else if (env.done?.has(name)) {
@@ -636,12 +644,15 @@ export async function runScheduled(
       // and leave its recorded `succeeded` untouched.
       outcomes.set(t, { status: "cached", ms: 0 });
       done.add(t);
+      settled.add(t);
       started.add(t);
     }
   }
 
   const ready = (t: TargetBuilder): boolean =>
-    (predecessors.get(t) ?? []).every((p) => done.has(p));
+    (predecessors.get(t) ?? []).every((p) =>
+      t.always_ ? settled.has(p) : done.has(p)
+    );
   const overlaps = (t: TargetBuilder): boolean =>
     [...runningSet].every((r) => canOverlap(t, r));
 
@@ -685,6 +696,7 @@ export async function runScheduled(
               }
               outcomes.set(t, outcome);
               runningSet.delete(t);
+              if (outcome.status !== "waiting") settled.add(t);
               if (outcome.status === "failed") {
                 anyFailed = true;
                 failure ??= outcome.error;
@@ -717,6 +729,7 @@ export async function runScheduled(
             const targetName = t.name_ ?? "<unnamed>";
             outcomes.set(t, { status: "failed", ms: 0, error });
             runningSet.delete(t);
+            settled.add(t);
             anyFailed = true;
             failure ??= error;
             if (!t.proceedAfterFailure_) halted = true;
