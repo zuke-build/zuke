@@ -22,6 +22,7 @@ import { cancelRun } from "./cancel.ts";
 import { execute, type Reporter } from "./executor.ts";
 import type { Plugin } from "./plugin.ts";
 import { planGraph } from "./graph.ts";
+import { reapAbandoned, recoverStranded } from "./reap.ts";
 import { acquireLease, RUN_LEASE_PREFIX } from "./state/run_lease.ts";
 import type { JsonValue, TargetBuilder } from "./target.ts";
 import { absolutePath } from "./path.ts";
@@ -530,10 +531,36 @@ export async function resumeCheck(
   if (store === undefined) {
     throw new Error("resume --check: no state store is configured.");
   }
+  // Reap first, so a run whose process died is back to `suspended` in time for
+  // this same pass to resume it — otherwise every abandoned run would wait a
+  // whole sweep interval for nothing but a state transition.
+  const actor = resolveActor(options.actor, readEnv);
+  const reaped = await reapAbandoned({
+    build,
+    store,
+    actor,
+    reporter,
+    now: () => new Date().toISOString(),
+    ...(options.runId === undefined ? {} : { runId: options.runId }),
+    ...(options.silent === undefined ? {} : { silent: options.silent }),
+  });
+  // And finish anything a settlement left stranded, which no other sweep looks
+  // at either.
+  const recovered = options.runId === undefined
+    ? await recoverStranded({
+      build,
+      store,
+      actor,
+      reporter,
+      now: () => new Date().toISOString(),
+      ...(options.silent === undefined ? {} : { silent: options.silent }),
+    })
+    : { reaped: [], settled: [], failed: 0 };
+
   const ids = options.runId !== undefined
     ? [options.runId]
     : (await store.listRuns({ status: "suspended" })).map((s) => s.id);
-  let failed = 0;
+  let failed = reaped.failed + recovered.failed;
   for (const id of ids) {
     try {
       const result = await resumeRun(build, { ...options, runId: id });

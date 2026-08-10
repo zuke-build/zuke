@@ -908,6 +908,29 @@ class Build
       deploy = target().executes(async (ctx) => { await ctx.state.set({ at: "sit-7" }); });
     }
     ```
+  deadline(): string | number | undefined
+    A wall-clock budget for a whole run, after which a reaping sweep settles it
+    `failed` — a duration like `"45m"` or milliseconds. No deadline by default.
+
+    It bounds running, not existing. A run parked at a `.waitsFor(...)` gate
+    is not spending it; the budget there is the gate's own `.timeout()`, which
+    already exists and already fires. Only the sweep over runs still marked
+    `running` consults this, so a build with a 72-hour approval gate and a
+    45-minute deadline is not killed the moment it suspends.
+
+    What it is really for is the run that stops making progress without failing
+    — a process that hangs, or one killed so hard that its work is repeatedly
+    picked up and abandoned again. Without a deadline such a run has no end
+    state at all; with one it reaches a terminal status, which is what anything
+    downstream is waiting for.
+
+    ```ts
+    class Ci extends Build {
+      override deadline() {
+        return "45m";
+      }
+    }
+    ```
   extraEdges(_targets: Map<string, TargetBuilder>): OrderingEdge[]
     Extra soft ordering edges to impose on the plan, beyond the `dependsOn`
     / `before` / `after` declared on targets. Override to feed an external graph
@@ -3423,6 +3446,24 @@ interface RunRecord
     write that lands — the failing one, by definition, could not carry it. A
     drop that leaves the mutation in memory for a later write to re-persist does
     not set it. Absent (or `false`) means no write is known to be missing.
+  deadlineAt?: string
+    ISO-8601 wall-clock deadline for the whole run, stamped once at creation
+    from `Build.deadline()`. Absent when the build sets none.
+
+    A budget for running, not for existing. A run parked at an approval gate
+    is not spending it — its budget there is the wait's own timeout — so only a
+    sweep over `running` runs consults this.
+  intendedTerminal?: RunStatus
+    The terminal status the process that moved this run to `cancelling` means
+    to leave it in. Absent means `cancelled`, which is what an ordinary
+    `zuke cancel` intends and what every record written before this field
+    existed meant.
+
+    Recorded rather than inferred, because the settlement can be finished by a
+    different process than the one that began it: a canceller that crashes
+    leaves the run `cancelling`, and whoever recovers it has no other way to
+    know whether an operator was cancelling the run or a sweep was failing an
+    abandoned one.
 
 interface RunSummary
   A compact run listing row, returned by {@link "./store.ts".StateStore.listRuns}.

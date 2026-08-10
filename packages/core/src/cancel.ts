@@ -62,6 +62,16 @@ import type {
 const MAX_RETRIES = 10;
 
 /**
+ * A status a run can be settled into from outside the process running it.
+ *
+ * `"cancelled"` is what an operator's `zuke cancel` means; `"failed"` is what a
+ * sweep means when it settles a run that has passed its deadline. They share
+ * every step — the lock, the transition, the compensation walk — and differ only
+ * in the status left behind and how it is described.
+ */
+export type SettlementTerminal = "cancelled" | "failed";
+
+/**
  * A never-aborted signal handed to compensation bodies: the run is already being
  * cancelled, but the cleanup itself must run to completion.
  */
@@ -623,6 +633,35 @@ export async function cancelRun(
   build: Build,
   options: CancelOptions,
 ): Promise<CancelResult> {
+  return await settleExternally(build, { ...options, terminal: "cancelled" });
+}
+
+/** Options for {@link settleExternally}: a cancel, plus the status to settle into. */
+export interface SettleOptions extends CancelOptions {
+  /** The terminal status to leave the run in. */
+  terminal: SettlementTerminal;
+}
+
+/**
+ * Settle a run from outside the process running it: take the settlement lock,
+ * move the record to `cancelling`, unwind the compensations of everything that
+ * succeeded, and leave it in `terminal`.
+ *
+ * {@link cancelRun} is this with `terminal: "cancelled"` — an operator stopping
+ * a run. A reaping sweep uses `"failed"` for a run that has passed its deadline:
+ * the run did not stop because anyone asked, it ran out of time, and anything
+ * waiting on it needs that distinction. The mechanics are identical, and
+ * deliberately so — the compensations of an abandoned run have to be unwound
+ * just as carefully as those of a cancelled one.
+ */
+export async function settleExternally(
+  build: Build,
+  options: SettleOptions,
+): Promise<CancelResult> {
+  const terminal = options.terminal;
+  // How the run's end is described. The status is what matters to a machine;
+  // this is what an operator reads in the log.
+  const verb = terminal === "cancelled" ? "cancelled" : "failed";
   const readEnv = options.readEnv ?? defaultReadEnv;
   const store = resolveCancelStore(options, build, readEnv);
   if (store === undefined) {
@@ -643,7 +682,8 @@ export async function cancelRun(
   }
   if (isTerminal(initial.record.status)) {
     reporter.info(
-      `Run ${runId} is already ${initial.record.status}; nothing to cancel.`,
+      `Run ${runId} is already ${initial.record.status}; nothing to ` +
+        `${terminal === "cancelled" ? "cancel" : "settle"}.`,
     );
     return {
       runId,
@@ -675,6 +715,7 @@ export async function cancelRun(
       runId,
       initial,
       now,
+      terminal,
     );
     if (transitioned === "noop") {
       const fresh = await store.getRun(runId);
@@ -690,11 +731,35 @@ export async function cancelRun(
       // not be idempotent, so a second pass is more dangerous than the small
       // chance an interrupted first pass left some cleanup undone. `zuke cancel`
       // becomes retryable, not a dead end.
-      reporter.info(`Run ${runId} was mid-cancellation; finalizing it.`);
-      await finalizeCancelled(store, runId, actor, EMPTY_OUTCOME, now);
+      // Which terminal the interrupted settlement was heading for is recorded
+      // on the run, because this process is not necessarily the one that began
+      // it. Absent means `cancelled`: that is what an ordinary cancel intends,
+      // and what every record written before the field existed meant.
+      const stranded = await store.getRun(runId);
+      const recorded = stranded?.record.intendedTerminal ??
+        initial.record.intendedTerminal;
+      // Anything other than an explicit `failed` settles `cancelled`: that is
+      // what an absent field means, and it is the conservative reading of a
+      // value this process did not write.
+      const intended: SettlementTerminal = recorded === "failed"
+        ? "failed"
+        : "cancelled";
+      reporter.info(
+        `Run ${runId} was mid-${
+          terminal === "cancelled" ? "cancellation" : "settlement"
+        }; finalizing it.`,
+      );
+      await finalizeCancelled(
+        store,
+        runId,
+        actor,
+        EMPTY_OUTCOME,
+        now,
+        intended,
+      );
       return {
         runId,
-        status: "cancelled",
+        status: intended,
         noop: false,
         compensated: [],
         failures: [],
@@ -766,9 +831,9 @@ export async function cancelRun(
       });
     }
 
-    await finalizeCancelled(store, runId, actor, outcome, now);
+    await finalizeCancelled(store, runId, actor, outcome, now, terminal);
     reporter.info(
-      `Run ${runId} cancelled — ${outcome.compensated.length} compensation(s) ` +
+      `Run ${runId} ${verb} — ${outcome.compensated.length} compensation(s) ` +
         `ran${
           outcome.failures.length > 0
             ? `, ${outcome.failures.length} failed`
@@ -777,7 +842,7 @@ export async function cancelRun(
     );
     return {
       runId,
-      status: "cancelled",
+      status: terminal,
       noop: false,
       compensated: outcome.compensated,
       failures: outcome.failures,
@@ -833,6 +898,7 @@ async function transitionToCancelling(
   id: string,
   initial: { record: RunRecord; version: string },
   now: () => string,
+  terminal: SettlementTerminal,
 ): Promise<{ record: RunRecord; version: string } | "noop" | "recover"> {
   let record = initial.record;
   let version = initial.version;
@@ -841,6 +907,13 @@ async function transitionToCancelling(
     if (record.status === "cancelling") return "recover";
     const next = structuredClone(record);
     next.status = "cancelling";
+    // Written with the transition, not with the settlement, because the process
+    // that finishes this may not be the one that started it: a canceller that
+    // crashes leaves the record `cancelling`, and whoever recovers it reads this
+    // to know whether an operator was cancelling or a sweep was failing an
+    // abandoned run. `cancelled` stays unwritten so a record from before this
+    // field existed, and an ordinary cancel, look identical.
+    if (terminal !== "cancelled") next.intendedTerminal = terminal;
     next.updatedAt = now();
     const result = await store.putRun(next, version);
     if (result.ok) return { record: next, version: result.version };
@@ -866,13 +939,14 @@ async function finalizeCancelled(
   actor: string,
   outcome: CompensationOutcome,
   now: () => string,
+  terminal: SettlementTerminal = "cancelled",
 ): Promise<void> {
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     const loaded = await store.getRun(id);
-    if (loaded === null || loaded.record.status === "cancelled") return;
+    if (loaded === null || isTerminal(loaded.record.status)) return;
     const at = now();
     const next = structuredClone(loaded.record);
-    next.status = "cancelled";
+    next.status = terminal;
     next.updatedAt = at;
     for (const event of compensationEvents(outcome.attempts, actor, at)) {
       next.events.push(event);

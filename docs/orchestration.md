@@ -218,6 +218,57 @@ its recorded `onTimeout` disposition:
 Timeouts are enforced lazily on any `zuke resume`/`resume --check`, so a single
 cron that sweeps suspended runs also enforces every deadline.
 
+### Abandoned runs — reaping
+
+A run that ends cleanly settles itself, and a run that suspends is picked up by
+the sweep above. A run whose process was **killed** does neither: it stays
+`running`, and a resume only ever acts on `suspended` runs. Anything that run
+recorded as owed — a [crash-durable effect](./run-context.md) above all — would
+wait forever.
+
+`zuke resume --check` now looks at `running` runs first, before it sweeps the
+suspended ones:
+
+- **Is anyone still there?** The run's [lease](./locks.md#the-runs-own-lease)
+  answers it. A live process keeps renewing, so a lease that can be acquired
+  means its holder is gone; one that cannot means the run is merely slow, and
+  slow is left alone.
+- **Nobody there** → the run goes back to `suspended`, with a `reap` event on
+  its audit trail saying why. The same sweep then resumes it, so an abandoned
+  run is recovered in one pass rather than waiting another interval for nothing
+  but a state change.
+- **Past its `deadline()`** → the run is settled **`failed`**, compensations and
+  all. It did not stop because anyone asked; it ran out of time, and anything
+  waiting on it needs an answer rather than silence.
+
+A run left `cancelling` by a settlement whose own process died is finished too,
+in whichever terminal that settlement was heading for — recorded on the run,
+because the process that finishes it is not the one that began it.
+
+### `Build.deadline()`
+
+A wall-clock budget for a whole run. It bounds **running**, not existing:
+
+```ts
+class Ci extends Build {
+  override deadline() {
+    return "45m";
+  }
+}
+```
+
+A run parked at a `.waitsFor(...)` gate is not spending it — the budget there is
+the gate's own `.timeout()`, which already exists and already fires. Only the
+sweep over runs still marked `running` consults the deadline, so a build with a
+72-hour approval gate and a 45-minute deadline is not killed the moment it
+suspends.
+
+What it is really for is the run that stops making progress without failing: a
+process that hangs, or one killed so hard that its work is picked up and
+abandoned repeatedly. Without a deadline such a run has no end state at all;
+with one it reaches a terminal status, which is what anything downstream is
+waiting for.
+
 ## State is the only thing that crosses the boundary
 
 A resume is a **fresh process**: the in-memory world of the suspending run is

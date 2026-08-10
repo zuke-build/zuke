@@ -18,6 +18,7 @@ import type { Redactor } from "./redact.ts";
 import type { AnyParameter } from "./params.ts";
 import type { RunEnv, TargetSettlement } from "./run_support.ts";
 import { absolutePath } from "./path.ts";
+import { parseDuration } from "./duration.ts";
 import { findConfigDir, pathExists } from "./config.ts";
 import { defaultStateHost, type StateStore } from "./state/store.ts";
 import { resolveStateStore } from "./state/resolve.ts";
@@ -165,6 +166,13 @@ export async function openRunState(opts: {
     );
     return { ok: false, error };
   }
+  // Resolved once, here, so the record carries an absolute instant rather than a
+  // duration every later reader would have to re-anchor — and so a build with a
+  // malformed deadline is refused before it does any work.
+  const budget = opts.build.deadline();
+  const deadlineAt = budget === undefined
+    ? undefined
+    : new Date(Date.parse(nowIso()) + parseDuration(budget)).toISOString();
   const actor = resolveActor(opts.actor, readEnv);
   const runUrl = ciRunUrl(readEnv);
   const warn = (message: string) => opts.reporter.info(message);
@@ -221,6 +229,7 @@ export async function openRunState(opts: {
         now: nowIso(),
         order,
         params: opts.params,
+        ...(deadlineAt === undefined ? {} : { deadlineAt }),
       }),
       nowIso,
       redactor,
