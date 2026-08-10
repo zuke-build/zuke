@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.36.0](https://github.com/zuke-build/zuke/compare/core-v1.35.0...core-v1.36.0) (2026-08-10)
+
+
+### Features
+
+* **core:** give a run a lease, so slow and dead stop looking alike ([#322](https://github.com/zuke-build/zuke/issues/322)) ([eb4945b](https://github.com/zuke-build/zuke/commit/eb4945bfbbd30b318fcb7ee6f4bf4ca8ade29d2d))
+* **core:** reap abandoned runs and give a run a deadline ([#323](https://github.com/zuke-build/zuke/issues/323)) ([f7832a7](https://github.com/zuke-build/zuke/commit/f7832a792da694d845803c8ea0dc53e67bf0974d))
+* **core:** record an effect's intent before it runs, and re-drive it ([#320](https://github.com/zuke-build/zuke/issues/320)) ([909b09c](https://github.com/zuke-build/zuke/commit/909b09c35b4453b29d287e92d53e12021541589f))
+
 ## [1.35.0](https://github.com/zuke-build/zuke/compare/core-v1.34.0...core-v1.35.0) (2026-08-10)
 
 
