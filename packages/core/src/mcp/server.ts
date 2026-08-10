@@ -66,6 +66,9 @@ export const PROTOCOL_VERSION = SUPPORTED_PROTOCOL_VERSIONS[0];
 /** The `run:` prefix that names a per-target execution tool. */
 const RUN_PREFIX = "run:";
 
+/** Control keys whose values are always safe to record (booleans, never secrets). */
+const AUDIT_SAFE_KEYS: ReadonlySet<string> = new Set(["dryRun", "confirm"]);
+
 /** The request context handed to {@link McpServer.handleMessage} on stdio (no headers). */
 const EMPTY_CONTEXT: McpRequestContext = { headers: new Headers() };
 
@@ -859,6 +862,16 @@ export class McpServer {
       if (key === "operatorToken") continue; // never persist the operator token
       if (this.#params.get(key)?.secret_) {
         out[key] = "[redacted]";
+        continue;
+      }
+      // A key the build does not declare keeps its name but loses its value.
+      // Redaction can only mask what it recognises, so a value supplied under a
+      // *misspelled* secret parameter's name would otherwise be written to the
+      // durable trail verbatim — it matches no declared secret, so nothing
+      // masks it. Eliding by default is the same posture the registry server
+      // already takes, and costs only the value of a key that was not asked for.
+      if (!this.#params.has(key) && !AUDIT_SAFE_KEYS.has(key)) {
+        out[key] = "<omitted>";
         continue;
       }
       out[key] = redactor.redact(auditText(value));

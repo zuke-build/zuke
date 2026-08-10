@@ -397,6 +397,28 @@ Deno.test("an unresolvable plan is denied without saying so to the caller", asyn
   );
 });
 
+Deno.test("a value under an undeclared key is elided from the trail", async () => {
+  // Redaction can only mask what it recognises. A value supplied under a
+  // *misspelled* secret parameter's name matches no declared secret, so nothing
+  // would mask it and it would land in the durable trail verbatim. Undeclared
+  // keys therefore keep their name and lose their value — the same posture the
+  // registry server already takes.
+  await withServer(
+    { allowRun: true, actor: "agent" },
+    async (server, store) => {
+      await call(server, "run:lint", {
+        tokens: "please-do-not-store-me", // near-miss for the `token` secret
+        note: "kept", // declared, so its value is useful in the trail
+        dryRun: true, // a control flag, always safe
+      });
+      const last = (await auditEvents(store)).at(-1);
+      assertEquals(last?.args?.tokens, "<omitted>");
+      assertEquals(last?.args?.note, "kept");
+      assertEquals(last?.args?.dryRun, "true");
+    },
+  );
+});
+
 Deno.test("a secret supplied as a non-string is still masked where it is echoed", async () => {
   await withServer(
     { allowRun: true, actor: "agent" },
