@@ -27,14 +27,16 @@ const MARKETPLACE: Record<string, unknown> = JSON.parse(
   Deno.readTextFileSync(".claude-plugin/marketplace.json"),
 );
 
+/** Whether a parsed JSON value is a plain object, narrowing it for field reads. */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 /** The marketplace's entry for the `zuke` plugin. */
 function entry(): Record<string, unknown> {
   const plugins = MARKETPLACE.plugins;
   if (!Array.isArray(plugins)) throw new Error("marketplace has no plugins[]");
-  const found = plugins.find((p): p is Record<string, unknown> =>
-    typeof p === "object" && p !== null && !Array.isArray(p) &&
-    (p as Record<string, unknown>).name === "zuke"
-  );
+  const found = plugins.filter(isRecord).find((p) => p.name === "zuke");
   if (found === undefined) throw new Error("no marketplace entry named zuke");
   return found;
 }

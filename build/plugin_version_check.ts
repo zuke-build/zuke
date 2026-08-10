@@ -57,12 +57,17 @@ export function manifestVersion(text: string | null): string | undefined {
   if (text === null) return undefined;
   try {
     const parsed: unknown = JSON.parse(text);
-    if (typeof parsed !== "object" || parsed === null) return undefined;
-    const version = (parsed as Record<string, unknown>).version;
+    if (!isRecord(parsed)) return undefined;
+    const version = parsed.version;
     return typeof version === "string" ? version : undefined;
   } catch {
     return undefined;
   }
+}
+
+/** Whether a parsed JSON value is a plain object, narrowing it for field reads. */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /** The git reads this check needs, injectable so the decision is testable. */
