@@ -39,7 +39,10 @@
  *
  * The marker (`zuke:<runId>:<target>`) and the resolved run id are persisted in
  * the awaiting target's durable state, so a resume in a **different process**
- * never re-dispatches — it polls the run it already started.
+ * never re-dispatches — it polls the run it already started. The marker is
+ * written **before** the dispatch call, so even a process killed mid-dispatch
+ * re-polls rather than dispatching twice; the cost is that a dispatch which
+ * never landed is reported at the discovery deadline instead of immediately.
  *
  * **Unmodified workflows.** A workflow that can't echo the marker (a long tail
  * of repos you don't own) correlates **best-effort** with
@@ -715,19 +718,27 @@ export function githubWorkflowWith(
       // 1. Dispatch once. In created-window mode, snapshot the runs that already
       //    exist **before** dispatching, so correlation never claims one that
       //    was already there (e.g. a nightly cron or a colleague's run on the
-      //    same branch). Then stamp the dispatch time and suspend.
+      //    same branch).
+      //
+      //    The marker is stamped **before** the dispatch, never after. A process
+      //    killed between the two writes the record either way; the question is
+      //    which way it errs. Persisting first means a re-evaluation polls for a
+      //    run that may not exist — it fails at the discovery deadline with the
+      //    usual guidance. Persisting after means a re-evaluation dispatches a
+      //    second time, which for a deploy workflow is a second deploy. A late
+      //    failure is recoverable; a duplicate side effect is not.
       if (!dispatched) {
         const baseline = mode === "created-window"
           ? await snapshotBaseline(api, repo, workflow)
           : undefined;
-        await api.dispatch(repo, workflow, settings.ref_, {
-          ...settings.inputs_,
-          [settings.markerInput_]: marker,
-        });
         await persist(ctx.state, {
           marker,
           dispatchedAt: now(),
           baselineIds: baseline,
+        });
+        await api.dispatch(repo, workflow, settings.ref_, {
+          ...settings.inputs_,
+          [settings.markerInput_]: marker,
         });
         return false;
       }

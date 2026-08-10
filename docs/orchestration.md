@@ -88,10 +88,14 @@ class Release extends Build {
 }
 ```
 
-- **Dispatch-once, then poll.** On first reach it dispatches, records a
-  correlation marker in the gate's durable state, and suspends. Each
-  `resume --check` polls the run; a resume in a **different process** never
-  re-dispatches, because the marker persisted with the run.
+- **Dispatch-once, then poll.** On first reach it records a correlation marker
+  in the gate's durable state, dispatches, and suspends. Each `resume --check`
+  polls the run; a resume in a **different process** never re-dispatches,
+  because the marker persisted with the run. The marker is written **before**
+  the dispatch call, so a process killed mid-dispatch still re-polls rather than
+  starting a second workflow; the cost of that ordering is the mirror case — a
+  dispatch that never landed is reported when the discovery window elapses,
+  instead of immediately.
 - **Correlation.** `workflow_dispatch` returns no run id, so by default the
   trigger passes a marker input (default `zuke_marker`) and matches it against
   the run's display title — the dispatched workflow must echo it into `run-name`:
