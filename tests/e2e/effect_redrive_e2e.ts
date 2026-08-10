@@ -48,6 +48,16 @@ function spawn(
   }).spawn();
 }
 
+/** Narrow parsed JSON to an object, so the lock record can be edited without a cast. */
+function recordOf(value: unknown): Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`expected a JSON object, got ${JSON.stringify(value)}`);
+  }
+  const out: Record<string, unknown> = {};
+  for (const [key, val] of Object.entries(value)) out[key] = val;
+  return out;
+}
+
 /** The marker file's lines, or an empty list if it does not exist yet. */
 async function markerLines(marker: string): Promise<string[]> {
   try {
@@ -114,10 +124,18 @@ Deno.test("a SIGKILL mid-effect leaves a durable intent another process re-drive
     assertEquals((await tooEarly.status).code, 1);
     assertEquals(await markerLines(marker), ["announce redriven=false"]);
 
-    // Now let the lease lapse. Removing the lock is what expiry looks like to
-    // the store — the next acquirer finds nothing holding the run — and it is the
-    // second thing the reaper will establish before it moves a run.
-    await Deno.remove(`${dir}/locks/zuke-run-${id}.json`);
+    // Now let the lease lapse. Only the clock is moved: the lock record stays
+    // exactly as the killed process left it, with its holder and token intact,
+    // and only its expiry is backdated. So the resume goes through the store's
+    // real expired-lease takeover — the branch that runs in production when a
+    // dead holder's claim runs out — rather than the different path a missing
+    // lock would take. Waiting out a 60-second TTL is the only alternative, and
+    // it would test the same branch a minute later.
+    const lockPath = `${dir}/locks/zuke-run-${id}.json`;
+    const lock = recordOf(JSON.parse(await Deno.readTextFile(lockPath)));
+    assertEquals(typeof lock.token, "string"); // still the dead holder's
+    lock.expiresAt = Date.now() - 1;
+    await Deno.writeTextFile(lockPath, JSON.stringify(lock));
 
     // Process 2: a real, separate `resume`. It drives the owed effect again.
     const resumer = spawn(["resume", id], dir, marker, false);
