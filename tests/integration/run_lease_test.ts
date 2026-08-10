@@ -79,3 +79,32 @@ Deno.test("a resume refuses a run whose previous holder is still live", async ()
     assertEquals(refused.code, 1);
   });
 });
+
+Deno.test("a resume gives the lease back even when the run fails", async () => {
+  // The acquirer releases, on every path out. A claim left held by nobody would
+  // make a run that has demonstrably stopped look like one still being worked
+  // on, which is the one thing the lease exists to distinguish.
+  class Cd extends Build {
+    hold = target().waitsFor((s) => s.on(externalSignal("go")));
+    boom = target().dependsOn(this.hold).executes(() => {
+      throw new Error("the deploy failed");
+    });
+  }
+
+  await withStateDir(async (dir) => {
+    assertEquals((await runCli(Cd, ["boom"])).code, 0); // suspended
+    const id = await onlyRunId(dir);
+
+    const resumed = await runCli(Cd, ["resume", id, "--signal", "go"]);
+    assertEquals(resumed.code, 1); // the run failed
+
+    // Released rather than left to lapse, so the next acquirer sees it free.
+    const store = new FileSystemStateStore(dir, defaultStateHost);
+    const free = await store.acquireLock(
+      `zuke-run-${id}`,
+      { actor: "next", runId: id, since: "2026-08-10T10:00:00.000Z" },
+      1_000,
+    );
+    assertEquals(free.ok, true);
+  });
+});

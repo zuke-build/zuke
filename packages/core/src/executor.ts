@@ -386,10 +386,16 @@ export async function execute(
   const { writer, env } = opened.state;
   const actor = env.actor;
   // The run's lease: this process's claim that it is the one working on this
-  // run. A fresh run's was taken in openRunState; a resumed run arrives holding
-  // the one its resumer took. Losing it means another process has taken the run
-  // over, so this one stops rather than carrying on in parallel with it.
-  const lease = opened.state.lease ?? options.resume?.lease;
+  // run. Losing it means another process has taken the run over, so this one
+  // stops rather than carrying on in parallel with it — whoever holds the claim
+  // owns the outcome.
+  //
+  // Watched either way, released only if this call took it. A resumed run
+  // arrives holding its resumer's lease, and that resumer outlives this call, so
+  // it is the one that can guarantee the release — including when this call
+  // throws before it could reach one.
+  const ownLease = opened.state.lease;
+  const lease = ownLease ?? options.resume?.lease;
   if (lease !== undefined) {
     if (lease.lost.aborted) runController.abort();
     else lease.lost.addEventListener("abort", onCancel, { once: true });
@@ -505,10 +511,10 @@ export async function execute(
     else await writer?.markRunFinished(result.ok);
     // Released once the record is terminal (or suspended), so the moment this
     // run stops being ours to work on is the moment the claim goes. Any earlier
-    // throw leaves the lease to lapse at its TTL, which is correct: the record
-    // is still `running` and the process really is broken, so a sweep should
-    // find it — just a minute later.
-    await lease?.release();
+    // throw leaves this call's own lease to lapse at its TTL, which is correct:
+    // the record is still `running` and the process really is broken, so a sweep
+    // should find it — just a minute later.
+    await ownLease?.release();
   }
 
   // Announce the run's terminal durable state (succeeded/failed/suspended/

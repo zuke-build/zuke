@@ -224,16 +224,24 @@ export async function resumeRun(
       .map(([name]) => name),
   );
 
-  return await execute(build, root, {
-    stateStore: store,
-    params: { ...record.params, ...(options.params ?? {}) },
-    readEnv,
-    actor: resumerActor,
-    silent: options.silent,
-    reporter: options.reporter,
-    plugins: options.plugins,
-    resume: { record, version, done, lease },
-  });
+  // This scope took the lease, so this scope gives it back — on every path out,
+  // including one where `execute` throws before it could settle the run. The
+  // alternative is a claim held by nobody until its TTL lapses, which would make
+  // a run that has demonstrably stopped look like one still being worked on.
+  try {
+    return await execute(build, root, {
+      stateStore: store,
+      params: { ...record.params, ...(options.params ?? {}) },
+      readEnv,
+      actor: resumerActor,
+      silent: options.silent,
+      reporter: options.reporter,
+      plugins: options.plugins,
+      resume: { record, version, done, lease },
+    });
+  } finally {
+    await lease.release();
+  }
 }
 
 /** Resolve the store for a resume — like a normal run, but always defaulting on. */

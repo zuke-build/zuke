@@ -110,5 +110,10 @@ holder is gone and the run can be taken over.
   not fire while the event loop is blocked in synchronous work. A run that blocks for longer than the TTL can therefore have
   its lease lapse and be taken over; losing the claim then stops it, so the
   outcome is a stopped run rather than two writers.
+- **Whoever takes the claim gives it back.** A resume releases the lease it took
+  on every path out, including one where the run fails — a claim held by nobody
+  would make a run that has demonstrably stopped look like one still being
+  worked on. A run that took its own lease releases it when it settles; if that
+  process breaks first, the claim lapses at its TTL instead.
 - **A crashed holder's claim lapses at the TTL.** Nothing polls for it: expiry is
   evaluated by the store the next time somebody tries to acquire.
