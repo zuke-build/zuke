@@ -19,7 +19,7 @@ body, which is required before the target can run.
 | `.onlyWhen(condition)`      | `(c: () => boolean \| Promise<boolean>) => this`      | Run only when the condition holds, else skip.                                                      |
 | `.requires(...params)`      | `(...p: Parameter[]) => this`                         | Fail the target unless these parameters are set.                                                   |
 | `.proceedAfterFailure()`    | `() => this`                                          | Keep the build going if this target fails.                                                         |
-| `.always()`                 | `() => this`                                          | Run for cleanup even after the build has failed.                                                   |
+| `.always()`                 | `() => this`                                          | Run even after the build has failed; waits for dependencies to settle, not succeed.                |
 | `.unlisted()`               | `() => this`                                          | Hide the target from `--list`/`--help`.                                                            |
 | `.readOnly()`               | `() => this`                                          | Advertise the target as query-only over [MCP](./mcp.md) (`readOnlyHint`).                          |
 | `.cacheKey(fn)`             | `(fn: () => string \| Promise<string>) => this`       | Extra (non-file) input to the cache fingerprint.                                                   |
@@ -185,7 +185,13 @@ deploy = target()
   the build instead of aborting. The build still reports failure, and this
   target's own dependents are skipped.
 - **`.always()`** — run even after the build has already failed, for
-  cleanup/teardown. It still waits for its own dependencies to complete.
+  cleanup/teardown or an aggregate that must report on the failure. It still
+  waits for its own dependencies, but for them to **settle** rather than
+  succeed: a dependency that failed releases it, the same as one that passed.
+  Read what happened with
+  [`ctx.outcomeOf(...)`](./run-context.md#reading-what-the-rest-of-the-run-did).
+  A dependency parked at a wait is the exception — it has not settled, so the
+  target waits for the resume.
 - **`.onCancel(target | () => target)`** — register a **compensation** that
   undoes this target when the run is [cancelled](./orchestration.md#cancellation--compensation--oncancel).
   It runs only if this target **succeeded** — or, on a
