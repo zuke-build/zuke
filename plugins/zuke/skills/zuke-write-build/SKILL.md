@@ -190,9 +190,14 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   stdio, or over HTTP with `--http <host:port>` (loopback by default; a
   non-loopback bind needs a `ZUKE_MCP_TOKEN` bearer token). With a state store
   it also exposes `list_runs`/`show_run` (+ `signal_run`/`resume_check`). Tier
-  access with `--allow-run=<globs>` (allow-list), `--protect <globs>` +
-  `ZUKE_OPERATOR_TOKEN`, and `--confirm-destructive`; mark inspect-only targets
-  `.readOnly()`. Mutating/denied calls are audited (`zuke runs show mcp-audit`).
+  access with `--allow-run=<globs>` (an allow-list over **invocation** —
+  invoking a target runs its dependencies, and the read tools narrow to the
+  allow-listed targets' closure), `--protect <globs>` + `ZUKE_OPERATOR_TOKEN`
+  (enforced over a run's **whole plan**, so a protected target reached as a
+  dependency still needs the token), and `--confirm-destructive`; mark
+  inspect-only targets `.readOnly()`. Mutating/denied calls are audited — read
+  the trail on the host with `zuke runs show mcp-audit`; it is deliberately not
+  readable over MCP.
   A **registry-backed** server (`zuke register` then `zuke mcp --registry`)
   instead serves every registered pipeline live, each as a
   `run:<buildId>:<target>` tool that takes the build's declared parameters

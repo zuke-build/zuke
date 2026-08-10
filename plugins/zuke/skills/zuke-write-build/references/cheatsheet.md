@@ -687,12 +687,31 @@ else a friendly error.
 ./zuke mcp --http 7777 --allowed-origin https://app.example  # permit an extra browser Origin
 ./zuke mcp --allow-run=deploy,checks* --protect deploy --confirm-destructive
                               # authz tiers: allow-list, operator token, confirm
-./zuke runs show mcp-audit    # the MCP tool-call audit trail
+./zuke runs show mcp-audit    # the MCP tool-call audit trail (host only, not served over MCP)
 ./zuke register [--json]      # record this build in the build registry (idempotent)
 ./zuke doc jsr:@zuke/deno     # print a package's API (deno doc) from an isolated empty dir
 ./zuke mcp --registry --allow-run  # serve the registry: registered builds as tools, spawned
 ./zuke mcp --registry --max-concurrent-runs 4  # cap concurrent run-tool spawns (default 4)
 ```
+
+**MCP authorization** (`docs/mcp.md`): the two gates have deliberately different
+reach. `--allow-run=<globs>` is an **entry-point** control — it decides which
+targets a client may invoke, and invoking one runs its dependencies, so
+allow-listing `release` allows everything `release` does; scope it to entry
+points, not steps. The read tools narrow to match (the allow-listed targets plus
+their closure), so a target outside it is unreachable rather than merely
+undisplayed. `--protect <globs>` + `ZUKE_OPERATOR_TOKEN` is an **operation**
+control, enforced across a run's whole plan: a protected target reached as a
+dependency of an unprotected one still requires the token, and that run tool
+advertises `operatorToken` as required in its schema. Both fail closed — no
+configured token denies every protected target, and a plan that cannot be
+resolved (a run record whose root target was deleted) is denied rather than
+assumed harmless. The audit trail is operator-only: `show_run` refuses it and
+`list_runs` omits it, so the clients it audits cannot read who called what.
+`--confirm-destructive` adds a third tier: any target not marked `.readOnly()`
+returns its resolved plan until the call repeats with `confirm: true` (a
+`dryRun` is exempt) — so mark inspect-only targets `.readOnly()`, which also
+advertises MCP's `readOnlyHint` instead of `destructiveHint`.
 
 **Build registry** (`docs/registry.md`): `zuke register` writes a secret-free
 descriptor of this build — its `describeCli()` surface (targets, params) plus a
