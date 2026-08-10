@@ -65,6 +65,48 @@ export interface HttpTransportOptions {
 }
 
 /** A JSON `Response` with the given status and `application/json` content type. */
+/**
+ * The largest JSON-RPC request body this transport will buffer. A single MCP
+ * message is a tool call with a handful of scalar arguments, so a megabyte is
+ * already generous; the cap exists so an unauthenticated (or merely buggy)
+ * client cannot exhaust memory with one very large POST.
+ */
+const MAX_BODY_BYTES = 1024 * 1024;
+
+/**
+ * Read a request body as text, or return `null` once it exceeds `limit` bytes.
+ * Reads incrementally and abandons the stream at the cap, so an oversized body
+ * — including a chunked one that declares no `content-length` — is never
+ * buffered whole just to be rejected.
+ */
+async function readBounded(
+  request: Request,
+  limit: number,
+): Promise<string | null> {
+  const body = request.body;
+  if (body === null) return "";
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > limit) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+  const joined = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    joined.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(joined);
+}
+
 function jsonResponse(body: unknown, status: number): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -195,9 +237,16 @@ export async function serveHttp(
         );
       }
     }
+    const body = await readBounded(request, MAX_BODY_BYTES);
+    if (body === null) {
+      return jsonResponse(
+        err(null, INVALID_REQUEST, "Request body too large"),
+        413,
+      );
+    }
     let message: unknown;
     try {
-      message = JSON.parse(await request.text());
+      message = JSON.parse(body);
     } catch {
       return jsonResponse(err(null, PARSE_ERROR, "Parse error"), 400);
     }

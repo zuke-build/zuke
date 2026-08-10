@@ -156,6 +156,14 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   the MCP `cancel_run` tool). Idempotent; a timed-out wait can route its
   `onTimeout` here (`"cancel-run"` or a named target). Needs a state store. See
   `docs/orchestration.md`.
+- **Durable side effects:** `.effect(name, fn)` records the intent to run `fn`
+  before it runs, so a resume re-drives an effect a dead process left owed.
+  Effects run after the body, in declaration order; a target may declare effects
+  and no body. The guarantee is **at-least-once**, so write bodies that tolerate
+  a repeat (an upsert, not an append), and read what the effect acts on from
+  `ctx.state` rather than looking up "the current value" — a re-drive happens
+  later, against a world that moved on. Needs a state store (enabled
+  automatically). See the cheatsheet / `docs/orchestration.md`.
 - **Fan-out over a list:**
   `.forEach(() => this.repos.value, (repo) => ({ checks: target()…, deploy: target()… }), (s) => s.concurrency(3).continueOnItemFailure())`
   runs the same pipeline over a runtime list — items concurrent, each item's
@@ -190,9 +198,14 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   stdio, or over HTTP with `--http <host:port>` (loopback by default; a
   non-loopback bind needs a `ZUKE_MCP_TOKEN` bearer token). With a state store
   it also exposes `list_runs`/`show_run` (+ `signal_run`/`resume_check`). Tier
-  access with `--allow-run=<globs>` (allow-list), `--protect <globs>` +
-  `ZUKE_OPERATOR_TOKEN`, and `--confirm-destructive`; mark inspect-only targets
-  `.readOnly()`. Mutating/denied calls are audited (`zuke runs show mcp-audit`).
+  access with `--allow-run=<globs>` (an allow-list over **invocation** —
+  invoking a target runs its dependencies, and the read tools narrow to the
+  allow-listed targets' closure), `--protect <globs>` + `ZUKE_OPERATOR_TOKEN`
+  (enforced over a run's **whole plan**, so a protected target reached as a
+  dependency still needs the token), and `--confirm-destructive`; mark
+  inspect-only targets `.readOnly()`. Mutating/denied calls are audited — read
+  the trail on the host with `zuke runs show mcp-audit`; it is deliberately not
+  readable over MCP.
   A **registry-backed** server (`zuke register` then `zuke mcp --registry`)
   instead serves every registered pipeline live, each as a
   `run:<buildId>:<target>` tool that takes the build's declared parameters

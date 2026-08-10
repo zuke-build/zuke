@@ -101,7 +101,7 @@ agent can query runs it did not start:
 | Tool        | Returns                                                                             |
 | ----------- | ----------------------------------------------------------------------------------- |
 | `list_runs` | Persisted run summaries (optional `status`/`target`/`since` filters), newest first. |
-| `show_run`  | One run's full record — status, per-target progress, signals, and the audit trail.  |
+| `show_run`  | One run's full record — status, per-target progress, and signals. Refuses the audit trail. |
 
 With `--allow-run`, the server also exposes one **`run:<target>`** tool per
 target (subject to the [allow-list](#authorization)). Its input schema is built
@@ -138,12 +138,23 @@ token".
   list (`deploy,checks*`) are exposed as run tools; every other target is
   **invisible**, and a call to one is answered exactly like a call to a
   nonexistent tool (`Unknown tool: run:<name>`) — so a denial never reveals
-  which protected targets exist.
-- **Operator token — `--protect <globs>` + `ZUKE_OPERATOR_TOKEN`.** A matching
-  target's run tool gains a required `operatorToken` argument, checked (in
-  constant time) against `ZUKE_OPERATOR_TOKEN`. This is **fail-closed**: if no
-  token is configured, every protected target is denied, so a misconfigured
-  server can never silently expose one. A denial is a structured
+  which protected targets exist. The allow-list gates **invocation**: invoking a
+  target runs its dependencies, which is what depending on a target means, so
+  allow-listing `release` allows everything `release` does. Scope it to the
+  entry points you want an agent to have, not to individual steps. The read
+  tools narrow to match — with an allow-list they describe the allow-listed
+  targets and their dependency closure, and nothing else, so a target outside it
+  is genuinely unreachable rather than merely undisplayed.
+- **Operator token — `--protect <globs>` + `ZUKE_OPERATOR_TOKEN`.** A run that
+  would execute a matching target gains a required `operatorToken` argument,
+  checked (in constant time) against `ZUKE_OPERATOR_TOKEN`. Protection is a
+  property of the **operation**, so it is enforced across the whole plan: a
+  protected `deploy` reached as a dependency of an unprotected `release` still
+  demands the token, and `run:release` advertises the requirement in its schema.
+  This is **fail-closed**: if no token is configured, every protected target is
+  denied; and a call whose plan cannot be resolved (a run record whose root
+  target no longer exists) is denied rather than assumed harmless — so a
+  misconfigured server can never silently expose one. A denial is a structured
   `{"error": "unauthorized", …}` result, and the token is never written to the
   audit log or any output.
 - **Confirmation — `--confirm-destructive`.** A destructive run tool (any target
@@ -169,7 +180,10 @@ dropped and every `.secret()` parameter's value is masked — before anything is
 persisted.
 
 The trail lives in a store-level record; read it with `./zuke runs show mcp-audit`
-(or the `show_run` tool). The actor resolves by precedence: the **identity
+**on the host**. It is deliberately not readable over MCP — `show_run` refuses
+it and `list_runs` omits it — because the clients it audits must not be able to
+read who called what, or to confirm which of their calls were denied. The actor
+resolves by precedence: the **identity
 hook** (below) → `--actor` → `ZUKE_ACTOR` → the CI actor → the connecting
 client's `initialize` name → `"anonymous"`. The client name is an **untrusted
 label** for the trail only — it never influences authorization. On a shared HTTP
