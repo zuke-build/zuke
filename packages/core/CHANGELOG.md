@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.35.0](https://github.com/zuke-build/zuke/compare/core-v1.34.0...core-v1.35.0) (2026-08-10)
+
+
+### Features
+
+* **core:** expose per-target outcomes on the target context ([#317](https://github.com/zuke-build/zuke/issues/317)) ([c151f42](https://github.com/zuke-build/zuke/commit/c151f42c3f62cfcdd14cb0d1607199bf92b8bb8b))
+
+
+### Bug Fixes
+
+* **core:** let an always target wait for its dependencies to settle ([#318](https://github.com/zuke-build/zuke/issues/318)) ([ef18769](https://github.com/zuke-build/zuke/commit/ef1876956043a4213e4a1c3df2a57bbbd4e9cae7))
+
 ## [1.34.0](https://github.com/zuke-build/zuke/compare/core-v1.33.0...core-v1.34.0) (2026-08-08)
 
 
