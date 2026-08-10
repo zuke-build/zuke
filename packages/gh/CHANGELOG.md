@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.3.0](https://github.com/zuke-build/zuke/compare/gh-v1.2.0...gh-v1.3.0) (2026-08-10)
+
+
+### Features
+
+* **gh:** post a check run without duplicating it ([#319](https://github.com/zuke-build/zuke/issues/319)) ([f8a74ec](https://github.com/zuke-build/zuke/commit/f8a74ec5a7407d551497880428bd91450bc73942))
+
+
+### Bug Fixes
+
+* **gh:** persist the dispatch marker before dispatching the workflow ([#315](https://github.com/zuke-build/zuke/issues/315)) ([f76cb9e](https://github.com/zuke-build/zuke/commit/f76cb9ea59b42ddb793bac7af5ecd8999703d271))
+
 ## [1.2.0](https://github.com/zuke-build/zuke/compare/gh-v1.1.0...gh-v1.2.0) (2026-08-10)
 
 
