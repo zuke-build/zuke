@@ -1491,3 +1491,59 @@ Deno.test("deleting a run leaves a lock somebody still holds", async () => {
     await Deno.remove(dir, { recursive: true });
   }
 });
+
+Deno.test("a lock whose mutex is busy never fails the prune that found it", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    // A host that never yields the lock mutex, as a live holder mid-acquire
+    // would look. Clearing a leftover lock is tidiness; the run's own deletion
+    // is the deletion that matters, and litter must not fail a prune.
+    class BusyLockHost implements StateHost {
+      readonly real = defaultStateHost;
+      readText(path: string) {
+        return this.real.readText(path);
+      }
+      writeText(path: string, content: string) {
+        return this.real.writeText(path, content);
+      }
+      rename(from: string, to: string) {
+        return this.real.rename(from, to);
+      }
+      createExclusive(path: string): Promise<boolean> {
+        if (path.endsWith(".acq")) return Promise.resolve(false);
+        return this.real.createExclusive(path);
+      }
+      remove(path: string) {
+        return this.real.remove(path);
+      }
+      listDir(path: string) {
+        return this.real.listDir(path);
+      }
+      mkdirp(path: string) {
+        return this.real.mkdirp(path);
+      }
+      now() {
+        return this.real.now();
+      }
+    }
+    const store = new FileSystemStateStore(`${dir}/runs`, new BusyLockHost());
+    const runId = "cccccccc-dddd-eeee-ffff-000000000000";
+    await store.putRun(
+      buildRunRecord({
+        runId,
+        build: "B",
+        rootTarget: "work",
+        order: [],
+        params: [],
+        actor: "tester",
+        now: new Date().toISOString(),
+      }),
+      null,
+    );
+
+    await store.deleteRun(runId); // must not throw
+    assertEquals(await store.getRun(runId), null);
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});

@@ -175,8 +175,14 @@ export class FileSystemStateStore implements StateStore {
    * and reclaims a stale one by TTL. Deleting it from outside that protocol
    * would let two writers into the critical section at once.
    *
-   * The expiry check and the delete share the lock's own mutex, so an acquire
-   * racing this cannot have its fresh record removed by a stale reading.
+   * The expiry check and the delete share the lock's own mutex — the same one
+   * every acquire, renew and release takes — so the two cannot interleave: an
+   * acquirer either gets there first, and its fresh record is then seen as
+   * unexpired, or arrives after, and finds no record to be confused by.
+   *
+   * Clearing the records is best-effort. The run's own file is the deletion that
+   * matters; a leftover lock is litter, and litter must never fail a prune, so a
+   * mutex this cannot take in time is left for the next sweep.
    */
   async deleteRun(id: string): Promise<void> {
     await this.#ensureDir();
@@ -185,15 +191,22 @@ export class FileSystemStateStore implements StateStore {
     });
     for (const prefix of [RUN_LEASE_PREFIX, CANCEL_LOCK_PREFIX]) {
       const key = lockKey(prefix, id);
-      await this.#withMutex(
-        this.#lockMarker(key),
-        `lock "${key}"`,
-        async () => {
-          const current = await this.#readLock(key);
-          if (current !== null && current.expiresAt > this.#host.now()) return;
-          await this.#host.remove(this.#lockFile(key));
-        },
-      );
+      try {
+        await this.#withMutex(
+          this.#lockMarker(key),
+          `lock "${key}"`,
+          async () => {
+            const current = await this.#readLock(key);
+            if (current !== null && current.expiresAt > this.#host.now()) {
+              return;
+            }
+            await this.#host.remove(this.#lockFile(key));
+          },
+        );
+      } catch {
+        // A mutex that could not be taken in time, or a file that vanished
+        // under us: the run is already gone, which is what was asked for.
+      }
     }
   }
 

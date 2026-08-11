@@ -1152,8 +1152,14 @@ class FileSystemStateStore implements StateStore
     and reclaims a stale one by TTL. Deleting it from outside that protocol
     would let two writers into the critical section at once.
 
-    The expiry check and the delete share the lock's own mutex, so an acquire
-    racing this cannot have its fresh record removed by a stale reading.
+    The expiry check and the delete share the lock's own mutex — the same one
+    every acquire, renew and release takes — so the two cannot interleave: an
+    acquirer either gets there first, and its fresh record is then seen as
+    unexpired, or arrives after, and finds no record to be confused by.
+
+    Clearing the records is best-effort. The run's own file is the deletion that
+    matters; a leftover lock is litter, and litter must never fail a prune, so a
+    mutex this cannot take in time is left for the next sweep.
   async acquireLock(key: string, holder: LockHolder, ttlMs: number): Promise<LockResult>
     Atomically acquire the lock `key` for `holder`, taking over if expired.
   async renewLock(key: string, token: string, ttlMs: number): Promise<boolean>
