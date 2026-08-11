@@ -62,6 +62,10 @@ Each run is stored as one JSON document:
     { "name": "deploy", "dependsOn": ["build"] }
   ],
   "params": { "env": "sit" }, // resolved, NON-secret parameters only
+  "deadlineAt": "2026-07-17T…Z", // optional; from Build.deadline(), enforced by the reaper
+  "intendedTerminal": "cancelled", // optional; set when a run enters `cancelling`
+  "signals": {}, // external signals delivered to a .waitsFor() gate
+  "events": [], // the audit trail (MCP tool calls, reap events)
   "targets": {
     "build": {
       "status": "succeeded",
@@ -73,7 +77,9 @@ Each run is stored as one JSON document:
       "status": "succeeded",
       "meta": { "target": "sit-7" },
       "startedAt": "…",
-      "endedAt": "…"
+      "endedAt": "…",
+      "waitingFor": null, // the gate it is parked on, when suspended
+      "effects": {} // per-effect intent + settlement, for crash re-drive
     }
   },
   "degraded": false // optional; true if a state write was lost (see below)
@@ -138,6 +144,8 @@ One JSON file per run under a directory (`.zuke/runs/<id>.json` by default).
 Writes are atomic (write-temp-then-rename) and guarded by an `O_EXCL` lock file
 so two processes on the **same host** cannot corrupt a record. The version used
 for compare-and-swap is a content hash.
+
+<!-- check -->
 
 ```ts
 import { FileSystemStateStore } from "jsr:@zuke/core";

@@ -121,4 +121,4 @@ The whole thing sits behind the `BuildRegistry` interface
 it against their own catalog service or database and plug it in via
 `Build.registry()` — the richer catalog stays a plugin, exactly as the pluggable
 `StateStore` and `RemoteCacheStore` do. Core ships the interface, the two
-reference backends, and (next) the `zuke mcp` integration point.
+reference backends, and the `zuke mcp --registry` integration point.

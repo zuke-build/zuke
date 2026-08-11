@@ -187,6 +187,9 @@
     "zukebox",
     "zukeeper"
   ],
+  "ignoreRegExpList": [
+    "/`[0-9a-z]{10,14}`/"
+  ],
   "flagWords": [
     "ponytail"
   ],
@@ -198,8 +201,6 @@
     "/llms-full.txt",
     "/zuke",
     "/zuke.ps1",
-    "/CHANGELOG.md",
-    "/AGENTS.md",
     "packages/*/CHANGELOG.md",
     "assets/",
     ".github/workflows/",

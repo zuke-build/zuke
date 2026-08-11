@@ -3,6 +3,8 @@
 Ergonomic process execution built on `Deno.Command`, imported from the `shell`
 submodule:
 
+<!-- check -->
+
 ```ts
 import { $ } from "jsr:@zuke/core/shell";
 
@@ -23,6 +25,9 @@ await $`build`.env({ NODE_ENV: "prod" }).cwd("./app").quiet();
 | `.env(record)` | Merge environment variables.                                                                                   |
 | `.cwd(path)`   | Set the working directory.                                                                                     |
 | `.quiet()`     | Suppress live stdout/stderr streaming.                                                                         |
+| `.killAfter(ms)` | Terminate the child if it outlives `ms`, raising `CommandTimeoutError`.                                      |
+| `.signal(sig)` | The signal used to terminate it (default `SIGTERM`); composes with `.killAfter()` and run cancellation.        |
+| `.spawn()`     | Start the process **without** awaiting it, returning a handle — how [services](./services.md) stay running.    |
 
 Awaiting a command resolves to a `CommandOutput`
 (`{ code, stdout, stderr, truncated }`, plus a `.text()` helper for trimmed

@@ -31,6 +31,8 @@ with `/` or a drive letter, or build from an absolute base.
 `repoRoot` is `absolutePath` anchored at your repository root, so you can build
 paths relative to the project no matter where the build is invoked from:
 
+<!-- check -->
+
 ```ts
 import { repoRoot } from "jsr:@zuke/core";
 

@@ -63,10 +63,12 @@ await run(CI);
    resolution. (If a build delegates its side effects to your own tested
    modules behind injected clients, the wrapper rule still governs whatever
    those modules run in the target body.)
-4. **A body is required.** Set `.executes(...)`; it may be sync or async, and
-   its return value is ignored — `.executes(() => DenoTasks.lint())` is fine
-   as-is; never wrap a single wrapper call in an `async` block just to discard
-   its result.
+4. **A body is required**, unless the target is one of the four forms that
+   replace it: a `service()`, a `.forEach()` fan-out, a `.waitsFor()` gate, or a
+   target declaring only `.effect(...)`. Otherwise set `.executes(...)`; it may
+   be sync or async, and its return value is ignored —
+   `.executes(() => DenoTasks.lint())` is fine as-is; never wrap a single
+   wrapper call in an `async` block just to discard its result.
 
 ## Find the exact signature first
 
@@ -131,6 +133,11 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   `--status`/`--target`/`--since`/`--limit`) and `zuke runs show <id>` (`--json`
   on both). Prune old ones with `zuke runs prune --keep <age> --keep-last <n>`
   (only terminal runs; never suspended/running).
+  A run whose process is killed is picked up by `zuke resume --check`, which
+  reaps it — its lease tells a dead holder from a slow one — and resumes it in
+  the same sweep. `override deadline()` gives a run a wall-clock budget
+  (`"45m"`, or milliseconds) that survives suspension; an abandoned run found
+  past it is settled `failed` with its compensations instead of resumed.
   See the cheatsheet.
 - **Cross-run locks:** `.lock((s) => s.lockKey(...).withTtl("4h"))` — a settings
   lambda — gives a target an exclusive claim across runs/machines; a second run
@@ -197,7 +204,8 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   an AI client can list, inspect, and (with `--allow-run`) run targets — on
   stdio, or over HTTP with `--http <host:port>` (loopback by default; a
   non-loopback bind needs a `ZUKE_MCP_TOKEN` bearer token). With a state store
-  it also exposes `list_runs`/`show_run` (+ `signal_run`/`resume_check`). Tier
+  it also exposes `list_runs`/`show_run` (+ `signal_run`, `resume_check` and
+  `cancel_run`). Tier
   access with `--allow-run=<globs>` (an allow-list over **invocation** —
   invoking a target runs its dependencies, and the read tools narrow to the
   allow-listed targets' closure), `--protect <globs>` + `ZUKE_OPERATOR_TOKEN`

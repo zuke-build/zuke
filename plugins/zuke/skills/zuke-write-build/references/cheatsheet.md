@@ -10,7 +10,9 @@ This cheatsheet is a summary, not the source of truth.
 
 ## `target()` — the fluent builder
 
-Everything is optional except a body (`.executes`).
+Everything is optional except a body (`.executes`) — with four exceptions, all
+below: a `service()`, a `.forEach()` fan-out, a `.waitsFor()` gate, and a target
+that declares only `.effect(...)` each legitimately have no `.executes(...)`.
 
 | Method                                                                                                   | Purpose                                                                                             |
 | -------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
@@ -40,6 +42,7 @@ Everything is optional except a body (`.executes`).
 | `.recoverWith(...r)` / `.recoverAttempts(n)`                                                             | Run `Remediation`s if the body fails (self-healing); re-run when one asks to. See AI section.       |
 | `.partOf(group)`                                                                                         | Join a parallel batch (see `group()`).                                                              |
 | `.produces(...p)` / `.consumes(...t)`                                                                    | Declare and consume artifact paths.                                                                 |
+| `.readOnly()`                                                                                            | Advertise the target as query-only over MCP (`readOnlyHint` instead of `destructiveHint`).          |
 
 **Lifecycle hooks** — `override` on the `Build` to observe a run without wrapping
 every target: `onStart()` once before anything runs, `onFinish(result)` once
@@ -218,7 +221,14 @@ class CD extends Build {
   `suspended` with a reap event saying why, and the same pass resumes it — so a
   process killed mid-run has its owed effects driven without an operator
   stepping in. A run whose lease is still being renewed is merely slow, and is
-  left alone.
+  left alone. The same sweep also finishes runs a dead settler left `cancelling`.
+- **Run deadlines.** `override deadline()` on the `Build` gives a run a
+  wall-clock budget (`"45m"`, or milliseconds), stamped as `deadlineAt` when it
+  starts and pushed forward on resume by however long the run sat parked — so
+  time spent waiting at a gate does not count against it. An abandoned run found
+  **past** its deadline is not handed back: the reaper settles it `failed` and
+  runs its compensations. Without a deadline a reaped run is always returned to
+  `suspended` and resumed.
 - **Never put secrets in `ctx.state`** — it is stored as plain JSON. Secret
   parameters are excluded from the record and state values are run through the
   redactor, but treat state as a non-secret channel. See `docs/state.md`.
@@ -388,7 +398,10 @@ gate = target().dependsOn(this.checks).always()
 - **At-least-once, not exactly-once.** A process that dies after the side effect
   but before recording it repeats the effect on the re-drive. Write bodies that
   tolerate that — either repeating is harmless, or the far side converges (an
-  upsert, not an append).
+  upsert, not an append). The body's `ctx` is an `EffectContext`: `ctx.effect`
+  is the effect's name and **`ctx.redriven`** is true when a previous attempt
+  already committed its intent, so a body that cannot be made idempotent can at
+  least detect the repeat and check the far side first.
 - **Pin the inputs.** A re-drive happens later, sometimes much later, so a body
   that looks up "the current value" of anything acts on a world that has moved
   on. Read what the effect acts on from `ctx.state`/`ctx.stateOf(...)`, written
@@ -400,12 +413,23 @@ gate = target().dependsOn(this.checks).always()
   reason is re-driven by the ordinary resume. A process **killed outright**
   leaves its run `running`, which `zuke resume --check` reaps: it reads the
   run's lease to tell a dead holder from a slow one, returns an abandoned run to
-  `suspended`, and resumes it in the same pass (see Run leases above).
+  `suspended`, and resumes it in the same pass (see Run leases above) — unless
+  the run is past its `deadline()`, in which case it is settled `failed` and its
+  effects are never driven.
 
 ## Fan-out over a list — `.forEach()`
 
 Run the same pipeline over a runtime list, with per-item isolation and bounded
-concurrency:
+concurrency.
+
+> **Four combinations throw**, loudly, when the fan-out is materialised — not at
+> type-check time, so they are easy to write by accident. A `.forEach()` parent
+> may not also declare `.waitsFor()` or `.effect()`, and **no stage** inside the
+> fan-out may declare either. A stage *can* declare `.onCancel()`, which is why
+> the restriction is worth stating: the neighbouring features do not compose the
+> way the compensation one does. Suspend or record an effect in a target
+> **before or after** the fan-out instead.
+
 
 ```ts
 import { Build, parameter, target } from "jsr:@zuke/core";
@@ -442,6 +466,8 @@ class CD extends Build {
   and validate the list before the batch runs.
 
 ## Parameters — typed build inputs
+
+<!-- check -->
 
 ```ts
 import { Build, parameter, target } from "jsr:@zuke/core";
@@ -487,6 +513,10 @@ token = parameter("Deploy token")
   );
 ```
 
+The other source is **`fileSecret((s) => s.path("/run/secrets/deploy-token"))`**,
+for a secret mounted as a file by Kubernetes, Docker, or a systemd credential —
+no subprocess, and the common shape for a multi-line value like a private key.
+
 A sourced secret is still an ordinary parameter (flag, env var, `.required()`,
 `.number()`); `.from(...)` just adds the run-time provider.
 
@@ -494,7 +524,8 @@ A sourced secret is still an ordinary parameter (flag, env var, `.required()`,
 
 Fetch pinned, checksum-verified tool binaries from the build itself instead of
 assuming they're installed. Both return the installed binary's `AbsolutePath`;
-hand it to a wrapper's `.toolPath(...)`, to `CmdTasks`, or to `defineTool`.
+hand it to a wrapper's `.toolPath(...)`, to `CmdTasks`, or to `defineTool`
+(`jsr:@zuke/core/tooling` — the submodule, not the package root).
 
 ```ts
 import { toolchain, ToolTasks } from "jsr:@zuke/core";
@@ -578,6 +609,7 @@ the full task list and settings methods of each):
 | `@zuke/security`                                                                                                                               | `*Tasks`                                         | security scanning                                                                   |
 | `@zuke/claude`, `@zuke/codex`, `@zuke/gemini`                                                                                                  | `ClaudeTasks`, ...                               | headless AI CLIs                                                                    |
 | `@zuke/ai`                                                                                                                                     | `securityReviewer`, ..., `aiFixer`, `agentFixer` | AI review gates + self-healing (see below)                                          |
+| `@zuke/otel`                                                                                                                                   | `otel` (a plugin)                                | export runs and targets as OpenTelemetry traces (see below)                          |
 
 The catalog keeps growing — the package list in `llms.txt`'s `## Packages`
 catalogue (or the table above) is the source of truth for **whether a wrapper
@@ -719,7 +751,8 @@ await run(MyBuild, {
 ci = cicd({ provider: "github" }); // .github/workflows/ci.yml, push/PR to main
 ```
 
-`provider` is the only required field (`"github"` / `"gitlab"` / `"azure"`).
+`provider` is the only required field (`"github"` / `"gitlab"` / `"azure"` /
+`"bitbucket"`).
 Running any target regenerates the YAML; on CI it _verifies_ the committed file
 is current (`zuke generate-ci --check` is a dedicated gate).
 
@@ -738,15 +771,21 @@ else a friendly error.
 ./zuke --list --json          # whole surface (commands, flags, targets) as JSON
 ./zuke <target> --dry-run     # preview the plan, run nothing
 ./zuke <target>               # run it
-./zuke <target> --parallel    # run independent targets concurrently
-./zuke <target> --affected    # run only targets changed since a git base
+./zuke <target> --parallel[=N]   # run independent targets concurrently (N caps in-flight)
+./zuke <target> --affected[=<base>]  # only targets changed since a git base (default HEAD)
+./zuke <target> --skip <dep>  # run it but skip a named dependency (repeatable)
 ./zuke <target> --no-cache    # ignore the incremental cache
 ./zuke <target> --state       # persist run state to .zuke/runs (durable state)
 ./zuke <target> --actor <who> # attribute the run in its state record
 ./zuke runs list [--status s] # list persisted runs (also --target, --since, --limit, --counts, --json)
 ./zuke runs show <id>         # one run's full per-target status (+ --json)
 ./zuke runs prune --keep 90d --keep-last 50  # delete old terminal runs (--dry-run to preview)
+./zuke graph [--output=html] [--no-open]  # print the dependency graph, or render it interactively
+./zuke generate-ci [--check]  # write the declared CI workflow files (--check verifies instead)
+./zuke completions install bash  # wire target/flag completion into your shell (or `print`)
 ./zuke resume <id> --signal <name> [--data <json>]  # continue a suspended run
+./zuke resume --check          # reap abandoned runs, then re-check suspended ones (cron entry point)
+./zuke resume <id> --resume-degraded  # continue past a degraded record (a state write was lost)
 ./zuke cancel <id>            # cancel a run and run its .onCancel() compensations
 ./zuke mcp [--allow-run]      # serve the build over MCP for an AI client (stdio)
 ./zuke mcp --http 7777        # ...or over HTTP (loopback; token off-loopback; Origin-guarded)

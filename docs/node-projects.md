@@ -21,12 +21,14 @@ my-app/
 {
   "imports": {
     "@zuke/core": "jsr:@zuke/core@^1",
-    "@zuke/npm": "jsr:@zuke/npm@^0"
+    "@zuke/npm": "jsr:@zuke/npm@^1"
   }
 }
 ```
 
 3. Create `build/zuke.ts` — targets drive the repo root via `.cwd("..")`:
+
+<!-- check -->
 
 ```ts
 import { Build, run, target } from "@zuke/core";

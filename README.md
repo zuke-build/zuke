@@ -176,7 +176,7 @@ latest release on JSR.
 | [`@zuke/otel`](https://jsr.io/@zuke/otel)         | [![JSR](https://jsr.io/badges/@zuke/otel)](https://jsr.io/@zuke/otel) [![JSR score](https://jsr.io/badges/@zuke/otel/score)](https://jsr.io/@zuke/otel)                 |
 
 <details>
-<summary><strong>All tool wrappers</strong> (45 packages)</summary>
+<summary><strong>All tool wrappers</strong> (44 packages)</summary>
 
 | Package                                                       | Version                                                                                                                                                                                         |
 | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -396,8 +396,8 @@ Full documentation lives in [`docs/`](./docs/):
 - [CLI reference](./docs/cli.md) — commands and flags.
 - [Programmatic API](./docs/programmatic-api.md) — drive Zuke from your own
   code.
-- [Versioning & compatibility](./docs/versioning.md) — core semver vs. 0.x
-  wrappers, the `@zuke/core` floor, and pinning guidance.
+- [Versioning & compatibility](./docs/versioning.md) — one semver tier across
+  every package, the `@zuke/core` floor, and pinning guidance.
 - [How Zuke compares](./docs/comparison.md) — a capability matrix against
   `deno task`, npm scripts, Make, Nx, Turborepo, and Dagger, on the capabilities
   Zuke provides.
@@ -412,10 +412,10 @@ deno task check       # type-check
 deno task fmt         # format (fmt:check to verify only)
 deno task lint        # lint
 deno task spell       # spell-check (cspell)
-deno task ci          # the full gate — deno run -A zuke.ts ci
+deno task ci          # the full gate — deno run -A --frozen zuke.ts ci
 ```
 
-`deno task ci` **is** `./zuke ci`, the same gate the `quality` job in
+`deno task ci` **is** `./zuke ci`, the same gate the `ci` job in
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every push and
 pull request — see [`AGENTS.md`](./AGENTS.md#commands) for the full check list.
 
@@ -425,8 +425,9 @@ Contributions are welcome! Start with [`CONTRIBUTING.md`](./CONTRIBUTING.md) for
 the full workflow, and please be mindful of our
 [`Code of Conduct`](./CODE_OF_CONDUCT.md).
 
-- Read [`CLAUDE.md`](CLAUDE.md) for the coding standards (strict typing, no
-  `any`/`as`, 95%+ coverage, hermetic tests).
+- Read [`AGENTS.md`](AGENTS.md) for the coding standards (strict typing, no
+  `any`/`as`, 95%+ coverage, hermetic tests). `CLAUDE.md` is a one-line pointer
+  to it.
 - Run `deno task ci` before opening a PR — it must be green.
 - Add tests in the same change as the code they cover.
 - Keep commits small and descriptive; update docs when behaviour changes.

@@ -100,7 +100,7 @@ details worth knowing:
   running any body, so it can't invalidate or refresh a fingerprint.
 
 See the CLI's [Incremental builds](./cli.md#incremental-builds) section and the
-[`.inputs()`/`.outputs()`](./authoring.md#incremental-caching-inputs--outputs)
+[`.inputs()`/`.outputs()`](./authoring.md#incremental-caching--inputs--outputs)
 authoring reference for the same feature from those angles.
 
 ## Remote build cache

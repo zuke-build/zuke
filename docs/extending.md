@@ -78,6 +78,8 @@ Wrap a CLI as a typed, fluent task in the settings-lambda style. For a one-off,
 `defineTool` needs no class (see [Tools](./tools.md#define-your-own-tool)); a
 distributable package extends `ToolSettings` from `@zuke/core/tooling`.
 
+<!-- check -->
+
 ```ts
 import {
   type Configure,

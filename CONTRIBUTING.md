@@ -8,9 +8,9 @@ By participating, you agree to abide by our
 [Code of Conduct](./CODE_OF_CONDUCT.md).
 
 > [!NOTE]
-> Zuke's packages sit at different maturity levels — see
-> [Versioning & compatibility](./docs/versioning.md) for which packages follow
-> semver and which 0.x wrappers may still change within `0.x`. If you are
+> Every Zuke package is `1.x` on full semver — see
+> [Versioning & compatibility](./docs/versioning.md) for the compatibility
+> promise, the `@zuke/core` floor, and pinning guidance. If you are
 > planning a large change, please open an issue first so we can agree on the
 > direction before you invest the effort.
 
@@ -42,7 +42,7 @@ deno task ci   # run the full gate to confirm a clean baseline
 | Full pre-commit / CI gate     | `deno task ci` / `./zuke ci`            |
 
 **Run `deno task ci` before opening a pull request — it must be green.**
-`deno task ci` is `deno run -A zuke.ts ci`, the same gate CI's `quality` job
+`deno task ci` is `deno run -A --frozen zuke.ts ci`, the same gate CI's `ci` job
 runs (see [`AGENTS.md`](./AGENTS.md#commands) for the full check list) — so a
 green `deno task ci` locally means a green CI run. If you change a public API,
 regenerate the docs in the same change (`./zuke apiDocs`) — `ci` includes
@@ -50,8 +50,8 @@ regenerate the docs in the same change (`./zuke apiDocs`) — `ci` includes
 
 ## Coding standards (non-negotiable)
 
-These mirror [`CLAUDE.md`](./CLAUDE.md), which is the source of truth for how
-code in this repo is written:
+These mirror [`AGENTS.md`](./AGENTS.md), which is the source of truth for how
+code in this repo is written (`CLAUDE.md` is a one-line pointer to it):
 
 1. **Strict, strongly-typed TypeScript.** Never use `any` (the `no-explicit-any`
    lint rule is on). Never use `as` to force a type or the non-null assertion
@@ -69,8 +69,9 @@ code in this repo is written:
    When a test needs a subprocess, invoke `Deno.execPath()` (the running
    `deno`), which is always present and shell-free.
 
-See the architecture notes in [`CLAUDE.md`](./CLAUDE.md) for how targets, the
-dependency graph, the shell `$`, and tool wrappers fit together.
+See the architecture notes in [`AGENTS.md`](./AGENTS.md#architecture-notes) for
+how targets, the dependency graph, the shell `$`, and tool wrappers fit
+together.
 
 ## Commit messages
 

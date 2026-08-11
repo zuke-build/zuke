@@ -100,6 +100,8 @@ the first word of the line.
 
 ## Quick start
 
+<!-- check -->
+
 ```ts
 // zuke.ts
 import { Build, run, target } from "jsr:@zuke/core";
@@ -263,7 +265,7 @@ may therefore be enforcing on one leg and recording on the others. Check
 [harden-runner's own docs](https://github.com/step-security/harden-runner) for
 the version you have pinned.
 
-#### `ref` on `pull_request_target` is refused
+#### `ref` is refused on every secret-bearing event
 
 `ref` checks out something other than what the event points at — the head
 branch of a pull request, say, so a job can push a fix back to it. On
@@ -272,21 +274,28 @@ branch of a pull request, say, so a job can push a fix back to it. On
 On **`pull_request_target`** it is not. That event runs with the base
 repository's secrets and a writable token, so a `ref` aimed at a contributor's
 head puts *their* `zuke.ts` in the workspace — and the last step executes it.
-No configuration makes that safe, so the action refuses the combination
-outright rather than warning about it:
+No configuration makes that safe, so the action refuses it outright:
 
 ```
-Error: Refusing to check out a custom ref and run a Zuke target on a
-pull_request_target event: that executes the checked-out repository's build
-file with this repository's secrets.
+Error: Refusing to check out a custom ref on a pull_request_target event: it
+runs with this repository's secrets and a writable token, so checking out a ref
+a contributor controls hands them both. Use 'pull_request', or drop the 'ref'
+input.
 ```
 
-Checking a ref out *without* running a target is not that bug, and neither is
-any of it on `pull_request`. Both keep working.
+The guard is an **allow-list, not a deny-list for one event**. A custom `ref` is
+permitted only on `pull_request`, `push`, `merge_group`, `workflow_dispatch`,
+`schedule` and `release`; every other event — `issue_comment`, `workflow_run`,
+and anything GitHub adds later — is refused. A deny-list of what is dangerous
+today would be silently wrong the moment the list grew.
 
-Zuke's own workflows do **not** use it yet — `uses: ./` resolves inside the
-workspace, so it would need the very checkout it exists to precede. They inline
-the same steps, generated from the pins in `action.yml` itself.
+It is also **not keyed on `target`**: a `ref` checkout with no target is refused
+just the same, because a caller who omits it and writes `run: ./zuke ci` in
+their own next step reaches the identical outcome.
+
+Zuke's own six workflows all start with the published action — the generated
+YAML opens with `uses: zuke-build/zuke@<sha>`, so the repository dogfoods the
+same entry point it ships.
 
 ---
 

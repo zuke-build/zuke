@@ -16,6 +16,8 @@ a target with `.validateBefore(...)` (gate before the body) or
 `.validateAfter(...)` (check after a successful body). The target decides _when_
 it runs; the reviewer decides _what_ it checks.
 
+<!-- check -->
+
 ```ts
 import { Build, parameter, run, target } from "jsr:@zuke/core";
 import { securityReviewer } from "jsr:@zuke/ai";
@@ -221,7 +223,8 @@ Maintaining `.github/workflows/ai-review.yml` by hand is a chore — it has to
 stay in sync with every reviewer's secret env var, with `pull-requests: write`
 when any reviewer uses `.comment()`, with the right harden-runner + checkout
 pins, with the fork-gating `if`. `aiReviewWorkflow({...})` does it for you:
-declare it on the build and Zuke writes a [`CiFile`](authoring.md#cicd) that the
+declare it on the build and Zuke writes a
+[`CiFile`](authoring.md#ci-config-generation--cicd-and-generate-ci) that the
 standard `cicd` sync keeps current.
 
 ```ts

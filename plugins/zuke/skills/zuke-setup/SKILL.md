@@ -68,10 +68,15 @@ finish replacing any remaining generated `CmdTasks.exec` calls with typed
 - **`./zuke`** + **`./zuke.ps1`** — launchers that locate the project and run
   `zuke.ts` with the Deno on `PATH`. If Deno is missing they point at the
   official install docs and exit rather than piping an install script into a
-  shell, which would download and execute code unverified.
-- **`deno.json`** — merged to add a `zuke` task (and `fmt`/`lint`/`test` if
-  absent).
+  shell, which would download and execute code unverified. They pass `--frozen`
+  once a `deno.lock` exists, so the first run writes the lockfile and every run
+  after verifies it.
+- **`deno.json`** — merged to add a `zuke` task, plus `fmt`/`lint`/`test` if
+  absent. The merge is all-or-nothing: if a `zuke` task is already declared the
+  file is left alone entirely, and an unparseable one is skipped with a notice.
 - **`zuke.json`** — `{ "name": "..." }`, which marks the repo root.
+- **`.gitignore`** — created or appended so `.zuke/` is ignored (the cache and
+  durable run state live there); untouched if it already covers it.
 
 ## Running the build
 
@@ -90,14 +95,18 @@ calls, `zuke mcp` runs a Model Context Protocol server over it (register with
 `claude mcp add zuke -- deno run -A zuke.ts mcp`; add `--allow-run` to let the
 agent execute targets, not just inspect them).
 
-If Deno is already installed you can equivalently use `deno task zuke <target>`
-or `deno run -A zuke.ts <target>`. The `-A` flag grants permissions, since
-targets typically run processes and touch files.
+If Deno is already installed you can also use `deno task zuke <target>` or
+`deno run -A zuke.ts <target>`. The `-A` flag grants permissions, since targets
+typically run processes and touch files. These are not quite equivalent to the
+launcher: the scaffolded `zuke` task deliberately omits `--frozen`, so it may
+heal a stale lockfile where `./zuke` would fail on it.
 
 ## Manual setup (no CLI)
 
 Create `zuke.ts` in the project root, extend `Build`, declare targets with
 `target()`, and call `await run(MyBuild)` at the bottom:
+
+<!-- check -->
 
 ```ts
 import { Build, run, target } from "jsr:@zuke/core";

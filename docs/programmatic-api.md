@@ -3,6 +3,8 @@
 Beyond authoring, `mod.ts` exports the building blocks if you want to drive Zuke
 yourself or test a build:
 
+<!-- check -->
+
 ```ts
 import {
   discoverTargets, // (build) => Map<string, TargetBuilder>
@@ -31,6 +33,12 @@ options object mirrors the CLI flags:
 | `cache` | `boolean \| BuildCache` | Incremental [caching](./caching.md); `false` disables it (`--no-cache`). |
 | `dryRun` | `boolean` | Print the plan without running any body (`--dry-run`). |
 | `params` | `Record<string, string>` | Raw [parameter](./parameters.md) values, keyed by property name. |
+| `signal` | `AbortSignal` | Cancel the run — the programmatic equivalent of Ctrl-C, running [compensations](./orchestration.md#cancellation--compensation--oncancel). |
+| `affected` | `boolean \| string` | Limit the run to targets affected since a git base (`--affected`). |
+| `remoteCache` | `RemoteCacheStore` | Share cached outputs across machines ([caching](./caching.md)). |
+| `stateStore` | `StateStore` | Persist [durable run state](./state.md); highest-precedence source. |
+| `state` | `boolean` | Enable the default filesystem store without naming one (`--state`). |
+| `actor` | `string` | Who to attribute the run to in its record (`--actor`). |
 
 `readEnv`, `prompt`, `github`, and `color` are additional test/CI seams — see the
 `ExecuteOptions` JSDoc for the full list.
@@ -46,7 +54,10 @@ if (target) {
 }
 ```
 
-`BuildResult` is `{ ok: boolean; executed: string[]; error?: unknown }`.
+`BuildResult` is
+`{ ok: boolean; executed: string[]; error?: unknown; suspended?: boolean; cancelled?: boolean; runId?: string }`
+— `runId` is what a follow-up `zuke runs show` or [`cancelRun`](./orchestration.md)
+is pointed at, and `suspended` marks a run parked at a gate rather than finished.
 
 ## Inspecting the CLI shape — `describeCli`
 

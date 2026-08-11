@@ -12,6 +12,8 @@ It replaces the fragile shell dance every team writes by hand: start the server
 in the background, `sleep 5` and hope it's up, run the tests, and remember to
 kill it (which never happens when the tests fail).
 
+<!-- check -->
+
 ```ts
 import { Build, run, service, target, tcpReachable } from "jsr:@zuke/core";
 import { $ } from "jsr:@zuke/core/shell";
