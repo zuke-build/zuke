@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.38.2](https://github.com/zuke-build/zuke/compare/core-v1.38.1...core-v1.38.2) (2026-08-11)
+
+
+### Bug Fixes
+
+* **core:** stop a lost lease from rolling back a run another process owns ([#332](https://github.com/zuke-build/zuke/issues/332)) ([c15aab2](https://github.com/zuke-build/zuke/commit/c15aab2984f4a9b85a36b244a6e2e9c0d243b55a))
+
 ## [1.38.1](https://github.com/zuke-build/zuke/compare/core-v1.38.0...core-v1.38.1) (2026-08-11)
 
 
