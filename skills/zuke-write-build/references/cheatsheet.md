@@ -209,12 +209,16 @@ class CD extends Build {
   non-terminal run (suspended/running) is never pruned. The FS store owns
   pruning via the CLI; for the HTTP backend retention is the server's job
   (`GET /runs` takes `limit`; `DELETE /runs/:id` is optional). See `docs/state.md`.
-- **Run leases.** A run that writes durable state takes a TTL lease on its own
-  id and heartbeats it, so two processes cannot both believe they own one run —
-  a resume that adopts a run whose lease has lapsed takes it over, and the
-  original stops. The lease is a mutual-exclusion guard, not a liveness monitor:
-  nothing currently sweeps lapsed leases, so a run whose process was killed
-  stays `running` until an operator moves it (see `.effect()` above).
+- **Run leases and reaping.** A run that writes durable state takes a TTL lease
+  on its own id and heartbeats it, so two processes cannot both believe they own
+  one run — a resume that adopts a run whose lease has lapsed takes it over, and
+  the original stops. The lease is also how a dead run is told from a slow one:
+  `zuke resume --check` looks at `running` runs before it sweeps suspended ones,
+  and a lease it can acquire means the holder is gone. Such a run is put back to
+  `suspended` with a reap event saying why, and the same pass resumes it — so a
+  process killed mid-run has its owed effects driven without an operator
+  stepping in. A run whose lease is still being renewed is merely slow, and is
+  left alone.
 - **Never put secrets in `ctx.state`** — it is stored as plain JSON. Secret
   parameters are excluded from the record and state values are run through the
   redactor, but treat state as a non-secret channel. See `docs/state.md`.
@@ -394,8 +398,9 @@ gate = target().dependsOn(this.checks).always()
   must not drift.
 - **What re-drives it.** An effect owed by a run that suspended for any ordinary
   reason is re-driven by the ordinary resume. A process **killed outright**
-  leaves its run `running`, so its owed effect is re-driven only once something
-  moves that run back to `suspended` — an operator, or a reaping sweep.
+  leaves its run `running`, which `zuke resume --check` reaps: it reads the
+  run's lease to tell a dead holder from a slow one, returns an abandoned run to
+  `suspended`, and resumes it in the same pass (see Run leases above).
 
 ## Fan-out over a list — `.forEach()`
 

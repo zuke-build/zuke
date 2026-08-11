@@ -1367,10 +1367,17 @@ class Redactor
 
   add(value: string): void
     Register a secret value to mask. Ignores empty strings and duplicates.
+
+    A multi-line value registers each of its lines as well as the whole
+    string, because redaction runs a line at a time and a whole-value pattern
+    can never match one line of it. Lines are trimmed, and a very short one is
+    skipped so it cannot mask ordinary text wherever it appears.
   redact(line: string): string
     Replace every registered secret in `line` with {@link REDACTED}.
   get size(): number
-    The number of distinct secret values registered.
+    The number of distinct patterns registered. A single-line secret
+    contributes one; a multi-line secret contributes the whole value plus each
+    of its qualifying lines.
 
 class SecretError extends Error
   Raised when a {@link SecretSource} cannot produce a value.
