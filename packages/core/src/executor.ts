@@ -406,8 +406,16 @@ export async function execute(
   const ownLease = opened.state.lease;
   const lease = ownLease ?? options.resume?.lease;
   if (lease !== undefined) {
-    if (lease.lost.aborted) onLeaseLost();
-    else lease.lost.addEventListener("abort", onLeaseLost, { once: true });
+    // Losing the claim stops the writer *first*. The walk that stops the run
+    // settles every target it never reached as `skipped`, and those rows would
+    // otherwise land on the record — through the very compare-and-swap that
+    // re-reads and re-applies — over the progress the new holder is making.
+    const stopOwning = () => {
+      writer?.disown();
+      onLeaseLost();
+    };
+    if (lease.lost.aborted) stopOwning();
+    else lease.lost.addEventListener("abort", stopOwning, { once: true });
   }
 
   // Announce the run's initial durable state (`running`) to plugins — a no-op

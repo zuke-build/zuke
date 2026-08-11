@@ -363,8 +363,18 @@ Deno.test("a refused intent leaves the record's modification time alone too", as
   // attempted. Leaving a bumped one behind would have the record claim a
   // modification no write ever landed — and the next best-effort write would
   // persist that claim.
+  //
+  // Needs a clock that actually moves: the shared `writerFor` helper hands the
+  // writer a constant, against which this assertion would hold no matter what
+  // the rollback did.
   const store = new MemStore();
-  const writer = await writerFor(store);
+  let tick = 0;
+  const writer = await RunStateWriter.open(
+    store,
+    sampleRecord("running"),
+    () => `2026-01-01T00:00:${String(tick++).padStart(2, "0")}.000Z`,
+    new Redactor(),
+  );
   const before = writer.snapshot().updatedAt;
   store.failNextPut = true;
   await assertRejects(() => writer.beginEffect("gate", "post"), Error);
@@ -374,7 +384,9 @@ Deno.test("a refused intent leaves the record's modification time alone too", as
 Deno.test("a refused intent restores the record in place, not by replacing it", async () => {
   // A compensation walk is handed `snapshot()` and reads it across awaits, so a
   // rollback that swapped the reference would leave that walk reading a record
-  // nothing writes to any more.
+  // nothing writes to any more. This guards that invariant against a future
+  // change rather than pinning the current one — restoring only `targets`, as
+  // the code did before, preserved identity too.
   const store = new MemStore();
   const writer = await writerFor(store);
   const held = writer.snapshot();

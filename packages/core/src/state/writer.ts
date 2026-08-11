@@ -121,6 +121,12 @@ export class RunStateWriter {
    * `succeeded` over the terminal a sweep already wrote.
    */
   #settledElsewhere = false;
+  /**
+   * Latched by {@link disown} once this process stops owning the run. Checked
+   * when a queued mutation actually runs, not when it is queued, so writes
+   * already sitting on the chain are neutralised too.
+   */
+  #disowned = false;
   #chain: Promise<void> = Promise.resolve();
 
   private constructor(
@@ -247,6 +253,23 @@ export class RunStateWriter {
    */
   settledElsewhere(): boolean {
     return this.#settledElsewhere;
+  }
+
+  /**
+   * Stop writing: this process no longer owns the run, so nothing it has left
+   * to say about it may reach the store.
+   *
+   * Called when the run's lease is lost. Every write from that instant is a
+   * no-op — including ones already queued, because the check runs when a
+   * mutation is applied rather than when it is enqueued. Without it, the walk
+   * that stops the run queues a `skipped` row for every target it never reached,
+   * and those rows land on the record through the writer's compare-and-swap,
+   * overwriting the progress the new holder is making right now.
+   *
+   * One-way: a run is never re-owned by the process that lost it.
+   */
+  disown(): void {
+    this.#disowned = true;
   }
 
   /** Record the run's terminal status, unless another process already has. */
@@ -479,6 +502,9 @@ export class RunStateWriter {
    * carrying on to the next target.
    */
   async #applyStrict(mutator: (record: RunRecord) => void): Promise<void> {
+    if (this.#disowned) {
+      throw new RunNotActiveError(this.#record.id, this.#record.status);
+    }
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       if (this.#record.status !== "running") {
         throw new RunNotActiveError(this.#record.id, this.#record.status);
@@ -589,6 +615,7 @@ export class RunStateWriter {
 
   /** Apply `mutator` and CAS-write, re-reading and retrying on conflict. */
   async #applyAndPersist(mutator: (record: RunRecord) => void): Promise<void> {
+    if (this.#disowned) return;
     try {
       for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
         mutator(this.#record);

@@ -1414,7 +1414,7 @@ Deno.test("a run's origin round-trips, and its absence stays an absence", () => 
   assertEquals(parsed.buildId, undefined);
 });
 
-Deno.test("deleting a run takes its lock records with it", async () => {
+Deno.test("deleting a run takes its expired lock records with it", async () => {
   const dir = await Deno.makeTempDir();
   try {
     const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
@@ -1429,19 +1429,17 @@ Deno.test("deleting a run takes its lock records with it", async () => {
       now: new Date().toISOString(),
     });
     await store.putRun(record, null);
-    // The two locks a run acquires over itself: its lease and its cancel lock.
+    // The two locks a run takes over itself: its lease and its cancel lock,
+    // both already lapsed — the state a settled or crashed run leaves behind.
     for (const key of [`zuke-run-${runId}`, `zuke-cancel-${runId}`]) {
       const held = await store.acquireLock(
         key,
         { actor: "tester", runId, since: new Date().toISOString() },
-        60_000,
+        1,
       );
       assertEquals(held.ok, true);
     }
-    const locksBefore = await Deno.readDir(`${dir}/runs/locks`);
-    let before = 0;
-    for await (const _ of locksBefore) before++;
-    assertEquals(before > 0, true);
+    await new Promise((resolve) => setTimeout(resolve, 5));
 
     await store.deleteRun(runId);
 
@@ -1452,7 +1450,43 @@ Deno.test("deleting a run takes its lock records with it", async () => {
     for await (const entry of Deno.readDir(`${dir}/runs/locks`)) {
       names.push(entry.name);
     }
-    assertEquals(names.filter((n) => n.includes(runId)), []);
+    assertEquals(names.filter((n) => n.endsWith(".json")), []);
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("deleting a run leaves a lock somebody still holds", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+    const runId = "bbbbbbbb-cccc-dddd-eeee-ffffffffffff";
+    const record = buildRunRecord({
+      runId,
+      build: "B",
+      rootTarget: "work",
+      order: [],
+      params: [],
+      actor: "tester",
+      now: new Date().toISOString(),
+    });
+    await store.putRun(record, null);
+    const key = `zuke-run-${runId}`;
+    const held = await store.acquireLock(
+      key,
+      { actor: "tester", runId, since: new Date().toISOString() },
+      60_000,
+    );
+    assertEquals(held.ok, true);
+
+    await store.deleteRun(runId);
+
+    // Tidying up a file must never stop a live run: deleting a claim somebody
+    // still holds would make their next renewal report the lease lost.
+    assertEquals(
+      await store.renewLock(key, held.ok ? held.token : "", 60_000),
+      true,
+    );
   } finally {
     await Deno.remove(dir, { recursive: true });
   }

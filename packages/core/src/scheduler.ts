@@ -774,22 +774,58 @@ export async function runScheduled(
     (predecessors.get(t) ?? []).every((p) =>
       t.always_ ? settled.has(p) : done.has(p)
     );
+  /**
+   * Whether `t` can never become ready: a predecessor has settled in a way that
+   * does not satisfy it (failed, or skipped), so no later pass will change the
+   * answer. A predecessor parked at a `waitsFor` gate is deliberately *not*
+   * settled, so a target behind a gate stays pending for a resume instead.
+   */
+  const stranded = (t: TargetBuilder): boolean =>
+    !t.always_ &&
+    (predecessors.get(t) ?? []).some((p) => settled.has(p) && !done.has(p));
   const overlaps = (t: TargetBuilder): boolean =>
     [...runningSet].every((r) => canOverlap(t, r));
+
+  /** Settle a target this run will never launch, so its dependents can proceed. */
+  const abandon = (t: TargetBuilder): void => {
+    outcomes.set(t, { status: "skipped", ms: 0 });
+    started.add(t);
+    settled.add(t);
+    settleTarget(env, t.name_ ?? "<unnamed>", "skipped");
+  };
 
   await new Promise<void>((resolve) => {
     const pump = () => {
       for (const t of order) {
         if (runningSet.size >= limit) break;
-        if (started.has(t) || !ready(t) || !overlaps(t)) continue;
-        // After a fatal failure, stop launching — except `always` targets,
-        // which run for cleanup even when the build is failing.
-        if (halted && !t.always_) continue;
-        // A cancelled run stops launching too — but `always` targets are the
-        // one thing that must survive it. They are teardown (stop a container,
-        // release a sandbox), and Ctrl-C is exactly when teardown matters most;
-        // skipping them would leak the resources they exist to reclaim.
-        if (ctx.env.signal.aborted && !t.always_) continue;
+        if (started.has(t)) continue;
+        // Settle a target whose prerequisites have made it unreachable, rather
+        // than leaving it for the final sweep. An `always` target waits for its
+        // predecessors to **settle**, so one that is never launched at all
+        // keeps teardown un-ready forever — and teardown is then swept away as
+        // skipped alongside the work it existed to clean up.
+        if (stranded(t)) {
+          abandon(t);
+          continue;
+        }
+        if (!ready(t) || !overlaps(t)) continue;
+        // Stop launching once the build has halted on a failure, or the run was
+        // cancelled — except `always` targets, which are teardown (stop a
+        // container, release a sandbox) and matter most in exactly those two
+        // situations.
+        //
+        // A target this run will therefore never launch is settled `skipped`
+        // *here* rather than in the final sweep. That is not cosmetic: an
+        // `always` target waits for its predecessors to **settle**, so a
+        // predecessor that is never launched keeps teardown un-ready forever,
+        // and it is swept away as skipped alongside the work it was meant to
+        // clean up — leaking whatever it reclaims. Settling on the spot lets the
+        // dependent become ready on this very pass (`order` is topological, so
+        // it is still ahead of us in this loop).
+        if ((halted || ctx.env.signal.aborted) && !t.always_) {
+          abandon(t);
+          continue;
+        }
         started.add(t);
         runningSet.add(t);
         const buffer = bufferReporter();

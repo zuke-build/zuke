@@ -2718,24 +2718,15 @@ async function seedResumableRun(
   return { record, version: put.version };
 }
 
-/** A lease whose loss a test drives, recording whether it was released. */
-function fakeLease(): {
-  lease: HeldLease;
-  lose: () => void;
-  released: () => boolean;
-} {
+/** A lease whose loss a test drives. */
+function fakeLease(): { lease: HeldLease; lose: () => void } {
   const controller = new AbortController();
-  let released = false;
   return {
     lease: {
       lost: controller.signal,
-      release: () => {
-        released = true;
-        return Promise.resolve();
-      },
+      release: () => Promise.resolve(),
     },
     lose: () => controller.abort(new Error("taken over")),
-    released: () => released,
   };
 }
 
@@ -2743,7 +2734,7 @@ Deno.test("losing the lease stops the run without running its compensations", as
   const dir = await Deno.makeTempDir();
   try {
     const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
-    const { lease, lose, released } = fakeLease();
+    const { lease, lose } = fakeLease();
     const compensated: string[] = [];
     class B extends Build {
       // Succeeds, so its compensation is armed — this is exactly the work a
@@ -2771,8 +2762,12 @@ Deno.test("losing the lease stops the run without running its compensations", as
     assertStringIncludes(messageOf(result.error), "lease was taken over");
     // The whole point: the new holder's work is not unwound behind its back.
     assertEquals(compensated, []);
-    // And the claim is not handed back — it is not ours to give.
-    assertEquals(released(), false);
+    // Note what is *not* asserted here: that the lease was not released. A
+    // resumed run's lease belongs to its resumer, which releases it on every
+    // path out, so `execute` never releases this one whatever happens — an
+    // assertion on it could not fail and would only look like coverage. The
+    // release path that does exist is the run's *own* lease, covered by "a
+    // cancelled run gives its lease back rather than holding it to the TTL".
   } finally {
     await Deno.remove(dir, { recursive: true });
   }
@@ -3008,4 +3003,104 @@ Deno.test("a cancelled run still runs its always targets", async () => {
   assertEquals(ran.includes("teardown"), true);
   // ...while ordinary work stops launching.
   assertEquals(ran.includes("more"), false);
+});
+
+Deno.test("a cancelled run runs teardown that sits behind a target it never reached", async () => {
+  // The dangerous arrangement: teardown depends on a target that had not been
+  // launched when the cancel arrived. An `always` target waits for its
+  // predecessors to *settle*, so a predecessor that is merely never started
+  // leaves teardown permanently un-ready — and the resources it exists to
+  // reclaim leak.
+  const controller = new AbortController();
+  const ran: string[] = [];
+  class B extends Build {
+    work = target().executes(() => {
+      ran.push("work");
+      controller.abort();
+    });
+    more = target().dependsOn(this.work).executes(() => void ran.push("more"));
+    teardown = target().dependsOn(this.more).always().executes(() =>
+      void ran.push("teardown")
+    );
+  }
+  const b = new B();
+  discoverTargets(b);
+  const result = await execute(b, b.teardown, {
+    silent: true,
+    stateStore: false,
+    parallel: true,
+    signal: controller.signal,
+  });
+  assertEquals(result.cancelled, true);
+  assertEquals(ran.includes("more"), false); // ordinary work stopped
+  assertEquals(ran.includes("teardown"), true); // cleanup did not
+});
+
+Deno.test("a failed run runs teardown that sits behind a target it never reached", async () => {
+  // The same hole on the failure path, which predates the cancellation change:
+  // `more` never launches because its dependency failed, so it never settles,
+  // so the `always` teardown behind it was never ready and was swept away.
+  const ran: string[] = [];
+  class B extends Build {
+    work = target().executes(() => {
+      ran.push("work");
+      throw new Error("boom");
+    });
+    more = target().dependsOn(this.work).executes(() => void ran.push("more"));
+    teardown = target().dependsOn(this.more).always().executes(() =>
+      void ran.push("teardown")
+    );
+  }
+  const b = new B();
+  discoverTargets(b);
+  const result = await execute(b, b.teardown, {
+    silent: true,
+    stateStore: false,
+    parallel: true,
+  });
+  assertEquals(result.ok, false);
+  assertEquals(ran.includes("more"), false);
+  assertEquals(ran.includes("teardown"), true);
+});
+
+Deno.test("a lost lease writes nothing more to the record it no longer owns", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+    const { lease, lose } = fakeLease();
+    class B extends Build {
+      first = target().executes(() => lose());
+      second = target().dependsOn(this.first).executes(() => {});
+      third = target().dependsOn(this.second).executes(() => {});
+    }
+    const b = new B();
+    discoverTargets(b);
+    const order = [b.first, b.second, b.third];
+    const seeded = await seedResumableRun(store, b, order, b.third);
+
+    // Simulate the new holder: it has already re-run the whole plan and
+    // recorded real progress under a version this process does not have.
+    const taken = await store.getRun(seeded.record.id);
+    if (taken === null) throw new Error("the run vanished");
+    const theirs = structuredClone(taken.record);
+    for (const name of ["first", "second", "third"]) {
+      theirs.targets[name] = { status: "succeeded", meta: {} };
+    }
+    await store.putRun(theirs, taken.version);
+
+    await execute(b, b.third, {
+      silent: true,
+      stateStore: store,
+      resume: { ...seeded, done: new Set<string>(), lease },
+    });
+
+    // The stopping walk settles every unreached target `skipped`. None of that
+    // may reach the store: the writer's compare-and-swap would re-read the new
+    // holder's record and re-apply over its real progress.
+    const after = await store.getRun(seeded.record.id);
+    assertEquals(after?.record.targets["second"]?.status, "succeeded");
+    assertEquals(after?.record.targets["third"]?.status, "succeeded");
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
 });

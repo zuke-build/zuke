@@ -161,12 +161,22 @@ export class FileSystemStateStore implements StateStore {
   /**
    * Delete a run's file (under its lock); a missing run is a no-op.
    *
-   * The run's own lock records go with it. A lease and a cancel lock are named
-   * after the run, so once the run is gone they can never be looked up again —
-   * leaving them behind turns `runs prune` into a command that shrinks one
-   * directory while `locks/` grows forever. They are already logically expired
-   * (prune only ever deletes runs that reached a terminal status), so removing
-   * the files takes nothing live away.
+   * The run's **expired** lock records go with it. A lease and a cancel lock are
+   * named after the run, so once the run is gone they can never be looked up
+   * again — leaving them behind turns `runs prune` into a command that shrinks
+   * one directory while `locks/` grows forever.
+   *
+   * Two things this deliberately does not touch. A lock that has **not** expired
+   * is left alone: somebody still holds that claim, and deleting the record
+   * would make their next renewal report the lease lost — stopping a live run to
+   * tidy up a file. And the `.acq` marker is never removed, because it is not a
+   * lock record at all: it is the mutex guarding every lock's compare-and-swap,
+   * owned by {@link "./mutex.ts".withFileMutex}, which removes it in a `finally`
+   * and reclaims a stale one by TTL. Deleting it from outside that protocol
+   * would let two writers into the critical section at once.
+   *
+   * The expiry check and the delete share the lock's own mutex, so an acquire
+   * racing this cannot have its fresh record removed by a stale reading.
    */
   async deleteRun(id: string): Promise<void> {
     await this.#ensureDir();
@@ -175,8 +185,15 @@ export class FileSystemStateStore implements StateStore {
     });
     for (const prefix of [RUN_LEASE_PREFIX, CANCEL_LOCK_PREFIX]) {
       const key = lockKey(prefix, id);
-      await this.#host.remove(this.#lockFile(key));
-      await this.#host.remove(this.#lockMarker(key));
+      await this.#withMutex(
+        this.#lockMarker(key),
+        `lock "${key}"`,
+        async () => {
+          const current = await this.#readLock(key);
+          if (current !== null && current.expiresAt > this.#host.now()) return;
+          await this.#host.remove(this.#lockFile(key));
+        },
+      );
     }
   }
 
