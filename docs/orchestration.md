@@ -256,11 +256,16 @@ suspended ones:
 
   What no check here can see: two builds that share a class name, a root-target
   name **and** a graph shape are indistinguishable in a run record, even though
-  their target *bodies* may do entirely different things. If several repos share
-  one state service and any of them might collide that way, give each its own
-  store — a separate `ZUKE_STATE_DIR`, or a distinct prefix or instance behind
-  `ZUKE_STATE_URL`. That is the only way to make the question unambiguous, and it
-  costs nothing when the runs were never meant to be pooled.
+  their target *bodies* may do entirely different things. The comparison is a
+  name, so passing the build to the sweep does not settle it — a build class is
+  supplied at the call, but what gets compared is `build.constructor.name`
+  against the record's, and two repos can spell that the same.
+
+  So **give two different builds two different class names.** `Ci` in a dozen
+  repos is the whole problem; `AcmeApiCi` in one of them is the whole fix, and it
+  costs a rename. A shared state service is otherwise fine: the sweep already
+  skips what it does not recognise, so pooling runs is a question of bytes on the
+  wire rather than of correctness.
 
 A run left `cancelling` by a settlement whose own process died is finished too,
 in whichever terminal that settlement was heading for — recorded on the run,
