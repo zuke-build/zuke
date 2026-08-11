@@ -96,10 +96,25 @@ export async function settleCancelledRun(opts: {
           stop: opts.isLeaseLost,
         });
         const at = opts.nowIso();
+        // Recorded even if the claim changed hands mid-walk: an event is
+        // additive and stays true whoever owns the run now, and what happened
+        // before this process stopped is exactly what a later reader needs.
         for (const event of compensationEvents(comp.attempts, actor, at)) {
           await writer.appendEvent(event);
         }
         await writer.appendEvent(cancelEvent(actor, comp, at));
+        // A walk cut short by a lost lease did not settle this run, and saying
+        // otherwise would claim an outcome that belongs to the new holder. The
+        // terminal write is already a no-op on a disowned writer; not making it
+        // is how the operator's report and the returned settlement stay honest.
+        if (opts.isLeaseLost?.() === true) {
+          reporter.error(
+            `Run ${runId} was taken over by another process mid-rollback — ` +
+              `${comp.compensated.length} compensation(s) had already run. ` +
+              `Settling it is the new holder's to do.`,
+          );
+          return { ownedWalk: false, compensated: comp.compensated.length };
+        }
         await writer.markRunCancelled();
         reporter.info(
           `Run ${runId} cancelled — ${comp.compensated.length} ` +

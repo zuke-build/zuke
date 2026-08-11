@@ -486,9 +486,14 @@ export async function execute(
   const cancelled = runController.signal.aborted;
 
   // Whether the fingerprints this run recorded still describe the workspace.
-  // Decided below, once a cancellation has settled and it is known what — if
-  // anything — was rolled back.
-  let cacheIsTrustworthy = !cancelled;
+  //
+  // A cancellation only invalidates them by *undoing* something, and undoing
+  // needs a compensation walk, which needs a writer. Without a state store there
+  // is no writer, so nothing can have been rolled back and the fingerprints
+  // stand — which matters because a store-less run is the default for exactly
+  // the builds that declare no compensation. With a writer, the answer waits for
+  // the settlement below to say what the walk actually did.
+  let cacheIsTrustworthy = !cancelled || writer === undefined;
 
   let result: BuildResult;
   if (leaseLost) {
@@ -546,6 +551,19 @@ export async function execute(
       // develop-interrupt-rerun loop. So the cache is kept when this process ran
       // the walk and the walk did nothing.
       cacheIsTrustworthy = settlement.ownedWalk && settlement.compensated === 0;
+      // The claim can change hands *during* the walk, after the branch above
+      // chose a cancellation. Report what actually happened: this process
+      // neither finished unwinding the run nor settled it.
+      if (leaseLost) {
+        const lost = new Error(
+          `Run ${runId} stopped: its lease was taken over by another process ` +
+            `mid-rollback, after ${settlement.compensated} compensation(s). ` +
+            `The rest of the rollback, and the run's outcome, belong to ` +
+            `whoever holds it now.`,
+        );
+        reporter.error(lost.message);
+        result = { ok: false, executed: run.executed, error: lost, runId };
+      }
     }
   } else {
     result = run.aborted

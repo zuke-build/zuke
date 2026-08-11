@@ -338,9 +338,15 @@ export class RunStateWriter {
    */
   appendEvent(event: RunEvent): Promise<void> {
     const redacted = this.#redactEvent(event);
+    // Appends survive being disowned. What {@link disown} exists to prevent is
+    // this process *overwriting* the new holder's view — a stale target row
+    // replacing real progress. An event is purely additive: it says "this
+    // happened", and it stays true whoever owns the run now. Losing them is the
+    // worse outcome, because the thing most worth recording at that moment is
+    // the rollback this process had already performed before it stopped.
     return this.#update((record) => {
       record.events.push(redacted);
-    });
+    }, { evenIfDisowned: true });
   }
 
   /** Copy a {@link RunEvent} with its `args` values and `detail` redacted. */
@@ -463,8 +469,13 @@ export class RunStateWriter {
   }
 
   /** Serialise `mutator` after all pending writes, then persist (best-effort). */
-  #update(mutator: (record: RunRecord) => void): Promise<void> {
-    this.#chain = this.#chain.then(() => this.#applyAndPersist(mutator));
+  #update(
+    mutator: (record: RunRecord) => void,
+    options: { evenIfDisowned?: boolean } = {},
+  ): Promise<void> {
+    this.#chain = this.#chain.then(() =>
+      this.#applyAndPersist(mutator, options.evenIfDisowned === true)
+    );
     return this.#chain;
   }
 
@@ -614,8 +625,11 @@ export class RunStateWriter {
   }
 
   /** Apply `mutator` and CAS-write, re-reading and retrying on conflict. */
-  async #applyAndPersist(mutator: (record: RunRecord) => void): Promise<void> {
-    if (this.#disowned) return;
+  async #applyAndPersist(
+    mutator: (record: RunRecord) => void,
+    evenIfDisowned = false,
+  ): Promise<void> {
+    if (this.#disowned && !evenIfDisowned) return;
     try {
       for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
         mutator(this.#record);

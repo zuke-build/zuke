@@ -2859,6 +2859,29 @@ Deno.test("a cancelled run does not persist the cache its compensations undid", 
   }
 });
 
+Deno.test("a cancelled run with no state store at all keeps its cache", async () => {
+  // The default shape for a build that declares no compensation: no store, so no
+  // writer, so no walk that could have undone anything. Asserted separately from
+  // the with-a-store case because it reaches the decision by a different route —
+  // and because a test that only covers the store-configured path would pass
+  // while the common configuration threw its cache away on every Ctrl-C.
+  const cache = new FakeCache();
+  const controller = new AbortController();
+  class B extends Build {
+    build = target().executes(() => controller.abort());
+  }
+  const b = new B();
+  discoverTargets(b);
+  const result = await execute(b, b.build, {
+    silent: true,
+    stateStore: false,
+    cache,
+    signal: controller.signal,
+  });
+  assertEquals(result.cancelled, true);
+  assertEquals(cache.saved, true);
+});
+
 Deno.test("a cancelled run with nothing to roll back keeps its cache", async () => {
   const dir = await Deno.makeTempDir();
   try {
@@ -3177,7 +3200,100 @@ Deno.test("a lease lost mid-rollback stops the walk where it stands", async () =
     // The first compensation ran; the claim then changed hands, so the walk
     // stopped rather than carrying on into the new holder's work.
     assertEquals(undone, ["undoSecond"]);
+    // What it did undo is still on the record: an event is additive and stays
+    // true whoever owns the run now, and a rollback nothing recorded would let a
+    // later reader conclude none happened.
+    const after = await store.getRun(seeded.record.id);
+    const events = after?.record.events ?? [];
+    assertEquals(events.some((e) => e.tool === "compensate"), true);
+    // ...but the run was not settled here: that is the new holder's to do.
+    assertEquals(after?.record.status, "cancelling");
   } finally {
     await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("a cancelled fan-out is not reported as a batch that succeeded", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+    const controller = new AbortController();
+    const ran: string[] = [];
+    class B extends Build {
+      // Ctrl-C lands while the first item deploys; the rest are abandoned. The
+      // parent must not report success for a batch that never ran — its row is
+      // what the compensation walk reads to decide what to undo, so a
+      // `succeeded` here would roll back a deployment that never happened.
+      batch = target().forEach(
+        () => ["a", "b", "c"],
+        (item: string) => ({
+          deploy: target().executes(() => {
+            ran.push(`deploy:${item}`);
+            if (item === "a") controller.abort();
+          }),
+        }),
+        (s) => s.concurrency(1),
+      );
+    }
+    const b = new B();
+    discoverTargets(b);
+    const result = await execute(b, b.batch, {
+      silent: true,
+      stateStore: store,
+      signal: controller.signal,
+    });
+    assertEquals(result.cancelled, true);
+    assertEquals(ran, ["deploy:a"]);
+    assertEquals(result.executed.includes("batch"), false);
+    const runs = await store.listRuns({});
+    const record = await store.getRun(runs[0].id);
+    assertEquals(
+      record?.record.targets["batch"]?.status === "succeeded",
+      false,
+    );
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("teardown behind a gate that will never reopen runs, parallel or not", async () => {
+  // A failed run never suspends, so the gate will never be resumed and anything
+  // behind it is unreachable. Whether the teardown fires must not depend on
+  // whether the gate happened to launch before the failure — which is to say,
+  // must not depend on `--parallel` for a build whose text is identical.
+  for (const parallel of [false, true]) {
+    const dir = await Deno.makeTempDir();
+    try {
+      const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+      const ran: string[] = [];
+      class B extends Build {
+        gate = target().waitsFor((s) => s.on(externalSignal("approved")));
+        boom = target().executes(() => {
+          throw new Error("x");
+        });
+        deploy = target().dependsOn(this.gate).executes(() =>
+          void ran.push("deploy")
+        );
+        teardown = target().always().dependsOn(this.deploy, this.boom).executes(
+          () => void ran.push("teardown"),
+        );
+      }
+      const b = new B();
+      discoverTargets(b);
+      const result = await execute(b, b.teardown, {
+        silent: true,
+        stateStore: store,
+        parallel,
+      });
+      assertEquals(result.ok, false);
+      assertEquals(ran.includes("deploy"), false);
+      assertEquals(
+        ran.includes("teardown"),
+        true,
+        `teardown did not run with parallel: ${parallel}`,
+      );
+    } finally {
+      await Deno.remove(dir, { recursive: true });
+    }
   }
 });
