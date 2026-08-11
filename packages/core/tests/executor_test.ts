@@ -44,6 +44,9 @@ import { FileSystemStateStore } from "../src/state/fs_store.ts";
 import { defaultStateHost } from "../src/state/store.ts";
 import { LockConflictError } from "../src/state/lock.ts";
 import { externalSignal, resumeWhen } from "../src/wait.ts";
+import type { HeldLease } from "../src/state/run_lease.ts";
+import { buildRunRecord } from "../src/state/record.ts";
+import type { RunRecord } from "../src/state/types.ts";
 
 const silent: ExecuteOptions = { silent: true };
 
@@ -1952,12 +1955,38 @@ Deno.test("cancelling a parallel run terminates in-flight commands in every bran
   assertEquals(result.ok, false); // both branches' commands were killed
 });
 
-Deno.test("a pre-aborted options.signal aborts the context signal", async () => {
+Deno.test("a pre-aborted options.signal cancels the run without starting a target", async () => {
   const controller = new AbortController();
   controller.abort();
+  const ran: string[] = [];
+  class B extends Build {
+    a = target().executes(() => void ran.push("a"));
+    b = target().dependsOn(this.a).executes(() => void ran.push("b"));
+  }
+  const b = new B();
+  discoverTargets(b);
+
+  const result = await execute(b, b.b, {
+    silent: true,
+    signal: controller.signal,
+  });
+  // A run that is cancelled before it starts starts nothing: launching work for
+  // a run already given up on is the same mistake as carrying on after a lost
+  // lease, just at the other end.
+  assertEquals(ran, []);
+  assertEquals(result.ok, false);
+  assertEquals(result.cancelled, true);
+});
+
+Deno.test("a body sees the run's cancellation on its own context signal", async () => {
+  const controller = new AbortController();
   let sawAborted = false;
   class B extends Build {
-    a = target().executes((ctx) => {
+    a = target().executes(async (ctx) => {
+      // Cancelled while this body is in flight — the case a body can actually
+      // observe, and the one `ctx.signal` exists for.
+      controller.abort();
+      await new Promise((resolve) => setTimeout(resolve, 0));
       sawAborted = ctx.signal.aborted;
     });
   }
@@ -1969,9 +1998,6 @@ Deno.test("a pre-aborted options.signal aborts the context signal", async () => 
     signal: controller.signal,
   });
   assertEquals(sawAborted, true);
-  // A pre-aborted signal cancels the run: no body ran to completion, and the
-  // result is a non-ok cancellation (M6).
-  assertEquals(result.ok, false);
   assertEquals(result.cancelled, true);
 });
 
@@ -2661,4 +2687,613 @@ Deno.test("execute flags an ordering edge to a target not in the build", async (
   const out = lines.join("\n");
   assertStringIncludes(out, "not a target in this build"); // ghost flagged
   assertEquals(out.includes('"other"'), false); // conditional target not flagged
+});
+
+// ---- the run's lease: losing it is not a cancellation ------------------------
+
+/**
+ * Seed `store` with a `running` record for `build`/`order` and return the
+ * {@link ResumeState} pieces `execute` needs to continue it. Lets a test supply
+ * its own lease — the run's own lease is acquired inside `openRunState` with a
+ * 60-second TTL, so a heartbeat-driven loss is not reachable from a test,
+ * whereas a resumed run is handed the lease its resumer took.
+ */
+async function seedResumableRun(
+  store: FileSystemStateStore,
+  build: Build,
+  order: TargetBuilder[],
+  root: TargetBuilder,
+): Promise<{ record: RunRecord; version: string }> {
+  const record = buildRunRecord({
+    runId: "11111111-2222-3333-4444-555555555555",
+    build: build.constructor.name,
+    rootTarget: root.name_ ?? "",
+    order,
+    params: [],
+    actor: "tester",
+    now: new Date().toISOString(),
+  });
+  const put = await store.putRun(record, null);
+  if (!put.ok) throw new Error("could not seed the run record");
+  return { record, version: put.version };
+}
+
+/** A lease whose loss a test drives. */
+function fakeLease(): { lease: HeldLease; lose: () => void } {
+  const controller = new AbortController();
+  return {
+    lease: {
+      lost: controller.signal,
+      release: () => Promise.resolve(),
+    },
+    lose: () => controller.abort(new Error("taken over")),
+  };
+}
+
+Deno.test("losing the lease stops the run without running its compensations", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+    const { lease, lose } = fakeLease();
+    const compensated: string[] = [];
+    class B extends Build {
+      // Succeeds, so its compensation is armed — this is exactly the work a
+      // cancellation would unwind, and exactly what must survive a takeover.
+      deploy = target()
+        .onCancel(() => this.rollback)
+        .executes(() => {
+          lose(); // a sweep decided this process was gone and took the run
+        });
+      rollback = target().executes(() => void compensated.push("rollback"));
+    }
+    const b = new B();
+    discoverTargets(b);
+    const seeded = await seedResumableRun(store, b, [b.deploy], b.deploy);
+
+    const result = await execute(b, b.deploy, {
+      silent: true,
+      stateStore: store,
+      resume: { ...seeded, done: new Set<string>(), lease },
+    });
+
+    assertEquals(result.ok, false);
+    // Not reported as a cancellation: nobody asked for one.
+    assertEquals(result.cancelled, undefined);
+    assertStringIncludes(messageOf(result.error), "lease was taken over");
+    // The whole point: the new holder's work is not unwound behind its back.
+    assertEquals(compensated, []);
+    // Note what is *not* asserted here: that the lease was not released. A
+    // resumed run's lease belongs to its resumer, which releases it on every
+    // path out, so `execute` never releases this one whatever happens — an
+    // assertion on it could not fail and would only look like coverage. The
+    // release path that does exist is the run's *own* lease, covered by "a
+    // cancelled run gives its lease back rather than holding it to the TTL".
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("losing the lease leaves the record for its new holder to settle", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+    const { lease, lose } = fakeLease();
+    class B extends Build {
+      deploy = target().executes(() => lose());
+    }
+    const b = new B();
+    discoverTargets(b);
+    const seeded = await seedResumableRun(store, b, [b.deploy], b.deploy);
+
+    await execute(b, b.deploy, {
+      silent: true,
+      stateStore: store,
+      resume: { ...seeded, done: new Set<string>(), lease },
+    });
+
+    // Never moved to a terminal status by the process that lost the claim.
+    const after = await store.getRun(seeded.record.id);
+    assertEquals(after?.record.status, "running");
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("a lease lost before the plan starts stops the run just the same", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+    const { lease, lose } = fakeLease();
+    lose(); // already gone by the time execute() reads the signal
+    const ran: string[] = [];
+    class B extends Build {
+      deploy = target()
+        .onCancel(() => this.rollback)
+        .executes(() => void ran.push("body"));
+      rollback = target().executes(() => void ran.push("compensated"));
+    }
+    const b = new B();
+    discoverTargets(b);
+    const seeded = await seedResumableRun(store, b, [b.deploy], b.deploy);
+
+    const result = await execute(b, b.deploy, {
+      silent: true,
+      stateStore: store,
+      resume: { ...seeded, done: new Set<string>(), lease },
+    });
+    assertEquals(result.ok, false);
+    assertStringIncludes(messageOf(result.error), "lease was taken over");
+    assertEquals(ran, []);
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("a cancelled run does not persist the cache its compensations undid", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+    const cache = new FakeCache();
+    const controller = new AbortController();
+    class B extends Build {
+      build = target().onCancel(() => this.rollback).executes(() => {
+        controller.abort(); // Ctrl-C the moment the body produced its output
+      });
+      rollback = target().executes(() => {});
+    }
+    const b = new B();
+    discoverTargets(b);
+    const result = await execute(b, b.build, {
+      silent: true,
+      stateStore: store,
+      cache,
+      signal: controller.signal,
+    });
+    assertEquals(result.cancelled, true);
+    // The fingerprint was recorded in-memory but never persisted: a
+    // compensation ran, so it describes work that has just been undone.
+    assertEquals(cache.recorded, ["build"]);
+    assertEquals(cache.saved, false);
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("a cancelled run with no state store at all keeps its cache", async () => {
+  // The default shape for a build that declares no compensation: no store, so no
+  // writer, so no walk that could have undone anything. Asserted separately from
+  // the with-a-store case because it reaches the decision by a different route —
+  // and because a test that only covers the store-configured path would pass
+  // while the common configuration threw its cache away on every Ctrl-C.
+  const cache = new FakeCache();
+  const controller = new AbortController();
+  class B extends Build {
+    build = target().executes(() => controller.abort());
+  }
+  const b = new B();
+  discoverTargets(b);
+  const result = await execute(b, b.build, {
+    silent: true,
+    stateStore: false,
+    cache,
+    signal: controller.signal,
+  });
+  assertEquals(result.cancelled, true);
+  assertEquals(cache.saved, true);
+});
+
+Deno.test("a cancelled run with nothing to roll back keeps its cache", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+    const cache = new FakeCache();
+    const controller = new AbortController();
+    // No target declares a compensation, which is the ordinary case. Nothing was
+    // reversed, so the fingerprints still describe the workspace — discarding
+    // them would make every Ctrl-C cost a full rebuild on the next run.
+    class B extends Build {
+      build = target().executes(() => controller.abort());
+    }
+    const b = new B();
+    discoverTargets(b);
+    const result = await execute(b, b.build, {
+      silent: true,
+      stateStore: store,
+      cache,
+      signal: controller.signal,
+    });
+    assertEquals(result.cancelled, true);
+    assertEquals(cache.saved, true);
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("an ordinary failure still persists the cache", async () => {
+  const cache = new FakeCache();
+  class B extends Build {
+    ok = target().executes(() => {});
+    boom = target().dependsOn(this.ok).executes(() => {
+      throw new Error("nope");
+    });
+  }
+  const b = new B();
+  discoverTargets(b);
+  const result = await execute(b, b.boom, {
+    silent: true,
+    stateStore: false,
+    cache,
+  });
+  assertEquals(result.ok, false);
+  // Nothing was unwound, so the target that did succeed stays cached.
+  assertEquals(cache.saved, true);
+});
+
+Deno.test("a store that cannot answer the lease fails the run cleanly, not by rejecting", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    // A store whose lock acquire always throws — a filesystem mutex it could not
+    // take in time, an HTTP 503, a DNS blip. None of those say who holds the
+    // lease, so they are retried; one that never answers stops the run.
+    class AcquireThrows extends FileSystemStateStore {
+      calls = 0;
+      override acquireLock(): Promise<never> {
+        this.calls++;
+        return Promise.reject(new Error("mutex timeout"));
+      }
+    }
+    const store = new AcquireThrows(`${dir}/runs`, defaultStateHost);
+    const ran: string[] = [];
+    class B extends Build {
+      work = target().executes(() => void ran.push("work"));
+    }
+    const b = new B();
+    discoverTargets(b);
+
+    // Reported, never thrown: `execute` resolves to a failing result the CLI
+    // prints, rather than rejecting with a stack trace.
+    const result = await execute(b, b.work, {
+      silent: true,
+      stateStore: store,
+    });
+    assertEquals(result.ok, false);
+    assertStringIncludes(messageOf(result.error), "Could not claim run");
+    assertStringIncludes(messageOf(result.error), "mutex timeout");
+    // Retried rather than decided on one bad moment...
+    assertEquals(store.calls > 1, true);
+    // ...and the run never started unclaimed, which would have left a healthy
+    // run looking abandoned to every sweep for its whole duration.
+    assertEquals(ran, []);
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("a lease that recovers on a retry lets the run proceed", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    class FlakyOnce extends FileSystemStateStore {
+      calls = 0;
+      override acquireLock(
+        key: string,
+        holder: Parameters<FileSystemStateStore["acquireLock"]>[1],
+        ttlMs: number,
+      ) {
+        this.calls++;
+        if (this.calls === 1) return Promise.reject(new Error("blip"));
+        return super.acquireLock(key, holder, ttlMs);
+      }
+    }
+    const store = new FlakyOnce(`${dir}/runs`, defaultStateHost);
+    class B extends Build {
+      work = target().executes(() => {});
+    }
+    const b = new B();
+    discoverTargets(b);
+    const result = await execute(b, b.work, {
+      silent: true,
+      stateStore: store,
+    });
+    assertEquals(result.ok, true);
+    assertEquals(store.calls, 2);
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("a cancelled run gives its lease back rather than holding it to the TTL", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+    const controller = new AbortController();
+    class B extends Build {
+      work = target().executes(() => controller.abort());
+    }
+    const b = new B();
+    discoverTargets(b);
+    const result = await execute(b, b.work, {
+      silent: true,
+      stateStore: store,
+      signal: controller.signal,
+    });
+    assertEquals(result.cancelled, true);
+    // The record is terminal, so holding the claim would say a process is still
+    // working on a run that demonstrably ended. Acquiring it again proves it was
+    // handed back: a live holder would refuse.
+    const runId = result.runId ?? "";
+    const retaken = await store.acquireLock(
+      `zuke-run-${runId}`,
+      { actor: "sweep", runId, since: new Date().toISOString() },
+      1000,
+    );
+    assertEquals(retaken.ok, true);
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("a cancelled run still runs its always targets", async () => {
+  // Cancelling stops ordinary work, but `always` is teardown — and Ctrl-C is
+  // exactly when teardown matters. Skipping it would leak whatever it reclaims.
+  const controller = new AbortController();
+  const ran: string[] = [];
+  class B extends Build {
+    setup = target().executes(() => void ran.push("setup"));
+    work = target().dependsOn(this.setup).executes(() => {
+      ran.push("work");
+      controller.abort();
+    });
+    more = target().dependsOn(this.work).executes(() => void ran.push("more"));
+    teardown = target().dependsOn(this.work).always().executes(() =>
+      void ran.push("teardown")
+    );
+  }
+  const b = new B();
+  discoverTargets(b);
+  const result = await execute(b, b.teardown, {
+    silent: true,
+    stateStore: false,
+    parallel: true,
+    signal: controller.signal,
+  });
+  assertEquals(result.cancelled, true);
+  assertEquals(ran.includes("teardown"), true);
+  // ...while ordinary work stops launching.
+  assertEquals(ran.includes("more"), false);
+});
+
+Deno.test("a cancelled run runs teardown that sits behind a target it never reached", async () => {
+  // The dangerous arrangement: teardown depends on a target that had not been
+  // launched when the cancel arrived. An `always` target waits for its
+  // predecessors to *settle*, so a predecessor that is merely never started
+  // leaves teardown permanently un-ready — and the resources it exists to
+  // reclaim leak.
+  const controller = new AbortController();
+  const ran: string[] = [];
+  class B extends Build {
+    work = target().executes(() => {
+      ran.push("work");
+      controller.abort();
+    });
+    more = target().dependsOn(this.work).executes(() => void ran.push("more"));
+    teardown = target().dependsOn(this.more).always().executes(() =>
+      void ran.push("teardown")
+    );
+  }
+  const b = new B();
+  discoverTargets(b);
+  const result = await execute(b, b.teardown, {
+    silent: true,
+    stateStore: false,
+    parallel: true,
+    signal: controller.signal,
+  });
+  assertEquals(result.cancelled, true);
+  assertEquals(ran.includes("more"), false); // ordinary work stopped
+  assertEquals(ran.includes("teardown"), true); // cleanup did not
+});
+
+Deno.test("a failed run runs teardown that sits behind a target it never reached", async () => {
+  // The same hole on the failure path, which predates the cancellation change:
+  // `more` never launches because its dependency failed, so it never settles,
+  // so the `always` teardown behind it was never ready and was swept away.
+  const ran: string[] = [];
+  class B extends Build {
+    work = target().executes(() => {
+      ran.push("work");
+      throw new Error("boom");
+    });
+    more = target().dependsOn(this.work).executes(() => void ran.push("more"));
+    teardown = target().dependsOn(this.more).always().executes(() =>
+      void ran.push("teardown")
+    );
+  }
+  const b = new B();
+  discoverTargets(b);
+  const result = await execute(b, b.teardown, {
+    silent: true,
+    stateStore: false,
+    parallel: true,
+  });
+  assertEquals(result.ok, false);
+  assertEquals(ran.includes("more"), false);
+  assertEquals(ran.includes("teardown"), true);
+});
+
+Deno.test("a lost lease writes nothing more to the record it no longer owns", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+    const { lease, lose } = fakeLease();
+    class B extends Build {
+      first = target().executes(() => lose());
+      second = target().dependsOn(this.first).executes(() => {});
+      third = target().dependsOn(this.second).executes(() => {});
+    }
+    const b = new B();
+    discoverTargets(b);
+    const order = [b.first, b.second, b.third];
+    const seeded = await seedResumableRun(store, b, order, b.third);
+
+    // Simulate the new holder: it has already re-run the whole plan and
+    // recorded real progress under a version this process does not have.
+    const taken = await store.getRun(seeded.record.id);
+    if (taken === null) throw new Error("the run vanished");
+    const theirs = structuredClone(taken.record);
+    for (const name of ["first", "second", "third"]) {
+      theirs.targets[name] = { status: "succeeded", meta: {} };
+    }
+    await store.putRun(theirs, taken.version);
+
+    await execute(b, b.third, {
+      silent: true,
+      stateStore: store,
+      resume: { ...seeded, done: new Set<string>(), lease },
+    });
+
+    // The stopping walk settles every unreached target `skipped`. None of that
+    // may reach the store: the writer's compare-and-swap would re-read the new
+    // holder's record and re-apply over its real progress.
+    const after = await store.getRun(seeded.record.id);
+    assertEquals(after?.record.targets["second"]?.status, "succeeded");
+    assertEquals(after?.record.targets["third"]?.status, "succeeded");
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("a lease lost mid-rollback stops the walk where it stands", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    // A compensation walk can be long — real rollbacks talk to real systems —
+    // and a lease lapses on time, not on health. Losing the claim partway
+    // through means every *remaining* compensation would unwind work the new
+    // holder is already rebuilding.
+    const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+    const controller = new AbortController();
+    const { lease, lose } = fakeLease();
+    const undone: string[] = [];
+    class B extends Build {
+      first = target().onCancel(() => this.undoFirst).executes(() => {});
+      undoFirst = target().executes(() => void undone.push("undoFirst"));
+      second = target().dependsOn(this.first).onCancel(() => this.undoSecond)
+        .executes(() => controller.abort());
+      // The walk runs in reverse, so this one goes first — and takes the lease
+      // with it, exactly as a lapse during a slow rollback would.
+      undoSecond = target().executes(() => {
+        undone.push("undoSecond");
+        lose();
+      });
+    }
+    const b = new B();
+    discoverTargets(b);
+    const order = [b.first, b.undoFirst, b.second, b.undoSecond];
+    const seeded = await seedResumableRun(store, b, order, b.second);
+
+    await execute(b, b.second, {
+      silent: true,
+      stateStore: store,
+      signal: controller.signal,
+      resume: { ...seeded, done: new Set<string>(), lease },
+    });
+
+    // The first compensation ran; the claim then changed hands, so the walk
+    // stopped rather than carrying on into the new holder's work.
+    assertEquals(undone, ["undoSecond"]);
+    // What it did undo is still on the record: an event is additive and stays
+    // true whoever owns the run now, and a rollback nothing recorded would let a
+    // later reader conclude none happened.
+    const after = await store.getRun(seeded.record.id);
+    const events = after?.record.events ?? [];
+    assertEquals(events.some((e) => e.tool === "compensate"), true);
+    // ...but the run was not settled here: that is the new holder's to do.
+    assertEquals(after?.record.status, "cancelling");
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("a cancelled fan-out is not reported as a batch that succeeded", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+    const controller = new AbortController();
+    const ran: string[] = [];
+    class B extends Build {
+      // Ctrl-C lands while the first item deploys; the rest are abandoned. The
+      // parent must not report success for a batch that never ran — its row is
+      // what the compensation walk reads to decide what to undo, so a
+      // `succeeded` here would roll back a deployment that never happened.
+      batch = target().forEach(
+        () => ["a", "b", "c"],
+        (item: string) => ({
+          deploy: target().executes(() => {
+            ran.push(`deploy:${item}`);
+            if (item === "a") controller.abort();
+          }),
+        }),
+        (s) => s.concurrency(1),
+      );
+    }
+    const b = new B();
+    discoverTargets(b);
+    const result = await execute(b, b.batch, {
+      silent: true,
+      stateStore: store,
+      signal: controller.signal,
+    });
+    assertEquals(result.cancelled, true);
+    assertEquals(ran, ["deploy:a"]);
+    assertEquals(result.executed.includes("batch"), false);
+    const runs = await store.listRuns({});
+    const record = await store.getRun(runs[0].id);
+    assertEquals(
+      record?.record.targets["batch"]?.status === "succeeded",
+      false,
+    );
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("teardown behind a gate that will never reopen runs, parallel or not", async () => {
+  // A failed run never suspends, so the gate will never be resumed and anything
+  // behind it is unreachable. Whether the teardown fires must not depend on
+  // whether the gate happened to launch before the failure — which is to say,
+  // must not depend on `--parallel` for a build whose text is identical.
+  for (const parallel of [false, true]) {
+    const dir = await Deno.makeTempDir();
+    try {
+      const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+      const ran: string[] = [];
+      class B extends Build {
+        gate = target().waitsFor((s) => s.on(externalSignal("approved")));
+        boom = target().executes(() => {
+          throw new Error("x");
+        });
+        deploy = target().dependsOn(this.gate).executes(() =>
+          void ran.push("deploy")
+        );
+        teardown = target().always().dependsOn(this.deploy, this.boom).executes(
+          () => void ran.push("teardown"),
+        );
+      }
+      const b = new B();
+      discoverTargets(b);
+      const result = await execute(b, b.teardown, {
+        silent: true,
+        stateStore: store,
+        parallel,
+      });
+      assertEquals(result.ok, false);
+      assertEquals(ran.includes("deploy"), false);
+      assertEquals(
+        ran.includes("teardown"),
+        true,
+        `teardown did not run with parallel: ${parallel}`,
+      );
+    } finally {
+      await Deno.remove(dir, { recursive: true });
+    }
+  }
 });

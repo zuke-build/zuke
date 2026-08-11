@@ -621,6 +621,21 @@ async function runForEachTarget(
     failTarget(reporter, renderer, style, name, ms, error);
     return { status: "failed", ms, error, children: run.reports };
   }
+  // A cancellation is not a success, and here it has to be said explicitly. The
+  // nested scheduler reports `aborted` only when a sub-target *failed*, and a
+  // cancelled run's remaining items are abandoned rather than failed — so
+  // nothing would mark the fan-out, and the parent would report `passed` for a
+  // batch whose items never ran. The top-level scheduler is saved from the same
+  // reasoning by `execute`, which overrides its outcome with the run's
+  // cancellation; a nested one has no such reader. Getting this wrong is not
+  // cosmetic: the parent's row is written `succeeded`, and the compensation walk
+  // undoes exactly the targets the record calls succeeded — so a rollback would
+  // run against a deployment that never happened.
+  if (ctx.env.signal.aborted) {
+    const error = new Error(`${name}: cancelled before its items finished.`);
+    failTarget(reporter, renderer, style, name, ms, error);
+    return { status: "failed", ms, error, children: run.reports };
+  }
   passTarget(reporter, renderer, style, name, ms);
   return { status: "passed", ms, children: run.reports };
 }
@@ -676,7 +691,14 @@ export async function runSequential(
 
   for (const t of order) {
     const name = t.name_ ?? "<unnamed>";
-    if (skip.has(name) || aborted) {
+    // A cancelled run stops *launching*, not just retrying. Usually the running
+    // target fails first (its shell is terminated) and `aborted` covers the
+    // rest, but a body that finishes anyway — or a run cancelled before the
+    // first target — would otherwise keep starting new work after the run has
+    // demonstrably stopped being this process's to do. That matters most when
+    // the cancellation is a lost lease: the new holder is already running these
+    // very targets.
+    if (skip.has(name) || aborted || env.signal.aborted) {
       reports.push({ name, status: "skipped", ms: 0 });
       settleTarget(env, name, "skipped");
       continue;
@@ -767,17 +789,71 @@ export async function runScheduled(
     (predecessors.get(t) ?? []).every((p) =>
       t.always_ ? settled.has(p) : done.has(p)
     );
+  /**
+   * Whether `t` can never become ready: a predecessor has settled in a way that
+   * does not satisfy it (failed, or skipped), so no later pass will change the
+   * answer. A predecessor parked at a `waitsFor` gate is deliberately *not*
+   * settled, so a target behind a gate stays pending for a resume instead.
+   */
+  /** Whether this run can still resume, i.e. whether a parked gate may reopen. */
+  const mayStillResume = (): boolean => !anyFailed && !ctx.env.signal.aborted;
+  const stranded = (t: TargetBuilder): boolean =>
+    !t.always_ &&
+    (predecessors.get(t) ?? []).some((p) =>
+      (settled.has(p) && !done.has(p)) ||
+      // A predecessor parked at a `waitsFor` gate is normally left alone, so a
+      // resume can run what is behind it. Once the run has failed or been
+      // cancelled it will never suspend and so never resume — the code already
+      // converts those parked rows to `skipped` once the pump is done — and
+      // until then anything behind the gate counts as unreachable. Without this
+      // the teardown behind it stays un-ready and is swept away, and whether
+      // that happens depends on whether the gate had launched yet, which is to
+      // say on `--parallel`.
+      (!mayStillResume() && outcomes.get(p)?.status === "waiting")
+    );
   const overlaps = (t: TargetBuilder): boolean =>
     [...runningSet].every((r) => canOverlap(t, r));
+
+  /** Settle a target this run will never launch, so its dependents can proceed. */
+  const abandon = (t: TargetBuilder): void => {
+    outcomes.set(t, { status: "skipped", ms: 0 });
+    started.add(t);
+    settled.add(t);
+    settleTarget(env, t.name_ ?? "<unnamed>", "skipped");
+  };
 
   await new Promise<void>((resolve) => {
     const pump = () => {
       for (const t of order) {
         if (runningSet.size >= limit) break;
-        if (started.has(t) || !ready(t) || !overlaps(t)) continue;
-        // After a fatal failure, stop launching — except `always` targets,
-        // which run for cleanup even when the build is failing.
-        if (halted && !t.always_) continue;
+        if (started.has(t)) continue;
+        // Settle a target whose prerequisites have made it unreachable, rather
+        // than leaving it for the final sweep. An `always` target waits for its
+        // predecessors to **settle**, so one that is never launched at all
+        // keeps teardown un-ready forever — and teardown is then swept away as
+        // skipped alongside the work it existed to clean up.
+        if (stranded(t)) {
+          abandon(t);
+          continue;
+        }
+        if (!ready(t) || !overlaps(t)) continue;
+        // Stop launching once the build has halted on a failure, or the run was
+        // cancelled — except `always` targets, which are teardown (stop a
+        // container, release a sandbox) and matter most in exactly those two
+        // situations.
+        //
+        // A target this run will therefore never launch is settled `skipped`
+        // *here* rather than in the final sweep. That is not cosmetic: an
+        // `always` target waits for its predecessors to **settle**, so a
+        // predecessor that is never launched keeps teardown un-ready forever,
+        // and it is swept away as skipped alongside the work it was meant to
+        // clean up — leaking whatever it reclaims. Settling on the spot lets the
+        // dependent become ready on this very pass (`order` is topological, so
+        // it is still ahead of us in this loop).
+        if ((halted || ctx.env.signal.aborted) && !t.always_) {
+          abandon(t);
+          continue;
+        }
         started.add(t);
         runningSet.add(t);
         const buffer = bufferReporter();

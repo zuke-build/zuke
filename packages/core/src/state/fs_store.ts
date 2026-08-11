@@ -155,7 +155,25 @@ export class FileSystemStateStore implements StateStore {
     return query.limit === undefined ? sorted : sorted.slice(0, query.limit);
   }
 
-  /** Delete a run's file (under its lock); a missing run is a no-op. */
+  /**
+   * Delete a run's file (under its lock); a missing run is a no-op.
+   *
+   * The run's lock records are deliberately left alone. It is tempting to take
+   * them with the run — they are named after it, so once it is gone nothing can
+   * look them up again — but "expired" does not mean "abandoned" in this store:
+   * {@link renewLock} extends a lock whenever the token matches, whatever its
+   * expiry, so a lapsed claim is still the holder's until somebody *acquires*
+   * it. Deleting the record instead makes the next renewal answer `false`, which
+   * the holder reads as the lease being lost, and a run that is merely slow —
+   * the exact case the lease exists to tell apart from a dead one — stops.
+   * Pruning must never be able to do that.
+   *
+   * The litter is small and bounded in practice: {@link releaseLock} removes a
+   * lock's file, and a run releases its lease whenever it settles, so only a
+   * holder that dies without releasing leaves one behind. Clearing those safely
+   * belongs to whoever can prove the holder is gone — a reaping sweep, which
+   * proves it by acquiring — not to a command deleting old records.
+   */
   async deleteRun(id: string): Promise<void> {
     await this.#ensureDir();
     await this.#withLock(id, async () => {

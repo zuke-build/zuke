@@ -68,3 +68,95 @@ Deno.test("a separate process cancels a suspended run and runs its compensation"
     await Deno.remove(dir, { recursive: true }).catch(() => {});
   }
 });
+
+/**
+ * Spawn the fixture and resolve once it has printed `marker`, so the parent
+ * signals a run that is genuinely in flight rather than one still starting up.
+ */
+async function spawnUntil(
+  args: string[],
+  dir: string,
+  marker: string,
+): Promise<{ child: Deno.ChildProcess; out: () => string }> {
+  const child = new Deno.Command(Deno.execPath(), {
+    args: ["run", "-A", FIXTURE.href, ...args],
+    env: { ZUKE_STATE_DIR: dir },
+    stdout: "piped",
+    stderr: "null",
+  }).spawn();
+  const decoder = new TextDecoder();
+  let text = "";
+  const reader = child.stdout.getReader();
+  while (!text.includes(marker)) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    text += decoder.decode(value, { stream: true });
+  }
+  // Keep draining in the background so the child never blocks on a full pipe.
+  void (async () => {
+    try {
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        text += decoder.decode(value, { stream: true });
+      }
+    } catch { /* the pipe closes when the child exits */ }
+  })();
+  return { child, out: () => text };
+}
+
+Deno.test({
+  name: "a signalled run hands its lease back instead of holding it to the TTL",
+  // Windows has no graceful stop to deliver. `installCancelSignals` installs
+  // only SIGINT there (SIGTERM is unsupported), and Deno cannot send a child a
+  // signal it can *handle* on Windows — a kill terminates the process outright,
+  // so the run never reaches the settle-and-release path this asserts. The
+  // behaviour itself is still covered on all three OSes by the unit test "a
+  // cancelled run gives its lease back rather than holding it to the TTL",
+  // which drives the same path in-process; what is Unix-only is proving it
+  // survives a real signal to a real second process.
+  ignore: Deno.build.os === "windows",
+  fn: async () => {
+    const dir = await Deno.makeTempDir({ prefix: "zuke-e2e-" });
+    try {
+      // Process 1: deploy, then block — the run is `running` and its lease held.
+      const { child } = await spawnUntil(["hold"], dir, "HOLDING");
+      const store = new FileSystemStateStore(dir, defaultStateHost);
+      const runs = await store.listRuns({ status: "running" });
+      assertEquals(runs.length, 1);
+      const id = runs[0].id;
+
+      // While it is running, its claim is genuinely held: a sweep asking whether
+      // anyone is there must be told yes.
+      const whileLive = await store.acquireLock(
+        `zuke-run-${id}`,
+        { actor: "sweep", runId: id, since: new Date().toISOString() },
+        1_000,
+      );
+      assertEquals(whileLive.ok, false);
+
+      // Signal it the way an operator's Ctrl-C or a CI timeout would, and let it
+      // settle.
+      child.kill();
+      await child.status;
+
+      // The record is terminal, so the claim must be back — a lease still held for
+      // the rest of its TTL says a process is working on a run that has provably
+      // ended, and blocks recovery for a minute for no reason.
+      const afterExit = await store.acquireLock(
+        `zuke-run-${id}`,
+        { actor: "sweep", runId: id, since: new Date().toISOString() },
+        1_000,
+      );
+      assertEquals(
+        afterExit.ok,
+        true,
+        "the cancelled run never released its lease",
+      );
+      const loaded = await store.getRun(id);
+      assertEquals(loaded?.record.status, "cancelled");
+    } finally {
+      await Deno.remove(dir, { recursive: true }).catch(() => {});
+    }
+  },
+});

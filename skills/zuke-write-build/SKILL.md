@@ -125,7 +125,8 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   `--affected` runs only targets changed since a git base; `--no-cache` /
   `--no-remote-cache` bypass them. A restore is confined to the target's
   declared `.outputs(...)` (and never `.git`/`.zuke`); a refused archive is a
-  cache miss with a warning, not a failure.
+  cache miss with a warning, not a failure. A cancelled run keeps its cache
+  unless a compensation actually rolled something back.
 - **Durable run state:** persist a run's status and per-target metadata to a
   pluggable `StateStore` so it survives the process — turn it on with `--state`,
   `ZUKE_STATE_DIR` / `ZUKE_STATE_URL`, or `override stateStore()`. Every
@@ -139,7 +140,9 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   (only terminal runs; never suspended/running).
   A run whose process is killed is picked up by `zuke resume --check`, which
   reaps it — its lease tells a dead holder from a slow one — and resumes it in
-  the same sweep. `override deadline()` gives a run a wall-clock budget
+  the same sweep. A process that merely *looked* dead and then finds its lease
+  taken over **stops**, running no compensations and settling nothing: the run
+  is the new holder's now. `override deadline()` gives a run a wall-clock budget
   (`"45m"`, or milliseconds) that survives suspension; an abandoned run found
   past it is settled `failed` with its compensations instead of resumed.
   On a **shared** store, set `ZUKE_BUILD_ID` (or rely on `GITHUB_REPOSITORY`) so

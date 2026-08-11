@@ -1413,3 +1413,49 @@ Deno.test("a run's origin round-trips, and its absence stays an absence", () => 
   assertEquals("buildId" in parsed, false);
   assertEquals(parsed.buildId, undefined);
 });
+
+Deno.test("deleting a run leaves its lock records alone", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+    const runId = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+    await store.putRun(
+      buildRunRecord({
+        runId,
+        build: "B",
+        rootTarget: "work",
+        order: [],
+        params: [],
+        actor: "tester",
+        now: new Date().toISOString(),
+      }),
+      null,
+    );
+    // A lease that has lapsed but was never taken over — the state a run that is
+    // merely slow leaves behind, since the heartbeat cannot fire while its body
+    // blocks the event loop.
+    const key = `zuke-run-${runId}`;
+    const held = await store.acquireLock(
+      key,
+      { actor: "tester", runId, since: new Date().toISOString() },
+      1,
+    );
+    assertEquals(held.ok, true);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+
+    await store.deleteRun(runId);
+    assertEquals(await store.getRun(runId), null);
+
+    // The record survives, and the holder can still renew: expiry is not
+    // abandonment here — a lapsed claim stays the holder's until somebody
+    // acquires it. Deleting it would make the next renewal report the lease
+    // lost, stopping a run that is only slow, which is the one thing the lease
+    // exists to avoid.
+    assertEquals(
+      await store.renewLock(key, held.ok ? held.token : "", 60_000),
+      true,
+    );
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});

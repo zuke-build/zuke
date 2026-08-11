@@ -121,6 +121,12 @@ export class RunStateWriter {
    * `succeeded` over the terminal a sweep already wrote.
    */
   #settledElsewhere = false;
+  /**
+   * Latched by {@link disown} once this process stops owning the run. Checked
+   * when a queued mutation actually runs, not when it is queued, so writes
+   * already sitting on the chain are neutralised too.
+   */
+  #disowned = false;
   #chain: Promise<void> = Promise.resolve();
 
   private constructor(
@@ -249,6 +255,23 @@ export class RunStateWriter {
     return this.#settledElsewhere;
   }
 
+  /**
+   * Stop writing: this process no longer owns the run, so nothing it has left
+   * to say about it may reach the store.
+   *
+   * Called when the run's lease is lost. Every write from that instant is a
+   * no-op — including ones already queued, because the check runs when a
+   * mutation is applied rather than when it is enqueued. Without it, the walk
+   * that stops the run queues a `skipped` row for every target it never reached,
+   * and those rows land on the record through the writer's compare-and-swap,
+   * overwriting the progress the new holder is making right now.
+   *
+   * One-way: a run is never re-owned by the process that lost it.
+   */
+  disown(): void {
+    this.#disowned = true;
+  }
+
   /** Record the run's terminal status, unless another process already has. */
   markRunFinished(ok: boolean): Promise<void> {
     return this.#update((record) => {
@@ -315,9 +338,15 @@ export class RunStateWriter {
    */
   appendEvent(event: RunEvent): Promise<void> {
     const redacted = this.#redactEvent(event);
+    // Appends survive being disowned. What {@link disown} exists to prevent is
+    // this process *overwriting* the new holder's view — a stale target row
+    // replacing real progress. An event is purely additive: it says "this
+    // happened", and it stays true whoever owns the run now. Losing them is the
+    // worse outcome, because the thing most worth recording at that moment is
+    // the rollback this process had already performed before it stopped.
     return this.#update((record) => {
       record.events.push(redacted);
-    });
+    }, { evenIfDisowned: true });
   }
 
   /** Copy a {@link RunEvent} with its `args` values and `detail` redacted. */
@@ -440,8 +469,13 @@ export class RunStateWriter {
   }
 
   /** Serialise `mutator` after all pending writes, then persist (best-effort). */
-  #update(mutator: (record: RunRecord) => void): Promise<void> {
-    this.#chain = this.#chain.then(() => this.#applyAndPersist(mutator));
+  #update(
+    mutator: (record: RunRecord) => void,
+    options: { evenIfDisowned?: boolean } = {},
+  ): Promise<void> {
+    this.#chain = this.#chain.then(() =>
+      this.#applyAndPersist(mutator, options.evenIfDisowned === true)
+    );
     return this.#chain;
   }
 
@@ -479,6 +513,9 @@ export class RunStateWriter {
    * carrying on to the next target.
    */
   async #applyStrict(mutator: (record: RunRecord) => void): Promise<void> {
+    if (this.#disowned) {
+      throw new RunNotActiveError(this.#record.id, this.#record.status);
+    }
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       if (this.#record.status !== "running") {
         throw new RunNotActiveError(this.#record.id, this.#record.status);
@@ -486,16 +523,29 @@ export class RunStateWriter {
       // The mutation is applied to the live record, so a throw would otherwise
       // leave it there for the next write that lands to persist — recording an
       // intent for an effect that provably never ran, and making the body's
-      // first execution report itself as a re-drive. Keep a copy of the rows
-      // this touches so a refusal really does leave nothing behind.
-      const before = structuredClone(this.#record.targets);
+      // first execution report itself as a re-drive. Keep a copy so a refusal
+      // really does leave nothing behind.
+      //
+      // The whole record, not just `targets`: today both strict mutators touch
+      // only target rows, but a snapshot scoped to what the *current* callers
+      // happen to write is a guard that silently stops guarding the moment
+      // somebody adds a third. `updatedAt` is part of it — a refused write must
+      // not leave the record claiming a modification time no write ever landed.
+      //
+      // Restored *into* the live record rather than by swapping the reference,
+      // because `snapshot()` hands that object out and a compensation walk holds
+      // it across awaits; replacing it would leave that walk reading a record
+      // nothing writes to any more. (The one thing this cannot undo is a
+      // top-level key a mutator adds where none existed — no current mutator
+      // does, and both write only through `ensureTarget`.)
+      const before = structuredClone(this.#record);
       mutator(this.#record);
       this.#record.updatedAt = this.#now();
       let result;
       try {
         result = await this.#store.putRun(this.#record, this.#version);
       } catch (error) {
-        this.#record.targets = before;
+        Object.assign(this.#record, before);
         throw error;
       }
       if (result.ok) {
@@ -507,12 +557,12 @@ export class RunStateWriter {
       // base, exactly as in the best-effort path.
       const fresh = await this.#store.getRun(this.#record.id).catch(
         (error: unknown) => {
-          this.#record.targets = before;
+          Object.assign(this.#record, before);
           throw error;
         },
       );
       if (fresh === null) {
-        this.#record.targets = before;
+        Object.assign(this.#record, before);
         throw new Error(
           `state: run "${this.#record.id}" vanished from the store while ` +
             `recording an effect; refusing to run it without a durable intent`,
@@ -575,7 +625,11 @@ export class RunStateWriter {
   }
 
   /** Apply `mutator` and CAS-write, re-reading and retrying on conflict. */
-  async #applyAndPersist(mutator: (record: RunRecord) => void): Promise<void> {
+  async #applyAndPersist(
+    mutator: (record: RunRecord) => void,
+    evenIfDisowned = false,
+  ): Promise<void> {
+    if (this.#disowned && !evenIfDisowned) return;
     try {
       for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
         mutator(this.#record);

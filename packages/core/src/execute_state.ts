@@ -19,6 +19,7 @@ import type { AnyParameter } from "./params.ts";
 import type { RunEnv, TargetSettlement } from "./run_support.ts";
 import { absolutePath } from "./path.ts";
 import { parseDuration } from "./duration.ts";
+import { messageOf } from "./internal.ts";
 import { findConfigDir, pathExists } from "./config.ts";
 import { defaultStateHost, type StateStore } from "./state/store.ts";
 import { resolveStateStore } from "./state/resolve.ts";
@@ -83,10 +84,82 @@ export interface RunState {
   lease?: HeldLease;
 }
 
+/** How many times a run's own lease acquire is retried past a throwing store. */
+const LEASE_ACQUIRE_ATTEMPTS = 5;
+
+/**
+ * The first gap between those attempts, doubling each time — so five attempts
+ * span roughly four seconds of backoff rather than half of one.
+ *
+ * Long enough to ride out the kind of outage a state service actually has (a
+ * rolling restart, a reconnect, a contended filesystem mutex), short enough that
+ * a store which is genuinely down still fails the run promptly instead of
+ * stalling it. Every other state write is best-effort; this one is not, so it is
+ * worth being patient before giving up.
+ */
+const LEASE_RETRY_MS = 250;
+
+/**
+ * Take the run's lease, tolerating a store that is merely having a bad moment.
+ *
+ * `acquireLock` **throws** — it does not answer `false` — for a filesystem mutex
+ * it could not take within its spin budget, an HTTP 503, or a DNS blip. None of
+ * those say the claim is somebody else's, so a single one must not decide the
+ * run: they are retried.
+ *
+ * A throw that outlives the retries returns an {@link Error} rather than
+ * rejecting, so the caller reports it the way it reports every other expected
+ * failure. The run is **not** started without a lease: the whole point of taking
+ * it before the record says `running` is that a `running` record always has a
+ * live holder, and running unclaimed would leave a healthy run looking abandoned
+ * to every sweep for its entire duration — trading a clean failure for a
+ * silently re-driven one.
+ *
+ * @returns the lease, `null` when a live holder already has it, or an
+ *   {@link Error} when the store could not be reached at all.
+ */
+async function acquireLeaseRetrying(
+  store: StateStore,
+  runId: string,
+  actor: string,
+  nowIso: () => string,
+  runUrl: string | undefined,
+): Promise<HeldLease | null | Error> {
+  let last: unknown;
+  for (let attempt = 1; attempt <= LEASE_ACQUIRE_ATTEMPTS; attempt++) {
+    try {
+      return await acquireLease(
+        store,
+        RUN_LEASE_PREFIX,
+        runId,
+        actor,
+        nowIso,
+        undefined,
+        runUrl,
+      );
+    } catch (error) {
+      last = error;
+      if (attempt < LEASE_ACQUIRE_ATTEMPTS) {
+        const backoff = LEASE_RETRY_MS * 2 ** (attempt - 1);
+        await new Promise((resolve) => setTimeout(resolve, backoff));
+      }
+    }
+  }
+  return new Error(
+    `Could not claim run "${runId}": the state store did not answer after ` +
+      `${LEASE_ACQUIRE_ATTEMPTS} attempts over several seconds ` +
+      `(${messageOf(last)}). Zuke takes a ` +
+      `lease before recording a run so that a run in progress is never mistaken ` +
+      `for an abandoned one, and it will not run without it. Fix the store, or ` +
+      `run without durable state (unset ZUKE_STATE_DIR / ZUKE_STATE_URL, and ` +
+      `drop --state).`,
+  );
+}
+
 /**
  * Resolve the durable state store, open (or adopt) the run's writer, and
  * assemble the {@link RunEnv}. Returns the error instead of throwing when a
- * target needs state that is disabled.
+ * target needs state that is disabled, or when the run's lease cannot be taken.
  */
 export async function openRunState(opts: {
   build: Build;
@@ -194,15 +267,14 @@ export async function openRunState(opts: {
   // the record out of `suspended`, for the same reason.
   let lease: HeldLease | undefined;
   if (stateStore !== undefined && resume === undefined) {
-    const held = await acquireLease(
+    const held = await acquireLeaseRetrying(
       stateStore,
-      RUN_LEASE_PREFIX,
       opts.runId,
       actor,
       nowIso,
-      undefined,
       runUrl,
     );
+    if (held instanceof Error) return { ok: false, error: held };
     if (held === null) {
       // A fresh run's id is newly minted, so a live holder means the id was
       // reused — worth refusing rather than running two processes under one

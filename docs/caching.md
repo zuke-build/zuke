@@ -94,6 +94,19 @@ details worth knowing:
   dependents still run. Caching a target doesn't strand what depends on it.
 - The fingerprint is recorded **only after a successful run** — a failed target
   is never marked up-to-date.
+- **A cancelled run persists its cache only if nothing was rolled back.** A
+  target records its fingerprint the moment its body returns, and a
+  [compensation](./orchestration.md#cancellation--compensation--oncancel) then
+  reverses that work — usually a *side effect* (a deployment, a migration)
+  rather than the declared outputs, which is why the outputs-still-exist check
+  does not notice. So when a compensation runs, the whole store is left
+  untouched and the next run rebuilds. When **no** compensation runs — the
+  ordinary case, since most builds declare none — nothing was reversed and the
+  fingerprints are kept, so an interrupted build does not cost a full rebuild on
+  the next attempt. The store is also left alone whenever this process is not
+  the one that settled the cancellation, and when a run stops because its
+  [lease](./locks.md#the-runs-own-lease) was taken over: in both, somebody else
+  decides what the outputs are.
 - **`--no-cache`** (or `execute(..., { cache: false })`) ignores the cache
   entirely and re-runs every target.
 - **`--dry-run`** never reads or writes the cache: it prints the plan without

@@ -358,6 +358,15 @@ export async function execute(
     externallyCancelled = true;
     runController.abort();
   };
+  // Set when this run's lease is lost — the store says the claim is somebody
+  // else's now, so another process has taken the run over. That is a third,
+  // distinct way to stop: nobody asked for a cancellation, and the run is no
+  // longer this process's to settle or to unwind.
+  let leaseLost = false;
+  const onLeaseLost = () => {
+    leaseLost = true;
+    runController.abort();
+  };
 
   const nowIso = () => new Date().toISOString();
   const opened = await openRunState({
@@ -397,8 +406,16 @@ export async function execute(
   const ownLease = opened.state.lease;
   const lease = ownLease ?? options.resume?.lease;
   if (lease !== undefined) {
-    if (lease.lost.aborted) runController.abort();
-    else lease.lost.addEventListener("abort", onCancel, { once: true });
+    // Losing the claim stops the writer *first*. The walk that stops the run
+    // settles every target it never reached as `skipped`, and those rows would
+    // otherwise land on the record — through the very compare-and-swap that
+    // re-reads and re-applies — over the progress the new holder is making.
+    const stopOwning = () => {
+      writer?.disown();
+      onLeaseLost();
+    };
+    if (lease.lost.aborted) stopOwning();
+    else lease.lost.addEventListener("abort", stopOwning, { once: true });
   }
 
   // Announce the run's initial durable state (`running`) to plugins — a no-op
@@ -463,14 +480,39 @@ export async function execute(
       await services.stopAll((line) => reporter.info(line));
     }
   }
-  if (cache !== undefined) await cache.save();
-
   // A cancellation (Ctrl-C / an aborted `options.signal`, or another process
   // running `zuke cancel`) takes precedence over an ordinary failure: the
   // aborted target failing is a symptom, not the outcome.
   const cancelled = runController.signal.aborted;
+
+  // Whether the fingerprints this run recorded still describe the workspace.
+  //
+  // A cancellation only invalidates them by *undoing* something, and undoing
+  // needs a compensation walk, which needs a writer. Without a state store there
+  // is no writer, so nothing can have been rolled back and the fingerprints
+  // stand — which matters because a store-less run is the default for exactly
+  // the builds that declare no compensation. With a writer, the answer waits for
+  // the settlement below to say what the walk actually did.
+  let cacheIsTrustworthy = !cancelled || writer === undefined;
+
   let result: BuildResult;
-  if (cancelled) {
+  if (leaseLost) {
+    // The claim is demonstrably somebody else's, so this process no longer owns
+    // the run's outcome: it must not settle the record, and above all must not
+    // run the compensations. Doing so would unwind work the new holder is
+    // building on — the exact "two processes on one run" the lease exists to
+    // prevent. Queued per-target writes are drained (they are progress this
+    // process really made, and the writer's compare-and-swap merges them under
+    // the new holder's version) and then it stops.
+    await writer?.drain();
+    const lost = new Error(
+      `Run ${runId} stopped: its lease was taken over by another process, ` +
+        `which now owns the run. Nothing was rolled back — the compensations ` +
+        `belong to whoever holds the run.`,
+    );
+    reporter.error(lost.message);
+    result = { ok: false, executed: run.executed, error: lost, runId };
+  } else if (cancelled) {
     result = {
       ok: false,
       executed: run.executed,
@@ -486,7 +528,7 @@ export async function execute(
         `Run ${runId} cancelled by another process — stopping.`,
       );
     } else if (writer !== undefined) {
-      await settleCancelledRun({
+      const settlement = await settleCancelledRun({
         writer,
         life,
         order,
@@ -497,7 +539,31 @@ export async function execute(
         redactor,
         nowIso,
         isExternallyCancelled: () => externallyCancelled,
+        isLeaseLost: () => leaseLost,
       });
+      // A cancellation only invalidates the cache if something was actually
+      // undone. A target records its fingerprint when its body returns, and a
+      // compensation then reverses that work — usually a *side effect* rather
+      // than the declared outputs, which is why the outputs-still-exist check
+      // cannot be relied on to notice. But most builds declare no compensation
+      // at all, and for those nothing was reversed: throwing their fingerprints
+      // away would make every Ctrl-C cost a full rebuild, which is the ordinary
+      // develop-interrupt-rerun loop. So the cache is kept when this process ran
+      // the walk and the walk did nothing.
+      cacheIsTrustworthy = settlement.ownedWalk && settlement.compensated === 0;
+      // The claim can change hands *during* the walk, after the branch above
+      // chose a cancellation. Report what actually happened: this process
+      // neither finished unwinding the run nor settled it.
+      if (leaseLost) {
+        const lost = new Error(
+          `Run ${runId} stopped: its lease was taken over by another process ` +
+            `mid-rollback, after ${settlement.compensated} compensation(s). ` +
+            `The rest of the rollback, and the run's outcome, belong to ` +
+            `whoever holds it now.`,
+        );
+        reporter.error(lost.message);
+        result = { ok: false, executed: run.executed, error: lost, runId };
+      }
     }
   } else {
     result = run.aborted
@@ -522,13 +588,28 @@ export async function execute(
       reporter.error(settled.message);
       result = { ok: false, executed: run.executed, error: settled, runId };
     }
-    // Released once the record is terminal (or suspended), so the moment this
-    // run stops being ours to work on is the moment the claim goes. Any earlier
-    // throw leaves this call's own lease to lapse at its TTL, which is correct:
-    // the record is still `running` and the process really is broken, so a sweep
-    // should find it — just a minute later.
-    await ownLease?.release();
   }
+
+  // Persist the incremental cache, unless this run's fingerprints have been
+  // overtaken by events: a rollback that undid the work they describe, or a new
+  // holder that now decides what the outputs are.
+  if (cache !== undefined && cacheIsTrustworthy && !leaseLost) {
+    await cache.save();
+  }
+
+  // Released once this run has stopped being ours to work on — which includes
+  // the cancelled paths, not just the ones that ran to a finish. A cancelled run
+  // leaves a *terminal* record, so holding its claim for the rest of the TTL
+  // says a process is still working on a run that demonstrably ended, and blocks
+  // the id for a minute for no reason.
+  //
+  // Two exceptions. A lost lease is not ours to give back: releasing is scoped
+  // to the token we no longer hold, so at best it is a no-op and at worst it is
+  // an attempt to drop the new holder's claim. And any earlier *throw* leaves
+  // this call's lease to lapse at its TTL, which is correct: the record is still
+  // `running` and the process really is broken, so a sweep should find it — just
+  // a minute later.
+  if (!leaseLost) await ownLease?.release();
 
   // Announce the run's terminal durable state (succeeded/failed/suspended/
   // cancelling) to plugins, now that the transition above has landed.
