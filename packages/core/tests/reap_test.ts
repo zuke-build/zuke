@@ -504,3 +504,22 @@ Deno.test("a run from the same origin is reaped normally", async () => {
     assertEquals(outcome.reaped, ["run-1"]);
   });
 });
+
+Deno.test("a shared origin does not make another build's run ours", async () => {
+  // Two builds in one repository resolve the same `GITHUB_REPOSITORY`, so the
+  // origin abstains between them. It only ever narrows what the shape checks
+  // permit — it can refuse a run, never claim one — so the build name still
+  // separates them, exactly as before origins existed.
+  await withStore([record("run-1", "running")], async (store) => {
+    await amend(store, "run-1", (r) => {
+      r.build = "OtherBuild";
+      r.buildId = "acme/api";
+    });
+    const { reporter } = capturing();
+    const outcome = await reapAbandoned(
+      depsFor(store, reporter, NOW, "acme/api"),
+    );
+    assertEquals(outcome, { reaped: [], settled: [], failed: 0 });
+    assertEquals((await store.getRun("run-1"))?.record.status, "running");
+  });
+});

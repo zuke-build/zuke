@@ -286,6 +286,11 @@ because you named one run by hand.
   put `ZUKE_BUILD_ID` in the pod spec next to `ZUKE_STATE_URL`. Use the same
   value everywhere a given build runs — its own runs must recognise each other
   across machines.
+- **Two builds in one repository share the repository default**, so it separates
+  nothing between them. It does not need to: they are already separated by the
+  build name and root-target checks below, and the origin only ever *narrows*
+  what those permit — it can refuse a run, never claim one. Give each build its
+  own `ZUKE_BUILD_ID` anyway if you want them told apart by origin too.
 
 Two shape checks back it up, and still apply on their own when no origin is
 recorded:

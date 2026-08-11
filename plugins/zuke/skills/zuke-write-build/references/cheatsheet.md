@@ -238,6 +238,9 @@ class CD extends Build {
   none. Every recovery path (`resume`, `resume --check`, `cancel`, the reaper)
   compares it; a sweep silently **skips** a foreign run (so a cron's exit code
   stays meaningful) and a by-name `resume <id>` / `cancel <id>` **reports** it.
+  An origin only ever **narrows** what the shape checks permit — it can refuse a
+  run, never claim one — so two builds in one repository, which share the
+  repository default, stay separated by the build-name check exactly as before.
   An absent origin on either side abstains rather than refusing, so records
   written before the field existed stay recoverable — which means in a container
   you must set `ZUKE_BUILD_ID` yourself (there is no `GITHUB_REPOSITORY` in a

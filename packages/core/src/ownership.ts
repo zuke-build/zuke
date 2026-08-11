@@ -24,6 +24,12 @@
  *   Distinct per repository, stable across commits, and free: a build templated
  *   across services is separated with no configuration at all.
  *
+ * **An origin only ever narrows.** It is `&&`-ed with the shape checks at every
+ * call site, never substituted for them, so it can refuse a run and never claim
+ * one. That is what makes the repository default safe where it is coarse: two
+ * builds in one repository resolve the same origin, and the build-name and
+ * root-target checks separate them exactly as they did before.
+ *
  * **A missing origin never blocks anything.** A record written before this
  * existed has none, and a process outside CI with no `ZUKE_BUILD_ID` resolves
  * none, so either side being absent means the comparison abstains and the
