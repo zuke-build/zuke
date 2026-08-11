@@ -85,9 +85,18 @@ export interface RunState {
 }
 
 /** How many times a run's own lease acquire is retried past a throwing store. */
-const LEASE_ACQUIRE_ATTEMPTS = 3;
+const LEASE_ACQUIRE_ATTEMPTS = 5;
 
-/** How long to wait between those attempts. */
+/**
+ * The first gap between those attempts, doubling each time — so five attempts
+ * span roughly four seconds of backoff rather than half of one.
+ *
+ * Long enough to ride out the kind of outage a state service actually has (a
+ * rolling restart, a reconnect, a contended filesystem mutex), short enough that
+ * a store which is genuinely down still fails the run promptly instead of
+ * stalling it. Every other state write is best-effort; this one is not, so it is
+ * worth being patient before giving up.
+ */
 const LEASE_RETRY_MS = 250;
 
 /**
@@ -131,13 +140,15 @@ async function acquireLeaseRetrying(
     } catch (error) {
       last = error;
       if (attempt < LEASE_ACQUIRE_ATTEMPTS) {
-        await new Promise((resolve) => setTimeout(resolve, LEASE_RETRY_MS));
+        const backoff = LEASE_RETRY_MS * 2 ** (attempt - 1);
+        await new Promise((resolve) => setTimeout(resolve, backoff));
       }
     }
   }
   return new Error(
     `Could not claim run "${runId}": the state store did not answer after ` +
-      `${LEASE_ACQUIRE_ATTEMPTS} attempts (${messageOf(last)}). Zuke takes a ` +
+      `${LEASE_ACQUIRE_ATTEMPTS} attempts over several seconds ` +
+      `(${messageOf(last)}). Zuke takes a ` +
       `lease before recording a run so that a run in progress is never mistaken ` +
       `for an abandoned one, and it will not run without it. Fix the store, or ` +
       `run without durable state (unset ZUKE_STATE_DIR / ZUKE_STATE_URL, and ` +
