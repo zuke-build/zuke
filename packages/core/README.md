@@ -142,6 +142,8 @@ function appendJobSummary(markdown: string): boolean
 
 async function archiveOutputs(outputs: readonly string[], host: OutputHost): Promise<Uint8Array>
   Archive a target's `outputs` into a gzipped tar of their current contents.
+  A declared output that does not exist is skipped, as is anything under a
+  `.git` or `.zuke` directory.
 
 function assert(condition: unknown, message: string): asserts condition
   Assert that `condition` is truthy, narrowing it for the rest of the scope.
@@ -582,12 +584,25 @@ function resolveStateStore(option: StateStore | false | undefined, declared: Sta
   filesystem store under `<root>/.zuke/runs`. A plain build with no durable
   feature and no configuration gets `undefined`, so it carries zero overhead.
 
-async function restoreOutputs(artifact: Uint8Array, host: OutputHost): Promise<string[]>
+async function restoreOutputs(artifact: Uint8Array, host: OutputHost, outputs?: readonly string[]): Promise<string[]>
   Restore the files in `artifact` (a gzipped tar produced by
-  {@link archiveOutputs}) to disk, returning the paths written. Entry names are
-  validated first: an absolute path or one escaping the workspace (`..`) is
-  rejected before anything is written, so a malicious archive can't plant files
-  outside the current directory.
+  {@link archiveOutputs}) to disk, returning the paths written.
+
+  Every entry is validated before anything is written, so a rejected archive
+  leaves no half-written, partially-trusted output tree. An entry is refused
+  when its name is absolute or escapes the workspace with `..`, when it is a
+  symlink or directory entry (which {@link archiveOutputs} never produces),
+  when it lands under `.git` or `.zuke`, and — when `outputs` is given — when it
+  falls outside the target's declared outputs.
+
+  @param outputs
+      The declaring target's {@link TargetBuilder.outputs}. Pass them
+      whenever they are known, which is what the executor does: an archive built
+      from those outputs can only contain paths under them, so anything else is a
+      store that has been written to by something other than a Zuke build, and
+      restoring it would let that writer choose files anywhere in the workspace —
+      a `deno.json`, a lockfile, a script a later target runs. Omitting them keeps
+      the older, name-only confinement for a caller that has no output list.
 
 async function resumeCheck(build: Build, options: Omit<ResumeOptions, "runId" | "signal" | "data"> & { runId?: string; }): Promise<{ checked: number; failed: number; }>
   Re-attempt every suspended run in the store (or just `runId`): predicate-based

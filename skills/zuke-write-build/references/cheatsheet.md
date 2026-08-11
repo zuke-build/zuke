@@ -177,7 +177,11 @@ Persist a run's status and per-target metadata so it survives the process
 exiting. **Opt-in** — a plain build writes nothing. Enable a store by (first
 wins): `execute(..., { stateStore })` → `override stateStore()` →
 `ZUKE_STATE_URL` (+ `ZUKE_STATE_TOKEN`) → `ZUKE_STATE_DIR` → `--state` (defaults
-to `.zuke/runs`).
+to `.zuke/runs`). Every `ZUKE_*_URL` backend — state, registry, remote cache —
+**must be `https:`**: a plaintext one is refused with a named error and exit
+code 1, because an on-path attacker who answers it chooses what the build reads
+back. Loopback is exempt; `ZUKE_ALLOW_INSECURE_URL=1` opts a deliberate
+plaintext endpoint back in.
 
 ```ts
 import { Build, HttpStateStore, target } from "jsr:@zuke/core";
@@ -860,7 +864,13 @@ build as `--flag=value` arguments — validated against their kinds first (a typ
 mismatch is a clean tool error, never a failed subprocess). `.secret()`
 parameters are omitted from the descriptor entirely, so a secret can neither be
 requested nor forwarded; the child resolves it from its own environment /
-`.from()` source.
+`.from()` source. Because the registry names **where** a build is launched from,
+a descriptor whose entry module is **remote** (not a local path or `file:` URL —
+`https:`, `jsr:`, `npm:`, `data:`) is refused unless its origin is listed in
+`ZUKE_REGISTRY_LAUNCH_HOSTS` (`*` allows any); the call is denied and audited
+`launch_origin_not_allowed`, before the confirmation prompt, with nothing
+spawned. `zuke register` writes a local `file:` module, so this only bites a
+hand-authored or second-party registry entry.
 
 **Trusted per-call identity** (`docs/mcp.md`): on a shared, multi-user endpoint,
 `override mcpIdentity()` returns a hook `(ctx) => ({ actor, via? })` that
@@ -880,5 +890,10 @@ uses the local cache only. Declare one with `override remoteCache()` on the
 `Build` (returning `FileSystemCacheStore` or `HttpCacheStore`), or leave it and
 the executor falls back to the `ZUKE_REMOTE_CACHE_*` environment variables; it
 applies only to targets declaring **both** `inputs` and `outputs`. A remote
-store is best-effort — an unreachable one never fails the build. `--affected`
-limits a run to targets touched since a git base (great for CI job fan-out).
+store is best-effort — an unreachable one never fails the build. A **restore is
+confined to the target's declared `.outputs(...)`**, and refuses an absolute or
+`..` path, a symlink or directory entry, and anything under `.git`/`.zuke`; a
+refused archive is a cache miss (rebuild + warning), never a build failure, so
+whoever can write the store can neither plant files nor halt the build.
+`--affected` limits a run to targets touched since a git base (great for CI job
+fan-out).

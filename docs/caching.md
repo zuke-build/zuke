@@ -207,12 +207,26 @@ target:
 - Point them only at a cache **you control**, and prefer a
   [secret parameter](./parameters.md) or an environment variable over a
   hard-coded value.
+- **`ZUKE_REMOTE_CACHE_URL` must be `https:`.** A plaintext URL is refused
+  before the first request: an on-path attacker who answers it chooses the file
+  tree that gets written into your workspace, which needs no token to steal.
+  Loopback is exempt, and `ZUKE_ALLOW_INSECURE_URL=1` opts a deliberate
+  plaintext endpoint back in.
 - On CI, **restrict egress** to the cache host, so a misconfigured or overridden
   URL can't exfiltrate build artifacts.
-- **Restore is confined to the workspace.** Every archive entry is validated
-  before anything is written — an **absolute path**, or one containing a
-  **`..`** segment, is rejected outright — so a poisoned or malicious store
-  can't plant files outside the current directory.
+- **Restore is confined to the target's declared outputs.** Every archive entry
+  is validated before anything is written, so a rejected archive leaves no
+  half-written tree. An entry is refused when it is an **absolute path** or
+  contains a **`..`** segment; when it is a **symlink or directory entry**
+  (which archiving never produces, so its presence means something else built
+  the archive); when it lands under **`.git` or `.zuke`** — a restored git hook
+  runs on the next ordinary git command; and when it falls **outside the paths
+  the target declared with `.outputs(...)`**. That last one is what stops an
+  innocuous-looking `deno.json` or lockfile riding along in an otherwise valid
+  artifact.
+- **A refused archive is a cache miss, not a build failure.** The target
+  rebuilds and the refusal is reported as a warning — so whoever can write the
+  store cannot halt every build that reads it.
 
 ### Where it fits
 

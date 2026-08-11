@@ -57,6 +57,19 @@ The **location** is one of two forms:
   (for a build fronted by a wrapper script). Hand-authored or produced by a
   custom registry; the runner honours it in the same way.
 
+> **A location is a launch command, so whoever writes the registry chooses what
+> `zuke mcp --registry` spawns.** A **remote** entry module — anything that is
+> not a local path or a `file:` URL, so `https:`, `jsr:`, `npm:`, `data:` — is
+> therefore **refused** unless the operator names its origin in
+> `ZUKE_REGISTRY_LAUNCH_HOSTS` (comma- or space-separated; `*` allows any).
+> Otherwise a registry entry would be enough to run attacker-chosen code with
+> `deno run -A` in the operator's workspace. The allow-list token is the
+> hostname, or the scheme when the specifier carries none (`jsr:`); an allow-listed
+> `http:` origin additionally needs `ZUKE_ALLOW_INSECURE_URL=1`, and loopback
+> needs no such opt-out. A refused launch is a structured tool error and an
+> audited `launch_origin_not_allowed` event — nothing is spawned. Local modules,
+> which is what `zuke register` writes, are unaffected.
+
 ## Backends
 
 Two dependency-free backends ship, mirroring the state layer.
@@ -84,7 +97,9 @@ The registry is resolved by the same precedence as the run store:
 2. a build's `registry()` override;
 3. the environment — `ZUKE_REGISTRY_URL` (with an optional
    `ZUKE_REGISTRY_TOKEN`) selects the HTTP backend, else `ZUKE_REGISTRY_DIR`
-   selects the filesystem backend;
+   selects the filesystem backend. `ZUKE_REGISTRY_URL` must be `https:` (see
+   [durable run state](./state.md#httpstatestore--hosted-service-for-production)
+   for why, and for the `ZUKE_ALLOW_INSECURE_URL` opt-out);
 4. for `zuke register`, a filesystem registry under `.zuke/builds` as the
    default, so the command works out of the box.
 

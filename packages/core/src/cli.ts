@@ -9,6 +9,7 @@ import { isEntryModule } from "./entry.ts";
 import { messageOf } from "./internal.ts";
 import { isCI } from "./host.ts";
 import { GraphError, validateGraph } from "./graph.ts";
+import { InsecureBackendUrlError } from "./http.ts";
 import { execute } from "./executor.ts";
 import type { Renderer } from "./renderer.ts";
 import {
@@ -1122,7 +1123,30 @@ async function runRuns(build: Build, parsed: ParsedArgs): Promise<number> {
   });
 }
 
+/**
+ * Run one CLI invocation, reporting a misconfigured backend URL as the
+ * configuration mistake it is. A plaintext `ZUKE_*_URL` is refused wherever it
+ * is resolved — a build run, `runs`, `resume`, `register` — so the report is
+ * here, around every command, rather than at each resolution site.
+ */
 export async function main(
+  BuildClass: new () => Build,
+  args: string[],
+  options: MainOptions = {},
+): Promise<number> {
+  try {
+    return await runCommand(BuildClass, args, options);
+  } catch (error) {
+    if (error instanceof InsecureBackendUrlError) {
+      console.error(error.message);
+      return 1;
+    }
+    throw error;
+  }
+}
+
+/** The body of {@link main}: parse the arguments and dispatch to the command. */
+async function runCommand(
   BuildClass: new () => Build,
   args: string[],
   options: MainOptions = {},

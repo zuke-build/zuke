@@ -241,7 +241,22 @@ class FsCache implements BuildCache {
         return false;
       }
       if (artifact !== null) {
-        await restoreOutputs(artifact, this.#host);
+        // A refused archive is a cache miss, not a build failure. Restore
+        // validates entry names, entry kinds, and the declared-output scope
+        // before writing anything, and every one of those refusals means the
+        // artifact is not what this target archived — so rebuild, loudly.
+        // Throwing instead would let anyone who can write the store halt every
+        // build that reads it, and the store is documented as best-effort.
+        try {
+          await restoreOutputs(artifact, this.#host, target.outputs_);
+        } catch (error) {
+          this.#warn?.(
+            `remote cache restore for "${name}" was refused, rebuilding: ${
+              messageOf(error)
+            }`,
+          );
+          return false;
+        }
         this.#store[name] = fp;
         this.#dirty = true;
         this.#restored.add(target);

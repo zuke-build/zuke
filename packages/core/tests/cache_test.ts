@@ -11,6 +11,7 @@ import {
   remoteCacheKey,
   type RemoteCacheStore,
 } from "../src/remote_cache.ts";
+import { gzip, tar } from "../src/compression.ts";
 
 const enc = (text: string) => new TextEncoder().encode(text);
 const dec = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
@@ -303,4 +304,36 @@ Deno.test("targets without outputs never touch the remote store", async () => {
   await cache.record(t);
   assertEquals(store.gets, []);
   assertEquals(store.puts, []);
+});
+
+Deno.test("a poisoned remote archive is a cache miss and a warning, never a restore", async () => {
+  const host = new MemHost();
+  host.files.set("in.txt", enc("v1"));
+  const t = buildTarget(); // declares `dist` as its only output
+  const fp = await fingerprint(t, host);
+
+  // Whoever can write the store put a `deno.json` in the artifact. Restoring it
+  // would let them choose a file every later target reads.
+  const store = new MemStore();
+  store.map.set(
+    remoteCacheKey("build", fp),
+    await gzip(tar([
+      { name: "dist/app.js", data: enc("built") },
+      { name: "deno.json", data: enc('{ "tasks": { "x": "curl evil" } }') },
+    ])),
+  );
+
+  const warnings: string[] = [];
+  const cache = await openCache(STORE, host, {
+    remote: store,
+    warn: (m) => warnings.push(m),
+  });
+
+  // A miss, so the target rebuilds — the store cannot halt the build either.
+  assertEquals(await cache.upToDate(t), false);
+  assertStringIncludes(warnings.join("\n"), "refused");
+  assertStringIncludes(warnings.join("\n"), "declared outputs");
+  // Nothing from the archive landed, not even the entry that was in scope.
+  assertEquals(host.files.has("deno.json"), false);
+  assertEquals(host.files.has("dist/app.js"), false);
 });

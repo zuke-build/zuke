@@ -244,6 +244,18 @@ tool in an already-running server with **no restart**:
   the allow-list and `--protect` globs match the **qualified**
   `<buildId>:<target>` name (e.g. `--allow-run=Api:*`, `--protect=Api:deploy`).
   Every mutating or denied call is [audited](#audit-log).
+- **Where it spawns from is checked too.** The registry names the launch
+  location, so a registry a second party can write to would otherwise be enough
+  to run attacker-chosen code. A **remote** entry module (anything that is not a
+  local path or `file:` URL — `https:`, `jsr:`, `npm:`, `data:`) is refused
+  unless its origin appears in `ZUKE_REGISTRY_LAUNCH_HOSTS` (comma- or
+  space-separated; `*` allows any; the token is the hostname, or the scheme when
+  the specifier carries none, like `jsr:`). An allow-listed `http:` origin additionally
+  needs `ZUKE_ALLOW_INSECURE_URL=1`; loopback does not. The check runs **before**
+  the `--confirm-destructive` prompt, so a refused location fails fast: the call
+  returns a structured `launch_origin_not_allowed` (or `insecure_launch_url`)
+  error and is audited as `denied`, with nothing spawned. Locations `./zuke
+  register` writes are local, so this is invisible to the ordinary setup.
 - **Parameters.** A run tool exposes the registered build's declared parameters
   as its input schema — keyed by the parameter's property name (e.g. `skipE2e`),
   with the kind, description, enum, and default from the descriptor. Supplied
@@ -279,7 +291,8 @@ tool in an already-running server with **no restart**:
   safety rides the store's CAS, so no new coordination is introduced.
 
 The registry resolves like the run store: `ZUKE_REGISTRY_URL`/`_TOKEN` or
-`ZUKE_REGISTRY_DIR`, a build's `registry()` override, else `.zuke/builds`.
+`ZUKE_REGISTRY_DIR`, a build's `registry()` override, else `.zuke/builds`. As
+with the run store, `ZUKE_REGISTRY_URL` must be `https:`.
 
 ## Safety
 

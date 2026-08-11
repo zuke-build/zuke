@@ -19,7 +19,7 @@
  */
 
 import { gunzip, gzip, tar, type TarEntry, untar } from "./compression.ts";
-import { HttpError } from "./http.ts";
+import { assertSecureBackendUrl, HttpError } from "./http.ts";
 
 /**
  * A content-addressed store for archived target outputs, keyed by
@@ -56,6 +56,8 @@ function normalize(path: string): string {
 /**
  * Collect every file under `outputs` (directories walked recursively) as tar
  * entries named by their normalised path, sorted so the archive is reproducible.
+ * Paths through a {@link FORBIDDEN_DIRS} directory are skipped, mirroring what
+ * {@link restoreOutputs} refuses to write back.
  */
 async function collectEntries(
   outputs: readonly string[],
@@ -63,6 +65,10 @@ async function collectEntries(
 ): Promise<TarEntry[]> {
   const entries: TarEntry[] = [];
   const walk = async (path: string): Promise<void> => {
+    // Never archive what restore would refuse to write back (see
+    // {@link FORBIDDEN_DIRS}): uploading a `.git` to a shared store would leak
+    // its history and leave the target permanently un-restorable.
+    if (isForbiddenPath(normalize(path))) return;
     const info = await host.stat(path);
     if (info === null) return; // a declared output that isn't there — skip it
     if (!info.isDirectory) {
@@ -79,7 +85,11 @@ async function collectEntries(
   return entries;
 }
 
-/** Archive a target's `outputs` into a gzipped tar of their current contents. */
+/**
+ * Archive a target's `outputs` into a gzipped tar of their current contents.
+ * A declared output that does not exist is skipped, as is anything under a
+ * `.git` or `.zuke` directory.
+ */
 export async function archiveOutputs(
   outputs: readonly string[],
   host: OutputHost,
@@ -108,20 +118,100 @@ function assertSafeEntryName(name: string): void {
 }
 
 /**
+ * Directory names no restored entry may pass through, whatever a target declares
+ * as an output. `.git` is the one that turns a poisoned cache into code
+ * execution: a restored `.git/hooks/pre-commit` or a rewritten `.git/config`
+ * runs on the developer's next ordinary git command. `.zuke` holds the run state
+ * and cache index Zuke itself trusts.
+ */
+const FORBIDDEN_DIRS = [".git", ".zuke"];
+
+/**
+ * Whether any segment of `name` (already normalised) is a
+ * {@link FORBIDDEN_DIRS} entry. Matched per segment rather than as a prefix,
+ * because a nested one is just as dangerous: a submodule's `sub/.git/hooks/…`
+ * runs on the same ordinary git command the top-level one would.
+ */
+function isForbiddenPath(name: string): boolean {
+  return name.toLowerCase().split("/").some((segment) =>
+    FORBIDDEN_DIRS.includes(segment)
+  );
+}
+
+/**
+ * Whether `name` (already normalised) is one of `outputs`, or nested under one.
+ * A declared output of `.` — the whole workspace — matches everything, which is
+ * what declaring it asked for.
+ */
+function isDeclaredOutput(name: string, outputs: readonly string[]): boolean {
+  return outputs.some((output) => {
+    const root = normalize(output).replace(/\/+$/, "");
+    if (root === "" || root === ".") return true;
+    return name === root || name.startsWith(`${root}/`);
+  });
+}
+
+/**
+ * Reject an archive entry that a legitimate {@link archiveOutputs} could not
+ * have produced: a symlink or a directory entry. Neither is ever archived —
+ * {@link collectEntries} emits regular files only — so their presence means the
+ * archive was built by something else, and restoring a symlink is how a later
+ * entry writes through it to a path the name checks approved.
+ */
+function assertPlainFileEntry(entry: TarEntry): void {
+  if (entry.linkname !== undefined) {
+    throw new Error(
+      `remote cache: refusing to restore a symlink from an archive: "${entry.name}".`,
+    );
+  }
+  if (entry.name.endsWith("/")) {
+    throw new Error(
+      `remote cache: refusing to restore a directory entry from an archive: "${entry.name}".`,
+    );
+  }
+}
+
+/**
  * Restore the files in `artifact` (a gzipped tar produced by
- * {@link archiveOutputs}) to disk, returning the paths written. Entry names are
- * validated first: an absolute path or one escaping the workspace (`..`) is
- * rejected before anything is written, so a malicious archive can't plant files
- * outside the current directory.
+ * {@link archiveOutputs}) to disk, returning the paths written.
+ *
+ * Every entry is validated before anything is written, so a rejected archive
+ * leaves no half-written, partially-trusted output tree. An entry is refused
+ * when its name is absolute or escapes the workspace with `..`, when it is a
+ * symlink or directory entry (which {@link archiveOutputs} never produces),
+ * when it lands under `.git` or `.zuke`, and — when `outputs` is given — when it
+ * falls outside the target's declared outputs.
+ *
+ * @param outputs The declaring target's {@link TargetBuilder.outputs}. Pass them
+ *   whenever they are known, which is what the executor does: an archive built
+ *   from those outputs can only contain paths under them, so anything else is a
+ *   store that has been written to by something other than a Zuke build, and
+ *   restoring it would let that writer choose files anywhere in the workspace —
+ *   a `deno.json`, a lockfile, a script a later target runs. Omitting them keeps
+ *   the older, name-only confinement for a caller that has no output list.
  */
 export async function restoreOutputs(
   artifact: Uint8Array,
   host: OutputHost,
+  outputs?: readonly string[],
 ): Promise<string[]> {
   const entries = untar(await gunzip(artifact));
-  // Validate every entry up front so a bad name aborts the whole restore
-  // instead of leaving a half-written, partially-trusted output tree.
-  for (const entry of entries) assertSafeEntryName(entry.name);
+  for (const entry of entries) {
+    assertSafeEntryName(entry.name);
+    assertPlainFileEntry(entry);
+    const name = normalize(entry.name);
+    if (isForbiddenPath(name)) {
+      throw new Error(
+        `remote cache: refusing to restore into a protected path: "${entry.name}".`,
+      );
+    }
+    if (outputs !== undefined && !isDeclaredOutput(name, outputs)) {
+      throw new Error(
+        `remote cache: refusing to restore "${entry.name}", which is outside ` +
+          `the target's declared outputs (${outputs.join(", ")}).`,
+      );
+    }
+  }
   const written: string[] = [];
   for (const entry of entries) {
     await host.writeFile(entry.name, entry.data);
@@ -267,6 +357,7 @@ export function envCacheStore(
 ): RemoteCacheStore | undefined {
   const url = readEnv("ZUKE_REMOTE_CACHE_URL");
   if (url !== undefined && url !== "") {
+    assertSecureBackendUrl(url, "ZUKE_REMOTE_CACHE_URL", readEnv);
     return new HttpCacheStore({
       url,
       token: readEnv("ZUKE_REMOTE_CACHE_TOKEN"),
