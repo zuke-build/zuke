@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.37.0](https://github.com/zuke-build/zuke/compare/core-v1.36.0...core-v1.37.0) (2026-08-11)
+
+
+### Features
+
+* **core:** enforce operator token over whole run plan ([#324](https://github.com/zuke-build/zuke/issues/324)) ([4b44379](https://github.com/zuke-build/zuke/commit/4b443799cb11f5e216fdc1be44cf7cc659956677))
+
+
+### Bug Fixes
+
+* **core:** redact a multi-line secret line by line ([#326](https://github.com/zuke-build/zuke/issues/326)) ([7bbb75a](https://github.com/zuke-build/zuke/commit/7bbb75af025f18d0a4582b8ae514efead72924de))
+
 ## [1.36.0](https://github.com/zuke-build/zuke/compare/core-v1.35.0...core-v1.36.0) (2026-08-10)
 
 
