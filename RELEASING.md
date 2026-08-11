@@ -12,14 +12,16 @@ request.
    Conventional Commits (`feat:`, `fix:`, `feat!:` / `BREAKING CHANGE:`).
    Versions are per-package, and every package is `1.x` on full semver: a
    breaking change bumps the **major** version. `bump-minor-pre-major` is
-   **off**, so a package that starts life at `0.x` graduates to `1.0.0` on its
-   first breaking change rather than absorbing it into a minor bump.
+   **off**, so a breaking change is never absorbed into a minor bump.
 
 2. **Zuke runs the whole release.** `.github/workflows/release.yml` is itself
-   driven by Zuke: on every push to `master` it runs a single command,
-   `./zuke publish` (the launcher installs Deno if the runner lacks it, so the
-   workflow has no separate "set up Deno" step). Because `publish` depends on
-   `release`, Zuke runs the `release` target first, then publishes.
+   driven by Zuke: on every push to `master` it runs four least-privilege jobs,
+   each invoking one target — `release`, then `actionRelease` and `publishJsr`
+   in parallel behind it, then `syncWebsite`. The launcher installs Deno if the
+   runner lacks it, so no job needs a separate "set up Deno" step. The split is
+   deliberate: `release` needs a `GITHUB_TOKEN` while `publishJsr` needs JSR
+   OIDC, and neither job should hold the other's credential. `./zuke publish` is
+   the local-only aggregate of `release` + `publishJsr`; CI never runs it.
 
 3. **`release` drives release-please.** The `release` target invokes the
    release-please CLI (`release-pr` + `github-release`). release-please
@@ -29,8 +31,8 @@ request.
    tags each release (`<component>-v<version>`, e.g. `core-v1.30.0`) and cuts
    the GitHub releases.
 
-4. **`publish` pushes to JSR.** The `publish` target walks the packages **core
-   first** (so the workspace's `jsr:@zuke/core` dependency resolves) and
+4. **`publishJsr` pushes to JSR.** The `publishJsr` target walks the packages
+   **core first** (so the workspace's `jsr:@zuke/core` dependency resolves) and
    publishes each one whose `deno.json` version is **not yet on JSR** — it
    queries each package's JSR `meta.json` first, so it is idempotent and a no-op
    on pushes that didn't release anything. Authentication is OIDC — the JSR

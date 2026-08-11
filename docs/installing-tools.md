@@ -41,6 +41,8 @@ Both return the installed binary's [`AbsolutePath`](./paths.md); hand it to a
 `ToolTasks.install((s) => …)` fetches a single tool, configured through a
 `ToolInstallSettings` lambda, and resolves to the installed binary's path.
 
+<!-- check -->
+
 ```ts
 import { ToolTasks } from "jsr:@zuke/core";
 import { CmdTasks } from "jsr:@zuke/cmd";
@@ -338,6 +340,8 @@ normalised from Deno's raw values (`darwin` → `macos`) — so the common case
 needs no mapping at all. `osLabel`/`archLabel` remain for tools that spell
 things differently, and there's no `os === "darwin" ? …` ternary in sight:
 
+<!-- check -->
+
 ```ts
 type OperatingSystem = "linux" | "macos" | "windows";
 type Architecture = "x86_64" | "aarch64";
@@ -368,6 +372,8 @@ resolve a foreign one (e.g. to pre-stage a Linux binary from a Mac). Outside a
 callback, **`hostPlatform()`** returns the same `Platform` for the running
 machine, and **`operatingSystem()`** returns just the OS union — the
 counterparts of `isCI()` for "what am I running on":
+
+<!-- check -->
 
 ```ts
 import { hostPlatform, operatingSystem } from "jsr:@zuke/core";

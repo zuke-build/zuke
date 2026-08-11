@@ -35,6 +35,8 @@ await run(Nightly);
 `triggers.schedule` is an array of entries; each is a 5-field cron in an optional
 IANA timezone:
 
+<!-- check -->
+
 ```ts
 interface ScheduleEntry {
   cron: string; // "minute hour day-of-month month day-of-week"

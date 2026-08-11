@@ -5,6 +5,8 @@ object in a lambda and the task function builds the argv and runs it. Arguments
 stay a discrete array end-to-end — never a shell string — so command
 construction is injection-free.
 
+<!-- check -->
+
 ```ts
 import { DenoTasks } from "jsr:@zuke/deno";
 import { NpmTasks } from "jsr:@zuke/npm";
@@ -54,7 +56,7 @@ actually spawn (the resolved shim or the bare fallback) for diagnostics.
 
 | Package                | Tasks                                                                                                                                 |
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `@zuke/deno`           | `run`, `test`, `check`, `fmt`, `lint`, `cache`, `coverage`, `task`                                                                    |
+| `@zuke/deno`           | `run`, `test`, `check`, `fmt`, `lint`, `cache`, `coverage`, `task`, `doc`, `install`, `publish`                                       |
 | `@zuke/npm`            | `install`, `ci`, `run`, `exec`, `publish`, `version`                                                                                  |
 | `@zuke/npx`            | `npx`                                                                                                                                  |
 | `@zuke/bun`            | `install`, `add`, `remove`, `run`, `x`, `test`                                                                                        |
@@ -92,7 +94,9 @@ actually spawn (the resolved shim or the bare fallback) for diagnostics.
 | `@zuke/dprint`         | `fmt`, `check`                                                                                                                        |
 | `@zuke/gcloud`         | `run` (any command; typed `containerImagesAddTag` / `sqlInstancesDescribe` / `sqlOperationsWait`), plus `GcsTasks` and `SecretManagerTasks` REST groups |
 | `@zuke/git`            | `init`, `clone`, `add`, `commit`, `status`, `checkout`, `branch`, `tag`, `push`, `pull`, `fetch`, `run` (+ `gitInfo()` helper)        |
-| `@zuke/gh`             | `run` (any command)                                                                                                                   |
+| `@zuke/gh`             | `run` (any command), `commit`, `tag`, `pullRequest`, `findPullRequest`, `checkRun`, `appToken`, `uploadSarif`                          |
+| `@zuke/release-please` | `releasePr`, `githubRelease`                                                                                                          |
+| `@zuke/docs`           | `apiDocs` — generate `llms.txt`, `llms-full.txt` and each package README's `## API` block                                              |
 | `@zuke/codecov`        | `upload` (`codecovcli upload-process`)                                                                                                |
 | `@zuke/claude`         | `run` (headless prompt), `mcp`, `config`, `update`                                                                                    |
 | `@zuke/codex`          | `exec` (headless prompt), `mcp`                                                                                                       |
@@ -109,6 +113,8 @@ gives you a typed, fluent task in the same style — no class needed. Build the
 argv with `arg` / `flag` / `option` (in call order), and the shared chainers
 (`cwd`, `env`, `noThrow`, `quiet`, `toolPath`, `args`) all apply. An optional
 `subcommand` is prepended to every invocation.
+
+<!-- check -->
 
 ```ts
 import { defineTool } from "jsr:@zuke/core/tooling";

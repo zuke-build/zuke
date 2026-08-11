@@ -6,9 +6,8 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for the idea! Zuke is pre-1.0 and evolving fast — if you are
-        planning a large change, opening this issue first lets us agree on the
-        direction before you invest the effort.
+        Thanks for the idea! If you are planning a large change, opening this
+        issue first lets us agree on the direction before you invest the effort.
 
         Please
         [search existing issues](https://github.com/zuke-build/zuke/issues?q=is%3Aissue)

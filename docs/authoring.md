@@ -33,6 +33,12 @@ body, which is required before the target can run.
 | `.validateAfter(...v)`      | `(...v: Validation[]) => this`                        | Run checks after a successful body; a throw fails it.                                              |
 | `.recoverWith(...r)`        | `(...r: Remediation[]) => this`                       | On failure, hand it to a remediation that can re-run the body ([self-healing](./self-healing.md)). |
 | `.recoverAttempts(n)`       | `(n: number) => this`                                 | Bound how many fix-then-rerun cycles are tried (default 1).                                        |
+| `.partOf(group)`            | `(g: Group) => this`                                  | Join a [parallel batch](#group-and-partof).                                                  |
+| `.dryRunnable()`            | `() => this`                                          | Run this body under `--dry-run`, with `$` in echo mode (others stay skipped).                        |
+| `.lock(configure)`          | `(c: (s: LockSettings) => LockSettings) => this`      | Hold a [cross-run lock](./locks.md) while it runs; a second run wanting the key fails or waits.      |
+| `.waitsFor(configure)`      | `(c: (s: WaitSettings) => WaitSettings) => this`      | A gate with no body: [suspend the run](./orchestration.md) until an external event, then resume.     |
+| `.onCancel(target)`         | `(t: Target \| (() => Target)) => this`               | [Compensation](./orchestration.md#cancellation--compensation--oncancel) run if this target succeeded and the run is later cancelled. |
+| `.forEach(items, stages, c?)` | `(items, (item) => Record<string, Target>, c?) => this` | [Fan out](./orchestration.md#fan-out-over-a-list--foreach) a pipeline over a runtime list.                            |
 
 `dependsOn` pulls targets into the plan; `before`/`after` only reorder targets
 that are _already_ in the plan — they never pull new targets in.
@@ -208,7 +214,7 @@ deploy = target()
   `--confirm-destructive`. A hint about intent — the body still runs — so use it
   on targets that inspect rather than mutate.
 - **`.cacheKey(fn)`** — add a non-file value (a parameter, tool version, git
-  commit…) to the [cache](#incremental-caching-inputs--outputs) fingerprint, so
+  commit…) to the [cache](#incremental-caching--inputs--outputs) fingerprint, so
   the target also rebuilds when that value changes. Repeatable; may be async.
 - **`.produces(...paths)`** / **`.consumes(...targets)`** — declare artifact
   paths a target produces, and (on a consumer) depend on the producers.
@@ -257,7 +263,7 @@ of paths.
 
 `zuke <target> --dry-run` resolves and prints every target that **would** run —
 honouring `--skip` and `onlyWhen` conditions — without executing any body or
-touching the [cache](#incremental-caching-inputs--outputs). Use it to preview a
+touching the [cache](#incremental-caching--inputs--outputs). Use it to preview a
 plan before committing to it.
 
 **Deep dry-run — `.dryRunnable()`.** A target marked `.dryRunnable()` has its
@@ -304,6 +310,8 @@ Unlike the CLI wrappers it runs no subprocess, so each method takes direct
 arguments rather than a settings-lambda. Paths are [`PathLike`](./paths.md), so
 an `absolutePath(...)` or a plain string both work.
 
+<!-- check -->
+
 ```ts
 import { FileTasks } from "jsr:@zuke/core";
 
@@ -345,6 +353,8 @@ Fetch over HTTP from a build script, built on the platform `fetch`.
 seam makes them unit-testable) and throw an `HttpError` (carrying `.status`) on
 a non-2xx response.
 
+<!-- check -->
+
 ```ts
 import { httpDownload, httpJson } from "jsr:@zuke/core";
 
@@ -372,6 +382,8 @@ A webhook URL embeds the secret that authorises posting, so source it from a
 `parameter().secret()` build input rather than hard-coding it — Zuke redacts the
 resolved value from all of its output, and can pull it from a secret manager
 with `.from(...)` (see [Secrets](./secrets.md)).
+
+<!-- check -->
 
 ```ts
 import { AnnounceTasks, Build, parameter, target } from "jsr:@zuke/core";
@@ -453,6 +465,8 @@ the POSIX `ustar` format in memory; and the file helpers
 and unpack `.tar.gz` archives. Entry names are limited to 100 bytes and archives
 use a fixed mtime, so output is reproducible.
 
+<!-- check -->
+
 ```ts
 import { createTarGzip } from "jsr:@zuke/core";
 
@@ -504,6 +518,8 @@ single `build` job whose one step invokes the build through the `./zuke`
 launcher (which bootstraps Deno itself — no separate setup step). Override only
 what else you need:
 
+<!-- check -->
+
 ```ts
 import { Build, cicd, target } from "jsr:@zuke/core";
 
@@ -521,7 +537,7 @@ want to change:
 
 ```ts
 ci = cicd({
-  provider: "github", // or "gitlab" / "azure"
+  provider: "github", // or "gitlab" / "azure" / "bitbucket"
   pipeline: {
     jobs: [{
       matrix: { os: ["ubuntu-latest", "macos-latest"] },
@@ -630,6 +646,12 @@ fixed-offset zones (a DST zone errors — the guard is GitHub-only); **GitLab** 
 `isCI()` and `ciHost()` (e.g. `"github-actions"`, `"gitlab-ci"`, `"local"`) let
 a build branch on _where_ it runs — e.g. `deploy.onlyWhen(() => isCI())`.
 
+Prefer **`detectCiHost()`** in new code: it returns the same detection as a
+`CiHost` whose values line up with the `CiProvider` names
+[`cicd()`](#ci-config-generation--cicd-and-generate-ci) uses, so a build can
+match the host it is on against the provider it generates for. `ciHost()` is
+kept for compatibility.
+
 `operatingSystem()` answers _what_ it runs on: the `OperatingSystem` union
 `"linux" | "macos" | "windows"`, normalised from `Deno.build.os` so you branch
 on `"macos"` rather than the raw `"darwin"` (other Unixes report as `"linux"`).
@@ -659,6 +681,12 @@ class MyBuild extends Build {
   override onStart() {
     console.log("Build starting…");
   }
+  override onTargetStart(name: string) {
+    console.log(`→ ${name}`);
+  }
+  override onTargetEnd(name: string, status: TargetStatus) {
+    console.log(`${name}: ${status}`);
+  }
   override onFinish(result: BuildResult) {
     console.log(result.ok ? "All good" : "Something failed");
   }
@@ -666,7 +694,22 @@ class MyBuild extends Build {
 }
 ```
 
-`BuildResult` is `{ ok: boolean; executed: string[]; error?: unknown }`.
+All four may be async. `onTargetStart` fires just before a body executes — not
+for a skipped or cached target — and `onTargetEnd` fires after each target
+settles, with its final status. For exporting rather than observing, prefer a
+[plugin](./extending.md), whose hooks mirror these.
+
+`BuildResult` is
+`{ ok: boolean; executed: string[]; error?: unknown; suspended?: boolean; cancelled?: boolean; runId?: string }`.
+`runId` is what you point a follow-up `zuke runs show` or `zuke cancel` at, and
+`suspended` distinguishes a run parked at a [gate](./orchestration.md) from one
+that finished.
+
+**The other overridable methods.** Beyond the hooks and the ordering seams below,
+`Build` exposes one override per subsystem, each documented on its own page:
+[`stateStore()`](./state.md), [`deadline()`](./state.md),
+[`remoteCache()`](./caching.md), [`recoverWith()`](./self-healing.md),
+[`registry()`](./registry.md) and [`mcpIdentity()`](./mcp.md).
 
 **External ordering — `override extraEdges(targets)`.** Return `[before, after]`
 pairs to impose soft ordering on the plan beyond the per-target `.before()` /
@@ -725,13 +768,14 @@ is named on the command line.
 ```ts
 run(
   BuildClass: new () => Build,
-  options?: { args?: string[]; plugins?: Plugin[] },
+  options?: { args?: string[]; plugins?: Plugin[]; renderer?: Renderer },
 ): Promise<void>
 ```
 
 Instantiates the build, discovers targets, validates the graph, parses CLI
 arguments (`options.args`, defaulting to `Deno.args`), dispatches to the
-executor with any registered `options.plugins`, and calls `Deno.exit` with `0`
+executor with any registered `options.plugins` and `options.renderer` (see
+[Console output](./console.md)), and calls `Deno.exit` with `0`
 on success or `1` on failure. This is the standard entry point at the bottom of
 `zuke.ts`. See [Extending Zuke](./extending.md) for the plugin contract.
 

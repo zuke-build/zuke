@@ -5,6 +5,8 @@ the run it is part of. It is entirely optional: an existing zero-argument body
 keeps working unchanged, because a `() => …` function is assignable to the
 one-parameter body type.
 
+<!-- check -->
+
 ```ts
 import { Build, target } from "jsr:@zuke/core";
 
@@ -154,14 +156,14 @@ When the signal aborts:
   ship = target().executes(async () => {
     await $`terraform apply`; // killed with SIGTERM if the run is cancelled
   });
-  ```
+```
 
   To cancel a command explicitly (or to override the ambient signal), use
   `.signal(...)`:
 
   ```ts
   await $`long-running`.signal(ctx.signal);
-  ```
+```
 
   `.signal()` composes with [`.killAfter()`](./shell.md): whichever fires first
   — the timeout or the cancellation — terminates the process.

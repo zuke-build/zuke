@@ -7,6 +7,8 @@ tag-based markup and a set of layout primitives (`line`, `rule`, `box`,
 `table`) that render cleanly to a terminal and degrade gracefully in CI, so a
 build never has to reach for `console.log`.
 
+<!-- check -->
+
 ```ts
 import { ConsoleTasks as Log } from "jsr:@zuke/console";
 

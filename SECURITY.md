@@ -5,8 +5,10 @@ pipelines and publishes itself to a public registry. Supply-chain integrity is
 therefore the primary concern, and this document describes how the project is
 hardened and how to report problems.
 
-> Zuke is pre-1.0 and largely AI-written (see the README). Review before you
-> rely on it, and prefer pinning to an exact version in your own builds.
+> Zuke is largely AI-written (see the README). Review before you rely on it.
+> Every package is `1.x` on full semver; depend on the caret range
+> (`jsr:@zuke/core@^1`) rather than an exact version, so patch fixes reach you —
+> see [Versioning & compatibility](./docs/versioning.md).
 
 ## Reporting a vulnerability
 
@@ -24,16 +26,19 @@ published once a patched version is available.
 
 ## Supported versions
 
-While the project is pre-1.0, only the **latest** published version of each
-`@zuke/*` package receives security fixes.
+Only the **latest** published version of each `@zuke/*` package receives
+security fixes. Depending on the caret range keeps you on it.
 
 ## Supply-chain posture
 
 What the project does to keep releases trustworthy:
 
-- **Zero runtime dependencies.** The library is dependency-free; the only
-  third-party tooling (`cspell`, `release-please`) is dev/release-time, pinned,
-  and never shipped to consumers.
+- **Zero runtime dependencies.** Every published package declares no dependency
+  but `@zuke/core`, so nothing third-party is shipped to consumers. The build
+  layer is separate and does have them: `@std/yaml` for `build/`, `cspell` and
+  `release-please` installed from npm on demand, and four checksum-verified
+  binaries (the Codecov CLI, zizmor, actionlint, gitleaks) provisioned by the
+  build's `toolchain()`. All of it is dev/release-time only.
 - **Injection-free command execution.** All process execution goes through
   `Deno.Command` with a discrete argv array — there is no shell string, so
   interpolated values can never be reinterpreted as shell syntax.
@@ -41,17 +46,21 @@ What the project does to keep releases trustworthy:
   OIDC token (`id-token: write`); no long-lived registry tokens or secrets are
   stored. JSR records build **provenance** for each published version.
 - **Least-privilege CI.** The default workflow token is `contents: read`. The
-  release pipeline is split so the `release-please` job (`contents` /
-  `pull-requests: write`) and the JSR `publish` job (`id-token: write`) never
+  release pipeline is split so the `release` job (`contents` /
+  `pull-requests: write`) and the `publishJsr` job (`id-token: write`) never
   hold each other's privileges.
 - **Pinned, monitored Actions.** Every GitHub Action is pinned to a full commit
-  SHA (with a version comment, kept current by Dependabot), and every job runs
-  `step-security/harden-runner` to audit outbound network egress.
+  SHA, with a version comment kept current by Dependabot. Every job that holds a
+  write-scoped token runs `step-security/harden-runner` with an
+  `egress-policy: block` allowlist, so outbound access is enforced rather than
+  merely audited. The `test` job in `ci.yml` is the exception: it holds no token
+  and only runs the test suite.
 - **Pinned toolchain.** The `./zuke` launcher bootstraps a **pinned** Deno
-  version by default (override with `DENO_VERSION`), so CI and local builds
-  install a known version rather than a moving `latest`. Dependencies are
-  resolved against a committed `deno.lock`, enforced with `--frozen`, and the
-  scanner CLIs are pinned to exact versions in the security workflow.
+  version, so CI and local builds install a known version rather than a moving
+  `latest`. Dependencies are resolved against a committed `deno.lock`, enforced
+  with `--frozen`. The scanner CLIs are pinned and checksum-verified in
+  `build/scanners.ts` and provisioned by the build itself, so the security
+  workflow needs no install step and nothing has to be present on `PATH`.
 - **Scanning via Zuke.** The supply-chain scanners run as a typed Zuke build
   target — `./zuke security` drives zizmor (Actions SAST), actionlint, and
   gitleaks (secrets) through [`@zuke/security`](./packages/security), failing
@@ -64,17 +73,18 @@ What the project does to keep releases trustworthy:
 ### Known trade-offs
 
 - **Bootstrap launchers.** `./zuke` and `./zuke.ps1` install Deno on first use
-  via the official `https://deno.land` install script (`curl … | sh`). The
-  version is pinned by default (set `DENO_VERSION=latest` or a specific version
-  to override), and `step-security/harden-runner` audits runner egress, but the
-  install *script itself* is fetched at run time. To avoid it entirely, install
-  Deno yourself so the launcher finds it on `PATH`.
+  by downloading the pinned release archive from GitHub and verifying it against
+  a per-platform SHA-256 baked into the launcher. No install script is fetched
+  or executed. `DENO_VERSION=latest` is **refused** — a moving target has no
+  checksum to pin — and overriding the version requires supplying a matching
+  `DENO_SHA256`, so the launcher never runs an unverified binary. To skip the
+  bootstrap entirely, install Deno yourself so the launcher finds it on `PATH`.
 - **`deno publish --allow-dirty`.** The publish step currently allows a dirty
   tree as a backstop. The merged release tree should already be clean; once a
   real release confirms this, drop the flag for the strongest
   "published == committed source" guarantee.
-- **`contents: write` + `persist-credentials` on the `quality` job.** The
-  `quality` job in `ci.yml` runs on `pull_request` with `contents: write` and
+- **`contents: write` + `persist-credentials` on the `ci` job.** The `ci` job in
+  `ci.yml` runs on `pull_request` with `contents: write` and
   `actions/checkout`'s `persist-credentials: true`, because the AI lint fixer may
   push a fix commit back to the PR branch. This is a deliberate trade-off, and it
   is fork-safe: `pull_request` (not `pull_request_target`) runs with the base
@@ -96,7 +106,8 @@ await SecurityTasks.osvScanner((s) => s.lockfile("package-lock.json"));
 ```
 
 In this repository, `deno task zuke security` runs the bundled set (zizmor,
-actionlint, gitleaks) once the tools are installed on `PATH`.
+actionlint, gitleaks); the target provisions each one itself, so nothing needs
+to be installed on `PATH` first.
 
 ## Recommended repository settings
 

@@ -5,7 +5,8 @@ This is the contract a service must implement to back
 the production store for [durable run state](./state.md). Zuke ships the client;
 you host the service (a thin layer over Postgres, a key-value store, a
 k8s-annotation store, an object store, …). It is deliberately small: three
-endpoints, bearer auth, and HTTP preconditions for compare-and-swap.
+resources — runs, locks, and the build catalog — with bearer auth and HTTP
+preconditions for compare-and-swap.
 
 The client is dependency-free and talks plain HTTP, so any stack can serve it.
 
@@ -106,6 +107,48 @@ not trusted) and expects newest-first ordering is applied server-side where it
 matters; it does not re-sort the list. Ordering is **newest first** (by
 `createdAt`, then `id`); apply `limit` **after** ordering so it returns the most
 recent runs.
+
+## Locks (`/locks`)
+
+Three routes back everything that needs mutual exclusion: a target's
+[`.lock()`](./locks.md), and the **run lease** every stateful run holds on its
+own id (key `zuke-run-<id>`, 60s TTL) — which is also what lets
+`resume --check` tell an abandoned run from a merely slow one. A service that
+omits these can store run records but cannot support locks, leases, or reaping.
+
+A lock is `{ key, holder, token, expiresAt }`. The **token** is an opaque string
+the server mints on acquire; only a caller presenting it may renew or release.
+Expiry is **server-side**: an expired lock must be treated as free, so a crashed
+holder's lock is reclaimed without anyone calling `DELETE`.
+
+### `POST /locks/:key`
+
+Acquire. Body `{ holder, ttlMs }`, where `holder` is
+`{ actor?, runId?, target?, at }` — descriptive only, never an authorization
+input.
+
+- `201 { "token": "…" }` — acquired.
+- `409 { … }` — already held; the body is the **current holder**, which the
+  client surfaces in its conflict error so an operator can see who has it.
+- An expired lock must not produce a `409`; reclaim it and return `201`.
+
+### `PUT /locks/:key`
+
+Renew (the heartbeat). Body `{ token, ttlMs }`; extend the deadline to
+`now + ttlMs` only when `token` matches the current holder.
+
+- `204`/`200` — renewed.
+- `409` or `404` — the token no longer holds the lock. **Not an error:** the
+  client reads it as "someone else owns this now" and stops, which is how a
+  process that was paused long enough to lose its lease learns to stand down.
+
+### `DELETE /locks/:key`
+
+Release. Body `{ token }`; delete only when `token` matches.
+
+- `204`/`200` — released.
+- `404` — already gone, treated as success (release is idempotent, and the TTL
+  would have reclaimed it anyway).
 
 ## Build catalog (`/builds`)
 

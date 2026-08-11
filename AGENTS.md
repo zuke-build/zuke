@@ -239,7 +239,7 @@ ambient tools.
    CLI / wait-resume-state flow works as a whole, not just a unit seam. These
    are ordinary `*_test.ts` files, so they run in the **normal `deno test`
    lane** — every `deno task test` / `ci`, on all three OSes (Ubuntu via
-   ci.yml's `quality` job, macOS and Windows via the `test-os` matrix) — and
+   ci.yml's `ci` job, macOS and Windows via its `test` job's matrix) — and
    count toward coverage.
 
 3. **E2E — `tests/e2e/*_e2e.ts` (+ `tests/e2e/fixtures/`).** For the one thing
@@ -289,7 +289,7 @@ the three test layers above and the "read every reviewer comment" rule below.
 | Verify declared core floors   | `./zuke coreFloorCheck` (needs network)              |
 
 `deno task ci` is `deno run -A --frozen zuke.ts ci` — the exact gate the
-`quality` job in `ci.yml` runs, so there is one gate, not a hand-maintained
+`ci` job in `ci.yml` runs, so there is one gate, not a hand-maintained
 subset that can drift from it. `zuke.ts`'s `ci` target depends on: `format`
 (`deno fmt --check`), `lint` (`deno lint`), `spell` (cspell), `coverage`
 (type-check, then the test suite with the 95% coverage gate), `coverageUpload`
@@ -329,7 +329,7 @@ zuke, zuke.ps1            # bootstrap launchers (install Deno, run the build); z
 docs/                     # long-form guides (linked from the README)
 skills/                   # agent skills: zuke-write-build, zuke-setup
 plugins/zuke/             # Claude Code plugin wrapping the skills
-.github/workflows/ci.yml           # PR checks (quality + test-os matrix)
+.github/workflows/ci.yml           # PR checks (ci gate, coreFloorCheck, test matrix)
 .github/workflows/integration.yml  # e2e suite on the OS matrix (generated)
 .github/workflows/ai-review.yml    # @zuke/ai PR review
 .github/workflows/release.yml      # release-please automation
@@ -384,7 +384,8 @@ plugins/zuke/             # Claude Code plugin wrapping the skills
 - **A new package must be added everywhere.** Membership is declared in seven
   places that must stay in lock-step: the `deno.json` workspace,
   `.release-please-config.json`, `.release-please-manifest.json`, the `PACKAGES`
-  array in `zuke.ts` (the JSR publish loop), the package table in `README.md`,
+  array in `build/packages.ts` (the JSR publish loop), the package table in
+  `README.md`,
   the list in `tests/release_config_test.ts`, and the landing-page catalogue in
   `build/website_tools.ts` (`TOOL_GROUPS` for a CLI wrapper, `CORE_PACKAGES` for
   an engine or plugin package). `tests/release_config_test.ts` and

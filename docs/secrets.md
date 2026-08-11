@@ -8,6 +8,8 @@ treats a secret as a **parameter with two extra guarantees**:
 2. **Its resolved value is redacted from all of Zuke's output** — so a secret
    cannot leak into a log, a summary, or an error message, on any platform.
 
+<!-- check -->
+
 ```ts
 import { Build, execSecret, parameter, run, target } from "jsr:@zuke/core";
 
@@ -191,6 +193,8 @@ command that reports failures on stderr without echoing the secret itself
 boundary as any subprocess a target spawns.
 
 ## A complete example
+
+<!-- check -->
 
 ```ts
 import {

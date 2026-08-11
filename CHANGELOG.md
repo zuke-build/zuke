@@ -6,7 +6,7 @@ captures the milestones worth calling out.
 
 ## 2026-07-30 — every package 1.0.0 🎉
 
-All 55 packages are now `1.x`: `@zuke/core`, the `@zuke/cli` command, and all 50+
+All 54 packages are now `1.x`: `@zuke/core`, the `@zuke/cli` command, and all 50+
 tool wrappers and plugins. There is no pre-1.0 tier left — `bump-minor-pre-major`
 is off, so every package makes the same promise: a minor or patch release never
 breaks a public symbol, and a breaking change bumps the major version. Depend on

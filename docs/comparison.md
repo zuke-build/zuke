@@ -4,8 +4,8 @@ Zuke exists for the build that has outgrown a list of commands: a real
 dependency graph, typed inputs, external tools driven through checked argv, and
 pipelines that have to survive waiting for something outside the build.
 
-It is also a **young, single-maintainer project**, though no longer a pre-1.0
-one: all 54 JSR packages are `1.x` and follow full semver (see
+It is also a **single-maintainer project**. All 54 JSR packages are `1.x` and
+follow full semver (see
 [Versioning & compatibility](./versioning.md) for what that promises). The
 package a consumer actually installs is the `@zuke/cli` command — `1.x` too, and
 the front door to the `mcp`, `resume` and `cancel` surface below.
