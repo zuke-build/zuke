@@ -219,9 +219,10 @@ class CD extends Build {
 - **Run leases and reaping.** A run that writes durable state takes a TTL lease
   on its own id and heartbeats it, so two processes cannot both believe they own
   one run — a resume that adopts a run whose lease has lapsed takes it over, and
-  the original **stops**: it runs no compensations and settles nothing, because
-  the run belongs to whoever holds the claim now (unwinding would roll back the
-  work the new holder is building on). A run that cannot take its lease at all —
+  the original **stops**: it runs no compensations, settles nothing, and writes
+  nothing further, because the run belongs to whoever holds the claim now
+  (unwinding would roll back the work the new holder is building on). A claim
+  lost *during* a cancellation's rollback stops that walk where it stands, too. A run that cannot take its lease at all —
   a store that never answers, after retries — fails with a named error rather
   than running unclaimed. A run that settles, cancellation included, hands the
   claim straight back. The lease is also how a dead run is told from a slow one:

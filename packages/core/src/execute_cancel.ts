@@ -35,6 +35,8 @@ export async function settleCancelledRun(opts: {
   redactor: Redactor;
   nowIso: () => string;
   isExternallyCancelled: () => boolean;
+  /** Whether this process has lost the run's lease (see {@link "../cancel.ts".CompensationDeps.stop}). */
+  isLeaseLost?: () => boolean;
 }): Promise<void> {
   const { writer, life, order, runId, actor, reporter } = opts;
   // Hold the per-run cancel lock while we compensate, so a concurrent
@@ -77,6 +79,7 @@ export async function settleCancelledRun(opts: {
           signals: opts.signals,
           reporter,
           redactor: opts.redactor,
+          stop: opts.isLeaseLost,
         });
         const at = opts.nowIso();
         for (const event of compensationEvents(comp.attempts, actor, at)) {

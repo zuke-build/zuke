@@ -3104,3 +3104,46 @@ Deno.test("a lost lease writes nothing more to the record it no longer owns", as
     await Deno.remove(dir, { recursive: true });
   }
 });
+
+Deno.test("a lease lost mid-rollback stops the walk where it stands", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    // A compensation walk can be long — real rollbacks talk to real systems —
+    // and a lease lapses on time, not on health. Losing the claim partway
+    // through means every *remaining* compensation would unwind work the new
+    // holder is already rebuilding.
+    const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+    const controller = new AbortController();
+    const { lease, lose } = fakeLease();
+    const undone: string[] = [];
+    class B extends Build {
+      first = target().onCancel(() => this.undoFirst).executes(() => {});
+      undoFirst = target().executes(() => void undone.push("undoFirst"));
+      second = target().dependsOn(this.first).onCancel(() => this.undoSecond)
+        .executes(() => controller.abort());
+      // The walk runs in reverse, so this one goes first — and takes the lease
+      // with it, exactly as a lapse during a slow rollback would.
+      undoSecond = target().executes(() => {
+        undone.push("undoSecond");
+        lose();
+      });
+    }
+    const b = new B();
+    discoverTargets(b);
+    const order = [b.first, b.undoFirst, b.second, b.undoSecond];
+    const seeded = await seedResumableRun(store, b, order, b.second);
+
+    await execute(b, b.second, {
+      silent: true,
+      stateStore: store,
+      signal: controller.signal,
+      resume: { ...seeded, done: new Set<string>(), lease },
+    });
+
+    // The first compensation ran; the claim then changed hands, so the walk
+    // stopped rather than carrying on into the new holder's work.
+    assertEquals(undone, ["undoSecond"]);
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});

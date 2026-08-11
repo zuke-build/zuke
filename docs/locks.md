@@ -104,8 +104,12 @@ holder is gone and the run can be taken over.
   **not** run the compensations, and it does **not** settle the record. Both
   belong to the new holder now, and unwinding work that holder is already
   building on would be the very "two processes on one run" the lease exists to
-  prevent. Per-target progress already queued is flushed, nothing new is started,
-  and the process reports that the run was taken over.
+  prevent. Per-target progress already queued is dropped rather than flushed —
+  the writer stops writing the moment the claim is lost, so nothing it had left
+  to say lands on the new holder's record — nothing new is started, and the
+  process reports that the run was taken over. A claim lost *during* a
+  cancellation's rollback stops that walk where it stands, for the same reason:
+  the remaining compensations belong to whoever holds the run now.
 - **A refused renewal is loss; a failed one is not.** A store answers "no" when
   the claim has changed hands, but it *throws* for a filesystem mutex it could
   not take in time, or an HTTP 503, or a DNS blip. None of those say who holds

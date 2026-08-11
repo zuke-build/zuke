@@ -539,6 +539,7 @@ export async function execute(
         redactor,
         nowIso,
         isExternallyCancelled: () => externallyCancelled,
+        isLeaseLost: () => leaseLost,
       });
     }
   } else {

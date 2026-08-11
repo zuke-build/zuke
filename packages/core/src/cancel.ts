@@ -166,6 +166,17 @@ export interface CompensationDeps {
    * by a timed-out wait whose `onTimeout` names a specific compensation target.
    */
   extra?: CompensationStep[];
+  /**
+   * Asked before each compensation whether this process still owns the run.
+   *
+   * A walk can be long — real rollbacks talk to real systems — and a lease is
+   * lost by lapsing, which a process busy doing exactly that can manage without
+   * ever being unhealthy (a compensation that blocks the event loop stops the
+   * heartbeat firing). If the claim changes hands mid-walk, every remaining
+   * compensation would be unwinding work the new holder is rebuilding. The walk
+   * stops instead, reporting what it had already undone.
+   */
+  stop?: () => boolean;
 }
 
 /** An in-memory {@link TargetStateHandle} seeded with a target's persisted meta. */
@@ -282,6 +293,19 @@ export async function runCompensations(
   const outcomes = outcomesFromRecord(record.targets);
 
   for (const step of steps) {
+    // Asked before each step, not once up front: the claim can change hands
+    // *during* a walk, which is long by nature — real rollbacks talk to real
+    // systems, and a compensation that blocks the event loop stops the lease
+    // heartbeat firing without the process being unhealthy at all. Every step
+    // from that point would be undoing work the new holder is rebuilding.
+    if (deps.stop?.() === true) {
+      deps.reporter.info(
+        `cancel: this run was taken over by another process mid-rollback — ` +
+          `stopping after ${compensated.length} compensation(s). The rest are ` +
+          `whoever holds the run now to decide on.`,
+      );
+      break;
+    }
     const compName = step.compensation.name_ ??
       `${step.forTarget}.onCancel`;
     const body = step.compensation.fn_;
