@@ -32,6 +32,7 @@ import { type Build, discoverTargets } from "./build.ts";
 import type { Reporter } from "./executor.ts";
 import { messageOf } from "./internal.ts";
 import { settleExternally } from "./cancel.ts";
+import { ownsRun } from "./ownership.ts";
 import { acquireLease, RUN_LEASE_PREFIX } from "./state/run_lease.ts";
 import type { StateStore } from "./state/store.ts";
 import { planGraph } from "./graph.ts";
@@ -62,6 +63,12 @@ export interface ReapDeps {
   reporter: Reporter;
   /** The current time, as an ISO-8601 string. */
   now: () => string;
+  /**
+   * This build's origin (see {@link "./ownership.ts".resolveBuildId}). A run
+   * that records a different one is left alone; absent on either side, the
+   * shape-based checks below decide.
+   */
+  buildId?: string;
   /** Examine only this run, rather than every `running` one. */
   runId?: string;
   /** Suppress the settlement's own output. */
@@ -215,23 +222,31 @@ async function examine(id: string, deps: ReapDeps): Promise<Examined> {
  * another build's run is worse than useless: its targets are not in this build,
  * so a settlement would find no compensations to run and would stamp the record
  * terminal with the run's side effects never unwound, and nothing would retry it
- * because the record is no longer live. The suspended sweep is safe here only
- * because a resume *refuses* a build it cannot match; a reap mutates, so it has
- * to check.
+ * because the record is no longer live.
  *
- * Two things are checked, because a class name is not an identity. `Ci` is a
- * name half the repos in an organisation will use, and a run record carries
- * nothing more specific, so the name alone would let one repo's sweep settle
- * another's runs. Requiring the record's root target to exist here as well is
- * what makes a collision harmless in practice: the compensations a settlement
- * runs are resolved by name, so a build that has the run's root target has the
- * targets that run recorded.
+ * Three things are checked, in decreasing order of how much they prove:
  *
- * Two builds that share a class name *and* a root-target name are still
- * indistinguishable to this, which is why the destructive path asks
- * {@link canSettle} as well.
+ * 1. **The run's origin**, when both it and this process have one — the only
+ *    check that identifies a *build* rather than a shape. See
+ *    {@link "./ownership.ts"} for what an origin is and why an absent one
+ *    abstains instead of refusing.
+ * 2. **The class name**, which narrows and no more: `Ci` is a name half the
+ *    repositories in an organisation will use.
+ * 3. **The record's root target exists here**, because the compensations a
+ *    settlement runs are resolved by name — a build holding the run's root
+ *    target holds the targets that run recorded.
+ *
+ * Checks 2 and 3 are about shape, so two builds templated from one `zuke.ts`
+ * satisfy both; the origin is what tells them apart, and the destructive path
+ * asks {@link canSettle} on top.
+ *
+ * Note that a reap is not the only path that needs this. Handing a run back to
+ * `suspended` leads to a resume *executing* this build's bodies against that
+ * record, and the resume path compares only shape — so it makes the same
+ * ownership check itself rather than trusting the reap that preceded it.
  */
 function belongsToBuild(record: RunRecord, deps: ReapDeps): boolean {
+  if (!ownsRun(record, deps.buildId)) return false;
   if (record.build !== deps.build.constructor.name) return false;
   return discoverTargets(deps.build).has(record.rootTarget);
 }
@@ -251,12 +266,15 @@ function belongsToBuild(record: RunRecord, deps: ReapDeps): boolean {
  * So the graph has to agree too. Where it does not, this sweep leaves the run for
  * the one that recognises it.
  *
- * Where it does, this is as far as a comparison of records reaches: two builds
+ * Where it does, a comparison of *shapes* has reached its limit: two builds
  * sharing a class name, a root-target name and a graph shape are
- * indistinguishable in one, and their target *bodies* may still do entirely
- * different things. Passing the build in does not help — that is what happens
- * already, and what it yields is a name. The answer is to name two different
- * builds differently, which costs a rename; see `docs/orchestration.md`.
+ * indistinguishable to it, and their target bodies may still do entirely
+ * different things. That is what the run's origin answers, and
+ * {@link belongsToBuild} asks it first. A run with no recorded origin — one
+ * written before the field existed, or by a process outside CI that set no
+ * `ZUKE_BUILD_ID` — has only these shape checks standing between it and a
+ * collision, which is why `docs/orchestration.md` also describes namespacing the
+ * store itself.
  *
  * Note the blast radius differs by path: a stranded run is finalised *without*
  * compensations and into the terminal its own record names, so a colliding build

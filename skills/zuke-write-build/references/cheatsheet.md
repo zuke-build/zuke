@@ -229,6 +229,22 @@ class CD extends Build {
   **past** its deadline is not handed back: the reaper settles it `failed` and
   runs its compensations. Without a deadline a reaped run is always returned to
   `suspended` and resumed.
+- **Whose run is it — `ZUKE_BUILD_ID`.** A shared store means a sweep sees every
+  build's runs, and recovery does not merely read them: a resume runs **this**
+  build's target bodies against the record it is handed. The shape checks (build
+  class name, root target, graph) cannot separate one `zuke.ts` templated across
+  a dozen services — same names, same graph, different bodies. So a run records
+  an **origin** at creation: `ZUKE_BUILD_ID`, else `GITHUB_REPOSITORY`, else
+  none. Every recovery path (`resume`, `resume --check`, `cancel`, the reaper)
+  compares it; a sweep silently **skips** a foreign run (so a cron's exit code
+  stays meaningful) and a by-name `resume <id>` / `cancel <id>` **reports** it.
+  An absent origin on either side abstains rather than refusing, so records
+  written before the field existed stay recoverable — which means in a container
+  you must set `ZUKE_BUILD_ID` yourself (there is no `GITHUB_REPOSITORY` in a
+  CronJob), using the same value everywhere that build runs. Alternatively give
+  each build its own URL prefix on the shared service
+  (`ZUKE_STATE_URL=https://state/svc-a`) and neither can see the other's runs at
+  all. See `docs/orchestration.md`.
 - **Never put secrets in `ctx.state`** — it is stored as plain JSON. Secret
   parameters are excluded from the record and state values are run through the
   redactor, but treat state as a non-secret channel. See `docs/state.md`.
@@ -415,7 +431,9 @@ gate = target().dependsOn(this.checks).always()
   run's lease to tell a dead holder from a slow one, returns an abandoned run to
   `suspended`, and resumes it in the same pass (see Run leases above) — unless
   the run is past its `deadline()`, in which case it is settled `failed` and its
-  effects are never driven.
+  effects are never driven. On a shared store the sweep must share the run's
+  origin, or it skips the run and the effect is never driven — see
+  `ZUKE_BUILD_ID` above.
 
 ## Fan-out over a list — `.forEach()`
 

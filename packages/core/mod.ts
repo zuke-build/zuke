@@ -105,6 +105,7 @@ export {
   type ResumeOptions,
   resumeRun,
 } from "./src/resume.ts";
+export { ForeignRunError, ownsRun, resolveBuildId } from "./src/ownership.ts";
 export {
   type CancelOptions,
   type CancelResult,

@@ -242,34 +242,76 @@ suspended ones:
 - **Nobody there, and past its `deadline()`** → the run is settled **`failed`**,
   compensations and all. It did not stop because anyone asked; it ran out of
   time, and anything waiting on it needs an answer rather than silence.
-- **Only this build's runs.** A state store is commonly shared, and a listing has
-  no build filter, so the sweep skips runs it does not recognise: the record's
-  build name and its root target must both be this build's. Acting on another
-  build's run would find none of its targets and settle it with its
-  compensations silently skipped.
-
-  Before *settling* a run — which is irreversible, and runs its compensations —
-  the graph has to agree as well, because a class name is not an identity and
-  `Ci` is a name half an organisation's repos will use. Handing a run back to
-  `suspended` asks only the looser question, since that is reversible and a
-  resume refuses a graph it does not recognise with an error naming the drift.
-
-  What no check here can see: two builds that share a class name, a root-target
-  name **and** a graph shape are indistinguishable in a run record, even though
-  their target *bodies* may do entirely different things. The comparison is a
-  name, so passing the build to the sweep does not settle it — a build class is
-  supplied at the call, but what gets compared is `build.constructor.name`
-  against the record's, and two repos can spell that the same.
-
-  So **give two different builds two different class names.** `Ci` in a dozen
-  repos is the whole problem; `AcmeApiCi` in one of them is the whole fix, and it
-  costs a rename. A shared state service is otherwise fine: the sweep already
-  skips what it does not recognise, so pooling runs is a question of bytes on the
-  wire rather than of correctness.
+- **Only this build's runs** — see
+  [Whose run is it?](#whose-run-is-it) below. A state store is commonly shared,
+  and a listing has no build filter, so every recovery path first asks whether
+  the run is this build's at all.
 
 A run left `cancelling` by a settlement whose own process died is finished too,
 in whichever terminal that settlement was heading for — recorded on the run,
 because the process that finishes it is not the one that began it.
+
+### Whose run is it?
+
+A shared state store means a sweep sees every build's runs. That matters more
+than it sounds: recovery does not merely *read* a foreign run. A reap hands it
+back to `suspended`, a resume then runs **this** build's target bodies against
+that record, and a settlement runs this build's compensations.
+
+The dangerous case is not two unrelated builds — it is one `zuke.ts` templated
+across a dozen services. Same class name, same target names, same graph, and only
+the bodies differ. Every shape-based check passes.
+
+So a run records an **origin**, resolved once when it is created:
+
+| Source              | When                                                     |
+| ------------------- | -------------------------------------------------------- |
+| `ZUKE_BUILD_ID`     | Whenever you set it — the explicit answer.                |
+| `GITHUB_REPOSITORY` | Otherwise, in GitHub Actions. Free, and distinct per repo. |
+| _(none)_            | Neither set.                                             |
+
+Every recovery path — `zuke resume`, `zuke resume --check`, `zuke cancel`, and the
+reaping sweep — compares it, and touches a run only when the two origins agree.
+A sweep **skips** a foreign run without counting it a failure, so a cron's exit
+code stays meaningful; `zuke resume <id>` and `zuke cancel <id>` **report** it,
+because you named one run by hand.
+
+- **A missing origin never blocks anything.** A record written before the field
+  existed has none, and a process outside CI that sets no `ZUKE_BUILD_ID`
+  resolves none — either way the comparison abstains and the shape checks below
+  decide, exactly as they did before. An origin that could strand a run would
+  trade a rare wrong execution for a common failure to recover, and a run nobody
+  recovers is the worse outcome: an effect it owed is never driven.
+- **In containers, set it.** A Kubernetes CronJob has no `GITHUB_REPOSITORY`, so
+  put `ZUKE_BUILD_ID` in the pod spec next to `ZUKE_STATE_URL`. Use the same
+  value everywhere a given build runs — its own runs must recognise each other
+  across machines.
+
+Two shape checks back it up, and still apply on their own when no origin is
+recorded:
+
+- The record's **build name and root target** must both be this build's, or the
+  sweep leaves the run alone. Acting on another build's run would find none of
+  its targets and settle it with its compensations silently skipped.
+- Before *settling* a run — irreversible, and it runs compensations — the
+  **graph** has to agree as well. Handing a run back to `suspended` asks only the
+  looser question, since that is reversible and a resume refuses a graph it does
+  not recognise with an error naming the drift.
+
+**Or namespace the store, and the question never arises.** Every path the HTTP
+store builds hangs off the URL you give it, so pointing each build at its own
+prefix on one shared service isolates them completely — no client-side check
+involved:
+
+```sh
+ZUKE_STATE_URL=https://state.internal/svc-a   # service A's runs
+ZUKE_STATE_URL=https://state.internal/svc-b   # service B's runs
+```
+
+That is stronger than comparing origins, because there is nothing to compare:
+neither build can see the other's runs to begin with. It is the right answer when
+you control the state service; the origin is what protects a genuinely pooled
+store.
 
 ### `Build.deadline()`
 

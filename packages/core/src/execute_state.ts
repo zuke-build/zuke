@@ -23,6 +23,7 @@ import { findConfigDir, pathExists } from "./config.ts";
 import { defaultStateHost, type StateStore } from "./state/store.ts";
 import { resolveStateStore } from "./state/resolve.ts";
 import { buildRunRecord, ciRunUrl, resolveActor } from "./state/record.ts";
+import { resolveBuildId } from "./ownership.ts";
 import { RunStateWriter } from "./state/writer.ts";
 import {
   acquireLease,
@@ -178,6 +179,10 @@ export async function openRunState(opts: {
     ? undefined
     : new Date(Date.parse(nowIso()) + parseDuration(budget)).toISOString();
   const actor = resolveActor(opts.actor, readEnv);
+  // Resolved once, at creation, and never recomputed: it says which build the
+  // run belongs to, and a value that could change between a run and its
+  // recovery would be no identity at all.
+  const buildId = resolveBuildId(readEnv);
   const runUrl = ciRunUrl(readEnv);
   const warn = (message: string) => opts.reporter.info(message);
   // Take the run's lease *before* the writer, because opening the writer
@@ -228,6 +233,7 @@ export async function openRunState(opts: {
       buildRunRecord({
         runId: opts.runId,
         build: opts.build.constructor.name,
+        ...(buildId === undefined ? {} : { buildId }),
         rootTarget: opts.root.name_ ?? "<unnamed>",
         actor,
         now: nowIso(),

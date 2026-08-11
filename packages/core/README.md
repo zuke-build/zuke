@@ -482,6 +482,12 @@ function operatingSystem(os: typeof Deno.build.os): OperatingSystem
   if (operatingSystem() === "macos") { ... }
   ```
 
+function ownsRun(record: RunRecord, buildId: string | undefined): boolean
+  Whether a process whose origin is `buildId` may recover `record`.
+
+  True unless both origins are known and differ — see the module documentation
+  for why an absent origin abstains rather than refusing.
+
 function parameter(description?: string): Parameter<string, string | undefined>
   Create a new build parameter (a `string` by default). Configure it fluently:
   `.number()`/`.boolean()` change the kind, `.options(...)` restricts a string,
@@ -546,6 +552,14 @@ function repoRoot(...segments: string[]): AbsolutePath
 
   @throws
       if no {@link CONFIG_FILE} is found in the cwd or any ancestor.
+
+function resolveBuildId(readEnv: (name: string) => string | undefined): string | undefined
+  The origin of the build running in this process — `ZUKE_BUILD_ID`, else
+  `GITHUB_REPOSITORY`, else `undefined` when neither is set.
+
+  Recorded on a run at creation and compared by every recovery path. An empty
+  value counts as unset, so an exported-but-empty variable does not become an
+  origin that matches nothing.
 
 function resolveBuildRegistry(option: BuildRegistry | false | undefined, declared: BuildRegistry | undefined, options: ResolveRegistryOptions): BuildRegistry | undefined
   Pick the build registry by precedence: an explicit `option` wins (`false`
@@ -1187,6 +1201,20 @@ class ForEachSettings
     item's later stages are still skipped). The fan-out target still fails at
     the end if any item failed. Without this, the first item failure stops the
     batch — the default.
+
+class ForeignRunError extends Error
+  Thrown when a recovery path is handed a run that a different build owns:
+  the run's recorded origin and this process's disagree.
+
+  A sweep treats it as "not mine" and moves on rather than counting a failure,
+  the same way it treats a run another process has already resumed. A command
+  that named one run reports it, because the operator asked about a run that is
+  not this build's to touch.
+
+  constructor(readonly runId: string, readonly owner: string, readonly self: string)
+    Build the error from the run and the two disagreeing origins.
+  override name: string
+    The error name.
 
 class GraphError extends Error
   Raised when the build graph is invalid (cycle or unknown dependency).
@@ -3420,6 +3448,16 @@ interface RunRecord
     Unique run ID (matches {@link "../target.ts".TargetContext} `runId`).
   build: string
     The build class name.
+  buildId?: string
+    Which build instance this run belongs to — `ZUKE_BUILD_ID`, else
+    `GITHUB_REPOSITORY`, resolved once at creation. Absent when neither was set
+    (and on every record written before this field existed).
+
+    The class name above cannot identify a build: a `zuke.ts` templated across
+    a dozen services shares its name, its target names and its graph shape, so
+    every shape-based check passes and one service's recovery sweep would drive
+    another's runs with its own target bodies. This is what a recovery path
+    compares; see {@link "../ownership.ts"}.
   rootTarget: string
     The dotted name of the requested (root) target.
   status: RunStatus

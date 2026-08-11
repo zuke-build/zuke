@@ -3,6 +3,7 @@ import { Build, discoverTargets } from "../src/build.ts";
 import { target } from "../src/target.ts";
 import { execute } from "../src/executor.ts";
 import { AlreadyResumedError, resumeCheck, resumeRun } from "../src/resume.ts";
+import { ForeignRunError } from "../src/ownership.ts";
 import { FileSystemStateStore } from "../src/state/fs_store.ts";
 import { defaultStateHost, type PutResult } from "../src/state/store.ts";
 import type { RunRecord } from "../src/state/types.ts";
@@ -498,5 +499,154 @@ Deno.test("resumeCheck sweeps suspended runs and advances satisfied predicates",
     });
     assertEquals(second.failed, 0);
     assertEquals(ran, true);
+  });
+});
+
+Deno.test("a resume refuses a run another build owns", async () => {
+  // The gap the shape checks leave: one `zuke.ts` templated across two services
+  // agrees on every target name and edge, so the graph check passes and the
+  // resume would run *this* service's bodies against the other's run. Only the
+  // recorded origin separates them.
+  await withTempStore(async (store) => {
+    let promoted = 0;
+    const makeBuild = () => {
+      class CD extends Build {
+        deploy = target().executes(() => {});
+        gate = target()
+          .dependsOn(this.deploy)
+          .waitsFor((s) => s.on(externalSignal("approved")));
+        promote = target().dependsOn(this.gate).executes(() => {
+          promoted += 1;
+        });
+      }
+      const build = new CD();
+      discoverTargets(build);
+      return build;
+    };
+    const envOf = (id: string) => (name: string) =>
+      name === "ZUKE_BUILD_ID" ? id : undefined;
+
+    const a = makeBuild();
+    const started = await execute(a, a.promote, {
+      silent: true,
+      stateStore: store,
+      readEnv: envOf("acme/api"),
+    });
+    assertEquals(started.suspended, true);
+    const runId = (await store.listRuns({}))[0].id;
+    assertEquals((await store.getRun(runId))?.record.buildId, "acme/api");
+
+    const other = makeBuild();
+    const error = await assertRejects(() =>
+      resumeRun(other, {
+        runId,
+        signal: "approved",
+        silent: true,
+        stateStore: store,
+        readEnv: envOf("acme/web"),
+      }), ForeignRunError);
+    assertEquals(messageOf(error).includes("acme/api"), true);
+    // Nothing ran, and the run is exactly as it was left.
+    assertEquals(promoted, 0);
+    assertEquals((await store.getRun(runId))?.record.status, "suspended");
+  });
+});
+
+Deno.test("a sweep skips another build's run without counting it failed", async () => {
+  // A cron watches the failure count. Counting a run this build must not touch
+  // would report a permanent non-zero result that no operator could ever clear.
+  await withTempStore(async (store) => {
+    const makeBuild = () => {
+      class CD extends Build {
+        deploy = target().executes(() => {});
+        gate = target()
+          .dependsOn(this.deploy)
+          .waitsFor((s) => s.on(externalSignal("approved")));
+        promote = target().dependsOn(this.gate).executes(() => {});
+      }
+      const build = new CD();
+      discoverTargets(build);
+      return build;
+    };
+    const envOf = (id: string) => (name: string) =>
+      name === "ZUKE_BUILD_ID" ? id : undefined;
+
+    const a = makeBuild();
+    await execute(a, a.promote, {
+      silent: true,
+      stateStore: store,
+      readEnv: envOf("acme/api"),
+    });
+    const runId = (await store.listRuns({}))[0].id;
+    const before = await store.getRun(runId);
+
+    const lines: string[] = [];
+    const outcome = await resumeCheck(makeBuild(), {
+      silent: true,
+      stateStore: store,
+      readEnv: envOf("acme/web"),
+      reporter: { info: (l) => lines.push(l), error: (l) => lines.push(l) },
+    });
+    // Counted and reported once. A sweep that skipped everything in silence
+    // would look exactly like one with nothing to do — which is how a mistyped
+    // ZUKE_BUILD_ID would present: recovery quietly stops.
+    assertEquals(
+      lines.some((l) =>
+        l.includes("skipped 1 run(s) belonging to another build") &&
+        l.includes("acme/web")
+      ),
+      true,
+    );
+    assertEquals(outcome.checked, 1);
+    assertEquals(outcome.failed, 0);
+    // Skipped, not driven-and-re-suspended: the record was never written, so its
+    // store version is the one the suspending process left. Comparing the status
+    // alone would not tell the two apart — a foreign resume re-suspends at the
+    // same gate and lands back on `suspended`.
+    const after = await store.getRun(runId);
+    assertEquals(after?.record.status, "suspended");
+    assertEquals(after?.version, before?.version);
+  });
+});
+
+Deno.test("a run recorded with no origin is still resumable", async () => {
+  // The retrofit's safety: a record written before the field existed has no
+  // origin, and a resume that refused it would strand whatever it owed.
+  await withTempStore(async (store) => {
+    let promoted = 0;
+    const makeBuild = () => {
+      class CD extends Build {
+        deploy = target().executes(() => {});
+        gate = target()
+          .dependsOn(this.deploy)
+          .waitsFor((s) => s.on(externalSignal("approved")));
+        promote = target().dependsOn(this.gate).executes(() => {
+          promoted += 1;
+        });
+      }
+      const build = new CD();
+      discoverTargets(build);
+      return build;
+    };
+
+    const a = makeBuild();
+    // No origin in the environment, so none is recorded.
+    await execute(a, a.promote, {
+      silent: true,
+      stateStore: store,
+      readEnv: () => undefined,
+    });
+    const runId = (await store.listRuns({}))[0].id;
+    assertEquals((await store.getRun(runId))?.record.buildId, undefined);
+
+    const result = await resumeRun(makeBuild(), {
+      runId,
+      signal: "approved",
+      silent: true,
+      stateStore: store,
+      readEnv: (name) => name === "ZUKE_BUILD_ID" ? "acme/api" : undefined,
+    });
+    assertEquals(result.ok, true);
+    assertEquals(promoted, 1);
   });
 });

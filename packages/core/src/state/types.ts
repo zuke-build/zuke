@@ -157,6 +157,18 @@ export interface RunRecord {
   id: string;
   /** The build class name. */
   build: string;
+  /**
+   * Which build **instance** this run belongs to — `ZUKE_BUILD_ID`, else
+   * `GITHUB_REPOSITORY`, resolved once at creation. Absent when neither was set
+   * (and on every record written before this field existed).
+   *
+   * The class name above cannot identify a build: a `zuke.ts` templated across
+   * a dozen services shares its name, its target names and its graph shape, so
+   * every shape-based check passes and one service's recovery sweep would drive
+   * another's runs with its own target bodies. This is what a recovery path
+   * compares; see {@link "../ownership.ts"}.
+   */
+  buildId?: string;
   /** The dotted name of the requested (root) target. */
   rootTarget: string;
   /** The run's lifecycle status. */
@@ -627,6 +639,8 @@ export function parseRunRecord(text: string): RunRecord {
   };
   // Optional and only when present, so a round-trip preserves the exact key set
   // and a record written before these existed parses unchanged.
+  const buildId = optionalStr(object, "buildId");
+  if (buildId !== undefined) record.buildId = buildId;
   const deadlineAt = optionalStr(object, "deadlineAt");
   if (deadlineAt !== undefined) record.deadlineAt = deadlineAt;
   const intended = optionalStr(object, "intendedTerminal");
