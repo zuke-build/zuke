@@ -34,6 +34,7 @@ import { resolveActor } from "./state/record.ts";
 import type {
   RunGraphNode,
   RunRecord,
+  RunStatus,
   WaitDisposition,
   WaitState,
 } from "./state/types.ts";
@@ -53,6 +54,31 @@ export class AlreadyResumedError extends Error {
     readonly at: string,
   ) {
     super(`run ${runId} was already resumed by ${by} at ${at}`);
+  }
+}
+
+/**
+ * Raised when a run is no longer `suspended` by the time a resume reaches it —
+ * it has been settled, or a cancellation is in progress.
+ *
+ * The counterpart to {@link AlreadyResumedError}, which covers a run another
+ * process is *currently* driving. This covers one that already finished, and a
+ * sweep treats it the same way: not its run to advance, and not a failure. Two
+ * sweeps racing the same run is the normal case — one wins, and the loser
+ * reading `succeeded` has discovered a success, not a fault. Counting it would
+ * put a false alarm in the exit code a cron watches.
+ */
+export class RunNotSuspendedError extends Error {
+  /** The error name. */
+  override name = "RunNotSuspendedError";
+  /** Build the error from the run id and the status found instead. */
+  constructor(
+    /** The run that could not be resumed. */
+    readonly runId: string,
+    /** The status it was in instead of `suspended`. */
+    readonly status: RunStatus,
+  ) {
+    super(`resume: run ${runId} is "${status}", not suspended.`);
   }
 }
 
@@ -291,9 +317,7 @@ async function transitionToRunning(
       if (record.status === "running") {
         throw new AlreadyResumedError(id, record.actor, record.updatedAt);
       }
-      throw new Error(
-        `resume: run ${id} is "${record.status}", not suspended.`,
-      );
+      throw new RunNotSuspendedError(id, record.status);
     }
     const next = structuredClone(record);
     next.status = "running";
@@ -590,6 +614,7 @@ export async function resumeCheck(
     : (await store.listRuns({ status: "suspended" })).map((s) => s.id);
   let failed = reaped.failed + recovered.failed;
   let foreign = 0;
+  let settled = 0;
   for (const id of ids) {
     try {
       const result = await resumeRun(build, { ...options, runId: id });
@@ -605,6 +630,15 @@ export async function resumeCheck(
       // stops, and the effects those runs owe are never driven.
       if (error instanceof ForeignRunError) {
         foreign += 1;
+        continue;
+      }
+      // Someone else finished it between the listing and the resume. Two sweeps
+      // racing one run is the normal case — the loser reading `succeeded` has
+      // found a success, not a fault — so it is skipped like a lost resume race
+      // rather than counted, which would put a false alarm in the exit code a
+      // cron watches.
+      if (error instanceof RunNotSuspendedError) {
+        settled += 1;
         continue;
       }
       // Isolate a per-run failure: one run erroring (a bad graph, a throwing
@@ -626,6 +660,12 @@ export async function resumeCheck(
     reporter.info(
       `resume --check: skipped ${foreign} run(s) belonging to another build ` +
         `(this build is "${buildId}").`,
+    );
+  }
+  if (settled > 0) {
+    reporter.info(
+      `resume --check: skipped ${settled} run(s) that were no longer ` +
+        `suspended — another process finished them first.`,
     );
   }
   return { checked: ids.length, failed };

@@ -1407,6 +1407,22 @@ class Redactor
     contributes one; a multi-line secret contributes the whole value plus each
     of its qualifying lines.
 
+class RunNotSuspendedError extends Error
+  Raised when a run is no longer `suspended` by the time a resume reaches it —
+  it has been settled, or a cancellation is in progress.
+
+  The counterpart to {@link AlreadyResumedError}, which covers a run another
+  process is currently driving. This covers one that already finished, and a
+  sweep treats it the same way: not its run to advance, and not a failure. Two
+  sweeps racing the same run is the normal case — one wins, and the loser
+  reading `succeeded` has discovered a success, not a fault. Counting it would
+  put a false alarm in the exit code a cron watches.
+
+  constructor(readonly runId: string, readonly status: RunStatus)
+    Build the error from the run id and the status found instead.
+  override name: string
+    The error name.
+
 class SecretError extends Error
   Raised when a {@link SecretSource} cannot produce a value.
 

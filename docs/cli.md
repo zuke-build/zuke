@@ -360,6 +360,13 @@ targets are safe to repeat. `resume --check` counts a degraded run as failed on
 every sweep — it cannot make that call for you — and prints the refusal so the
 cause is visible; pass `--resume-degraded` to the sweep to let it through.
 
+**What the sweep's failure count does _not_ include.** A run another process is
+already driving, one it finished between the listing and the resume, and one
+belonging to [another build](./orchestration.md#whose-run-is-it) are all
+**skipped**, not counted — losing a race is not a fault, and a cron watching the
+exit code needs it to mean something. Each is reported through the reporter, so a
+sweep that advanced nothing still says why.
+
 ## Cancelling runs
 
 `./zuke cancel <run-id>` cancels a run and runs its

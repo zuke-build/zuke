@@ -18,12 +18,18 @@ import {
 
 const FIXTURE = new URL("./fixtures/effect_build.ts", import.meta.url);
 
-/** Run the fixture as a real `deno` subprocess against `dir`. */
+/**
+ * Run the fixture as a real `deno` subprocess against `dir`.
+ *
+ * Both streams are returned, because the interesting failure here is a sweeper
+ * exiting non-zero and the reason is on stderr — a race that only shows up on a
+ * slower runner is unreadable if the diagnosis is thrown away.
+ */
 async function run(
   args: string[],
   dir: string,
   marker: string,
-): Promise<{ code: number; out: string }> {
+): Promise<{ code: number; out: string; err: string }> {
   const command = new Deno.Command(Deno.execPath(), {
     // A `file://` URL rather than URL.pathname, which is `/C:/…` on Windows.
     args: ["run", "-A", FIXTURE.href, ...args],
@@ -31,8 +37,13 @@ async function run(
     stdout: "piped",
     stderr: "piped",
   });
-  const { code, stdout } = await command.output();
-  return { code, out: new TextDecoder().decode(stdout) };
+  const { code, stdout, stderr } = await command.output();
+  const decoder = new TextDecoder();
+  return {
+    code,
+    out: decoder.decode(stdout),
+    err: decoder.decode(stderr),
+  };
 }
 
 /** The marker file's lines, or an empty list if it does not exist yet. */
@@ -80,7 +91,16 @@ Deno.test("two sweepers race an abandoned run; exactly one reaps it", async () =
       run(["resume", "--check"], dir, marker),
       run(["resume", "--check"], dir, marker),
     ]);
-    assertEquals([a.code, b.code], [0, 0]);
+    // Both sweepers must exit clean. The loser has not failed — it either could
+    // not take the lease, or found the run already finished — and a sweep that
+    // reported either as a failure would put a false alarm in a cron's exit code.
+    assertEquals(
+      [a.code, b.code],
+      [0, 0],
+      `a sweeper exited non-zero: [${a.code}, ${b.code}]\n` +
+        `--- a stdout ---\n${a.out}\n--- a stderr ---\n${a.err}\n` +
+        `--- b stdout ---\n${b.out}\n--- b stderr ---\n${b.err}`,
+    );
 
     // Driven exactly once more, by exactly one of them. Two would mean both
     // sweepers took the run over, which the lease exists to prevent.

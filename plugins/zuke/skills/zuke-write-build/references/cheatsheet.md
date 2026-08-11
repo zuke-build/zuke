@@ -248,6 +248,11 @@ class CD extends Build {
   each build its own URL prefix on the shared service
   (`ZUKE_STATE_URL=https://state/svc-a`) and neither can see the other's runs at
   all. See `docs/orchestration.md`.
+- **What a sweep counts as failed.** Not a race it lost: a run another process is
+  already driving, one that process finished between the listing and the resume,
+  and a run belonging to another build are all skipped and reported, never
+  counted. A degraded record *is* counted, on every sweep, because only an
+  operator can decide whether its targets are safe to repeat.
 - **Never put secrets in `ctx.state`** — it is stored as plain JSON. Secret
   parameters are excluded from the record and state values are run through the
   redactor, but treat state as a non-secret channel. See `docs/state.md`.

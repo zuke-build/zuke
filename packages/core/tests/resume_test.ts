@@ -2,7 +2,12 @@ import { assertEquals, assertRejects, messageOf } from "./_assert.ts";
 import { Build, discoverTargets } from "../src/build.ts";
 import { target } from "../src/target.ts";
 import { execute } from "../src/executor.ts";
-import { AlreadyResumedError, resumeCheck, resumeRun } from "../src/resume.ts";
+import {
+  AlreadyResumedError,
+  resumeCheck,
+  resumeRun,
+  RunNotSuspendedError,
+} from "../src/resume.ts";
 import { ForeignRunError } from "../src/ownership.ts";
 import { FileSystemStateStore } from "../src/state/fs_store.ts";
 import { defaultStateHost, type PutResult } from "../src/state/store.ts";
@@ -648,5 +653,60 @@ Deno.test("a run recorded with no origin is still resumable", async () => {
     });
     assertEquals(result.ok, true);
     assertEquals(promoted, 1);
+  });
+});
+
+Deno.test("a sweep does not count a run another process already finished", async () => {
+  // Two sweeps racing one run is the normal case. The loser lists the run as
+  // suspended, and by the time it resumes, the winner has finished it — so it
+  // reads a terminal status. That is a discovered success, not a fault, and
+  // counting it would put a false alarm in the exit code a cron watches.
+  await withTempStore(async (store) => {
+    class B extends Build {
+      go = target().executes(() => {});
+    }
+    const b = new B();
+    discoverTargets(b);
+    await execute(b, b.go, { silent: true, stateStore: store });
+    const runId = (await store.listRuns({}))[0].id;
+    assertEquals((await store.getRun(runId))?.record.status, "succeeded");
+
+    const lines: string[] = [];
+    const outcome = await resumeCheck(b, {
+      runId,
+      stateStore: store,
+      silent: true,
+      reporter: { info: (l) => lines.push(l), error: (l) => lines.push(l) },
+    });
+    assertEquals(outcome.failed, 0);
+    // Skipped, but said out loud — a sweep that swallowed it would be
+    // indistinguishable from one that advanced the run.
+    assertEquals(
+      lines.some((l) => l.includes("no longer")),
+      true,
+    );
+  });
+});
+
+Deno.test("the typed error carries the status it found instead", async () => {
+  await withTempStore(async (store) => {
+    class B extends Build {
+      go = target().executes(() => {});
+    }
+    const b = new B();
+    discoverTargets(b);
+    await execute(b, b.go, { silent: true, stateStore: store });
+    const runId = (await store.listRuns({}))[0].id;
+
+    // Naming one run by hand still reports it: the caller asked about that run.
+    const error = await assertRejects(
+      () => resumeRun(b, { runId, stateStore: store, silent: true }),
+      RunNotSuspendedError,
+      "not suspended",
+    );
+    assertEquals(error instanceof RunNotSuspendedError, true);
+    if (!(error instanceof RunNotSuspendedError)) return;
+    assertEquals(error.runId, runId);
+    assertEquals(error.status, "succeeded");
   });
 });

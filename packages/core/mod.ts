@@ -104,6 +104,7 @@ export {
   resumeCheck,
   type ResumeOptions,
   resumeRun,
+  RunNotSuspendedError,
 } from "./src/resume.ts";
 export { ForeignRunError, ownsRun, resolveBuildId } from "./src/ownership.ts";
 export {
