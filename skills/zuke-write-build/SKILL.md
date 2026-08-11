@@ -138,7 +138,10 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   the same sweep. `override deadline()` gives a run a wall-clock budget
   (`"45m"`, or milliseconds) that survives suspension; an abandoned run found
   past it is settled `failed` with its compensations instead of resumed.
-  See the cheatsheet.
+  On a **shared** store, set `ZUKE_BUILD_ID` (or rely on `GITHUB_REPOSITORY`) so
+  each build only recovers its own runs — a resume runs *this* build's bodies
+  against whatever record it is given, and a templated `zuke.ts` looks identical
+  to the shape checks. See the cheatsheet.
 - **Cross-run locks:** `.lock((s) => s.lockKey(...).withTtl("4h"))` — a settings
   lambda — gives a target an exclusive claim across runs/machines; a second run
   wanting the same key fails with a `LockConflictError` naming the holder. The

@@ -23,6 +23,7 @@ import { execute, type Reporter } from "./executor.ts";
 import type { Plugin } from "./plugin.ts";
 import { planGraph } from "./graph.ts";
 import { reapAbandoned, recoverStranded } from "./reap.ts";
+import { assertOwnsRun, ForeignRunError, resolveBuildId } from "./ownership.ts";
 import { acquireLease, RUN_LEASE_PREFIX } from "./state/run_lease.ts";
 import type { JsonValue, TargetBuilder } from "./target.ts";
 import { absolutePath } from "./path.ts";
@@ -33,6 +34,7 @@ import { resolveActor } from "./state/record.ts";
 import type {
   RunGraphNode,
   RunRecord,
+  RunStatus,
   WaitDisposition,
   WaitState,
 } from "./state/types.ts";
@@ -52,6 +54,31 @@ export class AlreadyResumedError extends Error {
     readonly at: string,
   ) {
     super(`run ${runId} was already resumed by ${by} at ${at}`);
+  }
+}
+
+/**
+ * Raised when a run is no longer `suspended` by the time a resume reaches it —
+ * it has been settled, or a cancellation is in progress.
+ *
+ * The counterpart to {@link AlreadyResumedError}, which covers a run another
+ * process is *currently* driving. This covers one that already finished, and a
+ * sweep treats it the same way: not its run to advance, and not a failure. Two
+ * sweeps racing the same run is the normal case — one wins, and the loser
+ * reading `succeeded` has discovered a success, not a fault. Counting it would
+ * put a false alarm in the exit code a cron watches.
+ */
+export class RunNotSuspendedError extends Error {
+  /** The error name. */
+  override name = "RunNotSuspendedError";
+  /** Build the error from the run id and the status found instead. */
+  constructor(
+    /** The run that could not be resumed. */
+    readonly runId: string,
+    /** The status it was in instead of `suspended`. */
+    readonly status: RunStatus,
+  ) {
+    super(`resume: run ${runId} is "${status}", not suspended.`);
   }
 }
 
@@ -129,6 +156,14 @@ export async function resumeRun(
   if (initial === null) {
     throw new Error(`resume: no run "${options.runId}" found in the store.`);
   }
+
+  // Before anything else, and before the shape checks below: a resume *runs this
+  // build's target bodies* against the record it is given, so a run belonging to
+  // another build is not merely out of scope, it is the wrong code executing
+  // against someone else's state. The shape checks cannot catch it — one
+  // `zuke.ts` templated across services agrees on every target name and edge and
+  // differs only in what the bodies do.
+  assertOwnsRun(initial.record, resolveBuildId(readEnv));
 
   const resumerActor = resolveActor(options.actor, readEnv);
   const now = () => new Date().toISOString();
@@ -282,9 +317,7 @@ async function transitionToRunning(
       if (record.status === "running") {
         throw new AlreadyResumedError(id, record.actor, record.updatedAt);
       }
-      throw new Error(
-        `resume: run ${id} is "${record.status}", not suspended.`,
-      );
+      throw new RunNotSuspendedError(id, record.status);
     }
     const next = structuredClone(record);
     next.status = "running";
@@ -549,11 +582,13 @@ export async function resumeCheck(
   // this same pass to resume it — otherwise every abandoned run would wait a
   // whole sweep interval for nothing but a state transition.
   const actor = resolveActor(options.actor, readEnv);
+  const buildId = resolveBuildId(readEnv);
   const reaped = await reapAbandoned({
     build,
     store,
     actor,
     reporter,
+    ...(buildId === undefined ? {} : { buildId }),
     now: () => new Date().toISOString(),
     ...(options.runId === undefined ? {} : { runId: options.runId }),
     ...(options.silent === undefined ? {} : { silent: options.silent }),
@@ -568,6 +603,7 @@ export async function resumeCheck(
     store,
     actor,
     reporter,
+    ...(buildId === undefined ? {} : { buildId }),
     now: () => new Date().toISOString(),
     ...(options.runId === undefined ? {} : { runId: options.runId }),
     ...(options.silent === undefined ? {} : { silent: options.silent }),
@@ -577,12 +613,34 @@ export async function resumeCheck(
     ? [options.runId]
     : (await store.listRuns({ status: "suspended" })).map((s) => s.id);
   let failed = reaped.failed + recovered.failed;
+  let foreign = 0;
+  let settled = 0;
   for (const id of ids) {
     try {
       const result = await resumeRun(build, { ...options, runId: id });
       if (!result.ok) failed += 1;
     } catch (error) {
       if (error instanceof AlreadyResumedError) continue; // another process has it
+      // Not this build's run. Skipped rather than counted: a cron watches the
+      // failure count, and a store shared with another build would otherwise
+      // report a permanent non-zero result for runs this build must not touch.
+      // Tallied, though, and reported once below — a sweep that silently skipped
+      // everything would be indistinguishable from one with nothing to do, which
+      // is exactly how a mistyped `ZUKE_BUILD_ID` would look: recovery quietly
+      // stops, and the effects those runs owe are never driven.
+      if (error instanceof ForeignRunError) {
+        foreign += 1;
+        continue;
+      }
+      // Someone else finished it between the listing and the resume. Two sweeps
+      // racing one run is the normal case — the loser reading `succeeded` has
+      // found a success, not a fault — so it is skipped like a lost resume race
+      // rather than counted, which would put a false alarm in the exit code a
+      // cron watches.
+      if (error instanceof RunNotSuspendedError) {
+        settled += 1;
+        continue;
+      }
       // Isolate a per-run failure: one run erroring (a bad graph, a throwing
       // compensation) must not abort the sweep and strand every run behind it.
       failed += 1;
@@ -592,6 +650,23 @@ export async function resumeCheck(
         }`,
       );
     }
+  }
+  // One line per sweep rather than one per run: on a store pooled across many
+  // builds most runs are somebody else's, and that is the normal case, not an
+  // error. What matters is that the number is visible at all. A skip needs an
+  // origin on both sides, so `foreign > 0` implies this process has one — tested
+  // for rather than defaulted, so the message never prints a placeholder.
+  if (foreign > 0 && buildId !== undefined) {
+    reporter.info(
+      `resume --check: skipped ${foreign} run(s) belonging to another build ` +
+        `(this build is "${buildId}").`,
+    );
+  }
+  if (settled > 0) {
+    reporter.info(
+      `resume --check: skipped ${settled} run(s) that were no longer ` +
+        `suspended — another process finished them first.`,
+    );
   }
   return { checked: ids.length, failed };
 }

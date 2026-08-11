@@ -44,6 +44,7 @@ import {
   type TargetStateHandle,
 } from "./target.ts";
 import { outcomesFromRecord } from "./run_support.ts";
+import { assertOwnsRun, resolveBuildId } from "./ownership.ts";
 import { absolutePath } from "./path.ts";
 import { findConfigDir, pathExists } from "./config.ts";
 import { defaultStateHost, type StateStore } from "./state/store.ts";
@@ -680,6 +681,11 @@ export async function settleExternally(
   if (initial === null) {
     throw new Error(`cancel: no run "${runId}" found in the store.`);
   }
+  // A settlement runs *this* build's compensations against the record, so a run
+  // another build owns is refused before the lock is taken. Reported rather than
+  // silently skipped: unlike a sweep, this path was handed one run by name, so
+  // the caller asked about a run that is not this build's to unwind.
+  assertOwnsRun(initial.record, resolveBuildId(readEnv));
   if (isTerminal(initial.record.status)) {
     reporter.info(
       `Run ${runId} is already ${initial.record.status}; nothing to ` +

@@ -76,10 +76,31 @@ function depsFor(
   store: FileSystemStateStore,
   reporter: Reporter,
   now = NOW,
+  buildId?: string,
 ): Parameters<typeof reapAbandoned>[0] {
   const build = new Cd();
   discoverTargets(build);
-  return { build, store, actor: "sweeper", reporter, now: () => now };
+  return {
+    build,
+    store,
+    actor: "sweeper",
+    reporter,
+    now: () => now,
+    ...(buildId === undefined ? {} : { buildId }),
+  };
+}
+
+/** Rewrite the seeded record with `mutate` applied. */
+async function amend(
+  store: FileSystemStateStore,
+  id: string,
+  mutate: (record: RunRecord) => void,
+): Promise<void> {
+  const loaded = await store.getRun(id);
+  if (loaded === null) throw new Error("seed missing");
+  const next = structuredClone(loaded.record);
+  mutate(next);
+  assertEquals((await store.putRun(next, loaded.version)).ok, true);
 }
 
 Deno.test("a run whose holder is still there is left alone", async () => {
@@ -404,5 +425,101 @@ Deno.test("a colliding build with a different graph does not finish a stranded r
     assertEquals(outcome.settled, []);
     // Left for the build that recognises it.
     assertEquals((await store.getRun("run-1"))?.record.status, "cancelling");
+  });
+});
+
+Deno.test("a run from another origin is not touched, whatever its shape", async () => {
+  // The case the shape checks cannot see: one `zuke.ts` templated across two
+  // services, so the class name, the root target and the graph all agree and
+  // only the target bodies differ. The recorded origin is what separates them.
+  await withStore(
+    [record("run-1", "running", "2026-08-10T11:00:00.000Z")],
+    async (store) => {
+      await amend(store, "run-1", (r) => {
+        r.buildId = "acme/web";
+      });
+      const { reporter } = capturing();
+      const outcome = await reapAbandoned(
+        depsFor(store, reporter, NOW, "acme/api"),
+      );
+      // Neither settled for its deadline nor handed back — a resume of it would
+      // run this build's bodies against the other service's run.
+      assertEquals(outcome.settled, []);
+      assertEquals(outcome.reaped, []);
+      assertEquals((await store.getRun("run-1"))?.record.status, "running");
+    },
+  );
+});
+
+Deno.test("a stranded run from another origin is left for its own build", async () => {
+  await withStore([record("run-1", "cancelling")], async (store) => {
+    await amend(store, "run-1", (r) => {
+      r.buildId = "acme/web";
+    });
+    const { reporter } = capturing();
+    const outcome = await recoverStranded(
+      depsFor(store, reporter, NOW, "acme/api"),
+    );
+    assertEquals(outcome.settled, []);
+    assertEquals((await store.getRun("run-1"))?.record.status, "cancelling");
+  });
+});
+
+Deno.test("a run with no recorded origin is still reaped", async () => {
+  // The retrofit's whole safety: a record written before the field existed has
+  // no origin, and a sweep that refused it would leave the effects it owed
+  // never driven at all.
+  await withStore([record("run-1", "running")], async (store) => {
+    const { reporter } = capturing();
+    const outcome = await reapAbandoned(
+      depsFor(store, reporter, NOW, "acme/api"),
+    );
+    assertEquals(outcome.reaped, ["run-1"]);
+    assertEquals((await store.getRun("run-1"))?.record.status, "suspended");
+  });
+});
+
+Deno.test("a sweep with no origin of its own still reaps a run that has one", async () => {
+  // The mirror case: a process outside CI that sets no ZUKE_BUILD_ID cannot
+  // claim to be a different build, so it must not refuse on that basis.
+  await withStore([record("run-1", "running")], async (store) => {
+    await amend(store, "run-1", (r) => {
+      r.buildId = "acme/api";
+    });
+    const { reporter } = capturing();
+    const outcome = await reapAbandoned(depsFor(store, reporter));
+    assertEquals(outcome.reaped, ["run-1"]);
+  });
+});
+
+Deno.test("a run from the same origin is reaped normally", async () => {
+  await withStore([record("run-1", "running")], async (store) => {
+    await amend(store, "run-1", (r) => {
+      r.buildId = "acme/api";
+    });
+    const { reporter } = capturing();
+    const outcome = await reapAbandoned(
+      depsFor(store, reporter, NOW, "acme/api"),
+    );
+    assertEquals(outcome.reaped, ["run-1"]);
+  });
+});
+
+Deno.test("a shared origin does not make another build's run ours", async () => {
+  // Two builds in one repository resolve the same `GITHUB_REPOSITORY`, so the
+  // origin abstains between them. It only ever narrows what the shape checks
+  // permit — it can refuse a run, never claim one — so the build name still
+  // separates them, exactly as before origins existed.
+  await withStore([record("run-1", "running")], async (store) => {
+    await amend(store, "run-1", (r) => {
+      r.build = "OtherBuild";
+      r.buildId = "acme/api";
+    });
+    const { reporter } = capturing();
+    const outcome = await reapAbandoned(
+      depsFor(store, reporter, NOW, "acme/api"),
+    );
+    assertEquals(outcome, { reaped: [], settled: [], failed: 0 });
+    assertEquals((await store.getRun("run-1"))?.record.status, "running");
   });
 });

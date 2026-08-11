@@ -52,6 +52,7 @@ Each run is stored as one JSON document:
 {
   "id": "3f2a…", // == ctx.runId
   "build": "CD", // the Build class name
+  "buildId": "acme/api", // optional; which build instance owns it (see below)
   "rootTarget": "deploy", // the requested target
   "status": "succeeded", // running | suspended | cancelling | succeeded | failed | cancelled
   "actor": "alice", // who ran it (see below)
@@ -95,6 +96,15 @@ The executor writes the record when it is created, on each target's start and
 finish, and when the run ends. So if the process is killed mid-run, the record
 on disk shows the target that was executing as `running`, with its `startedAt`
 stamped.
+
+`buildId` is the run's **origin**: `ZUKE_BUILD_ID`, else `GITHUB_REPOSITORY`,
+resolved once when the run is created. It says which build a run belongs to when
+a store is shared, because the class name above cannot — a `zuke.ts` templated
+across services shares its name, its target names and its graph. Every recovery
+path compares it and touches a run only when the two origins agree; an absent one
+on either side abstains rather than refusing, so records written before the field
+existed stay recoverable. See
+[Whose run is it?](./orchestration.md#whose-run-is-it).
 
 A record also carries an append-only `events` array — the **audit trail** of
 [MCP](./mcp.md) tool calls against the run (time, tool, actor, outcome, redacted

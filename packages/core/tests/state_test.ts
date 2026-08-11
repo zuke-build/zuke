@@ -1399,3 +1399,17 @@ Deno.test("acquireCancelLock renews on a heartbeat and blocks a second holder", 
     await Deno.remove(dir, { recursive: true });
   }
 });
+
+Deno.test("a run's origin round-trips, and its absence stays an absence", () => {
+  const withOrigin = sampleRecord({ buildId: "acme/api" });
+  assertEquals(parseRunRecord(stringifyRunRecord(withOrigin)), withOrigin);
+
+  // An older record has no `buildId` key at all, and must parse back without
+  // one: an origin invented on read would be an origin that matches nothing,
+  // and every recovery path would refuse the run.
+  const older = sampleRecord();
+  assertEquals("buildId" in older, false);
+  const parsed = parseRunRecord(stringifyRunRecord(older));
+  assertEquals("buildId" in parsed, false);
+  assertEquals(parsed.buildId, undefined);
+});

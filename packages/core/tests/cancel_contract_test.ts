@@ -15,7 +15,13 @@
  * @module
  */
 
-import { assertEquals } from "./_assert.ts";
+import {
+  assertEquals,
+  assertRejects,
+  assertStringIncludes,
+  messageOf,
+} from "./_assert.ts";
+import { ForeignRunError } from "../src/ownership.ts";
 import { Build, discoverTargets } from "../src/build.ts";
 import { target } from "../src/target.ts";
 import { execute } from "../src/executor.ts";
@@ -266,5 +272,48 @@ Deno.test("a failing compensation is recorded but does not stop the cancel", asy
         detail: "ran 0 compensation(s), 1 failed",
       },
     ]);
+  });
+});
+
+Deno.test("cancel refuses a run another build owns, and undoes nothing", async () => {
+  // A settlement runs *this* build's compensations, so a run belonging to
+  // another build is refused before the lock is taken. Reported rather than
+  // silently skipped: this path was handed one run by name.
+  await withTempStore(async (store) => {
+    const undone: string[] = [];
+    class Cd extends Build {
+      rollback = target().unlisted().executes(() =>
+        void undone.push("rollback")
+      );
+      deploy = target().onCancel(this.rollback).executes(() => {});
+      hold = target().dependsOn(this.deploy).waitsFor((s) =>
+        s.on({ descriptor: "never", isSatisfied: () => false })
+      );
+    }
+    const build = new Cd();
+    discoverTargets(build);
+    await execute(build, build.hold, {
+      silent: true,
+      stateStore: store,
+      readEnv: (name) => name === "ZUKE_BUILD_ID" ? "acme/api" : undefined,
+    });
+    const before = await onlyRun(store);
+    assertEquals(before.buildId, "acme/api");
+
+    const error = await assertRejects(() =>
+      cancelRun(build, {
+        runId: before.id,
+        stateStore: store,
+        silent: true,
+        actor: "ops",
+        readEnv: (name) => name === "ZUKE_BUILD_ID" ? "acme/web" : undefined,
+      }), ForeignRunError);
+    assertStringIncludes(messageOf(error), "acme/api");
+
+    // No compensation ran, and the record is untouched — not even `cancelling`.
+    assertEquals(undone, []);
+    const after = await onlyRun(store);
+    assertEquals(after.status, "suspended");
+    assertEquals(after.events.length, before.events.length);
   });
 });

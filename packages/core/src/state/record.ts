@@ -78,6 +78,11 @@ export interface RunRecordInput {
   runId: string;
   /** The build class name. */
   build: string;
+  /**
+   * The build's resolved origin (see
+   * {@link "../ownership.ts".resolveBuildId}), when one is set.
+   */
+  buildId?: string;
   /** The dotted name of the requested (root) target. */
   rootTarget: string;
   /** The resolved run actor. */
@@ -120,6 +125,10 @@ export function buildRunRecord(input: RunRecordInput): RunRecord {
   return {
     id: input.runId,
     build: input.build,
+    // Stamped only when resolved, so a record round-trips with the exact key
+    // set it was written with and an absent origin stays absent rather than
+    // becoming an origin that matches nothing.
+    ...(input.buildId === undefined ? {} : { buildId: input.buildId }),
     rootTarget: input.rootTarget,
     status: "running",
     // Stamped here and never again. A deadline that were recomputed on each
