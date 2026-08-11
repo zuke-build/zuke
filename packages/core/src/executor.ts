@@ -485,15 +485,10 @@ export async function execute(
   // aborted target failing is a symptom, not the outcome.
   const cancelled = runController.signal.aborted;
 
-  // Persist the incremental cache only for a run that was allowed to finish.
-  // A target records its fingerprint the moment its body returns, but a
-  // cancelled run then unwinds those targets through their compensations — so
-  // saving here would mark work up-to-date that has just been undone, and the
-  // next run would skip rebuilding it. A lost lease is the same bet from the
-  // other side: whoever took the run over decides what its outputs are, and
-  // this process's fingerprints describe a state that may never exist. Both
-  // cost a rebuild; the alternative costs correctness.
-  if (cache !== undefined && !cancelled) await cache.save();
+  // Whether the fingerprints this run recorded still describe the workspace.
+  // Decided below, once a cancellation has settled and it is known what — if
+  // anything — was rolled back.
+  let cacheIsTrustworthy = !cancelled;
 
   let result: BuildResult;
   if (leaseLost) {
@@ -528,7 +523,7 @@ export async function execute(
         `Run ${runId} cancelled by another process — stopping.`,
       );
     } else if (writer !== undefined) {
-      await settleCancelledRun({
+      const settlement = await settleCancelledRun({
         writer,
         life,
         order,
@@ -541,6 +536,16 @@ export async function execute(
         isExternallyCancelled: () => externallyCancelled,
         isLeaseLost: () => leaseLost,
       });
+      // A cancellation only invalidates the cache if something was actually
+      // undone. A target records its fingerprint when its body returns, and a
+      // compensation then reverses that work — usually a *side effect* rather
+      // than the declared outputs, which is why the outputs-still-exist check
+      // cannot be relied on to notice. But most builds declare no compensation
+      // at all, and for those nothing was reversed: throwing their fingerprints
+      // away would make every Ctrl-C cost a full rebuild, which is the ordinary
+      // develop-interrupt-rerun loop. So the cache is kept when this process ran
+      // the walk and the walk did nothing.
+      cacheIsTrustworthy = settlement.ownedWalk && settlement.compensated === 0;
     }
   } else {
     result = run.aborted
@@ -565,6 +570,13 @@ export async function execute(
       reporter.error(settled.message);
       result = { ok: false, executed: run.executed, error: settled, runId };
     }
+  }
+
+  // Persist the incremental cache, unless this run's fingerprints have been
+  // overtaken by events: a rollback that undid the work they describe, or a new
+  // holder that now decides what the outputs are.
+  if (cache !== undefined && cacheIsTrustworthy && !leaseLost) {
+    await cache.save();
   }
 
   // Released once this run has stopped being ours to work on — which includes

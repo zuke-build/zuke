@@ -2830,26 +2830,60 @@ Deno.test("a lease lost before the plan starts stops the run just the same", asy
 });
 
 Deno.test("a cancelled run does not persist the cache its compensations undid", async () => {
-  const cache = new FakeCache();
-  const controller = new AbortController();
-  class B extends Build {
-    build = target().executes(() => {
-      controller.abort(); // Ctrl-C the moment the body has produced its output
+  const dir = await Deno.makeTempDir();
+  try {
+    const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+    const cache = new FakeCache();
+    const controller = new AbortController();
+    class B extends Build {
+      build = target().onCancel(() => this.rollback).executes(() => {
+        controller.abort(); // Ctrl-C the moment the body produced its output
+      });
+      rollback = target().executes(() => {});
+    }
+    const b = new B();
+    discoverTargets(b);
+    const result = await execute(b, b.build, {
+      silent: true,
+      stateStore: store,
+      cache,
+      signal: controller.signal,
     });
+    assertEquals(result.cancelled, true);
+    // The fingerprint was recorded in-memory but never persisted: a
+    // compensation ran, so it describes work that has just been undone.
+    assertEquals(cache.recorded, ["build"]);
+    assertEquals(cache.saved, false);
+  } finally {
+    await Deno.remove(dir, { recursive: true });
   }
-  const b = new B();
-  discoverTargets(b);
-  const result = await execute(b, b.build, {
-    silent: true,
-    stateStore: false,
-    cache,
-    signal: controller.signal,
-  });
-  assertEquals(result.cancelled, true);
-  // The fingerprint was recorded in-memory but never persisted, so the next run
-  // rebuilds rather than trusting work a compensation may have undone.
-  assertEquals(cache.recorded, ["build"]);
-  assertEquals(cache.saved, false);
+});
+
+Deno.test("a cancelled run with nothing to roll back keeps its cache", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+    const cache = new FakeCache();
+    const controller = new AbortController();
+    // No target declares a compensation, which is the ordinary case. Nothing was
+    // reversed, so the fingerprints still describe the workspace — discarding
+    // them would make every Ctrl-C cost a full rebuild on the next run.
+    class B extends Build {
+      build = target().executes(() => controller.abort());
+    }
+    const b = new B();
+    discoverTargets(b);
+    const result = await execute(b, b.build, {
+      silent: true,
+      stateStore: store,
+      cache,
+      signal: controller.signal,
+    });
+    assertEquals(result.cancelled, true);
+    assertEquals(cache.saved, true);
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
 });
 
 Deno.test("an ordinary failure still persists the cache", async () => {

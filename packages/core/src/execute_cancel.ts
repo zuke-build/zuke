@@ -24,6 +24,18 @@ import { cancelEvent, compensationEvents, runCompensations } from "./cancel.ts";
  * the succeeded targets' compensations in reverse, record them in the audit
  * trail, and mark the run cancelled — unless another process owns the walk.
  */
+/** What a cancellation settlement did, so the caller can decide about the cache. */
+export interface CancelSettlement {
+  /**
+   * Whether *this* process ran the compensation walk. False when another
+   * process owns the cancellation, in which case what it will undo is unknown
+   * here.
+   */
+  ownedWalk: boolean;
+  /** How many compensations were attempted, successful or not. */
+  compensated: number;
+}
+
 export async function settleCancelledRun(opts: {
   writer: RunStateWriter;
   life: Lifecycle;
@@ -37,7 +49,7 @@ export async function settleCancelledRun(opts: {
   isExternallyCancelled: () => boolean;
   /** Whether this process has lost the run's lease (see {@link "../cancel.ts".CompensationDeps.stop}). */
   isLeaseLost?: () => boolean;
-}): Promise<void> {
+}): Promise<CancelSettlement> {
   const { writer, life, order, runId, actor, reporter } = opts;
   // Hold the per-run cancel lock while we compensate, so a concurrent
   // `zuke cancel` can't settle the run (declaring "no compensations") over
@@ -51,6 +63,7 @@ export async function settleCancelledRun(opts: {
     reporter.info(
       `Run ${runId} cancelled by another process — stopping.`,
     );
+    return { ownedWalk: false, compensated: 0 };
   } else {
     try {
       // We initiated it (Ctrl-C / options.signal): mark cancelling (which
@@ -66,6 +79,7 @@ export async function settleCancelledRun(opts: {
         reporter.info(
           `Run ${runId} cancelled by another process — stopping.`,
         );
+        return { ownedWalk: false, compensated: 0 };
       } else {
         // Announce the intermediate `cancelling` transition (the record was
         // just moved there) before compensations run, so a plugin sees the
@@ -93,6 +107,10 @@ export async function settleCancelledRun(opts: {
               comp.failures.length > 0 ? `, ${comp.failures.length} failed` : ""
             }.`,
         );
+        return {
+          ownedWalk: true,
+          compensated: comp.compensated.length + comp.failures.length,
+        };
       }
     } finally {
       await cancelLock?.release();

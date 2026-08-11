@@ -125,7 +125,8 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   `--affected` runs only targets changed since a git base; `--no-cache` /
   `--no-remote-cache` bypass them. A restore is confined to the target's
   declared `.outputs(...)` (and never `.git`/`.zuke`); a refused archive is a
-  cache miss with a warning, not a failure.
+  cache miss with a warning, not a failure. A cancelled run keeps its cache
+  unless a compensation actually rolled something back.
 - **Durable run state:** persist a run's status and per-target metadata to a
   pluggable `StateStore` so it survives the process — turn it on with `--state`,
   `ZUKE_STATE_DIR` / `ZUKE_STATE_URL`, or `override stateStore()`. Every
