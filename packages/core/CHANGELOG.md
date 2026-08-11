@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.38.1](https://github.com/zuke-build/zuke/compare/core-v1.38.0...core-v1.38.1) (2026-08-11)
+
+
+### Bug Fixes
+
+* **core:** close three trust gaps at the backend, registry and cache boundaries ([#330](https://github.com/zuke-build/zuke/issues/330)) ([37fbf34](https://github.com/zuke-build/zuke/commit/37fbf3469316dd5e95243d6ea7bb1cdd1b114c3b))
+
 ## [1.38.0](https://github.com/zuke-build/zuke/compare/core-v1.37.0...core-v1.38.0) (2026-08-11)
 
 
