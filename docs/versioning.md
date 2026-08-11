@@ -13,8 +13,8 @@ symbol, so a minor or patch upgrade is safe to take without reading the diff,
 and a breaking change bumps the **major** version. Depend on
 `jsr:@zuke/core@^1` (and `jsr:@zuke/deno@^1`, …) and let minors resolve.
 
-There is no longer a pre-1.0 tier: `release-please`'s `bump-minor-pre-major` is
-off, so nothing silently ships a breaking change under a minor bump. Read a
+`release-please`'s `bump-minor-pre-major` is off, so nothing silently ships a
+breaking change under a minor bump. Read a
 package's `CHANGELOG.md` when its major moves — that is the only release that
 can require a code change on your side.
 

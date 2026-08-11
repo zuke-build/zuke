@@ -54,7 +54,7 @@ body:
     attributes:
       label: Affected package(s)
       description: Which `@zuke/*` package(s) are involved, with versions if known.
-      placeholder: "@zuke/core 0.x, @zuke/deno 0.x"
+      placeholder: "@zuke/core 1.36.0, @zuke/deno 1.0.0"
     validations:
       required: true
   - type: input

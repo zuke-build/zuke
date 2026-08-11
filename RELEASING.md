@@ -12,8 +12,7 @@ request.
    Conventional Commits (`feat:`, `fix:`, `feat!:` / `BREAKING CHANGE:`).
    Versions are per-package, and every package is `1.x` on full semver: a
    breaking change bumps the **major** version. `bump-minor-pre-major` is
-   **off**, so a package that starts life at `0.x` graduates to `1.0.0` on its
-   first breaking change rather than absorbing it into a minor bump.
+   **off**, so a breaking change is never absorbed into a minor bump.
 
 2. **Zuke runs the whole release.** `.github/workflows/release.yml` is itself
    driven by Zuke: on every push to `master` it runs four least-privilege jobs,
