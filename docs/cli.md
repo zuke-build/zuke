@@ -405,9 +405,6 @@ a run's full status survives the process that produced it.
   deleted only when it is **terminal** and matches neither. **Non-terminal**
   runs (`suspended`, `running`, `cancelling`) are never pruned. At least one
   rule is required, and `--dry-run` reports what would go without deleting.
-  A pruned run takes its own lock records with it — its
-  [lease](./locks.md#the-runs-own-lease) and its cancel lock are named after the
-  run, so once it is gone they could never be looked up again.
   See [retention](./state.md#retention) for who owns it on each backend.
 
 Both accept `--json` — `list` emits the summary array, `show` emits the whole

@@ -1192,28 +1192,21 @@ class FileSystemStateStore implements StateStore
   async deleteRun(id: string): Promise<void>
     Delete a run's file (under its lock); a missing run is a no-op.
 
-    The run's expired lock records go with it. A lease and a cancel lock are
-    named after the run, so once the run is gone they can never be looked up
-    again — leaving them behind turns `runs prune` into a command that shrinks
-    one directory while `locks/` grows forever.
+    The run's lock records are deliberately left alone. It is tempting to take
+    them with the run — they are named after it, so once it is gone nothing can
+    look them up again — but "expired" does not mean "abandoned" in this store:
+    {@link renewLock} extends a lock whenever the token matches, whatever its
+    expiry, so a lapsed claim is still the holder's until somebody acquires
+    it. Deleting the record instead makes the next renewal answer `false`, which
+    the holder reads as the lease being lost, and a run that is merely slow —
+    the exact case the lease exists to tell apart from a dead one — stops.
+    Pruning must never be able to do that.
 
-    Two things this deliberately does not touch. A lock that has not expired
-    is left alone: somebody still holds that claim, and deleting the record
-    would make their next renewal report the lease lost — stopping a live run to
-    tidy up a file. And the `.acq` marker is never removed, because it is not a
-    lock record at all: it is the mutex guarding every lock's compare-and-swap,
-    owned by {@link "./mutex.ts".withFileMutex}, which removes it in a `finally`
-    and reclaims a stale one by TTL. Deleting it from outside that protocol
-    would let two writers into the critical section at once.
-
-    The expiry check and the delete share the lock's own mutex — the same one
-    every acquire, renew and release takes — so the two cannot interleave: an
-    acquirer either gets there first, and its fresh record is then seen as
-    unexpired, or arrives after, and finds no record to be confused by.
-
-    Clearing the records is best-effort. The run's own file is the deletion that
-    matters; a leftover lock is litter, and litter must never fail a prune, so a
-    mutex this cannot take in time is left for the next sweep.
+    The litter is small and bounded in practice: {@link releaseLock} removes a
+    lock's file, and a run releases its lease whenever it settles, so only a
+    holder that dies without releasing leaves one behind. Clearing those safely
+    belongs to whoever can prove the holder is gone — a reaping sweep, which
+    proves it by acquiring — not to a command deleting old records.
   async acquireLock(key: string, holder: LockHolder, ttlMs: number): Promise<LockResult>
     Atomically acquire the lock `key` for `holder`, taking over if expired.
   async renewLock(key: string, token: string, ttlMs: number): Promise<boolean>

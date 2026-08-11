@@ -128,7 +128,12 @@ holder is gone and the run can be taken over.
   exceptions are a lease that was *lost* (not ours to give back) and a process
   that breaks before it can release, where the claim lapses at its TTL instead.
 - **A crashed holder's claim lapses at the TTL.** Nothing polls for it: expiry is
-  evaluated by the store the next time somebody tries to acquire.
+  evaluated by the store the next time somebody tries to acquire — and until
+  somebody does, a lapsed claim is still its holder's: a renewal extends it
+  whatever its expiry says. So "expired" is not "abandoned", and nothing may
+  delete a lock record on expiry alone. `runs prune` deliberately leaves them
+  behind for that reason; clearing one belongs to whoever can *prove* the holder
+  is gone, which a sweep does by acquiring it.
 - **A run that cannot take its lease does not start.** Acquiring is retried past
   a store having a bad moment, but a store that never answers fails the run with
   a named error rather than running unclaimed — a `running` record with no holder

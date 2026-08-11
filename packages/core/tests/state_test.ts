@@ -1414,120 +1414,11 @@ Deno.test("a run's origin round-trips, and its absence stays an absence", () => 
   assertEquals(parsed.buildId, undefined);
 });
 
-Deno.test("deleting a run takes its expired lock records with it", async () => {
+Deno.test("deleting a run leaves its lock records alone", async () => {
   const dir = await Deno.makeTempDir();
   try {
     const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
     const runId = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
-    const record = buildRunRecord({
-      runId,
-      build: "B",
-      rootTarget: "work",
-      order: [],
-      params: [],
-      actor: "tester",
-      now: new Date().toISOString(),
-    });
-    await store.putRun(record, null);
-    // The two locks a run takes over itself: its lease and its cancel lock,
-    // both already lapsed — the state a settled or crashed run leaves behind.
-    for (const key of [`zuke-run-${runId}`, `zuke-cancel-${runId}`]) {
-      const held = await store.acquireLock(
-        key,
-        { actor: "tester", runId, since: new Date().toISOString() },
-        1,
-      );
-      assertEquals(held.ok, true);
-    }
-    await new Promise((resolve) => setTimeout(resolve, 5));
-
-    await store.deleteRun(runId);
-
-    // Both are named after the run, so once it is gone they could never be
-    // looked up again — leaving them would make `runs prune` shrink one
-    // directory while `locks/` grew forever.
-    const names: string[] = [];
-    for await (const entry of Deno.readDir(`${dir}/runs/locks`)) {
-      names.push(entry.name);
-    }
-    assertEquals(names.filter((n) => n.endsWith(".json")), []);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
-});
-
-Deno.test("deleting a run leaves a lock somebody still holds", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
-    const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
-    const runId = "bbbbbbbb-cccc-dddd-eeee-ffffffffffff";
-    const record = buildRunRecord({
-      runId,
-      build: "B",
-      rootTarget: "work",
-      order: [],
-      params: [],
-      actor: "tester",
-      now: new Date().toISOString(),
-    });
-    await store.putRun(record, null);
-    const key = `zuke-run-${runId}`;
-    const held = await store.acquireLock(
-      key,
-      { actor: "tester", runId, since: new Date().toISOString() },
-      60_000,
-    );
-    assertEquals(held.ok, true);
-
-    await store.deleteRun(runId);
-
-    // Tidying up a file must never stop a live run: deleting a claim somebody
-    // still holds would make their next renewal report the lease lost.
-    assertEquals(
-      await store.renewLock(key, held.ok ? held.token : "", 60_000),
-      true,
-    );
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
-});
-
-Deno.test("a lock whose mutex is busy never fails the prune that found it", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
-    // A host that never yields the lock mutex, as a live holder mid-acquire
-    // would look. Clearing a leftover lock is tidiness; the run's own deletion
-    // is the deletion that matters, and litter must not fail a prune.
-    class BusyLockHost implements StateHost {
-      readonly real = defaultStateHost;
-      readText(path: string) {
-        return this.real.readText(path);
-      }
-      writeText(path: string, content: string) {
-        return this.real.writeText(path, content);
-      }
-      rename(from: string, to: string) {
-        return this.real.rename(from, to);
-      }
-      createExclusive(path: string): Promise<boolean> {
-        if (path.endsWith(".acq")) return Promise.resolve(false);
-        return this.real.createExclusive(path);
-      }
-      remove(path: string) {
-        return this.real.remove(path);
-      }
-      listDir(path: string) {
-        return this.real.listDir(path);
-      }
-      mkdirp(path: string) {
-        return this.real.mkdirp(path);
-      }
-      now() {
-        return this.real.now();
-      }
-    }
-    const store = new FileSystemStateStore(`${dir}/runs`, new BusyLockHost());
-    const runId = "cccccccc-dddd-eeee-ffff-000000000000";
     await store.putRun(
       buildRunRecord({
         runId,
@@ -1540,9 +1431,30 @@ Deno.test("a lock whose mutex is busy never fails the prune that found it", asyn
       }),
       null,
     );
+    // A lease that has lapsed but was never taken over — the state a run that is
+    // merely slow leaves behind, since the heartbeat cannot fire while its body
+    // blocks the event loop.
+    const key = `zuke-run-${runId}`;
+    const held = await store.acquireLock(
+      key,
+      { actor: "tester", runId, since: new Date().toISOString() },
+      1,
+    );
+    assertEquals(held.ok, true);
+    await new Promise((resolve) => setTimeout(resolve, 5));
 
-    await store.deleteRun(runId); // must not throw
+    await store.deleteRun(runId);
     assertEquals(await store.getRun(runId), null);
+
+    // The record survives, and the holder can still renew: expiry is not
+    // abandonment here — a lapsed claim stays the holder's until somebody
+    // acquires it. Deleting it would make the next renewal report the lease
+    // lost, stopping a run that is only slow, which is the one thing the lease
+    // exists to avoid.
+    assertEquals(
+      await store.renewLock(key, held.ok ? held.token : "", 60_000),
+      true,
+    );
   } finally {
     await Deno.remove(dir, { recursive: true });
   }

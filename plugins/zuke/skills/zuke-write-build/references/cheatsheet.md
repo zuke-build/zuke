@@ -232,7 +232,6 @@ class CD extends Build {
   process killed mid-run has its owed effects driven without an operator
   stepping in. A run whose lease is still being renewed is merely slow, and is
   left alone. The same sweep also finishes runs a dead settler left `cancelling`.
-  `zuke runs prune` deletes a pruned run's lock records along with it.
 - **Run deadlines.** `override deadline()` on the `Build` gives a run a
   wall-clock budget (`"45m"`, or milliseconds), stamped as `deadlineAt` when it
   starts and pushed forward on resume by however long the run sat parked — so
