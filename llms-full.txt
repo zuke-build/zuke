@@ -1137,6 +1137,13 @@ class FileSystemStateStore implements StateStore
     List runs matching `query`, newest first. Unreadable files are skipped.
   async deleteRun(id: string): Promise<void>
     Delete a run's file (under its lock); a missing run is a no-op.
+
+    The run's own lock records go with it. A lease and a cancel lock are named
+    after the run, so once the run is gone they can never be looked up again —
+    leaving them behind turns `runs prune` into a command that shrinks one
+    directory while `locks/` grows forever. They are already logically expired
+    (prune only ever deletes runs that reached a terminal status), so removing
+    the files takes nothing live away.
   async acquireLock(key: string, holder: LockHolder, ttlMs: number): Promise<LockResult>
     Atomically acquire the lock `key` for `holder`, taking over if expired.
   async renewLock(key: string, token: string, ttlMs: number): Promise<boolean>

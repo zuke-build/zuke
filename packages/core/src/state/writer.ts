@@ -486,16 +486,29 @@ export class RunStateWriter {
       // The mutation is applied to the live record, so a throw would otherwise
       // leave it there for the next write that lands to persist — recording an
       // intent for an effect that provably never ran, and making the body's
-      // first execution report itself as a re-drive. Keep a copy of the rows
-      // this touches so a refusal really does leave nothing behind.
-      const before = structuredClone(this.#record.targets);
+      // first execution report itself as a re-drive. Keep a copy so a refusal
+      // really does leave nothing behind.
+      //
+      // The whole record, not just `targets`: today both strict mutators touch
+      // only target rows, but a snapshot scoped to what the *current* callers
+      // happen to write is a guard that silently stops guarding the moment
+      // somebody adds a third. `updatedAt` is part of it — a refused write must
+      // not leave the record claiming a modification time no write ever landed.
+      //
+      // Restored *into* the live record rather than by swapping the reference,
+      // because `snapshot()` hands that object out and a compensation walk holds
+      // it across awaits; replacing it would leave that walk reading a record
+      // nothing writes to any more. (The one thing this cannot undo is a
+      // top-level key a mutator adds where none existed — no current mutator
+      // does, and both write only through `ensureTarget`.)
+      const before = structuredClone(this.#record);
       mutator(this.#record);
       this.#record.updatedAt = this.#now();
       let result;
       try {
         result = await this.#store.putRun(this.#record, this.#version);
       } catch (error) {
-        this.#record.targets = before;
+        Object.assign(this.#record, before);
         throw error;
       }
       if (result.ok) {
@@ -507,12 +520,12 @@ export class RunStateWriter {
       // base, exactly as in the best-effort path.
       const fresh = await this.#store.getRun(this.#record.id).catch(
         (error: unknown) => {
-          this.#record.targets = before;
+          Object.assign(this.#record, before);
           throw error;
         },
       );
       if (fresh === null) {
-        this.#record.targets = before;
+        Object.assign(this.#record, before);
         throw new Error(
           `state: run "${this.#record.id}" vanished from the store while ` +
             `recording an effect; refusing to run it without a durable intent`,

@@ -139,7 +139,9 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   (only terminal runs; never suspended/running).
   A run whose process is killed is picked up by `zuke resume --check`, which
   reaps it — its lease tells a dead holder from a slow one — and resumes it in
-  the same sweep. `override deadline()` gives a run a wall-clock budget
+  the same sweep. A process that merely *looked* dead and then finds its lease
+  taken over **stops**, running no compensations and settling nothing: the run
+  is the new holder's now. `override deadline()` gives a run a wall-clock budget
   (`"45m"`, or milliseconds) that survives suspension; an abandoned run found
   past it is settled `failed` with its compensations instead of resumed.
   On a **shared** store, set `ZUKE_BUILD_ID` (or rely on `GITHUB_REPOSITORY`) so

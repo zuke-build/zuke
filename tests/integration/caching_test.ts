@@ -214,3 +214,47 @@ Deno.test("affectedTargets selects only the targets a changed file can reach, wi
   assertEquals(affectedViaShared.has(api), true); // dirtied by its dependency
   assertEquals(affectedViaShared.has(web), true); // dirtied by its dependency
 });
+
+Deno.test("a cancelled run does not leave its targets recorded as up to date", async () => {
+  await withStateDir(async () => {
+    await withTempCwd(async (dir) => {
+      await Deno.writeTextFile(`${dir}/input.txt`, "v1");
+      const log: string[] = [];
+      const controller = new AbortController();
+      class B extends Build {
+        // Succeeds, so it records a fingerprint — then the run is cancelled and
+        // its compensation undoes the work. The compensation reverses a *side
+        // effect* (here, a deployment marker) and leaves the declared output
+        // alone, which is the case the outputs-still-exist check cannot catch:
+        // inputs unchanged plus outputs present would otherwise read as "up to
+        // date" on the strength of work that was rolled back.
+        build = target()
+          .inputs("input.txt")
+          .outputs("out.txt")
+          .onCancel(() => this.rollback)
+          .executes(async () => {
+            log.push("build");
+            await Deno.writeTextFile("out.txt", "built");
+            await Deno.writeTextFile("deployed.txt", "yes");
+            controller.abort();
+          });
+        rollback = target().executes(async () => {
+          log.push("rollback");
+          await Deno.remove("deployed.txt");
+        });
+      }
+
+      const first = await runCli(B, ["build"], { signal: controller.signal });
+      assertEquals(first.code, 1);
+      assertEquals(log, ["build", "rollback"]);
+      // The output survived the rollback; the deployment it represents did not.
+      assertEquals(await Deno.readTextFile(`${dir}/out.txt`), "built");
+
+      const second = await runCli(B, ["build"]);
+      assertEquals(second.code, 0);
+      // Rebuilt rather than skipped, so the rolled-back work is done again.
+      assertEquals(log, ["build", "rollback", "build"]);
+      assertEquals(await Deno.readTextFile(`${dir}/deployed.txt`), "yes");
+    });
+  });
+});

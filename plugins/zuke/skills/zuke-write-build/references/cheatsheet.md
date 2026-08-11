@@ -219,13 +219,19 @@ class CD extends Build {
 - **Run leases and reaping.** A run that writes durable state takes a TTL lease
   on its own id and heartbeats it, so two processes cannot both believe they own
   one run — a resume that adopts a run whose lease has lapsed takes it over, and
-  the original stops. The lease is also how a dead run is told from a slow one:
+  the original **stops**: it runs no compensations and settles nothing, because
+  the run belongs to whoever holds the claim now (unwinding would roll back the
+  work the new holder is building on). A run that cannot take its lease at all —
+  a store that never answers, after retries — fails with a named error rather
+  than running unclaimed. A run that settles, cancellation included, hands the
+  claim straight back. The lease is also how a dead run is told from a slow one:
   `zuke resume --check` looks at `running` runs before it sweeps suspended ones,
   and a lease it can acquire means the holder is gone. Such a run is put back to
   `suspended` with a reap event saying why, and the same pass resumes it — so a
   process killed mid-run has its owed effects driven without an operator
   stepping in. A run whose lease is still being renewed is merely slow, and is
   left alone. The same sweep also finishes runs a dead settler left `cancelling`.
+  `zuke runs prune` deletes a pruned run's lock records along with it.
 - **Run deadlines.** `override deadline()` on the `Build` gives a run a
   wall-clock budget (`"45m"`, or milliseconds), stamped as `deadlineAt` when it
   starts and pushed forward on resume by however long the run sat parked — so

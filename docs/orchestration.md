@@ -239,6 +239,12 @@ suspended ones:
   its audit trail saying why. The same sweep then resumes it, so an abandoned
   run is recovered in one pass rather than waiting another interval for nothing
   but a state change.
+- **And if the old holder was not dead after all** — merely paused long enough
+  for its lease to lapse — it finds out at its next renewal and **stops**. It
+  does not cancel itself: no compensation runs and the record is left alone,
+  because the run belongs to whoever holds the claim now. Unwinding at that
+  point would roll back the very work the new holder is building on. See
+  [losing the lease](./locks.md#the-runs-own-lease).
 - **Nobody there, and past its `deadline()`** → the run is settled **`failed`**,
   compensations and all. It did not stop because anyone asked; it ran out of
   time, and anything waiting on it needs an answer rather than silence.

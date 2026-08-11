@@ -676,7 +676,14 @@ export async function runSequential(
 
   for (const t of order) {
     const name = t.name_ ?? "<unnamed>";
-    if (skip.has(name) || aborted) {
+    // A cancelled run stops *launching*, not just retrying. Usually the running
+    // target fails first (its shell is terminated) and `aborted` covers the
+    // rest, but a body that finishes anyway — or a run cancelled before the
+    // first target — would otherwise keep starting new work after the run has
+    // demonstrably stopped being this process's to do. That matters most when
+    // the cancellation is a lost lease: the new holder is already running these
+    // very targets.
+    if (skip.has(name) || aborted || env.signal.aborted) {
       reports.push({ name, status: "skipped", ms: 0 });
       settleTarget(env, name, "skipped");
       continue;
@@ -778,6 +785,11 @@ export async function runScheduled(
         // After a fatal failure, stop launching — except `always` targets,
         // which run for cleanup even when the build is failing.
         if (halted && !t.always_) continue;
+        // A cancelled run stops launching too — but `always` targets are the
+        // one thing that must survive it. They are teardown (stop a container,
+        // release a sandbox), and Ctrl-C is exactly when teardown matters most;
+        // skipping them would leak the resources they exist to reclaim.
+        if (ctx.env.signal.aborted && !t.always_) continue;
         started.add(t);
         runningSet.add(t);
         const buffer = bufferReporter();

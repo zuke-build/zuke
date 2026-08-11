@@ -20,6 +20,15 @@ import type { StateStore } from "./store.ts";
  */
 export const CANCEL_LOCK_TTL_MS = 30_000;
 
+/**
+ * The lease name a run's cancellation lock is taken under.
+ *
+ * Named because three places have to agree on it exactly: the canceller taking
+ * it, a sweep asking whether a cancel walk is still live, and the store clearing
+ * a pruned run's leftover lock records.
+ */
+export const CANCEL_LOCK_PREFIX = "zuke-cancel";
+
 /** A held cancellation lock; call {@link CancelLock.release} when the walk ends. */
 export interface CancelLock {
   /** Stop the renewal heartbeat and release the lock (best-effort). */
@@ -50,7 +59,7 @@ export async function acquireCancelLock(
 ): Promise<CancelLock | null> {
   const lease = await acquireLease(
     store,
-    "zuke-cancel",
+    CANCEL_LOCK_PREFIX,
     runId,
     actor,
     now,

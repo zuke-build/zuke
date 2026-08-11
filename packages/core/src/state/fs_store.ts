@@ -30,10 +30,13 @@ import {
 } from "./types.ts";
 import {
   type LockHolder,
+  lockKey,
   type LockRecord,
   parseLockRecord,
   stringifyLockRecord,
 } from "./lock.ts";
+import { CANCEL_LOCK_PREFIX } from "./cancel_lock.ts";
+import { RUN_LEASE_PREFIX } from "./run_lease.ts";
 import { withFileMutex } from "./mutex.ts";
 import { sha256Hex } from "../internal.ts";
 
@@ -155,12 +158,26 @@ export class FileSystemStateStore implements StateStore {
     return query.limit === undefined ? sorted : sorted.slice(0, query.limit);
   }
 
-  /** Delete a run's file (under its lock); a missing run is a no-op. */
+  /**
+   * Delete a run's file (under its lock); a missing run is a no-op.
+   *
+   * The run's own lock records go with it. A lease and a cancel lock are named
+   * after the run, so once the run is gone they can never be looked up again —
+   * leaving them behind turns `runs prune` into a command that shrinks one
+   * directory while `locks/` grows forever. They are already logically expired
+   * (prune only ever deletes runs that reached a terminal status), so removing
+   * the files takes nothing live away.
+   */
   async deleteRun(id: string): Promise<void> {
     await this.#ensureDir();
     await this.#withLock(id, async () => {
       await this.#host.remove(this.#file(id));
     });
+    for (const prefix of [RUN_LEASE_PREFIX, CANCEL_LOCK_PREFIX]) {
+      const key = lockKey(prefix, id);
+      await this.#host.remove(this.#lockFile(key));
+      await this.#host.remove(this.#lockMarker(key));
+    }
   }
 
   /** Atomically acquire the lock `key` for `holder`, taking over if expired. */

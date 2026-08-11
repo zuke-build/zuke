@@ -1413,3 +1413,47 @@ Deno.test("a run's origin round-trips, and its absence stays an absence", () => 
   assertEquals("buildId" in parsed, false);
   assertEquals(parsed.buildId, undefined);
 });
+
+Deno.test("deleting a run takes its lock records with it", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+    const runId = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+    const record = buildRunRecord({
+      runId,
+      build: "B",
+      rootTarget: "work",
+      order: [],
+      params: [],
+      actor: "tester",
+      now: new Date().toISOString(),
+    });
+    await store.putRun(record, null);
+    // The two locks a run acquires over itself: its lease and its cancel lock.
+    for (const key of [`zuke-run-${runId}`, `zuke-cancel-${runId}`]) {
+      const held = await store.acquireLock(
+        key,
+        { actor: "tester", runId, since: new Date().toISOString() },
+        60_000,
+      );
+      assertEquals(held.ok, true);
+    }
+    const locksBefore = await Deno.readDir(`${dir}/runs/locks`);
+    let before = 0;
+    for await (const _ of locksBefore) before++;
+    assertEquals(before > 0, true);
+
+    await store.deleteRun(runId);
+
+    // Both are named after the run, so once it is gone they could never be
+    // looked up again — leaving them would make `runs prune` shrink one
+    // directory while `locks/` grew forever.
+    const names: string[] = [];
+    for await (const entry of Deno.readDir(`${dir}/runs/locks`)) {
+      names.push(entry.name);
+    }
+    assertEquals(names.filter((n) => n.includes(runId)), []);
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});

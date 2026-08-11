@@ -357,3 +357,30 @@ Deno.test("a run settled elsewhere is not marked suspended either", async () => 
   await writer.markRunSuspended();
   assertEquals(store.record?.status, "cancelled");
 });
+
+Deno.test("a refused intent leaves the record's modification time alone too", async () => {
+  // `updatedAt` is stamped alongside the mutation, before the write is
+  // attempted. Leaving a bumped one behind would have the record claim a
+  // modification no write ever landed — and the next best-effort write would
+  // persist that claim.
+  const store = new MemStore();
+  const writer = await writerFor(store);
+  const before = writer.snapshot().updatedAt;
+  store.failNextPut = true;
+  await assertRejects(() => writer.beginEffect("gate", "post"), Error);
+  assertEquals(writer.snapshot().updatedAt, before);
+});
+
+Deno.test("a refused intent restores the record in place, not by replacing it", async () => {
+  // A compensation walk is handed `snapshot()` and reads it across awaits, so a
+  // rollback that swapped the reference would leave that walk reading a record
+  // nothing writes to any more.
+  const store = new MemStore();
+  const writer = await writerFor(store);
+  const held = writer.snapshot();
+  store.failNextPut = true;
+  await assertRejects(() => writer.beginEffect("gate", "post"), Error);
+  assertEquals(writer.snapshot() === held, true);
+  // ...and the rollback really reached the object that reference points at.
+  assertEquals(held.targets.gate?.effects?.post, undefined);
+});
