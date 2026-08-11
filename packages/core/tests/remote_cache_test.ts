@@ -260,3 +260,105 @@ Deno.test("resolveRemoteStore honours option, then declared, then env", () => {
     undefined,
   );
 });
+
+Deno.test("restoreOutputs confines entries to the target's declared outputs", async () => {
+  const out = new MemFs();
+  // A poisoned archive stored under a legitimate key: the name is relative and
+  // has no `..`, so the older checks pass — but `deno.json` is not what this
+  // target archived, and restoring it would let whoever wrote the store choose
+  // a file every later target reads.
+  const poisoned = await gzip(
+    tar([
+      { name: "dist/app.js", data: enc("built") },
+      { name: "deno.json", data: enc("{}") },
+    ]),
+  );
+  const err = await assertRejects(() =>
+    restoreOutputs(poisoned, out, ["dist"])
+  );
+  assertStringIncludes(err.message, "outside the target's declared outputs");
+  assertEquals(out.files.size, 0); // validated up front — nothing written
+
+  // The same archive is fine when the target declares both.
+  const written = await restoreOutputs(poisoned, out, ["dist", "deno.json"]);
+  assertEquals(written, ["dist/app.js", "deno.json"]);
+});
+
+Deno.test("restoreOutputs matches a declared output by path segment, not prefix", async () => {
+  const out = new MemFs();
+  const sibling = await gzip(tar([{ name: "dist-evil/x.js", data: enc("x") }]));
+  const err = await assertRejects(() => restoreOutputs(sibling, out, ["dist"]));
+  assertStringIncludes(err.message, "outside the target's declared outputs");
+
+  // A declared output naming the whole workspace matches everything, which is
+  // what declaring it asked for.
+  assertEquals(
+    (await restoreOutputs(sibling, out, ["."])).length,
+    1,
+  );
+});
+
+Deno.test("restoreOutputs refuses protected paths whatever the outputs declare", async () => {
+  const out = new MemFs();
+  // A restored git hook runs on the developer's next ordinary git command, so
+  // `.git` is refused even by a target that declares the workspace root.
+  for (
+    const name of [
+      ".git/hooks/pre-commit",
+      ".GIT/config",
+      ".zuke/cache.json",
+      // A submodule's nested .git runs on the same ordinary git command.
+      "dist/sub/.git/hooks/pre-commit",
+    ]
+  ) {
+    const artifact = await gzip(tar([{ name, data: enc("#!/bin/sh\n") }]));
+    const err = await assertRejects(() => restoreOutputs(artifact, out, ["."]));
+    assertStringIncludes(err.message, "protected path");
+  }
+  assertEquals(out.files.size, 0);
+});
+
+Deno.test("restoreOutputs refuses entry kinds archiveOutputs never produces", async () => {
+  const out = new MemFs();
+  // A symlink is how a *later* entry writes through a name the checks approved.
+  const link = await gzip(
+    tar([{ name: "dist/link", data: new Uint8Array(0), linkname: "target" }]),
+  );
+  const linkErr = await assertRejects(() =>
+    restoreOutputs(link, out, ["dist"])
+  );
+  assertStringIncludes(linkErr.message, "symlink");
+
+  const dir = await gzip(tar([{ name: "dist/sub/", data: new Uint8Array(0) }]));
+  const dirErr = await assertRejects(() => restoreOutputs(dir, out, ["dist"]));
+  assertStringIncludes(dirErr.message, "directory entry");
+  assertEquals(out.files.size, 0);
+});
+
+Deno.test("restoreOutputs without declared outputs keeps the older confinement", async () => {
+  const out = new MemFs();
+  const artifact = await gzip(tar([{ name: "anywhere/x.js", data: enc("x") }]));
+  assertEquals(await restoreOutputs(artifact, out), ["anywhere/x.js"]);
+  // ...but the protected roots still hold.
+  const git = await gzip(tar([{ name: ".git/config", data: enc("x") }]));
+  const err = await assertRejects(() => restoreOutputs(git, out));
+  assertStringIncludes(err.message, "protected path");
+});
+
+Deno.test("archiveOutputs never archives what restore would refuse", async () => {
+  const src = new MemFs();
+  src.dirs.set("dist", ["app.js", ".git"]);
+  src.files.set("dist/app.js", enc("built"));
+  src.dirs.set("dist/.git", ["config"]);
+  src.files.set("dist/.git/config", enc("[core]"));
+
+  // Uploading a `.git` to a shared store would leak its history — and, since
+  // restore refuses it, would leave the target permanently un-restorable.
+  const out = new MemFs();
+  assertEquals(
+    await restoreOutputs(await archiveOutputs(["dist"], src), out, [
+      "dist",
+    ]),
+    ["dist/app.js"],
+  );
+});

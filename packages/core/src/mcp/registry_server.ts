@@ -35,6 +35,7 @@ import type { StateStore } from "../state/store.ts";
 import type { RunStateWriter } from "../state/writer.ts";
 import type { CliParameterInfo, CliTargetInfo } from "../describe.ts";
 import type { BuildLocation } from "../registry/descriptor.ts";
+import { launchDenial } from "../registry/launch_policy.ts";
 import type { BuildRegistry } from "../registry/registry.ts";
 import { openAuditLog } from "./audit.ts";
 import { targetMatcher, timingSafeEqual } from "./authz.ts";
@@ -723,6 +724,38 @@ export class RegistryMcpServer {
         id,
         textResult(
           `Invalid argument(s): ${validated.errors.join("; ")}.`,
+          true,
+        ),
+      );
+    }
+
+    // Where the descriptor says the build lives is as much an authorization
+    // question as which target it names: a registry a second party can write to
+    // could point the launch at code fetched from the network. Checked before
+    // the confirmation prompt, so a refused location fails fast rather than
+    // asking the operator to confirm a spawn that will never happen.
+    const denial = launchDenial(loaded.descriptor.location, this.#readEnv);
+    if (denial !== null) {
+      await this.#audit(
+        runName,
+        args,
+        "denied",
+        actor,
+        denial.reason,
+        knownParams,
+      );
+      return ok(
+        id,
+        textResult(
+          JSON.stringify(
+            {
+              error: denial.reason,
+              tool: runName,
+              hint: denial.detail,
+            },
+            null,
+            2,
+          ),
           true,
         ),
       );

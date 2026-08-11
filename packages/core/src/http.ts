@@ -64,6 +64,95 @@ export function redactUrl(raw: string): string {
 }
 
 /**
+ * The environment variable that opts a deployment out of {@link
+ * assertSecureBackendUrl}'s `https:` requirement, for a plaintext endpoint on a
+ * network the operator has decided to trust.
+ */
+export const ALLOW_INSECURE_ENV = "ZUKE_ALLOW_INSECURE_URL";
+
+/** Whether a hostname is loopback, so no network path exists to sit on. */
+export function isLoopbackHost(host: string): boolean {
+  return host === "localhost" || host === "::1" || host === "[::1]" ||
+    /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host);
+}
+
+/**
+ * Raised by {@link assertSecureBackendUrl} when a backend is configured with a
+ * plaintext URL. A distinct type so the CLI can report it as the configuration
+ * mistake it is — a named message and exit code 1 — rather than letting a stack
+ * trace escape as if the build had crashed.
+ */
+export class InsecureBackendUrlError extends Error {
+  /** The error name. */
+  override name = "InsecureBackendUrlError";
+  /** The environment variable (or setting) carrying the plaintext URL. */
+  readonly setting: string;
+  /** Build the error from the offending setting and the full explanation. */
+  constructor(setting: string, message: string) {
+    super(message);
+    this.setting = setting;
+  }
+}
+
+/**
+ * Refuse a plaintext URL for a backend Zuke both authenticates to and *trusts
+ * the answers from* — the state service, the build registry, and the remote
+ * cache.
+ *
+ * Confidentiality is the obvious half: a bearer token sent over `http:` is
+ * readable by anyone on the path, and that token can forge run records, the
+ * audit trail, and the cross-run locks two deploys rely on being exclusive.
+ *
+ * **Integrity is the half that matters more**, and it does not need a token at
+ * all. A registry descriptor is a launch command the MCP host will spawn, and a
+ * cache artifact is a file tree restored into the workspace — so an on-path
+ * attacker who can answer a plaintext request reaches code execution without
+ * stealing anything. That is why this refuses `http:` whether or not a
+ * credential is configured.
+ *
+ * Loopback is exempt: there is no path to sit on, and a local dev service on
+ * `http://localhost` is the ordinary way to work on one. A deliberate plaintext
+ * endpoint elsewhere is still reachable by setting {@link ALLOW_INSECURE_ENV},
+ * which is an explicit decision rather than a silent default.
+ *
+ * This guards the **environment** path — the `ZUKE_*_URL` variables, which are
+ * set by whoever configures the CI job or the shell. Constructing a store in
+ * code (`new HttpStateStore({ url })`, a `stateStore()` override) is deliberately
+ * left alone: that URL is first-party source in the build file, so writing it is
+ * itself the trust decision, and a build author who means to talk plaintext to a
+ * service on their own network should not have to also set an env var.
+ *
+ * @throws {InsecureBackendUrlError} naming the variable that relaxes it, when
+ *   `raw` is neither `https:` nor loopback and the opt-out is unset.
+ */
+export function assertSecureBackendUrl(
+  raw: string,
+  what: string,
+  readEnv: (name: string) => string | undefined,
+): void {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    // Not a URL at all: leave the complaint to whoever tries to use it, which
+    // reports the malformed value with its own context.
+    return;
+  }
+  if (url.protocol === "https:" || isLoopbackHost(url.hostname)) return;
+  const optOut = readEnv(ALLOW_INSECURE_ENV);
+  if (optOut !== undefined && optOut !== "") return;
+  throw new InsecureBackendUrlError(
+    what,
+    `${what} must use https: ${
+      redactUrl(raw)
+    } is plaintext, so anyone on the ` +
+      `path can read the token it is sent with and — worse — choose the ` +
+      `answer it gets back. Use an https URL, or set ${ALLOW_INSECURE_ENV}=1 ` +
+      `to accept the risk on a network you trust. Loopback needs no opt-out.`,
+  );
+}
+
+/**
  * Raised when an HTTP request returns a non-2xx status. The URL appears in the
  * message and on {@link url}, so it is passed through {@link redactUrl} first —
  * userinfo and credential query params never reach a log.

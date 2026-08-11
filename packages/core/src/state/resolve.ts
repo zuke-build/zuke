@@ -5,6 +5,7 @@
  * @module
  */
 
+import { assertSecureBackendUrl } from "../http.ts";
 import type { StateHost, StateStore } from "./store.ts";
 import { FileSystemStateStore } from "./fs_store.ts";
 import { HttpStateStore } from "./http_store.ts";
@@ -21,6 +22,7 @@ export function envStateStore(
 ): StateStore | undefined {
   const url = readEnv("ZUKE_STATE_URL");
   if (url !== undefined && url !== "") {
+    assertSecureBackendUrl(url, "ZUKE_STATE_URL", readEnv);
     return new HttpStateStore({ url, token: readEnv("ZUKE_STATE_TOKEN") });
   }
   const dir = readEnv("ZUKE_STATE_DIR");

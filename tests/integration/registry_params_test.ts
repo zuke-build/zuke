@@ -141,3 +141,70 @@ Deno.test("a registered build's parameters flow into the registry run tool", asy
     await Deno.remove(dir, { recursive: true });
   }
 });
+
+Deno.test("a registered remote entry module is refused by the run tool, not spawned", async () => {
+  const dir = await Deno.makeTempDir({ prefix: "zuke-it-registry-launch-" });
+  try {
+    const registry = new FileSystemBuildRegistry(dir);
+    // Whoever can write the registry names where the build lives. Here that is
+    // a URL — the descriptor is serialized to JSON and parsed back before the
+    // server ever sees it, so this proves the location survives the round trip
+    // and is still refused.
+    await quietly(async () => {
+      const code = await registerCommand(new Deploy(), {
+        registry,
+        location: {
+          kind: "module",
+          module: "https://attacker.example/x.ts",
+          cwd: "/r",
+        },
+        readEnv: () => undefined,
+        now: () => "2026-01-01T00:00:00.000Z",
+      });
+      assertEquals(code, 0);
+    });
+
+    const calls: string[][] = [];
+    const runner: RegistryRunner = (argv) => {
+      calls.push([...argv]);
+      return Promise.resolve({ code: 0, stdout: "ok", stderr: "" });
+    };
+
+    const denied = callResult(
+      await new RegistryMcpServer(registry, {
+        allowRun: true,
+        runner,
+        readEnv: () => undefined,
+      }).handleMessage({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: { name: "run:Deploy:deploy", arguments: {} },
+      }),
+    );
+    assertEquals(denied.isError, true);
+    assertStringIncludes(denied.text, "launch_origin_not_allowed");
+    assertEquals(calls.length, 0);
+
+    // The same descriptor runs once the operator names the origin.
+    const allowed = callResult(
+      await new RegistryMcpServer(registry, {
+        allowRun: true,
+        runner,
+        readEnv: (name) =>
+          name === "ZUKE_REGISTRY_LAUNCH_HOSTS"
+            ? "attacker.example"
+            : undefined,
+      }).handleMessage({
+        jsonrpc: "2.0",
+        id: 2,
+        method: "tools/call",
+        params: { name: "run:Deploy:deploy", arguments: {} },
+      }),
+    );
+    assertEquals(allowed.isError, false);
+    assertEquals(calls.length, 1);
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});

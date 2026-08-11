@@ -1233,3 +1233,82 @@ Deno.test("registry HTTP serving does not head-of-line-block a read behind a run
     await finished;
   }
 });
+
+Deno.test("a descriptor pointing at a remote entry module is refused, not spawned", async () => {
+  const registry = new FakeRegistry();
+  registry.add(descriptor("Api", ["deploy"], {
+    kind: "module",
+    module: "https://attacker.example/x.ts",
+    cwd: "/r",
+  }));
+  const store = new FileSystemStateStore("/state", new FakeStateHost());
+  const { runner, calls } = recordingRunner();
+  const server = new RegistryMcpServer(registry, {
+    allowRun: true,
+    stateStore: store,
+    runner,
+    readEnv: () => undefined,
+  });
+
+  const result = await call(server, "run:Api:deploy");
+  assertEquals(result.isError, true);
+  assertStringIncludes(result.text, "launch_origin_not_allowed");
+  assertStringIncludes(result.text, "ZUKE_REGISTRY_LAUNCH_HOSTS");
+  assertEquals(calls.length, 0); // nothing was spawned
+
+  const audit = await store.getRun("mcp-audit");
+  assertEquals(
+    (audit?.record.events ?? []).some((e) =>
+      e.tool === "run:Api:deploy" && e.outcome === "denied" &&
+      e.detail === "launch_origin_not_allowed"
+    ),
+    true,
+  );
+});
+
+Deno.test("an allow-listed remote entry module spawns", async () => {
+  const registry = new FakeRegistry();
+  registry.add(descriptor("Api", ["deploy"], {
+    kind: "module",
+    module: "https://builds.example.com/zuke.ts",
+    cwd: "/r",
+  }));
+  const { runner, calls } = recordingRunner();
+  const server = new RegistryMcpServer(registry, {
+    allowRun: true,
+    runner,
+    readEnv: (name) =>
+      name === "ZUKE_REGISTRY_LAUNCH_HOSTS" ? "builds.example.com" : undefined,
+  });
+
+  const result = await call(server, "run:Api:deploy");
+  assertEquals(result.isError, false);
+  assertEquals(calls.length, 1);
+  assertEquals(
+    calls[0].argv.includes("https://builds.example.com/zuke.ts"),
+    true,
+  );
+});
+
+Deno.test("the launch check runs before the destructive-confirmation prompt", async () => {
+  // A refused location must fail fast, not ask the operator to confirm a spawn
+  // that could never happen.
+  const registry = new FakeRegistry();
+  registry.add(descriptor("Api", ["deploy"], {
+    kind: "module",
+    module: "https://attacker.example/x.ts",
+    cwd: "/r",
+  }));
+  const { runner, calls } = recordingRunner();
+  const server = new RegistryMcpServer(registry, {
+    allowRun: true,
+    confirmDestructive: true,
+    runner,
+    readEnv: () => undefined,
+  });
+
+  const result = await call(server, "run:Api:deploy", { confirm: true });
+  assertEquals(result.isError, true);
+  assertStringIncludes(result.text, "launch_origin_not_allowed");
+  assertEquals(calls.length, 0);
+});

@@ -181,6 +181,17 @@ const store = new HttpStateStore({ url: "https://zuke-state.internal", token });
 > records (with non-secret parameters and target metadata) are sent there. Point
 > it only at a store you control, and prefer a secret parameter or an
 > environment variable over a hard-coded value.
+>
+> **`ZUKE_STATE_URL` must be `https:`.** A plaintext URL is refused before the
+> first request, with a named error and exit code 1. Confidentiality is the
+> obvious half — `ZUKE_STATE_TOKEN` travels with every request, and that token
+> forges run records, the audit trail, and the [locks](./locks.md) two deploys
+> rely on being exclusive. Integrity is the half that matters more and needs no
+> token at all: an on-path attacker who answers a plaintext request chooses what
+> a resume reads back. Loopback (`localhost`, `127.0.0.0/8`, `::1`) is exempt —
+> there is no path to sit on — and a deliberate plaintext endpoint elsewhere is
+> reachable with `ZUKE_ALLOW_INSECURE_URL=1`. The same rule and the same opt-out
+> apply to `ZUKE_REGISTRY_URL` and `ZUKE_REMOTE_CACHE_URL`.
 
 ## Concurrency & compare-and-swap
 

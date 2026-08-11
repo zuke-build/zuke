@@ -123,10 +123,14 @@ it cannot answer "does one exist for this tool?"; only the catalogue
 - **Caching:** `.inputs(...)` / `.outputs(...)` make a target incremental. Add a
   **remote store** to share results across machines (fresh CI, teammates);
   `--affected` runs only targets changed since a git base; `--no-cache` /
-  `--no-remote-cache` bypass them.
+  `--no-remote-cache` bypass them. A restore is confined to the target's
+  declared `.outputs(...)` (and never `.git`/`.zuke`); a refused archive is a
+  cache miss with a warning, not a failure.
 - **Durable run state:** persist a run's status and per-target metadata to a
   pluggable `StateStore` so it survives the process — turn it on with `--state`,
-  `ZUKE_STATE_DIR` / `ZUKE_STATE_URL`, or `override stateStore()`. In a body,
+  `ZUKE_STATE_DIR` / `ZUKE_STATE_URL`, or `override stateStore()`. Every
+  `ZUKE_*_URL` backend must be `https:` (loopback exempt; `ZUKE_ALLOW_INSECURE_URL=1`
+  opts out). In a body,
   `ctx.state.set({ … })` / `ctx.state.get()` records per-target metadata (JSON,
   **never secrets** — secret parameters and redacted values are excluded).
   Inspect persisted runs afterwards with `zuke runs list` (filter by
@@ -221,6 +225,10 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   instead serves every registered pipeline live, each as a
   `run:<buildId>:<target>` tool that takes the build's declared parameters
   (secrets excluded, validated, forwarded to the spawn) — see the cheatsheet.
+  Because the registry names *where* a build launches from, a descriptor with a
+  **remote** entry module is refused unless its origin is in
+  `ZUKE_REGISTRY_LAUNCH_HOSTS`; `zuke register` writes a local module, so this
+  only affects a hand-authored or second-party entry.
   For a shared, multi-user endpoint, `override mcpIdentity()` resolves a
   **trusted** caller per request from an authenticating proxy's header (it
   overrides the client-reported actor and flows to the audit trail, run records,
