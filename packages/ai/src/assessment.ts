@@ -48,7 +48,7 @@ function toFindings(value: unknown): AssessmentFinding[] {
 }
 
 /** Strip Markdown code fences and isolate the JSON object in a response. */
-function isolateJson(text: string): string {
+export function isolateJson(text: string): string {
   const unfenced = text
     .replace(/^\s*```(?:json)?\s*/i, "")
     .replace(/\s*```\s*$/, "")

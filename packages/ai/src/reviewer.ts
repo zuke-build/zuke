@@ -32,11 +32,17 @@ import {
   GateSettings,
   gateTrips,
 } from "./gate.ts";
-import { buildPrompt } from "./prompt.ts";
+import {
+  buildAdjudicatePrompt,
+  buildPrompt,
+  buildVerifyPrompt,
+} from "./prompt.ts";
 import { callProvider, DEFAULT_MODELS, resolveKey } from "./provider.ts";
 import { emptyAssessment, parseAssessment } from "./assessment.ts";
 import {
   consoleLines,
+  type DismissedFinding,
+  type RefutedFinding,
   type ReportExtras,
   retryLine,
   reviewStartLine,
@@ -46,11 +52,32 @@ import {
   writeStepSummary,
 } from "./report.ts";
 import { detectReviewHost, type EnvReader, readEnv } from "./hosts.ts";
+import { commentMarker, type HostComment } from "./hosts/types.ts";
 import type { RetryInfo, RetryOptions } from "./retry.ts";
 import type { Budget } from "./budget.ts";
 import type { AiCache } from "./cache.ts";
 import { findingFingerprint, type Suppressions } from "./suppress.ts";
 import { rank, severityScore } from "./severity.ts";
+import {
+  budgetComments,
+  DiscussionSettings,
+  rebuttalsFor,
+  trustedComments,
+} from "./discussion.ts";
+import {
+  decodeState,
+  dismissedOf,
+  encodeState,
+  type ReviewState,
+  type StoredFinding,
+} from "./state.ts";
+import { parseVerdicts, type Verdict } from "./verdicts.ts";
+import { verdictsGeminiSchema, verdictsJsonSchema } from "./schema.ts";
+import { changedPaths } from "./diff.ts";
+import { buildFileContext } from "./file_context.ts";
+import { readTextOrUndefined } from "./context.ts";
+import type { PromptExtras, RebuttalNote } from "./prompts/templates.ts";
+import { rebuttalComment } from "./prompts/templates.ts";
 
 /**
  * A fluent AI reviewer. Construct one via {@link securityReviewer} (and the
@@ -82,6 +109,11 @@ export class Reviewer implements Validation {
   #budget?: Budget;
   #cache?: AiCache;
   #suppress?: Suppressions;
+  #conventionsFile?: string;
+  #conventionsTokens = 8000;
+  #fileContextTokens?: number;
+  #verify = false;
+  #discussion?: DiscussionSettings;
 
   /** A name for diagnostics — `"<assessment> review"`. */
   name: string;
@@ -299,28 +331,139 @@ export class Reviewer implements Validation {
   }
 
   /**
+   * Feed the project's conventions document (e.g. `AGENTS.md`) to the model as
+   * reference material, so the review judges the change against the project's
+   * documented rules instead of generic taste. When the diff has a base ref
+   * (`.diff((d) => d.base(...))` or a successful `.fetchBase()`), the file is
+   * read from that **base** via `git show` — never from the head under review,
+   * so a pull request cannot rewrite the rules it is judged by. Without a base
+   * (a local working-tree review) it is read from disk. Truncated at roughly
+   * `maxTokens` (default 8000).
+   */
+  conventionsFile(path: string, maxTokens = 8000): this {
+    this.#conventionsFile = path;
+    this.#conventionsTokens = maxTokens;
+    return this;
+  }
+
+  /**
+   * Also send the full post-image contents of the changed files (read via
+   * `git show HEAD:<path>`), bounded at roughly `maxTokens` (default 12000) —
+   * so the model can check a finding against the surrounding code (an existing
+   * guard, a validation a few lines away) instead of judging hunks in
+   * isolation. Skipped silently for a literal `.diff((d) => d.text(...))`
+   * source with no repository behind it.
+   */
+  fileContext(maxTokens = 12000): this {
+    this.#fileContextTokens = maxTokens;
+    return this;
+  }
+
+  /**
+   * Add an adversarial verification pass: after the review produces candidate
+   * findings, a second model call re-checks each against the diff (and the
+   * {@link fileContext}, when enabled) and refutes any whose failure path it
+   * cannot concretely trace. Refuted candidates are listed in the report but
+   * neither posted as findings nor gated on. Costs one extra API call per
+   * review with findings; if the pass itself errors, the unverified findings
+   * are kept (fail toward reporting, never toward silence).
+   */
+  verify(): this {
+    this.#verify = true;
+    return this;
+  }
+
+  /**
+   * Engage with the pull-request discussion instead of repeating findings: the
+   * reviewer reads the PR's comments, and when a **trusted** commenter (by the
+   * host's own author metadata — see {@link DiscussionSettings}) contests a
+   * finding by quoting its ID, an adjudication pass weighs the rebuttal on
+   * technical merit and either upholds the finding (with the gap named) or
+   * dismisses it. Dismissals persist across runs in a state block inside the
+   * reviewer's own PR comment, so a dismissed finding — or a rewording of it —
+   * does not resurface without new evidence. Requires {@link comment} (the
+   * comment is where state lives) and a host that can list comments (GitHub
+   * currently); elsewhere the discussion is skipped with a console note.
+   *
+   * Untrusted comments are dropped in code before any prompt is built — the
+   * model never sees them, so a drive-by "the maintainer approved this"
+   * comment cannot influence the review.
+   */
+  discussion(configure?: Configure<DiscussionSettings>): this {
+    const settings = this.#discussion ?? new DiscussionSettings();
+    this.#discussion = configure ? configure(settings) : settings;
+    return this;
+  }
+
+  /** The `git` runner for diffs, `git show` reads, and conventions. */
+  #run(): (argv: string[]) => Promise<string> {
+    return this.#exec ?? ((argv: string[]) => new Command(argv).text());
+  }
+
+  /**
    * Resolve the diff text from the configured source, reporting whether a
    * requested `.fetchBase()` failed. `fetchFailed` is true only when a fetch was
    * asked for but could not produce a base diff (offline, not a PR, unsafe ref):
    * the caller must not let an empty working-tree fallback pass the gate silently.
+   * `baseRef` is the ref the diff was taken against (`FETCH_HEAD` after a
+   * successful fetch, the configured `.base(...)` otherwise) — the trusted side
+   * conventions are read from — or `undefined` for a literal/working-tree diff.
    */
-  async #resolveDiff(): Promise<{ diff: string; fetchFailed: boolean }> {
+  async #resolveDiff(): Promise<
+    { diff: string; fetchFailed: boolean; baseRef?: string }
+  > {
     const text = this.#diff.text_();
     if (text !== undefined) return { diff: text, fetchFailed: false };
-    const run = this.#exec ?? ((argv: string[]) => new Command(argv).text());
+    const run = this.#run();
     // Honour `.fetchBase()` (fetch the base branch, diff against FETCH_HEAD) so
     // CI PR review needs no manual `git fetch`; fall through to the configured
     // source when no fetch was requested or it couldn't be done.
     const wantsFetch = this.#diff.fetch_() !== undefined;
     const fetched = await fetchBaseDiff(this.#diff, run, this.#env);
-    if (fetched !== undefined) return { diff: fetched, fetchFailed: false };
+    if (fetched !== undefined) {
+      return { diff: fetched, fetchFailed: false, baseRef: "FETCH_HEAD" };
+    }
     if (wantsFetch && !this.#quiet) {
       console.warn(
         `[${this.name}] fetchBase could not compute the base diff — ` +
           `falling back to the working-tree diff`,
       );
     }
-    return { diff: await run(this.#diff.argv_()), fetchFailed: wantsFetch };
+    const base = this.#diff.base_();
+    return {
+      diff: await run(this.#diff.argv_()),
+      fetchFailed: wantsFetch,
+      ...(base !== undefined ? { baseRef: base } : {}),
+    };
+  }
+
+  /**
+   * Resolve the conventions document for the prompt: read from the diff's base
+   * ref when there is one (so the change under review cannot edit the rules it
+   * is judged by), from disk otherwise (a local working-tree review), bounded
+   * to the configured token cap. `undefined` when unset or unreadable.
+   */
+  async #resolveConventions(baseRef?: string): Promise<string | undefined> {
+    const path = this.#conventionsFile;
+    if (path === undefined) return undefined;
+    let text: string | undefined;
+    if (baseRef !== undefined) {
+      try {
+        text = await this.#run()(["git", "show", `${baseRef}:${path}`]);
+      } catch {
+        text = undefined;
+      }
+      if (text === undefined && !this.#quiet) {
+        console.warn(
+          `[${this.name}] could not read ${path} from ${baseRef} — ` +
+            `reviewing without the conventions document`,
+        );
+      }
+    } else {
+      text = await readTextOrUndefined(path);
+    }
+    if (text === undefined || text.trim() === "") return undefined;
+    return truncate(text, this.#conventionsTokens, "conventions document");
   }
 
   /**
@@ -332,28 +475,25 @@ export class Reviewer implements Validation {
     target: string,
     usage?: Usage,
     extras: ReportExtras = {},
+    commentExtra?: string,
   ): Promise<void> {
     if (this.#quiet) return;
     const lines = consoleLines(this.name, assessment, usage, extras);
     for (const line of lines) console.log(line);
     await this.#publish(
       toMarkdown(this.name, target, assessment, usage, extras),
+      commentExtra,
     );
   }
 
   /**
-   * Fingerprint every finding (so its ID shows in the report) and, when a
-   * suppress list is attached, drop the dismissed ones. Returns the suppressed
-   * findings (so the report can list them — suppression mutes the gate, it does
-   * not erase the record). When suppression empties the findings, the score and
-   * severity are cleared so the gate sees a clean assessment.
+   * When a suppress list is attached, drop the dismissed findings (they are
+   * fingerprinted by then). Returns the suppressed findings (so the report can
+   * list them — suppression mutes the gate, it does not erase the record).
    */
   async #applySuppression(
     assessment: Assessment,
   ): Promise<AssessmentFinding[]> {
-    for (const finding of assessment.findings) {
-      finding.id = findingFingerprint(this.#assessment, finding);
-    }
     if (this.#suppress === undefined) return [];
     const suppressed = await this.#suppress.load_();
     if (suppressed.size === 0) return [];
@@ -366,21 +506,6 @@ export class Reviewer implements Validation {
     }
     if (dropped.length === 0) return [];
     assessment.findings = kept;
-    if (kept.length === 0) {
-      assessment.score = 0;
-      assessment.severity = "none";
-    } else {
-      // Suppression can only lower the bar: recompute severity AND score from
-      // what's left. Recomputing severity alone would leave the original score,
-      // so a score-based gate (the default, score > 7) would still fail after a
-      // critical false positive is suppressed. Never raise the score.
-      let highest: Severity = "none";
-      for (const finding of kept) {
-        if (rank(finding.severity) > rank(highest)) highest = finding.severity;
-      }
-      assessment.severity = highest;
-      assessment.score = Math.min(assessment.score, severityScore(highest));
-    }
     return dropped;
   }
 
@@ -394,8 +519,19 @@ export class Reviewer implements Validation {
     await this.#publish(skipMarkdown(this.name, target, reason));
   }
 
-  /** Append `markdown` to the job summary and, if enabled, the PR comment. */
-  async #publish(markdown: string): Promise<void> {
+  /** The comment-posting token for `host` (explicit, or its default env var). */
+  #resolveCommentToken(host: { defaultTokenEnv: string }): string {
+    return this.#commentToken !== undefined
+      ? resolveKey(this.#commentToken)
+      : this.#env(host.defaultTokenEnv) ?? "";
+  }
+
+  /**
+   * Append `markdown` to the job summary and, if enabled, the PR comment.
+   * `commentExtra` (the hidden discussion-state block) goes only to the PR
+   * comment — the job summary has no next run to carry state to.
+   */
+  async #publish(markdown: string, commentExtra?: string): Promise<void> {
     writeStepSummary(markdown);
     if (!this.#comment) return;
     const host = detectReviewHost(this.#env);
@@ -405,9 +541,7 @@ export class Reviewer implements Validation {
       );
       return;
     }
-    const token = this.#commentToken !== undefined
-      ? resolveKey(this.#commentToken)
-      : this.#env(host.defaultTokenEnv) ?? "";
+    const token = this.#resolveCommentToken(host);
     const upsert = host.prepare(token, this.#env);
     if (upsert === undefined) {
       console.warn(
@@ -415,13 +549,95 @@ export class Reviewer implements Validation {
       );
       return;
     }
+    const body = commentExtra === undefined
+      ? markdown
+      : `${markdown}\n${commentExtra}`;
     try {
-      await upsert(this.name, markdown, this.#fetch ?? fetch);
+      await upsert(this.name, body, this.#fetch ?? fetch);
     } catch (error) {
       // Best-effort: a failed comment must never break the build.
       const message = error instanceof Error ? error.message : String(error);
       console.warn(`[${this.name}] could not post PR comment: ${message}`);
     }
+  }
+
+  /**
+   * Fetch the PR comments and the reviewer's prior state for the discussion
+   * feature. `undefined` disables the discussion for this run: not configured,
+   * `.comment()` missing (state lives in the comment), no capable host, no PR
+   * context, or the listing failed. State is only decoded from a comment the
+   * host attributes to a bot account — a state block pasted into a human's
+   * comment is never trusted (an Actions token's own comments are bot-authored;
+   * a PAT-driven local run simply starts fresh).
+   */
+  async #prepareDiscussion(): Promise<
+    { comments: HostComment[]; priorState?: ReviewState } | undefined
+  > {
+    if (this.#discussion === undefined) return undefined;
+    const warn = (reason: string) => {
+      if (!this.#quiet) {
+        console.warn(`[${this.name}] discussion disabled — ${reason}`);
+      }
+    };
+    if (!this.#comment) {
+      warn("it requires .comment(), where the discussion state lives");
+      return undefined;
+    }
+    const host = detectReviewHost(this.#env);
+    if (host?.listComments === undefined) {
+      warn("the active host cannot list PR comments");
+      return undefined;
+    }
+    const list = host.listComments(this.#resolveCommentToken(host), this.#env);
+    if (list === undefined) return undefined; // no PR context (local run)
+    try {
+      const comments = await list(this.#fetch ?? fetch);
+      const marker = commentMarker(this.name);
+      const own = comments.find((c) => c.bot && c.body.includes(marker));
+      const priorState = own !== undefined ? decodeState(own.body) : undefined;
+      return {
+        comments,
+        ...(priorState !== undefined ? { priorState } : {}),
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      warn(`could not list PR comments: ${message}`);
+      return undefined;
+    }
+  }
+
+  /**
+   * Run a verdict pass (verify or adjudicate) against the provider, recording
+   * usage against the budget. Throws on API or parse errors — callers catch
+   * and fail toward keeping findings visible.
+   */
+  async #verdictCall(
+    provider: Provider,
+    key: string,
+    model: string,
+    prompts: { system: string; user: string },
+    allowed: string[],
+    retry: RetryOptions,
+  ): Promise<Map<string, Verdict>> {
+    const result = await callProvider(
+      provider,
+      key,
+      model,
+      prompts.system,
+      prompts.user,
+      {
+        effort: this.#effort,
+        fetch: this.#fetch,
+        retry,
+        schema: {
+          json: verdictsJsonSchema(allowed),
+          gemini: verdictsGeminiSchema(allowed),
+        },
+        schemaName: "verdicts",
+      },
+    );
+    this.#budget?.record_(result.usage, model);
+    return parseVerdicts(result.text, allowed);
   }
 
   /**
@@ -481,10 +697,39 @@ export class Reviewer implements Validation {
       diff = truncate(diff, this.#maxDiffTokens);
     }
 
+    // Extra context for a deeper review: the conventions document (read from
+    // the diff base, never the head under review), the changed files' full
+    // contents, and the findings dismissed in earlier discussion rounds.
+    const conventions = await this.#resolveConventions(resolved.baseRef);
+    let files: string | undefined;
+    if (
+      this.#fileContextTokens !== undefined && this.#diff.text_() === undefined
+    ) {
+      const built = await buildFileContext(
+        changedPaths(diff),
+        this.#run(),
+        this.#fileContextTokens,
+      );
+      files = built === "" ? undefined : built;
+    }
+    const discussion = await this.#prepareDiscussion();
+    const dismissedPrior = dismissedOf(discussion?.priorState);
+    const dismissedLines = [...dismissedPrior.values()].map((f) =>
+      `${f.id} — ${f.title}${f.file !== undefined ? ` (${f.file})` : ""}${
+        f.rationale !== undefined ? `: ${f.rationale}` : ""
+      }`
+    );
+    const extras: PromptExtras = {
+      ...(conventions !== undefined ? { conventions } : {}),
+      ...(files !== undefined ? { files } : {}),
+      ...(dismissedLines.length > 0 ? { dismissed: dismissedLines } : {}),
+    };
+
     const { system, user } = buildPrompt(
       this.#assessment,
       this.#criteria,
       diff,
+      extras,
     );
     // Announce each retry (unless quiet) so a slow run looks like progress.
     const retry = {
@@ -545,13 +790,223 @@ export class Reviewer implements Validation {
       }
     }
 
+    // Fingerprint immediately: every later stage (sticky dismissal, verify,
+    // adjudication, suppression) keys on the stable id.
+    for (const finding of assessment.findings) {
+      finding.id = findingFingerprint(this.#assessment, finding);
+    }
+
+    // Sticky dismissals: a finding dismissed in an earlier discussion round is
+    // dropped deterministically by id (the prompt already told the model not to
+    // re-report rewordings; this catches an identical resurfacing without
+    // spending a model call on it). Recorded in the report, never silent.
+    const dismissed: DismissedFinding[] = [];
+    if (dismissedPrior.size > 0) {
+      const kept: AssessmentFinding[] = [];
+      for (const finding of assessment.findings) {
+        const prior = finding.id !== undefined
+          ? dismissedPrior.get(finding.id)
+          : undefined;
+        if (prior !== undefined) {
+          dismissed.push({
+            finding,
+            ...(prior.author !== undefined ? { author: prior.author } : {}),
+            ...(prior.rationale !== undefined
+              ? { reason: prior.rationale }
+              : {}),
+          });
+        } else kept.push(finding);
+      }
+      assessment.findings = kept;
+    }
+
+    // Verify pass: adversarially re-check each candidate; refuted candidates
+    // are reported (auditable) but not gated on. A failed pass keeps the
+    // unverified findings — fail toward reporting, never toward silence.
+    const refuted: RefutedFinding[] = [];
+    if (this.#verify && assessment.findings.length > 0) {
+      if (this.#budget?.exhausted_()) {
+        if (!this.#quiet) {
+          console.warn(
+            `[${this.name}] verify pass skipped — AI budget exhausted`,
+          );
+        }
+      } else {
+        try {
+          const candidates = assessment.findings.map((f) => ({
+            id: f.id ?? "",
+            title: f.title,
+            ...(f.file !== undefined ? { file: f.file } : {}),
+            ...(f.line !== undefined ? { line: f.line } : {}),
+            ...(f.detail !== undefined ? { detail: f.detail } : {}),
+          }));
+          const verdicts = await this.#verdictCall(
+            provider,
+            key,
+            model,
+            buildVerifyPrompt(this.#assessment, candidates, diff, extras),
+            ["confirmed", "refuted"],
+            retry,
+          );
+          const kept: AssessmentFinding[] = [];
+          for (const finding of assessment.findings) {
+            const verdict = finding.id !== undefined
+              ? verdicts.get(finding.id)
+              : undefined;
+            if (verdict?.verdict === "refuted") {
+              refuted.push({
+                finding,
+                ...(verdict.reason !== undefined
+                  ? { reason: verdict.reason }
+                  : {}),
+              });
+            } else kept.push(finding);
+          }
+          assessment.findings = kept;
+        } catch (error) {
+          const message = error instanceof Error
+            ? error.message
+            : String(error);
+          if (!this.#quiet) {
+            console.warn(
+              `[${this.name}] verify pass failed (${message}) — keeping ` +
+                `unverified findings`,
+            );
+          }
+        }
+      }
+    }
+
+    // Adjudication: when a trusted maintainer contested a finding by quoting
+    // its id, weigh the rebuttal. Both keys are required for a dismissal — a
+    // trusted rebuttal (checked in code) AND the model accepting it on merit —
+    // so neither an insistent comment nor the model alone can mute a finding.
+    const upheldReasons = new Map<string, string>();
+    if (discussion !== undefined && this.#discussion !== undefined) {
+      const trusted = budgetComments(
+        trustedComments(discussion.comments, this.#discussion),
+        this.#discussion,
+      );
+      const ids = assessment.findings
+        .map((f) => f.id)
+        .filter((id): id is string => id !== undefined);
+      const rebuttals = rebuttalsFor(trusted, ids);
+      if (rebuttals.size > 0 && !(this.#budget?.exhausted_() ?? false)) {
+        try {
+          const notes: RebuttalNote[] = [];
+          for (const [id, comments] of rebuttals) {
+            const finding = assessment.findings.find((f) => f.id === id);
+            if (finding === undefined) continue;
+            notes.push({
+              id,
+              title: finding.title,
+              ...(finding.detail !== undefined
+                ? { detail: finding.detail }
+                : {}),
+              comments: comments.map((c) =>
+                rebuttalComment(c.author, c.association, c.body)
+              ),
+            });
+          }
+          const verdicts = await this.#verdictCall(
+            provider,
+            key,
+            model,
+            buildAdjudicatePrompt(this.#assessment, notes, diff),
+            ["upheld", "dismissed"],
+            retry,
+          );
+          const kept: AssessmentFinding[] = [];
+          for (const finding of assessment.findings) {
+            const id = finding.id;
+            const verdict = id !== undefined ? verdicts.get(id) : undefined;
+            // A "dismissed" verdict only counts for a finding that actually
+            // had a trusted rebuttal — the model cannot dismiss on its own.
+            if (
+              id !== undefined && verdict?.verdict === "dismissed" &&
+              rebuttals.has(id)
+            ) {
+              dismissed.push({
+                finding,
+                author: rebuttals.get(id)?.[0].author,
+                ...(verdict.reason !== undefined
+                  ? { reason: verdict.reason }
+                  : {}),
+              });
+            } else {
+              if (id !== undefined && verdict?.verdict === "upheld") {
+                upheldReasons.set(id, verdict.reason ?? "");
+              }
+              kept.push(finding);
+            }
+          }
+          assessment.findings = kept;
+        } catch (error) {
+          const message = error instanceof Error
+            ? error.message
+            : String(error);
+          if (!this.#quiet) {
+            console.warn(
+              `[${this.name}] adjudication failed (${message}) — contested ` +
+                `findings stay open`,
+            );
+          }
+        }
+      }
+    }
+
     const suppressed = await this.#applySuppression(assessment);
+    if (dismissed.length + refuted.length + suppressed.length > 0) {
+      lowerAssessment(assessment);
+    }
+
+    // Persist the discussion state inside the PR comment: current findings as
+    // open/upheld, plus every dismissal (prior rounds' and this round's) kept
+    // sticky so they never resurface.
+    let commentExtra: string | undefined;
+    if (discussion !== undefined) {
+      const stored = new Map<string, StoredFinding>();
+      for (const prior of dismissedPrior.values()) stored.set(prior.id, prior);
+      for (const d of dismissed) {
+        const id = d.finding.id ?? "";
+        if (id === "") continue;
+        stored.set(id, {
+          id,
+          title: d.finding.title,
+          severity: d.finding.severity,
+          status: "dismissed",
+          ...(d.finding.file !== undefined ? { file: d.finding.file } : {}),
+          ...(d.reason !== undefined ? { rationale: d.reason } : {}),
+          ...(d.author !== undefined ? { author: d.author } : {}),
+        });
+      }
+      for (const finding of assessment.findings) {
+        const id = finding.id ?? "";
+        if (id === "") continue;
+        const upheld = upheldReasons.get(id);
+        stored.set(id, {
+          id,
+          title: finding.title,
+          severity: finding.severity,
+          status: upheld !== undefined ? "upheld" : "open",
+          ...(finding.file !== undefined ? { file: finding.file } : {}),
+          ...(upheld !== undefined && upheld !== ""
+            ? { rationale: upheld }
+            : {}),
+        });
+      }
+      commentExtra = encodeState({ findings: [...stored.values()] });
+    }
+
     await this.#report(assessment, context.target, usage, {
       suppressed: suppressed.length,
       suppressedFindings: suppressed,
       fromCache,
       budget: this.#budget?.describe_(),
-    });
+      ...(refuted.length > 0 ? { refuted } : {}),
+      ...(dismissed.length > 0 ? { dismissed } : {}),
+      discussion: discussion !== undefined,
+    }, commentExtra);
     const gate = gateTrips(assessment, this.#gate);
     if (gate.tripped) {
       throw new AiReviewError(
@@ -559,6 +1014,27 @@ export class Reviewer implements Validation {
       );
     }
   }
+}
+
+/**
+ * Removing findings (suppression, verified refutation, discussion dismissal)
+ * can only lower the bar: recompute severity AND score from what's left.
+ * Recomputing severity alone would leave the original score, so a score-based
+ * gate (the default, score > 7) would still fail after a critical false
+ * positive is removed. Never raises the score.
+ */
+function lowerAssessment(assessment: Assessment): void {
+  if (assessment.findings.length === 0) {
+    assessment.score = 0;
+    assessment.severity = "none";
+    return;
+  }
+  let highest: Severity = "none";
+  for (const finding of assessment.findings) {
+    if (rank(finding.severity) > rank(highest)) highest = finding.severity;
+  }
+  assessment.severity = highest;
+  assessment.score = Math.min(assessment.score, severityScore(highest));
 }
 
 /** Construct a {@link Reviewer} for `assessment` and apply the lambda. */

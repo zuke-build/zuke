@@ -48,8 +48,8 @@ zuke import --from makefile   # or pin the source (package.json | makefile)
 ```
 
 Each script/target becomes a `target()`; a command maps to `CmdTasks.exec(...)`
-— a **placeholder**, not the destination: before accepting it, check the
-package catalogue (`llms.txt`'s `## Packages` list, or the table in
+— a **placeholder**, not the destination: before accepting it, check the package
+catalogue (`llms.txt`'s `## Packages` list, or the table in
 [`zuke-write-build`'s cheatsheet](../zuke-write-build/references/cheatsheet.md))
 for a `@zuke/<tool>` wrapper matching that command and replace the placeholder
 with it — leaving `CmdTasks.exec` in place for a tool that has a typed wrapper
@@ -131,15 +131,15 @@ Every external tool has a typed `*Tasks` wrapper; **do not fall back to
 `Deno.Command` or hand-rolled shell.** First confirm a wrapper exists at all —
 `llms.txt`'s `## Packages` catalogue or the table in
 [`zuke-write-build`'s cheatsheet](../zuke-write-build/references/cheatsheet.md)
-is the only way to answer that; a per-package `deno doc` needs a name to
-target, so it cannot reveal that one exists. Once you know the package name,
-get its exact signatures:
+is the only way to answer that; a per-package `deno doc` needs a name to target,
+so it cannot reveal that one exists. Once you know the package name, get its
+exact signatures:
 
 - A single package on the command line: `deno doc jsr:@zuke/<package>`. Prefer
   this in a consumer repo — it resolves the version the project actually has
   installed, so it cannot describe an API that version lacks.
-- The whole typed surface of every package is in **`llms-full.txt`** (indexed
-  by `llms.txt`) — at the repo root in the Zuke repo itself, or from a consumer
+- The whole typed surface of every package is in **`llms-full.txt`** (indexed by
+  `llms.txt`) — at the repo root in the Zuke repo itself, or from a consumer
   repo <https://raw.githubusercontent.com/zuke-build/zuke/master/llms-full.txt>
   (index: <https://raw.githubusercontent.com/zuke-build/zuke/master/llms.txt>).
   Both track `master`, so they may document symbols that are merged but not yet

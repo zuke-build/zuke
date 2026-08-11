@@ -744,6 +744,19 @@ class ZukeBuild extends Build {
       .comment() // upsert the assessment onto the PR (uses GITHUB_TOKEN)
       .diff((d) => d.base(Deno.env.get("ZUKE_REVIEW_BASE") ?? "origin/master"))
       .maxDiffTokens(20000)
+      // Deeper review: judge against this file's documented conventions (read
+      // from the diff base, so a PR can't rewrite the rules it's judged by),
+      // see the changed files whole rather than as bare hunks, and
+      // adversarially verify each candidate finding before reporting it.
+      .conventionsFile("AGENTS.md")
+      .fileContext()
+      .verify()
+      // Engage with the PR thread: a maintainer contests a finding by replying
+      // with its id quoted; a sound rebuttal dismisses it durably instead of it
+      // resurfacing (reworded) every push. Only comments whose author GitHub
+      // itself attributes as OWNER/MEMBER/COLLABORATOR are ever read — a
+      // drive-by comment never reaches the model.
+      .discussion()
       // Dismissed false positives, kept auditable under "Suppressed": a build's
       // own readiness probe / tcpReachable run build-author code that connects
       // to an address the author typed — no more capability than any other line
@@ -843,6 +856,10 @@ class ZukeBuild extends Build {
       )
       .diff((d) => d.base(Deno.env.get("ZUKE_REVIEW_BASE") ?? "origin/master"))
       .maxDiffTokens(20000)
+      // Same conventions document and discussion loop as the security review —
+      // refuted quality findings stay dismissed instead of looping, too.
+      .conventionsFile("AGENTS.md")
+      .discussion()
       .failWhen((g) => g.scoreAbove(8))
       .onError("warn")
   );

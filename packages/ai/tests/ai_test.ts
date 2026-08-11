@@ -1102,7 +1102,11 @@ Deno.test("comment() uses GITHUB_TOKEN and updates the existing comment", async 
       const { fetch, calls } = routedFetch({
         provider: claude({ score: 1, findings: [] }),
         comments: [
-          { id: 5, body: "<!-- zuke-ai-review:security review -->\nold" },
+          {
+            id: 5,
+            body: "<!-- zuke-ai-review:security review -->\nold",
+            user: { login: "github-actions[bot]", type: "Bot" },
+          },
         ],
       });
       await captured(() =>

@@ -41,6 +41,64 @@ export const ASSESSMENT_JSON_SCHEMA: Record<string, unknown> = {
 };
 
 /**
+ * Strict JSON Schema for a verdict list — the response shape of the verify and
+ * adjudication passes: `{"verdicts": [{"id", "verdict", "reason"}]}` with
+ * `verdict` restricted to the pass's `allowed` values (e.g.
+ * `["confirmed", "refuted"]` for verification).
+ */
+export function verdictsJsonSchema(
+  allowed: string[],
+): Record<string, unknown> {
+  return {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      verdicts: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            id: { type: "string" },
+            verdict: { type: "string", enum: allowed },
+            reason: { type: "string" },
+          },
+          required: ["id", "verdict", "reason"],
+        },
+      },
+    },
+    required: ["verdicts"],
+  };
+}
+
+/**
+ * The Gemini (OpenAPI-subset) dialect of {@link verdictsJsonSchema} — no
+ * `additionalProperties`, `nullable` for optionals.
+ */
+export function verdictsGeminiSchema(
+  allowed: string[],
+): Record<string, unknown> {
+  return {
+    type: "object",
+    properties: {
+      verdicts: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            id: { type: "string" },
+            verdict: { type: "string", enum: allowed },
+            reason: { type: "string", nullable: true },
+          },
+          required: ["id", "verdict"],
+        },
+      },
+    },
+    required: ["verdicts"],
+  };
+}
+
+/**
  * OpenAPI-subset schema for Gemini's `responseSchema`: `additionalProperties`
  * is unsupported there, and optionals use `nullable` instead of a `null` type.
  */

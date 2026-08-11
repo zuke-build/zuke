@@ -12,6 +12,7 @@ import {
   commentMarker,
   ensureOk,
   type EnvReader,
+  type HostComment,
   MAX_COMMENT_PAGES,
   nextLink,
   readEnv,
@@ -74,16 +75,36 @@ export function githubHeaders(token: string): Record<string, string> {
   };
 }
 
-/** The id of an existing comment carrying `marker`, or `undefined`. */
-async function findComment(
+/** Map one GitHub comment API item into the host-neutral {@link HostComment}. */
+function toHostComment(item: unknown): HostComment | undefined {
+  const id = dig(item, "id");
+  const body = dig(item, "body");
+  if (typeof id !== "number" || typeof body !== "string") return undefined;
+  const login = dig(item, "user", "login");
+  const type = dig(item, "user", "type");
+  const association = dig(item, "author_association");
+  return {
+    id,
+    body,
+    author: typeof login === "string" ? login : "",
+    association: typeof association === "string" ? association : "",
+    bot: type === "Bot",
+  };
+}
+
+/**
+ * List every comment on the pull request, following `Link` pagination (bounded
+ * by {@link MAX_COMMENT_PAGES}). The author login, `author_association`, and
+ * bot flag come from the API's own metadata, so the discussion layer's trust
+ * decisions are grounded in what GitHub asserts — never in the comment text.
+ */
+export async function listPrComments(
   context: GithubContext,
-  marker: string,
-  doFetch: typeof fetch,
-): Promise<number | undefined> {
+  doFetch: typeof fetch = fetch,
+): Promise<HostComment[]> {
+  const comments: HostComment[] = [];
   let url: string | undefined =
     `${API}/repos/${context.owner}/${context.repo}/issues/${context.pull}/comments?per_page=100`;
-  // Follow `Link: rel="next"` so a marker beyond the first page is still found —
-  // otherwise a busy PR (>100 comments) would re-post a duplicate every run.
   for (let page = 0; url !== undefined && page < MAX_COMMENT_PAGES; page++) {
     const response = await doFetch(url, {
       headers: githubHeaders(context.token),
@@ -92,24 +113,70 @@ async function findComment(
     const data: unknown = await response.json();
     if (Array.isArray(data)) {
       for (const item of data) {
-        const body = dig(item, "body");
-        const id = dig(item, "id");
-        if (
-          typeof body === "string" && body.includes(marker) &&
-          typeof id === "number"
-        ) {
-          return id;
-        }
+        const comment = toHostComment(item);
+        if (comment !== undefined) comments.push(comment);
       }
     }
     url = nextLink(response.headers.get("link"));
   }
-  return undefined;
+  return comments;
+}
+
+/**
+ * The login the `token` authenticates as (`GET /user`), or `undefined` when the
+ * endpoint is unavailable — an Actions installation token cannot call it, but
+ * its comments are authored by a bot account, which the caller checks first.
+ */
+async function selfLogin(
+  token: string,
+  doFetch: typeof fetch,
+): Promise<string | undefined> {
+  try {
+    const response = await doFetch(`${API}/user`, {
+      headers: githubHeaders(token),
+    });
+    if (!response.ok) {
+      await response.body?.cancel();
+      return undefined;
+    }
+    const login = dig(await response.json(), "login");
+    return typeof login === "string" ? login : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The id of the reviewer's own prior comment carrying `marker`, or `undefined`.
+ *
+ * The marker alone is not proof of authorship: anyone can paste it into a
+ * comment, and the workflow token can PATCH any comment on the PR — so a
+ * substring match would let an attacker plant a marker and have the reviewer
+ * adopt (and trust) their comment. A match therefore also requires the author
+ * to be a bot account (the Actions token's comments), or to equal the login
+ * the token authenticates as (a PAT run) — resolved only when needed.
+ */
+async function findOwnComment(
+  context: GithubContext,
+  marker: string,
+  doFetch: typeof fetch,
+): Promise<number | undefined> {
+  const matches = (await listPrComments(context, doFetch))
+    .filter((comment) => comment.body.includes(marker));
+  const bot = matches.find((comment) => comment.bot);
+  if (bot !== undefined) return bot.id;
+  if (matches.length === 0) return undefined;
+  const self = await selfLogin(context.token, doFetch);
+  const own = self === undefined
+    ? undefined
+    : matches.find((comment) => comment.author === self);
+  return own?.id;
 }
 
 /**
  * Upsert the per-reviewer comment on the pull request: patch the existing one
- * if present (matched by the hidden `name` marker), otherwise create it.
+ * if present (matched by the hidden `name` marker **and** verified as the
+ * reviewer's own — see {@link findOwnComment}), otherwise create it.
  */
 export async function upsertPrComment(
   context: GithubContext,
@@ -120,7 +187,7 @@ export async function upsertPrComment(
   const marker = commentMarker(name);
   const body = commentBody(name, markdown);
   const repo = `${API}/repos/${context.owner}/${context.repo}`;
-  const existing = await findComment(context, marker, doFetch);
+  const existing = await findOwnComment(context, marker, doFetch);
   const url = existing === undefined
     ? `${repo}/issues/${context.pull}/comments`
     : `${repo}/issues/comments/${existing}`;
@@ -141,5 +208,10 @@ export const githubHost: ReviewHost = {
     if (context === undefined) return undefined;
     return (name, markdown, doFetch) =>
       upsertPrComment(context, name, markdown, doFetch);
+  },
+  listComments(token, env) {
+    const context = resolveGithubContext(token, env);
+    if (context === undefined) return undefined;
+    return (doFetch) => listPrComments(context, doFetch);
   },
 };

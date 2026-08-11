@@ -31,6 +31,36 @@ export type UpsertComment = (
 ) => Promise<void>;
 
 /**
+ * One comment on the pull/merge request, in the host-neutral shape the
+ * discussion feature consumes. The `author`, `association`, and `bot` fields
+ * are resolved by the host integration from the API's own metadata — never
+ * from the comment text — so trust decisions made on them cannot be forged by
+ * whoever wrote the body.
+ */
+export interface HostComment {
+  /** The host's numeric id for the comment. */
+  id: number;
+  /** The raw Markdown body of the comment (untrusted text). */
+  body: string;
+  /** The login of the comment's author, as reported by the host API. */
+  author: string;
+  /**
+   * The author's relationship to the repository as reported by the host API
+   * (GitHub's `author_association`: `OWNER`, `MEMBER`, `COLLABORATOR`,
+   * `CONTRIBUTOR`, `NONE`, …). Empty when the host does not report one.
+   */
+  association: string;
+  /** Whether the author is a bot/app account (e.g. the reviewer itself). */
+  bot: boolean;
+}
+
+/**
+ * List the comments on the active pull/merge request. Closes over its
+ * host-specific context, like {@link UpsertComment}.
+ */
+export type ListComments = (doFetch: typeof fetch) => Promise<HostComment[]>;
+
+/**
  * A pull-request commenting integration for one CI host. Each implementation
  * (`hosts/github.ts`, `hosts/gitlab.ts`, …) resolves its context from the
  * ambient environment and returns a closure that posts (and updates) one
@@ -47,6 +77,13 @@ export interface ReviewHost {
    * a required signal (e.g. no PR id) — commenting then skips silently.
    */
   prepare(token: string, env: EnvReader): UpsertComment | undefined;
+  /**
+   * Resolve the host context and return a closure that lists the PR/MR
+   * comments (for the discussion feature). Optional — a host without it
+   * simply cannot drive a review discussion; `undefined` from the closure
+   * factory means the environment lacks a PR context, as in `prepare`.
+   */
+  listComments?(token: string, env: EnvReader): ListComments | undefined;
 }
 
 /** The Markdown header that every PR comment opens with, identifying Zuke. */
