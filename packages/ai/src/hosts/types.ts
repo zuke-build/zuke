@@ -78,6 +78,80 @@ export interface HostComment {
   association: string;
   /** Whether the author is a bot/app account (e.g. the reviewer itself). */
   bot: boolean;
+  /**
+   * Which stream the host read this comment from — `"review"` for a comment on
+   * a file/line review thread, absent for a top-level pull-request comment.
+   * Numeric ids are unique only **within** a stream, so anything keying a
+   * comment to a finding by id must key on both.
+   */
+  kind?: "review";
+}
+
+/** How a finding's review thread was last answered by the reviewer. */
+export type ThreadOutcome = "fixed" | "dismissed" | "upheld" | "reopened";
+
+/** The raw material one review-comment listing yields. */
+export interface ReviewComments {
+  /** Every review comment on the pull request, host-neutral, in listing order. */
+  comments: HostComment[];
+  /** Review-comment id → the id of the comment it replies to. */
+  parents: Map<number, number>;
+  /** The identity the token authenticates as, for {@link ownAuthor}. */
+  resolveSelf(): Promise<string | undefined>;
+}
+
+/** One finding's review thread, as it currently stands on the pull request. */
+export interface FindingThread {
+  /** The canonical finding fingerprint the root comment's marker declares. */
+  id: string;
+  /** The root comment's id — replies are posted against it. */
+  rootId: number;
+  /** Outcomes the reviewer has already replied into this thread, oldest first. */
+  outcomes: ThreadOutcome[];
+  /** Replies **not** authored by the reviewer — untrusted until filtered. */
+  replies: HostComment[];
+}
+
+/**
+ * How one thread write ended: `"created"` on success, `"rejected"` when the
+ * host refused this one comment (an anchor it will not accept), `"stop"` when
+ * the phase must halt immediately (rate limited, forbidden, server error).
+ */
+export type ThreadPost = "created" | "rejected" | "stop";
+
+/**
+ * The review-thread operations a host supports. Optional on
+ * {@link ReviewHost}: a host without them cannot anchor findings inline, and
+ * the reviewer falls back to the summary table with a note.
+ */
+export interface ReviewThreads {
+  /** Every review comment on the pull request, with its reply parentage. */
+  list(doFetch: typeof fetch): Promise<ReviewComments>;
+  /** The head commit a new thread anchors to, or `undefined` when unavailable. */
+  headSha(doFetch: typeof fetch): Promise<string | undefined>;
+  /** Open one thread anchored at `path`:`line` on the right side of `sha`. */
+  open(
+    doFetch: typeof fetch,
+    sha: string,
+    path: string,
+    line: number,
+    body: string,
+  ): Promise<ThreadPost>;
+  /** Reply into an existing thread, identified by its root comment id. */
+  reply(
+    doFetch: typeof fetch,
+    rootId: number,
+    body: string,
+  ): Promise<ThreadPost>;
+  /**
+   * Resolve (or unresolve) threads by root comment id, returning how many
+   * succeeded. Never throws — resolution is the losable half of the feature.
+   */
+  setResolved(
+    doFetch: typeof fetch,
+    rootIds: readonly number[],
+    resolved: boolean,
+  ): Promise<number>;
 }
 
 /**
@@ -110,6 +184,13 @@ export interface ReviewHost {
    * factory means the environment lacks a PR context, as in `prepare`.
    */
   listComments?(token: string, env: EnvReader): ListComments | undefined;
+  /**
+   * Resolve the host context and return its review-thread operations, or
+   * `undefined` when the environment has no pull-request context — as in
+   * `prepare`. Optional: a host without it keeps every finding in the summary
+   * table.
+   */
+  reviewThreads?(token: string, env: EnvReader): ReviewThreads | undefined;
 }
 
 /** The Markdown header that every PR comment opens with, identifying Zuke. */
@@ -164,12 +245,30 @@ export async function findOwn(
   resolveSelf?: () => Promise<string | undefined>,
 ): Promise<HostComment | undefined> {
   const matches = comments.filter((comment) => comment.body.startsWith(marker));
-  const bot = matches.find((comment) => comment.bot);
+  const bot = matches.find((comment) => ownAuthor(comment, undefined));
   if (bot !== undefined) return bot;
   if (matches.length === 0 || resolveSelf === undefined) return undefined;
   const self = await resolveSelf();
   if (self === undefined || self === "") return undefined;
-  return matches.find((comment) => comment.author === self);
+  return matches.find((comment) => ownAuthor(comment, self));
+}
+
+/**
+ * Whether `comment` is the reviewer's own on the **author** side: a bot or
+ * service account the host itself attributes as such, or the identity `self`
+ * the token authenticates as. The marker check is the caller's half of the
+ * rule — see {@link findOwn}, which combines the two.
+ *
+ * Kept separate because review threads need the same author test on comments
+ * they locate by a different marker, and a second copy of this rule is exactly
+ * the kind that drifts.
+ */
+export function ownAuthor(
+  comment: HostComment,
+  self: string | undefined,
+): boolean {
+  if (comment.bot) return true;
+  return self !== undefined && self !== "" && comment.author === self;
 }
 
 /** Compose the final comment body: marker + header + assessment markdown. */

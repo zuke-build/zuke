@@ -483,8 +483,21 @@ class DiscussionSettings
     INTERNAL: the trusted association set.
   authors_(): string[]
     INTERNAL: the extra trusted author logins.
+  threads(): this
+    Also anchor each finding to a file/line review thread on the pull
+    request, so a maintainer contests it by replying in that thread instead of
+    quoting its id somewhere on the PR.
+
+    The summary comment is posted either way and stays the one source of
+    truth: it lists every finding — anchored or not — and carries the state
+    block, so a thread that cannot be posted never hides a finding. The
+    reviewer replies into the thread with the outcome and resolves it once the
+    finding is fixed or dismissed. GitHub only; on other hosts the reviewer
+    notes that and posts the summary alone.
   maxTokens_(): number
     INTERNAL: the total comment-token cap.
+  threads_(): boolean
+    INTERNAL: whether findings are also anchored to review threads.
 
 class GateSettings
   Fluent gate configuration passed to {@link "./reviewer.ts".Reviewer.failWhen}.

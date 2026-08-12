@@ -7,6 +7,7 @@
  */
 
 import { dig } from "../json.ts";
+import { githubReviewThreads } from "./github_threads.ts";
 import {
   commentBody,
   commentMarker,
@@ -129,7 +130,7 @@ export async function listPrComments(
  * endpoint is unavailable — an Actions installation token cannot call it, but
  * its comments are authored by a bot account, which the caller checks first.
  */
-async function selfLogin(
+export async function selfLogin(
   token: string,
   doFetch: typeof fetch,
 ): Promise<string | undefined> {
@@ -212,5 +213,10 @@ export const githubHost: ReviewHost = {
     const context = resolveGithubContext(token, env);
     if (context === undefined) return undefined;
     return (doFetch) => listPrComments(context, doFetch);
+  },
+  reviewThreads(token, env) {
+    const context = resolveGithubContext(token, env);
+    if (context === undefined) return undefined;
+    return githubReviewThreads(context);
   },
 };
