@@ -10,9 +10,9 @@ By participating, you agree to abide by our
 > [!NOTE]
 > Every Zuke package is `1.x` on full semver — see
 > [Versioning & compatibility](./docs/versioning.md) for the compatibility
-> promise, the `@zuke/core` floor, and pinning guidance. If you are
-> planning a large change, please open an issue first so we can agree on the
-> direction before you invest the effort.
+> promise, the `@zuke/core` floor, and pinning guidance. If you are planning a
+> large change, please open an issue first so we can agree on the direction
+> before you invest the effort.
 
 ## Prerequisites
 
@@ -108,6 +108,16 @@ the squash commit that [release-please](./RELEASING.md) parses.
 
 Please **do not** open public issues for security vulnerabilities. Follow the
 private reporting process in [`SECURITY.md`](./SECURITY.md) instead.
+
+## Developer Certificate of Origin
+
+Contributions are accepted under the
+[Developer Certificate of Origin 1.1](https://developercertificate.org/) (DCO).
+By opening a pull request you certify that you wrote the contribution (or
+otherwise have the right to submit it) and that you may license it under this
+project's [MIT License](./LICENSE). A `Signed-off-by:` trailer (`git commit -s`)
+is welcome as an explicit record, but submitting the pull request itself
+constitutes your certification.
 
 ## License
 
