@@ -11,6 +11,9 @@ const DIFF = "diff --git a/src/app.ts b/src/app.ts\n" +
 
 const MARKER = commentMarker("security review");
 
+/** The GitHub API origin the fake routers key on. */
+const GITHUB_API = "https://api.github.com";
+
 /** A recorded fetch call. */
 interface Call {
   url: string;
@@ -37,7 +40,7 @@ function discussionFetch(
       method,
       body: typeof init?.body === "string" ? init.body : "",
     });
-    if (url.includes("api.github.com")) {
+    if (url.startsWith(`${GITHUB_API}/`)) {
       if (url.endsWith("/user")) {
         return Promise.resolve(new Response("{}", { status: 403 }));
       }
@@ -155,7 +158,9 @@ Deno.test("a finding dismissed in an earlier round stays dismissed (no loop)", a
     true,
   );
   // No adjudication call was needed — the sticky dismissal is deterministic.
-  const providerCalls = calls.filter((c) => !c.url.includes("api.github.com"));
+  const providerCalls = calls.filter((c) =>
+    !c.url.startsWith(`${GITHUB_API}/`)
+  );
   assertEquals(providerCalls.length, 1);
   // The dismissed-findings memory rode along in the review prompt.
   const user = JSON.parse(providerCalls[0].body).messages[0].content;
@@ -163,7 +168,7 @@ Deno.test("a finding dismissed in an earlier round stays dismissed (no loop)", a
   assertEquals(user.includes("input is validated upstream"), true);
   // The upserted comment still carries the dismissal for the next round.
   const write = calls.find((c) =>
-    c.url.includes("api.github.com") &&
+    c.url.startsWith(`${GITHUB_API}/`) &&
     (c.method === "PATCH" || c.method === "POST")
   );
   const posted = JSON.parse(write?.body ?? "{}").body;
@@ -238,7 +243,9 @@ Deno.test("a trusted rebuttal dismisses via adjudication; untrusted text never r
       );
     })
   );
-  const providerCalls = calls.filter((c) => !c.url.includes("api.github.com"));
+  const providerCalls = calls.filter((c) =>
+    !c.url.startsWith(`${GITHUB_API}/`)
+  );
   assertEquals(providerCalls.length, 2);
   const adjudication = JSON.parse(providerCalls[1].body);
   const prompt = adjudication.messages[0].content;
@@ -254,7 +261,7 @@ Deno.test("a trusted rebuttal dismisses via adjudication; untrusted text never r
   // The comment's state records: contested finding dismissed (with author),
   // uncontested finding still open.
   const write = calls.find((c) =>
-    c.url.includes("api.github.com") &&
+    c.url.startsWith(`${GITHUB_API}/`) &&
     (c.method === "PATCH" || c.method === "POST")
   );
   const state = decodeState(JSON.parse(write?.body ?? "{}").body);
@@ -336,7 +343,7 @@ Deno.test("an upheld rebuttal keeps the finding and records the rationale", asyn
     })
   );
   const write = calls.find((c) =>
-    c.url.includes("api.github.com") &&
+    c.url.startsWith(`${GITHUB_API}/`) &&
     (c.method === "PATCH" || c.method === "POST")
   );
   const state = decodeState(JSON.parse(write?.body ?? "{}").body);
@@ -385,7 +392,7 @@ Deno.test("append mode posts a new comment and reads state from the newest one",
     })
   );
   const writes = calls.filter((c) =>
-    c.url.includes("api.github.com") && c.method !== "GET"
+    c.url.startsWith(`${GITHUB_API}/`) && c.method !== "GET"
   );
   assertEquals(writes.length, 1);
   assertEquals(writes[0].method, "POST"); // appended, nothing patched
@@ -439,7 +446,7 @@ Deno.test("a prior finding that stops reproducing is marked fixed; progress is c
     })
   );
   // The still-open finding rode into the prompt for re-assessment.
-  const provider = calls.find((c) => !c.url.includes("api.github.com"));
+  const provider = calls.find((c) => !c.url.startsWith(`${GITHUB_API}/`));
   const user = JSON.parse(provider?.body ?? "{}").messages[0].content;
   assertEquals(user.includes("PRIOR_FINDINGS"), true);
   assertEquals(user.includes(ID), true);
@@ -451,7 +458,7 @@ Deno.test("a prior finding that stops reproducing is marked fixed; progress is c
   // The posted comment lists BOTH fixed findings (cumulative progress) and
   // carries them in state for the next round.
   const write = calls.find((c) =>
-    c.url.includes("api.github.com") &&
+    c.url.startsWith(`${GITHUB_API}/`) &&
     (c.method === "PATCH" || c.method === "POST")
   );
   const posted = JSON.parse(write?.body ?? "{}").body;
@@ -505,7 +512,7 @@ Deno.test("a fixed finding that is reported again reopens", async () => {
     })
   );
   const write = calls.find((c) =>
-    c.url.includes("api.github.com") &&
+    c.url.startsWith(`${GITHUB_API}/`) &&
     (c.method === "PATCH" || c.method === "POST")
   );
   const posted = JSON.parse(write?.body ?? "{}").body;
@@ -617,7 +624,7 @@ Deno.test("discussion without .comment() is disabled with a note", async () => {
     true,
   );
   // No GitHub traffic at all — the feature was disabled before any listing.
-  assertEquals(calls.every((c) => !c.url.includes("api.github.com")), true);
+  assertEquals(calls.every((c) => !c.url.startsWith(`${GITHUB_API}/`)), true);
 });
 
 Deno.test("a failed comment listing disables the discussion, not the review", async () => {
@@ -629,7 +636,7 @@ Deno.test("a failed comment listing disables the discussion, not the review", as
       method: init?.method ?? "GET",
       body: typeof init?.body === "string" ? init.body : "",
     });
-    if (url.includes("api.github.com")) {
+    if (url.startsWith(`${GITHUB_API}/`)) {
       if ((init?.method ?? "GET") === "GET") {
         return Promise.resolve(new Response("boom", { status: 500 }));
       }
@@ -802,7 +809,7 @@ Deno.test("GitLab: project membership decides who can dismiss a finding", async 
   // The discussion ran — it was not skipped for want of a capable host.
   assertEquals(lines.some((l) => l.includes("discussion disabled")), false);
   const providerCalls = calls.filter((c) =>
-    !c.url.startsWith("https://gitlab.example")
+    !c.url.startsWith("https://gitlab.example/")
   );
   assertEquals(providerCalls.length, 2);
   // The Maintainer's rebuttal reached the adjudicator, attributed from the
@@ -816,7 +823,7 @@ Deno.test("GitLab: project membership decides who can dismiss a finding", async 
   }
   // The dismissal is durable: it rides in the note the reviewer posts back.
   const write = calls.find((c) =>
-    c.url.startsWith("https://gitlab.example") && c.method !== "GET"
+    c.url.startsWith("https://gitlab.example/") && c.method !== "GET"
   );
   const state = decodeState(JSON.parse(write?.body ?? "{}").body);
   assertEquals(state?.findings[0].status, "dismissed");
@@ -1066,7 +1073,7 @@ Deno.test("a forged state block in a stranger's comment is never adopted", async
   // A fresh note was posted rather than the attacker's overwritten, and the
   // state it carries records the finding as open, not dismissed.
   const write = calls.find((c) =>
-    c.url.startsWith("https://gitlab.example") && c.method !== "GET"
+    c.url.startsWith("https://gitlab.example/") && c.method !== "GET"
   );
   assertEquals(write?.method, "POST");
   const state = decodeState(JSON.parse(write?.body ?? "{}").body);
@@ -1119,7 +1126,7 @@ function stateWith(
 /** The state block the reviewer posted back, decoded. */
 function postedState(calls: Call[]) {
   const write = calls.find((c) =>
-    c.url.includes("api.github.com") &&
+    c.url.startsWith(`${GITHUB_API}/`) &&
     (c.method === "PATCH" || c.method === "POST")
   );
   return decodeState(JSON.parse(write?.body ?? "{}").body ?? "");
@@ -1181,7 +1188,9 @@ Deno.test("a recorded alias costs no model call on the next round", async () => 
     })
   );
   // The review call only — the alias resolved the identity for free.
-  const providerCalls = calls.filter((c) => !c.url.includes("api.github.com"));
+  const providerCalls = calls.filter((c) =>
+    !c.url.startsWith(`${GITHUB_API}/`)
+  );
   assertEquals(providerCalls.length, 1);
   assertEquals(
     lines.some((l) => l.includes("dismissed via discussion by maintainer")),
@@ -1292,7 +1301,7 @@ Deno.test("a failed dedup call leaves the finding reported, and says so", async 
       method,
       body: typeof init?.body === "string" ? init.body : "",
     });
-    if (url.includes("api.github.com")) {
+    if (url.startsWith(`${GITHUB_API}/`)) {
       if (url.endsWith("/user")) {
         return Promise.resolve(new Response("{}", { status: 403 }));
       }
@@ -1333,7 +1342,7 @@ Deno.test("a failed dedup call leaves the finding reported, and says so", async 
     true,
   );
   const write = calls.find((c) =>
-    c.url.includes("api.github.com") && c.method !== "GET"
+    c.url.startsWith(`${GITHUB_API}/`) && c.method !== "GET"
   );
   assertEquals(
     JSON.parse(write?.body ?? "{}").body.includes(
@@ -1371,7 +1380,9 @@ Deno.test("a finding in another file is never compared", async () => {
   );
   // No dedup call at all — the same-file rule is enforced in code, not by the
   // prompt, so a cross-file pair is never even offered.
-  const providerCalls = calls.filter((c) => !c.url.includes("api.github.com"));
+  const providerCalls = calls.filter((c) =>
+    !c.url.startsWith(`${GITHUB_API}/`)
+  );
   assertEquals(providerCalls.length, 1);
 });
 
@@ -1400,7 +1411,7 @@ Deno.test("a first round with no prior state pays for no dedup call", async () =
     })
   );
   assertEquals(
-    calls.filter((c) => !c.url.includes("api.github.com")).length,
+    calls.filter((c) => !c.url.startsWith(`${GITHUB_API}/`)).length,
     1,
   );
 });
@@ -1446,7 +1457,7 @@ Deno.test("an aliased identity cannot silence a more severe finding", async () =
   const state = postedState(calls);
   assertEquals(state?.findings.some((f) => f.id === REWORDED_ID), true);
   assertEquals(
-    calls.filter((c) => !c.url.includes("api.github.com")).length,
+    calls.filter((c) => !c.url.startsWith(`${GITHUB_API}/`)).length,
     1,
   );
 });
@@ -1537,7 +1548,7 @@ function threadFetch(
         ),
       );
     }
-    if (url.includes("api.github.com")) {
+    if (url.startsWith(`${GITHUB_API}/`)) {
       if (url.endsWith("/user")) {
         return Promise.resolve(new Response("{}", { status: 403 }));
       }
@@ -1741,7 +1752,7 @@ Deno.test("a reply in a thread contests the finding without quoting any id", asy
   );
   // The reply reached the adjudicator, attributed by platform metadata.
   const providerCalls = calls.filter((c) =>
-    !c.url.includes("api.github.com") && !c.url.includes("/graphql")
+    !c.url.startsWith(`${GITHUB_API}/`) && !c.url.includes("/graphql")
   );
   assertEquals(providerCalls.length, 2);
   assertEquals(
@@ -1807,7 +1818,7 @@ Deno.test("an untrusted reply in a thread is never heard", async () => {
   );
   // No adjudication happened, and the injection reached no prompt.
   const providerCalls = calls.filter((c) =>
-    !c.url.includes("api.github.com") && !c.url.includes("/graphql")
+    !c.url.startsWith(`${GITHUB_API}/`) && !c.url.includes("/graphql")
   );
   assertEquals(providerCalls.length, 1);
   for (const call of providerCalls) {
@@ -1860,7 +1871,7 @@ Deno.test("a forged thread root is never adopted", async () => {
     })
   );
   const providerCalls = calls.filter((c) =>
-    !c.url.includes("api.github.com") && !c.url.includes("/graphql")
+    !c.url.startsWith(`${GITHUB_API}/`) && !c.url.includes("/graphql")
   );
   assertEquals(providerCalls.length, 1); // no adjudication
   assertEquals(
@@ -1911,7 +1922,7 @@ Deno.test("a thread listing failure leaves the review untouched", async () => {
       method,
       body: typeof init?.body === "string" ? init.body : "",
     });
-    if (url.includes("api.github.com")) {
+    if (url.startsWith(`${GITHUB_API}/`)) {
       if (url.endsWith("/user")) {
         return Promise.resolve(new Response("{}", { status: 403 }));
       }
@@ -1958,7 +1969,7 @@ Deno.test("threads are declined on a host that cannot do them", async () => {
       method: init?.method ?? "GET",
       body: typeof init?.body === "string" ? init.body : "",
     });
-    if (url.startsWith("https://gitlab.example")) {
+    if (url.startsWith("https://gitlab.example/")) {
       if ((init?.method ?? "GET") !== "GET") {
         return Promise.resolve(new Response("{}"));
       }
@@ -2011,7 +2022,7 @@ Deno.test("a rejected anchor keeps the finding in the table and says so", async 
       method,
       body: typeof init?.body === "string" ? init.body : "",
     });
-    if (url.includes("api.github.com")) {
+    if (url.startsWith(`${GITHUB_API}/`)) {
       if (url.endsWith("/user")) {
         return Promise.resolve(new Response("{}", { status: 403 }));
       }
@@ -2069,7 +2080,7 @@ Deno.test("a rate limit halts the thread phase without failing the build", async
       method,
       body: typeof init?.body === "string" ? init.body : "",
     });
-    if (url.includes("api.github.com")) {
+    if (url.startsWith(`${GITHUB_API}/`)) {
       if (url.endsWith("/user")) {
         return Promise.resolve(new Response("{}", { status: 403 }));
       }
@@ -2147,7 +2158,7 @@ Deno.test("a failed resolve keeps the outcome reply and reports the gap", async 
         new Response(JSON.stringify({ errors: [{ message: "Forbidden" }] })),
       );
     }
-    if (url.includes("api.github.com")) {
+    if (url.startsWith(`${GITHUB_API}/`)) {
       if (url.endsWith("/user")) {
         return Promise.resolve(new Response("{}", { status: 403 }));
       }
@@ -2231,7 +2242,7 @@ Deno.test("a finding that regresses is reopened, and a failed reopen is shouted 
     if (url.includes("/graphql")) {
       return Promise.resolve(new Response("{}", { status: 403 }));
     }
-    if (url.includes("api.github.com")) {
+    if (url.startsWith(`${GITHUB_API}/`)) {
       if (url.endsWith("/user")) {
         return Promise.resolve(new Response("{}", { status: 403 }));
       }
@@ -2308,7 +2319,7 @@ Deno.test("no head commit means no new threads, and the run continues", async ()
       method,
       body: typeof init?.body === "string" ? init.body : "",
     });
-    if (url.includes("api.github.com")) {
+    if (url.startsWith(`${GITHUB_API}/`)) {
       if (url.endsWith("/user")) {
         return Promise.resolve(new Response("{}", { status: 403 }));
       }
@@ -2375,7 +2386,7 @@ Deno.test("a thread whose outcome reply was refused is not resolved", async () =
     if (url.includes("/graphql")) {
       return Promise.resolve(new Response(JSON.stringify({ data: {} })));
     }
-    if (url.includes("api.github.com")) {
+    if (url.startsWith(`${GITHUB_API}/`)) {
       if (url.endsWith("/user")) {
         return Promise.resolve(new Response("{}", { status: 403 }));
       }
