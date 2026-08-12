@@ -733,19 +733,24 @@ export class Reviewer implements Validation {
       record(adoptCanonicalIds(findings, known));
     }
     // Paid path: only findings whose identity is still unknown to the state,
-    // compared against the decided entries a rename could inherit from.
+    // compared against every entry a rename could resolve onto — including the
+    // ones still open. A reworded finding that is merely still open must be
+    // recognised too: left unmatched, its old id goes unreported this round and
+    // the progress pass records it as fixed, so the report claims a resolution
+    // that never happened and lists the same concern twice.
     const ids = new Set(priorState.findings.map((finding) => finding.id));
     const candidates = findings.filter((finding) =>
       finding.id !== undefined && !ids.has(finding.id)
     );
-    const priors = priorState.findings.filter((finding) =>
-      finding.status === "fixed" || finding.status === "dismissed"
-    );
-    // Fixed entries first, so a candidate matching both reopens (reports)
-    // rather than inheriting a dismissal (silences).
-    priors.sort((a, b) =>
-      (a.status === "fixed" ? 0 : 1) - (b.status === "fixed" ? 0 : 1)
-    );
+    const priors = [...priorState.findings];
+    // Fixed first, then dismissed, then the still-open ones. Fixed before
+    // dismissed keeps a candidate matching both reopening (which reports)
+    // rather than inheriting a dismissal (which silences); decided entries
+    // before open ones keeps the newcomers from crowding a sticky dismissal out
+    // of the per-candidate comparison cap.
+    const order = (finding: StoredFinding): number =>
+      finding.status === "fixed" ? 0 : finding.status === "dismissed" ? 1 : 2;
+    priors.sort((a, b) => order(a) - order(b));
     if (candidates.length === 0 || priors.length === 0) return result;
     const plan = planDedup(candidates, priors);
     if (plan.pairs.length === 0) return result;

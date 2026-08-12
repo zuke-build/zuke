@@ -1448,3 +1448,47 @@ Deno.test("an aliased identity cannot silence a more severe finding", async () =
     1,
   );
 });
+
+Deno.test("a reworded finding that is merely still open is not claimed as fixed", async () => {
+  // The previous round left this finding open — neither dismissed nor fixed.
+  // The model now restates it in different words, so it arrives with a fresh
+  // fingerprint. If identity resolution only considered decided entries, the
+  // old id would go unreported, the progress pass would record it as fixed, and
+  // the report would claim a resolution that never happened while listing the
+  // same concern again as new.
+  const open = {
+    findings: [{
+      id: ID,
+      title: FINDING.title,
+      severity: "high" as const,
+      status: "open" as const,
+      file: "src/app.ts",
+    }],
+  };
+  const { fetch, calls } = discussionFetch(priorComment(open), [
+    claude({ score: 9, severity: "high", findings: [REWORDED] }),
+    claude({ verdicts: [{ id: "p1", verdict: "same", reason: "same eval" }] }),
+  ]);
+  const lines = await captured(() =>
+    inPr(async () => {
+      // Still a live finding, so it still gates.
+      await assertRejects(
+        () =>
+          securityReviewer((r) =>
+            r.provider("claude").apiKey("k")
+              .comment().discussion()
+              .diff((d) => d.text(DIFF))
+              .fetch(fetch)
+          ).validate({ target: "t" }),
+        AiReviewError,
+      );
+    })
+  );
+  // No phantom progress, and no second identity for the same concern.
+  assertEquals(lines.some((l) => l.includes("fixed:")), false);
+  const state = postedState(calls);
+  assertEquals(state?.findings.length, 1);
+  assertEquals(state?.findings[0].id, ID);
+  assertEquals(state?.findings[0].status, "open");
+  assertEquals(state?.findings[0].aliases, [REWORDED_ID]);
+});
