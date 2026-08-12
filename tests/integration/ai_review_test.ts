@@ -254,3 +254,106 @@ Deno.test("an open high finding still fails the build through the CLI", async ()
     assertEquals(result.err.includes("security review"), true);
   });
 });
+
+Deno.test("the discussion drives a real build on GitLab, not just GitHub", async () => {
+  // The same pipeline under a GitLab CI environment: the reviewer must list MR
+  // notes, resolve trust from project membership, honour the dismissal a
+  // Maintainer recorded last round, and write its state back as an MR note.
+  const priorBody = `${MARKER}\nold report\n${
+    encodeState({
+      findings: [{
+        id: ID,
+        title: FINDING.title,
+        severity: "high",
+        status: "dismissed",
+        rationale: "eval runs in a sandboxed worker",
+        author: "maintainer",
+      }],
+    })
+  }`;
+  const notes = [
+    { id: 11, body: priorBody, author: { username: "project_42_bot1" } },
+    { id: 12, body: "unrelated chatter", author: { username: "passerby" } },
+  ];
+  const calls: Call[] = [];
+  const doFetch = ((input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    const method = init?.method ?? "GET";
+    calls.push({
+      url,
+      method,
+      body: typeof init?.body === "string" ? init.body : "",
+    });
+    if (url.startsWith("https://gitlab.example/api/v4")) {
+      if (method !== "GET") return Promise.resolve(new Response("{}"));
+      if (url.endsWith("/user")) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ username: "project_42_bot1" })),
+        );
+      }
+      if (url.includes("/members/all")) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify([{ username: "maintainer", access_level: 40 }]),
+          ),
+        );
+      }
+      return Promise.resolve(new Response(JSON.stringify(notes)));
+    }
+    return Promise.resolve(
+      new Response(
+        claude({ score: 9, severity: "high", findings: [FINDING] }),
+        { status: 200 },
+      ),
+    );
+  }) as typeof fetch;
+
+  const executed: string[] = [];
+  class Pipeline extends Build {
+    review = securityReviewer((r) =>
+      r.provider("claude").apiKey("test-key")
+        .comment().discussion()
+        .diff((d) => d.text(DIFF))
+        .fetch(doFetch)
+    );
+    deploy = target()
+      .description("Deploy, gated by the AI review")
+      .validateBefore(this.review)
+      .executes(() => {
+        executed.push("deploy");
+        return Promise.resolve();
+      });
+  }
+
+  await withEnv(
+    {
+      GITLAB_CI: "true",
+      CI_PROJECT_ID: "42",
+      CI_MERGE_REQUEST_IID: "7",
+      CI_API_V4_URL: "https://gitlab.example/api/v4",
+      GITLAB_TOKEN: "glat",
+      GITHUB_ACTIONS: undefined,
+      GITHUB_STEP_SUMMARY: undefined,
+    },
+    async () => {
+      const result = await runCli(Pipeline, ["deploy"]);
+      assertEquals(result.code, 0);
+      assertEquals(executed, ["deploy"]);
+      assertEquals(
+        result.out.includes("dismissed via discussion by maintainer"),
+        true,
+      );
+      // The discussion was not skipped for want of a capable host.
+      assertEquals(result.err.includes("discussion disabled"), false);
+    },
+  );
+
+  // The reviewer's own note was updated in place and still carries the state.
+  const write = calls.find((c) =>
+    c.url.startsWith("https://gitlab.example") && c.method !== "GET"
+  );
+  assertEquals(write?.method, "PUT");
+  assertEquals(write?.url.endsWith("/notes/11"), true);
+  const state = decodeState(JSON.parse(write?.body ?? "{}").body);
+  assertEquals(state?.findings[0].status, "dismissed");
+});
