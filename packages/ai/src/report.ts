@@ -47,10 +47,6 @@ export function retryLine(name: string, info: RetryInfo): string {
 }
 
 /** The location suffix for a finding (`file:line`, `file`, or empty). */
-function location(file?: string, line?: number): string {
-  if (file === undefined) return "";
-  return line !== undefined ? `${file}:${line}` : file;
-}
 
 /**
  * A human token-usage line (`123 in · 45 out · 168 total`), or `undefined` when
@@ -65,9 +61,31 @@ export function formatUsage(usage?: Usage): string | undefined {
   return parts.length > 0 ? parts.join(" · ") : undefined;
 }
 
-/** Escape `|` so a value is safe inside a Markdown table cell. */
+/**
+ * Make a model-supplied value safe to place in the reviewer's own comment:
+ * `|` escaped so it cannot break out of a Markdown table cell, and the HTML
+ * comment delimiters neutralised.
+ *
+ * The delimiters matter far beyond cosmetics. The reviewer's comment carries
+ * its durable state in a hidden `<!-- zuke-ai-state:… -->` block, and it trusts
+ * that block **because the comment is its own**. But its own comment also
+ * repeats model output — titles, files, summaries — and the model reads an
+ * attacker-controlled diff. Left raw, a finding titled with a forged state
+ * block would be published inside the reviewer's comment and read back next
+ * round as authoritative, letting a PR author mark real findings dismissed.
+ * Authorship of the comment is not authorship of every byte in it.
+ */
 function cell(value: string): string {
-  return value.replaceAll("|", "\\|");
+  return value
+    .replaceAll("|", "\\|")
+    .replaceAll("<!--", "&lt;!--")
+    .replaceAll("-->", "--&gt;");
+}
+
+/** A model-supplied `file:line`, neutralised like any other untrusted value. */
+function location(file?: string, line?: number): string {
+  if (file === undefined) return "";
+  return cell(line !== undefined ? `${file}:${line}` : file);
 }
 
 /**

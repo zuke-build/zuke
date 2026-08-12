@@ -206,10 +206,19 @@ function toStoredFinding(item: unknown): StoredFinding | undefined {
  * individually so one bad record doesn't discard the rest.
  */
 export function decodeState(body: string): ReviewState | undefined {
-  const match = body.match(
-    new RegExp(`<!-- ${STATE_PREFIX}([A-Za-z0-9+/=]+) -->`),
-  );
-  if (match === null) return undefined;
+  // The LAST block wins. The reviewer appends its own block after the report it
+  // just rendered, and that report repeats model output — so anything a finding
+  // title managed to smuggle in appears earlier in the body. Reading the first
+  // match would let such a block outrank the reviewer's own. This is defence in
+  // depth: the renderer neutralises those delimiters (see `report.ts`'s `cell`),
+  // and neither layer is relied on alone.
+  const matches = [
+    ...body.matchAll(
+      new RegExp(`<!-- ${STATE_PREFIX}([A-Za-z0-9+/=]+) -->`, "g"),
+    ),
+  ];
+  const match = matches.at(-1);
+  if (match === undefined) return undefined;
   const bytes = fromBase64(match[1]);
   if (bytes === undefined) return undefined;
   let parsed: unknown;

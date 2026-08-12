@@ -728,6 +728,29 @@ class ZukeBuild extends Build {
       ConsoleTasks.success(`Uploaded ${report} to code scanning (${url}).`);
     });
 
+  // CodeQL is the SAST lane: GitHub's hosted static analysis over the
+  // TypeScript sources and the workflow files (the `actions` language), run on
+  // every pull request so each commit lands with a code-scanning check — which
+  // is also what the OpenSSF Scorecard SAST check measures. The analysis
+  // itself is the marketplace init/analyze pair in the generated `codeql.yml`
+  // (declared in `build/workflows.ts`), which replaces this target's step
+  // entirely — so this body runs only on a *local* invocation, where there is
+  // no CodeQL CLI in the toolchain to run. It fails rather than reports,
+  // because a target that printed a note and exited 0 would look like a scan
+  // that ran and passed.
+  codeql = target()
+    .description("CodeQL static analysis (runs in CI via codeql.yml)")
+    .executes(() => {
+      throw new Error(
+        "CodeQL cannot run locally: there is no CodeQL CLI in the " +
+          "toolchain. The scan runs in CI — the generated " +
+          ".github/workflows/codeql.yml analyzes the TypeScript sources and " +
+          "the GitHub Actions workflows on every pull request, push to " +
+          "master, and weekly schedule. Findings land on the repository's " +
+          "Security tab (code scanning).",
+      );
+    });
+
   // Dogfood @zuke/ai: two reviewers gate the `review` target — an OpenAI
   // security scan and an OpenAI code-quality review. The key is an org secret
   // (OPENAI_API_KEY) available in Actions; `skipIfKeyMissing()` skips a review
