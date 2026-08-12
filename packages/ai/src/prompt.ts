@@ -11,6 +11,9 @@ import { SUBJECTS } from "./prompts/subjects.ts";
 import {
   adjudicateSystemPrompt,
   adjudicateUserPrompt,
+  type DedupPairNote,
+  dedupSystemPrompt,
+  dedupUserPrompt,
   type PromptExtras,
   type RebuttalNote,
   systemPrompt,
@@ -69,5 +72,21 @@ export function buildAdjudicatePrompt(
   return {
     system: adjudicateSystemPrompt(SUBJECTS[assessment]),
     user: adjudicateUserPrompt(rebuttals, diff),
+  };
+}
+
+/**
+ * Assemble the dedup-pass prompt: decide, per labelled pair, whether a finding
+ * this round restates one the review state already holds. Deliberately carries
+ * no diff — identity is a text question, and every extra byte of untrusted
+ * context is injection surface bought for nothing.
+ */
+export function buildDedupPrompt(
+  assessment: AssessmentType,
+  pairs: DedupPairNote[],
+): { system: string; user: string } {
+  return {
+    system: dedupSystemPrompt(SUBJECTS[assessment]),
+    user: dedupUserPrompt(pairs),
   };
 }

@@ -1,6 +1,7 @@
 import { assertEquals } from "../../core/tests/_assert.ts";
 import {
   buildAdjudicatePrompt,
+  buildDedupPrompt,
   buildPrompt,
   buildVerifyPrompt,
 } from "../src/prompt.ts";
@@ -34,6 +35,13 @@ Deno.test("announced injection-guard markers match the emitted fences", () => {
       title: "contested",
       comments: [rebuttalComment("maintainer", "MEMBER", "rebuttal body")],
     }], "the diff"),
+    buildDedupPrompt("security", [{
+      label: "p1",
+      file: "src/app.ts",
+      title: "new wording",
+      detail: "the detail",
+      priorTitle: "old wording",
+    }]),
   ];
   const announced: string[] = [];
   for (const { system, user } of prompts) {
@@ -64,5 +72,6 @@ Deno.test("announced injection-guard markers match the emitted fences", () => {
     "UNTRUSTED_DIFF",
     "UNTRUSTED_FILES",
     "UNTRUSTED_COMMENT",
+    "UNTRUSTED_PAIR",
   ]);
 });

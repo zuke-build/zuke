@@ -1070,3 +1070,335 @@ Deno.test("a forged state block in a stranger's comment is never adopted", async
   const state = decodeState(JSON.parse(write?.body ?? "{}").body);
   assertEquals(state?.findings[0].status, "open");
 });
+
+// ─── Reworded findings ──────────────────────────────────────────────────────
+
+/** The same concern as FINDING, restated in different words. */
+const REWORDED = {
+  title: "Unsanitised input reaches a dynamic evaluator",
+  severity: "high",
+  file: "src/app.ts",
+};
+const REWORDED_ID = findingFingerprint("security", {
+  title: REWORDED.title,
+  severity: "high",
+  file: "src/app.ts",
+});
+
+/** The reviewer's own prior comment carrying `state`. */
+function priorComment(state: Parameters<typeof encodeState>[0]) {
+  return [{
+    id: 1,
+    body: `${MARKER}\nold report\n${encodeState(state)}`,
+    user: { login: "github-actions[bot]", type: "Bot" },
+    author_association: "NONE",
+  }];
+}
+
+/** A state block holding one decided finding. */
+function stateWith(
+  status: "dismissed" | "fixed",
+  extra: Record<string, unknown> = {},
+) {
+  return {
+    findings: [{
+      id: ID,
+      title: FINDING.title,
+      severity: "high" as const,
+      status,
+      file: "src/app.ts",
+      rationale: "input is validated upstream",
+      author: "maintainer",
+      ...extra,
+    }],
+  };
+}
+
+/** The state block the reviewer posted back, decoded. */
+function postedState(calls: Call[]) {
+  const write = calls.find((c) =>
+    c.url.includes("api.github.com") &&
+    (c.method === "PATCH" || c.method === "POST")
+  );
+  return decodeState(JSON.parse(write?.body ?? "{}").body ?? "");
+}
+
+Deno.test("a reworded finding inherits the dismissal it restates", async () => {
+  // The model returns the same false positive under a new title, so it carries
+  // a fresh fingerprint that the sticky-dismissal path would miss entirely.
+  const { fetch, calls } = discussionFetch(
+    priorComment(stateWith("dismissed")),
+    [
+      claude({ score: 9, severity: "high", findings: [REWORDED] }),
+      claude({
+        verdicts: [{ id: "p1", verdict: "same", reason: "same eval" }],
+      }),
+    ],
+  );
+  const lines = await captured(() =>
+    inPr(async () => {
+      await securityReviewer((r) =>
+        r.provider("claude").apiKey("k")
+          .comment().discussion()
+          .diff((d) => d.text(DIFF))
+          .fetch(fetch)
+      ).validate({ target: "t" });
+    })
+  );
+
+  // It did not gate, and the report says which earlier decision silenced it.
+  assertEquals(
+    lines.some((l) =>
+      l.includes("dismissed via discussion by maintainer") &&
+      l.includes(`reworded from "${FINDING.title}"`)
+    ),
+    true,
+  );
+  // One identity, not two: the state keeps the original entry and records the
+  // rewording as its alias, so the next round is free.
+  const state = postedState(calls);
+  assertEquals(state?.findings.length, 1);
+  assertEquals(state?.findings[0].id, ID);
+  assertEquals(state?.findings[0].title, FINDING.title); // the argued wording
+  assertEquals(state?.findings[0].aliases, [REWORDED_ID]);
+});
+
+Deno.test("a recorded alias costs no model call on the next round", async () => {
+  const { fetch, calls } = discussionFetch(
+    priorComment(stateWith("dismissed", { aliases: [REWORDED_ID] })),
+    [claude({ score: 9, severity: "high", findings: [REWORDED] })],
+  );
+  const lines = await captured(() =>
+    inPr(async () => {
+      await securityReviewer((r) =>
+        r.provider("claude").apiKey("k")
+          .comment().discussion()
+          .diff((d) => d.text(DIFF))
+          .fetch(fetch)
+      ).validate({ target: "t" });
+    })
+  );
+  // The review call only — the alias resolved the identity for free.
+  const providerCalls = calls.filter((c) => !c.url.includes("api.github.com"));
+  assertEquals(providerCalls.length, 1);
+  assertEquals(
+    lines.some((l) => l.includes("dismissed via discussion by maintainer")),
+    true,
+  );
+  assertEquals(postedState(calls)?.findings[0].aliases, [REWORDED_ID]);
+});
+
+Deno.test("a reworded finding that was fixed reopens under the old identity", async () => {
+  const { fetch, calls } = discussionFetch(priorComment(stateWith("fixed")), [
+    claude({ score: 9, severity: "high", findings: [REWORDED] }),
+    claude({ verdicts: [{ id: "p1", verdict: "same", reason: "same eval" }] }),
+  ]);
+  const lines = await captured(() =>
+    inPr(async () => {
+      // A reopened finding gates again — it is not resolved after all.
+      await assertRejects(
+        () =>
+          securityReviewer((r) =>
+            r.provider("claude").apiKey("k")
+              .comment().discussion()
+              .diff((d) => d.text(DIFF))
+              .fetch(fetch)
+          ).validate({ target: "t" }),
+        AiReviewError,
+      );
+    })
+  );
+  assertEquals(lines.some((l) => l.includes("reopened under")), true);
+  const state = postedState(calls);
+  // One entry, back to open, under the identity the thread already knows.
+  assertEquals(state?.findings.length, 1);
+  assertEquals(state?.findings[0].id, ID);
+  assertEquals(state?.findings[0].status, "open");
+  assertEquals(state?.findings[0].title, REWORDED.title); // the current wording
+  assertEquals(state?.findings[0].aliases, [REWORDED_ID]);
+});
+
+Deno.test("a fabricated pair label matches nothing", async () => {
+  const { fetch, calls } = discussionFetch(
+    priorComment(stateWith("dismissed")),
+    [
+      claude({ score: 9, severity: "high", findings: [REWORDED] }),
+      // Labels the pass never minted, including a composite of the two real ids.
+      claude({
+        verdicts: [
+          { id: "p9", verdict: "same" },
+          { id: `${REWORDED_ID}:${ID}`, verdict: "same" },
+        ],
+      }),
+    ],
+  );
+  await captured(() =>
+    inPr(async () => {
+      await assertRejects(
+        () =>
+          securityReviewer((r) =>
+            r.provider("claude").apiKey("k")
+              .comment().discussion()
+              .diff((d) => d.text(DIFF))
+              .fetch(fetch)
+          ).validate({ target: "t" }),
+        AiReviewError,
+      );
+    })
+  );
+  // The finding keeps its own identity, is reported, and gates.
+  const state = postedState(calls);
+  assertEquals(state?.findings.some((f) => f.id === REWORDED_ID), true);
+  assertEquals(state?.findings.find((f) => f.id === ID)?.aliases, undefined);
+});
+
+Deno.test("a different verdict leaves the finding reported under its own id", async () => {
+  const { fetch, calls } = discussionFetch(
+    priorComment(stateWith("dismissed")),
+    [
+      claude({ score: 9, severity: "high", findings: [REWORDED] }),
+      claude({ verdicts: [{ id: "p1", verdict: "different" }] }),
+    ],
+  );
+  await captured(() =>
+    inPr(async () => {
+      await assertRejects(
+        () =>
+          securityReviewer((r) =>
+            r.provider("claude").apiKey("k")
+              .comment().discussion()
+              .diff((d) => d.text(DIFF))
+              .fetch(fetch)
+          ).validate({ target: "t" }),
+        AiReviewError,
+      );
+    })
+  );
+  const state = postedState(calls);
+  assertEquals(state?.findings.length, 2); // two identities, as reported
+  assertEquals(state?.findings.find((f) => f.id === ID)?.aliases, undefined);
+});
+
+Deno.test("a failed dedup call leaves the finding reported, and says so", async () => {
+  const calls: Call[] = [];
+  let served = 0;
+  const failing = ((input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    const method = init?.method ?? "GET";
+    calls.push({
+      url,
+      method,
+      body: typeof init?.body === "string" ? init.body : "",
+    });
+    if (url.includes("api.github.com")) {
+      if (url.endsWith("/user")) {
+        return Promise.resolve(new Response("{}", { status: 403 }));
+      }
+      const payload = method === "GET"
+        ? JSON.stringify(priorComment(stateWith("dismissed")))
+        : "{}";
+      return Promise.resolve(new Response(payload, { status: 200 }));
+    }
+    served++;
+    // The review answers; the dedup pass that follows it fails outright.
+    return Promise.resolve(
+      served === 1
+        ? new Response(
+          claude({ score: 9, severity: "high", findings: [REWORDED] }),
+          { status: 200 },
+        )
+        : new Response("upstream exploded", { status: 500 }),
+    );
+  }) as typeof fetch;
+
+  const lines = await captured(() =>
+    inPr(async () => {
+      await assertRejects(
+        () =>
+          securityReviewer((r) =>
+            r.provider("claude").apiKey("k")
+              .comment().discussion().retry({ attempts: 1 })
+              .diff((d) => d.text(DIFF))
+              .fetch(failing)
+          ).validate({ target: "t" }),
+        AiReviewError,
+      );
+    })
+  );
+  // Reported and gating, with the failure visible rather than silent.
+  assertEquals(
+    lines.some((l) => l.includes("reworded-finding check failed")),
+    true,
+  );
+  const write = calls.find((c) =>
+    c.url.includes("api.github.com") && c.method !== "GET"
+  );
+  assertEquals(
+    JSON.parse(write?.body ?? "{}").body.includes(
+      "reworded-finding check failed",
+    ),
+    true,
+  );
+});
+
+Deno.test("a finding in another file is never compared", async () => {
+  const elsewhere = {
+    title: "Path traversal in loader",
+    severity: "high",
+    file: "src/load.ts",
+  };
+  const { fetch, calls } = discussionFetch(
+    priorComment(stateWith("dismissed")),
+    [
+      claude({ score: 9, severity: "high", findings: [elsewhere] }),
+    ],
+  );
+  await captured(() =>
+    inPr(async () => {
+      await assertRejects(
+        () =>
+          securityReviewer((r) =>
+            r.provider("claude").apiKey("k")
+              .comment().discussion()
+              .diff((d) => d.text(DIFF))
+              .fetch(fetch)
+          ).validate({ target: "t" }),
+        AiReviewError,
+      );
+    })
+  );
+  // No dedup call at all — the same-file rule is enforced in code, not by the
+  // prompt, so a cross-file pair is never even offered.
+  const providerCalls = calls.filter((c) => !c.url.includes("api.github.com"));
+  assertEquals(providerCalls.length, 1);
+});
+
+Deno.test("a first round with no prior state pays for no dedup call", async () => {
+  const comments = [{
+    id: 1,
+    body: `${MARKER}\nfirst report`,
+    user: { login: "github-actions[bot]", type: "Bot" },
+    author_association: "NONE",
+  }];
+  const { fetch, calls } = discussionFetch(comments, [
+    claude({ score: 9, severity: "high", findings: [FINDING] }),
+  ]);
+  await captured(() =>
+    inPr(async () => {
+      await assertRejects(
+        () =>
+          securityReviewer((r) =>
+            r.provider("claude").apiKey("k")
+              .comment().discussion()
+              .diff((d) => d.text(DIFF))
+              .fetch(fetch)
+          ).validate({ target: "t" }),
+        AiReviewError,
+      );
+    })
+  );
+  assertEquals(
+    calls.filter((c) => !c.url.includes("api.github.com")).length,
+    1,
+  );
+});

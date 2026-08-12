@@ -48,6 +48,13 @@ export interface StoredFinding {
   rationale?: string;
   /** The login of the maintainer whose rebuttal drove the adjudication. */
   author?: string;
+  /**
+   * Fingerprints of earlier **rewordings** of this same finding — the ids it
+   * arrived under when the model restated it in different words. Recording one
+   * makes the next round's match free: the id is recognised outright instead of
+   * costing a dedup call. Bounded by {@link MAX_ALIASES}, newest first.
+   */
+  aliases?: string[];
 }
 
 /** The review state carried between runs. */
@@ -58,6 +65,70 @@ export interface ReviewState {
 
 /** The hidden-block prefix the encoded state is stored under. */
 const STATE_PREFIX = "zuke-ai-state:";
+
+/**
+ * Cap on the rewording fingerprints kept per finding. The state block rides
+ * inside a PR comment, so it must not grow without bound as a model restates
+ * the same finding round after round; the newest aliases are the ones a future
+ * round is likely to see again.
+ */
+export const MAX_ALIASES = 5;
+
+/**
+ * Whether `value` is shaped like a fingerprint — the lowercase base-36 token
+ * {@link "./hash.ts".stableHash} produces (13 characters for its 64 bits).
+ * Anything else in an `aliases` list is a malformed or hand-edited record and
+ * is dropped, so an alias can never carry arbitrary text into a later round's
+ * lookups.
+ */
+function isFingerprint(value: unknown): value is string {
+  return typeof value === "string" && /^[0-9a-z]{1,16}$/.test(value);
+}
+
+/**
+ * The validated alias list for a stored finding: well-formed fingerprints
+ * only, de-duplicated, never the entry's own id, capped at
+ * {@link MAX_ALIASES}. `newest` is prepended, so a fresh rewording survives
+ * the cap and the oldest is the one dropped.
+ */
+export function mergeAliases(
+  existing: readonly string[] | undefined,
+  newest: readonly string[],
+  ownId: string,
+): string[] {
+  const merged: string[] = [];
+  for (const alias of [...newest, ...(existing ?? [])]) {
+    if (!isFingerprint(alias) || alias === ownId) continue;
+    if (merged.includes(alias)) continue;
+    merged.push(alias);
+    if (merged.length === MAX_ALIASES) break;
+  }
+  return merged;
+}
+
+/**
+ * Every recorded alias in `state`, mapped to the finding that owns it — the
+ * free half of reword resolution: a fingerprint found here is recognised
+ * outright, with no model call.
+ *
+ * An alias that collides with a real finding's id is dropped: a stored
+ * identity always outranks a claim to be a rewording of one, so a malformed or
+ * stale record can never shadow a live finding.
+ */
+export function aliasIndex(
+  state: ReviewState | undefined,
+): Map<string, StoredFinding> {
+  const findings = state?.findings ?? [];
+  const ids = new Set(findings.map((finding) => finding.id));
+  const index = new Map<string, StoredFinding>();
+  for (const finding of findings) {
+    for (const alias of finding.aliases ?? []) {
+      if (ids.has(alias) || index.has(alias)) continue;
+      index.set(alias, finding);
+    }
+  }
+  return index;
+}
 
 /** Encode bytes as base64 (dependency-free, chunked to bound the arg list). */
 function toBase64(bytes: Uint8Array): string {
@@ -106,6 +177,15 @@ function toStoredFinding(item: unknown): StoredFinding | undefined {
   const file = dig(item, "file");
   const rationale = dig(item, "rationale");
   const author = dig(item, "author");
+  // Best-effort like every other field: a malformed alias list yields no
+  // aliases rather than discarding the record, so a bad entry costs at most one
+  // dedup call — never the dismissal the finding already earned.
+  const raw = dig(item, "aliases");
+  const aliases = mergeAliases(
+    Array.isArray(raw) ? raw.filter(isFingerprint) : [],
+    [],
+    id,
+  );
   return {
     id,
     title,
@@ -114,6 +194,7 @@ function toStoredFinding(item: unknown): StoredFinding | undefined {
     ...(typeof file === "string" ? { file } : {}),
     ...(typeof rationale === "string" ? { rationale } : {}),
     ...(typeof author === "string" ? { author } : {}),
+    ...(aliases.length > 0 ? { aliases } : {}),
   };
 }
 

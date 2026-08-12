@@ -108,6 +108,14 @@ export interface ReportExtras {
    * each report shows how far the PR has come.
    */
   fixed?: StoredFinding[];
+  /**
+   * Operational notes about the run itself — a bounded pass that did not
+   * compare everything, a pass skipped for budget, a pass that failed, a
+   * reopened finding. Rendered in both the console output and the PR comment:
+   * a cap or a skipped check that only reaches the log reads, in the comment,
+   * as "nothing matched".
+   */
+  notes?: string[];
 }
 
 /** A candidate finding the verify pass refuted, and why. */
@@ -126,6 +134,13 @@ export interface DismissedFinding {
   author?: string;
   /** The adjudicator's one-line reason for accepting the dismissal. */
   reason?: string;
+  /**
+   * The earlier title this finding restates, when the dedup pass resolved it
+   * onto an identity the state already held. Shown so an inherited dismissal
+   * is never mistaken for a fresh one — the maintainer can see which earlier
+   * decision is doing the silencing.
+   */
+  rewordedFrom?: string;
 }
 
 /** The console lines for an assessment. */
@@ -172,8 +187,11 @@ export function consoleLines(
   }
   for (const d of extras.dismissed ?? []) {
     const by = d.author !== undefined ? ` by ${d.author}` : "";
+    const reworded = d.rewordedFrom !== undefined
+      ? ` (reworded from "${d.rewordedFrom}")`
+      : "";
     lines.push(
-      `    dismissed via discussion${by}: ${d.finding.title}${
+      `    dismissed via discussion${by}: ${d.finding.title}${reworded}${
         d.reason !== undefined ? ` — ${d.reason}` : ""
       }`,
     );
@@ -184,6 +202,7 @@ export function consoleLines(
       `    fixed: ${f.title}${where === "" ? "" : ` (${where})`} · ${f.id}`,
     );
   }
+  for (const note of extras.notes ?? []) lines.push(`  note: ${note}`);
   if (extras.budget !== undefined) lines.push(`  budget: ${extras.budget}`);
   return lines;
 }
@@ -229,10 +248,26 @@ export function toMarkdown(
   parts.push(...suppressedSection(extras.suppressedFindings ?? []));
   parts.push(...refutedSection(extras.refuted ?? []));
   parts.push(...dismissedSection(extras.dismissed ?? []));
+  parts.push(...notesSection(extras.notes ?? []));
   if (assessment.summary !== "") {
     parts.push(`> ${cell(assessment.summary)}`, "");
   }
   return parts.join("\n");
+}
+
+/**
+ * The run's operational notes — a bounded check that did not compare
+ * everything, a pass skipped or failed, a reopened finding. Empty when the run
+ * had nothing to report about itself.
+ */
+function notesSection(notes: string[]): string[] {
+  if (notes.length === 0) return [];
+  return [
+    "**Notes:**",
+    "",
+    ...notes.map((note) => `- ${cell(note)}`),
+    "",
+  ];
 }
 
 /**
@@ -269,10 +304,13 @@ function dismissedSection(dismissed: DismissedFinding[]): string[] {
     "| --- | --- | --- | --- |",
   ];
   for (const d of dismissed) {
+    const title = d.rewordedFrom === undefined
+      ? cell(d.finding.title)
+      : `${cell(d.finding.title)} _(reworded from "${cell(d.rewordedFrom)}")_`;
     parts.push(
-      `| ${cell(d.finding.title)} | ${cell(d.author ?? "—")} | ${
-        cell(d.reason ?? "—")
-      } | ${d.finding.id ?? "—"} |`,
+      `| ${title} | ${cell(d.author ?? "—")} | ${cell(d.reason ?? "—")} | ${
+        d.finding.id ?? "—"
+      } |`,
     );
   }
   parts.push("");
