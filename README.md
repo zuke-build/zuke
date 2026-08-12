@@ -10,6 +10,7 @@
   <a href="https://github.com/zuke-build/zuke/actions/workflows/release.yml"><img alt="Release" src="https://github.com/zuke-build/zuke/actions/workflows/release.yml/badge.svg" /></a>
   <a href="https://codecov.io/gh/zuke-build/zuke"><img alt="Coverage" src="https://codecov.io/gh/zuke-build/zuke/branch/master/graph/badge.svg" /></a>
   <a href="https://scorecard.dev/viewer/?uri=github.com/zuke-build/zuke"><img alt="OpenSSF Scorecard" src="https://api.scorecard.dev/projects/github.com/zuke-build/zuke/badge" /></a>
+  <a href="https://www.bestpractices.dev/projects/14036"><img alt="OpenSSF Best Practices" src="https://www.bestpractices.dev/projects/14036/badge" /></a>
   <a href="https://github.com/marketplace/actions/zuke-build"><img alt="GitHub Marketplace" src="https://img.shields.io/github/v/release/zuke-build/zuke?filter=v%2A.%2A.%2A&amp;label=Marketplace&amp;logo=github&amp;color=2ea44f" /></a>
   <a href="https://jsr.io/@zuke/core"><img alt="JSR" src="https://jsr.io/badges/@zuke/core" /></a>
   <a href="https://jsr.io/@zuke/core"><img alt="JSR score" src="https://jsr.io/badges/@zuke/core/score" /></a>
