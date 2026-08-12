@@ -660,12 +660,33 @@ Deno.test("a failed comment listing disables the discussion, not the review", as
 
 // ─── Host parity: the discussion runs on GitLab, Azure and Bitbucket ─────────
 
-/** Run `fn` with `vars` in the environment, restoring it afterwards. */
+/**
+ * Every marker `detectCiHost` keys on, in its precedence order. A host test
+ * must clear the ones it isn't faking: this suite itself runs on GitHub
+ * Actions, where an ambient `GITHUB_ACTIONS=true` out-ranks the host under test
+ * and would route the reviewer at the wrong API.
+ */
+const CI_MARKERS = [
+  "GITHUB_ACTIONS",
+  "GITLAB_CI",
+  "TF_BUILD",
+  "BITBUCKET_BUILD_NUMBER",
+];
+
+/**
+ * Run `fn` with `vars` in the environment — and with every CI-host marker
+ * `vars` does not set removed — restoring it all afterwards.
+ */
 async function inEnv(
   vars: Record<string, string>,
   fn: () => Promise<void>,
 ): Promise<void> {
   const prior = new Map<string, string | undefined>();
+  for (const marker of CI_MARKERS) {
+    if (marker in vars) continue;
+    prior.set(marker, Deno.env.get(marker));
+    Deno.env.delete(marker);
+  }
   for (const [key, value] of Object.entries(vars)) {
     prior.set(key, Deno.env.get(key));
     Deno.env.set(key, value);
