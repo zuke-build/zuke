@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.0.0](https://github.com/zuke-build/zuke/compare/ai-v1.8.1...ai-v2.0.0) (2026-08-12)
+
+
+### ⚠ BREAKING CHANGES
+
+* **ai:** discussion-driven review with adversarial verify and deeper context ([#334](https://github.com/zuke-build/zuke/issues/334))
+
+### Features
+
+* **ai:** discussion-driven review with adversarial verify and deeper context ([#334](https://github.com/zuke-build/zuke/issues/334)) ([3002b69](https://github.com/zuke-build/zuke/commit/3002b69831f8df2cdf8805cf7f8e6dcfadbda3f8))
+
 ## [1.8.1](https://github.com/zuke-build/zuke/compare/ai-v1.8.0...ai-v1.8.1) (2026-08-08)
 
 
