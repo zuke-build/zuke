@@ -3,6 +3,7 @@ import {
   adoptCanonicalIds,
   dedupCapNote,
   dedupNotes,
+  eligible,
   MAX_DEDUP_PAIRS,
   planDedup,
   sameAs,
@@ -250,4 +251,51 @@ Deno.test("dedupNotes bounds the text it carries", () => {
   assertEquals(notes[0].title.length <= 241, true);
   assertEquals((notes[0].detail ?? "").length <= 481, true);
   assertEquals(notes[0].priorTitle.length <= 241, true);
+});
+
+Deno.test("a candidate is decided by its first match, never demoted to a second", () => {
+  // Pairs are offered fixed-entry first so a candidate matching both reopens
+  // rather than inheriting a dismissal. If a candidate could fall through to
+  // its next match when the first prior is already taken, that preference
+  // would reverse — and the finding would be silenced instead of reported.
+  const fixed = prior("fx", { status: "fixed" });
+  const dismissed = prior("dx", { status: "dismissed" });
+  const plan = planDedup(
+    [candidate("c1"), candidate("c2")],
+    [fixed, dismissed],
+  );
+  // An over-matching model answers "same" to everything.
+  const resolved = sameAs(
+    plan,
+    verdicts(...plan.pairs.map((p): [string, string] => [p.label, "same"])),
+  );
+  assertEquals(resolved.matches.get("c1")?.id, "fx");
+  // c2's first match was the fixed entry, already claimed — so it keeps its own
+  // identity and is reported, rather than sliding onto the dismissal.
+  assertEquals(resolved.matches.has("c2"), false);
+  assertEquals(resolved.ambiguous.includes("c2"), true); // and it is surfaced
+});
+
+Deno.test("eligible is the one gate both resolution paths share", () => {
+  // The free path resolves by fingerprint, which encodes kind, title and file
+  // but NOT severity — so the same wording can return more severe than the
+  // decision its alias points at. Both paths must consult this.
+  assertEquals(
+    eligible(
+      candidate("c1", { severity: "critical" }),
+      prior("p1", { severity: "low" }),
+    ),
+    false,
+  );
+  assertEquals(
+    eligible(
+      candidate("c1", { severity: "low" }),
+      prior("p1", { severity: "critical" }),
+    ),
+    true,
+  );
+  assertEquals(
+    eligible(candidate("c1", { file: "other.ts" }), prior("p1")),
+    false,
+  );
 });

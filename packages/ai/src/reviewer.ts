@@ -82,6 +82,7 @@ import {
   DEDUP_VERDICTS,
   dedupCapNote,
   dedupNotes,
+  eligible,
   planDedup,
   type RewordResult,
   sameAs,
@@ -722,7 +723,12 @@ export class Reviewer implements Validation {
         const prior = finding.id !== undefined
           ? aliases.get(finding.id)
           : undefined;
-        if (prior !== undefined) known.set(finding.id ?? "", prior);
+        // Through the same gate the paid path uses: a fingerprint does not
+        // encode severity, so an alias alone cannot show that this round's
+        // finding is no worse than the decision it would inherit.
+        if (prior !== undefined && eligible(finding, prior)) {
+          known.set(finding.id ?? "", prior);
+        }
       }
       record(adoptCanonicalIds(findings, known));
     }

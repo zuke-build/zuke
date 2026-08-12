@@ -120,8 +120,14 @@ function clip(text: string, limit: number): string {
  * - **Severity ceiling.** The candidate must be no more severe than the entry
  *   whose decision it would inherit, so a dismissed `low` nit cannot launder a
  *   `critical` into silence.
+ *
+ * Both resolution paths run through this, the free one included: a fingerprint
+ * pins the kind, title and file but **not the severity**, so the same wording
+ * can return more severe than the decision an alias points at. Checking only
+ * where a model is consulted would leave the cheap path — the steady state —
+ * as the weaker one.
  */
-function eligible(
+export function eligible(
   candidate: AssessmentFinding,
   prior: StoredFinding,
 ): boolean {
@@ -207,14 +213,21 @@ export function sameAs(
   const matches = new Map<string, StoredFinding>();
   const ambiguous: string[] = [];
   const claimed = new Set<string>();
+  const decided = new Set<string>();
   for (const pair of plan.pairs) {
     if (verdicts.get(pair.label)?.verdict !== "same") continue;
     const id = pair.candidate.id ?? "";
     if (id === "") continue;
-    if (matches.has(id)) {
+    // The FIRST match decides a candidate, whether or not it can be honoured.
+    // Letting a candidate fall through to its next match would quietly demote
+    // it: pairs are offered fixed-entry first precisely so a candidate matching
+    // both reopens rather than inheriting a dismissal, and a second choice
+    // would reverse that whenever the first prior was already taken.
+    if (decided.has(id)) {
       if (!ambiguous.includes(id)) ambiguous.push(id);
       continue;
     }
+    decided.add(id);
     if (claimed.has(pair.prior.id)) continue;
     matches.set(id, pair.prior);
     claimed.add(pair.prior.id);

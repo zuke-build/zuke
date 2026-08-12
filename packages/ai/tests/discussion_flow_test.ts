@@ -1402,3 +1402,49 @@ Deno.test("a first round with no prior state pays for no dedup call", async () =
     1,
   );
 });
+
+Deno.test("an aliased identity cannot silence a more severe finding", async () => {
+  // A fingerprint pins the kind, title and file — but NOT the severity. So the
+  // same wording can come back worse than the decision its alias points at.
+  // The free alias path must apply the same ceiling the paid path does, or the
+  // steady-state path would be the weaker one.
+  const nit = {
+    findings: [{
+      id: ID,
+      title: FINDING.title,
+      severity: "low" as const,
+      status: "dismissed" as const,
+      file: "src/app.ts",
+      rationale: "just a nit",
+      author: "maintainer",
+      aliases: [REWORDED_ID],
+    }],
+  };
+  const critical = { ...REWORDED, severity: "critical" };
+  const { fetch, calls } = discussionFetch(priorComment(nit), [
+    claude({ score: 10, severity: "critical", findings: [critical] }),
+  ]);
+  await captured(() =>
+    inPr(async () => {
+      // The critical finding is reported and gates, despite the alias.
+      await assertRejects(
+        () =>
+          securityReviewer((r) =>
+            r.provider("claude").apiKey("k")
+              .comment().discussion()
+              .diff((d) => d.text(DIFF))
+              .fetch(fetch)
+          ).validate({ target: "t" }),
+        AiReviewError,
+      );
+    })
+  );
+  // It kept its own identity rather than inheriting the low dismissal, and no
+  // dedup call was made either — the paid path refuses the pair as well.
+  const state = postedState(calls);
+  assertEquals(state?.findings.some((f) => f.id === REWORDED_ID), true);
+  assertEquals(
+    calls.filter((c) => !c.url.includes("api.github.com")).length,
+    1,
+  );
+});
