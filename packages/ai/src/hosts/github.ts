@@ -10,6 +10,7 @@ import { dig } from "../json.ts";
 import {
   commentBody,
   commentMarker,
+  type CommentMode,
   ensureOk,
   type EnvReader,
   type HostComment,
@@ -174,20 +175,25 @@ async function findOwnComment(
 }
 
 /**
- * Upsert the per-reviewer comment on the pull request: patch the existing one
- * if present (matched by the hidden `name` marker **and** verified as the
- * reviewer's own — see {@link findOwnComment}), otherwise create it.
+ * Post the per-reviewer comment on the pull request. In `"update"` mode
+ * (default), patch the existing comment if present — matched by the hidden
+ * `name` marker **and** verified as the reviewer's own, see
+ * {@link findOwnComment} — otherwise create it. In `"append"` mode, always
+ * create a new comment, leaving earlier assessments on the thread as history.
  */
 export async function upsertPrComment(
   context: GithubContext,
   name: string,
   markdown: string,
   doFetch: typeof fetch = fetch,
+  mode: CommentMode = "update",
 ): Promise<void> {
   const marker = commentMarker(name);
   const body = commentBody(name, markdown);
   const repo = `${API}/repos/${context.owner}/${context.repo}`;
-  const existing = await findOwnComment(context, marker, doFetch);
+  const existing = mode === "append"
+    ? undefined
+    : await findOwnComment(context, marker, doFetch);
   const url = existing === undefined
     ? `${repo}/issues/${context.pull}/comments`
     : `${repo}/issues/comments/${existing}`;
@@ -206,8 +212,8 @@ export const githubHost: ReviewHost = {
   prepare(token, env) {
     const context = resolveGithubContext(token, env);
     if (context === undefined) return undefined;
-    return (name, markdown, doFetch) =>
-      upsertPrComment(context, name, markdown, doFetch);
+    return (name, markdown, doFetch, mode) =>
+      upsertPrComment(context, name, markdown, doFetch, mode);
   },
   listComments(token, env) {
     const context = resolveGithubContext(token, env);

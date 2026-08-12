@@ -432,13 +432,16 @@ plugins/zuke/             # Claude Code plugin wrapping the skills
 - **Quote the finding's id whenever you answer or fix one.** Each `@zuke/ai`
   finding carries a short id (the `Dismiss a false positive` block lists them,
   e.g. `` `m5aqoc5dxg5g` ``). Name it in the reply comment, and in the commit
-  message of any fix it prompted. Without the id a reply is unattributable: the
-  reviewer **upserts a single comment**, so each run overwrites the previous
-  body and the earlier findings — and their ids — are gone from GitHub. Only
-  what you wrote down survives, which is also the only way to tell a genuinely
-  new finding from the same concern reworded on the next run. The ids in the
-  `suppressions(...)` list in `zuke.ts` are the same identifiers, used there to
-  dismiss; citing them in replies is the read-only half of the same practice.
+  message of any fix it prompted. The id is how the reviewer's discussion
+  feature anchors your reply: a maintainer comment quoting a finding's id is
+  weighed as a rebuttal on the next run, and an accepted refutation stays
+  dismissed instead of resurfacing. It is also what makes a reply attributable
+  — the reviewers post in **append mode**, so every run's assessment stays on
+  the thread as history, and the id ties a reply to the exact finding (and
+  round) it answers, telling a genuinely new finding apart from the same
+  concern reworded. The ids in the `suppressions(...)` list in `zuke.ts` are
+  the same identifiers, used there as the hard override for cross-branch false
+  positives.
 - **No secrets or machine-specific paths** in the repo or commits. Don't commit
   coverage artifacts (`cov_profile/`, `cov.lcov`) — they're git-ignored.
 - **Deterministic output.** Topological order is declaration-stable; keep it

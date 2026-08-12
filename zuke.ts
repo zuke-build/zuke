@@ -741,7 +741,10 @@ class ZukeBuild extends Build {
       .provider("openai")
       .apiKey(this.openaiKey)
       .skipIfKeyMissing()
-      .comment() // upsert the assessment onto the PR (uses GITHUB_TOKEN)
+      // A fresh PR comment per run (uses GITHUB_TOKEN): earlier assessments —
+      // and their finding ids — stay on the thread as history instead of being
+      // overwritten in place.
+      .comment("append")
       .diff((d) => d.base(Deno.env.get("ZUKE_REVIEW_BASE") ?? "origin/master"))
       .maxDiffTokens(20000)
       // Deeper review: judge against this file's documented conventions (read
@@ -843,7 +846,9 @@ class ZukeBuild extends Build {
       .provider("openai")
       .apiKey(this.openaiKey)
       .skipIfKeyMissing()
-      .comment() // a separate PR comment, keyed by the reviewer name
+      // Separate comments from the security review (keyed by reviewer name),
+      // appended per run for the same history-keeping reasons.
+      .comment("append")
       // The built-in rubric already covers clarity, cohesion, tests, and docs;
       // `.criteria(...)` adds just the project-specific conventions on top.
       .criteria(

@@ -714,6 +714,8 @@ Depth and discussion knobs (all optional, per reviewer):
 - `.verify()` — a second, adversarial pass re-checks every candidate finding and
   refutes what it cannot concretely trace; refuted candidates are listed in the
   report but never gate.
+- `.comment("append")` — post a fresh PR comment per run (history stays on the
+  thread) instead of the default single upserted comment per reviewer.
 - `.discussion()` — the reviewer engages with the PR thread instead of looping:
   a maintainer contests a finding by replying with its id quoted, an
   adjudication pass weighs the rebuttal on merit, and an accepted dismissal is

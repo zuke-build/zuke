@@ -254,12 +254,19 @@ on a failure). `.quiet()` suppresses both the console output and the summary.
 ## Pull-request comment (multi-host)
 
 `.comment()` additionally posts the assessment onto the pull/merge request,
-under a **"🤖 Zuke AI review"** header linking back to the project. Rather than
-adding a new comment every run, it **upserts a single comment per reviewer**:
-the body carries a hidden marker (`<!-- zuke-ai-review:<name> -->`), so a re-run
-finds its previous comment and edits it in place. Different reviewers (e.g. a
-security and a secrets review) keep separate comments because the marker
-includes the reviewer name.
+under a **"🤖 Zuke AI review"** header linking back to the project. By default
+it **upserts a single comment per reviewer**: the body carries a hidden marker
+(`<!-- zuke-ai-review:<name> -->`), so a re-run finds its previous comment and
+edits it in place. Different reviewers (e.g. a security and a secrets review)
+keep separate comments because the marker includes the reviewer name.
+
+Pass `.comment("append")` to post a **fresh comment every run** instead:
+earlier assessments — and their finding ids — stay on the thread as history
+rather than being overwritten, at the cost of a longer thread on a
+much-pushed PR. The [discussion feature](#discussing-findings-instead-of-repeating-them)
+works with both modes — its state block rides on every comment and the newest
+one is read back — and Zuke's own reviewers use append mode so their past
+findings remain auditable.
 
 Which API gets called is decided at runtime by [`detectCiHost()`](authoring.md):
 

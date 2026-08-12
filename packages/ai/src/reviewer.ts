@@ -100,6 +100,7 @@ export class Reviewer implements Validation {
   #onError: "fail" | "warn" = "fail";
   #skipIfKeyMissing = false;
   #comment = false;
+  #commentMode: "update" | "append" = "update";
   #commentToken?: AnyParameter | string;
   #retry?: RetryOptions;
   #quiet = false;
@@ -245,13 +246,20 @@ export class Reviewer implements Validation {
    * Also post the review to the pull/merge request as a comment. Works on
    * every supported CI host — GitHub Actions, GitLab CI, Azure Pipelines,
    * Bitbucket Pipelines — dispatched at runtime by {@link detectCiHost}. A
-   * single comment per reviewer is kept up to date across re-runs. A no-op
-   * outside a PR context (e.g. local runs). On each host the workflow must
-   * grant the right scope: GitHub `pull-requests: write`, GitLab a token with
-   * the `api` scope, Azure `System.AccessToken`, Bitbucket an app password.
+   * no-op outside a PR context (e.g. local runs). On each host the workflow
+   * must grant the right scope: GitHub `pull-requests: write`, GitLab a token
+   * with the `api` scope, Azure `System.AccessToken`, Bitbucket an app
+   * password.
+   *
+   * `mode` chooses how re-runs post: `"update"` (default) keeps a single
+   * comment per reviewer, edited in place; `"append"` posts a fresh comment
+   * every run, so earlier assessments — and their finding ids — stay on the
+   * thread as history. The discussion feature works with both: its state block
+   * rides on every comment, and the newest one is read back.
    */
-  comment(): this {
+  comment(mode: "update" | "append" = "update"): this {
     this.#comment = true;
+    this.#commentMode = mode;
     return this;
   }
 
@@ -553,7 +561,7 @@ export class Reviewer implements Validation {
       ? markdown
       : `${markdown}\n${commentExtra}`;
     try {
-      await upsert(this.name, body, this.#fetch ?? fetch);
+      await upsert(this.name, body, this.#fetch ?? fetch, this.#commentMode);
     } catch (error) {
       // Best-effort: a failed comment must never break the build.
       const message = error instanceof Error ? error.message : String(error);
@@ -593,7 +601,17 @@ export class Reviewer implements Validation {
     try {
       const comments = await list(this.#fetch ?? fetch);
       const marker = commentMarker(this.name);
-      const own = comments.find((c) => c.bot && c.body.includes(marker));
+      // Scan newest-first: in append mode many of the reviewer's comments
+      // carry the marker, and the newest one holds the current state (in
+      // update mode there is only one, so newest == the one).
+      let own: HostComment | undefined;
+      for (let i = comments.length - 1; i >= 0; i--) {
+        const c = comments[i];
+        if (c.bot && c.body.includes(marker)) {
+          own = c;
+          break;
+        }
+      }
       const priorState = own !== undefined ? decodeState(own.body) : undefined;
       return {
         comments,

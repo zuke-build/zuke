@@ -193,6 +193,27 @@ Deno.test("upsertPrComment patches the existing comment in place", async () => {
   );
 });
 
+Deno.test("upsertPrComment in append mode always POSTs a new comment", async () => {
+  // A prior bot comment with the marker exists — update mode would PATCH it;
+  // append mode must leave it as history and create a new one, without even
+  // listing the existing comments.
+  const existing = [
+    {
+      id: 7,
+      body: "<!-- zuke-ai-review:security review -->\nold",
+      user: { login: "github-actions[bot]", type: "Bot" },
+    },
+  ];
+  const { fetch, calls } = fakeGithub(existing);
+  await upsertPrComment(CONTEXT, "security review", "## new", fetch, "append");
+  assertEquals(calls.length, 1); // no listing, straight to create
+  assertEquals(calls[0].method, "POST");
+  assertEquals(
+    calls[0].url,
+    "https://api.github.com/repos/zuke-build/zuke/issues/100/comments",
+  );
+});
+
 Deno.test("upsertPrComment never patches a human comment that forges the marker", async () => {
   // An attacker pastes the hidden marker into their own comment. The workflow
   // token could PATCH it — the authorship check must refuse and POST instead.

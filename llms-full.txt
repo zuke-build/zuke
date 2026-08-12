@@ -11293,14 +11293,20 @@ class Reviewer implements Validation
     Skip the review (instead of failing) when the API key is missing — handy
     when the key is a CI-only secret. The skip is announced on the console and
     in the job summary so the gap is visible.
-  comment(): this
+  comment(mode: "update" | "append"): this
     Also post the review to the pull/merge request as a comment. Works on
     every supported CI host — GitHub Actions, GitLab CI, Azure Pipelines,
     Bitbucket Pipelines — dispatched at runtime by {@link detectCiHost}. A
-    single comment per reviewer is kept up to date across re-runs. A no-op
-    outside a PR context (e.g. local runs). On each host the workflow must
-    grant the right scope: GitHub `pull-requests: write`, GitLab a token with
-    the `api` scope, Azure `System.AccessToken`, Bitbucket an app password.
+    no-op outside a PR context (e.g. local runs). On each host the workflow
+    must grant the right scope: GitHub `pull-requests: write`, GitLab a token
+    with the `api` scope, Azure `System.AccessToken`, Bitbucket an app
+    password.
+
+    `mode` chooses how re-runs post: `"update"` (default) keeps a single
+    comment per reviewer, edited in place; `"append"` posts a fresh comment
+    every run, so earlier assessments — and their finding ids — stay on the
+    thread as history. The discussion feature works with both: its state block
+    rides on every comment, and the newest one is read back.
   commentToken(token: AnyParameter | string): this
     The token used to post the PR/MR comment. Defaults to the active host's
     conventional env var: `GITHUB_TOKEN` (GitHub), `GITLAB_TOKEN` (GitLab),

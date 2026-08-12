@@ -21,13 +21,23 @@ export function readEnv(name: string): string | undefined {
 }
 
 /**
- * Upsert one PR/MR comment keyed by the hidden marker derived from `name`.
- * Closes over its host-specific context — the reviewer never sees that shape.
+ * How a reviewer's PR/MR comment is posted across runs: `"update"` keeps one
+ * comment per reviewer, edited in place; `"append"` posts a fresh comment
+ * every run, so earlier assessments — and their finding ids — remain on the
+ * thread as history.
+ */
+export type CommentMode = "update" | "append";
+
+/**
+ * Post one PR/MR comment keyed by the hidden marker derived from `name` —
+ * edited in place or appended per `mode` (default `"update"`). Closes over its
+ * host-specific context — the reviewer never sees that shape.
  */
 export type UpsertComment = (
   name: string,
   markdown: string,
   doFetch: typeof fetch,
+  mode?: CommentMode,
 ) => Promise<void>;
 
 /**

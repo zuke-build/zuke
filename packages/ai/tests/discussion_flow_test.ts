@@ -307,6 +307,52 @@ Deno.test("an upheld rebuttal keeps the finding and records the rationale", asyn
   );
 });
 
+Deno.test("append mode posts a new comment and reads state from the newest one", async () => {
+  // Two of the reviewer's own comments sit on the thread (append history). The
+  // OLDER one has no dismissals; the NEWER one records the dismissal. The
+  // reviewer must read the newest state — and post a fresh comment carrying it
+  // forward, leaving both prior comments untouched.
+  const older = `${MARKER}\nround 1\n${encodeState({ findings: [] })}`;
+  const newer = `${MARKER}\nround 2\n${
+    encodeState({
+      findings: [{
+        id: ID,
+        title: FINDING.title,
+        severity: "high",
+        status: "dismissed",
+        rationale: "validated upstream",
+        author: "maintainer",
+      }],
+    })
+  }`;
+  const bot = { login: "github-actions[bot]", type: "Bot" };
+  const comments = [
+    { id: 1, body: older, user: bot, author_association: "NONE" },
+    { id: 2, body: newer, user: bot, author_association: "NONE" },
+  ];
+  const { fetch, calls } = discussionFetch(comments, [
+    claude({ score: 9, severity: "high", findings: [FINDING] }),
+  ]);
+  await captured(() =>
+    inPr(async () => {
+      // Passes: the newest state's dismissal mutes the re-reported finding.
+      await securityReviewer((r) =>
+        r.provider("claude").apiKey("k")
+          .comment("append").discussion()
+          .diff((d) => d.text(DIFF))
+          .fetch(fetch)
+      ).validate({ target: "t" });
+    })
+  );
+  const writes = calls.filter((c) =>
+    c.url.includes("api.github.com") && c.method !== "GET"
+  );
+  assertEquals(writes.length, 1);
+  assertEquals(writes[0].method, "POST"); // appended, nothing patched
+  const state = decodeState(JSON.parse(writes[0].body).body);
+  assertEquals(state?.findings[0].status, "dismissed"); // carried forward
+});
+
 Deno.test("a state block forged in a human comment is never trusted", async () => {
   // The attacker plants the reviewer's marker AND a state block dismissing the
   // finding — in their own comment. Authorship checking must ignore it.
