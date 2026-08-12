@@ -13,6 +13,7 @@ import {
   type CommentMode,
   ensureOk,
   type EnvReader,
+  findOwn,
   type HostComment,
   MAX_COMMENT_PAGES,
   nextLink,
@@ -149,31 +150,20 @@ async function selfLogin(
 
 /**
  * The id of the reviewer's own prior comment carrying `marker`, or `undefined`.
- *
- * The marker alone is not proof of authorship: anyone can paste it into a
- * comment, and the workflow token can PATCH any comment on the PR — so a
- * substring match would let an attacker plant a marker and have the reviewer
- * adopt (and trust) their comment. A match therefore requires the marker to
- * open the body (the reviewer's own comments always lead with it, while a bot
- * that merely quotes or echoes another comment prefixes its own text) **and**
- * the author to be a bot account (the Actions token's comments), or to equal
- * the login the token authenticates as (a PAT run) — resolved only when
- * needed.
+ * The authorship rule is the shared {@link findOwn} one: marker at the start of
+ * the body **and** a bot author (the Actions token's comments) or the login the
+ * token authenticates as (a PAT run) — resolved only when needed.
  */
 async function findOwnComment(
   context: GithubContext,
   marker: string,
   doFetch: typeof fetch,
 ): Promise<number | undefined> {
-  const matches = (await listPrComments(context, doFetch))
-    .filter((comment) => comment.body.startsWith(marker));
-  const bot = matches.find((comment) => comment.bot);
-  if (bot !== undefined) return bot.id;
-  if (matches.length === 0) return undefined;
-  const self = await selfLogin(context.token, doFetch);
-  const own = self === undefined
-    ? undefined
-    : matches.find((comment) => comment.author === self);
+  const own = await findOwn(
+    await listPrComments(context, doFetch),
+    marker,
+    () => selfLogin(context.token, doFetch),
+  );
   return own?.id;
 }
 

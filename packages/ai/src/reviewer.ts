@@ -935,7 +935,11 @@ export class Reviewer implements Validation {
                 ? { detail: finding.detail }
                 : {}),
               comments: comments.map((c) =>
-                rebuttalComment(c.author, c.association, c.body)
+                rebuttalComment(
+                  c.displayName ?? c.author,
+                  c.association,
+                  c.body,
+                )
               ),
             });
           }
@@ -969,9 +973,10 @@ export class Reviewer implements Validation {
               id !== undefined && verdict?.verdict === "dismissed" &&
               rebuttals.has(id)
             ) {
+              const rebutter = rebuttals.get(id)?.[0];
               dismissed.push({
                 finding,
-                author: rebuttals.get(id)?.[0].author,
+                author: rebutter?.displayName ?? rebutter?.author,
                 ...(verdict.reason !== undefined
                   ? { reason: verdict.reason }
                   : {}),

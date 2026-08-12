@@ -7,6 +7,10 @@
  * `persistCredentials: true` on the checkout, or map `System.AccessToken` into
  * the env via `env: SYSTEM_ACCESSTOKEN: $(System.AccessToken)`.
  *
+ * The discussion feature also lists those threads. Azure DevOps reports no
+ * repository-relationship field on a comment, so trusted authors must be named
+ * explicitly with `.discussion((d) => d.trustAuthors(...))` on this host.
+ *
  * @module
  */
 
@@ -17,6 +21,8 @@ import {
   type CommentMode,
   ensureOk,
   type EnvReader,
+  findOwn,
+  type HostComment,
   jsonHeaders,
   type ReviewHost,
 } from "./types.ts";
@@ -65,12 +71,64 @@ function threadsUrl(context: AzureContext): string {
     `/pullRequests/${context.pullRequestId}/threads`;
 }
 
-/** A matching thread's id + the marker-bearing comment's id, or `undefined`. */
-async function findThread(
+/**
+ * The id of the identity the `token` authenticates as (`GET
+ * _apis/connectionData`), or `undefined` when the call fails. Under a pipeline
+ * this is the Build Service account, which Azure DevOps does not otherwise flag
+ * as a service identity on a comment — so this is how the reviewer recognises
+ * the threads it wrote itself.
+ */
+async function selfIdentity(
   context: AzureContext,
-  marker: string,
   doFetch: typeof fetch,
-): Promise<{ threadId: number; commentId: number } | undefined> {
+): Promise<string | undefined> {
+  try {
+    const response = await doFetch(
+      `${context.collection}_apis/connectionData?api-version=7.1`,
+      { headers: jsonHeaders({ "authorization": `Bearer ${context.token}` }) },
+    );
+    if (!response.ok) {
+      await response.body?.cancel();
+      return undefined;
+    }
+    const id = dig(await response.json(), "authenticatedUser", "id");
+    return typeof id === "string" ? id : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The `commentType` values that mark an Azure-generated comment: the enum's
+ * name as the REST API serialises it, and its ordinal (`CommentType.system`).
+ */
+const SYSTEM_COMMENT_TYPES: ReadonlySet<unknown> = new Set(["system", 3]);
+
+/** One PR comment plus the id of the thread that holds it. */
+interface ThreadComment {
+  /** The id of the enclosing thread — needed to address the comment for a PATCH. */
+  threadId: number;
+  /** The comment in the host-neutral shape. */
+  comment: HostComment;
+}
+
+/**
+ * Every comment on every thread of the pull request, in thread order. `self`
+ * (the identity id the token authenticates as, when known) is folded into
+ * {@link HostComment.bot} alongside Azure's own `"system"` comment type.
+ *
+ * `association` is always empty: Azure DevOps reports no repository-relationship
+ * field on a comment, and resolving team membership needs a separate Graph API
+ * (a different host, different scopes) — so on Azure the discussion's only trust
+ * path is `.discussion((d) => d.trustAuthors(...))`, matched against the
+ * author's `uniqueName` (the sign-in address). This is documented in
+ * `docs/ai-review.md`.
+ */
+async function fetchThreadComments(
+  context: AzureContext,
+  doFetch: typeof fetch,
+  self?: string,
+): Promise<ThreadComment[]> {
   // No pagination loop (unlike the GitHub/GitLab/Bitbucket hosts): the Azure
   // DevOps PR *threads* list endpoint returns every thread for the PR in one
   // response — it exposes no `$top`/`$skip` and no continuation-token header — so
@@ -82,7 +140,8 @@ async function findThread(
   await ensureOk(response, "Azure DevOps");
   const data: unknown = await response.json();
   const values = dig(data, "value");
-  if (!Array.isArray(values)) return undefined;
+  const found: ThreadComment[] = [];
+  if (!Array.isArray(values)) return found;
   for (const thread of values) {
     const threadId = dig(thread, "id");
     const comments = dig(thread, "comments");
@@ -90,15 +149,75 @@ async function findThread(
     for (const comment of comments) {
       const content = dig(comment, "content");
       const commentId = dig(comment, "id");
-      if (
-        typeof content === "string" && content.includes(marker) &&
-        typeof commentId === "number"
-      ) {
-        return { threadId, commentId };
+      if (typeof content !== "string" || typeof commentId !== "number") {
+        continue;
       }
+      const unique = dig(comment, "author", "uniqueName");
+      const display = dig(comment, "author", "displayName");
+      const authorId = dig(comment, "author", "id");
+      const label = typeof display === "string" ? display : undefined;
+      found.push({
+        threadId,
+        comment: {
+          id: commentId,
+          body: content,
+          // `uniqueName` (the sign-in address) is the identity an operator can
+          // reasonably write in `.trustAuthors(...)`; `displayName` is
+          // self-assigned and never used as one. When Azure omits the
+          // uniqueName the identity falls back to the descriptor `id` — still
+          // stable — rather than to the display name.
+          author: typeof unique === "string"
+            ? unique
+            : typeof authorId === "string"
+            ? authorId
+            : "",
+          ...(label !== undefined ? { displayName: label } : {}),
+          association: "",
+          // `commentType` comes back as the enum's name on the REST API and as
+          // its ordinal (system = 3) on some older/serialised responses.
+          bot: SYSTEM_COMMENT_TYPES.has(dig(comment, "commentType")) ||
+            (self !== undefined && self !== "" && authorId === self),
+        },
+      });
     }
   }
-  return undefined;
+  return found;
+}
+
+/**
+ * List every comment on the pull request's threads, with the trust metadata the
+ * discussion feature consumes — resolved from the Azure DevOps API, never from
+ * the comment text. See {@link fetchThreadComments} for why `association` is
+ * always empty on this host.
+ */
+export async function listPullRequestComments(
+  context: AzureContext,
+  doFetch: typeof fetch = fetch,
+): Promise<HostComment[]> {
+  const self = await selfIdentity(context, doFetch);
+  const found = await fetchThreadComments(context, doFetch, self);
+  return found.map((entry) => entry.comment);
+}
+
+/**
+ * The reviewer's own thread: the thread id plus the id of its marker-bearing
+ * comment, or `undefined`. Authorship follows the shared {@link findOwn} rule,
+ * so a comment that merely quotes the marker — or a human's forgery — is never
+ * adopted and never PATCHed over.
+ */
+async function findThread(
+  context: AzureContext,
+  marker: string,
+  doFetch: typeof fetch,
+): Promise<{ threadId: number; commentId: number } | undefined> {
+  const self = await selfIdentity(context, doFetch);
+  const found = await fetchThreadComments(context, doFetch, self);
+  const own = await findOwn(found.map((entry) => entry.comment), marker);
+  if (own === undefined) return undefined;
+  const entry = found.find((candidate) => candidate.comment === own);
+  return entry === undefined
+    ? undefined
+    : { threadId: entry.threadId, commentId: own.id };
 }
 
 /**
@@ -148,5 +267,10 @@ export const azureHost: ReviewHost = {
     if (context === undefined) return undefined;
     return (name, markdown, doFetch, mode) =>
       upsertPullRequestThread(context, name, markdown, doFetch, mode);
+  },
+  listComments(token, env) {
+    const context = resolveAzureContext(token, env);
+    if (context === undefined) return undefined;
+    return (doFetch) => listPullRequestComments(context, doFetch);
   },
 };

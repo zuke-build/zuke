@@ -727,7 +727,22 @@ Depth and discussion knobs (all optional, per reviewer):
   code from the host's author metadata (`OWNER`/`MEMBER`/ `COLLABORATOR` by
   default; tune with `.discussion((d) => d.trustAuthors(...))`) — untrusted
   comments never reach the model, which blunts comment-based prompt injection.
-  Requires `.comment()`; GitHub only for now.
+  Requires `.comment()`; works on every supported host, each mapping its own
+  metadata onto those association names: GitHub uses `author_association`
+  verbatim, GitLab derives it from project membership (Owner 50 → `OWNER`,
+  Developer/Maintainer 30/40 → `MEMBER`, below that `NONE`), Bitbucket from
+  workspace permissions (`owner`/`collaborator`/`member`). **Azure DevOps
+  reports no such relationship**, so nobody is trusted there by association —
+  name the maintainers with `.trustAuthors(...)`. The mapping fails closed: if
+  the membership listing is refused, associations come back empty and only
+  `.trustAuthors(...)` admits anyone. `.trustAuthors(...)` takes each host's
+  **stable** identifier, never a display name: GitHub `login`, GitLab
+  `username`, Azure `uniqueName` (the sign-in address), Bitbucket the account
+  **uuid** with braces (`"{9c2c…}"`) — a Bitbucket nickname is a self-assigned,
+  non-unique alias and is deliberately not matched. Dismissals persist only
+  while the reviewer can recognise its own comment, which on Bitbucket needs an
+  app password (a repository/workspace access token is not an account and
+  cannot self-identify).
 
 **Self-healing** — `aiFixer` is a `Remediation`; attach with
 `.recoverWith(...)`. On a failing body it diagnoses the failure and (safe

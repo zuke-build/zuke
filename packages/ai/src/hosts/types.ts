@@ -52,8 +52,24 @@ export interface HostComment {
   id: number;
   /** The raw Markdown body of the comment (untrusted text). */
   body: string;
-  /** The login of the comment's author, as reported by the host API. */
+  /**
+   * The author's **stable** identifier, as reported by the host API — the one
+   * trust is keyed on (`.trustAuthors(...)`, and each host's membership
+   * lookup). It must be an identifier the account cannot re-point at will:
+   * GitHub's `login`, GitLab's `username`, Azure's identity `id`, Bitbucket's
+   * account `uuid`. A display alias (Bitbucket's `nickname`, Azure's
+   * `displayName`) is self-assigned and not unique, so it belongs in
+   * {@link displayName}, never here — keying trust on one would let an outsider
+   * inherit a maintainer's standing by renaming themselves.
+   */
   author: string;
+  /**
+   * A human-readable label for the author, when the host's stable identifier is
+   * not itself readable. Used only for attribution in the report and the
+   * adjudication prompt — never for a trust decision. Absent when `author` is
+   * already the readable name.
+   */
+  displayName?: string;
   /**
    * The author's relationship to the repository as reported by the host API
    * (GitHub's `author_association`: `OWNER`, `MEMBER`, `COLLABORATOR`,
@@ -125,6 +141,35 @@ export function nextLink(header: string | null): string | undefined {
 /** Render the hidden marker (an HTML comment) used to identify a reviewer's prior comment. */
 export function commentMarker(name: string): string {
   return `<!-- zuke-ai-review:${name} -->`;
+}
+
+/**
+ * The reviewer's own prior comment carrying `marker`, or `undefined` — the one
+ * authorship rule every host shares.
+ *
+ * The marker alone is not proof of authorship: anyone can paste it into a
+ * comment, and the reviewer's token can usually edit any comment on the PR — so
+ * a substring match would let an attacker plant a marker and have the reviewer
+ * adopt (and trust, and overwrite) their comment. A match therefore requires
+ * the marker to **open** the body — the reviewer's own comments always lead
+ * with it, while a bot that merely quotes or echoes another comment prefixes
+ * its own text — **and** the author to be a bot/service account the host
+ * attributes as such, or the identity the token itself authenticates as
+ * (`resolveSelf`, consulted only when no bot matched, so hosts that already
+ * fold self-identity into {@link HostComment.bot} can omit it).
+ */
+export async function findOwn(
+  comments: HostComment[],
+  marker: string,
+  resolveSelf?: () => Promise<string | undefined>,
+): Promise<HostComment | undefined> {
+  const matches = comments.filter((comment) => comment.body.startsWith(marker));
+  const bot = matches.find((comment) => comment.bot);
+  if (bot !== undefined) return bot;
+  if (matches.length === 0 || resolveSelf === undefined) return undefined;
+  const self = await resolveSelf();
+  if (self === undefined || self === "") return undefined;
+  return matches.find((comment) => comment.author === self);
 }
 
 /** Compose the final comment body: marker + header + assessment markdown. */

@@ -198,8 +198,9 @@ Three opt-in passes trade a little cost for findings that hold up:
 ## Discussing findings instead of repeating them
 
 `.discussion()` turns the reviewer from a broadcast into a participant. It
-requires `.comment()` (GitHub Actions only for now) and changes the finding
-lifecycle:
+requires `.comment()` — and works on
+[every supported host](#who-counts-as-a-maintainer-per-host) — and changes the
+finding lifecycle:
 
 1. Every finding's report shows its stable ID. A maintainer who believes a
    finding is wrong **replies on the PR quoting that ID** with the technical
@@ -252,6 +253,50 @@ an untrusted comment is powerless **by construction**, not by prompt politeness:
   human's comment is ignored (and never PATCHed over).
 - **Comments are budgeted** (`.maxCommentTokens(...)`, default ≈4000) so a wall
   of text cannot crowd the rubric or the diff out of the context window.
+
+### Who counts as a maintainer, per host
+
+`OWNER` / `MEMBER` / `COLLABORATOR` is GitHub's vocabulary, and the trusted set
+(`.trustAssociations(...)`) is expressed in it. Each host maps its own metadata
+onto those names in code — never from the comment text — so the same
+`.discussion()` configuration means the same thing everywhere:
+
+| Host                    | Where trust comes from                            | Mapping                                                                                       |
+| ----------------------- | ------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| **GitHub Actions**      | `author_association` on the comment               | used verbatim                                                                                   |
+| **GitLab CI**           | project membership (`access_level`)               | Owner (50) → `OWNER`; Developer/Maintainer (30/40) → `MEMBER`; Guest/Reporter → `NONE`           |
+| **Bitbucket Pipelines** | workspace permissions                             | `owner` → `OWNER`; `collaborator` → `COLLABORATOR`; `member` → `MEMBER`                          |
+| **Azure Pipelines**     | — (Azure reports no relationship on a comment)    | nobody is trusted by association; name the maintainers with `.trustAuthors(<uniqueName>)`        |
+
+`.trustAuthors(...)` names accounts, so it takes each host's **stable**
+identifier — never a display name, which its owner can change to anyone else's:
+
+| Host                    | `.trustAuthors(...)` takes                              |
+| ----------------------- | ------------------------------------------------------- |
+| **GitHub Actions**      | the `login` (`"jane-doe"`)                               |
+| **GitLab CI**           | the `username` (`"jane-doe"`)                            |
+| **Azure Pipelines**     | the `uniqueName` — the sign-in address                  |
+| **Bitbucket Pipelines** | the account **uuid**, braces included (`"{9c2c…}"`)     |
+
+Bitbucket is the odd one out because its `nickname` is a self-assigned,
+non-unique alias: an outsider could rename themselves to a maintainer's nickname
+and inherit their standing. The uuid is what the reviewer matches on, and the
+nickname is kept only to attribute the dismissal in the report.
+
+Two more things follow from doing this in code rather than in the prompt:
+
+- **It fails closed.** If the membership listing is refused (a token without the
+  scope to read it), every author's association comes back empty and nobody is
+  trusted by association — the discussion goes quiet rather than open. Add
+  `.trustAuthors(...)` to name the people you want heard.
+- **The reviewer must be able to recognise itself**, because the state block is
+  only read back from a comment the host attributes to the reviewer. On GitHub
+  the Actions token's comments are bot-authored; on GitLab, Azure and Bitbucket
+  the token's own identity is resolved from the API (`GET /user`,
+  `_apis/connectionData`, `GET /2.0/user`) and compared to the comment's author.
+  A Bitbucket **repository or workspace access token is not an account**, so it
+  cannot self-identify — use an app password there if you want dismissals to
+  persist across runs.
 
 ## GitHub Actions summary
 
