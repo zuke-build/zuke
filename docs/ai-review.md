@@ -227,6 +227,30 @@ finding lifecycle:
 The committed `.suppress(...)` list still works as the hard override, and is
 still the right tool for a false positive you want silenced across branches.
 
+### Reworded findings
+
+A finding's ID is derived from its title, so a model that restates the same
+concern in different words produces a **new ID** — which used to slip past a
+dismissal and gate the build again, round after round, under a fresh name.
+
+When discussion state exists, the reviewer resolves identity before anything
+else reads an ID. A finding whose ID the state doesn't recognise is compared
+against the decided findings **in the same file**, and a match adopts that
+finding's identity: a dismissal is inherited (reported under "Dismissed via
+discussion", showing the earlier title it restates), and a finding recorded as
+fixed **reopens** under the ID the thread already knows. The rewording is
+recorded as an alias in the state, so every later round resolves it for free,
+with no model call.
+
+The pass can only rename. It never dismisses anything itself — the decision it
+adopts was earned in an earlier round by the two-key rule — and it is fenced in
+by rules enforced in code, not by prompt wording: same file only, never a more
+severe finding inheriting a less severe one's decision, never two findings
+collapsed onto one identity, and a bounded number of comparisons per run. Every
+failure path leaves the finding reported under its own ID: no state, no budget,
+a failed call, an unanswered or fabricated verdict — all of them fail toward
+saying more, and anything skipped or capped is stated in the report's **Notes**.
+
 ### Why comment-driven prompt injection doesn't work here
 
 Anyone can comment on a public PR, so the discussion channel is designed so that

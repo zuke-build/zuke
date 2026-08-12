@@ -34,6 +34,7 @@ import {
 } from "./gate.ts";
 import {
   buildAdjudicatePrompt,
+  buildDedupPrompt,
   buildPrompt,
   buildVerifyPrompt,
 } from "./prompt.ts";
@@ -65,14 +66,27 @@ import {
   trustedComments,
 } from "./discussion.ts";
 import {
+  aliasIndex,
   decodeState,
   dismissedOf,
   encodeState,
   fixedOf,
+  mergeAliases,
   openOf,
   type ReviewState,
   type StoredFinding,
 } from "./state.ts";
+import {
+  adoptCanonicalIds,
+  type Adoption,
+  DEDUP_VERDICTS,
+  dedupCapNote,
+  dedupNotes,
+  eligible,
+  planDedup,
+  type RewordResult,
+  sameAs,
+} from "./dedup.ts";
 import { parseVerdicts, type Verdict } from "./verdicts.ts";
 import { verdictsGeminiSchema, verdictsJsonSchema } from "./schema.ts";
 import { changedPaths } from "./diff.ts";
@@ -664,6 +678,114 @@ export class Reviewer implements Validation {
   }
 
   /**
+   * Resolve findings the model reworded back onto the identity the review state
+   * already holds, so a fresh fingerprint stops evading every id-keyed stage
+   * below. Two paths, cheapest first: an alias recorded in an earlier round is
+   * a plain lookup, and only what is left over costs one capped verdict call.
+   *
+   * The pass can only **rename** — see `dedup.ts`. Every skip and failure here
+   * leaves the finding under its own fresh id, which means it is reported and
+   * gates: the fail-safe direction is always toward saying more, never less.
+   */
+  async #resolveRewordings(
+    findings: AssessmentFinding[],
+    priorState: ReviewState | undefined,
+    call: {
+      provider: Provider;
+      key: string;
+      model: string;
+      retry: RetryOptions;
+    },
+  ): Promise<RewordResult> {
+    const result: RewordResult = {
+      rewordedFrom: new Map(),
+      newAliases: new Map(),
+      notes: [],
+    };
+    if (priorState === undefined) return result;
+    const record = (adoptions: Adoption[]): void => {
+      for (const adoption of adoptions) {
+        result.rewordedFrom.set(adoption.prior.id, adoption.prior.title);
+        result.newAliases.set(adoption.prior.id, adoption.alias);
+        if (adoption.prior.status === "fixed") {
+          result.notes.push(
+            `"${adoption.prior.title}" was recorded as fixed but is reported ` +
+              `again in different words — reopened under ${adoption.prior.id}`,
+          );
+        }
+      }
+    };
+    // Free path: a rewording an earlier round already paid to identify.
+    const aliases = aliasIndex(priorState);
+    if (aliases.size > 0) {
+      const known = new Map<string, StoredFinding>();
+      for (const finding of findings) {
+        const prior = finding.id !== undefined
+          ? aliases.get(finding.id)
+          : undefined;
+        // Through the same gate the paid path uses: a fingerprint does not
+        // encode severity, so an alias alone cannot show that this round's
+        // finding is no worse than the decision it would inherit.
+        if (prior !== undefined && eligible(finding, prior)) {
+          known.set(finding.id ?? "", prior);
+        }
+      }
+      record(adoptCanonicalIds(findings, known));
+    }
+    // Paid path: only findings whose identity is still unknown to the state,
+    // compared against the decided entries a rename could inherit from.
+    const ids = new Set(priorState.findings.map((finding) => finding.id));
+    const candidates = findings.filter((finding) =>
+      finding.id !== undefined && !ids.has(finding.id)
+    );
+    const priors = priorState.findings.filter((finding) =>
+      finding.status === "fixed" || finding.status === "dismissed"
+    );
+    // Fixed entries first, so a candidate matching both reopens (reports)
+    // rather than inheriting a dismissal (silences).
+    priors.sort((a, b) =>
+      (a.status === "fixed" ? 0 : 1) - (b.status === "fixed" ? 0 : 1)
+    );
+    if (candidates.length === 0 || priors.length === 0) return result;
+    const plan = planDedup(candidates, priors);
+    if (plan.pairs.length === 0) return result;
+    if (this.#budget?.exhausted_() ?? false) {
+      result.notes.push(
+        "reworded-finding check skipped — AI budget exhausted; a reworded " +
+          "finding is reported again under a new id",
+      );
+      return result;
+    }
+    try {
+      const verdicts = await this.#verdictCall(
+        call.provider,
+        call.key,
+        call.model,
+        buildDedupPrompt(this.#assessment, dedupNotes(plan)),
+        DEDUP_VERDICTS,
+        call.retry,
+      );
+      const { matches, ambiguous } = sameAs(plan, verdicts);
+      record(adoptCanonicalIds(findings, matches));
+      for (const id of ambiguous) {
+        result.notes.push(
+          `${id} matched more than one earlier finding — kept the first ` +
+            `comparison offered`,
+        );
+      }
+      const capped = dedupCapNote(plan);
+      if (capped !== undefined) result.notes.push(capped);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      result.notes.push(
+        `reworded-finding check failed (${message}) — findings keep their ` +
+          `own identity`,
+      );
+    }
+    return result;
+  }
+
+  /**
    * Run the review and gate the build. Throws an {@link AiReviewError} when the
    * gate trips (or on a configuration/API error with `onError: "fail"`).
    */
@@ -827,6 +949,19 @@ export class Reviewer implements Validation {
       finding.id = findingFingerprint(this.#assessment, finding);
     }
 
+    // Identity resolution: a reworded finding arrives under a fresh fingerprint
+    // and would evade every id-keyed stage below — sticky dismissal, rebuttal
+    // matching, the progress record. Rename it back onto the identity the state
+    // already holds, free from a recorded alias or by one capped call. This
+    // only renames: the decision it inherits was earned in an earlier round.
+    const reword: RewordResult = discussion === undefined
+      ? { rewordedFrom: new Map(), newAliases: new Map(), notes: [] }
+      : await this.#resolveRewordings(
+        assessment.findings,
+        discussion.priorState,
+        { provider, key, model, retry },
+      );
+
     // Sticky dismissals: a finding dismissed in an earlier discussion round is
     // dropped deterministically by id (the prompt already told the model not to
     // re-report rewordings; this catches an identical resurfacing without
@@ -839,12 +974,16 @@ export class Reviewer implements Validation {
           ? dismissedPrior.get(finding.id)
           : undefined;
         if (prior !== undefined) {
+          const earlier = finding.id !== undefined
+            ? reword.rewordedFrom.get(finding.id)
+            : undefined;
           dismissed.push({
             finding,
             ...(prior.author !== undefined ? { author: prior.author } : {}),
             ...(prior.rationale !== undefined
               ? { reason: prior.rationale }
               : {}),
+            ...(earlier !== undefined ? { rewordedFrom: earlier } : {}),
           });
         } else kept.push(finding);
       }
@@ -1042,36 +1181,68 @@ export class Reviewer implements Validation {
     // findings are written last so a re-reported fixed finding reopens.
     let commentExtra: string | undefined;
     if (discussion !== undefined) {
+      // The alias ledger: every rewording earlier rounds paid to identify, plus
+      // this round's. Merged into each entry as it is written, so rebuilding an
+      // entry (a reopen, a re-dismissal) cannot drop a rewording already paid
+      // for and make the next round buy it again.
+      const ledger = new Map<string, string[]>();
+      for (const prior of discussion.priorState?.findings ?? []) {
+        if (prior.aliases !== undefined) ledger.set(prior.id, prior.aliases);
+      }
+      for (const [id, alias] of reword.newAliases) {
+        ledger.set(id, mergeAliases(ledger.get(id), [alias], id));
+      }
+      const withAliases = (entry: StoredFinding): StoredFinding => {
+        const aliases = ledger.get(entry.id);
+        return aliases === undefined || aliases.length === 0
+          ? entry
+          : { ...entry, aliases };
+      };
       const stored = new Map<string, StoredFinding>();
-      for (const prior of dismissedPrior.values()) stored.set(prior.id, prior);
-      for (const entry of fixed) stored.set(entry.id, entry);
+      for (const prior of dismissedPrior.values()) {
+        stored.set(prior.id, withAliases(prior));
+      }
+      for (const entry of fixed) stored.set(entry.id, withAliases(entry));
       for (const d of dismissed) {
         const id = d.finding.id ?? "";
         if (id === "") continue;
-        stored.set(id, {
+        // A dismissal already on record keeps the wording, rationale and author
+        // the maintainer actually argued about. Re-stamping it with this
+        // round's rewording would churn the state block and, over rounds, bury
+        // the real reason under a succession of titles.
+        const prior = dismissedPrior.get(id);
+        stored.set(
           id,
-          title: d.finding.title,
-          severity: d.finding.severity,
-          status: "dismissed",
-          ...(d.finding.file !== undefined ? { file: d.finding.file } : {}),
-          ...(d.reason !== undefined ? { rationale: d.reason } : {}),
-          ...(d.author !== undefined ? { author: d.author } : {}),
-        });
+          withAliases(
+            prior ?? {
+              id,
+              title: d.finding.title,
+              severity: d.finding.severity,
+              status: "dismissed",
+              ...(d.finding.file !== undefined ? { file: d.finding.file } : {}),
+              ...(d.reason !== undefined ? { rationale: d.reason } : {}),
+              ...(d.author !== undefined ? { author: d.author } : {}),
+            },
+          ),
+        );
       }
       for (const finding of assessment.findings) {
         const id = finding.id ?? "";
         if (id === "") continue;
         const upheld = upheldReasons.get(id);
-        stored.set(id, {
+        stored.set(
           id,
-          title: finding.title,
-          severity: finding.severity,
-          status: upheld !== undefined ? "upheld" : "open",
-          ...(finding.file !== undefined ? { file: finding.file } : {}),
-          ...(upheld !== undefined && upheld !== ""
-            ? { rationale: upheld }
-            : {}),
-        });
+          withAliases({
+            id,
+            title: finding.title,
+            severity: finding.severity,
+            status: upheld !== undefined ? "upheld" : "open",
+            ...(finding.file !== undefined ? { file: finding.file } : {}),
+            ...(upheld !== undefined && upheld !== ""
+              ? { rationale: upheld }
+              : {}),
+          }),
+        );
       }
       commentExtra = encodeState({ findings: [...stored.values()] });
     }
@@ -1084,6 +1255,7 @@ export class Reviewer implements Validation {
       ...(refuted.length > 0 ? { refuted } : {}),
       ...(dismissed.length > 0 ? { dismissed } : {}),
       ...(fixed.length > 0 ? { fixed } : {}),
+      ...(reword.notes.length > 0 ? { notes: reword.notes } : {}),
       discussion: discussion !== undefined,
     }, commentExtra);
     const gate = gateTrips(assessment, this.#gate);

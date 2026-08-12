@@ -357,3 +357,91 @@ Deno.test("the discussion drives a real build on GitLab, not just GitHub", async
   const state = decodeState(JSON.parse(write?.body ?? "{}").body);
   assertEquals(state?.findings[0].status, "dismissed");
 });
+
+Deno.test("a reworded finding inherits its dismissal through the CLI", async () => {
+  // The maintainer dismissed this finding last round. The model now reports the
+  // same concern under a different title, so it arrives with a fresh
+  // fingerprint — without identity resolution it would gate the build again.
+  const reworded = {
+    title: "Unsanitised input reaches a dynamic evaluator",
+    severity: "high",
+    file: "src/app.ts",
+  };
+  const rewordedId = findingFingerprint("security", {
+    title: reworded.title,
+    severity: "high",
+    file: "src/app.ts",
+  });
+  const priorBody = `${MARKER}\nold report\n${
+    encodeState({
+      findings: [{
+        id: ID,
+        title: FINDING.title,
+        severity: "high",
+        status: "dismissed",
+        file: "src/app.ts",
+        rationale: "eval runs in a sandboxed worker",
+        author: "maintainer",
+      }],
+    })
+  }`;
+  const comments = [{
+    id: 11,
+    body: priorBody,
+    user: { login: "github-actions[bot]", type: "Bot" },
+    author_association: "NONE",
+  }];
+  const { fetch, calls } = fakeFetch(comments, [
+    claude({ score: 9, severity: "high", findings: [reworded] }),
+    claude({ verdicts: [{ id: "p1", verdict: "same", reason: "same eval" }] }),
+  ]);
+
+  const executed: string[] = [];
+  class Pipeline extends Build {
+    review = securityReviewer((r) =>
+      r.provider("claude").apiKey("test-key")
+        .comment().discussion()
+        .diff((d) => d.text(DIFF))
+        .fetch(fetch)
+    );
+    deploy = target()
+      .description("Deploy, gated by the AI review")
+      .validateBefore(this.review)
+      .executes(() => {
+        executed.push("deploy");
+        return Promise.resolve();
+      });
+  }
+
+  await withEnv(
+    {
+      GITHUB_ACTIONS: "true",
+      GITHUB_REPOSITORY: "zuke-build/zuke",
+      GITHUB_REF: "refs/pull/7/merge",
+      GITHUB_TOKEN: "tkn",
+      GITHUB_STEP_SUMMARY: undefined,
+    },
+    async () => {
+      const result = await runCli(Pipeline, ["deploy"]);
+      // The inherited dismissal holds: the target ran and the build passed.
+      assertEquals(result.code, 0);
+      assertEquals(executed, ["deploy"]);
+      // And it is attributed, not silent — the maintainer can see which earlier
+      // decision is doing the silencing.
+      assertEquals(
+        result.out.includes(`reworded from "${FINDING.title}"`),
+        true,
+      );
+    },
+  );
+
+  // The comment carries one identity with the rewording recorded, so the next
+  // round resolves it without paying for another call.
+  const write = calls.find((c) =>
+    c.url.includes("api.github.com") && c.method !== "GET"
+  );
+  const state = decodeState(JSON.parse(write?.body ?? "{}").body);
+  assertEquals(state?.findings.length, 1);
+  assertEquals(state?.findings[0].id, ID);
+  assertEquals(state?.findings[0].aliases, [rewordedId]);
+});
