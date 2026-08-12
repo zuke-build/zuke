@@ -21,12 +21,11 @@ exact signatures are published — read them:
   grouped table in
   [`skills/zuke-write-build/references/cheatsheet.md`](./skills/zuke-write-build/references/cheatsheet.md)
   are the only ways to answer "does a `@zuke/<tool>` wrapper exist for this
-  CLI?" — per-package `deno doc jsr:@zuke/<package>` can only describe a
-  package whose name you already know; it cannot reveal that a package
-  *exists*. Reaching for `CmdTasks.exec` (`jsr:@zuke/cmd`) or a raw
-  `$`/`Deno.Command` for a tool that has a `@zuke/<tool>` package is a **bug**,
-  not a style choice — it discards typed flags, argv purity, and tool
-  resolution.
+  CLI?" — per-package `deno doc jsr:@zuke/<package>` can only describe a package
+  whose name you already know; it cannot reveal that a package _exists_.
+  Reaching for `CmdTasks.exec` (`jsr:@zuke/cmd`) or a raw `$`/`Deno.Command` for
+  a tool that has a `@zuke/<tool>` package is a **bug**, not a style choice — it
+  discards typed flags, argv purity, and tool resolution.
 - **One file with the whole typed surface of every package:**
   [`llms-full.txt`](./llms-full.txt) at the repo root. [`llms.txt`](./llms.txt)
   is the short index.
@@ -91,10 +90,10 @@ regenerate them in the same PR.
 - **Language:** TypeScript, strict mode (Deno's default).
 - **Distribution:** [JSR](https://jsr.io/) as a workspace of 54 packages:
   `@zuke/core` (exports `.`, `./shell`, `./tooling`, `./tooling/conformance`,
-  `./render`, `./conformance`) plus the `@zuke/cli` command, a generic `@zuke/cmd` fallback,
-  and 50+ typed tool wrappers and plugins (`@zuke/deno`, `@zuke/npm`,
-  `@zuke/docker`, `@zuke/ai`, …). The npm org `@zuke-build` is reserved for
-  future npm distribution (1:1 name mapping).
+  `./render`, `./conformance`) plus the `@zuke/cli` command, a generic
+  `@zuke/cmd` fallback, and 50+ typed tool wrappers and plugins (`@zuke/deno`,
+  `@zuke/npm`, `@zuke/docker`, `@zuke/ai`, …). The npm org `@zuke-build` is
+  reserved for future npm distribution (1:1 name mapping).
 - **No runtime dependencies.** The library is dependency-free; tests use a local
   assertion helper (`packages/core/tests/_assert.ts`) rather than a third-party
   assert library so the suite runs with zero network access. This is a claim
@@ -154,12 +153,11 @@ can't see Deno's module graph.
    — never leave a `private-type-ref` to one of the package's own types. Verify
    with `deno doc --lint` run over **all of a package's entrypoints in one
    invocation** (a multi-entrypoint package like `@zuke/core` has `.`,
-   `./shell`, `./tooling`, `./tooling/conformance`, `./render`,
-   `./conformance`, so
-   `deno doc --lint packages/core/mod.ts packages/core/src/shell.ts …` — linting
-   them together lets cross-entrypoint references resolve). The bar: zero
-   `missing-jsdoc` and zero `private-type-ref` to a first-party type. The one
-   acceptable residual is a `private-type-ref` into **another published
+   `./shell`, `./tooling`, `./tooling/conformance`, `./render`, `./conformance`,
+   so `deno doc --lint packages/core/mod.ts packages/core/src/shell.ts …` —
+   linting them together lets cross-entrypoint references resolve). The bar:
+   zero `missing-jsdoc` and zero `private-type-ref` to a first-party type. The
+   one acceptable residual is a `private-type-ref` into **another published
    `@zuke/*` package** (e.g. a wrapper referencing `Configure` / `CommandOutput`
    from `@zuke/core`) — that dependency documents the type and JSR links to it,
    exactly as the existing tool wrappers do; **do not re-export a dependency's
@@ -225,9 +223,8 @@ ambient tools.
    `"path"` for a native one, so every wrapper states its mode rather than
    inheriting a default that could hide a missing `defaultResolution()` — and
    its `ToolNotFoundError` path, so a wrapper cannot silently omit those checks.
-   This layer covers a module's
-   branches and a wrapper's flags, and carries the bulk of the 95% coverage
-   gate.
+   This layer covers a module's branches and a wrapper's flags, and carries the
+   bulk of the 95% coverage gate.
 
 2. **Integration — `tests/integration/*_test.ts`.** Drive a _real_ build
    end-to-end through the CLI `main()` entry point using the harness in
@@ -239,8 +236,8 @@ ambient tools.
    CLI / wait-resume-state flow works as a whole, not just a unit seam. These
    are ordinary `*_test.ts` files, so they run in the **normal `deno test`
    lane** — every `deno task test` / `ci`, on all three OSes (Ubuntu via
-   ci.yml's `ci` job, macOS and Windows via its `test` job's matrix) — and
-   count toward coverage.
+   ci.yml's `ci` job, macOS and Windows via its `test` job's matrix) — and count
+   toward coverage.
 
 3. **E2E — `tests/e2e/*_e2e.ts` (+ `tests/e2e/fixtures/`).** For the one thing
    an in-process test cannot prove: genuine **inter-process** behaviour (e.g.
@@ -275,38 +272,38 @@ the three test layers above and the "read every reviewer comment" rule below.
 
 ## Commands
 
-| Task                          | Command                                              |
-| ----------------------------- | ---------------------------------------------------- |
-| Run tests                     | `deno task test`                                     |
-| Coverage + gate (95%)         | `deno task cov`                                      |
-| Human-readable coverage table | `deno task cov:report`                               |
-| Type-check everything         | `deno task check`                                    |
-| Format / check formatting     | `deno task fmt` / `deno task fmt:check`              |
-| Lint                          | `deno task lint`                                     |
-| Spell-check                   | `deno task spell`                                    |
-| Pre-commit gate (same as CI)  | `deno task ci` / `./zuke ci`                         |
-| Regenerate `deno.lock`        | `deno task lock`                                     |
-| Verify declared core floors   | `./zuke coreFloorCheck` (needs network)              |
+| Task                          | Command                                 |
+| ----------------------------- | --------------------------------------- |
+| Run tests                     | `deno task test`                        |
+| Coverage + gate (95%)         | `deno task cov`                         |
+| Human-readable coverage table | `deno task cov:report`                  |
+| Type-check everything         | `deno task check`                       |
+| Format / check formatting     | `deno task fmt` / `deno task fmt:check` |
+| Lint                          | `deno task lint`                        |
+| Spell-check                   | `deno task spell`                       |
+| Pre-commit gate (same as CI)  | `deno task ci` / `./zuke ci`            |
+| Regenerate `deno.lock`        | `deno task lock`                        |
+| Verify declared core floors   | `./zuke coreFloorCheck` (needs network) |
 
-`deno task ci` is `deno run -A --frozen zuke.ts ci` — the exact gate the
-`ci` job in `ci.yml` runs, so there is one gate, not a hand-maintained
-subset that can drift from it. `zuke.ts`'s `ci` target depends on: `format`
+`deno task ci` is `deno run -A --frozen zuke.ts ci` — the exact gate the `ci`
+job in `ci.yml` runs, so there is one gate, not a hand-maintained subset that
+can drift from it. `zuke.ts`'s `ci` target depends on: `format`
 (`deno fmt --check`), `lint` (`deno lint`), `spell` (cspell), `coverage`
 (type-check, then the test suite with the 95% coverage gate), `coverageUpload`
 (skips locally without a `CODECOV_TOKEN`), `apiDocsCheck`, `docLint`,
 `snippetsCheck`, `hclSyncCheck`, `pluginSyncCheck`, `pluginVersionCheck`,
-`prBodyLint`, `actionPinCheck`, `security`, and
-`lockCheck`. Read `zuke.ts`'s `ci` target for the current, authoritative list —
-this is a snapshot, not a second source of truth.
+`prBodyLint`, `actionPinCheck`, `security`, and `lockCheck`. Read `zuke.ts`'s
+`ci` target for the current, authoritative list — this is a snapshot, not a
+second source of truth.
 
 **The lock is part of the gate.** Every entrypoint that loads `zuke.ts` — both
 launchers and the root tasks — passes `--frozen`, so a run cannot quietly heal a
 stale `deno.lock` by writing the resolutions it is missing. That mattered: a
-green gate used to be able to mean "the lock resolves *now that we fixed it*"
-while CI, whose checkout has the committed lock, failed with "The lockfile is out
-of date". `deno task` resolves the workspace before running its command, so it
-can still rewrite the lock ahead of a frozen run; `lockCheck` closes that from
-the other side by failing if the run left the lock modified. When you
+green gate used to be able to mean "the lock resolves _now that we fixed it_"
+while CI, whose checkout has the committed lock, failed with "The lockfile is
+out of date". `deno task` resolves the workspace before running its command, so
+it can still rewrite the lock ahead of a frozen run; `lockCheck` closes that
+from the other side by failing if the run left the lock modified. When you
 deliberately change a dependency, run `deno task lock`, review the diff, and
 commit the lock **in the same change**.
 
@@ -335,6 +332,7 @@ plugins/zuke/             # Claude Code plugin wrapping the skills
 .github/workflows/release.yml      # release-please automation
 .github/workflows/scorecard.yml    # OpenSSF supply-chain scorecard
 .github/workflows/security.yml     # security scanners
+.github/workflows/codeql.yml       # CodeQL static analysis (SAST)
 ```
 
 ## Architecture notes
@@ -385,15 +383,15 @@ plugins/zuke/             # Claude Code plugin wrapping the skills
   places that must stay in lock-step: the `deno.json` workspace,
   `.release-please-config.json`, `.release-please-manifest.json`, the `PACKAGES`
   array in `build/packages.ts` (the JSR publish loop), the package table in
-  `README.md`,
-  the list in `tests/release_config_test.ts`, and the landing-page catalogue in
-  `build/website_tools.ts` (`TOOL_GROUPS` for a CLI wrapper, `CORE_PACKAGES` for
-  an engine or plugin package). `tests/release_config_test.ts` and
-  `tests/build_tools_test.ts` enforce that all seven agree — run them after
-  adding a package. Omitting `zuke.ts` means the package is released but never
-  published; omitting the `README.md` table means it is invisible to anyone
-  browsing the repo; omitting `build/website_tools.ts` fails the gate, because
-  the website's package grid is generated from it by `syncWebsite`.
+  `README.md`, the list in `tests/release_config_test.ts`, and the landing-page
+  catalogue in `build/website_tools.ts` (`TOOL_GROUPS` for a CLI wrapper,
+  `CORE_PACKAGES` for an engine or plugin package).
+  `tests/release_config_test.ts` and `tests/build_tools_test.ts` enforce that
+  all seven agree — run them after adding a package. Omitting `zuke.ts` means
+  the package is released but never published; omitting the `README.md` table
+  means it is invisible to anyone browsing the repo; omitting
+  `build/website_tools.ts` fails the gate, because the website's package grid is
+  generated from it by `syncWebsite`.
 - **Update docs with code.** If behaviour changes, update `README.md`, JSDoc,
   and the spec/acceptance criteria in the same PR.
 - **The agent skills are docs too — and they ship to a marketplace.** `skills/`
@@ -421,7 +419,7 @@ plugins/zuke/             # Claude Code plugin wrapping the skills
   base branch and the version did not move, and `tests/plugin_manifest_test.ts`
   fails when the two manifests disagree. `pluginVersionCheck` is the one part of
   the gate that needs history — it compares against `origin/<PR base>`, or
-  `ZUKE_PLUGIN_BASE_REF` when you set one — and it reports itself *skipped*,
+  `ZUKE_PLUGIN_BASE_REF` when you set one — and it reports itself _skipped_,
   never passed, in a clone that has no base to compare against.
 - **Always read the reviewer comments on every PR.** This repo runs AI reviewers
   (`@zuke/ai`) that post their assessments as PR comments (and human reviewers
@@ -435,13 +433,12 @@ plugins/zuke/             # Claude Code plugin wrapping the skills
   message of any fix it prompted. The id is how the reviewer's discussion
   feature anchors your reply: a maintainer comment quoting a finding's id is
   weighed as a rebuttal on the next run, and an accepted refutation stays
-  dismissed instead of resurfacing. It is also what makes a reply attributable
-  — the reviewers post in **append mode**, so every run's assessment stays on
-  the thread as history, and the id ties a reply to the exact finding (and
-  round) it answers, telling a genuinely new finding apart from the same
-  concern reworded. The ids in the `suppressions(...)` list in `zuke.ts` are
-  the same identifiers, used there as the hard override for cross-branch false
-  positives.
+  dismissed instead of resurfacing. It is also what makes a reply attributable —
+  the reviewers post in **append mode**, so every run's assessment stays on the
+  thread as history, and the id ties a reply to the exact finding (and round) it
+  answers, telling a genuinely new finding apart from the same concern reworded.
+  The ids in the `suppressions(...)` list in `zuke.ts` are the same identifiers,
+  used there as the hard override for cross-branch false positives.
 - **No secrets or machine-specific paths** in the repo or commits. Don't commit
   coverage artifacts (`cov_profile/`, `cov.lcov`) — they're git-ignored.
 - **Deterministic output.** Topological order is declaration-stable; keep it

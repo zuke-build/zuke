@@ -44,6 +44,8 @@ export interface WorkflowTargets {
   syncWebsite: TargetBuilder;
   /** The supply-chain scanners. */
   security: TargetBuilder;
+  /** CodeQL static analysis, run entirely by the marketplace actions. */
+  codeql: TargetBuilder;
   /** Uploads the Scorecard SARIF to code scanning. */
   scorecardSarif: TargetBuilder;
   /** The subprocess e2e suite, on an OS matrix. */
@@ -370,6 +372,52 @@ export function githubWorkflows(
       invokes: [{
         target: targets.security,
         name: "Scan with Zuke (zuke/security)",
+      }],
+    }),
+
+    codeql: cicd({
+      pins: actionPin,
+      pipeline: {
+        name: "CodeQL",
+        triggers: {
+          push: ["master"],
+          pullRequest: [],
+          // Weekly besides the per-change runs, so a new CodeQL query pack
+          // surfaces findings in existing code without waiting for a PR.
+          schedule: [{ cron: "31 4 * * 4" }],
+        },
+        concurrency: {
+          group: "codeql-${{ github.ref }}",
+          cancelInProgress: true,
+        },
+      },
+      invokes: [{
+        target: targets.codeql,
+        name: "CodeQL analyze",
+        permissions: {
+          // Read the sources, write the analysis to the Security tab.
+          contents: "read",
+          "security-events": "write",
+        },
+        // The whole job is the marketplace init/analyze pair — the target has
+        // no local body to run (there is no CodeQL CLI in the toolchain), so
+        // these replace the generated `./zuke codeql` step rather than wrap it.
+        // Both languages are interpreted (`build-mode: none`): the TypeScript
+        // sources, and the `actions` pack over the workflow YAML itself.
+        steps: [
+          {
+            name: "Initialize CodeQL",
+            uses: actionPin("github/codeql-action/init"),
+            with: {
+              languages: "javascript-typescript,actions",
+              "build-mode": "none",
+            },
+          },
+          {
+            name: "Analyze",
+            uses: actionPin("github/codeql-action/analyze"),
+          },
+        ],
       }],
     }),
 
