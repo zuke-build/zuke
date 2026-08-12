@@ -1,12 +1,22 @@
 # @zuke/ai
 
-AI code review as a target validation for
+Deep, discussion-driven AI code review as a target validation for
 [Zuke](https://github.com/zuke-build/zuke#readme) builds. Define a reviewer
 fluently — provider and API key are the only required options — and plug it into
 a target with `.validateBefore(...)` / `.validateAfter(...)`. The reviewer
 fetches the diff, asks the model for a structured assessment, prints the
 findings, and **breaks the build** when the assessed risk crosses the threshold
 you choose.
+
+Since v2, a reviewer can go well beyond scoring a diff: judge the change against
+the project's own conventions document, read the changed files whole,
+adversarially verify each candidate finding before reporting it, and **hold a
+discussion on the pull request** — a maintainer contests a finding by replying
+with its id, and an accepted rebuttal dismisses it durably instead of the
+finding resurfacing every push. The comment channel is hardened against prompt
+injection: trust is decided in code from the host's author metadata, and
+untrusted comments never reach the model. See
+[the AI review guide](https://github.com/zuke-build/zuke/blob/master/docs/ai-review.md).
 
 ```ts
 import { Build, parameter, run, target } from "jsr:@zuke/core";
@@ -52,6 +62,15 @@ structured-output mode (Claude `output_config.format`, OpenAI strict
 `.onError("fail" | "warn")`, `.retry({ attempts: 3 })`, `.skipIfKeyMissing()`,
 `.comment()`, `.commentToken(...)`, `.quiet()`.
 
+The v2 depth-and-discussion settings: `.conventionsFile("AGENTS.md")` (judge
+against the project's conventions document, read from the diff base so the
+change under review can't rewrite the rules), `.fileContext()` (send the changed
+files whole, not bare hunks), `.verify()` (adversarially re-check every
+candidate finding; refuted ones are reported but never gate), and
+`.discussion()` (engage with maintainer rebuttals on the PR — an accepted
+refutation stays dismissed instead of resurfacing; only comments whose author
+the host platform attributes as a maintainer ever reach the model).
+
 `.skipIfKeyMissing()` skips the review instead of failing when the API key is
 absent — handy when the key is a CI-only secret — and announces the skip on the
 console and in the job summary so the gap is visible rather than silent.
@@ -72,8 +91,10 @@ hang. `.quiet()` suppresses all reviewer output.
 
 `.comment()` posts the assessment to the pull/merge request on whichever CI host
 the build is running on — **GitHub Actions, GitLab CI, Azure Pipelines, or
-Bitbucket Pipelines** — under a `🤖 Zuke AI review` header. It keeps **one
-comment per reviewer up to date** across re-runs, matched by a hidden marker.
+Bitbucket Pipelines** — under a `🤖 Zuke AI review` header. By default it keeps
+**one comment per reviewer up to date** across re-runs, matched by a hidden
+marker; `.comment("append")` posts a **fresh comment per run** instead, so
+earlier assessments and their finding ids stay on the thread as history.
 
 The token defaults to each host's conventional env var (`GITHUB_TOKEN`,
 `GITLAB_TOKEN`, `SYSTEM_ACCESSTOKEN`, `BITBUCKET_TOKEN`); override with
