@@ -1,0 +1,33 @@
+name: CodeQL
+"on":
+  push:
+    branches:
+      - master
+  pull_request: {}
+  schedule:
+    - cron: "31 4 * * 4"
+permissions:
+  contents: read
+concurrency:
+  group: "codeql-${{ github.ref }}"
+  cancel-in-progress: true
+jobs:
+  codeql:
+    name: CodeQL analyze
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Harden and check out with Zuke
+        uses: zuke-build/zuke@5400f044d0b56206b0fa48c90b30486df205c7c6 # v1.0.2
+        with:
+          egress-policy: audit
+          persist-credentials: "false"
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
+        with:
+          languages: "javascript-typescript,actions"
+          build-mode: none
+      - name: Analyze
+        uses: github/codeql-action/analyze@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
