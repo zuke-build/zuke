@@ -14,6 +14,7 @@ import { dig } from "../json.ts";
 import {
   commentBody,
   commentMarker,
+  type CommentMode,
   ensureOk,
   type EnvReader,
   jsonHeaders,
@@ -88,18 +89,24 @@ async function findNote(
   return undefined;
 }
 
-/** Upsert the per-reviewer note: PUT to update, POST to create. */
+/**
+ * Post the per-reviewer note: PUT to update in place, POST to create — always
+ * POST in `"append"` mode, keeping earlier notes as history.
+ */
 export async function upsertMergeRequestNote(
   context: GitlabContext,
   name: string,
   markdown: string,
   doFetch: typeof fetch = fetch,
+  mode: CommentMode = "update",
 ): Promise<void> {
   const marker = commentMarker(name);
   const body = commentBody(name, markdown);
   const root = `${context.api}/projects/${context.projectId}` +
     `/merge_requests/${context.mrIid}/notes`;
-  const existing = await findNote(context, marker, doFetch);
+  const existing = mode === "append"
+    ? undefined
+    : await findNote(context, marker, doFetch);
   const url = existing === undefined ? root : `${root}/${existing}`;
   const response = await doFetch(url, {
     method: existing === undefined ? "POST" : "PUT",
@@ -116,7 +123,7 @@ export const gitlabHost: ReviewHost = {
   prepare(token, env) {
     const context = resolveGitlabContext(token, env);
     if (context === undefined) return undefined;
-    return (name, markdown, doFetch) =>
-      upsertMergeRequestNote(context, name, markdown, doFetch);
+    return (name, markdown, doFetch, mode) =>
+      upsertMergeRequestNote(context, name, markdown, doFetch, mode);
   },
 };

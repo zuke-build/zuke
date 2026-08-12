@@ -51,6 +51,7 @@ export {
   Suppressions,
   suppressions,
 } from "./src/suppress.ts";
+export { DiscussionSettings } from "./src/discussion.ts";
 export {
   correctnessReviewer,
   genericReviewer,

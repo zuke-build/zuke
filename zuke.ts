@@ -728,22 +728,38 @@ class ZukeBuild extends Build {
       ConsoleTasks.success(`Uploaded ${report} to code scanning (${url}).`);
     });
 
-  // Dogfood @zuke/ai: two reviewers on different providers gate the `review`
-  // target — an OpenAI security scan and a Gemini code-quality review. The keys
-  // are org secrets (OPENAI_API_KEY / GEMINI_API_KEY) available in Actions;
-  // `skipIfKeyMissing()` skips a review (announcing it on the console and in the
-  // summary) when its key is absent, e.g. on local runs. `onError("warn")` keeps
-  // an API hiccup from breaking the build, and each assessment lands in the job
-  // summary and as a PR comment. The `openaiKey` parameter is declared above,
-  // beside the `lint` target that shares it.
+  // Dogfood @zuke/ai: two reviewers gate the `review` target — an OpenAI
+  // security scan and an OpenAI code-quality review. The key is an org secret
+  // (OPENAI_API_KEY) available in Actions; `skipIfKeyMissing()` skips a review
+  // (announcing it on the console and in the summary) when its key is absent,
+  // e.g. on local runs. `onError("warn")` keeps an API hiccup from breaking
+  // the build, and each assessment lands in the job summary and as a PR
+  // comment. The `openaiKey` parameter is declared above, beside the `lint`
+  // target that shares it.
   securityReview = securityReviewer((r) =>
     r
       .provider("openai")
       .apiKey(this.openaiKey)
       .skipIfKeyMissing()
-      .comment() // upsert the assessment onto the PR (uses GITHUB_TOKEN)
+      // A fresh PR comment per run (uses GITHUB_TOKEN): earlier assessments —
+      // and their finding ids — stay on the thread as history instead of being
+      // overwritten in place.
+      .comment("append")
       .diff((d) => d.base(Deno.env.get("ZUKE_REVIEW_BASE") ?? "origin/master"))
       .maxDiffTokens(20000)
+      // Deeper review: judge against this file's documented conventions (read
+      // from the diff base, so a PR can't rewrite the rules it's judged by),
+      // see the changed files whole rather than as bare hunks, and
+      // adversarially verify each candidate finding before reporting it.
+      .conventionsFile("AGENTS.md")
+      .fileContext()
+      .verify()
+      // Engage with the PR thread: a maintainer contests a finding by replying
+      // with its id quoted; a sound rebuttal dismisses it durably instead of it
+      // resurfacing (reworded) every push. Only comments whose author GitHub
+      // itself attributes as OWNER/MEMBER/COLLABORATOR are ever read — a
+      // drive-by comment never reaches the model.
+      .discussion()
       // Dismissed false positives, kept auditable under "Suppressed": a build's
       // own readiness probe / tcpReachable run build-author code that connects
       // to an address the author typed — no more capability than any other line
@@ -817,23 +833,22 @@ class ZukeBuild extends Build {
           )
         ),
       )
-      .failWhen((g) => g.scoreAbove(8))
+      .failWhen((g) => g.scoreAbove(5))
       .onError("warn")
   );
 
-  // A second reviewer on a different provider (Gemini), to showcase two AI
-  // providers gating the same target. This one is a general code-quality review
-  // with explicit criteria rather than a security scan.
-  geminiKey = parameter("Gemini API key for the AI code-quality review")
-    .secret()
-    .env("GEMINI_API_KEY");
-
+  // A second reviewer gating the same target: a general code-quality review
+  // with explicit criteria rather than a security scan. It runs on OpenAI like
+  // the security review (Gemini proved flaky here — frequent 503s), sharing
+  // the same `openaiKey`.
   generalReview = genericReviewer((r) =>
     r
-      .provider("gemini")
-      .apiKey(this.geminiKey)
+      .provider("openai")
+      .apiKey(this.openaiKey)
       .skipIfKeyMissing()
-      .comment() // a separate PR comment, keyed by the reviewer name
+      // Separate comments from the security review (keyed by reviewer name),
+      // appended per run for the same history-keeping reasons.
+      .comment("append")
       // The built-in rubric already covers clarity, cohesion, tests, and docs;
       // `.criteria(...)` adds just the project-specific conventions on top.
       .criteria(
@@ -843,7 +858,27 @@ class ZukeBuild extends Build {
       )
       .diff((d) => d.base(Deno.env.get("ZUKE_REVIEW_BASE") ?? "origin/master"))
       .maxDiffTokens(20000)
-      .failWhen((g) => g.scoreAbove(8))
+      // Same conventions document and discussion loop as the security review —
+      // refuted quality findings stay dismissed instead of looping, too. The
+      // verify pass proved itself on the v2 PR: the security reviewer (which
+      // had it) refuted speculative findings by citing the actual code, while
+      // this reviewer (which lacked it) kept re-asserting a fixed finding and
+      // a reworded false positive — so it verifies now as well.
+      .conventionsFile("AGENTS.md")
+      .discussion()
+      .verify()
+      // Dismissed false positives from the v2 PR, kept auditable under
+      // "Suppressed": `31ce99tz9w4ef` claims the comment upsert trusts any
+      // bot comment carrying the marker — fixed in that same PR (the marker
+      // must OPEN the body; findOwnComment requires bot/self authorship), with
+      // regression tests. `nal6fieqlp45` claims the system prompt's marker
+      // names don't match the emitted fences — disproven by
+      // prompt_markers_test.ts, which pins the full announced-marker inventory
+      // against the actual prompts (its earlier wordings were q4wvfi90ig3c
+      // and 3mcvjgd95cj96).
+      // cspell:ignore tz9w4ef nal6fieqlp q4wvfi90ig mcvjgd95cj mzsyzzio
+      .suppress(suppressions((s) => s.add("31ce99tz9w4ef", "nal6fieqlp45")))
+      .failWhen((g) => g.scoreAbove(5))
       .onError("warn")
   );
 

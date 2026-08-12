@@ -61,13 +61,36 @@ export function filterDiff(
     .join("");
 }
 
-/** Truncate a diff to roughly `maxTokens` (≈4 chars/token), noting the cut. */
-export function truncate(diff: string, maxTokens: number): string {
+/**
+ * The distinct file paths a (filtered) diff touches, in diff order — the
+ * post-image paths, so a deleted file (whose `+++` line is `/dev/null`) is
+ * omitted. Used to pull full-file context for the reviewer.
+ */
+export function changedPaths(diff: string): string[] {
+  const paths: string[] = [];
+  for (const section of diff.split(/(?=^diff --git )/m)) {
+    if (!isFileSection(section)) continue;
+    if (/^\+\+\+ \/dev\/null$/m.test(section)) continue;
+    const path = sectionPath(section);
+    if (path !== undefined && !paths.includes(path)) paths.push(path);
+  }
+  return paths;
+}
+
+/**
+ * Truncate text to roughly `maxTokens` (≈4 chars/token), noting the cut.
+ * `what` names the text in the truncation note (default `"diff"`).
+ */
+export function truncate(
+  diff: string,
+  maxTokens: number,
+  what = "diff",
+): string {
   const limit = maxTokens * 4;
   if (diff.length <= limit) return diff;
   return `${
     diff.slice(0, limit)
-  }\n… (diff truncated to fit the token budget) …`;
+  }\n… (${what} truncated to fit the token budget) …`;
 }
 
 /**
@@ -126,6 +149,11 @@ export class DiffSettings {
   /** The literal diff text supplied via {@link DiffSettings.text}, if any. */
   text_(): string | undefined {
     return this.#text;
+  }
+
+  /** The base ref supplied via {@link DiffSettings.base}, if any. */
+  base_(): string | undefined {
+    return this.#base;
   }
 
   /**

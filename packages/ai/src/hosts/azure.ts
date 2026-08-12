@@ -14,6 +14,7 @@ import { dig } from "../json.ts";
 import {
   commentBody,
   commentMarker,
+  type CommentMode,
   ensureOk,
   type EnvReader,
   jsonHeaders,
@@ -100,16 +101,22 @@ async function findThread(
   return undefined;
 }
 
-/** Upsert the per-reviewer comment thread on an Azure DevOps PR. */
+/**
+ * Post the per-reviewer comment thread on an Azure DevOps PR — patched in
+ * place, or a new thread per run in `"append"` mode (history kept).
+ */
 export async function upsertPullRequestThread(
   context: AzureContext,
   name: string,
   markdown: string,
   doFetch: typeof fetch = fetch,
+  mode: CommentMode = "update",
 ): Promise<void> {
   const marker = commentMarker(name);
   const content = commentBody(name, markdown);
-  const existing = await findThread(context, marker, doFetch);
+  const existing = mode === "append"
+    ? undefined
+    : await findThread(context, marker, doFetch);
   if (existing === undefined) {
     const response = await doFetch(`${threadsUrl(context)}?api-version=7.1`, {
       method: "POST",
@@ -139,7 +146,7 @@ export const azureHost: ReviewHost = {
   prepare(token, env) {
     const context = resolveAzureContext(token, env);
     if (context === undefined) return undefined;
-    return (name, markdown, doFetch) =>
-      upsertPullRequestThread(context, name, markdown, doFetch);
+    return (name, markdown, doFetch, mode) =>
+      upsertPullRequestThread(context, name, markdown, doFetch, mode);
   },
 };

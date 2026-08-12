@@ -49,20 +49,19 @@ await run(CI);
    `## Packages` catalogue (raw:
    <https://raw.githubusercontent.com/zuke-build/zuke/master/llms.txt>) and the
    package table in [`references/cheatsheet.md`](references/cheatsheet.md) are
-   the only ways to answer "does a `@zuke/<tool>` wrapper exist for this CLI?"
-   — per-package `deno doc jsr:@zuke/<pkg>` only describes a package whose name
+   the only ways to answer "does a `@zuke/<tool>` wrapper exist for this CLI?" —
+   per-package `deno doc jsr:@zuke/<pkg>` only describes a package whose name
    you already know; it cannot tell you a wrapper exists. Whatever runs in an
-   `.executes(...)` body drives an external tool through its namespaced
-   `*Tasks` object, configured with a **settings lambda** that mirrors the real
-   CLI's flags — `DenoTasks`, `NpmTasks`, `DockerTasks`, `GitTasks`, and 30+
-   more — never a raw `Deno.Command` or shell string. `jsr:@zuke/cmd`
-   (`CmdTasks.exec`) or the `$` shell from `jsr:@zuke/core/shell` is the
-   **last resort**, reached for only once the catalogue confirms no typed
-   wrapper exists — using it for a tool that has a `@zuke/<tool>` package is a
-   **bug**, not a style choice: it discards typed flags, argv purity, and tool
-   resolution. (If a build delegates its side effects to your own tested
-   modules behind injected clients, the wrapper rule still governs whatever
-   those modules run in the target body.)
+   `.executes(...)` body drives an external tool through its namespaced `*Tasks`
+   object, configured with a **settings lambda** that mirrors the real CLI's
+   flags — `DenoTasks`, `NpmTasks`, `DockerTasks`, `GitTasks`, and 30+ more —
+   never a raw `Deno.Command` or shell string. `jsr:@zuke/cmd` (`CmdTasks.exec`)
+   or the `$` shell from `jsr:@zuke/core/shell` is the **last resort**, reached
+   for only once the catalogue confirms no typed wrapper exists — using it for a
+   tool that has a `@zuke/<tool>` package is a **bug**, not a style choice: it
+   discards typed flags, argv purity, and tool resolution. (If a build delegates
+   its side effects to your own tested modules behind injected clients, the
+   wrapper rule still governs whatever those modules run in the target body.)
 4. **A body is required**, unless the target is one of the four forms that
    replace it: a `service()`, a `.forEach()` fan-out, a `.waitsFor()` gate, or a
    target declaring only `.effect(...)`. Otherwise set `.executes(...)`; it may
@@ -130,25 +129,25 @@ it cannot answer "does one exist for this tool?"; only the catalogue
 - **Durable run state:** persist a run's status and per-target metadata to a
   pluggable `StateStore` so it survives the process — turn it on with `--state`,
   `ZUKE_STATE_DIR` / `ZUKE_STATE_URL`, or `override stateStore()`. Every
-  `ZUKE_*_URL` backend must be `https:` (loopback exempt; `ZUKE_ALLOW_INSECURE_URL=1`
-  opts out). In a body,
-  `ctx.state.set({ … })` / `ctx.state.get()` records per-target metadata (JSON,
-  **never secrets** — secret parameters and redacted values are excluded).
-  Inspect persisted runs afterwards with `zuke runs list` (filter by
+  `ZUKE_*_URL` backend must be `https:` (loopback exempt;
+  `ZUKE_ALLOW_INSECURE_URL=1` opts out). In a body, `ctx.state.set({ … })` /
+  `ctx.state.get()` records per-target metadata (JSON, **never secrets** —
+  secret parameters and redacted values are excluded). Inspect persisted runs
+  afterwards with `zuke runs list` (filter by
   `--status`/`--target`/`--since`/`--limit`) and `zuke runs show <id>` (`--json`
   on both). Prune old ones with `zuke runs prune --keep <age> --keep-last <n>`
-  (only terminal runs; never suspended/running).
-  A run whose process is killed is picked up by `zuke resume --check`, which
-  reaps it — its lease tells a dead holder from a slow one — and resumes it in
-  the same sweep. A process that merely *looked* dead and then finds its lease
-  taken over **stops**, running no compensations and settling nothing: the run
-  is the new holder's now. `override deadline()` gives a run a wall-clock budget
-  (`"45m"`, or milliseconds) that survives suspension; an abandoned run found
-  past it is settled `failed` with its compensations instead of resumed.
-  On a **shared** store, set `ZUKE_BUILD_ID` (or rely on `GITHUB_REPOSITORY`) so
-  each build only recovers its own runs — a resume runs *this* build's bodies
-  against whatever record it is given, and a templated `zuke.ts` looks identical
-  to the shape checks. See the cheatsheet.
+  (only terminal runs; never suspended/running). A run whose process is killed
+  is picked up by `zuke resume --check`, which reaps it — its lease tells a dead
+  holder from a slow one — and resumes it in the same sweep. A process that
+  merely _looked_ dead and then finds its lease taken over **stops**, running no
+  compensations and settling nothing: the run is the new holder's now.
+  `override deadline()` gives a run a wall-clock budget (`"45m"`, or
+  milliseconds) that survives suspension; an abandoned run found past it is
+  settled `failed` with its compensations instead of resumed. On a **shared**
+  store, set `ZUKE_BUILD_ID` (or rely on `GITHUB_REPOSITORY`) so each build only
+  recovers its own runs — a resume runs _this_ build's bodies against whatever
+  record it is given, and a templated `zuke.ts` looks identical to the shape
+  checks. See the cheatsheet.
 - **Cross-run locks:** `.lock((s) => s.lockKey(...).withTtl("4h"))` — a settings
   lambda — gives a target an exclusive claim across runs/machines; a second run
   wanting the same key fails with a `LockConflictError` naming the holder. The
@@ -215,32 +214,37 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   stdio, or over HTTP with `--http <host:port>` (loopback by default; a
   non-loopback bind needs a `ZUKE_MCP_TOKEN` bearer token). With a state store
   it also exposes `list_runs`/`show_run` (+ `signal_run`, `resume_check` and
-  `cancel_run`). Tier
-  access with `--allow-run=<globs>` (an allow-list over **invocation** —
-  invoking a target runs its dependencies, and the read tools narrow to the
-  allow-listed targets' closure), `--protect <globs>` + `ZUKE_OPERATOR_TOKEN`
-  (enforced over a run's **whole plan**, so a protected target reached as a
-  dependency still needs the token), and `--confirm-destructive`; mark
-  inspect-only targets `.readOnly()`. Mutating/denied calls are audited — read
-  the trail on the host with `zuke runs show mcp-audit`; it is deliberately not
-  readable over MCP.
-  A **registry-backed** server (`zuke register` then `zuke mcp --registry`)
+  `cancel_run`). Tier access with `--allow-run=<globs>` (an allow-list over
+  **invocation** — invoking a target runs its dependencies, and the read tools
+  narrow to the allow-listed targets' closure), `--protect <globs>` +
+  `ZUKE_OPERATOR_TOKEN` (enforced over a run's **whole plan**, so a protected
+  target reached as a dependency still needs the token), and
+  `--confirm-destructive`; mark inspect-only targets `.readOnly()`.
+  Mutating/denied calls are audited — read the trail on the host with
+  `zuke runs show mcp-audit`; it is deliberately not readable over MCP. A
+  **registry-backed** server (`zuke register` then `zuke mcp --registry`)
   instead serves every registered pipeline live, each as a
   `run:<buildId>:<target>` tool that takes the build's declared parameters
   (secrets excluded, validated, forwarded to the spawn) — see the cheatsheet.
-  Because the registry names *where* a build launches from, a descriptor with a
+  Because the registry names _where_ a build launches from, a descriptor with a
   **remote** entry module is refused unless its origin is in
   `ZUKE_REGISTRY_LAUNCH_HOSTS`; `zuke register` writes a local module, so this
-  only affects a hand-authored or second-party entry.
-  For a shared, multi-user endpoint, `override mcpIdentity()` resolves a
-  **trusted** caller per request from an authenticating proxy's header (it
-  overrides the client-reported actor and flows to the audit trail, run records,
-  and lock holders; a throwing hook rejects the request).
+  only affects a hand-authored or second-party entry. For a shared, multi-user
+  endpoint, `override mcpIdentity()` resolves a **trusted** caller per request
+  from an authenticating proxy's header (it overrides the client-reported actor
+  and flows to the audit trail, run records, and lock holders; a throwing hook
+  rejects the request).
 - **AI review & self-healing (`@zuke/ai`):** gate a target on a structured LLM
   review of the diff (`securityReviewer(...)` etc. via `.validateBefore`), or
   attach `aiFixer(...)` with `.recoverWith(...)` so a failing target is
   diagnosed and (opt-in) auto-fixed, with a committable PR suggestion. Override
-  `recoverWith()` on the build to apply one fixer to every target. See the
+  `recoverWith()` on the build to apply one fixer to every target. A reviewer
+  can go deeper and hold a discussion: `.conventionsFile("AGENTS.md")` (judged
+  against the project's rules, read from the diff base), `.fileContext()` (whole
+  changed files, not bare hunks), `.verify()` (adversarial re-check of every
+  finding), and `.discussion()` (maintainers refute a finding by replying with
+  its id; accepted dismissals persist instead of resurfacing — only
+  platform-verified maintainer comments ever reach the model). See the
   cheatsheet's AI section.
 - **Wait on an external GitHub workflow (`@zuke/gh`):** in a `.waitsFor(...)`
   gate, `s.on(githubWorkflow((g) => g.repo("o/r").workflow("e2e.yml")))`
@@ -249,8 +253,8 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   a `run-name:` marker by default, or `.correlate("created-window")` for a
   workflow you can't modify; fails fast (`.discoveryTimeout(...)`) if the run
   never correlates. The **dispatched** workflow has a contract: declare the
-  marker input (`zuke_marker`, or rename via `.markerInput(...)`), echo it as its
-  _entire_ `run-name:` (equality, not substring), and receive any of its
+  marker input (`zuke_marker`, or rename via `.markerInput(...)`), echo it as
+  its _entire_ `run-name:` (equality, not substring), and receive any of its
   `required: true` inputs via `.inputs(...)` — see the cheatsheet's
   receiving-workflow contract. Triggers are extensible — write your own against
   the exported `WaitTrigger`/`WaitContext`.

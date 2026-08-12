@@ -13,6 +13,7 @@ import { dig } from "../json.ts";
 import {
   commentBody,
   commentMarker,
+  type CommentMode,
   ensureOk,
   type EnvReader,
   jsonHeaders,
@@ -86,18 +87,24 @@ async function findComment(
   return undefined;
 }
 
-/** Upsert the per-reviewer comment on a Bitbucket PR. */
+/**
+ * Post the per-reviewer comment on a Bitbucket PR — PUT in place, or a new
+ * comment per run in `"append"` mode (history kept).
+ */
 export async function upsertBitbucketComment(
   context: BitbucketContext,
   name: string,
   markdown: string,
   doFetch: typeof fetch = fetch,
+  mode: CommentMode = "update",
 ): Promise<void> {
   const marker = commentMarker(name);
   const raw = commentBody(name, markdown);
   const root = `${API}/repositories/${context.workspace}/${context.repoSlug}` +
     `/pullrequests/${context.prId}/comments`;
-  const existing = await findComment(context, marker, doFetch);
+  const existing = mode === "append"
+    ? undefined
+    : await findComment(context, marker, doFetch);
   const url = existing === undefined ? root : `${root}/${existing}`;
   const response = await doFetch(url, {
     method: existing === undefined ? "POST" : "PUT",
@@ -114,7 +121,7 @@ export const bitbucketHost: ReviewHost = {
   prepare(token, env) {
     const context = resolveBitbucketContext(token, env);
     if (context === undefined) return undefined;
-    return (name, markdown, doFetch) =>
-      upsertBitbucketComment(context, name, markdown, doFetch);
+    return (name, markdown, doFetch, mode) =>
+      upsertBitbucketComment(context, name, markdown, doFetch, mode);
   },
 };
