@@ -409,7 +409,7 @@ Deno.test("a dismissal this round is answered and resolved", () => {
   }));
   assertEquals(plan.actions[0].outcome, "dismissed");
   assertEquals(plan.actions[0].reason, "validated upstream");
-  assertEquals(plan.resolve, [7]);
+  assertEquals(plan.resolve.map((t) => t.rootId), [7]);
 });
 
 Deno.test("a dismissal from an earlier round is left alone", () => {
@@ -430,7 +430,7 @@ Deno.test("a finding fixed this round is answered and resolved", () => {
     threads: new Map([["aa11", thread("aa11", 7)]]),
   }));
   assertEquals(plan.actions[0].outcome, "fixed");
-  assertEquals(plan.resolve, [7]);
+  assertEquals(plan.resolve.map((t) => t.rootId), [7]);
 });
 
 Deno.test("a finding fixed in an earlier round is left alone", () => {
@@ -450,7 +450,7 @@ Deno.test("a finding that regresses is reopened, not left behind a resolved thre
     threads: new Map([["aa11", thread("aa11", 7, { outcomes: ["fixed"] })]]),
   }));
   assertEquals(plan.actions[0].outcome, "reopened");
-  assertEquals(plan.unresolve, [7]);
+  assertEquals(plan.unresolve.map((t) => t.rootId), [7]);
   assertEquals(plan.resolve, []);
 });
 
@@ -472,7 +472,7 @@ Deno.test("an outcome already answered is not repeated", () => {
     threads: new Map([["aa11", thread("aa11", 7, { outcomes: ["fixed"] })]]),
   }));
   assertEquals(plan.actions, []);
-  assertEquals(plan.resolve, [7]); // resolution is still asserted, idempotently
+  assertEquals(plan.resolve.map((t) => t.rootId), [7]); // resolution is still asserted, idempotently
 });
 
 Deno.test("a fixed → reopened → fixed sequence still posts the third answer", () => {
@@ -514,7 +514,7 @@ Deno.test("only new threads are capped, worst findings first", () => {
   assertEquals(opens.some((a) => a.id === "id0"), false);
   // … and the closing half of the round is never capped away.
   assertEquals(plan.actions.some((a) => a.outcome === "fixed"), true);
-  assertEquals(plan.resolve, [7]);
+  assertEquals(plan.resolve.map((t) => t.rootId), [7]);
 });
 
 Deno.test("the same inputs always produce the same plan", () => {
@@ -651,7 +651,7 @@ Deno.test("a reopened finding is not re-announced once answered", () => {
   assertEquals(plan.actions, []);
   // The unresolve is still asserted — it is idempotent and cheap, and a
   // collapsed thread over a live finding is the one outcome to avoid.
-  assertEquals(plan.unresolve, [7]);
+  assertEquals(plan.unresolve.map((t) => t.rootId), [7]);
 });
 
 Deno.test("a dismissal with no reason still answers the thread", () => {
@@ -661,4 +661,56 @@ Deno.test("a dismissal with no reason still answers the thread", () => {
   }));
   assertEquals(plan.actions[0].outcome, "dismissed");
   assertEquals(plan.actions[0].reason, undefined);
+});
+
+Deno.test("a reopen that failed earlier is retried, not abandoned", () => {
+  // The round that reopens a finding also records it as open again, so a
+  // trigger derived from that run's state is gone by the next round. If the
+  // unresolve did not land — a refused mutation, or a phase halted by a rate
+  // limit — the thread would stay collapsed over a live finding for good.
+  const plan = planThreads(inputs({
+    open: [finding("aa11")],
+    fixedPrior: new Set(), // already consumed by the round that reopened it
+    threads: new Map([
+      ["aa11", thread("aa11", 7, { outcomes: ["fixed", "reopened"] })],
+    ]),
+  }));
+  assertEquals(plan.unresolve.map((t) => t.rootId), [7]);
+  // But it is announced once, not on every push.
+  assertEquals(plan.actions, []);
+});
+
+Deno.test("a thread the reviewer never closed is not reopened", () => {
+  // Nothing resolved it, so there is nothing to undo — and an upheld finding's
+  // thread is deliberately left open.
+  for (const outcomes of [[], ["upheld" as const]]) {
+    const plan = planThreads(inputs({
+      open: [finding("aa11")],
+      threads: new Map([["aa11", thread("aa11", 7, { outcomes })]]),
+    }));
+    assertEquals(plan.unresolve, []);
+  }
+});
+
+Deno.test("a dismissed finding that returns is reopened too", () => {
+  // Not just fixed ones: a dismissal resolves the thread as well, so a finding
+  // that comes back after one must not stay hidden behind it.
+  const plan = planThreads(inputs({
+    open: [finding("aa11")],
+    threads: new Map([
+      ["aa11", thread("aa11", 7, { outcomes: ["dismissed"] })],
+    ]),
+  }));
+  assertEquals(plan.actions[0].outcome, "reopened");
+  assertEquals(plan.unresolve.map((t) => t.rootId), [7]);
+});
+
+Deno.test("a reopen note can name the finding, not just the thread", () => {
+  const plan = planThreads(inputs({
+    open: [finding("aa11")],
+    threads: new Map([["aa11", thread("aa11", 7, { outcomes: ["fixed"] })]]),
+  }));
+  // The root comment id appears nowhere else a maintainer reads, so the note
+  // has to be able to say which finding is affected.
+  assertEquals(plan.unresolve[0].id, "aa11");
 });

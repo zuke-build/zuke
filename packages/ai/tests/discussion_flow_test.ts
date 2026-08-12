@@ -2351,3 +2351,95 @@ Deno.test("no head commit means no new threads, and the run continues", async ()
     true,
   );
 });
+
+Deno.test("a thread whose outcome reply was refused is not resolved", async () => {
+  // Resolving a thread whose explanation never landed collapses it with
+  // nothing to read — worse than leaving it open.
+  const reply = {
+    id: 502,
+    body: "Sandboxed; not reachable.",
+    in_reply_to_id: 501,
+    user: { login: "maintainer", type: "User" },
+    author_association: "MEMBER",
+  };
+  const calls: Call[] = [];
+  let served = 0;
+  const doFetch = ((input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    const method = init?.method ?? "GET";
+    calls.push({
+      url,
+      method,
+      body: typeof init?.body === "string" ? init.body : "",
+    });
+    if (url.includes("/graphql")) {
+      return Promise.resolve(new Response(JSON.stringify({ data: {} })));
+    }
+    if (url.includes("api.github.com")) {
+      if (url.endsWith("/user")) {
+        return Promise.resolve(new Response("{}", { status: 403 }));
+      }
+      // The outcome reply is refused; everything else succeeds.
+      if (url.includes("/replies") && method === "POST") {
+        return Promise.resolve(new Response("{}", { status: 422 }));
+      }
+      if (method !== "GET") return Promise.resolve(new Response("{}"));
+      if (url.includes("/pulls/7/comments")) {
+        return Promise.resolve(
+          new Response(JSON.stringify([threadRoot(ANCHORED_ID), reply])),
+        );
+      }
+      if (url.includes("/pulls/7")) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ head: { sha: "headsha" } })),
+        );
+      }
+      return Promise.resolve(
+        new Response(
+          JSON.stringify([summaryComment({
+            findings: [{
+              id: ANCHORED_ID,
+              title: ANCHORED.title,
+              severity: "high",
+              status: "open",
+              file: "src/app.ts",
+            }],
+          })]),
+        ),
+      );
+    }
+    served++;
+    return Promise.resolve(
+      new Response(
+        served === 1
+          ? claude({ score: 9, severity: "high", findings: [ANCHORED] })
+          : claude({
+            verdicts: [{
+              id: ANCHORED_ID,
+              verdict: "dismissed",
+              reason: "sandboxed",
+            }],
+          }),
+        { status: 200 },
+      ),
+    );
+  }) as typeof fetch;
+  await captured(() =>
+    inPr(async () => {
+      await securityReviewer((r) =>
+        r.provider("claude").apiKey("k")
+          .comment().discussion((d) => d.threads())
+          .diff((d) => d.text(ANCHORED_DIFF))
+          .fetch(doFetch)
+      ).validate({ target: "t" });
+    })
+  );
+  // The reply was attempted and refused, so no resolve mutation followed.
+  assertEquals(calls.some((c) => c.url.includes("/replies")), true);
+  assertEquals(
+    calls.some((c) =>
+      c.url.includes("/graphql") && c.body.includes("resolveReviewThread")
+    ),
+    false,
+  );
+});

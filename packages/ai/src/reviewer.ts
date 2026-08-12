@@ -927,6 +927,11 @@ export class Reviewer implements Validation {
         else if (result === "rejected") rejected.push(action.id);
         else stopped = true;
       }
+      // A thread whose outcome reply the host refused must not be resolved: a
+      // collapsed thread carrying no explanation is worse than an open one.
+      const explained = (target: { id: string }) =>
+        !rejected.includes(target.id);
+      plan.resolve = plan.resolve.filter(explained);
       if (rejected.length > 0) {
         notes.push(
           `${rejected.length} review thread(s) were rejected by the host ` +
@@ -942,7 +947,11 @@ export class Reviewer implements Validation {
       // Resolution last, and only after its outcome reply landed: a collapsed
       // thread with no explanation is worse than one left open.
       if (!stopped && plan.resolve.length > 0) {
-        const done = await context.ops.setResolved(doFetch, plan.resolve, true);
+        const done = await context.ops.setResolved(
+          doFetch,
+          plan.resolve.map((target) => target.rootId),
+          true,
+        );
         if (done < plan.resolve.length) {
           notes.push(
             `could not resolve ${
@@ -955,7 +964,7 @@ export class Reviewer implements Validation {
       if (!stopped && plan.unresolve.length > 0) {
         const done = await context.ops.setResolved(
           doFetch,
-          plan.unresolve,
+          plan.unresolve.map((target) => target.rootId),
           false,
         );
         if (done < plan.unresolve.length) {
@@ -963,7 +972,7 @@ export class Reviewer implements Validation {
           // outcome to shout about, so it names the ids.
           notes.push(
             `could not reopen the review thread(s) for ` +
-              `${listIds(plan.unresolve.map(String))} — the finding is ` +
+              `${listIds(plan.unresolve.map((t) => t.id))} — the finding is ` +
               `reported in the table above and still gates`,
           );
         }

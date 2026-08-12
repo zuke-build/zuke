@@ -247,14 +247,22 @@ export interface ThreadAction {
   reason?: string;
 }
 
+/** A thread to resolve or reopen, and the finding it belongs to. */
+export interface ThreadTarget {
+  /** The canonical finding id — what a note about this thread should name. */
+  id: string;
+  /** The root comment id the host addresses the thread by. */
+  rootId: number;
+}
+
 /** What one round owes its threads. */
 export interface ThreadPlan {
   /** New threads to open and outcomes to reply, in a deterministic order. */
   actions: ThreadAction[];
-  /** Root comment ids to resolve — a finding answered for good this round. */
-  resolve: number[];
-  /** Root comment ids to unresolve — a finding that came back. */
-  unresolve: number[];
+  /** Threads to resolve — a finding answered for good this round. */
+  resolve: ThreadTarget[];
+  /** Threads to reopen — a finding that is live again. */
+  unresolve: ThreadTarget[];
   /** Findings that wanted a thread but could not be anchored to a line. */
   unanchored: string[];
   /** New threads the per-run cap left for the next round. */
@@ -279,6 +287,17 @@ export interface ThreadInputs {
   threads: ReadonlyMap<string, FindingThread>;
   /** The right-side lines each file exposes in the reviewed diff. */
   anchors: ReadonlyMap<string, Set<number>>;
+}
+
+/**
+ * Whether the reviewer has already closed this thread — the newest outcome is
+ * one that resolves it (`fixed` or `dismissed`), or a `reopened` whose own
+ * unresolve may not have landed. An unanswered thread, or one last left
+ * `upheld`, was never resolved and needs no reopening.
+ */
+function closedBefore(thread: FindingThread): boolean {
+  const newest = thread.outcomes.at(-1);
+  return newest !== undefined && newest !== "upheld";
 }
 
 /** Whether `thread`'s newest outcome is already `kind`. */
@@ -325,10 +344,18 @@ export function planThreads(inputs: ThreadInputs): ThreadPlan {
       else opens.push({ id, kind: "open", anchor, finding });
       continue;
     }
-    // A finding recorded fixed in an earlier round and reported again: say so
-    // in its thread and re-open it, rather than leaving it behind a resolved
-    // thread where nobody will look.
-    if (inputs.fixedPrior.has(id)) {
+    // A finding that was answered and closed, and is live again: say so in its
+    // thread and reopen it, rather than leaving it behind a resolved thread
+    // where nobody will look.
+    //
+    // Two triggers, because one alone leaves a hole. `fixedPrior` catches the
+    // round the finding comes back in — but this same run then records it open
+    // again, so that trigger is gone by the next round. The thread's own
+    // outcome history lives on the pull request and therefore survives, which
+    // is what retries a reopen that did not land (a refused mutation, or a
+    // phase a rate limit halted). Reopening is idempotent, so retrying costs
+    // nothing; announcing it twice would be noise, hence the separate check.
+    if (inputs.fixedPrior.has(id) || closedBefore(thread)) {
       if (!answered(thread, "reopened")) {
         plan.actions.push({
           id,
@@ -338,7 +365,7 @@ export function planThreads(inputs: ThreadInputs): ThreadPlan {
           finding,
         });
       }
-      plan.unresolve.push(thread.rootId);
+      plan.unresolve.push({ id, rootId: thread.rootId });
       continue;
     }
     const reason = inputs.upheld.get(id);
@@ -368,7 +395,7 @@ export function planThreads(inputs: ThreadInputs): ThreadPlan {
         ...(entry.reason !== undefined ? { reason: entry.reason } : {}),
       });
     }
-    plan.resolve.push(thread.rootId);
+    plan.resolve.push({ id: entry.id, rootId: thread.rootId });
   }
   for (const id of inputs.fixed) {
     if (inputs.fixedPrior.has(id)) continue;
@@ -382,7 +409,7 @@ export function planThreads(inputs: ThreadInputs): ThreadPlan {
         rootId: thread.rootId,
       });
     }
-    plan.resolve.push(thread.rootId);
+    plan.resolve.push({ id, rootId: thread.rootId });
   }
   // Cap only the new threads, worst findings first, so what is dropped is the
   // least severe and the choice is deterministic across identical runs.
