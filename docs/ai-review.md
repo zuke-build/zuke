@@ -213,6 +213,15 @@ lifecycle:
    finding — or a reworded variant of it, which the prompt tells the model not
    to re-report without new evidence — does not resurface on every push. The
    dismissal stays visible under "Dismissed via discussion (not gating)".
+4. Progress is **tracked**: every still-open finding from the previous round
+   rides into the next review for re-assessment. One the model re-reports stays
+   open (it keeps its id, so the thread shows it persisting); one it no longer
+   reports is marked **fixed** and moves to a cumulative
+   "✅ Fixed since first review" table in the comment. Fixed findings stay in
+   the state, so with `.comment("append")` each new comment reads as a progress
+   report — what's resolved, what's still open, what was dismissed, what's new
+   — and a fixed finding that reappears in a later round **reopens** (and gates
+   again) rather than hiding behind its earlier resolution.
 
 The committed `.suppress(...)` list still works as the hard override, and is
 still the right tool for a false positive you want silenced across branches.

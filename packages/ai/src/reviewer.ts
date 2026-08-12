@@ -68,6 +68,8 @@ import {
   decodeState,
   dismissedOf,
   encodeState,
+  fixedOf,
+  openOf,
   type ReviewState,
   type StoredFinding,
 } from "./state.ts";
@@ -732,15 +734,23 @@ export class Reviewer implements Validation {
     }
     const discussion = await this.#prepareDiscussion();
     const dismissedPrior = dismissedOf(discussion?.priorState);
+    const openPrior = openOf(discussion?.priorState);
+    const fixedPrior = fixedOf(discussion?.priorState);
     const dismissedLines = [...dismissedPrior.values()].map((f) =>
       `${f.id} — ${f.title}${f.file !== undefined ? ` (${f.file})` : ""}${
         f.rationale !== undefined ? `: ${f.rationale}` : ""
       }`
     );
+    // The previous round's still-open findings, for the model to re-assess:
+    // re-reported → still open; omitted → recorded as fixed below.
+    const priorLines = [...openPrior.values()].map((f) =>
+      `${f.id} — ${f.title}${f.file !== undefined ? ` (${f.file})` : ""}`
+    );
     const extras: PromptExtras = {
       ...(conventions !== undefined ? { conventions } : {}),
       ...(files !== undefined ? { files } : {}),
       ...(dismissedLines.length > 0 ? { dismissed: dismissedLines } : {}),
+      ...(priorLines.length > 0 ? { prior: priorLines } : {}),
     };
 
     const { system, user } = buildPrompt(
@@ -973,18 +983,48 @@ export class Reviewer implements Validation {
       }
     }
 
+    // Progress tracking: a prior open finding that is neither re-reported nor
+    // dismissed this round no longer reproduces — mark it fixed. Prior fixed
+    // findings stay fixed (cumulative progress) unless re-reported, in which
+    // case the current finding wins and the entry reopens. Computed before
+    // suppression, so a suppressed re-report never masquerades as a fix.
+    const fixed: StoredFinding[] = [];
+    if (discussion !== undefined) {
+      const still = new Set<string>();
+      for (const finding of assessment.findings) {
+        if (finding.id !== undefined) still.add(finding.id);
+      }
+      for (const d of dismissed) {
+        if (d.finding.id !== undefined) still.add(d.finding.id);
+      }
+      for (const prior of fixedPrior.values()) {
+        if (!still.has(prior.id)) fixed.push(prior);
+      }
+      for (const prior of openPrior.values()) {
+        if (!still.has(prior.id)) {
+          fixed.push({
+            ...prior,
+            status: "fixed",
+            rationale: "no longer reproduces against the current diff",
+          });
+        }
+      }
+    }
+
     const suppressed = await this.#applySuppression(assessment);
     if (dismissed.length + refuted.length + suppressed.length > 0) {
       lowerAssessment(assessment);
     }
 
     // Persist the discussion state inside the PR comment: current findings as
-    // open/upheld, plus every dismissal (prior rounds' and this round's) kept
-    // sticky so they never resurface.
+    // open/upheld, every dismissal (prior rounds' and this round's) kept
+    // sticky, and every fixed finding kept as the progress record. Current
+    // findings are written last so a re-reported fixed finding reopens.
     let commentExtra: string | undefined;
     if (discussion !== undefined) {
       const stored = new Map<string, StoredFinding>();
       for (const prior of dismissedPrior.values()) stored.set(prior.id, prior);
+      for (const entry of fixed) stored.set(entry.id, entry);
       for (const d of dismissed) {
         const id = d.finding.id ?? "";
         if (id === "") continue;
@@ -1023,6 +1063,7 @@ export class Reviewer implements Validation {
       budget: this.#budget?.describe_(),
       ...(refuted.length > 0 ? { refuted } : {}),
       ...(dismissed.length > 0 ? { dismissed } : {}),
+      ...(fixed.length > 0 ? { fixed } : {}),
       discussion: discussion !== undefined,
     }, commentExtra);
     const gate = gateTrips(assessment, this.#gate);

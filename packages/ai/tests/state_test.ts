@@ -118,6 +118,24 @@ Deno.test("state survives non-ASCII titles", () => {
   assertEquals(decodeState(encodeState(unicode)), unicode);
 });
 
+Deno.test("fixed findings round-trip, and the per-status views select correctly", async () => {
+  const { fixedOf, openOf } = await import("../src/state.ts");
+  const state: ReviewState = {
+    findings: [
+      { id: "a", title: "open one", severity: "high", status: "open" },
+      { id: "b", title: "upheld one", severity: "medium", status: "upheld" },
+      { id: "c", title: "done", severity: "high", status: "fixed" },
+      { id: "d", title: "refuted", severity: "low", status: "dismissed" },
+    ],
+  };
+  assertEquals(decodeState(encodeState(state)), state);
+  // openOf: awaiting action — open AND upheld; fixedOf: only fixed.
+  assertEquals([...openOf(state).keys()], ["a", "b"]);
+  assertEquals([...fixedOf(state).keys()], ["c"]);
+  assertEquals(fixedOf(undefined).size, 0);
+  assertEquals(openOf(undefined).size, 0);
+});
+
 Deno.test("dismissedOf keys only the dismissed findings", () => {
   const dismissed = dismissedOf(STATE);
   assertEquals(dismissed.size, 1);

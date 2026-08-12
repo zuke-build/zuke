@@ -25,8 +25,12 @@ import { dig } from "./json.ts";
  *   it, with the rationale recorded.
  * - `dismissed` — a maintainer refuted it and the reviewer accepted the
  *   refutation; it stays recorded (and muted) instead of resurfacing.
+ * - `fixed` — a previously open finding that no longer reproduces against the
+ *   current diff: the reviewer re-assessed it and the issue is gone. Kept in
+ *   the state (and listed in the report) so the PR's progress is visible; it
+ *   flips back to `open` if a later round reports it again.
  */
-export type FindingStatus = "open" | "upheld" | "dismissed";
+export type FindingStatus = "open" | "upheld" | "dismissed" | "fixed";
 
 /** One finding tracked across runs in the review state. */
 export interface StoredFinding {
@@ -93,7 +97,10 @@ function toStoredFinding(item: unknown): StoredFinding | undefined {
   const status = dig(item, "status");
   const severity = toSeverity(dig(item, "severity"));
   if (typeof id !== "string" || typeof title !== "string") return undefined;
-  if (status !== "open" && status !== "upheld" && status !== "dismissed") {
+  if (
+    status !== "open" && status !== "upheld" && status !== "dismissed" &&
+    status !== "fixed"
+  ) {
     return undefined;
   }
   const file = dig(item, "file");
@@ -149,4 +156,32 @@ export function dismissedOf(
     if (finding.status === "dismissed") dismissed.set(finding.id, finding);
   }
   return dismissed;
+}
+
+/**
+ * The findings in `state` still awaiting action — `open` and `upheld` — keyed
+ * by fingerprint. These are re-assessed against the next round's diff: one
+ * that stops being reported moves to `fixed`.
+ */
+export function openOf(
+  state: ReviewState | undefined,
+): Map<string, StoredFinding> {
+  const open = new Map<string, StoredFinding>();
+  for (const finding of state?.findings ?? []) {
+    if (finding.status === "open" || finding.status === "upheld") {
+      open.set(finding.id, finding);
+    }
+  }
+  return open;
+}
+
+/** The findings in `state` already marked `fixed`, keyed by fingerprint. */
+export function fixedOf(
+  state: ReviewState | undefined,
+): Map<string, StoredFinding> {
+  const fixed = new Map<string, StoredFinding>();
+  for (const finding of state?.findings ?? []) {
+    if (finding.status === "fixed") fixed.set(finding.id, finding);
+  }
+  return fixed;
 }

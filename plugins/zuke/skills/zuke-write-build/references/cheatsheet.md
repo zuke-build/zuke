@@ -720,7 +720,10 @@ Depth and discussion knobs (all optional, per reviewer):
   a maintainer contests a finding by replying with its id quoted, an
   adjudication pass weighs the rebuttal on merit, and an accepted dismissal is
   remembered (in a state block inside the reviewer's own comment) so the finding
-  — or a rewording — doesn't resurface without new evidence. Trust is decided in
+  — or a rewording — doesn't resurface without new evidence. It also tracks
+  progress: still-open findings are re-assessed each round, ones that stop
+  reproducing are marked fixed and listed cumulatively ("✅ Fixed since first
+  review"), and a fixed finding that reappears reopens. Trust is decided in
   code from the host's author metadata (`OWNER`/`MEMBER`/ `COLLABORATOR` by
   default; tune with `.discussion((d) => d.trustAuthors(...))`) — untrusted
   comments never reach the model, which blunts comment-based prompt injection.

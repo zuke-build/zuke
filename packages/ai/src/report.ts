@@ -12,6 +12,7 @@ import type {
   Usage,
 } from "./types.ts";
 import type { RetryInfo } from "./retry.ts";
+import type { StoredFinding } from "./state.ts";
 
 /** The settings echoed when a review starts, so the run shows what it's doing. */
 export interface ReviewStart {
@@ -101,6 +102,12 @@ export interface ReportExtras {
    * from "add to the suppress list" to "reply on the PR quoting the id".
    */
   discussion?: boolean;
+  /**
+   * Findings from earlier rounds that no longer reproduce against the current
+   * diff — the PR's progress. Cumulative: every fixed finding stays listed, so
+   * each report shows how far the PR has come.
+   */
+  fixed?: StoredFinding[];
 }
 
 /** A candidate finding the verify pass refuted, and why. */
@@ -171,6 +178,12 @@ export function consoleLines(
       }`,
     );
   }
+  for (const f of extras.fixed ?? []) {
+    const where = location(f.file);
+    lines.push(
+      `    fixed: ${f.title}${where === "" ? "" : ` (${where})`} · ${f.id}`,
+    );
+  }
   if (extras.budget !== undefined) lines.push(`  budget: ${extras.budget}`);
   return lines;
 }
@@ -212,6 +225,7 @@ export function toMarkdown(
     parts.push("");
     parts.push(...idHint(assessment.findings, extras.discussion === true));
   }
+  parts.push(...fixedSection(extras.fixed ?? []));
   parts.push(...suppressedSection(extras.suppressedFindings ?? []));
   parts.push(...refutedSection(extras.refuted ?? []));
   parts.push(...dismissedSection(extras.dismissed ?? []));
@@ -259,6 +273,32 @@ function dismissedSection(dismissed: DismissedFinding[]): string[] {
       `| ${cell(d.finding.title)} | ${cell(d.author ?? "—")} | ${
         cell(d.reason ?? "—")
       } | ${d.finding.id ?? "—"} |`,
+    );
+  }
+  parts.push("");
+  return parts;
+}
+
+/**
+ * The PR's progress: findings from earlier rounds that no longer reproduce.
+ * Cumulative across rounds, so each report shows everything resolved so far —
+ * alongside the open-findings table, the thread reads as a progress log.
+ * Empty when nothing has been fixed (or the discussion feature is off).
+ */
+function fixedSection(fixed: StoredFinding[]): string[] {
+  if (fixed.length === 0) return [];
+  const parts = [
+    "**✅ Fixed since first review:**",
+    "",
+    "| Severity | Finding | Location | ID |",
+    "| --- | --- | --- | --- |",
+  ];
+  for (const f of fixed) {
+    const where = location(f.file);
+    parts.push(
+      `| ${f.severity} | ${cell(f.title)} | ${
+        where === "" ? "—" : where
+      } | ${f.id} |`,
     );
   }
   parts.push("");

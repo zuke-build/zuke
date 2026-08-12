@@ -27,6 +27,13 @@ export interface PromptExtras {
    * new evidence from the diff.
    */
   dismissed?: string[];
+  /**
+   * Findings still open from the previous round, as `id — title` lines: the
+   * model is told to re-assess each against the current diff — report it again
+   * (same title and file, so it keeps its id) if still present, omit it if the
+   * change fixed it. An omission is recorded as **fixed** by the reviewer.
+   */
+  prior?: string[];
 }
 
 /** The system prompt: instructs the model and pins the JSON response shape. */
@@ -55,6 +62,12 @@ export function systemPrompt(
     lines.push(
       ``,
       `Findings between "<<<DISMISSED_FINDINGS" and "DISMISSED_FINDINGS>>>" were already raised and dismissed after discussion with the maintainers. Do not report them again — including reworded or re-framed variants of the same concern — unless this diff introduces NEW evidence, in which case cite that new evidence explicitly in the finding's detail.`,
+    );
+  }
+  if (extras.prior !== undefined && extras.prior.length > 0) {
+    lines.push(
+      ``,
+      `Findings between "<<<PRIOR_FINDINGS" and "PRIOR_FINDINGS>>>" were reported in the previous review round and are still open. Re-assess EACH of them against the current diff: if the issue is still present, report it again with the SAME title and file so it keeps its identity; if the change has fixed or removed it, omit it — the omission is recorded as fixed. Never re-report one of these as a courtesy: only if the issue genuinely remains.`,
     );
   }
   lines.push(
@@ -115,6 +128,12 @@ export function userPrompt(
     parts.push(
       `Previously dismissed findings (do not re-report without new evidence):\n\n` +
         fenceUntrusted("DISMISSED_FINDINGS", extras.dismissed.join("\n")),
+    );
+  }
+  if (extras.prior !== undefined && extras.prior.length > 0) {
+    parts.push(
+      `Still-open findings from the previous round (re-assess each):\n\n` +
+        fenceUntrusted("PRIOR_FINDINGS", extras.prior.join("\n")),
     );
   }
   // Wrap the untrusted diff in explicit markers the system prompt refers to, so

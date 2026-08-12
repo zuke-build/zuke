@@ -170,6 +170,63 @@ Deno.test("a reviewer with verify + discussion gates a real build via the CLI", 
   assertEquals(state?.findings[0].status, "dismissed");
 });
 
+Deno.test("a fixed finding is reported as progress and the build passes", async () => {
+  // The previous round left FINDING open; this round's model re-assesses and
+  // reports nothing — the build must pass, and the new comment must show the
+  // finding under the fixed (progress) section with its state updated.
+  const priorBody = `${MARKER}\nround 1\n${
+    encodeState({
+      findings: [{
+        id: ID,
+        title: FINDING.title,
+        severity: "high",
+        status: "open",
+        file: FINDING.file,
+      }],
+    })
+  }`;
+  const comments = [{
+    id: 3,
+    body: priorBody,
+    user: { login: "github-actions[bot]", type: "Bot" },
+    author_association: "NONE",
+  }];
+  const { fetch, calls } = fakeFetch(comments, [
+    claude({ score: 0, severity: "none", findings: [] }),
+  ]);
+  class Pipeline extends Build {
+    review = securityReviewer((r) =>
+      r.provider("claude").apiKey("test-key")
+        .comment("append").discussion()
+        .diff((d) => d.text(DIFF))
+        .fetch(fetch)
+    );
+    deploy = target()
+      .validateBefore(this.review)
+      .executes(() => Promise.resolve());
+  }
+  await withEnv(
+    {
+      GITHUB_ACTIONS: "true",
+      GITHUB_REPOSITORY: "zuke-build/zuke",
+      GITHUB_REF: "refs/pull/7/merge",
+      GITHUB_TOKEN: "tkn",
+      GITHUB_STEP_SUMMARY: undefined,
+    },
+    async () => {
+      const result = await runCli(Pipeline, ["deploy"]);
+      assertEquals(result.code, 0);
+      assertEquals(result.out.includes("fixed: Eval of user input"), true);
+    },
+  );
+  const write = calls.find((c) =>
+    c.url.includes("api.github.com") && c.method === "POST"
+  );
+  const posted = JSON.parse(write?.body ?? "{}").body;
+  assertEquals(posted.includes("✅ Fixed since first review"), true);
+  assertEquals(decodeState(posted)?.findings[0].status, "fixed");
+});
+
 Deno.test("an open high finding still fails the build through the CLI", async () => {
   // Same pipeline, but no prior discussion: the finding gates, the target
   // never runs, and the failure names the review.

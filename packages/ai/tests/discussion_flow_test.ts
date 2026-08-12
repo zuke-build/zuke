@@ -353,6 +353,128 @@ Deno.test("append mode posts a new comment and reads state from the newest one",
   assertEquals(state?.findings[0].status, "dismissed"); // carried forward
 });
 
+Deno.test("a prior finding that stops reproducing is marked fixed; progress is cumulative", async () => {
+  // Round history: `oldFixed` was already fixed in an earlier round; `FINDING`
+  // is still open. This round the model re-assesses and reports NOTHING —
+  // FINDING must move to fixed, oldFixed must stay fixed, and the comment must
+  // show both as the PR's progress.
+  const oldFixedId = "aaaa1111";
+  const priorBody = `${MARKER}\nround 2\n${
+    encodeState({
+      findings: [
+        {
+          id: oldFixedId,
+          title: "Unbounded recursion",
+          severity: "medium",
+          status: "fixed",
+          file: "src/walk.ts",
+        },
+        {
+          id: ID,
+          title: FINDING.title,
+          severity: "high",
+          status: "open",
+          file: FINDING.file,
+        },
+      ],
+    })
+  }`;
+  const comments = [{
+    id: 1,
+    body: priorBody,
+    user: { login: "github-actions[bot]", type: "Bot" },
+    author_association: "NONE",
+  }];
+  const { fetch, calls } = discussionFetch(comments, [
+    claude({ score: 0, severity: "none", findings: [] }),
+  ]);
+  const lines = await captured(() =>
+    inPr(async () => {
+      await securityReviewer((r) =>
+        r.provider("claude").apiKey("k")
+          .comment("append").discussion()
+          .diff((d) => d.text(DIFF))
+          .fetch(fetch)
+      ).validate({ target: "t" });
+    })
+  );
+  // The still-open finding rode into the prompt for re-assessment.
+  const provider = calls.find((c) => !c.url.includes("api.github.com"));
+  const user = JSON.parse(provider?.body ?? "{}").messages[0].content;
+  assertEquals(user.includes("PRIOR_FINDINGS"), true);
+  assertEquals(user.includes(ID), true);
+  // The console reports the newly fixed finding.
+  assertEquals(
+    lines.some((l) => l.includes("fixed:") && l.includes(FINDING.title)),
+    true,
+  );
+  // The posted comment lists BOTH fixed findings (cumulative progress) and
+  // carries them in state for the next round.
+  const write = calls.find((c) =>
+    c.url.includes("api.github.com") &&
+    (c.method === "PATCH" || c.method === "POST")
+  );
+  const posted = JSON.parse(write?.body ?? "{}").body;
+  assertEquals(posted.includes("✅ Fixed since first review"), true);
+  assertEquals(posted.includes("Unbounded recursion"), true);
+  assertEquals(posted.includes(FINDING.title), true);
+  const state = decodeState(posted);
+  const byId = new Map(state?.findings.map((f) => [f.id, f]));
+  assertEquals(byId.get(oldFixedId)?.status, "fixed");
+  assertEquals(byId.get(ID)?.status, "fixed");
+  assertEquals(
+    byId.get(ID)?.rationale,
+    "no longer reproduces against the current diff",
+  );
+});
+
+Deno.test("a fixed finding that is reported again reopens", async () => {
+  const priorBody = `${MARKER}\nround 3\n${
+    encodeState({
+      findings: [{
+        id: ID,
+        title: FINDING.title,
+        severity: "high",
+        status: "fixed",
+        file: FINDING.file,
+      }],
+    })
+  }`;
+  const comments = [{
+    id: 1,
+    body: priorBody,
+    user: { login: "github-actions[bot]", type: "Bot" },
+    author_association: "NONE",
+  }];
+  // The regression comes back: the model reports the finding again.
+  const { fetch, calls } = discussionFetch(comments, [
+    claude({ score: 9, severity: "high", findings: [FINDING] }),
+  ]);
+  await captured(() =>
+    inPr(async () => {
+      await assertRejects(
+        () =>
+          securityReviewer((r) =>
+            r.provider("claude").apiKey("k")
+              .comment("append").discussion()
+              .diff((d) => d.text(DIFF))
+              .fetch(fetch)
+          ).validate({ target: "t" }),
+        AiReviewError, // reopened → gating again
+      );
+    })
+  );
+  const write = calls.find((c) =>
+    c.url.includes("api.github.com") &&
+    (c.method === "PATCH" || c.method === "POST")
+  );
+  const posted = JSON.parse(write?.body ?? "{}").body;
+  const state = decodeState(posted);
+  assertEquals(state?.findings.length, 1);
+  assertEquals(state?.findings[0].status, "open"); // fixed → open again
+  assertEquals(posted.includes("✅ Fixed since first review"), false);
+});
+
 Deno.test("a state block forged in a human comment is never trusted", async () => {
   // The attacker plants the reviewer's marker AND a state block dismissing the
   // finding — in their own comment. Authorship checking must ignore it.
