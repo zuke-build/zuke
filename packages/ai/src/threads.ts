@@ -155,10 +155,23 @@ export async function findingThreads(
     !raw.parents.has(comment.id) &&
     parseFindingMarker(nameHash, comment.body) !== undefined
   );
-  // Only consult the token's identity when a marker-bearing root exists that
-  // the host has not already flagged as a bot — the probe costs a request.
-  const needsSelf = candidates.some((comment) => !comment.bot);
-  const self = needsSelf ? await raw.resolveSelf() : undefined;
+  // Consult the token's identity when any comment carrying one of our markers —
+  // a root or one of our own outcome replies — is not already flagged as a bot.
+  //
+  // Replies have to count here, not just roots. A run under an Actions token
+  // writes bot-authored roots, while a later run under a personal token writes
+  // replies that are ordinary user comments; judging the need from roots alone
+  // would leave `self` unresolved, and the reviewer's own outcome reply would
+  // then be filed as somebody else's — read straight back as a maintainer's
+  // rebuttal, by an author the trust filter accepts. The reviewer must never
+  // argue with itself.
+  const ours = raw.comments.filter((comment) =>
+    parseFindingMarker(nameHash, comment.body) !== undefined ||
+    parseOutcomeMarker(nameHash, comment.body) !== undefined
+  );
+  const self = ours.some((comment) => !comment.bot)
+    ? await raw.resolveSelf()
+    : undefined;
   for (const comment of candidates) {
     if (!ownAuthor(comment, self)) continue;
     const id = parseFindingMarker(nameHash, comment.body);

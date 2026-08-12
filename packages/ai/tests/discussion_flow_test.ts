@@ -2443,3 +2443,27 @@ Deno.test("a thread whose outcome reply was refused is not resolved", async () =
     false,
   );
 });
+
+Deno.test("a quiet reviewer posts no threads either", async () => {
+  // Quiet withholds the summary comment, which is where an unanchorable finding
+  // is reported — so posting threads anyway would leave some findings visible
+  // inline and others nowhere at all.
+  const { fetch, calls } = threadFetch([summaryComment()], [], [
+    claude({ score: 9, severity: "high", findings: [ANCHORED] }),
+  ]);
+  await captured(() =>
+    inPr(async () => {
+      await assertRejects(
+        () =>
+          securityReviewer((r) =>
+            r.provider("claude").apiKey("k").quiet()
+              .comment().discussion((d) => d.threads())
+              .diff((d) => d.text(ANCHORED_DIFF))
+              .fetch(fetch)
+          ).validate({ target: "t" }),
+        AiReviewError,
+      );
+    })
+  );
+  assertEquals(threadPosts(calls).length, 0);
+});

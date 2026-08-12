@@ -1477,22 +1477,28 @@ export class Reviewer implements Validation {
     // opened for a finding that verify refuted, adjudication dismissed or the
     // suppress list muted — and before #report, which is the only publish, so
     // an unanchored finding's note reaches the comment rather than the void.
-    const threadNotes = threadCtx === undefined ? [] : await this.#postThreads(
-      threadCtx,
-      {
-        open: assessment.findings,
-        dismissed: dismissed.map((d) => ({
-          id: d.finding.id ?? "",
-          ...(d.reason !== undefined ? { reason: d.reason } : {}),
-        })),
-        dismissedPrior: new Set(dismissedPrior.keys()),
-        fixed: fixed.map((entry) => entry.id),
-        fixedPrior: new Set(fixedPrior.keys()),
-        upheld: upheldReasons,
-        threads: threadCtx.threads,
-        anchors: anchorableLines(diff),
-      },
-    );
+    // Skipped under `.quiet()` along with the report: quiet means the reviewer
+    // does not speak. Posting threads while withholding the summary would be
+    // worse than either — the anchored findings would appear on the pull
+    // request and the unanchorable ones nowhere at all.
+    const threadNotes = threadCtx === undefined || this.#quiet
+      ? []
+      : await this.#postThreads(
+        threadCtx,
+        {
+          open: assessment.findings,
+          dismissed: dismissed.map((d) => ({
+            id: d.finding.id ?? "",
+            ...(d.reason !== undefined ? { reason: d.reason } : {}),
+          })),
+          dismissedPrior: new Set(dismissedPrior.keys()),
+          fixed: fixed.map((entry) => entry.id),
+          fixedPrior: new Set(fixedPrior.keys()),
+          upheld: upheldReasons,
+          threads: threadCtx.threads,
+          anchors: anchorableLines(diff),
+        },
+      );
     await this.#report(assessment, context.target, usage, {
       suppressed: suppressed.length,
       suppressedFindings: suppressed,

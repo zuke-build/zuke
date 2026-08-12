@@ -714,3 +714,30 @@ Deno.test("a reopen note can name the finding, not just the thread", () => {
   // has to be able to say which finding is affected.
   assertEquals(plan.unresolve[0].id, "aa11");
 });
+
+Deno.test("the reviewer never argues with itself across mixed tokens", async () => {
+  // A run under an Actions token writes bot-authored roots; a later run under a
+  // personal token writes replies that are ordinary user comments. Judging the
+  // need for the identity probe from roots alone left `self` unresolved, and the
+  // reviewer's own outcome reply was then filed as somebody else's — read back
+  // as a maintainer's rebuttal, by an author the trust filter accepts.
+  const threads = await findingThreads(
+    listing(
+      [
+        comment(1, `${findingMarker(NAME, "aa11")}\nfinding`), // bot root
+        comment(
+          2,
+          `${
+            outcomeMarker(NAME, "aa11", "dismissed")
+          }\nDismissed via discussion`,
+          { author: "maintainer", association: "MEMBER", bot: false },
+        ),
+      ],
+      [[2, 1]],
+      "maintainer", // the personal token's own login
+    ),
+    NAME,
+  );
+  assertEquals(threads.get("aa11")?.outcomes, ["dismissed"]);
+  assertEquals(threads.get("aa11")?.replies, []);
+});
