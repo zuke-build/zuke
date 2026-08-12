@@ -214,6 +214,25 @@ Deno.test("upsertPrComment in append mode always POSTs a new comment", async () 
   );
 });
 
+Deno.test("upsertPrComment ignores a bot comment that merely quotes the marker", async () => {
+  // A different bot (e.g. one that echoes comment content) reproduces the
+  // marker mid-body. Bot-authored or not, a comment whose body does not OPEN
+  // with the marker is never adopted — the reviewer's own comments always
+  // lead with it.
+  const quoting = [
+    {
+      id: 31,
+      body:
+        "Quoting the review:\n<!-- zuke-ai-review:security review -->\nechoed",
+      user: { login: "echo-bot[bot]", type: "Bot" },
+    },
+  ];
+  const { fetch, calls } = fakeGithub(quoting);
+  await upsertPrComment(CONTEXT, "security review", "## new", fetch);
+  const write = calls.find((c) => c.method !== "GET");
+  assertEquals(write?.method, "POST"); // not adopted, fresh comment
+});
+
 Deno.test("upsertPrComment never patches a human comment that forges the marker", async () => {
   // An attacker pastes the hidden marker into their own comment. The workflow
   // token could PATCH it — the authorship check must refuse and POST instead.

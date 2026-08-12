@@ -605,11 +605,14 @@ export class Reviewer implements Validation {
       const marker = commentMarker(this.name);
       // Scan newest-first: in append mode many of the reviewer's comments
       // carry the marker, and the newest one holds the current state (in
-      // update mode there is only one, so newest == the one).
+      // update mode there is only one, so newest == the one). The marker must
+      // OPEN the body — the reviewer's own comments always lead with it, so a
+      // bot that merely quotes another comment (prefixing its own text) can
+      // never be adopted as the state carrier.
       let own: HostComment | undefined;
       for (let i = comments.length - 1; i >= 0; i--) {
         const c = comments[i];
-        if (c.bot && c.body.includes(marker)) {
+        if (c.bot && c.body.startsWith(marker)) {
           own = c;
           break;
         }

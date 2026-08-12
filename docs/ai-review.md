@@ -216,12 +216,12 @@ lifecycle:
 4. Progress is **tracked**: every still-open finding from the previous round
    rides into the next review for re-assessment. One the model re-reports stays
    open (it keeps its id, so the thread shows it persisting); one it no longer
-   reports is marked **fixed** and moves to a cumulative
-   "✅ Fixed since first review" table in the comment. Fixed findings stay in
-   the state, so with `.comment("append")` each new comment reads as a progress
-   report — what's resolved, what's still open, what was dismissed, what's new
-   — and a fixed finding that reappears in a later round **reopens** (and gates
-   again) rather than hiding behind its earlier resolution.
+   reports is marked **fixed** and moves to a cumulative "✅ Fixed since first
+   review" table in the comment. Fixed findings stay in the state, so with
+   `.comment("append")` each new comment reads as a progress report — what's
+   resolved, what's still open, what was dismissed, what's new — and a fixed
+   finding that reappears in a later round **reopens** (and gates again) rather
+   than hiding behind its earlier resolution.
 
 The committed `.suppress(...)` list still works as the hard override, and is
 still the right tool for a false positive you want silenced across branches.
@@ -269,13 +269,13 @@ it **upserts a single comment per reviewer**: the body carries a hidden marker
 edits it in place. Different reviewers (e.g. a security and a secrets review)
 keep separate comments because the marker includes the reviewer name.
 
-Pass `.comment("append")` to post a **fresh comment every run** instead:
-earlier assessments — and their finding ids — stay on the thread as history
-rather than being overwritten, at the cost of a longer thread on a
-much-pushed PR. The [discussion feature](#discussing-findings-instead-of-repeating-them)
-works with both modes — its state block rides on every comment and the newest
-one is read back — and Zuke's own reviewers use append mode so their past
-findings remain auditable.
+Pass `.comment("append")` to post a **fresh comment every run** instead: earlier
+assessments — and their finding ids — stay on the thread as history rather than
+being overwritten, at the cost of a longer thread on a much-pushed PR. The
+[discussion feature](#discussing-findings-instead-of-repeating-them) works with
+both modes — its state block rides on every comment and the newest one is read
+back — and Zuke's own reviewers use append mode so their past findings remain
+auditable.
 
 Which API gets called is decided at runtime by [`detectCiHost()`](authoring.md):
 
@@ -378,7 +378,7 @@ securityReview = securityReviewer((r) =>
     .comment() // upsert the assessment onto the PR (uses GITHUB_TOKEN)
     .diff((d) => d.base(Deno.env.get("ZUKE_REVIEW_BASE") ?? "origin/master"))
     .maxDiffTokens(20000)
-    .failWhen((g) => g.scoreAbove(8))
+    .failWhen((g) => g.scoreAbove(5))
     .onError("warn")
 );
 
@@ -392,7 +392,7 @@ generalReview = genericReviewer((r) =>
     .criteria("Strict TypeScript on Deno: no `any`, no `as`; task-shaped API.")
     .diff((d) => d.base(Deno.env.get("ZUKE_REVIEW_BASE") ?? "origin/master"))
     .maxDiffTokens(20000)
-    .failWhen((g) => g.scoreAbove(8))
+    .failWhen((g) => g.scoreAbove(5))
     .onError("warn")
 );
 

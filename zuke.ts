@@ -833,7 +833,7 @@ class ZukeBuild extends Build {
           )
         ),
       )
-      .failWhen((g) => g.scoreAbove(8))
+      .failWhen((g) => g.scoreAbove(5))
       .onError("warn")
   );
 
@@ -862,7 +862,7 @@ class ZukeBuild extends Build {
       // refuted quality findings stay dismissed instead of looping, too.
       .conventionsFile("AGENTS.md")
       .discussion()
-      .failWhen((g) => g.scoreAbove(8))
+      .failWhen((g) => g.scoreAbove(5))
       .onError("warn")
   );
 

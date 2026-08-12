@@ -153,9 +153,12 @@ async function selfLogin(
  * The marker alone is not proof of authorship: anyone can paste it into a
  * comment, and the workflow token can PATCH any comment on the PR — so a
  * substring match would let an attacker plant a marker and have the reviewer
- * adopt (and trust) their comment. A match therefore also requires the author
- * to be a bot account (the Actions token's comments), or to equal the login
- * the token authenticates as (a PAT run) — resolved only when needed.
+ * adopt (and trust) their comment. A match therefore requires the marker to
+ * open the body (the reviewer's own comments always lead with it, while a bot
+ * that merely quotes or echoes another comment prefixes its own text) **and**
+ * the author to be a bot account (the Actions token's comments), or to equal
+ * the login the token authenticates as (a PAT run) — resolved only when
+ * needed.
  */
 async function findOwnComment(
   context: GithubContext,
@@ -163,7 +166,7 @@ async function findOwnComment(
   doFetch: typeof fetch,
 ): Promise<number | undefined> {
   const matches = (await listPrComments(context, doFetch))
-    .filter((comment) => comment.body.includes(marker));
+    .filter((comment) => comment.body.startsWith(marker));
   const bot = matches.find((comment) => comment.bot);
   if (bot !== undefined) return bot.id;
   if (matches.length === 0) return undefined;
