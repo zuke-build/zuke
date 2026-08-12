@@ -947,6 +947,18 @@ export class Reviewer implements Validation {
             ["upheld", "dismissed"],
             retry,
           );
+          // A contested finding the model returned no verdict for stays open —
+          // but say so, otherwise a hedging model silently swallows the whole
+          // discussion round and the maintainer's rebuttal seems ignored.
+          const unanswered = notes
+            .map((n) => n.id)
+            .filter((id) => !verdicts.has(id));
+          if (unanswered.length > 0 && !this.#quiet) {
+            console.warn(
+              `[${this.name}] adjudication returned no verdict for ` +
+                `${unanswered.join(", ")} — contested findings stay open`,
+            );
+          }
           const kept: AssessmentFinding[] = [];
           for (const finding of assessment.findings) {
             const id = finding.id;

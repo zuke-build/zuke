@@ -262,6 +262,44 @@ Deno.test("a trusted rebuttal dismisses via adjudication; untrusted text never r
   assertEquals(byId.get(otherId)?.status, "open");
 });
 
+Deno.test("an adjudication that answers nothing is announced, not silent", async () => {
+  // The model returns an empty verdicts array — schema-valid, but it swallows
+  // the maintainer's rebuttal. The finding must stay open (and gate), and the
+  // console must say the discussion round went unanswered.
+  const comments = [
+    {
+      id: 1,
+      body: `Finding ${ID} misreads the code`,
+      user: { login: "maintainer", type: "User" },
+      author_association: "MEMBER",
+    },
+  ];
+  const { fetch } = discussionFetch(comments, [
+    claude({ score: 9, severity: "high", findings: [FINDING] }),
+    claude({ verdicts: [] }),
+  ]);
+  const lines = await captured(() =>
+    inPr(async () => {
+      await assertRejects(
+        () =>
+          securityReviewer((r) =>
+            r.provider("claude").apiKey("k")
+              .comment().discussion()
+              .diff((d) => d.text(DIFF))
+              .fetch(fetch)
+          ).validate({ target: "t" }),
+        AiReviewError, // unanswered → still open → still gating
+      );
+    })
+  );
+  assertEquals(
+    lines.some((l) =>
+      l.includes("adjudication returned no verdict") && l.includes(ID)
+    ),
+    true,
+  );
+});
+
 Deno.test("an upheld rebuttal keeps the finding and records the rationale", async () => {
   const comments = [
     {

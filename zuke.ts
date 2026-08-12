@@ -859,9 +859,25 @@ class ZukeBuild extends Build {
       .diff((d) => d.base(Deno.env.get("ZUKE_REVIEW_BASE") ?? "origin/master"))
       .maxDiffTokens(20000)
       // Same conventions document and discussion loop as the security review —
-      // refuted quality findings stay dismissed instead of looping, too.
+      // refuted quality findings stay dismissed instead of looping, too. The
+      // verify pass proved itself on the v2 PR: the security reviewer (which
+      // had it) refuted speculative findings by citing the actual code, while
+      // this reviewer (which lacked it) kept re-asserting a fixed finding and
+      // a reworded false positive — so it verifies now as well.
       .conventionsFile("AGENTS.md")
       .discussion()
+      .verify()
+      // Dismissed false positives from the v2 PR, kept auditable under
+      // "Suppressed": `31ce99tz9w4ef` claims the comment upsert trusts any
+      // bot comment carrying the marker — fixed in that same PR (the marker
+      // must OPEN the body; findOwnComment requires bot/self authorship), with
+      // regression tests. `nal6fieqlp45` claims the system prompt's marker
+      // names don't match the emitted fences — disproven by
+      // prompt_markers_test.ts, which pins the full announced-marker inventory
+      // against the actual prompts (its earlier wordings were q4wvfi90ig3c
+      // and 3mcvjgd95cj96).
+      // cspell:ignore tz9w4ef nal6fieqlp q4wvfi90ig mcvjgd95cj mzsyzzio
+      .suppress(suppressions((s) => s.add("31ce99tz9w4ef", "nal6fieqlp45")))
       .failWhen((g) => g.scoreAbove(5))
       .onError("warn")
   );
