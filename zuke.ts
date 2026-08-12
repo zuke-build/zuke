@@ -733,15 +733,21 @@ class ZukeBuild extends Build {
   // every pull request so each commit lands with a code-scanning check — which
   // is also what the OpenSSF Scorecard SAST check measures. The analysis
   // itself is the marketplace init/analyze pair in the generated `codeql.yml`
-  // (declared in `build/workflows.ts`); there is no local CodeQL CLI in the
-  // toolchain, so this target only points at where the scan runs.
+  // (declared in `build/workflows.ts`), which replaces this target's step
+  // entirely — so this body runs only on a *local* invocation, where there is
+  // no CodeQL CLI in the toolchain to run. It fails rather than reports,
+  // because a target that printed a note and exited 0 would look like a scan
+  // that ran and passed.
   codeql = target()
     .description("CodeQL static analysis (runs in CI via codeql.yml)")
     .executes(() => {
-      ConsoleTasks.info(
-        "CodeQL runs in CI: the generated .github/workflows/codeql.yml " +
-          "analyzes the TypeScript sources and the GitHub Actions workflows " +
-          "on every pull request, push to master, and weekly schedule.",
+      throw new Error(
+        "CodeQL cannot run locally: there is no CodeQL CLI in the " +
+          "toolchain. The scan runs in CI — the generated " +
+          ".github/workflows/codeql.yml analyzes the TypeScript sources and " +
+          "the GitHub Actions workflows on every pull request, push to " +
+          "master, and weekly schedule. Findings land on the repository's " +
+          "Security tab (code scanning).",
       );
     });
 
