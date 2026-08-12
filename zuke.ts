@@ -728,14 +728,14 @@ class ZukeBuild extends Build {
       ConsoleTasks.success(`Uploaded ${report} to code scanning (${url}).`);
     });
 
-  // Dogfood @zuke/ai: two reviewers on different providers gate the `review`
-  // target — an OpenAI security scan and a Gemini code-quality review. The keys
-  // are org secrets (OPENAI_API_KEY / GEMINI_API_KEY) available in Actions;
-  // `skipIfKeyMissing()` skips a review (announcing it on the console and in the
-  // summary) when its key is absent, e.g. on local runs. `onError("warn")` keeps
-  // an API hiccup from breaking the build, and each assessment lands in the job
-  // summary and as a PR comment. The `openaiKey` parameter is declared above,
-  // beside the `lint` target that shares it.
+  // Dogfood @zuke/ai: two reviewers gate the `review` target — an OpenAI
+  // security scan and an OpenAI code-quality review. The key is an org secret
+  // (OPENAI_API_KEY) available in Actions; `skipIfKeyMissing()` skips a review
+  // (announcing it on the console and in the summary) when its key is absent,
+  // e.g. on local runs. `onError("warn")` keeps an API hiccup from breaking
+  // the build, and each assessment lands in the job summary and as a PR
+  // comment. The `openaiKey` parameter is declared above, beside the `lint`
+  // target that shares it.
   securityReview = securityReviewer((r) =>
     r
       .provider("openai")
@@ -834,17 +834,14 @@ class ZukeBuild extends Build {
       .onError("warn")
   );
 
-  // A second reviewer on a different provider (Gemini), to showcase two AI
-  // providers gating the same target. This one is a general code-quality review
-  // with explicit criteria rather than a security scan.
-  geminiKey = parameter("Gemini API key for the AI code-quality review")
-    .secret()
-    .env("GEMINI_API_KEY");
-
+  // A second reviewer gating the same target: a general code-quality review
+  // with explicit criteria rather than a security scan. It runs on OpenAI like
+  // the security review (Gemini proved flaky here — frequent 503s), sharing
+  // the same `openaiKey`.
   generalReview = genericReviewer((r) =>
     r
-      .provider("gemini")
-      .apiKey(this.geminiKey)
+      .provider("openai")
+      .apiKey(this.openaiKey)
       .skipIfKeyMissing()
       .comment() // a separate PR comment, keyed by the reviewer name
       // The built-in rubric already covers clarity, cohesion, tests, and docs;

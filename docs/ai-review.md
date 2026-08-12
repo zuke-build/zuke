@@ -346,9 +346,9 @@ bbReview = aiReviewWorkflow({ host: "bitbucket", reviewers: [this.security] });
 
 ## Worked example: Zuke reviews itself
 
-Zuke's own build gates the `review` target with **two reviewers on different
-providers** on every internal PR — an OpenAI security scan and a Gemini
-code-quality review — to show how providers compose. In [`zuke.ts`](../zuke.ts):
+Zuke's own build gates the `review` target with **two reviewers** on every
+internal PR — an OpenAI security scan and an OpenAI code-quality review sharing
+one key. In [`zuke.ts`](../zuke.ts):
 
 ```ts
 openaiKey = parameter("OpenAI API key for the AI security review")
@@ -366,13 +366,9 @@ securityReview = securityReviewer((r) =>
     .onError("warn")
 );
 
-geminiKey = parameter("Gemini API key for the AI code-quality review")
-  .secret()
-  .env("GEMINI_API_KEY");
-
 generalReview = genericReviewer((r) =>
-  r.provider("gemini")
-    .apiKey(this.geminiKey)
+  r.provider("openai") // same provider and key as the security review
+    .apiKey(this.openaiKey)
     .skipIfKeyMissing()
     .comment() // a separate PR comment, keyed by the reviewer name
     // The built-in rubric covers code quality/maintainability already;
@@ -400,6 +396,6 @@ absent, the reviewer runs, sees no key, and prints a "skipped — no API key" li
 (and a matching job-summary note). The
 [`ai-review.yml`](../.github/workflows/ai-review.yml) workflow runs
 `./zuke review` on pull requests (non-fork only, so the secrets are never
-exposed to untrusted code), passing `OPENAI_API_KEY`, `GEMINI_API_KEY`, the
-`GITHUB_TOKEN` (for the comments), and a `ZUKE_REVIEW_BASE` to diff against.
-Each assessment lands in that run's job summary and as an upserted PR comment.
+exposed to untrusted code), passing `OPENAI_API_KEY`, the `GITHUB_TOKEN` (for
+the comments), and a `ZUKE_REVIEW_BASE` to diff against. Each assessment lands
+in that run's job summary and as an upserted PR comment.
