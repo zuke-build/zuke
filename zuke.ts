@@ -103,6 +103,10 @@ import {
 } from "./build/plugin_sync.ts";
 import { checkSkillTree } from "./build/skill_check.ts";
 import {
+  buildGeminiArchive,
+  GEMINI_ASSET_NAMES,
+} from "./build/gemini_archive.ts";
+import {
   bumpFailure,
   checkPluginVersionBump,
   defaultGitHistory,
@@ -1077,6 +1081,32 @@ class ZukeBuild extends Build {
         apply(s);
         return s;
       });
+
+      // Attach the Gemini CLI extension archive to whatever release is now
+      // "latest" — that is the release `gemini extensions install` resolves,
+      // and it changes on every package release, so each run tops it up.
+      // Idempotent: a release already carrying the assets is left untouched,
+      // and a repository with no releases yet is an ordinary skip.
+      const scratch = await Deno.makeTempDir();
+      try {
+        const archive = `${scratch}/zuke.tar.gz`;
+        const packed = await buildGeminiArchive(archive);
+        ConsoleTasks.info(
+          `Built the Gemini extension archive (${packed.length} file(s)).`,
+        );
+        for (const name of GEMINI_ASSET_NAMES) {
+          const result = await GhTasks.uploadReleaseAsset((s) =>
+            s.file(archive).name(name).repo(repo).token(token)
+          );
+          ConsoleTasks.info(
+            result.state === "no-release"
+              ? `No release to attach ${name} to yet.`
+              : `${name} on ${result.releaseTag}: ${result.state}.`,
+          );
+        }
+      } finally {
+        await Deno.remove(scratch, { recursive: true });
+      }
     });
 
   actionRelease = target()

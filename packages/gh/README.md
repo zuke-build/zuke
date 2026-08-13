@@ -191,6 +191,9 @@ function readWorkflowResult(state: TargetStateHandle): WorkflowResult | undefine
 async function tagCommit(configure?: (settings: GhTagSettings) => GhTagSettings): Promise<void>
   Perform the configured tag.
 
+async function uploadReleaseAsset(configure?: Configure<GhReleaseAssetSettings>): Promise<GhReleaseAssetResult>
+  Upload the release asset the settings describe.
+
 async function uploadSarifReport(configure?: Configure<GhSarifSettings>): Promise<GhSarifUploadResult>
   Upload the SARIF report the settings describe.
 
@@ -434,6 +437,52 @@ class GhPullRequestSettings
     The effective `owner/repo`, from the setting or the environment.
   authToken_(): string
     The effective token, from the setting or the environment.
+
+class GhReleaseAssetSettings
+  Settings for {@link GhReleaseAssetApi.uploadReleaseAsset}.
+
+  file_?: string
+    The file to upload. Set by {@link file}.
+  name_?: string
+    The asset name on the release. Set by {@link name}.
+  contentType_?: string
+    The asset's `content-type`. Set by {@link contentType}.
+  repo_?: string
+    `owner/repo` to upload to. Set by {@link repo}.
+  tag_?: string
+    The release tag to attach to. Set by {@link tag}.
+  token_?: string
+    The token to authenticate with. Set by {@link token}.
+  baseUrl_: string
+    REST base URL. Set by {@link baseUrl}.
+  fetch_: typeof fetch
+    The `fetch` implementation. Set by {@link fetch}.
+  file(path: PathLike): this
+    The file to upload (required).
+  name(value: string): this
+    The asset's name on the release. Defaults to the file's base name.
+  contentType(value: string): this
+    The asset's `content-type`. Defaults by extension (`.tar.gz`/`.tgz`,
+    `.zip`, `.json`), then to `application/octet-stream`.
+  repo(slug: string): this
+    The `owner/repo` to upload to. Defaults to `GITHUB_REPOSITORY`.
+  tag(value: string): this
+    Attach to the release with this tag instead of the latest release.
+  token(value: string): this
+    The token to authenticate with — needs `contents: write`. Defaults to
+    `GITHUB_TOKEN` in the environment, so it never has to reach argv.
+  baseUrl(url: string): this
+    Use a different REST base (GitHub Enterprise Server).
+  fetch(fn: typeof fetch): this
+    Override the `fetch` implementation (a test seam).
+  repoSlug_(): string
+    The effective `owner/repo`, from the setting or the Actions environment.
+  filePath_(): string
+    The file to upload, or a friendly error naming the missing setting.
+  assetName_(): string
+    The effective asset name: the setting, or the file's base name.
+  effectiveContentType_(): string
+    The effective `content-type`: the setting, or inferred by extension.
 
 class GhSarifSettings
   Settings for {@link GhSarifApi.uploadSarif}.
@@ -690,6 +739,32 @@ interface GhPullRequestResult
     different things to a human reading a build log, even though neither is a
     failure.
 
+interface GhReleaseAssetApi
+  The shape of the release-asset task, mixed into `GhTasks`.
+
+  uploadReleaseAsset(configure?: Configure<GhReleaseAssetSettings>): Promise<GhReleaseAssetResult>
+    Attach a file to a GitHub release — the latest release by default, or the
+    one named by `.tag(...)`. Idempotent: an asset the release already
+    carries under the same name is kept as-is, and a repository with no
+    releases resolves to `state: "no-release"` rather than throwing. Needs a
+    token with `contents: write`.
+
+interface GhReleaseAssetResult
+  What became of a release-asset upload.
+
+  state: "uploaded" | "already-exists" | "no-release"
+    `uploaded` when the asset was sent; `already-exists` when the release
+    carries an asset of the same name (nothing was changed); `no-release`
+    when the repository has no release to attach to.
+  name: string
+    The asset name the call targeted.
+  releaseTag?: string
+    The tag of the release the asset belongs to, when one was resolved.
+  releaseId?: number
+    The id of the release the asset belongs to, when one was resolved.
+  url?: string
+    The asset's download URL, when it was uploaded or already present.
+
 interface GhSarifApi
   The shape of the SARIF task, mixed into `GhTasks`.
 
@@ -705,7 +780,7 @@ interface GhSarifUploadResult
   url: string
     The URL that reports whether GitHub finished processing the report.
 
-interface GhTasksApi extends GhAppTokenApi, GhSarifApi, GhCommitApi, GhPullRequestApi, GhCheckRunApi
+interface GhTasksApi extends GhAppTokenApi, GhSarifApi, GhReleaseAssetApi, GhCommitApi, GhPullRequestApi, GhCheckRunApi
   The shape of {@link GhTasks}: the `gh` CLI plus the GitHub operations that
   have no CLI subcommand (see {@link GhAppTokenApi}, {@link GhSarifApi}) and
   would otherwise force a build back to a marketplace action.

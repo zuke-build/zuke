@@ -64,6 +64,12 @@ import {
   type GhSarifUploadResult,
   uploadSarifReport,
 } from "./sarif.ts";
+import {
+  type GhReleaseAssetApi,
+  type GhReleaseAssetResult,
+  type GhReleaseAssetSettings,
+  uploadReleaseAsset,
+} from "./release_asset.ts";
 
 /** Settings for a `gh` invocation. */
 export class GhSettings extends SubcommandSettings {
@@ -95,6 +101,7 @@ export interface GhTasksApi
   extends
     GhAppTokenApi,
     GhSarifApi,
+    GhReleaseAssetApi,
     GhCommitApi,
     GhPullRequestApi,
     GhCheckRunApi {
@@ -139,5 +146,10 @@ export const GhTasks: GhTasksApi = {
     configure?: Configure<GhSarifSettings>,
   ): Promise<GhSarifUploadResult> {
     return uploadSarifReport(configure);
+  },
+  uploadReleaseAsset(
+    configure?: Configure<GhReleaseAssetSettings>,
+  ): Promise<GhReleaseAssetResult> {
+    return uploadReleaseAsset(configure);
   },
 };
