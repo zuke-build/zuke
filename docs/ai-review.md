@@ -486,9 +486,13 @@ openaiKey = parameter("OpenAI API key for the AI security review")
   .secret()
   .env("OPENAI_API_KEY");
 
+// One budget for everything that spends that key in a run — a runaway guard.
+aiBudget = budget((b) => b.maxTokens(500_000));
+
 securityReview = securityReviewer((r) =>
   r.provider("openai") // default model: gpt-5.4-mini
     .apiKey(this.openaiKey)
+    .budget(this.aiBudget) // shared with the other reviewer and the lint fixer
     .skipIfKeyMissing() // skip + announce when the key is absent (local runs)
     .comment() // upsert the assessment onto the PR (uses GITHUB_TOKEN)
     .diff((d) => d.base(Deno.env.get("ZUKE_REVIEW_BASE") ?? "origin/master"))
@@ -500,6 +504,7 @@ securityReview = securityReviewer((r) =>
 generalReview = genericReviewer((r) =>
   r.provider("openai") // same provider and key as the security review
     .apiKey(this.openaiKey)
+    .budget(this.aiBudget)
     .skipIfKeyMissing()
     .comment() // a separate PR comment, keyed by the reviewer name
     // The built-in rubric covers code quality/maintainability already;
@@ -520,6 +525,15 @@ review = target()
 body and gates the target independently. Because the PR comment is keyed by the
 reviewer name, the two land as **separate comments** ("security review" and
 "generic review") rather than overwriting each other.
+
+The one `aiBudget` is passed to both reviewers **and** to the `aiFixer` that
+self-heals lint failures, so every pass drawing on that key — review, verify,
+adjudication, and the fixer — draws down the same 500k-token cap. That number is
+a runaway guard rather than a throttle: a normal run costs a small fraction of
+it (the diff alone is capped at 20k tokens), so it only bites if something
+loops. Exhausting it **skips**, never fails — the reviewer prints
+`AI budget exhausted — <spend> of 500,000 tokens` on the console and in the
+summary, and the lint failure the fixer would have healed simply stands.
 
 `.skipIfKeyMissing()` replaces an `.onlyWhen(() => this.openaiKey.isSet_())`
 gate on the target: rather than the target vanishing silently when a key is
