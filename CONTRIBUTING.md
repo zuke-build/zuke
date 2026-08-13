@@ -68,6 +68,13 @@ code in this repo is written (`CLAUDE.md` is a one-line pointer to it):
 5. **Tests are hermetic and fast.** No network and no reliance on ambient tools.
    When a test needs a subprocess, invoke `Deno.execPath()` (the running
    `deno`), which is always present and shell-free.
+6. **No dead code.** Remove unreachable branches, unused helpers, and fallbacks
+   that can never fire — tighten the types so the impossible state is
+   unrepresentable rather than guarding it with an arm that never runs.
+   Narrowing the type system itself forces (a `?? fallback` after `Map.get`, an
+   `instanceof Error` check in a `catch`) is not dead code; see
+   [`AGENTS.md`](./AGENTS.md#coding-guidelines-non-negotiable) for the full
+   rule.
 
 See the architecture notes in [`AGENTS.md`](./AGENTS.md#architecture-notes) for
 how targets, the dependency graph, the shell `$`, and tool wrappers fit
@@ -98,34 +105,34 @@ the squash commit that [release-please](./RELEASING.md) parses.
 
 ## Code review
 
-Every change reaches `master` through a pull request — there is no direct
-push path — and review has documented requirements:
+Every change reaches `master` through a pull request — there is no direct push
+path — and review has documented requirements:
 
 **How review is conducted.** Each PR is reviewed by (1) the required CI gate
 (`deno task ci`, the same gate you run locally), (2) the AI reviewers, which
-post a security assessment and a code-quality assessment as PR comments, and
-(3) a human maintainer, who reads the diff and every reviewer finding. AI
-findings are advisory: a maintainer addresses each one or answers it on the
-thread, quoting the finding's id — they never merge unexamined.
+post a security assessment and a code-quality assessment as PR comments, and (3)
+a human maintainer, who reads the diff and every reviewer finding. AI findings
+are advisory: a maintainer addresses each one or answers it on the thread,
+quoting the finding's id — they never merge unexamined.
 
 **What must be checked.** Reviewers verify that the change:
 
 - is correct, and covered by tests per the testing policy above (unit +
   integration in the same PR; e2e for cross-process or cross-OS behaviour);
 - introduces no security regression (injection, privilege escalation, secret
-  exposure — see the
-  [assurance case](./docs/assurance-case.md) for the boundaries to respect);
+  exposure — see the [assurance case](./docs/assurance-case.md) for the
+  boundaries to respect);
 - meets the coding standards above (strict types, no `any`/`as`/`!`, JSDoc on
   all public symbols) and keeps coverage at 95%+;
-- updates the affected docs in the same PR, and regenerates the API docs on
-  any public-API change;
+- updates the affected docs in the same PR, and regenerates the API docs on any
+  public-API change;
 - carries a Conventional Commit PR title, since the squash subject is what
   release-please parses.
 
-**What is required to be acceptable.** A PR merges only when the required
-status checks are green, every AI-reviewer finding has been fixed or answered,
-and a maintainer approves. Larger features additionally get an adversarial
-review pass before the PR is finalized (see
+**What is required to be acceptable.** A PR merges only when the required status
+checks are green, every AI-reviewer finding has been fixed or answered, and a
+maintainer approves. Larger features additionally get an adversarial review pass
+before the PR is finalized (see
 [`AGENTS.md`](./AGENTS.md#adversarial-review-every-feature)).
 
 ## Reporting bugs and requesting features

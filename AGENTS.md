@@ -207,7 +207,22 @@ can't see Deno's module graph.
    header from its template (see `internal/hcl_tool.ts.tmpl`) — put the header
    in the template, never hand-edit generated output.
 
-10. **Configuration is a fluent settings lambda, not an options object.** When
+10. **No dead code.** Code that cannot execute does not ship: remove unreachable
+    branches, unused helpers and exports, and fallbacks whose condition can
+    never fire (e.g. a `?? default` behind a parameter no call site ever omits).
+    Prefer making the impossible state _unrepresentable_ — tighten the
+    parameter's type, drop the `?`, narrow with `Exclude<...>` — over keeping a
+    loose signature guarded by an arm that never runs. Keep the line straight,
+    though: narrowing that the **type system** forces (`map.get(x) ?? fallback`,
+    `value instanceof Error ? value.message : String(value)`, an `undefined`
+    check after `.find(...)`) is not dead code — guideline 1 bans the `!`/`as`
+    shortcuts that would replace it. A branch is dead only when it is
+    unreachable _after_ the types are as tight as the call sites allow. And
+    never write a test whose sole purpose is to "cover" a dead arm — an
+    uncoverable branch is the signal to delete the branch, not to feed the
+    coverage gate.
+
+11. **Configuration is a fluent settings lambda, not an options object.** When
     an API takes more than a trivial amount of configuration, expose it as a
     chainable settings class configured through a lambda — the
     `Configure<S> = (s: S) => S` shape the tool wrappers use — not a positional
@@ -421,11 +436,11 @@ gemini-extension.json     # Gemini CLI extension manifest (serves skills/)
   `.agents/plugins/marketplace.json`), and the root `gemini-extension.json`
   makes the repo a Gemini CLI extension that auto-discovers `skills/`. The
   `skillsCheck` gate target validates `skills/` against the Agent Skills spec
-  (frontmatter `name` must match the folder), since Codex and Gemini load
-  those folders directly. Any change to
-  the authoring surface or to a documented guarantee — a new `target()` method,
-  a new `Build` override, changed CLI or authorization semantics — must be
-  reflected in `skills/zuke-write-build/SKILL.md` and
+  (frontmatter `name` must match the folder), since Codex and Gemini load those
+  folders directly. Any change to the authoring surface or to a documented
+  guarantee — a new `target()` method, a new `Build` override, changed CLI or
+  authorization semantics — must be reflected in
+  `skills/zuke-write-build/SKILL.md` and
   `skills/zuke-write-build/references/cheatsheet.md` **in the same PR**. The
   cheatsheet is one of the two canonical answers to "does a wrapper exist?", so
   a new package belongs in its catalogue table as well. Then, in order:
@@ -436,18 +451,17 @@ gemini-extension.json     # Gemini CLI extension manifest (serves skills/)
      `plugins/zuke/.codex-plugin/plugin.json`, the entry in
      `.claude-plugin/marketplace.json`, and the root `gemini-extension.json`
      (the `VERSIONED_MANIFESTS` list in `build/plugin_version_check.ts`).
-     Clients use the version to decide
-     whether an installed plugin is stale, so skills edited without a bump
-     simply never reach agents that already hold the old copy. release-please
-     does **not** manage `plugins/` — it is not a workspace package and has no
-     `deno.json`. Additive skill content is a minor bump; a correction is a
-     patch.
+     Clients use the version to decide whether an installed plugin is stale, so
+     skills edited without a bump simply never reach agents that already hold
+     the old copy. release-please does **not** manage `plugins/` — it is not a
+     workspace package and has no `deno.json`. Additive skill content is a minor
+     bump; a correction is a patch.
 
   Two gate targets hold this up, so a miss fails the build rather than shipping
   quietly: `pluginVersionCheck` fails when a published skill changed against the
   base branch and the version did not move, and `tests/plugin_manifest_test.ts`
-  fails when the manifests disagree. `pluginVersionCheck` is the one part of
-  the gate that needs history — it compares against `origin/<PR base>`, or
+  fails when the manifests disagree. `pluginVersionCheck` is the one part of the
+  gate that needs history — it compares against `origin/<PR base>`, or
   `ZUKE_PLUGIN_BASE_REF` when you set one — and it reports itself _skipped_,
   never passed, in a clone that has no base to compare against.
 - **Always read the reviewer comments on every PR.** This repo runs AI reviewers
