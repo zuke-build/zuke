@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.38.3](https://github.com/zuke-build/zuke/compare/core-v1.38.2...core-v1.38.3) (2026-08-13)
+
+
+### Bug Fixes
+
+* **cli:** escape line separators in generated literals; license headers and review docs ([#347](https://github.com/zuke-build/zuke/issues/347)) ([114f842](https://github.com/zuke-build/zuke/commit/114f84246e83fc6fb0bd12b55e8eb04192978074))
+
 ## [1.38.2](https://github.com/zuke-build/zuke/compare/core-v1.38.1...core-v1.38.2) (2026-08-11)
 
 

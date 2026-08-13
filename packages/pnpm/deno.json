@@ -1,6 +1,6 @@
 {
   "name": "@zuke/pnpm",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "license": "MIT",
   "description": "Typed pnpm CLI task wrappers for Zuke builds — install, add, remove, run, dlx, and publish via an injection-free settings-lambda API.",
   "exports": {
