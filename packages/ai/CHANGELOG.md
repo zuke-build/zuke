@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.2.0](https://github.com/zuke-build/zuke/compare/ai-v2.1.1...ai-v2.2.0) (2026-08-13)
+
+
+### Features
+
+* **gh:** release-asset uploads, the Gemini extension archive, and a coverage push to 98% ([#352](https://github.com/zuke-build/zuke/issues/352)) ([a678f35](https://github.com/zuke-build/zuke/commit/a678f35c3baea51ebb837dbf2cc0e100760ff0ae))
+
 ## [2.1.1](https://github.com/zuke-build/zuke/compare/ai-v2.1.0...ai-v2.1.1) (2026-08-13)
 
 
