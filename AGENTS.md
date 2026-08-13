@@ -309,10 +309,9 @@ can drift from it. `zuke.ts`'s `ci` target depends on: `format`
 (type-check, then the test suite with the 95% coverage gate), `coverageUpload`
 (skips locally without a `CODECOV_TOKEN`), `apiDocsCheck`, `docLint`,
 `snippetsCheck`, `hclSyncCheck`, `pluginSyncCheck`, `skillsCheck`,
-`pluginVersionCheck`,
-`prBodyLint`, `actionPinCheck`, `security`, and `lockCheck`. Read `zuke.ts`'s
-`ci` target for the current, authoritative list — this is a snapshot, not a
-second source of truth.
+`graphDocCheck`, `pluginVersionCheck`, `prBodyLint`, `actionPinCheck`,
+`security`, and `lockCheck`. Read `zuke.ts`'s `ci` target for the current,
+authoritative list — this is a snapshot, not a second source of truth.
 
 **The lock is part of the gate.** Every entrypoint that loads `zuke.ts` — both
 launchers and the root tasks — passes `--frozen`, so a run cannot quietly heal a
