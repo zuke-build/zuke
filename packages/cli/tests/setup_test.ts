@@ -1,7 +1,11 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
+import {
+  assertEquals,
+  assertRejects,
+  assertStringIncludes,
+} from "../../core/tests/_assert.ts";
 import {
   defaultHost,
   isRecord,
@@ -55,11 +59,9 @@ Deno.test("scaffolded launchers never pipe an unverified install script", () => 
     assertEquals(script.includes("| sh"), false);
     assertEquals(script.includes("Invoke-Expression"), false);
     assertEquals(script.includes("Deno not found on PATH"), true);
-    assertEquals(
-      script.includes(
-        "https://docs.deno.com/runtime/getting_started/installation/",
-      ),
-      true,
+    assertStringIncludes(
+      script,
+      "https://docs.deno.com/runtime/getting_started/installation/",
     );
   }
 });

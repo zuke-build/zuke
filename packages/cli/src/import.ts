@@ -260,9 +260,18 @@ function tokenize(segment: string): string[] | undefined {
   }
 }
 
-/** A double-quoted TypeScript string literal for `value`. */
+/**
+ * A double-quoted TypeScript string literal for `value`.
+ *
+ * `JSON.stringify` escapes quotes, backslashes, and control characters, but
+ * leaves U+2028/U+2029 raw — legal inside JSON strings, line terminators to a
+ * JavaScript parser — so those are escaped on top, keeping the generated
+ * literal on one line whatever the imported command contains.
+ */
 function str(value: string): string {
-  return JSON.stringify(value);
+  return JSON.stringify(value)
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029");
 }
 
 // --- identifiers ----------------------------------------------------------

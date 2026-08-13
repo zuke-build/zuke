@@ -69,7 +69,7 @@ function fakeFetch(
       method,
       body: typeof init?.body === "string" ? init.body : "",
     });
-    if (url.includes("api.github.com")) {
+    if (url.startsWith("https://api.github.com/")) {
       if (url.endsWith("/user")) {
         return Promise.resolve(new Response("{}", { status: 403 }));
       }
@@ -169,7 +169,7 @@ Deno.test("a reviewer with verify + discussion gates a real build via the CLI", 
 
   // The comment was updated in place (the bot-authored one), carrying state.
   const write = calls.find((c) =>
-    c.url.includes("api.github.com") && c.method !== "GET"
+    c.url.startsWith("https://api.github.com/") && c.method !== "GET"
   );
   assertEquals(write?.method, "PATCH");
   assertEquals(write?.url.endsWith("/issues/comments/11"), true);
@@ -232,7 +232,7 @@ Deno.test("a fixed finding is reported as progress and the build passes", async 
     },
   );
   const write = calls.find((c) =>
-    c.url.includes("api.github.com") && c.method === "POST"
+    c.url.startsWith("https://api.github.com/") && c.method === "POST"
   );
   const posted = JSON.parse(write?.body ?? "{}").body;
   assertEquals(posted.includes("✅ Fixed since first review"), true);
@@ -362,7 +362,7 @@ Deno.test("the discussion drives a real build on GitLab, not just GitHub", async
 
   // The reviewer's own note was updated in place and still carries the state.
   const write = calls.find((c) =>
-    c.url.startsWith("https://gitlab.example") && c.method !== "GET"
+    c.url.startsWith("https://gitlab.example/") && c.method !== "GET"
   );
   assertEquals(write?.method, "PUT");
   assertEquals(write?.url.endsWith("/notes/11"), true);
@@ -450,7 +450,7 @@ Deno.test("a reworded finding inherits its dismissal through the CLI", async () 
   // The comment carries one identity with the rewording recorded, so the next
   // round resolves it without paying for another call.
   const write = calls.find((c) =>
-    c.url.includes("api.github.com") && c.method !== "GET"
+    c.url.startsWith("https://api.github.com/") && c.method !== "GET"
   );
   const state = decodeState(JSON.parse(write?.body ?? "{}").body);
   assertEquals(state?.findings.length, 1);

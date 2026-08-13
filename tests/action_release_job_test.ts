@@ -100,6 +100,6 @@ Deno.test("the action release job can reach what it actually calls", () => {
     throw new Error("the job declares no allowed endpoints");
   }
   const allowed = String(checkout.with["allowed-endpoints"]).split(/\s+/);
-  assertEquals(allowed.includes("api.github.com:443"), true);
-  assertEquals(allowed.includes("github.com:443"), true);
+  assertEquals(allowed.some((e) => e === "api.github.com:443"), true);
+  assertEquals(allowed.some((e) => e === "github.com:443"), true);
 });

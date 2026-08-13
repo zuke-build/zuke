@@ -91,6 +91,17 @@ Deno.test("translateCommand maps clean commands and chains", () => {
   assertEquals(chain.every((i) => i.runnable), true);
 });
 
+Deno.test("translateCommand escapes line separators in generated literals", () => {
+  // U+2028 is legal inside a JSON string but is a line terminator to a
+  // JavaScript parser — embedded raw by JSON.stringify, it would split the
+  // generated string literal across lines. The quotes keep the tokenizer from
+  // treating it as argument-separating whitespace, so it reaches the literal.
+  const [item] = translateCommand('echo "a b"');
+  assertEquals(item.runnable, true);
+  assertEquals(item.code.includes(" "), false);
+  assertEquals(item.code, 'CmdTasks.exec("echo", (s) => s.args("a\\u2028b"))');
+});
+
 Deno.test("translateCommand flags shell-specific commands as TODO", () => {
   for (
     const shellCmd of [

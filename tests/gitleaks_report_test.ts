@@ -117,6 +117,24 @@ Deno.test("a pipe in a value cannot break out of the table cell", () => {
   assertStringIncludes(summary, "a\\|b.ts");
 });
 
+Deno.test("a backslash in a value cannot pose as an escape", () => {
+  // A Windows path contains backslashes. Unescaped, the value's own backslash
+  // would merge with the escapes this table adds — `a\` before a pipe reads as
+  // an escaped pipe, fabricating cell content in the one report that says
+  // where a secret is.
+  const summary = gitleaksSummary([
+    {
+      rule: "r",
+      file: "dir\\a|b.ts",
+      line: 1,
+      commit: "c",
+      fingerprint: "f",
+    },
+  ]);
+  if (summary === null) throw new Error("expected a summary");
+  assertStringIncludes(summary, "dir\\\\a\\|b.ts");
+});
+
 Deno.test("a backtick in a path cannot end its code span early", () => {
   // A path may contain a backtick, and this table is the only place a failing
   // scan reports where a secret is — a row garbled by its own filename would

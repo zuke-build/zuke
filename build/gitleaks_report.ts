@@ -109,10 +109,13 @@ function visible(ch: string): string {
 /**
  * Escape what would break out of a Markdown table cell: the pipe that separates
  * cells, and any control character that would end the row outright.
+ * Backslashes are escaped first, so a value's own backslash can neither pose
+ * as one of the escapes added here nor swallow the one added before a pipe.
  */
 function cell(value: string): string {
   if (value === "") return "—";
   return value
+    .replace(/\\/g, "\\\\")
     // deno-lint-ignore no-control-regex -- catching these is the point.
     .replace(/[\u0000-\u001f\u007f]/g, visible)
     .replace(/\|/g, "\\|");
