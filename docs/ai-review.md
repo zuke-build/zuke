@@ -225,7 +225,11 @@ finding lifecycle:
    than hiding behind its earlier resolution.
 
 The committed `.suppress(...)` list still works as the hard override, and is
-still the right tool for a false positive you want silenced across branches.
+still the right tool for a false positive you want silenced across branches — a
+dismissal holds for its own pull request only. The dismissed section says so and
+points at the suppress list, so a finding being re-argued on PR after PR has an
+obvious end; promoting it stays a deliberate edit to your build file, never
+something the reviewer does for you.
 
 ### Reworded findings
 
