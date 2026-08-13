@@ -51,6 +51,6 @@
   "packages/tofu": "1.0.0",
   "packages/release-please": "1.0.2",
   "packages/security": "1.0.0",
-  "packages/ai": "2.0.0",
+  "packages/ai": "2.1.0",
   "packages/otel": "1.0.1"
 }
