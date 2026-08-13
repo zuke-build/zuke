@@ -34,7 +34,10 @@ security fixes. Depending on the caret range keeps you on it.
 
 ## Supply-chain posture
 
-What the project does to keep releases trustworthy:
+What the project does to keep releases trustworthy. The
+[security assurance case](./docs/assurance-case.md) justifies _why_ these
+measures meet the project's security requirements — the threat model, the trust
+boundaries, and the design-principle arguments behind the list below:
 
 - **Zero runtime dependencies.** Every published package declares no dependency
   but `@zuke/core`, so nothing third-party is shipped to consumers. The build
