@@ -304,7 +304,7 @@ Deno.test("eligible is the one gate both resolution paths share", () => {
 });
 
 Deno.test("dedupNotes carries an empty file for a hand-built file-less pair", () => {
-  // planDedup never offers a file-less pair, but the serialiser is its own
+  // planDedup never offers a file-less pair, but the serializer is its own
   // contract: a missing file travels as "", never as the string "undefined".
   const notes = dedupNotes({
     pairs: [{

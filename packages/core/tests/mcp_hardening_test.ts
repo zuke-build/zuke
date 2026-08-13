@@ -627,7 +627,7 @@ Deno.test("with a store, an unknown tool still gets the opaque unknown answer", 
 /** A store whose every operation rejects (a dead state backend). */
 class BrokenStore implements StateStore {
   #die(): Promise<never> {
-    return Promise.reject(new Error("store down: s3nsitive backend detail"));
+    return Promise.reject(new Error("store down: confidential backend detail"));
   }
   getRun(): ReturnType<StateStore["getRun"]> {
     return this.#die();
@@ -674,7 +674,7 @@ Deno.test("a store fault in a read tool is a generic JSON-RPC error, detail with
   );
   assertEquals(res?.error?.code, INTERNAL_ERROR);
   // The raw store message never escapes to the client.
-  assertEquals(JSON.stringify(res).includes("s3nsitive"), false);
+  assertEquals(JSON.stringify(res).includes("confidential"), false);
   // The transport survives: the next message is answered normally.
   assertEquals((await server.handleMessage(req("ping")))?.result, {});
 });
