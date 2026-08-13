@@ -12,6 +12,8 @@ import {
   RunNotSuspendedError,
 } from "../src/resume.ts";
 import { ForeignRunError } from "../src/ownership.ts";
+import { lockKey } from "../src/state/lock.ts";
+import { RUN_LEASE_PREFIX } from "../src/state/run_lease.ts";
 import { FileSystemStateStore } from "../src/state/fs_store.ts";
 import { defaultStateHost, type PutResult } from "../src/state/store.ts";
 import type { RunRecord } from "../src/state/types.ts";
@@ -1106,5 +1108,41 @@ Deno.test("resume --check counts a run that resumed and then failed", async () =
     assertEquals(swept, { checked: 1, failed: 1 });
     const runId = (await store.listRuns({}))[0].id;
     assertEquals((await store.getRun(runId))?.record.status, "failed");
+  });
+});
+
+Deno.test("a sweep skips a run another process holds, without counting it", async () => {
+  // A live resumer holds the run's lease. The sweep's own resume attempt gets
+  // AlreadyResumedError from the other side of that race — which is a run in
+  // good hands, not a failure for the cron to alarm on.
+  await withTempStore(async (store) => {
+    const makeBuild = () => {
+      class B extends Build {
+        gate = target().waitsFor((s) => s.on(externalSignal("go")));
+        done = target().dependsOn(this.gate).executes(() => {});
+      }
+      const build = new B();
+      discoverTargets(build);
+      return build;
+    };
+    const a = makeBuild();
+    await execute(a, a.done, { silent: true, stateStore: store });
+    const runId = (await store.listRuns({}))[0].id;
+
+    // Another process's claim on the run.
+    const held = await store.acquireLock(
+      lockKey(RUN_LEASE_PREFIX, runId),
+      { actor: "the-resumer", runId, since: new Date().toISOString() },
+      60_000,
+    );
+    assertEquals(held.ok, true);
+
+    const swept = await resumeCheck(makeBuild(), {
+      stateStore: store,
+      silent: true,
+    });
+    assertEquals(swept, { checked: 1, failed: 0 });
+    // Left exactly as found — the holder is driving it.
+    assertEquals((await store.getRun(runId))?.record.status, "suspended");
   });
 });

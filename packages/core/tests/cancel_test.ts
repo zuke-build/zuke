@@ -1824,3 +1824,28 @@ Deno.test("the default reporter routes cancel diagnostics to the console's error
     assertEquals(logs.some((l) => l.includes("compensating")), true);
   });
 });
+
+Deno.test("without a redactor, a compensation failure message is kept verbatim", async () => {
+  // The executor's in-process walk can run with no redactor (no secrets are
+  // known); the failure text must then pass through untouched — masking is
+  // opt-in, not a mangling of every message.
+  class CD extends Build {
+    deploy = target().executes(() => {}).onCancel(() => this.rollback);
+    rollback = target().executes(() => {
+      throw new Error("exact diagnostic text");
+    });
+  }
+  const build = new CD();
+  discoverTargets(build);
+  const record = craftRecord("deploy", {
+    deploy: { status: "succeeded", meta: {} },
+  });
+  const outcome = await runCompensations([build.deploy], record, {
+    runId: "run",
+    signals: new Map(),
+    reporter: { info: () => {}, error: () => {} },
+    // no redactor
+  });
+  assertEquals(outcome.failures.length, 1);
+  assertEquals(outcome.failures[0].error, "exact diagnostic text");
+});

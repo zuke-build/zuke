@@ -507,3 +507,35 @@ Deno.test("a dry-runnable target runs its body in preview; a failure is reported
   assertEquals(run.aborted, true);
   assertEquals(messageOf(run.failure), "preview boom");
 });
+
+Deno.test("a store-less run still reports outcomes and holds state in memory", async () => {
+  // Without a state store there is no record to fall back to; the live
+  // settlement map alone must answer `ctx.outcomes()`, and `ctx.stateOf(...)`
+  // hands out in-memory handles so bodies written for durable runs still work.
+  let observed: ReadonlyMap<string, TargetOutcomeView> | undefined;
+  let otherMeta: unknown;
+  let ownHandleIsStable = false;
+  class B extends Build {
+    first = target().executes(() => {});
+    second = target().dependsOn(this.first).executes(async (ctx) => {
+      observed = ctx.outcomes();
+      const other = ctx.stateOf("first");
+      await other.set({ note: "in-memory" });
+      otherMeta = other.get().note;
+      // The documented invariant: stateOf(self) is the same handle as state.
+      ownHandleIsStable = ctx.stateOf("second") === ctx.state;
+    });
+  }
+  const b = new B();
+  discoverTargets(b);
+  const { ctx } = contextFor(b); // no writer
+
+  const run = await runSequential(ctx, [b.first, b.second], new Set());
+  assertEquals(run.aborted, false);
+  // The earlier target's settlement is visible from the live map alone.
+  assertEquals(observed?.get("first")?.status, "succeeded");
+  assertEquals(observed?.has("second"), false); // still running, no outcome
+  // In-memory state writes are readable back within the same handle.
+  assertEquals(otherMeta, "in-memory");
+  assertEquals(ownHandleIsStable, true);
+});
