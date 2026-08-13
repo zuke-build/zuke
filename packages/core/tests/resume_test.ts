@@ -976,3 +976,135 @@ Deno.test("a timeout settlement retries a conflicting write", async () => {
     await Deno.remove(dir, { recursive: true });
   }
 });
+
+Deno.test("time parked at a gate is credited back to the run's deadline", async () => {
+  // A deadline is a budget for *running*: a 45-minute budget behind a 72-hour
+  // approval gate would otherwise be spent before anyone could approve, and
+  // the run settled the instant it woke up.
+  await withTempStore(async (store) => {
+    const makeBuild = () => {
+      class B extends Build {
+        gate = target().waitsFor((s) => s.on(externalSignal("go")));
+        done = target().dependsOn(this.gate).executes(() => {});
+      }
+      const build = new B();
+      discoverTargets(build);
+      return build;
+    };
+    const a = makeBuild();
+    await execute(a, a.done, { silent: true, stateStore: store });
+    const runId = (await store.listRuns({}))[0].id;
+
+    // The run has an hour of budget left, and has been parked for an hour:
+    // `updatedAt` is when it suspended.
+    const hourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const inAnHour = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const loaded = await store.getRun(runId);
+    if (loaded === null) throw new Error("expected the suspended run");
+    const amended = structuredClone(loaded.record);
+    amended.updatedAt = hourAgo;
+    amended.deadlineAt = inAnHour;
+    assertEquals((await store.putRun(amended, loaded.version)).ok, true);
+
+    const result = await resumeRun(makeBuild(), {
+      runId,
+      signal: "go",
+      stateStore: store,
+      silent: true,
+    });
+    assertEquals(result.ok, true);
+    const after = await store.getRun(runId);
+    const credited = Date.parse(after?.record.deadlineAt ?? "") -
+      Date.parse(inAnHour);
+    // The parked hour was given back (within scheduling slack).
+    assertEquals(credited >= 60 * 60 * 1000 - 1000, true);
+    assertEquals(credited < 2 * 60 * 60 * 1000, true);
+  });
+});
+
+/** A store where the run vanishes the moment the timeout settlement conflicts. */
+class VanishesOnFail extends FileSystemStateStore {
+  #conflicted = false;
+  /** Conflict the first `failed` write; the run is gone after that. */
+  override putRun(
+    record: RunRecord,
+    expected: string | null,
+  ): Promise<PutResult> {
+    if (record.status === "failed" && !this.#conflicted) {
+      this.#conflicted = true;
+      return Promise.resolve({ ok: false, conflict: true });
+    }
+    return super.putRun(record, expected);
+  }
+  /** Pruned mid-settlement: nothing to read back. */
+  override getRun(
+    id: string,
+  ): Promise<{ record: RunRecord; version: string } | null> {
+    if (this.#conflicted) return Promise.resolve(null);
+    return super.getRun(id);
+  }
+}
+
+Deno.test("a run that vanishes during the timeout settlement still fails cleanly", async () => {
+  // The settlement CAS conflicts and the re-read finds nothing: the record was
+  // pruned. There is nothing left to settle, but the caller still gets the
+  // timeout failure rather than a crash or a false success.
+  const dir = await Deno.makeTempDir();
+  try {
+    const makeBuild = () => {
+      class B extends Build {
+        gate = target().waitsFor((s) =>
+          s.on(externalSignal("never")).timeout(0)
+        );
+        done = target().dependsOn(this.gate).executes(() => {});
+      }
+      const build = new B();
+      discoverTargets(build);
+      return build;
+    };
+    const seedStore = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+    const a = makeBuild();
+    await execute(a, a.done, { silent: true, stateStore: seedStore });
+    const runId = (await seedStore.listRuns({}))[0].id;
+
+    const store = new VanishesOnFail(`${dir}/runs`, defaultStateHost);
+    const result = await resumeRun(makeBuild(), {
+      runId,
+      stateStore: store,
+      silent: true,
+    });
+    assertEquals(result.ok, false);
+    assertEquals(messageOf(result.error).includes("timed out"), true);
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("resume --check counts a run that resumed and then failed", async () => {
+  // The sweep's exit code is what a cron watches: a run it advanced into a
+  // failure (here, a timed-out wait) must count, not just runs it could not
+  // touch at all.
+  await withTempStore(async (store) => {
+    const makeBuild = () => {
+      class B extends Build {
+        gate = target().waitsFor((s) =>
+          s.on(externalSignal("never")).timeout(0)
+        );
+        done = target().dependsOn(this.gate).executes(() => {});
+      }
+      const build = new B();
+      discoverTargets(build);
+      return build;
+    };
+    const a = makeBuild();
+    await execute(a, a.done, { silent: true, stateStore: store });
+
+    const swept = await resumeCheck(makeBuild(), {
+      stateStore: store,
+      silent: true,
+    });
+    assertEquals(swept, { checked: 1, failed: 1 });
+    const runId = (await store.listRuns({}))[0].id;
+    assertEquals((await store.getRun(runId))?.record.status, "failed");
+  });
+});

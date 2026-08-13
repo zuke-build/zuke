@@ -383,3 +383,127 @@ Deno.test("teardown stranded behind a parked gate settles skipped when the run f
     assertEquals(loaded?.record.targets.boom?.status, "failed");
   });
 });
+
+Deno.test("a re-driven effect settles done and knows it is a second attempt", async () => {
+  // The at-least-once half: a previously failed effect is re-armed, its body
+  // told it is being re-driven (so it can favour idempotent variants), and a
+  // completed attempt is durably `done` for the next process to skip.
+  await withTempStore(async (store) => {
+    const drives: boolean[] = [];
+    let effectName: string | undefined;
+    class B extends Build {
+      notify = target().effect("announce", (ctx) => {
+        drives.push(ctx.redriven);
+        effectName = ctx.effect;
+      });
+    }
+    const b = new B();
+    discoverTargets(b);
+    const writer = await RunStateWriter.open(
+      store,
+      runningRecord("notify", "B", {
+        notify: {
+          status: "pending",
+          meta: {},
+          // A previous process armed the intent and recorded the failure.
+          effects: {
+            announce: {
+              status: "failed",
+              intentAt: NOW,
+              settledAt: NOW,
+              attempts: 1,
+              error: "first try boom",
+            },
+          },
+        },
+      }),
+      () => NOW,
+      new Redactor(),
+    );
+    const { ctx } = contextFor(b, writer);
+
+    const run = await runSequential(ctx, [b.notify], new Set());
+    await writer.drain();
+    assertEquals(run.aborted, false);
+    assertEquals(drives, [true]); // the body knew it was a re-drive
+    assertEquals(effectName, "announce");
+    const after = await store.getRun("run-1");
+    assertEquals(
+      after?.record.targets.notify?.effects?.announce?.status,
+      "done",
+    );
+    assertEquals(after?.record.targets.notify?.effects?.announce?.attempts, 2);
+    // A settled success clears the recorded failure.
+    assertEquals(
+      after?.record.targets.notify?.effects?.announce?.error,
+      undefined,
+    );
+  });
+});
+
+Deno.test("outcomeOf falls back to a record row this process never settled", async () => {
+  // The concurrent-writer shape: the snapshot can hold a settled row this
+  // process never ran (a conflicting write re-read adopts the fresh record).
+  // `outcomeOf` must answer from the record then — and still say nothing for a
+  // row that has no outcome yet.
+  await withTempStore(async (store) => {
+    let observed: TargetOutcomeView | undefined;
+    let all: ReadonlyMap<string, TargetOutcomeView> | undefined;
+    class B extends Build {
+      report = target().executes((ctx) => {
+        observed = ctx.outcomeOf("external");
+        all = ctx.outcomes();
+      });
+    }
+    const b = new B();
+    discoverTargets(b);
+    const writer = await RunStateWriter.open(
+      store,
+      runningRecord("report", "B", {
+        // Settled by another process; this one holds no live entry for it.
+        external: { status: "succeeded", meta: {} },
+        // No outcome yet — must stay invisible.
+        queued: { status: "pending", meta: {} },
+      }),
+      () => NOW,
+      new Redactor(),
+    );
+    const { ctx } = contextFor(b, writer);
+
+    const run = await runSequential(ctx, [b.report], new Set());
+    assertEquals(run.aborted, false);
+    assertEquals(observed?.status, "succeeded"); // read from the record
+    assertEquals(all?.get("external")?.status, "succeeded");
+    assertEquals(all?.has("queued"), false); // pending rows have no outcome
+  });
+});
+
+Deno.test("a dry-runnable target runs its body in preview; a failure is reported", async () => {
+  // `.dryRunnable()` opts a target into executing under --dry-run (with `$` in
+  // echo mode) so the operator previews the real commands; a preview body that
+  // throws must surface as a failed target, exactly like a real run.
+  class B extends Build {
+    preview = target().dryRunnable().executes((ctx) => {
+      ran.push(`preview:${ctx.dryRun}`);
+    });
+    boom = target().dryRunnable().executes(() => {
+      throw new Error("preview boom");
+    });
+    plain = target().executes(() => {
+      ran.push("plain");
+    });
+  }
+  const ran: string[] = [];
+  const b = new B();
+  discoverTargets(b);
+  const { ctx } = contextFor(b);
+  const dry: RunContext = { ...ctx, dryRun: true };
+
+  const run = await runSequential(dry, [b.preview, b.boom, b.plain], new Set());
+  // The dry-runnable body really ran, and knew it was a dry run…
+  assertEquals(ran, ["preview:true"]);
+  // …the throwing preview failed the run, and the plain target's body was
+  // never executed (an ordinary target is only reported under --dry-run).
+  assertEquals(run.aborted, true);
+  assertEquals(messageOf(run.failure), "preview boom");
+});
