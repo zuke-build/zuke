@@ -57,7 +57,7 @@ function fakeGithub(
       contentType: headers.get("content-type"),
       body: rawBody instanceof Uint8Array ? rawBody : undefined,
     });
-    if (String(input).includes("uploads.github.com")) {
+    if (new URL(String(input)).hostname === "uploads.github.com") {
       return new Response(
         JSON.stringify({
           id: 900,
@@ -191,7 +191,7 @@ Deno.test("a stuck asset (state not uploaded) is deleted and re-sent", async () 
       });
       await Promise.resolve();
       if (method === "DELETE") return new Response(null, { status: 204 });
-      if (String(input).includes("uploads.github.com")) {
+      if (new URL(String(input)).hostname === "uploads.github.com") {
         return new Response(
           JSON.stringify({ id: 901, browser_download_url: "dl/fresh" }),
           { status: 201 },
@@ -230,7 +230,7 @@ Deno.test("a failed deletion of a stuck asset surfaces, a 404 does not", async (
           status: deleteStatus,
         });
       }
-      if (String(i).includes("uploads.github.com")) {
+      if (new URL(String(i)).hostname === "uploads.github.com") {
         return new Response(JSON.stringify({ id: 1 }), { status: 201 });
       }
       const release = releasePayload([]);
@@ -412,7 +412,7 @@ Deno.test("malformed release responses fail with what came back", async () => {
     // The lookup succeeds but the upload host answers garbage.
     const brokenUpload: typeof fetch = async (input) => {
       await Promise.resolve();
-      if (String(input).includes("uploads.github.com")) {
+      if (new URL(String(input)).hostname === "uploads.github.com") {
         return new Response("<html>", { status: 201 });
       }
       return new Response(JSON.stringify(releasePayload([])), { status: 200 });
@@ -436,7 +436,7 @@ Deno.test("an upload rejection surfaces GitHub's own message", async () => {
     const file = await assetFixture(dir);
     const failing: typeof fetch = async (input) => {
       await Promise.resolve();
-      if (String(input).includes("uploads.github.com")) {
+      if (new URL(String(input)).hostname === "uploads.github.com") {
         return new Response(JSON.stringify({ message: "asset too large" }), {
           status: 422,
           statusText: "Unprocessable Entity",

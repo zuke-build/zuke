@@ -25,7 +25,7 @@ function fakeGithub(uploaded: string[]): typeof fetch {
   return async (input, _init) => {
     await Promise.resolve();
     const url = String(input);
-    if (url.includes("uploads.example")) {
+    if (new URL(url).hostname === "uploads.example") {
       const name = new URL(url).searchParams.get("name") ?? "";
       uploaded.push(name);
       return new Response(
