@@ -1121,6 +1121,213 @@ Deno.test("run forwards args and plugins to main", async () => {
   assertEquals(seen, ["finished"]);
 });
 
+Deno.test("parseArgs reads the inline = forms of --signal and --data", () => {
+  const p = parseArgs([
+    "resume",
+    "run-9",
+    "--signal=approved",
+    '--data={"by":"qa"}',
+  ]);
+  assertEquals(p.signal, "approved");
+  assertEquals(p.data, '{"by":"qa"}');
+});
+
+Deno.test("parseArgs reads --allow-run globs and --protect lists", () => {
+  // The comma list is trimmed and empties are dropped.
+  const globbed = parseArgs(["mcp", "--allow-run=deploy-*, ,test"]);
+  assertEquals(globbed.allowRun, true);
+  assertEquals(globbed.allowRunPatterns, ["deploy-*", "test"]);
+  // Bare --allow-run enables runs with no pattern restriction.
+  const bare = parseArgs(["mcp", "--allow-run"]);
+  assertEquals([bare.allowRun, bare.allowRunPatterns], [true, undefined]);
+
+  const spaced = parseArgs(["mcp", "--protect", "prod-*"]);
+  assertEquals(spaced.protectPatterns, ["prod-*"]);
+  const inline = parseArgs(["mcp", "--protect=a,b"]);
+  assertEquals(inline.protectPatterns, ["a", "b"]);
+});
+
+Deno.test("parseArgs treats an empty --parallel= value as plain --parallel", () => {
+  assertEquals(parseArgs(["build", "--parallel="]).parallel, true);
+});
+
+Deno.test("main: resume without a run id prints usage and fails", async () => {
+  const { code, err } = await capture(() => main(Demo, ["resume"]));
+  assertEquals(code, 1);
+  assertStringIncludes(err.join("\n"), "Usage: zuke resume <run-id>");
+});
+
+Deno.test("main: resume rejects invalid --data JSON without echoing it", async () => {
+  const { code, err } = await capture(() =>
+    main(Demo, ["resume", "run-x", "--data", "{oops"])
+  );
+  assertEquals(code, 1);
+  const text = err.join("\n");
+  assertStringIncludes(text, "--data is not valid JSON");
+  // The payload could be large or sensitive; it must not be quoted back.
+  assertEquals(text.includes("{oops"), false);
+});
+
+Deno.test("main: mcp --http refuses a non-loopback bind without a token", async () => {
+  // The refusal happens before any socket is bound, so the test stays hermetic.
+  const saved = Deno.env.get("ZUKE_MCP_TOKEN");
+  Deno.env.delete("ZUKE_MCP_TOKEN");
+  try {
+    const { code, err } = await capture(() =>
+      main(Demo, ["mcp", "--http", "0.0.0.0:8123"])
+    );
+    assertEquals(code, 1);
+    assertStringIncludes(err.join("\n"), "refusing to bind");
+  } finally {
+    if (saved !== undefined) Deno.env.set("ZUKE_MCP_TOKEN", saved);
+  }
+});
+
+Deno.test("main: cancel reports a missing run as a friendly error", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const store = new FileSystemStateStore(dir, defaultStateHost);
+    class Stateful extends Build {
+      override stateStore() {
+        return store;
+      }
+      build = target().executes(() => {});
+    }
+    const { code, err } = await capture(() =>
+      main(Stateful, ["cancel", "ghost"])
+    );
+    assertEquals(code, 1);
+    assertStringIncludes(err.join("\n"), 'no run "ghost"');
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("main: runs list applies --status, --target, and --since filters", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const store = new FileSystemStateStore(dir, defaultStateHost);
+    await store.putRun(sampleRunRecord({ id: "ok-run" }), null);
+    await store.putRun(
+      sampleRunRecord({
+        id: "old-fail",
+        status: "failed",
+        createdAt: "2020-01-01T00:00:00.000Z",
+        updatedAt: "2020-01-01T00:00:00.000Z",
+        rootTarget: "deploy",
+        graph: [{ name: "deploy", dependsOn: [] }],
+        targets: { deploy: { status: "failed", meta: {} } },
+      }),
+      null,
+    );
+    class Stateful extends Build {
+      override stateStore() {
+        return store;
+      }
+      build = target().executes(() => {});
+    }
+    const ids = async (...filters: string[]) => {
+      const { code, out } = await capture(() =>
+        main(Stateful, ["runs", "list", ...filters, "--json"])
+      );
+      assertEquals(code, 0);
+      const rows: Array<{ id: string }> = JSON.parse(out.join("\n"));
+      return rows.map((r) => r.id);
+    };
+    assertEquals(await ids("--status", "succeeded"), ["ok-run"]);
+    assertEquals(await ids("--target", "deploy"), ["old-fail"]);
+    assertEquals(await ids("--since", "2026-01-01T00:00:00.000Z"), ["ok-run"]);
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("main: --affected rejects a git base that reads as a git option", async () => {
+  // A base beginning with "-" would be read by git as an option (e.g.
+  // `--output=…` writes to a file), so it is rejected before any git process
+  // is spawned. The failure is not a configuration error main knows how to
+  // present, so it propagates rather than being flattened into exit 1.
+  const error = await assertRejects(() =>
+    capture(() => main(Demo, ["build", "--affected=-o"]))
+  );
+  assertStringIncludes(error.message, "invalid git base revision");
+});
+
+Deno.test("main watchSignals: a signal cancels the run, a second force-exits", async () => {
+  const handlers: Array<() => void> = [];
+  const removed: Deno.Signal[] = [];
+  const origAdd = Deno.addSignalListener;
+  const origRemove = Deno.removeSignalListener;
+  const origExit = Deno.exit;
+  Deno.addSignalListener = (_sig: Deno.Signal, fn: () => void): void => {
+    handlers.push(fn);
+  };
+  Deno.removeSignalListener = (sig: Deno.Signal, _fn: () => void): void => {
+    removed.push(sig);
+  };
+  const ran: string[] = [];
+  class Interrupted extends Build {
+    first = target().executes(() => {
+      ran.push("first");
+      handlers[0](); // Ctrl-C arrives mid-build
+    });
+    second = target().dependsOn(this.first).executes(
+      () => void ran.push("second"),
+    );
+  }
+  try {
+    const { code } = await capture(() =>
+      main(Interrupted, ["second"], { watchSignals: true })
+    );
+    assertEquals(code, 1); // the run was cancelled, not completed
+    assertEquals(ran, ["first"]); // `second` never started
+    // Every installed handler was removed on the way out.
+    assertEquals(removed.length, handlers.length);
+
+    // A second signal while cancellation is in flight force-exits 130.
+    let exitCode: number | undefined;
+    Deno.exit = (code?: number): never => {
+      exitCode = code;
+      throw new ExitSignal();
+    };
+    try {
+      handlers[0]();
+    } catch (e) {
+      if (!(e instanceof ExitSignal)) throw e;
+    }
+    assertEquals(exitCode, 130);
+  } finally {
+    Deno.addSignalListener = origAdd;
+    Deno.removeSignalListener = origRemove;
+    Deno.exit = origExit;
+  }
+});
+
+Deno.test("main watchSignals: unsupported signals are skipped, teardown is best-effort", async () => {
+  const origAdd = Deno.addSignalListener;
+  const origRemove = Deno.removeSignalListener;
+  let installed = 0;
+  Deno.addSignalListener = (sig: Deno.Signal, _fn: () => void): void => {
+    // A platform that rejects everything but SIGINT (e.g. SIGTERM on Windows).
+    if (sig !== "SIGINT") throw new TypeError(`unsupported signal ${sig}`);
+    installed++;
+  };
+  Deno.removeSignalListener = (): void => {
+    throw new TypeError("teardown refused");
+  };
+  try {
+    const { code } = await capture(() =>
+      main(Demo, ["build"], { watchSignals: true })
+    );
+    // Neither the rejected install nor the failing teardown surfaces.
+    assertEquals(code, 0);
+    assertEquals(installed, 1);
+  } finally {
+    Deno.addSignalListener = origAdd;
+    Deno.removeSignalListener = origRemove;
+  }
+});
+
 Deno.test("main: resume rejects an oversized --data payload", async () => {
   const huge = JSON.stringify({ blob: "x".repeat(70_000) });
   const { code, err } = await capture(() =>
