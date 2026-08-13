@@ -38,6 +38,7 @@ export class DiscussionSettings {
   #associations = [...DEFAULT_TRUSTED_ASSOCIATIONS];
   #authors: string[] = [];
   #maxTokens = DEFAULT_MAX_COMMENT_TOKENS;
+  #threads = false;
 
   /**
    * Replace the trusted `author_association` set (default `OWNER`, `MEMBER`,
@@ -79,9 +80,31 @@ export class DiscussionSettings {
     return this.#authors;
   }
 
+  /**
+   * Also anchor each finding to a file/line **review thread** on the pull
+   * request, so a maintainer contests it by replying in that thread instead of
+   * quoting its id somewhere on the PR.
+   *
+   * The summary comment is posted either way and stays the one source of
+   * truth: it lists every finding — anchored or not — and carries the state
+   * block, so a thread that cannot be posted never hides a finding. The
+   * reviewer replies into the thread with the outcome and resolves it once the
+   * finding is fixed or dismissed. GitHub only; on other hosts the reviewer
+   * notes that and posts the summary alone.
+   */
+  threads(): this {
+    this.#threads = true;
+    return this;
+  }
+
   /** INTERNAL: the total comment-token cap. */
   maxTokens_(): number {
     return this.#maxTokens;
+  }
+
+  /** INTERNAL: whether findings are also anchored to review threads. */
+  threads_(): boolean {
+    return this.#threads;
   }
 }
 

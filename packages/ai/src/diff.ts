@@ -77,6 +77,63 @@ export function changedPaths(diff: string): string[] {
   return paths;
 }
 
+/** A hunk header, capturing the post-image start line (`@@ -a,b +c,d @@`). */
+const HUNK_RIGHT = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/;
+
+/**
+ * The right-side (post-image) line numbers a unified diff exposes, per file:
+ * every added and context line inside a hunk. These are exactly the lines a
+ * pull-request review comment may anchor to on the `RIGHT` side — a removed
+ * line exists only on the left, and a line outside every hunk is not part of
+ * the diff at all, so anchoring to either is rejected by the host.
+ *
+ * Computed from the same filtered, truncated diff the model was shown, which
+ * makes the result an allowlist rather than a hint: a finding naming a path
+ * `.exclude(...)` removed, an absolute path, a traversal, or a file the diff
+ * never touched simply finds nothing here.
+ */
+export function anchorableLines(diff: string): Map<string, Set<number>> {
+  const anchors = new Map<string, Set<number>>();
+  let path: string | undefined;
+  let inHunk = false;
+  let right = 0;
+  for (const line of diff.split("\n")) {
+    if (line.startsWith("diff --git ")) {
+      path = undefined;
+      inHunk = false;
+      continue;
+    }
+    // The `+++ b/` header only appears before a hunk; the `!inHunk` guard stops
+    // an added line that happens to begin `++ b/` from being read as one.
+    if (!inHunk && line.startsWith("+++ ")) {
+      const target = line.slice("+++ ".length).trim();
+      path = target.startsWith("b/")
+        ? target.slice(2).replace(/\t.*$/, "")
+        : undefined; // `/dev/null` — a deleted file anchors nothing
+      continue;
+    }
+    const hunk = line.match(HUNK_RIGHT);
+    if (hunk) {
+      right = Number(hunk[1]);
+      inHunk = true;
+      continue;
+    }
+    if (!inHunk || path === undefined) continue;
+    if (line.startsWith("\\")) continue; // "\ No newline at end of file"
+    if (line.startsWith("-")) continue; // left side only; does not advance
+    // An added line, a context line, or the bare empty line git emits for a
+    // blank context line — all exist on the right at `right`.
+    let lines = anchors.get(path);
+    if (lines === undefined) {
+      lines = new Set<number>();
+      anchors.set(path, lines);
+    }
+    lines.add(right);
+    right++;
+  }
+  return anchors;
+}
+
 /**
  * Truncate text to roughly `maxTokens` (≈4 chars/token), noting the cut.
  * `what` names the text in the truncation note (default `"diff"`).

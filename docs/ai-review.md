@@ -278,6 +278,52 @@ an untrusted comment is powerless **by construction**, not by prompt politeness:
 - **Comments are budgeted** (`.maxCommentTokens(...)`, default ≈4000) so a wall
   of text cannot crowd the rubric or the diff out of the context window.
 
+### Review threads
+
+`.discussion((d) => d.threads())` anchors each finding to the line it is about,
+as a **pull-request review thread**. A maintainer contests it by replying in
+that thread — no id to quote — and the reviewer replies with the outcome and
+resolves the thread once the finding is dismissed or fixed. GitHub only for now;
+elsewhere the reviewer says so and posts the summary alone.
+
+The summary comment is posted either way and stays the single source of truth:
+it lists **every** finding, anchored or not, and carries the state block. That
+matters because a thread is the one part of this that can fail. A finding is
+only anchored when the model gave a file and a line that the reviewed diff
+actually exposes on the right-hand side — an invented line, a line that exists
+only as a deletion, or a file the diff never touched is never guessed at, since
+a thread on the wrong line is worse than none. Anything unanchored, rejected by
+GitHub, or left over by the per-run cap stays in the table, and the report's
+**Notes** say so rather than leaving you to wonder.
+
+What each round does to a thread:
+
+| Situation | What happens |
+| --- | --- |
+| A new finding with a usable line | A thread is opened on that line |
+| The finding is still open next round | **Nothing** — silence means "still open" |
+| A maintainer's rebuttal is accepted | The outcome is replied in-thread and the thread resolved |
+| A maintainer's rebuttal does not hold | The outcome is replied; the thread stays open |
+| The finding stops reproducing | A "fixed" reply, and the thread resolved |
+| A fixed finding comes back | A "reopened" reply, and the thread **un**resolved |
+| Dismissed in an earlier round | Nothing — it was answered and closed then |
+
+Trust works exactly as it does for the id-quoting channel, and the two share one
+token budget, so turning threads on cannot double the untrusted text the
+adjudicator sees. A thread counts as the reviewer's own only when its opening
+marker is ours **and** the host attributes the author to us, so a pasted marker
+buys nothing: the reviewer reads no rebuttals from such a thread, never replies
+into it, and never resolves it. A reply is a rebuttal for the finding **its
+thread** names, never for one its text mentions.
+
+Resolution needs GraphQL, on the same `pull-requests: write` scope `.comment()`
+already requires. If it is unavailable the outcome reply still lands — the part
+a human reads — and a note records that the thread stays open. Two caveats worth
+knowing: GitHub validates anchors against its own merge-base diff, so a line
+that looks anchorable locally can still be refused (that finding falls back to
+the table), and a thread is not re-anchored when a later push moves the code —
+the summary table always carries the current location.
+
 ### Who counts as a maintainer, per host
 
 `OWNER` / `MEMBER` / `COLLABORATOR` is GitHub's vocabulary, and the trusted set

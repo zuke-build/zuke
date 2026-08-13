@@ -243,8 +243,9 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   against the project's rules, read from the diff base), `.fileContext()` (whole
   changed files, not bare hunks), `.verify()` (adversarial re-check of every
   finding), and `.discussion()` (maintainers refute a finding by replying with
-  its id; accepted dismissals persist instead of resurfacing, including when the
-  model rewords the finding — only
+  its id — or, with `.discussion((d) => d.threads())`, by replying in the
+  finding's own line-anchored review thread; accepted dismissals persist instead
+  of resurfacing, including when the model rewords the finding — only
   platform-verified maintainer comments ever reach the model, on GitHub, GitLab,
   Azure DevOps and Bitbucket alike). See the cheatsheet's AI section.
 - **Wait on an external GitHub workflow (`@zuke/gh`):** in a `.waitsFor(...)`

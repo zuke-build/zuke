@@ -782,7 +782,10 @@ class ZukeBuild extends Build {
       // resurfacing (reworded) every push. Only comments whose author GitHub
       // itself attributes as OWNER/MEMBER/COLLABORATOR are ever read — a
       // drive-by comment never reaches the model.
-      .discussion()
+      // Threads: each finding is anchored to its line, and a maintainer
+      // contests it by replying there. This repo reviewing its own PRs is the
+      // only real-world exercise this feature gets.
+      .discussion((d) => d.threads())
       // Dismissed false positives, kept auditable under "Suppressed": a build's
       // own readiness probe / tcpReachable run build-author code that connects
       // to an address the author typed — no more capability than any other line
@@ -888,7 +891,7 @@ class ZukeBuild extends Build {
       // this reviewer (which lacked it) kept re-asserting a fixed finding and
       // a reworded false positive — so it verifies now as well.
       .conventionsFile("AGENTS.md")
-      .discussion()
+      .discussion((d) => d.threads())
       .verify()
       // Dismissed false positives from the v2 PR, kept auditable under
       // "Suppressed": `31ce99tz9w4ef` claims the comment upsert trusts any

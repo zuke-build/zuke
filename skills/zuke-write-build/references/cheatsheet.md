@@ -716,6 +716,14 @@ Depth and discussion knobs (all optional, per reviewer):
   report but never gate.
 - `.comment("append")` — post a fresh PR comment per run (history stays on the
   thread) instead of the default single upserted comment per reviewer.
+- `.discussion((d) => d.threads())` — anchor each finding to its line as a PR
+  **review thread**: the maintainer contests it by replying in that thread (no
+  id to quote), and the reviewer replies with the outcome and resolves the
+  thread when the finding is dismissed or fixed. The summary comment is still
+  posted and still lists every finding, so an unanchorable finding (no line, an
+  invented line, a line only present as a deletion) loses nothing — it stays in
+  the table and the report's Notes say why. Lines are never guessed at. GitHub
+  only; other hosts note it and post the summary alone.
 - `.discussion()` — the reviewer engages with the PR thread instead of looping:
   a maintainer contests a finding by replying with its id quoted, an
   adjudication pass weighs the rebuttal on merit, and an accepted dismissal is

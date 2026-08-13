@@ -53,11 +53,17 @@ import {
   writeStepSummary,
 } from "./report.ts";
 import { detectReviewHost, type EnvReader, readEnv } from "./hosts.ts";
-import { commentMarker, type HostComment } from "./hosts/types.ts";
+import {
+  commentMarker,
+  type FindingThread,
+  type HostComment,
+  type ReviewThreads,
+} from "./hosts/types.ts";
 import type { RetryInfo, RetryOptions } from "./retry.ts";
 import type { Budget } from "./budget.ts";
 import type { AiCache } from "./cache.ts";
 import { findingFingerprint, type Suppressions } from "./suppress.ts";
+import { stableHash } from "./hash.ts";
 import { rank, severityScore } from "./severity.ts";
 import {
   budgetComments,
@@ -89,7 +95,21 @@ import {
 } from "./dedup.ts";
 import { parseVerdicts, type Verdict } from "./verdicts.ts";
 import { verdictsGeminiSchema, verdictsJsonSchema } from "./schema.ts";
-import { changedPaths } from "./diff.ts";
+import { anchorableLines, changedPaths } from "./diff.ts";
+import {
+  allReplies,
+  findingMarker,
+  findingThreads,
+  listIds,
+  MAX_NEW_THREADS,
+  outcomeMarker,
+  planThreads,
+  type ThreadAction,
+  type ThreadInputs,
+  threadOutcomeBody,
+  threadRootBody,
+  withThreadRebuttals,
+} from "./threads.ts";
 import { buildFileContext } from "./file_context.ts";
 import { readTextOrUndefined } from "./context.ts";
 import type { PromptExtras, RebuttalNote } from "./prompts/templates.ts";
@@ -791,6 +811,194 @@ export class Reviewer implements Validation {
   }
 
   /**
+   * The reviewer's own review threads on this pull request, or `undefined` when
+   * threads are off, the host cannot do them, there is no PR context, or the
+   * listing failed.
+   *
+   * A failed listing disables the whole phase rather than degrading it: without
+   * knowing which threads exist, every finding would look new and the reviewer
+   * would post a duplicate thread for each one. The id-quoting discussion
+   * channel is unaffected either way.
+   */
+  async #prepareThreads(): Promise<
+    { ops: ReviewThreads; threads: Map<string, FindingThread> } | undefined
+  > {
+    if (this.#discussion?.threads_() !== true) return undefined;
+    const host = detectReviewHost(this.#env);
+    if (host?.reviewThreads === undefined) {
+      if (!this.#quiet) {
+        console.warn(
+          `[${this.name}] inline review threads are not available on ` +
+            `${
+              host?.label ?? "this host"
+            } — findings stay in the summary table`,
+        );
+      }
+      return undefined;
+    }
+    const ops = host.reviewThreads(
+      this.#resolveCommentToken(host),
+      this.#env,
+    );
+    if (ops === undefined) return undefined; // no PR context (local run)
+    try {
+      const threads = await findingThreads(
+        await ops.list(this.#fetch ?? fetch),
+        stableHash(this.name),
+      );
+      return { ops, threads };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!this.#quiet) {
+        console.warn(
+          `[${this.name}] could not list review threads: ${message}`,
+        );
+      }
+      return undefined;
+    }
+  }
+
+  /**
+   * Open, answer and resolve this round's review threads, returning the notes
+   * the report must carry.
+   *
+   * Total by construction: one catch around the whole phase, every write
+   * classified rather than thrown, and an immediate halt when the host says to
+   * back off. A commenting failure must never break a build, and every finding
+   * stays in the summary table regardless of what happened here — so the worst
+   * outcome is a run that reads exactly like one with threads switched off.
+   */
+  async #postThreads(
+    context: { ops: ReviewThreads; threads: Map<string, FindingThread> },
+    inputs: ThreadInputs,
+  ): Promise<string[]> {
+    const notes: string[] = [];
+    const doFetch = this.#fetch ?? fetch;
+    const nameHash = stableHash(this.name);
+    try {
+      const plan = planThreads(inputs);
+      if (plan.unanchored.length > 0) {
+        notes.push(
+          `${plan.unanchored.length} finding(s) could not be anchored to a ` +
+            `line in the reviewed diff (${listIds(plan.unanchored)}) — they ` +
+            `are listed in the table above`,
+        );
+      }
+      if (plan.capped > 0) {
+        notes.push(
+          `${plan.capped} finding(s) did not get a review thread this run ` +
+            `(cap ${MAX_NEW_THREADS}) — the next run opens them`,
+        );
+      }
+      const opens = plan.actions.filter((action) => action.kind === "open");
+      const sha = opens.length === 0
+        ? undefined
+        : await context.ops.headSha(doFetch);
+      if (opens.length > 0 && sha === undefined) {
+        notes.push(
+          "could not resolve the pull request's head commit — no new review " +
+            "threads were opened; findings stay in the table",
+        );
+      }
+      let posted = 0;
+      let stopped = false;
+      const rejected: string[] = [];
+      for (const action of plan.actions) {
+        if (stopped) break;
+        // Replies first is not an ordering accident: an outcome the maintainer
+        // can read matters more than a thread that exists, so the closing half
+        // of the round is never starved by the opening half.
+        const result = action.kind === "reply"
+          ? await context.ops.reply(
+            doFetch,
+            action.rootId ?? 0,
+            this.#threadBody(nameHash, action),
+          )
+          : sha === undefined || action.anchor === undefined
+          ? "rejected"
+          : await context.ops.open(
+            doFetch,
+            sha,
+            action.anchor.path,
+            action.anchor.line,
+            this.#threadBody(nameHash, action),
+          );
+        if (result === "created") posted++;
+        else if (result === "rejected") rejected.push(action.id);
+        else stopped = true;
+      }
+      // A thread whose outcome reply the host refused must not be resolved: a
+      // collapsed thread carrying no explanation is worse than an open one.
+      const explained = (target: { id: string }) =>
+        !rejected.includes(target.id);
+      plan.resolve = plan.resolve.filter(explained);
+      if (rejected.length > 0) {
+        notes.push(
+          `${rejected.length} review thread(s) were rejected by the host ` +
+            `(${listIds(rejected)}) — those findings stay in the table`,
+        );
+      }
+      if (stopped) {
+        notes.push(
+          `posted ${posted} of ${plan.actions.length} review thread updates ` +
+            `before the host asked us to back off — the next run resumes`,
+        );
+      }
+      // Resolution last, and only after its outcome reply landed: a collapsed
+      // thread with no explanation is worse than one left open.
+      if (!stopped && plan.resolve.length > 0) {
+        const done = await context.ops.setResolved(
+          doFetch,
+          plan.resolve.map((target) => target.rootId),
+          true,
+        );
+        if (done < plan.resolve.length) {
+          notes.push(
+            `could not resolve ${
+              plan.resolve.length - done
+            } review thread(s) ` +
+              `— the outcome was still posted in the thread`,
+          );
+        }
+      }
+      if (!stopped && plan.unresolve.length > 0) {
+        const done = await context.ops.setResolved(
+          doFetch,
+          plan.unresolve.map((target) => target.rootId),
+          false,
+        );
+        if (done < plan.unresolve.length) {
+          // The asymmetric one: a live finding behind a collapsed thread is the
+          // outcome to shout about, so it names the ids.
+          notes.push(
+            `could not reopen the review thread(s) for ` +
+              `${listIds(plan.unresolve.map((t) => t.id))} — the finding is ` +
+              `reported in the table above and still gates`,
+          );
+        }
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      notes.push(
+        `review threads unavailable this run (${message}) — findings stay ` +
+          `in the table`,
+      );
+    }
+    return notes;
+  }
+
+  /** The body of a thread root or outcome reply, with its marker leading. */
+  #threadBody(nameHash: string, action: ThreadAction): string {
+    if (action.kind === "open") {
+      return `${findingMarker(nameHash, action.id)}\n${threadRootBody(action)}`;
+    }
+    const outcome = action.outcome ?? "upheld";
+    return `${outcomeMarker(nameHash, action.id, outcome)}\n${
+      threadOutcomeBody(outcome, action.reason)
+    }`;
+  }
+
+  /**
    * Run the review and gate the build. Throws an {@link AiReviewError} when the
    * gate trips (or on a configuration/API error with `onError: "fail"`).
    */
@@ -863,6 +1071,9 @@ export class Reviewer implements Validation {
       files = built === "" ? undefined : built;
     }
     const discussion = await this.#prepareDiscussion();
+    const threadCtx = discussion === undefined
+      ? undefined
+      : await this.#prepareThreads();
     const dismissedPrior = dismissedOf(discussion?.priorState);
     const openPrior = openOf(discussion?.priorState);
     const fixedPrior = fixedOf(discussion?.priorState);
@@ -1058,14 +1269,24 @@ export class Reviewer implements Validation {
     // so neither an insistent comment nor the model alone can mute a finding.
     const upheldReasons = new Map<string, string>();
     if (discussion !== undefined && this.#discussion !== undefined) {
+      // Thread replies join the same trust gate and the same one token budget
+      // as the id-quoting channel, appended last so the budget's newest-first
+      // walk keeps them. Enabling threads therefore cannot double the untrusted
+      // text the adjudicator sees.
+      const replies = threadCtx === undefined
+        ? []
+        : allReplies(threadCtx.threads);
       const trusted = budgetComments(
-        trustedComments(discussion.comments, this.#discussion),
+        trustedComments([...discussion.comments, ...replies], this.#discussion),
         this.#discussion,
       );
       const ids = assessment.findings
         .map((f) => f.id)
         .filter((id): id is string => id !== undefined);
-      const rebuttals = rebuttalsFor(trusted, ids);
+      const quoted = rebuttalsFor(trusted, ids);
+      const rebuttals = threadCtx === undefined
+        ? quoted
+        : withThreadRebuttals(quoted, trusted, threadCtx.threads, ids);
       if (rebuttals.size > 0 && !(this.#budget?.exhausted_() ?? false)) {
         try {
           const notes: RebuttalNote[] = [];
@@ -1252,6 +1473,32 @@ export class Reviewer implements Validation {
       commentExtra = encodeState({ findings: [...stored.values()] });
     }
 
+    // Posted after suppression and after the state block, so no thread is ever
+    // opened for a finding that verify refuted, adjudication dismissed or the
+    // suppress list muted — and before #report, which is the only publish, so
+    // an unanchored finding's note reaches the comment rather than the void.
+    // Skipped under `.quiet()` along with the report: quiet means the reviewer
+    // does not speak. Posting threads while withholding the summary would be
+    // worse than either — the anchored findings would appear on the pull
+    // request and the unanchorable ones nowhere at all.
+    const threadNotes = threadCtx === undefined || this.#quiet
+      ? []
+      : await this.#postThreads(
+        threadCtx,
+        {
+          open: assessment.findings,
+          dismissed: dismissed.map((d) => ({
+            id: d.finding.id ?? "",
+            ...(d.reason !== undefined ? { reason: d.reason } : {}),
+          })),
+          dismissedPrior: new Set(dismissedPrior.keys()),
+          fixed: fixed.map((entry) => entry.id),
+          fixedPrior: new Set(fixedPrior.keys()),
+          upheld: upheldReasons,
+          threads: threadCtx.threads,
+          anchors: anchorableLines(diff),
+        },
+      );
     await this.#report(assessment, context.target, usage, {
       suppressed: suppressed.length,
       suppressedFindings: suppressed,
@@ -1260,7 +1507,9 @@ export class Reviewer implements Validation {
       ...(refuted.length > 0 ? { refuted } : {}),
       ...(dismissed.length > 0 ? { dismissed } : {}),
       ...(fixed.length > 0 ? { fixed } : {}),
-      ...(reword.notes.length > 0 ? { notes: reword.notes } : {}),
+      ...(reword.notes.length + threadNotes.length > 0
+        ? { notes: [...reword.notes, ...threadNotes] }
+        : {}),
       discussion: discussion !== undefined,
     }, commentExtra);
     const gate = gateTrips(assessment, this.#gate);
