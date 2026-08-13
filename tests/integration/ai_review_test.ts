@@ -5,11 +5,15 @@
  * works as a whole when driven exactly the way `./zuke <target>` drives it.
  */
 
-import { assertEquals } from "../../packages/core/tests/_assert.ts";
+import {
+  assertEquals,
+  assertStringIncludes,
+} from "../../packages/core/tests/_assert.ts";
 import { Build, target } from "../../packages/core/mod.ts";
 import { securityReviewer } from "../../packages/ai/mod.ts";
 import { findingFingerprint } from "../../packages/ai/src/suppress.ts";
 import { decodeState, encodeState } from "../../packages/ai/src/state.ts";
+import { SUPPRESS_HINT } from "../../packages/ai/src/report.ts";
 import { commentMarker } from "../../packages/ai/src/hosts/types.ts";
 import { runCli } from "./_harness.ts";
 
@@ -166,8 +170,13 @@ Deno.test("a reviewer with verify + discussion gates a real build via the CLI", 
   );
   assertEquals(write?.method, "PATCH");
   assertEquals(write?.url.endsWith("/issues/comments/11"), true);
-  const state = decodeState(JSON.parse(write?.body ?? "{}").body);
+  const posted: string = JSON.parse(write?.body ?? "{}").body;
+  const state = decodeState(posted);
   assertEquals(state?.findings[0].status, "dismissed");
+  // The comment a maintainer actually reads points at the cross-PR override:
+  // this dismissal holds for this PR only, and the ID above it is what mutes
+  // the finding repo-wide if it keeps coming back.
+  assertStringIncludes(posted, SUPPRESS_HINT);
 });
 
 Deno.test("a fixed finding is reported as progress and the build passes", async () => {

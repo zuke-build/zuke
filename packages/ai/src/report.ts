@@ -309,9 +309,23 @@ function refutedSection(refuted: RefutedFinding[]): string[] {
 }
 
 /**
+ * The line closing the dismissed section: a dismissal holds for this pull
+ * request only — the committed suppress list is the cross-PR override, and it
+ * stays a deliberate, reviewed edit. So the report points at it rather than
+ * promoting anything itself: a finding that keeps being re-argued on PR after
+ * PR is a repo-wide false positive, and its ID (in the table above) is what
+ * mutes it. Exported so a test can pin the wording the docs quote.
+ */
+export const SUPPRESS_HINT =
+  "_Dismissals apply to this pull request only. If one of these keeps coming " +
+  "back on other PRs, add its ID to the suppress list in your build file " +
+  '(`.suppress(suppressions((s) => s.add("…")))`) to mute it repo-wide._';
+
+/**
  * A table of the findings dismissed through the PR discussion — who refuted
  * each one and the adjudicator's reason. Dismissal mutes the gate; this
- * section keeps the record visible so it never silently buries a finding.
+ * section keeps the record visible so it never silently buries a finding, and
+ * closes with {@link SUPPRESS_HINT} pointing at the cross-PR override.
  */
 function dismissedSection(dismissed: DismissedFinding[]): string[] {
   if (dismissed.length === 0) return [];
@@ -331,7 +345,7 @@ function dismissedSection(dismissed: DismissedFinding[]): string[] {
       } |`,
     );
   }
-  parts.push("");
+  parts.push("", SUPPRESS_HINT, "");
   return parts;
 }
 

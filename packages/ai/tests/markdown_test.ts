@@ -3,7 +3,7 @@ import {
   assertStringIncludes,
 } from "../../core/tests/_assert.ts";
 import { codeSpan, fenceMarkdown } from "../src/markdown.ts";
-import { toMarkdown } from "../src/report.ts";
+import { SUPPRESS_HINT, toMarkdown } from "../src/report.ts";
 import { decodeState, encodeState } from "../src/state.ts";
 
 Deno.test("fenceMarkdown wraps plain content in a three-backtick fence", () => {
@@ -56,6 +56,56 @@ Deno.test("fenceMarkdown neutralizes a Markdown-injection payload", () => {
   const runs = [...fenced.matchAll(/`+/g)].map((m) => m[0].length);
   assertEquals(Math.max(...runs), 4);
   assertEquals(runs.filter((n) => n === 4).length, 2); // only the two fences
+});
+
+/** A minimal assessment, so a test can vary only the extras. */
+function report(extras: Parameters<typeof toMarkdown>[4]): string {
+  return toMarkdown(
+    "security review",
+    "deploy",
+    {
+      score: 3,
+      severity: "low",
+      summary: "ok",
+      findings: [{ title: "t", severity: "low", id: "keep1" }],
+    },
+    undefined,
+    extras,
+  );
+}
+
+Deno.test("a dismissal points at the suppress list as the cross-PR override", () => {
+  // A dismissal is per-PR by design. Without this line a maintainer who has
+  // refuted the same false positive on three PRs has no signal that the
+  // committed suppress list is what ends it — the ID is right there in the
+  // table, but nothing says what to do with it.
+  const body = report({
+    discussion: true,
+    dismissed: [{
+      finding: { title: "false alarm", severity: "low", id: "d1" },
+      author: "maintainer",
+      reason: "not reachable",
+    }],
+  });
+  assertStringIncludes(body, SUPPRESS_HINT);
+  // It closes the dismissed section rather than floating loose: the ID a
+  // reader is told to copy is in the table immediately above it.
+  const table = body.indexOf("| false alarm |");
+  assertEquals(table !== -1 && table < body.indexOf(SUPPRESS_HINT), true);
+});
+
+Deno.test("no dismissal, no suppress hint", () => {
+  // The hint is advice about a thing that just happened. With nothing dismissed
+  // it is noise on every clean report — and the section it belongs to is absent
+  // entirely, so the hint must be too.
+  assertEquals(report({ discussion: true }).includes(SUPPRESS_HINT), false);
+  // Not even when other sections render: it belongs to dismissal alone.
+  const other = report({
+    discussion: true,
+    refuted: [{ finding: { title: "r", severity: "low" }, reason: "no" }],
+    suppressedFindings: [{ title: "s", severity: "low" }],
+  });
+  assertEquals(other.includes(SUPPRESS_HINT), false);
 });
 
 Deno.test("model text cannot smuggle a state block into the reviewer's comment", () => {
