@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Upload a SARIF report to GitHub code scanning from a build, replacing the
  * `github/codeql-action/upload-sarif` step.

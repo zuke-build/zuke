@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `@zuke/cypress` — typed `CypressTasks` wrappers for the
  * [Cypress](https://cypress.io) CLI (end-to-end and component testing), for use

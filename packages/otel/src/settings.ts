@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The fluent {@link OtelSettings} the {@link "./plugin.ts".otel} factory is
  * configured with, and {@link resolveOtel}, which folds those settings together

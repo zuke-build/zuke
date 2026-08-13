@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Integration: the CLI reserved-command surface, driven through the real CLI
  * `main()` (via {@link runCli}) rather than the unit-level `parseArgs`/`format*`

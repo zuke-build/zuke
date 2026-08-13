@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `TscAliasTasks` — typed task functions for `tsc-alias`, the tool that
  * rewrites TypeScript path aliases in compiled output, in the same

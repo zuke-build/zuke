@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `@zuke/deno` — typed `DenoTasks` wrappers for the `deno` CLI, for use in
  * Zuke build targets.

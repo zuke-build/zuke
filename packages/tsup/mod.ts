@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `@zuke/tsup` — a typed `TsupTasks` wrapper for the
  * [tsup](https://tsup.egoist.dev) bundler, for use in Zuke builds.

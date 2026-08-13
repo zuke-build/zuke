@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * External-event wait triggers for {@link "./target.ts".TargetBuilder.waitsFor}.
  *

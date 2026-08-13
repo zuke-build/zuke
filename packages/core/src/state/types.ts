@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The durable run-state vocabulary: {@link RunRecord} and its parts.
  *

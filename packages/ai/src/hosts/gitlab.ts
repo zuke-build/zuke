@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Post the review as a GitLab merge-request note. Runs against the v4 REST API
  * (`CI_API_V4_URL`) and upserts a single per-reviewer note matched by a hidden

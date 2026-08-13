@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `@zuke/biome` — typed `BiomeTasks` wrappers for the [Biome](https://biomejs.dev)
  * CLI (lint + format + import organizing in one tool), for use in Zuke builds.

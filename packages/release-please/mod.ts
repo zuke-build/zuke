@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `@zuke/release-please` — typed `ReleasePleaseTasks` wrappers for the
  * [release-please](https://github.com/googleapis/release-please) CLI, for use in

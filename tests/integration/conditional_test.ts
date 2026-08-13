@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Integration: conditional execution, retries, timeouts, validation, and
  * recovery, driven through the real CLI. Each test defines a fixture build

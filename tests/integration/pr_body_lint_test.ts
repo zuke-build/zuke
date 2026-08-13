@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Integration: the `prBodyLint`-style target wiring — a `.env("PR_BODY")`
  * parameter feeding {@link lintPrBody} and failing the build on any finding —

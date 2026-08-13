@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The store-backed MCP tools: `list_runs`/`show_run` (read-only, exposed
  * whenever a state store resolves) and `signal_run`/`resume_check` (mutating,

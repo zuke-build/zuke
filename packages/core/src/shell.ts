@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Ergonomic process execution built on `Deno.Command`, exposed as the `$`
  * tagged template.

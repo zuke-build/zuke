@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `OpenapiTsTasks` — typed task functions for `openapi-ts`, the
  * [Hey API](https://heyapi.dev) code generator (`@hey-api/openapi-ts`), in the

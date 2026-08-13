@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The scaffolding engine behind `zuke setup`. It writes a starter `zuke.ts`,
  * the `./zuke` bootstrap launchers, and a `deno.json` task into a target

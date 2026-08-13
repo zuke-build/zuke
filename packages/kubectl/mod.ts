@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `@zuke/kubectl` — typed `kubectl` CLI task wrappers for Zuke builds, for
  * deploying to and managing Kubernetes from a pipeline.

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Integration: unknown CLI flags and targets are rejected, driven through the
  * real CLI `main()` (via {@link runCli}). Covers the did-you-mean suggestion for

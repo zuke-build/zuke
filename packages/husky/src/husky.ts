@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `HuskyTasks` — typed task functions for the [`husky`](https://typicode.github.io/husky)
  * Git-hooks tool, in the same settings-lambda style as the other Zuke tool

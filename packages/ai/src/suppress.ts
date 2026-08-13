@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Learned false-positive suppression: a file-backed set of finding fingerprints
  * that the reviewer uses to drop findings a human has already dismissed.

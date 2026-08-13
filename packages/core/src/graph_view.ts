@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The effectful side of `zuke graph`: write the rendered HTML under the
  * repository's `.zuke/` directory and open it in the default browser.

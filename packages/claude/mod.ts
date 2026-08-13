@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `@zuke/claude` — a typed [Claude Code](https://docs.claude.com/en/docs/claude-code)
  * CLI (`claude`) task wrapper for Zuke builds.

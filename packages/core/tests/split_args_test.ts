@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 import { assertEquals, assertStringIncludes, assertThrows } from "./_assert.ts";
 import { ShellArgsError, splitShellArgs } from "../src/split_args.ts";
 

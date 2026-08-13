@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Build a `.zip` archive in memory for the compression/install tests — no
  * network, no ambient tools. Supports the two methods a release asset uses

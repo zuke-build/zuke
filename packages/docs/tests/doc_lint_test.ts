@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 import { assertEquals } from "../../core/tests/_assert.ts";
 import { docLintDefects, parseDocLint } from "../src/doc_lint.ts";
 import { DocsTasks } from "../src/tasks.ts";

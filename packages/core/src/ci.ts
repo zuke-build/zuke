@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Generate CI pipeline configuration from a single typed, provider-agnostic
  * model. Describe the pipeline once as a {@link CiPipeline} — triggers, jobs,

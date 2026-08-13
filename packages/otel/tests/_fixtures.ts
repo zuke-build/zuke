@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Shared test fixtures: a {@link RunRecord} builder, a {@link TargetRunState}
  * builder, a fixed {@link OtlpResource}, and a capturing {@link OtlpTransport}

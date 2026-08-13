@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Primitive terminal rendering, shared by the executor's build reporting
  * (`./report.ts`) and the `@zuke/console` package: ANSI styling, terminal-width

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 import { assertEquals, assertThrows } from "./_assert.ts";
 import { Build, discoverTargets, resolveOrderingEdges } from "../src/build.ts";
 import { target, type TargetBuilder } from "../src/target.ts";

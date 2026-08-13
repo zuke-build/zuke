@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
 import { AiReviewError, securityReviewer } from "../mod.ts";
 import { findingFingerprint } from "../src/suppress.ts";
@@ -871,7 +874,7 @@ Deno.test("Azure DevOps: only an explicitly trusted author can dismiss", async (
       method,
       body: typeof init?.body === "string" ? init.body : "",
     });
-    if (url.startsWith("https://dev.azure.com")) {
+    if (url.startsWith("https://dev.azure.com/")) {
       if (method !== "GET") return Promise.resolve(new Response("{}"));
       if (url.includes("connectionData")) {
         return Promise.resolve(
@@ -900,7 +903,7 @@ Deno.test("Azure DevOps: only an explicitly trusted author can dismiss", async (
 
   assertEquals(lines.some((l) => l.includes("discussion disabled")), false);
   const providerCalls = calls.filter((c) =>
-    !c.url.startsWith("https://dev.azure.com")
+    !c.url.startsWith("https://dev.azure.com/")
   );
   assertEquals(providerCalls.length, 2);
   const prompt = JSON.parse(providerCalls[1].body).messages[0].content;
@@ -911,7 +914,7 @@ Deno.test("Azure DevOps: only an explicitly trusted author can dismiss", async (
     assertEquals(call.body.includes("IGNORE ALL PREVIOUS"), false);
   }
   const write = calls.find((c) =>
-    c.url.startsWith("https://dev.azure.com") && c.method !== "GET"
+    c.url.startsWith("https://dev.azure.com/") && c.method !== "GET"
   );
   const posted = JSON.parse(write?.body ?? "{}");
   const content = posted.content ?? posted.comments?.[0]?.content ?? "";
@@ -960,7 +963,7 @@ Deno.test("Bitbucket: workspace permission decides who can dismiss a finding", a
       method,
       body: typeof init?.body === "string" ? init.body : "",
     });
-    if (url.startsWith("https://api.bitbucket.org")) {
+    if (url.startsWith("https://api.bitbucket.org/")) {
       if (method !== "GET") return Promise.resolve(new Response("{}"));
       if (url.endsWith("/2.0/user")) {
         return Promise.resolve(
@@ -990,7 +993,7 @@ Deno.test("Bitbucket: workspace permission decides who can dismiss a finding", a
 
   assertEquals(lines.some((l) => l.includes("discussion disabled")), false);
   const providerCalls = calls.filter((c) =>
-    !c.url.startsWith("https://api.bitbucket.org")
+    !c.url.startsWith("https://api.bitbucket.org/")
   );
   assertEquals(providerCalls.length, 2);
   const prompt = JSON.parse(providerCalls[1].body).messages[0].content;
@@ -1000,7 +1003,7 @@ Deno.test("Bitbucket: workspace permission decides who can dismiss a finding", a
     assertEquals(call.body.includes("passerby"), false);
   }
   const write = calls.find((c) =>
-    c.url.startsWith("https://api.bitbucket.org") && c.method !== "GET"
+    c.url.startsWith("https://api.bitbucket.org/") && c.method !== "GET"
   );
   const state = decodeState(JSON.parse(write?.body ?? "{}").content?.raw ?? "");
   assertEquals(state?.findings[0].status, "dismissed");

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `@zuke/playwright` — typed `PlaywrightTasks` wrappers for the Playwright CLI,
  * for use in Zuke build targets (end-to-end browser testing).

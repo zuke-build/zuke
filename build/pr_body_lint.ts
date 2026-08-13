@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Lints a pull request body for the code fragments that break
  * release-please's conventional-commits parser (see `RELEASING.md`'s "Keep

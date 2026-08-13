@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Unit tests for the GitHub App token task. A real RSA key is generated in the
  * test (WebCrypto, no fixture secret in the repo), exported as both PKCS#8 and

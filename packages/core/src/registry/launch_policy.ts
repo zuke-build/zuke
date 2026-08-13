@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The policy that decides whether a {@link BuildLocation} read out of a build
  * registry may be spawned.

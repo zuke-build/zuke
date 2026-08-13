@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Applying a {@link "./fix.ts".Fix}'s edits to the working tree, behind safety
  * guards: a path allowlist, a set of always-excluded paths, and a cap on the

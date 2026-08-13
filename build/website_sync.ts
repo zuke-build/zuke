@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The release → website sync: regenerate the docs the website consumes
  * (llms.txt / llms-full.txt + api.json), then open (or refresh) a PR against

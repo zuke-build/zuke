@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Parse a human duration string like `"4h"` or `"500ms"` into milliseconds.
  *

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Coverage-gate internals for {@link DenoTasks.coverage}. `deno coverage` has no
  * built-in fail-under flag, so the wrapper parses the LCOV report it emits and

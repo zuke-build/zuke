@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Unit tests for the build-registry vocabulary and the filesystem backend:
  * descriptor parse/round-trip, {@link FileSystemBuildRegistry} compare-and-swap,

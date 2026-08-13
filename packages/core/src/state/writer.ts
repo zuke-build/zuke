@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * {@link RunStateWriter} — the executor's live view of a run's {@link RunRecord},
  * persisting each transition to a {@link StateStore}.

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * A real, runnable Zuke build used by the registry e2e race. Run as a subprocess
  * (`deno run -A register_build.ts register`), it records itself in the build

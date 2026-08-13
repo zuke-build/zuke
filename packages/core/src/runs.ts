@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The `zuke runs` command: list persisted run records and show one run's full
  * detail from a {@link "./state/store.ts".StateStore}, reconstructing a run's

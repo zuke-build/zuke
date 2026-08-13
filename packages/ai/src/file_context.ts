@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Full-file context for a review: the post-image contents of the files a diff
  * touches, so the model can verify a finding against the surrounding code (a

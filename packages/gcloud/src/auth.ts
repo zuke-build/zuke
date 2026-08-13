@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Google Cloud access-token resolution for the REST task groups
  * ({@link "./gcs.ts".GcsTasks} and {@link "./secret_manager.ts".SecretManagerTasks}).

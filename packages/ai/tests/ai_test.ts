@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
 import {
   AiReviewError,
@@ -87,7 +90,7 @@ function routedFetch(opts: {
       init,
       body: typeof init?.body === "string" ? init.body : "",
     });
-    if (url.includes("api.github.com")) {
+    if (url.startsWith("https://api.github.com/")) {
       const status = opts.githubStatus ?? 200;
       const payload = (init?.method ?? "GET") === "GET"
         ? JSON.stringify(opts.comments ?? [])
@@ -699,7 +702,10 @@ Deno.test("the default diff source runs git via the shell (no network)", async (
     r.provider("claude").apiKey("k").quiet().diff((d) => d.staged())
       .fetch(fetch)
   ).validate({ target: "t" });
-  assertEquals(calls.every((c) => c.url.includes("api.anthropic.com")), true);
+  assertEquals(
+    calls.every((c) => c.url.startsWith("https://api.anthropic.com/")),
+    true,
+  );
 });
 
 Deno.test("the findings table is printed when not quiet", async () => {
@@ -1075,7 +1081,7 @@ Deno.test("comment() posts the assessment to the pull request", async () => {
         ).validate({ target: "deploy" })
       );
       const posts = calls.filter((c) =>
-        c.url.includes("api.github.com") && c.init?.method === "POST"
+        c.url.startsWith("https://api.github.com/") && c.init?.method === "POST"
       );
       assertEquals(posts.length, 1);
       assertEquals(
@@ -1141,7 +1147,10 @@ Deno.test("comment() warns and skips on GitHub without a PR ref", async () => {
             .diff((d) => d.text(DIFF)).fetch(fetch)
         ).validate({ target: "deploy" })
       );
-      assertEquals(calls.some((c) => c.url.includes("api.github.com")), false);
+      assertEquals(
+        calls.some((c) => c.url.startsWith("https://api.github.com/")),
+        false,
+      );
       assertEquals(
         lines.some((l) => l.includes("no GitHub PR context")),
         true,

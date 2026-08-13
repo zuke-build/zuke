@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Unit tests for `src/check_run.ts` — posting a completed check run without
  * leaving a second one behind on a retry.

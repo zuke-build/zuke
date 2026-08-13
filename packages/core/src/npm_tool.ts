@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Provision an npm-registry package as a runnable, version-pinned tool — the
  * npm-ecosystem counterpart to {@link "./install.ts".installRelease}.

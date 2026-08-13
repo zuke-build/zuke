@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Integration: the dependency-graph flow, driven through the real CLI. Each
  * test defines a fixture build locally — closing over a `log` array for the

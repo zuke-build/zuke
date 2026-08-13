@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Tests for the plugin skills sync (`build/plugin_sync.ts`): the committed
  * `plugins/zuke/skills/` must byte-compare identical to `skills/`, since it

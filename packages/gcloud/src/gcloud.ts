@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `GcloudTasks` — a typed wrapper for the `gcloud` CLI (Google Cloud SDK), in
  * the same settings-lambda style as the other Zuke tool wrappers.

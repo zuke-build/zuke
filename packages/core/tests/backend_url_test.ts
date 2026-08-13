@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Unit: the transport guard on the backends Zuke authenticates to and trusts
  * answers from — the state service, the build registry, and the remote cache.

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * End-to-end: two real, separate OS processes racing `zuke register` against one
  * shared build registry converge on a single, uncorrupted descriptor — the

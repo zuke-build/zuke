@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Log levels for {@link ConsoleTasks} — an NUKE-style severity ladder that
  * gates which messages print. `trace` is the most verbose and `silent`

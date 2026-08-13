@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /** Test doubles for the core CLI's injectable seams. */
 
 import type { GraphHost } from "../src/graph_view.ts";

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * End-to-end: cross-process trace continuity. Process A runs the
  * {@link file://./fixtures/otel_build.ts} pipeline to its approval gate and

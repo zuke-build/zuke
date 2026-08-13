@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Resolving a target's `.waitsFor(...)` gate: run its settings lambda, evaluate
  * the trigger against the run's signals, and build the {@link WaitState} to

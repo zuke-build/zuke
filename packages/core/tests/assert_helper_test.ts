@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Self-tests for the local assertion helper. `deepEqual` once compared only
  * `Object.keys`, so any two `Set`s / `Map`s / `Date`s (which expose no

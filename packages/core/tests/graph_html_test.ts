@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 import { assertEquals } from "./_assert.ts";
 import { Build, group, target } from "../mod.ts";
 import { discoverGroups, discoverTargets } from "../src/build.ts";

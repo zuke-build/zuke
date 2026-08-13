@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Committing applied fix edits and pushing them to the current branch. Used by
  * the {@link "./fixer.ts".AiFixer} when `.commitFixes()` is set so a healed PR

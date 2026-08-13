@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The fluent {@link AiFixer} and the {@link aiFixer} factory — a
  * {@link "jsr:@zuke/core".Remediation} that diagnoses a failed target with an

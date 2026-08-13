@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `BiomeTasks` — typed task functions for the [Biome](https://biomejs.dev) CLI,
  * in the settings-lambda style: configure a fluent settings object in a lambda,

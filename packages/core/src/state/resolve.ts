@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Selection of the {@link StateStore} for a run, by precedence — the state
  * analogue of {@link "../remote_cache.ts".resolveRemoteStore}.

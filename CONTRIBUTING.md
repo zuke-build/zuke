@@ -96,6 +96,38 @@ the squash commit that [release-please](./RELEASING.md) parses.
 5. Update `README.md`, JSDoc, and the relevant docs in `docs/` whenever
    behaviour changes.
 
+## Code review
+
+Every change reaches `master` through a pull request — there is no direct
+push path — and review has documented requirements:
+
+**How review is conducted.** Each PR is reviewed by (1) the required CI gate
+(`deno task ci`, the same gate you run locally), (2) the AI reviewers, which
+post a security assessment and a code-quality assessment as PR comments, and
+(3) a human maintainer, who reads the diff and every reviewer finding. AI
+findings are advisory: a maintainer addresses each one or answers it on the
+thread, quoting the finding's id — they never merge unexamined.
+
+**What must be checked.** Reviewers verify that the change:
+
+- is correct, and covered by tests per the testing policy above (unit +
+  integration in the same PR; e2e for cross-process or cross-OS behaviour);
+- introduces no security regression (injection, privilege escalation, secret
+  exposure — see the
+  [assurance case](./docs/assurance-case.md) for the boundaries to respect);
+- meets the coding standards above (strict types, no `any`/`as`/`!`, JSDoc on
+  all public symbols) and keeps coverage at 95%+;
+- updates the affected docs in the same PR, and regenerates the API docs on
+  any public-API change;
+- carries a Conventional Commit PR title, since the squash subject is what
+  release-please parses.
+
+**What is required to be acceptable.** A PR merges only when the required
+status checks are green, every AI-reviewer finding has been fixed or answered,
+and a maintainer approves. Larger features additionally get an adversarial
+review pass before the PR is finalized (see
+[`AGENTS.md`](./AGENTS.md#adversarial-review-every-feature)).
+
 ## Reporting bugs and requesting features
 
 - Search [existing issues](https://github.com/zuke-build/zuke/issues) first.

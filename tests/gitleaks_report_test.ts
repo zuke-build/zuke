@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Unit tests for the gitleaks report formatter — the job-summary section that
  * replaced the workflow's artifact upload.
@@ -112,6 +115,24 @@ Deno.test("a pipe in a value cannot break out of the table cell", () => {
   ]);
   if (summary === null) throw new Error("expected a summary");
   assertStringIncludes(summary, "a\\|b.ts");
+});
+
+Deno.test("a backslash in a value cannot pose as an escape", () => {
+  // A Windows path contains backslashes. Unescaped, the value's own backslash
+  // would merge with the escapes this table adds — `a\` before a pipe reads as
+  // an escaped pipe, fabricating cell content in the one report that says
+  // where a secret is.
+  const summary = gitleaksSummary([
+    {
+      rule: "r",
+      file: "dir\\a|b.ts",
+      line: 1,
+      commit: "c",
+      fingerprint: "f",
+    },
+  ]);
+  if (summary === null) throw new Error("expected a summary");
+  assertStringIncludes(summary, "dir\\\\a\\|b.ts");
 });
 
 Deno.test("a backtick in a path cannot end its code span early", () => {

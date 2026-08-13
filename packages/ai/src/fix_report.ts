@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Rendering a {@link "./fix.ts".Fix} for the three surfaces a fixer reports to:
  * the console, the GitHub Actions job summary, and a pull-request comment. The

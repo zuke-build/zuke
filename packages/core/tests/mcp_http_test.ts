@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 import { assertEquals, assertStringIncludes } from "./_assert.ts";
 import { Build, type McpRequestContext, target } from "../mod.ts";
 import type { JsonRpcResponse } from "../src/mcp/jsonrpc.ts";

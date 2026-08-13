@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Committing to GitHub through its REST API, so nothing needs a git credential
  * on disk.

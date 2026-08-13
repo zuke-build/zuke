@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Integration: the two trust boundaries a build crosses without the author
  * writing any code for them — the URL of a configured backend, and the contents

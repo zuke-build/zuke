@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Assemble the artifact files (keyed by path) the tasks then write or compare,
  * from the per-package docs supplied by the caller. Reads existing READMEs via

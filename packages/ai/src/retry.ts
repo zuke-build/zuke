@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Retry-with-backoff (and a per-attempt timeout) for transient provider
  * failures.

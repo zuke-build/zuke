@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The plugin contract: observe a build's lifecycle without subclassing
  * {@link Build} or forking Zuke.

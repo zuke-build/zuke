@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 import { assertEquals } from "../../core/tests/_assert.ts";
 import { CommandError, CommandOutput } from "@zuke/core/shell";
 import { type AgentContext, type AgentFixer, agentFixer } from "../mod.ts";
@@ -350,7 +353,10 @@ Deno.test("noComment writes no PR comment", async () => {
     )
     .env((n) => prEnv[n]).fetch(impl).quiet();
   await fixer.remediate(CTX);
-  assertEquals(calls.some((u) => u.includes("api.github.com")), false);
+  assertEquals(
+    calls.some((u) => u.startsWith("https://api.github.com/")),
+    false,
+  );
 });
 
 Deno.test("a non-quiet run prints what the agent did", async () => {

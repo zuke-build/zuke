@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 import { assertEquals, assertStringIncludes } from "./_assert.ts";
 import { REDACTED, Redactor } from "../src/redact.ts";
 import { emitActionsMasks } from "../src/execute_output.ts";

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Post the review as an Azure Pipelines pull-request comment thread. Runs
  * against Azure DevOps REST `7.1`; upserts a single per-reviewer **thread**

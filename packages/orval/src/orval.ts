@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `OrvalTasks` — typed task functions for [`orval`](https://orval.dev), the
  * OpenAPI client and mock generator, in the same settings-lambda style as the

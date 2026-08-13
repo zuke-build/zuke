@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
 import { AiReviewError, genericReviewer, securityReviewer } from "../mod.ts";
 import { changedPaths } from "../src/diff.ts";

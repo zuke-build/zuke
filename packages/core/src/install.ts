@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Install a CLI from a release download so a build can prepare its own
  * environment — fetch the binary one of Zuke's tool wrappers drives, then point

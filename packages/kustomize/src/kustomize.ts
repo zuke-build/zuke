@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `KustomizeTasks` — typed task functions for the
  * [Kustomize](https://kustomize.io) CLI, in the settings-lambda style:

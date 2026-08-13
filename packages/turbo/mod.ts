@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `@zuke/turbo` — typed `TurboTasks` wrappers for the
  * [Turborepo](https://turbo.build) CLI, for use in Zuke builds.

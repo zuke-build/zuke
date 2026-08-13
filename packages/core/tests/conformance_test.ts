@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The state-api conformance kit, run against Zuke's own filesystem backend (it
  * must pass), a deliberately CAS-violating fake (it must fail loudly), and the

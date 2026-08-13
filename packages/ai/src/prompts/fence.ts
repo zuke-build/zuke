@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Fence untrusted content (an attacker-controlled diff, a failing command's
  * output) between markers the system prompt treats as data-only.

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `@zuke/knip` — a typed `KnipTasks` wrapper for the [Knip](https://knip.dev)
  * CLI (unused files, dependencies, and exports), for use in Zuke builds.

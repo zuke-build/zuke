@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The MCP audit log: a store-level, append-only trail of tool calls kept in a
  * single fixed-id run record, so it needs no new {@link

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Shared value types for the execution engine — the per-run environment and the
  * per-target/-run outcome shapes threaded between the scheduler, lock, and wait

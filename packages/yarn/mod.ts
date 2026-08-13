@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `@zuke/yarn` — typed `YarnTasks` wrappers for the `yarn` CLI, for use in Zuke
  * build targets (Yarn Classic v1 and Berry v2+; version-specific options are

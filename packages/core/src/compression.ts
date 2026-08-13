@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Compression helpers for build scripts: gzip/gunzip byte streams, read or write
  * `tar` / `.tar.gz` archives, and read `.zip` archives. Dependency-free — gzip

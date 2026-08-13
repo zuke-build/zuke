@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Unit tests for `src/pull_request.ts` — proposing a branch through the API so
  * no git credential is ever written to disk.

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Cross-run locks: the {@link LockHolder} identity, the typed
  * {@link LockConflictError}, the {@link lockKey} joiner, and the stored lock

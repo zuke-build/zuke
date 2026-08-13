@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Post a fix as GitHub pull-request *review* comments with committable
  * `suggestion` blocks — the Copilot-style inline suggestion anchored to the

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `@zuke/gh` — typed GitHub tooling for Zuke builds: the `gh` (GitHub CLI) task
  * wrapper plus {@link githubWorkflow}, a wait trigger that dispatches and awaits

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Unit tests for the outcome views behind `ctx.outcomeOf(...)` — how a status
  * and a run-record row become the shape a target body reads.

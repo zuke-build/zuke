@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `ClaudeTasks` — a typed wrapper for the
  * [Claude Code](https://docs.claude.com/en/docs/claude-code) CLI (`claude`),

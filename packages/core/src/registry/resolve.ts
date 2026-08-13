@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Selection of the {@link BuildRegistry} for a command, by precedence — the
  * registry analogue of {@link "../state/resolve.ts".resolveStateStore}. Kept a

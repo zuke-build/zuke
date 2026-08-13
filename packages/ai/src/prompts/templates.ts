@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The wording of the system and user prompts. Edit the prose here to change how
  * reviewers are instructed — the assembly logic lives in `../prompt.ts`.

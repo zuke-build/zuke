@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Appending to the GitHub Actions job summary — the panel Actions renders above
  * a job's logs, from whatever Markdown a step writes to `GITHUB_STEP_SUMMARY`.

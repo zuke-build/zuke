@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Unit tests for `build/action_release.ts` — the versioning behind the
  * repository's own Marketplace action.

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Post the review as a Bitbucket Cloud pull-request comment. Runs against
  * `/2.0` and upserts a single per-reviewer comment matched by a hidden marker.

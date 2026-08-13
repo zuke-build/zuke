@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Unit tests for the code-scanning SARIF upload. The request goes through a
  * `fetch` seam and the body is decoded back (base64 → gunzip → JSON) so the

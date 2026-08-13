@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `@zuke/security` — typed task wrappers for free, open-source security scanners
  * (zizmor, actionlint, gitleaks, osv-scanner, semgrep, trivy) for Zuke builds.

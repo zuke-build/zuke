@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Unit tests for the `zuke register` command ({@link registerCommand}): the
  * descriptor it builds, its secret-free surface, idempotent compare-and-swap

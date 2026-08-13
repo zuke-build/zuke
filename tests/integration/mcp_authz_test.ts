@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Integration: MCP authorization over a real build, and the operator's
  * host-side view of the trail it writes.

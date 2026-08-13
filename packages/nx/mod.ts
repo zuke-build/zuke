@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `@zuke/nx` — typed `NxTasks` wrappers for the [Nx](https://nx.dev) CLI, for
  * use in Zuke builds.

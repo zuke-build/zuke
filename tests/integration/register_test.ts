@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Integration: `zuke register` driven through the real CLI `main()`. Proves the
  * command resolves a registry from `ZUKE_REGISTRY_DIR`, writes a descriptor a

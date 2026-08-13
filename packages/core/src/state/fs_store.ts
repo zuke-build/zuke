@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * {@link FileSystemStateStore} — a {@link StateStore} backed by one JSON file
  * per run under a directory (default `<repo root>/.zuke/runs`).

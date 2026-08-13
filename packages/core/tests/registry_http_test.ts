@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Unit tests for {@link HttpBuildRegistry}: the REST verbs, ETag/If-Match
  * compare-and-swap, and untrusted-response validation, all driven through the

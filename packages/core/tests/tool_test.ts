@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 import { assertEquals, assertThrows } from "./_assert.ts";
 import type { DownloadFn, InstallPlatform, Platform } from "../src/install.ts";
 import type { NpmRunner } from "../src/npm_tool.ts";

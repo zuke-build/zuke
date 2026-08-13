@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Remote build cache: share a target's built {@link TargetBuilder.outputs}
  * across machines. The incremental {@link "./cache.ts" | cache} skips a target

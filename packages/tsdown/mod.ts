@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `@zuke/tsdown` — a typed `TsdownTasks` wrapper for the
  * [tsdown](https://tsdown.dev) bundler, for use in Zuke builds.

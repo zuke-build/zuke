@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * {@link withFileMutex} — the filesystem mutex the single-host backends hold
  * while they publish a file: {@link "./fs_store.ts".FileSystemStateStore} for run

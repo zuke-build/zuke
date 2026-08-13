@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `@zuke/docs` — typed tasks that turn already-generated API documentation into
  * agent-friendly artifacts, so neither humans nor agents have to guess an API.

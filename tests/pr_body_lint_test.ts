@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Unit tests for the PR-body linter (`build/pr_body_lint.ts`): fenced code
  * blocks and code-shaped paren-bearing lines are flagged; ordinary prose

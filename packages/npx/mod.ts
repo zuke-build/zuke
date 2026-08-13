@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `@zuke/npx` — typed `NpxTasks` wrappers for the `npx` package runner, for use
  * in Zuke build targets (including builds that drive Node projects).

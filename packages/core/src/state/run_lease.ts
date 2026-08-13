@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Leases over a run: a TTL'd claim, renewed by a heartbeat, that says a live
  * process is working on it.

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `@zuke/tsc-alias` — typed `tsc-alias` task wrappers for Zuke builds.
  *

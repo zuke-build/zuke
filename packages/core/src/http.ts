@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * HTTP helpers for build scripts: download a URL to a file, or fetch its body
  * as text or JSON. Built on the platform `fetch`, with an injectable `fetch`

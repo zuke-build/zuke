@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 the Zuke contributors
+# SPDX-License-Identifier: MIT
 #
 # Zuke bootstrap launcher — a `./build.sh`-style entry point for Deno.
 #

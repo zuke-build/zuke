@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The {@link otel} plugin factory and its emission logic. The plugin observes a
  * build through one hook — `onRunStateChange`, delivered the run's durable

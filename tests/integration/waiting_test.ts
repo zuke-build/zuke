@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Integration: the wait/resume flow and services, driven through the real CLI.
  * A `waitsFor()` gate suspends a run to the state store; a later `resume`

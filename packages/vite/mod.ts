@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `@zuke/vite` — typed `ViteTasks` wrappers for the [Vite](https://vitejs.dev)
  * CLI, for use in Zuke builds.

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The review discussion: which PR comments the reviewer listens to, and how
  * they are bounded before reaching the model.

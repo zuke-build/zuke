@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Integration: the enriched plugin lifecycle (M7) driven through the real CLI.
  * A plugin passed to `main()` receives the run id and dry-run flag on every

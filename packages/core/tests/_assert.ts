@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Minimal assertion helpers, kept local so the test suite has zero network
  * dependencies (the sandbox blocks the JSR registry).

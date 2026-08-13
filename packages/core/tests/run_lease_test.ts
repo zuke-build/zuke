@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Unit tests for the run lease — the claim that makes "slow" and "dead"
  * different things, and the rule about what counts as losing it.

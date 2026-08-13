@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Integration: the wrapper conformance kit run against real, published wrapper
  * packages from inside a real build, driven through the CLI `main()`. Covers a

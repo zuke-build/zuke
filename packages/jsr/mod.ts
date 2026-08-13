@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `@zuke/jsr` — tools for the [JSR](https://jsr.io) registry in Zuke builds:
  * typed `JsrTasks` wrappers for the `jsr` CLI (publish, add, remove), plus

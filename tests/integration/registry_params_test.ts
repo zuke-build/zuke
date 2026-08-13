@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Integration: a build's declared parameters flow all the way from
  * `zuke register` through a real {@link FileSystemBuildRegistry} (descriptor

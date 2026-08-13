@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The fluent {@link Reviewer} and its per-assessment factory functions — the
  * orchestration that ties the diff source, provider, parser, and gate together

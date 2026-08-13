@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The JSON schema for an {@link "./types.ts".Assessment}, in the dialects each
  * provider's structured-output mode expects. Sending it on the request makes

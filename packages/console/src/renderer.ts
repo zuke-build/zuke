@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * A {@link Renderer} implementation a build injects via
  * `run(Build, { renderer: consoleRenderer })`, so the executor's per-target

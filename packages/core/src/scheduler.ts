@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The execution engine: running one target (conditions, cache, service, wait
  * gate, lock, body with timeout/retry/remediation) and the two schedulers that

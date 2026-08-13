@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Unit: {@link launchDenial} — the policy deciding whether a registry
  * descriptor's launch location may be spawned. The registry server runs what

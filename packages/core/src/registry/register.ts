@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The `zuke register` command: write (or refresh) this build's
  * {@link BuildDescriptor} into a {@link BuildRegistry}, so an MCP host driven by

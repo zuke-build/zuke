@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Integration: `Build.orderWith` — the lazy, per-run soft-ordering provider
  * (M19 P2 #10) — driven through the real CLI `main()`. Unlike `extraEdges`, the

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 import { assertEquals, assertStringIncludes } from "./_assert.ts";
 import { target } from "../src/target.ts";
 import {

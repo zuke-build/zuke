@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * A target's cross-run lock: acquire it (if declared) before the body runs,
  * heartbeat it at half its TTL while the body runs, and release it on every exit

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 import { assertEquals } from "../../core/tests/_assert.ts";
 import { CommandError } from "@zuke/core/shell";
 import { AiFixer, aiFixer, type Fix } from "../mod.ts";
@@ -91,7 +94,7 @@ Deno.test("default diagnoses without writing or asking to retry", async () => {
   assertEquals(s.writes.length, 0);
   assertEquals(s.git.length, 0);
   // The fix schema and the error output reach the provider.
-  assertEquals(calls[0].url.includes("anthropic.com"), true);
+  assertEquals(calls[0].url.startsWith("https://api.anthropic.com/"), true);
   assertEquals(calls[0].body.includes("boom: a test failed"), true);
 });
 
@@ -450,7 +453,7 @@ function routedFetch(body: string): { fetch: typeof fetch; calls: Call[] } {
   const impl = ((input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
     calls.push({ url, body: typeof init?.body === "string" ? init.body : "" });
-    if (url.includes("api.github.com")) {
+    if (url.startsWith("https://api.github.com/")) {
       const payload = (init?.method ?? "GET") === "GET" ? "[]" : "{}";
       return Promise.resolve(new Response(payload, { status: 200 }));
     }
@@ -475,7 +478,7 @@ Deno.test("non-quiet diagnose prints findings and posts a PR comment", async () 
   const result = await fixer.remediate(CTX);
   assertEquals(result.retry, false);
   // A GitHub comment was created (POST after the GET list).
-  const posted = calls.some((c) => c.url.includes("api.github.com"));
+  const posted = calls.some((c) => c.url.startsWith("https://api.github.com/"));
   assertEquals(posted, true);
 });
 
@@ -675,7 +678,10 @@ Deno.test("noComment writes the summary but posts no PR comment", async () => {
     .conventions("").diff((d) => d.text("")).env((n) => prEnv[n]).fetch(fetch)
     .quiet();
   await fixer.remediate(CTX);
-  assertEquals(calls.some((c) => c.url.includes("api.github.com")), false);
+  assertEquals(
+    calls.some((c) => c.url.startsWith("https://api.github.com/")),
+    false,
+  );
 });
 
 Deno.test("a failed PR comment is swallowed", async () => {
@@ -689,7 +695,7 @@ Deno.test("a failed PR comment is swallowed", async () => {
   const impl = ((input: string | URL | Request) => {
     const url = String(input);
     calls.push(url);
-    if (url.includes("api.github.com")) {
+    if (url.startsWith("https://api.github.com/")) {
       return Promise.resolve(new Response("nope", { status: 500 }));
     }
     return Promise.resolve(new Response(claudeFix(ONE_EDIT), { status: 200 }));
@@ -749,7 +755,7 @@ function suggestFetch(fixBody: string): { fetch: typeof fetch; calls: Call[] } {
     const url = String(input);
     const method = init?.method ?? "GET";
     calls.push({ url, body: typeof init?.body === "string" ? init.body : "" });
-    if (url.includes("api.github.com")) {
+    if (url.startsWith("https://api.github.com/")) {
       if (url.includes("/comments")) {
         return Promise.resolve(
           new Response(method === "GET" ? "[]" : "{}", {
@@ -921,7 +927,7 @@ Deno.test("a thrown suggestion post is caught and falls back to the overview", a
   const impl = ((input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
     calls.push(url);
-    if (url.includes("api.github.com")) {
+    if (url.startsWith("https://api.github.com/")) {
       // The PR-detail fetch (for the head sha) throws; the issue-comment GET/POST succeeds.
       if (!url.includes("/comments")) {
         return Promise.reject(new Error("network"));

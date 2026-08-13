@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The reporting surface of one run: the sink a run writes through, the redactor
  * that masks resolved secrets in everything it prints, the resolved

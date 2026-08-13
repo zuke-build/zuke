@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `DpdmTasks` — a typed task function for the [dpdm](https://github.com/acrazing/dpdm)
  * CLI, which analyzes a project's module dependency graph and reports circular

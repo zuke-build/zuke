@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `@zuke/terraform` — typed `TerraformTasks` wrappers for the `terraform` CLI,
  * for use in Zuke build targets (infrastructure-as-code workflows).

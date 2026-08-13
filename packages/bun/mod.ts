@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `@zuke/bun` — typed `BunTasks` wrappers for the `bun` CLI, for use in Zuke
  * build targets (package management, scripts, and the built-in test runner).

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `SecretManagerTasks` — read and write Google Secret Manager secrets over its
  * REST API, without a Google SDK. Auth is a bearer token from an injected

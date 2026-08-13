@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `GcsTasks` — read, write, and list JSON objects in Google Cloud Storage over
  * its JSON REST API, without a Google SDK. Auth is a bearer token from an

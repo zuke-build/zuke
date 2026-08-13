@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * A machine-readable description of a build's CLI surface — its reserved
  * commands, option flags, targets, and parameters — for tooling and agents.

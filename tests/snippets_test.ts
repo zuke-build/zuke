@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Unit tests for the doc-snippet type-check gate (`build/snippets.ts`): the
  * extractor is pure and fully exercised here; the checker's orchestration is

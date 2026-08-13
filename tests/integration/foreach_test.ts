@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Integration: a `.forEach(...)` fan-out whose factory returns builders it does
  * not own — the pattern a shared pipeline helper produces — driven twice through

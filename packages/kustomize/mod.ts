@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `@zuke/kustomize` — typed `KustomizeTasks` wrappers for the
  * [Kustomize](https://kustomize.io) CLI, for use in Zuke builds.

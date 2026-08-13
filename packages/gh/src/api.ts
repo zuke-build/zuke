@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The REST transport the API-backed operations in this package share — the
  * bound caller, its typed error, and the guards that keep a caller-supplied

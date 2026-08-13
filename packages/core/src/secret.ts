@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Secret sources: resolve a `secret` parameter's value at run time from an
  * external provider instead of requiring it pre-set in the environment.

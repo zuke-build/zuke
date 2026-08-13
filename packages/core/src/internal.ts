@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Small utilities shared across core modules. This module is **internal**: it is
  * not re-exported from `mod.ts` (or any entrypoint), so nothing here is public
