@@ -95,6 +95,7 @@ import {
   checkPluginSkillsSync,
   syncPluginSkills,
 } from "./build/plugin_sync.ts";
+import { checkSkillTree } from "./build/skill_check.ts";
 import {
   bumpFailure,
   checkPluginVersionBump,
@@ -467,6 +468,24 @@ class ZukeBuild extends Build {
       ConsoleTasks.info("plugins/zuke/skills/ is in sync with skills/.");
     });
 
+  skillsCheck = target()
+    .description(
+      "Validate skills/ against the Agent Skills spec (frontmatter, names)",
+    )
+    .executes(async () => {
+      const problems = await checkSkillTree();
+      if (problems.length > 0) {
+        throw new Error(
+          `skills/ violates the Agent Skills spec:\n  ${
+            problems.join("\n  ")
+          }\n` +
+            "Codex and Gemini CLI load these folders directly, so a " +
+            "non-conforming skill silently fails to load there.",
+        );
+      }
+      ConsoleTasks.info("skills/ conforms to the Agent Skills spec.");
+    });
+
   pluginVersionCheck = target()
     .description("Verify a skills change also bumped the plugin version")
     .executes(async () => {
@@ -711,6 +730,7 @@ class ZukeBuild extends Build {
       this.snippetsCheck,
       this.hclSyncCheck,
       this.pluginSyncCheck,
+      this.skillsCheck,
       this.pluginVersionCheck,
       this.prBodyLint,
       this.actionPinCheck,

@@ -78,6 +78,7 @@
     "exfiltrate",
     "extraheader",
     "fpath",
+    "frontmatter",
     "funcstack",
     "gcloud",
     "gcov",

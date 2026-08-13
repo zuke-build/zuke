@@ -26,6 +26,7 @@ import {
   PLUGIN_MANIFEST,
   resolveBaseRef,
   skillPaths,
+  VERSIONED_MANIFESTS,
 } from "../build/plugin_version_check.ts";
 
 /** A fake history: a fixed changed-file list and a fixed base manifest. */
@@ -85,12 +86,18 @@ Deno.test("skills changed and the version did not — the check fails", async ()
   assertEquals(verdict.bumped, false);
   assertEquals(verdict.changed.length, 2);
 
-  // The message has to name the fix, both files, and what actually changed.
+  // The message has to name the fix — every version-carrying manifest, since
+  // a bump landed in only some of them ships disagreeing listings — and what
+  // actually changed.
   const message = bumpFailure(verdict);
   assertStringIncludes(message, "still 0.3.0");
   assertStringIncludes(message, "skills/zuke-write-build/SKILL.md");
-  assertStringIncludes(message, PLUGIN_MANIFEST);
+  for (const manifest of VERSIONED_MANIFESTS) {
+    assertStringIncludes(message, manifest);
+  }
   assertStringIncludes(message, ".claude-plugin/marketplace.json");
+  assertStringIncludes(message, "plugins/zuke/.codex-plugin/plugin.json");
+  assertStringIncludes(message, "gemini-extension.json");
 });
 
 Deno.test("skills changed and the version moved — the check passes", async () => {
