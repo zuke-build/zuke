@@ -30,6 +30,7 @@ motivation, not just the mechanics. -->
 - [ ] Docs updated in the same PR (`README.md`, JSDoc, `docs/`) when behaviour changed.
 - [ ] Public API changes were regenerated with `./zuke apiDocs` (`llms.txt`, `llms-full.txt`, package README `## API`).
 - [ ] No `any`, no `as` casts or `!` non-null assertions in `src/` (narrow with type guards instead).
+- [ ] No dead code: unreachable branches and can't-fire fallbacks are removed, with types tightened so the impossible state is unrepresentable.
 - [ ] A new package was wired into all seven places (see [AGENTS.md](../blob/master/AGENTS.md#good-open-source-practices-to-follow)), if applicable.
 - [ ] The code is written using AI assisted coding.
 

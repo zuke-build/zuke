@@ -187,9 +187,9 @@ export interface ParsedArgs {
   help: boolean;
 }
 
-/** Parse a `--parallel`/`--parallel=N` value: a positive count, or `true`. */
-function parseParallel(value: string | undefined): boolean | number {
-  if (value === undefined || value === "") return true;
+/** Parse a `--parallel=N` value (the inline text after `=`): a positive count, or `true`. */
+function parseParallel(value: string): boolean | number {
+  if (value === "") return true;
   const n = Number(value);
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : true;
 }

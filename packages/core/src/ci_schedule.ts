@@ -253,9 +253,10 @@ export function anyScheduleNeedsGuard(
   return schedule.some(scheduleNeedsGuard);
 }
 
-/** A space-padded membership list for a `case` test, or "" for `*` (always matches). */
-function caseList(field: Field): string {
-  return field === "*" ? "" : ` ${field.join(" ")} `;
+/** A space-padded membership list for a `case` test. `*` never reaches here —
+ * {@link memberTest} answers `"true"` for it before building a list. */
+function caseList(field: Exclude<Field, "*">): string {
+  return ` ${field.join(" ")} `;
 }
 
 /** One `case`-based membership test on `value`, or "true" when the field is `*`. */

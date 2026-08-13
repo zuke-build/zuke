@@ -521,7 +521,7 @@ function stepsCoverPrelude(steps: readonly CiStep[] | undefined): boolean {
  */
 function jobBootstrap(
   job: CiJob,
-  pins?: CiPinResolver,
+  pins: CiPinResolver,
 ): CiBootstrap | false | undefined {
   const pinnedSeparately = (job.harden !== false &&
     job.harden?.action !== undefined) ||
@@ -531,9 +531,11 @@ function jobBootstrap(
     ? (pinnedSeparately ? false : undefined)
     : job.bootstrap;
   if (declared === false || declared === undefined) return declared;
+  // No DEFAULT_ZUKE_ACTION fallback here: this only runs from `withPins`'
+  // resolver-present branch, so the resolver always answers.
   return {
     ...declared,
-    action: declared.action ?? pins?.(ZUKE_ACTION) ?? DEFAULT_ZUKE_ACTION,
+    action: declared.action ?? pins(ZUKE_ACTION),
   };
 }
 
@@ -1002,7 +1004,9 @@ const DEFAULT_SETUP_STEPS: CiStep[] = [{ uses: "actions/checkout@v4" }];
  *
  * A trailing `Workflow`, `Ci`, or `Yaml` is noise once the file is a workflow,
  * and camelCase reads better as kebab-case in a filename. A name that reduces to
- * nothing (a field called just `workflow`) keeps the provider's default.
+ * nothing (a field called just `Workflow` or `Ci` — the match is deliberately
+ * case-sensitive, so a camelCase word boundary is never split) keeps the
+ * provider's default.
  */
 function pathForField(field: string, provider: CiProvider): string {
   const leaf = field.split(".").pop() ?? field;
