@@ -308,10 +308,10 @@ can drift from it. `zuke.ts`'s `ci` target depends on: `format`
 (`deno fmt --check`), `lint` (`deno lint`), `spell` (cspell), `coverage`
 (type-check, then the test suite with the 95% coverage gate), `coverageUpload`
 (skips locally without a `CODECOV_TOKEN`), `apiDocsCheck`, `docLint`,
-`snippetsCheck`, `hclSyncCheck`, `pluginSyncCheck`, `graphDocCheck`,
-`pluginVersionCheck`, `prBodyLint`, `actionPinCheck`, `security`, and
-`lockCheck`. Read `zuke.ts`'s `ci` target for the current, authoritative list —
-this is a snapshot, not a second source of truth.
+`snippetsCheck`, `hclSyncCheck`, `pluginSyncCheck`, `skillsCheck`,
+`graphDocCheck`, `pluginVersionCheck`, `prBodyLint`, `actionPinCheck`,
+`security`, and `lockCheck`. Read `zuke.ts`'s `ci` target for the current,
+authoritative list — this is a snapshot, not a second source of truth.
 
 **The lock is part of the gate.** Every entrypoint that loads `zuke.ts` — both
 launchers and the root tasks — passes `--frozen`, so a run cannot quietly heal a
@@ -342,7 +342,9 @@ build/                    # reusable helpers behind zuke.ts's targets (docs, pub
 zuke, zuke.ps1            # bootstrap launchers (install Deno, run the build); zuke.json names the build class
 docs/                     # long-form guides (linked from the README)
 skills/                   # agent skills: zuke-write-build, zuke-setup
-plugins/zuke/             # Claude Code plugin wrapping the skills
+plugins/zuke/             # Claude Code + Codex plugin wrapping the skills
+gemini-extension.json     # Gemini CLI extension manifest (serves skills/)
+.agents/plugins/          # Codex-native marketplace catalog
 .github/workflows/ci.yml           # PR checks (ci gate, coreFloorCheck, test matrix)
 .github/workflows/integration.yml  # e2e suite on the OS matrix (generated)
 .github/workflows/ai-review.yml    # @zuke/ai PR review
@@ -412,8 +414,15 @@ plugins/zuke/             # Claude Code plugin wrapping the skills
 - **Update docs with code.** If behaviour changes, update `README.md`, JSDoc,
   and the spec/acceptance criteria in the same PR.
 - **The agent skills are docs too — and they ship to a marketplace.** `skills/`
-  is the source of truth for `zuke-write-build` and `zuke-setup`, and
-  `plugins/zuke/` is the Claude Code plugin that publishes them. Any change to
+  is the source of truth for `zuke-write-build` and `zuke-setup`, published to
+  three harnesses: `plugins/zuke/` is the Claude Code plugin (whose manifests
+  Codex also reads, alongside the Codex-native
+  `plugins/zuke/.codex-plugin/plugin.json` and
+  `.agents/plugins/marketplace.json`), and the root `gemini-extension.json`
+  makes the repo a Gemini CLI extension that auto-discovers `skills/`. The
+  `skillsCheck` gate target validates `skills/` against the Agent Skills spec
+  (frontmatter `name` must match the folder), since Codex and Gemini load
+  those folders directly. Any change to
   the authoring surface or to a documented guarantee — a new `target()` method,
   a new `Build` override, changed CLI or authorization semantics — must be
   reflected in `skills/zuke-write-build/SKILL.md` and
@@ -422,9 +431,12 @@ plugins/zuke/             # Claude Code plugin wrapping the skills
   a new package belongs in its catalogue table as well. Then, in order:
   1. Run `./zuke pluginSync` to regenerate `plugins/zuke/skills/`. Never
      hand-edit the copies — `pluginSyncCheck` fails on drift.
-  2. **Bump the plugin version by hand, in both manifests**:
-     `plugins/zuke/.claude-plugin/plugin.json` and the entry in
-     `.claude-plugin/marketplace.json`. Clients use the version to decide
+  2. **Bump the plugin version by hand, in all four manifests**:
+     `plugins/zuke/.claude-plugin/plugin.json`,
+     `plugins/zuke/.codex-plugin/plugin.json`, the entry in
+     `.claude-plugin/marketplace.json`, and the root `gemini-extension.json`
+     (the `VERSIONED_MANIFESTS` list in `build/plugin_version_check.ts`).
+     Clients use the version to decide
      whether an installed plugin is stale, so skills edited without a bump
      simply never reach agents that already hold the old copy. release-please
      does **not** manage `plugins/` — it is not a workspace package and has no
@@ -434,7 +446,7 @@ plugins/zuke/             # Claude Code plugin wrapping the skills
   Two gate targets hold this up, so a miss fails the build rather than shipping
   quietly: `pluginVersionCheck` fails when a published skill changed against the
   base branch and the version did not move, and `tests/plugin_manifest_test.ts`
-  fails when the two manifests disagree. `pluginVersionCheck` is the one part of
+  fails when the manifests disagree. `pluginVersionCheck` is the one part of
   the gate that needs history — it compares against `origin/<PR base>`, or
   `ZUKE_PLUGIN_BASE_REF` when you set one — and it reports itself _skipped_,
   never passed, in a clone that has no base to compare against.

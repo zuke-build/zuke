@@ -7,8 +7,10 @@
  * `plugins/zuke` is published to a Claude Code plugin marketplace, and clients
  * use its declared version to decide whether an installed copy is stale. It is
  * not a workspace package — it has no `deno.json` and release-please does not
- * manage it — so the bump is manual, in two manifests, and nothing downstream
- * complains when it is missed. The failure is silent in the worst way: the PR
+ * manage it — so the bump is manual, across every manifest in
+ * {@link VERSIONED_MANIFESTS} (the Claude and Codex plugin manifests, the
+ * marketplace entry, and the Gemini extension manifest), and nothing
+ * downstream complains when it is missed. The failure is silent in the worst way: the PR
  * is green, the skills are correct in the repository, and every agent that
  * already holds the old version simply never sees them.
  *
@@ -39,6 +41,24 @@ export const PLUGIN_MANIFEST = "plugins/zuke/.claude-plugin/plugin.json";
 
 /** The marketplace manifest listing the plugin. */
 export const MARKETPLACE_MANIFEST = ".claude-plugin/marketplace.json";
+
+/** The Codex-native copy of the plugin manifest. */
+export const CODEX_PLUGIN_MANIFEST = "plugins/zuke/.codex-plugin/plugin.json";
+
+/** The Gemini CLI extension manifest at the repo root. */
+export const GEMINI_EXTENSION_MANIFEST = "gemini-extension.json";
+
+/**
+ * Every manifest that carries the plugin version. The bump is manual and must
+ * land in all of them — `tests/plugin_manifest_test.ts` fails when they
+ * disagree, and {@link bumpFailure} names them so the fix is one edit away.
+ */
+export const VERSIONED_MANIFESTS: readonly string[] = [
+  PLUGIN_MANIFEST,
+  CODEX_PLUGIN_MANIFEST,
+  MARKETPLACE_MANIFEST,
+  GEMINI_EXTENSION_MANIFEST,
+];
 
 /** Whether a changed path is part of what the plugin publishes. */
 export function isSkillPath(path: string): boolean {
@@ -156,9 +176,8 @@ export function bumpFailure(verdict: BumpVerdict): string {
     "Clients use this version to decide whether an installed plugin is stale,",
     "so skills shipped without a bump never reach agents holding the old copy.",
     "",
-    `Bump the version in BOTH manifests (they must agree):`,
-    `  ${PLUGIN_MANIFEST}`,
-    `  ${MARKETPLACE_MANIFEST}`,
+    `Bump the version in ALL of these manifests (they must agree):`,
+    ...VERSIONED_MANIFESTS.map((path) => `  ${path}`),
     "Additive skill content is a minor bump; a correction is a patch.",
   ].join("\n");
 }

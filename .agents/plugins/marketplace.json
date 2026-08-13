@@ -1,0 +1,20 @@
+{
+  "name": "zuke",
+  "interface": {
+    "displayName": "Zuke"
+  },
+  "plugins": [
+    {
+      "name": "zuke",
+      "source": {
+        "source": "local",
+        "path": "./plugins/zuke"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

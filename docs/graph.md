@@ -4,7 +4,7 @@
 
 The dependency graph of [`zuke.ts`](../zuke.ts) — Zuke building itself. An arrow points from a dependency to the target that depends on it, so a target runs after everything that points at it. This is the same graph `./zuke graph` prints as text and `./zuke graph --output=html` renders interactively.
 
-38 target(s), 24 dependency edge(s). Regenerate with `./zuke graphDoc`; the `graphDocCheck` target in the CI gate fails when this page drifts from the build.
+39 target(s), 25 dependency edge(s). Regenerate with `./zuke graphDoc`; the `graphDocCheck` target in the CI gate fails when this page drifts from the build.
 
 ```mermaid
 flowchart TD
@@ -28,48 +28,50 @@ flowchart TD
   t17["hclSyncCheck"]
   t18["pluginSync"]
   t19["pluginSyncCheck"]
-  t20["graphDoc"]
-  t21["graphDocCheck"]
-  t22["pluginVersionCheck"]
-  t23["prBodyLint"]
-  t24["coreFloorCheck"]
-  t25["lockCheck"]
-  t26["security"]
-  t27["actionPinCheck"]
-  t28["ci"]
-  t29["scorecardSarif"]
-  t30["codeql"]
-  t31["reviewBase"]
-  t32["review"]
-  t33["release"]
-  t34["actionRelease"]
-  t35["publishJsr"]
-  t36["publish"]
-  t37["default"]
+  t20["skillsCheck"]
+  t21["graphDoc"]
+  t22["graphDocCheck"]
+  t23["pluginVersionCheck"]
+  t24["prBodyLint"]
+  t25["coreFloorCheck"]
+  t26["lockCheck"]
+  t27["security"]
+  t28["actionPinCheck"]
+  t29["ci"]
+  t30["scorecardSarif"]
+  t31["codeql"]
+  t32["reviewBase"]
+  t33["review"]
+  t34["release"]
+  t35["actionRelease"]
+  t36["publishJsr"]
+  t37["publish"]
+  t38["default"]
   t1 --> t5
   t5 --> t6
   t6 --> t8
   t8 --> t9
-  t2 --> t28
-  t3 --> t28
-  t4 --> t28
-  t8 --> t28
-  t9 --> t28
-  t11 --> t28
-  t14 --> t28
-  t15 --> t28
-  t17 --> t28
-  t19 --> t28
-  t21 --> t28
-  t22 --> t28
-  t23 --> t28
-  t27 --> t28
-  t26 --> t28
-  t25 --> t28
-  t31 --> t32
-  t33 --> t36
-  t35 --> t36
-  t28 --> t37
+  t2 --> t29
+  t3 --> t29
+  t4 --> t29
+  t8 --> t29
+  t9 --> t29
+  t11 --> t29
+  t14 --> t29
+  t15 --> t29
+  t17 --> t29
+  t19 --> t29
+  t20 --> t29
+  t22 --> t29
+  t23 --> t29
+  t24 --> t29
+  t28 --> t29
+  t27 --> t29
+  t26 --> t29
+  t32 --> t33
+  t34 --> t37
+  t36 --> t37
+  t29 --> t38
 ```
 
 ## Targets
@@ -96,6 +98,7 @@ flowchart TD
 | `hclSyncCheck` | Verify the Terraform/OpenTofu wrappers match their template | — |
 | `pluginSync` | Sync plugins/zuke/skills/ from skills/ (real copies, not a symlink) | — |
 | `pluginSyncCheck` | Verify plugins/zuke/skills/ matches skills/ (no drift) | — |
+| `skillsCheck` | Validate skills/ against the Agent Skills spec (frontmatter, names) | — |
 | `graphDoc` | Regenerate docs/graph.md — this build's graph as a Mermaid page | — |
 | `graphDocCheck` | Verify docs/graph.md matches the current build graph | — |
 | `pluginVersionCheck` | Verify a skills change also bumped the plugin version | — |
@@ -104,7 +107,7 @@ flowchart TD
 | `lockCheck` | Verify the run did not rewrite deno.lock | — |
 | `security` | Run supply-chain security scanners (zuke/security) | — |
 | `actionPinCheck` | Verify the workflows only use inputs the released action has | — |
-| `ci` | Full pre-commit / CI gate | `format`, `lint`, `spell`, `coverage`, `coverageUpload`, `apiDocsCheck`, `docLint`, `snippetsCheck`, `hclSyncCheck`, `pluginSyncCheck`, `graphDocCheck`, `pluginVersionCheck`, `prBodyLint`, `actionPinCheck`, `security`, `lockCheck` |
+| `ci` | Full pre-commit / CI gate | `format`, `lint`, `spell`, `coverage`, `coverageUpload`, `apiDocsCheck`, `docLint`, `snippetsCheck`, `hclSyncCheck`, `pluginSyncCheck`, `skillsCheck`, `graphDocCheck`, `pluginVersionCheck`, `prBodyLint`, `actionPinCheck`, `security`, `lockCheck` |
 | `scorecardSarif` | Upload the Scorecard SARIF to GitHub code scanning | — |
 | `codeql` | CodeQL static analysis (runs in CI via codeql.yml) | — |
 | `reviewBase` | Fetch the base branch the AI review diffs against | — |

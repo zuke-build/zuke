@@ -340,10 +340,38 @@ That makes `zuke-setup` and `zuke-write-build` available — they trigger
 automatically when you ask Claude to add Zuke to a project or write a build, and
 can be invoked explicitly as `/zuke:zuke-setup` and `/zuke:zuke-write-build`.
 
+### OpenAI Codex
+
+The same plugin installs into Codex from this repo (it carries a Codex-native
+`.agents/plugins/marketplace.json` and `.codex-plugin/plugin.json` alongside the
+Claude manifests):
+
+```text
+codex plugin marketplace add zuke-build/zuke
+codex plugin add zuke@zuke
+```
+
+A single skill can also be pulled straight from the repo with Codex's built-in
+installer skill, e.g.
+`$skill-installer install https://github.com/zuke-build/zuke/tree/master/skills/zuke-write-build`.
+
+### Gemini CLI
+
+The repo doubles as a Gemini CLI extension (the root `gemini-extension.json`;
+Gemini auto-discovers the `skills/` folder next to it):
+
+```text
+gemini extensions install https://github.com/zuke-build/zuke
+```
+
+Gemini installs a GitHub extension from the repo's **latest release** snapshot
+(offering a git clone as the fallback), so the extension tracks releases rather
+than `master`.
+
 > The `SKILL.md` content is harness-agnostic (the open
-> [Agent Skills](https://agentskills.io) standard); the Claude marketplace is
-> just one adapter over the shared `skills/` source. Installation for other
-> harnesses (Codex, OpenCode, …) is coming later.
+> [Agent Skills](https://agentskills.io) standard); each manifest above is a
+> thin adapter over the shared [`skills/`](./skills) source, so every harness
+> serves the same two skills.
 
 ## Documentation
 
