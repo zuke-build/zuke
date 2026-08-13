@@ -22,6 +22,7 @@ import {
   type AbsolutePath,
   appendJobSummary,
   Build,
+  discoverTargets,
   FileTasks,
   glob,
   isCI,
@@ -88,6 +89,11 @@ import {
 } from "./build/gitleaks_report.ts";
 import { checkSnippets, formatSnippetFailures } from "./build/snippets.ts";
 import { checkHclWrappers, generateHclWrappers } from "./build/hcl_gen.ts";
+import {
+  checkGraphDoc,
+  GRAPH_DOC_PATH,
+  writeGraphDoc,
+} from "./build/graph_doc.ts";
 import { lintPrBody } from "./build/pr_body_lint.ts";
 import { assertLockUnchanged } from "./build/lock_check.ts";
 import { checkCoreFloors, formatFloorFailures } from "./build/core_floor.ts";
@@ -467,6 +473,32 @@ class ZukeBuild extends Build {
       ConsoleTasks.info("plugins/zuke/skills/ is in sync with skills/.");
     });
 
+  graphDoc = target()
+    .description(
+      "Regenerate docs/graph.md — this build's graph as a Mermaid page",
+    )
+    .executes(async () => {
+      const changed = await writeGraphDoc(discoverTargets(this));
+      ConsoleTasks.info(
+        changed
+          ? `Regenerated ${GRAPH_DOC_PATH}.`
+          : `${GRAPH_DOC_PATH} already up to date.`,
+      );
+    });
+
+  graphDocCheck = target()
+    .description("Verify docs/graph.md matches the current build graph")
+    .executes(async () => {
+      const stale = await checkGraphDoc(discoverTargets(this));
+      if (stale.length > 0) {
+        throw new Error(
+          `The build-graph page is out of date:\n  ${stale.join("\n  ")}\n` +
+            "Run `./zuke graphDoc` and commit the result.",
+        );
+      }
+      ConsoleTasks.info(`${GRAPH_DOC_PATH} matches the build graph.`);
+    });
+
   pluginVersionCheck = target()
     .description("Verify a skills change also bumped the plugin version")
     .executes(async () => {
@@ -711,6 +743,7 @@ class ZukeBuild extends Build {
       this.snippetsCheck,
       this.hclSyncCheck,
       this.pluginSyncCheck,
+      this.graphDocCheck,
       this.pluginVersionCheck,
       this.prBodyLint,
       this.actionPinCheck,
