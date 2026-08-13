@@ -944,6 +944,55 @@ Deno.test("RestGhWorkflowApi aborts a hung request via its timeout", async () =>
   await assertRejects(() => api.getRun("a/b", 1)); // aborts, does not hang
 });
 
+Deno.test("the default transport reads GH_TOKEN before GITHUB_TOKEN", async () => {
+  // The same order the gh CLI resolves its token, injected through the readEnv
+  // seam so the test never touches the real environment.
+  const url = "https://api.github.com/repos/a/b/actions/workflows/w/dispatches";
+  const both = routerFetch({ [`POST ${url}`]: {} });
+  const preferGh = githubWorkflowWith((g) => g.repo("a/b").workflow("w"), {
+    fetch: both.fetch,
+    readEnv: (name) =>
+      name === "GH_TOKEN"
+        ? "gh_tok"
+        : name === "GITHUB_TOKEN"
+        ? "shadowed"
+        : undefined,
+  });
+  await preferGh.isSatisfied(NO_SIGNALS, ctx(fakeState())); // dispatch
+  assertEquals(
+    new Headers(both.calls[0].init?.headers).get("authorization"),
+    "Bearer gh_tok",
+  );
+
+  // Without GH_TOKEN the workflow token GITHUB_TOKEN fills in.
+  const fallback = routerFetch({ [`POST ${url}`]: {} });
+  const usesGithub = githubWorkflowWith((g) => g.repo("a/b").workflow("w"), {
+    fetch: fallback.fetch,
+    readEnv: (name) => name === "GITHUB_TOKEN" ? "fallback_tok" : undefined,
+  });
+  await usesGithub.isSatisfied(NO_SIGNALS, ctx(fakeState()));
+  assertEquals(
+    new Headers(fallback.calls[0].init?.headers).get("authorization"),
+    "Bearer fallback_tok",
+  );
+});
+
+Deno.test("RestGhWorkflowApi tolerates a 2xx body that is not an object", async () => {
+  // A proxy answering with a JSON array instead of the run object: the read
+  // degrades to the same defaults as an empty run, not a crash on indexing.
+  const { fetch } = routerFetch({
+    "GET https://api.github.com/repos/a/b/actions/runs/9": [],
+  });
+  assertEquals(await new RestGhWorkflowApi({ fetch }).getRun("a/b", 9), {
+    id: 0,
+    status: "unknown",
+    conclusion: null,
+    url: "",
+    createdAt: "",
+    headBranch: "",
+  });
+});
+
 Deno.test("RestGhWorkflowApi maps missing run/job fields to defaults", async () => {
   const { fetch } = routerFetch({
     "GET https://api.github.com/repos/a/b/actions/runs/9": {}, // no fields

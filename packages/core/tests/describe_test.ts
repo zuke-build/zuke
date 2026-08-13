@@ -91,6 +91,29 @@ Deno.test("describeCli reports the property name, kind, and default", () => {
   assertEquals(params.find((p) => p.name === "region")?.default, "eu");
 });
 
+Deno.test("describeCli never surfaces a secret parameter's default value", () => {
+  class WithSecret extends Build {
+    // A secret's declared default could itself be a live credential.
+    apiKey = parameter("API key").secret().default("sk-live-real");
+    region = parameter("Region").default("eu");
+  }
+  const params = describeCli(new WithSecret()).parameters;
+  assertEquals(params.find((p) => p.name === "apiKey")?.default, undefined);
+  // A non-secret default still surfaces, so the omission is targeted.
+  assertEquals(params.find((p) => p.name === "region")?.default, "eu");
+});
+
+Deno.test("describeCli names a dependency that is not a build field with ?", () => {
+  // A dependency that was never discovered as a field has no name; the surface
+  // reports the placeholder rather than crashing or silently dropping the edge.
+  const anon = target().executes(() => {});
+  class B extends Build {
+    build = target().dependsOn(anon).executes(() => {});
+  }
+  const build = describeCli(new B()).targets.find((t) => t.name === "build");
+  assertEquals(build?.dependsOn, ["?"]);
+});
+
 Deno.test("describeCli omitSecrets drops secret parameters entirely", () => {
   class WithSecret extends Build {
     apiKey = parameter("API key").secret();

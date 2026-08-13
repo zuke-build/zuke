@@ -1,7 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals, assertStringIncludes } from "./_assert.ts";
+import {
+  assertEquals,
+  assertRejects,
+  assertStringIncludes,
+  assertThrows,
+} from "./_assert.ts";
 import {
   cicd,
   CiFile,
@@ -1176,6 +1181,105 @@ Deno.test("the two security-relevant inputs are always stated", () => {
   const yaml = discoverCiFiles(new B())[0].render();
   assertStringIncludes(yaml, "egress-policy: audit");
   assertStringIncludes(yaml, 'persist-credentials: "false"');
+});
+
+Deno.test("github: a checkout ref renders on the separate checkout step", () => {
+  const yaml = generateCi({
+    bootstrap: false,
+    checkout: { action: `actions/checkout@${"a".repeat(40)}`, ref: "release" },
+    jobs: [{ id: "gate", steps: [{ run: "./zuke gate" }] }],
+  }, "github");
+  assertStringIncludes(yaml, `actions/checkout@${"a".repeat(40)}`);
+  assertStringIncludes(yaml, "ref: release");
+});
+
+Deno.test("a checkout without a pin is a friendly error when bootstrap is off", () => {
+  // Emitting `uses:` with no ref would be a floating reference; like an
+  // unpinned harden, an unpinned checkout must fail rather than degrade.
+  assertThrows(
+    () =>
+      generateCi({
+        bootstrap: false,
+        checkout: {},
+        jobs: [{ steps: [{ run: "x" }] }],
+      }, "github"),
+    Error,
+    "the checkout needs a pinned action",
+  );
+});
+
+Deno.test("bootstrap: false with no job steps still runs the default step", () => {
+  // Opting out of the prelude action must not also lose the default build step.
+  const yaml = generateCi(
+    { bootstrap: false, jobs: [{ id: "plain" }] },
+    "github",
+  );
+  assertStringIncludes(yaml, "run: ./zuke");
+  assertEquals(yaml.includes("zuke-build/zuke"), false);
+});
+
+Deno.test("azure: a schedule without a push trigger defaults to main", () => {
+  // Azure schedules need a branch filter; with no push trigger to mirror, the
+  // conventional default branch stands in.
+  const yaml = generateCi(
+    { triggers: { schedule: [{ cron: "0 6 * * *" }] } },
+    "azure",
+  );
+  assertStringIncludes(yaml, "schedules:");
+  assertStringIncludes(yaml, "branches:\n      include:\n        - main");
+});
+
+Deno.test("a job's own bootstrap pin overrides the resolver", () => {
+  // A job that names the prelude action asked for that exact pin; the resolver
+  // must not replace it.
+  class B extends Build {
+    gate = target().executes(() => {});
+    wf = cicd({
+      pins: (action) => `${action}@${"9".repeat(40)}`,
+      invokes: [{
+        target: this.gate,
+        bootstrap: { action: `my-org/zuke@${"8".repeat(40)}` },
+      }],
+    });
+  }
+  const yaml = discoverCiFiles(new B())[0].render();
+  assertStringIncludes(yaml, `my-org/zuke@${"8".repeat(40)}`);
+  assertEquals(yaml.includes("zuke-build/zuke"), false);
+});
+
+Deno.test("a field name that is all suffix keeps the provider default path", () => {
+  // `Ci` reduces to nothing once the suffix is dropped, so the provider's
+  // conventional file name stands in rather than an empty ".yml".
+  class B extends Build {
+    gate = target().executes(() => {});
+    Ci = cicd({ invokes: [this.gate] });
+  }
+  assertEquals(discoverCiFiles(new B())[0].path, ".github/workflows/ci.yml");
+});
+
+Deno.test("pipelineFor names a not-yet-discovered target by identity", () => {
+  // Before discoverTargets assigns names, an invoked target can still be
+  // resolved by identity against the map — what lets a workflow be declared
+  // with `this.ci` in a field initialiser.
+  const gate = target().description("Gate").executes(() => {});
+  const file = cicd({ provider: "github", invokes: [gate] });
+  const pipeline = file.pipelineFor(new Map([["gate", gate]]));
+  assertEquals(pipeline.jobs?.[0].id, "gate");
+  assertEquals(pipeline.jobs?.[0].name, "Gate");
+});
+
+Deno.test("syncCiFiles surfaces a read failure that is not file-absence", async () => {
+  // Only NotFound means "write it fresh"; any other read failure (here: the
+  // path is a directory) must propagate, not be mistaken for a missing file.
+  const dir = await Deno.makeTempDir();
+  try {
+    const path = `${dir}/ci.yml`;
+    await Deno.mkdir(path); // a directory where the file should be
+    const file = cicd({ provider: "github", path, pipeline: filePipeline });
+    await assertRejects(() => syncCiFiles([file], { check: true }));
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
 });
 
 Deno.test("a job whose own steps already harden or check out gets no prelude", () => {

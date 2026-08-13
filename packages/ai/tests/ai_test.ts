@@ -1184,3 +1184,36 @@ Deno.test("a failed PR comment never breaks the review", async () => {
     },
   );
 });
+
+Deno.test("provider_ reflects the configured provider", () => {
+  const bare = securityReviewer();
+  assertEquals(bare.provider_, undefined); // nothing configured yet
+  const configured = securityReviewer((r) => r.provider("openai"));
+  assertEquals(configured.provider_, "openai");
+});
+
+Deno.test("the fetchBase fallback is announced on the console when not quiet", async () => {
+  const { fetch } = recordFetch(
+    claude({ score: 0, severity: "none", summary: "", findings: [] }),
+  );
+  const lines = await captured(() =>
+    securityReviewer((r) =>
+      r.provider("claude").apiKey("k")
+        .diff((d) => d.fetchBase("develop"))
+        .env(() => undefined)
+        .exec((argv) => {
+          if (argv[1] === "fetch") return Promise.reject(new Error("offline"));
+          return Promise.resolve("diff --git a/w b/w\n+working tree");
+        })
+        .fetch(fetch)
+    ).validate({ target: "t" })
+  );
+  // The silent-fallback hazard is called out where the operator can see it.
+  assertEquals(
+    lines.some((l) =>
+      l.includes("fetchBase could not compute the base diff") &&
+      l.includes("falling back to the working-tree diff")
+    ),
+    true,
+  );
+});

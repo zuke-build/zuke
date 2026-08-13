@@ -1,10 +1,11 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals } from "../../core/tests/_assert.ts";
+import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
 import {
   aiCache,
   aiFixer,
+  AiReviewError,
   type Assessment,
   budget,
   type CacheEntry,
@@ -317,6 +318,65 @@ Deno.test("an empty suppress list leaves the findings untouched", async () => {
     ).validate({ target: "t" })
   );
   assertEquals(lines.some((l) => l.includes("suppressed")), false);
+});
+
+Deno.test("a suppress list that matches no finding drops nothing", async () => {
+  // A non-empty list whose fingerprints belong to some other finding: the
+  // assessment must pass through untouched, so the critical finding still
+  // trips the default gate.
+  const sup = suppressions((s) => s.add("ffffffffffffffff"));
+  const { fetch } = recordFetch(
+    claude({
+      score: 9,
+      severity: "critical",
+      summary: "bad",
+      findings: [{ title: "rce", severity: "critical" }],
+    }),
+  );
+  const lines = await captured(async () => {
+    await assertRejects(
+      () =>
+        securityReviewer((r) =>
+          r.provider("claude").apiKey("k").diff((d) => d.text(DIFF))
+            .fetch(fetch).suppress(sup)
+        ).validate({ target: "t" }),
+      AiReviewError, // the unrelated fingerprint muted nothing
+    );
+  });
+  assertEquals(lines.some((l) => l.includes("suppressed")), false);
+});
+
+Deno.test("the verify pass is skipped once the review call exhausts the budget", async () => {
+  // The review itself fits under the cap check (0 < 1) but its usage blows the
+  // cap, so the verify pass that follows must be skipped — visibly — and the
+  // unverified finding must keep gating.
+  const b = budget((x) => x.maxTokens(1));
+  const { fetch, calls } = recordFetch(
+    claude(
+      {
+        score: 9,
+        severity: "critical",
+        summary: "bad",
+        findings: [{ title: "rce", severity: "critical" }],
+      },
+      { input_tokens: 500, output_tokens: 100 },
+    ),
+  );
+  const lines = await captured(async () => {
+    await assertRejects(
+      () =>
+        securityReviewer((r) =>
+          r.provider("claude").apiKey("k").diff((d) => d.text(DIFF))
+            .fetch(fetch).budget(b).verify()
+        ).validate({ target: "t" }),
+      AiReviewError, // the finding was kept, not silently verified away
+    );
+  });
+  assertEquals(calls.length, 1); // the review call only — no verify call
+  assertEquals(
+    lines.some((l) => l.includes("verify pass skipped — AI budget exhausted")),
+    true,
+  );
 });
 
 // ----- Report rendering ----------------------------------------------------

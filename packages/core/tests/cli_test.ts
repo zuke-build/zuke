@@ -1,7 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals, assertStringIncludes, assertThrows } from "./_assert.ts";
+import {
+  assertEquals,
+  assertRejects,
+  assertStringIncludes,
+  assertThrows,
+} from "./_assert.ts";
 import { Build, cicd, group, type Plugin, target } from "../mod.ts";
 import {
   formatGraph,

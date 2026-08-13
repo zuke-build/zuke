@@ -125,6 +125,58 @@ Deno.test("utcCronsFor rejects the unsupported cases with a friendly error", () 
   );
 });
 
+Deno.test("utcCronsFor expands a */step field over the whole range", () => {
+  // `*/15` strides the full minute range, then the hour shifts for the zone.
+  assertEquals(
+    utcCronsFor({ cron: "*/15 9 * * *", tz: "Etc/GMT-2" }),
+    ["0,15,30,45 7 * * *"],
+  );
+});
+
+Deno.test("utcCronsFor rejects malformed step syntax with a friendly error", () => {
+  // More than one slash in a field.
+  assertThrows(
+    () => utcCronsFor({ cron: "1/2/3 0 * * *" }),
+    Error,
+    "invalid cron field",
+  );
+  // A zero stride and a non-numeric stride are both named as bad steps.
+  assertThrows(
+    () => utcCronsFor({ cron: "*/0 0 * * *" }),
+    Error,
+    "invalid step in cron field",
+  );
+  assertThrows(
+    () => utcCronsFor({ cron: "5/x 0 * * *" }),
+    Error,
+    "invalid step in cron field",
+  );
+});
+
+Deno.test("utcCronsFor shifts an every-hour schedule without touching the days", () => {
+  // With hour `*` the shift is a no-op: every hour maps to every hour, so the
+  // day fields survive verbatim and no "crosses a day boundary" error can fire
+  // even though day-of-month, month, and day-of-week are all constrained.
+  assertEquals(
+    utcCronsFor({ cron: "30 * 1,15 6 1", tz: "Etc/GMT-2" }),
+    ["30 * 1,15 6 1"],
+  );
+});
+
+Deno.test("guardShell renders a wildcard field as an always-true test", () => {
+  // A `*` minute matches every wall-clock minute, so its membership test must
+  // collapse to `true` rather than an empty case list that never matches.
+  const shell = guardShell([{ cron: "* 9 * * *", tz: "Europe/Sofia" }]);
+  assertStringIncludes(shell, "if true && ");
+  assertStringIncludes(shell, 'case " 9 " in *" $hh "*)');
+});
+
+Deno.test("guardShell tests the month when the schedule restricts it", () => {
+  const shell = guardShell([{ cron: "0 12 * 6 *", tz: "Europe/Sofia" }]);
+  assertStringIncludes(shell, "TZ='Europe/Sofia' date +%m");
+  assertStringIncludes(shell, 'case " 6 " in *" $mo "*)');
+});
+
 Deno.test("anyScheduleNeedsGuard is true only when a DST zone is present", () => {
   assertEquals(
     anyScheduleNeedsGuard([{ cron: "0 6 * * *" }, {

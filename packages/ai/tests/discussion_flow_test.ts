@@ -2,11 +2,15 @@
 // SPDX-License-Identifier: MIT
 
 import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
-import { AiReviewError, securityReviewer } from "../mod.ts";
+import { AiReviewError, budget, securityReviewer } from "../mod.ts";
 import { findingFingerprint } from "../src/suppress.ts";
 import { decodeState, encodeState } from "../src/state.ts";
 import { commentMarker } from "../src/hosts/types.ts";
-import { findingMarker, outcomeMarker } from "../src/threads.ts";
+import {
+  findingMarker,
+  MAX_NEW_THREADS,
+  outcomeMarker,
+} from "../src/threads.ts";
 import { stableHash } from "../src/hash.ts";
 
 const DIFF = "diff --git a/src/app.ts b/src/app.ts\n" +
@@ -2480,4 +2484,373 @@ Deno.test("a quiet reviewer posts no threads either", async () => {
     })
   );
   assertEquals(threadPosts(calls).length, 0);
+});
+
+// ─── Degraded paths: no host, exhausted budgets, failing passes ──────────────
+
+Deno.test("comment and discussion degrade to warnings outside any CI host", async () => {
+  // An env reader that sees nothing: no CI host markers at all (a local run).
+  const { fetch, calls } = discussionFetch([], [
+    claude({ score: 0, severity: "none", findings: [] }),
+  ]);
+  const lines = await captured(() =>
+    securityReviewer((r) =>
+      r.provider("claude").apiKey("k")
+        .comment().discussion()
+        .env(() => undefined)
+        .diff((d) => d.text(DIFF))
+        .fetch(fetch)
+    ).validate({ target: "t" })
+  );
+  // The discussion is declined in code, before any listing is attempted…
+  assertEquals(
+    lines.some((l) =>
+      l.includes("discussion disabled") &&
+      l.includes("the active host cannot list PR comments")
+    ),
+    true,
+  );
+  // …and the comment is skipped with its own warning, not a crash.
+  assertEquals(
+    lines.some((l) =>
+      l.includes("no PR-comment host detected — skipping comment")
+    ),
+    true,
+  );
+  // No host traffic happened at all.
+  assertEquals(calls.every((c) => !c.url.startsWith(`${GITHUB_API}/`)), true);
+});
+
+/** Wrap a payload in a Claude response that also reports token usage. */
+function claudeWithUsage(
+  payload: unknown,
+  usage: Record<string, number>,
+): string {
+  return JSON.stringify({
+    content: [{ type: "text", text: JSON.stringify(payload) }],
+    stop_reason: "end_turn",
+    usage,
+  });
+}
+
+Deno.test("an exhausted budget skips the reworded-finding check, and says so", async () => {
+  // The review call's own usage blows the cap, so the dedup pass that would
+  // resolve the rewording must be skipped — with a note, never silently — and
+  // the finding keeps its fresh identity and gates.
+  const b = budget((x) => x.maxTokens(1));
+  const { fetch, calls } = discussionFetch(
+    priorComment(stateWith("dismissed")),
+    [claudeWithUsage({ score: 9, severity: "high", findings: [REWORDED] }, {
+      input_tokens: 500,
+      output_tokens: 100,
+    })],
+  );
+  const lines = await captured(() =>
+    inPr(async () => {
+      await assertRejects(
+        () =>
+          securityReviewer((r) =>
+            r.provider("claude").apiKey("k")
+              .comment().discussion().budget(b)
+              .diff((d) => d.text(DIFF))
+              .fetch(fetch)
+          ).validate({ target: "t" }),
+        AiReviewError, // reported under its own id — not silenced
+      );
+    })
+  );
+  // The review call only: no dedup call was paid for.
+  assertEquals(
+    calls.filter((c) => !c.url.startsWith(`${GITHUB_API}/`)).length,
+    1,
+  );
+  assertEquals(
+    lines.some((l) =>
+      l.includes("reworded-finding check skipped — AI budget exhausted")
+    ),
+    true,
+  );
+  // The finding kept its own identity in the posted state.
+  assertEquals(
+    postedState(calls)?.findings.some((f) => f.id === REWORDED_ID),
+    true,
+  );
+});
+
+Deno.test("an ambiguous rewording keeps the first match and reports the rest, with the cap named", async () => {
+  // Four earlier open findings in the same file are all eligible comparisons
+  // for one candidate; the per-candidate cap (3) drops the fourth, and the
+  // model then claims the candidate matches two of the three offered.
+  const priors = Array.from({ length: 4 }, (_, i) => ({
+    id: `aaaa000${i + 1}`,
+    title: `Earlier concern ${i + 1}`,
+    severity: "high" as const,
+    status: "open" as const,
+    file: "src/app.ts",
+  }));
+  const { fetch, calls } = discussionFetch(
+    priorComment({ findings: priors }),
+    [
+      claude({ score: 9, severity: "high", findings: [REWORDED] }),
+      claude({
+        verdicts: [
+          { id: "p1", verdict: "same", reason: "same defect" },
+          { id: "p2", verdict: "same", reason: "also this one" },
+        ],
+      }),
+    ],
+  );
+  const lines = await captured(() =>
+    inPr(async () => {
+      await assertRejects(
+        () =>
+          securityReviewer((r) =>
+            r.provider("claude").apiKey("k")
+              .comment().discussion()
+              .diff((d) => d.text(DIFF))
+              .fetch(fetch)
+          ).validate({ target: "t" }),
+        AiReviewError, // adopted an OPEN identity — still gating
+      );
+    })
+  );
+  // First offered wins: the candidate adopted the first prior's identity.
+  const state = postedState(calls);
+  assertEquals(
+    state?.findings.find((f) => f.id === "aaaa0001")?.status,
+    "open",
+  );
+  assertEquals(
+    state?.findings.find((f) => f.id === "aaaa0001")?.aliases,
+    [REWORDED_ID],
+  );
+  // The double match is reported against the candidate's fresh id…
+  assertEquals(
+    lines.some((l) =>
+      l.includes(REWORDED_ID) &&
+      l.includes("matched more than one earlier finding")
+    ),
+    true,
+  );
+  // …and the dropped fourth comparison is announced, not silent.
+  assertEquals(
+    lines.some((l) =>
+      l.includes("reworded-finding check compared 3 of 4 candidate pairs")
+    ),
+    true,
+  );
+});
+
+Deno.test("the finding's detail reaches the adjudicator, and a reason-less dismissal sticks", async () => {
+  const detailed = {
+    ...FINDING,
+    detail: "input flows straight into eval with no sanitisation",
+  };
+  const comments = [
+    {
+      id: 1,
+      body: `Finding ${ID} misreads the code: eval runs in a sandboxed worker`,
+      user: { login: "maintainer", type: "User" },
+      author_association: "MEMBER",
+    },
+  ];
+  const { fetch, calls } = discussionFetch(comments, [
+    claude({ score: 9, severity: "high", findings: [detailed] }),
+    // A dismissal verdict carrying no reason — still a valid two-key dismissal.
+    claude({ verdicts: [{ id: ID, verdict: "dismissed" }] }),
+  ]);
+  const lines = await captured(() =>
+    inPr(async () => {
+      // Dismissed, so the gate does not trip.
+      await securityReviewer((r) =>
+        r.provider("claude").apiKey("k")
+          .comment().discussion()
+          .diff((d) => d.text(DIFF))
+          .fetch(fetch)
+      ).validate({ target: "t" });
+    })
+  );
+  const providerCalls = calls.filter((c) =>
+    !c.url.startsWith(`${GITHUB_API}/`)
+  );
+  assertEquals(providerCalls.length, 2);
+  // The adjudication prompt carried the finding's detail for context.
+  assertEquals(
+    JSON.parse(providerCalls[1].body).messages[0].content.includes(
+      "input flows straight into eval with no sanitisation",
+    ),
+    true,
+  );
+  assertEquals(
+    lines.some((l) => l.includes("dismissed via discussion by maintainer")),
+    true,
+  );
+  // Recorded dismissed with the author but no invented rationale.
+  const entry = postedState(calls)?.findings.find((f) => f.id === ID);
+  assertEquals(entry?.status, "dismissed");
+  assertEquals(entry?.author, "maintainer");
+  assertEquals(entry?.rationale, undefined);
+});
+
+Deno.test("a failed adjudication keeps contested findings open with a warning", async () => {
+  const calls: Call[] = [];
+  let served = 0;
+  const failing = ((input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    const method = init?.method ?? "GET";
+    calls.push({
+      url,
+      method,
+      body: typeof init?.body === "string" ? init.body : "",
+    });
+    if (url.startsWith(`${GITHUB_API}/`)) {
+      if (url.endsWith("/user")) {
+        return Promise.resolve(new Response("{}", { status: 403 }));
+      }
+      const payload = method === "GET"
+        ? JSON.stringify([{
+          id: 1,
+          body: `Finding ${ID} misreads the code`,
+          user: { login: "maintainer", type: "User" },
+          author_association: "MEMBER",
+        }])
+        : "{}";
+      return Promise.resolve(new Response(payload, { status: 200 }));
+    }
+    served++;
+    // The review answers; the adjudication call that follows fails outright.
+    return Promise.resolve(
+      served === 1
+        ? new Response(
+          claude({ score: 9, severity: "high", findings: [FINDING] }),
+          { status: 200 },
+        )
+        : new Response("upstream exploded", { status: 500 }),
+    );
+  }) as typeof fetch;
+  const lines = await captured(() =>
+    inPr(async () => {
+      await assertRejects(
+        () =>
+          securityReviewer((r) =>
+            r.provider("claude").apiKey("k")
+              .comment().discussion().retry({ attempts: 1 })
+              .diff((d) => d.text(DIFF))
+              .fetch(failing)
+          ).validate({ target: "t" }),
+        AiReviewError, // the contested finding stayed open and gates
+      );
+    })
+  );
+  assertEquals(
+    lines.some((l) =>
+      l.includes("adjudication failed") &&
+      l.includes("contested findings stay open")
+    ),
+    true,
+  );
+});
+
+Deno.test("findings beyond the thread cap stay in the table, and the gap is announced", async () => {
+  // One more anchorable finding than the per-run thread cap.
+  const count = MAX_NEW_THREADS + 1;
+  const bigDiff = [
+    "diff --git a/src/big.ts b/src/big.ts",
+    "--- a/src/big.ts",
+    "+++ b/src/big.ts",
+    `@@ -1,0 +1,${count} @@`,
+    ...Array.from({ length: count }, (_, i) => `+const v${i + 1} = ${i + 1};`),
+  ].join("\n");
+  const many = Array.from({ length: count }, (_, i) => ({
+    title: `Issue number ${i + 1}`,
+    severity: "high",
+    file: "src/big.ts",
+    line: i + 1,
+  }));
+  const { fetch, calls } = threadFetch([summaryComment()], [], [
+    claude({ score: 9, severity: "high", findings: many }),
+  ]);
+  await captured(() =>
+    inPr(async () => {
+      await assertRejects(
+        () =>
+          securityReviewer((r) =>
+            r.provider("claude").apiKey("k")
+              .comment().discussion((d) => d.threads())
+              .diff((d) => d.text(bigDiff))
+              .fetch(fetch)
+          ).validate({ target: "t" }),
+        AiReviewError,
+      );
+    })
+  );
+  // Exactly the cap was opened, and the leftover is promised to the next run.
+  assertEquals(threadPosts(calls).length, MAX_NEW_THREADS);
+  const write = calls.find((c) =>
+    c.url.includes("/issues/") && c.method !== "GET"
+  );
+  assertEquals(
+    JSON.parse(write?.body ?? "{}").body.includes(
+      `1 finding(s) did not get a review thread this run (cap ${MAX_NEW_THREADS})`,
+    ),
+    true,
+  );
+});
+
+Deno.test("a thread phase that throws degrades to a note, never a failure", async () => {
+  // The head-commit lookup explodes (HTTP 500) after the thread listing
+  // succeeded — the whole phase must collapse into a report note.
+  const calls: Call[] = [];
+  const doFetch = ((input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    const method = init?.method ?? "GET";
+    calls.push({
+      url,
+      method,
+      body: typeof init?.body === "string" ? init.body : "",
+    });
+    if (url.startsWith(`${GITHUB_API}/`)) {
+      if (url.endsWith("/user")) {
+        return Promise.resolve(new Response("{}", { status: 403 }));
+      }
+      if (method !== "GET") return Promise.resolve(new Response("{}"));
+      if (url.includes("/pulls/7/comments")) {
+        return Promise.resolve(new Response("[]"));
+      }
+      if (url.includes("/pulls/7")) {
+        return Promise.resolve(new Response("boom", { status: 500 }));
+      }
+      return Promise.resolve(new Response(JSON.stringify([summaryComment()])));
+    }
+    return Promise.resolve(
+      new Response(
+        claude({ score: 9, severity: "high", findings: [ANCHORED] }),
+        { status: 200 },
+      ),
+    );
+  }) as typeof fetch;
+  await captured(() =>
+    inPr(async () => {
+      await assertRejects(
+        () =>
+          securityReviewer((r) =>
+            r.provider("claude").apiKey("k")
+              .comment().discussion((d) => d.threads())
+              .diff((d) => d.text(ANCHORED_DIFF))
+              .fetch(doFetch)
+          ).validate({ target: "t" }),
+        AiReviewError, // the gate still speaks — the finding never vanished
+      );
+    })
+  );
+  assertEquals(threadPosts(calls).length, 0);
+  const write = calls.find((c) =>
+    c.url.includes("/issues/") && c.method !== "GET"
+  );
+  assertEquals(
+    JSON.parse(write?.body ?? "{}").body.includes(
+      "review threads unavailable this run",
+    ),
+    true,
+  );
 });

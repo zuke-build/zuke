@@ -311,3 +311,85 @@ Deno.test("verify is skipped cleanly when there are no findings", async () => {
   ).validate({ target: "t" });
   assertEquals(calls.length, 1); // no second call to verify nothing
 });
+
+/** Capture console output with the job-summary file unset (no real writes). */
+async function captured(fn: () => Promise<void>): Promise<string[]> {
+  const lines: string[] = [];
+  const { log, warn } = console;
+  const summary = Deno.env.get("GITHUB_STEP_SUMMARY");
+  Deno.env.delete("GITHUB_STEP_SUMMARY");
+  console.log = (...a: unknown[]) => void lines.push(a.join(" "));
+  console.warn = (...a: unknown[]) => void lines.push(a.join(" "));
+  try {
+    await fn();
+  } finally {
+    console.log = log;
+    console.warn = warn;
+    if (summary !== undefined) Deno.env.set("GITHUB_STEP_SUMMARY", summary);
+  }
+  return lines;
+}
+
+Deno.test("verify candidates carry the finding's line; a reason-less refutation renders bare", async () => {
+  const finding = {
+    title: "SQL injection",
+    severity: "high",
+    file: "db.ts",
+    line: 3,
+  };
+  const id = findingFingerprint("security", {
+    title: "SQL injection",
+    severity: "high",
+    file: "db.ts",
+  });
+  const { fetch, calls } = queuedFetch([
+    claude({ score: 8, severity: "high", findings: [finding] }),
+    // A refutation with no reason — schema-valid, and must still narrow.
+    claude({ verdicts: [{ id, verdict: "refuted" }] }),
+  ]);
+  const lines = await captured(() =>
+    // Passes: the sole finding was refuted, so the score recomputes to 0.
+    securityReviewer((r) =>
+      r.provider("claude").apiKey("k")
+        .diff((d) => d.text(DIFF)).verify()
+        .fetch(fetch)
+    ).validate({ target: "t" })
+  );
+  // The verify prompt carried the line, so the verifier can find the code.
+  const verify = JSON.parse(calls[1].body);
+  assertEquals(verify.messages[0].content.includes('"line": 3'), true);
+  // The refutation is reported without inventing a reason.
+  const refutedLine = lines.find((l) => l.includes("refuted by verify"));
+  assertEquals(refutedLine?.includes("SQL injection"), true);
+  assertEquals(refutedLine?.includes("—"), false);
+});
+
+Deno.test("a failed verify pass warns on the console when not quiet", async () => {
+  const { fetch } = queuedFetch([
+    claude({
+      score: 9,
+      severity: "critical",
+      findings: [{ title: "RCE", severity: "critical" }],
+    }),
+    { status: 500 },
+  ]);
+  const lines = await captured(async () => {
+    await assertRejects(
+      () =>
+        securityReviewer((r) =>
+          r.provider("claude").apiKey("k")
+            .retry({ attempts: 1 })
+            .diff((d) => d.text(DIFF)).verify()
+            .fetch(fetch)
+        ).validate({ target: "t" }),
+      AiReviewError, // the unverified finding stayed and still gates
+    );
+  });
+  assertEquals(
+    lines.some((l) =>
+      l.includes("verify pass failed") &&
+      l.includes("keeping unverified findings")
+    ),
+    true,
+  );
+});
