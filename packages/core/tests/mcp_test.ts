@@ -430,3 +430,18 @@ Deno.test("serveMcp runs the whole handshake over injected streams", async () =>
   assertStringIncludes(JSON.stringify(out[0]), "zuke");
   assertStringIncludes(JSON.stringify(out[1]), "list_targets");
 });
+
+Deno.test("the stdio banner reports read-only when running is not enabled", async () => {
+  const { output } = capturingWriter();
+  const original = console.error;
+  const banner: string[] = [];
+  console.error = (...args: unknown[]) => void banner.push(args.join(" "));
+  try {
+    await serveMcp(new Demo(), { input: streamOf(""), output });
+  } finally {
+    console.error = original;
+  }
+  const text = banner.join("\n");
+  assertStringIncludes(text, "read-only");
+  assertEquals(text.includes("run enabled"), false);
+});

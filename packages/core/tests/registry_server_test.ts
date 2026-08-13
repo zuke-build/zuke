@@ -1315,3 +1315,243 @@ Deno.test("the launch check runs before the destructive-confirmation prompt", as
   assertStringIncludes(result.text, "launch_origin_not_allowed");
   assertEquals(calls.length, 0);
 });
+
+// ---- remaining protocol edges, schema rendering, and audit resilience -------
+
+Deno.test("defaultRegistryRunner exports the resolved actor as ZUKE_ACTOR", async () => {
+  const result = await defaultRegistryRunner(
+    [
+      Deno.execPath(),
+      "eval",
+      "console.log(Deno.env.get('ZUKE_ACTOR') ?? 'NO_ACTOR')",
+    ],
+    Deno.cwd(),
+    { actor: "trusted-caller" },
+  );
+  assertEquals(result.code, 0);
+  // The spawned build attributes its run to the same actor as the audit trail.
+  assertStringIncludes(result.stdout, "trusted-caller");
+});
+
+Deno.test("a run tool's schema renders enums on arrays and typed defaults", async () => {
+  const registry = new FakeRegistry();
+  const base = descriptor("Api", ["deploy"]);
+  registry.add({
+    ...base,
+    surface: {
+      ...base.surface,
+      parameters: [
+        // An array of constrained strings: the enum rides on the items.
+        {
+          name: "levels",
+          flag: "levels",
+          description: "",
+          required: false,
+          kind: "string",
+          boolean: false,
+          array: true,
+          options: ["low", "high"],
+        },
+        // A boolean default "true" comes back as JSON true.
+        {
+          name: "verbose",
+          flag: "verbose",
+          description: "",
+          required: false,
+          kind: "boolean",
+          boolean: true,
+          array: false,
+          options: [],
+          default: "true",
+        },
+        // A string default is carried verbatim.
+        {
+          name: "region",
+          flag: "region",
+          description: "",
+          required: false,
+          kind: "string",
+          boolean: false,
+          array: false,
+          options: [],
+          default: "eu",
+        },
+      ],
+    },
+  });
+  const server = new RegistryMcpServer(registry, { allowRun: true });
+  const schema = runToolSchema(
+    await server.handleMessage(req("tools/list")),
+    "run:Api:deploy",
+  );
+  const props = schemaProps(schema);
+  assertEquals(props.levels, {
+    type: "array",
+    items: { type: "string", enum: ["low", "high"] },
+  });
+  assertEquals(props.verbose, { type: "boolean", default: true });
+  assertEquals(props.region, { type: "string", default: "eu" });
+});
+
+Deno.test("an array parameter with a mismatched element is rejected before any spawn", async () => {
+  const registry = new FakeRegistry();
+  registry.add(paramDescriptor());
+  const { runner, calls } = recordingRunner();
+  const server = new RegistryMcpServer(registry, { allowRun: true, runner });
+  // The array shape is right, but one element is not a string.
+  const result = await call(server, "run:Deploy:deploy", {
+    repos: ["expense-service", 5],
+  });
+  assertEquals(result.isError, true);
+  assertStringIncludes(result.text, "repos");
+  assertEquals(calls.length, 0);
+});
+
+Deno.test("protection reaches a dependency shared through a diamond exactly once", async () => {
+  const registry = new FakeRegistry();
+  // release → {a, b} → lint: the protected `lint` is reachable twice, and the
+  // closure walk must both dedupe it and still enforce the token.
+  const base = descriptor("Api", ["lint", "a", "b", "release"]);
+  registry.add({
+    ...base,
+    surface: {
+      ...base.surface,
+      targets: base.surface.targets.map((t) => {
+        if (t.name === "a" || t.name === "b") {
+          return { ...t, dependsOn: ["lint"] };
+        }
+        if (t.name === "release") return { ...t, dependsOn: ["a", "b"] };
+        return t;
+      }),
+    },
+  });
+  const { runner, calls } = recordingRunner();
+  const server = new RegistryMcpServer(registry, {
+    allowRun: true,
+    protectPatterns: ["Api:lint"],
+    operatorToken: "good-token",
+    runner,
+  });
+  const denied = await call(server, "run:Api:release");
+  assertEquals(denied.isError, true);
+  assertStringIncludes(denied.text, "missing_operator_token");
+  assertEquals(calls.length, 0);
+  const okd = await call(server, "run:Api:release", {
+    operatorToken: "good-token",
+  });
+  assertEquals(okd.isError, false);
+  assertEquals(calls.length, 1);
+});
+
+Deno.test("an id-less unknown method is a silent notification; a bad name errors", async () => {
+  const server = new RegistryMcpServer(new FakeRegistry());
+  // An unknown method with no id is treated as a notification: no reply.
+  assertEquals(
+    await server.handleMessage({ jsonrpc: "2.0", method: "does/not/exist" }),
+    null,
+  );
+  // A non-string tool name is an invalid-params error, not a crash.
+  const res = await server.handleMessage(req("tools/call", { name: 5 }));
+  assertEquals(
+    isRec(res) && isRec(res.error) && typeof res.error.message === "string"
+      ? res.error.message.includes("must be a string")
+      : false,
+    true,
+  );
+  // A plain unknown tool (no run: prefix) is surfaced through the result.
+  const unknown = await call(server, "no_such_tool");
+  assertEquals(unknown.isError, true);
+  assertStringIncludes(unknown.text, "Unknown tool: no_such_tool");
+});
+
+Deno.test("a dead audit store never blocks the run, and a later call retries", async () => {
+  // Reads reject too, so even *opening* the audit log fails — the failed open
+  // must be dropped (not memoized) so the next call can retry it.
+  class BrokenHost extends FakeStateHost {
+    override readText(): Promise<string | null> {
+      return Promise.reject(new Error("disk gone"));
+    }
+    override writeText(): Promise<void> {
+      return Promise.reject(new Error("disk full"));
+    }
+  }
+  const registry = new FakeRegistry();
+  registry.add(descriptor("Api", ["deploy"]));
+  const store = new FileSystemStateStore("/state", new BrokenHost());
+  const { runner, calls } = recordingRunner();
+  const server = new RegistryMcpServer(registry, {
+    allowRun: true,
+    stateStore: store,
+    runner,
+  });
+  // Auditing is best-effort: the spawn happens and the call succeeds even
+  // though every audit write rejects — twice, since a failed open is dropped
+  // so the next call can retry rather than reusing a poisoned promise.
+  const first = await call(server, "run:Api:deploy");
+  assertEquals(first.isError, false);
+  const second = await call(server, "run:Api:deploy");
+  assertEquals(second.isError, false);
+  assertEquals(calls.length, 2);
+});
+
+Deno.test("a supplied operator token is never recorded in the audit trail", async () => {
+  const registry = new FakeRegistry();
+  registry.add(descriptor("Api", ["deploy"]));
+  const store = new FileSystemStateStore("/state", new FakeStateHost());
+  const { runner } = recordingRunner();
+  const server = new RegistryMcpServer(registry, {
+    allowRun: true,
+    protectPatterns: ["Api:deploy"],
+    operatorToken: "good-token",
+    stateStore: store,
+    runner,
+  });
+  const okd = await call(server, "run:Api:deploy", {
+    operatorToken: "good-token",
+    dryRun: true,
+  });
+  assertEquals(okd.isError, false);
+  const events = (await store.getRun("mcp-audit"))?.record.events ?? [];
+  const ran = events.find((e) => e.tool === "run:Api:deploy");
+  assertEquals(ran?.outcome, "ok");
+  // The safe control flag is recorded; the token is dropped entirely — and its
+  // value appears nowhere in the durable trail.
+  assertEquals(ran?.args.dryRun, "true");
+  assertEquals("operatorToken" in (ran?.args ?? {}), false);
+  assertEquals(JSON.stringify(events).includes("good-token"), false);
+});
+
+Deno.test("the HTTP banner names the registry mode, run state, and auth", async () => {
+  const registry = new FakeRegistry();
+  registry.add(descriptor("Api", ["deploy"]));
+  const banner: string[] = [];
+  const origErr = console.error;
+  console.error = (...a: unknown[]) => void banner.push(a.join(" "));
+  try {
+    // An injected registry (the `registry` option) and the CLI's `useRegistry`
+    // flag must both be reported as registry mode.
+    for (const mode of ["injected", "resolved"] as const) {
+      const ac = new AbortController();
+      let setPort = (_: number) => {};
+      const portReady = new Promise<number>((r) => (setPort = r));
+      const finished = serveMcp(new RegistryBuild(registry), {
+        ...(mode === "injected" ? { registry } : { useRegistry: true }),
+        allowRun: true,
+        runner: recordingRunner().runner,
+        http: { host: "127.0.0.1", port: 0 },
+        token: "shh",
+        signal: ac.signal,
+        onListen: (a) => setPort(a.port),
+      });
+      await portReady;
+      ac.abort();
+      assertEquals(await finished, 0);
+    }
+  } finally {
+    console.error = origErr;
+  }
+  const text = banner.join("\n");
+  assertStringIncludes(text, "registry, run enabled");
+  assertStringIncludes(text, "bearer token required");
+  assertStringIncludes(text, "http://127.0.0.1:");
+});

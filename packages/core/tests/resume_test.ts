@@ -713,3 +713,266 @@ Deno.test("the typed error carries the status it found instead", async () => {
     assertEquals(error.status, "succeeded");
   });
 });
+
+Deno.test("resumeRun and resumeCheck refuse to start with state disabled", async () => {
+  // A resume without a store has nothing to resume from; the refusal names
+  // every way to configure one.
+  class B extends Build {
+    go = target().executes(() => {});
+  }
+  const b = new B();
+  discoverTargets(b);
+  await assertRejects(
+    () => resumeRun(b, { runId: "x", stateStore: false, silent: true }),
+    Error,
+    "no state store is configured",
+  );
+  await assertRejects(
+    () => resumeCheck(b, { stateStore: false, silent: true }),
+    Error,
+    "resume --check: no state store",
+  );
+});
+
+Deno.test("resumeRun names a target the build lost since the run suspended", async () => {
+  // The drift check's third shape: not an added or re-wired target, but one
+  // the record has and the build no longer declares. The refusal has to name
+  // it, or the operator cannot decide whether --force-graph is safe.
+  await withTempStore(async (store) => {
+    class Suspends extends Build {
+      gate = target().waitsFor((s) => s.on(externalSignal("go")));
+      done = target().dependsOn(this.gate).executes(() => {});
+    }
+    const a = new Suspends();
+    discoverTargets(a);
+    await execute(a, a.done, { silent: true, stateStore: store });
+    const runId = (await store.listRuns({}))[0].id;
+
+    // The record remembers a target this build has since deleted.
+    const loaded = await store.getRun(runId);
+    if (loaded === null) throw new Error("expected the suspended run");
+    const amended = structuredClone(loaded.record);
+    amended.graph.push({ name: "legacy", dependsOn: [] });
+    assertEquals((await store.putRun(amended, loaded.version)).ok, true);
+
+    const resumer = new Suspends();
+    discoverTargets(resumer);
+    const error = await assertRejects(
+      () =>
+        resumeRun(resumer, {
+          runId,
+          signal: "go",
+          stateStore: store,
+          silent: true,
+        }),
+      Error,
+      "graph changed",
+    );
+    assertEquals(messageOf(error).includes('removed "legacy"'), true);
+    // The refusal leaves the run suspended, so --force-graph can still resume it.
+    assertEquals((await store.getRun(runId))?.record.status, "suspended");
+  });
+});
+
+/** A store where the run vanishes the moment the resume's CAS conflicts. */
+class VanishesOnResume extends FileSystemStateStore {
+  #conflicted = false;
+  /** Conflict the first `running` write; the run is gone after that. */
+  override putRun(
+    record: RunRecord,
+    expected: string | null,
+  ): Promise<PutResult> {
+    if (record.status === "running" && !this.#conflicted) {
+      this.#conflicted = true;
+      return Promise.resolve({ ok: false, conflict: true });
+    }
+    return super.putRun(record, expected);
+  }
+  /** Pruned mid-resume: nothing to read back. */
+  override getRun(
+    id: string,
+  ): Promise<{ record: RunRecord; version: string } | null> {
+    if (this.#conflicted) return Promise.resolve(null);
+    return super.getRun(id);
+  }
+}
+
+Deno.test("a run that vanishes mid-resume is reported by name", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const makeBuild = () => {
+      class B extends Build {
+        gate = target().waitsFor((s) => s.on(externalSignal("go")));
+        done = target().dependsOn(this.gate).executes(() => {});
+      }
+      const build = new B();
+      discoverTargets(build);
+      return build;
+    };
+    // Suspend through a well-behaved store; only the resume sees the failure.
+    const seedStore = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+    const a = makeBuild();
+    await execute(a, a.done, { silent: true, stateStore: seedStore });
+    const runId = (await seedStore.listRuns({}))[0].id;
+
+    const store = new VanishesOnResume(`${dir}/runs`, defaultStateHost);
+    await assertRejects(
+      () =>
+        resumeRun(makeBuild(), {
+          runId,
+          signal: "go",
+          stateStore: store,
+          silent: true,
+        }),
+      Error,
+      "vanished mid-resume",
+    );
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+/** A store that never accepts the `running` transition. */
+class RefusesRunning extends FileSystemStateStore {
+  /** Conflict every `running` write. */
+  override putRun(
+    record: RunRecord,
+    expected: string | null,
+  ): Promise<PutResult> {
+    if (record.status === "running") {
+      return Promise.resolve({ ok: false, conflict: true });
+    }
+    return super.putRun(record, expected);
+  }
+}
+
+Deno.test("resumeRun surfaces a store that never accepts the transition", async () => {
+  // Bounded retries: a store outage produces a named error, not an infinite
+  // CAS loop — and the run stays suspended, so a later resume can retry.
+  const dir = await Deno.makeTempDir();
+  try {
+    const makeBuild = () => {
+      class B extends Build {
+        gate = target().waitsFor((s) => s.on(externalSignal("go")));
+        done = target().dependsOn(this.gate).executes(() => {});
+      }
+      const build = new B();
+      discoverTargets(build);
+      return build;
+    };
+    const seedStore = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+    const a = makeBuild();
+    await execute(a, a.done, { silent: true, stateStore: seedStore });
+    const runId = (await seedStore.listRuns({}))[0].id;
+
+    const store = new RefusesRunning(`${dir}/runs`, defaultStateHost);
+    await assertRejects(
+      () =>
+        resumeRun(makeBuild(), {
+          runId,
+          signal: "go",
+          stateStore: store,
+          silent: true,
+        }),
+      Error,
+      "gave up resuming",
+    );
+    assertEquals((await seedStore.getRun(runId))?.record.status, "suspended");
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("a throwing plugin does not break a timed-out resume", async () => {
+  // The timeout fast-path settles the run without execute()'s lifecycle, so
+  // it announces the terminal record to plugins itself — and a plugin is an
+  // observer whose throw must never change the outcome.
+  await withTempStore(async (store) => {
+    class B extends Build {
+      gate = target().waitsFor((s) => s.on(externalSignal("never")).timeout(0));
+      done = target().dependsOn(this.gate).executes(() => {});
+    }
+    const a = new B();
+    discoverTargets(a);
+    await execute(a, a.done, { silent: true, stateStore: store });
+    const runId = (await store.listRuns({}))[0].id;
+
+    const seen: string[] = [];
+    const resumer = new B();
+    discoverTargets(resumer);
+    const result = await resumeRun(resumer, {
+      runId,
+      stateStore: store,
+      silent: true,
+      plugins: [{
+        onRunStateChange: (record) => {
+          seen.push(record.status);
+          throw new Error("observer boom");
+        },
+      }],
+    });
+    // The timeout still failed the run; the observer's throw was swallowed.
+    assertEquals(result.ok, false);
+    assertEquals(messageOf(result.error).includes("timed out"), true);
+    assertEquals(seen, ["failed"]); // it did see the terminal transition
+    assertEquals((await store.getRun(runId))?.record.status, "failed");
+  });
+});
+
+/** A store where the timeout settlement's first write loses a race. */
+class ConflictsOnceOnFail extends FileSystemStateStore {
+  /** Whether the manufactured conflict has fired. */
+  conflicted = false;
+  /** Conflict the first `failed` write, then behave. */
+  override putRun(
+    record: RunRecord,
+    expected: string | null,
+  ): Promise<PutResult> {
+    if (record.status === "failed" && !this.conflicted) {
+      this.conflicted = true;
+      return Promise.resolve({ ok: false, conflict: true });
+    }
+    return super.putRun(record, expected);
+  }
+}
+
+Deno.test("a timeout settlement retries a conflicting write", async () => {
+  // Another writer (an audit append, a lock heartbeat) can land between the
+  // read and the settle. The settlement re-reads and retries rather than
+  // leaving the expired run suspended forever.
+  const dir = await Deno.makeTempDir();
+  try {
+    const makeBuild = () => {
+      class B extends Build {
+        gate = target().waitsFor((s) =>
+          s.on(externalSignal("never")).timeout(0)
+        );
+        done = target().dependsOn(this.gate).executes(() => {});
+      }
+      const build = new B();
+      discoverTargets(build);
+      return build;
+    };
+    const seedStore = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+    const a = makeBuild();
+    await execute(a, a.done, { silent: true, stateStore: seedStore });
+    const runId = (await seedStore.listRuns({}))[0].id;
+
+    const store = new ConflictsOnceOnFail(`${dir}/runs`, defaultStateHost);
+    const result = await resumeRun(makeBuild(), {
+      runId,
+      stateStore: store,
+      silent: true,
+    });
+    assertEquals(result.ok, false);
+    assertEquals(store.conflicted, true); // the race really happened
+    // The retry landed: the run is failed, not stranded suspended.
+    assertEquals((await store.getRun(runId))?.record.status, "failed");
+    assertEquals(
+      (await store.getRun(runId))?.record.targets.gate.status,
+      "failed",
+    );
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});

@@ -19,7 +19,7 @@ import {
 import { discoverGroups, discoverTargets } from "../src/build.ts";
 import { FakeGraphHost } from "./_fakes.ts";
 import { CONFIG_FILE } from "../src/config.ts";
-import { parameter } from "../src/params.ts";
+import { discoverParameters, parameter } from "../src/params.ts";
 import { BUILTIN_FLAGS, RESERVED_COMMANDS } from "../src/cli_spec.ts";
 import { FileSystemStateStore } from "../src/state/fs_store.ts";
 import { defaultStateHost } from "../src/state/store.ts";
@@ -193,6 +193,11 @@ Deno.test("parseArgs accumulates --allowed-origin (repeatable and comma-list)", 
   ]);
   // Absent by default.
   assertEquals(parseArgs(["mcp"]).allowedOrigins, undefined);
+  // The inline form also works as the first (only) occurrence.
+  assertEquals(
+    parseArgs(["mcp", "--allowed-origin=https://solo.example"]).allowedOrigins,
+    ["https://solo.example"],
+  );
 });
 
 Deno.test("parseArgs recognises the doc command and its spec", () => {
@@ -229,12 +234,28 @@ Deno.test("main doc resolves a relative spec to an absolute path before running"
   await capture(() =>
     main(Demo, ["doc", "/abs/mod.ts"], { docRunner: runner })
   );
+  // A Windows drive-absolute path is absolute, not a URL scheme to resolve.
+  await capture(() =>
+    main(Demo, ["doc", "C:/mods/mod.ts"], { docRunner: runner })
+  );
   assertEquals(seen, [
     `${Deno.cwd()}/./mod.ts`,
     `${Deno.cwd()}/src/lib.ts`,
     "npm:cowsay",
     "/abs/mod.ts",
+    "C:/mods/mod.ts",
   ]);
+});
+
+Deno.test("main doc reports a non-Error rejection from the runner", async () => {
+  const { code, err } = await capture(() =>
+    main(Demo, ["doc", "jsr:@zuke/x"], {
+      // A non-Error rejection still surfaces as a friendly message.
+      docRunner: () => Promise.reject("doc blew up"),
+    })
+  );
+  assertEquals(code, 1);
+  assertStringIncludes(err.join("\n"), "doc blew up");
 });
 
 Deno.test("main doc returns a friendly non-zero exit when the runner throws", async () => {
@@ -1203,6 +1224,112 @@ Deno.test("main: cancel reports a missing run as a friendly error", async () => 
   }
 });
 
+Deno.test("main: cancelling an already-finished run is a no-op exit 0", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const store = new FileSystemStateStore(dir, defaultStateHost);
+    // A terminal (succeeded) run: cancel is documented as idempotent.
+    await store.putRun(sampleRunRecord({ id: "done" }), null);
+    class Stateful extends Build {
+      override stateStore() {
+        return store;
+      }
+      build = target().executes(() => {});
+    }
+    const { code } = await capture(() => main(Stateful, ["cancel", "done"]));
+    assertEquals(code, 0);
+    // The record stays succeeded — cancel did not rewrite history.
+    const record = await store.getRun("done");
+    assertEquals(record?.record.status, "succeeded");
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("main: cancel exits 1 when a compensation fails", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const store = new FileSystemStateStore(dir, defaultStateHost);
+    class Failing extends Build {
+      override stateStore() {
+        return store;
+      }
+      build = target().executes(() => {}).onCancel(() => this.rollback);
+      rollback = target().executes(() => {
+        throw new Error("rollback exploded");
+      });
+    }
+    // A suspended run whose `build` target succeeded, so cancel compensates it.
+    await store.putRun(
+      sampleRunRecord({ id: "stuck", status: "suspended" }),
+      null,
+    );
+    const { code } = await capture(() => main(Failing, ["cancel", "stuck"]));
+    // The failed compensation surfaces non-zero so the operator notices…
+    assertEquals(code, 1);
+    // …but the run is still settled cancelled (cleanup is maximal).
+    const record = await store.getRun("stuck");
+    assertEquals(record?.record.status, "cancelled");
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("run() defaults to Deno.args when no args option is given", async () => {
+  const desc = Object.getOwnPropertyDescriptor(Deno, "args");
+  const origExit = Deno.exit;
+  const origLog = console.log;
+  let captured: number | undefined;
+  Object.defineProperty(Deno, "args", {
+    value: ["--list"],
+    configurable: true,
+  });
+  Deno.exit = (code?: number): never => {
+    captured = code ?? 0;
+    throw new ExitSignal();
+  };
+  console.log = () => {};
+  try {
+    await run(Demo); // no options at all: argv comes from Deno.args
+  } catch (e) {
+    if (!(e instanceof ExitSignal)) throw e;
+  } finally {
+    Deno.exit = origExit;
+    console.log = origLog;
+    if (desc !== undefined) Object.defineProperty(Deno, "args", desc);
+  }
+  assertEquals(captured, 0);
+});
+
+Deno.test("main: --no-remote-cache flows through and the run still passes", async () => {
+  const log: string[] = [];
+  class T extends Build {
+    go = target().executes(() => void log.push("go"));
+  }
+  const { code } = await capture(() => main(T, ["go", "--no-remote-cache"]));
+  assertEquals(code, 0);
+  assertEquals(log, ["go"]);
+});
+
+Deno.test("formatGraph and formatList name an undiscovered dependency ?", () => {
+  const anon = target().executes(() => {});
+  class B extends Build {
+    build = target().dependsOn(anon).executes(() => {});
+  }
+  const targets = discoverTargets(new B());
+  assertStringIncludes(formatGraph(targets), "build → ?");
+});
+
+Deno.test("formatList renders a parameter declared without a description", () => {
+  class B extends Build {
+    quiet = parameter().boolean();
+    go = target().executes(() => {});
+  }
+  const b = new B();
+  const text = formatList(discoverTargets(b), discoverParameters(b));
+  assertStringIncludes(text, "--quiet");
+});
+
 Deno.test("main: runs list applies --status, --target, and --since filters", async () => {
   const dir = await Deno.makeTempDir();
   try {
@@ -1237,6 +1364,8 @@ Deno.test("main: runs list applies --status, --target, and --since filters", asy
     assertEquals(await ids("--status", "succeeded"), ["ok-run"]);
     assertEquals(await ids("--target", "deploy"), ["old-fail"]);
     assertEquals(await ids("--since", "2026-01-01T00:00:00.000Z"), ["ok-run"]);
+    // --limit keeps the newest run only.
+    assertEquals(await ids("--limit", "1"), ["ok-run"]);
   } finally {
     await Deno.remove(dir, { recursive: true });
   }

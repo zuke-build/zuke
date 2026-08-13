@@ -393,3 +393,17 @@ Deno.test("a failed verify pass warns on the console when not quiet", async () =
     true,
   );
 });
+
+Deno.test("an empty file context is omitted from the prompt entirely", async () => {
+  const { fetch, calls } = queuedFetch([claude({ score: 0, findings: [] })]);
+  const git = fakeGit({}); // every `git show` fails — nothing to send
+  await genericReviewer((r) =>
+    r.provider("claude").apiKey("k").quiet()
+      .diff((d) => d.base("origin/master"))
+      .fileContext(1000)
+      .exec(git.run).fetch(fetch)
+  ).validate({ target: "t" });
+  const body = JSON.parse(calls[0].body);
+  // No empty UNTRUSTED_FILES block confuses the model when nothing was read.
+  assertEquals(body.messages[0].content.includes("UNTRUSTED_FILES"), false);
+});

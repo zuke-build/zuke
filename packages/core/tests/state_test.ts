@@ -1706,7 +1706,7 @@ Deno.test("HttpStateStore drains response bodies a server sends on every path", 
 
   const putOk = new HttpStateStore({
     url: "https://s",
-    fetch: fakeFetch((url, init) =>
+    fetch: fakeFetch((_url, init) =>
       (init?.method ?? "GET") === "PUT"
         ? bodied(200, { etag: "v9" })
         : bodied(200)

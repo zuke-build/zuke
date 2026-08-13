@@ -91,6 +91,13 @@ Deno.test("describeCli reports the property name, kind, and default", () => {
   assertEquals(params.find((p) => p.name === "region")?.default, "eu");
 });
 
+Deno.test("describeCli reports an empty description when none was set", () => {
+  class B extends Build {
+    quiet = parameter().boolean();
+  }
+  assertEquals(describeCli(new B()).parameters[0].description, "");
+});
+
 Deno.test("describeCli never surfaces a secret parameter's default value", () => {
   class WithSecret extends Build {
     // A secret's declared default could itself be a live credential.

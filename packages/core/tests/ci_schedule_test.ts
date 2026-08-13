@@ -163,6 +163,27 @@ Deno.test("utcCronsFor shifts an every-hour schedule without touching the days",
   );
 });
 
+Deno.test("utcCronsFor collapses cron Sunday 7 to the canonical 0", () => {
+  // Cron day-of-week is 0-7 with both 0 and 7 meaning Sunday.
+  assertEquals(utcCronsFor({ cron: "0 6 * * 7", tz: "Etc/GMT-2" }), [
+    "0 4 * * 0",
+  ]);
+});
+
+Deno.test("utcCronsFor shifts a western (negative-offset) zone forward", () => {
+  // Etc/GMT+3 is UTC-3 (POSIX sign inversion): 6 local is 9 UTC.
+  assertEquals(utcCronsFor({ cron: "0 6 * * *", tz: "Etc/GMT+3" }), [
+    "0 9 * * *",
+  ]);
+});
+
+Deno.test("guardShell reads the UTC wall-clock for an entry without a tz", () => {
+  // A UTC entry in a mixed schedule still participates in the guard.
+  const shell = guardShell([{ cron: "15 8 * * *" }]);
+  assertStringIncludes(shell, "TZ='UTC' date +%M");
+  assertStringIncludes(shell, 'case " 8 " in *" $hh "*)');
+});
+
 Deno.test("guardShell renders a wildcard field as an always-true test", () => {
   // A `*` minute matches every wall-clock minute, so its membership test must
   // collapse to `true` rather than an empty case list that never matches.

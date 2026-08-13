@@ -3,10 +3,14 @@
 
 import { assertEquals, assertStringIncludes } from "./_assert.ts";
 import { Build, parameter, target } from "../mod.ts";
-import { McpServer, type McpServerOptions } from "../src/mcp/server.ts";
-import type { JsonRpcResponse } from "../src/mcp/jsonrpc.ts";
+import {
+  McpServer,
+  type McpServerOptions,
+  type McpTool,
+} from "../src/mcp/server.ts";
+import { INTERNAL_ERROR, type JsonRpcResponse } from "../src/mcp/jsonrpc.ts";
 import { FileSystemStateStore } from "../src/state/fs_store.ts";
-import { defaultStateHost } from "../src/state/store.ts";
+import { defaultStateHost, type StateStore } from "../src/state/store.ts";
 import { AUDIT_RUN_ID } from "../src/mcp/audit.ts";
 import type { RunEvent, RunRecord } from "../src/state/types.ts";
 
@@ -539,6 +543,207 @@ Deno.test("a hook yielding an empty actor is rejected, never the static fallback
       assertEquals(res?.error?.message, "Unauthorized");
       // Neither audited nor attributed to the untrusted static actor.
       assertEquals((await auditEvents(store)).length, 0);
+    },
+  );
+});
+
+// ---- backstops, schemas, and audit resilience -------------------------------
+
+/** Whether a JSON value is a plain object (a string-keyed record). */
+function isRec(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** One run tool's input schema from `tools/list`, navigated without casts. */
+async function toolSchema(
+  server: McpServer,
+  name: string,
+): Promise<{ properties: Record<string, unknown>; required: string[] }> {
+  const res = await server.handleMessage(req("tools/list"));
+  if (!isRec(res) || !isRec(res.result) || !Array.isArray(res.result.tools)) {
+    throw new Error("no tools");
+  }
+  for (const tool of res.result.tools) {
+    if (!isRec(tool) || tool.name !== name || !isRec(tool.inputSchema)) {
+      continue;
+    }
+    const properties = isRec(tool.inputSchema.properties)
+      ? tool.inputSchema.properties
+      : {};
+    const required = Array.isArray(tool.inputSchema.required)
+      ? tool.inputSchema.required.filter((r): r is string =>
+        typeof r === "string"
+      )
+      : [];
+    return { properties, required };
+  }
+  throw new Error(`no tool ${name}`);
+}
+
+Deno.test("an array parameter is advertised as an array-of-strings schema", async () => {
+  class WithTags extends Build {
+    tags = parameter("Image tags").array();
+    ship = target().executes(() => {});
+  }
+  const server = new McpServer(new WithTags(), { allowRun: true });
+  const { properties } = await toolSchema(server, "run:ship");
+  assertEquals(properties.tags, { type: "array", items: { type: "string" } });
+});
+
+Deno.test("confirm-destructive advertises confirm on destructive tools only", async () => {
+  await withServer(
+    { allowRun: true, confirmDestructive: true },
+    async (server) => {
+      const deploy = await toolSchema(server, "run:deploy");
+      assertEquals(isRec(deploy.properties.confirm), true);
+      // A read-only target is never gated, so it advertises no confirm.
+      const status = await toolSchema(server, "run:status");
+      assertEquals("confirm" in status.properties, false);
+    },
+  );
+});
+
+Deno.test("a mutating run tool without --allow-run is refused with guidance", async () => {
+  await withServer({ allowRun: false }, async (server) => {
+    for (const name of ["signal_run", "resume_check", "cancel_run"]) {
+      const refused = await call(server, name, { runId: "whatever" });
+      assertEquals(refused.isError, true, `${name} was not refused`);
+      assertStringIncludes(refused.text, name);
+      assertStringIncludes(refused.text, "--allow-run");
+    }
+  });
+});
+
+Deno.test("with a store, an unknown tool still gets the opaque unknown answer", async () => {
+  // The run-state dispatcher must decline a name it does not own (returning
+  // null), so the server falls through to the standard "Unknown tool" result.
+  await withServer({ allowRun: true }, async (server) => {
+    const unknown = await call(server, "definitely_not_a_tool");
+    assertEquals(unknown.isError, true);
+    assertStringIncludes(unknown.text, "Unknown tool: definitely_not_a_tool");
+  });
+});
+
+/** A store whose every operation rejects (a dead state backend). */
+class BrokenStore implements StateStore {
+  #die(): Promise<never> {
+    return Promise.reject(new Error("store down: s3nsitive backend detail"));
+  }
+  getRun(): ReturnType<StateStore["getRun"]> {
+    return this.#die();
+  }
+  putRun(): ReturnType<StateStore["putRun"]> {
+    return this.#die();
+  }
+  listRuns(): ReturnType<StateStore["listRuns"]> {
+    return this.#die();
+  }
+  deleteRun(): Promise<void> {
+    return this.#die();
+  }
+  acquireLock(): ReturnType<StateStore["acquireLock"]> {
+    return this.#die();
+  }
+  renewLock(): Promise<boolean> {
+    return this.#die();
+  }
+  releaseLock(): Promise<void> {
+    return this.#die();
+  }
+}
+
+Deno.test("a dead audit store never blocks or fails the tool call", async () => {
+  // Auditing is best-effort: the run must succeed even though every audit
+  // write rejects.
+  const server = new McpServer(new Demo(), {
+    allowRun: true,
+    stateStore: new BrokenStore(),
+  });
+  const res = await call(server, "run:deploy", { environment: "dev" });
+  assertEquals(res.isError, false);
+  assertStringIncludes(res.text, "deploy succeeded");
+});
+
+Deno.test("a store fault in a read tool is a generic JSON-RPC error, detail withheld", async () => {
+  const server = new McpServer(new Demo(), {
+    allowRun: true,
+    stateStore: new BrokenStore(),
+  });
+  const res = await server.handleMessage(
+    req("tools/call", { name: "list_runs", arguments: {} }),
+  );
+  assertEquals(res?.error?.code, INTERNAL_ERROR);
+  // The raw store message never escapes to the client.
+  assertEquals(JSON.stringify(res).includes("s3nsitive"), false);
+  // The transport survives: the next message is answered normally.
+  assertEquals((await server.handleMessage(req("ping")))?.result, {});
+});
+
+Deno.test("a throwing tools/list is a JSON-RPC error, not a transport crash", async () => {
+  class ExplodingServer extends McpServer {
+    override tools(): McpTool[] {
+      throw new Error("tool listing exploded");
+    }
+  }
+  const server = new ExplodingServer(new Demo());
+  const res = await server.handleMessage(req("tools/list"));
+  assertEquals(res?.error?.code, INTERNAL_ERROR);
+  assertEquals(JSON.stringify(res).includes("exploded"), false);
+  assertEquals((await server.handleMessage(req("ping")))?.result, {});
+});
+
+Deno.test("an explicitly-undefined secret argument never seeds redaction", async () => {
+  // The redactor is seeded from supplied secret values. An `undefined` one
+  // must be skipped — seeding from it would redact the literal word
+  // "undefined" out of every other recorded argument.
+  await withServer(
+    { allowRun: true, actor: "agent" },
+    async (server, store) => {
+      await call(server, "run:deploy", {
+        environment: "dev",
+        secret: undefined,
+        note: "undefined is a fine word",
+      });
+      const last = (await auditEvents(store)).at(-1);
+      assertEquals(last?.args.note, "undefined is a fine word");
+      assertEquals(last?.args.secret, "[redacted]");
+    },
+  );
+});
+
+Deno.test("a non-Error framework throw is reported by kind, generically", async () => {
+  // A framework failure that is not even an Error object must still produce
+  // the structured "errored during execution" result, not a crash — and the
+  // thrown value itself is never echoed (it bypassed the reporter's redaction).
+  class BoomString extends Build {
+    override onStart(): void {
+      throw "startup exploded: hunter2";
+    }
+    go = target().executes(() => {});
+  }
+  const server = new McpServer(new BoomString(), { allowRun: true });
+  const res = await call(server, "run:go");
+  assertEquals(res.isError, true);
+  assertStringIncludes(res.text, "errored during execution (Error)");
+  assertEquals(res.text.includes("hunter2"), false);
+});
+
+Deno.test("null and object argument values are recorded faithfully in the trail", async () => {
+  await withServer(
+    { allowRun: true, actor: "agent" },
+    async (server, store) => {
+      // Both are invalid for a scalar parameter, so the call errors — and the
+      // audit record must render them distinctly: a structure as JSON, a null as
+      // its string form, never "[object Object]".
+      const res = await call(server, "run:deploy", {
+        environment: null,
+        note: { nested: 1 },
+      });
+      assertEquals(res.isError, true);
+      const last = (await auditEvents(store)).at(-1);
+      assertEquals(last?.detail, "invalid_arguments");
+      assertEquals(last?.args.environment, "null");
+      assertEquals(last?.args.note, '{"nested":1}');
     },
   );
 });
