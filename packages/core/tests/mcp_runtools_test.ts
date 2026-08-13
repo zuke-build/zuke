@@ -23,11 +23,7 @@ import { callRunStateTool, type RunToolDeps } from "../src/mcp/runtools.ts";
 import { acquireLease, RUN_LEASE_PREFIX } from "../src/state/run_lease.ts";
 import { LockConflictError } from "../src/state/lock.ts";
 import { FileSystemStateStore } from "../src/state/fs_store.ts";
-import {
-  defaultStateHost,
-  type StateStore,
-  type StateStoreScope,
-} from "../src/state/store.ts";
+import { defaultStateHost, type StateStore } from "../src/state/store.ts";
 import type { RunRecord } from "../src/state/types.ts";
 
 /** A JSON-RPC request with id 1. */
@@ -92,7 +88,11 @@ async function suspend(
 }
 
 /** A pipeline suspending at an `approved` gate, recording the signal payload. */
-function makePipeline(): { build: Build; root: TargetBuilder; seen: unknown[] } {
+function makePipeline(): {
+  build: Build;
+  root: TargetBuilder;
+  seen: unknown[];
+} {
   const seen: unknown[] = [];
   class Pipeline extends Build {
     gate = target().description("Gate")
@@ -137,8 +137,20 @@ Deno.test("list_runs filters by status, target, and since; an unknown status is 
   await withStore(async (store) => {
     const { build } = makePipeline();
     const server = new McpServer(build, { allowRun: true, stateStore: store });
-    await seedRun(store, "run-old", "deploy", "suspended", "2026-01-01T00:00:00.000Z");
-    await seedRun(store, "run-new", "promote", "failed", "2026-06-01T00:00:00.000Z");
+    await seedRun(
+      store,
+      "run-old",
+      "deploy",
+      "suspended",
+      "2026-01-01T00:00:00.000Z",
+    );
+    await seedRun(
+      store,
+      "run-new",
+      "promote",
+      "failed",
+      "2026-06-01T00:00:00.000Z",
+    );
 
     const byStatus = await call(server, "list_runs", { status: "failed" });
     assertEquals(byStatus.isError, false);
@@ -172,7 +184,13 @@ Deno.test("show_run returns the full record; a missing runId is a structured err
   await withStore(async (store) => {
     const { build } = makePipeline();
     const server = new McpServer(build, { allowRun: true, stateStore: store });
-    await seedRun(store, "run-a", "promote", "suspended", "2026-01-01T00:00:00.000Z");
+    await seedRun(
+      store,
+      "run-a",
+      "promote",
+      "suspended",
+      "2026-01-01T00:00:00.000Z",
+    );
 
     const shown = await call(server, "show_run", { runId: "run-a" });
     assertEquals(shown.isError, false);
@@ -365,13 +383,14 @@ Deno.test("a resume_check failure on one run is reported as structured run_faile
     const runId = await suspend(build, root, store);
     // A dependency failure inside the check itself (here: the environment
     // backend erroring mid-sweep) must come back as a structured per-run
-    // failure naming the run, not reject the whole tool call.
+    // failure naming the run, not reject the whole tool call. Thrown as a
+    // bare string, so even a non-Error failure is rendered readably.
     const deps: RunToolDeps = {
       store,
       build,
       actor: "op",
       readEnv: () => {
-        throw new Error("env backend offline");
+        throw "env backend offline";
       },
       authorize: () => null,
     };
@@ -427,7 +446,13 @@ class FlakyStore implements StateStore {
 Deno.test("a store fault mid-cancel is a structured run_failed, not a crash", async () => {
   await withStore(async (inner) => {
     const { build } = makePipeline();
-    await seedRun(inner, "run-x", "promote", "suspended", "2026-01-01T00:00:00.000Z");
+    await seedRun(
+      inner,
+      "run-x",
+      "promote",
+      "suspended",
+      "2026-01-01T00:00:00.000Z",
+    );
     // The tool's own pre-check read succeeds; the store then dies underneath
     // cancelRun. The caller still gets structured JSON naming the run.
     const flaky = new FlakyStore(inner);
@@ -438,5 +463,25 @@ Deno.test("a store fault mid-cancel is a structured run_failed, not a crash", as
     assertEquals(body.error, "run_failed");
     assertEquals(body.runId, "run-x");
     assertStringIncludes(body.message, "state backend offline");
+  });
+});
+
+Deno.test("signal_run accepts an explicit null payload and still resumes", async () => {
+  await withStore(async (store) => {
+    const { build, root, seen } = makePipeline();
+    const server = new McpServer(build, { allowRun: true, stateStore: store });
+    const runId = await suspend(build, root, store);
+    // A JSON `data: null` is accepted (not rejected as a malformed payload).
+    // `resumeRun` then normalises a nullish payload to the default `{}`, so
+    // that is what the resumed target observes.
+    const result = await call(server, "signal_run", {
+      runId,
+      signal: "approved",
+      data: null,
+    });
+    assertEquals(result.isError, false);
+    assertEquals(JSON.parse(result.text).ok, true);
+    assertEquals(seen, [{}]);
+    assertEquals((await store.getRun(runId))?.record.status, "succeeded");
   });
 });

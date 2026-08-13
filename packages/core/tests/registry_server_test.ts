@@ -1555,3 +1555,100 @@ Deno.test("the HTTP banner names the registry mode, run state, and auth", async 
   assertStringIncludes(text, "bearer token required");
   assertStringIncludes(text, "http://127.0.0.1:");
 });
+
+Deno.test("a valid number default is carried; a malformed boolean default is dropped", async () => {
+  const registry = new FakeRegistry();
+  const base = descriptor("Api", ["deploy"]);
+  registry.add({
+    ...base,
+    surface: {
+      ...base.surface,
+      // A described target: the run tool's description must carry it through.
+      targets: base.surface.targets.map((t) => ({
+        ...t,
+        description: "Ship it to production",
+      })),
+      parameters: [
+        {
+          name: "workers",
+          flag: "workers",
+          description: "",
+          required: false,
+          kind: "number",
+          boolean: false,
+          array: false,
+          options: [],
+          default: "4",
+        },
+        // Only "true"/"false" are honest boolean defaults; anything else came
+        // from an untrusted descriptor and is dropped to keep the schema valid.
+        {
+          name: "force",
+          flag: "force",
+          description: "",
+          required: false,
+          kind: "boolean",
+          boolean: true,
+          array: false,
+          options: [],
+          default: "yes",
+        },
+      ],
+    },
+  });
+  const server = new RegistryMcpServer(registry, { allowRun: true });
+  const res = await server.handleMessage(req("tools/list"));
+  const schema = runToolSchema(res, "run:Api:deploy");
+  const props = schemaProps(schema);
+  assertEquals(props.workers, { type: "number", default: 4 });
+  assertEquals(props.force, { type: "boolean" });
+  const tool = toolDef(res, "run:Api:deploy");
+  assertEquals(
+    typeof tool.description === "string" &&
+      tool.description.includes("Ship it to production"),
+    true,
+  );
+});
+
+Deno.test("a protected dependency the surface does not declare still gates the run", async () => {
+  const registry = new FakeRegistry();
+  // `release` names a dependency with no target entry of its own — a partial
+  // surface from an out-of-date registration. The closure walk must neither
+  // crash on it nor let it slip past the protect list.
+  const base = descriptor("Api", ["release"]);
+  registry.add({
+    ...base,
+    surface: {
+      ...base.surface,
+      targets: base.surface.targets.map((t) => ({
+        ...t,
+        dependsOn: ["ghost"],
+      })),
+    },
+  });
+  const { runner, calls } = recordingRunner();
+  const server = new RegistryMcpServer(registry, {
+    allowRun: true,
+    protectPatterns: ["Api:ghost"],
+    operatorToken: "good-token",
+    runner,
+  });
+  const denied = await call(server, "run:Api:release");
+  assertEquals(denied.isError, true);
+  assertStringIncludes(denied.text, "missing_operator_token");
+  assertEquals(calls.length, 0);
+});
+
+Deno.test("a runner rejecting with a non-Error is still a structured failure", async () => {
+  const registry = new FakeRegistry();
+  registry.add(descriptor("Api", ["deploy"]));
+  // Not an Error instance: the message must fall back to a generic kind, and
+  // the raw rejection value must not leak into the result.
+  const runner: RegistryRunner = () =>
+    Promise.reject("exec fell over: token=abc");
+  const server = new RegistryMcpServer(registry, { allowRun: true, runner });
+  const result = await call(server, "run:Api:deploy");
+  assertEquals(result.isError, true);
+  assertStringIncludes(result.text, "Failed to spawn Api:deploy (Error)");
+  assertEquals(result.text.includes("token=abc"), false);
+});
