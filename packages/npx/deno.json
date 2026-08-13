@@ -1,6 +1,6 @@
 {
   "name": "@zuke/npx",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "license": "MIT",
   "description": "Typed npx package-runner task wrappers for Zuke builds — download and execute package binaries via an injection-free settings-lambda API.",
   "exports": {
