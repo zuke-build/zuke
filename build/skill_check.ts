@@ -29,26 +29,62 @@ const NAME_MAX = 64;
 const DESCRIPTION_MAX = 1024;
 
 /**
- * Parse a `SKILL.md`'s leading YAML frontmatter block into its single-line
- * `key: value` fields, or `undefined` when the document has no frontmatter.
- *
- * This is deliberately not a YAML parser: the spec's required fields (`name`,
- * `description`) are scalar strings, and the skills in this repo keep them on
- * one line. A multi-line value is simply not seen, which for a validator errs
- * on the side of reporting a field missing rather than passing garbage.
+ * A YAML block-scalar indicator (`>`, `|`, with optional chomping/indent
+ * modifiers). This validator does not resolve block scalars, so a field using
+ * one must be reported as uncheckable rather than validated as the one-char
+ * indicator it parses to.
  */
-export function parseFrontmatter(
-  text: string,
-): Record<string, string> | undefined {
-  const lines = text.split(/\r?\n/);
-  if (lines[0] !== "---") return undefined;
+const BLOCK_SCALAR = /^[>|][+-]?[0-9]*$/;
+
+/**
+ * A `SKILL.md`'s parsed frontmatter block: the single-line fields it declares
+ * and any keys it repeats.
+ */
+export interface Frontmatter {
+  /** The last value seen for each `key: value` line. */
+  fields: Record<string, string>;
+  /**
+   * Keys that appeared more than once. Strict YAML parsers reject a document
+   * with duplicated keys outright, so these fail validation.
+   */
+  duplicates: string[];
+}
+
+/**
+ * Parse a `SKILL.md`'s leading YAML frontmatter block, or `undefined` when
+ * the document has no closed frontmatter fence.
+ *
+ * This is deliberately not a YAML parser, but it errs strict where YAML is
+ * strict: a `key:value` line without a space is not a YAML mapping and is not
+ * recorded (so a required field written that way is reported missing), a
+ * quoted scalar is unquoted the way a real loader would resolve it, and a
+ * leading UTF-8 byte-order mark is stripped the way real loaders strip it.
+ */
+export function parseFrontmatter(text: string): Frontmatter | undefined {
+  const lines = text.replace(/^\uFEFF/, "").split(/\r?\n/);
+  if (lines[0]?.trimEnd() !== "---") return undefined;
   const fields: Record<string, string> = {};
+  const duplicates: string[] = [];
   for (const line of lines.slice(1)) {
-    if (line === "---") return fields;
-    const match = /^([A-Za-z][A-Za-z0-9_-]*):[ \t]?(.*)$/.exec(line);
-    if (match !== null) fields[match[1]] = match[2].trim();
+    if (line.trimEnd() === "---") return { fields, duplicates };
+    // YAML requires whitespace between the colon and a value; a bare `key:`
+    // line is an (empty) value of its own.
+    const match = /^([A-Za-z][A-Za-z0-9_-]*):(?:[ \t]+(.*))?$/.exec(line);
+    if (match === null) continue;
+    const [, key, rawValue] = match;
+    if (key in fields) duplicates.push(key);
+    fields[key] = unquote((rawValue ?? "").trim());
   }
   return undefined; // Never closed — not a frontmatter block.
+}
+
+/** Strip one layer of matching single or double quotes from a scalar. */
+function unquote(value: string): string {
+  const first = value[0];
+  if (value.length >= 2 && (first === '"' || first === "'")) {
+    if (value.endsWith(first)) return value.slice(1, -1);
+  }
+  return value;
 }
 
 /**
@@ -56,14 +92,23 @@ export function parseFrontmatter(
  * directory name it lives under. Empty means the document conforms.
  */
 export function checkSkillDoc(dirName: string, text: string): string[] {
-  const fields = parseFrontmatter(text);
-  if (fields === undefined) {
+  const frontmatter = parseFrontmatter(text);
+  if (frontmatter === undefined) {
     return ["has no YAML frontmatter block (--- ... ---)"];
   }
-  const problems: string[] = [];
+  const { fields, duplicates } = frontmatter;
+  const problems: string[] = duplicates.map((key) =>
+    `frontmatter repeats the \`${key}\` key — strict YAML parsers reject ` +
+    "duplicated keys"
+  );
   const name = fields.name;
   if (name === undefined || name === "") {
     problems.push("frontmatter is missing the required `name` field");
+  } else if (BLOCK_SCALAR.test(name)) {
+    problems.push(
+      "`name` uses a YAML block scalar, which this validator cannot check — " +
+        "keep it on one line",
+    );
   } else {
     if (name !== dirName) {
       problems.push(
@@ -83,6 +128,11 @@ export function checkSkillDoc(dirName: string, text: string): string[] {
   const description = fields.description;
   if (description === undefined || description === "") {
     problems.push("frontmatter is missing the required `description` field");
+  } else if (BLOCK_SCALAR.test(description)) {
+    problems.push(
+      "`description` uses a YAML block scalar, which this validator cannot " +
+        "check — keep it on one line",
+    );
   } else if (description.length > DESCRIPTION_MAX) {
     problems.push(
       `description is ${description.length} chars (max ${DESCRIPTION_MAX})`,
@@ -92,9 +142,10 @@ export function checkSkillDoc(dirName: string, text: string): string[] {
 }
 
 /**
- * Validate every skill folder under `root`. Returns one message per problem,
- * each prefixed with the offending `SKILL.md`'s path; empty means the whole
- * tree conforms to the spec.
+ * Validate every skill folder under `root` — symlinked folders included,
+ * since a harness resolving the link would serve whatever it points at.
+ * Returns one message per problem, each prefixed with the offending
+ * `SKILL.md`'s path; empty means the whole tree conforms to the spec.
  */
 export async function checkSkillTree(
   root: string = SKILLS_ROOT,
@@ -103,7 +154,13 @@ export async function checkSkillTree(
   const dirs: string[] = [];
   try {
     for await (const entry of Deno.readDir(root)) {
-      if (entry.isDirectory) dirs.push(entry.name);
+      if (entry.isDirectory) {
+        dirs.push(entry.name);
+      } else if (entry.isSymlink) {
+        // A dangling link resolves to nothing a harness could serve; skip it.
+        const info = await Deno.stat(`${root}/${entry.name}`).catch(() => null);
+        if (info?.isDirectory === true) dirs.push(entry.name);
+      }
     }
   } catch (error) {
     if (error instanceof Deno.errors.NotFound) {
@@ -114,17 +171,19 @@ export async function checkSkillTree(
   dirs.sort();
   for (const dir of dirs) {
     const doc = `${root}/${dir}/SKILL.md`;
-    let text: string;
-    try {
-      text = await Deno.readTextFile(doc);
-    } catch (error) {
-      if (error instanceof Deno.errors.NotFound) {
-        problems.push(`${doc}: missing — every skill folder needs a SKILL.md`);
-        continue;
-      }
+    const info = await Deno.stat(doc).catch((error: unknown) => {
+      if (error instanceof Deno.errors.NotFound) return null;
       throw error;
+    });
+    if (info === null) {
+      problems.push(`${doc}: missing — every skill folder needs a SKILL.md`);
+      continue;
     }
-    for (const problem of checkSkillDoc(dir, text)) {
+    if (!info.isFile) {
+      problems.push(`${doc}: is not a regular file`);
+      continue;
+    }
+    for (const problem of checkSkillDoc(dir, await Deno.readTextFile(doc))) {
       problems.push(`${doc}: ${problem}`);
     }
   }

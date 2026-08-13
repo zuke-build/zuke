@@ -362,6 +362,10 @@ Gemini auto-discovers the `skills/` folder next to it):
 gemini extensions install https://github.com/zuke-build/zuke
 ```
 
+Gemini installs a GitHub extension from the repo's **latest release** snapshot
+(offering a git clone as the fallback), so the extension tracks releases rather
+than `master`.
+
 > The `SKILL.md` content is harness-agnostic (the open
 > [Agent Skills](https://agentskills.io) standard); each manifest above is a
 > thin adapter over the shared [`skills/`](./skills) source, so every harness
