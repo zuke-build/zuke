@@ -190,20 +190,37 @@ can't see Deno's module graph.
    not later. Prefer reusing core primitives (`FileTasks`,
    `glob`/`globToRegExp`, the `$`/`Command` shell, the HTTP helpers) over
    re-implementing them in a package.
-9. **Configuration is a fluent settings lambda, not an options object.** When an
-   API takes more than a trivial amount of configuration, expose it as a
-   chainable settings class configured through a lambda — the
-   `Configure<S> = (s: S) => S` shape the tool wrappers use — not a positional
-   options bag. Prefer
-   `.lock((s) => s.lockKey("deploy", repo).withTtl("4h").onConflict(...))` over
-   `.lock(key, { ttl, onConflict })`. Each setter returns `this`, the fields use
-   the trailing-underscore internal convention (and are still JSDoc'd), and the
-   lambda defers evaluation until call time — so a value derived from
-   `this.<param>.value` sees the resolved value. This keeps the whole authoring
-   surface consistent with `DenoTasks.test((s) => …)`, `service()`, and the CI
-   builder, and lets options grow without churning call sites. A single required
-   scalar (a path, a name) can still be a direct argument; reach for the lambda
-   once there are options to set.
+9. **Every source file starts with the copyright and license header.** ALL new
+   files — every `.ts` file (tests, fixtures, and generated-file _templates_
+   included), and any launcher or script — open with these two lines (after the
+   shebang, where one exists), before everything else:
+
+   ```ts
+   // Copyright (c) 2026 the Zuke contributors
+   // SPDX-License-Identifier: MIT
+   ```
+
+   Shell/PowerShell files use `#` comments for the same two lines. This is the
+   per-file copyright and license identification the OpenSSF Best Practices
+   criteria require, and it is enforced: `tests/license_headers_test.ts` fails
+   the suite on any source file missing the header. A generated file gets its
+   header from its template (see `internal/hcl_tool.ts.tmpl`) — put the header
+   in the template, never hand-edit generated output.
+
+10. **Configuration is a fluent settings lambda, not an options object.** When
+    an API takes more than a trivial amount of configuration, expose it as a
+    chainable settings class configured through a lambda — the
+    `Configure<S> = (s: S) => S` shape the tool wrappers use — not a positional
+    options bag. Prefer
+    `.lock((s) => s.lockKey("deploy", repo).withTtl("4h").onConflict(...))` over
+    `.lock(key, { ttl, onConflict })`. Each setter returns `this`, the fields
+    use the trailing-underscore internal convention (and are still JSDoc'd), and
+    the lambda defers evaluation until call time — so a value derived from
+    `this.<param>.value` sees the resolved value. This keeps the whole authoring
+    surface consistent with `DenoTasks.test((s) => …)`, `service()`, and the CI
+    builder, and lets options grow without churning call sites. A single
+    required scalar (a path, a name) can still be a direct argument; reach for
+    the lambda once there are options to set.
 
 ## Testing
 
