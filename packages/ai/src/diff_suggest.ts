@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Turn a unified `git diff` into GitHub inline {@link Suggestion}s — used by the
  * {@link "./agent_fixer.ts".AgentFixer} to render the changes an agent made as

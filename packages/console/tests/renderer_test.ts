@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 import { consoleRenderer, createConsoleRenderer } from "../src/renderer.ts";
 import { defaultTheme, type Theme } from "../src/theme.ts";
 import { defaultRenderer, type TargetReport } from "@zuke/core";

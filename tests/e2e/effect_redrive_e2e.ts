@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * End-to-end: the one thing the in-process suite cannot prove — that an effect's
  * intent survives a real `SIGKILL`, and that a **different** OS process finds it

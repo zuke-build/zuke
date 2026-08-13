@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `ReleasePleaseTasks` — typed task functions for
  * [release-please](https://github.com/googleapis/release-please), in the same

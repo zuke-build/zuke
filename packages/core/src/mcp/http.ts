@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * A dependency-free HTTP transport for the MCP server, implementing the
  * client→server half of MCP's streamable-HTTP transport: a JSON-RPC message is

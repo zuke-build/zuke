@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Unit tests for the timezone-aware cron compiler: UTC-passthrough, fixed-offset
  * and DST shifting, the friendly-error boundaries, and the generated guard shell.

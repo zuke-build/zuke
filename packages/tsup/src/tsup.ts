@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `TsupTasks` — a typed task function for the [tsup](https://tsup.egoist.dev)
  * bundler, in the settings-lambda style: configure a fluent settings object in

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `@zuke/pnpm` — typed `PnpmTasks` wrappers for the `pnpm` CLI, for use in Zuke
  * build targets (including builds that drive Node/workspace projects).

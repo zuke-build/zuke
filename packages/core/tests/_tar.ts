@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Hand-built `ustar`/GNU tar archives for tests. The production `tar()` writer
  * refuses names over 100 bytes, so archives exercising the long-path forms —

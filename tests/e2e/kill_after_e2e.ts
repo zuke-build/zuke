@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * End-to-end: a `killAfter` timeout must reap a child that ignores `SIGTERM`.
  * The {@link file://./fixtures/kill_after_build.ts} fixture runs, in a real

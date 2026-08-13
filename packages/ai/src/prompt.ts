@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Assemble the system + user prompt for an assessment. The editable prompt text
  * lives in `./prompts/` (subjects and templates); this file only wires them

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Integration tests for `.always()` readiness — a target that runs *because*
  * something failed must not be held back by that failure.

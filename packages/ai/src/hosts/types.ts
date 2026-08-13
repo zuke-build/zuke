@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The {@link ReviewHost} contract — what each per-host integration provides so
  * the {@link "../reviewer.ts".Reviewer} can post its assessment to a pull

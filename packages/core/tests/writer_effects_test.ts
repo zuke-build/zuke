@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Unit tests for the writer's effect methods — the durable intent that has to
  * land *before* an effect's body runs, and the guard that stops a stale process

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `KnipTasks` — a typed task function for the [Knip](https://knip.dev) CLI,
  * which finds unused files, dependencies, and exports. Settings-lambda style:

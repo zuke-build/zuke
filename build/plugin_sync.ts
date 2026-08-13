@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Syncs `skills/` into `plugins/zuke/skills/` as real, committed file copies
  * rather than a symlink: a symlink survives a POSIX clone, but a Windows

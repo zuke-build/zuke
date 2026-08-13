@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `@zuke/ai` — AI-powered code review for Zuke builds.
  *

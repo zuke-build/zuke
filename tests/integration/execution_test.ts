@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Integration: the executor's core flow, driven through the real CLI. Each test
  * defines a fixture build whose target bodies push their name onto a local

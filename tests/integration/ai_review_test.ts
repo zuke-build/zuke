@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Integration: an AI reviewer gating a real build through the CLI `main()`,
  * with the provider, the PR-comment API, and git all faked at their seams —

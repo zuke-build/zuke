@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `@zuke/cmd` — generic command execution for Zuke builds: the fallback for
  * tools that have no dedicated wrapper package.

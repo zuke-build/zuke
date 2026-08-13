@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * A tiny, dependency-free string hash used to derive stable identifiers — cache
  * keys ({@link "./cache.ts".AiCache}) and finding fingerprints

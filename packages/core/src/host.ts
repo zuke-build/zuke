@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Host / CI detection helpers for build scripts. A build can branch on where it
  * runs — e.g. only deploy from CI, pick coloured output locally, or post a PR

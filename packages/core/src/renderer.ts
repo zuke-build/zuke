@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The {@link Renderer} seam: the executor draws every banner through this
  * interface, so a build can swap the look of its output without touching the

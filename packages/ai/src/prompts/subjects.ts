@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * What each built-in assessment asks the model to look for. Edit these strings
  * to tune a reviewer's focus — no logic lives here.

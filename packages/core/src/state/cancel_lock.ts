@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The per-run cancellation lock. Exactly one process may drive a run's
  * compensation walk at a time — an in-process executor handling Ctrl-C/SIGTERM,

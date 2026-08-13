@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Unit tests for the Claude Code plugin's two manifests — the plugin's own
  * `plugins/zuke/.claude-plugin/plugin.json` and the marketplace entry in

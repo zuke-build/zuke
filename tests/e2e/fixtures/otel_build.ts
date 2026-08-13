@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * A real, runnable Zuke build for the OTel e2e suite. Run as a subprocess
  * (`deno run -A otel_build.ts <target>`), it deploys, suspends at an approval

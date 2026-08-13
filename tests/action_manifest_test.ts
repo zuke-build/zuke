@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Unit tests for the metadata half of the root `action.yml` — the fields that
  * exist because the composite action is published to the GitHub Marketplace,

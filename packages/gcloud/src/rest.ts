@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The small authenticated-JSON transport the Google REST task groups share
  * ({@link "./gcs.ts".GcsTasks}, {@link "./secret_manager.ts".SecretManagerTasks}):

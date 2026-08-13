@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * {@link DocsTasks} — the public, task-shaped surface of `@zuke/docs`.
  *

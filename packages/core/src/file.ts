@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `FileTasks` — filesystem operations for build scripts, grouped as a namespaced
  * task object in the same shape as Zuke's tool wrappers (`DenoTasks`, etc.). The

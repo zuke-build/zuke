@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Render a build's dependency graph as an interactive
  * [Cytoscape](https://js.cytoscape.org/) diagram embedded in a self-contained

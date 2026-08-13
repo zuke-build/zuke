@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Resolve the user-facing {@link ApiDocsOptions} into a fully-populated form the
  * renderers can consume without re-checking defaults.

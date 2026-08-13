@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Process-environment helpers for a build. Right now that is {@link prependPath}
  * — put a provisioned tool's directory on `PATH` so every subprocess the build

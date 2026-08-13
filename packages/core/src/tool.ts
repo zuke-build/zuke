@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `ToolTasks` and `toolchain()` — provision the external CLIs a build drives,
  * in Zuke's fluent settings-lambda style. A build fetches the tools it needs

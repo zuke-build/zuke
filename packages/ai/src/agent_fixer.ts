@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The fluent {@link AgentFixer} and the {@link agentFixer} factory — a
  * {@link "jsr:@zuke/core".Remediation} that delegates the actual fixing to a

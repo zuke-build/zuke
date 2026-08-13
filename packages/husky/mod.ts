@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `@zuke/husky` — typed `husky` task wrappers for Zuke builds.
  *

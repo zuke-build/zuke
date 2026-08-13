@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `VitestTasks` — typed task functions for the `vitest` test runner, in the
  * same settings-lambda style as the other Zuke tool wrappers: configure a

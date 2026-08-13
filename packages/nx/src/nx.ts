@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `NxTasks` — typed task functions for the [Nx](https://nx.dev) CLI, in the
  * settings-lambda style: configure a fluent settings object in a lambda, and

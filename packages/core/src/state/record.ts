@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Building a {@link RunRecord} from a planned build, and the small mappings the
  * executor needs to keep the record current.

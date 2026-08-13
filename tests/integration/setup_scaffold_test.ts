@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Integration coverage for `zuke setup`: drive the real `@zuke/cli` `main()`
  * against a real temporary directory (the production {@link defaultHost}, only

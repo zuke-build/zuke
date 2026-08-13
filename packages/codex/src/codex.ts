@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `CodexTasks` — a typed wrapper for the
  * [OpenAI Codex](https://developers.openai.com/codex/cli) CLI (`codex`), in the

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `CmdTasks` — the generic command fallback for tools without a dedicated
  * wrapper package. Same fluent settings base and execution machinery as the

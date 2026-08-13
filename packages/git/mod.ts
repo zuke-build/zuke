@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `@zuke/git` — typed `git` task wrappers for Zuke builds.
  *

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Integration: `ctx.stateOf(ctx.target)` is equivalent to `ctx.state` even for a
  * **store-less** build (no state store configured). Guards the documented

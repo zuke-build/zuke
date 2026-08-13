@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * A minimal, dependency-free JSON-RPC 2.0 layer for the MCP server.
  *

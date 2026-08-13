@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * End-to-end: two real sweeper processes racing to reap the same abandoned run.
  *

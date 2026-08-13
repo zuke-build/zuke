@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The one way Zuke ends a child process: signal politely, wait out a grace
  * window, then `SIGKILL`.

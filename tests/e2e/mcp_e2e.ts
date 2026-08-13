@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * End-to-end: the M5 two-session acceptance across real processes. Session A
  * (a CLI run) deploys and suspends at an approval gate; a separate `zuke mcp`

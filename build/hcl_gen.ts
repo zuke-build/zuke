@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Single-source generator for the Terraform and OpenTofu wrappers. `@zuke/tofu`
  * is a near-verbatim twin of `@zuke/terraform` — OpenTofu mirrors Terraform's

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `@zuke/otel` — an OpenTelemetry (OTLP/HTTP **JSON**) export plugin for Zuke
  * builds. Register {@link otel} on a run and every run/target transition is

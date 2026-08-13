@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Per-CI-host PR-comment dispatch. {@link detectReviewHost} reads the ambient
  * environment, picks the right {@link ReviewHost} for the active provider

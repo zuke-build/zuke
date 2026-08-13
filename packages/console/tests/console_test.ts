@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 import { ConsoleTasks, type Sink } from "../src/console.ts";
 import { defaultTheme } from "../src/theme.ts";
 import { SGR, stripAnsi, visibleWidth } from "@zuke/core/render";

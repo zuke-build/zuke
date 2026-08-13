@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Resume a suspended run — the second half of external-event waits (see
  * `./wait.ts`).

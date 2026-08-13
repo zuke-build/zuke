@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `@zuke/dpdm` — a typed `DpdmTasks` wrapper for the
  * [dpdm](https://github.com/acrazing/dpdm) CLI (module dependency graph and

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The OTLP/HTTP JSON transport: POSTs a trace or metrics payload to a
  * collector. Kept behind the {@link OtlpTransport} interface so the plugin can

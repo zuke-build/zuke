@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * A small Spectre.Console-style markup language: `[red bold]text[/]`. Styling
  * lives inside the string as data — so the public API stays task-shaped and

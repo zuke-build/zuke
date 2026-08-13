@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `OxlintTasks` — typed task functions for the `oxlint` linter, in the same
  * settings-lambda style as the other Zuke tool wrappers: configure a fluent

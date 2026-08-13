@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Smoke tests for the release-tooling modules under `build/` — code that runs
  * only in CI's release jobs and, before this file, wasn't imported by any

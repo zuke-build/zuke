@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Incremental-build cache: fingerprints a target's declared {@link
  * TargetBuilder.inputs} and lets the executor skip it when nothing has changed

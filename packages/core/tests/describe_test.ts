@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 import { assertEquals } from "./_assert.ts";
 import { Build, describeCli, parameter, target } from "../mod.ts";
 import { BUILTIN_FLAGS, RESERVED_COMMANDS } from "../src/cli_spec.ts";

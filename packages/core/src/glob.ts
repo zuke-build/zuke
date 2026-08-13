@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Glob helpers for build scripts: expand patterns like `src/**\/*.ts` to the
  * matching paths, dependency-free (built on `Deno.readDir`).

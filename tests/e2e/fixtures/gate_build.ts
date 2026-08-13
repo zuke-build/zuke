@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * A real, runnable Zuke build used by the e2e race suite. Run as a subprocess
  * (`deno run -A gate_build.ts <target>`), it suspends at an approval gate and is

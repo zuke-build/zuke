@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Public types for {@link DocsTasks}: the per-package documentation input, the
  * project framing shown in the index, the options, and the task interface.

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `@zuke/npm` — typed `NpmTasks` wrappers for the `npm` CLI, for use in Zuke
  * build targets (including builds that drive Node projects).

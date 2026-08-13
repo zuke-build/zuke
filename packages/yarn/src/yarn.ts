@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `YarnTasks` — typed task functions for the `yarn` CLI, in the settings-lambda
  * style: configure a fluent settings object in a lambda, and the task function

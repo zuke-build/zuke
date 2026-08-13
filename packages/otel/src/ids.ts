@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Deterministic OpenTelemetry trace and span ids, derived from a run id by
  * hashing. Determinism is the whole point: a run that suspends in one process

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `gitInfo()` — resolve the current repository's branch, commit, nearest tag,
  * dirty state, and origin URL. Useful for versioning and conditional build

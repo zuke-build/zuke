@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `@zuke/gcloud` — typed Google Cloud tooling for Zuke builds: the `gcloud`
  * (Google Cloud SDK) CLI wrapper, plus **GCS** and **Secret Manager** REST task

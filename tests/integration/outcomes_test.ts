@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Integration tests for `ctx.outcomeOf(...)` / `ctx.outcomes()` — a target
  * reading what the rest of the run did.

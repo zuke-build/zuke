@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `@zuke/codex` — a typed [OpenAI Codex](https://developers.openai.com/codex/cli)
  * CLI (`codex`) task wrapper for Zuke builds.

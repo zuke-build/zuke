@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Rendering a review {@link "./types.ts".Assessment} — to the console and to
  * the GitHub Actions job summary.

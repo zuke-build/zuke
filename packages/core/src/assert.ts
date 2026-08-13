@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Assertions and control-flow helpers for build scripts — fail fast with a
  * clear message when an expectation does not hold.

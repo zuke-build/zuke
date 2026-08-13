@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `AnnounceTasks` — post build announcements to chat platforms (Slack, Microsoft
  * Teams, Discord) from a pipeline, via each platform's *incoming webhook*. The

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Generate the AI-review CI workflow from declared {@link Reviewer}s. Returns a
  * [`CiFile`](jsr:@zuke/core) — so the standard `cicd` plumbing

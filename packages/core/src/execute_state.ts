@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Durable-state plumbing for one run: resolving the {@link StateStore}, opening
  * (or adopting) the {@link RunStateWriter} that records the run and its

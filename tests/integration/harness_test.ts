@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Regression tests for the integration harness itself: its throwaway temp-dir
  * cleanup must never mask the failure a test actually cares about. A `finally`

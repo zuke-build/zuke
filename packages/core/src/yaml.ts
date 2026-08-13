@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * A tiny, dependency-free YAML emitter for the structured subset Zuke needs to
  * generate CI configuration: mappings, sequences, and scalars (strings,

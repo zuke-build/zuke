@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Timezone-aware cron schedules for {@link "./ci.ts".cicd}.
  *

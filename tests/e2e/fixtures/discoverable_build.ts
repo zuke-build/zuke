@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * A tiny runnable build used by the registry-MCP e2e. It registers itself
  * (`register`) into `ZUKE_REGISTRY_DIR`, and its one target prints a marker so a

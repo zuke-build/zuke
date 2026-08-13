@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Findings as pull-request review threads: which finding gets a thread, which
  * thread is ours, which reply is a rebuttal, and what the reviewer owes each

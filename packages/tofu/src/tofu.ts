@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `TofuTasks` — typed task functions for the OpenTofu CLI (`tofu`), in the
  * settings-lambda style: configure a fluent settings object in a lambda, and

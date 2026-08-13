@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Unit tests for reaping — deciding, for a run that claims to be running,
  * whether anyone is still there.

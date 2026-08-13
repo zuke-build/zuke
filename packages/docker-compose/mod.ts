@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `@zuke/docker-compose` — typed Docker Compose task wrappers for Zuke builds.
  *

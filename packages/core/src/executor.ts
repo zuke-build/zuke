@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The executor: resolves a plan, runs each target body in order, reports
  * pass/fail with timing, and aborts on the first failure.

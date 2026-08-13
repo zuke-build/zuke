@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * {@link HttpStateStore} — a {@link StateStore} backed by a hosted HTTP service,
  * the production path for durable run state. See `docs/state-api.md` for the

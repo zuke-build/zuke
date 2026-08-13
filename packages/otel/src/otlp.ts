@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Pure builders that turn a Zuke {@link RunRecord} into OTLP/HTTP **JSON**
  * payloads — one for the trace signal (`resourceSpans`) and one for metrics

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * {@link HttpBuildRegistry} — a {@link BuildRegistry} backed by a hosted HTTP
  * service, the production path for the build catalog. It rides the same REST

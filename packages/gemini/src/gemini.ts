@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `GeminiTasks` — a typed wrapper for the
  * [Gemini CLI](https://github.com/google-gemini/gemini-cli) (`gemini`), in the

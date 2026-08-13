@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Unit tests for `build/scanners.ts` — the pinned toolchain declarations the
  * `security` target provisions its scanners from. Everything here is pure URL

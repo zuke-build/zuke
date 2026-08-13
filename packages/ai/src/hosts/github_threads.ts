@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * GitHub's review-thread operations: the file/line-anchored comment threads a
  * finding is posted into, replied to, and resolved on.

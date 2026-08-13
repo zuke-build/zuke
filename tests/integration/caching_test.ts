@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Integration: incremental caching (`.inputs`/`.outputs`/`.cacheKey`), the
  * remote cache, and the affected-targets computation. The caching scenarios

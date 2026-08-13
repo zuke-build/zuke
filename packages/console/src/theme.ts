@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The semantic palette for {@link ConsoleTasks}: named tokens (`success`,
  * `warn`, `muted`, …) that map to concrete ANSI styles, so builds colour by

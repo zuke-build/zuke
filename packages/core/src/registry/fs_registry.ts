@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * {@link FileSystemBuildRegistry} — a {@link BuildRegistry} backed by one JSON
  * file per build under a directory (default `<repo root>/.zuke/builds`).

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Parsing and classification for `deno doc --lint` output — the pure core of
  * the documentation-quality gate.

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Target authoring API: the `target()` fluent builder, the `group()` parallel
  * batch, and the `Target` type.

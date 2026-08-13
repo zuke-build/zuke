@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Neutralizing model- and agent-controlled text before it is embedded in the
  * Markdown of a PR comment or CI job summary — the Markdown analogue of the

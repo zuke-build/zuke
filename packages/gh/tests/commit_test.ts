@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Unit tests for `src/commit.ts` — committing through GitHub's API so no git
  * credential is ever written to disk.

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Service targets: long-lived processes that run **while** other targets
  * execute, rather than running to completion.

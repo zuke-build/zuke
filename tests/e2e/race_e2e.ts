@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * End-to-end: the one thing the in-process suite cannot prove — that two real,
  * separate OS processes racing to resume the same suspended run resolve to

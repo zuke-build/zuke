@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `@zuke/helm` — typed `HelmTasks` wrappers for the [Helm](https://helm.sh) CLI,
  * for packaging and deploying to Kubernetes from a Zuke build.

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The state-api wire-protocol version — the single contract shared by the HTTP
  * {@link "./http_store.ts".HttpStateStore} run/lock endpoints and the

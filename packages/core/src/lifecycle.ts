@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The run {@link Lifecycle}: the build's own hooks merged with any registered
  * plugins, so the scheduler can notify start/target/finish transitions without

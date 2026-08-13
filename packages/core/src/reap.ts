@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Reaping: finding runs whose process is gone, and giving them somewhere to go.
  *

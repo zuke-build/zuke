@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Release/publish helpers: where build-time CLIs are installed, the on-demand
  * CLI installer, and the timeout-guarded JSR publish for one package.

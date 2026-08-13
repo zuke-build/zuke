@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `GhTasks` — a typed wrapper for the `gh` GitHub CLI, in the same
  * settings-lambda style as the other Zuke tool wrappers.

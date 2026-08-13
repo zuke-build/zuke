@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Unit tests for the gitleaks report formatter — the job-summary section that
  * replaced the workflow's artifact upload.

@@ -1,4 +1,6 @@
 #!/usr/bin/env pwsh
+# Copyright (c) 2026 the Zuke contributors
+# SPDX-License-Identifier: MIT
 #
 # Zuke bootstrap launcher (PowerShell) — a `.\build.ps1`-style entry point.
 #

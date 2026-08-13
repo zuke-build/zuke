@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Small helpers for reading provider responses — untyped JSON navigated without
  * casting.

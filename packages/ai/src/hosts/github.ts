@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Post the review as a GitHub pull-request comment. Runs against the REST API
  * with `pull-requests: write` and upserts a single per-reviewer comment

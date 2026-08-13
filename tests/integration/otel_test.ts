@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Integration: drive a real build through the CLI `main()` with the `@zuke/otel`
  * plugin registered, against a capturing `fetch` (the only faked seam — the

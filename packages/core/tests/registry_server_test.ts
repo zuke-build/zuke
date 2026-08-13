@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Unit tests for {@link RegistryMcpServer}: live discovery from the registry,
  * spawn-based execution through an injected runner (no real subprocess), the M5

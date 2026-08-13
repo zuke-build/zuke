@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Shared types for `@zuke/ai`: providers, assessment kinds, and the structured
  * {@link Assessment} a review produces.

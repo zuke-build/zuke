@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Where the pinned GitHub Action SHAs come from once the workflows are
  * generated: the root `action.yml` manifest, which the generator never writes.

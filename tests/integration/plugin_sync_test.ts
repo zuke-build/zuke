@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Integration: the `pluginSync`/`pluginSyncCheck`-style target wiring — sync
  * a source tree into a destination copy and fail the build on drift — driven

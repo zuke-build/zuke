@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Workspace package metadata: the ordered package list and the helpers that
  * read each package's entrypoints and declared version from its `deno.json`.

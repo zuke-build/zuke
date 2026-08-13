@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Query the [JSR](https://jsr.io) registry's package metadata — the read-side
  * companion to the {@link JsrTasks} CLI wrapper. A publish pipeline uses these

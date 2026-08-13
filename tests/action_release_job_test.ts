@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Tests for the generated `actionRelease` job in `.github/workflows/release.yml`.
  *

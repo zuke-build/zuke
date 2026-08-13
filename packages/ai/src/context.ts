@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Shared failure-context helpers used by both the structured {@link
  * "./fixer.ts".AiFixer} and the delegating {@link "./agent_fixer.ts".AgentFixer}:

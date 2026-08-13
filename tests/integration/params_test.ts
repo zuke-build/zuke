@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Integration: build parameters (`--<flag>`, `.env()`, `.options()`,
  * `.boolean()`, `.secret()`), driven through the real CLI. Each test defines a

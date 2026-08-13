@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * End-to-end: a `githubWorkflow(...)` wait across two real processes. Process A
  * reaches the gate, dispatches (recording the marker to a file), and suspends;

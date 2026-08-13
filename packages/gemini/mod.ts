@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `@zuke/gemini` — a typed [Gemini CLI](https://github.com/google-gemini/gemini-cli)
  * (`gemini`) task wrapper for Zuke builds.

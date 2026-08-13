@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * {@link githubWorkflow} — a Zuke {@link "@zuke/core".WaitTrigger} that
  * dispatches a GitHub Actions workflow (often in **another repo**), suspends the

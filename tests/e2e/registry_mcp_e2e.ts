@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * End-to-end: the M11 acceptance across real processes. A `zuke mcp --registry`
  * server starts over an empty build registry; a separate process registers a new

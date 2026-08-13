@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `@zuke/console` — task-shaped console output for Zuke builds, so a build never
  * reaches for `console.log`. A levelled logger (NUKE-style), Spectre.Console-style

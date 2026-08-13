@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Integration: durable build state and locks, driven through the real CLI. With
  * `ZUKE_STATE_DIR` pointed at a temp dir (via the harness), every run persists a

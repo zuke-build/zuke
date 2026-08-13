@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `CodecovTasks` — a typed wrapper for the Codecov CLI (`codecovcli`), in the
  * same settings-lambda style as the other Zuke tool wrappers.

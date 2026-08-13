@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `EslintTasks` — typed task functions for the `eslint` linter, in the same
  * settings-lambda style as the other Zuke tool wrappers: configure a fluent

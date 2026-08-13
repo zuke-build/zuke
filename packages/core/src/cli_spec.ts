@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The static CLI surface — the reserved positional commands and the built-in
  * option flags — as a single source of truth shared by the argument parser

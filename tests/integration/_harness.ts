@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Shared harness for the in-process integration suite. Drives a real build
  * through the CLI `main()` entry point — the same path the `zuke` command uses

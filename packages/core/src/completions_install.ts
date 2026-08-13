@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Installing shell completions: `zuke completions install <shell>` writes the
  * generated script to a file under the user's config directory and wires it

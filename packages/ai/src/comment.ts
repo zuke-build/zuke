@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Posting a single overview comment to the pull/merge request via the active CI
  * host — shared by the AI fixer and the agent fixer. Keyed by the fixer's name

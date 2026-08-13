@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The supply-chain scanners behind the `security` target, declared as pinned
  * toolchain entries so the build provisions them itself.

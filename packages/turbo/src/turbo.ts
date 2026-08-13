@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `TurboTasks` — typed task functions for the [Turborepo](https://turbo.build)
  * CLI, in the settings-lambda style: configure a fluent settings object in a

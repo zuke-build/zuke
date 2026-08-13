@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The build-registry vocabulary: a {@link BuildDescriptor} — a small, versioned
  * record describing one pipeline (build) that has registered itself — and its

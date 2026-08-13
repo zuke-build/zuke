@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * A real, runnable Zuke build used by the e2e cancellation suite. Run as a
  * subprocess (`deno run -A cancel_build.ts <target>`), it deploys (recording a

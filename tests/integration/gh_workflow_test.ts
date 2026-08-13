@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Integration: a `.waitsFor(githubWorkflow(...))` gate driven through the real
  * CLI. The GitHub API is a fake, but the executor, the durable state writer, the

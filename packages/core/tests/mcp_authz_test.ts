@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 import { assertEquals } from "./_assert.ts";
 import { targetMatcher, timingSafeEqual } from "../src/mcp/authz.ts";
 

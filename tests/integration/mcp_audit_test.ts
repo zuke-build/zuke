@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Integration: the MCP audit trail is rendered by `zuke runs show`, driven
  * through the real CLI `main()`. A record with an audit event is persisted to

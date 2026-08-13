@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * A runnable Zuke build for the githubWorkflow e2e suite. Run as a subprocess
  * (`deno run -A gh_workflow_build.ts <target|resume ...>`), it waits on a

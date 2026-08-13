@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 import { isLogLevel, LEVEL_ORDER, resolveLevel } from "../src/level.ts";
 import { assertEquals } from "../../core/tests/_assert.ts";
 

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Git-aware execution: restrict a run to the targets *affected* by the files
  * that changed since a base git revision. Pairs with the incremental

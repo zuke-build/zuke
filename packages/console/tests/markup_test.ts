@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 import { escapeMarkup, renderMarkup } from "../src/markup.ts";
 import { SGR } from "@zuke/core/render";
 import {

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Integration: npx-style `node_modules/.bin` tool resolution driven through a
  * real build. A target runs a `defineTool` wrapper with `.fromNodeModules()`;

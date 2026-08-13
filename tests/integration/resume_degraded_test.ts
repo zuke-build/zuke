@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Integration: a run that **permanently lost** a state write is recorded
  * `degraded`, and `zuke resume` refuses it until `--resume-degraded` overrides

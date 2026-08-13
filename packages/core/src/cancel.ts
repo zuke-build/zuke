@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Cancel a run and run its compensations — the cancellation half of the
  * durable-run lifecycle (see `./resume.ts` for the resume half, and

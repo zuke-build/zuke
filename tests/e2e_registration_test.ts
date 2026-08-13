@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Guards the subprocess e2e suite's registration in `zuke.ts`: the
  * `integration` target must discover `tests/e2e/*_e2e.ts` by glob rather than a

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The executor's output sink — the {@link Reporter} interface plus the small set
  * of reporter wrappers the engine composes: the console/silent defaults, a

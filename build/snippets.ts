@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Type-check the ```ts snippets in the docs and skills that are explicitly
  * marked for checking, so an example an agent pastes can't silently drift from

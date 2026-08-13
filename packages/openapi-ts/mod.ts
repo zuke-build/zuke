@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `@zuke/openapi-ts` — typed `openapi-ts` task wrappers for Zuke builds.
  *

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Integration: the cancellation flow driven through the real CLI. A build
  * suspends at a `waitsFor()` gate; a later `zuke cancel <run-id>` command (a

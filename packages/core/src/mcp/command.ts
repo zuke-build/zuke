@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The `zuke mcp` reserved command: run an MCP server over the build, on stdio
  * (the default) or over HTTP (`--http <host:port>`).

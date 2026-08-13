@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Integration: a secret used as an argv token must not surface in a command
  * echo. Under `--dry-run` a `.dryRunnable()` target's body runs with `$` in echo

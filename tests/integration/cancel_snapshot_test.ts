@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Integration: `zuke cancel` decides which compensations to run from the record
  * as it stands **after** its transition to `cancelling`, not from the

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Tests for the Terraform/OpenTofu single-source generator (`build/hcl_gen.ts`):
  * `renderHcl` is pure and checked directly; the committed wrappers must

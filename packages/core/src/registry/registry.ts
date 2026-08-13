@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The pluggable {@link BuildRegistry} — a catalog of the builds (pipelines) that
  * exist and where they live — kept **separate** from the run

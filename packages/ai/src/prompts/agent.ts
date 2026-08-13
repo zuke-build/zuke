@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The prompt handed to a coding agent (Claude/Codex/Gemini) by the {@link
  * "../agent_fixer.ts".AgentFixer}. The agent reads files and edits them itself,

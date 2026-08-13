@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Authorization helpers for the MCP server: a glob-based target allow-list
  * matcher and a constant-time token comparison. Shared by the HTTP transport

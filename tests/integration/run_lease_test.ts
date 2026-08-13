@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Integration tests for the run lease — a process's claim that it is the one
  * working on a run, driven through the real CLI.

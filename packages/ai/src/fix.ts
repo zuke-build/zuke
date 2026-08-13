@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The structured {@link Fix} a {@link "./fixer.ts".AiFixer} produces, and the
  * parser that turns a model's raw response into one. A fix is a diagnosis plus

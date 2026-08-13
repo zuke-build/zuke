@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The engine behind `zuke import`: read an existing project's task definitions —
  * `package.json` scripts or a `Makefile` — and scaffold an equivalent typed

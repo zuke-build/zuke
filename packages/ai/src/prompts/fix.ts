@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The wording of the fixer's system and user prompts. Edit the prose here to
  * change how the AI fixer is instructed; the assembly logic lives in

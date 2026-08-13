@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Agent-doc generation: the project framing and options for `@zuke/docs`, the
  * per-package doc/doc-lint collectors, and the CLI-block injection that keeps

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The landing page's package catalogue, and the generator that renders it into
  * the website's `src/data/tools.ts`.

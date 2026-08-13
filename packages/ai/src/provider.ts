@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The transport layer: POST a prompt to a provider and return its raw text.
  * Each provider has its own endpoint, auth scheme, and response shape; the rest

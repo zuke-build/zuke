@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Mint a short-lived GitHub App installation token from a build, replacing the
  * `actions/create-github-app-token` step.

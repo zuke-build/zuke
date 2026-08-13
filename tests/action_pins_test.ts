@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Unit tests for `build/action_pins.ts` — the module that reads pinned action
  * SHAs back out of the committed workflows so Dependabot stays the thing that

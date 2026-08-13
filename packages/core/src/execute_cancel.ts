@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Settling a cancelled run's durable state: the cancel-lock handshake that
  * decides whether *this* process owns the compensation walk, the walk itself,

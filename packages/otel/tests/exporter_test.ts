@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 import { assertEquals } from "../../core/tests/_assert.ts";
 import { OtlpHttpExporter } from "../src/exporter.ts";
 import { buildMetrics, buildTraces, type RunSpanIds } from "../src/otlp.ts";

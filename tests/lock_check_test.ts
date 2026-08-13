@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 import { assertEquals } from "../packages/core/tests/_assert.ts";
 import {
   LOCK_FILE,

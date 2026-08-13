@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * A real, runnable Zuke build used by the effect re-drive e2e suite. Run as a
  * subprocess (`deno run -A effect_build.ts announce`), its one target declares a

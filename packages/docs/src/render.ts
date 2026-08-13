@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Pure rendering for the documentation artifacts: cleaning the supplied doc
  * text, the per-README API block, and the `llms.txt` / `llms-full.txt` bodies.

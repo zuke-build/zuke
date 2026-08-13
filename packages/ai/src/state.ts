@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Durable finding state, carried across review runs inside the reviewer's own
  * PR comment — the memory that turns per-run findings into a discussion.

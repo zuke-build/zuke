@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Planning a run before any body executes: resolving the build's declared
  * parameters, evaluating the up-front conditions that prune targets, narrowing

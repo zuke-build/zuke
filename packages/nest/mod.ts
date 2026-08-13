@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * `@zuke/nest` — typed NestJS CLI (`nest`) task wrappers for Zuke builds.
  *

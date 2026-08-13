@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The CLI surface: argument parsing, `--list`/`--help`/`graph`, and the public
  * {@link run} entry point that drives a build from `zuke.ts`.

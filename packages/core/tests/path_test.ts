@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 import { assertEquals, assertThrows } from "./_assert.ts";
 import { absolutePath } from "../src/path.ts";
 import { tokenize } from "../src/shell.ts";

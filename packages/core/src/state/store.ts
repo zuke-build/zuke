@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * The pluggable {@link StateStore} — persistence for {@link RunRecord}s — and
  * its injected filesystem host.

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 the Zuke contributors
+// SPDX-License-Identifier: MIT
+
 /**
  * Integration: `zuke cancel` on a run whose record is **degraded** — a state
  * write was permanently lost, so a target that really did deploy is still
