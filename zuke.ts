@@ -1086,7 +1086,11 @@ class ZukeBuild extends Build {
       // "latest" — that is the release `gemini extensions install` resolves,
       // and it changes on every package release, so each run tops it up.
       // Idempotent: a release already carrying the assets is left untouched,
-      // and a repository with no releases yet is an ordinary skip.
+      // and a repository with no releases yet is an ordinary skip. Best-effort
+      // on top: the archive is a nice-to-have for Gemini installs, not part of
+      // the release contract, and a throw here would redden the job after the
+      // releases already exist — skipping the JSR publish that `needs` this
+      // job. A warning plus the next run's top-up is the right trade.
       const scratch = await Deno.makeTempDir();
       try {
         const archive = `${scratch}/zuke.tar.gz`;
@@ -1104,6 +1108,14 @@ class ZukeBuild extends Build {
               : `${name} on ${result.releaseTag}: ${result.state}.`,
           );
         }
+      } catch (error) {
+        ConsoleTasks.warn(
+          "Attaching the Gemini extension archive failed — the releases " +
+            "themselves are unaffected and the next release run tops the " +
+            `assets up: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+        );
       } finally {
         await Deno.remove(scratch, { recursive: true });
       }

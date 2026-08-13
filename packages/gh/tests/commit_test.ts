@@ -13,9 +13,31 @@
 
 import {
   assertEquals,
+  assertRejects,
   assertStringIncludes,
 } from "../../core/tests/_assert.ts";
 import { commitFiles, tagCommit } from "../src/commit.ts";
+
+/** Run `fn` with `values` in the environment, restoring the originals after. */
+async function withEnv(
+  values: Record<string, string | undefined>,
+  fn: () => Promise<void>,
+): Promise<void> {
+  const saved = new Map<string, string | undefined>();
+  for (const [name, value] of Object.entries(values)) {
+    saved.set(name, Deno.env.get(name));
+    if (value === undefined) Deno.env.delete(name);
+    else Deno.env.set(name, value);
+  }
+  try {
+    await fn();
+  } finally {
+    for (const [name, value] of saved) {
+      if (value === undefined) Deno.env.delete(name);
+      else Deno.env.set(name, value);
+    }
+  }
+}
 
 /** One recorded request. */
 interface Call {
@@ -578,4 +600,196 @@ Deno.test("`.replace()` without `.from(...)` is refused rather than ignored", as
   }
   assertStringIncludes(message, ".replace() only applies together with .from(");
   assertEquals(calls.length, 0);
+});
+
+Deno.test("a commit falls back to GITHUB_REPOSITORY and GITHUB_TOKEN", async () => {
+  // A job that already has the Actions environment needs to name only what it
+  // is committing.
+  await withEnv({
+    GITHUB_REPOSITORY: "acme/app",
+    GITHUB_TOKEN: "ghs_env",
+  }, async () => {
+    const { fetch, calls } = fakeFetch({
+      "GET /git/ref/heads/topic": { object: { sha: "h" } },
+      "GET /git/commits/h": { tree: { sha: "t" } },
+      "POST /git/trees": { sha: "t2" },
+      "POST /git/commits": { sha: "c" },
+      "PATCH /git/refs/heads/topic": {},
+    });
+    const result = await commitFiles((s) =>
+      s.branch("topic").message("m").file("a.ts", "1\n").fetch(fetch)
+    );
+    assertEquals(result.sha, "c");
+    // The env-resolved slug routed the request, and the env token rode as the
+    // bearer header on every call — never through argv or a body.
+    assertEquals(calls[0].path, "/git/ref/heads/topic");
+    for (const call of calls) assertEquals(call.auth, "Bearer ghs_env");
+  });
+});
+
+Deno.test("a tag falls back to GITHUB_REPOSITORY, GITHUB_TOKEN, and GITHUB_SHA", async () => {
+  await withEnv({
+    GITHUB_REPOSITORY: "acme/app",
+    GITHUB_TOKEN: "ghs_env",
+    GITHUB_SHA: "e".repeat(40),
+  }, async () => {
+    const { fetch, calls } = fakeFetch({
+      "POST /git/tags": { sha: "obj" },
+      "POST /git/refs": {},
+    });
+    await tagCommit((s) => s.name("v9.9.9").fetch(fetch));
+    // The tag points at the commit the workflow ran for.
+    assertEquals(calls[0].path, "/git/tags");
+    assertEquals(calls[0].body.object, "e".repeat(40));
+    for (const call of calls) assertEquals(call.auth, "Bearer ghs_env");
+  });
+});
+
+Deno.test("a missing repo, token, or sha is named rather than guessed", async () => {
+  // Without the Actions environment the settings must say which setting is
+  // missing and which variable would have filled it — not fail downstream.
+  await withEnv({
+    GITHUB_REPOSITORY: undefined,
+    GITHUB_TOKEN: undefined,
+    GITHUB_SHA: undefined,
+  }, async () => {
+    const { fetch, calls } = fakeFetch({});
+    await assertRejects(
+      () =>
+        commitFiles((s) => s.token("t").branch("b").message("m").fetch(fetch)),
+      Error,
+      "committing requires .repo('owner/name') (or GITHUB_REPOSITORY)",
+    );
+    await assertRejects(
+      () =>
+        commitFiles((s) =>
+          s.repo("acme/app").branch("b").message("m").fetch(fetch)
+        ),
+      Error,
+      "committing requires .token(...) (or GITHUB_TOKEN)",
+    );
+    await assertRejects(
+      () => tagCommit((s) => s.token("t").name("v1").commit("c").fetch(fetch)),
+      Error,
+      "tagging requires .repo('owner/name') (or GITHUB_REPOSITORY)",
+    );
+    await assertRejects(
+      () =>
+        tagCommit((s) =>
+          s.repo("acme/app").name("v1").commit("c").fetch(fetch)
+        ),
+      Error,
+      "tagging requires .token(...) (or GITHUB_TOKEN)",
+    );
+    await assertRejects(
+      () =>
+        tagCommit((s) => s.repo("acme/app").token("t").name("v1").fetch(fetch)),
+      Error,
+      "tagging requires .commit(...) (or GITHUB_SHA)",
+    );
+    // Every refusal happened before anything was sent.
+    assertEquals(calls.length, 0);
+  });
+});
+
+Deno.test("the required commit and tag settings are named when absent", async () => {
+  // A bare call is legal to write, so its first missing setting must be named
+  // — and refused before the environment or the transport is consulted.
+  await assertRejects(
+    () => commitFiles(),
+    Error,
+    "committing requires .branch(...)",
+  );
+  await assertRejects(
+    () => commitFiles((s) => s.repo("acme/app").token("t").branch("topic")),
+    Error,
+    "committing requires .message(...)",
+  );
+  await assertRejects(() => tagCommit(), Error, "tagging requires .name(...)");
+});
+
+Deno.test("baseUrl retargets commits and tags at a GHES host", async () => {
+  const seen: string[] = [];
+  const capture: typeof fetch = (input) => {
+    seen.push(String(input));
+    return Promise.resolve(
+      new Response(
+        JSON.stringify({ object: { sha: "a" }, tree: { sha: "t" }, sha: "c" }),
+        { status: 200 },
+      ),
+    );
+  };
+  await commitFiles((s) =>
+    s.repo("acme/app").token("t").branch("main").message("m")
+      .baseUrl("https://ghe.example.com/api/v3/").fetch(capture)
+  );
+  // The trailing slash is trimmed, so no `//` appears in the request path.
+  assertEquals(
+    seen[0],
+    "https://ghe.example.com/api/v3/repos/acme/app/git/ref/heads/main",
+  );
+
+  seen.length = 0;
+  await tagCommit((s) =>
+    s.repo("acme/app").token("t").name("v1").commit("c")
+      .baseUrl("https://ghe.example.com/api/v3").fetch(capture)
+  );
+  assertEquals(
+    seen[0],
+    "https://ghe.example.com/api/v3/repos/acme/app/git/tags",
+  );
+});
+
+Deno.test("a response missing the field a call needs names that call", async () => {
+  // `readString` names the call whose response was malformed, rather than
+  // letting `undefined` flow into the next request's path.
+  const notRecord = fakeFetch({
+    "GET /git/ref/heads/topic": { object: "nope" },
+  });
+  await assertRejects(
+    () =>
+      commitFiles((s) =>
+        s.repo("acme/app").token("t").branch("topic").message("m")
+          .fetch(notRecord.fetch)
+      ),
+    Error,
+    "the ref response has no object.sha",
+  );
+
+  // The terminal value has to be a string, not merely present.
+  const wrongType = fakeFetch({
+    "GET /git/ref/heads/topic": { object: { sha: "h" } },
+    "GET /git/commits/h": { tree: { sha: "t" } },
+    "POST /git/trees": { sha: 42 },
+  });
+  await assertRejects(
+    () =>
+      commitFiles((s) =>
+        s.repo("acme/app").token("t").branch("topic").message("m")
+          .fetch(wrongType.fetch)
+      ),
+    Error,
+    "the tree response has no sha",
+  );
+});
+
+Deno.test("an empty 2xx body reads as an empty object, not a parse error", async () => {
+  // GitHub answers some writes with an empty body; the transport must not die
+  // parsing "" on a reply the caller never reads.
+  const empty: typeof fetch = (input, init) => {
+    if ((init?.method ?? "GET") === "PATCH") {
+      return Promise.resolve(new Response("", { status: 200 }));
+    }
+    void input;
+    return Promise.resolve(
+      new Response(
+        JSON.stringify({ object: { sha: "a" }, tree: { sha: "t" }, sha: "c" }),
+        { status: 200 },
+      ),
+    );
+  };
+  const result = await commitFiles((s) =>
+    s.repo("acme/app").token("t").branch("main").message("m").fetch(empty)
+  );
+  assertEquals(result.sha, "c");
 });

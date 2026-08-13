@@ -172,6 +172,89 @@ Deno.test("an asset the release already carries is kept, not re-sent", async () 
   }
 });
 
+Deno.test("a stuck asset (state not uploaded) is deleted and re-sent", async () => {
+  // GitHub's documented failure mode: an errored/interrupted upload reserves
+  // the asset name in a non-`uploaded` state. Skipping it would leave the
+  // release serving a corpse forever — the one case a re-run must repair.
+  const dir = await Deno.makeTempDir();
+  try {
+    const file = await assetFixture(dir);
+    const seen: Seen[] = [];
+    const github: typeof fetch = async (input, init) => {
+      const method = init?.method ?? "GET";
+      seen.push({
+        url: String(input),
+        method,
+        authorization: new Headers(init?.headers).get("authorization") ?? "",
+        contentType: new Headers(init?.headers).get("content-type"),
+        body: init?.body instanceof Uint8Array ? init.body : undefined,
+      });
+      await Promise.resolve();
+      if (method === "DELETE") return new Response(null, { status: 204 });
+      if (String(input).includes("uploads.github.com")) {
+        return new Response(
+          JSON.stringify({ id: 901, browser_download_url: "dl/fresh" }),
+          { status: 201 },
+        );
+      }
+      const release = releasePayload([]);
+      release.assets = [{
+        id: 55,
+        name: "extension.tar.gz",
+        state: "new",
+        browser_download_url: "dl/corpse",
+      }];
+      return new Response(JSON.stringify(release), { status: 200 });
+    };
+
+    const result = await GhTasks.uploadReleaseAsset((s) =>
+      s.file(file).repo("acme/app").token("tok").fetch(github)
+    );
+    assertEquals(result.state, "uploaded");
+    // Lookup, then DELETE of the stuck asset, then the fresh upload.
+    assertEquals(seen.map((s) => s.method), ["GET", "DELETE", "POST"]);
+    assertStringIncludes(seen[1].url, "/releases/assets/55");
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("a failed deletion of a stuck asset surfaces, a 404 does not", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const file = await assetFixture(dir);
+    const github = (deleteStatus: number): typeof fetch => async (i, init) => {
+      await Promise.resolve();
+      if ((init?.method ?? "GET") === "DELETE") {
+        return new Response(JSON.stringify({ message: "locked" }), {
+          status: deleteStatus,
+        });
+      }
+      if (String(i).includes("uploads.github.com")) {
+        return new Response(JSON.stringify({ id: 1 }), { status: 201 });
+      }
+      const release = releasePayload([]);
+      release.assets = [{ id: 55, name: "extension.tar.gz", state: "new" }];
+      return new Response(JSON.stringify(release), { status: 200 });
+    };
+    await assertRejects(
+      () =>
+        GhTasks.uploadReleaseAsset((s) =>
+          s.file(file).repo("acme/app").token("tok").fetch(github(423))
+        ),
+      Error,
+      "locked",
+    );
+    // The corpse already being gone is the goal state, not a failure.
+    const result = await GhTasks.uploadReleaseAsset((s) =>
+      s.file(file).repo("acme/app").token("tok").fetch(github(404))
+    );
+    assertEquals(result.state, "uploaded");
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
 Deno.test("a repository with no releases reports no-release, not an error", async () => {
   const dir = await Deno.makeTempDir();
   try {

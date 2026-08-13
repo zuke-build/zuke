@@ -14,6 +14,7 @@
 import { gunzip, untar } from "../packages/core/mod.ts";
 import {
   assertEquals,
+  assertRejects,
   assertStringIncludes,
 } from "../packages/core/tests/_assert.ts";
 import {
@@ -104,6 +105,53 @@ Deno.test("the asset names are platform-prefixed the way Gemini matches", () => 
   for (const name of GEMINI_ASSET_NAMES) {
     assertEquals(name.endsWith(".tar.gz"), true, `${name} is not a .tar.gz`);
   }
+});
+
+Deno.test("a broken extension root fails with errors that name the fix", async () => {
+  const root = await Deno.makeTempDir();
+  try {
+    // No manifest at all.
+    await assertRejects(
+      () => geminiArchiveFiles(root),
+      Error,
+      "requires gemini-extension.json",
+    );
+    await Deno.writeTextFile(`${root}/gemini-extension.json`, "{}");
+    await assertRejects(() => geminiArchiveFiles(root), Error, "LICENSE");
+    await Deno.writeTextFile(`${root}/LICENSE`, "MIT");
+    // Manifest and license present, but no skills tree.
+    await assertRejects(
+      () => geminiArchiveFiles(root),
+      Error,
+      "requires a skills/ tree",
+    );
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test({
+  name: "a symlink under skills/ is refused, not silently dropped",
+  // Creating symlinks on Windows needs a privilege the CI runner may lack.
+  ignore: Deno.build.os === "windows",
+  fn: async () => {
+    // Git and the other harnesses would keep the linked content; an archive
+    // that silently loses it would ship different skills to Gemini.
+    const root = await extensionFixture();
+    try {
+      await Deno.symlink(
+        `${root}/skills/a-skill/SKILL.md`,
+        `${root}/skills/a-skill/linked.md`,
+      );
+      await assertRejects(
+        () => geminiArchiveFiles(root),
+        Error,
+        "linked.md",
+      );
+    } finally {
+      await Deno.remove(root, { recursive: true });
+    }
+  },
 });
 
 Deno.test("the repo's real tree packs cleanly", async () => {

@@ -339,6 +339,56 @@ Deno.test("readWorkflowResult tolerates malformed jobs", () => {
   ]);
 });
 
+Deno.test("readWorkflowResult defaults malformed or absent job fields", () => {
+  // A jobs field that is not an array reads as no jobs, not a crash.
+  const notArray = fakeState({
+    githubWorkflow: {
+      result: {
+        runId: 1,
+        conclusion: "success",
+        url: "u",
+        passed: true,
+        jobs: "nope",
+      },
+    },
+  });
+  assertEquals(readWorkflowResult(notArray)?.jobs, []);
+  // A job record with no fields defaults each one, the name included.
+  const empty = fakeState({
+    githubWorkflow: {
+      result: {
+        runId: 1,
+        conclusion: "success",
+        url: "u",
+        passed: true,
+        jobs: [{}],
+      },
+    },
+  });
+  assertEquals(readWorkflowResult(empty)?.jobs, [
+    { name: "", conclusion: "", url: "" },
+  ]);
+});
+
+Deno.test("a completed run with a null conclusion is recorded as unknown", async () => {
+  // GitHub can complete a run whose conclusion the API reports as null. That
+  // is not a pass, and the recorded conclusion must still say something
+  // readable rather than serialising a null.
+  const api = new ScriptedApi();
+  api.status = "completed";
+  api.conclusion = null;
+  const state = fakeState();
+  const trigger = githubWorkflowWith((g) => g.repo("a/b").workflow("w"), {
+    api,
+  });
+  const c = ctx(state);
+  await trigger.isSatisfied(NO_SIGNALS, c); // dispatch
+  assertEquals(await trigger.isSatisfied(NO_SIGNALS, c), true);
+  const result = readWorkflowResult(state);
+  assertEquals(result?.passed, false);
+  assertEquals(result?.conclusion, "unknown");
+});
+
 // --- M18: created-window correlation and marker fast-fail -------------------
 
 const DISPATCH_AT = Date.parse("2026-07-19T00:00:00.000Z");

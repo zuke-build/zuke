@@ -264,11 +264,20 @@ export async function uploadReleaseAsset(
 
   // Idempotence: a release that already carries the asset is left untouched —
   // published assets are immutable history, and re-running the pipeline must
-  // not churn them.
+  // not churn them. The one exception is an asset stuck in a non-`uploaded`
+  // state: an errored or interrupted upload reserves the name while serving
+  // nothing, and GitHub's documented recovery is delete-then-reupload — so a
+  // re-run must do exactly that rather than skip past the corpse forever.
   const assets = field(release, "assets");
   if (Array.isArray(assets)) {
     for (const asset of assets) {
-      if (field(asset, "name") === name) {
+      if (field(asset, "name") !== name) continue;
+      const state = field(asset, "state");
+      const assetId = field(asset, "id");
+      if (
+        (state === undefined || state === "uploaded") ||
+        typeof assetId !== "number"
+      ) {
         const url = field(asset, "browser_download_url");
         return {
           state: "already-exists",
@@ -277,6 +286,20 @@ export async function uploadReleaseAsset(
           releaseId,
           ...(typeof url === "string" ? { url } : {}),
         };
+      }
+      const deletion = await settings.fetch_(
+        `${settings.baseUrl_}/repos/${slug}/releases/assets/${assetId}`,
+        { method: "DELETE", headers },
+      );
+      const deletionText = await deletion.text();
+      // A 404 means the corpse was already cleaned up — the goal state.
+      if (!deletion.ok && deletion.status !== 404) {
+        throw new Error(
+          `deleting the stuck release asset "${name}" (state ${
+            String(state)
+          }) failed: ${deletion.status} ${deletion.statusText}. ` +
+            deletionText.slice(0, 400),
+        );
       }
     }
   }

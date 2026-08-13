@@ -49,6 +49,16 @@ async function walk(root: string, dir: string): Promise<string[]> {
     const path = `${dir}/${entry.name}`;
     if (entry.isDirectory) out.push(...await walk(root, path));
     else if (entry.isFile) out.push(path);
+    else {
+      // Silently dropping it would ship an archive missing content that git
+      // (and every other harness) still carries.
+      throw new Error(
+        `the Gemini extension archive cannot pack "${root}/${path}" — it is ` +
+          "neither a regular file nor a directory (a symlink?). Keep " +
+          `${GEMINI_SKILLS_DIR}/ to real files so every harness ships the ` +
+          "same content.",
+      );
+    }
   }
   return out.sort();
 }
@@ -58,7 +68,26 @@ async function walk(root: string, dir: string): Promise<string[]> {
  * order: the manifest, the license, then every file under `skills/`.
  */
 export async function geminiArchiveFiles(root = "."): Promise<string[]> {
-  return [GEMINI_MANIFEST, "LICENSE", ...await walk(root, GEMINI_SKILLS_DIR)];
+  for (const required of [GEMINI_MANIFEST, "LICENSE"]) {
+    const info = await Deno.stat(`${root}/${required}`).catch(() => null);
+    if (info?.isFile !== true) {
+      throw new Error(
+        `the Gemini extension archive requires ${required} at the extension ` +
+          `root — nothing at "${root}/${required}".`,
+      );
+    }
+  }
+  try {
+    return [GEMINI_MANIFEST, "LICENSE", ...await walk(root, GEMINI_SKILLS_DIR)];
+  } catch (error) {
+    if (error instanceof Deno.errors.NotFound) {
+      throw new Error(
+        `the Gemini extension archive requires a ${GEMINI_SKILLS_DIR}/ tree ` +
+          `under "${root}" — Gemini auto-discovers skills from it.`,
+      );
+    }
+    throw error;
+  }
 }
 
 /**
