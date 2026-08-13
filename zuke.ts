@@ -103,6 +103,10 @@ import {
 } from "./build/plugin_sync.ts";
 import { checkSkillTree } from "./build/skill_check.ts";
 import {
+  buildGeminiArchive,
+  GEMINI_ASSET_NAMES,
+} from "./build/gemini_archive.ts";
+import {
   bumpFailure,
   checkPluginVersionBump,
   defaultGitHistory,
@@ -1077,6 +1081,44 @@ class ZukeBuild extends Build {
         apply(s);
         return s;
       });
+
+      // Attach the Gemini CLI extension archive to whatever release is now
+      // "latest" — that is the release `gemini extensions install` resolves,
+      // and it changes on every package release, so each run tops it up.
+      // Idempotent: a release already carrying the assets is left untouched,
+      // and a repository with no releases yet is an ordinary skip. Best-effort
+      // on top: the archive is a nice-to-have for Gemini installs, not part of
+      // the release contract, and a throw here would redden the job after the
+      // releases already exist — skipping the JSR publish that `needs` this
+      // job. A warning plus the next run's top-up is the right trade.
+      const scratch = await Deno.makeTempDir();
+      try {
+        const archive = `${scratch}/zuke.tar.gz`;
+        const packed = await buildGeminiArchive(archive);
+        ConsoleTasks.info(
+          `Built the Gemini extension archive (${packed.length} file(s)).`,
+        );
+        for (const name of GEMINI_ASSET_NAMES) {
+          const result = await GhTasks.uploadReleaseAsset((s) =>
+            s.file(archive).name(name).repo(repo).token(token)
+          );
+          ConsoleTasks.info(
+            result.state === "no-release"
+              ? `No release to attach ${name} to yet.`
+              : `${name} on ${result.releaseTag}: ${result.state}.`,
+          );
+        }
+      } catch (error) {
+        ConsoleTasks.warn(
+          "Attaching the Gemini extension archive failed — the releases " +
+            "themselves are unaffected and the next release run tops the " +
+            `assets up: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+        );
+      } finally {
+        await Deno.remove(scratch, { recursive: true });
+      }
     });
 
   actionRelease = target()

@@ -13,12 +13,35 @@
 
 import {
   assertEquals,
+  assertRejects,
   assertStringIncludes,
 } from "../../core/tests/_assert.ts";
 import {
+  findPullRequest,
   type GhPullRequestSettings,
   openPullRequest,
 } from "../src/pull_request.ts";
+
+/** Run `fn` with `values` in the environment, restoring the originals after. */
+async function withEnv(
+  values: Record<string, string | undefined>,
+  fn: () => Promise<void>,
+): Promise<void> {
+  const saved = new Map<string, string | undefined>();
+  for (const [name, value] of Object.entries(values)) {
+    saved.set(name, Deno.env.get(name));
+    if (value === undefined) Deno.env.delete(name);
+    else Deno.env.set(name, value);
+  }
+  try {
+    await fn();
+  } finally {
+    for (const [name, value] of saved) {
+      if (value === undefined) Deno.env.delete(name);
+      else Deno.env.set(name, value);
+    }
+  }
+}
 
 /** One recorded request. */
 interface Call {
@@ -265,6 +288,199 @@ Deno.test("a head that is not the one asked for is not accepted", async () => {
     message = error instanceof Error ? error.message : String(error);
   }
   assertStringIncludes(message, "original 422");
+});
+
+Deno.test("findPullRequest returns the open proposal without opening one", async () => {
+  const { fetch, calls } = fakeFetch({
+    "GET /pulls?state=open&head=acme%3Atopic&base=master": {
+      status: 200,
+      body: [{
+        number: 4,
+        html_url: "https://github.com/acme/app/pull/4",
+        head: { ref: "topic" },
+        base: { ref: "master" },
+      }],
+    },
+  });
+  const result = await findPullRequest((s) =>
+    s.repo("acme/app").token("t").head("topic").base("master").fetch(fetch)
+  );
+  assertEquals(result, {
+    number: 4,
+    url: "https://github.com/acme/app/pull/4",
+    created: false,
+  });
+  // A read, and only a read: nothing was proposed on the caller's behalf.
+  assertEquals(calls.length, 1);
+  assertEquals(calls[0].method, "GET");
+});
+
+Deno.test("findPullRequest returns undefined when nothing is open", async () => {
+  const { fetch } = fakeFetch({
+    "GET /pulls?state=open&head=acme%3Atopic&base=master": {
+      status: 200,
+      body: [],
+    },
+  });
+  assertEquals(
+    await findPullRequest((s) =>
+      s.repo("acme/app").token("t").head("topic").base("master").fetch(fetch)
+    ),
+    undefined,
+  );
+});
+
+Deno.test("findPullRequest names its missing settings before any request", async () => {
+  // A bare call is legal to write, so the first missing setting is named —
+  // before the environment or the transport is consulted.
+  await assertRejects(
+    () => findPullRequest(),
+    Error,
+    "finding a pull request requires .head(...)",
+  );
+  await assertRejects(
+    () => findPullRequest((s) => s.head("topic")),
+    Error,
+    "finding a pull request requires .base(...)",
+  );
+});
+
+Deno.test("findPullRequest refuses a ref that would redirect the lookup", async () => {
+  // The head and base reach the lookup's query string, the same reason
+  // openPullRequest validates its own.
+  const { fetch, calls } = fakeFetch({});
+  await assertRejects(
+    () =>
+      findPullRequest((s) =>
+        s.repo("acme/app").token("t").head("../../../user/repos").base("master")
+          .fetch(fetch)
+      ),
+    Error,
+    "not a valid git ref name",
+  );
+  assertEquals(calls.length, 0);
+});
+
+Deno.test("a lookup entry that is not an object keeps the original error", async () => {
+  // Junk in the lookup body must fall through to the 422 that says what was
+  // refused, never be dressed up as an existing pull request.
+  const { fetch } = fakeFetch({
+    "POST /pulls": { status: 422, body: { message: "original 422" } },
+    "GET /pulls?state=open&head=acme%3Atopic&base=master": {
+      status: 200,
+      body: [null],
+    },
+  });
+  await assertRejects(
+    () =>
+      openPullRequest((s) =>
+        s.repo("acme/app").token("t").head("topic").base("master").title("t")
+          .fetch(fetch)
+      ),
+    Error,
+    "original 422",
+  );
+});
+
+Deno.test("a created response without a numeric number names the call", async () => {
+  // `readNumber` names the call whose response was malformed, rather than
+  // letting a string flow into the result as though it were the number.
+  const { fetch } = fakeFetch({
+    "POST /pulls": { status: 201, body: { number: "7", html_url: "u" } },
+  });
+  await assertRejects(
+    () =>
+      openPullRequest((s) =>
+        s.repo("acme/app").token("t").head("topic").base("master").title("t")
+          .fetch(fetch)
+      ),
+    Error,
+    "the pull request response has no number",
+  );
+});
+
+Deno.test("the repo and token fall back to the Actions environment", async () => {
+  // A job that already has GITHUB_REPOSITORY and GITHUB_TOKEN needs to name
+  // only what it is proposing.
+  await withEnv({
+    GITHUB_REPOSITORY: "acme/app",
+    GITHUB_TOKEN: "ghs_env",
+  }, async () => {
+    const seen: Array<{ url: string; auth: string | null }> = [];
+    const capture: typeof fetch = (input, init) => {
+      seen.push({
+        url: String(input),
+        auth: new Headers(init?.headers).get("authorization"),
+      });
+      return Promise.resolve(
+        new Response(JSON.stringify({ number: 7, html_url: "u" }), {
+          status: 201,
+        }),
+      );
+    };
+    const result = await openPullRequest((s) =>
+      s.head("topic").base("master").title("t").fetch(capture)
+    );
+    assertEquals(result.created, true);
+    // The env-resolved slug routed the request; the env token rode the header.
+    assertEquals(seen[0].url, "https://api.github.com/repos/acme/app/pulls");
+    assertEquals(seen[0].auth, "Bearer ghs_env");
+  });
+});
+
+Deno.test("a missing repo or token is named rather than sent empty", async () => {
+  await withEnv({
+    GITHUB_REPOSITORY: undefined,
+    GITHUB_TOKEN: undefined,
+  }, async () => {
+    const { fetch, calls } = fakeFetch({});
+    await assertRejects(
+      () =>
+        openPullRequest((s) =>
+          s.token("t").head("topic").base("master").title("t").fetch(fetch)
+        ),
+      Error,
+      ".repo('owner/name') (or GITHUB_REPOSITORY)",
+    );
+    await assertRejects(
+      () =>
+        openPullRequest((s) =>
+          s.repo("acme/app").head("topic").base("master").title("t").fetch(
+            fetch,
+          )
+        ),
+      Error,
+      ".token(...) (or GITHUB_TOKEN)",
+    );
+    // Both refusals happened before anything was sent.
+    assertEquals(calls.length, 0);
+  });
+});
+
+Deno.test("openPullRequest with no configuration names the first gap", async () => {
+  await assertRejects(
+    () => openPullRequest(),
+    Error,
+    "opening a pull request requires .head(...)",
+  );
+});
+
+Deno.test("baseUrl retargets the proposal at a GHES host", async () => {
+  const seen: string[] = [];
+  const capture: typeof fetch = (input) => {
+    seen.push(String(input));
+    return Promise.resolve(
+      new Response(JSON.stringify({ number: 1, html_url: "u" }), {
+        status: 201,
+      }),
+    );
+  };
+  await openPullRequest((s) =>
+    s.repo("acme/app").token("t").head("topic").base("master").title("t")
+      .baseUrl("https://ghe.example.com/api/v3/").fetch(capture)
+  );
+  // The trailing slash is trimmed, so no `//` appears in the request path.
+  assertEquals(seen[0], "https://ghe.example.com/api/v3/repos/acme/app/pulls");
 });
 
 Deno.test("a lookup that fails keeps the error that says what was refused", async () => {

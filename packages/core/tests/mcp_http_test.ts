@@ -360,3 +360,33 @@ Deno.test("serveMcp applies the build's identity hook to HTTP requests", async (
     await Deno.remove(dir, { recursive: true });
   }
 });
+
+Deno.test("serveMcp prints an HTTP banner naming the mode and (lack of) auth", async () => {
+  const origErr = console.error;
+  const banner: string[] = [];
+  console.error = (...a: unknown[]) => void banner.push(a.join(" "));
+  try {
+    const ac = new AbortController();
+    let setPort = (_: number) => {};
+    const portReady = new Promise<number>((r) => (setPort = r));
+    // Not quiet: the operator gets told where the server is and how open it is.
+    const finished = serveMcp(new Demo(), {
+      http: { host: "127.0.0.1", port: 0 },
+      readEnv: () => undefined, // no ZUKE_MCP_TOKEN
+      signal: ac.signal,
+      onListen: (a) => setPort(a.port),
+    });
+    await portReady;
+    ac.abort();
+    assertEquals(await finished, 0);
+  } finally {
+    console.error = origErr;
+  }
+  const text = banner.join("\n");
+  assertStringIncludes(text, "http://127.0.0.1:");
+  // Read-only, tokenless loopback: the banner says exactly that — and does not
+  // claim a registry is being served.
+  assertStringIncludes(text, "read-only");
+  assertStringIncludes(text, "no auth (loopback only)");
+  assertEquals(text.includes("registry"), false);
+});

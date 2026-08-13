@@ -1,10 +1,11 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals } from "../../core/tests/_assert.ts";
+import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
 import {
   aiCache,
   aiFixer,
+  AiReviewError,
   type Assessment,
   budget,
   type CacheEntry,
@@ -154,6 +155,53 @@ Deno.test("reviewer skips the call once the budget is exhausted", async () => {
   );
   assertEquals(calls.length, 0);
   assertEquals(lines.some((l) => l.includes("AI budget exhausted")), true);
+});
+
+Deno.test("the verify pass's own usage draws down the shared budget", async () => {
+  const b = budget((x) => x.maxTokens(100_000));
+  const finding = {
+    title: "weak hash",
+    severity: "high" as const,
+    file: "h.ts",
+  };
+  const id = findingFingerprint("security", {
+    title: "weak hash",
+    severity: "high",
+    file: "h.ts",
+  });
+  const responses = [
+    claude({ score: 8, severity: "high", summary: "s", findings: [finding] }, {
+      input_tokens: 10,
+      output_tokens: 5,
+    }),
+    // The verify verdict also reports usage — it must be folded in too.
+    JSON.stringify({
+      content: [{
+        type: "text",
+        text: JSON.stringify({
+          verdicts: [{ id, verdict: "refuted", reason: "not reachable" }],
+        }),
+      }],
+      stop_reason: "end_turn",
+      usage: { input_tokens: 7, output_tokens: 3 },
+    }),
+  ];
+  let served = 0;
+  const queued: typeof fetch = () =>
+    Promise.resolve(
+      new Response(responses[Math.min(served++, responses.length - 1)], {
+        status: 200,
+      }),
+    );
+  await captured(() =>
+    // Passes: the sole finding was refuted, so nothing gates.
+    securityReviewer((r) =>
+      r.provider("claude").apiKey("k").diff((d) => d.text(DIFF))
+        .fetch(queued).budget(b).verify()
+    ).validate({ target: "t" })
+  );
+  assertEquals(b.spend_().calls, 2); // review + verify both recorded
+  assertEquals(b.spend_().totalTokens, 25);
 });
 
 // ----- Cache ---------------------------------------------------------------
@@ -317,6 +365,65 @@ Deno.test("an empty suppress list leaves the findings untouched", async () => {
     ).validate({ target: "t" })
   );
   assertEquals(lines.some((l) => l.includes("suppressed")), false);
+});
+
+Deno.test("a suppress list that matches no finding drops nothing", async () => {
+  // A non-empty list whose fingerprints belong to some other finding: the
+  // assessment must pass through untouched, so the critical finding still
+  // trips the default gate.
+  const sup = suppressions((s) => s.add("ffffffffffffffff"));
+  const { fetch } = recordFetch(
+    claude({
+      score: 9,
+      severity: "critical",
+      summary: "bad",
+      findings: [{ title: "rce", severity: "critical" }],
+    }),
+  );
+  const lines = await captured(async () => {
+    await assertRejects(
+      () =>
+        securityReviewer((r) =>
+          r.provider("claude").apiKey("k").diff((d) => d.text(DIFF))
+            .fetch(fetch).suppress(sup)
+        ).validate({ target: "t" }),
+      AiReviewError, // the unrelated fingerprint muted nothing
+    );
+  });
+  assertEquals(lines.some((l) => l.includes("suppressed")), false);
+});
+
+Deno.test("the verify pass is skipped once the review call exhausts the budget", async () => {
+  // The review itself fits under the cap check (0 < 1) but its usage blows the
+  // cap, so the verify pass that follows must be skipped — visibly — and the
+  // unverified finding must keep gating.
+  const b = budget((x) => x.maxTokens(1));
+  const { fetch, calls } = recordFetch(
+    claude(
+      {
+        score: 9,
+        severity: "critical",
+        summary: "bad",
+        findings: [{ title: "rce", severity: "critical" }],
+      },
+      { input_tokens: 500, output_tokens: 100 },
+    ),
+  );
+  const lines = await captured(async () => {
+    await assertRejects(
+      () =>
+        securityReviewer((r) =>
+          r.provider("claude").apiKey("k").diff((d) => d.text(DIFF))
+            .fetch(fetch).budget(b).verify()
+        ).validate({ target: "t" }),
+      AiReviewError, // the finding was kept, not silently verified away
+    );
+  });
+  assertEquals(calls.length, 1); // the review call only — no verify call
+  assertEquals(
+    lines.some((l) => l.includes("verify pass skipped — AI budget exhausted")),
+    true,
+  );
 });
 
 // ----- Report rendering ----------------------------------------------------

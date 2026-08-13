@@ -339,6 +339,56 @@ Deno.test("readWorkflowResult tolerates malformed jobs", () => {
   ]);
 });
 
+Deno.test("readWorkflowResult defaults malformed or absent job fields", () => {
+  // A jobs field that is not an array reads as no jobs, not a crash.
+  const notArray = fakeState({
+    githubWorkflow: {
+      result: {
+        runId: 1,
+        conclusion: "success",
+        url: "u",
+        passed: true,
+        jobs: "nope",
+      },
+    },
+  });
+  assertEquals(readWorkflowResult(notArray)?.jobs, []);
+  // A job record with no fields defaults each one, the name included.
+  const empty = fakeState({
+    githubWorkflow: {
+      result: {
+        runId: 1,
+        conclusion: "success",
+        url: "u",
+        passed: true,
+        jobs: [{}],
+      },
+    },
+  });
+  assertEquals(readWorkflowResult(empty)?.jobs, [
+    { name: "", conclusion: "", url: "" },
+  ]);
+});
+
+Deno.test("a completed run with a null conclusion is recorded as unknown", async () => {
+  // GitHub can complete a run whose conclusion the API reports as null. That
+  // is not a pass, and the recorded conclusion must still say something
+  // readable rather than serialising a null.
+  const api = new ScriptedApi();
+  api.status = "completed";
+  api.conclusion = null;
+  const state = fakeState();
+  const trigger = githubWorkflowWith((g) => g.repo("a/b").workflow("w"), {
+    api,
+  });
+  const c = ctx(state);
+  await trigger.isSatisfied(NO_SIGNALS, c); // dispatch
+  assertEquals(await trigger.isSatisfied(NO_SIGNALS, c), true);
+  const result = readWorkflowResult(state);
+  assertEquals(result?.passed, false);
+  assertEquals(result?.conclusion, "unknown");
+});
+
 // --- M18: created-window correlation and marker fast-fail -------------------
 
 const DISPATCH_AT = Date.parse("2026-07-19T00:00:00.000Z");
@@ -892,6 +942,55 @@ Deno.test("RestGhWorkflowApi aborts a hung request via its timeout", async () =>
     timeoutMs: 5,
   });
   await assertRejects(() => api.getRun("a/b", 1)); // aborts, does not hang
+});
+
+Deno.test("the default transport reads GH_TOKEN before GITHUB_TOKEN", async () => {
+  // The same order the gh CLI resolves its token, injected through the readEnv
+  // seam so the test never touches the real environment.
+  const url = "https://api.github.com/repos/a/b/actions/workflows/w/dispatches";
+  const both = routerFetch({ [`POST ${url}`]: {} });
+  const preferGh = githubWorkflowWith((g) => g.repo("a/b").workflow("w"), {
+    fetch: both.fetch,
+    readEnv: (name) =>
+      name === "GH_TOKEN"
+        ? "gh_tok"
+        : name === "GITHUB_TOKEN"
+        ? "shadowed"
+        : undefined,
+  });
+  await preferGh.isSatisfied(NO_SIGNALS, ctx(fakeState())); // dispatch
+  assertEquals(
+    new Headers(both.calls[0].init?.headers).get("authorization"),
+    "Bearer gh_tok",
+  );
+
+  // Without GH_TOKEN the workflow token GITHUB_TOKEN fills in.
+  const fallback = routerFetch({ [`POST ${url}`]: {} });
+  const usesGithub = githubWorkflowWith((g) => g.repo("a/b").workflow("w"), {
+    fetch: fallback.fetch,
+    readEnv: (name) => name === "GITHUB_TOKEN" ? "fallback_tok" : undefined,
+  });
+  await usesGithub.isSatisfied(NO_SIGNALS, ctx(fakeState()));
+  assertEquals(
+    new Headers(fallback.calls[0].init?.headers).get("authorization"),
+    "Bearer fallback_tok",
+  );
+});
+
+Deno.test("RestGhWorkflowApi tolerates a 2xx body that is not an object", async () => {
+  // A proxy answering with a JSON array instead of the run object: the read
+  // degrades to the same defaults as an empty run, not a crash on indexing.
+  const { fetch } = routerFetch({
+    "GET https://api.github.com/repos/a/b/actions/runs/9": [],
+  });
+  assertEquals(await new RestGhWorkflowApi({ fetch }).getRun("a/b", 9), {
+    id: 0,
+    status: "unknown",
+    conclusion: null,
+    url: "",
+    createdAt: "",
+    headBranch: "",
+  });
 });
 
 Deno.test("RestGhWorkflowApi maps missing run/job fields to defaults", async () => {

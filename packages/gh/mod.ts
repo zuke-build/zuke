@@ -52,6 +52,12 @@ export {
   uploadSarifReport,
 } from "./src/sarif.ts";
 export {
+  type GhReleaseAssetApi,
+  type GhReleaseAssetResult,
+  GhReleaseAssetSettings,
+  uploadReleaseAsset,
+} from "./src/release_asset.ts";
+export {
   type CorrelateMode,
   githubWorkflow,
   GithubWorkflowSettings,

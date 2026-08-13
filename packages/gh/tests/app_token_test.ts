@@ -16,7 +16,28 @@ import {
   assertStringIncludes,
 } from "../../core/tests/_assert.ts";
 import { GhTasks } from "../mod.ts";
-import { GhAppTokenSettings } from "../src/app_token.ts";
+import { GhAppTokenSettings, mintAppToken } from "../src/app_token.ts";
+
+/** Run `fn` with `values` in the environment, restoring the originals after. */
+async function withEnv(
+  values: Record<string, string | undefined>,
+  fn: () => Promise<void>,
+): Promise<void> {
+  const saved = new Map<string, string | undefined>();
+  for (const [name, value] of Object.entries(values)) {
+    saved.set(name, Deno.env.get(name));
+    if (value === undefined) Deno.env.delete(name);
+    else Deno.env.set(name, value);
+  }
+  try {
+    await fn();
+  } finally {
+    for (const [name, value] of saved) {
+      if (value === undefined) Deno.env.delete(name);
+      else Deno.env.set(name, value);
+    }
+  }
+}
 
 /** A recorded request the fake `fetch` saw. */
 interface Seen {
@@ -342,6 +363,72 @@ Deno.test("an owner or repository that would redirect the mint is refused", () =
       message = error instanceof Error ? error.message : String(error);
     }
     assertStringIncludes(message, "not a valid git ref name");
+  }
+});
+
+Deno.test("appToken with no configuration is refused before any request", async () => {
+  // A bare call is legal to write, so its first missing setting must be named
+  // — and refused before the transport is touched.
+  await assertRejects(() => mintAppToken(), Error, ".appId(...)");
+});
+
+Deno.test("a 2xx body that is not a JSON object is named per endpoint", async () => {
+  const { pkcs8 } = await testKeys();
+  // Valid JSON, but a string — indexing it as the installation would surface a
+  // TypeError naming no endpoint.
+  await assertRejects(
+    () =>
+      GhTasks.appToken((s) =>
+        s.appId("1").privateKey(pkcs8).owner("acme").fetch(
+          fakeGithub([], { installation: "not an object" }),
+        )
+      ),
+    Error,
+    "resolving the app installation returned a body that is not JSON",
+  );
+
+  // Not JSON at all — a proxy or gateway answering instead of GitHub. The body
+  // is the evidence of who actually answered, so a prefix of it comes along.
+  const gateway: typeof fetch = () =>
+    Promise.resolve(new Response("<html>gateway</html>", { status: 200 }));
+  const error = await assertRejects(
+    () =>
+      GhTasks.appToken((s) =>
+        s.appId("1").privateKey(pkcs8).owner("acme").fetch(gateway)
+      ),
+    Error,
+    "returned a body that is not JSON",
+  );
+  assertStringIncludes(error.message, "<html>gateway</html>");
+});
+
+Deno.test("the minted token is masked in Actions logs, and only there", async () => {
+  // Matching what actions/create-github-app-token does: inside Actions the
+  // runner is told to mask the token, so passing it onward through env cannot
+  // leak it into a log. Outside Actions the directive would just be noise.
+  const { pkcs8 } = await testKeys();
+  const logged: string[] = [];
+  const original = console.log;
+  console.log = (...args: unknown[]): void => {
+    logged.push(args.map(String).join(" "));
+  };
+  try {
+    await withEnv({ GITHUB_ACTIONS: "true" }, async () => {
+      await GhTasks.appToken((s) =>
+        s.appId("1").privateKey(pkcs8).owner("acme").fetch(fakeGithub([]))
+      );
+    });
+    assertEquals(logged, ["::add-mask::ghs_installation"]);
+
+    logged.length = 0;
+    await withEnv({ GITHUB_ACTIONS: undefined }, async () => {
+      await GhTasks.appToken((s) =>
+        s.appId("1").privateKey(pkcs8).owner("acme").fetch(fakeGithub([]))
+      );
+    });
+    assertEquals(logged, []);
+  } finally {
+    console.log = original;
   }
 });
 

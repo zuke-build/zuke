@@ -1465,3 +1465,387 @@ class SettlesAfterCancelling extends FileSystemStateStore {
     return result;
   }
 }
+
+/**
+ * A store where the run finishes the instant a canceller tries to move it to
+ * `cancelling` — the transition's compare-and-swap loses, and the re-read finds
+ * the run terminal.
+ */
+class FinishesBeforeCancelling extends FileSystemStateStore {
+  #landed = false;
+  /** Land a competing `succeeded` write, then let the CAS conflict with it. */
+  override async putRun(
+    record: RunRecord,
+    expected: string | null,
+  ): Promise<PutResult> {
+    if (record.status !== "cancelling" || this.#landed) {
+      return await super.putRun(record, expected);
+    }
+    this.#landed = true;
+    const loaded = await this.getRun(record.id);
+    if (loaded !== null) {
+      const winner = structuredClone(loaded.record);
+      winner.status = "succeeded";
+      await super.putRun(winner, loaded.version);
+    }
+    return await super.putRun(record, expected); // now conflicts
+  }
+}
+
+Deno.test("a cancel that loses the transition race reports the run's terminal status", async () => {
+  // The run finished between the canceller's read and its write. The CAS
+  // conflicts, the re-read finds `succeeded`, and the cancel becomes a
+  // friendly no-op naming that status — never a walk over a finished run.
+  const dir = await Deno.makeTempDir();
+  try {
+    class B extends Build {
+      deploy = target().executes(() => {});
+    }
+    const build = new B();
+    discoverTargets(build);
+    const store = new FinishesBeforeCancelling(`${dir}/runs`, defaultStateHost);
+    const seeded: RunRecord = {
+      ...craftRecord("deploy", { deploy: { status: "succeeded", meta: {} } }),
+      id: "run-race",
+      status: "suspended",
+    };
+    assertEquals((await store.putRun(seeded, null)).ok, true);
+
+    const lines: string[] = [];
+    const result = await cancelRun(build, {
+      runId: "run-race",
+      stateStore: store,
+      reporter: { info: (l) => lines.push(l), error: (l) => lines.push(l) },
+    });
+    assertEquals(result.noop, true);
+    assertEquals(result.status, "succeeded");
+    assertEquals(
+      lines.some((l) => l.includes("already succeeded; nothing to cancel")),
+      true,
+    );
+    assertEquals((await store.getRun("run-race"))?.record.status, "succeeded");
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+/** A store where the run vanishes the moment the transition CAS conflicts. */
+class VanishesOnCancel extends FileSystemStateStore {
+  #conflicted = false;
+  /** Conflict the first `cancelling` write; the run is gone after that. */
+  override putRun(
+    record: RunRecord,
+    expected: string | null,
+  ): Promise<PutResult> {
+    if (record.status === "cancelling" && !this.#conflicted) {
+      this.#conflicted = true;
+      return Promise.resolve({ ok: false, conflict: true });
+    }
+    return super.putRun(record, expected);
+  }
+  /** Pruned mid-cancel: nothing to read back. */
+  override getRun(
+    id: string,
+  ): Promise<{ record: RunRecord; version: string } | null> {
+    if (this.#conflicted) return Promise.resolve(null);
+    return super.getRun(id);
+  }
+}
+
+Deno.test("a run that vanishes mid-cancel is a no-op, not a crash", async () => {
+  // Pruned between the read and the write (a retention sweep, a manual
+  // delete): there is nothing left to cancel, and the caller is told so.
+  const dir = await Deno.makeTempDir();
+  try {
+    class B extends Build {
+      deploy = target().executes(() => {});
+    }
+    const build = new B();
+    discoverTargets(build);
+    const store = new VanishesOnCancel(`${dir}/runs`, defaultStateHost);
+    const seeded: RunRecord = {
+      ...craftRecord("deploy", { deploy: { status: "succeeded", meta: {} } }),
+      id: "run-gone",
+      status: "suspended",
+    };
+    assertEquals((await store.putRun(seeded, null)).ok, true);
+
+    const result = await cancelRun(build, {
+      runId: "run-gone",
+      stateStore: store,
+      silent: true,
+    });
+    assertEquals(result.noop, true);
+    // With nothing left to read, the status defaults to what a cancel means.
+    assertEquals(result.status, "cancelled");
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+/** A store that never accepts the `cancelling` transition. */
+class RefusesCancelling extends FileSystemStateStore {
+  /** Conflict every `cancelling` write. */
+  override putRun(
+    record: RunRecord,
+    expected: string | null,
+  ): Promise<PutResult> {
+    if (record.status === "cancelling") {
+      return Promise.resolve({ ok: false, conflict: true });
+    }
+    return super.putRun(record, expected);
+  }
+}
+
+Deno.test("cancelRun surfaces a store that never accepts the transition", async () => {
+  // Bounded retries: a store outage (or a pathological writer) must produce a
+  // named error, not an infinite CAS loop.
+  const dir = await Deno.makeTempDir();
+  try {
+    class B extends Build {
+      deploy = target().executes(() => {});
+    }
+    const build = new B();
+    discoverTargets(build);
+    const store = new RefusesCancelling(`${dir}/runs`, defaultStateHost);
+    const seeded: RunRecord = {
+      ...craftRecord("deploy", { deploy: { status: "succeeded", meta: {} } }),
+      id: "run-stuck",
+      status: "suspended",
+    };
+    assertEquals((await store.putRun(seeded, null)).ok, true);
+
+    await assertRejects(
+      () =>
+        cancelRun(build, {
+          runId: "run-stuck",
+          stateStore: store,
+          silent: true,
+        }),
+      Error,
+      "gave up cancelling",
+    );
+    // The run is untouched, so a retry can still cancel it.
+    assertEquals((await store.getRun("run-stuck"))?.record.status, "suspended");
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+/** A store where the run vanishes right after the `cancelling` transition lands. */
+class VanishesAfterCancelling extends FileSystemStateStore {
+  #transitioned = false;
+  /** Persist normally, remembering when the transition landed. */
+  override async putRun(
+    record: RunRecord,
+    expected: string | null,
+  ): Promise<PutResult> {
+    const result = await super.putRun(record, expected);
+    if (result.ok && record.status === "cancelling") this.#transitioned = true;
+    return result;
+  }
+  /** Gone from the store from that moment on. */
+  override getRun(
+    id: string,
+  ): Promise<{ record: RunRecord; version: string } | null> {
+    if (this.#transitioned) return Promise.resolve(null);
+    return super.getRun(id);
+  }
+}
+
+Deno.test("a run that vanishes after the transition still gets its compensations", async () => {
+  // The canceller's own snapshot is the last word when the record disappears:
+  // the walk still runs from it, and the missing settlement write is a clean
+  // return, not an error — the record it would update no longer exists.
+  const dir = await Deno.makeTempDir();
+  try {
+    const undone: string[] = [];
+    class B extends Build {
+      rollback = target().executes(() => void undone.push("deploy"));
+      deploy = target().onCancel(this.rollback).executes(() => {});
+    }
+    const build = new B();
+    discoverTargets(build);
+    const store = new VanishesAfterCancelling(`${dir}/runs`, defaultStateHost);
+    const seeded: RunRecord = {
+      ...craftRecord("deploy", { deploy: { status: "succeeded", meta: {} } }),
+      id: "run-late-gone",
+      status: "suspended",
+    };
+    assertEquals((await store.putRun(seeded, null)).ok, true);
+
+    const result = await cancelRun(build, {
+      runId: "run-late-gone",
+      stateStore: store,
+      silent: true,
+    });
+    assertEquals(result.noop, false);
+    assertEquals(result.status, "cancelled");
+    assertEquals(undone, ["deploy"]); // the walk ran from the snapshot
+    assertEquals(result.compensated, ["rollback"]);
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+/** A store that never accepts a terminal settlement write. */
+class RefusesSettlement extends FileSystemStateStore {
+  /** Conflict every `cancelled` write. */
+  override putRun(
+    record: RunRecord,
+    expected: string | null,
+  ): Promise<PutResult> {
+    if (record.status === "cancelled") {
+      return Promise.resolve({ ok: false, conflict: true });
+    }
+    return super.putRun(record, expected);
+  }
+}
+
+Deno.test("cancelRun surfaces a store that never accepts the settlement", async () => {
+  // The other bounded loop: compensations ran but the terminal write cannot
+  // land. Surfacing the outage beats silently leaving the run `cancelling` —
+  // and a re-cancel then recovers it.
+  const dir = await Deno.makeTempDir();
+  try {
+    class B extends Build {
+      deploy = target().executes(() => {});
+    }
+    const build = new B();
+    discoverTargets(build);
+    const store = new RefusesSettlement(`${dir}/runs`, defaultStateHost);
+    const seeded: RunRecord = {
+      ...craftRecord("deploy", { deploy: { status: "succeeded", meta: {} } }),
+      id: "run-unsettled",
+      status: "suspended",
+    };
+    assertEquals((await store.putRun(seeded, null)).ok, true);
+
+    await assertRejects(
+      () =>
+        cancelRun(build, {
+          runId: "run-unsettled",
+          stateStore: store,
+          silent: true,
+        }),
+      Error,
+      "gave up finalizing",
+    );
+    // Left `cancelling`, which a re-cancel recovers (tested above).
+    assertEquals(
+      (await store.getRun("run-unsettled"))?.record.status,
+      "cancelling",
+    );
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("an extra compensation naming a missing target is skipped, not fatal", async () => {
+  // The `also` list is how a timed-out wait's onTimeout names a specific
+  // compensation target. A build edit can remove that target before the
+  // timeout fires; the cancel must still unwind everything else.
+  await withTempStore(async (store) => {
+    const undone: string[] = [];
+    const makeBuild = () => {
+      class B extends Build {
+        deploy = target().executes(() => {}).onCancel(() => this.rollback);
+        rollback = target().executes(() => void undone.push("deploy"));
+        gate = target()
+          .dependsOn(this.deploy)
+          .waitsFor((s) => s.on(externalSignal("x")));
+      }
+      const build = new B();
+      discoverTargets(build);
+      return build;
+    };
+    const a = makeBuild();
+    await execute(a, a.gate, { silent: true, stateStore: store });
+    const id = (await store.listRuns({}))[0].id;
+
+    const result = await cancelRun(makeBuild(), {
+      runId: id,
+      stateStore: store,
+      silent: true,
+      also: ["ghost"], // no such target in this build
+    });
+    assertEquals(result.status, "cancelled");
+    assertEquals(result.compensated, ["rollback"]); // the rest still ran
+    assertEquals(result.failures, []);
+  });
+});
+
+Deno.test("the default reporter routes cancel diagnostics to the console's error stream", async () => {
+  // With no reporter and no `silent`, cancel prints through the console — and
+  // its diagnostics (a failed compensation) must land on stderr, where CI log
+  // scrapers and shell redirections expect errors.
+  await withTempStore(async (store) => {
+    const makeBuild = () => {
+      class B extends Build {
+        deploy = target().executes(() => {}).onCancel(() => this.rollback);
+        rollback = target().executes(() => {
+          throw new Error("cleanup boom");
+        });
+        gate = target()
+          .dependsOn(this.deploy)
+          .waitsFor((s) => s.on(externalSignal("x")));
+      }
+      const build = new B();
+      discoverTargets(build);
+      return build;
+    };
+    const a = makeBuild();
+    await execute(a, a.gate, { silent: true, stateStore: store });
+    const id = (await store.listRuns({}))[0].id;
+
+    const logs: string[] = [];
+    const errs: string[] = [];
+    const originalLog = console.log;
+    const originalError = console.error;
+    console.log = (...data: unknown[]) => void logs.push(data.join(" "));
+    console.error = (...data: unknown[]) => void errs.push(data.join(" "));
+    try {
+      const result = await cancelRun(makeBuild(), {
+        runId: id,
+        stateStore: store,
+      });
+      assertEquals(result.failures.length, 1);
+    } finally {
+      console.log = originalLog;
+      console.error = originalError;
+    }
+    assertEquals(
+      errs.some((l) =>
+        l.includes("compensation") && l.includes("cleanup boom")
+      ),
+      true,
+    );
+    // Progress narration stays on stdout.
+    assertEquals(logs.some((l) => l.includes("compensating")), true);
+  });
+});
+
+Deno.test("without a redactor, a compensation failure message is kept verbatim", async () => {
+  // The executor's in-process walk can run with no redactor (no secrets are
+  // known); the failure text must then pass through untouched — masking is
+  // opt-in, not a mangling of every message.
+  class CD extends Build {
+    deploy = target().executes(() => {}).onCancel(() => this.rollback);
+    rollback = target().executes(() => {
+      throw new Error("exact diagnostic text");
+    });
+  }
+  const build = new CD();
+  discoverTargets(build);
+  const record = craftRecord("deploy", {
+    deploy: { status: "succeeded", meta: {} },
+  });
+  const outcome = await runCompensations([build.deploy], record, {
+    runId: "run",
+    signals: new Map(),
+    reporter: { info: () => {}, error: () => {} },
+    // no redactor
+  });
+  assertEquals(outcome.failures.length, 1);
+  assertEquals(outcome.failures[0].error, "exact diagnostic text");
+});

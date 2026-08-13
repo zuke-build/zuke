@@ -302,3 +302,70 @@ Deno.test("eligible is the one gate both resolution paths share", () => {
     false,
   );
 });
+
+Deno.test("dedupNotes carries an empty file for a hand-built file-less pair", () => {
+  // planDedup never offers a file-less pair, but the serializer is its own
+  // contract: a missing file travels as "", never as the string "undefined".
+  const notes = dedupNotes({
+    pairs: [{
+      label: "p1",
+      candidate: candidate("c1", { file: undefined, detail: "why" }),
+      prior: prior("p1"),
+    }],
+    dropped: 0,
+  });
+  assertEquals(notes, [{
+    label: "p1",
+    file: "",
+    title: "finding c1",
+    detail: "why",
+    priorTitle: "prior p1",
+  }]);
+});
+
+Deno.test("planDedup round-robins past a candidate with fewer matches", () => {
+  // c1 has two eligible priors, c2 (in another file) has one. At depth two the
+  // round-robin must skip c2's exhausted list and still offer c1's second pair.
+  const plan = planDedup(
+    [candidate("c1"), candidate("c2", { file: "src/other.ts" })],
+    [prior("p1"), prior("p2"), prior("p3", { file: "src/other.ts" })],
+  );
+  assertEquals(
+    plan.pairs.map((p) => [p.candidate.id, p.prior.id]),
+    [["c1", "p1"], ["c2", "p3"], ["c1", "p2"]],
+  );
+  assertEquals(plan.dropped, 0);
+});
+
+Deno.test("sameAs ignores a hand-built pair whose candidate has no identity", () => {
+  // A pair can only enter a plan through planDedup today, but sameAs guards its
+  // own input: without a candidate id there is nothing to rename, so a "same"
+  // verdict on such a pair must resolve nothing.
+  for (const id of [undefined, ""]) {
+    const plan = {
+      pairs: [{
+        label: "p1",
+        candidate: candidate("c1", { id }),
+        prior: prior("p1"),
+      }],
+      dropped: 0,
+    };
+    const result = sameAs(plan, verdicts(["p1", "same"]));
+    assertEquals(result.matches.size, 0);
+    assertEquals(result.ambiguous, []);
+  }
+});
+
+Deno.test("adoptCanonicalIds skips a finding that has no id at all", () => {
+  const bare = candidate("c1", { id: undefined });
+  const matched = candidate("c2");
+  const target = prior("p1");
+  const adoptions = adoptCanonicalIds(
+    [bare, matched],
+    new Map([["c2", target]]),
+  );
+  // Only the identified finding adopts; the bare one is left untouched.
+  assertEquals(adoptions, [{ alias: "c2", prior: target }]);
+  assertEquals(matched.id, "p1");
+  assertEquals(bare.id, undefined);
+});

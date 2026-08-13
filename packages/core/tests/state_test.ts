@@ -12,6 +12,7 @@ import {
   parseRunSummary,
   type RunRecord,
   stringifyRunRecord,
+  toJsonValue,
   toSummary,
 } from "../src/state/types.ts";
 import {
@@ -25,6 +26,7 @@ import { envStateStore, resolveStateStore } from "../src/state/resolve.ts";
 import { HttpError } from "../src/http.ts";
 import {
   buildRunRecord,
+  ciRunUrl,
   recordStatusOf,
   resolveActor,
 } from "../src/state/record.ts";
@@ -1461,4 +1463,284 @@ Deno.test("deleting a run leaves its lock records alone", async () => {
   } finally {
     await Deno.remove(dir, { recursive: true });
   }
+});
+
+// ------------------------------------------------- types: malformed branches
+
+Deno.test("parseRunRecord rejects malformed optional and nested fields", () => {
+  const cases: Array<[string, string]> = [
+    // An optional string field present with the wrong type.
+    [
+      JSON.stringify({ ...sampleRecord(), buildId: 5 }),
+      'field "buildId" is not a string',
+    ],
+    [
+      JSON.stringify({
+        ...sampleRecord(),
+        targets: { a: { status: "pending", meta: {}, effects: "x" } },
+      }),
+      "effects is not an object",
+    ],
+    [
+      JSON.stringify({
+        ...sampleRecord(),
+        targets: { a: { status: "pending", meta: {}, effects: { e: 5 } } },
+      }),
+      "effect state is not an object",
+    ],
+    [
+      JSON.stringify({
+        ...sampleRecord(),
+        targets: {
+          a: {
+            status: "pending",
+            meta: {},
+            effects: { e: { status: "weird", intentAt: "t", attempts: 1 } },
+          },
+        },
+      }),
+      'unknown effect status "weird"',
+    ],
+    [
+      JSON.stringify({
+        ...sampleRecord(),
+        targets: {
+          a: {
+            status: "pending",
+            meta: {},
+            effects: { e: { status: "pending", intentAt: "t", attempts: 0 } },
+          },
+        },
+      }),
+      "effect attempts is not a positive integer",
+    ],
+    [
+      JSON.stringify({
+        ...sampleRecord(),
+        targets: { a: { status: "waiting", meta: {}, waitingFor: "x" } },
+      }),
+      "waitingFor is not an object",
+    ],
+    [
+      JSON.stringify({ ...sampleRecord(), events: "x" }),
+      '"events" is not an array',
+    ],
+    [
+      JSON.stringify({ ...sampleRecord(), events: [5] }),
+      "run event is not an object",
+    ],
+    [
+      JSON.stringify({
+        ...sampleRecord(),
+        events: [{ at: "t", tool: "x", actor: "a", outcome: "weird" }],
+      }),
+      'unknown run event outcome "weird"',
+    ],
+    [
+      JSON.stringify({ ...sampleRecord(), signals: { s: 5 } }),
+      "signal record is not an object",
+    ],
+    [
+      JSON.stringify({ ...sampleRecord(), intendedTerminal: "weird" }),
+      'unknown intended terminal status "weird"',
+    ],
+  ];
+  for (const [text, needle] of cases) {
+    assertThrows(() => parseRunRecord(text), Error, needle);
+  }
+});
+
+Deno.test("parseRunRecord defaults an absent target meta and signal data", () => {
+  const parsed = parseRunRecord(JSON.stringify({
+    ...sampleRecord(),
+    // A target state written without a `meta` key still parses (empty meta),
+    // and a signal without `data` reads back as a null payload.
+    targets: { a: { status: "pending" } },
+    signals: { approved: { receivedAt: "2026-07-17T10:00:00.000Z" } },
+  }));
+  assertEquals(parsed.targets.a, { status: "pending", meta: {} });
+  assertEquals(parsed.signals.approved, {
+    data: null,
+    receivedAt: "2026-07-17T10:00:00.000Z",
+  });
+});
+
+Deno.test("parseRunRecord round-trips effects, events, and terminal intent", () => {
+  const record = sampleRecord({
+    status: "cancelling",
+    buildId: "org/app",
+    deadlineAt: "2026-07-18T10:00:00.000Z",
+    intendedTerminal: "failed",
+    targets: {
+      deploy: {
+        status: "failed",
+        meta: {},
+        error: "boom",
+        effects: {
+          notify: {
+            status: "failed",
+            intentAt: "2026-07-17T10:00:01.000Z",
+            settledAt: "2026-07-17T10:00:02.000Z",
+            error: "smtp down",
+            attempts: 2,
+          },
+          record: {
+            status: "pending",
+            intentAt: "2026-07-17T10:00:03.000Z",
+            attempts: 1,
+          },
+        },
+      },
+    },
+    events: [{
+      at: "2026-07-17T10:00:04.000Z",
+      tool: "signal_run",
+      actor: "mcp:client",
+      outcome: "denied",
+      args: { name: "approved" },
+      detail: "actor not allowed",
+    }],
+  });
+  assertEquals(parseRunRecord(stringifyRunRecord(record)), record);
+});
+
+Deno.test("toJsonValue passes JSON through and rejects a non-JSON value", () => {
+  assertEquals(toJsonValue({ a: [1, "x", true, null], b: { c: 2 } }), {
+    a: [1, "x", true, null],
+    b: { c: 2 },
+  });
+  // A value JSON cannot represent must be named, not silently dropped.
+  assertThrows(
+    () => toJsonValue(undefined),
+    Error,
+    'value of type "undefined" is not JSON',
+  );
+  assertThrows(
+    () => toJsonValue(() => 1),
+    Error,
+    'value of type "function" is not JSON',
+  );
+});
+
+// ------------------------------------------------- record: mapping branches
+
+Deno.test("recordStatusOf maps a waiting target onto the record vocabulary", () => {
+  assertEquals(recordStatusOf("waiting"), "waiting");
+});
+
+Deno.test("ciRunUrl derives the GitHub Actions run URL only when fully set", () => {
+  const full: Record<string, string> = {
+    GITHUB_SERVER_URL: "https://github.com",
+    GITHUB_REPOSITORY: "o/r",
+    GITHUB_RUN_ID: "123",
+  };
+  assertEquals(
+    ciRunUrl((n) => full[n]),
+    "https://github.com/o/r/actions/runs/123",
+  );
+  // Any missing piece means no URL — a partial one would link nowhere.
+  for (const missing of Object.keys(full)) {
+    const partial = { ...full };
+    delete partial[missing];
+    assertEquals(ciRunUrl((n) => partial[n]), undefined);
+  }
+});
+
+Deno.test("buildRunRecord tolerates an unnamed target and stamps optional fields", () => {
+  // A builder that never went through discoverTargets has no name; the record
+  // still forms (empty name) instead of crashing mid-run.
+  const anonymous = target().executes(() => {});
+  const record = buildRunRecord({
+    runId: "run-y",
+    build: "B",
+    buildId: "org/app",
+    rootTarget: "work",
+    actor: "alice",
+    now: "2026-07-17T10:00:00.000Z",
+    order: [anonymous],
+    params: [],
+    deadlineAt: "2026-07-18T10:00:00.000Z",
+  });
+  assertEquals(record.graph, [{ name: "", dependsOn: [] }]);
+  assertEquals(record.targets, { "": { status: "pending", meta: {} } });
+  assertEquals(record.buildId, "org/app");
+  assertEquals(record.deadlineAt, "2026-07-18T10:00:00.000Z");
+});
+
+// ------------------------------------------------- host: real error paths
+
+Deno.test("defaultStateHost surfaces non-NotFound filesystem errors", async () => {
+  // A genuine I/O failure must propagate, never be masked as "missing".
+  const dir = await Deno.makeTempDir();
+  try {
+    const host = defaultStateHost;
+    // Reading a directory as a file is not a miss.
+    await assertRejects(() => host.readText(dir));
+    // An exclusive create in a missing parent is not "already exists".
+    await assertRejects(() => host.createExclusive(`${dir}/missing/x.lock`));
+    // Removing a non-empty directory is a real error, not a missing file.
+    await Deno.mkdir(`${dir}/full`);
+    await Deno.writeTextFile(`${dir}/full/a.txt`, "x");
+    await assertRejects(() => host.remove(`${dir}/full`));
+    // Listing a regular file is not an absent directory.
+    await assertRejects(() => host.listDir(`${dir}/full/a.txt`));
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+// ------------------------------------------------- http store: bodied errors
+
+Deno.test("HttpStateStore drains response bodies a server sends on every path", async () => {
+  // Real servers attach error pages (and empty-object bodies) to statuses the
+  // client discards; each path must drain them and keep its behaviour.
+  const bodied = (status: number, headers?: Record<string, string>) =>
+    new Response(`{"note":"body for ${status}"}`, { status, headers });
+
+  const missing = new HttpStateStore({
+    url: "https://s",
+    fetch: fakeFetch(() => bodied(404)),
+  });
+  assertEquals(await missing.getRun("r"), null); // bodied 404 is still a miss
+  await missing.deleteRun("r"); // bodied 404 on delete is still a no-op
+
+  const putOk = new HttpStateStore({
+    url: "https://s",
+    fetch: fakeFetch((_url, init) =>
+      (init?.method ?? "GET") === "PUT"
+        ? bodied(200, { etag: "v9" })
+        : bodied(200)
+    ),
+  });
+  assertEquals(await putOk.putRun(sampleRecord(), "v1"), {
+    ok: true,
+    version: "v9",
+  });
+  assertEquals(await putOk.renewLock("k", "t", 1000), true);
+  await putOk.releaseLock("k", "t");
+  await putOk.deleteRun("r");
+
+  const stale = new HttpStateStore({
+    url: "https://s",
+    fetch: fakeFetch(() => bodied(412)),
+  });
+  assertEquals(await stale.putRun(sampleRecord(), "old"), {
+    ok: false,
+    conflict: true,
+  });
+
+  const boom = new HttpStateStore({
+    url: "https://s",
+    fetch: fakeFetch(() => bodied(500)),
+  });
+  await assertRejects(() => boom.getRun("r"), HttpError);
+  await assertRejects(() => boom.putRun(sampleRecord(), "v"), HttpError);
+  await assertRejects(() => boom.listRuns({}), HttpError);
+  await assertRejects(() => boom.deleteRun("r"), HttpError);
+  await assertRejects(
+    () => boom.acquireLock("k", { actor: "a", runId: "r", since: "t" }, 1000),
+    HttpError,
+  );
+  await assertRejects(() => boom.renewLock("k", "t", 1000), HttpError);
+  await assertRejects(() => boom.releaseLock("k", "t"), HttpError);
 });

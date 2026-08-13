@@ -1,7 +1,12 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertEquals, assertStringIncludes } from "./_assert.ts";
+import {
+  assertEquals,
+  assertRejects,
+  assertStringIncludes,
+  assertThrows,
+} from "./_assert.ts";
 import {
   cicd,
   CiFile,
@@ -1176,6 +1181,227 @@ Deno.test("the two security-relevant inputs are always stated", () => {
   const yaml = discoverCiFiles(new B())[0].render();
   assertStringIncludes(yaml, "egress-policy: audit");
   assertStringIncludes(yaml, 'persist-credentials: "false"');
+});
+
+Deno.test("github: an action ref without a version renders bare", () => {
+  const yaml = generateCi({
+    jobs: [{
+      steps: [
+        { uses: { ref: `acme/tool@${"1".repeat(40)}` } },
+        { run: "x" },
+      ],
+    }],
+  }, "github");
+  // No version comment is attached when the ref carries none.
+  assertStringIncludes(yaml, `uses: acme/tool@${"1".repeat(40)}\n`);
+});
+
+Deno.test("github: a bare job condition is wrapped when the guard ANDs on", () => {
+  // An `if:` written without the ${{ }} wrapper must still combine correctly.
+  const yaml = generateCi({
+    triggers: { schedule: [{ cron: "30 9 * * *", tz: "Europe/Sofia" }] },
+    jobs: [{ id: "test", if: "github.actor != 'bot'", steps: [{ run: "x" }] }],
+  }, "github");
+  assertStringIncludes(
+    yaml,
+    "(github.actor != 'bot') && (needs.zuke-schedule-guard.outputs.run == 'true')",
+  );
+});
+
+Deno.test("naming only the checkout action opts out of the prelude", () => {
+  // A pinned checkout (with no pinned harden) still means "those steps, by
+  // name" — the prelude action must not replace it. Rendered through a
+  // declared file, the path every build takes.
+  const file = cicd({
+    provider: "github",
+    pipeline: {
+      checkout: { action: `actions/checkout@${"7".repeat(40)}` },
+      jobs: [{ id: "gate", steps: [{ run: "x" }] }],
+    },
+  });
+  const yaml = file.render();
+  assertEquals(yaml.includes("zuke-build/zuke"), false);
+  assertStringIncludes(yaml, `actions/checkout@${"7".repeat(40)}`);
+});
+
+Deno.test("a pinned-object first step is recognised as a prelude too", () => {
+  // The prelude guard must see through the { ref, version } uses form, not
+  // just the bare string form.
+  const yaml = generateCi({
+    jobs: [{
+      id: "review",
+      steps: [
+        {
+          uses: {
+            ref: `step-security/harden-runner@${"5".repeat(40)}`,
+            version: "v2",
+          },
+        },
+        { run: "./zuke review" },
+      ],
+    }],
+  }, "github");
+  assertEquals(yaml.includes("zuke-build/zuke"), false);
+  assertStringIncludes(yaml, `harden-runner@${"5".repeat(40)}`);
+});
+
+Deno.test("pins: a job that names its own harden pin keeps separate steps", () => {
+  class B extends Build {
+    gate = target().executes(() => {});
+    wf = cicd({
+      pins: (action) => `${action}@${"6".repeat(40)}`,
+      invokes: [{
+        target: this.gate,
+        harden: { action: `step-security/harden-runner@${"4".repeat(40)}` },
+      }],
+    });
+  }
+  const yaml = discoverCiFiles(new B())[0].render();
+  // The job asked for that exact pin, so no prelude action…
+  assertEquals(yaml.includes("zuke-build/zuke"), false);
+  // …its own harden pin survives (not the resolver's)…
+  assertStringIncludes(yaml, `harden-runner@${"4".repeat(40)}`);
+  // …and the checkout still comes from the resolver.
+  assertStringIncludes(yaml, `actions/checkout@${"6".repeat(40)}`);
+});
+
+Deno.test("a job without steps gets the default step on every provider", () => {
+  const bare: CiPipeline = {
+    triggers: { push: ["main"] },
+    jobs: [{ id: "verify" }],
+  };
+  assertStringIncludes(generateCi(bare, "gitlab"), "- ./zuke");
+  assertStringIncludes(generateCi(bare, "azure"), "script: ./zuke");
+  assertStringIncludes(generateCi(bare, "bitbucket"), "- ./zuke");
+});
+
+Deno.test("bitbucket: an empty pipeline gets the default triggers and step", () => {
+  const yaml = generateCi({}, "bitbucket");
+  // The default push/PR-on-main triggers flow through as named sections.
+  assertStringIncludes(yaml, "pull-requests:\n    main:");
+  assertStringIncludes(yaml, "branches:\n    main:");
+  assertStringIncludes(yaml, "- ./zuke");
+});
+
+Deno.test("a field-named non-github file keeps the provider's single path", () => {
+  // GitLab has one conventional file, so the field name never renames it.
+  class B extends Build {
+    build = target().executes(() => {});
+    nightlyPipeline = cicd({ provider: "gitlab", invokes: [this.build] });
+  }
+  assertEquals(discoverCiFiles(new B())[0].path, ".gitlab-ci.yml");
+});
+
+Deno.test("discovery leaves a plain file untouched next to a derived one", () => {
+  class B extends Build {
+    gate = target().executes(() => {});
+    plain = cicd({ provider: "github", pipeline: { name: "Plain" } });
+    derived = cicd({ provider: "github", invokes: [this.gate] });
+  }
+  const files = discoverCiFiles(new B());
+  const plain = files.find((f) => f.path.endsWith("plain.yml"));
+  const derived = files.find((f) => f.path.endsWith("derived.yml"));
+  assertStringIncludes(plain?.render() ?? "", "name: Plain");
+  assertStringIncludes(derived?.render() ?? "", "run: ./zuke gate");
+});
+
+Deno.test("github: a checkout ref renders on the separate checkout step", () => {
+  const yaml = generateCi({
+    bootstrap: false,
+    checkout: { action: `actions/checkout@${"a".repeat(40)}`, ref: "release" },
+    jobs: [{ id: "gate", steps: [{ run: "./zuke gate" }] }],
+  }, "github");
+  assertStringIncludes(yaml, `actions/checkout@${"a".repeat(40)}`);
+  assertStringIncludes(yaml, "ref: release");
+});
+
+Deno.test("a checkout without a pin is a friendly error when bootstrap is off", () => {
+  // Emitting `uses:` with no ref would be a floating reference; like an
+  // unpinned harden, an unpinned checkout must fail rather than degrade.
+  assertThrows(
+    () =>
+      generateCi({
+        bootstrap: false,
+        checkout: {},
+        jobs: [{ steps: [{ run: "x" }] }],
+      }, "github"),
+    Error,
+    "the checkout needs a pinned action",
+  );
+});
+
+Deno.test("bootstrap: false with no job steps still runs the default step", () => {
+  // Opting out of the prelude action must not also lose the default build step.
+  const yaml = generateCi(
+    { bootstrap: false, jobs: [{ id: "plain" }] },
+    "github",
+  );
+  assertStringIncludes(yaml, "run: ./zuke");
+  assertEquals(yaml.includes("zuke-build/zuke"), false);
+});
+
+Deno.test("azure: a schedule without a push trigger defaults to main", () => {
+  // Azure schedules need a branch filter; with no push trigger to mirror, the
+  // conventional default branch stands in.
+  const yaml = generateCi(
+    { triggers: { schedule: [{ cron: "0 6 * * *" }] } },
+    "azure",
+  );
+  assertStringIncludes(yaml, "schedules:");
+  assertStringIncludes(yaml, "branches:\n      include:\n        - main");
+});
+
+Deno.test("a job's own bootstrap pin overrides the resolver", () => {
+  // A job that names the prelude action asked for that exact pin; the resolver
+  // must not replace it.
+  class B extends Build {
+    gate = target().executes(() => {});
+    wf = cicd({
+      pins: (action) => `${action}@${"9".repeat(40)}`,
+      invokes: [{
+        target: this.gate,
+        bootstrap: { action: `my-org/zuke@${"8".repeat(40)}` },
+      }],
+    });
+  }
+  const yaml = discoverCiFiles(new B())[0].render();
+  assertStringIncludes(yaml, `my-org/zuke@${"8".repeat(40)}`);
+  assertEquals(yaml.includes("zuke-build/zuke"), false);
+});
+
+Deno.test("a field name that is all suffix keeps the provider default path", () => {
+  // `Ci` reduces to nothing once the suffix is dropped, so the provider's
+  // conventional file name stands in rather than an empty ".yml".
+  class B extends Build {
+    gate = target().executes(() => {});
+    Ci = cicd({ invokes: [this.gate] });
+  }
+  assertEquals(discoverCiFiles(new B())[0].path, ".github/workflows/ci.yml");
+});
+
+Deno.test("pipelineFor names a not-yet-discovered target by identity", () => {
+  // Before discoverTargets assigns names, an invoked target can still be
+  // resolved by identity against the map — what lets a workflow be declared
+  // with `this.ci` in a field initialiser.
+  const gate = target().description("Gate").executes(() => {});
+  const file = cicd({ provider: "github", invokes: [gate] });
+  const pipeline = file.pipelineFor(new Map([["gate", gate]]));
+  assertEquals(pipeline.jobs?.[0].id, "gate");
+  assertEquals(pipeline.jobs?.[0].name, "Gate");
+});
+
+Deno.test("syncCiFiles surfaces a read failure that is not file-absence", async () => {
+  // Only NotFound means "write it fresh"; any other read failure (here: the
+  // path is a directory) must propagate, not be mistaken for a missing file.
+  const dir = await Deno.makeTempDir();
+  try {
+    const path = `${dir}/ci.yml`;
+    await Deno.mkdir(path); // a directory where the file should be
+    const file = cicd({ provider: "github", path, pipeline: filePipeline });
+    await assertRejects(() => syncCiFiles([file], { check: true }));
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
 });
 
 Deno.test("a job whose own steps already harden or check out gets no prelude", () => {

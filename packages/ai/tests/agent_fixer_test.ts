@@ -441,3 +441,335 @@ Deno.test("commitFixes fails closed when the pre-snapshot cannot be taken", asyn
     false,
   );
 });
+
+/** A GitHub-PR env without any GITHUB_TOKEN. */
+const TOKENLESS_PR_ENV: Record<string, string> = {
+  GITHUB_ACTIONS: "true",
+  GITHUB_REPOSITORY: "o/r",
+  GITHUB_REF: "refs/pull/7/merge",
+};
+
+/** The one-hunk diff the fake agent leaves in the working tree. */
+const AGENT_DIFF = [
+  "diff --git a/zuke.ts b/zuke.ts",
+  "--- a/zuke.ts",
+  "+++ b/zuke.ts",
+  "@@ -45,1 +45,1 @@",
+  '-const X = "remove me";',
+  '+const _X = "remove me";',
+].join("\n");
+
+/** A fetch faking the GitHub PR-detail and comment endpoints, recording calls. */
+function githubFetch(): {
+  fetch: typeof fetch;
+  calls: { url: string; auth: string; body: string }[];
+} {
+  const calls: { url: string; auth: string; body: string }[] = [];
+  const impl = ((input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    const method = init?.method ?? "GET";
+    calls.push({
+      url,
+      auth: new Headers(init?.headers).get("authorization") ?? "",
+      body: typeof init?.body === "string" ? init.body : "",
+    });
+    if (url.includes("/comments")) {
+      return Promise.resolve(
+        new Response(method === "GET" ? "[]" : "{}", { status: 200 }),
+      );
+    }
+    return Promise.resolve(
+      new Response(JSON.stringify({ head: { sha: "abc123" } }), {
+        status: 200,
+      }),
+    );
+  }) as typeof fetch;
+  return { fetch: impl, calls };
+}
+
+Deno.test("suggest mode authenticates with an explicit commentToken", async () => {
+  // GITHUB_TOKEN is unset, so the inline suggestions can only be posted through
+  // .commentToken(...) — success pins the explicit-token resolution path.
+  const { fetch, calls } = githubFetch();
+  let statusCalls = 0;
+  const fixer = agentFixer(() => Promise.resolve(), (f) => f.suggest())
+    .allowCI().comment().commentToken("agent-tok")
+    .conventions("").readFile(() => Promise.resolve(undefined))
+    .env((n) => TOKENLESS_PR_ENV[n])
+    .exec((argv) => {
+      if (argv.includes("status")) {
+        statusCalls++;
+        return Promise.resolve(statusCalls === 1 ? "" : " M zuke.ts");
+      }
+      return Promise.resolve(argv.includes("diff") ? AGENT_DIFF : "");
+    })
+    .fetch(fetch).quiet();
+  await fixer.remediate(CTX);
+  const post = calls.find((c) =>
+    c.url.endsWith("/pulls/7/comments") && c.body.includes("```suggestion")
+  );
+  assertEquals(post?.auth, "Bearer agent-tok");
+});
+
+Deno.test("suggest mode without any token proposes nothing and calls no API", async () => {
+  const { fetch, calls } = githubFetch();
+  const lines: string[] = [];
+  const log = console.log;
+  console.log = (...a: unknown[]) => void lines.push(a.join(" "));
+  let statusCalls = 0;
+  try {
+    const fixer = agentFixer(() => Promise.resolve(), (f) => f.suggest())
+      .allowCI().conventions("").readFile(() => Promise.resolve(undefined))
+      .env((n) => TOKENLESS_PR_ENV[n])
+      .exec((argv) => {
+        if (argv.includes("status")) {
+          statusCalls++;
+          return Promise.resolve(statusCalls === 1 ? "" : " M zuke.ts");
+        }
+        return Promise.resolve(argv.includes("diff") ? AGENT_DIFF : "");
+      })
+      .fetch(fetch);
+    await fixer.remediate(CTX);
+  } finally {
+    console.log = log;
+  }
+  // Suggestions were produced but no PR context could be resolved — nothing
+  // was posted anywhere (the overview comment has no token either).
+  assertEquals(calls.length, 0);
+  assertEquals(
+    lines.some((l) => l.includes("no committable suggestions produced")),
+    true,
+  );
+});
+
+Deno.test("suggest mode fails closed when the post-agent status cannot be read", async () => {
+  const prEnv: Record<string, string> = {
+    ...TOKENLESS_PR_ENV,
+    GITHUB_TOKEN: "tok",
+  };
+  const lines: string[] = [];
+  const log = console.log;
+  console.log = (...a: unknown[]) => void lines.push(a.join(" "));
+  const git: string[][] = [];
+  let statusCalls = 0;
+  try {
+    const fixer = agentFixer(() => Promise.resolve(), (f) => f.suggest())
+      .allowCI().noComment().conventions("")
+      .readFile(() => Promise.resolve(undefined))
+      .env((n) => prEnv[n])
+      .exec((argv) => {
+        git.push(argv);
+        if (argv.includes("status")) {
+          statusCalls++;
+          // The snapshot succeeds; the post-agent status read fails.
+          if (statusCalls === 1) return Promise.resolve("");
+          return Promise.reject(new Error("index.lock exists"));
+        }
+        return Promise.resolve("");
+      });
+    const result = await fixer.remediate(CTX);
+    assertEquals(result.retry, false);
+  } finally {
+    console.log = log;
+  }
+  // Without the second status nothing can be scoped: no diff is ever taken.
+  assertEquals(git.some((a) => a.includes("diff")), false);
+  assertEquals(
+    lines.some((l) => l.includes("no committable suggestions produced")),
+    true,
+  );
+});
+
+Deno.test("suggest mode with an idle agent takes no diff and proposes nothing", async () => {
+  const prEnv: Record<string, string> = {
+    ...TOKENLESS_PR_ENV,
+    GITHUB_TOKEN: "tok",
+  };
+  const lines: string[] = [];
+  const log = console.log;
+  console.log = (...a: unknown[]) => void lines.push(a.join(" "));
+  const git: string[][] = [];
+  try {
+    const fixer = agentFixer(() => Promise.resolve(), (f) => f.suggest())
+      .allowCI().noComment().conventions("")
+      .readFile(() => Promise.resolve(undefined))
+      .env((n) => prEnv[n])
+      .exec((argv) => {
+        git.push(argv);
+        return Promise.resolve(""); // clean tree before and after the agent
+      });
+    await fixer.remediate(CTX);
+  } finally {
+    console.log = log;
+  }
+  assertEquals(git.some((a) => a.includes("diff")), false);
+  assertEquals(
+    lines.some((l) => l.includes("no committable suggestions produced")),
+    true,
+  );
+});
+
+Deno.test("a non-Error suggestion-post failure is stringified and swallowed", async () => {
+  const prEnv: Record<string, string> = {
+    ...TOKENLESS_PR_ENV,
+    GITHUB_TOKEN: "tok",
+  };
+  // The PR-detail fetch rejects with a bare string (not an Error).
+  const throwing = (() => Promise.reject("conn reset")) as typeof fetch;
+  const warnings: string[] = [];
+  const warn = console.warn;
+  console.warn = (...a: unknown[]) => void warnings.push(a.join(" "));
+  let statusCalls = 0;
+  try {
+    const fixer = agentFixer(() => Promise.resolve(), (f) => f.suggest())
+      .allowCI().noComment().conventions("")
+      .readFile(() => Promise.resolve(undefined))
+      .env((n) => prEnv[n])
+      .exec((argv) => {
+        if (argv.includes("status")) {
+          statusCalls++;
+          return Promise.resolve(statusCalls === 1 ? "" : " M zuke.ts");
+        }
+        return Promise.resolve(argv.includes("diff") ? AGENT_DIFF : "");
+      })
+      .fetch(throwing).quiet();
+    const result = await fixer.remediate(CTX);
+    assertEquals(result.retry, false);
+  } finally {
+    console.warn = warn;
+  }
+  assertEquals(
+    warnings.some((w) => w.includes("could not post suggestions: conn reset")),
+    true,
+  );
+});
+
+Deno.test("a non-Error agent failure is stringified into the warning", async () => {
+  const warnings: string[] = [];
+  const warn = console.warn;
+  console.warn = (...a: unknown[]) => void warnings.push(a.join(" "));
+  let result;
+  try {
+    // The runner rejects with a bare string, pinning the String(error) path.
+    const fixer = hermetic(agentFixer(() => Promise.reject("agent exploded")));
+    result = await fixer.remediate(CTX);
+  } finally {
+    console.warn = warn;
+  }
+  assertEquals(result.retry, false);
+  assertEquals(
+    warnings.some((w) => w.includes("agent run failed: agent exploded")),
+    true,
+  );
+});
+
+Deno.test("suggest mode skips suggestions when the pre-agent snapshot fails", async () => {
+  const lines: string[] = [];
+  const log = console.log;
+  console.log = (...a: unknown[]) => void lines.push(a.join(" "));
+  const r = recorder();
+  let result;
+  try {
+    const fixer = agentFixer(r.run, (f) => f.suggest())
+      .conventions("").readFile(() => Promise.resolve(undefined))
+      .env(() => undefined) // local run — the CI gate does not apply
+      .exec(() => Promise.reject(new Error("index.lock exists")));
+    result = await fixer.remediate(CTX);
+  } finally {
+    console.log = log;
+  }
+  assertEquals(result.retry, false);
+  assertEquals(r.calls.length, 1); // the agent still ran
+  assertEquals(
+    lines.some((l) =>
+      l.includes(
+        "skipped suggestions: could not snapshot the working tree",
+      )
+    ),
+    true,
+  );
+});
+
+Deno.test("a non-Error commit failure is stringified into the report action", async () => {
+  const lines: string[] = [];
+  const log = console.log;
+  console.log = (...a: unknown[]) => void lines.push(a.join(" "));
+  let statusCalls = 0;
+  let result;
+  try {
+    const fixer = agentFixer(() => Promise.resolve(), (f) => f.commitFixes())
+      .conventions("").readFile(() => Promise.resolve(undefined))
+      .env(() => undefined)
+      .exec((argv) => {
+        if (argv.includes("status")) {
+          statusCalls++;
+          return Promise.resolve(statusCalls === 1 ? "" : " M zuke.ts");
+        }
+        if (argv[1] === "commit") return Promise.reject("hook denied");
+        return Promise.resolve("");
+      });
+    result = await fixer.remediate(CTX);
+  } finally {
+    console.log = log;
+  }
+  assertEquals(result.retry, true); // the agent's edit still re-runs the target
+  assertEquals(
+    lines.some((l) => l.includes("commit failed: hook denied")),
+    true,
+  );
+});
+
+Deno.test("a long agent transcript is truncated in the PR comment", async () => {
+  const prEnv: Record<string, string> = {
+    ...TOKENLESS_PR_ENV,
+    GITHUB_TOKEN: "tok",
+  };
+  const { fetch, calls } = githubFetch();
+  const fixer = agentFixer(() => Promise.resolve("x".repeat(5000)))
+    .allowCI().conventions("").readFile(() => Promise.resolve(undefined))
+    .env((n) => prEnv[n]).fetch(fetch).quiet();
+  await fixer.remediate(CTX);
+  const post = calls.find((c) => c.body.includes("Agent output"));
+  if (post === undefined) throw new Error("no comment posted");
+  assertEquals(post.body.includes("… (truncated) …"), true);
+  // The capped transcript, not the full 5000 characters, travels.
+  assertEquals(post.body.includes("x".repeat(4001)), false);
+});
+
+Deno.test("an Error from the suggestion post is warned with its message", async () => {
+  const prEnv: Record<string, string> = {
+    ...TOKENLESS_PR_ENV,
+    GITHUB_TOKEN: "tok",
+  };
+  // The PR-detail fetch rejects with a real Error, whose message is reported.
+  const throwing =
+    (() => Promise.reject(new Error("api quota exhausted"))) as typeof fetch;
+  const warnings: string[] = [];
+  const warn = console.warn;
+  console.warn = (...a: unknown[]) => void warnings.push(a.join(" "));
+  let statusCalls = 0;
+  try {
+    const fixer = agentFixer(() => Promise.resolve(), (f) => f.suggest())
+      .allowCI().noComment().conventions("")
+      .readFile(() => Promise.resolve(undefined))
+      .env((n) => prEnv[n])
+      .exec((argv) => {
+        if (argv.includes("status")) {
+          statusCalls++;
+          return Promise.resolve(statusCalls === 1 ? "" : " M zuke.ts");
+        }
+        return Promise.resolve(argv.includes("diff") ? AGENT_DIFF : "");
+      })
+      .fetch(throwing).quiet();
+    const result = await fixer.remediate(CTX);
+    assertEquals(result.retry, false);
+  } finally {
+    console.warn = warn;
+  }
+  assertEquals(
+    warnings.some((w) =>
+      w.includes("could not post suggestions: api quota exhausted")
+    ),
+    true,
+  );
+});

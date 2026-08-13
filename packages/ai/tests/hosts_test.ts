@@ -1354,3 +1354,232 @@ Deno.test("listPullRequestComments treats a numeric system commentType as a bot"
   const listed = await listPullRequestComments(AZURE_CTX, fetch);
   assertEquals(listed[0].bot, true);
 });
+
+Deno.test("resolveAzureContext refuses when any variable is absent or empty", () => {
+  // Each variable individually missing — and individually empty — is fatal.
+  for (const name of Object.keys(AZURE_ENV)) {
+    const without: Record<string, string> = { ...AZURE_ENV };
+    delete without[name];
+    assertEquals(resolveAzureContext("azt", env(without)), undefined);
+    assertEquals(
+      resolveAzureContext("azt", env({ ...AZURE_ENV, [name]: "" })),
+      undefined,
+    );
+  }
+});
+
+Deno.test("an Azure identity probe returning a non-string id fails closed", async () => {
+  // connectionData answers, but with a malformed identity — the reviewer can
+  // attribute nothing to itself, so it must POST fresh, never PATCH.
+  const threads = [{
+    id: 7,
+    comments: [{
+      id: 1,
+      content: "<!-- zuke-ai-review:security review -->\nold",
+      author: { id: "build-service-id" },
+    }],
+  }];
+  const calls: Call[] = [];
+  const doFetch = ((input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    const method = init?.method ?? "GET";
+    calls.push({
+      url,
+      method,
+      body: typeof init?.body === "string" ? init.body : "",
+    });
+    if (method !== "GET") return Promise.resolve(new Response("{}"));
+    if (url.includes("connectionData")) {
+      return Promise.resolve(
+        new Response(JSON.stringify({ authenticatedUser: { id: 42 } })),
+      );
+    }
+    return Promise.resolve(new Response(JSON.stringify({ value: threads })));
+  }) as typeof fetch;
+  await upsertPullRequestThread(
+    AZURE_CTX,
+    "security review",
+    "## new",
+    doFetch,
+  );
+  const write = calls.find((c) => c.method !== "GET");
+  assertEquals(write?.method, "POST");
+});
+
+Deno.test("a thrown Azure identity probe fails closed to a fresh thread", async () => {
+  const threads = [{
+    id: 7,
+    comments: [{
+      id: 1,
+      content: "<!-- zuke-ai-review:security review -->\nold",
+      author: { id: "build-service-id" },
+    }],
+  }];
+  const calls: Call[] = [];
+  const doFetch = ((input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    const method = init?.method ?? "GET";
+    calls.push({
+      url,
+      method,
+      body: typeof init?.body === "string" ? init.body : "",
+    });
+    if (url.includes("connectionData")) {
+      return Promise.reject(new Error("dns failure"));
+    }
+    if (method !== "GET") return Promise.resolve(new Response("{}"));
+    return Promise.resolve(new Response(JSON.stringify({ value: threads })));
+  }) as typeof fetch;
+  await upsertPullRequestThread(
+    AZURE_CTX,
+    "security review",
+    "## new",
+    doFetch,
+  );
+  const write = calls.find((c) => c.method !== "GET");
+  assertEquals(write?.method, "POST");
+});
+
+Deno.test("an Azure author with a non-string id and no uniqueName is empty, not trusted", async () => {
+  const threads = [{
+    id: 7,
+    comments: [{
+      id: 1,
+      content: "trust me",
+      author: { id: 99, displayName: "Impostor" },
+    }],
+  }];
+  const { fetch } = fakeAzure(threads, { self: "build-service-id" });
+  const listed = await listPullRequestComments(AZURE_CTX, fetch);
+  // No stable identity at all: the author is empty (and can never match a
+  // trustAuthors allowlist), while the display label is carried for reading.
+  assertEquals(listed[0].author, "");
+  assertEquals(listed[0].displayName, "Impostor");
+});
+
+Deno.test("upsertPullRequestThread in append mode POSTs without listing", async () => {
+  const { fetch, calls } = fakeAzure([], { self: "build-service-id" });
+  await upsertPullRequestThread(
+    AZURE_CTX,
+    "security review",
+    "## round 2",
+    fetch,
+    "append",
+  );
+  // No identity probe and no thread listing — straight to the create.
+  assertEquals(calls.length, 1);
+  assertEquals(calls[0].method, "POST");
+  assertEquals(calls[0].url.endsWith("/threads?api-version=7.1"), true);
+});
+
+Deno.test("azureHost.prepare needs a PR context", () => {
+  assertEquals(azureHost.prepare("azt", env({})), undefined);
+  assertEquals(typeof azureHost.prepare("azt", env(AZURE_ENV)), "function");
+});
+
+Deno.test("resolveBitbucketContext refuses when any variable is absent or empty", () => {
+  for (const name of Object.keys(BITBUCKET_ENV)) {
+    const without: Record<string, string> = { ...BITBUCKET_ENV };
+    delete without[name];
+    assertEquals(resolveBitbucketContext("bbt", env(without)), undefined);
+    assertEquals(
+      resolveBitbucketContext("bbt", env({ ...BITBUCKET_ENV, [name]: "" })),
+      undefined,
+    );
+  }
+});
+
+Deno.test("a refused or malformed Bitbucket /user probe fails closed", async () => {
+  const marked = [{
+    id: 18,
+    content: { raw: "<!-- zuke-ai-review:security review -->\nold" },
+    user: { uuid: "{zuke}" },
+  }];
+  // A workspace access token: /2.0/user refuses it (401 with an error body).
+  const refused = fakeBitbucket(marked);
+  await upsertBitbucketComment(
+    BITBUCKET_CTX,
+    "security review",
+    "## new",
+    refused.fetch,
+  );
+  const refusedWrite = refused.calls.find((c) => c.method !== "GET");
+  assertEquals(refusedWrite?.method, "POST"); // cannot adopt its own comment
+
+  // A /user body without a string uuid is the same failure.
+  const malformed = fakeBitbucket(marked, { self: "{zuke}" });
+  const withBadUser = ((input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    if (url.endsWith("/2.0/user")) {
+      return Promise.resolve(new Response(JSON.stringify({ uuid: 5 })));
+    }
+    return malformed.fetch(input, init);
+  }) as typeof fetch;
+  await upsertBitbucketComment(
+    BITBUCKET_CTX,
+    "security review",
+    "## new",
+    withBadUser,
+  );
+  const write = malformed.calls.find((c) => c.method !== "GET");
+  assertEquals(write?.method, "POST");
+});
+
+Deno.test("a thrown Bitbucket /user probe fails closed to a fresh comment", async () => {
+  const marked = [{
+    id: 18,
+    content: { raw: "<!-- zuke-ai-review:security review -->\nold" },
+    user: { uuid: "{zuke}" },
+  }];
+  const inner = fakeBitbucket(marked, { self: "{zuke}" });
+  const throwing = ((input: string | URL | Request, init?: RequestInit) => {
+    if (String(input).endsWith("/2.0/user")) {
+      return Promise.reject(new Error("dns failure"));
+    }
+    return inner.fetch(input, init);
+  }) as typeof fetch;
+  await upsertBitbucketComment(
+    BITBUCKET_CTX,
+    "security review",
+    "## new",
+    throwing,
+  );
+  const write = inner.calls.find((c) => c.method !== "GET");
+  assertEquals(write?.method, "POST");
+});
+
+Deno.test("listBitbucketComments drops malformed and deleted comments", async () => {
+  const values = [
+    { id: "not-a-number", content: { raw: "x" } }, // id wrong type — dropped
+    { id: 2, content: { raw: 42 } }, // body wrong type — dropped
+    { id: 3, content: { raw: "gone" }, deleted: true }, // deleted — dropped
+    { id: 4, content: { raw: "kept" }, user: { uuid: "{dev}" } },
+  ];
+  const { fetch } = fakeBitbucket(values, { self: "{zuke}", members: [] });
+  const listed = await listBitbucketComments(BITBUCKET_CTX, fetch);
+  assertEquals(listed.map((c) => c.id), [4]);
+  assertEquals(listed[0].body, "kept");
+});
+
+Deno.test("upsertBitbucketComment in append mode POSTs without listing", async () => {
+  const { fetch, calls } = fakeBitbucket([], { self: "{zuke}" });
+  await upsertBitbucketComment(
+    BITBUCKET_CTX,
+    "security review",
+    "## round 2",
+    fetch,
+    "append",
+  );
+  // No /user probe and no comment listing — straight to the create.
+  assertEquals(calls.length, 1);
+  assertEquals(calls[0].method, "POST");
+  assertEquals(calls[0].url.endsWith("/pullrequests/5/comments"), true);
+});
+
+Deno.test("bitbucketHost.prepare needs a PR context", () => {
+  assertEquals(bitbucketHost.prepare("bbt", env({})), undefined);
+  assertEquals(
+    typeof bitbucketHost.prepare("bbt", env(BITBUCKET_ENV)),
+    "function",
+  );
+});

@@ -2,11 +2,15 @@
 // SPDX-License-Identifier: MIT
 
 import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
-import { AiReviewError, securityReviewer } from "../mod.ts";
+import { AiReviewError, budget, securityReviewer } from "../mod.ts";
 import { findingFingerprint } from "../src/suppress.ts";
 import { decodeState, encodeState } from "../src/state.ts";
 import { commentMarker } from "../src/hosts/types.ts";
-import { findingMarker, outcomeMarker } from "../src/threads.ts";
+import {
+  findingMarker,
+  MAX_NEW_THREADS,
+  outcomeMarker,
+} from "../src/threads.ts";
 import { stableHash } from "../src/hash.ts";
 
 const DIFF = "diff --git a/src/app.ts b/src/app.ts\n" +
@@ -2480,4 +2484,766 @@ Deno.test("a quiet reviewer posts no threads either", async () => {
     })
   );
   assertEquals(threadPosts(calls).length, 0);
+});
+
+// ─── Degraded paths: no host, exhausted budgets, failing passes ──────────────
+
+Deno.test("comment and discussion degrade to warnings outside any CI host", async () => {
+  // An env reader that sees nothing: no CI host markers at all (a local run).
+  const { fetch, calls } = discussionFetch([], [
+    claude({ score: 0, severity: "none", findings: [] }),
+  ]);
+  const lines = await captured(() =>
+    securityReviewer((r) =>
+      r.provider("claude").apiKey("k")
+        .comment().discussion()
+        .env(() => undefined)
+        .diff((d) => d.text(DIFF))
+        .fetch(fetch)
+    ).validate({ target: "t" })
+  );
+  // The discussion is declined in code, before any listing is attempted…
+  assertEquals(
+    lines.some((l) =>
+      l.includes("discussion disabled") &&
+      l.includes("the active host cannot list PR comments")
+    ),
+    true,
+  );
+  // …and the comment is skipped with its own warning, not a crash.
+  assertEquals(
+    lines.some((l) =>
+      l.includes("no PR-comment host detected — skipping comment")
+    ),
+    true,
+  );
+  // No host traffic happened at all.
+  assertEquals(calls.every((c) => !c.url.startsWith(`${GITHUB_API}/`)), true);
+});
+
+/** Wrap a payload in a Claude response that also reports token usage. */
+function claudeWithUsage(
+  payload: unknown,
+  usage: Record<string, number>,
+): string {
+  return JSON.stringify({
+    content: [{ type: "text", text: JSON.stringify(payload) }],
+    stop_reason: "end_turn",
+    usage,
+  });
+}
+
+Deno.test("an exhausted budget skips the reworded-finding check, and says so", async () => {
+  // The review call's own usage blows the cap, so the dedup pass that would
+  // resolve the rewording must be skipped — with a note, never silently — and
+  // the finding keeps its fresh identity and gates.
+  const b = budget((x) => x.maxTokens(1));
+  const { fetch, calls } = discussionFetch(
+    priorComment(stateWith("dismissed")),
+    [claudeWithUsage({ score: 9, severity: "high", findings: [REWORDED] }, {
+      input_tokens: 500,
+      output_tokens: 100,
+    })],
+  );
+  const lines = await captured(() =>
+    inPr(async () => {
+      await assertRejects(
+        () =>
+          securityReviewer((r) =>
+            r.provider("claude").apiKey("k")
+              .comment().discussion().budget(b)
+              .diff((d) => d.text(DIFF))
+              .fetch(fetch)
+          ).validate({ target: "t" }),
+        AiReviewError, // reported under its own id — not silenced
+      );
+    })
+  );
+  // The review call only: no dedup call was paid for.
+  assertEquals(
+    calls.filter((c) => !c.url.startsWith(`${GITHUB_API}/`)).length,
+    1,
+  );
+  assertEquals(
+    lines.some((l) =>
+      l.includes("reworded-finding check skipped — AI budget exhausted")
+    ),
+    true,
+  );
+  // The finding kept its own identity in the posted state.
+  assertEquals(
+    postedState(calls)?.findings.some((f) => f.id === REWORDED_ID),
+    true,
+  );
+});
+
+Deno.test("an ambiguous rewording keeps the first match and reports the rest, with the cap named", async () => {
+  // Four earlier open findings in the same file are all eligible comparisons
+  // for one candidate; the per-candidate cap (3) drops the fourth, and the
+  // model then claims the candidate matches two of the three offered.
+  const priors = Array.from({ length: 4 }, (_, i) => ({
+    id: `aaaa000${i + 1}`,
+    title: `Earlier concern ${i + 1}`,
+    severity: "high" as const,
+    status: "open" as const,
+    file: "src/app.ts",
+  }));
+  const { fetch, calls } = discussionFetch(
+    priorComment({ findings: priors }),
+    [
+      claude({ score: 9, severity: "high", findings: [REWORDED] }),
+      claude({
+        verdicts: [
+          { id: "p1", verdict: "same", reason: "same defect" },
+          { id: "p2", verdict: "same", reason: "also this one" },
+        ],
+      }),
+    ],
+  );
+  const lines = await captured(() =>
+    inPr(async () => {
+      await assertRejects(
+        () =>
+          securityReviewer((r) =>
+            r.provider("claude").apiKey("k")
+              .comment().discussion()
+              .diff((d) => d.text(DIFF))
+              .fetch(fetch)
+          ).validate({ target: "t" }),
+        AiReviewError, // adopted an OPEN identity — still gating
+      );
+    })
+  );
+  // First offered wins: the candidate adopted the first prior's identity.
+  const state = postedState(calls);
+  assertEquals(
+    state?.findings.find((f) => f.id === "aaaa0001")?.status,
+    "open",
+  );
+  assertEquals(
+    state?.findings.find((f) => f.id === "aaaa0001")?.aliases,
+    [REWORDED_ID],
+  );
+  // The double match is reported against the candidate's fresh id…
+  assertEquals(
+    lines.some((l) =>
+      l.includes(REWORDED_ID) &&
+      l.includes("matched more than one earlier finding")
+    ),
+    true,
+  );
+  // …and the dropped fourth comparison is announced, not silent.
+  assertEquals(
+    lines.some((l) =>
+      l.includes("reworded-finding check compared 3 of 4 candidate pairs")
+    ),
+    true,
+  );
+});
+
+Deno.test("the finding's detail reaches the adjudicator, and a reason-less dismissal sticks", async () => {
+  const detailed = {
+    ...FINDING,
+    detail: "input flows straight into eval with no sanitisation",
+  };
+  const comments = [
+    {
+      id: 1,
+      body: `Finding ${ID} misreads the code: eval runs in a sandboxed worker`,
+      user: { login: "maintainer", type: "User" },
+      author_association: "MEMBER",
+    },
+  ];
+  const { fetch, calls } = discussionFetch(comments, [
+    claude({ score: 9, severity: "high", findings: [detailed] }),
+    // A dismissal verdict carrying no reason — still a valid two-key dismissal.
+    claude({ verdicts: [{ id: ID, verdict: "dismissed" }] }),
+  ]);
+  const lines = await captured(() =>
+    inPr(async () => {
+      // Dismissed, so the gate does not trip.
+      await securityReviewer((r) =>
+        r.provider("claude").apiKey("k")
+          .comment().discussion()
+          .diff((d) => d.text(DIFF))
+          .fetch(fetch)
+      ).validate({ target: "t" });
+    })
+  );
+  const providerCalls = calls.filter((c) =>
+    !c.url.startsWith(`${GITHUB_API}/`)
+  );
+  assertEquals(providerCalls.length, 2);
+  // The adjudication prompt carried the finding's detail for context.
+  assertEquals(
+    JSON.parse(providerCalls[1].body).messages[0].content.includes(
+      "input flows straight into eval with no sanitisation",
+    ),
+    true,
+  );
+  assertEquals(
+    lines.some((l) => l.includes("dismissed via discussion by maintainer")),
+    true,
+  );
+  // Recorded dismissed with the author but no invented rationale.
+  const entry = postedState(calls)?.findings.find((f) => f.id === ID);
+  assertEquals(entry?.status, "dismissed");
+  assertEquals(entry?.author, "maintainer");
+  assertEquals(entry?.rationale, undefined);
+});
+
+Deno.test("a failed adjudication keeps contested findings open with a warning", async () => {
+  const calls: Call[] = [];
+  let served = 0;
+  const failing = ((input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    const method = init?.method ?? "GET";
+    calls.push({
+      url,
+      method,
+      body: typeof init?.body === "string" ? init.body : "",
+    });
+    if (url.startsWith(`${GITHUB_API}/`)) {
+      if (url.endsWith("/user")) {
+        return Promise.resolve(new Response("{}", { status: 403 }));
+      }
+      const payload = method === "GET"
+        ? JSON.stringify([{
+          id: 1,
+          body: `Finding ${ID} misreads the code`,
+          user: { login: "maintainer", type: "User" },
+          author_association: "MEMBER",
+        }])
+        : "{}";
+      return Promise.resolve(new Response(payload, { status: 200 }));
+    }
+    served++;
+    // The review answers; the adjudication call that follows fails outright.
+    return Promise.resolve(
+      served === 1
+        ? new Response(
+          claude({ score: 9, severity: "high", findings: [FINDING] }),
+          { status: 200 },
+        )
+        : new Response("upstream exploded", { status: 500 }),
+    );
+  }) as typeof fetch;
+  const lines = await captured(() =>
+    inPr(async () => {
+      await assertRejects(
+        () =>
+          securityReviewer((r) =>
+            r.provider("claude").apiKey("k")
+              .comment().discussion().retry({ attempts: 1 })
+              .diff((d) => d.text(DIFF))
+              .fetch(failing)
+          ).validate({ target: "t" }),
+        AiReviewError, // the contested finding stayed open and gates
+      );
+    })
+  );
+  assertEquals(
+    lines.some((l) =>
+      l.includes("adjudication failed") &&
+      l.includes("contested findings stay open")
+    ),
+    true,
+  );
+});
+
+Deno.test("findings beyond the thread cap stay in the table, and the gap is announced", async () => {
+  // One more anchorable finding than the per-run thread cap.
+  const count = MAX_NEW_THREADS + 1;
+  const bigDiff = [
+    "diff --git a/src/big.ts b/src/big.ts",
+    "--- a/src/big.ts",
+    "+++ b/src/big.ts",
+    `@@ -1,0 +1,${count} @@`,
+    ...Array.from({ length: count }, (_, i) => `+const v${i + 1} = ${i + 1};`),
+  ].join("\n");
+  const many = Array.from({ length: count }, (_, i) => ({
+    title: `Issue number ${i + 1}`,
+    severity: "high",
+    file: "src/big.ts",
+    line: i + 1,
+  }));
+  const { fetch, calls } = threadFetch([summaryComment()], [], [
+    claude({ score: 9, severity: "high", findings: many }),
+  ]);
+  await captured(() =>
+    inPr(async () => {
+      await assertRejects(
+        () =>
+          securityReviewer((r) =>
+            r.provider("claude").apiKey("k")
+              .comment().discussion((d) => d.threads())
+              .diff((d) => d.text(bigDiff))
+              .fetch(fetch)
+          ).validate({ target: "t" }),
+        AiReviewError,
+      );
+    })
+  );
+  // Exactly the cap was opened, and the leftover is promised to the next run.
+  assertEquals(threadPosts(calls).length, MAX_NEW_THREADS);
+  const write = calls.find((c) =>
+    c.url.includes("/issues/") && c.method !== "GET"
+  );
+  assertEquals(
+    JSON.parse(write?.body ?? "{}").body.includes(
+      `1 finding(s) did not get a review thread this run (cap ${MAX_NEW_THREADS})`,
+    ),
+    true,
+  );
+});
+
+Deno.test("a thread phase that throws degrades to a note, never a failure", async () => {
+  // The head-commit lookup explodes (HTTP 500) after the thread listing
+  // succeeded — the whole phase must collapse into a report note.
+  const calls: Call[] = [];
+  const doFetch = ((input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    const method = init?.method ?? "GET";
+    calls.push({
+      url,
+      method,
+      body: typeof init?.body === "string" ? init.body : "",
+    });
+    if (url.startsWith(`${GITHUB_API}/`)) {
+      if (url.endsWith("/user")) {
+        return Promise.resolve(new Response("{}", { status: 403 }));
+      }
+      if (method !== "GET") return Promise.resolve(new Response("{}"));
+      if (url.includes("/pulls/7/comments")) {
+        return Promise.resolve(new Response("[]"));
+      }
+      if (url.includes("/pulls/7")) {
+        return Promise.resolve(new Response("boom", { status: 500 }));
+      }
+      return Promise.resolve(new Response(JSON.stringify([summaryComment()])));
+    }
+    return Promise.resolve(
+      new Response(
+        claude({ score: 9, severity: "high", findings: [ANCHORED] }),
+        { status: 200 },
+      ),
+    );
+  }) as typeof fetch;
+  await captured(() =>
+    inPr(async () => {
+      await assertRejects(
+        () =>
+          securityReviewer((r) =>
+            r.provider("claude").apiKey("k")
+              .comment().discussion((d) => d.threads())
+              .diff((d) => d.text(ANCHORED_DIFF))
+              .fetch(doFetch)
+          ).validate({ target: "t" }),
+        AiReviewError, // the gate still speaks — the finding never vanished
+      );
+    })
+  );
+  assertEquals(threadPosts(calls).length, 0);
+  const write = calls.find((c) =>
+    c.url.includes("/issues/") && c.method !== "GET"
+  );
+  assertEquals(
+    JSON.parse(write?.body ?? "{}").body.includes(
+      "review threads unavailable this run",
+    ),
+    true,
+  );
+});
+
+Deno.test("discussion on GitHub without a PR context is skipped silently", async () => {
+  // A push build on GitHub Actions: the host can list comments, but there is
+  // no pull request to list them from — the discussion just does not run.
+  const { fetch, calls } = discussionFetch([], [
+    claude({ score: 0, severity: "none", findings: [] }),
+  ]);
+  const lines = await captured(() =>
+    inEnv(
+      {
+        GITHUB_ACTIONS: "true",
+        GITHUB_REPOSITORY: "zuke-build/zuke",
+        GITHUB_REF: "refs/heads/master", // a branch, not a PR
+        GITHUB_TOKEN: "tkn",
+      },
+      async () => {
+        await securityReviewer((r) =>
+          r.provider("claude").apiKey("k")
+            .comment().discussion()
+            .diff((d) => d.text(DIFF))
+            .fetch(fetch)
+        ).validate({ target: "t" });
+      },
+    )
+  );
+  // Not the "disabled" warning — this is the expected local/push shape.
+  assertEquals(lines.some((l) => l.includes("discussion disabled")), false);
+  // No comment listing was even attempted.
+  assertEquals(calls.every((c) => !c.url.startsWith(`${GITHUB_API}/`)), true);
+  // The comment itself is skipped with the no-PR-context warning.
+  assertEquals(lines.some((l) => l.includes("no GitHub PR context")), true);
+});
+
+Deno.test("a candidate matching a fixed and a dismissed prior reopens rather than inheriting the dismissal", async () => {
+  // Fixed entries are offered before dismissed ones exactly so that a
+  // candidate the model matches to both REOPENS (which reports) instead of
+  // inheriting a dismissal (which silences).
+  const priors = [
+    {
+      id: "oooo0001",
+      title: "Still-open concern",
+      severity: "high" as const,
+      status: "open" as const,
+      file: "src/app.ts",
+    },
+    {
+      id: "dddd0001",
+      title: "Dismissed concern",
+      severity: "high" as const,
+      status: "dismissed" as const,
+      file: "src/app.ts",
+      rationale: "argued away",
+      author: "maintainer",
+    },
+    {
+      id: "ffff0001",
+      title: "Fixed concern",
+      severity: "high" as const,
+      status: "fixed" as const,
+      file: "src/app.ts",
+    },
+  ];
+  const { fetch, calls } = discussionFetch(
+    priorComment({ findings: priors }),
+    [
+      claude({ score: 9, severity: "high", findings: [REWORDED] }),
+      // The model matches the FIRST comparison — which, by the fixed-first
+      // ordering, is the fixed entry even though it was listed last in state.
+      claude({ verdicts: [{ id: "p1", verdict: "same", reason: "same" }] }),
+    ],
+  );
+  const lines = await captured(() =>
+    inPr(async () => {
+      await assertRejects(
+        () =>
+          securityReviewer((r) =>
+            r.provider("claude").apiKey("k")
+              .comment().discussion()
+              .diff((d) => d.text(DIFF))
+              .fetch(fetch)
+          ).validate({ target: "t" }),
+        AiReviewError, // reopened — it gates again
+      );
+    })
+  );
+  assertEquals(
+    lines.some((l) => l.includes("reopened under ffff0001")),
+    true,
+  );
+  const state = postedState(calls);
+  assertEquals(
+    state?.findings.find((f) => f.id === "ffff0001")?.status,
+    "open",
+  );
+  assertEquals(
+    state?.findings.find((f) => f.id === "ffff0001")?.aliases,
+    [REWORDED_ID],
+  );
+  // The dismissal was NOT inherited and stays on its own entry.
+  assertEquals(
+    state?.findings.find((f) => f.id === "dddd0001")?.status,
+    "dismissed",
+  );
+});
+
+Deno.test("an upheld verdict without a reason records no rationale", async () => {
+  const bare = { title: "Global prototype pollution", severity: "high" };
+  const bareId = findingFingerprint("security", {
+    title: "Global prototype pollution",
+    severity: "high",
+  });
+  const comments = [
+    {
+      id: 1,
+      body: `Finding ${bareId} is fine, we own that global`,
+      user: { login: "maintainer", type: "User" },
+      author_association: "OWNER",
+    },
+  ];
+  const { fetch, calls } = discussionFetch(comments, [
+    claude({ score: 9, severity: "high", findings: [bare] }),
+    claude({ verdicts: [{ id: bareId, verdict: "upheld" }] }),
+  ]);
+  await captured(() =>
+    inPr(async () => {
+      await assertRejects(
+        () =>
+          securityReviewer((r) =>
+            r.provider("claude").apiKey("k")
+              .comment().discussion()
+              .diff((d) => d.text(DIFF))
+              .fetch(fetch)
+          ).validate({ target: "t" }),
+        AiReviewError, // upheld → still gating
+      );
+    })
+  );
+  const entry = postedState(calls)?.findings.find((f) => f.id === bareId);
+  assertEquals(entry?.status, "upheld");
+  assertEquals(entry?.rationale, undefined); // no invented reasoning
+  assertEquals(entry?.file, undefined); // and no invented location
+});
+
+Deno.test("an exhausted budget skips the adjudication; contested findings stay open", async () => {
+  const b = budget((x) => x.maxTokens(1));
+  const comments = [
+    {
+      id: 1,
+      body: `Finding ${ID} misreads the code`,
+      user: { login: "maintainer", type: "User" },
+      author_association: "MEMBER",
+    },
+  ];
+  // The review's own usage blows the cap before the adjudication would run.
+  const { fetch, calls } = discussionFetch(comments, [
+    claudeWithUsage({ score: 9, severity: "high", findings: [FINDING] }, {
+      input_tokens: 500,
+      output_tokens: 100,
+    }),
+  ]);
+  await captured(() =>
+    inPr(async () => {
+      await assertRejects(
+        () =>
+          securityReviewer((r) =>
+            r.provider("claude").apiKey("k")
+              .comment().discussion().budget(b)
+              .diff((d) => d.text(DIFF))
+              .fetch(fetch)
+          ).validate({ target: "t" }),
+        AiReviewError, // never adjudicated → still open → still gating
+      );
+    })
+  );
+  // The review call only — the maintainer's rebuttal cost nothing further.
+  assertEquals(
+    calls.filter((c) => !c.url.startsWith(`${GITHUB_API}/`)).length,
+    1,
+  );
+  assertEquals(
+    postedState(calls)?.findings.find((f) => f.id === ID)?.status,
+    "open",
+  );
+});
+
+Deno.test("a sticky dismissal with no recorded author or rationale still mutes, rendered bare", async () => {
+  const priorBody = `${MARKER}\nold report\n${
+    encodeState({
+      findings: [{
+        id: ID,
+        title: FINDING.title,
+        severity: "high",
+        status: "dismissed",
+        // No author, rationale, or file recorded — a minimal state entry.
+      }],
+    })
+  }`;
+  const comments = [{
+    id: 1,
+    body: priorBody,
+    user: { login: "github-actions[bot]", type: "Bot" },
+    author_association: "NONE",
+  }];
+  const { fetch, calls } = discussionFetch(comments, [
+    claude({ score: 9, severity: "high", findings: [FINDING] }),
+  ]);
+  const lines = await captured(() =>
+    inPr(async () => {
+      // Passes: the sticky dismissal mutes the re-reported finding.
+      await securityReviewer((r) =>
+        r.provider("claude").apiKey("k")
+          .comment().discussion()
+          .diff((d) => d.text(DIFF))
+          .fetch(fetch)
+      ).validate({ target: "t" });
+    })
+  );
+  // Rendered without inventing an author or a reason.
+  assertEquals(
+    lines.some((l) => l.includes(`dismissed via discussion: ${FINDING.title}`)),
+    true,
+  );
+  // The dismissed-findings memory rode into the prompt as the bare line.
+  const provider = calls.find((c) => !c.url.startsWith(`${GITHUB_API}/`));
+  const user = JSON.parse(provider?.body ?? "{}").messages[0].content;
+  assertEquals(user.includes(`${ID} — ${FINDING.title}`), true);
+});
+
+Deno.test("a missing token env skips the comment with the PR-context warning", async () => {
+  // A PR on GitHub Actions, but GITHUB_TOKEN is absent and no .commentToken()
+  // was configured: the comment is skipped, never posted unauthenticated.
+  const { fetch, calls } = discussionFetch([], [
+    claude({ score: 0, severity: "none", findings: [] }),
+  ]);
+  const lines = await captured(() =>
+    inEnv(
+      {
+        GITHUB_ACTIONS: "true",
+        GITHUB_REPOSITORY: "zuke-build/zuke",
+        GITHUB_REF: "refs/pull/7/merge",
+        // no GITHUB_TOKEN
+      },
+      async () => {
+        const token = Deno.env.get("GITHUB_TOKEN");
+        Deno.env.delete("GITHUB_TOKEN");
+        try {
+          await securityReviewer((r) =>
+            r.provider("claude").apiKey("k")
+              .comment()
+              .diff((d) => d.text(DIFF))
+              .fetch(fetch)
+          ).validate({ target: "t" });
+        } finally {
+          if (token !== undefined) Deno.env.set("GITHUB_TOKEN", token);
+        }
+      },
+    )
+  );
+  assertEquals(
+    lines.some((l) => l.includes("no GitHub PR context — skipping comment")),
+    true,
+  );
+  assertEquals(calls.every((c) => !c.url.startsWith(`${GITHUB_API}/`)), true);
+});
+
+Deno.test("a file-less open prior is re-assessed bare and marked fixed when gone", async () => {
+  const priorBody = `${MARKER}\nold report\n${
+    encodeState({
+      findings: [{
+        id: "bbbb0001",
+        title: "Orphan concern",
+        severity: "low",
+        status: "open",
+        // no file recorded
+      }],
+    })
+  }`;
+  const comments = [{
+    id: 1,
+    body: priorBody,
+    user: { login: "github-actions[bot]", type: "Bot" },
+    author_association: "NONE",
+  }];
+  const { fetch, calls } = discussionFetch(comments, [
+    claude({ score: 0, severity: "none", findings: [] }),
+  ]);
+  const lines = await captured(() =>
+    inPr(async () => {
+      await securityReviewer((r) =>
+        r.provider("claude").apiKey("k")
+          .comment().discussion()
+          .diff((d) => d.text(DIFF))
+          .fetch(fetch)
+      ).validate({ target: "t" });
+    })
+  );
+  // The prior rode into the prompt as the bare `id — title` line.
+  const provider = calls.find((c) => !c.url.startsWith(`${GITHUB_API}/`));
+  const user = JSON.parse(provider?.body ?? "{}").messages[0].content;
+  assertEquals(user.includes("bbbb0001 — Orphan concern"), true);
+  // Not re-reported → recorded as progress, with no invented location.
+  assertEquals(
+    lines.some((l) => l.includes("fixed: Orphan concern · bbbb0001")),
+    true,
+  );
+  assertEquals(
+    postedState(calls)?.findings.find((f) => f.id === "bbbb0001")?.status,
+    "fixed",
+  );
+});
+
+Deno.test("a dismissal of a file-less finding records no location", async () => {
+  const bare = { title: "Global prototype pollution", severity: "high" };
+  const bareId = findingFingerprint("security", {
+    title: "Global prototype pollution",
+    severity: "high",
+  });
+  const comments = [
+    {
+      id: 1,
+      body: `Finding ${bareId} cannot happen: the object is frozen at startup`,
+      user: { login: "maintainer", type: "User" },
+      author_association: "MEMBER",
+    },
+  ];
+  const { fetch, calls } = discussionFetch(comments, [
+    claude({ score: 9, severity: "high", findings: [bare] }),
+    claude({
+      verdicts: [{ id: bareId, verdict: "dismissed", reason: "frozen object" }],
+    }),
+  ]);
+  await captured(() =>
+    inPr(async () => {
+      // Dismissed → the gate does not trip.
+      await securityReviewer((r) =>
+        r.provider("claude").apiKey("k")
+          .comment().discussion()
+          .diff((d) => d.text(DIFF))
+          .fetch(fetch)
+      ).validate({ target: "t" });
+    })
+  );
+  const entry = postedState(calls)?.findings.find((f) => f.id === bareId);
+  assertEquals(entry?.status, "dismissed");
+  assertEquals(entry?.rationale, "frozen object");
+  assertEquals(entry?.file, undefined); // no invented location
+});
+
+Deno.test("a reason-less dismissal still closes its thread, without an invented reason", async () => {
+  const reply = {
+    id: 502,
+    body: "This runs in a sandboxed worker, so it cannot reach the host.",
+    in_reply_to_id: 501,
+    user: { login: "maintainer", type: "User" },
+    author_association: "MEMBER",
+  };
+  const { fetch, calls } = threadFetch(
+    [summaryComment({
+      findings: [{
+        id: ANCHORED_ID,
+        title: ANCHORED.title,
+        severity: "high",
+        status: "open",
+        file: "src/app.ts",
+      }],
+    })],
+    [threadRoot(ANCHORED_ID), reply],
+    [
+      claude({ score: 9, severity: "high", findings: [ANCHORED] }),
+      // The adjudicator dismisses but offers no reason.
+      claude({ verdicts: [{ id: ANCHORED_ID, verdict: "dismissed" }] }),
+    ],
+  );
+  await captured(() =>
+    inPr(async () => {
+      await securityReviewer((r) =>
+        r.provider("claude").apiKey("k")
+          .comment().discussion((d) => d.threads())
+          .diff((d) => d.text(ANCHORED_DIFF))
+          .fetch(fetch)
+      ).validate({ target: "t" });
+    })
+  );
+  // The outcome reply landed in the thread, bare — no fabricated rationale.
+  const posted = calls.find((c) => c.url.includes("/comments/501/replies"));
+  const body = JSON.parse(posted?.body ?? "{}").body;
+  assertEquals(
+    body.startsWith(outcomeMarker(NAME_HASH, ANCHORED_ID, "dismissed")),
+    true,
+  );
+  assertEquals(body.includes("**Dismissed via discussion**"), true);
+  assertEquals(body.includes("**Dismissed via discussion** —"), false);
 });
