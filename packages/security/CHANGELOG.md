@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.1](https://github.com/zuke-build/zuke/compare/security-v1.0.0...security-v1.0.1) (2026-08-13)
+
+
+### Bug Fixes
+
+* **cli:** escape line separators in generated literals; license headers and review docs ([#347](https://github.com/zuke-build/zuke/issues/347)) ([114f842](https://github.com/zuke-build/zuke/commit/114f84246e83fc6fb0bd12b55e8eb04192978074))
+
 ## [1.0.0](https://github.com/zuke-build/zuke/compare/security-v0.3.0...security-v1.0.0) (2026-07-30)
 
 

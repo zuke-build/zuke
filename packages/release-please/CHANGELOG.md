@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.3](https://github.com/zuke-build/zuke/compare/release-please-v1.0.2...release-please-v1.0.3) (2026-08-13)
+
+
+### Bug Fixes
+
+* **cli:** escape line separators in generated literals; license headers and review docs ([#347](https://github.com/zuke-build/zuke/issues/347)) ([114f842](https://github.com/zuke-build/zuke/commit/114f84246e83fc6fb0bd12b55e8eb04192978074))
+
 ## [1.0.2](https://github.com/zuke-build/zuke/compare/release-please-v1.0.1...release-please-v1.0.2) (2026-07-20)
 
 
