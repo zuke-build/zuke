@@ -34,6 +34,7 @@ import { consoleRenderer, ConsoleTasks } from "@zuke/console";
 import {
   aiFixer,
   aiReviewWorkflow,
+  budget,
   genericReviewer,
   securityReviewer,
   suppressions,
@@ -141,6 +142,16 @@ class ZukeBuild extends Build {
     .secret()
     .env("OPENAI_API_KEY");
 
+  // One budget shared by everything that spends that key in a run: the lint
+  // fixer below and both reviewers further down. It is a runaway guard, not a
+  // throttle — 500k tokens is far above what a normal run costs (a review is a
+  // capped 20k-token diff plus file context, verify, and adjudication), so it
+  // only bites when something loops. Whatever trips it is skipped, not failed:
+  // the reviewer reports the skip on the console and in the summary, and the
+  // fixer leaves the underlying lint failure standing. Declared here because a
+  // field can only be referenced by fields declared below it.
+  aiBudget = budget((b) => b.maxTokens(500_000));
+
   lint = target()
     .description("Lint the workspace (deno lint)")
     // Self-heal lint failures with @zuke/ai, dogfooding the full loop: on a
@@ -155,6 +166,7 @@ class ZukeBuild extends Build {
         f
           .provider("openai")
           .apiKey(this.openaiKey)
+          .budget(this.aiBudget)
           .autoApply()
           .allowCI()
           .commitFixes()
@@ -763,6 +775,7 @@ class ZukeBuild extends Build {
     r
       .provider("openai")
       .apiKey(this.openaiKey)
+      .budget(this.aiBudget)
       .skipIfKeyMissing()
       // A fresh PR comment per run (uses GITHUB_TOKEN): earlier assessments —
       // and their finding ids — stay on the thread as history instead of being
@@ -871,6 +884,7 @@ class ZukeBuild extends Build {
     r
       .provider("openai")
       .apiKey(this.openaiKey)
+      .budget(this.aiBudget)
       .skipIfKeyMissing()
       // Separate comments from the security review (keyed by reviewer name),
       // appended per run for the same history-keeping reasons.
