@@ -19,6 +19,7 @@ import {
 } from "../src/remote_cache.ts";
 import { HttpError } from "../src/http.ts";
 import { gzip, tar } from "../src/compression.ts";
+import { withTemp } from "./_temp.ts";
 
 const enc = (text: string) => new TextEncoder().encode(text);
 const dec = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
@@ -69,7 +70,7 @@ Deno.test("restoreOutputs refuses archive entries that escape the workspace", as
   // A ".." entry would land outside the current directory.
   const escaping = await gzip(tar([{ name: "../evil.sh", data: enc("x") }]));
   const escapeErr = await assertRejects(() => restoreOutputs(escaping, out));
-  assertStringIncludes(escapeErr.message, "escapes the workspace");
+  assertStringIncludes(escapeErr.message, "escapes the destination");
 
   // An absolute path would ignore the workspace entirely.
   const absolute = await gzip(tar([{ name: "/etc/evil", data: enc("x") }]));
@@ -99,16 +100,13 @@ Deno.test("remoteCacheKey sanitises the name and carries the fingerprint", () =>
 });
 
 Deno.test("FileSystemCacheStore stores and retrieves artifacts", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const store = new FileSystemCacheStore(`${dir}/cache`);
     assertEquals(await store.get("missing"), null);
     await store.put("k1", enc("payload"));
     const got = await store.get("k1");
     assertEquals(got === null ? "" : dec(got), "payload");
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 /** Build a `typeof fetch` stand-in from a synchronous handler, recording calls. */
@@ -226,16 +224,13 @@ Deno.test("archiveOutputs ignores an entry whose file reads back as null", async
 });
 
 Deno.test("FileSystemCacheStore.get propagates a non-NotFound read error", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const store = new FileSystemCacheStore(dir);
     // Make the artifact path a directory so reading it fails (not NotFound).
     await Deno.mkdir(`${dir}/busy.tar.gz`);
     const err = await assertRejects(() => store.get("busy"));
     assertEquals(err instanceof Error, true); // a non-NotFound error propagates
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("resolveRemoteStore honours option, then declared, then env", () => {

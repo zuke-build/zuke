@@ -3,6 +3,7 @@
 
 import { assertEquals, assertRejects, assertThrows } from "./_assert.ts";
 import { FileTasks } from "../src/file.ts";
+import { withTemp } from "./_temp.ts";
 
 /** Run `fn` with HOME/USERPROFILE set to `values`, restoring them afterwards. */
 function withHomeEnv(
@@ -38,16 +39,6 @@ Deno.test("homeDirectory reads HOME, then USERPROFILE, else throws", () => {
     assertThrows(() => FileTasks.homeDirectory(), Error, "home directory");
   });
 });
-
-/** Run `fn` against a fresh temp directory, cleaned up afterwards. */
-async function withTemp(fn: (dir: string) => Promise<void>): Promise<void> {
-  const dir = await Deno.makeTempDir();
-  try {
-    await fn(dir);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
-}
 
 Deno.test("exists reports presence and absence", async () => {
   await withTemp(async (dir) => {

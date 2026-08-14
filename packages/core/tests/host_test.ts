@@ -9,6 +9,7 @@ import {
   isCI,
   operatingSystem,
 } from "../src/host.ts";
+import { withEnv as withScopedEnv } from "./_env.ts";
 
 /** All CI-host env signals, for clearing the ambient environment in a test. */
 const HOST_VARS = [
@@ -19,29 +20,16 @@ const HOST_VARS = [
   "CI",
 ];
 
-/** Run `fn` with several environment variables temporarily set/unset. */
-async function withEnv(
+/**
+ * Run `fn` with `vars` applied on top of a cleared set of host signals, so the
+ * ambient environment (a real CI run) can't leak into a detection test.
+ */
+function withEnv(
   vars: Record<string, string | undefined>,
   fn: () => void | Promise<void>,
 ): Promise<void> {
-  const saved = new Map<string, string | undefined>();
-  // Clear every host signal first so the ambient environment can't leak in.
-  for (const key of HOST_VARS) {
-    if (!(key in vars)) saved.set(key, Deno.env.get(key)), Deno.env.delete(key);
-  }
-  for (const [key, value] of Object.entries(vars)) {
-    saved.set(key, Deno.env.get(key));
-    if (value === undefined) Deno.env.delete(key);
-    else Deno.env.set(key, value);
-  }
-  try {
-    await fn();
-  } finally {
-    for (const [key, value] of saved) {
-      if (value === undefined) Deno.env.delete(key);
-      else Deno.env.set(key, value);
-    }
-  }
+  const cleared = Object.fromEntries(HOST_VARS.map((key) => [key, undefined]));
+  return withScopedEnv({ ...cleared, ...vars }, fn);
 }
 
 /** An env reader over a fixed map, for hermetic detectCiHost tests. */

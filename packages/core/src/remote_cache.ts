@@ -21,8 +21,16 @@
  * @module
  */
 
-import { gunzip, gzip, tar, type TarEntry, untar } from "./compression.ts";
+import {
+  assertSafeEntryName,
+  gunzip,
+  gzip,
+  tar,
+  type TarEntry,
+  untar,
+} from "./compression.ts";
 import { assertSecureBackendUrl, HttpError } from "./http.ts";
+import { readFileOrNull } from "./internal.ts";
 
 /**
  * A content-addressed store for archived target outputs, keyed by
@@ -98,26 +106,6 @@ export async function archiveOutputs(
   host: OutputHost,
 ): Promise<Uint8Array> {
   return await gzip(tar(await collectEntries(outputs, host)));
-}
-
-/**
- * Reject an archive entry whose name would escape the workspace — an absolute
- * path or one containing a `..` segment. A remote store is only as trustworthy
- * as whoever can write to it, so a poisoned or malicious archive must never be
- * able to place files outside the current directory (a "zip slip").
- */
-function assertSafeEntryName(name: string): void {
-  const normalized = name.replace(/\\/g, "/");
-  if (normalized.startsWith("/") || /^[A-Za-z]:/.test(normalized)) {
-    throw new Error(
-      `remote cache: refusing to restore an absolute path from an archive: "${name}".`,
-    );
-  }
-  if (normalized.split("/").some((segment) => segment === "..")) {
-    throw new Error(
-      `remote cache: refusing to restore a path that escapes the workspace: "${name}".`,
-    );
-  }
 }
 
 /**
@@ -258,16 +246,6 @@ export class FileSystemCacheStore implements RemoteCacheStore {
   async put(key: string, artifact: Uint8Array): Promise<void> {
     await Deno.mkdir(this.#dir, { recursive: true });
     await Deno.writeFile(this.#path(key), artifact);
-  }
-}
-
-/** Read a file's bytes, or `null` when it does not exist. */
-async function readFileOrNull(path: string): Promise<Uint8Array | null> {
-  try {
-    return await Deno.readFile(path);
-  } catch (error) {
-    if (error instanceof Deno.errors.NotFound) return null;
-    throw error;
   }
 }
 

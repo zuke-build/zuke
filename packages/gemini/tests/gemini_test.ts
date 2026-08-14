@@ -7,7 +7,10 @@ import {
   assertThrows,
 } from "../../core/tests/_assert.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
-import { missingTool } from "@zuke/core/tooling/conformance";
+import {
+  assertWrapperConformance,
+  missingTool,
+} from "@zuke/core/tooling/conformance";
 import {
   GeminiExtensionsSettings,
   GeminiMcpSettings,
@@ -138,5 +141,15 @@ Deno.test("GeminiTasks.extensions reaches execution", async () => {
   await assertRejects(
     () => GeminiTasks.extensions((s) => missingTool(s.command("list"))),
     ToolNotFoundError,
+  );
+});
+
+Deno.test("gemini: conforms to the wrapper contract", async () => {
+  await assertWrapperConformance(
+    () => new GeminiRunSettings().prompt("hi"),
+    "gemini",
+    {
+      resolution: "path",
+    },
   );
 });

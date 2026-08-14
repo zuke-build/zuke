@@ -25,31 +25,20 @@ import {
   defaultStateHost,
   FileSystemStateStore,
 } from "../../packages/core/mod.ts";
+import { markerLines, spawnFixture } from "./_harness.ts";
 
 const FIXTURE = new URL("./fixtures/effect_build.ts", import.meta.url);
 
 /** How long to wait for the child to reach its effect before giving up. */
 const REACH_TIMEOUT_MS = 30_000;
 
-/** Spawn the fixture as a real `deno` subprocess against `dir`. */
-function spawn(
-  args: string[],
-  dir: string,
-  marker: string,
-  hang: boolean,
-): Deno.ChildProcess {
-  return new Deno.Command(Deno.execPath(), {
-    // A `file://` URL rather than URL.pathname, which is `/C:/…` on Windows.
-    args: ["run", "-A", FIXTURE.href, ...args],
-    env: {
-      ZUKE_STATE_DIR: dir,
-      ZUKE_E2E_MARKER: marker,
-      ...(hang ? { ZUKE_E2E_HANG: "1" } : {}),
-    },
-    stdout: "piped",
-    stderr: "piped",
-  }).spawn();
-}
+/** Spawn the fixture against state dir `dir`, optionally hanging on its effect. */
+const spawn = (args: string[], dir: string, marker: string, hang: boolean) =>
+  spawnFixture(FIXTURE, args, {
+    ZUKE_STATE_DIR: dir,
+    ZUKE_E2E_MARKER: marker,
+    ...(hang ? { ZUKE_E2E_HANG: "1" } : {}),
+  });
 
 /** Narrow parsed JSON to an object, so the lock record can be edited without a cast. */
 function recordOf(value: unknown): Record<string, unknown> {
@@ -59,16 +48,6 @@ function recordOf(value: unknown): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [key, val] of Object.entries(value)) out[key] = val;
   return out;
-}
-
-/** The marker file's lines, or an empty list if it does not exist yet. */
-async function markerLines(marker: string): Promise<string[]> {
-  try {
-    const text = await Deno.readTextFile(marker);
-    return text.split("\n").filter((line) => line !== "");
-  } catch {
-    return [];
-  }
 }
 
 /** Wait until the marker file has `count` lines, or fail after the timeout. */

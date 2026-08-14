@@ -19,8 +19,8 @@ import {
   type EnvReader,
   findOwn,
   type HostComment,
-  MAX_COMMENT_PAGES,
-  nextLink,
+  paginateLinked,
+  probeString,
   readEnv,
   type ReviewHost,
 } from "./types.ts";
@@ -99,32 +99,28 @@ function toHostComment(item: unknown): HostComment | undefined {
 }
 
 /**
- * List every comment on the pull request, following `Link` pagination (bounded
- * by {@link MAX_COMMENT_PAGES}). The author login, `author_association`, and
- * bot flag come from the API's own metadata, so the discussion layer's trust
- * decisions are grounded in what GitHub asserts — never in the comment text.
+ * List every comment on the pull request, following `Link` pagination (see
+ * {@link paginateLinked}). The author login, `author_association`, and bot flag
+ * come from the API's own metadata, so the discussion layer's trust decisions
+ * are grounded in what GitHub asserts — never in the comment text.
  */
 export async function listPrComments(
   context: GithubContext,
   doFetch: typeof fetch = fetch,
 ): Promise<HostComment[]> {
   const comments: HostComment[] = [];
-  let url: string | undefined =
+  const url =
     `${API}/repos/${context.owner}/${context.repo}/issues/${context.pull}/comments?per_page=100`;
-  for (let page = 0; url !== undefined && page < MAX_COMMENT_PAGES; page++) {
-    const response = await doFetch(url, {
-      headers: githubHeaders(context.token),
-    });
-    await ensureOk(response, "GitHub");
-    const data: unknown = await response.json();
-    if (Array.isArray(data)) {
-      for (const item of data) {
-        const comment = toHostComment(item);
-        if (comment !== undefined) comments.push(comment);
-      }
-    }
-    url = nextLink(response.headers.get("link"));
-  }
+  await paginateLinked(
+    url,
+    githubHeaders(context.token),
+    "GitHub",
+    doFetch,
+    (item) => {
+      const comment = toHostComment(item);
+      if (comment !== undefined) comments.push(comment);
+    },
+  );
   return comments;
 }
 
@@ -133,23 +129,11 @@ export async function listPrComments(
  * endpoint is unavailable — an Actions installation token cannot call it, but
  * its comments are authored by a bot account, which the caller checks first.
  */
-export async function selfLogin(
+export function selfLogin(
   token: string,
   doFetch: typeof fetch,
 ): Promise<string | undefined> {
-  try {
-    const response = await doFetch(`${API}/user`, {
-      headers: githubHeaders(token),
-    });
-    if (!response.ok) {
-      await response.body?.cancel();
-      return undefined;
-    }
-    const login = dig(await response.json(), "login");
-    return typeof login === "string" ? login : undefined;
-  } catch {
-    return undefined;
-  }
+  return probeString(`${API}/user`, githubHeaders(token), doFetch, "login");
 }
 
 /**

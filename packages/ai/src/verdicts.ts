@@ -14,9 +14,7 @@
  * @module
  */
 
-import { isolateJson } from "./assessment.ts";
-import { AiReviewError } from "./errors.ts";
-import { dig } from "./json.ts";
+import { dig, parseJsonObject } from "./json.ts";
 
 /** One verdict returned by a verify or adjudication pass. */
 export interface Verdict {
@@ -32,18 +30,13 @@ export interface Verdict {
  * Parse a verdict response into the verdicts keyed by finding fingerprint.
  * Only entries with a string id and a verdict in `allowed` are kept — an
  * out-of-vocabulary verdict is dropped (fail-safe), not coerced. Invalid JSON
- * throws an {@link AiReviewError}, like the assessment parser.
+ * throws an {@link "./errors.ts".AiReviewError}, like the assessment parser.
  */
 export function parseVerdicts(
   text: string,
   allowed: string[],
 ): Map<string, Verdict> {
-  let raw: unknown;
-  try {
-    raw = JSON.parse(isolateJson(text));
-  } catch {
-    throw new AiReviewError("the model did not return valid verdict JSON");
-  }
+  const raw = parseJsonObject(text, "verdict JSON");
   const verdicts = new Map<string, Verdict>();
   const items = dig(raw, "verdicts");
   if (!Array.isArray(items)) return verdicts;

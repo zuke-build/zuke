@@ -20,6 +20,13 @@
  */
 
 import type { JsonValue } from "../target.ts";
+import { asObject, fields } from "../json_shape.ts";
+
+/** The field readers for a run record's own fields. */
+const { str, optionalStr } = fields("state: run record field");
+
+/** The field readers for one graph node, which names itself in its errors. */
+const graphNode = fields("state: graph node");
 
 /**
  * The lifecycle status of a whole run. `cancelling` is the transient state a
@@ -315,38 +322,6 @@ export function stringifyRunRecord(record: RunRecord): string {
   return `${JSON.stringify(record, null, 2)}\n`;
 }
 
-/** Narrow an unknown value to a plain object without casting, else `null`. */
-function asObject(value: unknown): Record<string, unknown> | null {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return null;
-  }
-  const out: Record<string, unknown> = {};
-  for (const [key, val] of Object.entries(value)) out[key] = val;
-  return out;
-}
-
-/** Read a required string field, throwing a descriptive error if it is not one. */
-function str(object: Record<string, unknown>, field: string): string {
-  const value = object[field];
-  if (typeof value !== "string") {
-    throw new Error(`state: run record field "${field}" is not a string`);
-  }
-  return value;
-}
-
-/** Read an optional string field, throwing if present but not a string. */
-function optionalStr(
-  object: Record<string, unknown>,
-  field: string,
-): string | undefined {
-  const value = object[field];
-  if (value === undefined) return undefined;
-  if (typeof value !== "string") {
-    throw new Error(`state: run record field "${field}" is not a string`);
-  }
-  return value;
-}
-
 /**
  * Read an optional boolean field, defaulting to `false` when absent — so a
  * record written before the field existed still parses — and throwing if it is
@@ -570,13 +545,10 @@ export function parseRunRecord(text: string): RunRecord {
   const graph: RunGraphNode[] = rawGraph.map((node) => {
     const n = asObject(node);
     if (n === null) throw new Error("state: graph node is not an object");
-    const dependsOn = n.dependsOn;
-    if (
-      !Array.isArray(dependsOn) || dependsOn.some((d) => typeof d !== "string")
-    ) {
-      throw new Error(`state: graph node "dependsOn" is not a string array`);
-    }
-    return { name: str(n, "name"), dependsOn: dependsOn.filter(isString) };
+    return {
+      name: str(n, "name"),
+      dependsOn: graphNode.strArray(n, "dependsOn"),
+    };
   });
 
   const rawParams = asObject(object.params);
@@ -655,11 +627,6 @@ export function parseRunRecord(text: string): RunRecord {
     record.intendedTerminal = found;
   }
   return record;
-}
-
-/** A `filter` type guard that narrows to `string`. */
-function isString(value: unknown): value is string {
-  return typeof value === "string";
 }
 
 /**

@@ -17,13 +17,31 @@
  * @module
  */
 
-import type { Redactor } from "../redact.ts";
-import type { RunRecord } from "../state/types.ts";
+import { Redactor } from "../redact.ts";
+import type { RunEvent, RunRecord } from "../state/types.ts";
 import type { StateStore } from "../state/store.ts";
 import { RunStateWriter } from "../state/writer.ts";
 
 /** The fixed run id under which the MCP audit trail is stored. */
 export const AUDIT_RUN_ID = "mcp-audit";
+
+/** Control keys whose values are always safe to record (booleans, never secrets). */
+export const AUDIT_SAFE_KEYS: ReadonlySet<string> = new Set([
+  "dryRun",
+  "confirm",
+]);
+
+/**
+ * The string form an argument takes in the audit trail: a structure is
+ * serialised, everything else stringified. Used both to seed a redactor and to
+ * render the recorded value, so the two can never disagree about what text a
+ * value produces.
+ */
+export function auditText(value: unknown): string {
+  return typeof value === "object" && value !== null
+    ? JSON.stringify(value)
+    : String(value);
+}
 
 /**
  * Open (or seed) the audit-log writer over `store`: adopt the existing audit
@@ -63,4 +81,42 @@ export async function openAuditLog(
     events: [],
   };
   return await RunStateWriter.open(store, record, now, redactor, warn);
+}
+
+/**
+ * A lazily-opened handle on the audit trail: {@link AuditTrail.append} opens the
+ * writer on the first event and reuses it after.
+ *
+ * The open is memoised as a **promise**, so two concurrent first calls share one
+ * writer (whose internal chain serialises appends) rather than racing to create
+ * two; a failed open is dropped, so a later call retries instead of reusing a
+ * poisoned one. Appending is best-effort — a store hiccup must never fail the
+ * tool call being audited — so every failure is swallowed.
+ */
+export class AuditTrail {
+  /** The store the trail is written to. */
+  readonly #store: StateStore;
+  /** The audit writer, memoised as a promise from the first append. */
+  #writer?: Promise<RunStateWriter>;
+
+  /** Build the trail over `store`; nothing is opened until the first append. */
+  constructor(store: StateStore) {
+    this.#store = store;
+  }
+
+  /** Append one event to the trail, best-effort. */
+  async append(event: RunEvent): Promise<void> {
+    try {
+      this.#writer ??= openAuditLog(
+        this.#store,
+        () => new Date().toISOString(),
+        new Redactor(),
+      );
+      await (await this.#writer).appendEvent(event);
+    } catch {
+      // Auditing is best-effort: a store hiccup must not fail the tool call.
+      // Drop a failed open so a later call can retry instead of a poisoned one.
+      this.#writer = undefined;
+    }
+  }
 }

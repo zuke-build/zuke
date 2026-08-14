@@ -20,19 +20,18 @@
  */
 
 import { type Build, type BuildResult, discoverTargets } from "./build.ts";
-import { defaultReadEnv } from "./internal.ts";
-import { cancelRun } from "./cancel.ts";
+import { defaultReadEnv, messageOf } from "./internal.ts";
+import { cancelRun, compensationSummary } from "./cancel.ts";
 import { execute, type Reporter } from "./executor.ts";
 import type { Plugin } from "./plugin.ts";
 import { planGraph } from "./graph.ts";
+import { graphDrift, runGraphSnapshot } from "./graph_snapshot.ts";
 import { reapAbandoned, recoverStranded } from "./reap.ts";
-import { assertOwnsRun, ForeignRunError, resolveBuildId } from "./ownership.ts";
+import { ForeignRunError, loadOwnedRun, resolveBuildId } from "./ownership.ts";
 import { acquireLease, RUN_LEASE_PREFIX } from "./state/run_lease.ts";
 import type { JsonValue, TargetBuilder } from "./target.ts";
-import { absolutePath } from "./path.ts";
-import { findConfigDir, pathExists } from "./config.ts";
-import { defaultStateHost, type StateStore } from "./state/store.ts";
-import { resolveStateStore } from "./state/resolve.ts";
+import type { StateStore } from "./state/store.ts";
+import { resolveRunStore } from "./run_store.ts";
 import { resolveActor } from "./state/record.ts";
 import type {
   RunGraphNode,
@@ -147,7 +146,11 @@ export async function resumeRun(
   options: ResumeOptions,
 ): Promise<BuildResult> {
   const readEnv = options.readEnv ?? defaultReadEnv;
-  const store = resolveResumeStore(options, build, readEnv);
+  const store = resolveRunStore(
+    options.stateStore,
+    build.stateStore(),
+    readEnv,
+  );
   if (store === undefined) {
     throw new Error(
       "resume: no state store is configured. Set ZUKE_STATE_DIR / " +
@@ -155,18 +158,13 @@ export async function resumeRun(
     );
   }
 
-  const initial = await store.getRun(options.runId);
-  if (initial === null) {
-    throw new Error(`resume: no run "${options.runId}" found in the store.`);
-  }
-
-  // Before anything else, and before the shape checks below: a resume *runs this
-  // build's target bodies* against the record it is given, so a run belonging to
-  // another build is not merely out of scope, it is the wrong code executing
-  // against someone else's state. The shape checks cannot catch it — one
-  // `zuke.ts` templated across services agrees on every target name and edge and
-  // differs only in what the bodies do.
-  assertOwnsRun(initial.record, resolveBuildId(readEnv));
+  // Ownership is checked before anything else, and before the shape checks
+  // below: a resume *runs this build's target bodies* against the record it is
+  // given, so a run belonging to another build is not merely out of scope, it is
+  // the wrong code executing against someone else's state. The shape checks
+  // cannot catch it — one `zuke.ts` templated across services agrees on every
+  // target name and edge and differs only in what the bodies do.
+  const initial = await loadOwnedRun(store, options.runId, "resume", readEnv);
 
   const resumerActor = resolveActor(options.actor, readEnv);
   const now = () => new Date().toISOString();
@@ -283,22 +281,6 @@ export async function resumeRun(
   }
 }
 
-/** Resolve the store for a resume — like a normal run, but always defaulting on. */
-function resolveResumeStore(
-  options: ResumeOptions,
-  build: Build,
-  readEnv: (name: string) => string | undefined,
-): StateStore | undefined {
-  return resolveStateStore(options.stateStore, build.stateStore(), {
-    readEnv,
-    host: defaultStateHost,
-    defaultDir: absolutePath(
-      findConfigDir(Deno.cwd(), pathExists) ?? Deno.cwd(),
-    )(".zuke", "runs").path,
-    enableDefault: true,
-  });
-}
-
 /**
  * Compare-and-swap the run from `suspended` to `running`, appending a signal if
  * given. The loser of the race — who finds it already `running` — gets an
@@ -381,43 +363,13 @@ function assertGraphUnchanged(
   order: TargetBuilder[],
   snapshot: RunGraphNode[],
 ): void {
-  const current: RunGraphNode[] = order.map((t) => ({
-    name: t.name_ ?? "",
-    dependsOn: t.dependsOn_.map((d) => d.name_ ?? "").filter((n) => n !== ""),
-  }));
-  const drift = graphDrift(snapshot, current);
+  const drift = graphDrift(snapshot, runGraphSnapshot(order));
   if (drift.length > 0) {
     throw new Error(
       `resume: the build graph changed since run ${id} was suspended ` +
         `(${drift.join("; ")}). Re-run with --force-graph to override.`,
     );
   }
-}
-
-/** The differences between a recorded graph snapshot and the current one. */
-function graphDrift(
-  snapshot: RunGraphNode[],
-  current: RunGraphNode[],
-): string[] {
-  const drift: string[] = [];
-  const snap = new Map(snapshot.map((n) => [n.name, n.dependsOn]));
-  const cur = new Map(current.map((n) => [n.name, n.dependsOn]));
-  for (const name of snap.keys()) {
-    if (!cur.has(name)) drift.push(`removed "${name}"`);
-  }
-  for (const [name, deps] of cur) {
-    const before = snap.get(name);
-    if (before === undefined) drift.push(`added "${name}"`);
-    else if (!sameMembers(before, deps)) drift.push(`re-wired "${name}"`);
-  }
-  return drift;
-}
-
-/** Whether two string lists have the same members (order-insensitive). */
-function sameMembers(a: string[], b: string[]): boolean {
-  if (a.length !== b.length) return false;
-  const set = new Set(a);
-  return b.every((x) => set.has(x));
 }
 
 /** The first waiting target whose deadline has passed, or `null`. */
@@ -546,7 +498,7 @@ async function cancelTimedOut(
     error: new Error(
       `resume: run ${options.runId}: wait "${expired.name}" timed out ` +
         `(deadline ${expired.waitingFor.deadline}) — run cancelled ` +
-        `(${result.compensated.length} compensation(s) ran).`,
+        `(${compensationSummary(result)}).`,
     ),
   };
 }
@@ -577,7 +529,11 @@ export async function resumeCheck(
   // same way execute() does instead of swallowing it when no reporter is given.
   const reporter = options.reporter ??
     (options.silent === true ? silentReporter : consoleReporter);
-  const store = resolveResumeStore({ ...options, runId: "" }, build, readEnv);
+  const store = resolveRunStore(
+    options.stateStore,
+    build.stateStore(),
+    readEnv,
+  );
   if (store === undefined) {
     throw new Error("resume --check: no state store is configured.");
   }
@@ -648,9 +604,7 @@ export async function resumeCheck(
       // compensation) must not abort the sweep and strand every run behind it.
       failed += 1;
       reporter.error(
-        `resume --check: run ${id} errored: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
+        `resume --check: run ${id} errored: ${messageOf(error)}`,
       );
     }
   }

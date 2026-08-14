@@ -24,6 +24,7 @@ import {
   reduceTempPath,
   type SnippetChecker,
 } from "../build/snippets.ts";
+import { withTemp } from "../packages/core/tests/_temp.ts";
 
 Deno.test("extract: a marked ts block is captured with jsr specifiers rewritten", () => {
   const md = [
@@ -90,8 +91,7 @@ Deno.test("extract: multiple marked blocks keep document order and line numbers"
 });
 
 Deno.test("collect: reads and aggregates marked snippets across files in order", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const a = `${dir}/a.md`;
     const b = `${dir}/b.md`;
     await Deno.writeTextFile(
@@ -105,14 +105,11 @@ Deno.test("collect: reads and aggregates marked snippets across files in order",
     const snippets = await collectCheckedSnippets([a, b]);
     assertEquals(snippets.map((s) => s.file), [a, b]);
     assertEquals(snippets.map((s) => s.code), ["const a = 1;", "const b = 2;"]);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("check: no marked snippets means no work and no failures", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const md = `${dir}/x.md`;
     await Deno.writeTextFile(md, "```ts\nconst broken: number = 'x';\n```");
     let called = false;
@@ -122,14 +119,11 @@ Deno.test("check: no marked snippets means no work and no failures", async () =>
     };
     assertEquals(await checkSnippets([md], spy), []);
     assertEquals(called, false); // the checker is never invoked
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("check: a failing snippet is reported with its source location, temp path reduced", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const md = `${dir}/x.md`;
     await Deno.writeTextFile(
       md,
@@ -148,9 +142,7 @@ Deno.test("check: a failing snippet is reported with its source location, temp p
     assertEquals(failures[0].file, md);
     assertEquals(failures[0].line, 2);
     assertEquals(failures[0].detail, "error at snippet.ts:2:1");
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("reduceTempPath normalises POSIX and Windows path forms to snippet.ts", () => {
@@ -183,8 +175,7 @@ Deno.test("format: renders every failure by source location above its detail", (
 });
 
 Deno.test("check (real deno): the pilot's wrong order fails, the correct order passes", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const md = `${dir}/params.md`;
     await Deno.writeTextFile(
       md,
@@ -218,7 +209,5 @@ Deno.test("check (real deno): the pilot's wrong order fails, the correct order p
     // raw temp filename survive (the `Check <relative>` progress line is off).
     assertEquals(failures[0].detail.includes(".snippets-"), false);
     assertEquals(failures[0].detail.includes("snippet_"), false);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });

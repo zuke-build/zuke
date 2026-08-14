@@ -21,30 +21,9 @@ import {
   defaultStateHost,
   FileSystemStateStore,
 } from "../../packages/core/mod.ts";
+import { runFixture } from "./_harness.ts";
 
 const FIXTURE = new URL("./fixtures/gh_workflow_build.ts", import.meta.url);
-
-/** The captured result of one fixture subprocess. */
-interface Run {
-  code: number;
-  out: string;
-}
-
-/** Run the fixture as a real `deno` subprocess with the given extra env. */
-async function runFixture(
-  args: string[],
-  dir: string,
-  env: Record<string, string>,
-): Promise<Run> {
-  const command = new Deno.Command(Deno.execPath(), {
-    args: ["run", "-A", FIXTURE.href, ...args],
-    env: { ZUKE_STATE_DIR: dir, ...env },
-    stdout: "piped",
-    stderr: "piped",
-  });
-  const { code, stdout } = await command.output();
-  return { code, out: new TextDecoder().decode(stdout) };
-}
 
 /** The number of non-empty lines in the dispatch file (i.e. dispatch count). */
 async function dispatchCount(file: string): Promise<number> {
@@ -58,7 +37,8 @@ Deno.test("a githubWorkflow wait dispatches once and resumes across processes", 
   await Deno.writeTextFile(dispatchFile, "");
   try {
     // Process A: reach the gate, dispatch, suspend (the workflow is not done).
-    const first = await runFixture(["ship"], dir, {
+    const first = await runFixture(FIXTURE, ["ship"], {
+      ZUKE_STATE_DIR: dir,
       GH_DISPATCH_FILE: dispatchFile,
       GH_RUN_STATUS: "in_progress",
     });
@@ -73,7 +53,8 @@ Deno.test("a githubWorkflow wait dispatches once and resumes across processes", 
     assertEquals(runs[0].status, "suspended");
 
     // Process B: the workflow has completed; resume --check re-evaluates.
-    const second = await runFixture(["resume", id, "--check"], dir, {
+    const second = await runFixture(FIXTURE, ["resume", id, "--check"], {
+      ZUKE_STATE_DIR: dir,
       GH_DISPATCH_FILE: dispatchFile,
       GH_RUN_STATUS: "completed",
       GH_RUN_CONCLUSION: "success",

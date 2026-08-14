@@ -24,6 +24,7 @@ import {
   checkSkillTree,
   parseFrontmatter,
 } from "../build/skill_check.ts";
+import { withTemp } from "../packages/core/tests/_temp.ts";
 
 /** A conforming SKILL.md body for the given name. */
 function doc(name: string, description = "Does a thing."): string {
@@ -137,8 +138,7 @@ Deno.test("the spec's name shape and length limits are enforced", () => {
 });
 
 Deno.test("a tree reports missing SKILL.md files and prefixes paths", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     await Deno.mkdir(`${dir}/good`);
     await Deno.writeTextFile(`${dir}/good/SKILL.md`, doc("good"));
     await Deno.mkdir(`${dir}/empty`);
@@ -156,9 +156,7 @@ Deno.test("a tree reports missing SKILL.md files and prefixes paths", async () =
     assertStringIncludes(problems[1], "not a regular file");
     assertStringIncludes(problems[2], `${dir}/renamed/SKILL.md`);
     assertStringIncludes(problems[2], '"old-name"');
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test({
@@ -166,8 +164,7 @@ Deno.test({
   // Creating symlinks on Windows needs a privilege the CI runner may lack.
   ignore: Deno.build.os === "windows",
   fn: async () => {
-    const dir = await Deno.makeTempDir();
-    try {
+    await withTemp(async (dir) => {
       await Deno.mkdir(`${dir}/real`);
       await Deno.writeTextFile(`${dir}/real/SKILL.md`, doc("wrong-name"));
       await Deno.mkdir(`${dir}/tree`);
@@ -179,9 +176,7 @@ Deno.test({
       assertEquals(problems.length, 1);
       assertStringIncludes(problems[0], `${dir}/tree/linked/SKILL.md`);
       assertStringIncludes(problems[0], '"wrong-name"');
-    } finally {
-      await Deno.remove(dir, { recursive: true });
-    }
+    });
   },
 });
 

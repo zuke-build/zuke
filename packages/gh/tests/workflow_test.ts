@@ -977,6 +977,48 @@ Deno.test("the default transport reads GH_TOKEN before GITHUB_TOKEN", async () =
   );
 });
 
+Deno.test("an empty GH_TOKEN falls through to GITHUB_TOKEN", async () => {
+  // The real environment, deliberately: what is under test is the reader the
+  // default transport uses, which treats an empty variable as unset. Actions
+  // defines GH_TOKEN for any job that names it, so a secret that is not set
+  // leaves it empty — and pinning an empty bearer is a 401 explaining nothing.
+  const url = "https://api.github.com/repos/a/b/actions/workflows/w/dispatches";
+  const { fetch, calls } = routerFetch({ [`POST ${url}`]: {} });
+  const saved = new Map(
+    ["GH_TOKEN", "GITHUB_TOKEN"].map((n) => [n, Deno.env.get(n)]),
+  );
+  Deno.env.set("GH_TOKEN", "");
+  Deno.env.set("GITHUB_TOKEN", "workflow_tok");
+  try {
+    const trigger = githubWorkflowWith(
+      (g) => g.repo("a/b").workflow("w"),
+      { fetch },
+    );
+    await trigger.isSatisfied(NO_SIGNALS, ctx(fakeState())); // dispatch
+  } finally {
+    for (const [name, value] of saved) {
+      if (value === undefined) Deno.env.delete(name);
+      else Deno.env.set(name, value);
+    }
+  }
+  assertEquals(
+    new Headers(calls[0].init?.headers).get("authorization"),
+    "Bearer workflow_tok",
+  );
+});
+
+Deno.test("a repository that is not owner/name is refused when the trigger is built", () => {
+  // The slug is interpolated into every path this transport requests, so `..`
+  // in it would redirect a token-bearing call. Checked once, at construction,
+  // rather than on each request.
+  assertThrows(
+    () =>
+      githubWorkflowWith((g) => g.repo("../../orgs/victim").workflow("w"), {}),
+    Error,
+    'invalid repository "../../orgs/victim"',
+  );
+});
+
 Deno.test("RestGhWorkflowApi tolerates a 2xx body that is not an object", async () => {
   // A proxy answering with a JSON array instead of the run object: the read
   // degrades to the same defaults as an empty run, not a crash on indexing.

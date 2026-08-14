@@ -8,7 +8,10 @@ import {
   assertThrows,
 } from "../../core/tests/_assert.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
-import { missingTool } from "@zuke/core/tooling/conformance";
+import {
+  assertWrapperConformance,
+  missingTool,
+} from "@zuke/core/tooling/conformance";
 import { withAmbientEcho } from "../../core/src/ambient_echo.ts";
 import {
   KubectlAnnotateSettings,
@@ -30,6 +33,7 @@ import {
   KubectlWaitSettings,
   parseNamespaces,
 } from "../src/kubectl.ts";
+import { withTemp } from "../../core/tests/_temp.ts";
 
 Deno.test("the default binary is kubectl", () => {
   assertEquals(new KubectlApplySettings().file("x.yaml").argv()[0], "kubectl");
@@ -272,8 +276,7 @@ Deno.test("parseNamespaces narrows a List, a single object, and skips bad items"
 
 Deno.test("getNamespaces runs kubectl and parses the JSON (POSIX fake binary)", async () => {
   if (Deno.build.os === "windows") return; // shebang script; argv is covered above.
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const argvFile = `${dir}/argv`;
     const jsonFile = `${dir}/ns.json`;
     await Deno.writeTextFile(
@@ -314,9 +317,7 @@ Deno.test("getNamespaces runs kubectl and parses the JSON (POSIX fake binary)", 
       await Deno.readTextFile(argvFile),
       "get namespaces -o json -l team=web",
     );
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("getNamespaces with no configure runs the command (dry run yields no rows)", async () => {
@@ -990,5 +991,15 @@ Deno.test("every KubectlTasks function reaches execution", async () => {
   await assertRejects(
     () => KubectlTasks.top((s) => missingTool(s).nodes()),
     ToolNotFoundError,
+  );
+});
+
+Deno.test("kubectl: conforms to the wrapper contract", async () => {
+  await assertWrapperConformance(
+    () => new KubectlApplySettings().file("k8s.yaml"),
+    "kubectl",
+    {
+      resolution: "path",
+    },
   );
 });

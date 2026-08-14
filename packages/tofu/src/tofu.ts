@@ -31,9 +31,10 @@ export abstract class TofuSettings extends ToolSettings {
   }
 }
 
-/** Render `-var=name=value` argv entries from collected pairs. */
-function varArgs(vars: Array<[string, string]>): string[] {
-  return vars.map(([name, value]) => `-var=${name}=${value}`);
+/** Render the `-var=`/`-var-file=` argv entries from collected input. */
+function varArgs(vars: Array<[string, string]>, varFiles: string[]): string[] {
+  return vars.map(([name, value]) => `-var=${name}=${value}`)
+    .concat(varFiles.map((file) => `-var-file=${file}`));
 }
 
 /** Settings for `tofu init`. */
@@ -140,8 +141,7 @@ export class TofuPlanSettings extends TofuSettings {
     if (this.#out !== undefined) argv.push(`-out=${this.#out}`);
     if (this.#destroy) argv.push("-destroy");
     if (this.#noInput) argv.push("-input=false");
-    argv.push(...varArgs(this.#vars));
-    for (const f of this.#varFiles) argv.push(`-var-file=${f}`);
+    argv.push(...varArgs(this.#vars, this.#varFiles));
     return argv;
   }
 }
@@ -189,8 +189,7 @@ export class TofuApplySettings extends TofuSettings {
     const argv = ["apply"];
     if (this.#autoApprove) argv.push("-auto-approve");
     if (this.#noInput) argv.push("-input=false");
-    argv.push(...varArgs(this.#vars));
-    for (const f of this.#varFiles) argv.push(`-var-file=${f}`);
+    argv.push(...varArgs(this.#vars, this.#varFiles));
     if (this.#planFile !== undefined) argv.push(this.#planFile);
     return argv;
   }
@@ -224,8 +223,7 @@ export class TofuDestroySettings extends TofuSettings {
   protected override buildArgs(): string[] {
     const argv = ["destroy"];
     if (this.#autoApprove) argv.push("-auto-approve");
-    argv.push(...varArgs(this.#vars));
-    for (const f of this.#varFiles) argv.push(`-var-file=${f}`);
+    argv.push(...varArgs(this.#vars, this.#varFiles));
     return argv;
   }
 }

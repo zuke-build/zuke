@@ -17,6 +17,7 @@ import {
   type HclTarget,
   renderHcl,
 } from "../build/hcl_gen.ts";
+import { withTemp } from "../packages/core/tests/_temp.ts";
 
 Deno.test("renderHcl substitutes body placeholders and injects the module doc last", () => {
   const template = '__MODULE_DOC__\nclass __NAME__X { tool = "__TOOL__"; }';
@@ -43,8 +44,7 @@ Deno.test("the committed wrappers round-trip through generate then check", async
 });
 
 Deno.test("checkHclWrappers flags a target that has drifted from the template", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const path = `${dir}/drifted.ts`;
     await Deno.writeTextFile(path, "// not what the template renders\n");
     const targets: HclTarget[] = [
@@ -56,7 +56,5 @@ Deno.test("checkHclWrappers flags a target that has drifted from the template", 
       },
     ];
     assertEquals(await checkHclWrappers(targets), [path]);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });

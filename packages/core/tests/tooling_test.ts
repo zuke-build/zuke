@@ -18,6 +18,7 @@ import {
   windowsCmdShim,
 } from "../src/tooling.ts";
 import { CommandError, CommandTimeoutError } from "../src/shell.ts";
+import { withTemp } from "./_temp.ts";
 
 /** Minimal concrete settings: runs `deno eval <script>` — hermetic. */
 class EvalSettings extends ToolSettings {
@@ -54,8 +55,7 @@ Deno.test("run() executes and captures output", async () => {
 });
 
 Deno.test("run() applies env and cwd", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     // Compare the resolved cwd against the target dir *inside* the subprocess,
     // so both paths are normalised by the same realPath in the same process.
     // A plain string match is unreliable cross-platform (macOS temp symlinks,
@@ -71,9 +71,7 @@ Deno.test("run() applies env and cwd", async () => {
       .quiet()
       .run();
     assertEquals(out.stdout.includes("v1:true"), true);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("run() throws CommandError on non-zero exit", async () => {

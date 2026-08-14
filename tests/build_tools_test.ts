@@ -56,6 +56,7 @@ import {
   crossPackageTypesOf,
   docsOptions,
 } from "../build/docs.ts";
+import { withTempCwd } from "../packages/core/tests/_temp.ts";
 
 // ---------------------------------------------------------------------------
 // build/packages.ts
@@ -939,10 +940,7 @@ Deno.test("docsOptions: carries the project framing plus a live CLI block", () =
 });
 
 Deno.test("crossPackageTypesOf: named, type, namespace, and default imports; tests/ excluded", async () => {
-  const original = Deno.cwd();
-  const dir = await Deno.makeTempDir();
-  try {
-    Deno.chdir(dir);
+  await withTempCwd(async () => {
     await Deno.mkdir("packages/demo/tests", { recursive: true });
     await Deno.writeTextFile(
       "packages/demo/mod.ts",
@@ -967,8 +965,5 @@ Deno.test("crossPackageTypesOf: named, type, namespace, and default imports; tes
       new Set(names),
       new Set(["Configure", "target", "Settings", "shell", "Something"]),
     );
-  } finally {
-    Deno.chdir(original);
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });

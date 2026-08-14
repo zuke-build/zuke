@@ -13,6 +13,7 @@ import {
   FileSecretSettings,
   SecretError,
 } from "../src/secret.ts";
+import { withTemp } from "./_temp.ts";
 
 /** The running `deno`, used as a hermetic, always-present subprocess. */
 const deno = Deno.execPath();
@@ -45,8 +46,7 @@ Deno.test("execSecret passes environment variables to the command", async () => 
 });
 
 Deno.test("execSecret honours the working directory", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     await Deno.writeTextFile(`${dir}/token.txt`, "in-cwd");
     const source = execSecret((s) =>
       s.command(deno)
@@ -54,9 +54,7 @@ Deno.test("execSecret honours the working directory", async () => {
         .cwd(dir)
     );
     assertEquals(await source.resolve(), "in-cwd");
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("execSecret without a command throws SecretError", async () => {

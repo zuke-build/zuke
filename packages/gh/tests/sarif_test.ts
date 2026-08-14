@@ -16,6 +16,8 @@ import {
   assertStringIncludes,
 } from "../../core/tests/_assert.ts";
 import { GhTasks } from "../mod.ts";
+import { withTemp } from "../../core/tests/_temp.ts";
+import { withEnv } from "../../core/tests/_env.ts";
 
 /** A recorded request the fake `fetch` saw. */
 interface Seen {
@@ -66,30 +68,8 @@ async function sarifFixture(dir: string): Promise<string> {
   return path;
 }
 
-/** Run `fn` with the Actions environment variables set to `values`. */
-async function withEnv(
-  values: Record<string, string | undefined>,
-  fn: () => Promise<void>,
-): Promise<void> {
-  const saved = new Map<string, string | undefined>();
-  for (const [name, value] of Object.entries(values)) {
-    saved.set(name, Deno.env.get(name));
-    if (value === undefined) Deno.env.delete(name);
-    else Deno.env.set(name, value);
-  }
-  try {
-    await fn();
-  } finally {
-    for (const [name, value] of saved) {
-      if (value === undefined) Deno.env.delete(name);
-      else Deno.env.set(name, value);
-    }
-  }
-}
-
 Deno.test("uploadSarif gzips and base64s the report the endpoint requires", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const file = await sarifFixture(dir);
     const seen: Seen[] = [];
     const result = await GhTasks.uploadSarif((s) =>
@@ -119,14 +99,11 @@ Deno.test("uploadSarif gzips and base64s the report the endpoint requires", asyn
       version: "2.1.0",
       runs: [{ results: [] }],
     });
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("uploadSarif fills the repo, commit, ref, and token from the Actions env", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const file = await sarifFixture(dir);
     await withEnv({
       GITHUB_REPOSITORY: "acme/app",
@@ -142,14 +119,11 @@ Deno.test("uploadSarif fills the repo, commit, ref, and token from the Actions e
       // The token rides in the header from the environment, never through argv.
       assertEquals(seen[0].authorization, "Bearer ghs_env");
     });
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("checkout_uri is sent only when it is set", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const file = await sarifFixture(dir);
     const seen: Seen[] = [];
     const pinned = (path: string) => (s: GhSarifSettingsLike) =>
@@ -164,9 +138,7 @@ Deno.test("checkout_uri is sent only when it is set", async () => {
       pinned(file)(s).checkoutUri("file:///checkout")
     );
     assertEquals(seen[1].body.checkout_uri, "file:///checkout");
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 /** The subset of the settings the shared `pinned` helper above configures. */
@@ -175,8 +147,7 @@ type GhSarifSettingsLike = Parameters<
 >[0];
 
 Deno.test("uploadSarif names each missing input instead of sending a partial body", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const file = await sarifFixture(dir);
     await withEnv({
       GITHUB_REPOSITORY: undefined,
@@ -207,9 +178,7 @@ Deno.test("uploadSarif names each missing input instead of sending a partial bod
         "GITHUB_REF",
       );
     });
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("a missing token names the permission the upload needs", async () => {
@@ -226,8 +195,7 @@ Deno.test("a missing token names the permission the upload needs", async () => {
 });
 
 Deno.test("a rejected upload reports the status and GitHub's message", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const file = await sarifFixture(dir);
     const error = await assertRejects(
       () =>
@@ -237,9 +205,28 @@ Deno.test("a rejected upload reports the status and GitHub's message", async () 
         ),
       Error,
     );
-    assertStringIncludes(error.message, "uploading SARIF failed: 400");
+    assertStringIncludes(
+      error.message,
+      "POST /code-scanning/sarifs failed: 400",
+    );
     assertStringIncludes(error.message, "sarif is invalid");
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
+});
+
+Deno.test("a repository that is not owner/name is refused before anything is sent", async () => {
+  // The slug is interpolated into the request path, so `..` in it would send a
+  // write-scoped token somewhere the caller never named. The upload routes
+  // through the shared caller, which is what checks it — before the report is
+  // even read.
+  await assertRejects(
+    () =>
+      GhTasks.uploadSarif((s) =>
+        s.file("unread.sarif").repo("../../orgs/victim").commit("c").ref("d")
+          .token("t").fetch(() => {
+            throw new Error("no request should be made");
+          })
+      ),
+    Error,
+    'invalid repository "../../orgs/victim"',
+  );
 });

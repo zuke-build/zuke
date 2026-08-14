@@ -4,6 +4,7 @@
 import { assertEquals } from "../../packages/core/tests/_assert.ts";
 import { Build, target } from "../../packages/core/mod.ts";
 import { runCli } from "./_harness.ts";
+import { withTemp } from "../../packages/core/tests/_temp.ts";
 
 // The `doc` command is build-independent; any build serves to reach it.
 class Noop extends Build {
@@ -11,8 +12,7 @@ class Noop extends Build {
 }
 
 Deno.test("zuke doc runs deno doc for a local module in an isolated cwd", async () => {
-  const dir = await Deno.makeTempDir({ prefix: "zuke-doc-it-" });
-  try {
+  await withTemp(async (dir) => {
     const mod = `${dir}/lib.ts`;
     await Deno.writeTextFile(
       mod,
@@ -27,7 +27,5 @@ Deno.test("zuke doc runs deno doc for a local module in an isolated cwd", async 
     // A spec deno doc cannot resolve fails, and that failure is propagated.
     const missing = await runCli(Noop, ["doc", `${dir}/does-not-exist.ts`]);
     assertEquals(missing.code !== 0, true);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  }, { prefix: "zuke-doc-it-" });
 });

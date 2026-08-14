@@ -17,52 +17,21 @@ import {
   assertEquals,
   assertStringIncludes,
 } from "../../packages/core/tests/_assert.ts";
+import {
+  freePort,
+  killMcpWithin,
+  rpc as rpcTo,
+  runFixture,
+  waitReady,
+} from "./_harness.ts";
 
 const FIXTURE = new URL("./fixtures/discoverable_build.ts", import.meta.url);
-// An OS-assigned free port instead of a fixed constant, removing the port
-// collision-flake class. caveat: a tiny bind→close→rebind race window
-// remains; the race-free fix is to bind `:0` in the server and report the
-// assigned port, which needs a core CLI change and is out of scope here.
 const PORT = freePort();
 const BASE = `http://127.0.0.1:${PORT}/`;
 
-/** Grab an OS-assigned free TCP port: bind ephemeral, read it, release it. */
-function freePort(): number {
-  const listener = Deno.listen({ port: 0 });
-  const addr = listener.addr;
-  listener.close();
-  if (addr.transport !== "tcp") throw new Error("expected a TCP listener");
-  return addr.port;
-}
-
-/** Run the fixture as a real `deno` subprocess against registry dir `dir`. */
-async function runFixture(
-  args: string[],
-  dir: string,
-): Promise<{ code: number; out: string }> {
-  const command = new Deno.Command(Deno.execPath(), {
-    args: ["run", "-A", FIXTURE.href, ...args],
-    env: { ZUKE_REGISTRY_DIR: dir },
-    stdout: "piped",
-    stderr: "piped",
-  });
-  const { code, stdout } = await command.output();
-  return { code, out: new TextDecoder().decode(stdout) };
-}
-
-/** Post a JSON-RPC message to the running MCP server and return the parsed reply. */
-async function rpc(method: string, params?: unknown): Promise<unknown> {
-  const res = await fetch(BASE, {
-    method: "POST",
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: 1,
-      method,
-      ...(params ? { params } : {}),
-    }),
-  });
-  return await res.json();
-}
+/** Post a JSON-RPC message to the running MCP server on this file's port. */
+const rpc = (method: string, params?: unknown): Promise<unknown> =>
+  rpcTo(BASE, method, params);
 
 /** The tool names from a `tools/list` reply. */
 function toolNames(reply: unknown): string[] {
@@ -102,25 +71,6 @@ function toolText(reply: unknown): string {
   return text;
 }
 
-/** Poll the server until it answers `ping`, or throw past `deadline`. */
-async function waitReady(deadline: number): Promise<void> {
-  while (Date.now() < deadline) {
-    try {
-      const res = await fetch(BASE, {
-        method: "POST",
-        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "ping" }),
-      });
-      const ok = res.ok;
-      await res.body?.cancel();
-      if (ok) return;
-    } catch {
-      // Not listening yet.
-    }
-    await new Promise((r) => setTimeout(r, 100));
-  }
-  throw new Error("MCP server did not become ready in time");
-}
-
 Deno.test("a build registered after startup appears as a runnable MCP tool", async () => {
   const dir = await Deno.makeTempDir({ prefix: "zuke-reg-mcp-e2e-" });
   let server: Deno.ChildProcess | undefined;
@@ -141,14 +91,16 @@ Deno.test("a build registered after startup appears as a runnable MCP tool", asy
       stdout: "null",
       stderr: "null",
     }).spawn();
-    await waitReady(Date.now() + 10_000);
+    await waitReady(BASE, Date.now() + 10_000);
 
     // No pipelines registered yet: only the read tools are exposed.
     const before = toolNames(await rpc("tools/list"));
     assertEquals(before.includes("run:Widget:hello"), false);
 
     // A separate process registers the build.
-    const registered = await runFixture(["register"], dir);
+    const registered = await runFixture(FIXTURE, ["register"], {
+      ZUKE_REGISTRY_DIR: dir,
+    });
     assertEquals(registered.code, 0);
 
     // Without restarting the server, the new target is now a tool…
@@ -195,34 +147,9 @@ Deno.test("a build registered after startup appears as a runnable MCP tool", asy
   } finally {
     if (server !== undefined) {
       server.kill();
-      await killWithin(server, 10_000);
+      await killMcpWithin(server, 10_000);
     }
     // Best-effort: a cleanup failure must not mask the real assertion error.
     await Deno.remove(dir, { recursive: true }).catch(() => {});
   }
 });
-
-/** Await a killed process exiting within `ms`, throwing a clear error otherwise. */
-async function killWithin(
-  server: Deno.ChildProcess,
-  ms: number,
-): Promise<void> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(
-      () =>
-        reject(
-          new Error(
-            `mcp server did not exit ${ms}ms after SIGTERM — the CLI is ` +
-              `swallowing the signal instead of terminating.`,
-          ),
-        ),
-      ms,
-    );
-  });
-  try {
-    await Promise.race([server.status, timeout]);
-  } finally {
-    clearTimeout(timer);
-  }
-}

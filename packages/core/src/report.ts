@@ -13,6 +13,7 @@
  * @module
  */
 
+import { messageOf } from "./internal.ts";
 import type { TargetStatus } from "./build.ts";
 import { formatDuration, line, paint, SGR, type Style } from "./render.ts";
 
@@ -125,7 +126,7 @@ export function targetFailFooter(
   ms: number,
   error: unknown,
 ): { info: string[]; error: string[] } {
-  const message = error instanceof Error ? error.message : String(error);
+  const message = messageOf(error);
   const line = paint(
     style.color,
     SGR.red,

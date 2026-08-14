@@ -8,8 +8,7 @@
  */
 
 import type { Assessment, AssessmentFinding } from "./types.ts";
-import { AiReviewError } from "./errors.ts";
-import { dig } from "./json.ts";
+import { dig, parseJsonObject } from "./json.ts";
 import { rank, toSeverity } from "./severity.ts";
 
 /** Clamp an unknown score into the `0`–`10` range, defaulting to `0`. */
@@ -50,25 +49,9 @@ function toFindings(value: unknown): AssessmentFinding[] {
   return findings;
 }
 
-/** Strip Markdown code fences and isolate the JSON object in a response. */
-export function isolateJson(text: string): string {
-  const unfenced = text
-    .replace(/^\s*```(?:json)?\s*/i, "")
-    .replace(/\s*```\s*$/, "")
-    .trim();
-  const open = unfenced.indexOf("{");
-  const close = unfenced.lastIndexOf("}");
-  return open >= 0 && close > open ? unfenced.slice(open, close + 1) : unfenced;
-}
-
 /** Parse a model response into a validated {@link Assessment}. */
 export function parseAssessment(text: string): Assessment {
-  let raw: unknown;
-  try {
-    raw = JSON.parse(isolateJson(text));
-  } catch {
-    throw new AiReviewError("the model did not return valid JSON");
-  }
+  const raw = parseJsonObject(text);
   const findings = toFindings(dig(raw, "findings"));
   const summary = dig(raw, "summary");
   return {

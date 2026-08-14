@@ -17,6 +17,8 @@ import {
 } from "../mod.ts";
 import { consoleLines, toMarkdown } from "../src/report.ts";
 import type { RemediationContext } from "@zuke/core";
+import { captureLines } from "../../core/tests/_console.ts";
+import { withEnv } from "../../core/tests/_env.ts";
 
 const DIFF = "diff --git a/src/app.ts b/src/app.ts\n" +
   "--- a/src/app.ts\n+++ b/src/app.ts\n@@\n+const x = eval(input);\n";
@@ -78,22 +80,8 @@ function memStore(): CacheStore & { map: Map<string, CacheEntry> } {
 }
 
 /** Capture console output with the job-summary file unset (no real writes). */
-async function captured(fn: () => Promise<void>): Promise<string[]> {
-  const lines: string[] = [];
-  const { log, warn } = console;
-  const summary = Deno.env.get("GITHUB_STEP_SUMMARY");
-  Deno.env.delete("GITHUB_STEP_SUMMARY");
-  console.log = (...a: unknown[]) => void lines.push(a.join(" "));
-  console.warn = (...a: unknown[]) => void lines.push(a.join(" "));
-  try {
-    await fn();
-  } finally {
-    console.log = log;
-    console.warn = warn;
-    if (summary !== undefined) Deno.env.set("GITHUB_STEP_SUMMARY", summary);
-  }
-  return lines;
-}
+const captured = (fn: () => Promise<void>): Promise<string[]> =>
+  captureLines(() => withEnv({ GITHUB_STEP_SUMMARY: undefined }, fn));
 
 const CTX: RemediationContext = {
   target: "test",
@@ -258,6 +246,63 @@ Deno.test("a cached review notes it served from cache", async () => {
   await run();
   const lines = await run();
   assertEquals(lines.includes("  (cached — no API call)"), true);
+});
+
+/** Replace every stored response with text that is not JSON. */
+function poison(store: ReturnType<typeof memStore>): void {
+  for (const [key, entry] of store.map) {
+    store.map.set(key, { ...entry, text: "not json at all" });
+  }
+}
+
+Deno.test("a corrupt cache entry follows the reviewer's onError policy", async () => {
+  // Reading a cached response is a parse, and a parse can fail — a truncated or
+  // tampered entry must be handled like any other unreadable response, not
+  // thrown past the reviewer's own error policy.
+  const store = memStore();
+  const c = aiCache((x) => x.store(store));
+  const { fetch, calls } = recordFetch(
+    claude({ score: 1, severity: "low", summary: "s", findings: [] }),
+  );
+  const review = (onError: "fail" | "warn") =>
+    securityReviewer((r) =>
+      r.provider("claude").apiKey("k").diff((d) => d.text(DIFF))
+        .fetch(fetch).cache(c).onError(onError)
+    ).validate({ target: "t" });
+  await captured(() => review("warn"));
+  poison(store);
+  const lines = await captured(() => review("warn"));
+  assertEquals(calls.length, 1); // the cache still answered — no second call
+  assertEquals(
+    lines.some((l) => l.includes("the model did not return valid JSON")),
+    true,
+  );
+  // And with the default policy it fails the build rather than passing quietly.
+  await captured(async () => {
+    await assertRejects(() => review("fail"), AiReviewError);
+  });
+});
+
+Deno.test("a corrupt cache entry makes the fixer give up, not throw", async () => {
+  const store = memStore();
+  const c = aiCache((x) => x.store(store));
+  const { fetch, calls } = recordFetch(claudeFix(ONE_EDIT));
+  const fixer = hermetic(aiFixer((f) =>
+    f.provider("claude").apiKey("k")
+      .cache(c)
+  )).fetch(fetch);
+  await captured(async () => void await fixer.remediate(CTX));
+  poison(store);
+  let retry: boolean | undefined;
+  const lines = await captured(async () => {
+    retry = (await fixer.remediate(CTX)).retry;
+  });
+  assertEquals(retry, false); // reported and given up on, not thrown
+  assertEquals(calls.length, 1); // the cache answered — no second call
+  assertEquals(
+    lines.some((l) => l.includes("could not produce a fix")),
+    true,
+  );
 });
 
 // ----- Suppression ---------------------------------------------------------

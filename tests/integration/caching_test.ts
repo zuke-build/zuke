@@ -22,27 +22,12 @@ import {
   target,
 } from "../../packages/core/mod.ts";
 import { runCli, withStateDir } from "./_harness.ts";
-
-/**
- * Run `fn` inside a fresh temporary directory used as the process cwd. The
- * incremental cache resolves `.zuke/cache.json` relative to `Deno.cwd()` (see
- * `resolveCache` in `packages/core/src/executor.ts`), so a caching test must
- * isolate the cwd the same way `packages/core/tests/executor_test.ts` does —
- * otherwise a run through the real CLI would write its cache store into this
- * repository's own `.zuke/` directory. Restores the original cwd and removes
- * the directory afterwards, even on failure.
- */
-async function withTempCwd(fn: (dir: string) => Promise<void>): Promise<void> {
-  const dir = await Deno.makeTempDir({ prefix: "zuke-it-cache-" });
-  const original = Deno.cwd();
-  Deno.chdir(dir);
-  try {
-    await fn(dir);
-  } finally {
-    Deno.chdir(original);
-    await Deno.remove(dir, { recursive: true });
-  }
-}
+// The incremental cache resolves `.zuke/cache.json` relative to `Deno.cwd()`
+// (see `resolveCache` in `packages/core/src/executor.ts`), so a caching test
+// must isolate the cwd the way `packages/core/tests/executor_test.ts` does —
+// otherwise a run through the real CLI would write its cache store into this
+// repository's own `.zuke/` directory.
+import { withTempCwd } from "../../packages/core/tests/_temp.ts";
 
 Deno.test("a target with unchanged inputs is skipped as cached, and reruns when the input changes", async () => {
   await withStateDir(async () => {

@@ -16,14 +16,14 @@ import {
   SKILLS_SOURCE,
   syncPluginSkills,
 } from "../build/plugin_sync.ts";
+import { withTemp } from "../packages/core/tests/_temp.ts";
 
 Deno.test("the committed plugin skills copy matches skills/ exactly", async () => {
   assertEquals(await checkPluginSkillsSync(), []);
 });
 
 Deno.test("syncPluginSkills round-trips through generate then check", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     // Never sync into the committed default destination: syncPluginSkills
     // removes the destination before copying it back, so a run interrupted
     // between those two steps would leave the real, tracked
@@ -35,14 +35,11 @@ Deno.test("syncPluginSkills round-trips through generate then check", async () =
     assertEquals(written.length > 0, true);
     assertEquals(written.every((path) => path.startsWith(`${dest}/`)), true);
     assertEquals(await checkPluginSkillsSync(SKILLS_SOURCE, dest), []);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("a missing destination file is reported", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const source = `${dir}/source`;
     const dest = `${dir}/dest`;
     await Deno.mkdir(source, { recursive: true });
@@ -51,14 +48,11 @@ Deno.test("a missing destination file is reported", async () => {
     assertEquals(await checkPluginSkillsSync(source, dest), [
       `${dest}/a.md (missing)`,
     ]);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("an extra destination file not in the source is reported", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const source = `${dir}/source`;
     const dest = `${dir}/dest`;
     await Deno.mkdir(source, { recursive: true });
@@ -67,14 +61,11 @@ Deno.test("an extra destination file not in the source is reported", async () =>
     assertEquals(await checkPluginSkillsSync(source, dest), [
       `${dest}/b.md (extra, not present in ${source}/)`,
     ]);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("a content mismatch is reported", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const source = `${dir}/source`;
     const dest = `${dir}/dest`;
     await Deno.mkdir(source, { recursive: true });
@@ -84,14 +75,11 @@ Deno.test("a content mismatch is reported", async () => {
     assertEquals(await checkPluginSkillsSync(source, dest), [
       `${dest}/c.md (content differs from ${source}/c.md)`,
     ]);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("a missing destination directory reports every source file as missing", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const source = `${dir}/source`;
     const dest = `${dir}/dest-does-not-exist`;
     await Deno.mkdir(source, { recursive: true });
@@ -99,14 +87,11 @@ Deno.test("a missing destination directory reports every source file as missing"
     assertEquals(await checkPluginSkillsSync(source, dest), [
       `${dest}/d.md (missing)`,
     ]);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("syncPluginSkills copies nested directories and reports them written", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const source = `${dir}/source`;
     const dest = `${dir}/dest`;
     await Deno.mkdir(`${source}/nested`, { recursive: true });
@@ -118,7 +103,5 @@ Deno.test("syncPluginSkills copies nested directories and reports them written",
       `${dest}/top.md`,
     ]);
     assertEquals(await checkPluginSkillsSync(source, dest), []);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });

@@ -14,45 +14,10 @@ import {
 } from "../../packages/core/tests/_assert.ts";
 import { Build, gzip, tar, target } from "../../packages/core/mod.ts";
 import { runCli, withStateDir } from "./_harness.ts";
+import { withEnv } from "../../packages/core/tests/_env.ts";
+import { withTempCwd } from "../../packages/core/tests/_temp.ts";
 
 const enc = (text: string) => new TextEncoder().encode(text);
-
-/**
- * Run `fn` with `vars` applied to the process environment, restoring each
- * variable's previous value (or its absence) afterwards. The resolvers under
- * test read the real environment, so a test must own it for its duration.
- */
-async function withEnv(
-  vars: Record<string, string>,
-  fn: () => Promise<void>,
-): Promise<void> {
-  const previous = new Map<string, string | undefined>();
-  for (const [name, value] of Object.entries(vars)) {
-    previous.set(name, Deno.env.get(name));
-    Deno.env.set(name, value);
-  }
-  try {
-    await fn();
-  } finally {
-    for (const [name, value] of previous) {
-      if (value === undefined) Deno.env.delete(name);
-      else Deno.env.set(name, value);
-    }
-  }
-}
-
-/** Run `fn` inside a fresh temporary cwd, restoring and removing it after. */
-async function withTempCwd(fn: (dir: string) => Promise<void>): Promise<void> {
-  const dir = await Deno.makeTempDir({ prefix: "zuke-it-trust-" });
-  const original = Deno.cwd();
-  Deno.chdir(dir);
-  try {
-    await fn(dir);
-  } finally {
-    Deno.chdir(original);
-    await Deno.remove(dir, { recursive: true });
-  }
-}
 
 Deno.test("a plaintext state-service URL fails the run instead of sending the token", async () => {
   await withEnv(

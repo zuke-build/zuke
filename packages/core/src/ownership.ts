@@ -44,6 +44,7 @@
  * @module
  */
 
+import type { StateStore } from "./state/store.ts";
 import type { RunRecord } from "./state/types.ts";
 
 /**
@@ -121,4 +122,31 @@ export function assertOwnsRun(
   if (owner === undefined || buildId === undefined) return;
   if (owner === buildId) return;
   throw new ForeignRunError(record.id, owner, buildId);
+}
+
+/**
+ * Load the run `runId` from `store` and refuse it unless this process shares its
+ * origin — the preamble every command that is handed **one** run by name runs
+ * before it touches it.
+ *
+ * `verb` names the command in the not-found message (`resume`, `cancel`), so the
+ * operator sees which command could not find the run.
+ *
+ * Module-internal: not re-exported from `mod.ts`.
+ *
+ * @throws if no run with that id is in the store.
+ * @throws {ForeignRunError} if the run belongs to a different build.
+ */
+export async function loadOwnedRun(
+  store: StateStore,
+  runId: string,
+  verb: string,
+  readEnv: (name: string) => string | undefined,
+): Promise<{ record: RunRecord; version: string }> {
+  const loaded = await store.getRun(runId);
+  if (loaded === null) {
+    throw new Error(`${verb}: no run "${runId}" found in the store.`);
+  }
+  assertOwnsRun(loaded.record, resolveBuildId(readEnv));
+  return loaded;
 }

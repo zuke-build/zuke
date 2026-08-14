@@ -12,10 +12,8 @@
 
 import type { Build } from "./build.ts";
 import { defaultReadEnv } from "./internal.ts";
-import { absolutePath } from "./path.ts";
-import { findConfigDir, pathExists } from "./config.ts";
-import { defaultStateHost, type StateStore } from "./state/store.ts";
-import { resolveStateStore } from "./state/resolve.ts";
+import type { StateStore } from "./state/store.ts";
+import { resolveRunStore } from "./run_store.ts";
 import type {
   RunQuery,
   RunRecord,
@@ -24,7 +22,7 @@ import type {
   TargetRunState,
   TargetRunStatus,
 } from "./state/types.ts";
-import { formatDuration } from "./render.ts";
+import { formatDuration, table } from "./render.ts";
 
 /** Inputs for {@link runsCommand}. */
 export interface RunsOptions {
@@ -106,22 +104,6 @@ export function selectRunsToPrune(
   return toPrune;
 }
 
-/** Resolve the store for a `runs` query — like a run, but always defaulting on. */
-function resolveRunsStore(
-  option: StateStore | false | undefined,
-  build: Build,
-  readEnv: (name: string) => string | undefined,
-): StateStore | undefined {
-  return resolveStateStore(option, build.stateStore(), {
-    readEnv,
-    host: defaultStateHost,
-    defaultDir: absolutePath(
-      findConfigDir(Deno.cwd(), pathExists) ?? Deno.cwd(),
-    )(".zuke", "runs").path,
-    enableDefault: true,
-  });
-}
-
 /**
  * Run `zuke runs list`/`show`, printing to the console and resolving to a
  * process exit code (0 success, 1 on a misuse or missing run/store).
@@ -131,7 +113,11 @@ export async function runsCommand(
   options: RunsOptions,
 ): Promise<number> {
   const readEnv = options.readEnv ?? defaultReadEnv;
-  const store = resolveRunsStore(options.stateStore, build, readEnv);
+  const store = resolveRunStore(
+    options.stateStore,
+    build.stateStore(),
+    readEnv,
+  );
   if (store === undefined) {
     console.error(
       "runs: no state store is configured. Set ZUKE_STATE_DIR / " +
@@ -286,12 +272,14 @@ export function formatRunList(summaries: readonly RunSummary[]): string {
     s.createdAt,
   ]);
   const headers = ["ID", "STATUS", "TARGET", "ACTOR", "CREATED"];
-  const widths = headers.map((h, col) =>
-    Math.max(h.length, ...rows.map((r) => r[col].length))
-  );
-  const line = (cells: string[]) =>
-    cells.map((c, col) => c.padEnd(widths[col])).join("  ").trimEnd();
-  return [line(headers), ...rows.map(line)].join("\n");
+  // Plain text, no rule: `runs list` output is parsed by scripts as often as it
+  // is read, so it keeps the bare aligned columns it has always had.
+  return table(
+    { color: false, github: false, width: 0 },
+    headers.map((header) => ({ header })),
+    rows,
+    { divider: false },
+  ).join("\n");
 }
 
 /** The elapsed time of a target, when both timestamps are present and parse. */

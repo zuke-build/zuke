@@ -16,7 +16,6 @@ import {
 } from "../src/build.ts";
 import { group, target, type TargetBuilder } from "../src/target.ts";
 import type { BuildCache } from "../src/cache.ts";
-import type { RemoteCacheStore } from "../src/remote_cache.ts";
 import { parameter } from "../src/params.ts";
 
 /** An in-memory {@link BuildCache} for executor caching tests. */
@@ -50,6 +49,10 @@ import { externalSignal, resumeWhen } from "../src/wait.ts";
 import type { HeldLease } from "../src/state/run_lease.ts";
 import { buildRunRecord } from "../src/state/record.ts";
 import type { RunRecord } from "../src/state/types.ts";
+import { withTemp } from "./_temp.ts";
+import { MemCacheStore } from "./_fakes.ts";
+import { silence } from "./_console.ts";
+import { withTempStore } from "./_store.ts";
 
 const silent: ExecuteOptions = { silent: true };
 
@@ -82,23 +85,6 @@ async function withEnv(
   } finally {
     if (prev === undefined) Deno.env.delete(key);
     else Deno.env.set(key, prev);
-  }
-}
-
-/**
- * Run `fn` with `console.log`/`console.error` silenced — for tests that drive
- * the default console reporter (so the job summary is written) but don't want
- * the banner output cluttering the test log.
- */
-async function withSilencedConsole(fn: () => Promise<unknown>): Promise<void> {
-  const { log, error } = console;
-  console.log = () => {};
-  console.error = () => {};
-  try {
-    await fn();
-  } finally {
-    console.log = log;
-    console.error = error;
   }
 }
 
@@ -398,9 +384,7 @@ Deno.test("github mode appends a Markdown job summary (default console)", async 
     // The summary is only written on a default-console run (no custom reporter,
     // not silent); silence the console to keep the banner out of the test log.
     await withEnv("GITHUB_STEP_SUMMARY", tmp, async () => {
-      await withSilencedConsole(() =>
-        execute(build, build.b, { github: true })
-      );
+      await silence(() => execute(build, build.b, { github: true }));
     });
     const md = await Deno.readTextFile(tmp);
     assertEquals(md.includes("Zuke build"), true);
@@ -432,9 +416,7 @@ Deno.test("the job summary is appended, preserving content written during the ru
   const tmp = await Deno.makeTempFile();
   try {
     await withEnv("GITHUB_STEP_SUMMARY", tmp, async () => {
-      await withSilencedConsole(() =>
-        execute(build, build.work, { github: true })
-      );
+      await silence(() => execute(build, build.work, { github: true }));
     });
     const md = await Deno.readTextFile(tmp);
     assertEquals(md.includes("## AI section"), true); // not wiped
@@ -1148,7 +1130,7 @@ Deno.test("an unwritable job-summary file never fails the build", async () => {
     // Default-console run so the summary write is attempted (and fails on the
     // directory path); console silenced to keep the banner quiet.
     await withEnv("GITHUB_STEP_SUMMARY", dir, async () => {
-      await withSilencedConsole(async () => {
+      await silence(async () => {
         result = await execute(b, b.work, { github: true });
       });
     });
@@ -1422,9 +1404,7 @@ Deno.test("old-style plugin hooks (fewer args) still compile and run (M7)", asyn
 });
 
 Deno.test("onRunStateChange fires with the record on run-level transitions (M7)", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
-    const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+  await withTempStore(async (store) => {
     const statuses: string[] = [];
     const runIds = new Set<string>();
     class B extends Build {
@@ -1448,9 +1428,7 @@ Deno.test("onRunStateChange fires with the record on run-level transitions (M7)"
     assertEquals(statuses, ["running", "succeeded"]);
     assertEquals(runIds.size, 1);
     assertEquals([...runIds][0], result.runId);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("onRunStateChange stays silent without a state store (M7)", async () => {
@@ -1469,9 +1447,7 @@ Deno.test("onRunStateChange stays silent without a state store (M7)", async () =
 });
 
 Deno.test("onRunStateChange delivers running → cancelling → cancelled on self-cancel (M7)", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
-    const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+  await withTempStore(async (store) => {
     const statuses: string[] = [];
     let started: () => void = () => {};
     const ready = new Promise<void>((resolve) => (started = resolve));
@@ -1498,9 +1474,7 @@ Deno.test("onRunStateChange delivers running → cancelling → cancelled on sel
     assertEquals(result.cancelled, true);
     // The full cancellation sequence is delivered, not just the terminal state.
     assertEquals(statuses, ["running", "cancelling", "cancelled"]);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("a throwing plugin hook is isolated and never breaks the run (M7)", async () => {
@@ -1772,20 +1746,6 @@ Deno.test("recoverWith only runs after a body failure, not on success", async ()
   assertEquals(fixed, false);
 });
 
-/** A recording in-memory {@link RemoteCacheStore} for executor tests. */
-class MemStore implements RemoteCacheStore {
-  readonly map = new Map<string, Uint8Array>();
-  readonly puts: string[] = [];
-  get(key: string): Promise<Uint8Array | null> {
-    return Promise.resolve(this.map.get(key) ?? null);
-  }
-  put(key: string, artifact: Uint8Array): Promise<void> {
-    this.puts.push(key);
-    this.map.set(key, artifact);
-    return Promise.resolve();
-  }
-}
-
 Deno.test("execute uploads to and restores from a remote cache store", async () => {
   const dir = await Deno.makeTempDir();
   const original = Deno.cwd();
@@ -1795,7 +1755,7 @@ Deno.test("execute uploads to and restores from a remote cache store", async () 
     await Deno.mkdir(`${dir}/out`);
     await Deno.writeTextFile(`${dir}/out/app.js`, "built");
     Deno.chdir(dir);
-    const store = new MemStore();
+    const store = new MemCacheStore();
 
     class B extends Build {
       build = target().inputs("input.txt").outputs("out").executes(() => {});
@@ -2005,9 +1965,7 @@ Deno.test("a body sees the run's cancellation on its own context signal", async 
 });
 
 Deno.test("a run with a state store reconstructs full status from disk", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
-    const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+  await withTempStore(async (store, dir) => {
     const log: string[] = [];
     class B extends Build {
       token = parameter("api token").secret();
@@ -2043,9 +2001,7 @@ Deno.test("a run with a state store reconstructs full status from disk", async (
     assertEquals(loaded?.record.targets.deploy.meta.where, "sit-7");
     // ... and the secret parameter was excluded from the record.
     assertEquals(loaded?.record.params, { env: "sit" });
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("with no state store, ctx.state is an in-memory no-op", async () => {
@@ -2064,9 +2020,7 @@ Deno.test("with no state store, ctx.state is an in-memory no-op", async () => {
 });
 
 Deno.test("a second run of a locked target fails with a typed conflict", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
-    const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+  await withTempStore(async (store) => {
     let acquired: () => void = () => {};
     const ready = new Promise<void>((resolve) => (acquired = resolve));
     let release: () => void = () => {};
@@ -2117,9 +2071,7 @@ Deno.test("a second run of a locked target fails with a typed conflict", async (
       actor: "carol",
     });
     assertEquals(result3.ok, true);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("a locked target with no store fails with a friendly error", async () => {
@@ -2137,9 +2089,7 @@ Deno.test("a locked target with no store fails with a friendly error", async () 
 });
 
 Deno.test("a lock with no key or no TTL fails with a friendly error", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
-    const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+  await withTempStore(async (store) => {
     class NoKey extends Build {
       go = target().lock((s) => s.withTtl("1h")).executes(() => {});
     }
@@ -2163,15 +2113,11 @@ Deno.test("a lock with no key or no TTL fails with a friendly error", async () =
     });
     assertEquals(r2.ok, false);
     assertStringIncludes(messageOf(r2.error), "set no TTL");
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("cancelling a locked run releases the lock", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
-    const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+  await withTempStore(async (store) => {
     const controller = new AbortController();
     let started: () => void = () => {};
     const ready = new Promise<void>((resolve) => (started = resolve));
@@ -2204,15 +2150,11 @@ Deno.test("cancelling a locked run releases the lock", async () => {
       since: "t",
     }, 1000);
     assertEquals(acq.ok, true); // lock was freed on cancellation
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("an unsatisfied waitsFor suspends the run and records it", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
-    const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+  await withTempStore(async (store) => {
     const log: string[] = [];
     class B extends Build {
       deploy = target().executes(() => void log.push("deploy"));
@@ -2265,15 +2207,11 @@ Deno.test("an unsatisfied waitsFor suspends the run and records it", async () =>
     });
     // promote is left pending (a resume runs it), not skipped.
     assertEquals(loaded?.record.targets.promote.status, "pending");
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("a satisfied waitsFor passes through and dependents run", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
-    const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+  await withTempStore(async (store) => {
     const log: string[] = [];
     class B extends Build {
       gate = target().waitsFor((s) => s.on(resumeWhen(() => true)));
@@ -2294,9 +2232,7 @@ Deno.test("a satisfied waitsFor passes through and dependents run", async () => 
     const loaded = await store.getRun((await store.listRuns({}))[0].id);
     assertEquals(loaded?.record.status, "succeeded");
     assertEquals(loaded?.record.targets.gate.status, "succeeded");
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("waitsFor with no store fails with a friendly error", async () => {
@@ -2311,9 +2247,7 @@ Deno.test("waitsFor with no store fails with a friendly error", async () => {
 });
 
 Deno.test("waitsFor with no trigger fails with a friendly error", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
-    const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+  await withTempStore(async (store) => {
     class B extends Build {
       gate = target().waitsFor((s) => s); // never called .on(...)
     }
@@ -2325,9 +2259,7 @@ Deno.test("waitsFor with no trigger fails with a friendly error", async () => {
     });
     assertEquals(result.ok, false);
     assertStringIncludes(messageOf(result.error), "set no trigger");
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("a throwing onlyWhen predicate fails the target, not the process (sequential)", async () => {
@@ -2441,8 +2373,7 @@ Deno.test("a throwing cacheKey settles the parallel scheduler without hanging", 
 });
 
 Deno.test("a rejected lock renewal never crashes the build", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     // A store whose lock renewal always rejects, counting the heartbeat's calls.
     class RenewFails extends FileSystemStateStore {
       renewCalls = 0;
@@ -2471,9 +2402,7 @@ Deno.test("a rejected lock renewal never crashes the build", async () => {
     // The heartbeat fired and its rejection was swallowed: the build still won.
     assertEquals(result.ok, true);
     assertEquals(store.renewCalls >= 1, true);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 /** A reporter whose every write throws — a buggy sink, or EPIPE on piped stdout. */
@@ -2487,9 +2416,7 @@ const throwingReporter: Reporter = {
 };
 
 Deno.test("a throwing reporter never strands the run record (sequential)", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
-    const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+  await withTempStore(async (store) => {
     class B extends Build {
       // A reject from outside runTarget's own try/catch, so failTarget prints
       // through the (throwing) reporter on the settle path.
@@ -2509,15 +2436,11 @@ Deno.test("a throwing reporter never strands the run record (sequential)", async
     const runs = await store.listRuns({});
     // The record is finalized, not left stranded `running` (un-resumable).
     assertEquals((await store.getRun(runs[0].id))?.record.status, "failed");
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("a throwing reporter never hangs the parallel scheduler or strands the record", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
-    const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+  await withTempStore(async (store) => {
     class B extends Build {
       good = target().executes(() => {});
       bad = target()
@@ -2539,9 +2462,7 @@ Deno.test("a throwing reporter never hangs the parallel scheduler or strands the
     assertEquals(result.ok, false);
     const runs = await store.listRuns({});
     assertEquals((await store.getRun(runs[0].id))?.record.status, "failed");
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("a throwing predicate on a lenient target does not halt its siblings", async () => {
@@ -2640,9 +2561,7 @@ Deno.test("execute rejects a forward-referenced dependency with GraphError", asy
 // --- A failed run strands no `waiting` target row (F8) ---
 
 Deno.test("a failed run leaves no waiting target stranded in the record", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
-    const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+  await withTempStore(async (store) => {
     class B extends Build {
       // Independent branches: one parks at a wait gate, the other fails.
       gate = target().waitsFor((s) => s.on(externalSignal("go")));
@@ -2663,9 +2582,7 @@ Deno.test("a failed run leaves no waiting target stranded in the record", async 
       (t) => t.status,
     );
     assertEquals(statuses.includes("waiting"), false);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("execute flags an ordering edge to a target not in the build", async () => {
@@ -2734,9 +2651,7 @@ function fakeLease(): { lease: HeldLease; lose: () => void } {
 }
 
 Deno.test("losing the lease stops the run without running its compensations", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
-    const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+  await withTempStore(async (store) => {
     const { lease, lose } = fakeLease();
     const compensated: string[] = [];
     class B extends Build {
@@ -2771,15 +2686,11 @@ Deno.test("losing the lease stops the run without running its compensations", as
     // assertion on it could not fail and would only look like coverage. The
     // release path that does exist is the run's *own* lease, covered by "a
     // cancelled run gives its lease back rather than holding it to the TTL".
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("losing the lease leaves the record for its new holder to settle", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
-    const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+  await withTempStore(async (store) => {
     const { lease, lose } = fakeLease();
     class B extends Build {
       deploy = target().executes(() => lose());
@@ -2797,15 +2708,11 @@ Deno.test("losing the lease leaves the record for its new holder to settle", asy
     // Never moved to a terminal status by the process that lost the claim.
     const after = await store.getRun(seeded.record.id);
     assertEquals(after?.record.status, "running");
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("a lease lost before the plan starts stops the run just the same", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
-    const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+  await withTempStore(async (store) => {
     const { lease, lose } = fakeLease();
     lose(); // already gone by the time execute() reads the signal
     const ran: string[] = [];
@@ -2827,15 +2734,11 @@ Deno.test("a lease lost before the plan starts stops the run just the same", asy
     assertEquals(result.ok, false);
     assertStringIncludes(messageOf(result.error), "lease was taken over");
     assertEquals(ran, []);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("a cancelled run does not persist the cache its compensations undid", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
-    const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+  await withTempStore(async (store) => {
     const cache = new FakeCache();
     const controller = new AbortController();
     class B extends Build {
@@ -2857,9 +2760,7 @@ Deno.test("a cancelled run does not persist the cache its compensations undid", 
     // compensation ran, so it describes work that has just been undone.
     assertEquals(cache.recorded, ["build"]);
     assertEquals(cache.saved, false);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("a cancelled run with no state store at all keeps its cache", async () => {
@@ -2886,9 +2787,7 @@ Deno.test("a cancelled run with no state store at all keeps its cache", async ()
 });
 
 Deno.test("a cancelled run with nothing to roll back keeps its cache", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
-    const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+  await withTempStore(async (store) => {
     const cache = new FakeCache();
     const controller = new AbortController();
     // No target declares a compensation, which is the ordinary case. Nothing was
@@ -2907,9 +2806,7 @@ Deno.test("a cancelled run with nothing to roll back keeps its cache", async () 
     });
     assertEquals(result.cancelled, true);
     assertEquals(cache.saved, true);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("an ordinary failure still persists the cache", async () => {
@@ -2933,8 +2830,7 @@ Deno.test("an ordinary failure still persists the cache", async () => {
 });
 
 Deno.test("a store that cannot answer the lease fails the run cleanly, not by rejecting", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     // A store whose lock acquire always throws — a filesystem mutex it could not
     // take in time, an HTTP 503, a DNS blip. None of those say who holds the
     // lease, so they are retried; one that never answers stops the run.
@@ -2967,14 +2863,11 @@ Deno.test("a store that cannot answer the lease fails the run cleanly, not by re
     // ...and the run never started unclaimed, which would have left a healthy
     // run looking abandoned to every sweep for its whole duration.
     assertEquals(ran, []);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("a lease that recovers on a retry lets the run proceed", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     class FlakyOnce extends FileSystemStateStore {
       calls = 0;
       override acquireLock(
@@ -2999,15 +2892,11 @@ Deno.test("a lease that recovers on a retry lets the run proceed", async () => {
     });
     assertEquals(result.ok, true);
     assertEquals(store.calls, 2);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("a cancelled run gives its lease back rather than holding it to the TTL", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
-    const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+  await withTempStore(async (store) => {
     const controller = new AbortController();
     class B extends Build {
       work = target().executes(() => controller.abort());
@@ -3030,9 +2919,7 @@ Deno.test("a cancelled run gives its lease back rather than holding it to the TT
       1000,
     );
     assertEquals(retaken.ok, true);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("a cancelled run still runs its always targets", async () => {
@@ -3124,9 +3011,7 @@ Deno.test("a failed run runs teardown that sits behind a target it never reached
 });
 
 Deno.test("a lost lease writes nothing more to the record it no longer owns", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
-    const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+  await withTempStore(async (store) => {
     const { lease, lose } = fakeLease();
     class B extends Build {
       first = target().executes(() => lose());
@@ -3160,14 +3045,11 @@ Deno.test("a lost lease writes nothing more to the record it no longer owns", as
     const after = await store.getRun(seeded.record.id);
     assertEquals(after?.record.targets["second"]?.status, "succeeded");
     assertEquals(after?.record.targets["third"]?.status, "succeeded");
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("a lease lost mid-rollback stops the walk where it stands", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     // A compensation walk can be long — real rollbacks talk to real systems —
     // and a lease lapses on time, not on health. Losing the claim partway
     // through means every *remaining* compensation would unwind work the new
@@ -3211,15 +3093,11 @@ Deno.test("a lease lost mid-rollback stops the walk where it stands", async () =
     assertEquals(events.some((e) => e.tool === "compensate"), true);
     // ...but the run was not settled here: that is the new holder's to do.
     assertEquals(after?.record.status, "cancelling");
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("a cancelled fan-out is not reported as a batch that succeeded", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
-    const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+  await withTempStore(async (store) => {
     const controller = new AbortController();
     const ran: string[] = [];
     class B extends Build {
@@ -3254,9 +3132,7 @@ Deno.test("a cancelled fan-out is not reported as a batch that succeeded", async
       record?.record.targets["batch"]?.status === "succeeded",
       false,
     );
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("teardown behind a gate that will never reopen runs, parallel or not", async () => {
@@ -3265,9 +3141,7 @@ Deno.test("teardown behind a gate that will never reopen runs, parallel or not",
   // whether the gate happened to launch before the failure — which is to say,
   // must not depend on `--parallel` for a build whose text is identical.
   for (const parallel of [false, true]) {
-    const dir = await Deno.makeTempDir();
-    try {
-      const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+    await withTempStore(async (store) => {
       const ran: string[] = [];
       class B extends Build {
         gate = target().waitsFor((s) => s.on(externalSignal("approved")));
@@ -3295,8 +3169,6 @@ Deno.test("teardown behind a gate that will never reopen runs, parallel or not",
         true,
         `teardown did not run with parallel: ${parallel}`,
       );
-    } finally {
-      await Deno.remove(dir, { recursive: true });
-    }
+    });
   }
 });

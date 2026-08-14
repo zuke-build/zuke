@@ -10,6 +10,7 @@ import {
 } from "../mod.ts";
 import { VERSION } from "../src/version.ts";
 import { FakeHost, FakePrompter } from "./_fakes.ts";
+import { withTemp } from "../../core/tests/_temp.ts";
 
 Deno.test("parseSetupFlags reads every flag form", () => {
   assertEquals(parseSetupFlags([]), { force: false, yes: false });
@@ -129,8 +130,7 @@ Deno.test("main doc without a package prints usage and never spawns", async () =
 
 Deno.test("main doc runs a real `deno doc` via the default runner (end-to-end)", async () => {
   const host = new FakeHost();
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const fixture = `${dir}/lib.ts`;
     await Deno.writeTextFile(
       fixture,
@@ -140,9 +140,7 @@ Deno.test("main doc runs a real `deno doc` via the default runner (end-to-end)",
     // own throwaway directory against the fixture's absolute path.
     const code = await main(["doc", fixture], host);
     assertEquals(code, 0);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("main doc propagates a non-zero exit from the real runner", async () => {

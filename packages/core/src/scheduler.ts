@@ -20,6 +20,7 @@ import { acquireTargetLock, type HeldLock } from "./lock.ts";
 import { resolveWait, type WaitResolution } from "./wait_resolution.ts";
 import {
   errorMessage,
+  outcomesFromRecord,
   outcomeView,
   type RunEnv,
   type RunOutcome,
@@ -339,12 +340,8 @@ function outcomeOf(
 
 /** Every settled outcome in this run, this process's map over the record's. */
 function allOutcomes(env: RunEnv): ReadonlyMap<string, TargetOutcomeView> {
-  const all = new Map<string, TargetOutcomeView>();
   const rows = env.writer?.snapshot().targets ?? {};
-  for (const [name, row] of Object.entries(rows)) {
-    if (row.status === "pending") continue; // no outcome yet, so not an entry
-    all.set(name, outcomeView({ status: row.status }, row));
-  }
+  const all = outcomesFromRecord(rows);
   for (const [name, settled] of env.statuses) {
     all.set(name, outcomeView(settled, rows[name]));
   }

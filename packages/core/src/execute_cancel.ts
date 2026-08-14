@@ -20,7 +20,13 @@ import type { Redactor } from "./redact.ts";
 import type { Lifecycle } from "./lifecycle.ts";
 import type { RunStateWriter } from "./state/writer.ts";
 import type { SignalRecord } from "./state/types.ts";
-import { cancelEvent, compensationEvents, runCompensations } from "./cancel.ts";
+import {
+  cancelEvent,
+  cancelledElsewhere,
+  compensationEvents,
+  compensationSummary,
+  runCompensations,
+} from "./cancel.ts";
 
 /**
  * Settle a cancelled run's durable state: hold the per-run cancel lock, walk
@@ -60,13 +66,16 @@ export async function settleCancelledRun(opts: {
   // (the true case stopped above), so always attempt the acquire; a `null`
   // result means another process already holds the lock and owns the walk —
   // we stop and drain (F7).
+  // Both discoveries that another process owns the walk end identically: drain
+  // the pending writes, say so, and claim nothing.
+  const stopForOtherProcess = async (): Promise<CancelSettlement> => {
+    await writer.drain();
+    reporter.info(cancelledElsewhere(runId));
+    return { ownedWalk: false, compensated: 0 };
+  };
   const cancelLock = await writer.acquireCancelLock(actor);
   if (cancelLock === null) {
-    await writer.drain();
-    reporter.info(
-      `Run ${runId} cancelled by another process — stopping.`,
-    );
-    return { ownedWalk: false, compensated: 0 };
+    return await stopForOtherProcess();
   } else {
     try {
       // We initiated it (Ctrl-C / options.signal): mark cancelling (which
@@ -78,11 +87,7 @@ export async function settleCancelledRun(opts: {
       // fired onExternalCancel. Re-check before walking, so we never run the
       // compensations twice (that canceller owns them now).
       if (opts.isExternallyCancelled()) {
-        await writer.drain();
-        reporter.info(
-          `Run ${runId} cancelled by another process — stopping.`,
-        );
-        return { ownedWalk: false, compensated: 0 };
+        return await stopForOtherProcess();
       } else {
         // Announce the intermediate `cancelling` transition (the record was
         // just moved there) before compensations run, so a plugin sees the
@@ -119,12 +124,7 @@ export async function settleCancelledRun(opts: {
           return { ownedWalk: false, compensated: comp.compensated.length };
         }
         await writer.markRunCancelled();
-        reporter.info(
-          `Run ${runId} cancelled — ${comp.compensated.length} ` +
-            `compensation(s) ran${
-              comp.failures.length > 0 ? `, ${comp.failures.length} failed` : ""
-            }.`,
-        );
+        reporter.info(`Run ${runId} cancelled — ${compensationSummary(comp)}.`);
         return {
           ownedWalk: true,
           compensated: comp.compensated.length + comp.failures.length,

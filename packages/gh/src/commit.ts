@@ -34,6 +34,7 @@ import {
   GhApiError,
   readString,
 } from "./api.ts";
+import { resolveAuthToken, resolveRepoSlug } from "./credentials.ts";
 
 export { assertRefName, GhApiError };
 
@@ -147,22 +148,12 @@ export class GhCommitSettings {
 
   /** The effective `owner/repo`, from the setting or the environment. */
   repoSlug_(): string {
-    const slug = this.repo_ ?? env("GITHUB_REPOSITORY");
-    if (slug === undefined) {
-      throw new Error(
-        "committing requires .repo('owner/name') (or GITHUB_REPOSITORY).",
-      );
-    }
-    return slug;
+    return resolveRepoSlug(this.repo_, "committing");
   }
 
   /** The effective token, from the setting or the environment. */
   authToken_(): string {
-    const token = this.token_ ?? env("GITHUB_TOKEN");
-    if (token === undefined) {
-      throw new Error("committing requires .token(...) (or GITHUB_TOKEN).");
-    }
-    return token;
+    return resolveAuthToken(this.token_, "committing");
   }
 }
 
@@ -241,22 +232,12 @@ export class GhTagSettings {
 
   /** The effective `owner/repo`, from the setting or the environment. */
   repoSlug_(): string {
-    const slug = this.repo_ ?? env("GITHUB_REPOSITORY");
-    if (slug === undefined) {
-      throw new Error(
-        "tagging requires .repo('owner/name') (or GITHUB_REPOSITORY).",
-      );
-    }
-    return slug;
+    return resolveRepoSlug(this.repo_, "tagging");
   }
 
   /** The effective token, from the setting or the environment. */
   authToken_(): string {
-    const token = this.token_ ?? env("GITHUB_TOKEN");
-    if (token === undefined) {
-      throw new Error("tagging requires .token(...) (or GITHUB_TOKEN).");
-    }
-    return token;
+    return resolveAuthToken(this.token_, "tagging");
   }
 }
 

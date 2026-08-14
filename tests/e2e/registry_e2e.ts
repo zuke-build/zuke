@@ -18,38 +18,20 @@ import {
   defaultStateHost,
   FileSystemBuildRegistry,
 } from "../../packages/core/mod.ts";
+import { withTemp } from "../../packages/core/tests/_temp.ts";
+import { runFixture } from "./_harness.ts";
 
 const FIXTURE = new URL("./fixtures/register_build.ts", import.meta.url);
 
-/** The captured result of one fixture subprocess. */
-interface Run {
-  code: number;
-  out: string;
-}
-
-/** Run the register fixture as a real `deno` subprocess against registry `dir`. */
-async function runFixture(args: string[], dir: string): Promise<Run> {
-  const command = new Deno.Command(Deno.execPath(), {
-    // Pass the fixture as a `file://` URL (deno's native module specifier)
-    // rather than URL.pathname, which is `/C:/…` on Windows.
-    args: ["run", "-A", FIXTURE.href, ...args],
-    // A secret is present in the environment; the descriptor must not carry it.
-    env: { ZUKE_REGISTRY_DIR: dir, API_TOKEN: "e2e-secret-xyz" },
-    stdout: "piped",
-    stderr: "piped",
-  });
-  const { code, stdout } = await command.output();
-  return { code, out: new TextDecoder().decode(stdout) };
-}
-
 Deno.test("two real processes register concurrently; no torn write", async () => {
-  const dir = await Deno.makeTempDir({ prefix: "zuke-reg-e2e-" });
-  try {
+  await withTemp(async (dir) => {
+    // A secret is present in the environment; the descriptor must not carry it.
+    const env = { ZUKE_REGISTRY_DIR: dir, API_TOKEN: "e2e-secret-xyz" };
     // Two processes register the same build at once. Idempotent CAS: both
     // succeed (one creates, the other retries onto the created version).
     const [a, b] = await Promise.all([
-      runFixture(["register"], dir),
-      runFixture(["register"], dir),
+      runFixture(FIXTURE, ["register"], env),
+      runFixture(FIXTURE, ["register"], env),
     ]);
     assertEquals(a.code, 0);
     assertEquals(b.code, 0);
@@ -72,7 +54,5 @@ Deno.test("two real processes register concurrently; no torn write", async () =>
     const json = JSON.stringify(loaded?.descriptor);
     assertEquals(json.includes("api-token"), false);
     assertEquals(json.includes("e2e-secret-xyz"), false);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  }, { prefix: "zuke-reg-e2e-" });
 });

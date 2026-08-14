@@ -17,7 +17,15 @@
  */
 
 import type { TargetBuilder } from "./target.ts";
-import { messageOf } from "./internal.ts";
+import {
+  messageOf,
+  readFileOrNull,
+  readTextOrNull,
+  sha256Hex,
+  statOrNull,
+  writeFileEnsuringDir,
+  writeTextEnsuringDir,
+} from "./internal.ts";
 import {
   archiveOutputs,
   type OutputHost,
@@ -43,65 +51,22 @@ export interface CacheHost extends OutputHost {
 
 /** The real, `Deno`-backed {@link CacheHost}. */
 export const defaultCacheHost: CacheHost = {
-  async readFile(path: string): Promise<Uint8Array | null> {
-    try {
-      return await Deno.readFile(path);
-    } catch (error) {
-      if (error instanceof Deno.errors.NotFound) return null;
-      throw error;
-    }
-  },
+  readFile: readFileOrNull,
   async stat(path: string): Promise<{ isDirectory: boolean } | null> {
-    try {
-      const info = await Deno.stat(path);
-      return { isDirectory: info.isDirectory };
-    } catch (error) {
-      if (error instanceof Deno.errors.NotFound) return null;
-      throw error;
-    }
+    // Narrowed to the one field {@link OutputHost} promises, so a test double
+    // never has to fabricate a whole `Deno.FileInfo`.
+    const info = await statOrNull(path);
+    return info === null ? null : { isDirectory: info.isDirectory };
   },
   async readDir(path: string): Promise<string[]> {
     const names: string[] = [];
     for await (const entry of Deno.readDir(path)) names.push(entry.name);
     return names;
   },
-  async writeFile(path: string, bytes: Uint8Array): Promise<void> {
-    const slash = path.replace(/\\/g, "/").lastIndexOf("/");
-    if (slash > 0) await Deno.mkdir(path.slice(0, slash), { recursive: true });
-    await Deno.writeFile(path, bytes);
-  },
-  async readStore(path: string): Promise<string | null> {
-    try {
-      return await Deno.readTextFile(path);
-    } catch (error) {
-      if (error instanceof Deno.errors.NotFound) return null;
-      throw error;
-    }
-  },
-  async writeStore(path: string, content: string): Promise<void> {
-    const slash = path.replace(/\\/g, "/").lastIndexOf("/");
-    if (slash > 0) await Deno.mkdir(path.slice(0, slash), { recursive: true });
-    await Deno.writeTextFile(path, content);
-  },
+  writeFile: writeFileEnsuringDir,
+  readStore: readTextOrNull,
+  writeStore: writeTextEnsuringDir,
 };
-
-const encoder = new TextEncoder();
-
-/** Hex SHA-256 of raw bytes. */
-async function hashBytes(bytes: Uint8Array): Promise<string> {
-  // Copy into a fresh ArrayBuffer-backed view so the digest input type is
-  // unambiguous regardless of the source buffer (e.g. a SharedArrayBuffer).
-  const digest = await crypto.subtle.digest("SHA-256", new Uint8Array(bytes));
-  return Array.from(
-    new Uint8Array(digest),
-    (b) => b.toString(16).padStart(2, "0"),
-  ).join("");
-}
-
-/** Hex SHA-256 of a UTF-8 string. */
-function hashText(text: string): Promise<string> {
-  return hashBytes(encoder.encode(text));
-}
 
 /**
  * Fingerprint a file or directory: the file's content hash, or — for a
@@ -113,14 +78,14 @@ async function hashPath(path: string, host: CacheHost): Promise<string> {
   if (info === null) return "∅"; // missing
   if (!info.isDirectory) {
     const bytes = await host.readFile(path);
-    return bytes === null ? "∅" : await hashBytes(bytes);
+    return bytes === null ? "∅" : await sha256Hex(bytes);
   }
   const names = (await host.readDir(path)).slice().sort();
   const parts: string[] = [];
   for (const name of names) {
     parts.push(`${name}:${await hashPath(`${path}/${name}`, host)}`);
   }
-  return hashText(parts.join("\n"));
+  return sha256Hex(parts.join("\n"));
 }
 
 /** The combined fingerprint of a target's declared inputs, in declaration order. */
@@ -135,7 +100,7 @@ export async function fingerprint(
   for (const cacheKey of target.cacheKeys_) {
     parts.push(`key:${await cacheKey()}`);
   }
-  return hashText(parts.join("\n"));
+  return sha256Hex(parts.join("\n"));
 }
 
 /** Whether a target participates in caching (declares inputs or cache keys). */

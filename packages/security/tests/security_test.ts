@@ -2,8 +2,11 @@
 // SPDX-License-Identifier: MIT
 
 import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
-import { ToolNotFoundError } from "@zuke/core/tooling";
-import { missingTool } from "@zuke/core/tooling/conformance";
+import { ToolNotFoundError, type ToolSettings } from "@zuke/core/tooling";
+import {
+  assertWrapperConformance,
+  missingTool,
+} from "@zuke/core/tooling/conformance";
 import {
   ActionlintSettings,
   GitleaksDetectSettings,
@@ -204,5 +207,19 @@ Deno.test("every SecurityTasks function reaches execution", async () => {
   ];
   for (const call of calls) {
     await assertRejects(call, ToolNotFoundError);
+  }
+});
+
+Deno.test("security: every wrapper conforms to the wrapper contract", async () => {
+  const wrappers: Array<[() => ToolSettings, string]> = [
+    [() => new ZizmorSettings(), "zizmor"],
+    [() => new ActionlintSettings(), "actionlint"],
+    [() => new GitleaksDetectSettings(), "gitleaks"],
+    [() => new OsvScannerSettings(), "osv-scanner"],
+    [() => new SemgrepScanSettings(), "semgrep"],
+    [() => new TrivyFsSettings(), "trivy"],
+  ];
+  for (const [makeSettings, tool] of wrappers) {
+    await assertWrapperConformance(makeSettings, tool, { resolution: "path" });
   }
 });

@@ -24,11 +24,10 @@ import {
 } from "@zuke/core";
 import type { Configure } from "@zuke/core/tooling";
 import { Command } from "@zuke/core/shell";
-import type { Effort, Provider, Usage } from "./types.ts";
-import { type Fix, type FixLocation, parseFix } from "./fix.ts";
+import type { Effort, Provider } from "./types.ts";
+import { type Fix, parseFix } from "./fix.ts";
 import { FIX_GEMINI_SCHEMA, FIX_JSON_SCHEMA } from "./fix_schema.ts";
-import { resolveGithubContext } from "./hosts/github.ts";
-import { postSuggestions } from "./hosts/github_review.ts";
+import { suggestionBody } from "./hosts/github_review.ts";
 import {
   DEFAULT_EXCLUDES,
   DiffSettings,
@@ -36,41 +35,28 @@ import {
   filterDiff,
   truncate,
 } from "./diff.ts";
-import { callProvider, DEFAULT_MODELS, resolveKey } from "./provider.ts";
+import { DEFAULT_MODELS, resolveKey } from "./provider.ts";
+import { type BudgetExhausted, cachedCall, type CachedResult } from "./call.ts";
 import { fixSystemPrompt, fixUserPrompt } from "./prompts/fix.ts";
 import { applyEdits } from "./apply.ts";
 import { commitAndPush, type GitRunner } from "./commit.ts";
+import { fixConsoleLines, fixMarkdown, type FixReport } from "./fix_report.ts";
 import {
-  fixConsoleLines,
-  fixMarkdown,
-  type FixReport,
-  fixSkipConsoleLine,
-  fixSkipMarkdown,
-} from "./fix_report.ts";
-import { retryLine, writeStepSummary } from "./report.ts";
+  retryLine,
+  skipConsoleLine,
+  skipMarkdown,
+  writeStepSummary,
+} from "./report.ts";
 import { type EnvReader, readEnv } from "./hosts.ts";
 import {
   describeError,
   readTextOrUndefined,
   resolveConventions,
 } from "./context.ts";
-import { postComment } from "./comment.ts";
+import { postComment, postGithubSuggestions } from "./comment.ts";
 import type { RetryInfo, RetryOptions } from "./retry.ts";
 import type { Budget } from "./budget.ts";
 import type { AiCache } from "./cache.ts";
-
-/**
- * The body of an inline review comment for one location: the diagnosis plus a
- * committable `suggestion` block. An empty suggestion produces an empty
- * block, which GitHub renders as a deletion of the targeted lines.
- */
-function suggestionBody(diagnosis: string, loc: FixLocation): string {
-  const suggestion = loc.suggestion ?? "";
-  const block = suggestion === ""
-    ? ["```suggestion", "```"]
-    : ["```suggestion", suggestion, "```"];
-  return [diagnosis, "", ...block].join("\n");
-}
 
 /**
  * A fluent AI fixer. Construct one via {@link aiFixer}, configure it, and attach
@@ -389,8 +375,8 @@ export class AiFixer implements Remediation {
 
   /** Announce a skipped fix on the console, summary, and (if on) the PR. */
   async #reportSkip(target: string, reason: string): Promise<void> {
-    if (!this.#quiet) console.log(fixSkipConsoleLine(this.name, reason));
-    const markdown = fixSkipMarkdown(this.name, target, reason);
+    if (!this.#quiet) console.log(skipConsoleLine(this.name, reason));
+    const markdown = skipMarkdown(this.name, target, reason);
     writeStepSummary(markdown);
     if (this.#comment) await this.#postIssueComment(markdown);
   }
@@ -401,31 +387,25 @@ export class AiFixer implements Remediation {
    * overview comment can be skipped). A no-op off GitHub or without locations.
    */
   async #postSuggestions(report: FixReport): Promise<boolean> {
-    if (detectCiHost(this.#env) !== "github") return false;
     if (report.locations.length === 0) return false;
-    const token = this.#commentToken !== undefined
-      ? resolveKey(this.#commentToken)
-      : this.#env("GITHUB_TOKEN") ?? "";
-    const context = resolveGithubContext(token, this.#env);
-    if (context === undefined) return false;
     const suggestions = report.locations.map((loc) => ({
       path: loc.file,
       line: loc.endLine ?? loc.line,
       startLine: loc.line,
-      body: suggestionBody(report.diagnosis, loc),
+      // `[]`, not `[""]`: no replacement is the deletion form of the block.
+      body: suggestionBody(
+        report.diagnosis,
+        loc.suggestion !== undefined && loc.suggestion !== ""
+          ? [loc.suggestion]
+          : [],
+      ),
       key: `${loc.file}:${loc.line}`,
     }));
-    try {
-      return (await postSuggestions(
-        context,
-        suggestions,
-        this.#fetch ?? fetch,
-      )) > 0;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.warn(`[${this.name}] could not post suggestions: ${message}`);
-      return false;
-    }
+    return (await postGithubSuggestions(this.name, suggestions, {
+      commentToken: this.#commentToken,
+      env: this.#env,
+      fetch: this.#fetch,
+    })) > 0;
   }
 
   /** Upsert the single overview comment via the active CI host. */
@@ -487,50 +467,40 @@ export class AiFixer implements Remediation {
       },
     };
 
-    // Cost cache: an identical failure (same provider, model, effort, and prompt)
-    // reuses the prior fix instead of paying for another call. `effort` is part
-    // of the key because it changes the model's output — omitting it would serve
-    // a fix computed at a different reasoning effort.
-    const cacheKey = this.#cache?.enabled_()
-      ? this.#cache.key_([provider, model, this.#effort ?? "", system, user])
-      : undefined;
-    const cached = cacheKey !== undefined
-      ? await this.#cache?.get_(cacheKey)
-      : undefined;
-
-    let fix: Fix;
-    let usage: Usage | undefined;
-    if (cached !== undefined) {
-      fix = parseFix(cached.text);
-      usage = cached.usage;
-    } else if (this.#budget?.exhausted_()) {
+    // Cost cache: an identical failure (same provider, model, effort, and
+    // prompt) reuses the prior fix instead of paying for another call.
+    let call: CachedResult<Fix> | BudgetExhausted;
+    try {
+      call = await cachedCall({
+        provider,
+        key,
+        model,
+        system,
+        user,
+        parse: parseFix,
+        cache: this.#cache,
+        budget: this.#budget,
+        effort: this.#effort,
+        fetch: this.#fetch,
+        retry,
+        schema: { json: FIX_JSON_SCHEMA, gemini: FIX_GEMINI_SCHEMA },
+        schemaName: "fix",
+        maxTokens: 8192,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(`[${this.name}] could not produce a fix: ${message}`);
+      return { retry: false };
+    }
+    if ("exhausted" in call) {
       await this.#reportSkip(
         context.target,
-        `AI budget exhausted — ${this.#budget.describe_()}`,
+        `AI budget exhausted — ${call.exhausted}`,
       );
       return { retry: false };
-    } else {
-      try {
-        const result = await callProvider(provider, key, model, system, user, {
-          effort: this.#effort,
-          fetch: this.#fetch,
-          retry,
-          schema: { json: FIX_JSON_SCHEMA, gemini: FIX_GEMINI_SCHEMA },
-          schemaName: "fix",
-          maxTokens: 8192,
-        });
-        fix = parseFix(result.text);
-        usage = result.usage;
-        this.#budget?.record_(usage, model);
-        if (cacheKey !== undefined) {
-          await this.#cache?.put_(cacheKey, result.text, usage);
-        }
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        console.warn(`[${this.name}] could not produce a fix: ${message}`);
-        return { retry: false };
-      }
     }
+    const fix = call.value;
+    const usage = call.usage;
 
     const ci = detectCiHost(this.#env) !== "local";
     const wantApply = this.#autoApply && fix.edits.length > 0;

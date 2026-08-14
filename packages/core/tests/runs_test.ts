@@ -14,6 +14,9 @@ import {
 import { FileSystemStateStore } from "../src/state/fs_store.ts";
 import { defaultStateHost } from "../src/state/store.ts";
 import type { RunRecord, RunStatus, RunSummary } from "../src/state/types.ts";
+import { runRecord } from "./_fakes.ts";
+import { capture as captureLines } from "./_console.ts";
+import { withTempStore as withStore } from "./_store.ts";
 
 /** A trivial build; `runsCommand` only reads `build.stateStore()` from it. */
 class B extends Build {}
@@ -22,50 +25,19 @@ class B extends Build {}
 async function capture(
   fn: () => Promise<number> | number,
 ): Promise<{ code: number; out: string; err: string }> {
-  const out: string[] = [];
-  const err: string[] = [];
-  const origLog = console.log;
-  const origErr = console.error;
-  console.log = (...args: unknown[]) => void out.push(args.join(" "));
-  console.error = (...args: unknown[]) => void err.push(args.join(" "));
-  try {
-    const code = await fn();
-    return { code, out: out.join("\n"), err: err.join("\n") };
-  } finally {
-    console.log = origLog;
-    console.error = origErr;
-  }
+  const { code, out, err } = await captureLines(fn);
+  return { code, out: out.join("\n"), err: err.join("\n") };
 }
 
-/** Run `fn` with a temp-dir-backed store, cleaned up afterwards. */
-async function withStore(
-  fn: (store: FileSystemStateStore) => Promise<void>,
-): Promise<void> {
-  const dir = await Deno.makeTempDir();
-  try {
-    await fn(new FileSystemStateStore(`${dir}/runs`, defaultStateHost));
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
-}
-
-/** A minimal valid run record. */
+/** A minimal valid run record: a finished run, unless overridden. */
 function sampleRecord(overrides: Partial<RunRecord> = {}): RunRecord {
-  return {
-    id: overrides.id ?? "run-1",
-    build: overrides.build ?? "CI",
-    rootTarget: overrides.rootTarget ?? "deploy",
-    status: overrides.status ?? "succeeded",
-    actor: overrides.actor ?? "alice",
-    createdAt: overrides.createdAt ?? "2026-07-17T10:00:00.000Z",
-    updatedAt: overrides.updatedAt ?? "2026-07-17T10:05:00.000Z",
-    graph: overrides.graph ?? [{ name: "deploy", dependsOn: [] }],
-    params: overrides.params ?? {},
-    targets: overrides.targets ?? { deploy: { status: "succeeded", meta: {} } },
-    signals: overrides.signals ?? {},
-    events: overrides.events ?? [],
+  return runRecord({
+    status: "succeeded",
+    updatedAt: "2026-07-17T10:05:00.000Z",
+    targets: { deploy: { status: "succeeded", meta: {} } },
+    ...overrides,
     degraded: overrides.degraded,
-  };
+  });
 }
 
 Deno.test("formatRunList renders headers and one row per run", () => {

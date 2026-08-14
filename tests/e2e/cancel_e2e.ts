@@ -20,32 +20,18 @@ import {
   defaultStateHost,
   FileSystemStateStore,
 } from "../../packages/core/mod.ts";
+import { withTemp } from "../../packages/core/tests/_temp.ts";
+import { runFixture } from "./_harness.ts";
 
 const FIXTURE = new URL("./fixtures/cancel_build.ts", import.meta.url);
-
-/** The captured result of one fixture subprocess. */
-interface Run {
-  code: number;
-  out: string;
-}
-
-/** Run the cancel fixture as a real `deno` subprocess against state dir `dir`. */
-async function runFixture(args: string[], dir: string): Promise<Run> {
-  const command = new Deno.Command(Deno.execPath(), {
-    args: ["run", "-A", FIXTURE.href, ...args],
-    env: { ZUKE_STATE_DIR: dir },
-    stdout: "piped",
-    stderr: "piped",
-  });
-  const { code, stdout } = await command.output();
-  return { code, out: new TextDecoder().decode(stdout) };
-}
 
 Deno.test("a separate process cancels a suspended run and runs its compensation", async () => {
   const dir = await Deno.makeTempDir({ prefix: "zuke-e2e-" });
   try {
     // Process 1: run to the gate and suspend, persisting the run.
-    const suspend = await runFixture(["promote"], dir);
+    const suspend = await runFixture(FIXTURE, ["promote"], {
+      ZUKE_STATE_DIR: dir,
+    });
     assertEquals(suspend.code, 0);
     assertStringIncludes(suspend.out, "DEPLOYED");
 
@@ -56,7 +42,9 @@ Deno.test("a separate process cancels a suspended run and runs its compensation"
     assertEquals(runs[0].status, "suspended");
 
     // Process 2: cancel it. The compensation runs, reading the deploy's slot.
-    const cancelled = await runFixture(["cancel", id], dir);
+    const cancelled = await runFixture(FIXTURE, ["cancel", id], {
+      ZUKE_STATE_DIR: dir,
+    });
     assertEquals(cancelled.code, 0);
     assertStringIncludes(cancelled.out, "ROLLED_BACK:sit-7");
     // The gate never opened, so promote never ran.
@@ -120,8 +108,7 @@ Deno.test({
   // survives a real signal to a real second process.
   ignore: Deno.build.os === "windows",
   fn: async () => {
-    const dir = await Deno.makeTempDir({ prefix: "zuke-e2e-" });
-    try {
+    await withTemp(async (dir) => {
       // Process 1: deploy, then block — the run is `running` and its lease held.
       const { child } = await spawnUntil(["hold"], dir, "HOLDING");
       const store = new FileSystemStateStore(dir, defaultStateHost);
@@ -158,8 +145,6 @@ Deno.test({
       );
       const loaded = await store.getRun(id);
       assertEquals(loaded?.record.status, "cancelled");
-    } finally {
-      await Deno.remove(dir, { recursive: true }).catch(() => {});
-    }
+    }, { prefix: "zuke-e2e-" });
   },
 });

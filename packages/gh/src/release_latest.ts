@@ -25,10 +25,10 @@ import {
   caller,
   DEFAULT_BASE_URL,
   encodePath,
-  env,
   GhApiError,
   readNumber,
 } from "./api.ts";
+import { resolveAuthToken, resolveRepoSlug } from "./credentials.ts";
 
 /** What became of a {@link GhReleaseLatestApi.markReleaseLatest} call. */
 export interface GhReleaseLatestResult {
@@ -95,26 +95,16 @@ export class GhReleaseLatestSettings {
 
   /** The effective `owner/repo`, from the setting or the environment. */
   repoSlug_(): string {
-    const slug = this.repo_ ?? env("GITHUB_REPOSITORY");
-    if (slug === undefined) {
-      throw new Error(
-        "marking a release as latest requires .repo('owner/name') (or " +
-          "GITHUB_REPOSITORY).",
-      );
-    }
-    return slug;
+    return resolveRepoSlug(this.repo_, "marking a release as latest");
   }
 
   /** The effective token, from the setting or the environment. */
   authToken_(): string {
-    const token = this.token_ ?? env("GITHUB_TOKEN");
-    if (token === undefined) {
-      throw new Error(
-        "marking a release as latest requires .token(...) (or GITHUB_TOKEN) " +
-          "with contents: write.",
-      );
-    }
-    return token;
+    return resolveAuthToken(
+      this.token_,
+      "marking a release as latest",
+      " with contents: write.",
+    );
   }
 }
 

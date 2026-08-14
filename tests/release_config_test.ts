@@ -2,63 +2,15 @@
 // SPDX-License-Identifier: MIT
 
 import { assertEquals } from "../packages/core/tests/_assert.ts";
+import { PACKAGES as PACKAGE_DIRS } from "../build/packages.ts";
 
-const PACKAGES = [
-  "packages/core",
-  "packages/deno",
-  "packages/docs",
-  "packages/npm",
-  "packages/npx",
-  "packages/bun",
-  "packages/pnpm",
-  "packages/yarn",
-  "packages/cmd",
-  "packages/console",
-  "packages/cli",
-  "packages/docker",
-  "packages/docker-compose",
-  "packages/kubectl",
-  "packages/helm",
-  "packages/kustomize",
-  "packages/oxlint",
-  "packages/eslint",
-  "packages/cspell",
-  "packages/jest",
-  "packages/vitest",
-  "packages/playwright",
-  "packages/cypress",
-  "packages/biome",
-  "packages/knip",
-  "packages/dpdm",
-  "packages/vite",
-  "packages/tsup",
-  "packages/turbo",
-  "packages/nx",
-  "packages/jsr",
-  "packages/tsx",
-  "packages/tsc",
-  "packages/tsc-alias",
-  "packages/tsdown",
-  "packages/nest",
-  "packages/openapi-ts",
-  "packages/orval",
-  "packages/husky",
-  "packages/node",
-  "packages/dprint",
-  "packages/gcloud",
-  "packages/git",
-  "packages/gh",
-  "packages/codecov",
-  "packages/claude",
-  "packages/codex",
-  "packages/gemini",
-  "packages/terraform",
-  "packages/tofu",
-  "packages/release-please",
-  "packages/security",
-  "packages/ai",
-  "packages/otel",
-];
+// `build/packages.ts` is the single source of truth for workspace membership —
+// `publishJsr` iterates it, so a package missing there is silently never
+// published (that is what stranded the AI CLI wrappers on JSR). Deriving the
+// `packages/`-prefixed paths from it, rather than keeping a second copy here,
+// means the assertions below check the *other* membership lists against the
+// real one instead of against a copy that can drift from both.
+const PACKAGES = PACKAGE_DIRS.map((dir) => `packages/${dir}`);
 
 async function readJson(path: string): Promise<Record<string, unknown>> {
   return JSON.parse(await Deno.readTextFile(path));
@@ -159,9 +111,9 @@ Deno.test("the deno workspace lists exactly the configured packages", async () =
 
 Deno.test("the README package table lists every workspace package", async () => {
   // The README's package tables are the human-facing catalog; a package missing
-  // there is invisible to anyone browsing the repo. Enforce it so the six
-  // membership lists (workspace, release-please config/manifest, zuke.ts publish
-  // loop, this test, and the README) never drift apart.
+  // there is invisible to anyone browsing the repo. Enforce it so the membership
+  // lists (workspace, release-please config/manifest, the build/packages.ts
+  // publish loop, and the README) never drift apart.
   const readme = await Deno.readTextFile("README.md");
   const missing = PACKAGES
     .map((path) => path.replace("packages/", ""))
@@ -172,23 +124,6 @@ Deno.test("the README package table lists every workspace package", async () => 
     missing,
     [],
     `README.md package tables are missing: ${missing.join(", ")}`,
-  );
-});
-
-Deno.test("the build/packages.ts publish list covers every workspace package", async () => {
-  // `publishJsr` only iterates this array (defined in build/packages.ts and
-  // imported by zuke.ts), so a package missing here is silently never
-  // published — guard against that drift (it is what stranded the AI CLI
-  // wrappers on JSR).
-  const source = await Deno.readTextFile("build/packages.ts");
-  const block = source.match(/const PACKAGES = \[([^\]]*)\]/);
-  if (block === null) {
-    throw new Error("could not find the PACKAGES array in build/packages.ts");
-  }
-  const names = [...block[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]);
-  assertEquals(
-    names.map((name) => `packages/${name}`).sort(),
-    [...PACKAGES].sort(),
   );
 });
 

@@ -21,6 +21,7 @@ import { FileSystemStateStore } from "../src/state/fs_store.ts";
 import { defaultStateHost } from "../src/state/store.ts";
 import type { RunRecord } from "../src/state/types.ts";
 import type { Reporter } from "../src/executor.ts";
+import { withTemp } from "./_temp.ts";
 
 const NOW = "2026-08-10T12:00:00.000Z";
 
@@ -30,8 +31,7 @@ Deno.test("the settlement stops when the cancel changes hands during the drain",
   // that drain can reveal another process's `zuke cancel` already landed. The
   // re-check must then stop the walk — running it here too would compensate
   // the same work twice.
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const undone: string[] = [];
     class Cd extends Build {
       rollback = target().unlisted().executes(() => void undone.push("deploy"));
@@ -101,7 +101,5 @@ Deno.test("the settlement stops when the cancel changes hands during the drain",
     const reacquired = await writer.acquireCancelLock("the-canceller");
     assertEquals(reacquired !== null, true);
     await reacquired?.release();
-  } finally {
-    await Deno.remove(dir, { recursive: true }).catch(() => {});
-  }
+  });
 });

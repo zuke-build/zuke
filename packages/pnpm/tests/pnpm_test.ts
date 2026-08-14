@@ -7,7 +7,10 @@ import {
   assertThrows,
 } from "../../core/tests/_assert.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
-import { missingTool } from "@zuke/core/tooling/conformance";
+import {
+  assertWrapperConformance,
+  missingTool,
+} from "@zuke/core/tooling/conformance";
 import {
   PnpmAddSettings,
   PnpmDlxSettings,
@@ -134,4 +137,10 @@ Deno.test("every PnpmTasks function reaches execution", async () => {
     ToolNotFoundError,
   );
   await assertRejects(() => PnpmTasks.publish(missingTool), ToolNotFoundError);
+});
+
+Deno.test("pnpm: conforms to the wrapper contract", async () => {
+  await assertWrapperConformance(() => new PnpmInstallSettings(), "pnpm", {
+    resolution: "path",
+  });
 });

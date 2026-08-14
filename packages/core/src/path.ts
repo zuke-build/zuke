@@ -209,3 +209,17 @@ export function absolutePath(first: string, ...rest: string[]): AbsolutePath {
     toString: (): string => value,
   });
 }
+
+/**
+ * Resolve a possibly-relative directory to an {@link AbsolutePath}, against the
+ * current working directory. A leading `/` or a `C:`-style drive letter counts as
+ * already absolute.
+ *
+ * Module-internal: deliberately not re-exported from `mod.ts` — a build script
+ * composes paths with {@link absolutePath} instead.
+ */
+export function resolveDir(dir: string): AbsolutePath {
+  const slashed = dir.replace(/\\/g, "/");
+  const isAbsolute = slashed.startsWith("/") || /^[A-Za-z]:/.test(slashed);
+  return absolutePath(isAbsolute ? slashed : `${Deno.cwd()}/${slashed}`);
+}

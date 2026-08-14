@@ -28,7 +28,9 @@ import {
   type HostComment,
   jsonHeaders,
   MAX_COMMENT_PAGES,
+  probeString,
   type ReviewHost,
+  withAssociations,
 } from "./types.ts";
 
 /** The Bitbucket Cloud REST API origin. */
@@ -94,23 +96,16 @@ async function paginate(
  * the reviewer cannot attribute its own comments, and the discussion state is
  * therefore not carried across runs. Documented in `docs/ai-review.md`.
  */
-async function selfUuid(
+function selfUuid(
   context: BitbucketContext,
   doFetch: typeof fetch,
 ): Promise<string | undefined> {
-  try {
-    const response = await doFetch(`${API}/user`, {
-      headers: jsonHeaders({ "authorization": `Bearer ${context.token}` }),
-    });
-    if (!response.ok) {
-      await response.body?.cancel();
-      return undefined;
-    }
-    const uuid = dig(await response.json(), "uuid");
-    return typeof uuid === "string" ? uuid : undefined;
-  } catch {
-    return undefined;
-  }
+  return probeString(
+    `${API}/user`,
+    jsonHeaders({ "authorization": `Bearer ${context.token}` }),
+    doFetch,
+    "uuid",
+  );
 }
 
 /**
@@ -217,16 +212,7 @@ export async function listBitbucketComments(
     workspaceMembers(context, doFetch),
   ]);
   const comments = await fetchComments(context, doFetch, self);
-  if (members === undefined) return comments;
-  return comments.map((comment) => {
-    const permission = members.get(comment.author);
-    return {
-      ...comment,
-      association: permission === undefined
-        ? "NONE"
-        : associationFor(permission),
-    };
-  });
+  return withAssociations(comments, members, associationFor);
 }
 
 /** The id of the reviewer's own comment carrying `marker`, or `undefined`. */

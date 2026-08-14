@@ -413,15 +413,17 @@ gemini-extension.json     # Gemini CLI extension manifest (serves skills/)
   version is bumped. The repo squash-merges, so the squash body comes from the
   PR description/commits: put illustrative code in the PR discussion, and keep
   commit bodies to prose. See [`RELEASING.md`](RELEASING.md).
-- **A new package must be added everywhere.** Membership is declared in seven
+- **A new package must be added everywhere.** Membership is declared in six
   places that must stay in lock-step: the `deno.json` workspace,
   `.release-please-config.json`, `.release-please-manifest.json`, the `PACKAGES`
   array in `build/packages.ts` (the JSR publish loop), the package table in
-  `README.md`, the list in `tests/release_config_test.ts`, and the landing-page
-  catalogue in `build/website_tools.ts` (`TOOL_GROUPS` for a CLI wrapper,
-  `CORE_PACKAGES` for an engine or plugin package).
+  `README.md`, and the landing-page catalogue in `build/website_tools.ts`
+  (`TOOL_GROUPS` for a CLI wrapper, `CORE_PACKAGES` for an engine or plugin
+  package). `tests/release_config_test.ts` imports `PACKAGES` rather than
+  keeping its own copy, so `build/packages.ts` is the single list the tests
+  compare everything else against.
   `tests/release_config_test.ts` and `tests/build_tools_test.ts` enforce that
-  all seven agree — run them after adding a package. Omitting `zuke.ts` means
+  all six agree — run them after adding a package. Omitting `zuke.ts` means
   the package is released but never published; omitting the `README.md` table
   means it is invisible to anyone browsing the repo; omitting
   `build/website_tools.ts` fails the gate, because the website's package grid is

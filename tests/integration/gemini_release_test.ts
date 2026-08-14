@@ -19,6 +19,7 @@ import {
   GEMINI_ASSET_NAMES,
 } from "../../build/gemini_archive.ts";
 import { runCli } from "./_harness.ts";
+import { withTemp } from "../../packages/core/tests/_temp.ts";
 
 /** A fake GitHub: one release, remembering the asset names it accepts. */
 function fakeGithub(uploaded: string[]): typeof fetch {
@@ -72,8 +73,7 @@ function releaseBuild(root: string, uploaded: string[]) {
 }
 
 Deno.test("the release wiring attaches missing assets and keeps existing ones", async () => {
-  const root = await Deno.makeTempDir();
-  try {
+  await withTemp(async (root) => {
     await Deno.writeTextFile(
       `${root}/gemini-extension.json`,
       '{"name":"zuke","version":"0.0.1"}',
@@ -93,7 +93,5 @@ Deno.test("the release wiring attaches missing assets and keeps existing ones", 
     assertStringIncludes(out, `${GEMINI_ASSET_NAMES[1]}: uploaded`);
     assertStringIncludes(out, `${GEMINI_ASSET_NAMES[2]}: uploaded`);
     assertEquals(uploaded, GEMINI_ASSET_NAMES.slice(1));
-  } finally {
-    await Deno.remove(root, { recursive: true });
-  }
+  });
 });

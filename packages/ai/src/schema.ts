@@ -47,7 +47,9 @@ export const ASSESSMENT_JSON_SCHEMA: Record<string, unknown> = {
  * Strict JSON Schema for a verdict list — the response shape of the verify and
  * adjudication passes: `{"verdicts": [{"id", "verdict", "reason"}]}` with
  * `verdict` restricted to the pass's `allowed` values (e.g.
- * `["confirmed", "refuted"]` for verification).
+ * `["confirmed", "refuted"]` for verification). `reason` is optional, so — as
+ * everywhere else in strict mode — it is nullable and still listed in
+ * `required`; the parser treats `null` as "absent".
  */
 export function verdictsJsonSchema(
   allowed: string[],
@@ -64,7 +66,7 @@ export function verdictsJsonSchema(
           properties: {
             id: { type: "string" },
             verdict: { type: "string", enum: allowed },
-            reason: { type: "string" },
+            reason: { type: ["string", "null"] },
           },
           required: ["id", "verdict", "reason"],
         },

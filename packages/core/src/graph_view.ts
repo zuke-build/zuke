@@ -13,7 +13,7 @@
  */
 
 import { graphData, renderGraphHtml } from "./graph_html.ts";
-import { findConfigDir, pathExists } from "./config.ts";
+import { ARTIFACT_DIR, findConfigDir, pathExists } from "./config.ts";
 import { absolutePath } from "./path.ts";
 import type { TargetBuilder } from "./target.ts";
 
@@ -85,8 +85,6 @@ export interface GraphCommandOptions {
   open: boolean;
 }
 
-/** The directory under the repo root where Zuke writes generated artifacts. */
-const ARTIFACT_DIR = ".zuke";
 /** The graph file name within {@link ARTIFACT_DIR}. */
 const GRAPH_FILE = "graph.html";
 

@@ -18,6 +18,7 @@ import {
 } from "../src/ci.ts";
 import { Build, discoverTargets } from "../src/build.ts";
 import { target } from "../src/target.ts";
+import { withTemp } from "./_temp.ts";
 
 /** A small pipeline exercised across providers. */
 const pipeline: CiPipeline = {
@@ -451,8 +452,7 @@ Deno.test("syncCiFiles tolerates a CRLF working copy (Windows checkout)", async 
 });
 
 Deno.test("syncCiFiles uses the real filesystem by default", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const path = `${dir}/.github/workflows/ci.yml`;
     const file = cicd({ provider: "github", path, pipeline: filePipeline });
     const first = await syncCiFiles([file]); // creates parent dirs and writes
@@ -460,9 +460,7 @@ Deno.test("syncCiFiles uses the real filesystem by default", async () => {
     assertEquals(await Deno.readTextFile(path), file.render());
     const second = await syncCiFiles([file]);
     assertEquals(second[0].status, "unchanged");
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 /** A small build whose targets exercise the fan-out. */
@@ -1393,15 +1391,12 @@ Deno.test("pipelineFor names a not-yet-discovered target by identity", () => {
 Deno.test("syncCiFiles surfaces a read failure that is not file-absence", async () => {
   // Only NotFound means "write it fresh"; any other read failure (here: the
   // path is a directory) must propagate, not be mistaken for a missing file.
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const path = `${dir}/ci.yml`;
     await Deno.mkdir(path); // a directory where the file should be
     const file = cicd({ provider: "github", path, pipeline: filePipeline });
     await assertRejects(() => syncCiFiles([file], { check: true }));
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("a job whose own steps already harden or check out gets no prelude", () => {

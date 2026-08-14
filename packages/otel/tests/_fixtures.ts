@@ -14,6 +14,7 @@ import type {
   OtlpTracePayload,
 } from "../src/otlp.ts";
 import type { OtlpTransport } from "../src/exporter.ts";
+import { runRecord } from "../../core/tests/_fakes.ts";
 
 /** A fixed resource/scope identity for tests. */
 export const RESOURCE: OtlpResource = {
@@ -31,21 +32,14 @@ export function target(
 
 /** Build a {@link RunRecord} over sensible defaults, overriding any field. */
 export function makeRecord(overrides: Partial<RunRecord> = {}): RunRecord {
-  return {
-    id: "run-1",
+  return runRecord({
     build: "MyBuild",
-    rootTarget: "deploy",
-    status: "running",
-    actor: "alice",
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:10.000Z",
     graph: [],
-    params: {},
     targets: {},
-    signals: {},
-    events: [],
     ...overrides,
-  };
+  });
 }
 
 /** What a {@link fakeTransport} recorded. */

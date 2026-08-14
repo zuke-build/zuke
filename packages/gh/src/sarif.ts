@@ -19,9 +19,8 @@
 
 import { gzip } from "@zuke/core";
 import type { Configure, PathLike } from "@zuke/core/tooling";
-
-/** The GitHub REST base, overridable per call for GHES. */
-const API_BASE = "https://api.github.com";
+import { caller, DEFAULT_BASE_URL, env } from "./api.ts";
+import { resolveAuthToken, resolveRepoSlug } from "./credentials.ts";
 
 /** What GitHub returns for an accepted SARIF upload. */
 export interface GhSarifUploadResult {
@@ -29,16 +28,6 @@ export interface GhSarifUploadResult {
   id: string;
   /** The URL that reports whether GitHub finished processing the report. */
   url: string;
-}
-
-/** Read an Actions-provided default, treating an absent env as unset. */
-function env(name: string): string | undefined {
-  try {
-    const value = Deno.env.get(name);
-    return value === undefined || value === "" ? undefined : value;
-  } catch {
-    return undefined;
-  }
 }
 
 /** Settings for {@link GhSarifApi.uploadSarif}. */
@@ -56,7 +45,7 @@ export class GhSarifSettings {
   /** Where the checkout that produced the results lives. Set by {@link checkoutUri}. */
   checkoutUri_?: string;
   /** REST base URL. Set by {@link baseUrl}. */
-  baseUrl_: string = API_BASE;
+  baseUrl_: string = DEFAULT_BASE_URL;
   /** The `fetch` implementation. Set by {@link fetch}. */
   fetch_: typeof fetch = fetch;
 
@@ -113,13 +102,7 @@ export class GhSarifSettings {
 
   /** The effective `owner/repo`, from the setting or the Actions environment. */
   repoSlug_(): string {
-    const slug = this.repo_ ?? env("GITHUB_REPOSITORY");
-    if (slug === undefined) {
-      throw new Error(
-        "uploading SARIF requires .repo('owner/name') (or GITHUB_REPOSITORY).",
-      );
-    }
-    return slug;
+    return resolveRepoSlug(this.repo_, "uploading SARIF");
   }
 
   /**
@@ -171,45 +154,25 @@ export async function uploadSarifReport(
   const settings = configure
     ? configure(new GhSarifSettings())
     : new GhSarifSettings();
-  const token = settings.token_ ?? env("GITHUB_TOKEN");
-  if (token === undefined) {
-    throw new Error(
-      "uploading SARIF requires .token(...) (or GITHUB_TOKEN) with " +
-        "security-events: write.",
-    );
-  }
-  // Resolve where it is going before reading and gzipping it — the destination
-  // is the likelier misconfiguration, and it costs nothing to check first.
-  const slug = settings.repoSlug_();
-  const body = await settings.body_();
-  const response = await settings.fetch_(
-    `${settings.baseUrl_}/repos/${slug}/code-scanning/sarifs`,
-    {
-      method: "POST",
-      headers: {
-        "accept": "application/vnd.github+json",
-        "x-github-api-version": "2022-11-28",
-        "authorization": `Bearer ${token}`,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify(body),
-    },
+  const token = resolveAuthToken(
+    settings.token_,
+    "uploading SARIF",
+    " with security-events: write.",
   );
-  const text = await response.text();
-  if (!response.ok) {
-    throw new Error(
-      `uploading SARIF failed: ${response.status} ${response.statusText}. ` +
-        text.slice(0, 400),
-    );
-  }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    throw new Error(
-      `the SARIF upload returned a non-JSON body: ${text.slice(0, 200)}`,
-    );
-  }
+  // Resolve where it is going before reading and gzipping it — the destination
+  // is the likelier misconfiguration, and it costs nothing to check first. The
+  // shared caller is what validates the slug, so that happens here too.
+  const call = caller(
+    settings.baseUrl_,
+    settings.repoSlug_(),
+    token,
+    settings.fetch_,
+  );
+  const parsed = await call(
+    "POST",
+    "/code-scanning/sarifs",
+    await settings.body_(),
+  );
   if (
     typeof parsed !== "object" || parsed === null || !("id" in parsed) ||
     typeof parsed.id !== "string" || !("url" in parsed) ||

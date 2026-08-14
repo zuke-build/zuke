@@ -28,10 +28,7 @@
  */
 
 import type { Configure } from "@zuke/core/tooling";
-import { assertRefName, encodePath } from "./api.ts";
-
-/** The GitHub REST base, overridable per call for GHES. */
-const API_BASE = "https://api.github.com";
+import { assertRefName, DEFAULT_BASE_URL, encodePath } from "./api.ts";
 
 /** How long the signed app JWT is valid. GitHub rejects anything over 10 minutes. */
 const JWT_TTL_SECONDS = 540;
@@ -171,7 +168,7 @@ export class GhAppTokenSettings {
   /** Requested permissions. Set by {@link permission}. */
   permissions_: Record<string, GhPermissionLevel> = {};
   /** REST base URL. Set by {@link baseUrl}. */
-  baseUrl_: string = API_BASE;
+  baseUrl_: string = DEFAULT_BASE_URL;
   /** The `fetch` implementation. Set by {@link fetch}. */
   fetch_: typeof fetch = fetch;
   /** Seconds since the epoch, for the JWT's claims. Set by {@link now}. */

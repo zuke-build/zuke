@@ -6,6 +6,8 @@ import { AiReviewError, genericReviewer, securityReviewer } from "../mod.ts";
 import { changedPaths } from "../src/diff.ts";
 import { buildFileContext } from "../src/file_context.ts";
 import { findingFingerprint } from "../src/suppress.ts";
+import { captureLines } from "../../core/tests/_console.ts";
+import { withEnv } from "../../core/tests/_env.ts";
 
 const DIFF = "diff --git a/src/app.ts b/src/app.ts\n" +
   "--- a/src/app.ts\n+++ b/src/app.ts\n@@\n+const x = eval(input);\n";
@@ -313,22 +315,8 @@ Deno.test("verify is skipped cleanly when there are no findings", async () => {
 });
 
 /** Capture console output with the job-summary file unset (no real writes). */
-async function captured(fn: () => Promise<void>): Promise<string[]> {
-  const lines: string[] = [];
-  const { log, warn } = console;
-  const summary = Deno.env.get("GITHUB_STEP_SUMMARY");
-  Deno.env.delete("GITHUB_STEP_SUMMARY");
-  console.log = (...a: unknown[]) => void lines.push(a.join(" "));
-  console.warn = (...a: unknown[]) => void lines.push(a.join(" "));
-  try {
-    await fn();
-  } finally {
-    console.log = log;
-    console.warn = warn;
-    if (summary !== undefined) Deno.env.set("GITHUB_STEP_SUMMARY", summary);
-  }
-  return lines;
-}
+const captured = (fn: () => Promise<void>): Promise<string[]> =>
+  captureLines(() => withEnv({ GITHUB_STEP_SUMMARY: undefined }, fn));
 
 Deno.test("verify candidates carry the finding's line; a reason-less refutation renders bare", async () => {
   const finding = {

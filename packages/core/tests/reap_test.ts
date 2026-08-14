@@ -16,12 +16,13 @@ import { assertEquals } from "./_assert.ts";
 import { Build, discoverTargets } from "../src/build.ts";
 import { target } from "../src/target.ts";
 import { reapAbandoned, recoverStranded } from "../src/reap.ts";
-import { FileSystemStateStore } from "../src/state/fs_store.ts";
-import { defaultStateHost } from "../src/state/store.ts";
+import type { FileSystemStateStore } from "../src/state/fs_store.ts";
 import { RUN_LEASE_PREFIX } from "../src/state/run_lease.ts";
 import { lockKey } from "../src/state/lock.ts";
 import type { Reporter } from "../src/executor.ts";
 import type { RunRecord, RunStatus } from "../src/state/types.ts";
+import { runRecord } from "./_fakes.ts";
+import { withTempStore } from "./_store.ts";
 
 const NOW = "2026-08-10T12:00:00.000Z";
 
@@ -42,36 +43,27 @@ function capturing(): { reporter: Reporter; lines: string[] } {
 
 /** A record in `status`, with `deploy` recorded as having succeeded. */
 function record(id: string, status: RunStatus, deadlineAt?: string): RunRecord {
-  return {
+  return runRecord({
     id,
     build: "Cd",
-    rootTarget: "deploy",
     status,
     actor: "runner",
     createdAt: NOW,
     updatedAt: NOW,
-    graph: [{ name: "deploy", dependsOn: [] }],
-    params: {},
     targets: { deploy: { status: "succeeded", meta: {} } },
-    signals: {},
-    events: [],
     ...(deadlineAt === undefined ? {} : { deadlineAt }),
-  };
+  });
 }
 
 /** Run `fn` against a temp store seeded with `seed`. */
-async function withStore(
+function withStore(
   seed: RunRecord[],
   fn: (store: FileSystemStateStore) => Promise<void>,
 ): Promise<void> {
-  const dir = await Deno.makeTempDir();
-  try {
-    const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+  return withTempStore(async (store) => {
     for (const r of seed) assertEquals((await store.putRun(r, null)).ok, true);
     await fn(store);
-  } finally {
-    await Deno.remove(dir, { recursive: true }).catch(() => {});
-  }
+  });
 }
 
 /** The reap dependencies for `store`, at a fixed time. */

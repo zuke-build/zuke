@@ -10,8 +10,7 @@
  * @module
  */
 
-import { AiReviewError } from "./errors.ts";
-import { dig } from "./json.ts";
+import { dig, parseJsonObject } from "./json.ts";
 
 /** The model's confidence that a fix is correct. */
 export type Confidence = "low" | "medium" | "high";
@@ -104,25 +103,9 @@ function toLocations(value: unknown): FixLocation[] {
   return locations;
 }
 
-/** Strip Markdown code fences and isolate the JSON object in a response. */
-function isolateJson(text: string): string {
-  const unfenced = text
-    .replace(/^\s*```(?:json)?\s*/i, "")
-    .replace(/\s*```\s*$/, "")
-    .trim();
-  const open = unfenced.indexOf("{");
-  const close = unfenced.lastIndexOf("}");
-  return open >= 0 && close > open ? unfenced.slice(open, close + 1) : unfenced;
-}
-
 /** Parse a model response into a validated {@link Fix}. */
 export function parseFix(text: string): Fix {
-  let raw: unknown;
-  try {
-    raw = JSON.parse(isolateJson(text));
-  } catch {
-    throw new AiReviewError("the model did not return valid JSON");
-  }
+  const raw = parseJsonObject(text);
   const diagnosis = dig(raw, "diagnosis");
   const rootCause = dig(raw, "rootCause");
   return {

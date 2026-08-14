@@ -17,11 +17,7 @@
  */
 
 import { HttpError } from "../http.ts";
-import {
-  assertProtocol,
-  STATE_PROTOCOL_HEADER,
-  STATE_PROTOCOL_VERSION,
-} from "./protocol.ts";
+import { HttpJsonCas } from "./http_cas.ts";
 import type { LockResult, PutResult, StateStore } from "./store.ts";
 import {
   parseRunRecord,
@@ -53,59 +49,21 @@ export interface HttpStateStoreOptions {
  * hard-coded value.
  */
 export class HttpStateStore implements StateStore {
-  readonly #base: string;
-  readonly #token?: string;
-  readonly #fetch: typeof fetch;
+  readonly #cas: HttpJsonCas;
 
   /** Build the store from its URL, optional token, and `fetch` seam. */
   constructor(options: HttpStateStoreOptions) {
-    this.#base = options.url.replace(/\/+$/, "");
-    this.#token = options.token;
-    this.#fetch = options.fetch ?? fetch;
-  }
-
-  #runUrl(id: string): string {
-    return `${this.#base}/runs/${encodeURIComponent(id)}`;
-  }
-
-  #headers(extra?: Record<string, string>): Record<string, string> {
-    const headers: Record<string, string> = {
-      ...extra,
-      [STATE_PROTOCOL_HEADER]: STATE_PROTOCOL_VERSION,
-    };
-    if (this.#token !== undefined && this.#token !== "") {
-      headers.Authorization = `Bearer ${this.#token}`;
-    }
-    return headers;
-  }
-
-  /** Fetch and reject a response that declares an incompatible protocol version. */
-  async #request(url: string, init?: RequestInit): Promise<Response> {
-    const response = await this.#fetch(url, init);
-    assertProtocol(response, "state");
-    return response;
+    this.#cas = new HttpJsonCas(options, "state", "runs");
   }
 
   /** `GET /runs/:id` → record + `ETag`; a `404` is a miss. */
   async getRun(
     id: string,
   ): Promise<{ record: RunRecord; version: string } | null> {
-    const url = this.#runUrl(id);
-    const response = await this.#request(url, { headers: this.#headers() });
-    if (response.status === 404) {
-      await response.body?.cancel();
-      return null;
-    }
-    if (!response.ok) {
-      await response.body?.cancel();
-      throw new HttpError(response.status, url);
-    }
-    const version = response.headers.get("etag");
-    const text = await response.text();
-    if (version === null) {
-      throw new Error(`state: ${url} did not return an ETag`);
-    }
-    return { record: parseRunRecord(text), version };
+    const hit = await this.#cas.get(id);
+    return hit === null
+      ? null
+      : { record: parseRunRecord(hit.text), version: hit.version };
   }
 
   /** `PUT /runs/:id` guarded by `If-Match` / `If-None-Match`; `412` → conflict. */
@@ -113,29 +71,11 @@ export class HttpStateStore implements StateStore {
     record: RunRecord,
     expectedVersion: string | null,
   ): Promise<PutResult> {
-    const url = this.#runUrl(record.id);
-    const precondition: Record<string, string> = expectedVersion === null
-      ? { "If-None-Match": "*" }
-      : { "If-Match": expectedVersion };
-    const response = await this.#request(url, {
-      method: "PUT",
-      headers: this.#headers({
-        "content-type": "application/json",
-        ...precondition,
-      }),
-      body: stringifyRunRecord(record),
-    });
-    if (response.status === 412) {
-      await response.body?.cancel();
-      return { ok: false, conflict: true };
-    }
-    await response.body?.cancel();
-    if (!response.ok) throw new HttpError(response.status, url);
-    const version = response.headers.get("etag");
-    if (version === null) {
-      throw new Error(`state: ${url} did not return an ETag on write`);
-    }
-    return { ok: true, version };
+    return await this.#cas.put(
+      record.id,
+      stringifyRunRecord(record),
+      expectedVersion,
+    );
   }
 
   /** `GET /runs?status=&target=&since=` → an array of {@link RunSummary}. */
@@ -145,35 +85,16 @@ export class HttpStateStore implements StateStore {
     if (query.target !== undefined) params.set("target", query.target);
     if (query.since !== undefined) params.set("since", query.since);
     if (query.limit !== undefined) params.set("limit", String(query.limit));
-    const qs = params.toString();
-    const url = `${this.#base}/runs${qs === "" ? "" : `?${qs}`}`;
-    const response = await this.#request(url, { headers: this.#headers() });
-    if (!response.ok) {
-      await response.body?.cancel();
-      throw new HttpError(response.status, url);
-    }
-    const parsed: unknown = JSON.parse(await response.text());
-    if (!Array.isArray(parsed)) {
-      throw new Error(`state: ${url} did not return a JSON array`);
-    }
-    return parsed.map(parseRunSummary);
+    return (await this.#cas.list(params)).map(parseRunSummary);
   }
 
   /** `DELETE /runs/:id`; a missing run (`404`) is not an error. */
-  async deleteRun(id: string): Promise<void> {
-    const url = this.#runUrl(id);
-    const response = await this.#request(url, {
-      method: "DELETE",
-      headers: this.#headers(),
-    });
-    await response.body?.cancel();
-    if (!response.ok && response.status !== 404) {
-      throw new HttpError(response.status, url);
-    }
+  deleteRun(id: string): Promise<void> {
+    return this.#cas.remove(id);
   }
 
   #lockUrl(key: string): string {
-    return `${this.#base}/locks/${encodeURIComponent(key)}`;
+    return `${this.#cas.base}/locks/${encodeURIComponent(key)}`;
   }
 
   /** `POST /locks/:key` → `201 { token }`, or `409` with the current holder. */
@@ -183,9 +104,9 @@ export class HttpStateStore implements StateStore {
     ttlMs: number,
   ): Promise<LockResult> {
     const url = this.#lockUrl(key);
-    const response = await this.#request(url, {
+    const response = await this.#cas.request(url, {
       method: "POST",
-      headers: this.#headers({ "content-type": "application/json" }),
+      headers: this.#cas.headers({ "content-type": "application/json" }),
       body: JSON.stringify({ holder, ttlMs }),
     });
     if (response.status === 409) {
@@ -202,9 +123,9 @@ export class HttpStateStore implements StateStore {
   /** `PUT /locks/:key` renews; a `409`/`404` means the token lost the lock. */
   async renewLock(key: string, token: string, ttlMs: number): Promise<boolean> {
     const url = this.#lockUrl(key);
-    const response = await this.#request(url, {
+    const response = await this.#cas.request(url, {
       method: "PUT",
-      headers: this.#headers({ "content-type": "application/json" }),
+      headers: this.#cas.headers({ "content-type": "application/json" }),
       body: JSON.stringify({ token, ttlMs }),
     });
     await response.body?.cancel();
@@ -216,9 +137,9 @@ export class HttpStateStore implements StateStore {
   /** `DELETE /locks/:key` releases; a missing lock (`404`) is not an error. */
   async releaseLock(key: string, token: string): Promise<void> {
     const url = this.#lockUrl(key);
-    const response = await this.#request(url, {
+    const response = await this.#cas.request(url, {
       method: "DELETE",
-      headers: this.#headers({ "content-type": "application/json" }),
+      headers: this.#cas.headers({ "content-type": "application/json" }),
       body: JSON.stringify({ token }),
     });
     await response.body?.cancel();

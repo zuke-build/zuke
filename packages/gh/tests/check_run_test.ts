@@ -18,6 +18,7 @@ import {
 } from "../../core/tests/_assert.ts";
 import { postCheckRun } from "../src/check_run.ts";
 import { GhApiError } from "../src/api.ts";
+import { withEnv } from "../../core/tests/_env.ts";
 
 /** A full commit SHA — the only shape the API accepts. */
 const SHA = "a".repeat(40);
@@ -61,27 +62,6 @@ function listPath(name: string, page = 1): string {
     page: String(page),
   });
   return `GET /commits/${SHA}/check-runs?${query}`;
-}
-
-/** Run `fn` with the Actions environment variables set to `values`. */
-async function withEnv(
-  values: Record<string, string | undefined>,
-  fn: () => Promise<void>,
-): Promise<void> {
-  const saved = new Map<string, string | undefined>();
-  for (const [name, value] of Object.entries(values)) {
-    saved.set(name, Deno.env.get(name));
-    if (value === undefined) Deno.env.delete(name);
-    else Deno.env.set(name, value);
-  }
-  try {
-    await fn();
-  } finally {
-    for (const [name, value] of saved) {
-      if (value === undefined) Deno.env.delete(name);
-      else Deno.env.set(name, value);
-    }
-  }
 }
 
 /** An empty listing — the commit has no check run of that name yet. */

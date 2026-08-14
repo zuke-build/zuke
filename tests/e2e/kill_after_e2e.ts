@@ -13,6 +13,7 @@
  */
 
 import { assertEquals } from "../../packages/core/tests/_assert.ts";
+import { runFixture } from "./_harness.ts";
 
 const FIXTURE = new URL("./fixtures/kill_after_build.ts", import.meta.url);
 
@@ -21,14 +22,9 @@ const MAX_MS = 30_000;
 
 Deno.test("a killAfter timeout escalates to SIGKILL and does not hang", async () => {
   const started = performance.now();
-  const { code, stdout, stderr } = await new Deno.Command(Deno.execPath(), {
-    args: ["run", "-A", FIXTURE.href, "timeout"],
-    stdout: "piped",
-    stderr: "piped",
-  }).output();
+  const { code, out, err } = await runFixture(FIXTURE, ["timeout"], {});
   const elapsed = performance.now() - started;
-  const decoder = new TextDecoder();
-  const output = decoder.decode(stdout) + decoder.decode(stderr);
+  const output = out + err;
 
   // The child really started (so the timeout raced a live process)…
   assertEquals(

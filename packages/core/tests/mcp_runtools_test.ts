@@ -22,9 +22,10 @@ import { McpServer } from "../src/mcp/server.ts";
 import { callRunStateTool, type RunToolDeps } from "../src/mcp/runtools.ts";
 import { acquireLease, RUN_LEASE_PREFIX } from "../src/state/run_lease.ts";
 import { LockConflictError } from "../src/state/lock.ts";
-import { FileSystemStateStore } from "../src/state/fs_store.ts";
-import { defaultStateHost, type StateStore } from "../src/state/store.ts";
+import type { StateStore } from "../src/state/store.ts";
 import type { RunRecord } from "../src/state/types.ts";
+import { runRecord } from "./_fakes.ts";
+import { withTempStore as withStore } from "./_store.ts";
 
 /** A JSON-RPC request with id 1. */
 function req(method: string, params?: unknown): Record<string, unknown> {
@@ -56,18 +57,6 @@ async function call(
     throw new Error("not a tool result");
   }
   return { text: content[0].text, isError: res.result.isError === true };
-}
-
-/** Run `fn` with a real temp-dir store, cleaned up afterwards. */
-async function withStore(
-  fn: (store: FileSystemStateStore) => Promise<void>,
-): Promise<void> {
-  const dir = await Deno.makeTempDir();
-  try {
-    await fn(new FileSystemStateStore(`${dir}/runs`, defaultStateHost));
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
 }
 
 /** Execute `root` until it suspends at its gate, returning the run id. */
@@ -114,7 +103,7 @@ async function seedRun(
   status: "suspended" | "failed",
   createdAt: string,
 ): Promise<string> {
-  const record: RunRecord = {
+  const record = runRecord({
     id,
     build: "Pipeline",
     rootTarget,
@@ -123,11 +112,8 @@ async function seedRun(
     createdAt,
     updatedAt: createdAt,
     graph: [{ name: rootTarget, dependsOn: [] }],
-    params: {},
     targets: { [rootTarget]: { status: "waiting", meta: {} } },
-    signals: {},
-    events: [],
-  };
+  });
   const put = await store.putRun(record, null);
   if (!put.ok) throw new Error("failed to seed run");
   return id;

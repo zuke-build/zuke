@@ -6,7 +6,8 @@
  * not re-exported from `mod.ts` (or any entrypoint), so nothing here is public
  * API. It exists to consolidate helpers that were previously copy-pasted per
  * module (env reads, error-message extraction, a delay, a SHA-256 hex digest,
- * and a timeout wrapper) so the copies can't drift out of sync.
+ * the `NotFound → null` filesystem readers, the mkdir-parent writers, and a
+ * timeout wrapper) so the copies can't drift out of sync.
  *
  * @module
  */
@@ -37,13 +38,89 @@ export function delay(ms: number): Promise<void> {
 /** Shared encoder for {@link sha256Hex} (a `TextEncoder` is stateless and reusable). */
 const encoder = new TextEncoder();
 
-/** The SHA-256 digest of `text`, as a lowercase hex string. */
-export async function sha256Hex(text: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", encoder.encode(text));
+/**
+ * The SHA-256 digest of `data` — a UTF-8 string or raw bytes — as a lowercase
+ * hex string.
+ *
+ * Bytes are copied into a fresh `ArrayBuffer`-backed view so the digest input
+ * type is unambiguous whatever buffer the source view sits on (e.g. a
+ * `SharedArrayBuffer`).
+ */
+export async function sha256Hex(data: string | Uint8Array): Promise<string> {
+  const bytes = typeof data === "string"
+    ? encoder.encode(data)
+    : new Uint8Array(data);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
   return Array.from(
     new Uint8Array(digest),
     (b) => b.toString(16).padStart(2, "0"),
   ).join("");
+}
+
+/** Read a file's bytes, or `null` when it does not exist. */
+export async function readFileOrNull(
+  path: string,
+): Promise<Uint8Array | null> {
+  try {
+    return await Deno.readFile(path);
+  } catch (error) {
+    if (error instanceof Deno.errors.NotFound) return null;
+    throw error;
+  }
+}
+
+/** Read a file's text, or `null` when it does not exist. */
+export async function readTextOrNull(path: string): Promise<string | null> {
+  try {
+    return await Deno.readTextFile(path);
+  } catch (error) {
+    if (error instanceof Deno.errors.NotFound) return null;
+    throw error;
+  }
+}
+
+/**
+ * Stat a path, or `null` when it does not exist. `Deno.stat`, not `lstat`, so a
+ * symlink to an existing file counts as present — which is what an installed
+ * `bin` symlink needs.
+ */
+export async function statOrNull(path: string): Promise<Deno.FileInfo | null> {
+  try {
+    return await Deno.stat(path);
+  } catch (error) {
+    if (error instanceof Deno.errors.NotFound) return null;
+    throw error;
+  }
+}
+
+/**
+ * The parent directory of a `/`- or `\`-separated path, or `null` when the path
+ * has no parent to create (a bare name, or a root-level entry).
+ */
+function parentOf(path: string): string | null {
+  const slashed = path.replace(/\\/g, "/");
+  const slash = slashed.lastIndexOf("/");
+  return slash > 0 ? path.slice(0, slash) : null;
+}
+
+/** Write text to `path`, creating its parent directory first. */
+export async function writeTextEnsuringDir(
+  path: string,
+  content: string,
+): Promise<void> {
+  const parent = parentOf(path);
+  if (parent !== null) await Deno.mkdir(parent, { recursive: true });
+  await Deno.writeTextFile(path, content);
+}
+
+/** Write bytes to `path`, creating its parent directory first. */
+export async function writeFileEnsuringDir(
+  path: string,
+  bytes: Uint8Array,
+): Promise<void> {
+  const parent = parentOf(path);
+  if (parent !== null) await Deno.mkdir(parent, { recursive: true });
+  await Deno.writeFile(path, bytes);
 }
 
 /**

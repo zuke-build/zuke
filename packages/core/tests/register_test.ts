@@ -25,24 +25,14 @@ import type {
   PutBuildResult,
 } from "../src/registry/registry.ts";
 import { redactModuleUrl, registerCommand } from "../src/registry/register.ts";
+import { capture as captureLines } from "./_console.ts";
 
 /** Run `fn` with `console.log`/`console.error` captured instead of printed. */
 async function capture(
   fn: () => Promise<number> | number,
 ): Promise<{ code: number; out: string; err: string }> {
-  const out: string[] = [];
-  const err: string[] = [];
-  const origLog = console.log;
-  const origErr = console.error;
-  console.log = (...args: unknown[]) => void out.push(args.join(" "));
-  console.error = (...args: unknown[]) => void err.push(args.join(" "));
-  try {
-    const code = await fn();
-    return { code, out: out.join("\n"), err: err.join("\n") };
-  } finally {
-    console.log = origLog;
-    console.error = origErr;
-  }
+  const { code, out, err } = await captureLines(fn);
+  return { code, out: out.join("\n"), err: err.join("\n") };
 }
 
 /** An in-memory {@link BuildRegistry} that can force a set number of conflicts. */

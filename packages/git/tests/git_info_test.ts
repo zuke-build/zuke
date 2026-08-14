@@ -3,6 +3,7 @@
 
 import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
 import { gitInfo, type GitRunner } from "../src/git_info.ts";
+import { withTemp } from "../../core/tests/_temp.ts";
 
 /** Build a fake {@link GitRunner} from a map of `git <args>` → output (or null). */
 function fakeRun(responses: Record<string, string | null>): GitRunner {
@@ -83,14 +84,11 @@ Deno.test("gitInfo throws when HEAD cannot be resolved", async () => {
 Deno.test("gitInfo's default runner returns nothing outside a repository", async () => {
   // Exercises the real spawning runner against a non-repo temp dir: whether git
   // exits non-zero or is absent, HEAD resolves to null and gitInfo throws.
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     await assertRejects(
       () => gitInfo({ cwd: dir }),
       Error,
       "not a git repository",
     );
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });

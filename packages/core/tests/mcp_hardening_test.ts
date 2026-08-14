@@ -3,16 +3,15 @@
 
 import { assertEquals, assertStringIncludes } from "./_assert.ts";
 import { Build, parameter, target } from "../mod.ts";
-import {
-  McpServer,
-  type McpServerOptions,
-  type McpTool,
-} from "../src/mcp/server.ts";
+import { McpServer, type McpServerOptions } from "../src/mcp/server.ts";
+import type { McpTool } from "../src/mcp/protocol.ts";
 import { INTERNAL_ERROR, type JsonRpcResponse } from "../src/mcp/jsonrpc.ts";
-import { FileSystemStateStore } from "../src/state/fs_store.ts";
-import { defaultStateHost, type StateStore } from "../src/state/store.ts";
+import type { FileSystemStateStore } from "../src/state/fs_store.ts";
+import type { StateStore } from "../src/state/store.ts";
 import { AUDIT_RUN_ID } from "../src/mcp/audit.ts";
-import type { RunEvent, RunRecord } from "../src/state/types.ts";
+import type { RunEvent } from "../src/state/types.ts";
+import { runRecord } from "./_fakes.ts";
+import { withTempStore } from "./_store.ts";
 
 /** A build with a read-only, a plain, and a protected-worthy target, plus params. */
 class Demo extends Build {
@@ -66,18 +65,14 @@ async function toolList(
 }
 
 /** Run `fn` with a temp-dir store and a server built over it, then clean up. */
-async function withServer(
+function withServer(
   options: Omit<McpServerOptions, "stateStore">,
   fn: (server: McpServer, store: FileSystemStateStore) => Promise<void>,
 ): Promise<void> {
-  const dir = await Deno.makeTempDir();
-  try {
-    const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+  return withTempStore((store) => {
     const server = new McpServer(new Demo(), { ...options, stateStore: store });
-    await fn(server, store);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+    return fn(server, store);
+  });
 }
 
 /** Read the audit trail from the store. */
@@ -302,7 +297,7 @@ async function seedSuspended(
   rootTarget: string,
 ): Promise<string> {
   const now = new Date().toISOString();
-  const record: RunRecord = {
+  const record = runRecord({
     id: `run-${rootTarget}`,
     build: "Demo",
     rootTarget,
@@ -311,11 +306,8 @@ async function seedSuspended(
     createdAt: now,
     updatedAt: now,
     graph: [{ name: rootTarget, dependsOn: [] }],
-    params: {},
     targets: { [rootTarget]: { status: "waiting", meta: {} } },
-    signals: {},
-    events: [],
-  };
+  });
   const put = await store.putRun(record, null);
   if (!put.ok) throw new Error("failed to seed suspended run");
   return record.id;
@@ -421,9 +413,7 @@ Deno.test("a thrown framework error returns a structured result, not a crash", a
     }
     go = target().executes(() => {});
   }
-  const dir = await Deno.makeTempDir();
-  try {
-    const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+  await withTempStore(async (store) => {
     const server = new McpServer(new Boom(), {
       allowRun: true,
       stateStore: store,
@@ -436,9 +426,7 @@ Deno.test("a thrown framework error returns a structured result, not a crash", a
     // The failure is audited.
     const events = await auditEvents(store);
     assertEquals(events.find((e) => e.tool === "run:go")?.outcome, "error");
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 // ---- M13: trusted per-call identity ----------------------------------------

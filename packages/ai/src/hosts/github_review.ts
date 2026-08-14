@@ -14,9 +14,8 @@
  * @module
  */
 
-import { dig } from "../json.ts";
 import { type GithubContext, githubHeaders } from "./github.ts";
-import { ensureOk, MAX_COMMENT_PAGES, nextLink } from "./types.ts";
+import { headSha, listReviewComments } from "./github_threads.ts";
 
 /** The GitHub REST API origin. */
 const API = "https://api.github.com";
@@ -40,47 +39,37 @@ export function suggestionMarker(key: string): string {
   return `<!-- zuke-ai-fix:${key} -->`;
 }
 
-/** The PR head commit SHA — review comments must anchor to a commit. */
-async function headSha(
-  context: GithubContext,
-  doFetch: typeof fetch,
-): Promise<string | undefined> {
-  const url =
-    `${API}/repos/${context.owner}/${context.repo}/pulls/${context.pull}`;
-  const response = await doFetch(url, {
-    headers: githubHeaders(context.token),
-  });
-  await ensureOk(response, "GitHub");
-  const data: unknown = await response.json();
-  const sha = dig(data, "head", "sha");
-  return typeof sha === "string" ? sha : undefined;
+/**
+ * One suggestion comment's body: `prelude`, then the committable block holding
+ * `replacement` (one array entry per line, or a single multi-line string).
+ *
+ * An **empty** `replacement` is the deletion form — GitHub reads an empty
+ * `suggestion` block as "remove the targeted lines" — so a caller with nothing
+ * to propose must pass `[]`, never `[""]`, which is a blank line inside the
+ * block instead.
+ */
+export function suggestionBody(
+  prelude: string,
+  replacement: string[],
+): string {
+  return [prelude, "", "```suggestion", ...replacement, "```"].join("\n");
 }
 
-/** The keys of zuke-fix suggestions already posted on the PR. */
+/**
+ * The keys of zuke-fix suggestions already posted on the PR. Reads the same
+ * paginated review-comment listing the review threads use — one endpoint, one
+ * pagination loop — so a re-run never re-posts a suggestion whose marker sits
+ * beyond the first page on a busy PR.
+ */
 async function existingKeys(
   context: GithubContext,
   doFetch: typeof fetch,
 ): Promise<Set<string>> {
-  let url: string | undefined =
-    `${API}/repos/${context.owner}/${context.repo}/pulls/${context.pull}/comments?per_page=100`;
   const keys = new Set<string>();
-  // Page through all review comments so a re-run never re-posts a suggestion
-  // whose marker sits beyond the first page on a busy PR.
-  for (let page = 0; url !== undefined && page < MAX_COMMENT_PAGES; page++) {
-    const response = await doFetch(url, {
-      headers: githubHeaders(context.token),
-    });
-    await ensureOk(response, "GitHub");
-    const data: unknown = await response.json();
-    if (Array.isArray(data)) {
-      for (const item of data) {
-        const body = dig(item, "body");
-        if (typeof body !== "string") continue;
-        const match = body.match(/<!-- zuke-ai-fix:(.+?) -->/);
-        if (match) keys.add(match[1]);
-      }
-    }
-    url = nextLink(response.headers.get("link"));
+  const { comments } = await listReviewComments(context, doFetch);
+  for (const comment of comments) {
+    const match = comment.body.match(/<!-- zuke-ai-fix:(.+?) -->/);
+    if (match) keys.add(match[1]);
   }
   return keys;
 }

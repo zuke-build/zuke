@@ -19,34 +19,17 @@ import {
   defaultStateHost,
   FileSystemStateStore,
 } from "../../packages/core/mod.ts";
+import { runFixture } from "./_harness.ts";
 
 const FIXTURE = new URL("./fixtures/gate_build.ts", import.meta.url);
-
-/** The captured result of one fixture subprocess. */
-interface Run {
-  code: number;
-  out: string;
-}
-
-/** Run the gate fixture as a real `deno` subprocess against state dir `dir`. */
-async function runFixture(args: string[], dir: string): Promise<Run> {
-  const command = new Deno.Command(Deno.execPath(), {
-    // Pass the fixture as a `file://` URL (deno's native module specifier)
-    // rather than URL.pathname, which is `/C:/…` on Windows.
-    args: ["run", "-A", FIXTURE.href, ...args],
-    env: { ZUKE_STATE_DIR: dir },
-    stdout: "piped",
-    stderr: "piped",
-  });
-  const { code, stdout } = await command.output();
-  return { code, out: new TextDecoder().decode(stdout) };
-}
 
 Deno.test("two real processes resume the same run; exactly one wins", async () => {
   const dir = await Deno.makeTempDir({ prefix: "zuke-e2e-" });
   try {
     // Process 1: run to the gate and suspend, persisting the run.
-    const suspend = await runFixture(["promote"], dir);
+    const suspend = await runFixture(FIXTURE, ["promote"], {
+      ZUKE_STATE_DIR: dir,
+    });
     assertEquals(suspend.code, 0);
     assertStringIncludes(suspend.out, "DEPLOYED");
 
@@ -57,8 +40,12 @@ Deno.test("two real processes resume the same run; exactly one wins", async () =
 
     // Processes 2 and 3: resume the same run concurrently.
     const [a, b] = await Promise.all([
-      runFixture(["resume", id, "--signal", "approved"], dir),
-      runFixture(["resume", id, "--signal", "approved"], dir),
+      runFixture(FIXTURE, ["resume", id, "--signal", "approved"], {
+        ZUKE_STATE_DIR: dir,
+      }),
+      runFixture(FIXTURE, ["resume", id, "--signal", "approved"], {
+        ZUKE_STATE_DIR: dir,
+      }),
     ]);
 
     // Exactly one process wins the compare-and-swap (exit 0) and promotes;

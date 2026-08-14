@@ -32,6 +32,7 @@
  * @module
  */
 
+import { messageOf } from "./internal.ts";
 import { forEachField } from "./build.ts";
 import type { Redactor } from "./redact.ts";
 import type { SecretSource } from "./secret.ts";
@@ -203,6 +204,12 @@ export class Parameter<
   readonly #parse: (raw: string) => T;
   readonly #fallback: Fallback<T>;
   #state: Resolved<T> = { ok: false };
+  /**
+   * The spec this parameter was built from, kept so a fluent method can spread
+   * it and override the one or two fields it changes rather than restating all
+   * ten.
+   */
+  readonly #spec: ParamSpec<K, T>;
 
   /**
    * Wrap this parameter's parser to return a definitely-present value. The
@@ -223,6 +230,7 @@ export class Parameter<
 
   /** Build a parameter from its resolved constructor spec. */
   constructor(spec: ParamSpec<K, T>) {
+    this.#spec = spec;
     this.description_ = spec.description;
     this.kind_ = spec.kind;
     this.required_ = spec.required;
@@ -268,18 +276,7 @@ export class Parameter<
    * to resolve the value from a secret manager rather than the environment.
    */
   secret(): Parameter<K, T> {
-    return new Parameter<K, T>({
-      description: this.description_,
-      kind: this.kind_,
-      required: this.required_,
-      options: this.options_,
-      envName: this.envName_,
-      parse: this.#parse,
-      fallback: this.#fallback,
-      secret: true,
-      array: this.array_,
-      source: this.source_,
-    });
+    return new Parameter<K, T>({ ...this.#spec, secret: true });
   }
 
   /**
@@ -290,18 +287,7 @@ export class Parameter<
    * resolved value is redacted.
    */
   from(source: SecretSource): Parameter<K, T> {
-    return new Parameter<K, T>({
-      description: this.description_,
-      kind: this.kind_,
-      required: this.required_,
-      options: this.options_,
-      envName: this.envName_,
-      parse: this.#parse,
-      fallback: this.#fallback,
-      secret: this.secret_,
-      array: this.array_,
-      source,
-    });
+    return new Parameter<K, T>({ ...this.#spec, source });
   }
 
   /** Parse the value as a number (e.g. `--workers 4`). */
@@ -309,14 +295,13 @@ export class Parameter<
     this: Parameter<string, string | undefined>,
   ): Parameter<number, number | undefined> {
     return new Parameter<number, number | undefined>({
-      description: this.description_,
+      ...this.#spec,
       kind: "number",
       required: false,
-      envName: this.envName_,
+      // A number has no string choices — drop any set by `.options()`.
+      options: undefined,
       parse: parseNumber,
       fallback: { has: true, value: undefined },
-      secret: this.secret_,
-      source: this.source_,
     });
   }
 
@@ -325,14 +310,13 @@ export class Parameter<
     this: Parameter<string, string | undefined>,
   ): Parameter<boolean, boolean> {
     return new Parameter<boolean, boolean>({
-      description: this.description_,
+      ...this.#spec,
       kind: "boolean",
       required: false,
-      envName: this.envName_,
+      // A flag has no string choices — drop any set by `.options()`.
+      options: undefined,
       parse: parseBoolean,
       fallback: { has: true, value: false },
-      secret: this.secret_,
-      source: this.source_,
     });
   }
 
@@ -342,62 +326,35 @@ export class Parameter<
     ...values: string[]
   ): Parameter<string, string | undefined> {
     return new Parameter<string, string | undefined>({
-      description: this.description_,
-      kind: "string",
-      required: this.required_,
+      ...this.#spec,
       options: values,
-      envName: this.envName_,
       parse: makeStringParser(values),
-      fallback: this.#fallback,
-      secret: this.secret_,
-      source: this.source_,
     });
   }
 
   /** Provide a default, making `value` non-optional (`K`). */
   default(this: Parameter<K, K | undefined>, value: K): Parameter<K, K> {
     return new Parameter<K, K>({
-      description: this.description_,
-      kind: this.kind_,
+      ...this.#spec,
       required: false,
-      options: this.options_,
-      envName: this.envName_,
       parse: this.#definiteParse(),
       fallback: { has: true, value },
-      secret: this.secret_,
-      source: this.source_,
     });
   }
 
   /** Require a value, making `value` non-optional (`K`); errors if unsupplied. */
   required(this: Parameter<K, K | undefined>): Parameter<K, K> {
     return new Parameter<K, K>({
-      description: this.description_,
-      kind: this.kind_,
+      ...this.#spec,
       required: true,
-      options: this.options_,
-      envName: this.envName_,
       parse: this.#definiteParse(),
       fallback: { has: false },
-      secret: this.secret_,
-      source: this.source_,
     });
   }
 
   /** Override the environment variable read as a fallback for this parameter. */
   env(name: string): Parameter<K, T> {
-    return new Parameter<K, T>({
-      description: this.description_,
-      kind: this.kind_,
-      required: this.required_,
-      options: this.options_,
-      envName: name,
-      parse: this.#parse,
-      fallback: this.#fallback,
-      secret: this.secret_,
-      array: this.array_,
-      source: this.source_,
-    });
+    return new Parameter<K, T>({ ...this.#spec, envName: name });
   }
 
   /**
@@ -423,13 +380,7 @@ export class Parameter<
     // option validation apply per element rather than to the raw list string.
     const element = this.#parse;
     return new Parameter<E, E[]>({
-      description: this.description_,
-      kind: this.kind_,
-      // Carry the required flag through: `.required().array()` stays required
-      // (no fallback), so a missing value errors instead of resolving to `[]`.
-      required: this.required_,
-      options: this.options_,
-      envName: this.envName_,
+      ...this.#spec,
       parse: (raw) =>
         raw.split(",").map((s) => s.trim()).filter((s) => s !== "").map(
           (entry) => {
@@ -440,10 +391,11 @@ export class Parameter<
             return value;
           },
         ),
+      // The spread carries the required flag through: `.required().array()`
+      // stays required (no fallback), so a missing value errors instead of
+      // resolving to `[]`.
       fallback: this.required_ ? { has: false } : { has: true, value: [] },
-      secret: this.secret_,
       array: true,
-      source: this.source_,
     });
   }
 
@@ -554,7 +506,7 @@ export async function resolveParameters(
       try {
         raw = await param.source_.resolve();
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
+        const message = messageOf(error);
         errors.push(`--${flagName(name)}: ${message}`);
         continue;
       }
@@ -567,7 +519,7 @@ export async function resolveParameters(
     try {
       param.resolve_(raw);
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = messageOf(error);
       errors.push(`--${flagName(name)}: ${message}`);
       continue;
     }

@@ -128,14 +128,17 @@ export function resolveIdentity(
   return typeof actor === "string" && actor !== "" ? actor : null;
 }
 
-/** The stdio transport's request context — no headers. */
-const STDIO_CONTEXT: McpRequestContext = { headers: new Headers() };
+/**
+ * A request context with no headers — what the stdio transport hands the
+ * handler, and the default for a direct {@link McpRequestContext}-less call.
+ */
+export const EMPTY_CONTEXT: McpRequestContext = { headers: new Headers() };
 
 /**
  * The JSON-RPC id of a parsed message, or `null` when it carries none — so an
  * error response raised before dispatch can still be correlated by the client.
  */
-function messageId(message: unknown): string | number | null {
+export function messageId(message: unknown): string | number | null {
   if (
     typeof message === "object" && message !== null && "id" in message &&
     (typeof message.id === "string" || typeof message.id === "number")
@@ -179,7 +182,7 @@ export async function serveStdio(
     // kills the connection for every message after it.
     let response: JsonRpcResponse | null;
     try {
-      response = await handle(message, STDIO_CONTEXT);
+      response = await handle(message, EMPTY_CONTEXT);
     } catch {
       await send(err(messageId(message), INTERNAL_ERROR, "Internal error"));
       return;

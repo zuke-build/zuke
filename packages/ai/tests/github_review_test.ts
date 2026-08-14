@@ -94,7 +94,9 @@ Deno.test("a single-line suggestion omits start_line", async () => {
 });
 
 Deno.test("an already-posted suggestion is skipped (matched by key)", async () => {
-  const existing = [{ body: `${suggestionMarker("zuke.ts:42")}\nold` }];
+  // `id` as GitHub always reports it: the key scan reads the shared review-comment
+  // listing, which skips an item without a numeric id.
+  const existing = [{ id: 1, body: `${suggestionMarker("zuke.ts:42")}\nold` }];
   const { fetch, calls } = ghFetch({ sha: "abc", existing });
   const created = await postSuggestions(CONTEXT, [ONE], fetch);
   assertEquals(created, 0);

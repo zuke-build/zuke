@@ -7,7 +7,10 @@ import {
   assertThrows,
 } from "../../core/tests/_assert.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
-import { missingTool } from "@zuke/core/tooling/conformance";
+import {
+  assertWrapperConformance,
+  missingTool,
+} from "@zuke/core/tooling/conformance";
 import {
   HelmDependencyUpdateSettings,
   HelmInstallSettings,
@@ -244,5 +247,15 @@ Deno.test("every HelmTasks function reaches execution", async () => {
   await assertRejects(
     () => HelmTasks.package((s) => missingTool(s).chart("c")),
     ToolNotFoundError,
+  );
+});
+
+Deno.test("helm: conforms to the wrapper contract", async () => {
+  await assertWrapperConformance(
+    () => new HelmLintSettings().chart("./charts/api"),
+    "helm",
+    {
+      resolution: "path",
+    },
   );
 });

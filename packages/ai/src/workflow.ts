@@ -240,20 +240,35 @@ class AiReviewWorkflow extends CiFile {
     }
   }
 
+  /**
+   * The script step's `env:` block for a host whose secrets are not ambient:
+   * every reviewer's API-key secret, plus the comment token — `defaultToken`
+   * when no reviewer named one explicitly. `ref` renders one secret reference in
+   * the host's own syntax ({@link githubRef}, {@link azureRef}), which is the
+   * only thing that differs between the two hosts needing the block at all.
+   */
+  #secretEnv(
+    reviewers: ReturnType<typeof reviewerEnv>,
+    ref: (name: string) => string,
+    defaultToken: string,
+  ): Record<string, string> {
+    const env: Record<string, string> = {};
+    for (const name of reviewers.keyEnvs) env[name] = ref(name);
+    if (reviewers.commentEnabled) {
+      const tokens = reviewers.commentEnvs.length > 0
+        ? reviewers.commentEnvs
+        : [defaultToken];
+      for (const name of tokens) env[name] = ref(name);
+    }
+    return env;
+  }
+
   /** GitHub: a fork-gated PR workflow with harden-runner + pinned checkout. */
   #github(): CiPipeline {
     const baseBranch = this.#spec.baseBranch ?? DEFAULT_BASE_BRANCH;
     const target = this.#spec.target ?? DEFAULT_TARGET;
-    const { keyEnvs, commentEnvs, commentEnabled } = reviewerEnv(
-      this.#spec.reviewers,
-    );
-    const env: Record<string, string> = {};
-    for (const name of keyEnvs) env[name] = githubRef(name);
-    if (commentEnabled) {
-      // Default to GITHUB_TOKEN when no explicit comment token was set.
-      const tokens = commentEnvs.length > 0 ? commentEnvs : ["GITHUB_TOKEN"];
-      for (const name of tokens) env[name] = githubRef(name);
-    }
+    const reviewers = reviewerEnv(this.#spec.reviewers);
+    const env = this.#secretEnv(reviewers, githubRef, "GITHUB_TOKEN");
     // Only when this workflow is the thing that fetched the base: pointing the
     // reviewers at FETCH_HEAD would otherwise override a base the build resolves
     // for itself.
@@ -306,7 +321,7 @@ class AiReviewWorkflow extends CiFile {
     return {
       name: this.#spec.name ?? DEFAULT_NAME,
       triggers: { pullRequest: [] }, // every branch
-      ...(commentEnabled
+      ...(reviewers.commentEnabled
         ? { permissions: { contents: "read", "pull-requests": "write" } }
         : { permissions: { contents: "read" } }),
       concurrency: {
@@ -368,18 +383,11 @@ class AiReviewWorkflow extends CiFile {
    */
   #azure(): CiPipeline {
     const target = this.#spec.target ?? DEFAULT_TARGET;
-    const { keyEnvs, commentEnvs, commentEnabled } = reviewerEnv(
-      this.#spec.reviewers,
+    const env = this.#secretEnv(
+      reviewerEnv(this.#spec.reviewers),
+      azureRef,
+      "SYSTEM_ACCESSTOKEN",
     );
-    const env: Record<string, string> = {};
-    for (const name of keyEnvs) env[name] = azureRef(name);
-    if (commentEnabled) {
-      // Default to SYSTEM_ACCESSTOKEN when no explicit comment token was set.
-      const tokens = commentEnvs.length > 0
-        ? commentEnvs
-        : ["SYSTEM_ACCESSTOKEN"];
-      for (const name of tokens) env[name] = azureRef(name);
-    }
     return {
       name: this.#spec.name ?? DEFAULT_NAME,
       triggers: { pullRequest: [] }, // every branch

@@ -7,7 +7,10 @@ import {
   assertThrows,
 } from "../../core/tests/_assert.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
-import { missingTool } from "@zuke/core/tooling/conformance";
+import {
+  assertWrapperConformance,
+  missingTool,
+} from "@zuke/core/tooling/conformance";
 import {
   KustomizeBuildSettings,
   KustomizeEditSetImageSettings,
@@ -65,5 +68,15 @@ Deno.test("every KustomizeTasks function reaches execution", async () => {
     () =>
       KustomizeTasks.editSetImage((s) => missingTool(s).image("api", "api:1")),
     ToolNotFoundError,
+  );
+});
+
+Deno.test("kustomize: conforms to the wrapper contract", async () => {
+  await assertWrapperConformance(
+    () => new KustomizeBuildSettings(),
+    "kustomize",
+    {
+      resolution: "path",
+    },
   );
 });

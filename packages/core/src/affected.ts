@@ -22,6 +22,7 @@
  * @module
  */
 
+import { messageOf } from "./internal.ts";
 import type { TargetBuilder } from "./target.ts";
 
 /**
@@ -115,7 +116,7 @@ export async function runGitProcess(
       stderr: "piped",
     }).output();
   } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
+    const detail = messageOf(error);
     throw new Error(
       `could not run \`${bin}\`: ${detail}. Is git installed and on your PATH?`,
     );

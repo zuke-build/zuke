@@ -32,14 +32,15 @@
  */
 
 import { type Build, discoverTargets } from "./build.ts";
-import type { Reporter } from "./executor.ts";
+import type { Reporter } from "./reporter.ts";
 import { messageOf } from "./internal.ts";
 import { settleExternally } from "./cancel.ts";
 import { ownsRun } from "./ownership.ts";
 import { acquireLease, RUN_LEASE_PREFIX } from "./state/run_lease.ts";
 import type { StateStore } from "./state/store.ts";
 import { planGraph } from "./graph.ts";
-import type { RunEvent, RunGraphNode, RunRecord } from "./state/types.ts";
+import { graphDrift, runGraphSnapshot } from "./graph_snapshot.ts";
+import type { RunEvent, RunRecord } from "./state/types.ts";
 
 /** How many times a conflicting reap CAS is re-read and retried. */
 const MAX_RETRIES = 10;
@@ -289,28 +290,8 @@ function canSettle(record: RunRecord, deps: ReapDeps): boolean {
   const targets = discoverTargets(deps.build);
   const root = targets.get(record.rootTarget);
   if (root === undefined) return false;
-  const planned = planGraph(root).order.map((t) => ({
-    name: t.name_ ?? "",
-    dependsOn: t.dependsOn_.map((d) => d.name_ ?? "").filter((n) => n !== ""),
-  }));
-  return graphAgrees(record.graph, planned);
-}
-
-/** Whether a recorded graph snapshot and a planned one describe the same shape. */
-function graphAgrees(
-  snapshot: readonly RunGraphNode[],
-  planned: readonly RunGraphNode[],
-): boolean {
-  if (snapshot.length !== planned.length) return false;
-  const recorded = new Map(snapshot.map((n) => [n.name, n.dependsOn]));
-  return planned.every((node) => {
-    const deps = recorded.get(node.name);
-    if (deps === undefined || deps.length !== node.dependsOn.length) {
-      return false;
-    }
-    const set = new Set(deps);
-    return node.dependsOn.every((d) => set.has(d));
-  });
+  const planned = runGraphSnapshot(planGraph(root).order);
+  return graphDrift(record.graph, planned).length === 0;
 }
 
 /** Whether `record` has a deadline that `now` is past. */

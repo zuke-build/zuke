@@ -240,15 +240,23 @@ export function decodeState(body: string): ReviewState | undefined {
   return { findings };
 }
 
+/** The findings in `state` carrying any of `statuses`, keyed by fingerprint. */
+function byStatus(
+  state: ReviewState | undefined,
+  ...statuses: FindingStatus[]
+): Map<string, StoredFinding> {
+  const matched = new Map<string, StoredFinding>();
+  for (const finding of state?.findings ?? []) {
+    if (statuses.includes(finding.status)) matched.set(finding.id, finding);
+  }
+  return matched;
+}
+
 /** The dismissed findings in `state`, keyed by fingerprint. */
 export function dismissedOf(
   state: ReviewState | undefined,
 ): Map<string, StoredFinding> {
-  const dismissed = new Map<string, StoredFinding>();
-  for (const finding of state?.findings ?? []) {
-    if (finding.status === "dismissed") dismissed.set(finding.id, finding);
-  }
-  return dismissed;
+  return byStatus(state, "dismissed");
 }
 
 /**
@@ -259,22 +267,12 @@ export function dismissedOf(
 export function openOf(
   state: ReviewState | undefined,
 ): Map<string, StoredFinding> {
-  const open = new Map<string, StoredFinding>();
-  for (const finding of state?.findings ?? []) {
-    if (finding.status === "open" || finding.status === "upheld") {
-      open.set(finding.id, finding);
-    }
-  }
-  return open;
+  return byStatus(state, "open", "upheld");
 }
 
 /** The findings in `state` already marked `fixed`, keyed by fingerprint. */
 export function fixedOf(
   state: ReviewState | undefined,
 ): Map<string, StoredFinding> {
-  const fixed = new Map<string, StoredFinding>();
-  for (const finding of state?.findings ?? []) {
-    if (finding.status === "fixed") fixed.set(finding.id, finding);
-  }
-  return fixed;
+  return byStatus(state, "fixed");
 }
