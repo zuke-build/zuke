@@ -39,6 +39,8 @@ export class CspellSettings extends ToolSettings {
   #cache = false;
   #dot = false;
   #gitignore = false;
+  #gitignoreRoot?: string;
+  #mustFindFiles = true;
   #unique = false;
   #locale?: string;
   #excludes: string[] = [];
@@ -114,6 +116,32 @@ export class CspellSettings extends ToolSettings {
     return this;
   }
 
+  /**
+   * Stop the `.gitignore` search at this directory (`--gitignore-root`).
+   *
+   * Without it cspell keeps walking up past the repository root and can pick up
+   * an unrelated `.gitignore` from a parent directory — so a run inside a git
+   * worktree, whose checkout lives outside the main working tree, sees ignore
+   * rules that do not belong to it. Point this at the repository root to bound
+   * the search.
+   */
+  gitignoreRoot(path: PathLike): this {
+    this.#gitignoreRoot = String(path);
+    return this;
+  }
+
+  /**
+   * Exit successfully when a glob matches nothing (`--no-must-find-files`).
+   *
+   * cspell fails by default if any file argument matched no files. A run scoped
+   * to a computed file list — the staged files, the files a diff touched — can
+   * legitimately be empty, so a file-scoped run wants this.
+   */
+  noMustFindFiles(): this {
+    this.#mustFindFiles = false;
+    return this;
+  }
+
   /** Report each unique issue only once (`--unique`). */
   unique(): this {
     this.#unique = true;
@@ -150,6 +178,10 @@ export class CspellSettings extends ToolSettings {
     if (this.#cache) argv.push("--cache");
     if (this.#dot) argv.push("--dot");
     if (this.#gitignore) argv.push("--gitignore");
+    if (this.#gitignoreRoot !== undefined) {
+      argv.push("--gitignore-root", this.#gitignoreRoot);
+    }
+    if (!this.#mustFindFiles) argv.push("--no-must-find-files");
     if (this.#unique) argv.push("--unique");
     if (this.#locale !== undefined) argv.push("--locale", this.#locale);
     argv.push(...this.#excludes);

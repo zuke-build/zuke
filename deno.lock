@@ -1690,6 +1690,11 @@
           "jsr:@zuke/core@^1.25.0"
         ]
       },
+      "packages/lint-staged": {
+        "dependencies": [
+          "jsr:@zuke/core@^1.25.0"
+        ]
+      },
       "packages/nest": {
         "dependencies": [
           "jsr:@zuke/core@^1.25.0"
@@ -1745,12 +1750,22 @@
           "jsr:@zuke/core@^1.25.0"
         ]
       },
+      "packages/redocly": {
+        "dependencies": [
+          "jsr:@zuke/core@^1.25.0"
+        ]
+      },
       "packages/release-please": {
         "dependencies": [
           "jsr:@zuke/core@^1.25.0"
         ]
       },
       "packages/security": {
+        "dependencies": [
+          "jsr:@zuke/core@^1.25.0"
+        ]
+      },
+      "packages/storybook": {
         "dependencies": [
           "jsr:@zuke/core@^1.25.0"
         ]

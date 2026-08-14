@@ -56,6 +56,13 @@ class ViteDevSettings extends ViteSettings
     Bind to a host/IP (`--host`).
   port(value: number): this
     Serve on a specific port (`--port`).
+  strictPort(): this
+    Fail instead of trying the next free port when {@link port} is taken
+    (`--strictPort`).
+
+    A build that hands the port to something else — an e2e runner, a health
+    check — needs the server to be on the port it asked for or not at all;
+    without this Vite silently moves on and the other side connects to nothing.
   open(): this
     Open the app in the browser on start (`--open`).
   override protected buildArgs(): string[]
@@ -68,6 +75,9 @@ class VitePreviewSettings extends ViteSettings
     Bind to a host/IP (`--host`).
   port(value: number): this
     Serve on a specific port (`--port`).
+  strictPort(): this
+    Fail instead of trying the next free port when {@link port} is taken
+    (`--strictPort`). See {@link ViteDevSettings.strictPort}.
   open(): this
     Open the app in the browser on start (`--open`).
   override protected buildArgs(): string[]

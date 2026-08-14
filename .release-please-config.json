@@ -303,6 +303,39 @@
         }
       ]
     },
+    "packages/storybook": {
+      "component": "storybook",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
+      ]
+    },
+    "packages/redocly": {
+      "component": "redocly",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
+      ]
+    },
+    "packages/lint-staged": {
+      "component": "lint-staged",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
+      ]
+    },
     "packages/tsup": {
       "component": "tsup",
       "changelog-path": "CHANGELOG.md",

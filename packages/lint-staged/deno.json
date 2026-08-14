@@ -1,0 +1,17 @@
+{
+  "name": "@zuke/lint-staged",
+  "version": "0.0.0",
+  "license": "MIT",
+  "description": "Typed lint-staged task wrapper for Zuke builds — run linters over the staged files (or a diff) via an injection-free settings-lambda API.",
+  "exports": {
+    ".": "./mod.ts"
+  },
+  "imports": {
+    "@zuke/core": "jsr:@zuke/core@^1.25.0"
+  },
+  "publish": {
+    "exclude": [
+      "tests/"
+    ]
+  }
+}

@@ -37,9 +37,9 @@
 Zuke lets you define builds as a **TypeScript class**. Each target is a class
 field declared with a fluent API; targets reference each other by `this.x` (not
 strings), forming a dependency graph that Zuke resolves and runs in topological
-order. Inspired by [NUKE](https://nuke.build/) for .NET. Zuke builds itself
-this way — see [its own build graph](./docs/graph.md), regenerated straight
-from `zuke.ts` and verified in CI.
+order. Inspired by [NUKE](https://nuke.build/) for .NET. Zuke builds itself this
+way — see [its own build graph](./docs/graph.md), regenerated straight from
+`zuke.ts` and verified in CI.
 
 - **Runtime:** Deno
 - **Packages:** `jsr:@zuke/core` plus 50+ typed tool wrappers and plugins and a
@@ -206,6 +206,7 @@ latest release on JSR.
 | [`@zuke/knip`](https://jsr.io/@zuke/knip)                     | [![JSR](https://jsr.io/badges/@zuke/knip)](https://jsr.io/@zuke/knip) [![JSR score](https://jsr.io/badges/@zuke/knip/score)](https://jsr.io/@zuke/knip)                                         |
 | [`@zuke/kubectl`](https://jsr.io/@zuke/kubectl)               | [![JSR](https://jsr.io/badges/@zuke/kubectl)](https://jsr.io/@zuke/kubectl) [![JSR score](https://jsr.io/badges/@zuke/kubectl/score)](https://jsr.io/@zuke/kubectl)                             |
 | [`@zuke/kustomize`](https://jsr.io/@zuke/kustomize)           | [![JSR](https://jsr.io/badges/@zuke/kustomize)](https://jsr.io/@zuke/kustomize) [![JSR score](https://jsr.io/badges/@zuke/kustomize/score)](https://jsr.io/@zuke/kustomize)                     |
+| [`@zuke/lint-staged`](https://jsr.io/@zuke/lint-staged)       | [![JSR](https://jsr.io/badges/@zuke/lint-staged)](https://jsr.io/@zuke/lint-staged) [![JSR score](https://jsr.io/badges/@zuke/lint-staged/score)](https://jsr.io/@zuke/lint-staged)             |
 | [`@zuke/nest`](https://jsr.io/@zuke/nest)                     | [![JSR](https://jsr.io/badges/@zuke/nest)](https://jsr.io/@zuke/nest) [![JSR score](https://jsr.io/badges/@zuke/nest/score)](https://jsr.io/@zuke/nest)                                         |
 | [`@zuke/node`](https://jsr.io/@zuke/node)                     | [![JSR](https://jsr.io/badges/@zuke/node)](https://jsr.io/@zuke/node) [![JSR score](https://jsr.io/badges/@zuke/node/score)](https://jsr.io/@zuke/node)                                         |
 | [`@zuke/npx`](https://jsr.io/@zuke/npx)                       | [![JSR](https://jsr.io/badges/@zuke/npx)](https://jsr.io/@zuke/npx) [![JSR score](https://jsr.io/badges/@zuke/npx/score)](https://jsr.io/@zuke/npx)                                             |
@@ -215,7 +216,9 @@ latest release on JSR.
 | [`@zuke/oxlint`](https://jsr.io/@zuke/oxlint)                 | [![JSR](https://jsr.io/badges/@zuke/oxlint)](https://jsr.io/@zuke/oxlint) [![JSR score](https://jsr.io/badges/@zuke/oxlint/score)](https://jsr.io/@zuke/oxlint)                                 |
 | [`@zuke/playwright`](https://jsr.io/@zuke/playwright)         | [![JSR](https://jsr.io/badges/@zuke/playwright)](https://jsr.io/@zuke/playwright) [![JSR score](https://jsr.io/badges/@zuke/playwright/score)](https://jsr.io/@zuke/playwright)                 |
 | [`@zuke/pnpm`](https://jsr.io/@zuke/pnpm)                     | [![JSR](https://jsr.io/badges/@zuke/pnpm)](https://jsr.io/@zuke/pnpm) [![JSR score](https://jsr.io/badges/@zuke/pnpm/score)](https://jsr.io/@zuke/pnpm)                                         |
+| [`@zuke/redocly`](https://jsr.io/@zuke/redocly)               | [![JSR](https://jsr.io/badges/@zuke/redocly)](https://jsr.io/@zuke/redocly) [![JSR score](https://jsr.io/badges/@zuke/redocly/score)](https://jsr.io/@zuke/redocly)                             |
 | [`@zuke/release-please`](https://jsr.io/@zuke/release-please) | [![JSR](https://jsr.io/badges/@zuke/release-please)](https://jsr.io/@zuke/release-please) [![JSR score](https://jsr.io/badges/@zuke/release-please/score)](https://jsr.io/@zuke/release-please) |
+| [`@zuke/storybook`](https://jsr.io/@zuke/storybook)           | [![JSR](https://jsr.io/badges/@zuke/storybook)](https://jsr.io/@zuke/storybook) [![JSR score](https://jsr.io/badges/@zuke/storybook/score)](https://jsr.io/@zuke/storybook)                     |
 | [`@zuke/terraform`](https://jsr.io/@zuke/terraform)           | [![JSR](https://jsr.io/badges/@zuke/terraform)](https://jsr.io/@zuke/terraform) [![JSR score](https://jsr.io/badges/@zuke/terraform/score)](https://jsr.io/@zuke/terraform)                     |
 | [`@zuke/tofu`](https://jsr.io/@zuke/tofu)                     | [![JSR](https://jsr.io/badges/@zuke/tofu)](https://jsr.io/@zuke/tofu) [![JSR score](https://jsr.io/badges/@zuke/tofu/score)](https://jsr.io/@zuke/tofu)                                         |
 | [`@zuke/tsc`](https://jsr.io/@zuke/tsc)                       | [![JSR](https://jsr.io/badges/@zuke/tsc)](https://jsr.io/@zuke/tsc) [![JSR score](https://jsr.io/badges/@zuke/tsc/score)](https://jsr.io/@zuke/tsc)                                             |
@@ -382,8 +385,8 @@ Full documentation lives in [`docs/`](./docs/):
   launcher, and a first build.
 - [Core concepts](./docs/concepts.md) — the build/target/graph model and
   execution semantics.
-- [Zuke's build graph](./docs/graph.md) — the live dependency graph of
-  `zuke.ts` itself, generated by `./zuke graphDoc` and gate-checked in CI.
+- [Zuke's build graph](./docs/graph.md) — the live dependency graph of `zuke.ts`
+  itself, generated by `./zuke graphDoc` and gate-checked in CI.
 - [Parameters](./docs/parameters.md) — typed build inputs from flags and env
   vars (`parameter()`, `this.x.value`).
 - [Authoring API](./docs/authoring.md) — `target()`, `Build`, `run()`,

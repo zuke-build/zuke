@@ -1,0 +1,17 @@
+{
+  "name": "@zuke/storybook",
+  "version": "0.0.0",
+  "license": "MIT",
+  "description": "Typed Storybook CLI task wrappers for Zuke builds — dev server and static build via an injection-free settings-lambda API.",
+  "exports": {
+    ".": "./mod.ts"
+  },
+  "imports": {
+    "@zuke/core": "jsr:@zuke/core@^1.25.0"
+  },
+  "publish": {
+    "exclude": [
+      "tests/"
+    ]
+  }
+}

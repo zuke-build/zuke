@@ -67,6 +67,20 @@ class CspellSettings extends ToolSettings
     Include dotfiles and dot-directories (`--dot`).
   gitignore(): this
     Honour `.gitignore` files (`--gitignore`).
+  gitignoreRoot(path: PathLike): this
+    Stop the `.gitignore` search at this directory (`--gitignore-root`).
+
+    Without it cspell keeps walking up past the repository root and can pick up
+    an unrelated `.gitignore` from a parent directory — so a run inside a git
+    worktree, whose checkout lives outside the main working tree, sees ignore
+    rules that do not belong to it. Point this at the repository root to bound
+    the search.
+  noMustFindFiles(): this
+    Exit successfully when a glob matches nothing (`--no-must-find-files`).
+
+    cspell fails by default if any file argument matched no files. A run scoped
+    to a computed file list — the staged files, the files a diff touched — can
+    legitimately be empty, so a file-scoped run wants this.
   unique(): this
     Report each unique issue only once (`--unique`).
   locale(value: string): this

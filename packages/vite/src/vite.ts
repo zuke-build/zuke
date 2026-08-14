@@ -70,6 +70,7 @@ export abstract class ViteSettings extends ToolSettings {
 export class ViteDevSettings extends ViteSettings {
   #host?: string;
   #port?: number;
+  #strictPort = false;
   #open = false;
 
   /** Bind to a host/IP (`--host`). */
@@ -84,6 +85,19 @@ export class ViteDevSettings extends ViteSettings {
     return this;
   }
 
+  /**
+   * Fail instead of trying the next free port when {@link port} is taken
+   * (`--strictPort`).
+   *
+   * A build that hands the port to something else — an e2e runner, a health
+   * check — needs the server to be on the port it asked for or not at all;
+   * without this Vite silently moves on and the other side connects to nothing.
+   */
+  strictPort(): this {
+    this.#strictPort = true;
+    return this;
+  }
+
   /** Open the app in the browser on start (`--open`). */
   open(): this {
     this.#open = true;
@@ -95,6 +109,7 @@ export class ViteDevSettings extends ViteSettings {
     const argv = ["dev", ...this.baseArgs()];
     if (this.#host !== undefined) argv.push("--host", this.#host);
     if (this.#port !== undefined) argv.push("--port", String(this.#port));
+    if (this.#strictPort) argv.push("--strictPort");
     if (this.#open) argv.push("--open");
     return argv;
   }
@@ -154,6 +169,7 @@ export class ViteBuildSettings extends ViteSettings {
 export class VitePreviewSettings extends ViteSettings {
   #host?: string;
   #port?: number;
+  #strictPort = false;
   #open = false;
 
   /** Bind to a host/IP (`--host`). */
@@ -168,6 +184,15 @@ export class VitePreviewSettings extends ViteSettings {
     return this;
   }
 
+  /**
+   * Fail instead of trying the next free port when {@link port} is taken
+   * (`--strictPort`). See {@link ViteDevSettings.strictPort}.
+   */
+  strictPort(): this {
+    this.#strictPort = true;
+    return this;
+  }
+
   /** Open the app in the browser on start (`--open`). */
   open(): this {
     this.#open = true;
@@ -179,6 +204,7 @@ export class VitePreviewSettings extends ViteSettings {
     const argv = ["preview", ...this.baseArgs()];
     if (this.#host !== undefined) argv.push("--host", this.#host);
     if (this.#port !== undefined) argv.push("--port", String(this.#port));
+    if (this.#strictPort) argv.push("--strictPort");
     if (this.#open) argv.push("--open");
     return argv;
   }

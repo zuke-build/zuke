@@ -35,11 +35,14 @@ Every path argument accepts either a string or an `AbsolutePath` from
 Configure a fluent settings object in a lambda; the task builds the argv and
 runs it. The task names mirror common `node` invocations: `run` executes a
 script, `eval` evaluates inline code, and `test` runs the built-in test
-runner.
+runner. `evaluate` is the exception — it imports a module and resolves to one
+of its exports' JSON value, so a target can read something out of the Node
+side of a project instead of shelling out to a script.
 
 ```ts
 import { NodeTasks } from "jsr:@zuke/node";
 await NodeTasks.run((s) => s.script("server.js").enableSourceMaps());
+const spec = await NodeTasks.evaluate("tools/openapi.mjs");
 ```
 @module
 
@@ -59,6 +62,29 @@ class NodeEvalSettings extends NodeSettings
     Print the result of the evaluated code (`--print` instead of `--eval`).
   override protected buildArgs(): string[]
     Assemble the `node --eval <code>` (or `--print`) argv.
+
+class NodeEvaluateSettings extends NodeSettings
+  Settings for {@link "./node.ts".NodeTasks.evaluate} — which export of the
+  module to take, and what to call it with.
+
+  constructor(module: PathLike)
+    Evaluate `module`, a path resolved against the working directory.
+  export(name: string): this
+    The named export to take, instead of the default one.
+
+    The export is awaited; when it is a function it is called first, with
+    {@link callWith}'s arguments.
+  callWith(...values: JsonValue[]): this
+    Arguments for the exported function, in order. Each must be
+    JSON-serialisable — they cross a process boundary as JSON.
+
+    Named `callWith` rather than `args` because `ToolSettings.args` already
+    means "append raw arguments to the `node` command line", which is a
+    different thing.
+  get module(): string
+    The module being evaluated, for error messages.
+  override protected buildArgs(): string[]
+    Assemble the `node --input-type=module --eval <driver>` argv.
 
 class NodeRunSettings extends NodeSettings
   Settings for `node [options] <script> [args]`.
@@ -125,6 +151,21 @@ interface NodeTasksApi
     Evaluate inline code: `node --eval <code>`.
   test(configure?: Configure<NodeTestSettings>): Promise<CommandOutput>
     Run the built-in test runner: `node --test`.
+  evaluate(module: PathLike, configure?: Configure<NodeEvaluateSettings>): Promise<JsonValue>
+    Import a Node module and resolve to one of its exports' JSON value — the
+    way a target reads something out of the Node side of a project (an
+    OpenAPI document, a resolved config) instead of shelling out to a script
+    that has to write it somewhere first.
+
+    `module` is a path, resolved against the working directory. The export
+    (`default` unless {@link NodeEvaluateSettings.export} names another) is
+    awaited; when it is a function it is called with
+    {@link NodeEvaluateSettings.callWith}'s arguments first.
+
+    ```ts
+    // tools/openapi.mjs: export default async () => document
+    const spec = await NodeTasks.evaluate("tools/openapi.mjs");
+    ```
 ````
 
 </details>
