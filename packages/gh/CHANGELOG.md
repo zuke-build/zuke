@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.0](https://github.com/zuke-build/zuke/compare/gh-v1.4.0...gh-v1.5.0) (2026-08-14)
+
+
+### Features
+
+* **gh:** mark a release as latest and refresh changed release assets ([#356](https://github.com/zuke-build/zuke/issues/356)) ([fbab708](https://github.com/zuke-build/zuke/commit/fbab7086b4da03afa835117f8b5c0a387e32d658))
+
 ## [1.4.0](https://github.com/zuke-build/zuke/compare/gh-v1.3.1...gh-v1.4.0) (2026-08-13)
 
 
