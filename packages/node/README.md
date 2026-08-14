@@ -166,6 +166,16 @@ interface NodeTasksApi
     // tools/openapi.mjs: export default async () => document
     const spec = await NodeTasks.evaluate("tools/openapi.mjs");
     ```
+
+    The module runs as a real Node process with the build's own permissions —
+    the same trust level as a script handed to {@link NodeTasks.run}, and the
+    reason this is a build-authoring API rather than an input-processing one.
+    `module` is code: build it from a literal or from the project's own layout,
+    never from an untrusted source (a pull request title, a webhook payload),
+    exactly as for every other command a build spawns. Values passed through
+    {@link NodeEvaluateSettings.callWith} cannot inject into the driver — they
+    are embedded as JSON literals — but they do reach the module, so whatever
+    the module does with them is the module's contract to uphold.
 ````
 
 </details>
