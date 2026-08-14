@@ -173,6 +173,9 @@ function githubWorkflow(configure: (settings: GithubWorkflowSettings) => GithubW
   githubWorkflow((g) => g.repo("acme/app").workflow("e2e.yml").ref("main"))
   ```
 
+async function markReleaseLatest(configure?: Configure<GhReleaseLatestSettings>): Promise<GhReleaseLatestResult>
+  Perform the configured mark-latest call.
+
 async function mintAppToken(configure?: Configure<GhAppTokenSettings>): Promise<GhAppTokenResult>
   Mint an installation token from the settings a lambda configures.
 
@@ -451,6 +454,8 @@ class GhReleaseAssetSettings
     `owner/repo` to upload to. Set by {@link repo}.
   tag_?: string
     The release tag to attach to. Set by {@link tag}.
+  refresh_: boolean
+    Replace an existing asset whose bytes differ. Set by {@link refresh}.
   token_?: string
     The token to authenticate with. Set by {@link token}.
   baseUrl_: string
@@ -468,6 +473,15 @@ class GhReleaseAssetSettings
     The `owner/repo` to upload to. Defaults to `GITHUB_REPOSITORY`.
   tag(value: string): this
     Attach to the release with this tag instead of the latest release.
+  refresh(): this
+    Replace an asset the release already carries when its bytes differ from
+    the file's — compared by the sha256 digest the API reports — instead of
+    keeping it. An asset whose digest matches, or whose digest the API does
+    not report, is still kept: without a comparison to trust, replacement
+    would churn a published release's assets on every run, which is exactly
+    what the default protects. For an asset that must track its source
+    across runs (an extension archive, a docs bundle) on a long-lived
+    release.
   token(value: string): this
     The token to authenticate with — needs `contents: write`. Defaults to
     `GITHUB_TOKEN` in the environment, so it never has to reach argv.
@@ -483,6 +497,37 @@ class GhReleaseAssetSettings
     The effective asset name: the setting, or the file's base name.
   effectiveContentType_(): string
     The effective `content-type`: the setting, or inferred by extension.
+
+class GhReleaseLatestSettings
+  Settings for marking a release as latest.
+
+  `owner/repo` and the token fall back to the Actions environment, so a job
+  that already has them needs to name only the tag.
+
+  tag_?: string
+    The tag whose release becomes latest. Set by {@link tag}.
+  repo_?: string
+    `owner/repo`. Set by {@link repo}.
+  token_?: string
+    The token. Set by {@link token}.
+  baseUrl_: string
+    The API root. Set by {@link baseUrl}.
+  fetch_: typeof fetch
+    The `fetch` implementation. Set by {@link fetch}.
+  tag(value: string): this
+    The tag whose release the pointer should name (required).
+  repo(slug: string): this
+    `owner/repo`. Defaults to `GITHUB_REPOSITORY`.
+  token(value: string): this
+    The token to authenticate with — needs `contents: write`. Defaults to `GITHUB_TOKEN`.
+  baseUrl(url: string): this
+    The API root, for GitHub Enterprise.
+  fetch(fn: typeof fetch): this
+    Override the `fetch` implementation (a test seam).
+  repoSlug_(): string
+    The effective `owner/repo`, from the setting or the environment.
+  authToken_(): string
+    The effective token, from the setting or the environment.
 
 class GhSarifSettings
   Settings for {@link GhSarifApi.uploadSarif}.
@@ -745,17 +790,20 @@ interface GhReleaseAssetApi
   uploadReleaseAsset(configure?: Configure<GhReleaseAssetSettings>): Promise<GhReleaseAssetResult>
     Attach a file to a GitHub release — the latest release by default, or the
     one named by `.tag(...)`. Idempotent: an asset the release already
-    carries under the same name is kept as-is, and a repository with no
+    carries under the same name is kept as-is (unless `.refresh()` asks for
+    one with different bytes to be replaced), and a repository with no
     releases resolves to `state: "no-release"` rather than throwing. Needs a
     token with `contents: write`.
 
 interface GhReleaseAssetResult
   What became of a release-asset upload.
 
-  state: "uploaded" | "already-exists" | "no-release"
-    `uploaded` when the asset was sent; `already-exists` when the release
-    carries an asset of the same name (nothing was changed); `no-release`
-    when the repository has no release to attach to.
+  state: "uploaded" | "refreshed" | "already-exists" | "no-release"
+    `uploaded` when the asset was sent; `refreshed` when `.refresh()` found
+    the release carrying different bytes under the name and replaced them;
+    `already-exists` when the release carries an asset of the same name that
+    was kept (nothing was changed); `no-release` when the repository has no
+    release to attach to.
   name: string
     The asset name the call targeted.
   releaseTag?: string
@@ -764,6 +812,33 @@ interface GhReleaseAssetResult
     The id of the release the asset belongs to, when one was resolved.
   url?: string
     The asset's download URL, when it was uploaded or already present.
+
+interface GhReleaseLatestApi
+  The mark-latest operation {@link GhTasks} exposes.
+
+  markReleaseLatest(configure?: Configure<GhReleaseLatestSettings>): Promise<GhReleaseLatestResult>
+    Point the repository's "Latest release" at the release for `.tag(...)`.
+
+    Idempotent, and quiet about it: a pointer already on the tag's release is
+    left untouched rather than re-written, so an unattended pipeline can run
+    this unconditionally without churning the release's audit history. A tag
+    with no release resolves to `state: "no-release"` rather than throwing —
+    the release may be cut by a later, human step — while a tag that does not
+    exist at all is an error, because the caller named it. Needs a token with
+    `contents: write`.
+
+interface GhReleaseLatestResult
+  What became of a {@link GhReleaseLatestApi.markReleaseLatest} call.
+
+  state: "marked" | "already-latest" | "no-release"
+    `marked` when the pointer was moved onto the tag's release;
+    `already-latest` when it was there before the call (nothing was written);
+    `no-release` when the tag has no release to point at — an ordinary
+    outcome for a tag whose release is created by a later, human step.
+  tag: string
+    The tag the call targeted.
+  releaseId?: number
+    The id of the tag's release, when one was resolved.
 
 interface GhSarifApi
   The shape of the SARIF task, mixed into `GhTasks`.
@@ -780,7 +855,7 @@ interface GhSarifUploadResult
   url: string
     The URL that reports whether GitHub finished processing the report.
 
-interface GhTasksApi extends GhAppTokenApi, GhSarifApi, GhReleaseAssetApi, GhCommitApi, GhPullRequestApi, GhCheckRunApi
+interface GhTasksApi extends GhAppTokenApi, GhSarifApi, GhReleaseAssetApi, GhReleaseLatestApi, GhCommitApi, GhPullRequestApi, GhCheckRunApi
   The shape of {@link GhTasks}: the `gh` CLI plus the GitHub operations that
   have no CLI subcommand (see {@link GhAppTokenApi}, {@link GhSarifApi}) and
   would otherwise force a build back to a marketplace action.

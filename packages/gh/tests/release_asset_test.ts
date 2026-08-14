@@ -255,6 +255,115 @@ Deno.test("a failed deletion of a stuck asset surfaces, a 404 does not", async (
   }
 });
 
+/** The `sha256:<hex>` digest the REST API would report for `data`. */
+async function digestOf(data: Uint8Array<ArrayBuffer>): Promise<string> {
+  const hash = await crypto.subtle.digest("SHA-256", data);
+  const hex = [...new Uint8Array(hash)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+  return `sha256:${hex}`;
+}
+
+Deno.test("refresh replaces an asset whose digest differs", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const file = await assetFixture(dir);
+    const seen: Seen[] = [];
+    const github: typeof fetch = async (input, init) => {
+      const method = init?.method ?? "GET";
+      seen.push({
+        url: String(input),
+        method,
+        authorization: new Headers(init?.headers).get("authorization") ?? "",
+        contentType: new Headers(init?.headers).get("content-type"),
+        body: init?.body instanceof Uint8Array ? init.body : undefined,
+      });
+      await Promise.resolve();
+      if (method === "DELETE") return new Response(null, { status: 204 });
+      if (new URL(String(input)).hostname === "uploads.github.com") {
+        return new Response(
+          JSON.stringify({ id: 901, browser_download_url: "dl/fresh" }),
+          { status: 201 },
+        );
+      }
+      const release = releasePayload([]);
+      release.assets = [{
+        id: 100,
+        name: "extension.tar.gz",
+        digest:
+          "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        browser_download_url: "dl/stale",
+      }];
+      return new Response(JSON.stringify(release), { status: 200 });
+    };
+
+    const result = await GhTasks.uploadReleaseAsset((s) =>
+      s.file(file).repo("acme/app").token("tok").refresh().fetch(github)
+    );
+    assertEquals(result.state, "refreshed");
+    // Lookup, then DELETE of the stale copy, then the fresh upload — the
+    // asset's freshness is the caller's declared contract for this name.
+    assertEquals(seen.map((s) => s.method), ["GET", "DELETE", "POST"]);
+    assertStringIncludes(seen[1].url, "/releases/assets/100");
+    assertEquals(seen[2].body, new Uint8Array([1, 2, 3, 4]));
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("refresh keeps an asset whose digest matches the file", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const file = await assetFixture(dir);
+    const digest = await digestOf(new Uint8Array([1, 2, 3, 4]));
+    const seen: Seen[] = [];
+    const github: typeof fetch = async (input, init) => {
+      seen.push({
+        url: String(input),
+        method: init?.method ?? "GET",
+        authorization: "",
+        contentType: null,
+        body: undefined,
+      });
+      await Promise.resolve();
+      const release = releasePayload([]);
+      release.assets = [{
+        id: 100,
+        name: "extension.tar.gz",
+        digest,
+        browser_download_url: "dl/current",
+      }];
+      return new Response(JSON.stringify(release), { status: 200 });
+    };
+    const result = await GhTasks.uploadReleaseAsset((s) =>
+      s.file(file).repo("acme/app").token("tok").refresh().fetch(github)
+    );
+    assertEquals(result.state, "already-exists");
+    // Only the lookup went out: same bytes, nothing to replace.
+    assertEquals(seen.length, 1);
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("refresh keeps an asset whose digest the API does not report", async () => {
+  // Without a comparison to trust, replacing would churn the release's
+  // assets on every run — the exact thing the default protects against.
+  const dir = await Deno.makeTempDir();
+  try {
+    const file = await assetFixture(dir);
+    const seen: Seen[] = [];
+    const result = await GhTasks.uploadReleaseAsset((s) =>
+      s.file(file).repo("acme/app").token("tok").refresh()
+        .fetch(fakeGithub(seen, { assets: [{ name: "extension.tar.gz" }] }))
+    );
+    assertEquals(result.state, "already-exists");
+    assertEquals(seen.length, 1);
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
 Deno.test("a repository with no releases reports no-release, not an error", async () => {
   const dir = await Deno.makeTempDir();
   try {

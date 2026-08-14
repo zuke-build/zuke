@@ -70,6 +70,12 @@ import {
   type GhReleaseAssetSettings,
   uploadReleaseAsset,
 } from "./release_asset.ts";
+import {
+  type GhReleaseLatestApi,
+  type GhReleaseLatestResult,
+  type GhReleaseLatestSettings,
+  markReleaseLatest,
+} from "./release_latest.ts";
 
 /** Settings for a `gh` invocation. */
 export class GhSettings extends SubcommandSettings {
@@ -102,6 +108,7 @@ export interface GhTasksApi
     GhAppTokenApi,
     GhSarifApi,
     GhReleaseAssetApi,
+    GhReleaseLatestApi,
     GhCommitApi,
     GhPullRequestApi,
     GhCheckRunApi {
@@ -151,5 +158,10 @@ export const GhTasks: GhTasksApi = {
     configure?: Configure<GhReleaseAssetSettings>,
   ): Promise<GhReleaseAssetResult> {
     return uploadReleaseAsset(configure);
+  },
+  markReleaseLatest(
+    configure?: Configure<GhReleaseLatestSettings>,
+  ): Promise<GhReleaseLatestResult> {
+    return markReleaseLatest(configure);
   },
 };
