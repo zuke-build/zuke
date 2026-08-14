@@ -277,8 +277,9 @@ Deno.test("verify refutes a candidate: reported as refuted, not gated on", async
     ),
     true,
   );
+  // The confirmed survivor carries the verifier's verdict in its report line.
   assertEquals(
-    lines.some((l) => l.includes("Missing null check")),
+    lines.some((l) => l.includes("[low · confirmed] Missing null check")),
     true,
   );
 });
@@ -350,6 +351,58 @@ Deno.test("verify candidates carry the finding's line; a reason-less refutation 
   const refutedLine = lines.find((l) => l.includes("refuted by verify"));
   assertEquals(refutedLine?.includes("SQL injection"), true);
   assertEquals(refutedLine?.includes("—"), false);
+});
+
+Deno.test("an uncertain verdict keeps the finding reported and gating", async () => {
+  const findings = [
+    { title: "Race in resume", severity: "high", file: "resume.ts" },
+    { title: "Stray log line", severity: "low", file: "log.ts" },
+  ];
+  const idHigh = findingFingerprint("security", {
+    title: "Race in resume",
+    severity: "high",
+    file: "resume.ts",
+  });
+  const { fetch, calls } = queuedFetch([
+    claude({ score: 9, severity: "high", findings }),
+    // The verifier cannot disprove the race, and never answers for the nit —
+    // neither verdict may remove a finding, so both must survive.
+    claude({
+      verdicts: [
+        { id: idHigh, verdict: "uncertain", reason: "cannot trace either way" },
+      ],
+    }),
+  ]);
+  const lines = await captured(async () => {
+    // Default gate is score > 7: the uncertain high finding still gates.
+    await assertRejects(
+      () =>
+        securityReviewer((r) =>
+          r.provider("claude").apiKey("k")
+            .diff((d) => d.text(DIFF)).verify()
+            .fetch(fetch)
+        ).validate({ target: "t" }),
+      AiReviewError,
+    );
+  });
+  assertEquals(calls.length, 2); // review + verify
+  // The verify prompt offers the uncertain verdict and no longer tells the
+  // model to refute by default.
+  const verify = JSON.parse(calls[1].body);
+  assertEquals(verify.system.includes('"uncertain"'), true);
+  assertEquals(verify.system.includes("Default to"), false);
+  // The uncertain finding is reported with its verdict; the unanswered one
+  // stays unmarked (fail-safe, exactly like a failed pass).
+  assertEquals(
+    lines.some((l) => l.includes("[high · uncertain] Race in resume")),
+    true,
+  );
+  assertEquals(
+    lines.some((l) => l.includes("[low] Stray log line")),
+    true,
+  );
+  // Nothing was refuted, so nothing appears refuted.
+  assertEquals(lines.some((l) => l.includes("refuted by verify")), false);
 });
 
 Deno.test("a failed verify pass warns on the console when not quiet", async () => {

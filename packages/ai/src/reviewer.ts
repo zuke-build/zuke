@@ -1004,9 +1004,13 @@ export class Reviewer implements Validation {
       assessment.findings = kept;
     }
 
-    // Verify pass: adversarially re-check each candidate; refuted candidates
-    // are reported (auditable) but not gated on. A failed pass keeps the
-    // unverified findings — fail toward reporting, never toward silence.
+    // Verify pass: adversarially re-check each candidate. Only a refutation —
+    // which the prompt requires to cite concrete contrary evidence — removes a
+    // finding (reported in the refuted table, auditable, not gated on); a
+    // confirmed or uncertain candidate stays reported and gating, carrying the
+    // verdict so the report shows how far verification got. A missing verdict
+    // and a failed pass both keep the finding unmarked — fail toward
+    // reporting, never toward silence.
     const refuted: RefutedFinding[] = [];
     if (this.#verify && assessment.findings.length > 0) {
       if (this.#budget?.exhausted_()) {
@@ -1029,7 +1033,7 @@ export class Reviewer implements Validation {
             key,
             model,
             buildVerifyPrompt(this.#assessment, candidates, diff, extras),
-            ["confirmed", "refuted"],
+            ["confirmed", "refuted", "uncertain"],
             retry,
           );
           const kept: AssessmentFinding[] = [];
@@ -1044,7 +1048,15 @@ export class Reviewer implements Validation {
                   ? { reason: verdict.reason }
                   : {}),
               });
-            } else kept.push(finding);
+            } else {
+              if (
+                verdict?.verdict === "confirmed" ||
+                verdict?.verdict === "uncertain"
+              ) {
+                finding.verification = verdict.verdict;
+              }
+              kept.push(finding);
+            }
           }
           assessment.findings = kept;
         } catch (error) {

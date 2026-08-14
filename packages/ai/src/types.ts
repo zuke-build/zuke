@@ -43,6 +43,15 @@ export interface AssessmentFinding {
   line?: number;
   /** A longer explanation, if provided. */
   detail?: string;
+  /**
+   * The verify pass's verdict on this finding, when `.verify()` ran and the
+   * verifier answered for it: `"confirmed"` means the concrete failure path
+   * was traced, `"uncertain"` means the evidence neither confirmed nor refuted
+   * it. Both stay reported and gate — only a refutation (which removes the
+   * finding and lists it in the report's refuted table) mutes a candidate.
+   * Absent when verify did not run or returned no verdict for the finding.
+   */
+  verification?: "confirmed" | "uncertain";
 }
 
 /** The structured result of a review. */

@@ -188,12 +188,20 @@ Three opt-in passes trade a little cost for findings that hold up:
   functions up, the validation in the same file — instead of judging hunks in
   isolation.
 - **`.verify()`** adds an adversarial second pass: every candidate finding is
-  re-checked against the diff (and the file context) by a verifier prompted to
-  _refute_ it — a finding whose concrete failure path cannot be traced is
-  dropped. Refuted candidates are listed in the report under "Refuted by
-  verification" (auditable, like suppression) but never gate. If the pass itself
-  errors, the unverified findings are kept — the reviewer fails toward
-  reporting, never toward silence.
+  re-checked against the diff (and the file context) by a verifier that tries
+  to _refute_ it. Refutation needs citable contrary evidence — an existing
+  guard the candidate missed, the flaw not being what the diff actually
+  contains, or the flaw pre-dating the change; a comment claiming the behaviour
+  is intended or the mere presence of tests does not count. A candidate the
+  evidence neither confirms nor refutes is `uncertain` and **stays reported and
+  gating** (marked in the findings table, like `confirmed`), so the verifier
+  can only remove what it can disprove, never what it merely doubts. Refuted
+  candidates are listed in the report under "Refuted by verification"
+  (auditable, like suppression) but never gate — and since the model wrote its
+  summary before the narrowing, the report labels it "written before
+  verification" whenever something was refuted. If the pass itself errors, the
+  unverified findings are kept — the reviewer fails toward reporting, never
+  toward silence.
 
 ## Discussing findings instead of repeating them
 
