@@ -954,7 +954,20 @@ class ZukeBuild extends Build {
       .criteria(
         "This is a strict, dependency-free TypeScript codebase on Deno: no " +
           "`any`, no `as` or non-null assertions, and the public API is shaped " +
-          "as namespaced `*Tasks` objects rather than loose exported functions.",
+          "as namespaced `*Tasks` objects rather than loose exported functions. " +
+          "Flag duplicated logic: a helper retyped instead of imported, or a " +
+          "near-copy differing only by a constant, a flag name, or a message. " +
+          "Treat a second copy of a guard, an escape, or a credential " +
+          "resolution as a defect — those are what drift apart. Prefer an " +
+          "unexported module in the same package as the shared home; do not " +
+          "propose unifying two wrappers that mirror two different real CLIs, " +
+          "and do not propose an abstraction larger than the duplication it " +
+          "removes. Flag SOLID breaches in their concrete form here: a file " +
+          "fusing unrelated domains, a flag that switches a function between " +
+          "two behaviours instead of a settings-lambda extension, a whole " +
+          "settings object passed where a narrow type would do, and a direct " +
+          "`Deno.*` or global-`fetch` dependency where an injectable seam " +
+          "(`StateHost`, `EnvReader`, an injected `fetch`) exists.",
       )
       .diff((d) => d.base(Deno.env.get("ZUKE_REVIEW_BASE") ?? "origin/master"))
       .maxDiffTokens(20000)

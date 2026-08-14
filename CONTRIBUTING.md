@@ -75,6 +75,26 @@ code in this repo is written (`CLAUDE.md` is a one-line pointer to it):
    `instanceof Error` check in a `catch`) is not dead code; see
    [`AGENTS.md`](./AGENTS.md#coding-guidelines-non-negotiable) for the full
    rule.
+7. **Reuse the helper; never paste a second copy.** Look for the existing one
+   before writing a new one — `packages/core/src/internal.ts`, `tooling.ts`,
+   `shell.ts`, `file.ts` and friends, plus the package's own unexported modules
+   (`packages/gh/src/api.ts` and `credentials.ts` are the pattern). A near-copy
+   differing by a constant or a message is a copy-paste: parameterise the
+   difference and keep one implementation. Copies drift, and the drift is where
+   the bugs live — a guard or an escape must have exactly one implementation.
+   Prefer an unexported module in the same package; a new `@zuke/core` export is
+   for genuinely cross-package needs and brings the API-doc obligations with it.
+   Do not unify what merely looks alike: two wrappers mirroring two real CLIs is
+   not duplication, and an abstraction bigger than the duplication it removes is
+   worse than the duplication.
+8. **SOLID, in the shapes this codebase takes.** One domain per file; extend
+   through the settings lambda rather than a behaviour-switching flag; keep
+   `buildArgs()` pure in every settings subclass; pass the narrow type a
+   function needs instead of a whole settings object; and depend on the seam —
+   `StateHost`/`StateStore`, an injected `fetch`, `EnvReader` — not on `Deno.*`
+   or a global, which is also what keeps the tests hermetic. See
+   [`AGENTS.md`](./AGENTS.md#coding-guidelines-non-negotiable) for each
+   principle's concrete form.
 
 See the architecture notes in [`AGENTS.md`](./AGENTS.md#architecture-notes) for
 how targets, the dependency graph, the shell `$`, and tool wrappers fit
@@ -124,6 +144,13 @@ quoting the finding's id — they never merge unexamined.
   boundaries to respect);
 - meets the coding standards above (strict types, no `any`/`as`/`!`, JSDoc on
   all public symbols) and keeps coverage at 95%+;
+- adds no duplicated logic: a helper that already exists is imported rather than
+  retyped, and a near-copy that differs by a constant is parameterised into one
+  implementation. A second copy of a guard, an escape, or a credential
+  resolution is treated as a defect, not a style note;
+- respects the SOLID shapes above — one domain per file, extension through the
+  settings lambda, narrow parameter types, and dependencies on the injectable
+  seam rather than on `Deno.*` or a global;
 - updates the affected docs in the same PR, and regenerates the API docs on any
   public-API change;
 - carries a Conventional Commit PR title, since the squash subject is what

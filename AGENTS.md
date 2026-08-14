@@ -237,6 +237,73 @@ can't see Deno's module graph.
     required scalar (a path, a name) can still be a direct argument; reach for
     the lambda once there are options to set.
 
+12. **Reuse the helper; never paste a second copy.** Before writing a helper,
+    look for the one that exists. The shared surface to check first:
+    `packages/core/src/internal.ts` (`messageOf`, `readEnv`, `sha256Hex`, the
+    read-or-null and write-with-mkdir file helpers),
+    `packages/core/src/tooling.ts` (`ToolSettings`, `SubcommandSettings`,
+    `defineTool`, `ToolNotFoundError`), `shell.ts` (`$`, `Command`), `file.ts`
+    (`FileTasks`), plus `path.ts`, `glob.ts`, `http.ts`, `yaml.ts`, `secret.ts`,
+    `render.ts` and `compression.ts`. In a wrapper or plugin package, check that
+    package's own unexported modules — `packages/gh/src/api.ts` and
+    `credentials.ts` are the pattern: one transport, one credential resolution,
+    imported by every task in the package.
+
+    A near-copy that differs by a constant, a flag name, or a message is a
+    **copy-paste**, not a variation. Parameterise the difference and keep one
+    implementation. This is not a style preference — the copies drift, and the
+    drift is where the bugs live. Every one of these was real: two
+    implementations of the zip-slip guard, two Markdown escapers where only one
+    collapsed newlines (so a model-supplied string could inject block-level
+    Markdown into a PR comment), two loopback checks that disagreed about
+    `[::1]`, two `env()` readers that disagreed about an empty token, and a
+    `JSON.parse` guard that landed in one of two twin stores. A guard or an
+    escape whose whole value is being applied everywhere **must** have exactly
+    one implementation.
+
+    Where a shared unit belongs, in order of preference:
+    - an **unexported** module in the same package, imported by its call sites —
+      the default, and what keeps a dedup free of release consequences;
+    - an existing `@zuke/core` export, if one already covers it;
+    - a **new** `@zuke/core` export only when the need is genuinely
+      cross-package — it brings JSDoc on every symbol, a clean
+      `deno doc --lint`, and regenerated `llms.txt`/`llms-full.txt`/README API
+      blocks in the same change.
+
+    Two constraints shape the choice. A wrapper package may depend only on
+    `@zuke/core` — never on another wrapper, never on `@std/*` — so "share it
+    between two wrappers" means core or nothing. And `deno doc --lint` reports
+    `private-type-ref` when an **exported** class extends an **unexported** one,
+    so prefer sharing the logic as plain internal functions over introducing a
+    base class an exported settings class would extend.
+
+    Do not unify what only looks alike. Two wrappers each having a `.cwd()` is
+    them mirroring two real CLIs (guideline 7), not duplication. Reject the
+    abstraction when it would be larger than the duplication it removes, when it
+    needs a parameter no call site varies (that is dead flexibility, guideline
+    10), or when it would reorder generated output. Prefer few, large, certain
+    consolidations over many speculative ones.
+
+13. **SOLID, in the shapes this codebase actually takes.** The principles are
+    not decoration here; each one has a concrete form:
+    - **Single responsibility** — one domain per file (guideline 8). A class
+      that fuses unrelated concerns, or a method long enough to hold several
+      sequential phases, is split so each part can be read and tested alone.
+      Length is a symptom, not the defect: name the responsibilities before
+      splitting, and if there is genuinely one, leave it.
+    - **Open/closed** — extend through the settings lambda (guideline 11) and
+      through new `*Tasks` methods, not by adding a flag that switches an
+      existing function between two behaviours.
+    - **Liskov** — a settings subclass must not weaken what its base promises;
+      `buildArgs()` stays pure in every implementation.
+    - **Interface segregation** — a task takes the narrow type it needs. Passing
+      a whole settings object where a resolved `string` and a `GhCall` would do
+      is what forces the next caller to construct state it has no use for.
+    - **Dependency inversion** — depend on the seam, not the implementation:
+      `StateHost`/`StateStore` over direct `Deno.*` calls, an injected `fetch`
+      over the global, `EnvReader` over `Deno.env`. This is also what keeps the
+      tests hermetic (guideline 5), so the two rules reinforce each other.
+
 ## Testing
 
 Zuke has **three test layers**. **Every change ships tests in the same PR** — at
@@ -421,13 +488,12 @@ gemini-extension.json     # Gemini CLI extension manifest (serves skills/)
   (`TOOL_GROUPS` for a CLI wrapper, `CORE_PACKAGES` for an engine or plugin
   package). `tests/release_config_test.ts` imports `PACKAGES` rather than
   keeping its own copy, so `build/packages.ts` is the single list the tests
-  compare everything else against.
-  `tests/release_config_test.ts` and `tests/build_tools_test.ts` enforce that
-  all six agree — run them after adding a package. Omitting `zuke.ts` means
-  the package is released but never published; omitting the `README.md` table
-  means it is invisible to anyone browsing the repo; omitting
-  `build/website_tools.ts` fails the gate, because the website's package grid is
-  generated from it by `syncWebsite`.
+  compare everything else against. `tests/release_config_test.ts` and
+  `tests/build_tools_test.ts` enforce that all six agree — run them after adding
+  a package. Omitting `zuke.ts` means the package is released but never
+  published; omitting the `README.md` table means it is invisible to anyone
+  browsing the repo; omitting `build/website_tools.ts` fails the gate, because
+  the website's package grid is generated from it by `syncWebsite`.
 - **Update docs with code.** If behaviour changes, update `README.md`, JSDoc,
   and the spec/acceptance criteria in the same PR.
 - **The agent skills are docs too — and they ship to a marketplace.** `skills/`

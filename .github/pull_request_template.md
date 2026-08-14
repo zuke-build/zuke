@@ -24,14 +24,30 @@ motivation, not just the mechanics. -->
 
 ## Checklist
 
-- [ ] The PR title is a [Conventional Commit](https://www.conventionalcommits.org/) (`type(scope): summary`).
+- [ ] The PR title is a
+      [Conventional Commit](https://www.conventionalcommits.org/)
+      (`type(scope): summary`).
 - [ ] `deno task ci` passes locally (lint, fmt, type-check, tests, spell).
 - [ ] Tests were added or updated; coverage stays at 95%+ (lines and branches).
-- [ ] Docs updated in the same PR (`README.md`, JSDoc, `docs/`) when behaviour changed.
-- [ ] Public API changes were regenerated with `./zuke apiDocs` (`llms.txt`, `llms-full.txt`, package README `## API`).
-- [ ] No `any`, no `as` casts or `!` non-null assertions in `src/` (narrow with type guards instead).
-- [ ] No dead code: unreachable branches and can't-fire fallbacks are removed, with types tightened so the impossible state is unrepresentable.
-- [ ] A new package was wired into all seven places (see [AGENTS.md](../blob/master/AGENTS.md#good-open-source-practices-to-follow)), if applicable.
+- [ ] Docs updated in the same PR (`README.md`, JSDoc, `docs/`) when behaviour
+      changed.
+- [ ] Public API changes were regenerated with `./zuke apiDocs` (`llms.txt`,
+      `llms-full.txt`, package README `## API`).
+- [ ] No `any`, no `as` casts or `!` non-null assertions in `src/` (narrow with
+      type guards instead).
+- [ ] No dead code: unreachable branches and can't-fire fallbacks are removed,
+      with types tightened so the impossible state is unrepresentable.
+- [ ] No duplicated logic: an existing helper is imported rather than retyped,
+      and a near-copy differing by a constant or a message is parameterised into
+      one implementation. A guard, escape, or credential resolution has exactly
+      one implementation.
+- [ ] SOLID shapes respected: one domain per file, extension via the settings
+      lambda (not a behaviour-switching flag), narrow parameter types, and
+      dependencies on the injectable seam (`StateHost`, an injected `fetch`,
+      `EnvReader`) rather than `Deno.*` or a global.
+- [ ] A new package was wired into all six places (see
+      [AGENTS.md](../blob/master/AGENTS.md#good-open-source-practices-to-follow)),
+      if applicable.
 - [ ] The code is written using AI assisted coding.
 
 <!-- Keep illustrative code in this description, not in commit message bodies:
