@@ -1,6 +1,6 @@
 {
   "name": "@zuke/ai",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "license": "MIT",
   "description": "Deep, discussion-driven AI code review for Zuke builds — define a reviewer (Claude/OpenAI/Gemini) with a settings-lambda API and gate targets on a security (or custom) assessment: conventions-aware, adversarially verified findings, and a PR discussion loop where accepted rebuttals stay dismissed, hardened against prompt injection.",
   "exports": {
