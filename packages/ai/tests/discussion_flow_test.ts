@@ -12,6 +12,8 @@ import {
   outcomeMarker,
 } from "../src/threads.ts";
 import { stableHash } from "../src/hash.ts";
+import { withEnv } from "../../core/tests/_env.ts";
+import { captureLines as captured } from "../../core/tests/_console.ts";
 
 const DIFF = "diff --git a/src/app.ts b/src/app.ts\n" +
   "--- a/src/app.ts\n+++ b/src/app.ts\n@@\n+const x = eval(input);\n";
@@ -68,45 +70,18 @@ function claude(payload: unknown): string {
   });
 }
 
-/** Capture console output while `fn` runs (the report still publishes). */
-async function captured(fn: () => Promise<void>): Promise<string[]> {
-  const lines: string[] = [];
-  const { log, warn } = console;
-  console.log = (...a: unknown[]) => void lines.push(a.join(" "));
-  console.warn = (...a: unknown[]) => void lines.push(a.join(" "));
-  try {
-    await fn();
-  } finally {
-    console.log = log;
-    console.warn = warn;
-  }
-  return lines;
-}
-
-/** Run `fn` inside a fake GitHub Actions PR environment. */
-async function inPr(fn: () => Promise<void>): Promise<void> {
-  const vars: Record<string, string> = {
+/**
+ * Run `fn` inside a fake GitHub Actions PR environment, with the job-summary
+ * file unset so the report doesn't append to a real Actions summary.
+ */
+function inPr(fn: () => Promise<void>): Promise<void> {
+  return withEnv({
     GITHUB_ACTIONS: "true",
     GITHUB_REPOSITORY: "zuke-build/zuke",
     GITHUB_REF: "refs/pull/7/merge",
     GITHUB_TOKEN: "tkn",
-  };
-  const prior = new Map<string, string | undefined>();
-  for (const [key, value] of Object.entries(vars)) {
-    prior.set(key, Deno.env.get(key));
-    Deno.env.set(key, value);
-  }
-  const summary = Deno.env.get("GITHUB_STEP_SUMMARY");
-  Deno.env.delete("GITHUB_STEP_SUMMARY");
-  try {
-    await fn();
-  } finally {
-    for (const [key, value] of prior) {
-      if (value === undefined) Deno.env.delete(key);
-      else Deno.env.set(key, value);
-    }
-    if (summary !== undefined) Deno.env.set("GITHUB_STEP_SUMMARY", summary);
-  }
+    GITHUB_STEP_SUMMARY: undefined,
+  }, fn);
 }
 
 const FINDING = {

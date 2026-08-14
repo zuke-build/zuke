@@ -4,12 +4,14 @@
 /**
  * Shared value types for the execution engine — the per-run environment and the
  * per-target/-run outcome shapes threaded between the scheduler, lock, and wait
- * modules. Kept in a dependency-free leaf module so those modules can all import
- * it without forming a cycle.
+ * modules. Kept in a leaf module — its only value import is the equally
+ * dependency-free `internal.ts` — so those modules can all import it without
+ * forming a cycle.
  *
  * @module
  */
 
+import { messageOf } from "./internal.ts";
 import type { TargetStatus } from "./build.ts";
 import type { TargetOutcomeView } from "./target.ts";
 import type { TargetReport } from "./report.ts";
@@ -148,6 +150,6 @@ export function outcomesFromRecord(
 
 /** A failure's message, or `undefined` when there was none — for the state record. */
 export function errorMessage(error: unknown): string | undefined {
-  if (error === undefined) return undefined;
-  return error instanceof Error ? error.message : String(error);
+  // The guard stays: `messageOf(undefined)` is the string `"undefined"`.
+  return error === undefined ? undefined : messageOf(error);
 }

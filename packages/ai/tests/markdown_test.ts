@@ -5,7 +5,7 @@ import {
   assertEquals,
   assertStringIncludes,
 } from "../../core/tests/_assert.ts";
-import { codeSpan, fenceMarkdown } from "../src/markdown.ts";
+import { cell, codeSpan, fenceMarkdown } from "../src/markdown.ts";
 import { SUPPRESS_HINT, toMarkdown } from "../src/report.ts";
 import { decodeState, encodeState } from "../src/state.ts";
 
@@ -43,6 +43,18 @@ Deno.test("codeSpan neutralizes a backtick breakout in an inline label", () => {
   assertEquals(codeSpan("a\nb").includes("\n"), false);
   // A leading/trailing backtick is padded so the delimiters don't merge.
   assertEquals(codeSpan("`x`"), "`` `x` ``");
+});
+
+Deno.test("cell applies all three escapes, not a subset of them", () => {
+  // The two report renderers each used to carry half of this: one collapsed
+  // newlines and escaped `|`, the other escaped `|` and the comment delimiters.
+  // Either half alone leaves a live injection, so the one survivor does all three.
+  assertEquals(cell("a\r\n\nb"), "a b");
+  assertEquals(cell("a|b"), "a\\|b");
+  assertEquals(
+    cell("<!-- zuke-ai-state:x -->"),
+    "&lt;!-- zuke-ai-state:x --&gt;",
+  );
 });
 
 Deno.test("fenceMarkdown neutralizes a Markdown-injection payload", () => {

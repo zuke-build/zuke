@@ -26,6 +26,7 @@ import {
   type BuildQuery,
   toBuildSummary,
 } from "../src/registry/descriptor.ts";
+import { withTemp } from "./_temp.ts";
 
 /** A short TTL keeps the lock-takeover scenarios fast in the test lane. */
 const FAST = { lockTtlMs: 50 };
@@ -36,30 +37,24 @@ function failures(results: ConformanceResult[]): string[] {
 }
 
 Deno.test("the kit passes against the filesystem state store", async () => {
-  const dir = await Deno.makeTempDir({ prefix: "zuke-conf-state-" });
-  try {
+  await withTemp(async (dir) => {
     const results = await checkStateStore(
       () => new FileSystemStateStore(`${dir}/runs`, defaultStateHost),
       FAST,
     );
     assertEquals(failures(results), []);
     assertEquals(results.length > 0, true);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  }, { prefix: "zuke-conf-state-" });
 });
 
 Deno.test("the kit passes against the filesystem build registry", async () => {
-  const dir = await Deno.makeTempDir({ prefix: "zuke-conf-reg-" });
-  try {
+  await withTemp(async (dir) => {
     const results = await checkBuildRegistry(
       () => new FileSystemBuildRegistry(`${dir}/builds`, defaultStateHost),
     );
     assertEquals(failures(results), []);
     assertEquals(results.length > 0, true);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  }, { prefix: "zuke-conf-reg-" });
 });
 
 /** A store that never enforces CAS: every write "succeeds", nothing persists. */

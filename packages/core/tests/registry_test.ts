@@ -8,7 +8,7 @@
  */
 
 import { assertEquals, assertRejects, assertThrows } from "./_assert.ts";
-import { defaultStateHost, type StateHost } from "../src/state/store.ts";
+import { defaultStateHost } from "../src/state/store.ts";
 import type { CliDescription } from "../src/describe.ts";
 import {
   type BuildDescriptor,
@@ -23,61 +23,8 @@ import {
   envBuildRegistry,
   resolveBuildRegistry,
 } from "../src/registry/resolve.ts";
-
-/** An in-memory {@link StateHost}: a flat file map plus a lock set. */
-class FakeStateHost implements StateHost {
-  readonly files = new Map<string, string>();
-  readonly locks = new Set<string>();
-
-  readText(path: string): Promise<string | null> {
-    return Promise.resolve(this.files.get(path) ?? null);
-  }
-  writeText(path: string, content: string): Promise<void> {
-    this.files.set(path, content);
-    return Promise.resolve();
-  }
-  rename(from: string, to: string): Promise<void> {
-    // A real rename rejects when the source is gone, and moves an exclusively
-    // created (empty) file just as it moves one with content — the mutex relies
-    // on both when it reclaims an abandoned marker.
-    const content = this.files.get(from);
-    if (content === undefined && !this.locks.has(from)) {
-      return Promise.reject(new Deno.errors.NotFound(`rename ${from}`));
-    }
-    if (content !== undefined) {
-      this.files.set(to, content);
-      this.files.delete(from);
-    }
-    if (this.locks.delete(from)) this.locks.add(to);
-    return Promise.resolve();
-  }
-  createExclusive(path: string): Promise<boolean> {
-    if (this.locks.has(path)) return Promise.resolve(false);
-    this.locks.add(path);
-    return Promise.resolve(true);
-  }
-  remove(path: string): Promise<void> {
-    this.files.delete(path);
-    this.locks.delete(path);
-    return Promise.resolve();
-  }
-  listDir(path: string): Promise<string[]> {
-    const prefix = `${path}/`;
-    const names: string[] = [];
-    for (const key of this.files.keys()) {
-      if (key.startsWith(prefix)) names.push(key.slice(prefix.length));
-    }
-    return Promise.resolve(names);
-  }
-  mkdirp(): Promise<void> {
-    return Promise.resolve();
-  }
-  /** A controllable clock for the mutex-TTL tests; advance it with `time`. */
-  time = 1_000_000;
-  now(): number {
-    return this.time;
-  }
-}
+import { withTemp } from "./_temp.ts";
+import { FakeStateHost } from "./_fakes.ts";
 
 /** A minimal CLI surface for a descriptor. */
 function sampleSurface(): CliDescription {
@@ -532,8 +479,7 @@ Deno.test("FileSystemBuildRegistry never steals an unstamped mutex marker", asyn
 });
 
 Deno.test("FileSystemBuildRegistry round-trips through the real filesystem", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const registry = new FileSystemBuildRegistry(
       `${dir}/builds`,
       defaultStateHost,
@@ -543,9 +489,7 @@ Deno.test("FileSystemBuildRegistry round-trips through the real filesystem", asy
     const loaded = await registry.getBuild("CI");
     assertEquals(loaded?.descriptor.surface.targets[0].name, "build");
     assertEquals((await registry.listBuilds({})).length, 1);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 // --------------------------------------------------------------- resolve

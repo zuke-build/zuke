@@ -3,7 +3,10 @@
 
 import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
-import { missingTool } from "@zuke/core/tooling/conformance";
+import {
+  assertWrapperConformance,
+  missingTool,
+} from "@zuke/core/tooling/conformance";
 import { CodecovTasks, CodecovUploadSettings } from "../src/codecov.ts";
 
 Deno.test("default tool is codecovcli, subcommand upload-process", () => {
@@ -86,5 +89,15 @@ Deno.test("CodecovTasks.upload reaches execution", async () => {
   await assertRejects(
     () => CodecovTasks.upload((s) => missingTool(s.files("cov.lcov"))),
     ToolNotFoundError,
+  );
+});
+
+Deno.test("codecov: conforms to the wrapper contract", async () => {
+  await assertWrapperConformance(
+    () => new CodecovUploadSettings(),
+    "codecovcli",
+    {
+      resolution: "path",
+    },
   );
 });

@@ -84,6 +84,25 @@ export function validateReferences(
 export function findCycle(
   targets: Map<string, TargetBuilder>,
 ): string[] | null {
+  return dfsCycle(targets.values(), (node) => node.dependsOn_);
+}
+
+/**
+ * Three-colour depth-first search over `nodes` and their `successors`, returning
+ * the first cycle found as a path of names (e.g. `["a", "b", "a"]`) or `null`.
+ *
+ * `nodes` is walked in iteration order and each node's successors in theirs, so
+ * the result — and the post-order `onSettled` sees — is declaration-stable.
+ *
+ * @param onSettled Called on each node once its whole subtree has been visited,
+ *   in DFS post-order. {@link topoOrder} collects the topological order with it;
+ *   {@link findCycle}, which only asks the question, omits it.
+ */
+function dfsCycle(
+  nodes: Iterable<TargetBuilder>,
+  successors: (node: TargetBuilder) => Iterable<TargetBuilder>,
+  onSettled?: (node: TargetBuilder) => void,
+): string[] | null {
   const WHITE = 0, GRAY = 1, BLACK = 2;
   const color = new Map<TargetBuilder, number>();
   const stack: TargetBuilder[] = [];
@@ -91,32 +110,37 @@ export function findCycle(
   const visit = (node: TargetBuilder): string[] | null => {
     color.set(node, GRAY);
     stack.push(node);
-    for (const dep of node.dependsOn_) {
-      const c = color.get(dep) ?? WHITE;
+    for (const next of successors(node)) {
+      const c = color.get(next) ?? WHITE;
       if (c === GRAY) {
         // Found a back-edge: extract the cycle from the stack.
-        const start = stack.indexOf(dep);
-        const cycle = stack.slice(start).map(label);
-        cycle.push(label(dep));
+        const cycle = stack.slice(stack.indexOf(next)).map(label);
+        cycle.push(label(next));
         return cycle;
       }
       if (c === WHITE) {
-        const found = visit(dep);
-        if (found) return found;
+        const found = visit(next);
+        if (found !== null) return found;
       }
     }
     stack.pop();
     color.set(node, BLACK);
+    onSettled?.(node);
     return null;
   };
 
-  for (const t of targets.values()) {
-    if ((color.get(t) ?? WHITE) === WHITE) {
-      const cycle = visit(t);
-      if (cycle) return cycle;
+  for (const node of nodes) {
+    if ((color.get(node) ?? WHITE) === WHITE) {
+      const cycle = visit(node);
+      if (cycle !== null) return cycle;
     }
   }
   return null;
+}
+
+/** The one cycle report, so the two detectors cannot word it differently. */
+function cycleError(cycle: string[]): GraphError {
+  return new GraphError(`Dependency cycle detected: ${cycle.join(" → ")}`);
 }
 
 /**
@@ -127,11 +151,7 @@ export function findCycle(
 export function validateGraph(targets: Map<string, TargetBuilder>): void {
   validateReferences(targets);
   const cycle = findCycle(targets);
-  if (cycle) {
-    throw new GraphError(
-      `Dependency cycle detected: ${cycle.join(" → ")}`,
-    );
-  }
+  if (cycle !== null) throw cycleError(cycle);
 }
 
 /**
@@ -212,34 +232,13 @@ function topoOrder(
   set: Set<TargetBuilder>,
   edges: Map<TargetBuilder, Set<TargetBuilder>>,
 ): TargetBuilder[] {
-  const WHITE = 0, GRAY = 1, BLACK = 2;
-  const color = new Map<TargetBuilder, number>();
   const order: TargetBuilder[] = [];
-  const stack: TargetBuilder[] = [];
-
-  const visit = (node: TargetBuilder) => {
-    color.set(node, GRAY);
-    stack.push(node);
-    for (const next of edges.get(node) ?? []) {
-      const c = color.get(next) ?? WHITE;
-      if (c === GRAY) {
-        const start = stack.indexOf(next);
-        const cycle = stack.slice(start).map(label);
-        cycle.push(label(next));
-        throw new GraphError(
-          `Dependency cycle detected: ${cycle.join(" → ")}`,
-        );
-      }
-      if (c === WHITE) visit(next);
-    }
-    stack.pop();
-    color.set(node, BLACK);
-    order.push(node);
-  };
-
-  for (const node of set) {
-    if ((color.get(node) ?? WHITE) === WHITE) visit(node);
-  }
+  const cycle = dfsCycle(
+    set,
+    (node) => edges.get(node) ?? [],
+    (node) => order.push(node),
+  );
+  if (cycle !== null) throw cycleError(cycle);
   // Post-order DFS yields reverse topological order; flip it so that every
   // "must run before" edge points forward.
   order.reverse();

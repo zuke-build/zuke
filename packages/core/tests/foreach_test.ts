@@ -11,9 +11,8 @@ import {
   parameter,
   resolveParameters,
 } from "../src/params.ts";
-import { FileSystemStateStore } from "../src/state/fs_store.ts";
-import { defaultStateHost } from "../src/state/store.ts";
 import { externalSignal } from "../src/wait.ts";
+import { withTempStore as withStore } from "./_store.ts";
 
 /** The message of a failed `execute` result. */
 function errorMessage(error: unknown): string {
@@ -30,18 +29,6 @@ function recorder(): { lines: string[]; reporter: Reporter } {
       error: (line) => void lines.push(line),
     },
   };
-}
-
-/** Run `fn` with a temp-dir-backed store, cleaned up afterwards. */
-async function withStore(
-  fn: (store: FileSystemStateStore) => Promise<void>,
-): Promise<void> {
-  const dir = await Deno.makeTempDir();
-  try {
-    await fn(new FileSystemStateStore(`${dir}/runs`, defaultStateHost));
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
 }
 
 Deno.test("forEach runs each item's stages in order, items in parallel", async () => {

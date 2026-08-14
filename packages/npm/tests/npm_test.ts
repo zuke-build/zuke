@@ -7,7 +7,10 @@ import {
   assertThrows,
 } from "../../core/tests/_assert.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
-import { missingTool } from "@zuke/core/tooling/conformance";
+import {
+  assertWrapperConformance,
+  missingTool,
+} from "@zuke/core/tooling/conformance";
 import {
   NpmCiSettings,
   NpmExecSettings,
@@ -161,4 +164,10 @@ Deno.test("every NpmTasks function reaches execution", async () => {
     () => NpmTasks.version((s) => missingTool(s).bump("patch")),
     ToolNotFoundError,
   );
+});
+
+Deno.test("npm: conforms to the wrapper contract", async () => {
+  await assertWrapperConformance(() => new NpmInstallSettings(), "npm", {
+    resolution: "path",
+  });
 });

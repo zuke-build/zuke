@@ -11,6 +11,8 @@ import {
   secretsReviewer,
   securityReviewer,
 } from "../mod.ts";
+import { withEnv } from "../../core/tests/_env.ts";
+import { captureLines } from "../../core/tests/_console.ts";
 
 const DIFF = "diff --git a/src/app.ts b/src/app.ts\n" +
   "--- a/src/app.ts\n+++ b/src/app.ts\n@@\n+const x = eval(input);\n";
@@ -102,46 +104,9 @@ function routedFetch(opts: {
   return { fetch: impl, calls };
 }
 
-/** Run `fn` with the given env vars set, restoring the prior values after. */
-async function withEnv(
-  vars: Record<string, string>,
-  fn: () => Promise<void>,
-): Promise<void> {
-  const prior = new Map<string, string | undefined>();
-  for (const [key, value] of Object.entries(vars)) {
-    prior.set(key, Deno.env.get(key));
-    Deno.env.set(key, value);
-  }
-  try {
-    await fn();
-  } finally {
-    for (const [key, value] of prior) {
-      if (value === undefined) Deno.env.delete(key);
-      else Deno.env.set(key, value);
-    }
-  }
-}
-
-/**
- * Capture `console.log`/`console.warn` output produced by `fn`, with the
- * Actions job-summary file unset so non-quiet reviews don't write a real one.
- */
-async function captured(fn: () => Promise<void>): Promise<string[]> {
-  const lines: string[] = [];
-  const { log, warn } = console;
-  const summary = Deno.env.get("GITHUB_STEP_SUMMARY");
-  Deno.env.delete("GITHUB_STEP_SUMMARY");
-  console.log = (...a: unknown[]) => void lines.push(a.join(" "));
-  console.warn = (...a: unknown[]) => void lines.push(a.join(" "));
-  try {
-    await fn();
-  } finally {
-    console.log = log;
-    console.warn = warn;
-    if (summary !== undefined) Deno.env.set("GITHUB_STEP_SUMMARY", summary);
-  }
-  return lines;
-}
+/** Capture console output with the job-summary file unset (no real writes). */
+const captured = (fn: () => Promise<void>): Promise<string[]> =>
+  captureLines(() => withEnv({ GITHUB_STEP_SUMMARY: undefined }, fn));
 
 Deno.test("security review passes below the threshold and calls Claude", async () => {
   const { fetch, calls } = recordFetch(

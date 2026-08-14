@@ -24,10 +24,9 @@
  */
 
 import type { Configure, PathLike } from "@zuke/core/tooling";
-import { isRecord } from "./api.ts";
-
-/** The GitHub REST base, overridable per call for GHES. */
-const API_BASE = "https://api.github.com";
+import type { GhCall } from "./api.ts";
+import { caller, DEFAULT_BASE_URL, GhApiError, isRecord } from "./api.ts";
+import { resolveAuthToken, resolveRepoSlug } from "./credentials.ts";
 
 /** Content types inferred from an asset name's extension. */
 const CONTENT_TYPES: Record<string, string> = {
@@ -57,16 +56,6 @@ export interface GhReleaseAssetResult {
   url?: string;
 }
 
-/** Read an Actions-provided default, treating an absent env as unset. */
-function env(name: string): string | undefined {
-  try {
-    const value = Deno.env.get(name);
-    return value === undefined || value === "" ? undefined : value;
-  } catch {
-    return undefined;
-  }
-}
-
 /** Settings for {@link GhReleaseAssetApi.uploadReleaseAsset}. */
 export class GhReleaseAssetSettings {
   /** The file to upload. Set by {@link file}. */
@@ -84,7 +73,7 @@ export class GhReleaseAssetSettings {
   /** The token to authenticate with. Set by {@link token}. */
   token_?: string;
   /** REST base URL. Set by {@link baseUrl}. */
-  baseUrl_: string = API_BASE;
+  baseUrl_: string = DEFAULT_BASE_URL;
   /** The `fetch` implementation. Set by {@link fetch}. */
   fetch_: typeof fetch = fetch;
 
@@ -159,14 +148,7 @@ export class GhReleaseAssetSettings {
 
   /** The effective `owner/repo`, from the setting or the Actions environment. */
   repoSlug_(): string {
-    const slug = this.repo_ ?? env("GITHUB_REPOSITORY");
-    if (slug === undefined) {
-      throw new Error(
-        "uploading a release asset requires .repo('owner/name') (or " +
-          "GITHUB_REPOSITORY).",
-      );
-    }
-    return slug;
+    return resolveRepoSlug(this.repo_, "uploading a release asset");
   }
 
   /** The file to upload, or a friendly error naming the missing setting. */
@@ -230,25 +212,27 @@ async function sha256(data: Uint8Array<ArrayBuffer>): Promise<string> {
   return `sha256:${hex}`;
 }
 
-/** Delete a release asset, tolerating one that is already gone. */
+/**
+ * Delete a release asset, tolerating one that is already gone. Goes through the
+ * shared {@link caller} so the repository slug is validated here too, rather
+ * than being interpolated into a path a second time.
+ */
 async function deleteAsset(
-  settings: GhReleaseAssetSettings,
-  headers: Record<string, string>,
-  slug: string,
+  call: GhCall,
   assetId: number,
   what: string,
 ): Promise<void> {
-  const deletion = await settings.fetch_(
-    `${settings.baseUrl_}/repos/${slug}/releases/assets/${assetId}`,
-    { method: "DELETE", headers },
-  );
-  const deletionText = await deletion.text();
-  // A 404 means the asset was already cleaned up — the goal state.
-  if (!deletion.ok && deletion.status !== 404) {
-    throw new Error(
-      `deleting the ${what} failed: ${deletion.status} ` +
-        `${deletion.statusText}. ${deletionText.slice(0, 400)}`,
-    );
+  try {
+    await call("DELETE", `/releases/assets/${assetId}`);
+  } catch (error) {
+    // A 404 means the asset was already cleaned up — the goal state.
+    const gone = error instanceof GhApiError && error.status === 404;
+    if (!gone) {
+      throw new Error(
+        `deleting the ${what} failed. ` +
+          (error instanceof Error ? error.message : String(error)),
+      );
+    }
   }
 }
 
@@ -259,54 +243,40 @@ export async function uploadReleaseAsset(
   const settings = configure
     ? configure(new GhReleaseAssetSettings())
     : new GhReleaseAssetSettings();
-  const token = settings.token_ ?? env("GITHUB_TOKEN");
-  if (token === undefined) {
-    throw new Error(
-      "uploading a release asset requires .token(...) (or GITHUB_TOKEN) " +
-        "with contents: write.",
-    );
-  }
-  const slug = settings.repoSlug_();
+  const token = resolveAuthToken(
+    settings.token_,
+    "uploading a release asset",
+    " with contents: write.",
+  );
+  // The shared caller for the two repo-relative calls — it is what validates
+  // the slug, so a repository name that would redirect a token-bearing request
+  // is refused here rather than reaching `fetch`. The upload itself goes to a
+  // different host and stays hand-rolled below.
+  const call = caller(
+    settings.baseUrl_,
+    settings.repoSlug_(),
+    token,
+    settings.fetch_,
+  );
   const name = settings.assetName_();
-  const headers = {
-    "accept": "application/vnd.github+json",
-    "x-github-api-version": "2022-11-28",
-    "authorization": `Bearer ${token}`,
-  };
 
   // Resolve the release first: the failure modes here (no release yet, a tag
   // that does not exist) are the likely ones, and the file need not be read
   // for them.
   const releasePath = settings.tag_ === undefined
-    ? "releases/latest"
-    : `releases/tags/${encodeURIComponent(settings.tag_)}`;
-  const releaseResponse = await settings.fetch_(
-    `${settings.baseUrl_}/repos/${slug}/${releasePath}`,
-    { headers },
-  );
-  if (releaseResponse.status === 404 && settings.tag_ === undefined) {
-    // A repository with no releases is an ordinary state for a pipeline that
-    // attaches assets opportunistically — report it, do not throw.
-    await releaseResponse.body?.cancel();
-    return { state: "no-release", name };
-  }
-  const releaseText = await releaseResponse.text();
-  if (!releaseResponse.ok) {
-    throw new Error(
-      `resolving the release (${releasePath}) failed: ` +
-        `${releaseResponse.status} ${releaseResponse.statusText}. ` +
-        releaseText.slice(0, 400),
-    );
-  }
+    ? "/releases/latest"
+    : `/releases/tags/${encodeURIComponent(settings.tag_)}`;
   let release: unknown;
   try {
-    release = JSON.parse(releaseText);
-  } catch {
-    throw new Error(
-      `the release lookup returned a non-JSON body: ${
-        releaseText.slice(0, 200)
-      }`,
-    );
+    release = await call("GET", releasePath);
+  } catch (error) {
+    // A repository with no releases is an ordinary state for a pipeline that
+    // attaches assets opportunistically — report it, do not throw. A tag the
+    // caller named is not: they said which release, and it is not there.
+    const noRelease = error instanceof GhApiError && error.status === 404 &&
+      settings.tag_ === undefined;
+    if (!noRelease) throw error;
+    return { state: "no-release", name };
   }
   const releaseId = field(release, "id");
   const uploadUrlTemplate = field(release, "upload_url");
@@ -344,13 +314,7 @@ export async function uploadReleaseAsset(
           typeof digest === "string" &&
           digest !== await sha256(await fileBytes())
         ) {
-          await deleteAsset(
-            settings,
-            headers,
-            slug,
-            assetId,
-            `stale release asset "${name}"`,
-          );
+          await deleteAsset(call, assetId, `stale release asset "${name}"`);
           replaced = true;
           continue;
         }
@@ -366,9 +330,7 @@ export async function uploadReleaseAsset(
         };
       }
       await deleteAsset(
-        settings,
-        headers,
-        slug,
+        call,
         assetId,
         `stuck release asset "${name}" (state ${String(state)})`,
       );
@@ -384,7 +346,9 @@ export async function uploadReleaseAsset(
     {
       method: "POST",
       headers: {
-        ...headers,
+        "accept": "application/vnd.github+json",
+        "x-github-api-version": "2022-11-28",
+        "authorization": `Bearer ${token}`,
         "content-type": settings.effectiveContentType_(),
       },
       body: data,

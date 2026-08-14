@@ -10,6 +10,7 @@ import {
   AssertionError,
   fail,
 } from "../src/assert.ts";
+import { withTemp } from "./_temp.ts";
 
 Deno.test("fail always throws an AssertionError with the message", () => {
   assertThrows(() => fail("nope"), AssertionError, "nope");
@@ -36,8 +37,7 @@ Deno.test("assertExists returns the value and narrows it", () => {
 });
 
 Deno.test("assertFileExists: passes for a file, fails for missing or a dir", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const file = `${dir}/a.txt`;
     await Deno.writeTextFile(file, "hi");
     await assertFileExists(file); // no throw
@@ -51,9 +51,7 @@ Deno.test("assertFileExists: passes for a file, fails for missing or a dir", asy
       AssertionError,
       "Expected a file",
     );
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("filesystem asserts rethrow non-NotFound stat errors", async () => {
@@ -64,8 +62,7 @@ Deno.test("filesystem asserts rethrow non-NotFound stat errors", async () => {
 });
 
 Deno.test("assertDirectoryExists: passes for a dir, fails for missing or a file", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     await assertDirectoryExists(dir); // no throw
     const file = `${dir}/a.txt`;
     await Deno.writeTextFile(file, "hi");
@@ -79,7 +76,5 @@ Deno.test("assertDirectoryExists: passes for a dir, fails for missing or a file"
       AssertionError,
       "Expected a directory",
     );
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });

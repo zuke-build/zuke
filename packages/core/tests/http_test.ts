@@ -9,6 +9,7 @@ import {
   type HttpOptions,
   httpText,
 } from "../src/http.ts";
+import { withTemp } from "./_temp.ts";
 
 /** A fake `fetch` returning `body` with `status`, recording the call. */
 function fakeFetch(
@@ -72,20 +73,16 @@ Deno.test("HttpError redacts userinfo and credential query params from the URL",
 
 Deno.test("httpDownload streams the body to a file", async () => {
   const { fetch } = fakeFetch("file-contents");
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const dest = `${dir}/out.txt`;
     await httpDownload("https://example.com/f", dest, { fetch });
     assertEquals(await Deno.readTextFile(dest), "file-contents");
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("httpDownload of a non-2xx status throws before writing", async () => {
   const { fetch } = fakeFetch("err", 500);
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const dest = `${dir}/out.txt`;
     await assertRejects(
       () => httpDownload("https://example.com/f", dest, { fetch }),
@@ -93,9 +90,7 @@ Deno.test("httpDownload of a non-2xx status throws before writing", async () => 
       "HTTP 500",
     );
     assertEquals(await Deno.stat(dest).catch(() => null), null); // not created
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("httpDownload handles an empty (null) body", async () => {
@@ -103,12 +98,9 @@ Deno.test("httpDownload handles an empty (null) body", async () => {
   const impl =
     (() =>
       Promise.resolve(new Response(null, { status: 200 }))) as typeof fetch;
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const dest = `${dir}/empty.bin`;
     await httpDownload("https://example.com/empty", dest, { fetch: impl });
     assertEquals((await Deno.stat(dest)).size, 0);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });

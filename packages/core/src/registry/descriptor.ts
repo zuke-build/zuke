@@ -27,6 +27,10 @@ import type {
   CliParameterInfo,
   CliTargetInfo,
 } from "../describe.ts";
+import { asObject, fields } from "../json_shape.ts";
+
+/** The field readers for a build descriptor's fields. */
+const { optionalStr, str, strArray } = fields("registry: descriptor field");
 
 /**
  * Where a registered build lives, so a runner can launch it. Two forms: a
@@ -118,38 +122,6 @@ export function stringifyBuildDescriptor(descriptor: BuildDescriptor): string {
 
 // --- Hardened parsing (untrusted JSON in, no casts) --------------------------
 
-/** Narrow an unknown value to a plain object without casting, else `null`. */
-function asObject(value: unknown): Record<string, unknown> | null {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return null;
-  }
-  const out: Record<string, unknown> = {};
-  for (const [key, val] of Object.entries(value)) out[key] = val;
-  return out;
-}
-
-/** Read a required string field, throwing a descriptive error if it is not one. */
-function str(object: Record<string, unknown>, field: string): string {
-  const value = object[field];
-  if (typeof value !== "string") {
-    throw new Error(`registry: descriptor field "${field}" is not a string`);
-  }
-  return value;
-}
-
-/** Read an optional string field, throwing if present but not a string. */
-function optionalStr(
-  object: Record<string, unknown>,
-  field: string,
-): string | undefined {
-  const value = object[field];
-  if (value === undefined) return undefined;
-  if (typeof value !== "string") {
-    throw new Error(`registry: descriptor field "${field}" is not a string`);
-  }
-  return value;
-}
-
 /** Read a required boolean field, throwing if it is not one. */
 function bool(object: Record<string, unknown>, field: string): boolean {
   const value = object[field];
@@ -157,17 +129,6 @@ function bool(object: Record<string, unknown>, field: string): boolean {
     throw new Error(`registry: descriptor field "${field}" is not a boolean`);
   }
   return value;
-}
-
-/** Read a required array-of-strings field, throwing if it is not one. */
-function strArray(object: Record<string, unknown>, field: string): string[] {
-  const value = object[field];
-  if (!Array.isArray(value) || value.some((v) => typeof v !== "string")) {
-    throw new Error(
-      `registry: descriptor field "${field}" is not a string array`,
-    );
-  }
-  return value.filter((v): v is string => typeof v === "string");
 }
 
 /** Read a required array field and map each element through `parse`. */

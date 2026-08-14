@@ -22,6 +22,7 @@ import {
   GEMINI_ASSET_NAMES,
   geminiArchiveFiles,
 } from "../build/gemini_archive.ts";
+import { withTemp } from "../packages/core/tests/_temp.ts";
 
 /** Lay out a minimal extension root (manifest, license, two skills). */
 async function extensionFixture(): Promise<string> {
@@ -108,8 +109,7 @@ Deno.test("the asset names are platform-prefixed the way Gemini matches", () => 
 });
 
 Deno.test("a broken extension root fails with errors that name the fix", async () => {
-  const root = await Deno.makeTempDir();
-  try {
+  await withTemp(async (root) => {
     // No manifest at all.
     await assertRejects(
       () => geminiArchiveFiles(root),
@@ -125,9 +125,7 @@ Deno.test("a broken extension root fails with errors that name the fix", async (
       Error,
       "requires a skills/ tree",
     );
-  } finally {
-    await Deno.remove(root, { recursive: true });
-  }
+  });
 });
 
 Deno.test({
@@ -158,13 +156,10 @@ Deno.test("the repo's real tree packs cleanly", async () => {
   // The actual release-time operation, run against this repository: the
   // manifest, license, and both skills pack without hitting tar's 100-byte
   // name limit.
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const packed = await buildGeminiArchive(`${dir}/zuke.tar.gz`);
     assertEquals(packed[0], "gemini-extension.json");
     assertEquals(packed.includes("skills/zuke-setup/SKILL.md"), true);
     assertEquals(packed.includes("skills/zuke-write-build/SKILL.md"), true);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });

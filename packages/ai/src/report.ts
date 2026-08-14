@@ -16,6 +16,7 @@ import type {
 } from "./types.ts";
 import type { RetryInfo } from "./retry.ts";
 import type { StoredFinding } from "./state.ts";
+import { cell } from "./markdown.ts";
 
 /** The settings echoed when a review starts, so the run shows what it's doing. */
 export interface ReviewStart {
@@ -62,27 +63,6 @@ export function formatUsage(usage?: Usage): string | undefined {
   if (usage.outputTokens !== undefined) parts.push(`${usage.outputTokens} out`);
   if (usage.totalTokens !== undefined) parts.push(`${usage.totalTokens} total`);
   return parts.length > 0 ? parts.join(" · ") : undefined;
-}
-
-/**
- * Make a model-supplied value safe to place in the reviewer's own comment:
- * `|` escaped so it cannot break out of a Markdown table cell, and the HTML
- * comment delimiters neutralised.
- *
- * The delimiters matter far beyond cosmetics. The reviewer's comment carries
- * its durable state in a hidden `<!-- zuke-ai-state:… -->` block, and it trusts
- * that block **because the comment is its own**. But its own comment also
- * repeats model output — titles, files, summaries — and the model reads an
- * attacker-controlled diff. Left raw, a finding titled with a forged state
- * block would be published inside the reviewer's comment and read back next
- * round as authoritative, letting a PR author mark real findings dismissed.
- * Authorship of the comment is not authorship of every byte in it.
- */
-function cell(value: string): string {
-  return value
-    .replaceAll("|", "\\|")
-    .replaceAll("<!--", "&lt;!--")
-    .replaceAll("-->", "--&gt;");
 }
 
 /** A model-supplied `file:line`, neutralised like any other untrusted value. */
@@ -430,12 +410,15 @@ function idHint(
   return lines;
 }
 
-/** The console line announcing a skipped review. */
+/** The console line announcing a skipped review (or fix). */
 export function skipConsoleLine(name: string, reason: string): string {
   return `[${name}] skipped — ${reason}`;
 }
 
-/** A Markdown section announcing a skipped review, for the job summary. */
+/**
+ * A Markdown section announcing a skipped review (or fix), for the job summary
+ * and the PR comment.
+ */
 export function skipMarkdown(
   name: string,
   target: string,

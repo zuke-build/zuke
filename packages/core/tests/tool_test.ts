@@ -12,6 +12,7 @@ import {
   ToolInstallSettings,
   ToolTasks,
 } from "../src/tool.ts";
+import { withTemp, withTempCwd } from "./_temp.ts";
 
 /** A tiny release tarball wrapping a `pkg/bin/tool` under a top directory. */
 function toolTarball(): Promise<Uint8Array> {
@@ -65,8 +66,7 @@ function recordingNpm(
 }
 
 Deno.test("ToolTasks.install fetches a single tool via a settings-lambda", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const seen: string[] = [];
     const bin = await ToolTasks.install((s) =>
       s
@@ -78,14 +78,11 @@ Deno.test("ToolTasks.install fetches a single tool via a settings-lambda", async
     assertEquals(bin.name, `kubectl${EXE}`);
     assertEquals(bin.path.endsWith(`/kubectl${EXE}`), true);
     assertEquals(seen, [`https://tools.test/kubectl-${Deno.build.arch}`]);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("toolchain installs every declared tool and maps names to paths", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const seen: string[] = [];
     const tools = toolchain((t) =>
       t
@@ -104,9 +101,7 @@ Deno.test("toolchain installs every declared tool and maps names to paths", asyn
       "https://tools.test/helm",
       "https://tools.test/kubectl",
     ]);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("toolchain exposes its configured tools in order", () => {
@@ -117,8 +112,7 @@ Deno.test("toolchain exposes its configured tools in order", () => {
 });
 
 Deno.test("toolchain provisions npm tools alongside release tools", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const seen: string[] = [];
     const npmCalls: string[][] = [];
     const tools = toolchain((t) =>
@@ -141,9 +135,7 @@ Deno.test("toolchain provisions npm tools alongside release tools", async () => 
     assertEquals(npmCalls.length, 1);
     assertEquals(npmCalls[0][4], "vitest@4.1.9");
     assertEquals(seen, ["https://tools.test/helm"]);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("toolchain exposes its npm tools in declaration order", () => {
@@ -154,8 +146,7 @@ Deno.test("toolchain exposes its npm tools in declaration order", () => {
 });
 
 Deno.test("ToolTasks.npm provisions a single npm package with a distinct bin", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const npmCalls: string[][] = [];
     const bin = await ToolTasks.npm(
       { name: "@nestjs/cli", version: "10.0.0", bin: "nest" },
@@ -163,9 +154,7 @@ Deno.test("ToolTasks.npm provisions a single npm package with a distinct bin", a
     );
     assertEquals(bin.name, `nest${NPM_EXE}`);
     assertEquals(npmCalls[0][4], "@nestjs/cli@10.0.0");
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("a per-tool destDir overrides the toolchain default", async () => {
@@ -195,8 +184,7 @@ Deno.test("a per-tool destDir overrides the toolchain default", async () => {
 });
 
 Deno.test("a per-tool download seam is used when the toolchain sets none", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const seen: string[] = [];
     const bins = await toolchain()
       .tool((s) =>
@@ -206,16 +194,11 @@ Deno.test("a per-tool download seam is used when the toolchain sets none", async
       .install(); // no download override at the toolchain level
     assertEquals(bins.get("solo")?.name, `solo${EXE}`);
     assertEquals(seen, ["https://tools.test/solo"]);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("install with no destDir uses .zuke/tools under the working directory", async () => {
-  const dir = await Deno.makeTempDir();
-  const original = Deno.cwd();
-  try {
-    Deno.chdir(dir);
+  await withTempCwd(async () => {
     const bins = await toolchain()
       .tool((s) =>
         s.name("here").url(() => "u").download(recordingDownload([]))
@@ -225,10 +208,7 @@ Deno.test("install with no destDir uses .zuke/tools under the working directory"
       bins.get("here")?.path.endsWith(`/.zuke/tools/here${EXE}`),
       true,
     );
-  } finally {
-    Deno.chdir(original);
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("ToolInstallSettings.options_ requires name and url", () => {
@@ -267,8 +247,7 @@ Deno.test("ToolInstallSettings carries every option through to the install spec"
 });
 
 Deno.test("ToolTasks.installTree unpacks a runtime tree via a settings-lambda", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const tarball = await toolTarball();
     const root = await ToolTasks.installTree((s) =>
       s.name("node").destDir(dir).archive("tar.gz").strip(1).bins("bin/tool")
@@ -280,14 +259,11 @@ Deno.test("ToolTasks.installTree unpacks a runtime tree via a settings-lambda", 
       await Deno.readTextFile(String(root("bin", "tool"))),
       "TREE-BIN",
     );
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("toolchain installs a runtime tree alongside release tools", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const seen: string[] = [];
     const tarball = await toolTarball();
     // Each tool carries its own download seam (a tree needs a real archive, not
@@ -314,14 +290,11 @@ Deno.test("toolchain installs a runtime tree alongside release tools", async () 
     );
     // The tree carried its own download seam; the toolchain default fetched helm.
     assertEquals(seen, ["https://tools.test/helm"]);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("a toolchain-level download seam is applied to a tree without its own", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const tarball = await toolTarball();
     // The tree sets no .download(), so the toolchain-level seam must be used.
     const bins = await toolchain()
@@ -336,9 +309,7 @@ Deno.test("a toolchain-level download seam is applied to a tree without its own"
       await Deno.readTextFile(String(root?.("bin", "tool"))),
       "TREE-BIN",
     );
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("toolchain exposes its configured trees in order", () => {

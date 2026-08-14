@@ -3,7 +3,10 @@
 
 import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
-import { missingTool } from "@zuke/core/tooling/conformance";
+import {
+  assertWrapperConformance,
+  missingTool,
+} from "@zuke/core/tooling/conformance";
 import { GcloudSettings, GcloudTasks } from "../src/gcloud.ts";
 
 Deno.test("the default binary is gcloud", () => {
@@ -96,5 +99,15 @@ Deno.test("sqlOperationsWait builds the wait command", () => {
   assertEquals(
     new GcloudSettings().sqlOperationsWait("op-123").project("p").argv(),
     ["gcloud", "sql", "operations", "wait", "op-123", "--project", "p"],
+  );
+});
+
+Deno.test("gcloud: conforms to the wrapper contract", async () => {
+  await assertWrapperConformance(
+    () => new GcloudSettings().sqlInstancesDescribe("db"),
+    "gcloud",
+    {
+      resolution: "path",
+    },
   );
 });

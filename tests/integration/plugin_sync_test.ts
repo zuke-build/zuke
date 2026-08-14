@@ -19,6 +19,7 @@ import {
   syncPluginSkills,
 } from "../../build/plugin_sync.ts";
 import { runCli } from "./_harness.ts";
+import { withTemp } from "../../packages/core/tests/_temp.ts";
 
 /** A fixture build gating on drift between `source` and `dest`, like `pluginSyncCheck`. */
 function gateBuild(source: string, dest: string) {
@@ -39,8 +40,7 @@ function gateBuild(source: string, dest: string) {
 }
 
 Deno.test("pluginSyncCheck fails loudly when the destination has drifted", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const source = `${dir}/skills`;
     const dest = `${dir}/plugin-skills`;
     await Deno.mkdir(`${source}/a`, { recursive: true });
@@ -50,14 +50,11 @@ Deno.test("pluginSyncCheck fails loudly when the destination has drifted", async
     assertEquals(code, 1);
     assertStringIncludes(err, "drifted");
     assertStringIncludes(err, "missing");
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("pluginSync then pluginSyncCheck round-trips clean through the CLI", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const source = `${dir}/skills`;
     const dest = `${dir}/plugin-skills`;
     await Deno.mkdir(`${source}/a`, { recursive: true });
@@ -71,7 +68,5 @@ Deno.test("pluginSync then pluginSyncCheck round-trips clean through the CLI", a
     const checked = await runCli(Gate, ["check"]);
     assertEquals(checked.code, 0);
     assertStringIncludes(checked.out, "in sync");
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });

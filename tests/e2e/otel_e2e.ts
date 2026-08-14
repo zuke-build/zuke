@@ -24,30 +24,9 @@ import {
   FileSystemStateStore,
 } from "../../packages/core/mod.ts";
 import { traceIdFor } from "../../packages/otel/src/ids.ts";
+import { runFixture } from "./_harness.ts";
 
 const FIXTURE = new URL("./fixtures/otel_build.ts", import.meta.url);
-
-/** The captured result of one fixture subprocess. */
-interface Run {
-  code: number;
-  out: string;
-}
-
-/** Run the OTel fixture as a real `deno` subprocess against `dir` + capture file. */
-async function runFixture(
-  args: string[],
-  dir: string,
-  captureFile: string,
-): Promise<Run> {
-  const command = new Deno.Command(Deno.execPath(), {
-    args: ["run", "-A", FIXTURE.href, ...args],
-    env: { ZUKE_STATE_DIR: dir, OTEL_CAPTURE_FILE: captureFile },
-    stdout: "piped",
-    stderr: "piped",
-  });
-  const { code, stdout } = await command.output();
-  return { code, out: new TextDecoder().decode(stdout) };
-}
 
 /** Parse the capture file into `{ url, payload }` records (one per exported POST). */
 async function readCaptured(
@@ -64,9 +43,10 @@ Deno.test("two processes export one complete trace under a shared trace id", asy
   const dir = await Deno.makeTempDir({ prefix: "zuke-otel-e2e-" });
   const captureFile = `${dir}/otlp.ndjson`;
   await Deno.writeTextFile(captureFile, "");
+  const env = { ZUKE_STATE_DIR: dir, OTEL_CAPTURE_FILE: captureFile };
   try {
     // Process A: run to the gate and suspend.
-    const suspend = await runFixture(["promote"], dir, captureFile);
+    const suspend = await runFixture(FIXTURE, ["promote"], env);
     assertEquals(suspend.code, 0);
     assertEquals(suspend.out.includes("DEPLOYED"), true);
     assertEquals(suspend.out.includes("PROMOTED"), false);
@@ -86,11 +66,12 @@ Deno.test("two processes export one complete trace under a shared trace id", asy
     );
 
     // Process B: deliver the signal and finish.
-    const resumed = await runFixture(
-      ["resume", id, "--signal", "approved"],
-      dir,
-      captureFile,
-    );
+    const resumed = await runFixture(FIXTURE, [
+      "resume",
+      id,
+      "--signal",
+      "approved",
+    ], env);
     assertEquals(resumed.code, 0);
     assertEquals(resumed.out.includes("PROMOTED"), true);
     assertEquals(

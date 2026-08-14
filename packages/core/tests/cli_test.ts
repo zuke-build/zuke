@@ -24,6 +24,8 @@ import { BUILTIN_FLAGS, RESERVED_COMMANDS } from "../src/cli_spec.ts";
 import { FileSystemStateStore } from "../src/state/fs_store.ts";
 import { defaultStateHost } from "../src/state/store.ts";
 import type { RunRecord } from "../src/state/types.ts";
+import { withTemp } from "./_temp.ts";
+import { capture } from "./_console.ts";
 
 /** A minimal valid run record for the `runs` command tests. */
 function sampleRunRecord(overrides: Partial<RunRecord> = {}): RunRecord {
@@ -60,24 +62,6 @@ const greetFlags = [
 ];
 
 /** Run `fn` with `console.log`/`console.error` captured instead of printed. */
-async function capture(
-  fn: () => Promise<number> | number,
-): Promise<{ code: number; out: string[]; err: string[] }> {
-  const out: string[] = [];
-  const err: string[] = [];
-  const origLog = console.log;
-  const origErr = console.error;
-  console.log = (...args: unknown[]) => void out.push(args.join(" "));
-  console.error = (...args: unknown[]) => void err.push(args.join(" "));
-  try {
-    const code = await fn();
-    return { code, out, err };
-  } finally {
-    console.log = origLog;
-    console.error = origErr;
-  }
-}
-
 class Demo extends Build {
   clean = target().description("Clean").executes(() => {});
   build = target().description("Build").dependsOn(this.clean).executes(
@@ -386,6 +370,11 @@ Deno.test("parseArgs reads --state and --actor", () => {
   assertEquals(parseArgs(["build", "--state"]).state, true);
   assertEquals(parseArgs(["build", "--actor", "alice"]).actor, "alice");
   assertEquals(parseArgs(["build", "--actor=bob"]).actor, "bob");
+  // An empty space-form value (an unset shell variable) is dropped as absent —
+  // unlike --keep/--limit, which capture it so their validator can reject it.
+  assertEquals(parseArgs(["build", "--actor", ""]).actor, undefined);
+  // The inline form has no such guard: `--actor=` is an explicit empty value.
+  assertEquals(parseArgs(["build", "--actor="]).actor, "");
 });
 
 Deno.test("parseArgs reads resume with its run id, signal, data, and flags", () => {
@@ -485,8 +474,7 @@ Deno.test("parseArgs reads the runs command, sub-action, id, and filters", () =>
 });
 
 Deno.test("main: runs list reads persisted runs; --json emits run data", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const store = new FileSystemStateStore(dir, defaultStateHost);
     await store.putRun(sampleRunRecord({ id: "run-z" }), null);
     class Stateful extends Build {
@@ -512,9 +500,7 @@ Deno.test("main: runs list reads persisted runs; --json emits run data", async (
     const show = await capture(() => main(Stateful, ["runs", "show", "run-z"]));
     assertEquals(show.code, 0);
     assertStringIncludes(show.out.join("\n"), "Run run-z");
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("main: runs list rejects an unknown --status", async () => {
@@ -554,8 +540,7 @@ Deno.test("main: runs prune validates --limit, --keep, and --keep-last", async (
 });
 
 Deno.test("main: runs prune deletes eligible runs through the CLI", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const store = new FileSystemStateStore(dir, defaultStateHost);
     await store.putRun(
       sampleRunRecord({
@@ -577,9 +562,7 @@ Deno.test("main: runs prune deletes eligible runs through the CLI", async () => 
     assertEquals(ok.code, 0);
     assertStringIncludes(ok.out.join("\n"), "Pruned 1 run");
     assertEquals(await store.getRun("old"), null);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("parseArgs reads the mcp --http address", () => {
@@ -744,8 +727,7 @@ Deno.test("main completions errors without a valid sub-action or shell", async (
 });
 
 Deno.test("main completions install wires up each shell and is idempotent", async () => {
-  const home = await Deno.makeTempDir();
-  try {
+  await withTemp(async (home) => {
     const install = (shell: string) =>
       capture(() =>
         main(Demo, ["completions", "install", shell], {
@@ -770,9 +752,7 @@ Deno.test("main completions install wires up each shell and is idempotent", asyn
       `${home}/.config/zuke/completions/zuke.bash`,
     );
     assertStringIncludes(script, "_zuke_complete");
-  } finally {
-    await Deno.remove(home, { recursive: true });
-  }
+  });
 });
 
 Deno.test("main completions install reports a failure as exit 1", async () => {
@@ -1205,8 +1185,7 @@ Deno.test("main: mcp --http refuses a non-loopback bind without a token", async 
 });
 
 Deno.test("main: cancel reports a missing run as a friendly error", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const store = new FileSystemStateStore(dir, defaultStateHost);
     class Stateful extends Build {
       override stateStore() {
@@ -1219,14 +1198,11 @@ Deno.test("main: cancel reports a missing run as a friendly error", async () => 
     );
     assertEquals(code, 1);
     assertStringIncludes(err.join("\n"), 'no run "ghost"');
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("main: cancelling an already-finished run is a no-op exit 0", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const store = new FileSystemStateStore(dir, defaultStateHost);
     // A terminal (succeeded) run: cancel is documented as idempotent.
     await store.putRun(sampleRunRecord({ id: "done" }), null);
@@ -1241,14 +1217,11 @@ Deno.test("main: cancelling an already-finished run is a no-op exit 0", async ()
     // The record stays succeeded — cancel did not rewrite history.
     const record = await store.getRun("done");
     assertEquals(record?.record.status, "succeeded");
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("main: cancel exits 1 when a compensation fails", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const store = new FileSystemStateStore(dir, defaultStateHost);
     class Failing extends Build {
       override stateStore() {
@@ -1270,9 +1243,7 @@ Deno.test("main: cancel exits 1 when a compensation fails", async () => {
     // …but the run is still settled cancelled (cleanup is maximal).
     const record = await store.getRun("stuck");
     assertEquals(record?.record.status, "cancelled");
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("run() defaults to Deno.args when no args option is given", async () => {
@@ -1331,8 +1302,7 @@ Deno.test("formatList renders a parameter declared without a description", () =>
 });
 
 Deno.test("main: runs list applies --status, --target, and --since filters", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const store = new FileSystemStateStore(dir, defaultStateHost);
     await store.putRun(sampleRunRecord({ id: "ok-run" }), null);
     await store.putRun(
@@ -1366,9 +1336,7 @@ Deno.test("main: runs list applies --status, --target, and --since filters", asy
     assertEquals(await ids("--since", "2026-01-01T00:00:00.000Z"), ["ok-run"]);
     // --limit keeps the newest run only.
     assertEquals(await ids("--limit", "1"), ["ok-run"]);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("main: --affected rejects a git base that reads as a git option", async () => {

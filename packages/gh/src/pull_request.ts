@@ -16,13 +16,13 @@ import {
   assertRefName,
   caller,
   DEFAULT_BASE_URL,
-  env,
   GhApiError,
   type GhCall,
   isRecord,
   readNumber,
   readString,
 } from "./api.ts";
+import { resolveAuthToken, resolveRepoSlug } from "./credentials.ts";
 
 /** The pull request a {@link GhPullRequestApi.pullRequest} call resolved to. */
 export interface GhPullRequestResult {
@@ -114,25 +114,12 @@ export class GhPullRequestSettings {
 
   /** The effective `owner/repo`, from the setting or the environment. */
   repoSlug_(): string {
-    const slug = this.repo_ ?? env("GITHUB_REPOSITORY");
-    if (slug === undefined) {
-      throw new Error(
-        "opening a pull request requires .repo('owner/name') (or " +
-          "GITHUB_REPOSITORY).",
-      );
-    }
-    return slug;
+    return resolveRepoSlug(this.repo_, "opening a pull request");
   }
 
   /** The effective token, from the setting or the environment. */
   authToken_(): string {
-    const token = this.token_ ?? env("GITHUB_TOKEN");
-    if (token === undefined) {
-      throw new Error(
-        "opening a pull request requires .token(...) (or GITHUB_TOKEN).",
-      );
-    }
-    return token;
+    return resolveAuthToken(this.token_, "opening a pull request");
   }
 }
 

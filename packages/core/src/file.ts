@@ -22,6 +22,7 @@
  * @module
  */
 
+import { defaultReadEnv } from "./internal.ts";
 import type { PathLike } from "./path.ts";
 
 /** Options for {@link FileTasksApi.createDirectory}. */
@@ -40,15 +41,6 @@ export interface RemoveOptions {
 export interface CopyOptions {
   /** Overwrite an existing destination file (default `true`). */
   overwrite?: boolean;
-}
-
-/** Read an environment variable, treating missing env access as unset. */
-function readEnv(name: string): string | undefined {
-  try {
-    return Deno.env.get(name);
-  } catch {
-    return undefined;
-  }
 }
 
 /** Whether a filesystem entry exists; a `NotFound` maps to `false`. */
@@ -157,7 +149,7 @@ export const FileTasks: FileTasksApi = {
   },
 
   homeDirectory(): string {
-    const home = readEnv("HOME") ?? readEnv("USERPROFILE");
+    const home = defaultReadEnv("HOME") ?? defaultReadEnv("USERPROFILE");
     if (home === undefined || home === "") {
       throw new Error(
         "Cannot determine the home directory: neither HOME nor USERPROFILE " +

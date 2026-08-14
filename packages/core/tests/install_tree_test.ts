@@ -4,8 +4,10 @@
 import { assertEquals, assertRejects } from "./_assert.ts";
 import { type DownloadFn, installTree } from "../src/install.ts";
 import { gzip, tar, type TarEntry } from "../src/compression.ts";
+import { sha256Hex } from "../src/internal.ts";
 import { makeZip, STORED } from "./_zip.ts";
 import { GNU, longLink, ustarArchive } from "./_tar.ts";
+import { withTemp } from "./_temp.ts";
 
 const enc = (s: string) => new TextEncoder().encode(s);
 const POSIX = Deno.build.os !== "windows";
@@ -19,15 +21,6 @@ function fakeDownload(
     if (counter) counter.calls++;
     await Deno.writeFile(String(dest), bytes);
   };
-}
-
-/** Hex SHA-256 of bytes, matching installTree's own hashing. */
-async function sha256Hex(bytes: Uint8Array): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new Uint8Array(bytes));
-  return Array.from(
-    new Uint8Array(digest),
-    (b) => b.toString(16).padStart(2, "0"),
-  ).join("");
 }
 
 /**
@@ -59,8 +52,7 @@ function nodeTarball(): Promise<Uint8Array> {
 }
 
 Deno.test("installTree unpacks a runtime tree, strips, and returns the root", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const root = await installTree({
       name: "node",
       destDir: dir,
@@ -91,9 +83,7 @@ Deno.test("installTree unpacks a runtime tree, strips, and returns the root", as
         0;
       assertEquals(targetMode & 0o111, 0o111);
     }
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("installTree unpacks a GNU tarball with @LongLink long paths (Node's Linux form)", async () => {
@@ -101,8 +91,7 @@ Deno.test("installTree unpacks a GNU tarball with @LongLink long paths (Node's L
   // >100-byte path arrives as a @LongLink pseudo-entry plus a truncated header.
   // One name here truncates exactly at a "/", which used to make the extractor
   // writeFile onto a directory — "Is a directory (os error 21)".
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const parent = `node-v1/lib/node_modules/npm/node_modules/${
       "x".repeat(57)
     }/`; // exactly 100 bytes
@@ -134,14 +123,11 @@ Deno.test("installTree unpacks a GNU tarball with @LongLink long paths (Node's L
       ),
       "b",
     );
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("installTree verifies the archive checksum and reuses a cached tree", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const bytes = await nodeTarball();
     const counter = { calls: 0 };
     const spec = {
@@ -158,14 +144,11 @@ Deno.test("installTree verifies the archive checksum and reuses a cached tree", 
     const second = await installTree(spec);
     assertEquals(counter.calls, 1); // the second call is a cache hit
     assertEquals(String(first), String(second));
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("installTree rejects a checksum mismatch and installs nothing", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const err = await assertRejects(() =>
       installTree({
         name: "node",
@@ -178,14 +161,11 @@ Deno.test("installTree rejects a checksum mismatch and installs nothing", async 
       })
     );
     assertEquals(err.message.includes("checksum mismatch"), true);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("installTree re-installs on a missing bin or a corrupt marker", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const bytes = await nodeTarball();
     const counter = { calls: 0 };
     const spec = {
@@ -207,14 +187,11 @@ Deno.test("installTree re-installs on a missing bin or a corrupt marker", async 
     await Deno.writeTextFile(`${String(root)}.tree.json`, "not json{");
     await installTree(spec);
     assertEquals(counter.calls, 3);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("installTree re-installs when the pinned checksum changes", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const v1 = await nodeTarball();
     // A second, distinct tarball (different bin contents → a different checksum).
     const v2 = await gzip(tar([
@@ -246,14 +223,11 @@ Deno.test("installTree re-installs when the pinned checksum changes", async () =
       await Deno.readTextFile(String(root("bin", "node"))),
       "#!/bin/sh\necho node-v2\n",
     );
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("installTree unpacks a zip tree and skips chmod for a windows target", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     // Windows Node ships a .zip of real .exe/.cmd files (no symlinks). A windows
     // target skips chmod — which exercises that branch on a POSIX CI runner too.
     const bytes = await makeZip([
@@ -272,14 +246,11 @@ Deno.test("installTree unpacks a zip tree and skips chmod for a windows target",
     });
     assertEquals(await Deno.readTextFile(String(root("node.exe"))), "MZ");
     assertEquals(await Deno.readTextFile(String(root("npm.cmd"))), "@echo off");
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("installTree without a checksum downloads every time and writes no marker", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const counter = { calls: 0 };
     const spec = {
       name: "node",
@@ -299,7 +270,5 @@ Deno.test("installTree without a checksum downloads every time and writes no mar
       ),
       false, // no marker recorded without a checksum
     );
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });

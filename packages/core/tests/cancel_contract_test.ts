@@ -29,21 +29,9 @@ import { Build, discoverTargets } from "../src/build.ts";
 import { target } from "../src/target.ts";
 import { execute } from "../src/executor.ts";
 import { cancelRun } from "../src/cancel.ts";
-import { FileSystemStateStore } from "../src/state/fs_store.ts";
-import { defaultStateHost } from "../src/state/store.ts";
+import type { FileSystemStateStore } from "../src/state/fs_store.ts";
 import type { RunEvent, RunRecord } from "../src/state/types.ts";
-
-/** Run `fn` with a temp filesystem store, cleaned up afterwards. */
-async function withTempStore(
-  fn: (store: FileSystemStateStore) => Promise<void>,
-): Promise<void> {
-  const dir = await Deno.makeTempDir();
-  try {
-    await fn(new FileSystemStateStore(`${dir}/runs`, defaultStateHost));
-  } finally {
-    await Deno.remove(dir, { recursive: true }).catch(() => {});
-  }
-}
+import { withTempStore } from "./_store.ts";
 
 /** The single run in `store`. */
 async function onlyRun(store: FileSystemStateStore): Promise<RunRecord> {

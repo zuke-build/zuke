@@ -15,6 +15,7 @@ import {
 import { Build, target } from "../../packages/core/mod.ts";
 import { checkSkillTree } from "../../build/skill_check.ts";
 import { runCli } from "./_harness.ts";
+import { withTemp } from "../../packages/core/tests/_temp.ts";
 
 /** A fixture build gating on spec violations under `root`, like `skillsCheck`. */
 function gateBuild(root: string) {
@@ -31,8 +32,7 @@ function gateBuild(root: string) {
 }
 
 Deno.test("skillsCheck passes a conforming tree through the CLI", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     await Deno.mkdir(`${dir}/my-skill`);
     await Deno.writeTextFile(
       `${dir}/my-skill/SKILL.md`,
@@ -42,14 +42,11 @@ Deno.test("skillsCheck passes a conforming tree through the CLI", async () => {
     const { code, out } = await runCli(gateBuild(dir), ["check"]);
     assertEquals(code, 0);
     assertStringIncludes(out, "skills conform");
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("skillsCheck fails loudly on a renamed directory through the CLI", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     // The realistic slip: the folder was renamed, the frontmatter was not.
     await Deno.mkdir(`${dir}/new-name`);
     await Deno.writeTextFile(
@@ -62,7 +59,5 @@ Deno.test("skillsCheck fails loudly on a renamed directory through the CLI", asy
     assertStringIncludes(err, "violates the spec");
     assertStringIncludes(err, '"old-name"');
     assertStringIncludes(err, '"new-name"');
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });

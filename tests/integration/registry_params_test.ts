@@ -21,6 +21,8 @@ import {
   RegistryMcpServer,
   type RegistryRunner,
 } from "../../packages/core/src/mcp/registry_server.ts";
+import { withTemp } from "../../packages/core/tests/_temp.ts";
+import { silence } from "../../packages/core/tests/_console.ts";
 
 /** A parameterized deploy build, including a secret that must never surface. */
 class Deploy extends Build {
@@ -29,17 +31,6 @@ class Deploy extends Build {
   sit = parameter("SIT slot");
   apiToken = parameter("deploy API token").secret();
   deploy = target().description("Deploy the repos").executes(() => {});
-}
-
-/** Run `fn` with console output suppressed (registerCommand prints a line). */
-async function quietly(fn: () => Promise<void>): Promise<void> {
-  const log = console.log;
-  console.log = () => {};
-  try {
-    await fn();
-  } finally {
-    console.log = log;
-  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -72,10 +63,9 @@ function callResult(reply: unknown): { text: string; isError: boolean } {
 }
 
 Deno.test("a registered build's parameters flow into the registry run tool", async () => {
-  const dir = await Deno.makeTempDir({ prefix: "zuke-it-registry-params-" });
-  try {
+  await withTemp(async (dir) => {
     const registry = new FileSystemBuildRegistry(dir);
-    await quietly(async () => {
+    await silence(async () => {
       const code = await registerCommand(new Deploy(), {
         registry,
         location: { kind: "module", module: "file:///r/deploy.ts", cwd: "/r" },
@@ -140,20 +130,17 @@ Deno.test("a registered build's parameters flow into the registry run tool", asy
     assertEquals(rejected.isError, true);
     assertStringIncludes(rejected.text, "apiToken");
     assertEquals(calls.length, 1);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  }, { prefix: "zuke-it-registry-params-" });
 });
 
 Deno.test("a registered remote entry module is refused by the run tool, not spawned", async () => {
-  const dir = await Deno.makeTempDir({ prefix: "zuke-it-registry-launch-" });
-  try {
+  await withTemp(async (dir) => {
     const registry = new FileSystemBuildRegistry(dir);
     // Whoever can write the registry names where the build lives. Here that is
     // a URL — the descriptor is serialized to JSON and parsed back before the
     // server ever sees it, so this proves the location survives the round trip
     // and is still refused.
-    await quietly(async () => {
+    await silence(async () => {
       const code = await registerCommand(new Deploy(), {
         registry,
         location: {
@@ -207,7 +194,5 @@ Deno.test("a registered remote entry module is refused by the run tool, not spaw
     );
     assertEquals(allowed.isError, false);
     assertEquals(calls.length, 1);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  }, { prefix: "zuke-it-registry-launch-" });
 });

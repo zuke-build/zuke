@@ -99,6 +99,15 @@ against public CI.
 - **Type confusion / unsafe casts:** strict TypeScript with `any`, forced `as`
   casts, and non-null `!` assertions banned by policy and lint; runtime guards
   are exercised by tests.
+- **A guard hardened in one copy and not the other:** a security check whose
+  value is being applied everywhere must have exactly one implementation, so
+  fixing it fixes every call site. Duplicated logic is a review-blocking defect
+  rather than a style note, because copies drift: a second zip-slip guard, a
+  Markdown escaper missing a sibling's newline collapse, two loopback checks
+  disagreeing about `[::1]`, and a `JSON.parse` guard present in one of two twin
+  stores were all found and consolidated this way. Policy in
+  [`AGENTS.md`](../AGENTS.md#coding-guidelines-non-negotiable); both AI
+  reviewers read it from the diff base and flag retyped helpers.
 - **Regression and logic errors:** a 95% line-and-branch coverage gate, three
   test layers (unit, in-process integration, cross-process e2e on three OSes),
   and an adversarial review pass on every feature.

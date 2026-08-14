@@ -35,31 +35,13 @@
 
 import { httpDownload } from "./http.ts";
 import { extractTarGzip, extractZip } from "./compression.ts";
-import { type AbsolutePath, absolutePath, type PathLike } from "./path.ts";
+import { type AbsolutePath, type PathLike, resolveDir } from "./path.ts";
+import { readFileOrNull, sha256Hex, statOrNull } from "./internal.ts";
 import {
   type Architecture,
   type OperatingSystem,
   operatingSystem,
 } from "./host.ts";
-
-/** Hex SHA-256 of raw bytes, via the built-in Web Crypto API (no dependency). */
-async function sha256(bytes: Uint8Array): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new Uint8Array(bytes));
-  return Array.from(
-    new Uint8Array(digest),
-    (b) => b.toString(16).padStart(2, "0"),
-  ).join("");
-}
-
-/** Read a file's bytes, or `null` when it does not exist. */
-async function readFileOrNull(path: string): Promise<Uint8Array | null> {
-  try {
-    return await Deno.readFile(path);
-  } catch (error) {
-    if (error instanceof Deno.errors.NotFound) return null;
-    throw error;
-  }
-}
 
 /** The host identity: a Zuke {@link OperatingSystem} and {@link Architecture}. */
 export interface InstallPlatform {
@@ -229,7 +211,7 @@ async function cachedInstall(
   if (marker === null || marker.checksum !== checksum) return false;
   const binary = await readFileOrNull(String(target));
   if (binary === null) return false;
-  return await sha256(binary) === marker.binary;
+  return await sha256Hex(binary) === marker.binary;
 }
 
 /** Record a verified install so {@link cachedInstall} can re-check it later. */
@@ -237,7 +219,7 @@ async function writeMarker(
   target: AbsolutePath,
   checksum: string,
 ): Promise<void> {
-  const binary = await sha256(await Deno.readFile(String(target)));
+  const binary = await sha256Hex(await Deno.readFile(String(target)));
   await Deno.writeTextFile(
     markerPath(target),
     `${JSON.stringify({ checksum, binary })}\n`,
@@ -287,20 +269,13 @@ async function verifyChecksum(
   bytes: Uint8Array,
   checksum: string,
 ): Promise<void> {
-  const actual = await sha256(bytes);
+  const actual = await sha256Hex(bytes);
   if (actual !== checksum) {
     throw new Error(
       `checksum mismatch for "${name}": expected ${checksum}, got ${actual}. ` +
         `The download may be corrupt or tampered with; nothing was installed.`,
     );
   }
-}
-
-/** Resolve a possibly-relative directory to an absolute path (against `cwd`). */
-function resolveDir(dir: string): AbsolutePath {
-  const slashed = dir.replace(/\\/g, "/");
-  const isAbsolute = slashed.startsWith("/") || /^[A-Za-z]:/.test(slashed);
-  return absolutePath(isAbsolute ? slashed : `${Deno.cwd()}/${slashed}`);
 }
 
 /**
@@ -384,17 +359,6 @@ export async function installRelease(
   return target;
 }
 
-/** Whether a filesystem path exists (follows symlinks, so a bin symlink counts). */
-async function pathExists(path: string): Promise<boolean> {
-  try {
-    await Deno.stat(path);
-    return true;
-  } catch (error) {
-    if (error instanceof Deno.errors.NotFound) return false;
-    throw error;
-  }
-}
-
 /** The marker file recording the checksum an installed tree satisfied. */
 function treeMarkerPath(treeRoot: AbsolutePath): string {
   return `${String(treeRoot)}.tree.json`;
@@ -428,7 +392,9 @@ async function cachedTree(
     return false;
   }
   for (const bin of bins) {
-    if (!await pathExists(String(treeRoot(...bin.split("/"))))) return false;
+    if (await statOrNull(String(treeRoot(...bin.split("/")))) === null) {
+      return false;
+    }
   }
   return true;
 }

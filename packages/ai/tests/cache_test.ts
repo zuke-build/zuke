@@ -4,6 +4,7 @@
 import { assertEquals } from "../../core/tests/_assert.ts";
 import { AiCache, aiCache } from "../src/cache.ts";
 import type { CacheEntry, CacheStore } from "../src/cache.ts";
+import { withTemp } from "../../core/tests/_temp.ts";
 
 /** An in-memory {@link CacheStore} (a Map) so tests touch no real filesystem. */
 function memoryStore(): CacheStore & { entries: Map<string, CacheEntry> } {
@@ -134,8 +135,7 @@ Deno.test("aiCache() builds a default instance and applies a configure lambda", 
 });
 
 Deno.test("the default file store round-trips and misses cleanly", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const cache = new AiCache().dir(dir).now(() => 42);
     const key = cache.key_(["model", "diff"]);
     // A missing file (the dir does not even exist yet) is a clean miss.
@@ -160,9 +160,7 @@ Deno.test("the default file store round-trips and misses cleanly", async () => {
       JSON.stringify({ text: "x" }),
     );
     assertEquals(await cache.get_(key), undefined);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("get_ swallows a throwing store and reports a miss (its contract)", async () => {

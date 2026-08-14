@@ -7,7 +7,10 @@ import {
   assertThrows,
 } from "../../core/tests/_assert.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
-import { missingTool } from "@zuke/core/tooling/conformance";
+import {
+  assertWrapperConformance,
+  missingTool,
+} from "@zuke/core/tooling/conformance";
 import {
   GitAddSettings,
   GitBranchSettings,
@@ -291,4 +294,10 @@ Deno.test("GitTasks.run reaches execution", async () => {
     () => GitTasks.run((s) => missingTool(s).command("rev-parse", "HEAD")),
     ToolNotFoundError,
   );
+});
+
+Deno.test("git: conforms to the wrapper contract", async () => {
+  await assertWrapperConformance(() => new GitInitSettings(), "git", {
+    resolution: "path",
+  });
 });

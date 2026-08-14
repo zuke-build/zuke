@@ -45,11 +45,8 @@ import { agentPrompt } from "./prompts/agent.ts";
 import { commitChanged, type GitRunner, porcelainPaths } from "./commit.ts";
 import { fenceMarkdown } from "./markdown.ts";
 import { writeStepSummary } from "./report.ts";
-import { postComment } from "./comment.ts";
+import { postComment, postGithubSuggestions } from "./comment.ts";
 import { type EnvReader, readEnv } from "./hosts.ts";
-import { resolveKey } from "./provider.ts";
-import { resolveGithubContext } from "./hosts/github.ts";
-import { postSuggestions } from "./hosts/github_review.ts";
 import { diffToSuggestions } from "./diff_suggest.ts";
 
 /** The failure context handed to an {@link AgentRunner}, plus a ready prompt. */
@@ -296,18 +293,11 @@ export class AgentFixer implements Remediation {
       `Proposed by the agent fix for \`${target}\`.`,
     );
     if (suggestions.length === 0) return 0;
-    const token = this.#commentToken !== undefined
-      ? resolveKey(this.#commentToken)
-      : this.#env("GITHUB_TOKEN") ?? "";
-    const context = resolveGithubContext(token, this.#env);
-    if (context === undefined) return 0;
-    try {
-      return await postSuggestions(context, suggestions, this.#fetch ?? fetch);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.warn(`[${this.name}] could not post suggestions: ${message}`);
-      return 0;
-    }
+    return await postGithubSuggestions(this.name, suggestions, {
+      commentToken: this.#commentToken,
+      env: this.#env,
+      fetch: this.#fetch,
+    });
   }
 
   /** Report what the agent did to the console, the job summary, and the PR. */

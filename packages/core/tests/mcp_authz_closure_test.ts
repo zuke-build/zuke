@@ -20,10 +20,11 @@
 import { assertEquals, assertStringIncludes } from "./_assert.ts";
 import { Build, parameter, target } from "../mod.ts";
 import { McpServer, type McpServerOptions } from "../src/mcp/server.ts";
-import { FileSystemStateStore } from "../src/state/fs_store.ts";
-import { defaultStateHost } from "../src/state/store.ts";
+import type { FileSystemStateStore } from "../src/state/fs_store.ts";
 import { AUDIT_RUN_ID } from "../src/mcp/audit.ts";
-import type { RunEvent, RunRecord } from "../src/state/types.ts";
+import type { RunEvent } from "../src/state/types.ts";
+import { runRecord } from "./_fakes.ts";
+import { withTempStore } from "./_store.ts";
 
 /**
  * A build with a real dependency chain. `release` → `deploy` → `lint`, plus an
@@ -98,17 +99,13 @@ async function withServer(
   options: Omit<McpServerOptions, "stateStore">,
   fn: (server: McpServer, store: FileSystemStateStore) => Promise<void>,
 ): Promise<void> {
-  const dir = await Deno.makeTempDir();
-  try {
-    const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+  await withTempStore(async (store) => {
     const server = new McpServer(new Chain(), {
       ...options,
       stateStore: store,
     });
     await fn(server, store);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 }
 
 /** Seed a suspended run rooted at `rootTarget`, returning its id. */
@@ -117,7 +114,7 @@ async function seedSuspended(
   rootTarget: string,
 ): Promise<string> {
   const now = new Date().toISOString();
-  const record: RunRecord = {
+  const record = runRecord({
     id: `run-${rootTarget}`,
     build: "Chain",
     rootTarget,
@@ -126,11 +123,8 @@ async function seedSuspended(
     createdAt: now,
     updatedAt: now,
     graph: [{ name: rootTarget, dependsOn: [] }],
-    params: {},
     targets: { [rootTarget]: { status: "waiting", meta: {} } },
-    signals: {},
-    events: [],
-  };
+  });
   const put = await store.putRun(record, null);
   if (!put.ok) throw new Error("failed to seed suspended run");
   return record.id;
@@ -447,9 +441,7 @@ Deno.test("a target whose plan cannot even be resolved fails closed", async () =
   }
   const build = new Cyclic();
   build.a.dependsOn_.push(build.b);
-  const dir = await Deno.makeTempDir();
-  try {
-    const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+  await withTempStore(async (store) => {
     const server = new McpServer(build, {
       allowRun: true,
       stateStore: store,
@@ -485,7 +477,5 @@ Deno.test("a target whose plan cannot even be resolved fails closed", async () =
     const listed = await call(narrowed, "list_targets");
     const visible: Array<{ name: string }> = JSON.parse(listed.text);
     assertEquals(visible.map((t) => t.name), ["a"]);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });

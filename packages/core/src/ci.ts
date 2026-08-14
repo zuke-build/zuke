@@ -35,6 +35,7 @@
  */
 
 import { annotated, toYaml, type YamlValue } from "./yaml.ts";
+import { readTextOrNull, writeTextEnsuringDir } from "./internal.ts";
 import { type Build, discoverTargets, forEachField } from "./build.ts";
 import { TargetBuilder } from "./target.ts";
 import {
@@ -443,10 +444,8 @@ function withPins(pipeline: CiPipeline, pins?: CiPinResolver): CiPipeline {
   // anything in: once `harden.action` has been filled from `pins`, there is no
   // way to tell it apart from one the caller pinned deliberately — and those
   // two mean opposite things.
-  const pinnedSeparately = pipeline.harden?.action !== undefined ||
-    pipeline.checkout?.action !== undefined;
   const bootstrap = pipeline.bootstrap === undefined
-    ? (pinnedSeparately ? false : {})
+    ? (pinsSeparateActions(pipeline.harden, pipeline.checkout) ? false : {})
     : pipeline.bootstrap;
   const resolved = bootstrap === false ? false : {
     ...bootstrap,
@@ -515,6 +514,27 @@ function stepsCoverPrelude(steps: readonly CiStep[] | undefined): boolean {
 }
 
 /**
+ * Whether the two prelude actions were asked for by name — an `action` pinned on
+ * either half, or a first step that already `uses` one of them — in which case
+ * the one action that replaces both must not stand in for them.
+ *
+ * The three callers deliberately feed it different values, and that is not a
+ * divergence to unify: `withPins` asks about the pipeline as the caller wrote it,
+ * `jobBootstrap` asks about the job's own fields, and `jobSteps` asks about the
+ * job/pipeline merge. `steps` is omitted where there is no job to inspect;
+ * {@link stepsCoverPrelude} reads `undefined` as "no prelude of its own".
+ */
+function pinsSeparateActions(
+  harden: CiHardenRunner | false | undefined,
+  checkout: CiCheckout | false | undefined,
+  steps?: readonly CiStep[],
+): boolean {
+  return (harden !== false && harden?.action !== undefined) ||
+    (checkout !== false && checkout?.action !== undefined) ||
+    stepsCoverPrelude(steps);
+}
+
+/**
  * A job's prelude action once the same rule the pipeline uses has been applied
  * to it: an action named on either half means those two actions were asked for
  * by name, so the job renders them rather than the one that replaces both.
@@ -523,12 +543,10 @@ function jobBootstrap(
   job: CiJob,
   pins: CiPinResolver,
 ): CiBootstrap | false | undefined {
-  const pinnedSeparately = (job.harden !== false &&
-    job.harden?.action !== undefined) ||
-    (job.checkout !== false && job.checkout?.action !== undefined) ||
-    stepsCoverPrelude(job.steps);
   const declared = job.bootstrap === undefined
-    ? (pinnedSeparately ? false : undefined)
+    ? (pinsSeparateActions(job.harden, job.checkout, job.steps)
+      ? false
+      : undefined)
     : job.bootstrap;
   if (declared === false || declared === undefined) return declared;
   // No DEFAULT_ZUKE_ACTION fallback here: this only runs from `withPins`'
@@ -670,11 +688,8 @@ function jobSteps(job: CiJob, pipeline: CiPipeline): CiStep[] {
   const declared = job.bootstrap === undefined
     ? pipeline.bootstrap
     : job.bootstrap;
-  const pinnedSeparately = (harden !== false && harden?.action !== undefined) ||
-    (checkout !== false && checkout?.action !== undefined) ||
-    stepsCoverPrelude(job.steps);
   const bootstrap = declared === undefined
-    ? (pinnedSeparately ? false : {})
+    ? (pinsSeparateActions(harden, checkout, job.steps) ? false : {})
     : declared;
 
   // One action does hardening and checkout together, so it can only stand in
@@ -1482,23 +1497,6 @@ export interface CiSyncOptions {
   write?: (path: string, content: string) => Promise<void>;
 }
 
-/** Default reader: the file's text, or `null` when it is absent. */
-async function readOrNull(path: string): Promise<string | null> {
-  try {
-    return await Deno.readTextFile(path);
-  } catch (error) {
-    if (error instanceof Deno.errors.NotFound) return null;
-    throw error;
-  }
-}
-
-/** Default writer: create the parent directory, then write the file. */
-async function writeFile(path: string, content: string): Promise<void> {
-  const slash = path.replace(/\\/g, "/").lastIndexOf("/");
-  if (slash !== -1) await Deno.mkdir(path.slice(0, slash), { recursive: true });
-  await Deno.writeTextFile(path, content);
-}
-
 /**
  * Bring each declared {@link CiFile} on disk in line with its definition. By
  * default a changed file is rewritten; in `check` mode it is reported `stale`
@@ -1508,8 +1506,8 @@ export async function syncCiFiles(
   files: readonly CiFile[],
   options: CiSyncOptions = {},
 ): Promise<CiSyncResult[]> {
-  const read = options.read ?? readOrNull;
-  const write = options.write ?? writeFile;
+  const read = options.read ?? readTextOrNull;
+  const write = options.write ?? writeTextEnsuringDir;
   const results: CiSyncResult[] = [];
   for (const file of files) {
     const content = file.render();

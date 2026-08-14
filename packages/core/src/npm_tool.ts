@@ -30,7 +30,8 @@
  */
 
 import { Command } from "./shell.ts";
-import { type AbsolutePath, absolutePath, type PathLike } from "./path.ts";
+import { type AbsolutePath, type PathLike, resolveDir } from "./path.ts";
+import { readTextOrNull, statOrNull } from "./internal.ts";
 import { type OperatingSystem, operatingSystem } from "./host.ts";
 import { DEFAULT_TOOLS_DIR } from "./tool.ts";
 
@@ -77,13 +78,6 @@ const defaultNpmRun: NpmRunner = async (args) => {
   await new Command(["npm", ...args]);
 };
 
-/** Resolve a possibly-relative directory to an absolute path (against `cwd`). */
-function resolveDir(dir: string): AbsolutePath {
-  const slashed = dir.replace(/\\/g, "/");
-  const isAbsolute = slashed.startsWith("/") || /^[A-Za-z]:/.test(slashed);
-  return absolutePath(isAbsolute ? slashed : `${Deno.cwd()}/${slashed}`);
-}
-
 /** The pinned package recorded beside an npm-provisioned tool. */
 interface NpmToolMarker {
   /** The npm package name this install satisfied. */
@@ -113,27 +107,6 @@ function parseMarker(text: string | null): NpmToolMarker | null {
     // A corrupt marker is treated as absent — the tool just re-installs.
   }
   return null;
-}
-
-/** Read a file's text, or `null` when it does not exist. */
-async function readTextOrNull(path: string): Promise<string | null> {
-  try {
-    return await Deno.readTextFile(path);
-  } catch (error) {
-    if (error instanceof Deno.errors.NotFound) return null;
-    throw error;
-  }
-}
-
-/** Whether a filesystem path resolves to an existing file (follows symlinks). */
-async function pathExists(path: string): Promise<boolean> {
-  try {
-    await Deno.stat(path);
-    return true;
-  } catch (error) {
-    if (error instanceof Deno.errors.NotFound) return false;
-    throw error;
-  }
 }
 
 /** The installed bin path npm plants for `spec`, `.cmd`-shimmed on Windows. */
@@ -224,7 +197,8 @@ export async function installNpmTool(
   const marker = parseMarker(await readTextOrNull(markerPath(prefix)));
   if (
     marker !== null && marker.name === spec.name &&
-    marker.version === spec.version && await pathExists(String(bin))
+    marker.version === spec.version &&
+    await statOrNull(String(bin)) !== null
   ) {
     return bin;
   }
@@ -242,7 +216,7 @@ export async function installNpmTool(
   // it. Fail loudly here (like installRelease) rather than returning a path to a
   // nonexistent file that only breaks later at `.toolPath(...)`, and never write
   // a marker for an install that did not land.
-  if (!await pathExists(String(bin))) {
+  if (await statOrNull(String(bin)) === null) {
     throw new Error(
       `npm installed ${spec.name}@${spec.version}, but its bin was not found ` +
         `at ${

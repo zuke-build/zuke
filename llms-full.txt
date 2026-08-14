@@ -1225,7 +1225,7 @@ class HttpBuildRegistry implements BuildRegistry
     `GET /builds/:id` → descriptor + `ETag`; a `404` is a miss.
   async register(descriptor: BuildDescriptor, expectedVersion: string | null): Promise<PutBuildResult>
     `PUT /builds/:id` guarded by `If-Match` / `If-None-Match`; `412` → conflict.
-  async deregister(id: string): Promise<void>
+  deregister(id: string): Promise<void>
     `DELETE /builds/:id`; a missing build (`404`) is not an error.
   async listBuilds(query: BuildQuery): Promise<BuildSummary[]>
     `GET /builds?name=&since=` → an array of {@link BuildSummary}.
@@ -1282,7 +1282,7 @@ class HttpStateStore implements StateStore
     `PUT /runs/:id` guarded by `If-Match` / `If-None-Match`; `412` → conflict.
   async listRuns(query: RunQuery): Promise<RunSummary[]>
     `GET /runs?status=&target=&since=` → an array of {@link RunSummary}.
-  async deleteRun(id: string): Promise<void>
+  deleteRun(id: string): Promise<void>
     `DELETE /runs/:id`; a missing run (`404`) is not an error.
   async acquireLock(key: string, holder: LockHolder, ttlMs: number): Promise<LockResult>
     `POST /locks/:key` → `201 { token }`, or `409` with the current holder.

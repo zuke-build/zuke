@@ -29,13 +29,13 @@
 import {
   caller,
   DEFAULT_BASE_URL,
-  env,
   GhApiError,
   type GhCall,
   isRecord,
   readNumber,
   readString,
 } from "./api.ts";
+import { resolveAuthToken, resolveRepoSlug } from "./credentials.ts";
 
 /**
  * A check run's conclusion, as GitHub spells them.
@@ -183,26 +183,16 @@ export class GhCheckRunSettings {
 
   /** The effective `owner/repo`, from the setting or the environment. */
   repoSlug_(): string {
-    const slug = this.repo_ ?? env("GITHUB_REPOSITORY");
-    if (slug === undefined) {
-      throw new Error(
-        "posting a check run requires .repo('owner/name') (or " +
-          "GITHUB_REPOSITORY).",
-      );
-    }
-    return slug;
+    return resolveRepoSlug(this.repo_, "posting a check run");
   }
 
   /** The effective token, from the setting or the environment. */
   authToken_(): string {
-    const token = this.token_ ?? env("GITHUB_TOKEN");
-    if (token === undefined) {
-      throw new Error(
-        "posting a check run requires .token(...) (or GITHUB_TOKEN). It needs " +
-          "the `checks: write` permission and nothing else.",
-      );
-    }
-    return token;
+    return resolveAuthToken(
+      this.token_,
+      "posting a check run",
+      ". It needs the `checks: write` permission and nothing else.",
+    );
   }
 }
 

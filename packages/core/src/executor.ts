@@ -21,7 +21,7 @@
  */
 
 import type { Build, BuildResult } from "./build.ts";
-import { defaultReadEnv } from "./internal.ts";
+import { defaultReadEnv, messageOf } from "./internal.ts";
 import type { Reporter } from "./reporter.ts";
 export type { Reporter } from "./reporter.ts";
 import {
@@ -39,6 +39,7 @@ import {
 import { openRunState } from "./execute_state.ts";
 import type { HeldLease } from "./state/run_lease.ts";
 import { settleCancelledRun } from "./execute_cancel.ts";
+import { cancelledElsewhere } from "./cancel.ts";
 import { makeLifecycle } from "./lifecycle.ts";
 import type { RunOutcome } from "./run_support.ts";
 import {
@@ -58,7 +59,7 @@ import {
   isCacheable,
   openCache,
 } from "./cache.ts";
-import { findConfigDir, pathExists } from "./config.ts";
+import { ARTIFACT_DIR, findConfigDir, pathExists } from "./config.ts";
 import type { AffectedOptions } from "./affected.ts";
 import { type RemoteCacheStore, resolveRemoteStore } from "./remote_cache.ts";
 import { ServiceRegistry } from "./service.ts";
@@ -70,9 +71,6 @@ import { withAmbientRedactor } from "./ambient_redactor.ts";
 import type { StateStore } from "./state/store.ts";
 import type { Plugin, RunInfo } from "./plugin.ts";
 import type { Renderer } from "./renderer.ts";
-
-/** The artifact directory (under the repo root) for the cache store. */
-const ARTIFACT_DIR = ".zuke";
 
 /** Options for {@link execute}. */
 export interface ExecuteOptions {
@@ -285,11 +283,7 @@ export async function execute(
   try {
     extraEdges = await resolveOrderingEdges(build, discovered);
   } catch (error) {
-    reporter.error(
-      `Failed to resolve ordering edges: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    );
+    reporter.error(`Failed to resolve ordering edges: ${messageOf(error)}`);
     return { ok: false, executed: [], error };
   }
   const { order, predecessors } = planGraph(root, extraEdges);
@@ -389,7 +383,6 @@ export async function execute(
     state: options.state,
     actor: options.actor,
     resume: options.resume,
-    artifactDir: ARTIFACT_DIR,
   });
   if (!opened.ok) {
     reporter.error(opened.error.message);
@@ -527,9 +520,7 @@ export async function execute(
       // settles the record. We stop and leave the run `cancelling`, draining any
       // pending per-target writes so none races the process exit.
       await writer?.drain();
-      reporter.info(
-        `Run ${runId} cancelled by another process — stopping.`,
-      );
+      reporter.info(cancelledElsewhere(runId));
     } else if (writer !== undefined) {
       const settlement = await settleCancelledRun({
         writer,

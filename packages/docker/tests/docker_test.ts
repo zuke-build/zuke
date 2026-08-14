@@ -7,7 +7,10 @@ import {
   assertThrows,
 } from "../../core/tests/_assert.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
-import { missingTool } from "@zuke/core/tooling/conformance";
+import {
+  assertWrapperConformance,
+  missingTool,
+} from "@zuke/core/tooling/conformance";
 import {
   DockerBuildSettings,
   DockerExecSettings,
@@ -325,4 +328,10 @@ Deno.test("every DockerTasks function reaches execution", async () => {
   for (const call of calls) {
     await assertRejects(call, ToolNotFoundError);
   }
+});
+
+Deno.test("docker: conforms to the wrapper contract", async () => {
+  await assertWrapperConformance(() => new DockerBuildSettings(), "docker", {
+    resolution: "path",
+  });
 });

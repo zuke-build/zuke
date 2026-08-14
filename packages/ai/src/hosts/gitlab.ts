@@ -28,9 +28,10 @@ import {
   findOwn,
   type HostComment,
   jsonHeaders,
-  MAX_COMMENT_PAGES,
-  nextLink,
+  paginateLinked,
+  probeString,
   type ReviewHost,
+  withAssociations,
 } from "./types.ts";
 
 /** The default GitLab API root used when `CI_API_V4_URL` is absent. */
@@ -89,25 +90,18 @@ function associationFor(accessLevel: number): string {
 }
 
 /**
- * GET a paginated GitLab collection, following `Link: rel="next"` up to
- * {@link MAX_COMMENT_PAGES}, and hand every item to `onItem`.
+ * GET a paginated GitLab collection with this context's token — the shared
+ * {@link paginateLinked} loop, bound to GitLab's `PRIVATE-TOKEN` header so the
+ * two call sites don't each repeat it.
  */
-async function paginate(
+function paginate(
   context: GitlabContext,
   url: string,
   doFetch: typeof fetch,
   onItem: (item: unknown) => void,
 ): Promise<void> {
-  let next: string | undefined = url;
-  for (let page = 0; next !== undefined && page < MAX_COMMENT_PAGES; page++) {
-    const response = await doFetch(next, {
-      headers: jsonHeaders({ "PRIVATE-TOKEN": context.token }),
-    });
-    await ensureOk(response, "GitLab");
-    const data: unknown = await response.json();
-    if (Array.isArray(data)) { for (const item of data) onItem(item); }
-    next = nextLink(response.headers.get("link"));
-  }
+  const headers = jsonHeaders({ "PRIVATE-TOKEN": context.token });
+  return paginateLinked(url, headers, "GitLab", doFetch, onItem);
 }
 
 /**
@@ -117,23 +111,16 @@ async function paginate(
  * whose notes GitLab does not otherwise flag as bot-authored, so this is how
  * the reviewer recognises its own notes on GitLab.
  */
-async function selfUsername(
+function selfUsername(
   context: GitlabContext,
   doFetch: typeof fetch,
 ): Promise<string | undefined> {
-  try {
-    const response = await doFetch(`${context.api}/user`, {
-      headers: jsonHeaders({ "PRIVATE-TOKEN": context.token }),
-    });
-    if (!response.ok) {
-      await response.body?.cancel();
-      return undefined;
-    }
-    const username = dig(await response.json(), "username");
-    return typeof username === "string" ? username : undefined;
-  } catch {
-    return undefined;
-  }
+  return probeString(
+    `${context.api}/user`,
+    jsonHeaders({ "PRIVATE-TOKEN": context.token }),
+    doFetch,
+    "username",
+  );
 }
 
 /**
@@ -215,14 +202,7 @@ export async function listMergeRequestNotes(
     projectMembers(context, doFetch),
   ]);
   const notes = await fetchNotes(context, doFetch, self);
-  if (members === undefined) return notes;
-  return notes.map((note) => {
-    const level = members.get(note.author);
-    return {
-      ...note,
-      association: level === undefined ? "NONE" : associationFor(level),
-    };
-  });
+  return withAssociations(notes, members, associationFor);
 }
 
 /** The id of the reviewer's own note carrying `marker`, or `undefined`. */

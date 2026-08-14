@@ -3,6 +3,7 @@
 
 import { assertEquals } from "../packages/core/tests/_assert.ts";
 import { defaultHost, runSetup } from "../packages/cli/src/setup.ts";
+import { withTemp } from "../packages/core/tests/_temp.ts";
 
 /**
  * Guards against the launchers' Deno bootstrap regressing back to an
@@ -75,8 +76,7 @@ Deno.test("the bash launcher rejects DENO_VERSION=latest instead of fetching vla
   // with an explanation. Runs the real script — but exits before any network
   // call, so the test stays hermetic.
   if (Deno.build.os === "windows") return; // bash script; see the ps1 test below
-  const home = await Deno.makeTempDir({ prefix: "zuke-launcher-" });
-  try {
+  await withTemp(async (home) => {
     const command = new Deno.Command("/bin/bash", {
       args: ["./zuke", "--help"],
       clearEnv: true,
@@ -103,9 +103,7 @@ Deno.test("the bash launcher rejects DENO_VERSION=latest instead of fetching vla
       false,
       'the launcher must not build a download URL for the tag "vlatest"',
     );
-  } finally {
-    await Deno.remove(home, { recursive: true });
-  }
+  }, { prefix: "zuke-launcher-" });
 });
 
 Deno.test("the PowerShell launcher rejects DENO_VERSION=latest", async () => {
@@ -138,8 +136,7 @@ Deno.test("a scaffolded launcher fails closed when Deno is missing", async () =>
       // expected: nothing to skip for
     }
   }
-  const dir = await Deno.makeTempDir({ prefix: "zuke-scaffold-" });
-  try {
+  await withTemp(async (dir) => {
     await runSetup({ dir, force: false, name: "Scaffolded" }, {
       ...defaultHost,
       log: () => {},
@@ -156,9 +153,7 @@ Deno.test("a scaffolded launcher fails closed when Deno is missing", async () =>
       true,
       `expected the scaffolded launcher to report missing Deno; got: ${err}`,
     );
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  }, { prefix: "zuke-scaffold-" });
 });
 
 Deno.test("both launchers pin the same default Deno version", async () => {

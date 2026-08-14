@@ -6,6 +6,7 @@ import { Build, target } from "../mod.ts";
 import { discoverTargets } from "../src/build.ts";
 import { discoverParameters } from "../src/params.ts";
 import { installCompletions } from "../src/completions_install.ts";
+import { withTemp } from "./_temp.ts";
 
 class Sample extends Build {
   build = target().description("Compile").executes(() => {});
@@ -23,12 +24,9 @@ const isolatedEnv = () => undefined;
 
 /** Run `fn` against a fresh temp directory used as the home dir. */
 async function withHome(fn: (home: string) => Promise<void>): Promise<void> {
-  const home = await Deno.makeTempDir();
-  try {
+  await withTemp(async (home) => {
     await fn(home);
-  } finally {
-    await Deno.remove(home, { recursive: true });
-  }
+  });
 }
 
 Deno.test("install bash writes the script and sources it from .bashrc", async () => {

@@ -13,6 +13,7 @@
  * @module
  */
 
+import { messageOf } from "../internal.ts";
 import type { Build } from "../build.ts";
 import { cancelRun } from "../cancel.ts";
 import { AlreadyResumedError, resumeCheck, resumeRun } from "../resume.ts";
@@ -26,7 +27,7 @@ import {
 } from "../state/types.ts";
 import type { JsonValue } from "../target.ts";
 import { AUDIT_RUN_ID } from "./audit.ts";
-import type { McpTool } from "./server.ts";
+import type { McpTool } from "./protocol.ts";
 
 /** What a run-state tool needs to reach the durable surfaces. */
 export interface RunToolDeps {
@@ -230,8 +231,29 @@ function structuredError(error: unknown, runId: string): RunToolResult {
       true,
     );
   }
-  const message = error instanceof Error ? error.message : String(error);
+  const message = messageOf(error);
   return jsonResult({ error: "run_failed", runId, message }, true);
+}
+
+/**
+ * Load run `runId` and apply the same allow-list / operator-token gate a `run:`
+ * tool uses — every mutating run tool re-runs the run's target code (a resume,
+ * a compensation), so all of them pass through here. Returns the structured
+ * result to hand straight back (an unknown run, or a denial), or `null` when the
+ * caller may proceed.
+ */
+async function runDenial(
+  deps: RunToolDeps,
+  args: Record<string, unknown>,
+  runId: string,
+): Promise<RunToolResult | null> {
+  const loaded = await deps.store.getRun(runId);
+  if (loaded === null) return jsonResult({ error: "no_run", runId }, true);
+  const denied = deps.authorize(loaded.record.rootTarget, args);
+  if (denied !== null) {
+    return jsonResult({ error: "unauthorized", reason: denied, runId }, true);
+  }
+  return null;
 }
 
 /**
@@ -323,14 +345,8 @@ async function signalRun(
   if (runId === undefined) {
     return jsonResult({ error: "missing_argument", argument: "runId" }, true);
   }
-  // A resume runs the run's target code, so it is gated by the same allow-list
-  // and operator-token policy as a `run:` tool.
-  const loaded = await deps.store.getRun(runId);
-  if (loaded === null) return jsonResult({ error: "no_run", runId }, true);
-  const denied = deps.authorize(loaded.record.rootTarget, args);
-  if (denied !== null) {
-    return jsonResult({ error: "unauthorized", reason: denied, runId }, true);
-  }
+  const denied = await runDenial(deps, args, runId);
+  if (denied !== null) return denied;
   const data: JsonValue | undefined = "data" in args
     ? toJsonValue(args.data ?? null)
     : undefined;
@@ -369,12 +385,8 @@ async function resumeCheckTool(
   // that is denied errors; a sweep silently skips runs it may not touch.
   let candidates: string[];
   if (runId !== undefined) {
-    const loaded = await deps.store.getRun(runId);
-    if (loaded === null) return jsonResult({ error: "no_run", runId }, true);
-    const denied = deps.authorize(loaded.record.rootTarget, args);
-    if (denied !== null) {
-      return jsonResult({ error: "unauthorized", reason: denied, runId }, true);
-    }
+    const denied = await runDenial(deps, args, runId);
+    if (denied !== null) return denied;
     candidates = [runId];
   } else {
     const suspended = await deps.store.listRuns({ status: "suspended" });
@@ -411,14 +423,8 @@ async function cancelRunTool(
   if (runId === undefined) {
     return jsonResult({ error: "missing_argument", argument: "runId" }, true);
   }
-  // Cancelling runs the run's compensation code, so it is gated by the same
-  // allow-list and operator-token policy as a `run:` tool.
-  const loaded = await deps.store.getRun(runId);
-  if (loaded === null) return jsonResult({ error: "no_run", runId }, true);
-  const denied = deps.authorize(loaded.record.rootTarget, args);
-  if (denied !== null) {
-    return jsonResult({ error: "unauthorized", reason: denied, runId }, true);
-  }
+  const denied = await runDenial(deps, args, runId);
+  if (denied !== null) return denied;
   try {
     const result = await cancelRun(deps.build, {
       runId,

@@ -28,6 +28,9 @@ import type { RunRecord } from "../src/state/types.ts";
 import { execute } from "../src/executor.ts";
 import { resumeRun } from "../src/resume.ts";
 import { externalSignal } from "../src/wait.ts";
+import { withTemp } from "./_temp.ts";
+import { runRecord } from "./_fakes.ts";
+import { withTempStore } from "./_store.ts";
 
 const NOW = "2026-08-10T12:00:00.000Z";
 
@@ -72,32 +75,15 @@ function runningRecord(
   build: string,
   targets: RunRecord["targets"],
 ): RunRecord {
-  return {
-    id: "run-1",
+  return runRecord({
     build,
     rootTarget: root,
-    status: "running",
     actor: "tester",
     createdAt: NOW,
     updatedAt: NOW,
     graph: [{ name: root, dependsOn: [] }],
-    params: {},
     targets,
-    signals: {},
-    events: [],
-  };
-}
-
-/** Run `fn` with a temp filesystem store, cleaned up afterwards. */
-async function withTempStore(
-  fn: (store: FileSystemStateStore, dir: string) => Promise<void>,
-): Promise<void> {
-  const dir = await Deno.makeTempDir();
-  try {
-    await fn(new FileSystemStateStore(`${dir}/runs`, defaultStateHost), dir);
-  } finally {
-    await Deno.remove(dir, { recursive: true }).catch(() => {});
-  }
+  });
 }
 
 /** A store whose next put can be made to fail, for the settle-write path. */
@@ -196,8 +182,7 @@ Deno.test("a failed settle write never masks the effect's own failure", async ()
   // The incident-report rule: when recording an effect's failure fails too,
   // the caller must still see the API error that actually happened — the
   // bookkeeping failure is reported alongside, never in its place.
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const store = new FailsPut(`${dir}/runs`, defaultStateHost);
     class B extends Build {
       deploy = target().effect("announce", () => {
@@ -236,9 +221,7 @@ Deno.test("a failed settle write never masks the effect's own failure", async ()
       after?.record.targets.deploy?.effects?.announce?.status,
       "pending",
     );
-  } finally {
-    await Deno.remove(dir, { recursive: true }).catch(() => {});
-  }
+  });
 });
 
 Deno.test("a resumed body reads outcomes another process settled", async () => {

@@ -17,27 +17,7 @@ import {
   assertStringIncludes,
 } from "../../core/tests/_assert.ts";
 import { commitFiles, tagCommit } from "../src/commit.ts";
-
-/** Run `fn` with `values` in the environment, restoring the originals after. */
-async function withEnv(
-  values: Record<string, string | undefined>,
-  fn: () => Promise<void>,
-): Promise<void> {
-  const saved = new Map<string, string | undefined>();
-  for (const [name, value] of Object.entries(values)) {
-    saved.set(name, Deno.env.get(name));
-    if (value === undefined) Deno.env.delete(name);
-    else Deno.env.set(name, value);
-  }
-  try {
-    await fn();
-  } finally {
-    for (const [name, value] of saved) {
-      if (value === undefined) Deno.env.delete(name);
-      else Deno.env.set(name, value);
-    }
-  }
-}
+import { withEnv } from "../../core/tests/_env.ts";
 
 /** One recorded request. */
 interface Call {
@@ -688,6 +668,33 @@ Deno.test("a missing repo, token, or sha is named rather than guessed", async ()
       "tagging requires .commit(...) (or GITHUB_SHA)",
     );
     // Every refusal happened before anything was sent.
+    assertEquals(calls.length, 0);
+  });
+});
+
+Deno.test("an empty Actions variable counts as unset, not as a value", async () => {
+  // Actions defines these for every job, so a workflow whose `env:` entry is
+  // fed by a secret that is not set leaves the variable defined and empty.
+  // Taken literally that is `Bearer ` on the wire and a tag pointed at "" —
+  // both answered by a status that names neither. The missing-setting error is
+  // the useful one, so empty reads as "not provided".
+  await withEnv({
+    GITHUB_REPOSITORY: "acme/app",
+    GITHUB_TOKEN: "",
+    GITHUB_SHA: "",
+  }, async () => {
+    const { fetch, calls } = fakeFetch({});
+    await assertRejects(
+      () => commitFiles((s) => s.branch("b").message("m").fetch(fetch)),
+      Error,
+      "committing requires .token(...) (or GITHUB_TOKEN)",
+    );
+    await assertRejects(
+      () => tagCommit((s) => s.token("t").name("v1").fetch(fetch)),
+      Error,
+      "tagging requires .commit(...) (or GITHUB_SHA)",
+    );
+    // Nothing was sent with a credential nobody supplied.
     assertEquals(calls.length, 0);
   });
 });

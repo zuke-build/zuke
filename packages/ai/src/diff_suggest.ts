@@ -14,18 +14,10 @@
  * @module
  */
 
-import type { Suggestion } from "./hosts/github_review.ts";
+import { type Suggestion, suggestionBody } from "./hosts/github_review.ts";
 
 /** The hunk header `@@ -oldStart,oldCount +newStart,newCount @@`. */
 const HUNK = /^@@ -(\d+)(?:,(\d+))? \+\d+(?:,\d+)? @@/;
-
-/** The `suggestion` comment body: a prelude plus a committable block. */
-function suggestionBody(prelude: string, additions: string[]): string {
-  const block = additions.length === 0
-    ? ["```suggestion", "```"]
-    : ["```suggestion", ...additions, "```"];
-  return [prelude, "", ...block].join("\n");
-}
 
 /**
  * Parse a unified diff into inline replacement suggestions. `prelude` is the

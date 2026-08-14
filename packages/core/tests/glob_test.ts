@@ -3,6 +3,7 @@
 
 import { assertEquals } from "./_assert.ts";
 import { glob, globToRegExp } from "../src/glob.ts";
+import { withTemp } from "./_temp.ts";
 
 Deno.test("globToRegExp compiles the supported syntax", () => {
   assertEquals(globToRegExp("*.ts").test("mod.ts"), true);
@@ -25,8 +26,7 @@ Deno.test("globToRegExp escapes regex metacharacters and unclosed braces", () =>
 });
 
 Deno.test("glob expands patterns against a directory tree", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     await Deno.mkdir(`${dir}/src/sub`, { recursive: true });
     await Deno.writeTextFile(`${dir}/src/a.ts`, "");
     await Deno.writeTextFile(`${dir}/src/b.js`, "");
@@ -39,23 +39,18 @@ Deno.test("glob expands patterns against a directory tree", async () => {
     ]);
     assertEquals(await glob("src/*.ts", { cwd: dir }), ["src/a.ts"]);
     assertEquals(await glob("*.ts", { cwd: dir }), ["top.ts"]);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("glob with no static base walks from cwd; missing base yields nothing", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     await Deno.mkdir(`${dir}/pkg`);
     await Deno.writeTextFile(`${dir}/pkg/x.ts`, "");
     // A leading glob segment forces a walk from the root.
     assertEquals(await glob("**/*.ts", { cwd: dir }), ["pkg/x.ts"]);
     // A non-existent static base simply matches nothing.
     assertEquals(await glob("missing/**/*.ts", { cwd: dir }), []);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("glob defaults cwd to Deno.cwd()", async () => {

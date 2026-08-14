@@ -3,6 +3,7 @@
 
 import { assertEquals } from "./_assert.ts";
 import { appendJobSummary } from "../src/job_summary.ts";
+import { withTemp } from "./_temp.ts";
 
 /** Run `fn` with `GITHUB_STEP_SUMMARY` set to `value` (or unset). */
 async function withSummaryPath(
@@ -62,14 +63,11 @@ Deno.test("appendJobSummary is a no-op outside Actions", async () => {
 });
 
 Deno.test("an unwritable summary reports false instead of failing the build", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     // A directory where a file is expected: writing throws, and a report that
     // cannot be displayed must never fail the build that produced it.
     await withSummaryPath(dir, () => {
       assertEquals(appendJobSummary("## nowhere"), false);
     });
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });

@@ -3,7 +3,10 @@
 
 import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
-import { missingTool } from "@zuke/core/tooling/conformance";
+import {
+  assertWrapperConformance,
+  missingTool,
+} from "@zuke/core/tooling/conformance";
 import {
   ReleasePleaseGithubReleaseSettings,
   ReleasePleaseReleasePrSettings,
@@ -66,5 +69,15 @@ Deno.test("every ReleasePleaseTasks function reaches execution", async () => {
   await assertRejects(
     () => ReleasePleaseTasks.githubRelease(missingTool),
     ToolNotFoundError,
+  );
+});
+
+Deno.test("release-please: conforms to the wrapper contract", async () => {
+  await assertWrapperConformance(
+    () => new ReleasePleaseReleasePrSettings(),
+    "release-please",
+    {
+      resolution: "path",
+    },
   );
 });

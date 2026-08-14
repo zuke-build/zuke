@@ -18,18 +18,8 @@ import { FileSystemStateStore } from "../src/state/fs_store.ts";
 import { defaultStateHost, type PutResult } from "../src/state/store.ts";
 import type { RunRecord } from "../src/state/types.ts";
 import { externalSignal, resumeWhen } from "../src/wait.ts";
-
-/** Run `fn` with a temp directory, cleaned up afterwards. */
-async function withTempStore(
-  fn: (store: FileSystemStateStore) => Promise<void>,
-): Promise<void> {
-  const dir = await Deno.makeTempDir();
-  try {
-    await fn(new FileSystemStateStore(`${dir}/runs`, defaultStateHost));
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
-}
+import { withTemp } from "./_temp.ts";
+import { withTempStore } from "./_store.ts";
 
 Deno.test("deploy → wait → promote survives across processes, exactly once", async () => {
   await withTempStore(async (store) => {
@@ -245,8 +235,7 @@ async function suspendedDegradedRun(
 }
 
 Deno.test("resumeRun refuses a degraded record unless overridden", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const { store, runId, log, makeBuild } = await suspendedDegradedRun(
       `${dir}/runs`,
     );
@@ -282,14 +271,11 @@ Deno.test("resumeRun refuses a degraded record unless overridden", async () => {
     // The override accepts the risk, and the risk is real: deploy succeeded but
     // is recorded `running`, so it runs a second time.
     assertEquals(log, ["deploy", "deploy", "promote"]);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("resume --check counts a degraded run as failed and reports why", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const { store, runId, makeBuild } = await suspendedDegradedRun(
       `${dir}/runs`,
     );
@@ -315,9 +301,7 @@ Deno.test("resume --check counts a degraded run as failed and reports why", asyn
       }),
       { checked: 1, failed: 0 },
     );
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("resumeRun times out a wait past its deadline", async () => {
@@ -800,8 +784,7 @@ class VanishesOnResume extends FileSystemStateStore {
 }
 
 Deno.test("a run that vanishes mid-resume is reported by name", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const makeBuild = () => {
       class B extends Build {
         gate = target().waitsFor((s) => s.on(externalSignal("go")));
@@ -829,9 +812,7 @@ Deno.test("a run that vanishes mid-resume is reported by name", async () => {
       Error,
       "vanished mid-resume",
     );
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 /** A store that never accepts the `running` transition. */
@@ -851,8 +832,7 @@ class RefusesRunning extends FileSystemStateStore {
 Deno.test("resumeRun surfaces a store that never accepts the transition", async () => {
   // Bounded retries: a store outage produces a named error, not an infinite
   // CAS loop — and the run stays suspended, so a later resume can retry.
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const makeBuild = () => {
       class B extends Build {
         gate = target().waitsFor((s) => s.on(externalSignal("go")));
@@ -880,9 +860,7 @@ Deno.test("resumeRun surfaces a store that never accepts the transition", async 
       "gave up resuming",
     );
     assertEquals((await seedStore.getRun(runId))?.record.status, "suspended");
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("a throwing plugin does not break a timed-out resume", async () => {
@@ -942,8 +920,7 @@ Deno.test("a timeout settlement retries a conflicting write", async () => {
   // Another writer (an audit append, a lock heartbeat) can land between the
   // read and the settle. The settlement re-reads and retries rather than
   // leaving the expired run suspended forever.
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const makeBuild = () => {
       class B extends Build {
         gate = target().waitsFor((s) =>
@@ -974,9 +951,7 @@ Deno.test("a timeout settlement retries a conflicting write", async () => {
       (await store.getRun(runId))?.record.targets.gate.status,
       "failed",
     );
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("time parked at a gate is credited back to the run's deadline", async () => {
@@ -1051,8 +1026,7 @@ Deno.test("a run that vanishes during the timeout settlement still fails cleanly
   // The settlement CAS conflicts and the re-read finds nothing: the record was
   // pruned. There is nothing left to settle, but the caller still gets the
   // timeout failure rather than a crash or a false success.
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const makeBuild = () => {
       class B extends Build {
         gate = target().waitsFor((s) =>
@@ -1077,9 +1051,7 @@ Deno.test("a run that vanishes during the timeout settlement still fails cleanly
     });
     assertEquals(result.ok, false);
     assertEquals(messageOf(result.error).includes("timed out"), true);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("resume --check counts a run that resumed and then failed", async () => {

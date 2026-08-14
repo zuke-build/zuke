@@ -6,9 +6,15 @@ import {
   defaultReadEnv,
   delay,
   messageOf,
+  readFileOrNull,
+  readTextOrNull,
   runWithTimeout,
   sha256Hex,
+  statOrNull,
+  writeFileEnsuringDir,
+  writeTextEnsuringDir,
 } from "../src/internal.ts";
+import { withTemp } from "./_temp.ts";
 
 Deno.test("messageOf reads an Error's message, else stringifies", () => {
   assertEquals(messageOf(new Error("boom")), "boom");
@@ -31,6 +37,53 @@ Deno.test("sha256Hex returns the known lowercase-hex digest", async () => {
   // Distinct inputs differ; the same input is stable.
   assertEquals(await sha256Hex("a") === await sha256Hex("b"), false);
   assertEquals(await sha256Hex("x"), await sha256Hex("x"));
+});
+
+Deno.test("sha256Hex digests bytes the same as the text they encode", async () => {
+  const text = "zuke";
+  assertEquals(
+    await sha256Hex(new TextEncoder().encode(text)),
+    await sha256Hex(text),
+  );
+});
+
+Deno.test("the NotFound readers return null, and the writers create parents", async () => {
+  await withTemp(async (root) => {
+    assertEquals(await readTextOrNull(`${root}/missing.txt`), null);
+    assertEquals(await readFileOrNull(`${root}/missing.bin`), null);
+    assertEquals(await statOrNull(`${root}/missing`), null);
+
+    await writeTextEnsuringDir(`${root}/nested/deep/a.txt`, "text");
+    assertEquals(await readTextOrNull(`${root}/nested/deep/a.txt`), "text");
+
+    await writeFileEnsuringDir(
+      `${root}/nested/deep/b.bin`,
+      new Uint8Array([1, 2]),
+    );
+    assertEquals(
+      await readFileOrNull(`${root}/nested/deep/b.bin`),
+      new Uint8Array([1, 2]),
+    );
+
+    const info = await statOrNull(`${root}/nested`);
+    assertEquals(info?.isDirectory, true);
+  });
+});
+
+Deno.test("a parentless path is written where it is, with no mkdir", async () => {
+  // `slash > 0`, not `!== -1`: a bare name has no parent to create, and a
+  // root-level path's parent is the root, which already exists. Either would
+  // otherwise `Deno.mkdir("")` and throw.
+  const cwd = Deno.cwd();
+  const root = await Deno.makeTempDir();
+  Deno.chdir(root);
+  try {
+    await writeTextEnsuringDir("bare.txt", "here");
+    assertEquals(await readTextOrNull(`${root}/bare.txt`), "here");
+  } finally {
+    Deno.chdir(cwd);
+    await Deno.remove(root, { recursive: true });
+  }
 });
 
 Deno.test("defaultReadEnv reads a set variable through the process env", () => {

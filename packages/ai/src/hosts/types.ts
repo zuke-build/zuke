@@ -10,6 +10,7 @@
  */
 
 import { AiReviewError } from "../errors.ts";
+import { dig } from "../json.ts";
 
 /** Read an environment variable, tolerating an absent `--allow-env` permission. */
 export type EnvReader = (name: string) => string | undefined;
@@ -222,6 +223,31 @@ export function nextLink(header: string | null): string | undefined {
   return undefined;
 }
 
+/**
+ * GET a collection paginated with an RFC-5988 `Link` header (GitHub, GitLab),
+ * following `rel="next"` up to {@link MAX_COMMENT_PAGES} and handing every item
+ * of each page's JSON array to `onItem`. `label` names the host in the error a
+ * non-2xx page raises (see {@link ensureOk}) — a listing that half-succeeds must
+ * not read as a short list, or a marker beyond the failed page looks absent and
+ * the comment is posted twice.
+ */
+export async function paginateLinked(
+  url: string,
+  headers: Record<string, string>,
+  label: string,
+  doFetch: typeof fetch,
+  onItem: (item: unknown) => void,
+): Promise<void> {
+  let next: string | undefined = url;
+  for (let page = 0; next !== undefined && page < MAX_COMMENT_PAGES; page++) {
+    const response = await doFetch(next, { headers });
+    await ensureOk(response, label);
+    const data: unknown = await response.json();
+    if (Array.isArray(data)) { for (const item of data) onItem(item); }
+    next = nextLink(response.headers.get("link"));
+  }
+}
+
 /** Render the hidden marker (an HTML comment) used to identify a reviewer's prior comment. */
 export function commentMarker(name: string): string {
   return `<!-- zuke-ai-review:${name} -->`;
@@ -274,6 +300,32 @@ export function ownAuthor(
   return self !== undefined && self !== "" && comment.author === self;
 }
 
+/**
+ * Fill each comment's {@link HostComment.association} from `members` — the
+ * membership map a host resolved from its own API — translating a member's raw
+ * value with `associationFor`.
+ *
+ * The `"NONE"` for an author absent from the map lives here, in one place: an
+ * author the host does not list as a member has no standing, and only
+ * `.trustAuthors(...)` can admit them. `members` being `undefined` is the
+ * listing having failed, which leaves every association empty (fail-closed) —
+ * the host's own decision, kept intact.
+ */
+export function withAssociations<T>(
+  comments: HostComment[],
+  members: ReadonlyMap<string, T> | undefined,
+  associationFor: (value: T) => string,
+): HostComment[] {
+  if (members === undefined) return comments;
+  return comments.map((comment) => {
+    const value = members.get(comment.author);
+    return {
+      ...comment,
+      association: value === undefined ? "NONE" : associationFor(value),
+    };
+  });
+}
+
 /** Compose the final comment body: marker + header + assessment markdown. */
 export function commentBody(name: string, markdown: string): string {
   return `${commentMarker(name)}\n${HEADER}\n\n${markdown}`;
@@ -291,6 +343,35 @@ export async function ensureOk(
   if (!response.ok) {
     await response.body?.cancel();
     throw new AiReviewError(`${label} API error: HTTP ${response.status}`);
+  }
+}
+
+/**
+ * GET `url` and read a string out of the JSON body at `path`, or `undefined` —
+ * the shape every host's "who does this token authenticate as" probe needs.
+ * Total by construction: a non-2xx (its body cancelled so the connection is
+ * released), a thrown fetch, and a field that is absent or not a string all
+ * answer `undefined`, because an unresolvable identity is a normal outcome —
+ * GitHub's Actions token cannot call `GET /user` at all, and a Bitbucket
+ * workspace token is not a user. Deliberately **not** routed through core's
+ * `request`, which throws on a non-2xx: these probes must not fail a review.
+ */
+export async function probeString(
+  url: string,
+  headers: Record<string, string>,
+  doFetch: typeof fetch,
+  ...path: Array<string | number>
+): Promise<string | undefined> {
+  try {
+    const response = await doFetch(url, { headers });
+    if (!response.ok) {
+      await response.body?.cancel();
+      return undefined;
+    }
+    const value = dig(await response.json(), ...path);
+    return typeof value === "string" ? value : undefined;
+  } catch {
+    return undefined;
   }
 }
 

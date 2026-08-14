@@ -27,6 +27,7 @@ import {
   findOwn,
   type HostComment,
   jsonHeaders,
+  probeString,
   type ReviewHost,
 } from "./types.ts";
 
@@ -81,24 +82,17 @@ function threadsUrl(context: AzureContext): string {
  * as a service identity on a comment — so this is how the reviewer recognises
  * the threads it wrote itself.
  */
-async function selfIdentity(
+function selfIdentity(
   context: AzureContext,
   doFetch: typeof fetch,
 ): Promise<string | undefined> {
-  try {
-    const response = await doFetch(
-      `${context.collection}_apis/connectionData?api-version=7.1`,
-      { headers: jsonHeaders({ "authorization": `Bearer ${context.token}` }) },
-    );
-    if (!response.ok) {
-      await response.body?.cancel();
-      return undefined;
-    }
-    const id = dig(await response.json(), "authenticatedUser", "id");
-    return typeof id === "string" ? id : undefined;
-  } catch {
-    return undefined;
-  }
+  return probeString(
+    `${context.collection}_apis/connectionData?api-version=7.1`,
+    jsonHeaders({ "authorization": `Bearer ${context.token}` }),
+    doFetch,
+    "authenticatedUser",
+    "id",
+  );
 }
 
 /**

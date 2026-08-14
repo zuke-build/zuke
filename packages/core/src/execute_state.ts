@@ -23,7 +23,7 @@ import type { RunEnv, TargetSettlement } from "./run_support.ts";
 import { absolutePath } from "./path.ts";
 import { parseDuration } from "./duration.ts";
 import { messageOf } from "./internal.ts";
-import { findConfigDir, pathExists } from "./config.ts";
+import { ARTIFACT_DIR, findConfigDir, pathExists } from "./config.ts";
 import { defaultStateHost, type StateStore } from "./state/store.ts";
 import { resolveStateStore } from "./state/resolve.ts";
 import { buildRunRecord, ciRunUrl, resolveActor } from "./state/record.ts";
@@ -186,7 +186,6 @@ export async function openRunState(opts: {
   state?: boolean;
   actor?: string;
   resume?: ResumeState;
-  artifactDir: string;
 }): Promise<{ ok: true; state: RunState } | { ok: false; error: Error }> {
   const { dryRun, order, readEnv, nowIso, redactor, resume } = opts;
   // Resolve the durable state store (if any) and open a writer that records the
@@ -208,7 +207,7 @@ export async function openRunState(opts: {
       host: defaultStateHost,
       defaultDir: absolutePath(
         findConfigDir(Deno.cwd(), pathExists) ?? Deno.cwd(),
-      )(opts.artifactDir, "runs").path,
+      )(ARTIFACT_DIR, "runs").path,
       enableDefault: (opts.state ?? false) || usesDurableFeature,
     },
   );

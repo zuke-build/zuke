@@ -15,11 +15,7 @@ import {
   toJsonValue,
   toSummary,
 } from "../src/state/types.ts";
-import {
-  defaultStateHost,
-  type StateHost,
-  type StateStore,
-} from "../src/state/store.ts";
+import { defaultStateHost } from "../src/state/store.ts";
 import { FileSystemStateStore } from "../src/state/fs_store.ts";
 import { HttpStateStore } from "../src/state/http_store.ts";
 import { envStateStore, resolveStateStore } from "../src/state/resolve.ts";
@@ -45,80 +41,19 @@ import {
   parseLockRecord,
   stringifyLockRecord,
 } from "../src/state/lock.ts";
+import { withTemp } from "./_temp.ts";
+import { FakeStateHost } from "./_fakes.ts";
+import { MemStateStore } from "./_fakes.ts";
+import { runRecord } from "./_fakes.ts";
+import { withTempStore } from "./_store.ts";
 
-/** A minimal, valid run record for tests. */
+/** A minimal, valid run record for tests: parameterised and never degraded. */
 function sampleRecord(overrides: Partial<RunRecord> = {}): RunRecord {
-  return {
-    id: overrides.id ?? "run-1",
-    build: overrides.build ?? "CI",
-    rootTarget: overrides.rootTarget ?? "deploy",
-    status: overrides.status ?? "running",
-    actor: overrides.actor ?? "alice",
-    createdAt: overrides.createdAt ?? "2026-07-17T10:00:00.000Z",
-    updatedAt: overrides.updatedAt ?? "2026-07-17T10:00:00.000Z",
-    graph: overrides.graph ?? [{ name: "deploy", dependsOn: [] }],
-    params: overrides.params ?? { env: "sit" },
-    targets: overrides.targets ??
-      { deploy: { status: "pending", meta: {} } },
-    signals: overrides.signals ?? {},
-    events: overrides.events ?? [],
+  return runRecord({
+    params: { env: "sit" },
+    ...overrides,
     degraded: overrides.degraded ?? false,
-  };
-}
-
-/** An in-memory {@link StateHost}: a flat file map plus a lock set. */
-class FakeStateHost implements StateHost {
-  readonly files = new Map<string, string>();
-  readonly locks = new Set<string>();
-
-  readText(path: string): Promise<string | null> {
-    return Promise.resolve(this.files.get(path) ?? null);
-  }
-  writeText(path: string, content: string): Promise<void> {
-    this.files.set(path, content);
-    return Promise.resolve();
-  }
-  rename(from: string, to: string): Promise<void> {
-    // A real rename rejects when the source is gone, and moves an exclusively
-    // created (empty) file just as it moves one with content — the store relies
-    // on both when it reclaims an abandoned mutex marker.
-    const content = this.files.get(from);
-    if (content === undefined && !this.locks.has(from)) {
-      return Promise.reject(new Deno.errors.NotFound(`rename ${from}`));
-    }
-    if (content !== undefined) {
-      this.files.set(to, content);
-      this.files.delete(from);
-    }
-    if (this.locks.delete(from)) this.locks.add(to);
-    return Promise.resolve();
-  }
-  createExclusive(path: string): Promise<boolean> {
-    if (this.locks.has(path)) return Promise.resolve(false);
-    this.locks.add(path);
-    return Promise.resolve(true);
-  }
-  remove(path: string): Promise<void> {
-    this.files.delete(path);
-    this.locks.delete(path);
-    return Promise.resolve();
-  }
-  listDir(path: string): Promise<string[]> {
-    const prefix = `${path}/`;
-    const names: string[] = [];
-    for (const key of this.files.keys()) {
-      if (key.startsWith(prefix)) names.push(key.slice(prefix.length));
-    }
-    return Promise.resolve(names);
-  }
-  mkdirp(): Promise<void> {
-    return Promise.resolve();
-  }
-  /** A controllable clock for lock-TTL tests; advance it with `time`. */
-  time = 1_000_000;
-  now(): number {
-    return this.time;
-  }
+  });
 }
 
 // ---------------------------------------------------------------- types
@@ -447,9 +382,7 @@ Deno.test("FileSystemStateStore rejects an unsafe run id on read and write", asy
 });
 
 Deno.test("FileSystemStateStore round-trips through the real filesystem", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
-    const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+  await withTempStore(async (store) => {
     const created = await store.putRun(sampleRecord(), null);
     if (!created.ok) throw new Error("expected create to succeed");
     const loaded = await store.getRun("run-1");
@@ -461,9 +394,7 @@ Deno.test("FileSystemStateStore round-trips through the real filesystem", async 
       store.putRun(sampleRecord({ actor: "c" }), created.version),
     ]);
     assertEquals(results.filter((r) => r.ok).length, 1);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 // ---------------------------------------------------------------- http store
@@ -598,6 +529,20 @@ Deno.test("HttpStateStore.listRuns builds a query and validates the array", asyn
     () => emptyQuery.listRuns({}),
     Error,
     "did not return a JSON array",
+  );
+
+  // A 200 with a non-JSON body (e.g. a proxy HTML page) is a friendly error,
+  // not a raw SyntaxError.
+  const notJson = new HttpStateStore({
+    url: "https://s.example",
+    fetch: fakeFetch(() =>
+      new Response("<html>Bad Gateway</html>", { status: 200 })
+    ),
+  });
+  await assertRejects(
+    () => notJson.listRuns({}),
+    Error,
+    "did not return valid JSON",
   );
 
   const boom = new HttpStateStore({
@@ -735,60 +680,8 @@ Deno.test("buildRunRecord snapshots the graph, seeds targets, excludes secrets",
 
 // ---------------------------------------------------------------- writer
 
-/** An in-memory {@link StateStore} with a bump counter version. */
-class MemStore implements StateStore {
-  record: RunRecord | null = null;
-  version = 0;
-  failNextPut = false;
-  forceConflicts = 0;
-  listRuns(): Promise<never[]> {
-    return Promise.resolve([]);
-  }
-  getRun(): Promise<{ record: RunRecord; version: string } | null> {
-    return Promise.resolve(
-      this.record === null ? null : {
-        record: structuredClone(this.record),
-        version: String(this.version),
-      },
-    );
-  }
-  putRun(record: RunRecord, expected: string | null): Promise<
-    { ok: true; version: string } | { ok: false; conflict: true }
-  > {
-    if (this.failNextPut) {
-      this.failNextPut = false;
-      return Promise.reject(new Error("store down"));
-    }
-    if (this.forceConflicts > 0) {
-      this.forceConflicts -= 1;
-      return Promise.resolve({ ok: false, conflict: true });
-    }
-    const current = this.record === null ? null : String(this.version);
-    if (current !== expected) {
-      return Promise.resolve({ ok: false, conflict: true });
-    }
-    this.record = structuredClone(record);
-    this.version += 1;
-    return Promise.resolve({ ok: true, version: String(this.version) });
-  }
-  deleteRun(): Promise<void> {
-    this.record = null;
-    return Promise.resolve();
-  }
-  // Locks are exercised against the real backends, not this run-only fake.
-  acquireLock(): Promise<never> {
-    throw new Error("MemStore: acquireLock is unused in these tests");
-  }
-  renewLock(): Promise<never> {
-    throw new Error("MemStore: renewLock is unused in these tests");
-  }
-  releaseLock(): Promise<never> {
-    throw new Error("MemStore: releaseLock is unused in these tests");
-  }
-}
-
 Deno.test("RunStateWriter records transitions and redacted state", async () => {
-  const store = new MemStore();
+  const store = new MemStateStore();
   const redactor = new Redactor();
   redactor.add("swordfish");
   const writer = await RunStateWriter.open(
@@ -815,7 +708,7 @@ Deno.test("RunStateWriter records transitions and redacted state", async () => {
 });
 
 Deno.test("RunStateWriter records a failure message, redacted", async () => {
-  const store = new MemStore();
+  const store = new MemStateStore();
   const redactor = new Redactor();
   redactor.add("hunter2");
   const writer = await RunStateWriter.open(
@@ -830,7 +723,7 @@ Deno.test("RunStateWriter records a failure message, redacted", async () => {
 });
 
 Deno.test("RunStateWriter redacts a secret in a wait trigger descriptor", async () => {
-  const store = new MemStore();
+  const store = new MemStateStore();
   const redactor = new Redactor();
   redactor.add("swordfish"); // a secret routed into a signal name
   const writer = await RunStateWriter.open(
@@ -852,7 +745,7 @@ Deno.test("RunStateWriter redacts a secret in a wait trigger descriptor", async 
 });
 
 Deno.test("RunStateWriter survives a store error without throwing", async () => {
-  const store = new MemStore();
+  const store = new MemStateStore();
   const warnings: string[] = [];
   const writer = await RunStateWriter.open(
     store,
@@ -867,7 +760,7 @@ Deno.test("RunStateWriter survives a store error without throwing", async () => 
 });
 
 Deno.test("a permanently lost write flags the record degraded for the next write to carry", async () => {
-  const store = new MemStore();
+  const store = new MemStateStore();
   const writer = await RunStateWriter.open(
     store,
     sampleRecord(),
@@ -888,7 +781,7 @@ Deno.test("a permanently lost write flags the record degraded for the next write
 });
 
 Deno.test("the degraded flag survives a conflict re-read", async () => {
-  const store = new MemStore();
+  const store = new MemStateStore();
   const writer = await RunStateWriter.open(
     store,
     sampleRecord(),
@@ -905,7 +798,7 @@ Deno.test("the degraded flag survives a conflict re-read", async () => {
 });
 
 Deno.test("a store error does not flag the record degraded — the mutation is retained", async () => {
-  const store = new MemStore();
+  const store = new MemStateStore();
   const warnings: string[] = [];
   const writer = await RunStateWriter.open(
     store,
@@ -926,7 +819,7 @@ Deno.test("a store error does not flag the record degraded — the mutation is r
 });
 
 Deno.test("a conflicting re-apply onto a cancelling record loses the write", async () => {
-  const store = new MemStore();
+  const store = new MemStateStore();
   const warnings: string[] = [];
   let aborted = false;
   const writer = await RunStateWriter.open(
@@ -955,7 +848,7 @@ Deno.test("a conflicting re-apply onto a cancelling record loses the write", asy
 });
 
 Deno.test("RunStateWriter re-reads and retries on a conflict", async () => {
-  const store = new MemStore();
+  const store = new MemStateStore();
   const writer = await RunStateWriter.open(
     store,
     sampleRecord(),
@@ -968,7 +861,7 @@ Deno.test("RunStateWriter re-reads and retries on a conflict", async () => {
 });
 
 Deno.test("RunStateWriter warns and gives up after repeated conflicts", async () => {
-  const store = new MemStore();
+  const store = new MemStateStore();
   const warnings: string[] = [];
   const writer = await RunStateWriter.open(
     store,
@@ -994,8 +887,7 @@ Deno.test("inMemoryStateHandle stores within the run but persists nothing", asyn
 // ---------------------------------------------------------------- host
 
 Deno.test("defaultStateHost performs real filesystem effects", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const host = defaultStateHost;
     assertEquals(await host.readText(`${dir}/none`), null); // missing → null
     await host.mkdirp(`${dir}/sub`);
@@ -1009,9 +901,7 @@ Deno.test("defaultStateHost performs real filesystem effects", async () => {
     assertEquals(await host.readText(`${dir}/sub/b.txt`), "hi");
     assertEquals((await host.listDir(`${dir}/sub`)).includes("b.txt"), true);
     assertEquals(await host.listDir(`${dir}/missing`), []); // absent → []
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("FileSystemStateStore errors when a lock is permanently held", async () => {
@@ -1347,7 +1237,7 @@ Deno.test("HttpStateStore locks: a 201 without a token is an error", async () =>
 });
 
 Deno.test("RunStateWriter drops a write when the run vanishes after a conflict", async () => {
-  const store = new MemStore();
+  const store = new MemStateStore();
   const warnings: string[] = [];
   const writer = await RunStateWriter.open(
     store,
@@ -1371,8 +1261,7 @@ Deno.test("RunStateWriter drops a write when the run vanishes after a conflict",
 });
 
 Deno.test("acquireCancelLock renews on a heartbeat and blocks a second holder", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     // A store that counts the heartbeat's renewals but still renews for real.
     class CountingStore extends FileSystemStateStore {
       renewCalls = 0;
@@ -1400,9 +1289,7 @@ Deno.test("acquireCancelLock renews on a heartbeat and blocks a second holder", 
     const next = await acquireCancelLock(store, "run-1", "c", now, 2000);
     assertEquals(next !== null, true);
     await next?.release();
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("a run's origin round-trips, and its absence stays an absence", () => {
@@ -1420,9 +1307,7 @@ Deno.test("a run's origin round-trips, and its absence stays an absence", () => 
 });
 
 Deno.test("deleting a run leaves its lock records alone", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
-    const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+  await withTempStore(async (store) => {
     const runId = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
     await store.putRun(
       buildRunRecord({
@@ -1460,9 +1345,7 @@ Deno.test("deleting a run leaves its lock records alone", async () => {
       await store.renewLock(key, held.ok ? held.token : "", 60_000),
       true,
     );
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 // ------------------------------------------------- types: malformed branches
@@ -1671,8 +1554,7 @@ Deno.test("buildRunRecord tolerates an unnamed target and stamps optional fields
 
 Deno.test("defaultStateHost surfaces non-NotFound filesystem errors", async () => {
   // A genuine I/O failure must propagate, never be masked as "missing".
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const host = defaultStateHost;
     // Reading a directory as a file is not a miss.
     await assertRejects(() => host.readText(dir));
@@ -1684,9 +1566,7 @@ Deno.test("defaultStateHost surfaces non-NotFound filesystem errors", async () =
     await assertRejects(() => host.remove(`${dir}/full`));
     // Listing a regular file is not an absent directory.
     await assertRejects(() => host.listDir(`${dir}/full/a.txt`));
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 // ------------------------------------------------- http store: bodied errors

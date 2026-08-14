@@ -27,13 +27,16 @@ import { lockKey } from "../src/state/lock.ts";
 import type { RunRecord } from "../src/state/types.ts";
 import type { Reporter } from "../src/executor.ts";
 import { externalSignal } from "../src/wait.ts";
+import { withTemp } from "./_temp.ts";
+import { runRecord } from "./_fakes.ts";
+import { withTempStore } from "./_store.ts";
 
 /** A run record scaffold for driving {@link runCompensations} directly. */
 function craftRecord(
   rootTarget: string,
   targets: RunRecord["targets"],
 ): RunRecord {
-  return {
+  return runRecord({
     id: "run",
     build: "B",
     rootTarget,
@@ -42,29 +45,14 @@ function craftRecord(
     createdAt: "t",
     updatedAt: "t",
     graph: [],
-    params: {},
     targets,
-    signals: {},
-    events: [],
-  };
+  });
 }
 
 /** A reporter that captures error lines (for asserting cancel diagnostics). */
 function capturingReporter(): { reporter: Reporter; errors: string[] } {
   const errors: string[] = [];
   return { reporter: { info: () => {}, error: (l) => errors.push(l) }, errors };
-}
-
-/** Run `fn` with a temp filesystem store, cleaned up afterwards. */
-async function withTempStore(
-  fn: (store: FileSystemStateStore) => Promise<void>,
-): Promise<void> {
-  const dir = await Deno.makeTempDir();
-  try {
-    await fn(new FileSystemStateStore(`${dir}/runs`, defaultStateHost));
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
 }
 
 Deno.test("cancelRun runs a suspended run's compensations in reverse order", async () => {
@@ -1401,8 +1389,7 @@ Deno.test("cancelRun re-reads the record after transitioning to cancelling", asy
   // the cancel, it re-applies the just-finished target onto the cancelling
   // record. Deciding from the pre-transition snapshot leaves that deploy, which
   // really happened, un-rolled-back.
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const undone: string[] = [];
     let slot: unknown;
     class CD extends Build {
@@ -1433,9 +1420,7 @@ Deno.test("cancelRun re-reads the record after transitioning to cancelling", asy
     // the metadata that came with it.
     assertEquals(undone, ["deploy"]);
     assertEquals(slot, "sit-9");
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 /**
@@ -1496,8 +1481,7 @@ Deno.test("a cancel that loses the transition race reports the run's terminal st
   // The run finished between the canceller's read and its write. The CAS
   // conflicts, the re-read finds `succeeded`, and the cancel becomes a
   // friendly no-op naming that status — never a walk over a finished run.
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     class B extends Build {
       deploy = target().executes(() => {});
     }
@@ -1524,9 +1508,7 @@ Deno.test("a cancel that loses the transition race reports the run's terminal st
       true,
     );
     assertEquals((await store.getRun("run-race"))?.record.status, "succeeded");
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 /** A store where the run vanishes the moment the transition CAS conflicts. */
@@ -1555,8 +1537,7 @@ class VanishesOnCancel extends FileSystemStateStore {
 Deno.test("a run that vanishes mid-cancel is a no-op, not a crash", async () => {
   // Pruned between the read and the write (a retention sweep, a manual
   // delete): there is nothing left to cancel, and the caller is told so.
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     class B extends Build {
       deploy = target().executes(() => {});
     }
@@ -1578,9 +1559,7 @@ Deno.test("a run that vanishes mid-cancel is a no-op, not a crash", async () => 
     assertEquals(result.noop, true);
     // With nothing left to read, the status defaults to what a cancel means.
     assertEquals(result.status, "cancelled");
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 /** A store that never accepts the `cancelling` transition. */
@@ -1600,8 +1579,7 @@ class RefusesCancelling extends FileSystemStateStore {
 Deno.test("cancelRun surfaces a store that never accepts the transition", async () => {
   // Bounded retries: a store outage (or a pathological writer) must produce a
   // named error, not an infinite CAS loop.
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     class B extends Build {
       deploy = target().executes(() => {});
     }
@@ -1627,9 +1605,7 @@ Deno.test("cancelRun surfaces a store that never accepts the transition", async 
     );
     // The run is untouched, so a retry can still cancel it.
     assertEquals((await store.getRun("run-stuck"))?.record.status, "suspended");
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 /** A store where the run vanishes right after the `cancelling` transition lands. */
@@ -1657,8 +1633,7 @@ Deno.test("a run that vanishes after the transition still gets its compensations
   // The canceller's own snapshot is the last word when the record disappears:
   // the walk still runs from it, and the missing settlement write is a clean
   // return, not an error — the record it would update no longer exists.
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const undone: string[] = [];
     class B extends Build {
       rollback = target().executes(() => void undone.push("deploy"));
@@ -1683,9 +1658,7 @@ Deno.test("a run that vanishes after the transition still gets its compensations
     assertEquals(result.status, "cancelled");
     assertEquals(undone, ["deploy"]); // the walk ran from the snapshot
     assertEquals(result.compensated, ["rollback"]);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 /** A store that never accepts a terminal settlement write. */
@@ -1706,8 +1679,7 @@ Deno.test("cancelRun surfaces a store that never accepts the settlement", async 
   // The other bounded loop: compensations ran but the terminal write cannot
   // land. Surfacing the outage beats silently leaving the run `cancelling` —
   // and a re-cancel then recovers it.
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     class B extends Build {
       deploy = target().executes(() => {});
     }
@@ -1736,9 +1708,7 @@ Deno.test("cancelRun surfaces a store that never accepts the settlement", async 
       (await store.getRun("run-unsettled"))?.record.status,
       "cancelling",
     );
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("an extra compensation naming a missing target is skipped, not fatal", async () => {

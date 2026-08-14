@@ -14,6 +14,11 @@
  * @module
  */
 
+import { asObject, fields } from "../json_shape.ts";
+
+/** The field readers for a lock record's fields. */
+const { str, optionalStr } = fields("state: lock field");
+
 /** Who holds a lock — surfaced to the loser of a conflict so it can act. */
 export interface LockHolder {
   /** The actor that acquired the lock. */
@@ -68,33 +73,11 @@ export interface LockRecord {
   expiresAt: number;
 }
 
-/** Narrow an unknown value to a plain object without casting, else `null`. */
-function asObject(value: unknown): Record<string, unknown> | null {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return null;
-  }
-  const out: Record<string, unknown> = {};
-  for (const [key, val] of Object.entries(value)) out[key] = val;
-  return out;
-}
-
-/** Read a required string field, throwing a descriptive error otherwise. */
-function str(object: Record<string, unknown>, field: string): string {
-  const value = object[field];
-  if (typeof value !== "string") {
-    throw new Error(`state: lock field "${field}" is not a string`);
-  }
-  return value;
-}
-
 /** Parse and validate a {@link LockHolder} from an untrusted value. */
 export function parseLockHolder(value: unknown): LockHolder {
   const object = asObject(value);
   if (object === null) throw new Error("state: lock holder is not an object");
-  const runUrl = object.runUrl;
-  if (runUrl !== undefined && typeof runUrl !== "string") {
-    throw new Error(`state: lock field "runUrl" is not a string`);
-  }
+  const runUrl = optionalStr(object, "runUrl");
   const holder: LockHolder = {
     actor: str(object, "actor"),
     runId: str(object, "runId"),

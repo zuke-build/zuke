@@ -8,7 +8,8 @@ import {
   METHOD_NOT_FOUND,
   serveStdio,
 } from "../src/mcp/jsonrpc.ts";
-import { McpServer, PROTOCOL_VERSION } from "../src/mcp/server.ts";
+import { McpServer } from "../src/mcp/server.ts";
+import { PROTOCOL_VERSION } from "../src/mcp/protocol.ts";
 import { serveMcp } from "../src/mcp/command.ts";
 
 /** A small build with parameters and a dependency edge, for the server tests. */

@@ -9,6 +9,7 @@ import {
 import { withAmbientEcho } from "../src/ambient_echo.ts";
 import { type OperatingSystem, operatingSystem } from "../src/host.ts";
 import { installNpmTool, type NpmRunner } from "../src/npm_tool.ts";
+import { withTemp, withTempCwd } from "./_temp.ts";
 
 const HOST_OS = operatingSystem();
 /** The npm bin-shim suffix on the host (`.cmd` on Windows, else none). */
@@ -36,8 +37,7 @@ function fakeNpm(
 }
 
 Deno.test("installNpmTool installs, returns the bin path, and records the argv", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const { run, calls } = fakeNpm("vitest", "linux");
     const bin = await installNpmTool(
       { name: "vitest", version: "4.1.9" },
@@ -54,14 +54,11 @@ Deno.test("installNpmTool installs, returns the bin path, and records the argv",
     assertEquals(calls[0][2].endsWith("/npm/vitest@4.1.9"), true);
     assertEquals(calls[0][3], "--no-save");
     assertEquals(calls[0][4], "vitest@4.1.9");
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("installNpmTool returns the .cmd shim path on Windows", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const { run } = fakeNpm("vitest", "windows");
     const bin = await installNpmTool(
       { name: "vitest", version: "1.0.0" },
@@ -69,14 +66,11 @@ Deno.test("installNpmTool returns the .cmd shim path on Windows", async () => {
     );
     assertEquals(bin.name, "vitest.cmd");
     assertEquals(bin.path.endsWith("/node_modules/.bin/vitest.cmd"), true);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("installNpmTool resolves a bin that differs from the package name", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const { run, calls } = fakeNpm("nest", "linux");
     const bin = await installNpmTool(
       { name: "@nestjs/cli", version: "10.0.0", bin: "nest" },
@@ -88,14 +82,11 @@ Deno.test("installNpmTool resolves a bin that differs from the package name", as
       true,
     );
     assertEquals(calls[0][4], "@nestjs/cli@10.0.0"); // scoped name@version
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("a matching marker with the bin present is reused without re-running npm", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const { run, calls } = fakeNpm("vitest", "linux");
     const spec = { name: "vitest", version: "4.1.9" };
     const first = await installNpmTool(spec, {
@@ -110,14 +101,11 @@ Deno.test("a matching marker with the bin present is reused without re-running n
     });
     assertEquals(first.path, second.path);
     assertEquals(calls.length, 1); // the second call short-circuited on the marker
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("a different version misses the cache and re-installs", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const { run, calls } = fakeNpm("vitest", "linux");
     await installNpmTool({ name: "vitest", version: "1.0.0" }, {
       destDir: dir,
@@ -130,14 +118,11 @@ Deno.test("a different version misses the cache and re-installs", async () => {
       os: "linux",
     });
     assertEquals(calls.length, 2);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("a marker recording a different package is ignored (re-installs)", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const { run, calls } = fakeNpm("vitest", "linux");
     const spec = { name: "vitest", version: "4.1.9" };
     const bin = await installNpmTool(spec, { destDir: dir, run, os: "linux" });
@@ -148,14 +133,11 @@ Deno.test("a marker recording a different package is ignored (re-installs)", asy
     );
     await installNpmTool(spec, { destDir: dir, run, os: "linux" });
     assertEquals(calls.length, 2);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("a malformed marker is treated as absent (re-installs)", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const { run, calls } = fakeNpm("vitest", "linux");
     const spec = { name: "vitest", version: "4.1.9" };
     const bin = await installNpmTool(spec, { destDir: dir, run, os: "linux" });
@@ -168,23 +150,18 @@ Deno.test("a malformed marker is treated as absent (re-installs)", async () => {
     await Deno.writeTextFile(marker, JSON.stringify({ name: 123 }));
     await installNpmTool(spec, { destDir: dir, run, os: "linux" });
     assertEquals(calls.length, 3);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("a valid marker whose bin has gone re-installs", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const { run, calls } = fakeNpm("vitest", "linux");
     const spec = { name: "vitest", version: "4.1.9" };
     const bin = await installNpmTool(spec, { destDir: dir, run, os: "linux" });
     await Deno.remove(String(bin)); // marker stays, but the bin is gone
     await installNpmTool(spec, { destDir: dir, run, os: "linux" });
     assertEquals(calls.length, 2);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("installNpmTool rejects an unsafe name, version, or bin", async () => {
@@ -219,8 +196,7 @@ Deno.test("installNpmTool rejects an unsafe name, version, or bin", async () => 
 });
 
 Deno.test("installNpmTool throws when npm plants no bin, writing no marker", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const calls: string[][] = [];
     // A runner that "succeeds" but plants nothing — a typo'd bin, or a package
     // that ships no executable: npm exits 0 without creating node_modules/.bin.
@@ -241,14 +217,11 @@ Deno.test("installNpmTool throws when npm plants no bin, writing no marker", asy
       "its bin was not found",
     );
     assertEquals(calls.length, 2);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("a rejecting npm runner propagates and writes no marker", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     let calls = 0;
     const failing: NpmRunner = () => {
       calls++;
@@ -267,14 +240,11 @@ Deno.test("a rejecting npm runner propagates and writes no marker", async () => 
       "npm exploded",
     );
     assertEquals(calls, 2);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("a non-NotFound error reading the marker surfaces (not swallowed)", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const { run } = fakeNpm("vitest", "linux");
     const spec = { name: "vitest", version: "4.1.9" };
     const bin = await installNpmTool(spec, { destDir: dir, run, os: "linux" });
@@ -288,14 +258,11 @@ Deno.test("a non-NotFound error reading the marker surfaces (not swallowed)", as
     await assertRejects(
       () => installNpmTool(spec, { destDir: dir, run, os: "linux" }),
     );
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("a non-NotFound error stat-ing the bin surfaces (not swallowed)", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const { run } = fakeNpm("vitest", "linux");
     const spec = { name: "vitest", version: "4.1.9" };
     const bin = await installNpmTool(spec, { destDir: dir, run, os: "linux" });
@@ -307,14 +274,11 @@ Deno.test("a non-NotFound error stat-ing the bin surfaces (not swallowed)", asyn
     await assertRejects(
       () => installNpmTool(spec, { destDir: dir, run, os: "linux" }),
     );
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("installNpmTool runs the ambient npm by default", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const echoed: string[] = [];
     // With no injected runner, the default runner spawns `npm` via the Command
     // class. Under a deep-dry-run echo sink it echoes the argv instead of
@@ -336,16 +300,11 @@ Deno.test("installNpmTool runs the ambient npm by default", async () => {
     assertEquals(echoed.length, 1);
     assertStringIncludes(echoed[0], "npm install --prefix");
     assertStringIncludes(echoed[0], "--no-save vitest@4.1.9");
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("installNpmTool defaults the install root to .zuke/tools and the host OS", async () => {
-  const dir = await Deno.makeTempDir();
-  const original = Deno.cwd();
-  try {
-    Deno.chdir(dir);
+  await withTempCwd(async () => {
     const { run } = fakeNpm("vitest"); // host OS
     const bin = await installNpmTool(
       { name: "vitest", version: "4.1.9" },
@@ -357,8 +316,5 @@ Deno.test("installNpmTool defaults the install root to .zuke/tools and the host 
       ),
       true,
     );
-  } finally {
-    Deno.chdir(original);
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });

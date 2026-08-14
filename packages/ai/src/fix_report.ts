@@ -12,7 +12,7 @@
 
 import type { Confidence, FixLocation } from "./fix.ts";
 import type { Usage } from "./types.ts";
-import { codeSpan, fenceMarkdown } from "./markdown.ts";
+import { cell, codeSpan, fenceMarkdown } from "./markdown.ts";
 import { formatUsage } from "./report.ts";
 
 /** A fixer's outcome, summarised for the report. */
@@ -31,18 +31,6 @@ export interface FixReport {
   action: string;
   /** Token usage from the provider call, if reported. */
   usage?: Usage;
-}
-
-/**
- * Neutralize a value for a plain inline Markdown context (a table cell or a
- * blockquote): escape the `|` cell separator and collapse newlines, so
- * model-controlled text can't inject block-level Markdown (a heading, a fake
- * "approved" banner) by starting a fresh line. For an **inline code span** use
- * {@link "./markdown.ts".codeSpan} (backticks need neutralizing too); for a
- * fenced code body use {@link "./markdown.ts".fenceMarkdown}.
- */
-function cell(value: string): string {
-  return value.replaceAll(/[\r\n]+/g, " ").replaceAll("|", "\\|");
 }
 
 /** The `file:line` (or `file:line-endLine`) label for a location. */
@@ -121,18 +109,4 @@ export function fixMarkdown(
     parts.push(`**Files:** ${list}`, "");
   }
   return parts.join("\n");
-}
-
-/** The console line announcing a skipped fix. */
-export function fixSkipConsoleLine(name: string, reason: string): string {
-  return `[${name}] skipped — ${reason}`;
-}
-
-/** A Markdown section announcing a skipped fix, for the summary/comment. */
-export function fixSkipMarkdown(
-  name: string,
-  target: string,
-  reason: string,
-): string {
-  return `## ⏭️ ${name} — \`${target}\`\n\n_Skipped — ${cell(reason)}._\n`;
 }

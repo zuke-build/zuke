@@ -25,7 +25,7 @@ import {
   ensureOk,
   type HostComment,
   MAX_COMMENT_PAGES,
-  nextLink,
+  paginateLinked,
   type ReviewComments,
   type ReviewThreads,
   type ThreadPost,
@@ -86,26 +86,21 @@ export async function listReviewComments(
 ): Promise<ReviewComments> {
   const comments: HostComment[] = [];
   const parents = new Map<number, number>();
-  let url: string | undefined =
-    `${API}/repos/${context.owner}/${context.repo}` +
+  const url = `${API}/repos/${context.owner}/${context.repo}` +
     `/pulls/${context.pull}/comments?per_page=100`;
-  for (let page = 0; url !== undefined && page < MAX_COMMENT_PAGES; page++) {
-    const response = await doFetch(url, {
-      headers: githubHeaders(context.token),
-    });
-    await ensureOk(response, "GitHub");
-    const data: unknown = await response.json();
-    if (Array.isArray(data)) {
-      for (const item of data) {
-        const comment = toReviewComment(item);
-        if (comment === undefined) continue;
-        comments.push(comment);
-        const parent = dig(item, "in_reply_to_id");
-        if (typeof parent === "number") parents.set(comment.id, parent);
-      }
-    }
-    url = nextLink(response.headers.get("link"));
-  }
+  await paginateLinked(
+    url,
+    githubHeaders(context.token),
+    "GitHub",
+    doFetch,
+    (item) => {
+      const comment = toReviewComment(item);
+      if (comment === undefined) return;
+      comments.push(comment);
+      const parent = dig(item, "in_reply_to_id");
+      if (typeof parent === "number") parents.set(comment.id, parent);
+    },
+  );
   return {
     comments,
     parents,

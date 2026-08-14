@@ -9,6 +9,7 @@
  */
 
 import type { Build } from "../build.ts";
+import { isLoopbackHost } from "../http.ts";
 import { defaultReadEnv } from "../internal.ts";
 import { absolutePath } from "../path.ts";
 import { findConfigDir, pathExists } from "../config.ts";
@@ -91,11 +92,6 @@ export interface ServeMcpOptions extends McpServerOptions {
   signal?: AbortSignal;
   /** Called once the HTTP listener is bound, with its address (test hook). */
   onListen?: (address: { hostname: string; port: number }) => void;
-}
-
-/** Whether `host` is a loopback address (no bearer token required to bind it). */
-function isLoopback(host: string): boolean {
-  return host === "127.0.0.1" || host === "::1" || host === "localhost";
 }
 
 /** Resolve the build registry for `zuke mcp --registry` — defaulting on `.zuke/builds`. */
@@ -206,7 +202,7 @@ async function serveMcpHttp(
   const readEnv = options.readEnv ?? defaultReadEnv;
   const token = options.token ?? readEnv("ZUKE_MCP_TOKEN");
   const hasToken = token !== undefined && token !== "";
-  if (!isLoopback(address.host) && !hasToken) {
+  if (!isLoopbackHost(address.host) && !hasToken) {
     console.error(
       `zuke mcp: refusing to bind ${address.host}:${address.port} without a ` +
         `bearer token. A non-loopback MCP endpoint must be authenticated — set ` +

@@ -34,7 +34,7 @@
 
 import { type Build, discoverTargets, resolveOrderingEdges } from "./build.ts";
 import { defaultReadEnv, messageOf, runWithTimeout } from "./internal.ts";
-import type { Reporter } from "./executor.ts";
+import { consoleReporter, type Reporter, silentReporter } from "./reporter.ts";
 import { type OrderingEdge, planGraph } from "./graph.ts";
 import { discoverParameters, resolveParameters } from "./params.ts";
 import { Redactor } from "./redact.ts";
@@ -47,11 +47,9 @@ import {
   type TargetStateHandle,
 } from "./target.ts";
 import { outcomesFromRecord } from "./run_support.ts";
-import { assertOwnsRun, resolveBuildId } from "./ownership.ts";
-import { absolutePath } from "./path.ts";
-import { findConfigDir, pathExists } from "./config.ts";
-import { defaultStateHost, type StateStore } from "./state/store.ts";
-import { resolveStateStore } from "./state/resolve.ts";
+import { loadOwnedRun } from "./ownership.ts";
+import type { StateStore } from "./state/store.ts";
+import { resolveRunStore } from "./run_store.ts";
 import { acquireCancelLock } from "./state/cancel_lock.ts";
 import { resolveActor } from "./state/record.ts";
 import type {
@@ -81,14 +79,41 @@ export type SettlementTerminal = "cancelled" | "failed";
  */
 const NEVER_ABORTED: AbortSignal = new AbortController().signal;
 
-/** The console reporter cancel prints through when none is supplied. */
-const consoleReporter: Reporter = {
-  info: (line) => console.log(line),
-  error: (line) => console.error(line),
-};
+/**
+ * How a compensation walk's result reads in an operator's log: how many cleanups
+ * ran, and — only when there were any — how many of them failed.
+ *
+ * Module-internal: shared with `./execute_cancel.ts` and `./resume.ts` so the
+ * three places that narrate a walk cannot word it differently. Deliberately not
+ * the same string as {@link cancelEvent}'s `detail`, which is a persisted audit
+ * field rather than a line of prose.
+ *
+ * Takes the two fields it reads rather than a whole {@link CompensationOutcome},
+ * because the resume path narrates a {@link CancelResult}, which carries the same
+ * two but not the audit `attempts`.
+ */
+export function compensationSummary(
+  outcome: {
+    readonly compensated: readonly string[];
+    readonly failures: readonly CompensationFailure[];
+  },
+): string {
+  const failed = outcome.failures.length;
+  return `${outcome.compensated.length} compensation(s) ran${
+    failed > 0 ? `, ${failed} failed` : ""
+  }`;
+}
 
-/** A reporter that discards output (for `silent`). */
-const silentReporter: Reporter = { info: () => {}, error: () => {} };
+/**
+ * The line every path prints on discovering that another process owns this run's
+ * cancellation: it runs the compensations and settles the record, so this one
+ * stops.
+ *
+ * Module-internal: shared with `./execute_cancel.ts` and `./executor.ts`.
+ */
+export function cancelledElsewhere(runId: string): string {
+  return `Run ${runId} cancelled by another process — stopping.`;
+}
 
 /** A run status past which nothing more happens. */
 function isTerminal(status: RunStatus): boolean {
@@ -691,7 +716,11 @@ export async function settleExternally(
   // this is what an operator reads in the log.
   const verb = terminal === "cancelled" ? "cancelled" : "failed";
   const readEnv = options.readEnv ?? defaultReadEnv;
-  const store = resolveCancelStore(options, build, readEnv);
+  const store = resolveRunStore(
+    options.stateStore,
+    build.stateStore(),
+    readEnv,
+  );
   if (store === undefined) {
     throw new Error(
       "cancel: no state store is configured. Set ZUKE_STATE_DIR / " +
@@ -704,15 +733,11 @@ export async function settleExternally(
     (options.silent ? silentReporter : consoleReporter);
   const now = () => new Date().toISOString();
 
-  const initial = await store.getRun(runId);
-  if (initial === null) {
-    throw new Error(`cancel: no run "${runId}" found in the store.`);
-  }
   // A settlement runs *this* build's compensations against the record, so a run
   // another build owns is refused before the lock is taken. Reported rather than
   // silently skipped: unlike a sweep, this path was handed one run by name, so
   // the caller asked about a run that is not this build's to unwind.
-  assertOwnsRun(initial.record, resolveBuildId(readEnv));
+  const initial = await loadOwnedRun(store, runId, "cancel", readEnv);
   if (isTerminal(initial.record.status)) {
     reporter.info(
       `Run ${runId} is already ${initial.record.status}; nothing to ` +
@@ -865,14 +890,7 @@ export async function settleExternally(
     }
 
     await finalizeCancelled(store, runId, actor, outcome, now, terminal);
-    reporter.info(
-      `Run ${runId} ${verb} — ${outcome.compensated.length} compensation(s) ` +
-        `ran${
-          outcome.failures.length > 0
-            ? `, ${outcome.failures.length} failed`
-            : ""
-        }.`,
-    );
+    reporter.info(`Run ${runId} ${verb} — ${compensationSummary(outcome)}.`);
     return {
       runId,
       status: terminal,
@@ -883,22 +901,6 @@ export async function settleExternally(
   } finally {
     await cancelLock.release();
   }
-}
-
-/** Resolve the store for a cancel — like a run, but always defaulting on. */
-function resolveCancelStore(
-  options: CancelOptions,
-  build: Build,
-  readEnv: (name: string) => string | undefined,
-): StateStore | undefined {
-  return resolveStateStore(options.stateStore, build.stateStore(), {
-    readEnv,
-    host: defaultStateHost,
-    defaultDir: absolutePath(
-      findConfigDir(Deno.cwd(), pathExists) ?? Deno.cwd(),
-    )(".zuke", "runs").path,
-    enableDefault: true,
-  });
 }
 
 /** Resolve `also` target names to compensation steps (timeout `{target}` disposition). */

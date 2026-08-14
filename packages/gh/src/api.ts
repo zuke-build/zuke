@@ -239,16 +239,26 @@ export function caller(
 }
 
 /**
- * Read an environment variable, tolerating a denied permission.
+ * Read an environment variable, tolerating a denied permission, and treating an
+ * empty value as unset.
  *
  * The fallbacks to `GITHUB_REPOSITORY` and `GITHUB_TOKEN` are a convenience for
  * jobs that already have them, so a build running without `--allow-env` should
  * get the settings class's own "requires .repo(...)" message rather than a
  * permission failure from underneath it.
+ *
+ * Empty means unset for the same reason. Actions defines these variables for
+ * every job, and a workflow that forgets to pass one through — an `env:` entry
+ * fed by a secret that is not set, a `with:` input left blank — leaves it
+ * defined and empty. Taken literally that becomes `Bearer ` on the wire, or a
+ * `commit_sha: ""` in a request body, and GitHub answers with a status that
+ * names neither. The caller's own "requires .token(...)" is the useful answer,
+ * so the only reading of an empty value is that nothing was provided.
  */
 export function env(name: string): string | undefined {
   try {
-    return Deno.env.get(name);
+    const value = Deno.env.get(name);
+    return value === "" ? undefined : value;
   } catch {
     return undefined;
   }

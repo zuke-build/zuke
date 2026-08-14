@@ -17,12 +17,7 @@
  * @module
  */
 
-import { HttpError } from "../http.ts";
-import {
-  assertProtocol,
-  STATE_PROTOCOL_HEADER,
-  STATE_PROTOCOL_VERSION,
-} from "../state/protocol.ts";
+import { HttpJsonCas } from "../state/http_cas.ts";
 import {
   type BuildDescriptor,
   type BuildQuery,
@@ -52,59 +47,21 @@ export interface HttpBuildRegistryOptions {
  * or environment variable over a hard-coded value.
  */
 export class HttpBuildRegistry implements BuildRegistry {
-  readonly #base: string;
-  readonly #token?: string;
-  readonly #fetch: typeof fetch;
+  readonly #cas: HttpJsonCas;
 
   /** Build the registry from its URL, optional token, and `fetch` seam. */
   constructor(options: HttpBuildRegistryOptions) {
-    this.#base = options.url.replace(/\/+$/, "");
-    this.#token = options.token;
-    this.#fetch = options.fetch ?? fetch;
-  }
-
-  #buildUrl(id: string): string {
-    return `${this.#base}/builds/${encodeURIComponent(id)}`;
-  }
-
-  #headers(extra?: Record<string, string>): Record<string, string> {
-    const headers: Record<string, string> = {
-      ...extra,
-      [STATE_PROTOCOL_HEADER]: STATE_PROTOCOL_VERSION,
-    };
-    if (this.#token !== undefined && this.#token !== "") {
-      headers.Authorization = `Bearer ${this.#token}`;
-    }
-    return headers;
-  }
-
-  /** Fetch and reject a response that declares an incompatible protocol version. */
-  async #request(url: string, init?: RequestInit): Promise<Response> {
-    const response = await this.#fetch(url, init);
-    assertProtocol(response, "registry");
-    return response;
+    this.#cas = new HttpJsonCas(options, "registry", "builds");
   }
 
   /** `GET /builds/:id` → descriptor + `ETag`; a `404` is a miss. */
   async getBuild(
     id: string,
   ): Promise<{ descriptor: BuildDescriptor; version: string } | null> {
-    const url = this.#buildUrl(id);
-    const response = await this.#request(url, { headers: this.#headers() });
-    if (response.status === 404) {
-      await response.body?.cancel();
-      return null;
-    }
-    if (!response.ok) {
-      await response.body?.cancel();
-      throw new HttpError(response.status, url);
-    }
-    const version = response.headers.get("etag");
-    const text = await response.text();
-    if (version === null) {
-      throw new Error(`registry: ${url} did not return an ETag`);
-    }
-    return { descriptor: parseBuildDescriptor(text), version };
+    const hit = await this.#cas.get(id);
+    return hit === null
+      ? null
+      : { descriptor: parseBuildDescriptor(hit.text), version: hit.version };
   }
 
   /** `PUT /builds/:id` guarded by `If-Match` / `If-None-Match`; `412` → conflict. */
@@ -112,42 +69,16 @@ export class HttpBuildRegistry implements BuildRegistry {
     descriptor: BuildDescriptor,
     expectedVersion: string | null,
   ): Promise<PutBuildResult> {
-    const url = this.#buildUrl(descriptor.id);
-    const precondition: Record<string, string> = expectedVersion === null
-      ? { "If-None-Match": "*" }
-      : { "If-Match": expectedVersion };
-    const response = await this.#request(url, {
-      method: "PUT",
-      headers: this.#headers({
-        "content-type": "application/json",
-        ...precondition,
-      }),
-      body: stringifyBuildDescriptor(descriptor),
-    });
-    if (response.status === 412) {
-      await response.body?.cancel();
-      return { ok: false, conflict: true };
-    }
-    await response.body?.cancel();
-    if (!response.ok) throw new HttpError(response.status, url);
-    const version = response.headers.get("etag");
-    if (version === null) {
-      throw new Error(`registry: ${url} did not return an ETag on write`);
-    }
-    return { ok: true, version };
+    return await this.#cas.put(
+      descriptor.id,
+      stringifyBuildDescriptor(descriptor),
+      expectedVersion,
+    );
   }
 
   /** `DELETE /builds/:id`; a missing build (`404`) is not an error. */
-  async deregister(id: string): Promise<void> {
-    const url = this.#buildUrl(id);
-    const response = await this.#request(url, {
-      method: "DELETE",
-      headers: this.#headers(),
-    });
-    await response.body?.cancel();
-    if (!response.ok && response.status !== 404) {
-      throw new HttpError(response.status, url);
-    }
+  deregister(id: string): Promise<void> {
+    return this.#cas.remove(id);
   }
 
   /** `GET /builds?name=&since=` → an array of {@link BuildSummary}. */
@@ -155,22 +86,6 @@ export class HttpBuildRegistry implements BuildRegistry {
     const params = new URLSearchParams();
     if (query.name !== undefined) params.set("name", query.name);
     if (query.since !== undefined) params.set("since", query.since);
-    const qs = params.toString();
-    const url = `${this.#base}/builds${qs === "" ? "" : `?${qs}`}`;
-    const response = await this.#request(url, { headers: this.#headers() });
-    if (!response.ok) {
-      await response.body?.cancel();
-      throw new HttpError(response.status, url);
-    }
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(await response.text());
-    } catch {
-      throw new Error(`registry: ${url} did not return valid JSON`);
-    }
-    if (!Array.isArray(parsed)) {
-      throw new Error(`registry: ${url} did not return a JSON array`);
-    }
-    return parsed.map(parseBuildSummary);
+    return (await this.#cas.list(params)).map(parseBuildSummary);
   }
 }

@@ -14,7 +14,7 @@ import {
   type JsonRpcResponse,
   METHOD_NOT_FOUND,
 } from "../src/mcp/jsonrpc.ts";
-import { PROTOCOL_VERSION } from "../src/mcp/server.ts";
+import { PROTOCOL_VERSION } from "../src/mcp/protocol.ts";
 import { serveMcp } from "../src/mcp/command.ts";
 import {
   defaultRegistryRunner,
@@ -32,7 +32,7 @@ import type {
   PutBuildResult,
 } from "../src/registry/registry.ts";
 import { FileSystemStateStore } from "../src/state/fs_store.ts";
-import type { StateHost } from "../src/state/store.ts";
+import { FakeStateHost } from "./_fakes.ts";
 
 // ---- fakes ------------------------------------------------------------------
 
@@ -58,46 +58,6 @@ class FakeRegistry implements BuildRegistry {
   }
   listBuilds() {
     return Promise.resolve([...this.map.values()].map(toBuildSummary));
-  }
-}
-
-/** An in-memory {@link StateHost} for a real FileSystemStateStore (audit trail). */
-class FakeStateHost implements StateHost {
-  readonly files = new Map<string, string>();
-  readonly locks = new Set<string>();
-  readText(path: string): Promise<string | null> {
-    return Promise.resolve(this.files.get(path) ?? null);
-  }
-  writeText(path: string, content: string): Promise<void> {
-    this.files.set(path, content);
-    return Promise.resolve();
-  }
-  rename(from: string, to: string): Promise<void> {
-    const content = this.files.get(from);
-    if (content !== undefined) {
-      this.files.set(to, content);
-      this.files.delete(from);
-    }
-    return Promise.resolve();
-  }
-  createExclusive(path: string): Promise<boolean> {
-    if (this.locks.has(path)) return Promise.resolve(false);
-    this.locks.add(path);
-    return Promise.resolve(true);
-  }
-  remove(path: string): Promise<void> {
-    this.files.delete(path);
-    this.locks.delete(path);
-    return Promise.resolve();
-  }
-  listDir(): Promise<string[]> {
-    return Promise.resolve([]);
-  }
-  mkdirp(): Promise<void> {
-    return Promise.resolve();
-  }
-  now(): number {
-    return 1_000_000;
   }
 }
 

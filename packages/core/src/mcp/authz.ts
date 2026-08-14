@@ -25,6 +25,25 @@ export function timingSafeEqual(a: string, b: string): boolean {
 }
 
 /**
+ * Validate a protected target's operator token, returning a denial reason (for
+ * the structured error and the audit trail) or `null` when the token is valid.
+ *
+ * Fail-closed: a server with no token configured denies every protected target
+ * rather than exposing one, and the comparison is constant-time so a wrong token
+ * leaks nothing through response timing. The single home of this policy, so both
+ * server flavours enforce the token identically.
+ */
+export function operatorTokenDenial(
+  args: Record<string, unknown>,
+  token: string | undefined,
+): string | null {
+  if (token === undefined || token === "") return "operator_token_unconfigured";
+  const provided = args.operatorToken;
+  if (typeof provided !== "string") return "missing_operator_token";
+  return timingSafeEqual(provided, token) ? null : "invalid_operator_token";
+}
+
+/**
  * Build a predicate matching a target name against `patterns`, each a glob
  * (`deploy`, `checks*`; `*` matches any run of non-`/` characters, so it spans
  * the dots in a dotted target name). `undefined` matches **everything** — the

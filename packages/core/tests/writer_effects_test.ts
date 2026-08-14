@@ -15,15 +15,15 @@ import { execute } from "../src/executor.ts";
 import { target } from "../src/target.ts";
 import { Redactor } from "../src/redact.ts";
 import { RunNotActiveError, RunStateWriter } from "../src/state/writer.ts";
-import type { StateStore } from "../src/state/store.ts";
 import type { EffectState, RunRecord, RunStatus } from "../src/state/types.ts";
+import { MemStateStore } from "./_fakes.ts";
+import { runRecord } from "./_fakes.ts";
 
 const NOW = "2026-08-10T10:00:00.000Z";
 
-/** A minimal run record with one target. */
+/** A minimal run record with one target, `gate`. */
 function sampleRecord(status: RunStatus = "running"): RunRecord {
-  return {
-    id: "run-1",
+  return runRecord({
     build: "Ci",
     rootTarget: "gate",
     status,
@@ -31,73 +31,13 @@ function sampleRecord(status: RunStatus = "running"): RunRecord {
     createdAt: NOW,
     updatedAt: NOW,
     graph: [{ name: "gate", dependsOn: [] }],
-    params: {},
     targets: { gate: { status: "pending", meta: {} } },
-    signals: {},
-    events: [],
-  };
-}
-
-/** An in-memory store whose failure modes each test drives directly. */
-class MemStore implements StateStore {
-  record: RunRecord | null = null;
-  version = 0;
-  /** Reject the next put with a store error. */
-  failNextPut = false;
-  /** Answer this many puts with a conflict before accepting one. */
-  forceConflicts = 0;
-  /** Return null from getRun, as though the run were pruned mid-write. */
-  vanish = false;
-  /** What a conflicting re-read reports the run's status as. */
-  freshStatus?: RunStatus;
-
-  listRuns(): Promise<never[]> {
-    return Promise.resolve([]);
-  }
-  getRun(): Promise<{ record: RunRecord; version: string } | null> {
-    if (this.vanish || this.record === null) return Promise.resolve(null);
-    const record = structuredClone(this.record);
-    if (this.freshStatus !== undefined) record.status = this.freshStatus;
-    return Promise.resolve({ record, version: String(this.version) });
-  }
-  putRun(
-    record: RunRecord,
-    expected: string | null,
-  ): Promise<{ ok: true; version: string } | { ok: false; conflict: true }> {
-    if (this.failNextPut) {
-      this.failNextPut = false;
-      return Promise.reject(new Error("store down"));
-    }
-    if (this.forceConflicts > 0) {
-      this.forceConflicts -= 1;
-      return Promise.resolve({ ok: false, conflict: true });
-    }
-    const current = this.record === null ? null : String(this.version);
-    if (current !== expected) {
-      return Promise.resolve({ ok: false, conflict: true });
-    }
-    this.record = structuredClone(record);
-    this.version += 1;
-    return Promise.resolve({ ok: true, version: String(this.version) });
-  }
-  deleteRun(): Promise<void> {
-    this.record = null;
-    return Promise.resolve();
-  }
-  acquireLock(): Promise<never> {
-    throw new Error("MemStore: locks are unused here");
-  }
-  renewLock(): Promise<never> {
-    throw new Error("MemStore: locks are unused here");
-  }
-  releaseLock(): Promise<never> {
-    throw new Error("MemStore: locks are unused here");
-  }
+  });
 }
 
 /** A writer over `store`, seeded with a record in `status`. */
 async function writerFor(
-  store: MemStore,
+  store: MemStateStore,
   status: RunStatus = "running",
   onExternalCancel?: () => void,
 ): Promise<RunStateWriter> {
@@ -114,12 +54,15 @@ async function writerFor(
 }
 
 /** The persisted effect row, or undefined. */
-function effectOf(store: MemStore, name = "post"): EffectState | undefined {
+function effectOf(
+  store: MemStateStore,
+  name = "post",
+): EffectState | undefined {
   return store.record?.targets["gate"]?.effects?.[name];
 }
 
 Deno.test("beginEffect arms the intent and says to run", async () => {
-  const store = new MemStore();
+  const store = new MemStateStore();
   const writer = await writerFor(store);
   assertEquals(await writer.beginEffect("gate", "post"), "run");
   // Persisted, not merely in memory: the point is that a later process can see
@@ -130,7 +73,7 @@ Deno.test("beginEffect arms the intent and says to run", async () => {
 });
 
 Deno.test("an effect already done is skipped rather than repeated", async () => {
-  const store = new MemStore();
+  const store = new MemStateStore();
   const writer = await writerFor(store);
   await writer.beginEffect("gate", "post");
   await writer.markEffectSettled("gate", "post", true);
@@ -141,7 +84,7 @@ Deno.test("an effect already done is skipped rather than repeated", async () => 
 });
 
 Deno.test("a failed effect is re-armed, keeping its first intent time", async () => {
-  const store = new MemStore();
+  const store = new MemStateStore();
   let clock = "2026-08-10T10:00:00.000Z";
   const writer = await RunStateWriter.open(
     store,
@@ -164,7 +107,7 @@ Deno.test("a failed effect is re-armed, keeping its first intent time", async ()
 });
 
 Deno.test("a settled effect records when, and a failure's message is redacted", async () => {
-  const store = new MemStore();
+  const store = new MemStateStore();
   const writer = await writerFor(store);
   await writer.beginEffect("gate", "post");
   await writer.markEffectSettled("gate", "post", false, "token swordfish bad");
@@ -184,7 +127,7 @@ Deno.test("an effect is refused on a run that is no longer running", async () =>
     "succeeded",
   ];
   for (const status of settled) {
-    const store = new MemStore();
+    const store = new MemStateStore();
     const writer = await writerFor(store, status);
     const error = await assertRejects(
       () => writer.beginEffect("gate", "post"),
@@ -202,7 +145,7 @@ Deno.test("an effect is refused on a run that is no longer running", async () =>
 Deno.test("a conflicting re-read that has been settled elsewhere is refused too", async () => {
   // The window the best-effort path handles by re-applying onto the settling
   // record and carrying on. For an effect that is exactly wrong.
-  const store = new MemStore();
+  const store = new MemStateStore();
   let cancelled = 0;
   const guarded = await writerFor(store, "running", () => void cancelled++);
   store.forceConflicts = 1;
@@ -218,7 +161,7 @@ Deno.test("a conflicting re-read that has been settled elsewhere is refused too"
 Deno.test("a vanished run refuses the effect rather than dropping the write", async () => {
   // The best-effort path drops this one with a warning. Doing that here would
   // run a side effect that nothing recorded as owed.
-  const store = new MemStore();
+  const store = new MemStateStore();
   const writer = await writerFor(store);
   store.forceConflicts = 1;
   store.vanish = true;
@@ -230,7 +173,7 @@ Deno.test("a vanished run refuses the effect rather than dropping the write", as
 });
 
 Deno.test("exhausting the retries refuses the effect", async () => {
-  const store = new MemStore();
+  const store = new MemStateStore();
   const writer = await writerFor(store);
   store.forceConflicts = 99; // every attempt conflicts
   await assertRejects(
@@ -241,7 +184,7 @@ Deno.test("exhausting the retries refuses the effect", async () => {
 });
 
 Deno.test("a store error refuses the effect", async () => {
-  const store = new MemStore();
+  const store = new MemStateStore();
   const writer = await writerFor(store);
   store.failNextPut = true;
   await assertRejects(
@@ -255,7 +198,7 @@ Deno.test("a refused effect does not poison the writer's other writes", async ()
   // Every write shares one serialising chain. A rejected effect write that was
   // left on it would make each later best-effort write reject too, so one
   // failed intent would take the run's whole bookkeeping down with it.
-  const store = new MemStore();
+  const store = new MemStateStore();
   const writer = await writerFor(store);
   store.failNextPut = true;
   await assertRejects(() => writer.beginEffect("gate", "post"), Error);
@@ -288,7 +231,7 @@ Deno.test("a refused intent leaves nothing behind for a later write to persist",
   // a throw that left it there would have the next landing write persist an
   // intent for an effect that provably never ran — and make the body's first
   // execution report itself as a re-drive.
-  const store = new MemStore();
+  const store = new MemStateStore();
   const writer = await writerFor(store);
   store.failNextPut = true;
   await assertRejects(() => writer.beginEffect("gate", "post"), Error);
@@ -306,7 +249,7 @@ Deno.test("a settlement never writes over an effect another process completed", 
   // Once two live processes can share a running run, a re-applied `failed` from
   // the slower one would bury a `done` the faster one recorded, leaving the
   // record claiming an effect failed when it had in fact succeeded.
-  const store = new MemStore();
+  const store = new MemStateStore();
   const writer = await writerFor(store);
   await writer.beginEffect("gate", "post");
   await writer.markEffectSettled("gate", "post", true);
@@ -319,7 +262,7 @@ Deno.test("giving up after repeated conflicts marks the record degraded", async 
   // The last attempt's mutation goes with the stale base it was applied to and
   // no later write carries it — a permanent loss, and the flag is what makes a
   // resume demand `--resume-degraded` before repeating a non-idempotent step.
-  const store = new MemStore();
+  const store = new MemStateStore();
   const writer = await writerFor(store);
   store.forceConflicts = 99;
   await assertRejects(() => writer.beginEffect("gate", "post"), Error);
@@ -331,7 +274,7 @@ Deno.test("a run settled elsewhere is not reported as succeeded by the process i
   // unwinds it; the process still working on that run then finishes normally and
   // would report success — a green result for work another process had already
   // rolled back. Which, for a merge gate, is the whole thing this must not do.
-  const store = new MemStore();
+  const store = new MemStateStore();
   let aborted = 0;
   const writer = await writerFor(store, "running", () => void aborted++);
 
@@ -351,7 +294,7 @@ Deno.test("a run settled elsewhere is not reported as succeeded by the process i
 });
 
 Deno.test("a run settled elsewhere is not marked suspended either", async () => {
-  const store = new MemStore();
+  const store = new MemStateStore();
   const writer = await writerFor(store);
   store.forceConflicts = 1;
   store.freshStatus = "cancelled";
@@ -370,7 +313,7 @@ Deno.test("a refused intent leaves the record's modification time alone too", as
   // Needs a clock that actually moves: the shared `writerFor` helper hands the
   // writer a constant, against which this assertion would hold no matter what
   // the rollback did.
-  const store = new MemStore();
+  const store = new MemStateStore();
   let tick = 0;
   const writer = await RunStateWriter.open(
     store,
@@ -390,7 +333,7 @@ Deno.test("a refused intent restores the record in place, not by replacing it", 
   // nothing writes to any more. This guards that invariant against a future
   // change rather than pinning the current one — restoring only `targets`, as
   // the code did before, preserved identity too.
-  const store = new MemStore();
+  const store = new MemStateStore();
   const writer = await writerFor(store);
   const held = writer.snapshot();
   store.failNextPut = true;

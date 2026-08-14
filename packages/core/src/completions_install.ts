@@ -19,6 +19,7 @@ import { FileTasks } from "./file.ts";
 import type { TargetBuilder } from "./target.ts";
 import type { AnyParameter } from "./params.ts";
 import { type CompletionShell, formatCompletions } from "./completions.ts";
+import { defaultReadEnv } from "./internal.ts";
 
 /** Options for {@link installCompletions}; the defaults read the environment. */
 export interface InstallOptions {
@@ -49,15 +50,6 @@ interface ShellLayout {
   rcPath?: string;
 }
 
-/** Read an environment variable, treating missing env access as unset. */
-function readEnv(name: string): string | undefined {
-  try {
-    return Deno.env.get(name);
-  } catch {
-    return undefined;
-  }
-}
-
 /** The parent directory of a `/`-separated path. */
 function parentDir(path: string): string {
   const slash = path.lastIndexOf("/");
@@ -69,7 +61,7 @@ function layoutFor(
   shell: CompletionShell,
   options: InstallOptions,
 ): ShellLayout {
-  const env = options.env ?? readEnv;
+  const env = options.env ?? defaultReadEnv;
   const home = options.home ?? FileTasks.homeDirectory();
   const xdg = options.configHome ?? env("XDG_CONFIG_HOME");
   const configHome = xdg !== undefined && xdg !== "" ? xdg : `${home}/.config`;

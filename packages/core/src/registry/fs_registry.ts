@@ -28,18 +28,12 @@ import {
 } from "./descriptor.ts";
 import type { BuildRegistry, PutBuildResult } from "./registry.ts";
 import { withFileMutex } from "../state/mutex.ts";
+import {
+  assertSafeId,
+  casWriteJson,
+  sortNewestFirst,
+} from "../state/json_file_cas.ts";
 import { sha256Hex } from "../internal.ts";
-
-/**
- * Reject a build id that could escape the builds directory. Ids are build class
- * names in normal use; this guards the case where one arrives from the CLI or a
- * query.
- */
-function assertSafeId(id: string): void {
-  if (!/^[A-Za-z0-9._-]+$/.test(id)) {
-    throw new Error(`registry: unsafe build id "${id}"`);
-  }
-}
 
 /**
  * A {@link BuildRegistry} that writes one `<id>.json` file per build under a
@@ -69,12 +63,12 @@ export class FileSystemBuildRegistry implements BuildRegistry {
   // Both id-derived paths are built through these helpers, and both validate the
   // id — so a traversal can't slip in via a caller that forgets to check.
   #file(id: string): string {
-    assertSafeId(id);
+    assertSafeId("registry", "build", id);
     return `${this.#dir}/${id}.json`;
   }
 
   #lock(id: string): string {
-    assertSafeId(id);
+    assertSafeId("registry", "build", id);
     return `${this.#dir}/${id}.json.lock`;
   }
 
@@ -103,18 +97,13 @@ export class FileSystemBuildRegistry implements BuildRegistry {
   ): Promise<PutBuildResult> {
     // #lock/#file validate descriptor.id before any path is used below.
     await this.#ensureDir();
-    return await this.#withLock(descriptor.id, async () => {
-      const current = await this.#host.readText(this.#file(descriptor.id));
-      const currentVersion = current === null ? null : await sha256Hex(current);
-      if (currentVersion !== expectedVersion) {
-        return { ok: false, conflict: true };
-      }
-      const content = stringifyBuildDescriptor(descriptor);
-      const tmp = `${this.#file(descriptor.id)}.tmp-${crypto.randomUUID()}`;
-      await this.#host.writeText(tmp, content);
-      await this.#host.rename(tmp, this.#file(descriptor.id));
-      return { ok: true, version: await sha256Hex(content) };
-    });
+    return await this.#withLock(descriptor.id, () =>
+      casWriteJson(
+        this.#host,
+        this.#file(descriptor.id),
+        stringifyBuildDescriptor(descriptor),
+        expectedVersion,
+      ));
   }
 
   /** Remove a registered build under an exclusive lock; a missing file is a no-op. */
@@ -170,13 +159,4 @@ function matches(descriptor: BuildDescriptor, query: BuildQuery): boolean {
     return false;
   }
   return true;
-}
-
-/** Sort by `createdAt` descending, then `id` descending, for stable output. */
-function sortNewestFirst(summaries: BuildSummary[]): BuildSummary[] {
-  return summaries.sort((a, b) =>
-    a.createdAt !== b.createdAt
-      ? (a.createdAt < b.createdAt ? 1 : -1)
-      : (a.id < b.id ? 1 : a.id > b.id ? -1 : 0)
-  );
 }

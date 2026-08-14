@@ -30,6 +30,7 @@ import {
   PARSE_ERROR,
 } from "./jsonrpc.ts";
 import { timingSafeEqual } from "./authz.ts";
+import { isLoopbackHost } from "../http.ts";
 
 /** Options for {@link serveHttp}. */
 export interface HttpTransportOptions {
@@ -134,14 +135,6 @@ function bearerToken(header: string | null): string | undefined {
     return undefined;
   }
   return parts[1];
-}
-
-/** Whether `host` is a loopback address (localhost, 127.0.0.0/8, or ::1). The
- * 127/8 match is a fully-anchored dotted-quad so an attacker domain like
- * `127.0.0.1.evil.com` (which merely *starts* with `127.`) is not accepted. */
-function isLoopbackHost(host: string): boolean {
-  return host === "localhost" || host === "::1" || host === "[::1]" ||
-    /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host);
 }
 
 /** The hostname of an `Origin` value, or `null` if it can't be parsed. */

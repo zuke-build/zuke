@@ -7,7 +7,10 @@ import {
   assertThrows,
 } from "../../core/tests/_assert.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
-import { missingTool } from "@zuke/core/tooling/conformance";
+import {
+  assertWrapperConformance,
+  missingTool,
+} from "@zuke/core/tooling/conformance";
 import {
   JsrAddSettings,
   JsrPublishSettings,
@@ -81,4 +84,10 @@ Deno.test("every JsrTasks function reaches execution", async () => {
     () => JsrTasks.remove((s) => missingTool(s).packages("@std/assert")),
     ToolNotFoundError,
   );
+});
+
+Deno.test("jsr: conforms to the wrapper contract", async () => {
+  await assertWrapperConformance(() => new JsrPublishSettings(), "jsr", {
+    resolution: "path",
+  });
 });

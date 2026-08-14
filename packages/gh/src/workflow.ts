@@ -78,6 +78,7 @@ import type {
   WaitTrigger,
 } from "@zuke/core";
 import { parseDuration } from "@zuke/core";
+import { assertRepoSlug, DEFAULT_BASE_URL, env } from "./api.ts";
 
 /** One job's outcome within a completed workflow run. */
 export interface WorkflowJob {
@@ -381,9 +382,6 @@ function resolveToken(
   return readEnv("GH_TOKEN") ?? readEnv("GITHUB_TOKEN");
 }
 
-/** The GitHub REST base, overridable for tests/GHES. */
-const API_BASE = "https://api.github.com";
-
 /** The default per-request timeout (ms) — a hung GitHub call must not wedge a poll. */
 const DEFAULT_TIMEOUT_MS = 30_000;
 
@@ -418,7 +416,7 @@ export class RestGhWorkflowApi implements GhWorkflowApi {
   ) {
     this.#fetch = options.fetch ?? fetch;
     this.#token = options.token;
-    this.#base = options.base ?? API_BASE;
+    this.#base = options.base ?? DEFAULT_BASE_URL;
     this.#timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   }
 
@@ -577,7 +575,7 @@ export interface GithubWorkflowDeps {
   api?: GhWorkflowApi;
   /** The `fetch` seam handed to the default REST transport (tests). */
   fetch?: typeof fetch;
-  /** Environment reader for the token; defaults to `Deno.env.get`. */
+  /** Environment reader for the token; defaults to the shared `env` (an empty variable counts as unset). */
   readEnv?: (name: string) => string | undefined;
   /** The clock (epoch ms) for the discovery window; defaults to `Date.now` (tests inject it). */
   now?: () => number;
@@ -658,15 +656,6 @@ function discoveryFailure(
     `or switch to .correlate("created-window").`;
 }
 
-/** Read an environment variable, treating missing env access as unset. */
-function defaultReadEnv(name: string): string | undefined {
-  try {
-    return Deno.env.get(name);
-  } catch {
-    return undefined;
-  }
-}
-
 /**
  * {@link githubWorkflow} with injectable dependencies — the entry point both the
  * public factory and the tests call.
@@ -683,10 +672,15 @@ export function githubWorkflowWith(
       "githubWorkflow(...) needs a repo and a workflow — call s.repo(...).workflow(...).",
     );
   }
+  // Once, here: the slug is interpolated into every request path this trigger
+  // makes, and `..` in it resolves to a different endpoint with the token
+  // attached. The REST calls in this package all route through `caller`, which
+  // checks it; this transport predates that and needs the check of its own.
+  assertRepoSlug(repo);
   const api = deps.api ??
     new RestGhWorkflowApi({
       fetch: deps.fetch,
-      token: resolveToken(deps.readEnv ?? defaultReadEnv),
+      token: resolveToken(deps.readEnv ?? env),
     });
   const now = deps.now ?? (() => Date.now());
   const mode = settings.correlateMode_;

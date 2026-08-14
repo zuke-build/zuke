@@ -17,27 +17,7 @@ import {
 } from "../../core/tests/_assert.ts";
 import { GhTasks } from "../mod.ts";
 import { GhAppTokenSettings, mintAppToken } from "../src/app_token.ts";
-
-/** Run `fn` with `values` in the environment, restoring the originals after. */
-async function withEnv(
-  values: Record<string, string | undefined>,
-  fn: () => Promise<void>,
-): Promise<void> {
-  const saved = new Map<string, string | undefined>();
-  for (const [name, value] of Object.entries(values)) {
-    saved.set(name, Deno.env.get(name));
-    if (value === undefined) Deno.env.delete(name);
-    else Deno.env.set(name, value);
-  }
-  try {
-    await fn();
-  } finally {
-    for (const [name, value] of saved) {
-      if (value === undefined) Deno.env.delete(name);
-      else Deno.env.set(name, value);
-    }
-  }
-}
+import { withEnv } from "../../core/tests/_env.ts";
 
 /** A recorded request the fake `fetch` saw. */
 interface Seen {

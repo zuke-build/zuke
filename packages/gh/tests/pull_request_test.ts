@@ -21,27 +21,7 @@ import {
   type GhPullRequestSettings,
   openPullRequest,
 } from "../src/pull_request.ts";
-
-/** Run `fn` with `values` in the environment, restoring the originals after. */
-async function withEnv(
-  values: Record<string, string | undefined>,
-  fn: () => Promise<void>,
-): Promise<void> {
-  const saved = new Map<string, string | undefined>();
-  for (const [name, value] of Object.entries(values)) {
-    saved.set(name, Deno.env.get(name));
-    if (value === undefined) Deno.env.delete(name);
-    else Deno.env.set(name, value);
-  }
-  try {
-    await fn();
-  } finally {
-    for (const [name, value] of saved) {
-      if (value === undefined) Deno.env.delete(name);
-      else Deno.env.set(name, value);
-    }
-  }
-}
+import { withEnv } from "../../core/tests/_env.ts";
 
 /** One recorded request. */
 interface Call {

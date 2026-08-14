@@ -3,7 +3,10 @@
 
 import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
-import { missingTool } from "@zuke/core/tooling/conformance";
+import {
+  assertWrapperConformance,
+  missingTool,
+} from "@zuke/core/tooling/conformance";
 import {
   TofuApplySettings,
   TofuDestroySettings,
@@ -128,4 +131,10 @@ Deno.test("every TofuTasks function reaches execution", async () => {
   await assertRejects(() => TofuTasks.destroy(missingTool), ToolNotFoundError);
   await assertRejects(() => TofuTasks.fmt(missingTool), ToolNotFoundError);
   await assertRejects(() => TofuTasks.output(missingTool), ToolNotFoundError);
+});
+
+Deno.test("tofu: conforms to the wrapper contract", async () => {
+  await assertWrapperConformance(() => new TofuInitSettings(), "tofu", {
+    resolution: "path",
+  });
 });

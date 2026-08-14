@@ -16,6 +16,8 @@ import {
   assertStringIncludes,
 } from "../../core/tests/_assert.ts";
 import { GhTasks } from "../mod.ts";
+import { withTemp } from "../../core/tests/_temp.ts";
+import { withEnv } from "../../core/tests/_env.ts";
 
 /** A recorded request the fake `fetch` saw. */
 interface Seen {
@@ -87,30 +89,8 @@ async function assetFixture(dir: string): Promise<string> {
   return path;
 }
 
-/** Run `fn` with the Actions environment variables set to `values`. */
-async function withEnv(
-  values: Record<string, string | undefined>,
-  fn: () => Promise<void>,
-): Promise<void> {
-  const saved = new Map<string, string | undefined>();
-  for (const [name, value] of Object.entries(values)) {
-    saved.set(name, Deno.env.get(name));
-    if (value === undefined) Deno.env.delete(name);
-    else Deno.env.set(name, value);
-  }
-  try {
-    await fn();
-  } finally {
-    for (const [name, value] of saved) {
-      if (value === undefined) Deno.env.delete(name);
-      else Deno.env.set(name, value);
-    }
-  }
-}
-
 Deno.test("an asset is uploaded to the latest release's upload host", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const file = await assetFixture(dir);
     const seen: Seen[] = [];
     const result = await GhTasks.uploadReleaseAsset((s) =>
@@ -134,14 +114,11 @@ Deno.test("an asset is uploaded to the latest release's upload host", async () =
     assertEquals(seen[1].authorization, "Bearer tok");
     assertEquals(seen[1].contentType, "application/gzip");
     assertEquals(seen[1].body, new Uint8Array([1, 2, 3, 4]));
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("a tag setting resolves that release instead of latest", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const file = await assetFixture(dir);
     const seen: Seen[] = [];
     await GhTasks.uploadReleaseAsset((s) =>
@@ -149,14 +126,11 @@ Deno.test("a tag setting resolves that release instead of latest", async () => {
         .fetch(fakeGithub(seen))
     );
     assertStringIncludes(seen[0].url, "/repos/acme/app/releases/tags/v1.0.0");
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("an asset the release already carries is kept, not re-sent", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const file = await assetFixture(dir);
     const seen: Seen[] = [];
     const result = await GhTasks.uploadReleaseAsset((s) =>
@@ -167,17 +141,14 @@ Deno.test("an asset the release already carries is kept, not re-sent", async () 
     assertStringIncludes(result.url ?? "", "extension.tar.gz");
     // Only the lookup went out — published assets are never churned.
     assertEquals(seen.length, 1);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("a stuck asset (state not uploaded) is deleted and re-sent", async () => {
   // GitHub's documented failure mode: an errored/interrupted upload reserves
   // the asset name in a non-`uploaded` state. Skipping it would leave the
   // release serving a corpse forever — the one case a re-run must repair.
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const file = await assetFixture(dir);
     const seen: Seen[] = [];
     const github: typeof fetch = async (input, init) => {
@@ -214,14 +185,11 @@ Deno.test("a stuck asset (state not uploaded) is deleted and re-sent", async () 
     // Lookup, then DELETE of the stuck asset, then the fresh upload.
     assertEquals(seen.map((s) => s.method), ["GET", "DELETE", "POST"]);
     assertStringIncludes(seen[1].url, "/releases/assets/55");
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("a failed deletion of a stuck asset surfaces, a 404 does not", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const file = await assetFixture(dir);
     const github = (deleteStatus: number): typeof fetch => async (i, init) => {
       await Promise.resolve();
@@ -250,9 +218,7 @@ Deno.test("a failed deletion of a stuck asset surfaces, a 404 does not", async (
       s.file(file).repo("acme/app").token("tok").fetch(github(404))
     );
     assertEquals(result.state, "uploaded");
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 /** The `sha256:<hex>` digest the REST API would report for `data`. */
@@ -365,22 +331,18 @@ Deno.test("refresh keeps an asset whose digest the API does not report", async (
 });
 
 Deno.test("a repository with no releases reports no-release, not an error", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const file = await assetFixture(dir);
     const result = await GhTasks.uploadReleaseAsset((s) =>
       s.file(file).repo("acme/app").token("tok")
         .fetch(fakeGithub([], { releaseStatus: 404 }))
     );
     assertEquals(result, { state: "no-release", name: "extension.tar.gz" });
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("a missing tag IS an error — the caller named a release", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const file = await assetFixture(dir);
     await assertRejects(
       () =>
@@ -391,14 +353,11 @@ Deno.test("a missing tag IS an error — the caller named a release", async () =
       Error,
       "releases/tags/v9.9.9",
     );
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("the name, content type, and their defaults follow the file", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const file = await assetFixture(dir);
     const seen: Seen[] = [];
     await GhTasks.uploadReleaseAsset((s) =>
@@ -407,9 +366,7 @@ Deno.test("the name, content type, and their defaults follow the file", async ()
     );
     assertStringIncludes(seen[1].url, "?name=bundle.zip");
     assertEquals(seen[1].contentType, "application/x-test");
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("missing settings fail with messages that name the fix", async () => {
@@ -441,8 +398,7 @@ Deno.test("missing settings fail with messages that name the fix", async () => {
 });
 
 Deno.test("the token and repo default to the Actions environment", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const file = await assetFixture(dir);
     await withEnv(
       { GITHUB_TOKEN: "ghs_env", GITHUB_REPOSITORY: "acme/app" },
@@ -456,14 +412,11 @@ Deno.test("the token and repo default to the Actions environment", async () => {
         assertEquals(seen[0].authorization, "Bearer ghs_env");
       },
     );
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("a GHES base URL is honored, trailing slash and all", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const file = await assetFixture(dir);
     const seen: Seen[] = [];
     await GhTasks.uploadReleaseAsset((s) =>
@@ -476,9 +429,7 @@ Deno.test("a GHES base URL is honored, trailing slash and all", async () => {
     );
     // An unknown extension falls back to the generic content type.
     assertEquals(seen[1].contentType, "application/octet-stream");
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });
 
 Deno.test("a name that cannot be derived from the file asks for .name(...)", async () => {
@@ -493,8 +444,7 @@ Deno.test("a name that cannot be derived from the file asks for .name(...)", asy
 });
 
 Deno.test("malformed release responses fail with what came back", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const file = await assetFixture(dir);
     const answering = (body: string): typeof fetch => async () => {
       await Promise.resolve();
@@ -507,7 +457,7 @@ Deno.test("malformed release responses fail with what came back", async () => {
           s.file(file).repo("a/b").token("t").fetch(answering("<html>"))
         ),
       Error,
-      "non-JSON body",
+      "is not JSON",
     );
     // JSON, but not a release: nothing to upload to.
     await assertRejects(
@@ -534,14 +484,27 @@ Deno.test("malformed release responses fail with what came back", async () => {
       Error,
       "non-JSON body",
     );
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
+});
+
+Deno.test("a repository that is not owner/name is refused before anything is sent", async () => {
+  // The slug is interpolated into the release lookup's path, so `..` in it
+  // would send a `contents: write` token somewhere the caller never named. The
+  // repo-relative calls route through the shared caller, which checks it.
+  await assertRejects(
+    () =>
+      GhTasks.uploadReleaseAsset((s) =>
+        s.file("unread.bin").repo("../../orgs/victim").token("t").fetch(() => {
+          throw new Error("no request should be made");
+        })
+      ),
+    Error,
+    'invalid repository "../../orgs/victim"',
+  );
 });
 
 Deno.test("an upload rejection surfaces GitHub's own message", async () => {
-  const dir = await Deno.makeTempDir();
-  try {
+  await withTemp(async (dir) => {
     const file = await assetFixture(dir);
     const failing: typeof fetch = async (input) => {
       await Promise.resolve();
@@ -561,7 +524,5 @@ Deno.test("an upload rejection surfaces GitHub's own message", async () => {
       Error,
       "asset too large",
     );
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  });
 });

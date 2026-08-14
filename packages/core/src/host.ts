@@ -15,14 +15,7 @@
  * @module
  */
 
-/** Read an environment variable, treating missing env access as unset. */
-function readEnv(name: string): string | undefined {
-  try {
-    return Deno.env.get(name);
-  } catch {
-    return undefined;
-  }
-}
+import { defaultReadEnv } from "./internal.ts";
 
 /**
  * The CI host a build is running on, or `"local"` when not on CI. The names
@@ -38,7 +31,7 @@ export type CiHost = "github" | "gitlab" | "azure" | "bitbucket" | "local";
  * The reader is injectable so detection can be unit-tested hermetically.
  */
 export function detectCiHost(
-  env: (name: string) => string | undefined = readEnv,
+  env: (name: string) => string | undefined = defaultReadEnv,
 ): CiHost {
   if (env("GITHUB_ACTIONS") === "true") return "github";
   if (env("GITLAB_CI") === "true") return "gitlab";
@@ -67,7 +60,7 @@ export function ciHost(): string {
     case "bitbucket":
       return "bitbucket-pipelines";
     case "local": {
-      const ci = readEnv("CI");
+      const ci = defaultReadEnv("CI");
       return ci !== undefined && ci !== "" && ci !== "false" ? "ci" : "local";
     }
   }

@@ -19,6 +19,7 @@ import { decodeState, encodeState } from "../../packages/ai/src/state.ts";
 import { SUPPRESS_HINT } from "../../packages/ai/src/report.ts";
 import { commentMarker } from "../../packages/ai/src/hosts/types.ts";
 import { runCli } from "./_harness.ts";
+import { withEnv } from "../../packages/core/tests/_env.ts";
 
 const DIFF = "diff --git a/src/app.ts b/src/app.ts\n" +
   "--- a/src/app.ts\n+++ b/src/app.ts\n@@\n+const x = eval(input);\n";
@@ -80,27 +81,6 @@ function fakeFetch(
     return Promise.resolve(new Response(next, { status: 200 }));
   }) as typeof fetch;
   return { fetch: impl, calls };
-}
-
-/** Run `fn` with env vars set, restoring the previous values after. */
-async function withEnv(
-  vars: Record<string, string | undefined>,
-  fn: () => Promise<void>,
-): Promise<void> {
-  const prior = new Map<string, string | undefined>();
-  for (const [key, value] of Object.entries(vars)) {
-    prior.set(key, Deno.env.get(key));
-    if (value === undefined) Deno.env.delete(key);
-    else Deno.env.set(key, value);
-  }
-  try {
-    await fn();
-  } finally {
-    for (const [key, value] of prior) {
-      if (value === undefined) Deno.env.delete(key);
-      else Deno.env.set(key, value);
-    }
-  }
 }
 
 Deno.test("a reviewer with verify + discussion gates a real build via the CLI", async () => {

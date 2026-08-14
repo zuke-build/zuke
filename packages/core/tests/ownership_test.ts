@@ -21,26 +21,22 @@ import {
   resolveBuildId,
 } from "../src/ownership.ts";
 import type { RunRecord } from "../src/state/types.ts";
+import { runRecord } from "./_fakes.ts";
 
 const NOW = "2026-08-11T09:00:00.000Z";
 
 /** A minimal record, with `buildId` set only when given. */
 function record(buildId?: string): RunRecord {
-  return {
-    id: "run-1",
+  return runRecord({
     build: "Ci",
     rootTarget: "ci",
-    status: "running",
     actor: "runner",
     createdAt: NOW,
     updatedAt: NOW,
     graph: [{ name: "ci", dependsOn: [] }],
-    params: {},
     targets: { ci: { status: "succeeded", meta: {} } },
-    signals: {},
-    events: [],
     ...(buildId === undefined ? {} : { buildId }),
-  };
+  });
 }
 
 /** A `readEnv` over a fixed map. */

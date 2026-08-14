@@ -281,6 +281,63 @@ function unknownFlagError(
 }
 
 /**
+ * How a built-in flag that takes a value applies it to the parse result — the
+ * one axis that differs between otherwise identical `--flag value` /
+ * `--flag=value` branches.
+ */
+interface ValueFlag {
+  /** Apply the value taken from the next argument (`--flag value`). */
+  readonly set: (parsed: ParsedArgs, value: string) => void;
+  /**
+   * Apply an inline `--flag=value`, when that form does something else than
+   * {@link ValueFlag.set} — only `--allowed-origin`, whose inline form accepts a
+   * comma-list while its space form takes a single origin.
+   */
+  readonly setInline?: (parsed: ParsedArgs, value: string) => void;
+  /**
+   * Whether the space form applies an explicit empty value (`--flag ""`, e.g.
+   * from an unset CI variable) instead of dropping it as absent — so it reaches
+   * the flag's validator and is rejected rather than silently ignored. Only a
+   * missing token ever stays undefined. The inline form (`--flag=`) always
+   * applies, empty or not.
+   */
+  readonly keepEmpty?: boolean;
+}
+
+/**
+ * The built-in flags that take a value, mapped to how they store it: one table
+ * in place of a near-identical pair of branches per flag.
+ *
+ * `--skip` is deliberately absent — it takes a value but has never accepted an
+ * inline `--skip=lint`, which must keep reaching {@link unknownFlagError}.
+ */
+const VALUE_FLAGS: ReadonlyMap<string, ValueFlag> = new Map([
+  ["actor", { set: (p, v) => (p.actor = v) }],
+  ["signal", { set: (p, v) => (p.signal = v) }],
+  ["data", { set: (p, v) => (p.data = v), keepEmpty: true }],
+  ["status", { set: (p, v) => (p.runStatus = v) }],
+  ["target", { set: (p, v) => (p.runTarget = v) }],
+  ["since", { set: (p, v) => (p.since = v) }],
+  ["limit", { set: (p, v) => (p.runLimit = v), keepEmpty: true }],
+  ["keep", { set: (p, v) => (p.keep = v), keepEmpty: true }],
+  ["keep-last", { set: (p, v) => (p.keepLast = v), keepEmpty: true }],
+  ["protect", { set: (p, v) => (p.protectPatterns = splitList(v)) }],
+  ["allowed-origin", {
+    set: (p, v) => (p.allowedOrigins = [...p.allowedOrigins ?? [], v]),
+    setInline: (p, v) => (p.allowedOrigins = [
+      ...p.allowedOrigins ?? [],
+      ...splitList(v),
+    ]),
+  }],
+  ["max-concurrent-runs", {
+    set: (p, v) => (p.maxConcurrentRuns = parsePositiveInt(v)),
+    keepEmpty: true,
+  }],
+  ["http", { set: (p, v) => (p.httpAddr = v) }],
+  ["output", { set: (p, v) => (p.output = parseOutput(v)) }],
+]);
+
+/**
  * Parse `zuke` arguments. Built-in flags are recognised first; `paramFlags`
  * lets the caller pass the build's declared parameter flags so their values are
  * collected. A `--flag` that is neither a built-in nor a declared parameter
@@ -352,59 +409,12 @@ export function parseArgs(
       parsed.dryRun = true;
     } else if (arg === "--state") {
       parsed.state = true;
-    } else if (arg === "--actor") {
-      const who = args[++i];
-      if (who) parsed.actor = who;
-    } else if (arg.startsWith("--actor=")) {
-      parsed.actor = arg.slice("--actor=".length);
-    } else if (arg === "--signal") {
-      const name = args[++i];
-      if (name) parsed.signal = name;
-    } else if (arg.startsWith("--signal=")) {
-      parsed.signal = arg.slice("--signal=".length);
-    } else if (arg === "--data") {
-      const json = args[++i];
-      if (json !== undefined) parsed.data = json;
-    } else if (arg.startsWith("--data=")) {
-      parsed.data = arg.slice("--data=".length);
     } else if (arg === "--force-graph") {
       parsed.forceGraph = true;
     } else if (arg === "--resume-degraded") {
       parsed.resumeDegraded = true;
-    } else if (arg === "--status") {
-      const value = args[++i];
-      if (value) parsed.runStatus = value;
-    } else if (arg.startsWith("--status=")) {
-      parsed.runStatus = arg.slice("--status=".length);
-    } else if (arg === "--target") {
-      const value = args[++i];
-      if (value) parsed.runTarget = value;
-    } else if (arg.startsWith("--target=")) {
-      parsed.runTarget = arg.slice("--target=".length);
-    } else if (arg === "--since") {
-      const value = args[++i];
-      if (value) parsed.since = value;
-    } else if (arg.startsWith("--since=")) {
-      parsed.since = arg.slice("--since=".length);
     } else if (arg === "--counts") {
       parsed.runCounts = true;
-    } else if (arg === "--limit") {
-      // Capture an explicit empty value (`--limit ""`) so it is validated and
-      // rejected, not silently dropped — only a missing token stays undefined.
-      const value = args[++i];
-      if (value !== undefined) parsed.runLimit = value;
-    } else if (arg.startsWith("--limit=")) {
-      parsed.runLimit = arg.slice("--limit=".length);
-    } else if (arg === "--keep") {
-      const value = args[++i];
-      if (value !== undefined) parsed.keep = value;
-    } else if (arg.startsWith("--keep=")) {
-      parsed.keep = arg.slice("--keep=".length);
-    } else if (arg === "--keep-last") {
-      const value = args[++i];
-      if (value !== undefined) parsed.keepLast = value;
-    } else if (arg.startsWith("--keep-last=")) {
-      parsed.keepLast = arg.slice("--keep-last=".length);
     } else if (arg === "--check") {
       parsed.check = true;
     } else if (arg === "--allow-run") {
@@ -412,36 +422,10 @@ export function parseArgs(
     } else if (arg.startsWith("--allow-run=")) {
       parsed.allowRun = true;
       parsed.allowRunPatterns = splitList(arg.slice("--allow-run=".length));
-    } else if (arg === "--protect") {
-      const value = args[++i];
-      if (value) parsed.protectPatterns = splitList(value);
-    } else if (arg.startsWith("--protect=")) {
-      parsed.protectPatterns = splitList(arg.slice("--protect=".length));
-    } else if (arg === "--allowed-origin") {
-      const value = args[++i];
-      if (value) {
-        parsed.allowedOrigins = [...parsed.allowedOrigins ?? [], value];
-      }
-    } else if (arg.startsWith("--allowed-origin=")) {
-      parsed.allowedOrigins = [
-        ...parsed.allowedOrigins ?? [],
-        ...splitList(arg.slice("--allowed-origin=".length)),
-      ];
     } else if (arg === "--confirm-destructive") {
       parsed.confirmDestructive = true;
     } else if (arg === "--registry") {
       parsed.mcpRegistry = true;
-    } else if (arg.startsWith("--max-concurrent-runs=")) {
-      parsed.maxConcurrentRuns = parsePositiveInt(
-        arg.slice("--max-concurrent-runs=".length),
-      );
-    } else if (arg === "--max-concurrent-runs") {
-      parsed.maxConcurrentRuns = parsePositiveInt(args[++i]);
-    } else if (arg === "--http") {
-      const value = args[++i];
-      if (value) parsed.httpAddr = value;
-    } else if (arg.startsWith("--http=")) {
-      parsed.httpAddr = arg.slice("--http=".length);
     } else if (arg === "--parallel") {
       parsed.parallel = true;
     } else if (arg.startsWith("--parallel=")) {
@@ -449,13 +433,10 @@ export function parseArgs(
     } else if (arg === "--help" || arg === "-h") {
       parsed.help = true;
     } else if (arg === "--skip") {
+      // Not in VALUE_FLAGS on purpose: `--skip=dep` has never parsed, and must
+      // keep falling through to unknownFlagError rather than gaining a form.
       const dep = args[++i];
       if (dep) parsed.skip.push(dep);
-    } else if (arg === "--output") {
-      const value = args[++i];
-      if (value) parsed.output = parseOutput(value);
-    } else if (arg.startsWith("--output=")) {
-      parsed.output = parseOutput(arg.slice("--output=".length));
     } else if (arg === "--") {
       // A bare `--` is the conventional argument separator, and wrappers insert
       // one on their own (`deno run -A zuke.ts -- ci` passes it straight
@@ -464,8 +445,25 @@ export function parseArgs(
     } else if (arg.startsWith("--")) {
       const eq = arg.indexOf("=");
       const flag = eq === -1 ? arg.slice(2) : arg.slice(2, eq);
+      const builtin = VALUE_FLAGS.get(flag);
       const pf = byFlag.get(flag);
-      if (pf !== undefined) {
+      if (builtin !== undefined) {
+        // A built-in flag that takes a value: consumed the same way for all of
+        // them, with the flag's own setter deciding where the value lands. This
+        // is checked before `byFlag`, so a built-in still wins over a declared
+        // parameter of the same name.
+        if (eq !== -1) {
+          (builtin.setInline ?? builtin.set)(parsed, arg.slice(eq + 1));
+        } else {
+          const value = args[++i];
+          if (
+            value !== undefined &&
+            (value !== "" || builtin.keepEmpty === true)
+          ) {
+            builtin.set(parsed, value);
+          }
+        }
+      } else if (pf !== undefined) {
         let value: string | undefined;
         if (eq !== -1) value = arg.slice(eq + 1);
         else if (pf.boolean) value = "true";
@@ -831,7 +829,7 @@ async function installCompletionScript(
     }
     return 0;
   } catch (error) {
-    console.error(error instanceof Error ? error.message : String(error));
+    console.error(messageOf(error));
     return 1;
   }
 }
@@ -907,7 +905,7 @@ async function runResume(
     });
     return result.ok ? 0 : 1;
   } catch (error) {
-    console.error(error instanceof Error ? error.message : String(error));
+    console.error(messageOf(error));
     // A lost resume race (AlreadyResumedError) and any other failure both exit
     // non-zero; the message tells the operator what happened.
     return 1;
@@ -941,7 +939,7 @@ async function runMcp(build: Build, parsed: ParsedArgs): Promise<number> {
     try {
       http = parseHttpAddress(parsed.httpAddr);
     } catch (error) {
-      console.error(error instanceof Error ? error.message : String(error));
+      console.error(messageOf(error));
       return 1;
     }
   }
@@ -973,7 +971,7 @@ async function runCancel(build: Build, parsed: ParsedArgs): Promise<number> {
     // a compensation that threw surfaces non-zero so the operator notices.
     return result.failures.length > 0 ? 1 : 0;
   } catch (error) {
-    console.error(error instanceof Error ? error.message : String(error));
+    console.error(messageOf(error));
     return 1;
   }
 }
@@ -986,7 +984,7 @@ async function runRegister(build: Build, parsed: ParsedArgs): Promise<number> {
       json: parsed.json,
     });
   } catch (error) {
-    console.error(error instanceof Error ? error.message : String(error));
+    console.error(messageOf(error));
     return 1;
   }
 }
@@ -1059,7 +1057,7 @@ async function runDoc(
   try {
     return await runner(spec);
   } catch (error) {
-    console.error(error instanceof Error ? error.message : String(error));
+    console.error(messageOf(error));
     return 1;
   }
 }
@@ -1095,11 +1093,7 @@ async function runRuns(build: Build, parsed: ParsedArgs): Promise<number> {
     try {
       keepMs = parseDuration(parsed.keep);
     } catch (error) {
-      console.error(
-        `runs: --keep is ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
+      console.error(`runs: --keep is ${messageOf(error)}`);
       return 1;
     }
   }

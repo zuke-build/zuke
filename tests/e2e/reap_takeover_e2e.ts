@@ -18,46 +18,16 @@ import {
   defaultStateHost,
   FileSystemStateStore,
 } from "../../packages/core/mod.ts";
+import { markerLines, runFixture } from "./_harness.ts";
 
 const FIXTURE = new URL("./fixtures/effect_build.ts", import.meta.url);
 
-/**
- * Run the fixture as a real `deno` subprocess against `dir`.
- *
- * Both streams are returned, because the interesting failure here is a sweeper
- * exiting non-zero and the reason is on stderr — a race that only shows up on a
- * slower runner is unreadable if the diagnosis is thrown away.
- */
-async function run(
-  args: string[],
-  dir: string,
-  marker: string,
-): Promise<{ code: number; out: string; err: string }> {
-  const command = new Deno.Command(Deno.execPath(), {
-    // A `file://` URL rather than URL.pathname, which is `/C:/…` on Windows.
-    args: ["run", "-A", FIXTURE.href, ...args],
-    env: { ZUKE_STATE_DIR: dir, ZUKE_E2E_MARKER: marker },
-    stdout: "piped",
-    stderr: "piped",
+/** Run the fixture against state dir `dir`, writing its progress to `marker`. */
+const run = (args: string[], dir: string, marker: string) =>
+  runFixture(FIXTURE, args, {
+    ZUKE_STATE_DIR: dir,
+    ZUKE_E2E_MARKER: marker,
   });
-  const { code, stdout, stderr } = await command.output();
-  const decoder = new TextDecoder();
-  return {
-    code,
-    out: decoder.decode(stdout),
-    err: decoder.decode(stderr),
-  };
-}
-
-/** The marker file's lines, or an empty list if it does not exist yet. */
-async function markerLines(marker: string): Promise<string[]> {
-  try {
-    const text = await Deno.readTextFile(marker);
-    return text.split("\n").filter((line) => line !== "");
-  } catch {
-    return [];
-  }
-}
 
 Deno.test("two sweepers race an abandoned run; exactly one reaps it", async () => {
   const dir = await Deno.makeTempDir({ prefix: "zuke-e2e-" });

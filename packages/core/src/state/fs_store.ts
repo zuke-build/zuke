@@ -38,17 +38,12 @@ import {
   stringifyLockRecord,
 } from "./lock.ts";
 import { withFileMutex } from "./mutex.ts";
+import {
+  assertSafeId,
+  casWriteJson,
+  sortNewestFirst,
+} from "./json_file_cas.ts";
 import { sha256Hex } from "../internal.ts";
-
-/**
- * Reject a run id that could escape the runs directory. Ids are UUIDs in
- * normal use; this guards the case where one arrives from the CLI or a query.
- */
-function assertSafeId(id: string): void {
-  if (!/^[A-Za-z0-9._-]+$/.test(id)) {
-    throw new Error(`state: unsafe run id "${id}"`);
-  }
-}
 
 /**
  * A {@link StateStore} that writes one `<id>.json` file per run under a
@@ -79,12 +74,12 @@ export class FileSystemStateStore implements StateStore {
   // validate the id — so a traversal can't slip in via a caller that forgets to
   // check (defence in depth, not a reliance on the boundary).
   #file(id: string): string {
-    assertSafeId(id);
+    assertSafeId("state", "run", id);
     return `${this.#dir}/${id}.json`;
   }
 
   #lock(id: string): string {
-    assertSafeId(id);
+    assertSafeId("state", "run", id);
     return `${this.#dir}/${id}.json.lock`;
   }
 
@@ -92,12 +87,12 @@ export class FileSystemStateStore implements StateStore {
   // record, `<key>.acq` the short-lived acquire mutex. The key is validated the
   // same way a run id is, so it is safe as a filename.
   #lockFile(key: string): string {
-    assertSafeId(key);
+    assertSafeId("state", "run", key);
     return `${this.#dir}/locks/${key}.json`;
   }
 
   #lockMarker(key: string): string {
-    assertSafeId(key);
+    assertSafeId("state", "run", key);
     return `${this.#dir}/locks/${key}.acq`;
   }
 
@@ -124,18 +119,13 @@ export class FileSystemStateStore implements StateStore {
   ): Promise<PutResult> {
     // #lock/#file validate record.id before any path is used below.
     await this.#ensureDir();
-    return await this.#withLock(record.id, async () => {
-      const current = await this.#host.readText(this.#file(record.id));
-      const currentVersion = current === null ? null : await sha256Hex(current);
-      if (currentVersion !== expectedVersion) {
-        return { ok: false, conflict: true };
-      }
-      const content = stringifyRunRecord(record);
-      const tmp = `${this.#file(record.id)}.tmp-${crypto.randomUUID()}`;
-      await this.#host.writeText(tmp, content);
-      await this.#host.rename(tmp, this.#file(record.id));
-      return { ok: true, version: await sha256Hex(content) };
-    });
+    return await this.#withLock(record.id, () =>
+      casWriteJson(
+        this.#host,
+        this.#file(record.id),
+        stringifyRunRecord(record),
+        expectedVersion,
+      ));
   }
 
   /** List runs matching `query`, newest first. Unreadable files are skipped. */
@@ -286,13 +276,4 @@ function matches(record: RunRecord, query: RunQuery): boolean {
   }
   if (query.since !== undefined && record.createdAt < query.since) return false;
   return true;
-}
-
-/** Sort by `createdAt` descending, then `id` descending, for stable output. */
-function sortNewestFirst(summaries: RunSummary[]): RunSummary[] {
-  return summaries.sort((a, b) =>
-    a.createdAt !== b.createdAt
-      ? (a.createdAt < b.createdAt ? 1 : -1)
-      : (a.id < b.id ? 1 : a.id > b.id ? -1 : 0)
-  );
 }

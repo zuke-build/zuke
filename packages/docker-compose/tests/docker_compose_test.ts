@@ -7,7 +7,10 @@ import {
   assertThrows,
 } from "../../core/tests/_assert.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
-import { missingTool } from "@zuke/core/tooling/conformance";
+import {
+  assertWrapperConformance,
+  missingTool,
+} from "@zuke/core/tooling/conformance";
 import {
   defaultComposeProbe,
   DockerComposeBuildSettings,
@@ -451,5 +454,15 @@ Deno.test("a pinned invocation skips detection", async () => {
   await assertRejects(
     () => DockerComposeTasks.down((s) => missingTool(s).useStandalone()),
     ToolNotFoundError,
+  );
+});
+
+Deno.test("compose: conforms to the wrapper contract", async () => {
+  await assertWrapperConformance(
+    () => new DockerComposeUpSettings().usePlugin(),
+    "docker",
+    {
+      resolution: "path",
+    },
   );
 });
