@@ -1082,13 +1082,56 @@ class ZukeBuild extends Build {
         return s;
       });
 
-      // Attach the Gemini CLI extension archive to whatever release is now
-      // "latest" — that is the release `gemini extensions install` resolves,
-      // and it changes on every package release, so each run tops it up.
-      // Idempotent: a release already carrying the assets is left untouched,
-      // and a repository with no releases yet is an ordinary skip. Best-effort
-      // on top: the archive is a nice-to-have for Gemini installs, not part of
-      // the release contract, and a throw here would redden the job after the
+      // Keep the repository's "Latest release" pointer on the Marketplace
+      // action's own release. GitHub surfaces that pointer well beyond the
+      // releases page — the Marketplace listing advertises it as the action's
+      // current version, and `gemini extensions install` resolves it — and
+      // release-please drags it onto whichever package released last, so each
+      // run pins it back. The committed pin is the source of truth for which
+      // release that is; in the window between actionRelease cutting a new
+      // tag and its chore PR landing the pin update, this re-marks the
+      // previous action release, and the PR's merge corrects it. Best-effort
+      // like the asset step below: the releases exist either way, and a throw
+      // here would redden the job after they do — skipping the JSR publish
+      // that `needs` this job.
+      let actionReleaseExists = true;
+      try {
+        const latest = await GhTasks.markReleaseLatest((s) =>
+          s.tag(ACTION_PIN.version).repo(repo).token(token)
+        );
+        actionReleaseExists = latest.state !== "no-release";
+        ConsoleTasks.info(
+          actionReleaseExists
+            ? `Latest release pointer: ${ACTION_PIN.version} ` +
+              `(${latest.state}).`
+            : `${ACTION_PIN.version} is tagged but has no GitHub release ` +
+              `yet — actionRelease's browser step creates it. The Latest ` +
+              `pointer is unchanged.`,
+        );
+      } catch (error) {
+        ConsoleTasks.warn(
+          "Re-marking the action release as Latest failed — the releases " +
+            "themselves are unaffected and the next release run retries: " +
+            `${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+      if (!actionReleaseExists) {
+        // Nothing to attach the archive to either: the uploads below are
+        // pinned to the same release, and skipping beats three 404 warnings.
+        ConsoleTasks.info("Skipping the Gemini archive until it exists.");
+        return;
+      }
+
+      // Attach the Gemini CLI extension archive to the action's release —
+      // named by its tag, never resolved through "latest": the pointer can be
+      // elsewhere when the re-mark above failed or lost a race, and a
+      // `.refresh()` pointed at whatever release happens to be latest would
+      // churn assets on a package release. `.refresh()` replaces an attached
+      // archive whose bytes have changed, so the extension `gemini extensions
+      // install` resolves tracks the current skills instead of freezing at
+      // whatever the long-lived release was first given. Best-effort: the
+      // archive is a nice-to-have for Gemini installs, not part of the
+      // release contract, and a throw here would redden the job after the
       // releases already exist — skipping the JSR publish that `needs` this
       // job. A warning plus the next run's top-up is the right trade.
       const scratch = await Deno.makeTempDir();
@@ -1100,12 +1143,11 @@ class ZukeBuild extends Build {
         );
         for (const name of GEMINI_ASSET_NAMES) {
           const result = await GhTasks.uploadReleaseAsset((s) =>
-            s.file(archive).name(name).repo(repo).token(token)
+            s.file(archive).name(name).tag(ACTION_PIN.version).repo(repo)
+              .token(token).refresh()
           );
           ConsoleTasks.info(
-            result.state === "no-release"
-              ? `No release to attach ${name} to yet.`
-              : `${name} on ${result.releaseTag}: ${result.state}.`,
+            `${name} on ${result.releaseTag}: ${result.state}.`,
           );
         }
       } catch (error) {

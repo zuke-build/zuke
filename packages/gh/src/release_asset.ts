@@ -8,8 +8,11 @@
  * The release is resolved first — the latest one by default, or a specific tag
  * — and an asset the release already carries under the same name is left
  * alone, so the call is idempotent and a published release's assets are never
- * mutated. A repository with no releases yet is an ordinary outcome, not an
- * error, so a release pipeline can run this unconditionally:
+ * mutated. `.refresh()` opts one asset out of that stability: when the
+ * release's copy has different bytes (by its reported sha256 digest), it is
+ * replaced instead of kept, so an asset that must track its source can live
+ * on a long-lived release. A repository with no releases yet is an ordinary
+ * outcome, not an error, so a release pipeline can run this unconditionally:
  *
  * ```ts
  * await GhTasks.uploadReleaseAsset((s) =>
@@ -37,11 +40,13 @@ const CONTENT_TYPES: Record<string, string> = {
 /** What became of a release-asset upload. */
 export interface GhReleaseAssetResult {
   /**
-   * `uploaded` when the asset was sent; `already-exists` when the release
-   * carries an asset of the same name (nothing was changed); `no-release`
-   * when the repository has no release to attach to.
+   * `uploaded` when the asset was sent; `refreshed` when `.refresh()` found
+   * the release carrying different bytes under the name and replaced them;
+   * `already-exists` when the release carries an asset of the same name that
+   * was kept (nothing was changed); `no-release` when the repository has no
+   * release to attach to.
    */
-  state: "uploaded" | "already-exists" | "no-release";
+  state: "uploaded" | "refreshed" | "already-exists" | "no-release";
   /** The asset name the call targeted. */
   name: string;
   /** The tag of the release the asset belongs to, when one was resolved. */
@@ -74,6 +79,8 @@ export class GhReleaseAssetSettings {
   repo_?: string;
   /** The release tag to attach to. Set by {@link tag}. */
   tag_?: string;
+  /** Replace an existing asset whose bytes differ. Set by {@link refresh}. */
+  refresh_ = false;
   /** The token to authenticate with. Set by {@link token}. */
   token_?: string;
   /** REST base URL. Set by {@link baseUrl}. */
@@ -111,6 +118,21 @@ export class GhReleaseAssetSettings {
   /** Attach to the release with this tag instead of the latest release. */
   tag(value: string): this {
     this.tag_ = value;
+    return this;
+  }
+
+  /**
+   * Replace an asset the release already carries when its bytes differ from
+   * the file's — compared by the sha256 digest the API reports — instead of
+   * keeping it. An asset whose digest matches, or whose digest the API does
+   * not report, is still kept: without a comparison to trust, replacement
+   * would churn a published release's assets on every run, which is exactly
+   * what the default protects. For an asset that must track its source
+   * across runs (an extension archive, a docs bundle) on a long-lived
+   * release.
+   */
+  refresh(): this {
+    this.refresh_ = true;
     return this;
   }
 
@@ -184,7 +206,8 @@ export interface GhReleaseAssetApi {
   /**
    * Attach a file to a GitHub release — the latest release by default, or the
    * one named by `.tag(...)`. Idempotent: an asset the release already
-   * carries under the same name is kept as-is, and a repository with no
+   * carries under the same name is kept as-is (unless `.refresh()` asks for
+   * one with different bytes to be replaced), and a repository with no
    * releases resolves to `state: "no-release"` rather than throwing. Needs a
    * token with `contents: write`.
    */
@@ -196,6 +219,37 @@ export interface GhReleaseAssetApi {
 /** A field read from a REST response without assuming the response's shape. */
 function field(value: unknown, key: string): unknown {
   return isRecord(value) ? value[key] : undefined;
+}
+
+/** The `sha256:<hex>` digest of `data`, as the REST API reports assets. */
+async function sha256(data: Uint8Array<ArrayBuffer>): Promise<string> {
+  const hash = await crypto.subtle.digest("SHA-256", data);
+  const hex = [...new Uint8Array(hash)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+  return `sha256:${hex}`;
+}
+
+/** Delete a release asset, tolerating one that is already gone. */
+async function deleteAsset(
+  settings: GhReleaseAssetSettings,
+  headers: Record<string, string>,
+  slug: string,
+  assetId: number,
+  what: string,
+): Promise<void> {
+  const deletion = await settings.fetch_(
+    `${settings.baseUrl_}/repos/${slug}/releases/assets/${assetId}`,
+    { method: "DELETE", headers },
+  );
+  const deletionText = await deletion.text();
+  // A 404 means the asset was already cleaned up — the goal state.
+  if (!deletion.ok && deletion.status !== 404) {
+    throw new Error(
+      `deleting the ${what} failed: ${deletion.status} ` +
+        `${deletion.statusText}. ${deletionText.slice(0, 400)}`,
+    );
+  }
 }
 
 /** Upload the release asset the settings describe. */
@@ -262,22 +316,46 @@ export async function uploadReleaseAsset(
   const releaseTag = field(release, "tag_name");
   const tag = typeof releaseTag === "string" ? releaseTag : undefined;
 
+  // Read lazily: the refresh comparison and the upload both need the bytes,
+  // but the common already-exists path needs none.
+  let bytes: Uint8Array<ArrayBuffer> | undefined;
+  const fileBytes = async (): Promise<Uint8Array<ArrayBuffer>> =>
+    bytes ??= await Deno.readFile(settings.filePath_());
+
   // Idempotence: a release that already carries the asset is left untouched —
   // published assets are immutable history, and re-running the pipeline must
-  // not churn them. The one exception is an asset stuck in a non-`uploaded`
-  // state: an errored or interrupted upload reserves the name while serving
-  // nothing, and GitHub's documented recovery is delete-then-reupload — so a
-  // re-run must do exactly that rather than skip past the corpse forever.
+  // not churn them. Two exceptions, both delete-then-reupload. An asset stuck
+  // in a non-`uploaded` state: an errored or interrupted upload reserves the
+  // name while serving nothing, and GitHub's documented recovery is exactly
+  // that — a re-run must repair it rather than skip past the corpse forever.
+  // And, under `.refresh()`, a healthy asset whose digest differs from the
+  // file's: the caller declared this asset one that tracks its source.
   const assets = field(release, "assets");
+  let replaced = false;
   if (Array.isArray(assets)) {
     for (const asset of assets) {
       if (field(asset, "name") !== name) continue;
       const state = field(asset, "state");
       const assetId = field(asset, "id");
-      if (
-        (state === undefined || state === "uploaded") ||
-        typeof assetId !== "number"
-      ) {
+      const healthy = state === undefined || state === "uploaded";
+      if (healthy && settings.refresh_ && typeof assetId === "number") {
+        const digest = field(asset, "digest");
+        if (
+          typeof digest === "string" &&
+          digest !== await sha256(await fileBytes())
+        ) {
+          await deleteAsset(
+            settings,
+            headers,
+            slug,
+            assetId,
+            `stale release asset "${name}"`,
+          );
+          replaced = true;
+          continue;
+        }
+      }
+      if (healthy || typeof assetId !== "number") {
         const url = field(asset, "browser_download_url");
         return {
           state: "already-exists",
@@ -287,27 +365,20 @@ export async function uploadReleaseAsset(
           ...(typeof url === "string" ? { url } : {}),
         };
       }
-      const deletion = await settings.fetch_(
-        `${settings.baseUrl_}/repos/${slug}/releases/assets/${assetId}`,
-        { method: "DELETE", headers },
+      await deleteAsset(
+        settings,
+        headers,
+        slug,
+        assetId,
+        `stuck release asset "${name}" (state ${String(state)})`,
       );
-      const deletionText = await deletion.text();
-      // A 404 means the corpse was already cleaned up — the goal state.
-      if (!deletion.ok && deletion.status !== 404) {
-        throw new Error(
-          `deleting the stuck release asset "${name}" (state ${
-            String(state)
-          }) failed: ${deletion.status} ${deletion.statusText}. ` +
-            deletionText.slice(0, 400),
-        );
-      }
     }
   }
 
   // The `upload_url` is an RFC 6570 template ending in `{?name,label}`;
   // GitHub documents cutting the template off and appending a query.
   const uploadBase = uploadUrlTemplate.replace(/\{[^}]*\}$/, "");
-  const data = await Deno.readFile(settings.filePath_());
+  const data = await fileBytes();
   const uploadResponse = await settings.fetch_(
     `${uploadBase}?name=${encodeURIComponent(name)}`,
     {
@@ -336,7 +407,7 @@ export async function uploadReleaseAsset(
   }
   const url = field(uploaded, "browser_download_url");
   return {
-    state: "uploaded",
+    state: replaced ? "refreshed" : "uploaded",
     name,
     releaseTag: tag,
     releaseId,

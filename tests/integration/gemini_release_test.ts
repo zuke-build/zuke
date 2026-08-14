@@ -57,9 +57,12 @@ function releaseBuild(root: string, uploaded: string[]) {
       const archive = `${root}/zuke.tar.gz`;
       await buildGeminiArchive(archive, root);
       for (const name of GEMINI_ASSET_NAMES) {
+        // Tag-scoped and refreshing, as the release target attaches them: an
+        // asset with no reported digest is kept, so `.refresh()` leaves the
+        // existing one alone here.
         const result = await GhTasks.uploadReleaseAsset((s) =>
-          s.file(archive).name(name).repo("acme/app").token("tok")
-            .fetch(fakeGithub(uploaded))
+          s.file(archive).name(name).tag("core-v1.0.0").repo("acme/app")
+            .token("tok").refresh().fetch(fakeGithub(uploaded))
         );
         console.log(`${name}: ${result.state}`);
       }

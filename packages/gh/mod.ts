@@ -58,6 +58,12 @@ export {
   uploadReleaseAsset,
 } from "./src/release_asset.ts";
 export {
+  type GhReleaseLatestApi,
+  type GhReleaseLatestResult,
+  GhReleaseLatestSettings,
+  markReleaseLatest,
+} from "./src/release_latest.ts";
+export {
   type CorrelateMode,
   githubWorkflow,
   GithubWorkflowSettings,
