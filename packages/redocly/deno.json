@@ -1,0 +1,17 @@
+{
+  "name": "@zuke/redocly",
+  "version": "0.0.0",
+  "license": "MIT",
+  "description": "Typed Redocly CLI task wrappers for Zuke builds — lint, bundle, and split OpenAPI descriptions via an injection-free settings-lambda API.",
+  "exports": {
+    ".": "./mod.ts"
+  },
+  "imports": {
+    "@zuke/core": "jsr:@zuke/core@^1.25.0"
+  },
+  "publish": {
+    "exclude": [
+      "tests/"
+    ]
+  }
+}

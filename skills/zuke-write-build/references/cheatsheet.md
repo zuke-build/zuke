@@ -633,28 +633,28 @@ Every external tool is a `*Tasks` object; each task takes `(s) => s.…` mirrori
 the real CLI's flags. A non-exhaustive map (run `deno doc jsr:@zuke/<pkg>` for
 the full task list and settings methods of each):
 
-| Package                                                                                                                          | Object                                           | Typical tasks                                                                                     |
-| -------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
-| `@zuke/core`                                                                                                                     | `FileTasks`, `AnnounceTasks`, `ToolTasks`        | copy/move/remove files; Slack/Teams/Discord posts; install tool binaries                          |
-| `@zuke/cli`                                                                                                                      | the `zuke` command                               | not a wrapper — `deno install -A -g -n zuke jsr:@zuke/cli`, then `zuke setup` scaffolds a project |
-| `@zuke/console`                                                                                                                  | `ConsoleTasks`                                   | themed console output (headings, notices) so a build never hand-rolls `console.log`               |
-| `@zuke/deno`                                                                                                                     | `DenoTasks`                                      | `check`, `test`, `fmt`, `lint`, `cache`, `doc`, `run`, `publish`                                  |
-| `@zuke/docs`                                                                                                                     | `DocsTasks`                                      | turn generated API docs into published output                                                     |
-| `@zuke/npm`, `@zuke/npx`, `@zuke/bun`, `@zuke/pnpm`, `@zuke/yarn`, `@zuke/node`                                                  | `NpmTasks`, `NpxTasks`, `BunTasks`, ...          | JS package managers + `npx` runner + `node`                                                       |
-| `@zuke/cmd`                                                                                                                      | `CmdTasks`                                       | `exec` — generic fallback for any CLI                                                             |
-| `@zuke/docker`, `@zuke/docker-compose`                                                                                           | `DockerTasks`, ...                               | build/run/compose                                                                                 |
-| `@zuke/git`, `@zuke/gh`                                                                                                          | `GitTasks`, `GhTasks`                            | git and GitHub CLI                                                                                |
-| `@zuke/cspell`, `@zuke/eslint`, `@zuke/oxlint`, `@zuke/biome`, `@zuke/dprint`, `@zuke/knip`, `@zuke/dpdm`                        | `*Tasks`                                         | lint/format/spell/dead-code                                                                       |
-| `@zuke/tsc`, `@zuke/tsx`, `@zuke/tsc-alias`, `@zuke/tsup`, `@zuke/tsdown`, `@zuke/vite`, `@zuke/turbo`, `@zuke/nx`, `@zuke/nest` | `*Tasks`                                         | TS compile / bundle / monorepo / framework CLIs                                                   |
-| `@zuke/openapi-ts`, `@zuke/orval`                                                                                                | `*Tasks`                                         | generate API clients from OpenAPI                                                                 |
-| `@zuke/husky`                                                                                                                    | `HuskyTasks`                                     | git hooks                                                                                         |
-| `@zuke/jest`, `@zuke/vitest`, `@zuke/playwright`, `@zuke/cypress`                                                                | `*Tasks`                                         | test runners                                                                                      |
-| `@zuke/jsr`, `@zuke/codecov`, `@zuke/release-please`                                                                             | `JsrTasks`, `CodecovTasks`, ...                  | publish / coverage upload / releases                                                              |
-| `@zuke/kubectl`, `@zuke/helm`, `@zuke/kustomize`, `@zuke/terraform`, `@zuke/tofu`, `@zuke/gcloud`                                | `*Tasks`                                         | infra/deploy                                                                                      |
-| `@zuke/security`                                                                                                                 | `*Tasks`                                         | security scanning                                                                                 |
-| `@zuke/claude`, `@zuke/codex`, `@zuke/gemini`                                                                                    | `ClaudeTasks`, ...                               | headless AI CLIs                                                                                  |
-| `@zuke/ai`                                                                                                                       | `securityReviewer`, ..., `aiFixer`, `agentFixer` | AI review gates + self-healing (see below)                                                        |
-| `@zuke/otel`                                                                                                                     | `otel` (a plugin)                                | export runs and targets as OpenTelemetry traces (see below)                                       |
+| Package                                                                                                                                             | Object                                           | Typical tasks                                                                                     |
+| --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
+| `@zuke/core`                                                                                                                                        | `FileTasks`, `AnnounceTasks`, `ToolTasks`        | copy/move/remove files; Slack/Teams/Discord posts; install tool binaries                          |
+| `@zuke/cli`                                                                                                                                         | the `zuke` command                               | not a wrapper — `deno install -A -g -n zuke jsr:@zuke/cli`, then `zuke setup` scaffolds a project |
+| `@zuke/console`                                                                                                                                     | `ConsoleTasks`                                   | themed console output (headings, notices) so a build never hand-rolls `console.log`               |
+| `@zuke/deno`                                                                                                                                        | `DenoTasks`                                      | `check`, `test`, `fmt`, `lint`, `cache`, `doc`, `run`, `publish`                                  |
+| `@zuke/docs`                                                                                                                                        | `DocsTasks`                                      | turn generated API docs into published output                                                     |
+| `@zuke/npm`, `@zuke/npx`, `@zuke/bun`, `@zuke/pnpm`, `@zuke/yarn`, `@zuke/node`                                                                     | `NpmTasks`, `NpxTasks`, `BunTasks`, ...          | JS package managers + `npx` runner + `node`                                                       |
+| `@zuke/cmd`                                                                                                                                         | `CmdTasks`                                       | `exec` — generic fallback for any CLI                                                             |
+| `@zuke/docker`, `@zuke/docker-compose`                                                                                                              | `DockerTasks`, ...                               | build/run/compose                                                                                 |
+| `@zuke/git`, `@zuke/gh`                                                                                                                             | `GitTasks`, `GhTasks`                            | git and GitHub CLI                                                                                |
+| `@zuke/cspell`, `@zuke/eslint`, `@zuke/oxlint`, `@zuke/biome`, `@zuke/dprint`, `@zuke/knip`, `@zuke/dpdm`, `@zuke/lint-staged`                      | `*Tasks`                                         | lint/format/spell/dead-code                                                                       |
+| `@zuke/tsc`, `@zuke/tsx`, `@zuke/tsc-alias`, `@zuke/tsup`, `@zuke/tsdown`, `@zuke/vite`, `@zuke/storybook`, `@zuke/turbo`, `@zuke/nx`, `@zuke/nest` | `*Tasks`                                         | TS compile / bundle / monorepo / framework CLIs                                                   |
+| `@zuke/openapi-ts`, `@zuke/orval`, `@zuke/redocly`                                                                                                  | `*Tasks`                                         | generate API clients from OpenAPI                                                                 |
+| `@zuke/husky`                                                                                                                                       | `HuskyTasks`                                     | git hooks                                                                                         |
+| `@zuke/jest`, `@zuke/vitest`, `@zuke/playwright`, `@zuke/cypress`                                                                                   | `*Tasks`                                         | test runners                                                                                      |
+| `@zuke/jsr`, `@zuke/codecov`, `@zuke/release-please`                                                                                                | `JsrTasks`, `CodecovTasks`, ...                  | publish / coverage upload / releases                                                              |
+| `@zuke/kubectl`, `@zuke/helm`, `@zuke/kustomize`, `@zuke/terraform`, `@zuke/tofu`, `@zuke/gcloud`                                                   | `*Tasks`                                         | infra/deploy                                                                                      |
+| `@zuke/security`                                                                                                                                    | `*Tasks`                                         | security scanning                                                                                 |
+| `@zuke/claude`, `@zuke/codex`, `@zuke/gemini`                                                                                                       | `ClaudeTasks`, ...                               | headless AI CLIs                                                                                  |
+| `@zuke/ai`                                                                                                                                          | `securityReviewer`, ..., `aiFixer`, `agentFixer` | AI review gates + self-healing (see below)                                                        |
+| `@zuke/otel`                                                                                                                                        | `otel` (a plugin)                                | export runs and targets as OpenTelemetry traces (see below)                                       |
 
 The catalog keeps growing — the package list in `llms.txt`'s `## Packages`
 catalogue (or the table above) is the source of truth for **whether a wrapper
@@ -674,6 +674,30 @@ await CmdTasks.exec("docker", (s) => s.args("build", "-t", "app", "."));
 // Right — check the catalogue, find @zuke/docker, use it:
 await DockerTasks.build((s) => s.tag("app").context("."));
 ```
+
+### Reading a value out of a Node module — `NodeTasks.evaluate`
+
+Some builds need a **value** from the Node side of the project rather than an
+exit code: an OpenAPI document produced by booting the app, a resolved config.
+`NodeTasks.evaluate(module, (s) => …)` imports the module in Node, awaits one
+export — calling it when it is a function — and resolves to its JSON value, so
+the target keeps the result instead of a script having to write it somewhere.
+
+```ts
+// tools/openapi.mjs — the consumer's own module: export default async () => document
+const spec = await NodeTasks.evaluate("tools/openapi.mjs");
+await FileTasks.writeText("openapi.json", JSON.stringify(spec, null, 2));
+
+// A named export, called with arguments:
+const config = await NodeTasks.evaluate("dist/config.js", (s) =>
+  s.export("resolveConfig").callWith("production"));
+```
+
+`module` is a **path** resolved against the working directory (`.cwd()` moves
+it); the module resolves its own imports from the surrounding `node_modules`, so
+this is how a build reaches framework code (NestJS, TypeORM) it must not depend
+on itself. The value crosses the process boundary as JSON, so it — and each
+`callWith` argument — must be JSON-serialisable.
 
 ## AI review & self-healing — `@zuke/ai`
 
@@ -737,28 +761,29 @@ Depth and discussion knobs (all optional, per reviewer):
   already knows. The rewording is recorded as an alias, making later rounds
   free. The pass can only rename — same file only, never a more severe finding
   inheriting a less severe one's decision, bounded comparisons per run — and
-  every failure leaves the finding reported. It also tracks progress: still-open findings are re-assessed each round, ones that stop
-  reproducing are marked fixed and listed cumulatively ("✅ Fixed since first
-  review"), and a fixed finding that reappears reopens. Trust is decided in
-  code from the host's author metadata (`OWNER`/`MEMBER`/ `COLLABORATOR` by
-  default; tune with `.discussion((d) => d.trustAuthors(...))`) — untrusted
-  comments never reach the model, which blunts comment-based prompt injection.
-  Requires `.comment()`; works on every supported host, each mapping its own
-  metadata onto those association names: GitHub uses `author_association`
-  verbatim, GitLab derives it from project membership (Owner 50 → `OWNER`,
-  Developer/Maintainer 30/40 → `MEMBER`, below that `NONE`), Bitbucket from
-  workspace permissions (`owner`/`collaborator`/`member`). **Azure DevOps
-  reports no such relationship**, so nobody is trusted there by association —
-  name the maintainers with `.trustAuthors(...)`. The mapping fails closed: if
-  the membership listing is refused, associations come back empty and only
+  every failure leaves the finding reported. It also tracks progress: still-open
+  findings are re-assessed each round, ones that stop reproducing are marked
+  fixed and listed cumulatively ("✅ Fixed since first review"), and a fixed
+  finding that reappears reopens. Trust is decided in code from the host's
+  author metadata (`OWNER`/`MEMBER`/ `COLLABORATOR` by default; tune with
+  `.discussion((d) => d.trustAuthors(...))`) — untrusted comments never reach
+  the model, which blunts comment-based prompt injection. Requires `.comment()`;
+  works on every supported host, each mapping its own metadata onto those
+  association names: GitHub uses `author_association` verbatim, GitLab derives
+  it from project membership (Owner 50 → `OWNER`, Developer/Maintainer 30/40 →
+  `MEMBER`, below that `NONE`), Bitbucket from workspace permissions
+  (`owner`/`collaborator`/`member`). **Azure DevOps reports no such
+  relationship**, so nobody is trusted there by association — name the
+  maintainers with `.trustAuthors(...)`. The mapping fails closed: if the
+  membership listing is refused, associations come back empty and only
   `.trustAuthors(...)` admits anyone. `.trustAuthors(...)` takes each host's
   **stable** identifier, never a display name: GitHub `login`, GitLab
   `username`, Azure `uniqueName` (the sign-in address), Bitbucket the account
   **uuid** with braces (`"{9c2c…}"`) — a Bitbucket nickname is a self-assigned,
   non-unique alias and is deliberately not matched. Dismissals persist only
   while the reviewer can recognise its own comment, which on Bitbucket needs an
-  app password (a repository/workspace access token is not an account and
-  cannot self-identify).
+  app password (a repository/workspace access token is not an account and cannot
+  self-identify).
 
 **Self-healing** — `aiFixer` is a `Remediation`; attach with
 `.recoverWith(...)`. On a failing body it diagnoses the failure and (safe

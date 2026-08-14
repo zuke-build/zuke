@@ -7186,6 +7186,20 @@ class CspellSettings extends ToolSettings
     Include dotfiles and dot-directories (`--dot`).
   gitignore(): this
     Honour `.gitignore` files (`--gitignore`).
+  gitignoreRoot(path: PathLike): this
+    Stop the `.gitignore` search at this directory (`--gitignore-root`).
+
+    Without it cspell keeps walking up past the repository root and can pick up
+    an unrelated `.gitignore` from a parent directory — so a run inside a git
+    worktree, whose checkout lives outside the main working tree, sees ignore
+    rules that do not belong to it. Point this at the repository root to bound
+    the search.
+  noMustFindFiles(): this
+    Exit successfully when a glob matches nothing (`--no-must-find-files`).
+
+    cspell fails by default if any file argument matched no files. A run scoped
+    to a computed file list — the staged files, the files a diff touched — can
+    legitimately be empty, so a file-scoped run wants this.
   unique(): this
     Report each unique issue only once (`--unique`).
   locale(value: string): this
@@ -7887,6 +7901,13 @@ class ViteDevSettings extends ViteSettings
     Bind to a host/IP (`--host`).
   port(value: number): this
     Serve on a specific port (`--port`).
+  strictPort(): this
+    Fail instead of trying the next free port when {@link port} is taken
+    (`--strictPort`).
+
+    A build that hands the port to something else — an e2e runner, a health
+    check — needs the server to be on the port it asked for or not at all;
+    without this Vite silently moves on and the other side connects to nothing.
   open(): this
     Open the app in the browser on start (`--open`).
   override protected buildArgs(): string[]
@@ -7899,6 +7920,9 @@ class VitePreviewSettings extends ViteSettings
     Bind to a host/IP (`--host`).
   port(value: number): this
     Serve on a specific port (`--port`).
+  strictPort(): this
+    Fail instead of trying the next free port when {@link port} is taken
+    (`--strictPort`). See {@link ViteDevSettings.strictPort}.
   open(): this
     Open the app in the browser on start (`--open`).
   override protected buildArgs(): string[]
@@ -7928,6 +7952,219 @@ interface ViteTasksApi
     Build for production: `vite build`.
   preview(configure?: Configure<VitePreviewSettings>): Promise<CommandOutput>
     Preview a production build: `vite preview`.
+
+========================================================================
+# @zuke/storybook
+========================================================================
+
+`@zuke/storybook` — typed Storybook (https://storybook.js.org) CLI task
+wrappers for Zuke builds.
+
+Configure a fluent settings object in a lambda; the task builds the argv and
+runs it.
+
+```ts
+import { StorybookTasks } from "jsr:@zuke/storybook";
+await StorybookTasks.build((s) => s.outputDir("storybook-static"));
+```
+@module
+
+const StorybookTasks: StorybookTasksApi
+  Typed task functions for the `storybook` CLI.
+
+class StorybookBuildSettings extends StorybookSettings
+  Settings for `storybook build` (the static build).
+
+  outputDir(path: PathLike): this
+    Write the static build to this directory (`--output-dir`).
+  quietOutput(): this
+    Suppress the progress output, leaving warnings and errors (`--quiet`).
+
+    Named `quietOutput` because `ToolSettings.quiet()` already means "do not
+    stream the process output to the terminal", which is a different thing.
+  override protected buildArgs(): string[]
+    Assemble the `storybook build` argv.
+
+class StorybookDevSettings extends StorybookSettings
+  Settings for `storybook dev` (the development server).
+
+  port(value: number): this
+    Serve on a specific port (`--port`).
+  host(value: string): this
+    Bind to a host/IP (`--host`).
+  noOpen(): this
+    Do not open the browser on start (`--no-open`).
+  ci(): this
+    Never prompt and never open a browser (`--ci`).
+
+    A build step is not a terminal someone is watching: without this Storybook
+    can stop on an interactive question and hang the run.
+  override protected buildArgs(): string[]
+    Assemble the `storybook dev` argv.
+
+abstract class StorybookSettings extends ToolSettings
+  Base for all `storybook` subcommand settings: the binary is `storybook`,
+  with the `--config-dir` option every subcommand accepts.
+
+  override protected defaultTool(): string
+    The default binary this wrapper invokes: `storybook`.
+  override protected defaultResolution(): ToolResolution
+    Resolve the binary from `node_modules/.bin` by default — Storybook is an npm-distributed tool.
+  configDir(path: PathLike): this
+    Read the configuration from this directory instead of `.storybook` (`--config-dir`).
+  protected baseArgs(): string[]
+    The shared option arguments.
+
+interface StorybookTasksApi
+  The shape of {@link StorybookTasks}.
+
+  dev(configure?: Configure<StorybookDevSettings>): Promise<CommandOutput>
+    Start the development server: `storybook dev`.
+  build(configure?: Configure<StorybookBuildSettings>): Promise<CommandOutput>
+    Build the static Storybook: `storybook build`.
+
+========================================================================
+# @zuke/redocly
+========================================================================
+
+`@zuke/redocly` — typed Redocly CLI (https://redocly.com/docs/cli) task
+wrappers for Zuke builds.
+
+Configure a fluent settings object in a lambda; the task builds the argv and
+runs it.
+
+```ts
+import { RedoclyTasks } from "jsr:@zuke/redocly";
+await RedoclyTasks.lint((s) => s.paths("openapi.yaml").format("summary"));
+```
+@module
+
+const RedoclyTasks: RedoclyTasksApi
+  Typed task functions for the `redocly` CLI.
+
+class RedoclyBundleSettings extends RedoclySettings
+  Settings for `redocly bundle`.
+
+  paths(...values: PathLike[]): this
+    The API descriptions to bundle — paths or aliases from the config (positional); repeatable.
+  output(path: PathLike): this
+    Write the bundle to this file or directory (`--output`).
+  dereferenced(): this
+    Inline every `$ref` instead of keeping the components (`--dereferenced`).
+  ext(value: "json" | "yaml" | "yml"): this
+    The output file extension, `json`, `yaml`, or `yml` (`--ext`).
+  override protected buildArgs(): string[]
+    Assemble the `redocly bundle` argv.
+
+class RedoclyLintSettings extends RedoclySettings
+  Settings for `redocly lint`.
+
+  paths(...values: PathLike[]): this
+    The API descriptions to lint — paths or aliases from the config (positional); repeatable.
+  skipRule(...rules: string[]): this
+    Skip a rule for this run (`--skip-rule`); repeatable.
+
+    Use it for a rule the description cannot satisfy yet, so the rest of the
+    ruleset still gates the build instead of the whole lint being turned off.
+  format(value: RedoclyLintFormat): this
+    Select the output format (`--format`).
+  override protected buildArgs(): string[]
+    Assemble the `redocly lint` argv.
+
+abstract class RedoclySettings extends ToolSettings
+  Base for all `redocly` subcommand settings: the binary is `redocly`, with
+  the `--config` option every subcommand accepts.
+
+  override protected defaultTool(): string
+    The default binary this wrapper invokes: `redocly`.
+  override protected defaultResolution(): ToolResolution
+    Resolve the binary from `node_modules/.bin` by default — Redocly CLI is an npm-distributed tool.
+  config(path: PathLike): this
+    Use an explicit config file (`--config`) instead of the discovered `redocly.yaml`.
+  protected baseArgs(): string[]
+    The shared option arguments.
+
+class RedoclySplitSettings extends RedoclySettings
+  Settings for `redocly split`.
+
+  api(path: PathLike): this
+    The API description to split into a multi-file structure (positional; required).
+  outDir(path: PathLike): this
+    The directory the split files are written to (`--outDir`; required).
+  separator(value: string): this
+    The separator used in the generated path item file names (`--separator`).
+  override protected buildArgs(): string[]
+    Assemble the `redocly split` argv.
+
+interface RedoclyTasksApi
+  The shape of {@link RedoclyTasks}.
+
+  lint(configure?: Configure<RedoclyLintSettings>): Promise<CommandOutput>
+    Lint API descriptions: `redocly lint`.
+  bundle(configure?: Configure<RedoclyBundleSettings>): Promise<CommandOutput>
+    Bundle an API description into one file: `redocly bundle`.
+  split(configure?: Configure<RedoclySplitSettings>): Promise<CommandOutput>
+    Split an API description into a multi-file structure: `redocly split`.
+
+type RedoclyLintFormat = "codeframe" | "stylish" | "json" | "checkstyle" | "markdown" | "summary"
+  The output format of a `redocly lint` run (`--format`).
+
+========================================================================
+# @zuke/lint-staged
+========================================================================
+
+`@zuke/lint-staged` — typed `lint-staged` task wrappers for Zuke builds.
+
+Configure a fluent settings object in a lambda; the task builds the argv and
+runs it.
+
+```ts
+import { LintStagedTasks } from "jsr:@zuke/lint-staged";
+await LintStagedTasks.run((s) => s.config(".lintstagedrc.json").relative());
+```
+@module
+
+const LintStagedTasks: LintStagedTasksApi
+  Typed task functions for `lint-staged`.
+
+class LintStagedSettings extends ToolSettings
+  Settings for a `lint-staged` run.
+
+  override protected defaultTool(): string
+    The default executable name (`lint-staged`).
+  override protected defaultResolution(): ToolResolution
+    Resolve the binary from `node_modules/.bin` by default — lint-staged is an npm-distributed tool.
+  config(path: PathLike): this
+    Use an explicit config file (`--config`).
+  relative(): this
+    Pass file paths relative to the working directory rather than absolute
+    (`--relative`).
+
+    Tools configured with root-relative globs — the usual case for an ESLint or
+    Prettier config committed at the repo root — only match when the paths
+    handed to them are relative too.
+  concurrent(tasks: number): this
+    Run at most `tasks` linter tasks at once (`--concurrent <n>`). Use `1` to
+    serialise them — what a tool that writes shared state (a cache, a lockfile)
+    needs.
+  allowEmpty(): this
+    Exit successfully when the tasks left nothing staged (`--allow-empty`).
+
+    Without it a formatter that reverts the only staged change fails the run,
+    because the resulting commit would be empty.
+  diff(ref: string): this
+    Take the file list from a diff instead of the staged files
+    (`--diff <ref>`), e.g. `main...HEAD` to lint everything a branch touched.
+  shell(): this
+    Run the configured commands through a shell instead of parsing them (`--shell`).
+  override protected buildArgs(): string[]
+    Assemble the `lint-staged` argv.
+
+interface LintStagedTasksApi
+  The shape of {@link LintStagedTasks}.
+
+  run(configure?: Configure<LintStagedSettings>): Promise<CommandOutput>
+    Run the configured linters over the staged files: `lint-staged`.
 
 ========================================================================
 # @zuke/tsup
@@ -8768,11 +9005,14 @@ interface HuskyTasksApi
 Configure a fluent settings object in a lambda; the task builds the argv and
 runs it. The task names mirror common `node` invocations: `run` executes a
 script, `eval` evaluates inline code, and `test` runs the built-in test
-runner.
+runner. `evaluate` is the exception — it imports a module and resolves to one
+of its exports' JSON value, so a target can read something out of the Node
+side of a project instead of shelling out to a script.
 
 ```ts
 import { NodeTasks } from "jsr:@zuke/node";
 await NodeTasks.run((s) => s.script("server.js").enableSourceMaps());
+const spec = await NodeTasks.evaluate("tools/openapi.mjs");
 ```
 @module
 
@@ -8792,6 +9032,29 @@ class NodeEvalSettings extends NodeSettings
     Print the result of the evaluated code (`--print` instead of `--eval`).
   override protected buildArgs(): string[]
     Assemble the `node --eval <code>` (or `--print`) argv.
+
+class NodeEvaluateSettings extends NodeSettings
+  Settings for {@link "./node.ts".NodeTasks.evaluate} — which export of the
+  module to take, and what to call it with.
+
+  constructor(module: PathLike)
+    Evaluate `module`, a path resolved against the working directory.
+  export(name: string): this
+    The named export to take, instead of the default one.
+
+    The export is awaited; when it is a function it is called first, with
+    {@link callWith}'s arguments.
+  callWith(...values: JsonValue[]): this
+    Arguments for the exported function, in order. Each must be
+    JSON-serialisable — they cross a process boundary as JSON.
+
+    Named `callWith` rather than `args` because `ToolSettings.args` already
+    means "append raw arguments to the `node` command line", which is a
+    different thing.
+  get module(): string
+    The module being evaluated, for error messages.
+  override protected buildArgs(): string[]
+    Assemble the `node --input-type=module --eval <driver>` argv.
 
 class NodeRunSettings extends NodeSettings
   Settings for `node [options] <script> [args]`.
@@ -8858,6 +9121,31 @@ interface NodeTasksApi
     Evaluate inline code: `node --eval <code>`.
   test(configure?: Configure<NodeTestSettings>): Promise<CommandOutput>
     Run the built-in test runner: `node --test`.
+  evaluate(module: PathLike, configure?: Configure<NodeEvaluateSettings>): Promise<JsonValue>
+    Import a Node module and resolve to one of its exports' JSON value — the
+    way a target reads something out of the Node side of a project (an
+    OpenAPI document, a resolved config) instead of shelling out to a script
+    that has to write it somewhere first.
+
+    `module` is a path, resolved against the working directory. The export
+    (`default` unless {@link NodeEvaluateSettings.export} names another) is
+    awaited; when it is a function it is called with
+    {@link NodeEvaluateSettings.callWith}'s arguments first.
+
+    ```ts
+    // tools/openapi.mjs: export default async () => document
+    const spec = await NodeTasks.evaluate("tools/openapi.mjs");
+    ```
+
+    The module runs as a real Node process with the build's own permissions —
+    the same trust level as a script handed to {@link NodeTasks.run}, and the
+    reason this is a build-authoring API rather than an input-processing one.
+    `module` is code: build it from a literal or from the project's own layout,
+    never from an untrusted source (a pull request title, a webhook payload),
+    exactly as for every other command a build spawns. Values passed through
+    {@link NodeEvaluateSettings.callWith} cannot inject into the driver — they
+    are embedded as JSON literals — but they do reach the module, so whatever
+    the module does with them is the module's contract to uphold.
 
 ========================================================================
 # @zuke/dprint

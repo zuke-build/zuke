@@ -118,6 +118,9 @@ Full reference: [docs/cli.md](./docs/cli.md).
 - [@zuke/dpdm](https://jsr.io/@zuke/dpdm) — a typed `DpdmTasks` wrapper for the
 - [@zuke/jsr](https://jsr.io/@zuke/jsr) — tools for the JSR (https://jsr.io) registry in Zuke builds:
 - [@zuke/vite](https://jsr.io/@zuke/vite) — typed `ViteTasks` wrappers for the Vite (https://vitejs.dev)
+- [@zuke/storybook](https://jsr.io/@zuke/storybook) — typed Storybook (https://storybook.js.org) CLI task
+- [@zuke/redocly](https://jsr.io/@zuke/redocly) — typed Redocly CLI (https://redocly.com/docs/cli) task
+- [@zuke/lint-staged](https://jsr.io/@zuke/lint-staged) — typed `lint-staged` task wrappers for Zuke builds
 - [@zuke/tsup](https://jsr.io/@zuke/tsup) — a typed `TsupTasks` wrapper for the
 - [@zuke/turbo](https://jsr.io/@zuke/turbo) — typed `TurboTasks` wrappers for the
 - [@zuke/nx](https://jsr.io/@zuke/nx) — typed `NxTasks` wrappers for the Nx (https://nx.dev) CLI, for
