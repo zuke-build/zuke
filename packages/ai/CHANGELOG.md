@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.2.1](https://github.com/zuke-build/zuke/compare/ai-v2.2.0...ai-v2.2.1) (2026-08-14)
+
+
+### Bug Fixes
+
+* **ai:** let verify remove only what it can disprove ([#360](https://github.com/zuke-build/zuke/issues/360)) ([8760e0d](https://github.com/zuke-build/zuke/commit/8760e0d9d393198c791c41b18218e6cd80f267a4))
+
 ## [2.2.0](https://github.com/zuke-build/zuke/compare/ai-v2.1.1...ai-v2.2.0) (2026-08-13)
 
 

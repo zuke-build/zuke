@@ -735,9 +735,10 @@ Depth and discussion knobs (all optional, per reviewer):
   the diff has one, so a PR cannot rewrite the rules it is judged by.
 - `.fileContext()` — also send the changed files' full contents (bounded), so
   the model can check a finding against surrounding guards before reporting.
-- `.verify()` — a second, adversarial pass re-checks every candidate finding and
-  refutes what it cannot concretely trace; refuted candidates are listed in the
-  report but never gate.
+- `.verify()` — a second, adversarial pass re-checks every candidate finding;
+  only a refutation backed by citable contrary evidence removes one (listed in
+  the report, never gating), while a candidate the evidence neither confirms
+  nor refutes stays reported as `uncertain`.
 - `.comment("append")` — post a fresh PR comment per run (history stays on the
   thread) instead of the default single upserted comment per reviewer.
 - `.discussion((d) => d.threads())` — anchor each finding to its line as a PR
