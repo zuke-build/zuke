@@ -72,6 +72,17 @@ function location(file?: string, line?: number): string {
 }
 
 /**
+ * The severity label for a finding, carrying the verify pass's verdict when it
+ * answered for the finding (`high · confirmed`), so a report shows which
+ * findings survived verification on evidence and which merely went unresolved.
+ */
+function severityLabel(f: AssessmentFinding): string {
+  return f.verification === undefined
+    ? f.severity
+    : `${f.severity} · ${f.verification}`;
+}
+
+/**
  * Extra report context rendered alongside an assessment: cost-control and
  * suppression state that is additive to the core findings.
  */
@@ -158,10 +169,14 @@ export function consoleLines(
     const where = location(f.file, f.line);
     const id = f.id !== undefined ? ` · ${f.id}` : "";
     lines.push(
-      `  - [${f.severity}] ${f.title}${where === "" ? "" : ` (${where})`}${id}`,
+      `  - [${severityLabel(f)}] ${f.title}${
+        where === "" ? "" : ` (${where})`
+      }${id}`,
     );
   }
-  if (assessment.summary !== "") lines.push(`  ${assessment.summary}`);
+  if (assessment.summary !== "") {
+    lines.push(`  ${summaryLabel(extras)}${assessment.summary}`);
+  }
   const tokens = formatUsage(usage);
   if (tokens !== undefined) lines.push(`  tokens: ${tokens}`);
   if (extras.fromCache) lines.push("  (cached — no API call)");
@@ -239,7 +254,9 @@ export function toMarkdown(
     for (const f of assessment.findings) {
       const where = location(f.file, f.line);
       parts.push(
-        `| ${f.severity} | ${cell(f.title)} | ${where === "" ? "—" : where} |`,
+        `| ${severityLabel(f)} | ${cell(f.title)} | ${
+          where === "" ? "—" : where
+        } |`,
       );
     }
     parts.push("");
@@ -251,9 +268,24 @@ export function toMarkdown(
   parts.push(...dismissedSection(extras.dismissed ?? []));
   parts.push(...notesSection(extras.notes ?? []));
   if (assessment.summary !== "") {
-    parts.push(`> ${cell(assessment.summary)}`, "");
+    const label = summaryLabel(extras);
+    const prefix = label === "" ? "" : `_${label.trimEnd()}_ `;
+    parts.push(`> ${prefix}${cell(assessment.summary)}`, "");
   }
   return parts.join("\n");
+}
+
+/**
+ * The label prefixed to the model's summary when the verify pass removed
+ * findings after it was written: the score and finding count above reflect the
+ * narrowing, the prose does not, and an unlabelled summary next to a lowered
+ * score reads as the report contradicting itself. Empty when nothing was
+ * refuted — the summary then describes exactly what is reported.
+ */
+function summaryLabel(extras: ReportExtras): string {
+  return (extras.refuted ?? []).length > 0
+    ? "Reviewer summary, written before verification: "
+    : "";
 }
 
 /**

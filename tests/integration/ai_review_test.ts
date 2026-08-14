@@ -219,6 +219,78 @@ Deno.test("a fixed finding is reported as progress and the build passes", async 
   assertEquals(decodeState(posted)?.findings[0].status, "fixed");
 });
 
+Deno.test("verify narrows but an uncertain finding still gates via the CLI", async () => {
+  // The verifier refutes one candidate with evidence and answers "uncertain"
+  // for the other: the uncertain high finding must keep gating (the build
+  // fails), and the PR comment must show the whole narrowing — the verdict on
+  // the survivor, the refuted table, and the summary labelled as written
+  // before verification.
+  const race = { title: "Unproven race", severity: "high", file: "src/app.ts" };
+  const idRace = findingFingerprint("security", {
+    title: "Unproven race",
+    severity: "high",
+    file: "src/app.ts",
+  });
+  const { fetch, calls } = fakeFetch([], [
+    claude({
+      score: 9,
+      severity: "high",
+      summary: "an eval and a race",
+      findings: [FINDING, race],
+    }),
+    claude({
+      verdicts: [
+        { id: ID, verdict: "refuted", reason: "the input is a literal" },
+        { id: idRace, verdict: "uncertain", reason: "cannot trace either way" },
+      ],
+    }),
+  ]);
+  const executed: string[] = [];
+  class Pipeline extends Build {
+    review = securityReviewer((r) =>
+      r.provider("claude").apiKey("test-key")
+        .comment()
+        .diff((d) => d.text(DIFF)).verify()
+        .fetch(fetch)
+    );
+    deploy = target()
+      .validateBefore(this.review)
+      .executes(() => {
+        executed.push("deploy");
+        return Promise.resolve();
+      });
+  }
+  await withEnv(
+    {
+      GITHUB_ACTIONS: "true",
+      GITHUB_REPOSITORY: "zuke-build/zuke",
+      GITHUB_REF: "refs/pull/7/merge",
+      GITHUB_TOKEN: "tkn",
+      GITHUB_STEP_SUMMARY: undefined,
+    },
+    async () => {
+      const result = await runCli(Pipeline, ["deploy"]);
+      assertEquals(result.code, 1);
+      assertEquals(executed, []);
+      assertEquals(
+        result.out.includes("[high · uncertain] Unproven race"),
+        true,
+      );
+    },
+  );
+  const write = calls.find((c) =>
+    c.url.startsWith("https://api.github.com/") && c.method === "POST"
+  );
+  const posted: string = JSON.parse(write?.body ?? "{}").body;
+  assertStringIncludes(posted, "high · uncertain");
+  assertStringIncludes(posted, "Refuted by verification");
+  assertStringIncludes(posted, "Eval of user input");
+  assertStringIncludes(
+    posted,
+    "_Reviewer summary, written before verification:_",
+  );
+});
+
 Deno.test("an open high finding still fails the build through the CLI", async () => {
   // Same pipeline, but no prior discussion: the finding gates, the target
   // never runs, and the failure names the review.

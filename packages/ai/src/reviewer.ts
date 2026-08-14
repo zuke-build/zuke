@@ -1004,9 +1004,15 @@ export class Reviewer implements Validation {
       assessment.findings = kept;
     }
 
-    // Verify pass: adversarially re-check each candidate; refuted candidates
-    // are reported (auditable) but not gated on. A failed pass keeps the
-    // unverified findings — fail toward reporting, never toward silence.
+    // Verify pass: adversarially re-check each candidate. Only a refutation
+    // that states its concrete contrary evidence removes a finding (an
+    // evidence-free one demotes to uncertain below — the requirement is
+    // enforced in code, not just asked for in the prompt); removal is
+    // reported in the refuted table, auditable, not gated on. A
+    // confirmed or uncertain candidate stays reported and gating, carrying the
+    // verdict so the report shows how far verification got. A missing verdict
+    // and a failed pass both keep the finding unmarked — fail toward
+    // reporting, never toward silence.
     const refuted: RefutedFinding[] = [];
     if (this.#verify && assessment.findings.length > 0) {
       if (this.#budget?.exhausted_()) {
@@ -1029,7 +1035,7 @@ export class Reviewer implements Validation {
             key,
             model,
             buildVerifyPrompt(this.#assessment, candidates, diff, extras),
-            ["confirmed", "refuted"],
+            ["confirmed", "refuted", "uncertain"],
             retry,
           );
           const kept: AssessmentFinding[] = [];
@@ -1037,14 +1043,26 @@ export class Reviewer implements Validation {
             const verdict = finding.id !== undefined
               ? verdicts.get(finding.id)
               : undefined;
-            if (verdict?.verdict === "refuted") {
-              refuted.push({
-                finding,
-                ...(verdict.reason !== undefined
-                  ? { reason: verdict.reason }
-                  : {}),
-              });
-            } else kept.push(finding);
+            // The evidence requirement is enforced here, not just asked for in
+            // the prompt: a refutation that states no reason cited nothing, so
+            // it demotes to uncertain — the finding stays visible — rather
+            // than silencing a finding on an evidence-free veto.
+            const reason = verdict?.verdict === "refuted"
+              ? (verdict.reason ?? "").trim()
+              : "";
+            if (verdict?.verdict === "refuted" && reason !== "") {
+              refuted.push({ finding, reason });
+            } else {
+              // Confirmed keeps its verdict; an uncertain answer and an
+              // evidence-free refutation both surface as uncertain; an
+              // unanswered candidate stays unmarked (fail-safe).
+              if (verdict !== undefined) {
+                finding.verification = verdict.verdict === "confirmed"
+                  ? "confirmed"
+                  : "uncertain";
+              }
+              kept.push(finding);
+            }
           }
           assessment.findings = kept;
         } catch (error) {

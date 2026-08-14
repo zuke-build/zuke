@@ -147,6 +147,44 @@ Deno.test("toMarkdown fills missing audit fields with an em dash", () => {
   assertStringIncludes(md, "- pass skipped for budget");
 });
 
+Deno.test("a verified finding carries its verdict; a refutation relabels the summary", () => {
+  const assessment: Assessment = {
+    score: 6,
+    severity: "medium",
+    summary: "one confirmed issue and one open question",
+    findings: [
+      { title: "traced", severity: "high", verification: "confirmed" },
+      { title: "unresolved", severity: "medium", verification: "uncertain" },
+      { title: "unanswered", severity: "low" },
+    ],
+  };
+  const refuted = [{
+    finding: { title: "disproved", severity: "high" as const },
+    reason: "guarded at db.ts:12",
+  }];
+  const md = toMarkdown("sec", "deploy", assessment, undefined, { refuted });
+  assertStringIncludes(md, "| high · confirmed | traced | — |");
+  assertStringIncludes(md, "| medium · uncertain | unresolved | — |");
+  assertStringIncludes(md, "| low | unanswered | — |");
+  // The score and count above reflect the narrowing; the prose was written
+  // before it, and says so.
+  assertStringIncludes(
+    md,
+    "> _Reviewer summary, written before verification:_ one confirmed issue",
+  );
+  const lines = consoleLines("sec", assessment, undefined, { refuted });
+  assertStringIncludes(lines.join("\n"), "  - [high · confirmed] traced");
+  assertStringIncludes(
+    lines.join("\n"),
+    "  Reviewer summary, written before verification: one confirmed issue",
+  );
+  // With nothing refuted, the summary needs no label — it describes exactly
+  // what is reported.
+  const clean = toMarkdown("sec", "deploy", assessment);
+  assertStringIncludes(clean, "> one confirmed issue and one open question");
+  assertEquals(clean.includes("written before verification"), false);
+});
+
 Deno.test("toMarkdown names the dismisser, the reason, and the rewording", () => {
   const md = toMarkdown("sec", "deploy", ASSESSMENT, undefined, {
     dismissed: [{

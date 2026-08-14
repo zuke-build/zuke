@@ -188,12 +188,21 @@ Three opt-in passes trade a little cost for findings that hold up:
   functions up, the validation in the same file — instead of judging hunks in
   isolation.
 - **`.verify()`** adds an adversarial second pass: every candidate finding is
-  re-checked against the diff (and the file context) by a verifier prompted to
-  _refute_ it — a finding whose concrete failure path cannot be traced is
-  dropped. Refuted candidates are listed in the report under "Refuted by
-  verification" (auditable, like suppression) but never gate. If the pass itself
-  errors, the unverified findings are kept — the reviewer fails toward
-  reporting, never toward silence.
+  re-checked against the diff (and the file context) by a verifier that tries to
+  _refute_ it. Refutation needs citable contrary evidence — an existing guard
+  the candidate missed, the flaw not being what the diff actually contains, or
+  the flaw pre-dating the change; a comment claiming the behaviour is intended
+  or the mere presence of tests does not count. The requirement is enforced in
+  code, not just requested: a refutation that states no reason is demoted to
+  `uncertain` and the finding stays. A candidate the evidence neither confirms
+  nor refutes is `uncertain` and **stays reported and gating** (marked in the
+  findings table, like `confirmed`), so the verifier can only remove what it can
+  disprove, never what it merely doubts. Refuted candidates are listed in the
+  report under "Refuted by verification" (auditable, like suppression) but never
+  gate — and since the model wrote its summary before the narrowing, the report
+  labels it "written before verification" whenever something was refuted. If the
+  pass itself errors, the unverified findings are kept — the reviewer fails
+  toward reporting, never toward silence.
 
 ## Discussing findings instead of repeating them
 
@@ -302,15 +311,15 @@ GitHub, or left over by the per-run cap stays in the table, and the report's
 
 What each round does to a thread:
 
-| Situation | What happens |
-| --- | --- |
-| A new finding with a usable line | A thread is opened on that line |
-| The finding is still open next round | **Nothing** — silence means "still open" |
-| A maintainer's rebuttal is accepted | The outcome is replied in-thread and the thread resolved |
-| A maintainer's rebuttal does not hold | The outcome is replied; the thread stays open |
-| The finding stops reproducing | A "fixed" reply, and the thread resolved |
-| A fixed finding comes back | A "reopened" reply, and the thread **un**resolved |
-| Dismissed in an earlier round | Nothing — it was answered and closed then |
+| Situation                             | What happens                                             |
+| ------------------------------------- | -------------------------------------------------------- |
+| A new finding with a usable line      | A thread is opened on that line                          |
+| The finding is still open next round  | **Nothing** — silence means "still open"                 |
+| A maintainer's rebuttal is accepted   | The outcome is replied in-thread and the thread resolved |
+| A maintainer's rebuttal does not hold | The outcome is replied; the thread stays open            |
+| The finding stops reproducing         | A "fixed" reply, and the thread resolved                 |
+| A fixed finding comes back            | A "reopened" reply, and the thread **un**resolved        |
+| Dismissed in an earlier round         | Nothing — it was answered and closed then                |
 
 Trust works exactly as it does for the id-quoting channel, and the two share one
 token budget, so turning threads on cannot double the untrusted text the
@@ -335,22 +344,22 @@ the summary table always carries the current location.
 onto those names in code — never from the comment text — so the same
 `.discussion()` configuration means the same thing everywhere:
 
-| Host                    | Where trust comes from                            | Mapping                                                                                       |
-| ----------------------- | ------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| **GitHub Actions**      | `author_association` on the comment               | used verbatim                                                                                   |
-| **GitLab CI**           | project membership (`access_level`)               | Owner (50) → `OWNER`; Developer/Maintainer (30/40) → `MEMBER`; Guest/Reporter → `NONE`           |
-| **Bitbucket Pipelines** | workspace permissions                             | `owner` → `OWNER`; `collaborator` → `COLLABORATOR`; `member` → `MEMBER`                          |
-| **Azure Pipelines**     | — (Azure reports no relationship on a comment)    | nobody is trusted by association; name the maintainers with `.trustAuthors(<uniqueName>)`        |
+| Host                    | Where trust comes from                         | Mapping                                                                                   |
+| ----------------------- | ---------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| **GitHub Actions**      | `author_association` on the comment            | used verbatim                                                                             |
+| **GitLab CI**           | project membership (`access_level`)            | Owner (50) → `OWNER`; Developer/Maintainer (30/40) → `MEMBER`; Guest/Reporter → `NONE`    |
+| **Bitbucket Pipelines** | workspace permissions                          | `owner` → `OWNER`; `collaborator` → `COLLABORATOR`; `member` → `MEMBER`                   |
+| **Azure Pipelines**     | — (Azure reports no relationship on a comment) | nobody is trusted by association; name the maintainers with `.trustAuthors(<uniqueName>)` |
 
 `.trustAuthors(...)` names accounts, so it takes each host's **stable**
 identifier — never a display name, which its owner can change to anyone else's:
 
-| Host                    | `.trustAuthors(...)` takes                              |
-| ----------------------- | ------------------------------------------------------- |
-| **GitHub Actions**      | the `login` (`"jane-doe"`)                               |
-| **GitLab CI**           | the `username` (`"jane-doe"`)                            |
-| **Azure Pipelines**     | the `uniqueName` — the sign-in address                  |
-| **Bitbucket Pipelines** | the account **uuid**, braces included (`"{9c2c…}"`)     |
+| Host                    | `.trustAuthors(...)` takes                          |
+| ----------------------- | --------------------------------------------------- |
+| **GitHub Actions**      | the `login` (`"jane-doe"`)                          |
+| **GitLab CI**           | the `username` (`"jane-doe"`)                       |
+| **Azure Pipelines**     | the `uniqueName` — the sign-in address              |
+| **Bitbucket Pipelines** | the account **uuid**, braces included (`"{9c2c…}"`) |
 
 Bitbucket is the odd one out because its `nickname` is a self-assigned,
 non-unique alias: an outsider could rename themselves to a maintainer's nickname
