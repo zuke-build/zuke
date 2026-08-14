@@ -908,8 +908,26 @@ class ZukeBuild extends Build {
       // job new ability — false about the diff: `permissions:` and every
       // `permission-*` input are byte-identical; only comments and a step name
       // changed.
+      // `7p24ls729f3e` and `3u5kom8amw7hi` are two phrasings of one finding on
+      // `NodeTasks.evaluate`: that it "executes arbitrary/attacker-controlled
+      // module code from a path argument". The first was answered on the PR and
+      // the reviewer dismissed it; the second restates it against the same
+      // code, so the hard override belongs here. The task runs a module the
+      // *build author* names, in a Node process with the build's own
+      // permissions — no more capability than any other line in a build file,
+      // and the same trust level as `NodeTasks.run`, `CmdTasks.exec`, or `$`,
+      // exactly as for the readiness-probe finding at the top of this list.
+      // "Attacker-controlled" is the premise that fails: no untrusted input
+      // reaches the path, and one that did would be the calling build's bug,
+      // not this API's. Call arguments cannot inject into the generated driver
+      // — every embedded value is a JSON literal, with a test that feeds a
+      // quote-and-`process.exit` payload through both. A path validation was
+      // considered and rejected: nothing about a path distinguishes a trusted
+      // build-authored one from an untrusted one, so the check would be a
+      // boundary in appearance only (guideline 10). The trust boundary is now
+      // stated in the task's JSDoc instead.
       // cspell:ignore myee fmcx ownw eav zbigfl oldslqkyj vnfjvb bja rj xp dtit
-      // cspell:ignore uhzbksic lk fag hqxu trsbgqqlurzb ilv
+      // cspell:ignore uhzbksic lk fag hqxu trsbgqqlurzb ilv ls kom amw
       .suppress(
         suppressions((s) =>
           s.add(
@@ -929,6 +947,8 @@ class ZukeBuild extends Build {
             "3lk27fag8hqxu",
             "trsbgqqlurzb",
             "3u2ilv23j9jb2",
+            "7p24ls729f3e",
+            "3u5kom8amw7hi",
           )
         ),
       )
