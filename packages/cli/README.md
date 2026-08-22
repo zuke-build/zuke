@@ -25,9 +25,9 @@ deno install -A -g -n zuke jsr:@zuke/cli
 and scaffold Zuke into any project with `zuke setup`.
 @module
 
-async function main(args: string[], host: SetupHost, prompter: Prompter, docRunner: DocRunner): Promise<number>
-  The CLI entry point. Returns a process exit code; `host`/`prompter`/`docRunner`
-  are injectable for testing.
+async function main(args: string[], host: SetupHost, prompter: Prompter, docRunner: DocRunner, starActions: StarActions): Promise<number>
+  The CLI entry point. Returns a process exit code; `host`, `prompter`,
+  `docRunner`, and `starActions` are injectable for testing.
 
 function parseImportFlags(args: string[]): ImportFlags
   Parse the argument list following `zuke import`.
@@ -35,11 +35,19 @@ function parseImportFlags(args: string[]): ImportFlags
 function parseSetupFlags(args: string[]): SetupFlags
   Parse the argument list following `zuke setup`.
 
+function realStarActions(runGh: typeof GhTasks.run, apiGh: typeof GhTasks.api, openUrl: typeof BrowserTasks.open): StarActions
+  Build the real {@link StarActions} over the given task functions. The
+  parameters exist as seams — production uses the defaults ({@link GhTasks}
+  and {@link BrowserTasks}); tests substitute fakes so no process is spawned.
+
 function resolveDocSpec(pkg: string | undefined): string | undefined
   Resolve a `zuke doc` argument to a `deno doc` specifier: a bare package name
   (`core`) becomes `jsr:@zuke/core`, a scoped name (`@scope/pkg`) becomes
   `jsr:@scope/pkg`, and an explicit `jsr:`/`npm:`/`https:`/`file:`/path
   specifier is passed through unchanged. Returns `undefined` for no argument.
+
+const ZUKE_REPO_URL: "https://github.com/zuke-build/zuke"
+  The Zuke repository's home page.
 
 const defaultPrompter: Prompter
   The real {@link Prompter}, backed by Deno's `prompt`/`confirm`.
@@ -89,6 +97,17 @@ interface SetupHost
     Set a file's permission bits (may be unsupported on some platforms).
   log(message: string): void
     Emit a line of progress output.
+
+interface StarActions
+  The side effects behind {@link promptStar}, injectable so tests never spawn
+  `gh` or a browser.
+
+  ghAuthenticated(): Promise<boolean>
+    Whether the `gh` CLI is installed and holds a login.
+  starWithGh(): Promise<void>
+    Star the Zuke repository through `gh api`.
+  openBrowser(url: string): Promise<boolean>
+    Open `url` in the default browser; `false` when it could not launch.
 
 type DocRunner = (denoArgs: string[]) => Promise<number>
   Runs `deno doc <args>` — the injectable subprocess seam for

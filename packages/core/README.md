@@ -720,6 +720,9 @@ function validateGraph(targets: Map<string, TargetBuilder>): void
 const AnnounceTasks: AnnounceTasksApi
   Announcement task functions for posting build status to chat platforms.
 
+const BrowserTasks: BrowserTasksApi
+  Task functions for the user's browser.
+
 const CHECKOUT_ACTION: "actions/checkout"
   The action a {@link CiCheckout} is generated from when pins are resolved.
 
@@ -877,6 +880,20 @@ class AssertionError extends Error
 
   override name: string
     The error name.
+
+class BrowserOpenSettings extends ToolSettings
+  Settings for {@link BrowserTasksApi.open | BrowserTasks.open}. The binary and
+  argv are derived from the platform ({@link ToolSettings.os_}); the shared
+  chainers (`quiet`, `noThrow`, `toolPath`, …) apply as on any tool.
+
+  constructor(url: string)
+    Build settings that open `url` (must be `http:`/`https:`).
+  readonly url: string
+    The validated URL this invocation opens.
+  override protected defaultTool(): string
+    The platform opener: `open`, `xdg-open`, or `rundll32`.
+  override protected buildArgs(): string[]
+    The opener's argv: the URL, behind the protocol handler on Windows.
 
 class Build
   Base class for user-defined builds. Provides no targets of its own; subclasses
@@ -2186,6 +2203,17 @@ interface AnyParameter
     Whether the parameter resolved to a defined value (used by `.requires()`).
   stringValue_(): string | undefined
     The resolved value as a string, or `undefined` if unset (for masking).
+
+interface BrowserTasksApi
+  The shape of {@link BrowserTasks}.
+
+  open(url: string, configure?: Configure<BrowserOpenSettings>): Promise<CommandOutput>
+    Open `url` in the default browser. Resolves when the opener process exits
+    (browsers detach, so this is launch, not page load).
+
+    ```ts
+    await BrowserTasks.open("https://github.com/zuke-build/zuke");
+    ```
 
 interface BuildCache
   The incremental cache used by the executor to skip up-to-date targets.

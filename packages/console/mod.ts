@@ -36,5 +36,6 @@ export {
   type Sink,
 } from "./src/console.ts";
 export { type LogLevel } from "./src/level.ts";
+export { logoLines, type LogoOptions, ZUKE_LOGO } from "./src/logo.ts";
 export { defaultTheme, type Theme } from "./src/theme.ts";
 export { consoleRenderer, createConsoleRenderer } from "./src/renderer.ts";

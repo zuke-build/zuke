@@ -666,6 +666,9 @@ function validateGraph(targets: Map<string, TargetBuilder>): void
 const AnnounceTasks: AnnounceTasksApi
   Announcement task functions for posting build status to chat platforms.
 
+const BrowserTasks: BrowserTasksApi
+  Task functions for the user's browser.
+
 const CHECKOUT_ACTION: "actions/checkout"
   The action a {@link CiCheckout} is generated from when pins are resolved.
 
@@ -823,6 +826,20 @@ class AssertionError extends Error
 
   override name: string
     The error name.
+
+class BrowserOpenSettings extends ToolSettings
+  Settings for {@link BrowserTasksApi.open | BrowserTasks.open}. The binary and
+  argv are derived from the platform ({@link ToolSettings.os_}); the shared
+  chainers (`quiet`, `noThrow`, `toolPath`, …) apply as on any tool.
+
+  constructor(url: string)
+    Build settings that open `url` (must be `http:`/`https:`).
+  readonly url: string
+    The validated URL this invocation opens.
+  override protected defaultTool(): string
+    The platform opener: `open`, `xdg-open`, or `rundll32`.
+  override protected buildArgs(): string[]
+    The opener's argv: the URL, behind the protocol handler on Windows.
 
 class Build
   Base class for user-defined builds. Provides no targets of its own; subclasses
@@ -2132,6 +2149,17 @@ interface AnyParameter
     Whether the parameter resolved to a defined value (used by `.requires()`).
   stringValue_(): string | undefined
     The resolved value as a string, or `undefined` if unset (for masking).
+
+interface BrowserTasksApi
+  The shape of {@link BrowserTasks}.
+
+  open(url: string, configure?: Configure<BrowserOpenSettings>): Promise<CommandOutput>
+    Open `url` in the default browser. Resolves when the opener process exits
+    (browsers detach, so this is launch, not page load).
+
+    ```ts
+    await BrowserTasks.open("https://github.com/zuke-build/zuke");
+    ```
 
 interface BuildCache
   The incremental cache used by the executor to skip up-to-date targets.
@@ -5628,10 +5656,25 @@ await run(MyBuild, { renderer: consoleRenderer });
 function createConsoleRenderer(theme: Theme): Renderer
   Build a {@link Renderer} that draws target headers with `theme`'s palette.
 
+function logoLines(color: boolean, options: LogoOptions): string[]
+  The logo as printable lines: the {@link ZUKE_LOGO} art painted two-tone when
+  `color` is on (letters bright, shadow dimmed), plus the optional tagline.
+  Pure — no I/O and no environment reads — so callers that manage their own
+  output (like the `zuke` CLI) can route the lines through any sink.
+
 const ConsoleTasks: ConsoleTasksApi
   Task-shaped console output. A single namespaced object (like `FileTasks`)
   rather than loose helpers: logging methods, structural primitives, and
   configuration all hang off `ConsoleTasks`.
+
+const ZUKE_LOGO: `███████╗██╗   ██╗██╗  ██╗███████╗
+╚══███╔╝██║   ██║██║ ██╔╝██╔════╝
+  ███╔╝ ██║   ██║█████╔╝ █████╗
+ ███╔╝  ██║   ██║██╔═██╗ ██╔══╝
+███████╗╚██████╔╝██║  ██╗███████╗
+╚══════╝ ╚═════╝ ╚═╝  ╚═╝╚══════╝`
+  The Zuke wordmark in FIGlet's ANSI-shadow style. Solid `█` blocks form the
+  letters; box-drawing characters draw the shadow.
 
 const consoleRenderer: Renderer
   The default console renderer, using {@link defaultTheme}.
@@ -5685,6 +5728,8 @@ interface ConsoleTasksApi
     Print an aligned table; header and cell text may contain markup.
   header(name: string): void
     Print the ruled banner Zuke opens a target's section with.
+  logo(options?: LogoOptions): void
+    Print the Zuke ASCII logo, two-tone when colour is on.
   summary(reports: TargetReport[], totalMs: number, ok: boolean): void
     Print the end-of-build summary table and closing verdict.
   group(name: string): void
@@ -5703,6 +5748,16 @@ interface ErrorOptions
 
   error?: unknown
     An error whose message is appended as a dimmed detail line.
+
+interface LogoOptions
+  Options for {@link logoLines} and `ConsoleTasks.logo`.
+
+  tagline?: string
+    A line printed dimmed under the art (e.g. a version or strapline).
+  letterStyle?: readonly StyleName[]
+    Styles for the solid letter blocks. Defaults to `["cyan", "bold"]`.
+  shadowStyle?: readonly StyleName[]
+    Styles for the shadow characters. Defaults to `["dim"]`.
 
 interface RuleOptions extends LineOptions
   Options for {@link ConsoleTasks.rule}.
@@ -5750,9 +5805,9 @@ deno install -A -g -n zuke jsr:@zuke/cli
 and scaffold Zuke into any project with `zuke setup`.
 @module
 
-async function main(args: string[], host: SetupHost, prompter: Prompter, docRunner: DocRunner): Promise<number>
-  The CLI entry point. Returns a process exit code; `host`/`prompter`/`docRunner`
-  are injectable for testing.
+async function main(args: string[], host: SetupHost, prompter: Prompter, docRunner: DocRunner, starActions: StarActions): Promise<number>
+  The CLI entry point. Returns a process exit code; `host`, `prompter`,
+  `docRunner`, and `starActions` are injectable for testing.
 
 function parseImportFlags(args: string[]): ImportFlags
   Parse the argument list following `zuke import`.
@@ -5760,11 +5815,19 @@ function parseImportFlags(args: string[]): ImportFlags
 function parseSetupFlags(args: string[]): SetupFlags
   Parse the argument list following `zuke setup`.
 
+function realStarActions(runGh: typeof GhTasks.run, apiGh: typeof GhTasks.api, openUrl: typeof BrowserTasks.open): StarActions
+  Build the real {@link StarActions} over the given task functions. The
+  parameters exist as seams — production uses the defaults ({@link GhTasks}
+  and {@link BrowserTasks}); tests substitute fakes so no process is spawned.
+
 function resolveDocSpec(pkg: string | undefined): string | undefined
   Resolve a `zuke doc` argument to a `deno doc` specifier: a bare package name
   (`core`) becomes `jsr:@zuke/core`, a scoped name (`@scope/pkg`) becomes
   `jsr:@scope/pkg`, and an explicit `jsr:`/`npm:`/`https:`/`file:`/path
   specifier is passed through unchanged. Returns `undefined` for no argument.
+
+const ZUKE_REPO_URL: "https://github.com/zuke-build/zuke"
+  The Zuke repository's home page.
 
 const defaultPrompter: Prompter
   The real {@link Prompter}, backed by Deno's `prompt`/`confirm`.
@@ -5814,6 +5877,17 @@ interface SetupHost
     Set a file's permission bits (may be unsupported on some platforms).
   log(message: string): void
     Emit a line of progress output.
+
+interface StarActions
+  The side effects behind {@link promptStar}, injectable so tests never spawn
+  `gh` or a browser.
+
+  ghAuthenticated(): Promise<boolean>
+    Whether the `gh` CLI is installed and holds a login.
+  starWithGh(): Promise<void>
+    Star the Zuke repository through `gh api`.
+  openBrowser(url: string): Promise<boolean>
+    Open `url` in the default browser; `false` when it could not launch.
 
 type DocRunner = (denoArgs: string[]) => Promise<number>
   Runs `deno doc <args>` — the injectable subprocess seam for
@@ -9734,6 +9808,30 @@ class GhApiError extends Error
   readonly status: number
     The HTTP status of the failing response.
 
+class GhApiSettings extends ToolSettings
+  Settings for {@link "./gh.ts".GhTasksApi.api | GhTasks.api}, mirroring the
+  real `gh api` flags: `--method`, `--field`, `--raw-field`, `--header`,
+  `--jq`, and `--silent`.
+
+  constructor(readonly endpoint: string)
+    Build settings for a call to `endpoint` (e.g. `"user/starred/o/r"`).
+  override protected defaultTool(): string
+    The default binary: `gh`.
+  method(verb: string): this
+    The HTTP method (`--method`, e.g. `"PUT"`; `gh` defaults to GET).
+  field(key: string, value: string | number | boolean): this
+    Add a typed body parameter (`--field key=value`). Repeatable.
+  rawField(key: string, value: string): this
+    Add a string body parameter (`--raw-field key=value`). Repeatable.
+  header(name: string, value: string): this
+    Add a request header (`--header key:value`). Repeatable.
+  jq(expression: string): this
+    Filter the response through a jq expression (`--jq`).
+  silent(): this
+    Do not print the response body (`--silent`).
+  override protected buildArgs(): string[]
+    Assemble `api <endpoint>` plus the flags, in call order.
+
 class GhAppTokenSettings
   Settings for {@link GhAppTokenApi.appToken}.
 
@@ -10378,6 +10476,10 @@ interface GhTasksApi extends GhAppTokenApi, GhSarifApi, GhReleaseAssetApi, GhRel
 
   run(configure?: Configure<GhSettings>): Promise<CommandOutput>
     Run a `gh` command.
+  api(endpoint: string, configure?: Configure<GhApiSettings>): Promise<CommandOutput>
+    Call a REST endpoint through `gh api`, with the user's `gh` credentials —
+    for operations that have no CLI verb, e.g. starring a repository:
+    `GhTasks.api("user/starred/zuke-build/zuke", (s) => s.method("PUT"))`.
 
 interface WorkflowJob
   One job's outcome within a completed workflow run.

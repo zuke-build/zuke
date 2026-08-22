@@ -110,10 +110,25 @@ await run(MyBuild, { renderer: consoleRenderer });
 function createConsoleRenderer(theme: Theme): Renderer
   Build a {@link Renderer} that draws target headers with `theme`'s palette.
 
+function logoLines(color: boolean, options: LogoOptions): string[]
+  The logo as printable lines: the {@link ZUKE_LOGO} art painted two-tone when
+  `color` is on (letters bright, shadow dimmed), plus the optional tagline.
+  Pure — no I/O and no environment reads — so callers that manage their own
+  output (like the `zuke` CLI) can route the lines through any sink.
+
 const ConsoleTasks: ConsoleTasksApi
   Task-shaped console output. A single namespaced object (like `FileTasks`)
   rather than loose helpers: logging methods, structural primitives, and
   configuration all hang off `ConsoleTasks`.
+
+const ZUKE_LOGO: `███████╗██╗   ██╗██╗  ██╗███████╗
+╚══███╔╝██║   ██║██║ ██╔╝██╔════╝
+  ███╔╝ ██║   ██║█████╔╝ █████╗
+ ███╔╝  ██║   ██║██╔═██╗ ██╔══╝
+███████╗╚██████╔╝██║  ██╗███████╗
+╚══════╝ ╚═════╝ ╚═╝  ╚═╝╚══════╝`
+  The Zuke wordmark in FIGlet's ANSI-shadow style. Solid `█` blocks form the
+  letters; box-drawing characters draw the shadow.
 
 const consoleRenderer: Renderer
   The default console renderer, using {@link defaultTheme}.
@@ -167,6 +182,8 @@ interface ConsoleTasksApi
     Print an aligned table; header and cell text may contain markup.
   header(name: string): void
     Print the ruled banner Zuke opens a target's section with.
+  logo(options?: LogoOptions): void
+    Print the Zuke ASCII logo, two-tone when colour is on.
   summary(reports: TargetReport[], totalMs: number, ok: boolean): void
     Print the end-of-build summary table and closing verdict.
   group(name: string): void
@@ -185,6 +202,16 @@ interface ErrorOptions
 
   error?: unknown
     An error whose message is appended as a dimmed detail line.
+
+interface LogoOptions
+  Options for {@link logoLines} and `ConsoleTasks.logo`.
+
+  tagline?: string
+    A line printed dimmed under the art (e.g. a version or strapline).
+  letterStyle?: readonly StyleName[]
+    Styles for the solid letter blocks. Defaults to `["cyan", "bold"]`.
+  shadowStyle?: readonly StyleName[]
+    Styles for the shadow characters. Defaults to `["dim"]`.
 
 interface RuleOptions extends LineOptions
   Options for {@link ConsoleTasks.rule}.

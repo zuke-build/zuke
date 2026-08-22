@@ -21,6 +21,7 @@
  */
 
 export * from "./src/gh.ts";
+export { GhApiSettings } from "./src/api_command.ts";
 export {
   assertRefName,
   commitFiles,

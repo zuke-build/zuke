@@ -76,6 +76,7 @@ import {
   type GhReleaseLatestSettings,
   markReleaseLatest,
 } from "./release_latest.ts";
+import { callApi, type GhApiSettings } from "./api_command.ts";
 
 /** Settings for a `gh` invocation. */
 export class GhSettings extends SubcommandSettings {
@@ -114,12 +115,27 @@ export interface GhTasksApi
     GhCheckRunApi {
   /** Run a `gh` command. */
   run(configure?: Configure<GhSettings>): Promise<CommandOutput>;
+  /**
+   * Call a REST endpoint through `gh api`, with the user's `gh` credentials —
+   * for operations that have no CLI verb, e.g. starring a repository:
+   * `GhTasks.api("user/starred/zuke-build/zuke", (s) => s.method("PUT"))`.
+   */
+  api(
+    endpoint: string,
+    configure?: Configure<GhApiSettings>,
+  ): Promise<CommandOutput>;
 }
 
 /** Typed task functions for GitHub: the `gh` CLI and the REST-only operations. */
 export const GhTasks: GhTasksApi = {
   run(configure?: Configure<GhSettings>): Promise<CommandOutput> {
     return runSettings(new GhSettings(), configure);
+  },
+  api(
+    endpoint: string,
+    configure?: Configure<GhApiSettings>,
+  ): Promise<CommandOutput> {
+    return callApi(endpoint, configure);
   },
   commit(
     configure?: (s: GhCommitSettings) => GhCommitSettings,

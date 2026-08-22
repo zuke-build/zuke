@@ -254,6 +254,11 @@ export {
   type RemoveOptions,
 } from "./src/file.ts";
 export {
+  BrowserOpenSettings,
+  BrowserTasks,
+  type BrowserTasksApi,
+} from "./src/browser.ts";
+export {
   assert,
   assertDirectoryExists,
   assertExists,
