@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/zuke-build/zuke/compare/cli-v1.0.1...cli-v1.1.0) (2026-08-22)
+
+
+### Features
+
+* **cli:** open setup with the Zuke logo and close with a star prompt ([#368](https://github.com/zuke-build/zuke/issues/368)) ([3783152](https://github.com/zuke-build/zuke/commit/37831529707b4b99e4d53cd49f7a65a6ff1facb5))
+
 ## [1.0.1](https://github.com/zuke-build/zuke/compare/cli-v1.0.0...cli-v1.0.1) (2026-08-13)
 
 
