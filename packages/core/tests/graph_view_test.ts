@@ -6,7 +6,6 @@ import { Build, target } from "../mod.ts";
 import { discoverTargets } from "../src/build.ts";
 import { CONFIG_FILE } from "../src/config.ts";
 import {
-  browserCommand,
   defaultGraphHost,
   graphCommand,
   openInBrowser,
@@ -19,15 +18,6 @@ class Demo extends Build {
 }
 
 const targets = () => discoverTargets(new Demo());
-
-Deno.test("browserCommand picks the opener per platform", () => {
-  assertEquals(browserCommand("windows", "g.html"), [
-    "cmd",
-    ["/c", "start", "", "g.html"],
-  ]);
-  assertEquals(browserCommand("darwin", "g.html"), ["open", ["g.html"]]);
-  assertEquals(browserCommand("linux", "g.html"), ["xdg-open", ["g.html"]]);
-});
 
 Deno.test("openInBrowser invokes the spawner with the resolved command", async () => {
   const calls: Array<[string, string[]]> = [];

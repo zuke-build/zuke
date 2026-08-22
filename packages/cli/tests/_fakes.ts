@@ -60,6 +60,9 @@ export class FakeHost implements SetupHost {
 
 /** A scripted {@link Prompter} with canned answers. */
 export class FakePrompter implements Prompter {
+  /** Every question passed to {@link confirm}, in order. */
+  readonly confirms: string[] = [];
+
   constructor(
     private readonly tty: boolean,
     private readonly answer: string = "",
@@ -78,7 +81,10 @@ export class FakePrompter implements Prompter {
   }
 
   confirm(question: string): boolean {
-    return question.includes("Star") ? this.star : this.yes;
+    this.confirms.push(question);
+    // Match the star question narrowly: a broader match could silently route
+    // an unrelated confirm to `star` and let a test reach the real actions.
+    return question.includes("Star zuke-build/zuke") ? this.star : this.yes;
   }
 }
 

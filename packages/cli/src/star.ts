@@ -73,32 +73,62 @@ export function realStarActions(
 /** The real {@link StarActions}, backed by `GhTasks` and `BrowserTasks`. */
 export const defaultStarActions: StarActions = realStarActions();
 
+/** Star through `gh`, reporting success; `false` sends the caller onward. */
+async function starViaGh(
+  host: SetupHost,
+  actions: StarActions,
+): Promise<boolean> {
+  try {
+    await actions.starWithGh();
+  } catch {
+    return false; // gh was there but the call failed (network, scope).
+  }
+  host.log("★ Starred zuke-build/zuke — thank you!");
+  return true;
+}
+
+/** Open the repo page, reporting success; `false` sends the caller onward. */
+async function openRepoPage(
+  host: SetupHost,
+  actions: StarActions,
+): Promise<boolean> {
+  try {
+    if (!(await actions.openBrowser(ZUKE_REPO_URL))) return false;
+  } catch {
+    return false; // no opener on this system — fall back to the URL.
+  }
+  host.log(`Opened ${ZUKE_REPO_URL} — click “☆ Star”. Thank you!`);
+  return true;
+}
+
 /**
- * Ask the user to star the Zuke repository and help with a yes: star through
- * `gh` when it is installed and authenticated, otherwise open the repository
- * page, otherwise print its URL. A "no" is respected silently, and no failure
- * here ever fails the setup that just succeeded.
+ * Ask the user to star the Zuke repository and help with a yes. The `gh` login
+ * is probed *before* asking, so the question says what a yes will do: with an
+ * authenticated `gh`, that the star is placed on their behalf through it;
+ * without one, that the repository page opens in the browser (falling back to
+ * printing its URL). A "no" is respected silently, and no failure here ever
+ * fails the setup that just succeeded.
  */
 export async function promptStar(
   host: SetupHost,
   prompter: Prompter,
-  actions: StarActions = defaultStarActions,
+  actions: StarActions,
 ): Promise<void> {
-  if (!prompter.confirm("Enjoying Zuke? Star zuke-build/zuke on GitHub?")) {
+  let authed = false;
+  try {
+    authed = await actions.ghAuthenticated();
+  } catch {
+    // A probe failure only means the browser path — never a failed setup.
+  }
+  const how = authed
+    ? "uses your gh login to star on your behalf"
+    : "opens the repo page in your browser";
+  if (
+    !prompter.confirm(`Enjoying Zuke? Star zuke-build/zuke on GitHub? (${how})`)
+  ) {
     return;
   }
-  if (await actions.ghAuthenticated()) {
-    try {
-      await actions.starWithGh();
-      host.log("★ Starred zuke-build/zuke — thank you!");
-      return;
-    } catch {
-      // gh was there but the call failed (network, scope) — try the browser.
-    }
-  }
-  if (await actions.openBrowser(ZUKE_REPO_URL)) {
-    host.log(`Opened ${ZUKE_REPO_URL} — click “☆ Star”. Thank you!`);
-    return;
-  }
+  if (authed && (await starViaGh(host, actions))) return;
+  if (await openRepoPage(host, actions)) return;
   host.log(`Star Zuke at ${ZUKE_REPO_URL} — thank you!`);
 }

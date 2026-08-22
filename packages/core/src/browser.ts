@@ -16,7 +16,27 @@ import { type Configure, runSettings, ToolSettings } from "./tooling.ts";
 import type { CommandOutput } from "./shell.ts";
 
 /**
- * Check that `url` is a well-formed `http:`/`https:` URL, returning it.
+ * The platform-appropriate command to open `target` (a URL or file path) in
+ * the default app: `open` on macOS, `xdg-open` on Linux, and
+ * `rundll32 url.dll,FileProtocolHandler` on Windows. The one copy of this
+ * dispatch — {@link BrowserTasksApi.open | BrowserTasks.open} and `zuke
+ * graph`'s opener both build their argv from it, so the platform strategy
+ * cannot drift between them.
+ */
+export function browserCommand(
+  os: typeof Deno.build.os,
+  target: string,
+): [string, string[]] {
+  if (os === "windows") {
+    return ["rundll32", ["url.dll,FileProtocolHandler", target]];
+  }
+  if (os === "darwin") return ["open", [target]];
+  return ["xdg-open", [target]];
+}
+
+/**
+ * Check that `url` is a well-formed `http:`/`https:` URL, returning its
+ * normalized (`URL.href`) form so stray whitespace never reaches the opener.
  *
  * @throws {Error} Naming the offending URL when it does not parse or uses
  * another scheme — the platform openers dispatch on the value, so an
@@ -39,7 +59,7 @@ function checkHttpUrl(url: string): string {
         `arbitrary program or protocol handler.`,
     );
   }
-  return url;
+  return parsed.href;
 }
 
 /**
@@ -59,16 +79,12 @@ export class BrowserOpenSettings extends ToolSettings {
 
   /** The platform opener: `open`, `xdg-open`, or `rundll32`. */
   protected override defaultTool(): string {
-    if (this.os_ === "darwin") return "open";
-    if (this.os_ === "windows") return "rundll32";
-    return "xdg-open";
+    return browserCommand(this.os_, this.url)[0];
   }
 
   /** The opener's argv: the URL, behind the protocol handler on Windows. */
   protected override buildArgs(): string[] {
-    return this.os_ === "windows"
-      ? ["url.dll,FileProtocolHandler", this.url]
-      : [this.url];
+    return browserCommand(this.os_, this.url)[1];
   }
 }
 

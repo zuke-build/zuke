@@ -5815,19 +5815,11 @@ function parseImportFlags(args: string[]): ImportFlags
 function parseSetupFlags(args: string[]): SetupFlags
   Parse the argument list following `zuke setup`.
 
-function realStarActions(runGh: typeof GhTasks.run, apiGh: typeof GhTasks.api, openUrl: typeof BrowserTasks.open): StarActions
-  Build the real {@link StarActions} over the given task functions. The
-  parameters exist as seams — production uses the defaults ({@link GhTasks}
-  and {@link BrowserTasks}); tests substitute fakes so no process is spawned.
-
 function resolveDocSpec(pkg: string | undefined): string | undefined
   Resolve a `zuke doc` argument to a `deno doc` specifier: a bare package name
   (`core`) becomes `jsr:@zuke/core`, a scoped name (`@scope/pkg`) becomes
   `jsr:@scope/pkg`, and an explicit `jsr:`/`npm:`/`https:`/`file:`/path
   specifier is passed through unchanged. Returns `undefined` for no argument.
-
-const ZUKE_REPO_URL: "https://github.com/zuke-build/zuke"
-  The Zuke repository's home page.
 
 const defaultPrompter: Prompter
   The real {@link Prompter}, backed by Deno's `prompt`/`confirm`.

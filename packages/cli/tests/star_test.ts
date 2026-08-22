@@ -12,7 +12,36 @@ Deno.test("promptStar respects a no, silently", async () => {
   const actions = new FakeStarActions(true);
   await promptStar(host, new FakePrompter(true, "", true, false), actions);
   assertEquals(host.logs, []);
-  assertEquals(actions.calls, []);
+  // The gh login is probed up front (it shapes the question), nothing more.
+  assertEquals(actions.calls, ["auth"]);
+});
+
+Deno.test("promptStar's question says how a yes will star", async () => {
+  const authed = new FakePrompter(true, "", false, false);
+  await promptStar(new FakeHost(), authed, new FakeStarActions(true));
+  assertEquals(authed.confirms.length, 1);
+  assertEquals(authed.confirms[0].includes("uses your gh login"), true);
+
+  const anonymous = new FakePrompter(true, "", false, false);
+  await promptStar(new FakeHost(), anonymous, new FakeStarActions(false));
+  assertEquals(anonymous.confirms[0].includes("opens the repo page"), true);
+});
+
+Deno.test("promptStar treats a throwing auth probe as not logged in", async () => {
+  const host = new FakeHost();
+  const actions = new FakeStarActions(true);
+  actions.ghAuthenticated = () => Promise.reject(new Error("gh exploded"));
+  await promptStar(host, new FakePrompter(true, "", false, true), actions);
+  assertEquals(actions.calls, [`open:${ZUKE_REPO_URL}`]);
+  assertEquals(host.logs[0].includes("Opened"), true);
+});
+
+Deno.test("promptStar survives a throwing browser opener", async () => {
+  const host = new FakeHost();
+  const actions = new FakeStarActions(false);
+  actions.openBrowser = () => Promise.reject(new Error("opener exploded"));
+  await promptStar(host, new FakePrompter(true, "", false, true), actions);
+  assertEquals(host.logs, [`Star Zuke at ${ZUKE_REPO_URL} — thank you!`]);
 });
 
 Deno.test("promptStar stars through an authenticated gh", async () => {

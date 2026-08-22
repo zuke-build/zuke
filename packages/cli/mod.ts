@@ -25,11 +25,7 @@ import { VERSION } from "./src/version.ts";
 
 export type { SetupHost } from "./src/setup.ts";
 export type { ImportSource } from "./src/import.ts";
-export {
-  realStarActions,
-  type StarActions,
-  ZUKE_REPO_URL,
-} from "./src/star.ts";
+export type { StarActions } from "./src/star.ts";
 
 /**
  * The interactive surface, injectable so the wizard is testable without a TTY.
@@ -120,6 +116,9 @@ function printBanner(host: SetupHost): void {
     sink: { out: (line) => host.log(line), err: (line) => host.log(line) },
   });
   ConsoleTasks.logo({ tagline: TAGLINE });
+  // Point the process-global sink back at the console so nothing else in this
+  // process (or a test's next case) keeps writing into this command's host.
+  ConsoleTasks.reset();
   host.log("");
 }
 
