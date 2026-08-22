@@ -13,12 +13,19 @@
  * @module
  */
 
+import { ConsoleTasks } from "@zuke/console";
 import { defaultHost, runSetup, type SetupHost } from "./src/setup.ts";
 import { type ImportSource, runImport } from "./src/import.ts";
+import {
+  defaultStarActions,
+  promptStar,
+  type StarActions,
+} from "./src/star.ts";
 import { VERSION } from "./src/version.ts";
 
 export type { SetupHost } from "./src/setup.ts";
 export type { ImportSource } from "./src/import.ts";
+export type { StarActions } from "./src/star.ts";
 
 /**
  * The interactive surface, injectable so the wizard is testable without a TTY.
@@ -95,7 +102,27 @@ export function parseSetupFlags(args: string[]): SetupFlags {
   return flags;
 }
 
-const HELP = `zuke ${VERSION} — code-first build automation for Deno
+/** The one-line identity printed under the logo and atop `--help`. */
+const TAGLINE = `zuke ${VERSION} — code-first build automation for Deno`;
+
+/**
+ * Print the Zuke logo through `host`, so scaffolding opens with the brand.
+ * Colour and log-level detection are `ConsoleTasks`'s (a TTY with `NO_COLOR`
+ * unset paints the art; a pipe gets it plain; `ZUKE_LOG_LEVEL=silent` skips
+ * it), while the lines themselves flow through the injectable host.
+ */
+function printBanner(host: SetupHost): void {
+  ConsoleTasks.configure({
+    sink: { out: (line) => host.log(line), err: (line) => host.log(line) },
+  });
+  ConsoleTasks.logo({ tagline: TAGLINE });
+  // Point the process-global sink back at the console so nothing else in this
+  // process (or a test's next case) keeps writing into this command's host.
+  ConsoleTasks.reset();
+  host.log("");
+}
+
+const HELP = `${TAGLINE}
 
 Usage:
   zuke setup [options]    Scaffold Zuke into a directory
@@ -129,13 +156,16 @@ async function commandSetup(
   args: string[],
   host: SetupHost,
   prompter: Prompter,
+  starActions: StarActions,
 ): Promise<number> {
   const flags = parseSetupFlags(args);
   let name = flags.name ?? "MyBuild";
   let force = flags.force;
   const dir = flags.dir ?? ".";
 
-  if (!flags.yes && prompter.interactive()) {
+  printBanner(host);
+  const interactive = !flags.yes && prompter.interactive();
+  if (interactive) {
     name = prompter.ask("Build class name", name);
     if (!force) {
       force = prompter.confirm("Overwrite existing files if present?");
@@ -150,6 +180,9 @@ async function commandSetup(
   host.log(
     `Done — ${written} file(s) written. Next: ./${launcherName ?? "zuke"}`,
   );
+  if (interactive) {
+    await promptStar(host, prompter, starActions);
+  }
   return 0;
 }
 
@@ -192,6 +225,7 @@ async function commandImport(
   let force = flags.force;
   const dir = flags.dir ?? ".";
 
+  printBanner(host);
   if (!flags.yes && prompter.interactive()) {
     name = prompter.ask("Build class name", name);
     if (!force) {
@@ -278,14 +312,15 @@ async function commandDoc(
 }
 
 /**
- * The CLI entry point. Returns a process exit code; `host`/`prompter`/`docRunner`
- * are injectable for testing.
+ * The CLI entry point. Returns a process exit code; `host`, `prompter`,
+ * `docRunner`, and `starActions` are injectable for testing.
  */
 export async function main(
   args: string[],
   host: SetupHost = defaultHost,
   prompter: Prompter = defaultPrompter,
   docRunner: DocRunner = defaultDocRunner,
+  starActions: StarActions = defaultStarActions,
 ): Promise<number> {
   if (args.length === 0 || args[0] === "--help" || args[0] === "-h") {
     host.log(HELP);
@@ -300,7 +335,7 @@ export async function main(
   }
   try {
     if (command === "setup") {
-      return await commandSetup(rest, host, prompter);
+      return await commandSetup(rest, host, prompter, starActions);
     }
     if (command === "import") {
       return await commandImport(rest, host, prompter);
