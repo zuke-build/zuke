@@ -9,24 +9,8 @@ import {
   resolveDocSpec,
 } from "../mod.ts";
 import { VERSION } from "../src/version.ts";
-import { FakeHost, FakePrompter, FakeStarActions } from "./_fakes.ts";
+import { FakeHost, FakePrompter } from "./_fakes.ts";
 import { withTemp } from "../../core/tests/_temp.ts";
-import { ConsoleTasks, ZUKE_LOGO } from "@zuke/console";
-
-const LOGO_TOP = ZUKE_LOGO.split("\n")[0];
-
-/**
- * Run `fn` with the console level pinned (an ambient `ZUKE_LOG_LEVEL=silent`
- * would legitimately mute the banner), resetting the global console after.
- */
-async function withBanner(fn: () => Promise<void>): Promise<void> {
-  ConsoleTasks.configure({ level: "info" });
-  try {
-    await fn();
-  } finally {
-    ConsoleTasks.reset();
-  }
-}
 
 Deno.test("parseSetupFlags reads every flag form", () => {
   assertEquals(parseSetupFlags([]), { force: false, yes: false });
@@ -177,7 +161,7 @@ Deno.test("main setup honours --dir", async () => {
   assertEquals(code, 0);
   assertEquals(host.files.get("sub/zuke.ts")?.includes("class Widget"), true);
   assertEquals(host.files.has("sub/deno.json"), true);
-  assertEquals(host.logs.some((l) => l.includes("into sub")), true);
+  assertEquals(host.logs[0].includes("into sub"), true);
 });
 
 Deno.test("main --version prints the version", async () => {
@@ -244,55 +228,6 @@ Deno.test("main setup (interactive) keeps --force without asking", async () => {
   );
   assertEquals(code, 0);
   assertEquals(host.files.get("zuke.ts")?.includes("class Named"), true);
-});
-
-Deno.test("main setup opens with the Zuke logo and the version", async () => {
-  await withBanner(async () => {
-    const host = new FakeHost();
-    const code = await main(["setup", "--yes"], host, new FakePrompter(false));
-    assertEquals(code, 0);
-    assertEquals(host.logs.some((l) => l.includes(LOGO_TOP)), true);
-    assertEquals(host.logs.some((l) => l.includes(VERSION)), true);
-  });
-});
-
-Deno.test("main import opens with the Zuke logo too", async () => {
-  await withBanner(async () => {
-    const host = new FakeHost({ Makefile: "build:\n\techo hi\n" });
-    const code = await main(["import", "--yes"], host, new FakePrompter(false));
-    assertEquals(code, 0);
-    assertEquals(host.logs.some((l) => l.includes(LOGO_TOP)), true);
-  });
-});
-
-Deno.test("main setup (interactive) offers the star prompt and stars on yes", async () => {
-  const host = new FakeHost();
-  const actions = new FakeStarActions(true);
-  const code = await main(
-    ["setup"],
-    host,
-    new FakePrompter(true, "", false, true),
-    undefined,
-    actions,
-  );
-  assertEquals(code, 0);
-  assertEquals(actions.calls, ["auth", "star"]);
-  assertEquals(host.logs.some((l) => l.includes("thank you!")), true);
-});
-
-Deno.test("main setup skips the star prompt under --yes and non-TTY", async () => {
-  for (
-    const [args, prompter] of [
-      [["setup", "--yes"], new FakePrompter(true, "", false, true)],
-      [["setup"], new FakePrompter(false, "", false, true)],
-    ] as const
-  ) {
-    const host = new FakeHost();
-    const actions = new FakeStarActions(true);
-    const code = await main([...args], host, prompter, undefined, actions);
-    assertEquals(code, 0);
-    assertEquals(actions.calls, []);
-  }
 });
 
 Deno.test("main uses default host/prompter when omitted", async () => {

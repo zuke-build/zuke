@@ -1571,9 +1571,7 @@
       },
       "packages/cli": {
         "dependencies": [
-          "jsr:@zuke/console@^1.0.2",
-          "jsr:@zuke/core@^1.32.0",
-          "jsr:@zuke/gh@^1.5.0"
+          "jsr:@zuke/core@^1.32.0"
         ]
       },
       "packages/cmd": {

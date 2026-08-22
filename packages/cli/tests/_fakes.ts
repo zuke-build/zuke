@@ -60,16 +60,10 @@ export class FakeHost implements SetupHost {
 
 /** A scripted {@link Prompter} with canned answers. */
 export class FakePrompter implements Prompter {
-  /** Every question passed to {@link confirm}, in order. */
-  readonly confirms: string[] = [];
-
   constructor(
     private readonly tty: boolean,
     private readonly answer: string = "",
     private readonly yes: boolean = false,
-    /** The answer to the star prompt (kept apart from `yes`, so tests of the
-     * other confirms don't accidentally opt in to starring). */
-    private readonly star: boolean = false,
   ) {}
 
   interactive(): boolean {
@@ -80,42 +74,7 @@ export class FakePrompter implements Prompter {
     return this.answer === "" ? fallback : this.answer;
   }
 
-  confirm(question: string): boolean {
-    this.confirms.push(question);
-    // Match the star question narrowly: a broader match could silently route
-    // an unrelated confirm to `star` and let a test reach the real actions.
-    return question.includes("Star zuke-build/zuke") ? this.star : this.yes;
-  }
-}
-
-/** A scripted `StarActions` recording which effects ran. */
-export class FakeStarActions {
-  /** The effect names invoked, in order. */
-  readonly calls: string[] = [];
-
-  constructor(
-    /** What `ghAuthenticated()` reports. */
-    private readonly authed: boolean,
-    /** Whether `starWithGh()` succeeds (else it rejects). */
-    private readonly starOk: boolean = true,
-    /** What `openBrowser()` reports. */
-    private readonly browserOk: boolean = true,
-  ) {}
-
-  ghAuthenticated(): Promise<boolean> {
-    this.calls.push("auth");
-    return Promise.resolve(this.authed);
-  }
-
-  starWithGh(): Promise<void> {
-    this.calls.push("star");
-    return this.starOk
-      ? Promise.resolve()
-      : Promise.reject(new Error("gh api failed"));
-  }
-
-  openBrowser(url: string): Promise<boolean> {
-    this.calls.push(`open:${url}`);
-    return Promise.resolve(this.browserOk);
+  confirm(_question: string): boolean {
+    return this.yes;
   }
 }

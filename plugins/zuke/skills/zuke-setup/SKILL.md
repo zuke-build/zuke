@@ -32,11 +32,6 @@ launcher under a different name when a `zuke/` directory already occupies it —
 directory collision now fails with an actionable error instead of silently
 skipping the launcher).
 
-Running as an agent, always pass `--yes`: it skips every interactive question,
-including the closing "star the Zuke repository?" prompt — that question is for
-a human at a terminal, and an agent must never answer it (or star anything) on
-the user's behalf.
-
 To read a `@zuke/*` package's API without a Node repo's `@types/node` noise, run
 `zuke doc <package>` (e.g. `zuke doc core`) — it runs `deno doc` in an isolated
 directory.

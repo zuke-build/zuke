@@ -25,9 +25,9 @@ deno install -A -g -n zuke jsr:@zuke/cli
 and scaffold Zuke into any project with `zuke setup`.
 @module
 
-async function main(args: string[], host: SetupHost, prompter: Prompter, docRunner: DocRunner, starActions: StarActions): Promise<number>
-  The CLI entry point. Returns a process exit code; `host`, `prompter`,
-  `docRunner`, and `starActions` are injectable for testing.
+async function main(args: string[], host: SetupHost, prompter: Prompter, docRunner: DocRunner): Promise<number>
+  The CLI entry point. Returns a process exit code; `host`/`prompter`/`docRunner`
+  are injectable for testing.
 
 function parseImportFlags(args: string[]): ImportFlags
   Parse the argument list following `zuke import`.
@@ -89,17 +89,6 @@ interface SetupHost
     Set a file's permission bits (may be unsupported on some platforms).
   log(message: string): void
     Emit a line of progress output.
-
-interface StarActions
-  The side effects behind {@link promptStar}, injectable so tests never spawn
-  `gh` or a browser.
-
-  ghAuthenticated(): Promise<boolean>
-    Whether the `gh` CLI is installed and holds a login.
-  starWithGh(): Promise<void>
-    Star the Zuke repository through `gh api`.
-  openBrowser(url: string): Promise<boolean>
-    Open `url` in the default browser; `false` when it could not launch.
 
 type DocRunner = (denoArgs: string[]) => Promise<number>
   Runs `deno doc <args>` — the injectable subprocess seam for
