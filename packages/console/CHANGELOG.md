@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/zuke-build/zuke/compare/console-v1.0.2...console-v1.1.0) (2026-08-22)
+
+
+### Features
+
+* **console:** Zuke logo task, gh api task, and a browser opener in core ([#366](https://github.com/zuke-build/zuke/issues/366)) ([2b1453d](https://github.com/zuke-build/zuke/commit/2b1453ddaa3bd6b77437b4b39369ddc224393b8a))
+
 ## [1.0.2](https://github.com/zuke-build/zuke/compare/console-v1.0.1...console-v1.0.2) (2026-08-13)
 
 
