@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.0](https://github.com/zuke-build/zuke/compare/gh-v1.5.0...gh-v1.6.0) (2026-08-22)
+
+
+### Features
+
+* **console:** Zuke logo task, gh api task, and a browser opener in core ([#366](https://github.com/zuke-build/zuke/issues/366)) ([2b1453d](https://github.com/zuke-build/zuke/commit/2b1453ddaa3bd6b77437b4b39369ddc224393b8a))
+
 ## [1.5.0](https://github.com/zuke-build/zuke/compare/gh-v1.4.0...gh-v1.5.0) (2026-08-14)
 
 
