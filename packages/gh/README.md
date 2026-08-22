@@ -218,6 +218,30 @@ class GhApiError extends Error
   readonly status: number
     The HTTP status of the failing response.
 
+class GhApiSettings extends ToolSettings
+  Settings for {@link "./gh.ts".GhTasksApi.api | GhTasks.api}, mirroring the
+  real `gh api` flags: `--method`, `--field`, `--raw-field`, `--header`,
+  `--jq`, and `--silent`.
+
+  constructor(readonly endpoint: string)
+    Build settings for a call to `endpoint` (e.g. `"user/starred/o/r"`).
+  override protected defaultTool(): string
+    The default binary: `gh`.
+  method(verb: string): this
+    The HTTP method (`--method`, e.g. `"PUT"`; `gh` defaults to GET).
+  field(key: string, value: string | number | boolean): this
+    Add a typed body parameter (`--field key=value`). Repeatable.
+  rawField(key: string, value: string): this
+    Add a string body parameter (`--raw-field key=value`). Repeatable.
+  header(name: string, value: string): this
+    Add a request header (`--header key:value`). Repeatable.
+  jq(expression: string): this
+    Filter the response through a jq expression (`--jq`).
+  silent(): this
+    Do not print the response body (`--silent`).
+  override protected buildArgs(): string[]
+    Assemble `api <endpoint>` plus the flags, in call order.
+
 class GhAppTokenSettings
   Settings for {@link GhAppTokenApi.appToken}.
 
@@ -862,6 +886,10 @@ interface GhTasksApi extends GhAppTokenApi, GhSarifApi, GhReleaseAssetApi, GhRel
 
   run(configure?: Configure<GhSettings>): Promise<CommandOutput>
     Run a `gh` command.
+  api(endpoint: string, configure?: Configure<GhApiSettings>): Promise<CommandOutput>
+    Call a REST endpoint through `gh api`, with the user's `gh` credentials —
+    for operations that have no CLI verb, e.g. starring a repository:
+    `GhTasks.api("user/starred/zuke-build/zuke", (s) => s.method("PUT"))`.
 
 interface WorkflowJob
   One job's outcome within a completed workflow run.

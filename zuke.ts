@@ -561,6 +561,10 @@ class ZukeBuild extends Build {
   // via env from `github.event.pull_request.body` — never interpolated into
   // a shell line, so an adversarial PR body can't inject a command). Unset
   // locally and empty on a `push` run, where `prBodyLint` is then a no-op.
+  // The body is frozen into the run's event payload: re-running a failed job
+  // lints the body as it was when the event fired, so after editing a flagged
+  // PR description, push a commit (a `synchronize` event) rather than
+  // re-running — the re-run would report the old text forever.
   prBody = parameter(
     "Pull request body to lint for code fragments that break release-please's parser",
   )

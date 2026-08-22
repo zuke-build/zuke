@@ -16,19 +16,10 @@ import { graphData, renderGraphHtml } from "./graph_html.ts";
 import { ARTIFACT_DIR, findConfigDir, pathExists } from "./config.ts";
 import { absolutePath } from "./path.ts";
 import type { TargetBuilder } from "./target.ts";
+import { browserCommand } from "./browser.ts";
 
 /** Spawn a detached command (binary + args); used to launch a browser. */
 export type Spawn = (cmd: string, args: string[]) => Promise<void>;
-
-/** The platform-appropriate command to open `target` in the default app. */
-export function browserCommand(
-  os: typeof Deno.build.os,
-  target: string,
-): [string, string[]] {
-  if (os === "windows") return ["cmd", ["/c", "start", "", target]];
-  if (os === "darwin") return ["open", [target]];
-  return ["xdg-open", [target]];
-}
 
 /** The real spawner: run the opener, discarding its output. */
 const denoSpawn: Spawn = async (cmd, args) => {
