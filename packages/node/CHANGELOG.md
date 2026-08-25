@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/zuke-build/zuke/compare/node-v1.1.0...node-v1.2.0) (2026-08-25)
+
+
+### Features
+
+* **node:** exit the evaluate child once its result is written ([#373](https://github.com/zuke-build/zuke/issues/373)) ([2f4ecb9](https://github.com/zuke-build/zuke/commit/2f4ecb914d00b3c5dbe6cc82c88ac4dff8cf75cf))
+
 ## [1.1.0](https://github.com/zuke-build/zuke/compare/node-v1.0.1...node-v1.1.0) (2026-08-14)
 
 
