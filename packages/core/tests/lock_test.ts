@@ -193,3 +193,21 @@ Deno.test("a custom onConflict still renders the failure after a wait", async ()
   );
   assertEquals(error.message, "the stack belongs to alice right now");
 });
+
+Deno.test("a run cancelled before the wait starts never sleeps at all", async () => {
+  const store = new FakeStore(Number.MAX_SAFE_INTEGER);
+  const controller = new AbortController();
+  controller.abort(); // cancelled before the target is even reached
+  const t = target()
+    .lock((s) => s.key("dev-env").withTtl("1h").waitUpTo("1h").pollEvery("1h"))
+    .executes(() => {});
+
+  const started = performance.now();
+  await assertRejects(
+    () => acquireTargetLock(t, envWith(store, controller.signal)),
+    LockConflictError,
+  );
+  // An hour-long poll interval: anything but an immediate return would hang.
+  assertEquals(performance.now() - started < 1000, true);
+  assertEquals(store.attempts, 1);
+});

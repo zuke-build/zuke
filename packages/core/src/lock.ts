@@ -120,8 +120,12 @@ async function acquireWithin(
     const result = await store.acquireLock(key, holderFor(env), ttlMs);
     if (result.ok) return result;
     const remaining = deadline - Date.now();
-    // No wait was declared (remaining is already negative) or it is spent —
-    // either way this conflict is the answer.
+    // No wait was declared (remaining is already negative), it is spent, or the
+    // run was cancelled — either way this conflict is the answer. The abort
+    // check belongs here rather than only inside the sleep: `addEventListener`
+    // on an already-aborted signal never fires, so a signal that aborted while
+    // the attempt above was in flight would otherwise sleep out the whole poll
+    // interval before anyone noticed.
     if (remaining <= 0 || env.signal.aborted) return result;
     if (result.holder.runId !== announced) {
       announced = result.holder.runId;
