@@ -17,6 +17,8 @@
  * @module
  */
 
+import { isAbsolutePath } from "./internal.ts";
+
 /** Escape a literal substring for use inside a regular expression. */
 function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -72,35 +74,51 @@ function staticBase(pattern: string): string {
 
 /** Options for {@link glob}. */
 export interface GlobOptions {
-  /** Directory to resolve the pattern against (default: `Deno.cwd()`). */
+  /**
+   * Directory to resolve the pattern against (default: `Deno.cwd()`). Ignored
+   * for an absolute pattern, which names its own root.
+   */
   cwd?: string;
 }
 
 /**
- * Expand a glob pattern to the matching paths, relative to `cwd`, sorted for
- * determinism. The walk starts at the pattern's static prefix, so anchor
- * patterns (e.g. `src/**\/*.ts`) to avoid scanning the whole tree. Symlinked
- * directories are not followed.
+ * Expand a glob pattern to the matching paths, sorted for determinism. The walk
+ * starts at the pattern's static prefix, so anchor patterns (e.g.
+ * `src/**\/*.ts`) to avoid scanning the whole tree. Symlinked directories are
+ * not followed.
+ *
+ * A relative pattern is resolved against `cwd` and its matches are returned
+ * relative to it. An **absolute** pattern (a leading `/`, or a `C:`-style drive)
+ * names its own root: `cwd` plays no part and the matches come back absolute.
  */
 export async function glob(
   pattern: string,
   options: GlobOptions = {},
 ): Promise<string[]> {
   const cwd = options.cwd ?? Deno.cwd();
+  // An absolute pattern is already rooted. Joining it onto `cwd` would walk a
+  // path that exists nowhere and return nothing at all — no files, no error.
+  const absolute = isAbsolutePath(pattern);
   const re = globToRegExp(pattern);
   const results: string[] = [];
 
-  const absOf = (rel: string) => rel === "" ? cwd : `${cwd}/${rel}`;
+  const absOf = (rel: string) =>
+    absolute ? rel : rel === "" ? cwd : `${cwd}/${rel}`;
   const walk = async (rel: string, isDirectory: boolean) => {
     if (rel !== "" && re.test(rel)) results.push(rel);
     if (!isDirectory) return;
     for await (const entry of Deno.readDir(absOf(rel))) {
-      const childRel = rel === "" ? entry.name : `${rel}/${entry.name}`;
+      const childRel = rel === "" || rel === "/"
+        ? `${rel}${entry.name}`
+        : `${rel}/${entry.name}`;
       await walk(childRel, entry.isDirectory);
     }
   };
 
-  const base = staticBase(pattern);
+  // `staticBase` returns "" for a pattern that globs from its very first
+  // segment; for an absolute one that root is the filesystem root, not the cwd.
+  const staticPrefix = staticBase(pattern);
+  const base = absolute && staticPrefix === "" ? "/" : staticPrefix;
   if (base === "") {
     await walk("", true);
   } else {

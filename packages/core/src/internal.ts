@@ -25,6 +25,17 @@ export function defaultReadEnv(name: string): string | undefined {
   }
 }
 
+/**
+ * Whether a forward-slashed path is already absolute — a leading `/` (POSIX,
+ * and a UNC share) or a `C:`-style drive letter. The one implementation of the
+ * test: a path composer that joins an already-absolute path onto a base
+ * produces something that exists nowhere, which is a silent empty result rather
+ * than an error.
+ */
+export function isAbsolutePath(slashed: string): boolean {
+  return slashed.startsWith("/") || /^[A-Za-z]:/.test(slashed);
+}
+
 /** The message of an `Error`, or the `String(...)` form of any other value. */
 export function messageOf(value: unknown): string {
   return value instanceof Error ? value.message : String(value);
