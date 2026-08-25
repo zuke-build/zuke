@@ -26,10 +26,31 @@ class SpecBuild extends Build {
     });
 }
 
+// `exitAfterResult` changes when the child stops, never how a failure to run it
+// at all is reported: a build that sets it must still fail the same way.
+class ExitAfterResultBuild extends Build {
+  spec = target()
+    .description("read a value out of a module that never exits on its own")
+    .executes(async () => {
+      const document = await NodeTasks.evaluate(
+        "tools/openapi.mjs",
+        (s) => missingTool(s.exitAfterResult()),
+      );
+      console.log(`document=${JSON.stringify(document)}`);
+    });
+}
+
 Deno.test("a target evaluating a Node module fails with the tool-not-found error", async () => {
   const { code, out, err } = await runCli(SpecBuild, ["spec"]);
   assertEquals(code, 1);
   assertStringIncludes(err, "zuke-no-such-tool-xyz");
   // The target never reached its value, so it printed nothing.
+  assertEquals(out.includes("document="), false);
+});
+
+Deno.test("exitAfterResult leaves the tool-not-found failure unchanged", async () => {
+  const { code, out, err } = await runCli(ExitAfterResultBuild, ["spec"]);
+  assertEquals(code, 1);
+  assertStringIncludes(err, "zuke-no-such-tool-xyz");
   assertEquals(out.includes("document="), false);
 });

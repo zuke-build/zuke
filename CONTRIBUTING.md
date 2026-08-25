@@ -10,9 +10,15 @@ By participating, you agree to abide by our
 > [!NOTE]
 > Every Zuke package is `1.x` on full semver — see
 > [Versioning & compatibility](./docs/versioning.md) for the compatibility
-> promise, the `@zuke/core` floor, and pinning guidance. If you are planning a
-> large change, please open an issue first so we can agree on the direction
-> before you invest the effort.
+> promise, the `@zuke/core` floor, and pinning guidance.
+
+> [!IMPORTANT]
+> **Every change starts with an issue.** Before opening a pull request — for a
+> feature, a bugfix, documentation, a refactor, or any other work — file an
+> issue from
+> [the templates](https://github.com/zuke-build/zuke/issues/new/choose) so the
+> problem, the proposed shape, and the acceptance criteria are agreed before you
+> invest the effort. The pull request then closes it.
 
 ## Prerequisites
 
@@ -115,12 +121,14 @@ the squash commit that [release-please](./RELEASING.md) parses.
 
 ## Pull requests
 
-1. Fork and create a topic branch from `master`.
-2. Make your change, adding tests and docs in the same PR.
-3. Run `deno task ci` and make sure it is green.
-4. Open a pull request with a clear description of the change and its
-   motivation. Link any related issue.
-5. Update `README.md`, JSDoc, and the relevant docs in `docs/` whenever
+1. File the issue that describes the work (feature request, bug report, or
+   chore) if one does not exist yet.
+2. Fork and create a topic branch from `master`.
+3. Make your change, adding tests and docs in the same PR.
+4. Run `deno task ci` and make sure it is green.
+5. Open a pull request with a clear description of the change and its
+   motivation, closing the issue with `Closes #<n>`.
+6. Update `README.md`, JSDoc, and the relevant docs in `docs/` whenever
    behaviour changes.
 
 ## Code review

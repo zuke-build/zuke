@@ -1,0 +1,57 @@
+name: Chore or documentation
+description: Track documentation, refactoring, tests, or repository work.
+title: "chore: "
+labels: ["chore"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Every change in this repository starts with an issue — including docs,
+        refactors, tests, and build work. This is the template for the work that
+        is neither a new capability nor a bug.
+
+        Please
+        [search existing issues](https://github.com/zuke-build/zuke/issues?q=is%3Aissue)
+        first to avoid duplicates.
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Pre-flight checklist
+      options:
+        - label: I searched existing issues and did not find a duplicate.
+          required: true
+        - label: This is not a new capability or a bug report — those have their own templates.
+          required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What needs doing?
+      description: The change itself, concretely.
+      placeholder: Document the resolution order the tool wrappers use when both a local binary and a project-local install are present.
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why now?
+      description: What is harder, riskier, or more confusing than it should be until this lands?
+    validations:
+      required: true
+  - type: input
+    id: scope
+    attributes:
+      label: Affected area(s)
+      description: The packages, directories, or files involved.
+      placeholder: "docs/, AGENTS.md, .github/"
+    validations:
+      required: false
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: How a reviewer confirms this is done.
+      placeholder: |
+        - The resolution order is described in docs/tooling.md.
+        - `deno task ci` passes.
+    validations:
+      required: true

@@ -288,6 +288,12 @@ export interface NodeTasksApi {
    * const spec = await NodeTasks.evaluate("tools/openapi.mjs");
    * ```
    *
+   * The evaluation waits for the Node process to exit, so a module that leaves
+   * a live handle on the event loop (a server, a pool, a timer) would block on
+   * a value it has already produced. {@link NodeEvaluateSettings.exitAfterResult}
+   * ends the process as soon as the result has been written, for modules in
+   * that shape.
+   *
    * The module runs as a real Node process with the build's own permissions —
    * the same trust level as a script handed to {@link NodeTasks.run}, and the
    * reason this is a build-authoring API rather than an input-processing one.
