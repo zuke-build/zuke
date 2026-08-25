@@ -50,6 +50,33 @@ Deno.test("evaluate cannot be injected through the module path or an argument", 
   assertStringIncludes(driver, `["\\");process.exit(1);//"]`);
 });
 
+Deno.test("evaluate waits for the module's own exit by default", () => {
+  const driver = driverOf(new NodeEvaluateSettings("tools/openapi.mjs"));
+  assertStringIncludes(driver, `process.stdout.write("\\n<<<zuke:evaluate>>>"`);
+  assertEquals(driver.includes("process.exit"), false);
+});
+
+Deno.test("exitAfterResult exits from the write callback, once the payload has flushed", () => {
+  const driver = driverOf(
+    new NodeEvaluateSettings("tools/openapi.mjs").exitAfterResult(),
+  );
+  // The exit hangs off the *write*, not a statement after it: a bare
+  // `process.exit(0)` on the next line can truncate a payload still in the pipe.
+  assertStringIncludes(driver, `\\n", () => process.exit(0));`);
+});
+
+Deno.test("exitAfterResult composes with the export and the call arguments", () => {
+  const driver = driverOf(
+    new NodeEvaluateSettings("dist/app.module.js")
+      .exitAfterResult()
+      .export("buildDocument")
+      .callWith("v1"),
+  );
+  assertStringIncludes(driver, `namespace["buildDocument"]`);
+  assertStringIncludes(driver, `await picked(...["v1"])`);
+  assertStringIncludes(driver, `() => process.exit(0));`);
+});
+
 Deno.test("parsePayload reads the value between the markers", () => {
   const stdout =
     'boot log\n<<<zuke:evaluate>>>{"openapi":"3.1.0"}<<</zuke:evaluate>>>\n';

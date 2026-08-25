@@ -317,10 +317,14 @@ async function gitChangedFiles(base: string, run: (args: string[]) => Promise<st
   test without a repository.
 
 async function glob(pattern: string, options: GlobOptions): Promise<string[]>
-  Expand a glob pattern to the matching paths, relative to `cwd`, sorted for
-  determinism. The walk starts at the pattern's static prefix, so anchor
-  patterns (e.g. `src/**\/*.ts`) to avoid scanning the whole tree. Symlinked
-  directories are not followed.
+  Expand a glob pattern to the matching paths, sorted for determinism. The walk
+  starts at the pattern's static prefix, so anchor patterns (e.g.
+  `src/**\/*.ts`) to avoid scanning the whole tree. Symlinked directories are
+  not followed.
+
+  A relative pattern is resolved against `cwd` and its matches are returned
+  relative to it. An absolute pattern (a leading `/`, or a `C:`-style drive)
+  names its own root: `cwd` plays no part and the matches come back absolute.
 
 function globToRegExp(pattern: string): RegExp
   Compile a glob pattern into an anchored {@link RegExp} that matches a full
@@ -2984,7 +2988,8 @@ interface GlobOptions
   Options for {@link glob}.
 
   cwd?: string
-    Directory to resolve the pattern against (default: `Deno.cwd()`).
+    Directory to resolve the pattern against (default: `Deno.cwd()`). Ignored
+    for an absolute pattern, which names its own root.
 
 interface HeldLease
   A held lease. Release it when the work it covers is over.
@@ -9138,6 +9143,31 @@ class NodeEvaluateSettings extends NodeSettings
     Named `callWith` rather than `args` because `ToolSettings.args` already
     means "append raw arguments to the `node` command line", which is a
     different thing.
+  exitAfterResult(): this
+    End the Node process as soon as the result has been written, instead of
+    waiting for the module to let Node exit on its own.
+
+    A module that leaves a live handle on the event loop — an HTTP server, a
+    database pool, a timer — never exits, and the evaluation then blocks
+    forever on a value it has already produced and written. This makes the
+    driver exit once that write has flushed, so such a module can be evaluated
+    as it is, without a `process.exit` of its own.
+
+    What the module does after handing back its value does not happen. The
+    process ends at the write, so anything it would still print is cut off,
+    anything it would still do — a `beforeExit` handler, a teardown scheduled
+    on the next tick, a flush that has not been awaited — does not run, and its
+    own exit code is no longer observed (the driver exits `0`). That is the
+    trade the option makes, and why it is opt-in rather than the default:
+    choose it for a module whose value is the whole point of running it, and
+    whose remaining work is process teardown the operating system is about to
+    do anyway. A module whose after-the-value work matters — one that writes
+    a file, commits a transaction, or reports its own failure through an exit
+    code — should keep the default and be given a way to exit on its own.
+
+    Two shapes are unaffected either way: a module that throws before producing
+    a result still rejects the evaluation, since the driver never reaches its
+    final write, and a module that exits on its own never notices the option.
   get module(): string
     The module being evaluated, for error messages.
   override protected buildArgs(): string[]
@@ -9223,6 +9253,12 @@ interface NodeTasksApi
     // tools/openapi.mjs: export default async () => document
     const spec = await NodeTasks.evaluate("tools/openapi.mjs");
     ```
+
+    The evaluation waits for the Node process to exit, so a module that leaves
+    a live handle on the event loop (a server, a pool, a timer) would block on
+    a value it has already produced. {@link NodeEvaluateSettings.exitAfterResult}
+    ends the process as soon as the result has been written, for modules in
+    that shape.
 
     The module runs as a real Node process with the build's own permissions —
     the same trust level as a script handed to {@link NodeTasks.run}, and the

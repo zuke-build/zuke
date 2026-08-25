@@ -371,10 +371,14 @@ async function gitChangedFiles(base: string, run: (args: string[]) => Promise<st
   test without a repository.
 
 async function glob(pattern: string, options: GlobOptions): Promise<string[]>
-  Expand a glob pattern to the matching paths, relative to `cwd`, sorted for
-  determinism. The walk starts at the pattern's static prefix, so anchor
-  patterns (e.g. `src/**\/*.ts`) to avoid scanning the whole tree. Symlinked
-  directories are not followed.
+  Expand a glob pattern to the matching paths, sorted for determinism. The walk
+  starts at the pattern's static prefix, so anchor patterns (e.g.
+  `src/**\/*.ts`) to avoid scanning the whole tree. Symlinked directories are
+  not followed.
+
+  A relative pattern is resolved against `cwd` and its matches are returned
+  relative to it. An absolute pattern (a leading `/`, or a `C:`-style drive)
+  names its own root: `cwd` plays no part and the matches come back absolute.
 
 function globToRegExp(pattern: string): RegExp
   Compile a glob pattern into an anchored {@link RegExp} that matches a full
@@ -3038,7 +3042,8 @@ interface GlobOptions
   Options for {@link glob}.
 
   cwd?: string
-    Directory to resolve the pattern against (default: `Deno.cwd()`).
+    Directory to resolve the pattern against (default: `Deno.cwd()`). Ignored
+    for an absolute pattern, which names its own root.
 
 interface HeldLease
   A held lease. Release it when the work it covers is over.
