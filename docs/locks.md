@@ -30,8 +30,8 @@ parameters resolve, so the key can read `this.<param>.value`.
 ## Semantics
 
 - **Exclusive.** While a run holds the lock for a `key`, any other run that
-  tries to acquire the same key **fails** with a `LockConflictError` — it does
-  not queue or block. The error's message is the rendered guidance and its
+  tries to acquire the same key **fails** with a `LockConflictError` — unless it
+  asks to wait (below). The error's message is the rendered guidance and its
   `holder` carries the structured identity (`actor`, `runId`, `since`,
   `runUrl?`).
 - **The key** is set with `s.lockKey(...parts)` (sanitised and joined, safe as a
@@ -47,6 +47,43 @@ parameters resolve, so the key can read `this.<param>.value`.
 - **Release.** The lock is released when the target settles — **success,
   failure, or cancellation** — in a `finally`, so the common path never relies
   on the TTL. The TTL is only the backstop for a killed process.
+
+## Waiting instead of failing
+
+Failing fast is right for a resource where a second run is a mistake worth
+reporting. It is the wrong answer for a resource a developer wants to *use* —
+one dev environment, one database, one port — where the useful behaviour is to
+keep asking until the resource frees, instead of making the developer run the
+command again.
+
+```ts
+devStack = target()
+  .lock((s) =>
+    s.lockKey("dev-env")
+      .withTtl("4h")
+      .waitUpTo("30m")     // queue instead of failing
+      .pollEvery("5s"))    // how often to retry; 5s is the default
+  .executes(async (ctx) => {/* … */});
+```
+
+- `s.waitUpTo(duration)` retries until the lock frees, and raises
+  `LockConflictError` only once the wait is spent. Its message says how long it
+  waited, so a timeout is not mistaken for a lock that was never retried.
+- `s.pollEvery(duration)` paces the retries (default `"5s"`). Nothing hands the
+  lock over: a waiter takes it on its next retry, so it starts up to one poll
+  interval after the holder released it, and only if no one else took it first.
+- While waiting, the run prints who holds the lock and since when, once per
+  holder rather than once per retry.
+- A cancelled run stops waiting immediately; a 30-minute wait never outlives the
+  run it belongs to.
+- Omitting `waitUpTo` keeps the fail-fast behaviour exactly as it was.
+
+**There is no queue.** "Waiting" is a retry loop, not a place in a line: each
+waiter races every other waiter — and every fresh run — for the lock the moment
+it frees. A run that has waited twenty minutes has no claim over one that
+arrived a second ago, and can lose the race repeatedly when contention is heavy.
+Arrival order would need the store itself to hand out places, which is not
+something a waiting client can arrange for itself.
 
 ## Conflicts
 

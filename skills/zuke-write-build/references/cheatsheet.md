@@ -29,7 +29,7 @@ that declares only `.effect(...)` each legitimately have no `.executes(...)`.
 | `.requires(...params)`                                                                                   | Fail unless the listed parameters resolved to a value.                                                                                                    |
 | `.retry(times, delayMs?)`                                                                                | Retry the body on failure.                                                                                                                                |
 | `.timeout(ms)`                                                                                           | Fail the body if it runs longer than `ms` (per attempt).                                                                                                  |
-| `.lock((s) => s.lockKey(...).withTtl(...))`                                                              | Hold a cross-run lock while running; a second run wanting the key fails. See below.                                                                       |
+| `.lock((s) => s.lockKey(...).withTtl(...))`                                                              | Hold a cross-run lock while running; a second run wanting the key fails, or queues with `.waitUpTo(...)`. See below.                                      |
 | `.waitsFor((s) => s.on(externalSignal(...)))`                                                            | Gate (no body): suspend the run until an external event; resume later. See below.                                                                         |
 | `.onCancel(() => this.rollback)`                                                                         | Compensation run (reverse order) iff this target succeeded when the run is cancelled. See below.                                                          |
 | `.effect(name, fn)`                                                                                      | A side effect whose intent is recorded before it runs, so a resume re-drives it. At-least-once. See below.                                                |
@@ -303,6 +303,13 @@ class CD extends Build {
 - Needs a state store — a build using `.lock()` enables the `.zuke/runs`
   filesystem store by default; use the HTTP backend to share locks across
   machines. See `docs/locks.md`.
+- `s.waitUpTo("30m")` queues for a held lock instead of failing at once, with
+  `s.pollEvery("5s")` pacing the retries; the conflict is raised only once the
+  wait is spent, and the run prints who holds the lock while it waits. This is
+  a retry loop, not a queue: a waiter takes the lock on its next poll after it
+  frees, racing every other waiter, so there is no arrival order. Reach for it on
+  a shared resource a developer wants to use, not on one where a second run is
+  a mistake worth reporting.
 
 ## External-event waits
 
