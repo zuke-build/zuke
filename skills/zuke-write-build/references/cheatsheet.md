@@ -709,9 +709,13 @@ const spec = await NodeTasks.evaluate("tools/openapi.mjs", (s) =>
   s.export("buildDocument").exitAfterResult());
 ```
 
-Anything the module prints after its result is cut off and its own exit code is
-no longer observed; a module that throws before producing a result still fails
-the target, and one that exits on its own is unaffected.
+What the module would do after handing back its value does not happen: output is
+cut off, a `beforeExit` handler or a not-yet-awaited teardown never runs, and its
+exit code is no longer observed. Use it for a module whose value is the point of
+running it; keep the default for one whose after-the-value work matters (writing
+a file, committing a transaction, failing through an exit code). A module that
+throws before producing a result still fails the target, and one that exits on
+its own is unaffected.
 
 ## AI review & self-healing — `@zuke/ai`
 

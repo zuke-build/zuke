@@ -80,12 +80,21 @@ export class NodeEvaluateSettings extends NodeSettings {
    * driver exit once that write has flushed, so such a module can be evaluated
    * as it is, without a `process.exit` of its own.
    *
-   * Two consequences, both by design: whatever the module writes *after* its
-   * result is cut off, and the module's own exit code is no longer observed
-   * (the driver exits `0`). A module that throws before producing a result is
-   * unaffected — the driver never reaches its final write, so the evaluation
-   * still rejects — and so is one that exits on its own, for which this is a
-   * no-op.
+   * What the module does *after* handing back its value does not happen. The
+   * process ends at the write, so anything it would still print is cut off,
+   * anything it would still do — a `beforeExit` handler, a teardown scheduled
+   * on the next tick, a flush that has not been awaited — does not run, and its
+   * own exit code is no longer observed (the driver exits `0`). That is the
+   * trade the option makes, and why it is opt-in rather than the default:
+   * choose it for a module whose value is the whole point of running it, and
+   * whose remaining work is process teardown the operating system is about to
+   * do anyway. A module whose after-the-value work *matters* — one that writes
+   * a file, commits a transaction, or reports its own failure through an exit
+   * code — should keep the default and be given a way to exit on its own.
+   *
+   * Two shapes are unaffected either way: a module that throws before producing
+   * a result still rejects the evaluation, since the driver never reaches its
+   * final write, and a module that exits on its own never notices the option.
    */
   exitAfterResult(): this {
     this.#exitAfterResult = true;
