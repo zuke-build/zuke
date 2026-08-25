@@ -81,6 +81,22 @@ class NodeEvaluateSettings extends NodeSettings
     Named `callWith` rather than `args` because `ToolSettings.args` already
     means "append raw arguments to the `node` command line", which is a
     different thing.
+  exitAfterResult(): this
+    End the Node process as soon as the result has been written, instead of
+    waiting for the module to let Node exit on its own.
+
+    A module that leaves a live handle on the event loop — an HTTP server, a
+    database pool, a timer — never exits, and the evaluation then blocks
+    forever on a value it has already produced and written. This makes the
+    driver exit once that write has flushed, so such a module can be evaluated
+    as it is, without a `process.exit` of its own.
+
+    Two consequences, both by design: whatever the module writes after its
+    result is cut off, and the module's own exit code is no longer observed
+    (the driver exits `0`). A module that throws before producing a result is
+    unaffected — the driver never reaches its final write, so the evaluation
+    still rejects — and so is one that exits on its own, for which this is a
+    no-op.
   get module(): string
     The module being evaluated, for error messages.
   override protected buildArgs(): string[]
@@ -166,6 +182,12 @@ interface NodeTasksApi
     // tools/openapi.mjs: export default async () => document
     const spec = await NodeTasks.evaluate("tools/openapi.mjs");
     ```
+
+    The evaluation waits for the Node process to exit, so a module that leaves
+    a live handle on the event loop (a server, a pool, a timer) would block on
+    a value it has already produced. {@link NodeEvaluateSettings.exitAfterResult}
+    ends the process as soon as the result has been written, for modules in
+    that shape.
 
     The module runs as a real Node process with the build's own permissions —
     the same trust level as a script handed to {@link NodeTasks.run}, and the

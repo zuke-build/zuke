@@ -699,6 +699,20 @@ this is how a build reaches framework code (NestJS, TypeORM) it must not depend
 on itself. The value crosses the process boundary as JSON, so it — and each
 `callWith` argument — must be JSON-serialisable.
 
+**A module that never exits** — one that boots an app and leaves a server, a
+pool, or a timer on the event loop — would otherwise block the evaluation on a
+value it has already produced. `.exitAfterResult()` ends the Node process once
+the result has been written:
+
+```ts
+const spec = await NodeTasks.evaluate("tools/openapi.mjs", (s) =>
+  s.export("buildDocument").exitAfterResult());
+```
+
+Anything the module prints after its result is cut off and its own exit code is
+no longer observed; a module that throws before producing a result still fails
+the target, and one that exits on its own is unaffected.
+
 ## AI review & self-healing — `@zuke/ai`
 
 A model becomes part of the build graph two ways. Only the provider (`"claude"`
