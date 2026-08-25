@@ -43,6 +43,27 @@ async function nodeAvailable(): Promise<boolean> {
 
 const HAS_NODE = await nodeAvailable();
 
+/**
+ * On CI the skip is not allowed: every runner in the matrix ships Node, so a
+ * missing one means the environment changed, and silently skipping would retire
+ * this coverage without anyone noticing. Locally the skip stands, which is what
+ * keeps a Node-less checkout green.
+ */
+const MUST_HAVE_NODE = Deno.env.get("CI") === "true";
+
+Deno.test({
+  name: "CI runs these tests rather than skipping them",
+  ignore: !MUST_HAVE_NODE,
+  fn: () => {
+    assertEquals(
+      HAS_NODE,
+      true,
+      "no usable `node` on PATH: the Node evaluation e2e tests would have " +
+        "been skipped on a runner that is supposed to provide one.",
+    );
+  },
+});
+
 Deno.test({
   name: "exitAfterResult finishes a build whose module never exits",
   ignore: !HAS_NODE,
