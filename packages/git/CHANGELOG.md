@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/zuke-build/zuke/compare/git-v1.1.1...git-v1.2.0) (2026-08-25)
+
+
+### Features
+
+* **git:** add worktree tasks and a parsed worktree listing ([#377](https://github.com/zuke-build/zuke/issues/377)) ([a6b40fa](https://github.com/zuke-build/zuke/commit/a6b40fac388ee5c70ea64b5fd916edb1e70afdac)), closes [#376](https://github.com/zuke-build/zuke/issues/376)
+
 ## [1.1.1](https://github.com/zuke-build/zuke/compare/git-v1.1.0...git-v1.1.1) (2026-08-13)
 
 

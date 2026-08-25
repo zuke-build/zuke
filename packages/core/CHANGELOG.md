@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.41.0](https://github.com/zuke-build/zuke/compare/core-v1.40.0...core-v1.41.0) (2026-08-25)
+
+
+### Features
+
+* **core:** wait for a contended target lock ([#379](https://github.com/zuke-build/zuke/issues/379)) ([67a78b8](https://github.com/zuke-build/zuke/commit/67a78b89067482039c111a1823a38043c1b5358b))
+
+
+### Bug Fixes
+
+* **core:** match absolute glob patterns ([#375](https://github.com/zuke-build/zuke/issues/375)) ([d57ba82](https://github.com/zuke-build/zuke/commit/d57ba8246db85c103d79632fe9118fd5e8e0ed8a)), closes [#374](https://github.com/zuke-build/zuke/issues/374)
+
 ## [1.40.0](https://github.com/zuke-build/zuke/compare/core-v1.39.0...core-v1.40.0) (2026-08-22)
 
 
