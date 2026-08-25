@@ -20,5 +20,7 @@
  * @module
  */
 
+export * from "./src/settings.ts";
 export * from "./src/git.ts";
 export * from "./src/git_info.ts";
+export { type GitWorktree, GitWorktreeSettings } from "./src/worktree.ts";
