@@ -52,6 +52,10 @@ export class LockSettings {
   ttl_?: string | number;
   /** The conflict-guidance renderer; set by {@link onConflict}. */
   onConflict_?: (holder: LockHolder) => string;
+  /** How long to wait for a held lock; set by {@link waitUpTo}. */
+  waitUpTo_?: string | number;
+  /** How often to retry while waiting; set by {@link pollEvery}. */
+  pollEvery_?: string | number;
 
   /**
    * Set the lock key from parts, sanitised and joined via
@@ -75,6 +79,35 @@ export class LockSettings {
    */
   withTtl(ttl: string | number): this {
     this.ttl_ = ttl;
+    return this;
+  }
+
+  /**
+   * Wait up to this long for a held lock instead of failing at once — a
+   * duration string like `"30m"` or raw milliseconds. The target queues, and
+   * takes the lock when the run holding it finishes; it fails with a
+   * {@link "./state/lock.ts".LockConflictError} only once the wait is spent.
+   *
+   * Set this for a shared resource a developer wants to *use* — one dev
+   * environment, one database, one port — where failing fast just makes them
+   * run the command again. Leave it off for a resource where a second run is a
+   * mistake worth reporting immediately, which stays the default.
+   *
+   * Waiting runs retry independently, so a queue of them is not served in
+   * arrival order: a run that has waited longer has no claim over one that
+   * arrived a moment ago.
+   */
+  waitUpTo(duration: string | number): this {
+    this.waitUpTo_ = duration;
+    return this;
+  }
+
+  /**
+   * How often to retry while {@link waitUpTo} waits (default `"5s"`). Alone it
+   * does nothing — without a wait there is no retry to pace.
+   */
+  pollEvery(duration: string | number): this {
+    this.pollEvery_ = duration;
     return this;
   }
 

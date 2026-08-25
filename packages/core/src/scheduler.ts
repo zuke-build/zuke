@@ -509,7 +509,7 @@ async function runTarget(
   // or a lock declared with no store — fails the target with the guidance.
   let lock: HeldLock | null;
   try {
-    lock = await acquireTargetLock(t, env);
+    lock = await acquireTargetLock(t, env, (line) => reporter.info(line));
   } catch (error) {
     const ms = performance.now() - start;
     failTarget(reporter, renderer, style, name, ms, error);
