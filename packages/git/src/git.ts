@@ -22,48 +22,14 @@
  * @module
  */
 
-import {
-  type Configure,
-  type PathLike,
-  runSettings,
-  ToolSettings,
-} from "@zuke/core/tooling";
+import { type Configure, type PathLike, runSettings } from "@zuke/core/tooling";
+import { GitSettings } from "./settings.ts";
 import type { CommandOutput } from "@zuke/core/shell";
-
-/** Shared base for every `git` subcommand: the binary and global options. */
-export abstract class GitSettings extends ToolSettings {
-  #dir?: string;
-  #configs: string[] = [];
-
-  /** The default tool binary: `git`. */
-  protected override defaultTool(): string {
-    return "git";
-  }
-
-  /** The subcommand argv (after the global options). */
-  protected abstract subcommandArgs(): string[];
-
-  /** Run git as if started in `path` (`-C <path>`). */
-  dir(path: PathLike): this {
-    this.#dir = String(path);
-    return this;
-  }
-
-  /** Set a one-off config value (`-c key=value`); repeatable. */
-  config(key: string, value: string): this {
-    this.#configs.push("-c", `${key}=${value}`);
-    return this;
-  }
-
-  /** Assemble the `git` argv: global options followed by the subcommand. */
-  protected override buildArgs(): string[] {
-    const argv: string[] = [];
-    if (this.#dir !== undefined) argv.push("-C", this.#dir);
-    argv.push(...this.#configs);
-    argv.push(...this.subcommandArgs());
-    return argv;
-  }
-}
+import {
+  type GitWorktree,
+  GitWorktreeSettings,
+  parseWorktreeList,
+} from "./worktree.ts";
 
 /** Settings for `git init`. */
 export class GitInitSettings extends GitSettings {
@@ -625,8 +591,38 @@ export interface GitTasksApi {
   pull(configure?: Configure<GitPullSettings>): Promise<CommandOutput>;
   /** Download objects and refs: `git fetch`. */
   fetch(configure?: Configure<GitFetchSettings>): Promise<CommandOutput>;
+  /**
+   * Manage worktrees: `git worktree add|list|remove|prune`. Pick the
+   * subcommand in the lambda — `s.add(path)`, `s.list()`, `s.remove(path)`, or
+   * `s.prune()`. For a listing to read rather than print, use
+   * {@link GitTasksApi.worktreeList}.
+   */
+  worktree(configure?: Configure<GitWorktreeSettings>): Promise<CommandOutput>;
+  /**
+   * List the repository's worktrees as parsed {@link GitWorktree} entries,
+   * from `git worktree list --porcelain`.
+   *
+   * The lambda configures the global options (`.dir()`, `.config()`); the
+   * subcommand itself is fixed, since the parse depends on it.
+   */
+  worktreeList(
+    configure?: Configure<GitWorktreeSettings>,
+  ): Promise<GitWorktree[]>;
   /** Run any other git command via `.command(...)`. */
   run(configure?: Configure<GitRunSettings>): Promise<CommandOutput>;
+}
+
+/**
+ * Run `git worktree list --porcelain` and parse it. Backs
+ * {@link GitTasksApi.worktreeList}.
+ */
+async function listWorktrees(
+  configure?: Configure<GitWorktreeSettings>,
+): Promise<GitWorktree[]> {
+  const settings = new GitWorktreeSettings();
+  const configured = configure ? configure(settings) : settings;
+  const output = await configured.list().porcelain().run();
+  return parseWorktreeList(output.stdout);
 }
 
 /** Typed task functions for the common `git` commands. */
@@ -642,5 +638,7 @@ export const GitTasks: GitTasksApi = {
   push: (c) => runSettings(new GitPushSettings(), c),
   pull: (c) => runSettings(new GitPullSettings(), c),
   fetch: (c) => runSettings(new GitFetchSettings(), c),
+  worktree: (c) => runSettings(new GitWorktreeSettings(), c),
+  worktreeList: (c) => listWorktrees(c),
   run: (c) => runSettings(new GitRunSettings(), c),
 };

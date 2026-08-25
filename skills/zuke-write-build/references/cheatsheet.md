@@ -643,7 +643,7 @@ the full task list and settings methods of each):
 | `@zuke/npm`, `@zuke/npx`, `@zuke/bun`, `@zuke/pnpm`, `@zuke/yarn`, `@zuke/node`                                                                     | `NpmTasks`, `NpxTasks`, `BunTasks`, ...          | JS package managers + `npx` runner + `node`                                                       |
 | `@zuke/cmd`                                                                                                                                         | `CmdTasks`                                       | `exec` — generic fallback for any CLI                                                             |
 | `@zuke/docker`, `@zuke/docker-compose`                                                                                                              | `DockerTasks`, ...                               | build/run/compose                                                                                 |
-| `@zuke/git`, `@zuke/gh`                                                                                                                             | `GitTasks`, `GhTasks`                            | git and GitHub CLI (`GhTasks.run` for subcommands, `GhTasks.api` for REST endpoints without one)  |
+| `@zuke/git`, `@zuke/gh`                                                                                                                             | `GitTasks`, `GhTasks`                            | git (including worktrees) and GitHub CLI (`GhTasks.run` for subcommands, `GhTasks.api` for REST endpoints without one) |
 | `@zuke/cspell`, `@zuke/eslint`, `@zuke/oxlint`, `@zuke/biome`, `@zuke/dprint`, `@zuke/knip`, `@zuke/dpdm`, `@zuke/lint-staged`                      | `*Tasks`                                         | lint/format/spell/dead-code                                                                       |
 | `@zuke/tsc`, `@zuke/tsx`, `@zuke/tsc-alias`, `@zuke/tsup`, `@zuke/tsdown`, `@zuke/vite`, `@zuke/storybook`, `@zuke/turbo`, `@zuke/nx`, `@zuke/nest` | `*Tasks`                                         | TS compile / bundle / monorepo / framework CLIs                                                   |
 | `@zuke/openapi-ts`, `@zuke/orval`, `@zuke/redocly`                                                                                                  | `*Tasks`                                         | generate API clients from OpenAPI                                                                 |
@@ -698,6 +698,24 @@ it); the module resolves its own imports from the surrounding `node_modules`, so
 this is how a build reaches framework code (NestJS, TypeORM) it must not depend
 on itself. The value crosses the process boundary as JSON, so it — and each
 `callWith` argument — must be JSON-serialisable.
+
+### Worktrees — `GitTasks.worktree`
+
+A second working tree lets one repository have several branches checked out at
+once. `GitTasks.worktree` picks the subcommand in the lambda; `worktreeList`
+runs `git worktree list --porcelain` and hands back parsed entries, so a target
+reads them as values instead of scraping stdout.
+
+```ts
+await GitTasks.worktree((s) => s.add(path).branch(name).createBranch());
+await GitTasks.worktree((s) => s.add(path).branch("release/1.2")); // existing branch
+const trees = await GitTasks.worktreeList(); // { path, head, branch, bare, detached, locked }[]
+await GitTasks.worktree((s) => s.remove(path).force()); // git refuses a dirty tree without it
+await GitTasks.worktree((s) => s.prune()); // forget trees whose directories are gone
+```
+
+Reach for `.dir(repo)` when the build's own cwd is not the repository, as with
+every other git task.
 
 ## AI review & self-healing — `@zuke/ai`
 
