@@ -9685,6 +9685,35 @@ class GitTagSettings extends GitSettings
   override protected subcommandArgs(): string[]
     Assemble the `git tag` argv.
 
+class GitWorktreeSettings extends GitSettings
+  Settings for `git worktree`. Pick the subcommand with {@link add},
+  {@link list}, {@link remove}, or {@link prune}; the remaining methods apply
+  to the one picked, mirroring the flags git accepts for it.
+
+  add(path: PathLike): this
+    Check a new worktree out at `path` (`git worktree add <path>`).
+  list(): this
+    List the repository's worktrees (`git worktree list`).
+  remove(path: PathLike): this
+    Remove the worktree at `path` (`git worktree remove <path>`).
+  prune(): this
+    Discard records of worktrees whose directories are gone (`git worktree prune`).
+  branch(name: string): this
+    The branch to check out in the new worktree — or, with
+    {@link createBranch}, the name of the branch to create there.
+  createBranch(): this
+    Create {@link branch} rather than checking out an existing one (`-b`).
+  detach(): this
+    Check out with a detached `HEAD` (`--detach`).
+  force(): this
+    Force the operation (`--force`): check out a branch already checked out
+    elsewhere, or remove a worktree with modifications. Without it git refuses
+    both.
+  porcelain(): this
+    Emit the stable machine-readable listing (`--porcelain`).
+  override protected subcommandArgs(): string[]
+    Assemble the `git worktree` argv.
+
 interface GitInfo
   Resolved git repository information.
 
@@ -9734,8 +9763,35 @@ interface GitTasksApi
     Fetch and integrate: `git pull`.
   fetch(configure?: Configure<GitFetchSettings>): Promise<CommandOutput>
     Download objects and refs: `git fetch`.
+  worktree(configure?: Configure<GitWorktreeSettings>): Promise<CommandOutput>
+    Manage worktrees: `git worktree add|list|remove|prune`. Pick the
+    subcommand in the lambda — `s.add(path)`, `s.list()`, `s.remove(path)`, or
+    `s.prune()`. For a listing to read rather than print, use
+    {@link GitTasksApi.worktreeList}.
+  worktreeList(configure?: Configure<GitWorktreeSettings>): Promise<GitWorktree[]>
+    List the repository's worktrees as parsed {@link GitWorktree} entries,
+    from `git worktree list --porcelain`.
+
+    The lambda configures the global options (`.dir()`, `.config()`); the
+    subcommand itself is fixed, since the parse depends on it.
   run(configure?: Configure<GitRunSettings>): Promise<CommandOutput>
     Run any other git command via `.command(...)`.
+
+interface GitWorktree
+  One entry of `git worktree list --porcelain`.
+
+  path: string
+    The worktree's absolute path, as git reports it.
+  head?: string
+    The commit checked out there, or `undefined` for a bare repository.
+  branch?: string
+    The checked-out branch, without its `refs/heads/` prefix; absent when detached.
+  bare: boolean
+    Whether this entry is the bare repository rather than a working tree.
+  detached: boolean
+    Whether `HEAD` is detached there.
+  locked: boolean
+    Whether the worktree is locked (`git worktree lock`).
 
 type GitRunner = (args: string[]) => Promise<string | null>
   Runs a `git` subcommand and resolves to its trimmed stdout, or `null` when
