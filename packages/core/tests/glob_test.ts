@@ -53,6 +53,33 @@ Deno.test("glob with no static base walks from cwd; missing base yields nothing"
   });
 });
 
+Deno.test("glob matches an absolute pattern, whatever the cwd", async () => {
+  await withTemp(async (dir) => {
+    await Deno.mkdir(`${dir}/g/a`, { recursive: true });
+    await Deno.mkdir(`${dir}/g/b`, { recursive: true });
+    await Deno.writeTextFile(`${dir}/g/a/tsconfig.json`, "{}");
+    await Deno.writeTextFile(`${dir}/g/b/tsconfig.json`, "{}");
+
+    // The matches come back absolute, and are the same files the relative
+    // pattern finds against the same directory.
+    assertEquals(await glob(`${dir}/g/*/tsconfig.json`), [
+      `${dir}/g/a/tsconfig.json`,
+      `${dir}/g/b/tsconfig.json`,
+    ]);
+    assertEquals(await glob("g/*/tsconfig.json", { cwd: dir }), [
+      "g/a/tsconfig.json",
+      "g/b/tsconfig.json",
+    ]);
+    // An absolute pattern names its own root, so a cwd cannot redirect it.
+    assertEquals(await glob(`${dir}/g/*/tsconfig.json`, { cwd: "/nowhere" }), [
+      `${dir}/g/a/tsconfig.json`,
+      `${dir}/g/b/tsconfig.json`,
+    ]);
+    // A non-existent absolute base still matches nothing, as before.
+    assertEquals(await glob(`${dir}/missing/*.ts`), []);
+  });
+});
+
 Deno.test("glob defaults cwd to Deno.cwd()", async () => {
   const original = Deno.cwd();
   const dir = await Deno.makeTempDir();

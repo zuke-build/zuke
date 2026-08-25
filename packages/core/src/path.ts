@@ -32,6 +32,8 @@
  * @module
  */
 
+import { isAbsolutePath } from "./internal.ts";
+
 /**
  * A filesystem path accepted by Zuke APIs: either a plain string or an
  * {@link AbsolutePath}. Anywhere a tool wrapper or build helper takes a path,
@@ -220,6 +222,7 @@ export function absolutePath(first: string, ...rest: string[]): AbsolutePath {
  */
 export function resolveDir(dir: string): AbsolutePath {
   const slashed = dir.replace(/\\/g, "/");
-  const isAbsolute = slashed.startsWith("/") || /^[A-Za-z]:/.test(slashed);
-  return absolutePath(isAbsolute ? slashed : `${Deno.cwd()}/${slashed}`);
+  return absolutePath(
+    isAbsolutePath(slashed) ? slashed : `${Deno.cwd()}/${slashed}`,
+  );
 }

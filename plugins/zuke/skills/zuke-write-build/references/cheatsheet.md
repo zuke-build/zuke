@@ -699,6 +699,24 @@ this is how a build reaches framework code (NestJS, TypeORM) it must not depend
 on itself. The value crosses the process boundary as JSON, so it — and each
 `callWith` argument — must be JSON-serialisable.
 
+**A module that never exits** — one that boots an app and leaves a server, a
+pool, or a timer on the event loop — would otherwise block the evaluation on a
+value it has already produced. `.exitAfterResult()` ends the Node process once
+the result has been written:
+
+```ts
+const spec = await NodeTasks.evaluate("tools/openapi.mjs", (s) =>
+  s.export("buildDocument").exitAfterResult());
+```
+
+What the module would do after handing back its value does not happen: output is
+cut off, a `beforeExit` handler or a not-yet-awaited teardown never runs, and its
+exit code is no longer observed. Use it for a module whose value is the point of
+running it; keep the default for one whose after-the-value work matters (writing
+a file, committing a transaction, failing through an exit code). A module that
+throws before producing a result still fails the target, and one that exits on
+its own is unaffected.
+
 ### Worktrees — `GitTasks.worktree`
 
 A second working tree lets one repository have several branches checked out at

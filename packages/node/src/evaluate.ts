@@ -38,6 +38,7 @@ export class NodeEvaluateSettings extends NodeSettings {
   #module: string;
   #export = "default";
   #callArgs: JsonValue[] = [];
+  #exitAfterResult = false;
 
   /** Evaluate `module`, a path resolved against the working directory. */
   constructor(module: PathLike) {
@@ -69,6 +70,37 @@ export class NodeEvaluateSettings extends NodeSettings {
     return this;
   }
 
+  /**
+   * End the Node process as soon as the result has been written, instead of
+   * waiting for the module to let Node exit on its own.
+   *
+   * A module that leaves a live handle on the event loop — an HTTP server, a
+   * database pool, a timer — never exits, and the evaluation then blocks
+   * forever on a value it has *already* produced and written. This makes the
+   * driver exit once that write has flushed, so such a module can be evaluated
+   * as it is, without a `process.exit` of its own.
+   *
+   * What the module does *after* handing back its value does not happen. The
+   * process ends at the write, so anything it would still print is cut off,
+   * anything it would still do — a `beforeExit` handler, a teardown scheduled
+   * on the next tick, a flush that has not been awaited — does not run, and its
+   * own exit code is no longer observed (the driver exits `0`). That is the
+   * trade the option makes, and why it is opt-in rather than the default:
+   * choose it for a module whose value is the whole point of running it, and
+   * whose remaining work is process teardown the operating system is about to
+   * do anyway. A module whose after-the-value work *matters* — one that writes
+   * a file, commits a transaction, or reports its own failure through an exit
+   * code — should keep the default and be given a way to exit on its own.
+   *
+   * Two shapes are unaffected either way: a module that throws before producing
+   * a result still rejects the evaluation, since the driver never reaches its
+   * final write, and a module that exits on its own never notices the option.
+   */
+  exitAfterResult(): this {
+    this.#exitAfterResult = true;
+    return this;
+  }
+
   /** The module being evaluated, for error messages. */
   get module(): string {
     return this.#module;
@@ -87,6 +119,10 @@ export class NodeEvaluateSettings extends NodeSettings {
     const module = JSON.stringify(this.#module);
     const name = JSON.stringify(this.#export);
     const callArgs = JSON.stringify(this.#callArgs);
+    // The write callback runs once the payload has reached the pipe, so exiting
+    // from it cannot truncate the result. Without the option the call is the
+    // plain one-argument write it has always been.
+    const thenExit = this.#exitAfterResult ? ", () => process.exit(0)" : "";
     return [
       `import { pathToFileURL } from "node:url";`,
       `const namespace = await import(pathToFileURL(${module}).href);`,
@@ -98,7 +134,7 @@ export class NodeEvaluateSettings extends NodeSettings {
       `  ? await picked(...${callArgs})`,
       `  : await picked;`,
       `const json = JSON.stringify(value);`,
-      `process.stdout.write("\\n${BEGIN}" + (json === undefined ? "null" : json) + "${END}\\n");`,
+      `process.stdout.write("\\n${BEGIN}" + (json === undefined ? "null" : json) + "${END}\\n"${thenExit});`,
     ].join("\n");
   }
 }
