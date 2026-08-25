@@ -458,6 +458,19 @@ gemini-extension.json     # Gemini CLI extension manifest (serves skills/)
 
 ## Good open-source practices to follow
 
+- **Every change starts with an issue.** Feature, bugfix, documentation,
+  refactor, or chore — file the issue first, then open the pull request that
+  closes it. The issue is where the problem, the proposed shape, and the
+  acceptance criteria are agreed _before_ the effort is spent, and it is the
+  trail that explains a change to whoever reads it a year later. Use the
+  templates in `.github/ISSUE_TEMPLATE/`: `feature_request.yml` (`feat: …`) for
+  a new capability, `bug_report.yml` (`bug: …`) for something not working as
+  documented, and `chore.yml` (`chore: …`) for docs, tests, refactoring, and
+  repository work. Blank issues are disabled on purpose, so pick the closest
+  template rather than skipping the step. The PR body then links it with
+  `Closes #<n>`. This applies to agent-authored work exactly as it does to a
+  human's: an agent that is asked to implement something files the issue as its
+  first step, and never opens a PR that closes nothing.
 - **Small, focused changes** with clear, descriptive commit messages (imperative
   mood; explain the _why_). Keep PRs reviewable.
 - **Conventional, semantic versioning** for releases; keep a changelog as the
