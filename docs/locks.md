@@ -53,7 +53,8 @@ parameters resolve, so the key can read `this.<param>.value`.
 Failing fast is right for a resource where a second run is a mistake worth
 reporting. It is the wrong answer for a resource a developer wants to *use* —
 one dev environment, one database, one port — where the useful behaviour is to
-queue and be handed the resource when it frees.
+keep asking until the resource frees, instead of making the developer run the
+command again.
 
 ```ts
 devStack = target()
@@ -68,18 +69,21 @@ devStack = target()
 - `s.waitUpTo(duration)` retries until the lock frees, and raises
   `LockConflictError` only once the wait is spent. Its message says how long it
   waited, so a timeout is not mistaken for a lock that was never retried.
-- `s.pollEvery(duration)` paces the retries (default `"5s"`).
+- `s.pollEvery(duration)` paces the retries (default `"5s"`). Nothing hands the
+  lock over: a waiter takes it on its next retry, so it starts up to one poll
+  interval after the holder released it, and only if no one else took it first.
 - While waiting, the run prints who holds the lock and since when, once per
   holder rather than once per retry.
 - A cancelled run stops waiting immediately; a 30-minute wait never outlives the
   run it belongs to.
 - Omitting `waitUpTo` keeps the fail-fast behaviour exactly as it was.
 
-**Waiters are not queued in arrival order.** Each retries on its own, so a run
-that has waited twenty minutes has no claim over one that arrived a second ago.
-With few contenders that is rarely visible; with many, a waiter can be unlucky
-repeatedly. Arrival order needs the store to hand out places in a queue, which
-is not something a waiting client can arrange for itself.
+**There is no queue.** "Waiting" is a retry loop, not a place in a line: each
+waiter races every other waiter — and every fresh run — for the lock the moment
+it frees. A run that has waited twenty minutes has no claim over one that
+arrived a second ago, and can lose the race repeatedly when contention is heavy.
+Arrival order would need the store itself to hand out places, which is not
+something a waiting client can arrange for itself.
 
 ## Conflicts
 

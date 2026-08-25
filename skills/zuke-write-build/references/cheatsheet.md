@@ -305,8 +305,9 @@ class CD extends Build {
   machines. See `docs/locks.md`.
 - `s.waitUpTo("30m")` queues for a held lock instead of failing at once, with
   `s.pollEvery("5s")` pacing the retries; the conflict is raised only once the
-  wait is spent, and the run prints who holds the lock while it waits. Waiters
-  retry independently, so they are not served in arrival order. Reach for it on
+  wait is spent, and the run prints who holds the lock while it waits. This is
+  a retry loop, not a queue: a waiter takes the lock on its next poll after it
+  frees, racing every other waiter, so there is no arrival order. Reach for it on
   a shared resource a developer wants to use, not on one where a second run is
   a mistake worth reporting.
 
