@@ -20,10 +20,13 @@ motivation, not just the mechanics. -->
 
 ## Related issues
 
-<!-- e.g. "Closes #123". Link any issue this addresses. -->
+<!-- Required: "Closes #123". Every change starts with an issue — file one from
+.github/ISSUE_TEMPLATE (feature request, bug report, or chore) before opening
+this PR. See AGENTS.md. -->
 
 ## Checklist
 
+- [ ] This PR closes a tracking issue (`Closes #<n>` above).
 - [ ] The PR title is a
       [Conventional Commit](https://www.conventionalcommits.org/)
       (`type(scope): summary`).
