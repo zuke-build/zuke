@@ -732,7 +732,8 @@ runs `git worktree list --porcelain` and hands back parsed entries, so a target
 reads them as values instead of scraping stdout.
 
 ```ts
-await GitTasks.worktree((s) => s.add(path).branch(name).createBranch());
+await GitTasks.worktree((s) => s.add(path).branch(name).createBranch()
+  .startPoint("origin/main")); // where the new branch forks from
 await GitTasks.worktree((s) => s.add(path).branch("release/1.2")); // existing branch
 const trees = await GitTasks.worktreeList(); // { path, head, branch, bare, detached, locked }[]
 await GitTasks.worktree((s) => s.remove(path).force()); // git refuses a dirty tree without it

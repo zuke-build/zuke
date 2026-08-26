@@ -69,7 +69,9 @@ Deno.test({
       assertEquals(code, 0, `expected a passing build:\n${output}`);
       // The clone still had origin/HEAD: answered without touching the remote.
       assertEquals(out.includes("LOCAL=trunk"), true, output);
-      // The ref was deleted, so this one could only come from the remote.
+      // The deletion really removed the ref, so the second lookup had nothing
+      // local to read and could only have been answered by the remote.
+      assertEquals(out.includes("REF_GONE=true"), true, output);
       assertEquals(out.includes("REMOTE=trunk"), true, output);
     } finally {
       await Deno.remove(repo, { recursive: true });

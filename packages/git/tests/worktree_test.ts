@@ -38,6 +38,37 @@ Deno.test("worktree add checks a path out, with or without a new branch", () => 
   );
 });
 
+Deno.test("a start point is where a created branch forks from", () => {
+  assertEquals(
+    new GitWorktreeSettings().add("../feature").branch("feature")
+      .createBranch().startPoint("origin/main").argv(),
+    ["git", "worktree", "add", "-b", "feature", "../feature", "origin/main"],
+  );
+  // Without one, the argv is what it was before the option existed: git falls
+  // back to the parent checkout's HEAD.
+  assertEquals(
+    new GitWorktreeSettings().add("../feature").branch("feature")
+      .createBranch().argv(),
+    ["git", "worktree", "add", "-b", "feature", "../feature"],
+  );
+  // A detached checkout takes a commit-ish in the same position.
+  assertEquals(
+    new GitWorktreeSettings().add("../review").detach()
+      .startPoint("origin/main").argv(),
+    ["git", "worktree", "add", "--detach", "../review", "origin/main"],
+  );
+});
+
+Deno.test("a branch and a start point without -b are refused, not silently merged", () => {
+  assertThrows(
+    () =>
+      new GitWorktreeSettings().add("../feature").branch("feature")
+        .startPoint("origin/main").argv(),
+    Error,
+    "both want the trailing commit-ish",
+  );
+});
+
 Deno.test("worktree list, remove, and prune build their own argv", () => {
   assertEquals(new GitWorktreeSettings().list().argv(), [
     "git",

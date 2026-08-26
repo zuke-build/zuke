@@ -298,6 +298,15 @@ class GitWorktreeSettings extends GitSettings
     {@link createBranch}, the name of the branch to create there.
   createBranch(): this
     Create {@link branch} rather than checking out an existing one (`-b`).
+  startPoint(ref: string): this
+    The commit the new branch forks from — git's trailing `<commit-ish>`, e.g.
+    `origin/main`. Only meaningful with {@link createBranch}: without a start
+    point git branches from the parent checkout's `HEAD`, which is whatever
+    the developer happened to have open.
+
+    Setting this and {@link branch} without {@link createBranch} is refused:
+    both want the same trailing position, and there is no reading of the
+    command where git would take them both.
   detach(): this
     Check out with a detached `HEAD` (`--detach`).
   force(): this

@@ -22,6 +22,22 @@ const CLONE = `${SOURCE}_clone`;
 /** The branch the source repository is created on. */
 const TRUNK = "trunk";
 
+/** Whether the clone still has a local `refs/remotes/origin/HEAD`. */
+async function hasRemoteHead(): Promise<boolean> {
+  try {
+    await GitTasks.run((s) =>
+      s.dir(CLONE).command(
+        "symbolic-ref",
+        "--quiet",
+        "refs/remotes/origin/HEAD",
+      )
+    );
+    return true;
+  } catch {
+    return false; // `--quiet` exits non-zero when the ref is absent
+  }
+}
+
 class GitDefaultBranchBuild extends Build {
   resolve = target()
     .description("resolve the remote's default branch from a real clone")
@@ -42,10 +58,17 @@ class GitDefaultBranchBuild extends Build {
       );
 
       // Drop that ref, as a fetch-only checkout often never has it, and ask
-      // again: this can only be answered by the remote.
+      // again: this can only be answered by the remote. `remote set-head` is
+      // git's own interface for it and has no typed task, so this is the run
+      // escape hatch doing what it is for.
       await GitTasks.run((s) =>
         s.dir(CLONE).command("remote", "set-head", "origin", "--delete")
       );
+      // Prove the ref is gone before resolving again. Without this the next
+      // line would still print the right branch if the deletion silently did
+      // nothing — and the fallback, which is the whole point, would go
+      // untested.
+      console.log(`REF_GONE=${!await hasRemoteHead()}`);
       console.log(
         `REMOTE=${await GitTasks.defaultBranch((s) => s.dir(CLONE))}`,
       );
