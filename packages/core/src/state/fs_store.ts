@@ -42,6 +42,7 @@ import { withFileMutex } from "./mutex.ts";
 import {
   assertSafeId,
   casWriteJson,
+  publishFile,
   sortNewestFirst,
 } from "./json_file_cas.ts";
 import { sha256Hex } from "../internal.ts";
@@ -266,7 +267,7 @@ export class FileSystemStateStore implements StateStore {
     const file = this.#lockFile(key);
     const tmp = `${file}.tmp-${crypto.randomUUID()}`;
     await this.#host.writeText(tmp, stringifyLockRecord(record));
-    await this.#host.rename(tmp, file);
+    await publishFile(this.#host, tmp, file);
   }
 
   /** Take the run's lock (spinning briefly on contention), run `fn`, release. */
