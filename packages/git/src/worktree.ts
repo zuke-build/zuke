@@ -54,6 +54,7 @@ export class GitWorktreeSettings extends GitSettings {
   #mode?: WorktreeMode;
   #path?: string;
   #branch?: string;
+  #startPoint?: string;
   #createBranch = false;
   #detach = false;
   #force = false;
@@ -97,6 +98,21 @@ export class GitWorktreeSettings extends GitSettings {
   /** Create {@link branch} rather than checking out an existing one (`-b`). */
   createBranch(): this {
     this.#createBranch = true;
+    return this;
+  }
+
+  /**
+   * The commit the new branch forks from — git's trailing `<commit-ish>`, e.g.
+   * `origin/main`. Only meaningful with {@link createBranch}: without a start
+   * point git branches from the *parent* checkout's `HEAD`, which is whatever
+   * the developer happened to have open.
+   *
+   * Setting this and {@link branch} without {@link createBranch} is refused:
+   * both want the same trailing position, and there is no reading of the
+   * command where git would take them both.
+   */
+  startPoint(ref: string): this {
+    this.#startPoint = ref;
     return this;
   }
 
@@ -149,12 +165,27 @@ export class GitWorktreeSettings extends GitSettings {
       argv.push("-b", this.#branch);
     }
     argv.push(this.#pathArg());
-    // Without `-b` a branch is the commit-ish to check out, which git takes
-    // after the path.
-    if (!this.#createBranch && this.#branch !== undefined) {
-      argv.push(this.#branch);
-    }
+    const commitish = this.#commitish();
+    if (commitish !== undefined) argv.push(commitish);
     return argv;
+  }
+
+  /**
+   * The trailing `<commit-ish>` of `worktree add`. With `-b` that is the start
+   * point the new branch forks from; without it, the branch to check out there
+   * — which is why a start point and a branch given *without* `-b` are refused
+   * rather than one of them being dropped.
+   */
+  #commitish(): string | undefined {
+    if (this.#createBranch) return this.#startPoint;
+    if (this.#branch !== undefined && this.#startPoint !== undefined) {
+      throw new Error(
+        "GitTasks.worktree: .branch(...) and .startPoint(...) both want the " +
+          "trailing commit-ish. Add .createBranch() to fork a new branch from " +
+          "the start point, or drop one of them.",
+      );
+    }
+    return this.#startPoint ?? this.#branch;
   }
 
   /** The path `add`/`remove` operate on; both set it, so this cannot be absent. */

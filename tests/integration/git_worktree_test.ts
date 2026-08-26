@@ -24,6 +24,19 @@ class SessionsBuild extends Build {
       console.log("created");
     });
 
+  ticket = target()
+    .description("branch a worktree off the remote's default")
+    .executes(async () => {
+      await GitTasks.worktree((s) =>
+        missingTool(
+          s.add("../ticket").branch("ticket").createBranch().startPoint(
+            "origin/main",
+          ),
+        )
+      );
+      console.log("created");
+    });
+
   report = target()
     .description("report the repository's worktrees")
     .executes(async () => {
@@ -34,6 +47,13 @@ class SessionsBuild extends Build {
 
 Deno.test("a target creating a worktree fails with the tool-not-found error", async () => {
   const { code, out, err } = await runCli(SessionsBuild, ["create"]);
+  assertEquals(code, 1);
+  assertStringIncludes(err, "zuke-no-such-tool-xyz");
+  assertEquals(out.includes("created"), false);
+});
+
+Deno.test("a start-point worktree reaches git like any other", async () => {
+  const { code, out, err } = await runCli(SessionsBuild, ["ticket"]);
   assertEquals(code, 1);
   assertStringIncludes(err, "zuke-no-such-tool-xyz");
   assertEquals(out.includes("created"), false);

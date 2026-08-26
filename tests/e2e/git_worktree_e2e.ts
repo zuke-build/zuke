@@ -94,3 +94,38 @@ Deno.test({
     }
   },
 });
+
+Deno.test({
+  name:
+    "a start point decides where the new branch forks, not the parent's HEAD",
+  ignore: !HAS_GIT,
+  fn: async () => {
+    const repo = await Deno.makeTempDir();
+    try {
+      const { code, out, err } = await runFixture(FIXTURE, ["startPoint"], {
+        GIT_CONFIG_GLOBAL: `${repo}/.gitconfig-none`,
+        GIT_CONFIG_SYSTEM: `${repo}/.gitconfig-none`,
+        ZUKE_E2E_REPO: repo,
+      });
+      const output = out + err;
+      assertEquals(code, 0, `expected a passing build:\n${output}`);
+
+      const commitOf = (label: string) =>
+        out.split("\n").find((line) => line.startsWith(`${label}=`))
+          ?.slice(label.length + 1) ?? "";
+      const main = commitOf("MAIN");
+      const stale = commitOf("STALE");
+      const ticket = commitOf("TICKET");
+
+      // The fixture really did leave the parent on another branch, so the two
+      // commits differ and the comparison below means something.
+      assertEquals(main.length > 0 && stale.length > 0, true, output);
+      assertEquals(main === stale, false, output);
+      // The new branch forked from the start point, not from the parent's HEAD.
+      assertEquals(ticket, main, output);
+    } finally {
+      await Deno.remove(repo, { recursive: true });
+      await Deno.remove(`${repo}_ticket`, { recursive: true }).catch(() => {});
+    }
+  },
+});
