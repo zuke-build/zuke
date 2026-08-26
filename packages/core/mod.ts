@@ -137,12 +137,14 @@ export {
 } from "./src/remote_cache.ts";
 export {
   defaultStateHost,
+  listStoreLocks,
   type LockResult,
   type PutResult,
   type StateHost,
   type StateStore,
 } from "./src/state/store.ts";
 export {
+  type HeldLockEntry,
   LockConflictError,
   type LockHolder,
   lockKey,

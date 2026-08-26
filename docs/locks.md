@@ -98,6 +98,29 @@ The loser of a conflict gets actionable guidance, on every surface:
 Provide `s.onConflict(holder => …)` to phrase the guidance for your domain; omit
 it for a sensible default that names the holder and its run.
 
+## Seeing what is held
+
+A lock's holder is visible to the run that loses a race for it. To ask without
+contending — the usual case when a shared resource looks stuck — list them:
+
+```ts
+import { listStoreLocks } from "jsr:@zuke/core";
+
+for (const { key, holder, expiresAt } of await listStoreLocks(store)) {
+  console.log(`${key}: ${holder.actor} (run ${holder.runId}) since ${holder.since}`);
+}
+```
+
+Only live locks are listed: an expired record is free, and the next acquirer
+takes it over. `expiresAt` answers the follow-up question — when it frees itself
+if the holder never comes back — and the acquisition token is never included,
+since a listing is read-only.
+
+The filesystem backend lists locks; an HTTP backend does when the server
+implements `GET /locks` (see [the contract](./state-api.md)). A backend that
+cannot enumerate fails the call with a message saying so, rather than reporting
+an empty listing that would read as "nobody holds anything".
+
 ## Requires a state store
 
 A lock needs somewhere durable to live, so a build that uses `.lock()` turns on
