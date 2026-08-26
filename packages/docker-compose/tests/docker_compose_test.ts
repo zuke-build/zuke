@@ -88,6 +88,25 @@ Deno.test("up: no-deps starts the named services alone", () => {
   );
 });
 
+Deno.test("up: a pull policy reaches compose as its argument", () => {
+  assertEquals(
+    new DockerComposeUpSettings().file("base.yml").pull("always").argv(),
+    ["docker", "compose", "-f", "base.yml", "up", "--pull", "always"],
+  );
+  assertEquals(
+    new DockerComposeUpSettings().pull("never").argv(),
+    ["docker", "compose", "up", "--pull", "never"],
+  );
+  // Without one, compose keeps its own default and the argv is unchanged.
+  assertEquals(new DockerComposeUpSettings().file("base.yml").argv(), [
+    "docker",
+    "compose",
+    "-f",
+    "base.yml",
+    "up",
+  ]);
+});
+
 Deno.test("up: all flags, scale, and services", () => {
   const argv = new DockerComposeUpSettings()
     .detach().build().forceRecreate().removeOrphans().wait()

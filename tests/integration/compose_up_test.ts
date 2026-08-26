@@ -23,6 +23,18 @@ class StackBuild extends Build {
     });
 }
 
+// The other start path: every service on the current published images.
+class PullingBuild extends Build {
+  stack = target()
+    .description("start the stack on freshly pulled images")
+    .dryRunnable()
+    .executes(async () => {
+      await DockerComposeTasks.up((s) =>
+        s.file("base.yml").pull("always").detach()
+      );
+    });
+}
+
 class DebugBuild extends Build {
   debug = target()
     .description("start one service without touching its dependencies")
@@ -64,6 +76,14 @@ Deno.test("a build that did not ask for it gets the argv it always had", async (
   assertEquals(code, 0, out);
   assertStringIncludes(out, "compose -f base.yml up --build api");
   assertEquals(out.includes("--no-deps"), false, out);
+});
+
+Deno.test("a pull policy reaches the command line as its argument", async () => {
+  const { code, out } = await runCli(PullingBuild, ["stack", "--dry-run"]);
+  assertEquals(code, 0, out);
+  // The policy is the option's argument, so the pair has to survive together
+  // and in order.
+  assertStringIncludes(out, "compose -f base.yml up -d --pull always");
 });
 
 Deno.test("a missing docker fails the target rather than skipping the option", async () => {
