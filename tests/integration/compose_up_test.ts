@@ -47,6 +47,6 @@ Deno.test("a no-deps compose up reaches docker like any other", async () => {
 Deno.test("a pull policy does not change how a compose failure is reported", async () => {
   const { code, out, err } = await runCli(StackBuild, ["stack"]);
   assertEquals(code, 1);
-  assertStringIncludes(err, "zuke-no-such-tool-xyz");
+  assertStringIncludes(err, "Tool not found");
   assertEquals(out.includes("started"), false);
 });
