@@ -33,8 +33,11 @@ Deno.test("two real processes register concurrently; no torn write", async () =>
       runFixture(FIXTURE, ["register"], env),
       runFixture(FIXTURE, ["register"], env),
     ]);
-    assertEquals(a.code, 0);
-    assertEquals(b.code, 0);
+    // Report what the process said, not just that it failed: this race is the
+    // one case in the suite that has flaked on a single OS, and an exit code
+    // alone leaves the next occurrence as unexplained as the last.
+    assertEquals(a.code, 0, `first registration failed:\n${a.err}${a.out}`);
+    assertEquals(b.code, 0, `second registration failed:\n${b.err}${b.out}`);
     assertStringIncludes(a.out, "Registered build");
 
     // A separate reader loads exactly one, well-formed descriptor — proving the

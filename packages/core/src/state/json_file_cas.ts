@@ -22,7 +22,13 @@
  */
 
 import type { PutResult, StateHost } from "./store.ts";
-import { sha256Hex } from "../internal.ts";
+import { delay, sha256Hex } from "../internal.ts";
+
+/** How many times {@link publishFile} retries a rename that lost a race. */
+const PUBLISH_ATTEMPTS = 5;
+
+/** How long to wait between those attempts. */
+const PUBLISH_DELAY_MS = 20;
 
 /**
  * Reject an id that could escape its directory. Ids are UUIDs (runs) or build
@@ -59,8 +65,45 @@ export async function casWriteJson(
   }
   const tmp = `${file}.tmp-${crypto.randomUUID()}`;
   await host.writeText(tmp, content);
-  await host.rename(tmp, file);
+  await publishFile(host, tmp, file);
   return { ok: true, version: await sha256Hex(content) };
+}
+
+/**
+ * Publish `tmp` over `file` with an atomic rename, retrying briefly when the
+ * rename loses to a concurrent reader.
+ *
+ * The rename itself is atomic on every platform this runs on; what is not
+ * guaranteed is that it is *allowed*. On Windows, replacing a file another
+ * handle has open fails unless that handle was opened with `FILE_SHARE_DELETE`,
+ * which an ordinary file read does not use — so a writer holding the record's
+ * mutex can still lose to a reader that holds no lock at all (a compare-and-swap
+ * re-read, a listing). The loss is transient by definition: it lasts as long as
+ * the reader's handle, which is one read.
+ *
+ * Retrying is therefore correct rather than a papering-over — the write has not
+ * happened, no other writer can be inside the mutex, and the destination is the
+ * one this caller already compared. A `NotFound` is never retried: the temp file
+ * this caller just wrote is missing, which is a bug rather than a race, and
+ * waiting cannot help it. Anything still failing after the budget surfaces
+ * unchanged.
+ */
+export async function publishFile(
+  host: StateHost,
+  tmp: string,
+  file: string,
+): Promise<void> {
+  for (let attempt = 1;; attempt++) {
+    try {
+      await host.rename(tmp, file);
+      return;
+    } catch (error) {
+      const fatal = error instanceof Deno.errors.NotFound ||
+        attempt >= PUBLISH_ATTEMPTS;
+      if (fatal) throw error;
+      await delay(PUBLISH_DELAY_MS);
+    }
+  }
 }
 
 /** Sort by `createdAt` descending, then `id` descending, for stable output. */
