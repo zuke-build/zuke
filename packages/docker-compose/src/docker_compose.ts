@@ -190,6 +190,12 @@ export abstract class DockerComposeSettings extends ToolSettings {
   }
 }
 
+/**
+ * When `compose up` fetches images before starting: `always` on every start,
+ * `missing` only when the image is absent locally, `never` at all.
+ */
+export type DockerComposePullPolicy = "always" | "missing" | "never";
+
 /** Settings for `compose up`. */
 export class DockerComposeUpSettings extends DockerComposeSettings {
   #detach = false;
@@ -199,6 +205,7 @@ export class DockerComposeUpSettings extends DockerComposeSettings {
   #wait = false;
   #abortOnContainerExit = false;
   #noDeps = false;
+  #pull?: DockerComposePullPolicy;
   #exitCodeFrom?: string;
   #scale: string[] = [];
   #services: string[] = [];
@@ -254,6 +261,20 @@ export class DockerComposeUpSettings extends DockerComposeSettings {
     return this;
   }
 
+  /**
+   * When to fetch images before starting (`--pull`). `always` keeps a stack on
+   * the current published images rather than whatever was pulled last;
+   * `missing` fetches only what is absent locally; `never` uses what is there.
+   *
+   * Distinct from `DockerComposeBuildSettings.pull`, which is `build --pull`,
+   * and from the `pull` task, which is the subcommand — each mirrors its own
+   * command.
+   */
+  pull(policy: DockerComposePullPolicy): this {
+    this.#pull = policy;
+    return this;
+  }
+
   /** Exit with this service's container's exit code (`--exit-code-from`). */
   exitCodeFrom(service: string): this {
     this.#exitCodeFrom = service;
@@ -282,6 +303,7 @@ export class DockerComposeUpSettings extends DockerComposeSettings {
     if (this.#wait) argv.push("--wait");
     if (this.#abortOnContainerExit) argv.push("--abort-on-container-exit");
     if (this.#noDeps) argv.push("--no-deps");
+    if (this.#pull !== undefined) argv.push("--pull", this.#pull);
     if (this.#exitCodeFrom !== undefined) {
       argv.push("--exit-code-from", this.#exitCodeFrom);
     }

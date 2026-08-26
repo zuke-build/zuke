@@ -6446,6 +6446,14 @@ class DockerComposeUpSettings extends DockerComposeSettings
     so the difference shows up only on the runs where a dependency was not
     ready — which is where a target that meant "just this service" wants to be
     explicit.
+  pull(policy: DockerComposePullPolicy): this
+    When to fetch images before starting (`--pull`). `always` keeps a stack on
+    the current published images rather than whatever was pulled last;
+    `missing` fetches only what is absent locally; `never` uses what is there.
+
+    Distinct from `DockerComposeBuildSettings.pull`, which is `build --pull`,
+    and from the `pull` task, which is the subcommand — each mirrors its own
+    command.
   exitCodeFrom(service: string): this
     Exit with this service's container's exit code (`--exit-code-from`).
   scale(service: string, instances: number): this
@@ -6492,6 +6500,10 @@ type ComposeProbe = (argv: readonly string[]) => Promise<boolean>
   Receives the binary-and-prefix argv (`["docker", "compose"]` or
   `["docker-compose"]`) and resolves to `true` when it works. Injectable so
   detection can be unit-tested without a real Docker install.
+
+type DockerComposePullPolicy = "always" | "missing" | "never"
+  When `compose up` fetches images before starting: `always` on every start,
+  `missing` only when the image is absent locally, `never` at all.
 
 ========================================================================
 # @zuke/kubectl

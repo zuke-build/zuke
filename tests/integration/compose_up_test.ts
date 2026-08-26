@@ -23,8 +23,27 @@ class DebugBuild extends Build {
     });
 }
 
+// The other start path: every service on the current published images.
+class StackBuild extends Build {
+  stack = target()
+    .description("start the stack on freshly pulled images")
+    .executes(async () => {
+      await DockerComposeTasks.up((s) =>
+        missingTool(s.file("base.yml").pull("always").detach())
+      );
+      console.log("started");
+    });
+}
+
 Deno.test("a no-deps compose up reaches docker like any other", async () => {
   const { code, out, err } = await runCli(DebugBuild, ["debug"]);
+  assertEquals(code, 1);
+  assertStringIncludes(err, "zuke-no-such-tool-xyz");
+  assertEquals(out.includes("started"), false);
+});
+
+Deno.test("a pull policy does not change how a compose failure is reported", async () => {
+  const { code, out, err } = await runCli(StackBuild, ["stack"]);
   assertEquals(code, 1);
   assertStringIncludes(err, "zuke-no-such-tool-xyz");
   assertEquals(out.includes("started"), false);
