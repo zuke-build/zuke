@@ -13,7 +13,7 @@
  */
 
 import { Build, run, target } from "../../../packages/core/mod.ts";
-import { GitTasks } from "../../../packages/git/mod.ts";
+import { type GitCommitSettings, GitTasks } from "../../../packages/git/mod.ts";
 
 /** The repository the test prepared for this run. */
 const REPO = Deno.env.get("ZUKE_E2E_REPO") ?? "";
@@ -21,17 +21,28 @@ const REPO = Deno.env.get("ZUKE_E2E_REPO") ?? "";
 /** Where the second working tree is checked out. */
 const TREE = `${REPO}_feature`;
 
+/** Where the start-point target checks its worktree out. */
+const TICKET = `${REPO}_ticket`;
+
+/** The identity every commit in the fixture repository is made under. */
+const AUTHOR = (s: GitCommitSettings) =>
+  s.config("user.name", "Zuke Test").config("user.email", "test@zuke.build");
+
+/** `git rev-parse <ref>` in `dir`, trimmed — the commit a ref points at. */
+async function revParse(dir: string, ref: string): Promise<string> {
+  const output = await GitTasks.run((s) =>
+    s.dir(dir).command("rev-parse", ref)
+  );
+  return output.stdout.trim();
+}
+
 class GitWorktreeBuild extends Build {
   worktrees = target()
     .description("add, list, and remove a worktree in a real repository")
     .executes(async () => {
       await GitTasks.init((s) => s.dir(REPO).initialBranch("main"));
       await GitTasks.commit((s) =>
-        s.dir(REPO)
-          .config("user.name", "Zuke Test")
-          .config("user.email", "test@zuke.build")
-          .allowEmpty()
-          .message("chore: initial commit")
+        AUTHOR(s.dir(REPO)).allowEmpty().message("chore: initial commit")
       );
 
       await GitTasks.worktree((s) =>
@@ -60,6 +71,30 @@ class GitWorktreeBuild extends Build {
 
       const left = await GitTasks.worktreeList((s) => s.dir(REPO));
       console.log(`COUNT=${left.length}`);
+    });
+
+  startPoint = target()
+    .description("branch a worktree off a ref other than the parent's HEAD")
+    .executes(async () => {
+      await GitTasks.init((s) => s.dir(REPO).initialBranch("main"));
+      await GitTasks.commit((s) =>
+        AUTHOR(s.dir(REPO)).allowEmpty().message("chore: initial commit")
+      );
+      // The parent checkout moves off the default branch, as a developer's
+      // clone usually has: any new branch taken from HEAD lands here.
+      await GitTasks.checkout((s) => s.dir(REPO).create().ref("stale"));
+      await GitTasks.commit((s) =>
+        AUTHOR(s.dir(REPO)).allowEmpty().message("chore: unrelated work")
+      );
+
+      await GitTasks.worktree((s) =>
+        s.dir(REPO).add(TICKET).branch("ticket").createBranch()
+          .startPoint("main")
+      );
+
+      console.log(`MAIN=${await revParse(REPO, "main")}`);
+      console.log(`STALE=${await revParse(REPO, "stale")}`);
+      console.log(`TICKET=${await revParse(TICKET, "HEAD")}`);
     });
 }
 

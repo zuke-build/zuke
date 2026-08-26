@@ -732,7 +732,8 @@ runs `git worktree list --porcelain` and hands back parsed entries, so a target
 reads them as values instead of scraping stdout.
 
 ```ts
-await GitTasks.worktree((s) => s.add(path).branch(name).createBranch());
+await GitTasks.worktree((s) => s.add(path).branch(name).createBranch()
+  .startPoint("origin/main")); // where the new branch forks from
 await GitTasks.worktree((s) => s.add(path).branch("release/1.2")); // existing branch
 const trees = await GitTasks.worktreeList(); // { path, head, branch, bare, detached, locked }[]
 await GitTasks.worktree((s) => s.remove(path).force()); // git refuses a dirty tree without it
@@ -741,6 +742,12 @@ await GitTasks.worktree((s) => s.prune()); // forget trees whose directories are
 
 Reach for `.dir(repo)` when the build's own cwd is not the repository, as with
 every other git task.
+
+`GitTasks.defaultBranch((s) => s.remote("origin"))` returns what the remote
+calls its default branch, so a build never hardcodes `main` and breaks on the
+repositories that chose `master`. It reads the local `refs/remotes/<remote>/HEAD`
+first and asks the remote only when that ref is missing, which is the usual case
+on a fetch-only checkout.
 
 ## AI review & self-healing — `@zuke/ai`
 

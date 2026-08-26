@@ -16,6 +16,8 @@
     "lintstagedrc",
     "parentless",
     "redocly",
+    "commitish",
+    "symref",
     "worktree",
     "worktrees",
     "unanchorable",
