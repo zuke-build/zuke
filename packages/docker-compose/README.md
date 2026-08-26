@@ -288,6 +288,15 @@ class DockerComposeUpSettings extends DockerComposeSettings
     Wait until services are running/healthy (`--wait`).
   abortOnContainerExit(): this
     Stop all containers if any container stops (`--abort-on-container-exit`).
+  noDeps(): this
+    Start only the named services, leaving their dependencies alone
+    (`--no-deps`).
+
+    Without it compose starts or recreates a dependency that is stopped or
+    whose configuration changed. With an already-healthy stack the two agree,
+    so the difference shows up only on the runs where a dependency was not
+    ready — which is where a target that meant "just this service" wants to be
+    explicit.
   exitCodeFrom(service: string): this
     Exit with this service's container's exit code (`--exit-code-from`).
   scale(service: string, instances: number): this

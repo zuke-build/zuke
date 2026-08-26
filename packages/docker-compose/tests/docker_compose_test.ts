@@ -76,6 +76,18 @@ Deno.test("global options precede the subcommand", () => {
   ]);
 });
 
+Deno.test("up: no-deps starts the named services alone", () => {
+  assertEquals(
+    new DockerComposeUpSettings().services("api").build().noDeps().argv(),
+    ["docker", "compose", "up", "--build", "--no-deps", "api"],
+  );
+  // Without it the argv is what it was before the option existed.
+  assertEquals(
+    new DockerComposeUpSettings().services("api").build().argv(),
+    ["docker", "compose", "up", "--build", "api"],
+  );
+});
+
 Deno.test("up: all flags, scale, and services", () => {
   const argv = new DockerComposeUpSettings()
     .detach().build().forceRecreate().removeOrphans().wait()

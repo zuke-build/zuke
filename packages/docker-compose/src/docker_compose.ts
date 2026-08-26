@@ -198,6 +198,7 @@ export class DockerComposeUpSettings extends DockerComposeSettings {
   #removeOrphans = false;
   #wait = false;
   #abortOnContainerExit = false;
+  #noDeps = false;
   #exitCodeFrom?: string;
   #scale: string[] = [];
   #services: string[] = [];
@@ -238,6 +239,21 @@ export class DockerComposeUpSettings extends DockerComposeSettings {
     return this;
   }
 
+  /**
+   * Start only the named services, leaving their dependencies alone
+   * (`--no-deps`).
+   *
+   * Without it compose starts or recreates a dependency that is stopped or
+   * whose configuration changed. With an already-healthy stack the two agree,
+   * so the difference shows up only on the runs where a dependency was not
+   * ready — which is where a target that meant "just this service" wants to be
+   * explicit.
+   */
+  noDeps(): this {
+    this.#noDeps = true;
+    return this;
+  }
+
   /** Exit with this service's container's exit code (`--exit-code-from`). */
   exitCodeFrom(service: string): this {
     this.#exitCodeFrom = service;
@@ -265,6 +281,7 @@ export class DockerComposeUpSettings extends DockerComposeSettings {
     if (this.#removeOrphans) argv.push("--remove-orphans");
     if (this.#wait) argv.push("--wait");
     if (this.#abortOnContainerExit) argv.push("--abort-on-container-exit");
+    if (this.#noDeps) argv.push("--no-deps");
     if (this.#exitCodeFrom !== undefined) {
       argv.push("--exit-code-from", this.#exitCodeFrom);
     }
