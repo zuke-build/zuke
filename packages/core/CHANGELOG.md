@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.42.0](https://github.com/zuke-build/zuke/compare/core-v1.41.0...core-v1.42.0) (2026-08-26)
+
+
+### Features
+
+* **core:** list the locks a state store holds ([#392](https://github.com/zuke-build/zuke/issues/392)) ([1f6c7ed](https://github.com/zuke-build/zuke/commit/1f6c7edfc1cbe1dfa2935adbb0c0044e16e9d570)), closes [#391](https://github.com/zuke-build/zuke/issues/391)
+
 ## [1.41.0](https://github.com/zuke-build/zuke/compare/core-v1.40.0...core-v1.41.0) (2026-08-25)
 
 
