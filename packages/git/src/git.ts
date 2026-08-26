@@ -30,6 +30,10 @@ import {
   GitWorktreeSettings,
   parseWorktreeList,
 } from "./worktree.ts";
+import {
+  type GitDefaultBranchSettings,
+  resolveDefaultBranch,
+} from "./default_branch.ts";
 
 /** Settings for `git init`. */
 export class GitInitSettings extends GitSettings {
@@ -608,6 +612,17 @@ export interface GitTasksApi {
   worktreeList(
     configure?: Configure<GitWorktreeSettings>,
   ): Promise<GitWorktree[]>;
+  /**
+   * The name of a remote's default branch — `main`, `master`, or whatever it
+   * chose — so a build does not have to hardcode one.
+   *
+   * Reads the local `refs/remotes/<remote>/HEAD` first, which costs no network,
+   * and asks the remote itself when that ref was never populated. Fails when
+   * neither names a branch, rather than guessing.
+   */
+  defaultBranch(
+    configure?: Configure<GitDefaultBranchSettings>,
+  ): Promise<string>;
   /** Run any other git command via `.command(...)`. */
   run(configure?: Configure<GitRunSettings>): Promise<CommandOutput>;
 }
@@ -640,5 +655,6 @@ export const GitTasks: GitTasksApi = {
   fetch: (c) => runSettings(new GitFetchSettings(), c),
   worktree: (c) => runSettings(new GitWorktreeSettings(), c),
   worktreeList: (c) => listWorktrees(c),
+  defaultBranch: (c) => resolveDefaultBranch(c),
   run: (c) => runSettings(new GitRunSettings(), c),
 };

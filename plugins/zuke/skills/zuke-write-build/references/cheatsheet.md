@@ -743,6 +743,12 @@ await GitTasks.worktree((s) => s.prune()); // forget trees whose directories are
 Reach for `.dir(repo)` when the build's own cwd is not the repository, as with
 every other git task.
 
+`GitTasks.defaultBranch((s) => s.remote("origin"))` returns what the remote
+calls its default branch, so a build never hardcodes `main` and breaks on the
+repositories that chose `master`. It reads the local `refs/remotes/<remote>/HEAD`
+first and asks the remote only when that ref is missing, which is the usual case
+on a fetch-only checkout.
+
 ## AI review & self-healing — `@zuke/ai`
 
 A model becomes part of the build graph two ways. Only the provider (`"claude"`

@@ -9588,6 +9588,21 @@ class GitCommitSettings extends GitSettings
   override protected subcommandArgs(): string[]
     Assemble the `git commit` argv.
 
+class GitDefaultBranchSettings extends GitSettings
+  Settings for {@link "./git.ts".GitTasks.defaultBranch}: which remote to ask,
+  plus the global options every git task shares.
+
+  askRemote_: boolean
+    Ask the remote itself rather than reading the local ref. Set by the task
+    for its fallback attempt; a caller has no reason to set it, since the task
+    already tries both in the order that avoids the network when it can.
+  remote(name: string): this
+    The remote whose default branch is wanted (default `origin`).
+  get remoteName(): string
+    The remote being asked — the prefix the local ref reports it under.
+  override protected subcommandArgs(): string[]
+    Assemble either the local ref read or the remote query.
+
 class GitFetchSettings extends GitSettings
   Settings for `git fetch`.
 
@@ -9804,6 +9819,13 @@ interface GitTasksApi
 
     The lambda configures the global options (`.dir()`, `.config()`); the
     subcommand itself is fixed, since the parse depends on it.
+  defaultBranch(configure?: Configure<GitDefaultBranchSettings>): Promise<string>
+    The name of a remote's default branch — `main`, `master`, or whatever it
+    chose — so a build does not have to hardcode one.
+
+    Reads the local `refs/remotes/<remote>/HEAD` first, which costs no network,
+    and asks the remote itself when that ref was never populated. Fails when
+    neither names a branch, rather than guessing.
   run(configure?: Configure<GitRunSettings>): Promise<CommandOutput>
     Run any other git command via `.command(...)`.
 
