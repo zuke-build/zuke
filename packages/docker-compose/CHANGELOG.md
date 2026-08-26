@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.0](https://github.com/zuke-build/zuke/compare/docker-compose-v1.0.1...docker-compose-v1.1.0) (2026-08-26)
+
+
+### Features
+
+* **docker-compose:** set a pull policy on compose up ([#389](https://github.com/zuke-build/zuke/issues/389)) ([42a99ad](https://github.com/zuke-build/zuke/commit/42a99ad23c56674602acecc095382d64102a9681))
+* **docker-compose:** start compose services without their dependencies ([#387](https://github.com/zuke-build/zuke/issues/387)) ([fd7d37b](https://github.com/zuke-build/zuke/commit/fd7d37bf79cf24466545a7bae76ac2b9a111e10a))
+
 ## [1.0.1](https://github.com/zuke-build/zuke/compare/docker-compose-v1.0.0...docker-compose-v1.0.1) (2026-08-13)
 
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.3.0](https://github.com/zuke-build/zuke/compare/git-v1.2.0...git-v1.3.0) (2026-08-26)
+
+
+### Features
+
+* **git:** branch a worktree from an explicit start point ([#383](https://github.com/zuke-build/zuke/issues/383)) ([4abf1f3](https://github.com/zuke-build/zuke/commit/4abf1f391f1f39a1335582f859b01d5d9ee6b882)), closes [#382](https://github.com/zuke-build/zuke/issues/382)
+* **git:** resolve a remote's default branch ([#385](https://github.com/zuke-build/zuke/issues/385)) ([c469b5f](https://github.com/zuke-build/zuke/commit/c469b5f44fa807258bd7027c33eb9480a8ad227f)), closes [#384](https://github.com/zuke-build/zuke/issues/384)
+
 ## [1.2.0](https://github.com/zuke-build/zuke/compare/git-v1.1.1...git-v1.2.0) (2026-08-25)
 
 
