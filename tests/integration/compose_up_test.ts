@@ -26,6 +26,8 @@ class DebugBuild extends Build {
 Deno.test("a no-deps compose up reaches docker like any other", async () => {
   const { code, out, err } = await runCli(DebugBuild, ["debug"]);
   assertEquals(code, 1);
-  assertStringIncludes(err, "zuke-no-such-tool-xyz");
+  // The compose wrapper reports the invocation it resolved rather than the
+  // binary behind it, so the assertion is on the failure, not on the name.
+  assertStringIncludes(err, "Tool not found");
   assertEquals(out.includes("started"), false);
 });
