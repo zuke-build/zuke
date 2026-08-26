@@ -22,12 +22,10 @@
 
 import type { PathLike } from "@zuke/core/tooling";
 import { GitSettings } from "./settings.ts";
+import { shortBranchName } from "./refs.ts";
 
 /** Which `git worktree` subcommand a {@link GitWorktreeSettings} runs. */
 type WorktreeMode = "add" | "list" | "remove" | "prune";
-
-/** The `refs/heads/` prefix `--porcelain` reports a branch under. */
-const HEADS = "refs/heads/";
 
 /** One entry of `git worktree list --porcelain`. */
 export interface GitWorktree {
@@ -198,11 +196,8 @@ export function parseWorktreeList(stdout: string): GitWorktree[] {
     // An attribute before any `worktree` line belongs to nothing; skip it.
     if (current === null) continue;
     if (key === "HEAD") current.head = value;
-    else if (key === "branch") {
-      current.branch = value.startsWith(HEADS)
-        ? value.slice(HEADS.length)
-        : value;
-    } else if (key === "bare") current.bare = true;
+    else if (key === "branch") current.branch = shortBranchName(value);
+    else if (key === "bare") current.bare = true;
     else if (key === "detached") current.detached = true;
     else if (key === "locked") current.locked = true;
   }
