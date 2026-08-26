@@ -63,6 +63,22 @@ export function lockKey(...parts: Array<string | number>): string {
     .join("-");
 }
 
+/**
+ * One live lock, as reported by {@link "./store.ts".StateStore.listLocks} — the
+ * key, who holds it, and when it lapses if the holder disappears.
+ *
+ * Deliberately not the stored record: the acquisition token is the holder's
+ * proof of ownership, and a read-only listing has no business handing it out.
+ */
+export interface HeldLockEntry {
+  /** The lock key, as it was acquired. */
+  key: string;
+  /** Who holds it. */
+  holder: LockHolder;
+  /** Epoch-millisecond expiry: when it frees itself if the holder is gone. */
+  expiresAt: number;
+}
+
 /** A stored lock: its holder, the acquisition token, and its expiry. */
 export interface LockRecord {
   /** The current holder's identity. */

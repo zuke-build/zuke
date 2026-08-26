@@ -110,7 +110,7 @@ recent runs.
 
 ## Locks (`/locks`)
 
-Three routes back everything that needs mutual exclusion: a target's
+Four routes back everything that needs mutual exclusion: a target's
 [`.lock()`](./locks.md), and the **run lease** every stateful run holds on its
 own id (key `zuke-run-<id>`, 60s TTL) — which is also what lets
 `resume --check` tell an abandoned run from a merely slow one. A service that
@@ -120,6 +120,23 @@ A lock is `{ key, holder, token, expiresAt }`. The **token** is an opaque string
 the server mints on acquire; only a caller presenting it may renew or release.
 Expiry is **server-side**: an expired lock must be treated as free, so a crashed
 holder's lock is reclaimed without anyone calling `DELETE`.
+
+### `GET /locks`
+
+List the locks currently held — the read-only answer to "who has this, and
+until when?". No body.
+
+- `200 [ { "key": "…", "holder": { … }, "expiresAt": 1700000000000 }, … ]` —
+  every **live** lock. An expired one is free and must be left out; reporting it
+  as held is worse than omitting it, since the caller is usually looking at a
+  resource they believe is stuck. Never include the token: it is the holder's
+  proof of ownership and a listing is read-only.
+- `404`/`501` — not implemented. The client tells this apart from an empty
+  listing and says the backend cannot enumerate, rather than reporting that
+  nothing is held.
+
+This route is **optional**: a service that omits it supports locking in full,
+and only loses the listing.
 
 ### `POST /locks/:key`
 

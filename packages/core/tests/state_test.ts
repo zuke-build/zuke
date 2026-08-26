@@ -15,7 +15,11 @@ import {
   toJsonValue,
   toSummary,
 } from "../src/state/types.ts";
-import { defaultStateHost } from "../src/state/store.ts";
+import {
+  defaultStateHost,
+  listStoreLocks,
+  type StateStore,
+} from "../src/state/store.ts";
 import { FileSystemStateStore } from "../src/state/fs_store.ts";
 import { HttpStateStore } from "../src/state/http_store.ts";
 import { envStateStore, resolveStateStore } from "../src/state/resolve.ts";
@@ -1623,4 +1627,149 @@ Deno.test("HttpStateStore drains response bodies a server sends on every path", 
   );
   await assertRejects(() => boom.renewLock("k", "t", 1000), HttpError);
   await assertRejects(() => boom.releaseLock("k", "t"), HttpError);
+});
+
+// ------------------------------------------------------------- lock listing
+
+Deno.test("FileSystemStateStore lists live locks, ordered, without their tokens", async () => {
+  const host = new FakeStateHost();
+  const store = new FileSystemStateStore("/runs", host);
+  assertEquals(await store.listLocks(), []);
+
+  await store.acquireLock("dev-env", {
+    actor: "alice",
+    runId: "run-1",
+    since: "2026-01-01T00:00:00.000Z",
+    runUrl: "https://ci.example/1",
+  }, 60_000);
+  await store.acquireLock("test-db", {
+    actor: "bob",
+    runId: "run-2",
+    since: "2026-01-01T00:01:00.000Z",
+  }, 60_000);
+
+  const held = await store.listLocks();
+  assertEquals(held.map((entry) => entry.key), ["dev-env", "test-db"]);
+  assertEquals(held[0]?.holder.actor, "alice");
+  assertEquals(held[0]?.holder.runUrl, "https://ci.example/1");
+  assertEquals(held[0]?.expiresAt, host.time + 60_000);
+  assertEquals(held[1]?.holder.actor, "bob");
+  // The token is the holder's proof of ownership and is not part of a listing.
+  assertEquals(Object.hasOwn(held[0] ?? {}, "token"), false);
+});
+
+Deno.test("FileSystemStateStore leaves expired and released locks out of the listing", async () => {
+  const host = new FakeStateHost();
+  const store = new FileSystemStateStore("/runs", host);
+  const short = await store.acquireLock("dev-env", {
+    actor: "alice",
+    runId: "run-1",
+    since: "2026-01-01T00:00:00.000Z",
+  }, 1_000);
+  await store.acquireLock("test-db", {
+    actor: "bob",
+    runId: "run-2",
+    since: "2026-01-01T00:00:00.000Z",
+  }, 60_000);
+
+  // Past its TTL the record is still on disk, but the lock is free: the next
+  // acquirer takes it over, so reporting it as held would be a lie.
+  host.time += 5_000;
+  assertEquals((await store.listLocks()).map((e) => e.key), ["test-db"]);
+
+  if (!short.ok) throw new Error("expected the lock to be acquired");
+  await store.releaseLock("dev-env", short.token);
+  assertEquals((await store.listLocks()).map((e) => e.key), ["test-db"]);
+});
+
+Deno.test("FileSystemStateStore skips a corrupt lock file rather than hiding the rest", async () => {
+  const host = new FakeStateHost();
+  const store = new FileSystemStateStore("/runs", host);
+  await store.acquireLock("dev-env", {
+    actor: "alice",
+    runId: "run-1",
+    since: "2026-01-01T00:00:00.000Z",
+  }, 60_000);
+  host.files.set("/runs/locks/broken.json", "{not json");
+  // The `.acq` mutex markers live in the same directory and are not locks.
+  host.files.set("/runs/locks/dev-env.acq", "1000000");
+
+  assertEquals((await store.listLocks()).map((e) => e.key), ["dev-env"]);
+});
+
+Deno.test("listStoreLocks fails on a backend that cannot enumerate", async () => {
+  const host = new FakeStateHost();
+  const store = new FileSystemStateStore("/runs", host);
+  assertEquals(await listStoreLocks(store), []);
+
+  // A store implemented outside this repository need not have the method: the
+  // interface makes it optional, and a caller asking anyway gets told.
+  const withoutListing: StateStore = {
+    getRun: () => Promise.resolve(null),
+    putRun: () => Promise.resolve({ ok: true, version: "1" }),
+    listRuns: () => Promise.resolve([]),
+    deleteRun: () => Promise.resolve(),
+    acquireLock: () => Promise.resolve({ ok: true, token: "t" }),
+    renewLock: () => Promise.resolve(true),
+    releaseLock: () => Promise.resolve(),
+  };
+  await assertRejects(
+    () => Promise.resolve().then(() => listStoreLocks(withoutListing)),
+    Error,
+    "cannot list locks",
+  );
+});
+
+Deno.test("HttpStateStore lists locks, and tells a missing endpoint from an empty one", async () => {
+  const listing = [{
+    key: "dev-env",
+    holder: {
+      actor: "alice",
+      runId: "run-1",
+      since: "2026-01-01T00:00:00.000Z",
+    },
+    expiresAt: 1_700_000_000_000,
+  }];
+  const store = new HttpStateStore({
+    url: "https://s.example/",
+    fetch: fakeFetch((url) => {
+      assertEquals(url, "https://s.example/locks");
+      return new Response(JSON.stringify(listing), { status: 200 });
+    }),
+  });
+  const held = await store.listLocks();
+  assertEquals(held.length, 1);
+  assertEquals(held[0]?.key, "dev-env");
+  assertEquals(held[0]?.holder.actor, "alice");
+
+  for (const status of [404, 501]) {
+    const unimplemented = new HttpStateStore({
+      url: "https://s.example",
+      fetch: fakeFetch(() => new Response(null, { status })),
+    });
+    await assertRejects(
+      () => unimplemented.listLocks(),
+      Error,
+      "is not implemented by this server",
+    );
+  }
+});
+
+Deno.test("a lock listing from the server is validated, not trusted", async () => {
+  const bodies: unknown[] = [
+    { locks: [] },
+    [{ holder: { actor: "a", runId: "r", since: "s" }, expiresAt: 1 }],
+    [{ key: "dev-env", holder: { actor: "a", runId: "r", since: "s" } }],
+    [{ key: "dev-env", holder: { actor: "a" }, expiresAt: 1 }],
+    ["dev-env"],
+  ];
+  for (const body of bodies) {
+    const store = new HttpStateStore({
+      url: "https://s.example",
+      fetch: fakeFetch(() =>
+        new Response(JSON.stringify(body), { status: 200 })
+      ),
+    });
+    await assertRejects(() => store.listLocks(), Error);
+  }
 });

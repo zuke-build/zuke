@@ -17,7 +17,7 @@
  */
 
 import type { RunQuery, RunRecord, RunSummary } from "./types.ts";
-import type { LockHolder } from "./lock.ts";
+import type { HeldLockEntry, LockHolder } from "./lock.ts";
 
 /** The result of a {@link StateStore.putRun} compare-and-swap write. */
 export type PutResult =
@@ -77,6 +77,38 @@ export interface StateStore {
   renewLock(key: string, token: string, ttlMs: number): Promise<boolean>;
   /** Release the lock `key` if still held under `token`; a no-op otherwise. */
   releaseLock(key: string, token: string): Promise<void>;
+  /**
+   * Every lock currently held, keyed and ordered by key — the read-only answer
+   * to "who holds this, and until when?". Expired records are not held locks
+   * and are left out: reporting one as held is the failure this exists to
+   * prevent.
+   *
+   * Optional, so a store implemented outside this repository does not break by
+   * not having one. A caller that needs the listing rather than an empty result
+   * should go through {@link listStoreLocks}, which fails with a message naming
+   * the backend instead of pretending the store holds nothing.
+   */
+  listLocks?(): Promise<HeldLockEntry[]>;
+}
+
+/**
+ * The locks `store` holds, or a friendly failure when the backend cannot
+ * enumerate them.
+ *
+ * An empty array reads as "nobody holds anything", which is the worst possible
+ * answer to give someone looking at a wedged resource, so a store with no
+ * {@link StateStore.listLocks} says so rather than answering.
+ *
+ * @throws {Error} If the store does not support listing.
+ */
+export function listStoreLocks(store: StateStore): Promise<HeldLockEntry[]> {
+  if (store.listLocks === undefined) {
+    throw new Error(
+      "state: this backend cannot list locks. The filesystem store and an " +
+        "HTTP backend implementing `GET /locks` both can — see docs/state-api.md.",
+    );
+  }
+  return store.listLocks();
 }
 
 /**

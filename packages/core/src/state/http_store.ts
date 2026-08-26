@@ -27,7 +27,12 @@ import {
   type RunSummary,
   stringifyRunRecord,
 } from "./types.ts";
-import { type LockHolder, parseLockHolder } from "./lock.ts";
+import {
+  type HeldLockEntry,
+  type LockHolder,
+  parseLockHolder,
+} from "./lock.ts";
+import { asObject } from "../json_shape.ts";
 
 /** Configuration for an {@link HttpStateStore}. */
 export interface HttpStateStoreOptions {
@@ -134,6 +139,30 @@ export class HttpStateStore implements StateStore {
     return true;
   }
 
+  /**
+   * `GET /locks` → the live locks the server holds. A server that has not
+   * implemented the endpoint (`404`/`501`) is told apart from one that holds
+   * nothing: an empty listing is an answer, and a missing endpoint is not.
+   */
+  async listLocks(): Promise<HeldLockEntry[]> {
+    const url = `${this.#cas.base}/locks`;
+    const response = await this.#cas.request(url, {
+      headers: this.#cas.headers({}),
+    });
+    if (response.status === 404 || response.status === 501) {
+      await response.body?.cancel();
+      throw new Error(
+        `state: ${url} is not implemented by this server, so its locks ` +
+          `cannot be listed — see docs/state-api.md.`,
+      );
+    }
+    if (!response.ok) {
+      await response.body?.cancel();
+      throw new HttpError(response.status, url);
+    }
+    return parseLockListing(await response.json(), url);
+  }
+
   /** `DELETE /locks/:key` releases; a missing lock (`404`) is not an error. */
   async releaseLock(key: string, token: string): Promise<void> {
     const url = this.#lockUrl(key);
@@ -147,6 +176,32 @@ export class HttpStateStore implements StateStore {
       throw new HttpError(response.status, url);
     }
   }
+}
+
+/**
+ * Parse a `GET /locks` body: an array of `{ key, holder, expiresAt }`. The
+ * server is a remote party, so every field is checked rather than trusted, and
+ * an entry that does not parse fails the call instead of being dropped — a
+ * listing that silently loses a held lock is worse than one that errors.
+ */
+export function parseLockListing(body: unknown, url: string): HeldLockEntry[] {
+  if (!Array.isArray(body)) {
+    throw new Error(`state: ${url} did not return an array of locks`);
+  }
+  return body.map((entry) => {
+    const object = asObject(entry);
+    if (object === null) {
+      throw new Error(`state: ${url} returned a lock that is not an object`);
+    }
+    const { key, expiresAt } = object;
+    if (typeof key !== "string" || key === "") {
+      throw new Error(`state: ${url} returned a lock with no key`);
+    }
+    if (typeof expiresAt !== "number") {
+      throw new Error(`state: ${url} returned lock "${key}" with no expiry`);
+    }
+    return { key, holder: parseLockHolder(object.holder), expiresAt };
+  });
 }
 
 /** Extract a string `token` from a lock-acquire response body. */

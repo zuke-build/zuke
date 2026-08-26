@@ -417,6 +417,17 @@ async function installTree(options: InstallTreeOptions): Promise<AbsolutePath>
 function isCI(): boolean
   Whether the build appears to be running in a CI environment.
 
+function listStoreLocks(store: StateStore): Promise<HeldLockEntry[]>
+  The locks `store` holds, or a friendly failure when the backend cannot
+  enumerate them.
+
+  An empty array reads as "nobody holds anything", which is the worst possible
+  answer to give someone looking at a wedged resource, so a store with no
+  {@link StateStore.listLocks} says so rather than answering.
+
+  @throws {Error}
+      If the store does not support listing.
+
 function lockKey(...parts: Array<string | number>): string
   Join parts into a lock key that is safe to use as a filename and URL segment.
   Each part is sanitised (non-`[A-Za-z0-9._-]` runs become `_`) and empty parts
@@ -1180,6 +1191,11 @@ class FileSystemStateStore implements StateStore
     Extend the lock `key` held under `token`; `false` if the token lost it.
   async releaseLock(key: string, token: string): Promise<void>
     Release the lock `key` if still held under `token`; a no-op otherwise.
+  async listLocks(): Promise<HeldLockEntry[]>
+    Every live lock in the `locks/` directory, ordered by key. `<key>.acq`
+    mutex markers and anything else in there are skipped; a record that fails
+    to parse is skipped too, since one corrupt file must not hide every other
+    lock from someone trying to see who holds what.
 
 class ForEachSettings
   Fluent configuration for {@link TargetBuilder.forEach}, in the settings-lambda
@@ -1309,6 +1325,10 @@ class HttpStateStore implements StateStore
     `POST /locks/:key` → `201 { token }`, or `409` with the current holder.
   async renewLock(key: string, token: string, ttlMs: number): Promise<boolean>
     `PUT /locks/:key` renews; a `409`/`404` means the token lost the lock.
+  async listLocks(): Promise<HeldLockEntry[]>
+    `GET /locks` → the live locks the server holds. A server that has not
+    implemented the endpoint (`404`/`501`) is told apart from one that holds
+    nothing: an empty listing is an answer, and a missing endpoint is not.
   async releaseLock(key: string, token: string): Promise<void>
     `DELETE /locks/:key` releases; a missing lock (`404`) is not an error.
 
@@ -3004,6 +3024,20 @@ interface HeldLease
   release(): Promise<void>
     Stop the heartbeat and release the claim (best-effort).
 
+interface HeldLockEntry
+  One live lock, as reported by {@link "./store.ts".StateStore.listLocks} — the
+  key, who holds it, and when it lapses if the holder disappears.
+
+  Deliberately not the stored record: the acquisition token is the holder's
+  proof of ownership, and a read-only listing has no business handing it out.
+
+  key: string
+    The lock key, as it was acquired.
+  holder: LockHolder
+    Who holds it.
+  expiresAt: number
+    Epoch-millisecond expiry: when it frees itself if the holder is gone.
+
 interface HttpBuildRegistryOptions
   Configuration for an {@link HttpBuildRegistry}.
 
@@ -3675,6 +3709,16 @@ interface StateStore
     detect a lost lock.
   releaseLock(key: string, token: string): Promise<void>
     Release the lock `key` if still held under `token`; a no-op otherwise.
+  listLocks?(): Promise<HeldLockEntry[]>
+    Every lock currently held, keyed and ordered by key — the read-only answer
+    to "who holds this, and until when?". Expired records are not held locks
+    and are left out: reporting one as held is the failure this exists to
+    prevent.
+
+    Optional, so a store implemented outside this repository does not break by
+    not having one. A caller that needs the listing rather than an empty result
+    should go through {@link listStoreLocks}, which fails with a message naming
+    the backend instead of pretending the store holds nothing.
 
 interface TarEntry
   A single entry within a tar archive — a regular file or a symbolic link.

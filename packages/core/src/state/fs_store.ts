@@ -32,6 +32,7 @@ import {
   toSummary,
 } from "./types.ts";
 import {
+  type HeldLockEntry,
   type LockHolder,
   type LockRecord,
   parseLockRecord,
@@ -224,6 +225,34 @@ export class FileSystemStateStore implements StateStore {
         await this.#host.remove(this.#lockFile(key));
       }
     });
+  }
+
+  /**
+   * Every live lock in the `locks/` directory, ordered by key. `<key>.acq`
+   * mutex markers and anything else in there are skipped; a record that fails
+   * to parse is skipped too, since one corrupt file must not hide every other
+   * lock from someone trying to see who holds what.
+   */
+  async listLocks(): Promise<HeldLockEntry[]> {
+    await this.#ensureDir();
+    const entries: HeldLockEntry[] = [];
+    const now = this.#host.now();
+    for (const name of await this.#host.listDir(`${this.#dir}/locks`)) {
+      if (!name.endsWith(".json")) continue;
+      const key = name.slice(0, -".json".length);
+      const text = await this.#host.readText(`${this.#dir}/locks/${name}`);
+      if (text === null) continue; // released between the listing and the read
+      let record: LockRecord;
+      try {
+        record = parseLockRecord(text);
+      } catch {
+        continue;
+      }
+      // An expired record is not a held lock: the next acquirer takes it over.
+      if (record.expiresAt <= now) continue;
+      entries.push({ key, holder: record.holder, expiresAt: record.expiresAt });
+    }
+    return entries.sort((a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
   }
 
   /** Read a lock record, or `null` when the lock is free. */
