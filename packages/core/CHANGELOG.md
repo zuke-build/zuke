@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.42.1](https://github.com/zuke-build/zuke/compare/core-v1.42.0...core-v1.42.1) (2026-08-26)
+
+
+### Bug Fixes
+
+* **core:** retry a record publish that loses to a concurrent reader ([#395](https://github.com/zuke-build/zuke/issues/395)) ([77b468b](https://github.com/zuke-build/zuke/commit/77b468b504977cb33fa385fe3912c0feb0fa9470)), closes [#394](https://github.com/zuke-build/zuke/issues/394)
+
 ## [1.42.0](https://github.com/zuke-build/zuke/compare/core-v1.41.0...core-v1.42.0) (2026-08-26)
 
 
