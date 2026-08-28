@@ -19,7 +19,7 @@ import {
   NpmRunSettings,
   NpmTasks,
   NpmVersionSettings,
-} from "../src/npm.ts";
+} from "../mod.ts";
 
 Deno.test("the default binary is npm", () => {
   assertEquals(new NpmInstallSettings().argv()[0], "npm");
