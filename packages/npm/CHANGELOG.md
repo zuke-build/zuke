@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/zuke-build/zuke/compare/npm-v1.0.1...npm-v1.1.0) (2026-08-28)
+
+
+### Features
+
+* **npm:** wrap the everyday npm surface as typed tasks ([#401](https://github.com/zuke-build/zuke/issues/401)) ([4496856](https://github.com/zuke-build/zuke/commit/4496856bf3074af134ed207c9a76368df640a7b4)), closes [#400](https://github.com/zuke-build/zuke/issues/400)
+
 ## [1.0.1](https://github.com/zuke-build/zuke/compare/npm-v1.0.0...npm-v1.0.1) (2026-08-13)
 
 
