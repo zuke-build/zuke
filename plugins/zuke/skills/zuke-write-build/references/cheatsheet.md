@@ -305,11 +305,11 @@ class CD extends Build {
   machines. See `docs/locks.md`.
 - `s.waitUpTo("30m")` queues for a held lock instead of failing at once, with
   `s.pollEvery("5s")` pacing the retries; the conflict is raised only once the
-  wait is spent, and the run prints who holds the lock while it waits. This is
-  a retry loop, not a queue: a waiter takes the lock on its next poll after it
-  frees, racing every other waiter, so there is no arrival order. Reach for it on
-  a shared resource a developer wants to use, not on one where a second run is
-  a mistake worth reporting.
+  wait is spent, and the run prints who holds the lock while it waits. This is a
+  retry loop, not a queue: a waiter takes the lock on its next poll after it
+  frees, racing every other waiter, so there is no arrival order. Reach for it
+  on a shared resource a developer wants to use, not on one where a second run
+  is a mistake worth reporting.
 
 ## External-event waits
 
@@ -640,28 +640,28 @@ Every external tool is a `*Tasks` object; each task takes `(s) => s.…` mirrori
 the real CLI's flags. A non-exhaustive map (run `deno doc jsr:@zuke/<pkg>` for
 the full task list and settings methods of each):
 
-| Package                                                                                                                                             | Object                                           | Typical tasks                                                                                     |
-| --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
-| `@zuke/core`                                                                                                                                        | `FileTasks`, `AnnounceTasks`, `ToolTasks`, `BrowserTasks` | copy/move/remove files; Slack/Teams/Discord posts; install tool binaries; open an http(s) URL in the default browser (`BrowserTasks.open`) |
-| `@zuke/cli`                                                                                                                                         | the `zuke` command                               | not a wrapper — `deno install -A -g -n zuke jsr:@zuke/cli`, then `zuke setup` scaffolds a project |
-| `@zuke/console`                                                                                                                                     | `ConsoleTasks`                                   | themed console output (headings, notices, the `logo()` splash) so a build never hand-rolls `console.log` |
-| `@zuke/deno`                                                                                                                                        | `DenoTasks`                                      | `check`, `test`, `fmt`, `lint`, `cache`, `doc`, `run`, `publish`                                  |
-| `@zuke/docs`                                                                                                                                        | `DocsTasks`                                      | turn generated API docs into published output                                                     |
-| `@zuke/npm`, `@zuke/npx`, `@zuke/bun`, `@zuke/pnpm`, `@zuke/yarn`, `@zuke/node`                                                                     | `NpmTasks`, `NpxTasks`, `BunTasks`, ...          | JS package managers + `npx` runner + `node`                                                       |
-| `@zuke/cmd`                                                                                                                                         | `CmdTasks`                                       | `exec` — generic fallback for any CLI                                                             |
-| `@zuke/docker`, `@zuke/docker-compose`                                                                                                              | `DockerTasks`, ...                               | build/run/compose                                                                                 |
-| `@zuke/git`, `@zuke/gh`                                                                                                                             | `GitTasks`, `GhTasks`                            | git (including worktrees) and GitHub CLI (`GhTasks.run` for subcommands, `GhTasks.api` for REST endpoints without one) |
-| `@zuke/cspell`, `@zuke/eslint`, `@zuke/oxlint`, `@zuke/biome`, `@zuke/dprint`, `@zuke/knip`, `@zuke/dpdm`, `@zuke/lint-staged`                      | `*Tasks`                                         | lint/format/spell/dead-code                                                                       |
-| `@zuke/tsc`, `@zuke/tsx`, `@zuke/tsc-alias`, `@zuke/tsup`, `@zuke/tsdown`, `@zuke/vite`, `@zuke/storybook`, `@zuke/turbo`, `@zuke/nx`, `@zuke/nest` | `*Tasks`                                         | TS compile / bundle / monorepo / framework CLIs                                                   |
-| `@zuke/openapi-ts`, `@zuke/orval`, `@zuke/redocly`                                                                                                  | `*Tasks`                                         | generate API clients from OpenAPI                                                                 |
-| `@zuke/husky`                                                                                                                                       | `HuskyTasks`                                     | git hooks                                                                                         |
-| `@zuke/jest`, `@zuke/vitest`, `@zuke/playwright`, `@zuke/cypress`                                                                                   | `*Tasks`                                         | test runners                                                                                      |
-| `@zuke/jsr`, `@zuke/codecov`, `@zuke/release-please`                                                                                                | `JsrTasks`, `CodecovTasks`, ...                  | publish / coverage upload / releases                                                              |
-| `@zuke/kubectl`, `@zuke/helm`, `@zuke/kustomize`, `@zuke/terraform`, `@zuke/tofu`, `@zuke/gcloud`                                                   | `*Tasks`                                         | infra/deploy                                                                                      |
-| `@zuke/security`                                                                                                                                    | `*Tasks`                                         | security scanning                                                                                 |
-| `@zuke/claude`, `@zuke/codex`, `@zuke/gemini`                                                                                                       | `ClaudeTasks`, ...                               | headless AI CLIs                                                                                  |
-| `@zuke/ai`                                                                                                                                          | `securityReviewer`, ..., `aiFixer`, `agentFixer` | AI review gates + self-healing (see below)                                                        |
-| `@zuke/otel`                                                                                                                                        | `otel` (a plugin)                                | export runs and targets as OpenTelemetry traces (see below)                                       |
+| Package                                                                                                                                             | Object                                                    | Typical tasks                                                                                                                                |
+| --------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@zuke/core`                                                                                                                                        | `FileTasks`, `AnnounceTasks`, `ToolTasks`, `BrowserTasks` | copy/move/remove files; Slack/Teams/Discord posts; install tool binaries; open an http(s) URL in the default browser (`BrowserTasks.open`)   |
+| `@zuke/cli`                                                                                                                                         | the `zuke` command                                        | not a wrapper — `deno install -A -g -n zuke jsr:@zuke/cli`, then `zuke setup` scaffolds a project                                            |
+| `@zuke/console`                                                                                                                                     | `ConsoleTasks`                                            | themed console output (headings, notices, the `logo()` splash) so a build never hand-rolls `console.log`                                     |
+| `@zuke/deno`                                                                                                                                        | `DenoTasks`                                               | `check`, `test`, `fmt`, `lint`, `cache`, `doc`, `run`, `publish`                                                                             |
+| `@zuke/docs`                                                                                                                                        | `DocsTasks`                                               | turn generated API docs into published output                                                                                                |
+| `@zuke/npm`, `@zuke/npx`, `@zuke/bun`, `@zuke/pnpm`, `@zuke/yarn`, `@zuke/node`                                                                     | `NpmTasks`, `NpxTasks`, `BunTasks`, ...                   | JS package managers + `npx` runner + `node`                                                                                                  |
+| `@zuke/cmd`                                                                                                                                         | `CmdTasks`                                                | `exec` — generic fallback for any CLI                                                                                                        |
+| `@zuke/docker`, `@zuke/docker-compose`                                                                                                              | `DockerTasks`, ...                                        | build/run/compose                                                                                                                            |
+| `@zuke/git`, `@zuke/gh`                                                                                                                             | `GitTasks`, `GhTasks`                                     | git — the everyday surface, typed (see below) — and GitHub CLI (`GhTasks.run` for subcommands, `GhTasks.api` for REST endpoints without one) |
+| `@zuke/cspell`, `@zuke/eslint`, `@zuke/oxlint`, `@zuke/biome`, `@zuke/dprint`, `@zuke/knip`, `@zuke/dpdm`, `@zuke/lint-staged`                      | `*Tasks`                                                  | lint/format/spell/dead-code                                                                                                                  |
+| `@zuke/tsc`, `@zuke/tsx`, `@zuke/tsc-alias`, `@zuke/tsup`, `@zuke/tsdown`, `@zuke/vite`, `@zuke/storybook`, `@zuke/turbo`, `@zuke/nx`, `@zuke/nest` | `*Tasks`                                                  | TS compile / bundle / monorepo / framework CLIs                                                                                              |
+| `@zuke/openapi-ts`, `@zuke/orval`, `@zuke/redocly`                                                                                                  | `*Tasks`                                                  | generate API clients from OpenAPI                                                                                                            |
+| `@zuke/husky`                                                                                                                                       | `HuskyTasks`                                              | git hooks                                                                                                                                    |
+| `@zuke/jest`, `@zuke/vitest`, `@zuke/playwright`, `@zuke/cypress`                                                                                   | `*Tasks`                                                  | test runners                                                                                                                                 |
+| `@zuke/jsr`, `@zuke/codecov`, `@zuke/release-please`                                                                                                | `JsrTasks`, `CodecovTasks`, ...                           | publish / coverage upload / releases                                                                                                         |
+| `@zuke/kubectl`, `@zuke/helm`, `@zuke/kustomize`, `@zuke/terraform`, `@zuke/tofu`, `@zuke/gcloud`                                                   | `*Tasks`                                                  | infra/deploy                                                                                                                                 |
+| `@zuke/security`                                                                                                                                    | `*Tasks`                                                  | security scanning                                                                                                                            |
+| `@zuke/claude`, `@zuke/codex`, `@zuke/gemini`                                                                                                       | `ClaudeTasks`, ...                                        | headless AI CLIs                                                                                                                             |
+| `@zuke/ai`                                                                                                                                          | `securityReviewer`, ..., `aiFixer`, `agentFixer`          | AI review gates + self-healing (see below)                                                                                                   |
+| `@zuke/otel`                                                                                                                                        | `otel` (a plugin)                                         | export runs and targets as OpenTelemetry traces (see below)                                                                                  |
 
 The catalog keeps growing — the package list in `llms.txt`'s `## Packages`
 catalogue (or the table above) is the source of truth for **whether a wrapper
@@ -696,8 +696,10 @@ const spec = await NodeTasks.evaluate("tools/openapi.mjs");
 await FileTasks.writeText("openapi.json", JSON.stringify(spec, null, 2));
 
 // A named export, called with arguments:
-const config = await NodeTasks.evaluate("dist/config.js", (s) =>
-  s.export("resolveConfig").callWith("production"));
+const config = await NodeTasks.evaluate(
+  "dist/config.js",
+  (s) => s.export("resolveConfig").callWith("production"),
+);
 ```
 
 `module` is a **path** resolved against the working directory (`.cwd()` moves
@@ -712,17 +714,56 @@ value it has already produced. `.exitAfterResult()` ends the Node process once
 the result has been written:
 
 ```ts
-const spec = await NodeTasks.evaluate("tools/openapi.mjs", (s) =>
-  s.export("buildDocument").exitAfterResult());
+const spec = await NodeTasks.evaluate(
+  "tools/openapi.mjs",
+  (s) => s.export("buildDocument").exitAfterResult(),
+);
 ```
 
 What the module would do after handing back its value does not happen: output is
-cut off, a `beforeExit` handler or a not-yet-awaited teardown never runs, and its
-exit code is no longer observed. Use it for a module whose value is the point of
-running it; keep the default for one whose after-the-value work matters (writing
-a file, committing a transaction, failing through an exit code). A module that
-throws before producing a result still fails the target, and one that exits on
-its own is unaffected.
+cut off, a `beforeExit` handler or a not-yet-awaited teardown never runs, and
+its exit code is no longer observed. Use it for a module whose value is the
+point of running it; keep the default for one whose after-the-value work matters
+(writing a file, committing a transaction, failing through an exit code). A
+module that throws before producing a result still fails the target, and one
+that exits on its own is unaffected.
+
+### git — `GitTasks`
+
+`GitTasks` wraps the everyday git surface, so a build never shells out for it:
+
+| Area                 | Tasks                                                              |
+| -------------------- | ------------------------------------------------------------------ |
+| Start a working area | `init`, `clone`, `worktree`                                        |
+| Working tree & index | `add`, `rm`, `mv`, `restore`, `clean`, `reset`, `stash`, `commit`  |
+| Branches & tags      | `branch`, `checkout`, `switch`, `tag`                              |
+| Inspect              | `status`, `log`, `show`, `diff`, `lsFiles`, `revParse`, `describe` |
+| Integrate            | `merge`, `rebase`, `cherryPick`, `revert`, `apply`                 |
+| Collaborate          | `push`, `pull`, `fetch`, `remote`, `lsRemote`, `submodule`         |
+| Everything else      | `config`, `archive`, `run`                                         |
+
+`run` (`s.command("bisect", "start")`) is for the long tail only — reaching for
+it, or for `CmdTasks.exec`, when a typed task exists discards the flags and the
+validation.
+
+A handful of tasks hand back **values** rather than `CommandOutput`, so a target
+reads git's answer instead of scraping stdout:
+
+```ts
+const changed = await GitTasks.diffNames((s) => s.mergeBase("origin/main")); // string[]
+const commits = await GitTasks.logEntries((s) => s.range("v1.2.0")); // subject, body, author, dates
+const dirty = await GitTasks.statusEntries(); // [] means a clean tree
+const files = await GitTasks.lsFileNames((s) => s.others().excludeStandard());
+const remotes = await GitTasks.remoteList(); // { name, fetchUrl, pushUrl }[]
+const sha = await GitTasks.revision((s) => s.short().rev("HEAD"));
+const url = await GitTasks.configGet((s) => s.get("remote.origin.url")); // undefined when unset
+```
+
+They pin the machine-readable form (`-z`, a separator-based `--format`), so a
+path with a space in it or a multi-line commit message parses correctly.
+
+`merge`, `rebase`, `cherryPick`, and `revert` share `.continue()`, `.abort()`,
+`.skip()`, `.quit()` for an operation a conflict left in progress.
 
 ### Worktrees — `GitTasks.worktree`
 
@@ -732,8 +773,10 @@ runs `git worktree list --porcelain` and hands back parsed entries, so a target
 reads them as values instead of scraping stdout.
 
 ```ts
-await GitTasks.worktree((s) => s.add(path).branch(name).createBranch()
-  .startPoint("origin/main")); // where the new branch forks from
+await GitTasks.worktree((s) =>
+  s.add(path).branch(name).createBranch()
+    .startPoint("origin/main")
+); // where the new branch forks from
 await GitTasks.worktree((s) => s.add(path).branch("release/1.2")); // existing branch
 const trees = await GitTasks.worktreeList(); // { path, head, branch, bare, detached, locked }[]
 await GitTasks.worktree((s) => s.remove(path).force()); // git refuses a dirty tree without it
@@ -745,9 +788,9 @@ every other git task.
 
 `GitTasks.defaultBranch((s) => s.remote("origin"))` returns what the remote
 calls its default branch, so a build never hardcodes `main` and breaks on the
-repositories that chose `master`. It reads the local `refs/remotes/<remote>/HEAD`
-first and asks the remote only when that ref is missing, which is the usual case
-on a fetch-only checkout.
+repositories that chose `master`. It reads the local
+`refs/remotes/<remote>/HEAD` first and asks the remote only when that ref is
+missing, which is the usual case on a fetch-only checkout.
 
 ## AI review & self-healing — `@zuke/ai`
 
@@ -787,8 +830,8 @@ Depth and discussion knobs (all optional, per reviewer):
   the model can check a finding against surrounding guards before reporting.
 - `.verify()` — a second, adversarial pass re-checks every candidate finding;
   only a refutation backed by citable contrary evidence removes one (listed in
-  the report, never gating), while a candidate the evidence neither confirms
-  nor refutes stays reported as `uncertain`.
+  the report, never gating), while a candidate the evidence neither confirms nor
+  refutes stays reported as `uncertain`.
 - `.comment("append")` — post a fresh PR comment per run (history stays on the
   thread) instead of the default single upserted comment per reviewer.
 - `.discussion((d) => d.threads())` — anchor each finding to its line as a PR

@@ -12,7 +12,7 @@ import {
   missingTool,
 } from "@zuke/core/tooling/conformance";
 import { GitWorktreeSettings, parseWorktreeList } from "../src/worktree.ts";
-import { GitTasks } from "../src/git.ts";
+import { GitTasks } from "../mod.ts";
 
 Deno.test("worktree add checks a path out, with or without a new branch", () => {
   assertEquals(new GitWorktreeSettings().add("../feature").argv(), [

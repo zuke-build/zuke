@@ -12,7 +12,7 @@ import {
   parseSymbolicRef,
   parseSymrefListing,
 } from "../src/default_branch.ts";
-import { GitTasks } from "../src/git.ts";
+import { GitTasks } from "../mod.ts";
 
 Deno.test("the local read asks for the remote's HEAD ref", () => {
   assertEquals(new GitDefaultBranchSettings().argv(), [
