@@ -23,9 +23,10 @@ import {
   GitPushSettings,
   GitRunSettings,
   GitStatusSettings,
+  GitSwitchSettings,
   GitTagSettings,
   GitTasks,
-} from "../src/git.ts";
+} from "../mod.ts";
 
 Deno.test("the default binary is git and global options precede the subcommand", () => {
   assertEquals(new GitStatusSettings().argv(), ["git", "status"]);
@@ -300,4 +301,180 @@ Deno.test("git: conforms to the wrapper contract", async () => {
   await assertWrapperConformance(() => new GitInitSettings(), "git", {
     resolution: "path",
   });
+});
+
+Deno.test("clone renders the flags a CI checkout needs", () => {
+  assertEquals(
+    new GitCloneSettings().repository("git@host:r.git").singleBranch()
+      .filter("blob:none").recurseSubmodules().argv(),
+    [
+      "git",
+      "clone",
+      "--single-branch",
+      "--filter=blob:none",
+      "--recurse-submodules",
+      "git@host:r.git",
+    ],
+  );
+});
+
+Deno.test("commit renders the author, hook skip, and pathspecs", () => {
+  assertEquals(
+    new GitCommitSettings().noVerify().author("CI <ci@example.test>")
+      .message("chore: regen").paths("docs").argv(),
+    [
+      "git",
+      "commit",
+      "--no-verify",
+      "--author=CI <ci@example.test>",
+      "-m",
+      "chore: regen",
+      "--",
+      "docs",
+    ],
+  );
+});
+
+Deno.test("checkout can detach at a ref", () => {
+  assertEquals(
+    new GitCheckoutSettings().detach().ref("v1.2.3").argv(),
+    ["git", "checkout", "--detach", "v1.2.3"],
+  );
+});
+
+Deno.test("switch renders creation, tracking, and the start point", () => {
+  assertEquals(
+    new GitSwitchSettings().create().branch("feature").startPoint("origin/main")
+      .argv(),
+    ["git", "switch", "-c", "feature", "origin/main"],
+  );
+  assertEquals(
+    new GitSwitchSettings().force().forceCreate().track("direct")
+      .branch("feature").argv(),
+    ["git", "switch", "--force", "--track=direct", "-C", "feature"],
+  );
+  assertEquals(
+    new GitSwitchSettings().detach().branch("v1.2.3").argv(),
+    ["git", "switch", "--detach", "v1.2.3"],
+  );
+  // `git switch --detach` alone detaches at the current HEAD, so only that
+  // form stands without a branch.
+  assertEquals(new GitSwitchSettings().detach().argv(), [
+    "git",
+    "switch",
+    "--detach",
+  ]);
+  assertThrows(() => new GitSwitchSettings().argv(), Error, ".branch(...)");
+  // -c and -C both create it; git takes one.
+  assertThrows(
+    () => new GitSwitchSettings().create().forceCreate().branch("x").argv(),
+    Error,
+    "pick one",
+  );
+});
+
+Deno.test("branch renders creation, renaming, upstreams, and listings", () => {
+  assertEquals(
+    new GitBranchSettings().name("release/1.2").startPoint("origin/main")
+      .argv(),
+    ["git", "branch", "release/1.2", "origin/main"],
+  );
+  assertEquals(
+    new GitBranchSettings().name("old").rename("new", true).argv(),
+    ["git", "branch", "-M", "old", "new"],
+  );
+  assertEquals(
+    new GitBranchSettings().name("feature").setUpstreamTo("origin/feature")
+      .argv(),
+    ["git", "branch", "--set-upstream-to=origin/feature", "feature"],
+  );
+  assertEquals(
+    new GitBranchSettings().remotes().merged("origin/main")
+      .contains("abc123").format("%(refname:short)").sort("-committerdate")
+      .argv(),
+    [
+      "git",
+      "branch",
+      "--remotes",
+      "--contains",
+      "abc123",
+      "--merged",
+      "origin/main",
+      "--format=%(refname:short)",
+      "--sort=-committerdate",
+    ],
+  );
+  assertThrows(
+    () => new GitBranchSettings().rename("new").argv(),
+    Error,
+    ".name(...)",
+  );
+});
+
+Deno.test("tag lists as well as creates, and refuses to do both", () => {
+  assertEquals(
+    new GitTagSettings().list("v1.*").sort("-v:refname").argv(),
+    ["git", "tag", "--sort=-v:refname", "--list", "v1.*"],
+  );
+  assertEquals(new GitTagSettings().list().argv(), ["git", "tag", "--list"]);
+  assertEquals(
+    new GitTagSettings().name("v1.2.3").commit("abc123").argv(),
+    ["git", "tag", "v1.2.3", "abc123"],
+  );
+  assertThrows(
+    () => new GitTagSettings().list().name("v1.2.3").argv(),
+    Error,
+    ".list()",
+  );
+});
+
+Deno.test("push renders the release flags and server options", () => {
+  assertEquals(
+    new GitPushSettings().followTags().atomic().dryRun()
+      .pushOption("ci.skip").remote("origin").ref("main").argv(),
+    [
+      "git",
+      "push",
+      "--follow-tags",
+      "--atomic",
+      "--dry-run",
+      "--push-option=ci.skip",
+      "origin",
+      "main",
+    ],
+  );
+});
+
+Deno.test("pull can pin merging, and refuses both rebase answers at once", () => {
+  assertEquals(
+    new GitPullSettings().noRebase().depth(1).tags().prune().remote("origin")
+      .argv(),
+    [
+      "git",
+      "pull",
+      "--no-rebase",
+      "--tags",
+      "--prune",
+      "--depth",
+      "1",
+      "origin",
+    ],
+  );
+  assertThrows(
+    () => new GitPullSettings().rebase().noRebase().argv(),
+    Error,
+    "pick one",
+  );
+});
+
+Deno.test("fetch can deepen a shallow clone, but not while truncating it", () => {
+  assertEquals(
+    new GitFetchSettings().unshallow().force().remote("origin").argv(),
+    ["git", "fetch", "--force", "--unshallow", "origin"],
+  );
+  assertThrows(
+    () => new GitFetchSettings().unshallow().depth(1).argv(),
+    Error,
+    "pick one",
+  );
 });
