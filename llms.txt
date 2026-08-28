@@ -101,7 +101,7 @@ Full reference: [docs/cli.md](./docs/cli.md).
 - [@zuke/cmd](https://jsr.io/@zuke/cmd) — generic command execution for Zuke builds: the fallback for
 - [@zuke/console](https://jsr.io/@zuke/console) — task-shaped console output for Zuke builds, so a build never
 - [@zuke/cli](https://jsr.io/@zuke/cli) — the `zuke` command. Install it globally with
-- [@zuke/docker](https://jsr.io/@zuke/docker) — typed `docker` CLI task wrappers for Zuke builds
+- [@zuke/docker](https://jsr.io/@zuke/docker) — typed `DockerTasks` wrappers for the `docker` CLI
 - [@zuke/docker-compose](https://jsr.io/@zuke/docker-compose) — typed Docker Compose task wrappers for Zuke builds
 - [@zuke/kubectl](https://jsr.io/@zuke/kubectl) — typed `kubectl` CLI task wrappers for Zuke builds, for
 - [@zuke/helm](https://jsr.io/@zuke/helm) — typed `HelmTasks` wrappers for the Helm (https://helm.sh) CLI,
