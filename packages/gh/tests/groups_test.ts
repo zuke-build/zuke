@@ -1,13 +1,18 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
-import { assertRejects } from "../../core/tests/_assert.ts";
+import { assertEquals, assertRejects } from "../../core/tests/_assert.ts";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import {
   assertWrapperConformance,
   missingTool,
 } from "@zuke/core/tooling/conformance";
-import { GhTasks } from "../mod.ts";
+import {
+  GhTasks,
+  ISSUE_LIST_FIELDS,
+  PR_LIST_FIELDS,
+  RELEASE_LIST_FIELDS,
+} from "../mod.ts";
 import { GhPrListSettings } from "../src/pr.ts";
 import { GhIssueListSettings } from "../src/issue.ts";
 import { GhReleaseListSettings } from "../src/release.ts";
@@ -123,4 +128,67 @@ Deno.test("every gh release task reaches execution", async () => {
     () => GhTasks.releaseDelete((s) => missingTool(s.tag("v1").yes())),
     ToolNotFoundError,
   );
+});
+
+Deno.test("each reader pins its own field set into the argv it runs", async () => {
+  // gh requires --json fields by name, and each reader's parse only makes
+  // sense against the set its entry documents. Asserting the constants alone
+  // would not catch a reader wired to the wrong one, so capture the settings
+  // the reader configures and read back the argv it was about to spawn.
+  const runs: Array<[string, string[], readonly string[], string[]]> = [];
+
+  let pr: GhPrListSettings | undefined;
+  await assertRejects(
+    () =>
+      GhTasks.prListEntries((s) => {
+        pr = s;
+        return missingTool(s);
+      }),
+    ToolNotFoundError,
+  );
+  if (pr !== undefined) {
+    runs.push(["prListEntries", pr.argv().slice(1), PR_LIST_FIELDS, [
+      "pr",
+      "list",
+    ]]);
+  }
+
+  let issue: GhIssueListSettings | undefined;
+  await assertRejects(
+    () =>
+      GhTasks.issueListEntries((s) => {
+        issue = s;
+        return missingTool(s);
+      }),
+    ToolNotFoundError,
+  );
+  if (issue !== undefined) {
+    runs.push(["issueListEntries", issue.argv().slice(1), ISSUE_LIST_FIELDS, [
+      "issue",
+      "list",
+    ]]);
+  }
+
+  let release: GhReleaseListSettings | undefined;
+  await assertRejects(
+    () =>
+      GhTasks.releaseListEntries((s) => {
+        release = s;
+        return missingTool(s);
+      }),
+    ToolNotFoundError,
+  );
+  if (release !== undefined) {
+    runs.push([
+      "releaseListEntries",
+      release.argv().slice(1),
+      RELEASE_LIST_FIELDS,
+      ["release", "list"],
+    ]);
+  }
+
+  assertEquals(runs.length, 3);
+  for (const [task, argv, fields, path] of runs) {
+    assertEquals(argv, [...path, "--json", fields.join(",")], task);
+  }
 });
