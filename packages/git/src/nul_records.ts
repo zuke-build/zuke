@@ -9,6 +9,12 @@
  * thing git cannot put a NUL inside, which is why the `-z` forms are the only
  * safe way to read a list of paths back.
  *
+ * The file is `nul_records.ts` rather than `nul.ts` because `NUL` is a
+ * reserved DOS device name: Windows still resolves it with any extension, so
+ * git refuses to check a `nul.ts` out at all (`error: invalid path`) and every
+ * Windows job dies before it runs. `tests/reserved_filenames_test.ts` keeps
+ * that from being rediscovered the hard way.
+ *
  * @module
  */
 

@@ -20,7 +20,7 @@
 
 import type { Configure, PathLike } from "@zuke/core/tooling";
 import { GitSettings } from "./settings.ts";
-import { splitNul } from "./nul.ts";
+import { splitNul } from "./nul_records.ts";
 
 /** Settings for `git diff`. */
 export class GitDiffSettings extends GitSettings {

@@ -20,7 +20,7 @@
 
 import type { Configure } from "@zuke/core/tooling";
 import { GitSettings } from "./settings.ts";
-import { splitNul } from "./nul.ts";
+import { splitNul } from "./nul_records.ts";
 
 /** Settings for `git status`. */
 export class GitStatusSettings extends GitSettings {

@@ -21,7 +21,7 @@ import {
 } from "../mod.ts";
 import { parseLogEntries } from "../src/log.ts";
 import { parseStatusEntries } from "../src/status.ts";
-import { splitNul } from "../src/nul.ts";
+import { splitNul } from "../src/nul_records.ts";
 
 Deno.test("log renders its filters, then revisions, then pathspecs", () => {
   assertEquals(
