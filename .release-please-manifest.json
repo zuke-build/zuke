@@ -2,7 +2,7 @@
   "packages/core": "1.42.1",
   "packages/deno": "1.0.1",
   "packages/docs": "1.0.1",
-  "packages/npm": "1.0.1",
+  "packages/npm": "1.1.0",
   "packages/npx": "1.0.1",
   "packages/bun": "1.0.1",
   "packages/pnpm": "1.0.1",
