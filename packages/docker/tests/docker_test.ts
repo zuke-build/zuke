@@ -28,7 +28,7 @@ import {
   DockerStopSettings,
   DockerTagSettings,
   DockerTasks,
-} from "../src/docker.ts";
+} from "../mod.ts";
 
 Deno.test("the default binary is docker", () => {
   assertEquals(new DockerPsSettings().argv()[0], "docker");
