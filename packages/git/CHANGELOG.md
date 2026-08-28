@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0](https://github.com/zuke-build/zuke/compare/git-v1.3.0...git-v1.4.0) (2026-08-28)
+
+
+### Features
+
+* **git:** expand task coverage and add value-returning forms ([#398](https://github.com/zuke-build/zuke/issues/398)) ([8c82cac](https://github.com/zuke-build/zuke/commit/8c82cac568507f3645c0f9d93ad4c50a83906aac))
+
 ## [1.3.0](https://github.com/zuke-build/zuke/compare/git-v1.2.0...git-v1.3.0) (2026-08-26)
 
 
