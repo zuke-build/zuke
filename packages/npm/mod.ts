@@ -10,21 +10,29 @@
  *
  * await NpmTasks.ci();
  * await NpmTasks.run((s) => s.script("build"));
+ * const stale = await NpmTasks.outdatedEntries();
  * ```
+ *
+ * Typed tasks cover the everyday npm surface — installing, running scripts,
+ * publishing, registry administration, inspection, and the project's own
+ * files. A handful hand back parsed values rather than raw output:
+ * `outdatedEntries`, `auditSummary`, `pkgGet`, and `whoamiName`.
  *
  * @module
  */
 
+export * from "./src/settings.ts";
+export * from "./src/npm.ts";
+export * from "./src/install.ts";
+export * from "./src/scripts.ts";
+export * from "./src/publish.ts";
+export * from "./src/registry.ts";
+export * from "./src/project.ts";
 export {
-  type NpmAccess,
-  NpmCiSettings,
-  NpmExecSettings,
-  NpmInstallSettings,
-  type NpmOmitType,
-  NpmPublishSettings,
-  NpmRunSettings,
-  NpmSettings,
-  NpmTasks,
-  type NpmTasksApi,
-  NpmVersionSettings,
-} from "./src/npm.ts";
+  NpmAuditSettings,
+  type NpmAuditSummary,
+  NpmLsSettings,
+  type NpmOutdatedEntry,
+  NpmOutdatedSettings,
+  NpmSbomSettings,
+} from "./src/inspect.ts";
