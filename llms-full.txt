@@ -12046,6 +12046,19 @@ async function uploadSarifReport(configure?: Configure<GhSarifSettings>): Promis
 const GhTasks: GhTasksApi
   Typed task functions for GitHub: the `gh` CLI and the REST-only operations.
 
+const ISSUE_LIST_FIELDS: readonly string[]
+  The `--json` fields {@link readIssues} asks for; gh requires the list by
+  name, so the reader pins the set {@link GhIssueEntry} describes.
+
+const PR_LIST_FIELDS: readonly string[]
+  The `--json` fields {@link readPullRequests} asks for. gh requires the list
+  by name — there is no "everything" form — so the reader pins the set its
+  {@link GhPullRequestEntry} describes.
+
+const RELEASE_LIST_FIELDS: readonly string[]
+  The `--json` fields {@link readReleases} asks for; gh requires the list by
+  name, so the reader pins the set {@link GhReleaseEntry} describes.
+
 class GhApiError extends Error
   A GitHub REST call that did not succeed, carrying the status.
 
@@ -12139,6 +12152,21 @@ class GhAppTokenSettings
   tokenRequest_(): Record<string, unknown>
     The `access_tokens` request body — only the fields that were narrowed.
 
+abstract class GhBodySettings extends GhCommandSettings
+  Base for the commands that take message text: `pr create`, `pr comment`,
+  `pr edit`, `issue create`, `issue comment`.
+
+  gh spells it `--body` for the text and `--body-file` for a file, with `-`
+  meaning standard input — the same pair on every one of them.
+
+  body(text: string): this
+    The message text (`--body`).
+  bodyFile(path: PathLike): this
+    Read the message from a file (`--body-file`); `-` reads standard input.
+  protected bodyFlags(task: string): string[]
+    The body flags, after refusing both at once: gh takes one source for the
+    text, and silently preferring one would hide which text was posted.
+
 class GhCheckRunSettings
   Settings for posting a completed check run.
 
@@ -12205,6 +12233,20 @@ class GhCheckRunSettings
   authToken_(): string
     The effective token, from the setting or the environment.
 
+abstract class GhCommandSettings extends GhSettings
+  Base for a typed `gh` subcommand: it contributes the command path (the
+  group, the verb, and any operand) and its own flags, and inherits
+  everything else from {@link "./settings.ts".GhSettings}.
+
+  abstract protected commandPath(): string[]
+    The command path — group, verb, then any positional operand.
+  abstract protected commandFlags(): string[]
+    This command's own flags, rendered after `--repo`.
+  override protected leadingTokens(): string[]
+    The command path leads the argv, before anything `.command(...)` added.
+  override protected middleTokens(): string[]
+    `--repo` first, as the package already renders it, then this command's flags.
+
 class GhCommitSettings
   Settings for committing files through the API.
 
@@ -12265,6 +12307,312 @@ class GhCommitSettings
   authToken_(): string
     The effective token, from the setting or the environment.
 
+class GhIssueCloseSettings extends GhCommandSettings
+  Settings for `gh issue close`.
+
+  selector(value: string | number): this
+    The issue — its number or URL (required).
+  comment(text: string): this
+    Leave a closing comment (`--comment`).
+  reason(value: GhCloseReason): this
+    Why it is closed (`--reason`).
+  duplicateOf(numberOrUrl: string | number): this
+    Which issue it duplicates (`--duplicate-of`), by number or URL.
+  override protected commandPath(): string[]
+    The `gh issue close` command path.
+  override protected commandFlags(): string[]
+    Assemble the `gh issue close` flags.
+
+class GhIssueCommentSettings extends GhBodySettings
+  Settings for `gh issue comment`.
+
+  selector(value: string | number): this
+    The issue — its number or URL (required).
+  editLast(): this
+    Edit your most recent comment instead of adding one (`--edit-last`).
+  createIfNone(): this
+    With {@link editLast}, post a new comment when there is none (`--create-if-none`).
+  deleteLast(): this
+    Delete your most recent comment (`--delete-last`).
+  yes(): this
+    Skip the confirmation a delete otherwise prompts for (`--yes`).
+  override protected commandPath(): string[]
+    The `gh issue comment` command path.
+  override protected commandFlags(): string[]
+    Assemble the `gh issue comment` flags.
+
+class GhIssueCreateSettings extends GhBodySettings
+  Settings for `gh issue create`.
+
+  title(text: string): this
+    The issue's title (`--title`).
+  assignee(...logins: string[]): this
+    Assign someone by login (`--assignee`), `@me` for yourself; repeatable.
+  label(...names: string[]): this
+    Add a label by name (`--label`); repeatable.
+  project(...titles: string[]): this
+    Add to a project by title (`--project`); repeatable.
+  milestone(name: string): this
+    Add to a milestone by name (`--milestone`).
+  type(name: string): this
+    Set the issue type by name (`--type`).
+  parent(numberOrUrl: string | number): this
+    File it as a sub-issue of this number or URL (`--parent`).
+  templateName(name: string): this
+    The issue template to start the body from (`--template`).
+  override protected commandPath(): string[]
+    The `gh issue create` command path.
+  override protected commandFlags(): string[]
+    Assemble the `gh issue create` flags.
+
+class GhIssueListSettings extends GhWebReadSettings
+  Settings for `gh issue list`.
+
+  state(value: "open" | "closed" | "all"): this
+    Filter by state (`--state`): `open`, `closed`, or `all`.
+  author(login: string): this
+    Filter by author (`--author`).
+  app(name: string): this
+    Filter by the GitHub App that opened it (`--app`).
+  assignee(login: string): this
+    Filter by assignee (`--assignee`).
+  mention(login: string): this
+    Filter by who is mentioned (`--mention`).
+  milestone(nameOrNumber: string): this
+    Filter by milestone number or title (`--milestone`).
+  type(name: string): this
+    Filter by issue type (`--type`).
+  label(...names: string[]): this
+    Filter by label (`--label`); repeatable.
+  limit(count: number): this
+    Cap how many are fetched (`--limit`); gh's default is 30.
+  search(query: string): this
+    Filter with a search query (`--search`).
+  override protected commandPath(): string[]
+    The `gh issue list` command path.
+  override protected commandFlags(): string[]
+    Assemble the `gh issue list` flags.
+
+class GhIssueViewSettings extends GhWebReadSettings
+  Settings for `gh issue view`.
+
+  selector(value: string | number): this
+    The issue — its number or URL (required).
+  comments(): this
+    Include the comments (`--comments`).
+  override protected commandPath(): string[]
+    The `gh issue view` command path.
+  override protected commandFlags(): string[]
+    Assemble the `gh issue view` flags.
+
+class GhPrChecksSettings extends GhPrReadSettings
+  Settings for `gh pr checks`.
+
+  watch(): this
+    Keep watching until the checks finish (`--watch`). A target that watches
+    blocks until CI is done, so pair it with `.killAfter(...)` unless the wait
+    is the point.
+  failFast(): this
+    Stop watching at the first failure (`--fail-fast`).
+  required(): this
+    Only the checks marked required (`--required`).
+  interval(seconds: number): this
+    How often to refresh while watching (`--interval`), in seconds.
+  override protected commandPath(): string[]
+    The `gh pr checks` command path.
+  override protected commandFlags(): string[]
+    Assemble the `gh pr checks` flags, refusing the flags that only mean
+    something while watching — gh ignores them otherwise, which would leave a
+    build believing it had asked for something it had not.
+
+class GhPrCloseSettings extends GhCommandSettings
+  Settings for `gh pr close`.
+
+  selector(value: string | number): this
+    The pull request — number, URL, or branch; defaults to the current branch's.
+  comment(text: string): this
+    Leave a closing comment (`--comment`).
+  deleteBranch(): this
+    Delete the branch afterwards (`--delete-branch`).
+  override protected commandPath(): string[]
+    The `gh pr close` command path.
+  override protected commandFlags(): string[]
+    Assemble the `gh pr close` flags.
+
+class GhPrCommentSettings extends GhPrTargetSettings
+  Settings for `gh pr comment`.
+
+  editLast(): this
+    Edit your most recent comment instead of adding one (`--edit-last`).
+  createIfNone(): this
+    With {@link editLast}, post a new comment when there is none (`--create-if-none`).
+  deleteLast(): this
+    Delete your most recent comment (`--delete-last`).
+  yes(): this
+    Skip the confirmation a delete otherwise prompts for (`--yes`).
+  override protected commandPath(): string[]
+    The `gh pr comment` command path.
+  override protected commandFlags(): string[]
+    Assemble the `gh pr comment` flags.
+
+class GhPrCreateSettings extends GhBodySettings
+  Settings for `gh pr create`.
+
+  title(text: string): this
+    The pull request's title (`--title`).
+  base(branch: string): this
+    The branch to merge into (`--base`).
+  head(branch: string): this
+    The branch holding the commits (`--head`).
+  assignee(...logins: string[]): this
+    Assign someone by login (`--assignee`), `@me` for yourself; repeatable.
+  label(...names: string[]): this
+    Add a label by name (`--label`); repeatable.
+  reviewer(...handles: string[]): this
+    Request a review from a person or team (`--reviewer`); repeatable.
+  milestone(name: string): this
+    Add to a milestone by name (`--milestone`).
+  project(...titles: string[]): this
+    Add to a project by title (`--project`); repeatable.
+  draft(): this
+    Open it as a draft (`--draft`).
+  fill(): this
+    Take the title and body from the commits (`--fill`).
+  fillFirst(): this
+    Take them from the first commit only (`--fill-first`).
+  fillVerbose(): this
+    Take the body from every commit's message (`--fill-verbose`).
+  dryRun(): this
+    Print what would be created without creating it (`--dry-run`).
+  noMaintainerEdit(): this
+    Refuse maintainer edits to the branch (`--no-maintainer-edit`).
+  templateFile(path: string): this
+    A template file to seed the body from (`--template`).
+  override protected commandPath(): string[]
+    The `gh pr create` command path.
+  override protected commandFlags(): string[]
+    Assemble the `gh pr create` flags.
+
+class GhPrEditSettings extends GhPrTargetSettings
+  Settings for `gh pr edit`.
+
+  title(text: string): this
+    Set the title (`--title`).
+  base(branch: string): this
+    Change the base branch (`--base`).
+  addLabel(...names: string[]): this
+    Add a label (`--add-label`); repeatable.
+  removeLabel(...names: string[]): this
+    Remove a label (`--remove-label`); repeatable.
+  addAssignee(...logins: string[]): this
+    Add an assignee (`--add-assignee`); repeatable.
+  removeAssignee(...logins: string[]): this
+    Remove an assignee (`--remove-assignee`); repeatable.
+  addReviewer(...handles: string[]): this
+    Request a review (`--add-reviewer`); repeatable.
+  removeReviewer(...handles: string[]): this
+    Drop a review request (`--remove-reviewer`); repeatable.
+  addProject(...titles: string[]): this
+    Add to a project by title (`--add-project`); repeatable.
+  removeProject(...titles: string[]): this
+    Take it off a project by title (`--remove-project`); repeatable.
+  milestone(name: string): this
+    Set the milestone (`--milestone`).
+  removeMilestone(): this
+    Clear the milestone (`--remove-milestone`).
+  override protected commandPath(): string[]
+    The `gh pr edit` command path.
+  override protected commandFlags(): string[]
+    Assemble the `gh pr edit` flags.
+
+class GhPrListSettings extends GhWebReadSettings
+  Settings for `gh pr list`.
+
+  state(value: "open" | "closed" | "merged" | "all"): this
+    Filter by state (`--state`): `open`, `closed`, `merged`, or `all`.
+  base(branch: string): this
+    Filter by base branch (`--base`).
+  head(branch: string): this
+    Filter by head branch (`--head`).
+  author(login: string): this
+    Filter by author (`--author`).
+  app(name: string): this
+    Filter by the GitHub App that opened it (`--app`).
+  assignee(login: string): this
+    Filter by assignee (`--assignee`).
+  label(...names: string[]): this
+    Filter by label (`--label`); repeatable.
+  limit(count: number): this
+    Cap how many are fetched (`--limit`); gh's default is 30.
+  search(query: string): this
+    Filter with a search query (`--search`).
+  draft(): this
+    Only draft pull requests (`--draft`).
+  override protected commandPath(): string[]
+    The `gh pr list` command path.
+  override protected commandFlags(): string[]
+    Assemble the `gh pr list` flags.
+
+class GhPrMergeSettings extends GhPrTargetSettings
+  Settings for `gh pr merge`.
+
+  merge(): this
+    Merge with a merge commit (`--merge`).
+  squash(): this
+    Squash the commits into one (`--squash`).
+  rebase(): this
+    Rebase the commits onto the base (`--rebase`).
+  auto(): this
+    Merge once the requirements are met (`--auto`).
+  disableAuto(): this
+    Turn auto-merge off again (`--disable-auto`).
+  admin(): this
+    Merge with administrator privileges (`--admin`).
+  deleteBranch(): this
+    Delete the branch afterwards (`--delete-branch`).
+  subject(text: string): this
+    The merge commit's subject (`--subject`).
+  authorEmail(address: string): this
+    The merge commit's author email (`--author-email`).
+  matchHeadCommit(sha: string): this
+    Refuse the merge unless the head is still this commit
+    (`--match-head-commit`) — the guard against merging a PR that moved
+    between the check and the merge.
+  override protected commandPath(): string[]
+    The `gh pr merge` command path.
+  override protected commandFlags(): string[]
+    Assemble the `gh pr merge` flags.
+
+abstract class GhPrReadSettings extends GhWebReadSettings
+  Base for the `pr` commands that read one pull request and can print JSON —
+  `view` and `checks` — so the operand has one implementation across them.
+
+  selector(value: string | number): this
+    The pull request — number, URL, or branch; defaults to the current branch's.
+  protected selectorArgs(): string[]
+    The operand, when one was given.
+
+abstract class GhPrTargetSettings extends GhBodySettings
+  Base for the `pr` commands that take a pull request and post text —
+  `merge`, `comment`, and `edit` — so the operand and the `--body` pair have
+  one implementation across them.
+
+  selector(value: string | number): this
+    The pull request — its number, URL, or branch name. Omit it to act on the
+    PR for the current branch, as gh does.
+  protected selectorArgs(): string[]
+    The operand, when one was given.
+
+class GhPrViewSettings extends GhPrReadSettings
+  Settings for `gh pr view`.
+
+  comments(): this
+    Include the comments (`--comments`).
+  override protected commandPath(): string[]
+    The `gh pr view` command path.
+  override protected commandFlags(): string[]
+    Assemble the `gh pr view` flags.
+
 class GhPullRequestSettings
   Settings for opening a pull request.
 
@@ -12307,6 +12655,27 @@ class GhPullRequestSettings
     The effective `owner/repo`, from the setting or the environment.
   authToken_(): string
     The effective token, from the setting or the environment.
+
+abstract class GhReadSettings extends GhCommandSettings
+  Base for the commands that can print JSON: `pr list`, `pr view`,
+  `pr checks`, `issue list`, `issue view`, `release list`, `release view`.
+
+  gh requires an explicit field list for `--json`, which is why the
+  value-returning tasks pin one rather than leaving it to the caller.
+
+  A `…ListEntries` reader parses the array `--json` prints, so `.jq(...)` and
+  `.template(...)` — which replace that array with whatever they render —
+  belong on the plain `…List` task instead.
+
+  json(...fields: string[]): this
+    Emit JSON with these fields (`--json`), which gh requires by name — there
+    is no "all fields" form.
+  jq(expression: string): this
+    Filter the JSON with a jq expression (`--jq`).
+  template(text: string): this
+    Format the JSON through a Go template (`--template`).
+  protected readFlags(): string[]
+    The read flags, for a subclass to place among its own.
 
 class GhReleaseAssetSettings
   Settings for {@link GhReleaseAssetApi.uploadReleaseAsset}.
@@ -12365,6 +12734,111 @@ class GhReleaseAssetSettings
   effectiveContentType_(): string
     The effective `content-type`: the setting, or inferred by extension.
 
+class GhReleaseCreateSettings extends GhCommandSettings
+  Settings for `gh release create`.
+
+  tag(name: string): this
+    The tag to release (required); gh creates it when it does not exist.
+  files(...paths: PathLike[]): this
+    Asset files to attach (positional); repeatable. gh reads a `#label`
+    suffix on a path as the asset's display label.
+  title(text: string): this
+    The release title (`--title`).
+  notes(text: string): this
+    The release notes (`--notes`).
+  notesFile(path: PathLike): this
+    Read the notes from a file (`--notes-file`); `-` reads standard input.
+  generateNotes(): this
+    Have GitHub write the title and notes (`--generate-notes`).
+  notesFromTag(): this
+    Take the notes from the tag's annotation (`--notes-from-tag`).
+  notesStartTag(name: string): this
+    Generate notes starting from this tag (`--notes-start-tag`).
+  draft(): this
+    Save it as a draft rather than publishing (`--draft`).
+  prerelease(): this
+    Mark it a prerelease (`--prerelease`).
+  latest(): this
+    Mark it the latest release (`--latest`).
+  target(branchOrSha: string): this
+    The branch or commit to tag (`--target`).
+  discussionCategory(name: string): this
+    Open a discussion in this category (`--discussion-category`).
+  verifyTag(): this
+    Abort unless the tag already exists on the remote (`--verify-tag`).
+  failOnNoCommits(): this
+    Fail when there are no commits since the last release (`--fail-on-no-commits`).
+  override protected commandPath(): string[]
+    The `gh release create` command path, with the tag and any assets.
+  override protected commandFlags(): string[]
+    Assemble the `gh release create` flags.
+
+class GhReleaseDeleteSettings extends GhCommandSettings
+  Settings for `gh release delete`.
+
+  tag(name: string): this
+    The release to delete, by tag (required).
+  cleanupTag(): this
+    Delete the git tag as well (`--cleanup-tag`).
+  yes(): this
+    Skip the confirmation prompt (`--yes`).
+  override protected commandPath(): string[]
+    The `gh release delete` command path.
+  override protected commandFlags(): string[]
+    Assemble the `gh release delete` flags.
+
+class GhReleaseDownloadSettings extends GhCommandSettings
+  Settings for `gh release download`.
+
+  tag(name: string): this
+    The release's tag; gh takes the latest release when it is omitted.
+  pattern(...globs: string[]): this
+    Only assets matching this glob (`--pattern`); repeatable.
+  dir(path: PathLike): this
+    The directory to download into (`--dir`).
+  output(path: PathLike): this
+    Write a single asset to this file (`--output`); `-` writes standard output.
+  archive(format: "zip" | "tar.gz"): this
+    Download the source archive instead of the assets (`--archive`).
+  clobber(): this
+    Overwrite files that already exist (`--clobber`).
+  skipExisting(): this
+    Leave files that already exist alone (`--skip-existing`).
+  override protected commandPath(): string[]
+    The `gh release download` command path.
+  override protected commandFlags(): string[]
+    Assemble the `gh release download` flags.
+
+class GhReleaseEditSettings extends GhCommandSettings
+  Settings for `gh release edit`.
+
+  tag(name: string): this
+    The release to edit, by its current tag (required).
+  newTag(name: string): this
+    Move the release to a different tag (`--tag`).
+  title(text: string): this
+    Set the title (`--title`).
+  notes(text: string): this
+    Set the notes (`--notes`).
+  notesFile(path: PathLike): this
+    Read the notes from a file (`--notes-file`); `-` reads standard input.
+  draft(): this
+    Make it a draft (`--draft`).
+  prerelease(): this
+    Mark it a prerelease (`--prerelease`).
+  latest(): this
+    Mark it the latest release (`--latest`).
+  target(branchOrSha: string): this
+    Change the target branch or commit (`--target`).
+  discussionCategory(name: string): this
+    Open a discussion in this category when publishing (`--discussion-category`).
+  verifyTag(): this
+    Abort unless the tag exists on the remote (`--verify-tag`).
+  override protected commandPath(): string[]
+    The `gh release edit` command path.
+  override protected commandFlags(): string[]
+    Assemble the `gh release edit` flags.
+
 class GhReleaseLatestSettings
   Settings for marking a release as latest.
 
@@ -12395,6 +12869,47 @@ class GhReleaseLatestSettings
     The effective `owner/repo`, from the setting or the environment.
   authToken_(): string
     The effective token, from the setting or the environment.
+
+class GhReleaseListSettings extends GhReadSettings
+  Settings for `gh release list`.
+
+  limit(count: number): this
+    Cap how many are fetched (`--limit`); gh's default is 30.
+  order(direction: "asc" | "desc"): this
+    The order they come back in (`--order`): `asc` or `desc`.
+  excludeDrafts(): this
+    Leave out drafts (`--exclude-drafts`).
+  excludePreReleases(): this
+    Leave out prereleases (`--exclude-pre-releases`).
+  override protected commandPath(): string[]
+    The `gh release list` command path.
+  override protected commandFlags(): string[]
+    Assemble the `gh release list` flags.
+
+class GhReleaseUploadSettings extends GhCommandSettings
+  Settings for `gh release upload`.
+
+  tag(name: string): this
+    The release's tag (required).
+  files(...paths: PathLike[]): this
+    Asset files to attach (required); repeatable. gh reads a `#label` suffix
+    on a path as the asset's display label.
+  clobber(): this
+    Replace an asset of the same name (`--clobber`).
+  override protected commandPath(): string[]
+    The `gh release upload` command path, with the tag and the assets.
+  override protected commandFlags(): string[]
+    Assemble the `gh release upload` flags.
+
+class GhReleaseViewSettings extends GhWebReadSettings
+  Settings for `gh release view`.
+
+  tag(name: string): this
+    The release's tag; gh shows the latest release when it is omitted.
+  override protected commandPath(): string[]
+    The `gh release view` command path.
+  override protected commandFlags(): string[]
+    Assemble the `gh release view` flags.
 
 class GhSarifSettings
   Settings for {@link GhSarifApi.uploadSarif}.
@@ -12491,6 +13006,18 @@ class GhTagSettings
     The effective `owner/repo`, from the setting or the environment.
   authToken_(): string
     The effective token, from the setting or the environment.
+
+abstract class GhWebReadSettings extends GhReadSettings
+  Base for the read commands that also take `--web`: every one of them except
+  `release list`, which gh gives no browser view. Keeping `.web()` here rather
+  than on {@link GhReadSettings} is what stops a build offering a flag gh
+  would reject.
+
+  web(): this
+    Open the result in a browser instead of printing it (`--web`). A build
+    has no browser, so this is for a developer running the target by hand.
+  override protected readFlags(): string[]
+    The read flags, with `--web` last as gh's own help lists it.
 
 class GithubWorkflowSettings
   Configuration for {@link githubWorkflow}, set through a settings lambda. Every
@@ -12614,6 +13141,62 @@ interface GhCommitResult
   branch: string
     The branch it landed on.
 
+interface GhIssueApi
+  The `gh issue` members of {@link "./gh.ts".GhTasks}.
+
+  issueCreate(configure?: Configure<GhIssueCreateSettings>): Promise<CommandOutput>
+    Open an issue: `gh issue create`.
+  issueList(configure?: Configure<GhIssueListSettings>): Promise<CommandOutput>
+    List issues: `gh issue list`.
+  issueListEntries(configure?: Configure<GhIssueListSettings>): Promise<GhIssueEntry[]>
+    The issues as parsed {@link GhIssueEntry} values. The `--json` field set
+    is pinned, since gh requires one by name.
+  issueView(configure?: Configure<GhIssueViewSettings>): Promise<CommandOutput>
+    Show an issue: `gh issue view`.
+  issueComment(configure?: Configure<GhIssueCommentSettings>): Promise<CommandOutput>
+    Comment on an issue: `gh issue comment`.
+  issueClose(configure?: Configure<GhIssueCloseSettings>): Promise<CommandOutput>
+    Close an issue: `gh issue close`.
+
+interface GhIssueEntry
+  One issue of {@link "./gh.ts".GhTasks.issueListEntries}.
+
+  number?: number
+    The issue's number.
+  title?: string
+    Its title.
+  state?: string
+    Its state, as gh reports it: `OPEN` or `CLOSED`.
+  url?: string
+    Its web URL.
+  author?: string
+    The login of whoever opened it.
+
+interface GhPrApi
+  The `gh pr` members of {@link "./gh.ts".GhTasks}.
+
+  prCreate(configure?: Configure<GhPrCreateSettings>): Promise<CommandOutput>
+    Open a pull request: `gh pr create`. Needs the `gh` binary and its auth;
+    {@link "./pull_request.ts".GhPullRequestApi.pullRequest} is the REST path,
+    which needs a token instead.
+  prList(configure?: Configure<GhPrListSettings>): Promise<CommandOutput>
+    List pull requests: `gh pr list`.
+  prListEntries(configure?: Configure<GhPrListSettings>): Promise<GhPullRequestEntry[]>
+    The pull requests as parsed {@link GhPullRequestEntry} values. The
+    `--json` field set is pinned, since gh requires one by name.
+  prView(configure?: Configure<GhPrViewSettings>): Promise<CommandOutput>
+    Show a pull request: `gh pr view`.
+  prChecks(configure?: Configure<GhPrChecksSettings>): Promise<CommandOutput>
+    Report a pull request's checks: `gh pr checks`.
+  prMerge(configure?: Configure<GhPrMergeSettings>): Promise<CommandOutput>
+    Merge a pull request: `gh pr merge`.
+  prComment(configure?: Configure<GhPrCommentSettings>): Promise<CommandOutput>
+    Comment on a pull request: `gh pr comment`.
+  prEdit(configure?: Configure<GhPrEditSettings>): Promise<CommandOutput>
+    Change a pull request's metadata: `gh pr edit`.
+  prClose(configure?: Configure<GhPrCloseSettings>): Promise<CommandOutput>
+    Close a pull request: `gh pr close`.
+
 interface GhPullRequestApi
   The pull-request operation {@link GhTasks} exposes.
 
@@ -12637,6 +13220,26 @@ interface GhPullRequestApi
     what it should report. Opening one to find out is not a substitute: by
     then the branch it would have to prepare has already been written.
 
+interface GhPullRequestEntry
+  One pull request of {@link "./gh.ts".GhTasks.prListEntries}.
+
+  number?: number
+    The pull request's number.
+  title?: string
+    Its title.
+  state?: string
+    Its state, as gh reports it: `OPEN`, `CLOSED`, or `MERGED`.
+  isDraft?: boolean
+    Whether it is still a draft.
+  headRefName?: string
+    The branch the changes are on.
+  baseRefName?: string
+    The branch they would merge into.
+  url?: string
+    Its web URL.
+  author?: string
+    The login of whoever opened it.
+
 interface GhPullRequestResult
   The pull request a {@link GhPullRequestApi.pullRequest} call resolved to.
 
@@ -12650,6 +13253,29 @@ interface GhPullRequestResult
     Worth reporting rather than hiding: "proposed" and "already proposed" are
     different things to a human reading a build log, even though neither is a
     failure.
+
+interface GhReleaseApi
+  The `gh release` members of {@link "./gh.ts".GhTasks}.
+
+  releaseCreate(configure?: Configure<GhReleaseCreateSettings>): Promise<CommandOutput>
+    Publish a release: `gh release create`.
+  releaseList(configure?: Configure<GhReleaseListSettings>): Promise<CommandOutput>
+    List releases: `gh release list`.
+  releaseListEntries(configure?: Configure<GhReleaseListSettings>): Promise<GhReleaseEntry[]>
+    The releases as parsed {@link GhReleaseEntry} values. The `--json` field
+    set is pinned, since gh requires one by name.
+  releaseView(configure?: Configure<GhReleaseViewSettings>): Promise<CommandOutput>
+    Show a release: `gh release view`.
+  releaseUpload(configure?: Configure<GhReleaseUploadSettings>): Promise<CommandOutput>
+    Attach assets to a release: `gh release upload`. Needs the `gh` binary;
+    {@link "./release_asset.ts".GhReleaseAssetApi.uploadReleaseAsset} is the
+    REST path, which needs a token instead.
+  releaseDownload(configure?: Configure<GhReleaseDownloadSettings>): Promise<CommandOutput>
+    Download a release's assets: `gh release download`.
+  releaseEdit(configure?: Configure<GhReleaseEditSettings>): Promise<CommandOutput>
+    Change a release: `gh release edit`.
+  releaseDelete(configure?: Configure<GhReleaseDeleteSettings>): Promise<CommandOutput>
+    Remove a release: `gh release delete`.
 
 interface GhReleaseAssetApi
   The shape of the release-asset task, mixed into `GhTasks`.
@@ -12679,6 +13305,22 @@ interface GhReleaseAssetResult
     The id of the release the asset belongs to, when one was resolved.
   url?: string
     The asset's download URL, when it was uploaded or already present.
+
+interface GhReleaseEntry
+  One release of {@link "./gh.ts".GhTasks.releaseListEntries}.
+
+  tagName?: string
+    The release's tag.
+  name?: string
+    Its name, which GitHub calls the title.
+  isDraft?: boolean
+    Whether it is still a draft.
+  isPrerelease?: boolean
+    Whether it is marked a prerelease.
+  isLatest?: boolean
+    Whether it is the latest release.
+  publishedAt?: string
+    When it was published, ISO 8601; absent while it is a draft.
 
 interface GhReleaseLatestApi
   The mark-latest operation {@link GhTasks} exposes.
@@ -12722,7 +13364,7 @@ interface GhSarifUploadResult
   url: string
     The URL that reports whether GitHub finished processing the report.
 
-interface GhTasksApi extends GhAppTokenApi, GhSarifApi, GhReleaseAssetApi, GhReleaseLatestApi, GhCommitApi, GhPullRequestApi, GhCheckRunApi
+interface GhTasksApi extends GhAppTokenApi, GhSarifApi, GhReleaseAssetApi, GhReleaseLatestApi, GhCommitApi, GhPullRequestApi, GhCheckRunApi, GhPrApi, GhIssueApi, GhReleaseApi
   The shape of {@link GhTasks}: the `gh` CLI plus the GitHub operations that
   have no CLI subcommand (see {@link GhAppTokenApi}, {@link GhSarifApi}) and
   would otherwise force a build back to a marketplace action.
@@ -12773,6 +13415,12 @@ type GhCheckConclusion = "success" | "failure" | "neutral" | "cancelled" | "skip
 
   `"stale"` is deliberately absent: GitHub sets it itself and rejects it from a
   caller.
+
+type GhCloseReason = "completed" | "not planned" | "duplicate"
+  Why an issue is being closed (`--reason`).
+
+type GhMergeMethod = "merge" | "squash" | "rebase"
+  How `gh pr merge` combines the commits.
 
 type GhPermissionLevel = "read" | "write" | "admin"
   A permission level an installation token can be narrowed to.

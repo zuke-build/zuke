@@ -1,5 +1,5 @@
 {
   "name": "zuke",
-  "version": "0.22.0",
+  "version": "0.23.0",
   "description": "Agent skills for Zuke — scaffold Zuke into a project (zuke-setup) and write or edit a zuke.ts build (zuke-write-build)."
 }
