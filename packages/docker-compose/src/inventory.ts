@@ -6,7 +6,7 @@
  * changing it: `images`, `ls`, `volumes`, `version`, `port` and `events`.
  */
 
-import { DockerComposeSettings } from "./settings.ts";
+import { DockerComposeSettings, ReplicaIndex } from "./settings.ts";
 
 /**
  * Shared by the listing subcommands that accept `--format` and `--quiet`.
@@ -144,7 +144,7 @@ export class DockerComposePortSettings extends DockerComposeSettings {
   #service?: string;
   #privatePort?: number;
   #protocol?: "tcp" | "udp";
-  #index?: number;
+  #index = new ReplicaIndex();
 
   /** The service to ask about (required). */
   service(name: string): this {
@@ -166,7 +166,7 @@ export class DockerComposePortSettings extends DockerComposeSettings {
 
   /** Pick the replica to ask when the service has several (`--index`). */
   index(value: number): this {
-    this.#index = value;
+    this.#index.set(value);
     return this;
   }
 
@@ -180,7 +180,7 @@ export class DockerComposePortSettings extends DockerComposeSettings {
     }
     const argv = ["port"];
     if (this.#protocol !== undefined) argv.push("--protocol", this.#protocol);
-    if (this.#index !== undefined) argv.push("--index", String(this.#index));
+    argv.push(...this.#index.render());
     argv.push(this.#service, String(this.#privatePort));
     return argv;
   }

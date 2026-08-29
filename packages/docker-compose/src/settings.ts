@@ -100,3 +100,25 @@ export abstract class DockerComposeSettings extends ToolSettings {
     return super.run();
   }
 }
+
+/**
+ * The `--index` flag that picks one replica of a scaled service.
+ *
+ * `cp`, `export`, `commit` and `port` all take it with the same meaning and
+ * the same rendering, so they hold one of these rather than four copies of
+ * the field and the `argv.push` that goes with it. Each still exposes its own
+ * setter, because the public surface is per-command.
+ */
+export class ReplicaIndex {
+  #index?: number;
+
+  /** Record the replica to act on. */
+  set(value: number): void {
+    this.#index = value;
+  }
+
+  /** The flag, if one was set. */
+  render(): string[] {
+    return this.#index === undefined ? [] : ["--index", String(this.#index)];
+  }
+}

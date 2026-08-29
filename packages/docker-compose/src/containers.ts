@@ -7,7 +7,7 @@
  */
 
 import type { PathLike } from "@zuke/core/tooling";
-import { DockerComposeSettings } from "./settings.ts";
+import { DockerComposeSettings, ReplicaIndex } from "./settings.ts";
 
 /** Settings for `compose run`. */
 export class DockerComposeRunSettings extends DockerComposeSettings {
@@ -273,7 +273,7 @@ export class DockerComposeCpSettings extends DockerComposeSettings {
   #to?: string;
   #fromIsService = false;
   #toIsService = false;
-  #index?: number;
+  #index = new ReplicaIndex();
   #all = false;
   #archive = false;
   #followLink = false;
@@ -308,7 +308,7 @@ export class DockerComposeCpSettings extends DockerComposeSettings {
 
   /** Pick the replica to copy from when the service has several (`--index`). */
   index(value: number): this {
-    this.#index = value;
+    this.#index.set(value);
     return this;
   }
 
@@ -349,7 +349,7 @@ export class DockerComposeCpSettings extends DockerComposeSettings {
     if (this.#all) argv.push("--all");
     if (this.#archive) argv.push("--archive");
     if (this.#followLink) argv.push("--follow-link");
-    if (this.#index !== undefined) argv.push("--index", String(this.#index));
+    argv.push(...this.#index.render());
     argv.push(this.#from, this.#to);
     return argv;
   }
@@ -375,7 +375,7 @@ export class DockerComposeTopSettings extends DockerComposeSettings {
 export class DockerComposeExportSettings extends DockerComposeSettings {
   #service?: string;
   #output?: string;
-  #index?: number;
+  #index = new ReplicaIndex();
 
   /** The service whose container filesystem to export (required). */
   service(name: string): this {
@@ -395,7 +395,7 @@ export class DockerComposeExportSettings extends DockerComposeSettings {
 
   /** Pick the replica to export when the service has several (`--index`). */
   index(value: number): this {
-    this.#index = value;
+    this.#index.set(value);
     return this;
   }
 
@@ -406,7 +406,7 @@ export class DockerComposeExportSettings extends DockerComposeSettings {
     }
     const argv = ["export"];
     if (this.#output !== undefined) argv.push("--output", this.#output);
-    if (this.#index !== undefined) argv.push("--index", String(this.#index));
+    argv.push(...this.#index.render());
     argv.push(this.#service);
     return argv;
   }
@@ -419,7 +419,7 @@ export class DockerComposeCommitSettings extends DockerComposeSettings {
   #author?: string;
   #message?: string;
   #changes: string[] = [];
-  #index?: number;
+  #index = new ReplicaIndex();
   #noPause = false;
 
   /** The service whose container to commit (required). */
@@ -454,7 +454,7 @@ export class DockerComposeCommitSettings extends DockerComposeSettings {
 
   /** Pick the replica to commit when the service has several (`--index`). */
   index(value: number): this {
-    this.#index = value;
+    this.#index.set(value);
     return this;
   }
 
@@ -477,7 +477,7 @@ export class DockerComposeCommitSettings extends DockerComposeSettings {
     if (this.#author !== undefined) argv.push("--author", this.#author);
     if (this.#message !== undefined) argv.push("--message", this.#message);
     for (const change of this.#changes) argv.push("--change", change);
-    if (this.#index !== undefined) argv.push("--index", String(this.#index));
+    argv.push(...this.#index.render());
     if (this.#noPause) argv.push("--pause=false");
     argv.push(this.#service);
     if (this.#reference !== undefined) argv.push(this.#reference);
