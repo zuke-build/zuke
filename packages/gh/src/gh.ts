@@ -81,6 +81,15 @@ import {
   type GhPrApi,
   type GhReleaseApi,
 } from "./groups.ts";
+import {
+  ghActionsTasks,
+  type GhCacheApi,
+  type GhRunApi,
+  type GhSecretApi,
+  type GhVariableApi,
+  type GhWorkflowApi,
+} from "./actions_tasks.ts";
+import { type GhLabelApi, type GhRepoApi, ghRepoTasks } from "./repo_tasks.ts";
 
 /**
  * The shape of {@link GhTasks}: the `gh` CLI plus the GitHub operations that
@@ -98,7 +107,14 @@ export interface GhTasksApi
     GhCheckRunApi,
     GhPrApi,
     GhIssueApi,
-    GhReleaseApi {
+    GhReleaseApi,
+    GhRunApi,
+    GhWorkflowApi,
+    GhSecretApi,
+    GhVariableApi,
+    GhCacheApi,
+    GhRepoApi,
+    GhLabelApi {
   /** Run a `gh` command. */
   run(configure?: Configure<GhSettings>): Promise<CommandOutput>;
   /**
@@ -115,6 +131,8 @@ export interface GhTasksApi
 /** Typed task functions for GitHub: the `gh` CLI and the REST-only operations. */
 export const GhTasks: GhTasksApi = {
   ...ghGroupTasks,
+  ...ghActionsTasks,
+  ...ghRepoTasks,
   run(configure?: Configure<GhSettings>): Promise<CommandOutput> {
     return runSettings(new GhSettings(), configure);
   },
