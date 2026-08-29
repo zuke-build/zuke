@@ -361,10 +361,15 @@ class DenoInfoSettings extends DenoSettings
   Settings for `deno info`.
 
   path(file: PathLike): this
-    The module to report on. Omit it to report on the caches themselves —
-    `deno info` with no file prints the cache directories rather than a module
-    graph, which is why {@link DenoTasks.cacheInfo} and
-    {@link DenoTasks.moduleGraph} are separate readers.
+    The module to report on — a path, or any specifier `deno info` accepts,
+    including a `file://` URL. Prefer the URL form when the specifier is
+    built rather than typed: it is the same string on every OS, where a
+    constructed path is not.
+
+    Omit it to report on the caches themselves — `deno info` with no module
+    prints the cache directories rather than a module graph, which is why
+    {@link DenoTasks.cacheInfo} and {@link DenoTasks.moduleGraph} are separate
+    readers.
   json(): this
     Emit the report as JSON (`--json`).
   config(path: PathLike): this

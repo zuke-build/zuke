@@ -129,21 +129,34 @@ Deno.test("the readers fail loudly when deno is missing", async () => {
 Deno.test("moduleGraph: the real deno info reports a self-contained module", async () => {
   // Hermetic: the settings class defaults to Deno.execPath(), so this drives
   // the deno already running the suite, and the fixture imports nothing, so
-  // building its graph needs no network.
-  const dir = await Deno.makeTempDir();
-  try {
-    const entry = `${dir}/mod.ts`;
-    await Deno.writeTextFile(entry, "export const answer = 42;\n");
-    const graph = await DenoTasks.moduleGraph((s) => s.path(entry).cwd(dir));
-    assertEquals(graph.roots.length, 1);
-    assertEquals(graph.roots[0].endsWith("/mod.ts"), true);
-    assertEquals(graph.modules.length, 1);
-    assertEquals(graph.modules[0].mediaType, "TypeScript");
-    assertEquals(graph.modules[0].error, undefined);
-    assertEquals(graph.modules[0].dependencies, []);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
+  // building its graph needs no network. The fixture is addressed by file URL
+  // rather than by a built path — that string is identical on every OS, where
+  // an interpolated path is not, which is what made an earlier version of this
+  // test read a not-found module on Windows.
+  const entry = new URL("./fixtures/self_contained.ts", import.meta.url).href;
+  const graph = await DenoTasks.moduleGraph((s) => s.path(entry));
+  assertEquals(graph.roots.length, 1);
+  assertEquals(graph.roots[0].endsWith("/fixtures/self_contained.ts"), true);
+  assertEquals(graph.modules.length, 1);
+  // Asserted before the shape below: a module deno could not load carries an
+  // error and none of the rest, so naming the error first says why.
+  assertEquals(graph.modules[0].error, undefined);
+  assertEquals(graph.modules[0].specifier, graph.roots[0]);
+  assertEquals(graph.modules[0].kind, "esm");
+  assertEquals(graph.modules[0].mediaType, "TypeScript");
+  assertEquals(graph.modules[0].dependencies, []);
+});
+
+Deno.test("moduleGraph: a module deno cannot load comes back as an error entry", async () => {
+  // deno info exits 0 for a module it could not resolve and reports the
+  // failure as data, so the reader must surface it rather than the run
+  // throwing — a build reading the graph needs to see which module is broken.
+  const missing = new URL("./fixtures/not_here.ts", import.meta.url).href;
+  const graph = await DenoTasks.moduleGraph((s) => s.path(missing));
+  assertEquals(graph.modules.length, 1);
+  assertEquals(graph.modules[0].specifier.endsWith("/not_here.ts"), true);
+  assertEquals(graph.modules[0].mediaType, undefined);
+  assertEquals(typeof graph.modules[0].error, "string");
 });
 
 Deno.test("cacheInfo: the real deno info reports its cache directories", async () => {
