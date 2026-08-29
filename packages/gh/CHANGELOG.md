@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.8.0](https://github.com/zuke-build/zuke/compare/gh-v1.7.0...gh-v1.8.0) (2026-08-29)
+
+
+### Features
+
+* **gh:** wrap the run, workflow, repo and Actions config commands ([#410](https://github.com/zuke-build/zuke/issues/410)) ([d3f2ba8](https://github.com/zuke-build/zuke/commit/d3f2ba8d36b8bb251d85bf6bf7ce07e82f9b119f)), closes [#409](https://github.com/zuke-build/zuke/issues/409)
+
 ## [1.7.0](https://github.com/zuke-build/zuke/compare/gh-v1.6.0...gh-v1.7.0) (2026-08-29)
 
 
