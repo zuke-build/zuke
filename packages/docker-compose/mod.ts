@@ -20,4 +20,35 @@
  * @module
  */
 
-export * from "./src/docker_compose.ts";
+export {
+  DockerComposeTasks,
+  type DockerComposeTasksApi,
+} from "./src/docker_compose.ts";
+export {
+  type ComposeProbe,
+  defaultComposeProbe,
+  resetComposeInvocationCache_,
+  resolveComposeInvocation,
+} from "./src/invocation.ts";
+export { DockerComposeSettings } from "./src/settings.ts";
+export {
+  DockerComposeDownSettings,
+  type DockerComposePullPolicy,
+  DockerComposeRestartSettings,
+  DockerComposeRmSettings,
+  DockerComposeStartSettings,
+  DockerComposeStopSettings,
+  DockerComposeUpSettings,
+} from "./src/lifecycle.ts";
+export {
+  DockerComposeBuildSettings,
+  DockerComposePullSettings,
+  DockerComposePushSettings,
+} from "./src/images.ts";
+export {
+  DockerComposeConfigSettings,
+  DockerComposeExecSettings,
+  DockerComposeLogsSettings,
+  DockerComposePsSettings,
+  DockerComposeRunSettings,
+} from "./src/containers.ts";
