@@ -21,6 +21,49 @@
  */
 
 export * from "./src/gh.ts";
+export {
+  GhBodySettings,
+  GhCommandSettings,
+  GhReadSettings,
+  GhWebReadSettings,
+} from "./src/subcommand.ts";
+export type { GhIssueApi, GhPrApi, GhReleaseApi } from "./src/groups.ts";
+export {
+  type GhMergeMethod,
+  GhPrChecksSettings,
+  GhPrCloseSettings,
+  GhPrCommentSettings,
+  GhPrCreateSettings,
+  GhPrEditSettings,
+  GhPrListSettings,
+  GhPrMergeSettings,
+  GhPrReadSettings,
+  GhPrTargetSettings,
+  GhPrViewSettings,
+  type GhPullRequestEntry,
+  PR_LIST_FIELDS,
+} from "./src/pr.ts";
+export {
+  type GhCloseReason,
+  GhIssueCloseSettings,
+  GhIssueCommentSettings,
+  GhIssueCreateSettings,
+  type GhIssueEntry,
+  GhIssueListSettings,
+  GhIssueViewSettings,
+  ISSUE_LIST_FIELDS,
+} from "./src/issue.ts";
+export {
+  GhReleaseCreateSettings,
+  GhReleaseDeleteSettings,
+  GhReleaseDownloadSettings,
+  GhReleaseEditSettings,
+  type GhReleaseEntry,
+  GhReleaseListSettings,
+  GhReleaseUploadSettings,
+  GhReleaseViewSettings,
+  RELEASE_LIST_FIELDS,
+} from "./src/release.ts";
 export { GhApiSettings } from "./src/api_command.ts";
 export {
   assertRefName,

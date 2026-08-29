@@ -650,7 +650,7 @@ the full task list and settings methods of each):
 | `@zuke/npm`, `@zuke/npx`, `@zuke/bun`, `@zuke/pnpm`, `@zuke/yarn`, `@zuke/node`                                                                     | `NpmTasks`, `NpxTasks`, `BunTasks`, ...                   | JS package managers + `npx` runner + `node`. `NpmTasks` covers npm's everyday surface — install/publish/registry/inspect — and hands back values from `outdatedEntries`, `auditSummary`, `pkgGet`, `whoamiName`                                |
 | `@zuke/cmd`                                                                                                                                         | `CmdTasks`                                                | `exec` — generic fallback for any CLI                                                                                                                                                                                                          |
 | `@zuke/docker`, `@zuke/docker-compose`                                                                                                              | `DockerTasks`, ...                                        | build/run/compose. `DockerTasks` covers the everyday docker surface — containers, images, registry, and the `volume`/`network`/`system`/`context` groups — with `psEntries`, `imageEntries`, `volumeNames`, `networkNames` handing back values |
-| `@zuke/git`, `@zuke/gh`                                                                                                                             | `GitTasks`, `GhTasks`                                     | git — the everyday surface, typed (see below) — and GitHub CLI (`GhTasks.run` for subcommands, `GhTasks.api` for REST endpoints without one)                                                                                                   |
+| `@zuke/git`, `@zuke/gh`                                                                                                                             | `GitTasks`, `GhTasks`                                     | git — the everyday surface, typed (see below) — and GitHub CLI: typed `pr`/`issue`/`release` tasks (see below), `GhTasks.run` for every other subcommand, `GhTasks.api` for REST endpoints without one                                         |
 | `@zuke/cspell`, `@zuke/eslint`, `@zuke/oxlint`, `@zuke/biome`, `@zuke/dprint`, `@zuke/knip`, `@zuke/dpdm`, `@zuke/lint-staged`                      | `*Tasks`                                                  | lint/format/spell/dead-code                                                                                                                                                                                                                    |
 | `@zuke/tsc`, `@zuke/tsx`, `@zuke/tsc-alias`, `@zuke/tsup`, `@zuke/tsdown`, `@zuke/vite`, `@zuke/storybook`, `@zuke/turbo`, `@zuke/nx`, `@zuke/nest` | `*Tasks`                                                  | TS compile / bundle / monorepo / framework CLIs                                                                                                                                                                                                |
 | `@zuke/openapi-ts`, `@zuke/orval`, `@zuke/redocly`                                                                                                  | `*Tasks`                                                  | generate API clients from OpenAPI                                                                                                                                                                                                              |
@@ -791,6 +791,36 @@ calls its default branch, so a build never hardcodes `main` and breaks on the
 repositories that chose `master`. It reads the local
 `refs/remotes/<remote>/HEAD` first and asks the remote only when that ref is
 missing, which is the usual case on a fetch-only checkout.
+
+### GitHub CLI — `GhTasks`
+
+The three groups a build reaches for are typed; everything else goes through
+`GhTasks.run((s) => s.command(...))`, and REST endpoints with no CLI verb
+through `GhTasks.api(...)`.
+
+| Group     | Tasks                                                                                                                                   |
+| --------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `pr`      | `prCreate`, `prList`, `prListEntries`, `prView`, `prChecks`, `prMerge`, `prComment`, `prEdit`, `prClose`                                |
+| `issue`   | `issueCreate`, `issueList`, `issueListEntries`, `issueView`, `issueComment`, `issueClose`                                               |
+| `release` | `releaseCreate`, `releaseList`, `releaseListEntries`, `releaseView`, `releaseUpload`, `releaseDownload`, `releaseEdit`, `releaseDelete` |
+
+```ts
+await GhTasks.prMerge((s) => s.selector(123).squash().deleteBranch().auto());
+await GhTasks.issueClose((s) => s.selector(42).reason("completed"));
+await GhTasks.releaseCreate((s) => s.tag("v1.2.3").generateNotes().latest());
+const open = await GhTasks.prListEntries((s) => s.state("open").limit(50));
+```
+
+Each takes `.repo("owner/name")` and keeps `.command(...)`/`.flag(...)` for a
+flag not yet modelled. The `…ListEntries` readers pin gh's `--json` field set —
+gh requires one by name — and hand back parsed entries, so a build branches on
+data rather than on scraped text.
+
+Where gh would **prompt**, the settings refuse first: `releaseDelete` and a
+comment's `.deleteLast()` need `.yes()`, and `issueCreate` needs `.title(...)`.
+Flag pairs gh resolves silently in its own favour — a draft that is also the
+latest release, `--pattern` alongside `--archive` — are refused too, so a build
+never gets an outcome other than the one it asked for.
 
 ## AI review & self-healing — `@zuke/ai`
 

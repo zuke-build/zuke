@@ -25,11 +25,8 @@
  * @module
  */
 
-import {
-  type Configure,
-  runSettings,
-  SubcommandSettings,
-} from "@zuke/core/tooling";
+import { type Configure, runSettings } from "@zuke/core/tooling";
+import { GhSettings } from "./settings.ts";
 import type { CommandOutput } from "@zuke/core/shell";
 import {
   type GhAppTokenApi,
@@ -77,27 +74,13 @@ import {
   markReleaseLatest,
 } from "./release_latest.ts";
 import { callApi, type GhApiSettings } from "./api_command.ts";
-
-/** Settings for a `gh` invocation. */
-export class GhSettings extends SubcommandSettings {
-  #repo?: string;
-
-  /** The default executable name: `gh`. */
-  protected override defaultTool(): string {
-    return "gh";
-  }
-
-  /** Target repository as `OWNER/REPO` (`-R`/`--repo`). */
-  repo(slug: string): this {
-    this.#repo = slug;
-    return this;
-  }
-
-  /** Emit `--repo <slug>` between the command path and the flags, when set. */
-  protected override middleTokens(): string[] {
-    return this.#repo !== undefined ? ["--repo", this.#repo] : [];
-  }
-}
+export { GhSettings };
+import {
+  ghGroupTasks,
+  type GhIssueApi,
+  type GhPrApi,
+  type GhReleaseApi,
+} from "./groups.ts";
 
 /**
  * The shape of {@link GhTasks}: the `gh` CLI plus the GitHub operations that
@@ -112,7 +95,10 @@ export interface GhTasksApi
     GhReleaseLatestApi,
     GhCommitApi,
     GhPullRequestApi,
-    GhCheckRunApi {
+    GhCheckRunApi,
+    GhPrApi,
+    GhIssueApi,
+    GhReleaseApi {
   /** Run a `gh` command. */
   run(configure?: Configure<GhSettings>): Promise<CommandOutput>;
   /**
@@ -128,6 +114,7 @@ export interface GhTasksApi
 
 /** Typed task functions for GitHub: the `gh` CLI and the REST-only operations. */
 export const GhTasks: GhTasksApi = {
+  ...ghGroupTasks,
   run(configure?: Configure<GhSettings>): Promise<CommandOutput> {
     return runSettings(new GhSettings(), configure);
   },
