@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 /**
- * The `kubectl` commands that reach into a running pod: `logs`, `exec`, and
- * `port-forward`.
+ * The `kubectl` commands that reach into a running pod: `logs`, `exec`,
+ * `port-forward`, and `cp`.
  *
  * @module
  */
@@ -193,6 +193,80 @@ export class KubectlPortForwardSettings extends KubectlSettings {
     const argv = ["port-forward", ...this.globalArgs()];
     if (this.#address !== undefined) argv.push("--address", this.#address);
     argv.push(this.#resource, ...this.#ports);
+    return argv;
+  }
+}
+
+/**
+ * Settings for `kubectl cp` — copying files into and out of a container.
+ *
+ * This is how a build gets a report out of a pod that produced it. Each side
+ * is either a local path or a `[namespace/]pod:path` spec, and kubectl takes
+ * exactly one of each.
+ */
+export class KubectlCpSettings extends KubectlSettings {
+  #from?: string;
+  #to?: string;
+  #container?: string;
+  #noPreserve = false;
+  #retries?: number;
+
+  /** Where to copy from: a local path, or `pod:path` / `namespace/pod:path`. */
+  from(spec: string): this {
+    this.#from = spec;
+    return this;
+  }
+
+  /** Where to copy to, in the same two forms. */
+  to(spec: string): this {
+    this.#to = spec;
+    return this;
+  }
+
+  /** Which container of the pod (`-c`). */
+  container(name: string): this {
+    this.#container = name;
+    return this;
+  }
+
+  /** Do not carry ownership and permissions across (`--no-preserve`). */
+  noPreserve(): this {
+    this.#noPreserve = true;
+    return this;
+  }
+
+  /** Retry a copy out of a container this many times (`--retries`). */
+  retries(count: number): this {
+    this.#retries = count;
+    return this;
+  }
+
+  /** Assemble the `kubectl cp` argv. */
+  protected override buildArgs(): string[] {
+    if (this.#from === undefined || this.#to === undefined) {
+      throw new Error(
+        "KubectlTasks.cp: .from(...) and .to(...) are both required — the " +
+          "source and the destination.",
+      );
+    }
+    const remote = (spec: string) => spec.includes(":");
+    if (!remote(this.#from) && !remote(this.#to)) {
+      throw new Error(
+        "KubectlTasks.cp: one side has to name a pod, as `pod:path` or " +
+          "`namespace/pod:path` — kubectl copies between a pod and the local " +
+          "filesystem, not between two local paths.",
+      );
+    }
+    if (remote(this.#from) && remote(this.#to)) {
+      throw new Error(
+        "KubectlTasks.cp: kubectl copies between a pod and the local " +
+          "filesystem, so only one side can name a pod.",
+      );
+    }
+    const argv = ["cp", ...this.globalArgs(), this.#from, this.#to];
+    if (this.#container !== undefined) argv.push("-c", this.#container);
+    if (this.#noPreserve) argv.push("--no-preserve");
+    if (this.#retries !== undefined) argv.push(`--retries=${this.#retries}`);
     return argv;
   }
 }

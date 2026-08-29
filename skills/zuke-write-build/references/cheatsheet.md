@@ -657,7 +657,7 @@ the full task list and settings methods of each):
 | `@zuke/husky`                                                                                                                                       | `HuskyTasks`                                              | git hooks                                                                                                                                                                                                                                                    |
 | `@zuke/jest`, `@zuke/vitest`, `@zuke/playwright`, `@zuke/cypress`                                                                                   | `*Tasks`                                                  | test runners                                                                                                                                                                                                                                                 |
 | `@zuke/jsr`, `@zuke/codecov`, `@zuke/release-please`                                                                                                | `JsrTasks`, `CodecovTasks`, ...                           | publish / coverage upload / releases                                                                                                                                                                                                                         |
-| `@zuke/kubectl`, `@zuke/helm`, `@zuke/kustomize`, `@zuke/terraform`, `@zuke/tofu`, `@zuke/gcloud`                                                   | `*Tasks`                                                  | infra/deploy                                                                                                                                                                                                                                                 |
+| `@zuke/kubectl`, `@zuke/helm`, `@zuke/kustomize`, `@zuke/terraform`, `@zuke/tofu`, `@zuke/gcloud`                                                   | `*Tasks`                                                  | infra/deploy. `KubectlTasks` covers the deploy surface — manifests, workloads, pods, nodes, kubeconfig — with `diffHasChanges`, `canI`, `getEntries`, `eventEntries`, `currentContext`, `versionInfo` handing back values (see below)                        |
 | `@zuke/security`                                                                                                                                    | `*Tasks`                                                  | security scanning                                                                                                                                                                                                                                            |
 | `@zuke/claude`, `@zuke/codex`, `@zuke/gemini`                                                                                                       | `ClaudeTasks`, ...                                        | headless AI CLIs                                                                                                                                                                                                                                             |
 | `@zuke/ai`                                                                                                                                          | `securityReviewer`, ..., `aiFixer`, `agentFixer`          | AI review gates + self-healing (see below)                                                                                                                                                                                                                   |
@@ -856,6 +856,54 @@ repository is public. Every `run` command needs its `.selector(...)`, since gh
 otherwise shows a picker. Flag pairs gh resolves silently in its own favour — a
 draft that is also the latest release, `--pattern` alongside `--archive` — are
 refused too, so a build never gets an outcome other than the one it asked for.
+
+### Kubernetes — `KubectlTasks`
+
+| Area                 | Tasks                                                                                                                                                              |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Manifests            | `apply`, `create`, `replace`, `delete`, `diff`, `diffHasChanges`, `kustomize`                                                                                      |
+| Resources            | `get`, `getEntries`, `getNamespaces`, `describe`, `patch`, `annotate`, `label`, `explain`                                                                          |
+| Workloads            | `rollout`, `scale`, `setImage`, `setEnv`, `setResources`, `run`, `expose`                                                                                          |
+| Pods                 | `logs`, `exec`, `cp`, `portForward`                                                                                                                                |
+| Diagnostics          | `wait`, `top`, `events`, `eventEntries`                                                                                                                            |
+| Cluster & kubeconfig | `currentContext`, `contexts`, `useContext`, `setContext`, `configView`, `version`, `versionInfo`, `clusterInfo`, `apiResources`, `apiVersions`, `authCanI`, `canI` |
+| Nodes                | `cordon`, `drain`, `taint`                                                                                                                                         |
+
+**Two exit codes are answers, not failures.** `kubectl diff` exits 1 when it
+finds differences and `auth can-i` exits non-zero when the action is not
+allowed, so each has a task that keeps the ordinary contract and a reader that
+hands back the value. Anything above those codes still fails the build.
+
+```ts
+// Fails the target on drift — what a gate wants.
+await KubectlTasks.diff((s) => s.file("k8s/").serverSide());
+// Reads the same thing as a value, so the build decides.
+const drifted = await KubectlTasks.diffHasChanges((s) => s.file("k8s/"));
+const allowed = await KubectlTasks.canI((s) =>
+  s.verb("create").resource("deployments")
+);
+
+const context = await KubectlTasks.currentContext();
+await KubectlTasks.useContext((s) => s.contextName("staging"));
+const events = await KubectlTasks.eventEntries((s) =>
+  s.forResource("deploy/api")
+);
+await KubectlTasks.rollout((s) => s.pause().resource("deploy/api"));
+await KubectlTasks.cp((s) =>
+  s.from("prod/api-0:/out/report.xml").to("reports/")
+);
+await KubectlTasks.drain((s) =>
+  s.node("w1").ignoreDaemonSets().deleteEmptyDirData()
+);
+```
+
+`.context(...)` is the global flag pointing one command at a context;
+`.contextName(...)` on `useContext`/`setContext` is the operand naming the
+context to switch to. Two methods are renamed off the CLI because the base class
+already owns the name: kubectl's `--quiet` on `auth can-i` is `.quietAnswer()`
+(`.quiet()` suppresses Zuke's own echo), and `kubectl run
+--env` is
+`.envVar(key, value)` (`.env(...)` sets kubectl's own environment).
 
 ## AI review & self-healing — `@zuke/ai`
 

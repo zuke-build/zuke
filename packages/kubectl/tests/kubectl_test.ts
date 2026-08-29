@@ -459,7 +459,7 @@ Deno.test("rollout: requires action and resource; sub-actions and flags", () => 
   assertThrows(
     () => new KubectlRolloutSettings().resource("deployment/api").argv(),
     Error,
-    "choose .status(), .restart(), .undo(), or .history()",
+    "choose .status(), .restart(), .undo(), .history()",
   );
   assertThrows(
     () => new KubectlRolloutSettings().status().argv(),

@@ -3,7 +3,7 @@
 
 /**
  * The `kubectl` commands that read and edit resources in place: `get`,
- * `describe`, `annotate`, `label`, and `patch`.
+ * `describe`, `annotate`, `label`, `patch`, and `explain`.
  *
  * @module
  */
@@ -347,6 +347,71 @@ export class KubectlPatchSettings extends KubectlSettings {
     const argv = ["patch", ...this.globalArgs(), this.#resource];
     if (this.#type !== undefined) argv.push("--type", this.#type);
     argv.push("-p", this.#patch);
+    return argv;
+  }
+}
+
+/** Settings for `kubectl explain` — the schema of a resource type. */
+export class KubectlExplainSettings extends KubectlSettings {
+  #type?: string;
+  #recursive = false;
+  #maxDepth?: number;
+  #apiVersion?: string;
+  #output?: string;
+
+  /** The type to explain, e.g. `pods` or `deployments.spec.replicas`. */
+  type(name: string): this {
+    this.#type = name;
+    return this;
+  }
+
+  /** Print nested fields too (`-R`). */
+  recursive(): this {
+    this.#recursive = true;
+    return this;
+  }
+
+  /** Cap how deep {@link recursive} goes (`--max-depth`). */
+  maxDepth(depth: number): this {
+    this.#maxDepth = depth;
+    return this;
+  }
+
+  /** Explain a particular API group/version (`--api-version`). */
+  apiVersion(value: string): this {
+    this.#apiVersion = value;
+    return this;
+  }
+
+  /** How to render the schema (`-o`): `plaintext` or `plaintext-openapiv2`. */
+  output(format: string): this {
+    this.#output = format;
+    return this;
+  }
+
+  /** Assemble the `kubectl explain` argv. */
+  protected override buildArgs(): string[] {
+    if (this.#type === undefined) {
+      throw new Error("KubectlTasks.explain: .type(...) is required.");
+    }
+    // kubectl rejects a positive --max-depth without --recursive.
+    if (
+      this.#maxDepth !== undefined && this.#maxDepth > 0 && !this.#recursive
+    ) {
+      throw new Error(
+        "KubectlTasks.explain: .maxDepth(...) caps the recursion, so it needs " +
+          ".recursive() — add it, or drop the depth.",
+      );
+    }
+    const argv = ["explain", ...this.globalArgs(), this.#type];
+    if (this.#recursive) argv.push("-R");
+    if (this.#maxDepth !== undefined) {
+      argv.push(`--max-depth=${this.#maxDepth}`);
+    }
+    if (this.#apiVersion !== undefined) {
+      argv.push(`--api-version=${this.#apiVersion}`);
+    }
+    if (this.#output !== undefined) argv.push("-o", this.#output);
     return argv;
   }
 }

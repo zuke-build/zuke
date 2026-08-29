@@ -3,7 +3,7 @@
 
 /**
  * The `kubectl` commands a build reads to find out what the cluster is doing:
- * `wait` and `top`.
+ * `wait`, `top`, and `events`.
  *
  * @module
  */
@@ -150,6 +150,71 @@ export class KubectlTopSettings extends KubectlSettings {
     if (this.#selector !== undefined) argv.push("-l", this.#selector);
     if (this.#containers) argv.push("--containers");
     if (this.#allNamespaces) argv.push("-A");
+    return argv;
+  }
+}
+
+/**
+ * Settings for `kubectl events` — the first thing to read when a rollout
+ * stalls and `rollout status` will not say why.
+ */
+export class KubectlEventsSettings extends KubectlSettings {
+  #for?: string;
+  #types: string[] = [];
+  #allNamespaces = false;
+  #watch = false;
+  #noHeaders = false;
+  #output?: string;
+
+  /** Only events about this resource, as `TYPE/NAME` (`--for`). */
+  forResource(reference: string): this {
+    this.#for = reference;
+    return this;
+  }
+
+  /** Only events of these types, e.g. `Warning` (`--types`). */
+  types(...names: string[]): this {
+    this.#types.push(...names);
+    return this;
+  }
+
+  /** Across every namespace (`-A`). */
+  allNamespaces(): this {
+    this.#allNamespaces = true;
+    return this;
+  }
+
+  /**
+   * Keep watching after the listing (`--watch`). A target that watches blocks
+   * until something stops it, so pair it with `.killAfter(...)` unless the
+   * wait is the point.
+   */
+  watch(): this {
+    this.#watch = true;
+    return this;
+  }
+
+  /** Leave the header row out (`--no-headers`). */
+  noHeaders(): this {
+    this.#noHeaders = true;
+    return this;
+  }
+
+  /** The output format (`-o`), e.g. `json`. */
+  output(format: string): this {
+    this.#output = format;
+    return this;
+  }
+
+  /** Assemble the `kubectl events` argv. */
+  protected override buildArgs(): string[] {
+    const argv = ["events", ...this.globalArgs()];
+    if (this.#for !== undefined) argv.push(`--for=${this.#for}`);
+    if (this.#types.length > 0) argv.push(`--types=${this.#types.join(",")}`);
+    if (this.#allNamespaces) argv.push("-A");
+    if (this.#watch) argv.push("--watch");
+    if (this.#noHeaders) argv.push("--no-headers");
+    if (this.#output !== undefined) argv.push("-o", this.#output);
     return argv;
   }
 }

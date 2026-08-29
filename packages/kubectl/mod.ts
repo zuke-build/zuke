@@ -28,3 +28,5 @@ export * from "./src/workloads.ts";
 export * from "./src/pods.ts";
 export * from "./src/diagnostics.ts";
 export * from "./src/resource_json.ts";
+export * from "./src/cluster.ts";
+export * from "./src/nodes.ts";
