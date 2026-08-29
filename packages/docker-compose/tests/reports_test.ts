@@ -13,8 +13,28 @@ import {
   DockerComposeTasks,
   parseComposeVersion,
   parsePublishedPort,
+  resetComposeInvocationCache_,
+  resolveComposeInvocation,
   waitStatus,
 } from "../mod.ts";
+
+/**
+ * Seed the invocation cache from a fake probe so detection never touches the
+ * host. Without it these tests depend on whether the machine happens to have
+ * Docker installed — which is not hermetic, and makes them pass on a runner
+ * that has it and fail on one that does not.
+ */
+async function withDetectedCompose(body: () => Promise<void>): Promise<void> {
+  resetComposeInvocationCache_();
+  await resolveComposeInvocation((argv) =>
+    Promise.resolve(argv[0] === "docker-compose")
+  );
+  try {
+    await body();
+  } finally {
+    resetComposeInvocationCache_();
+  }
+}
 
 /** One finished compose run, as the readers see it. */
 function output(code: number, stdout = "", stderr = ""): ComposeRunOutcome {
@@ -116,25 +136,28 @@ Deno.test("every new DockerComposeTasks function reaches execution", async () =>
     ],
     ["composeVersion", () => DockerComposeTasks.composeVersion(missingTool)],
   ];
-  for (const [name, reach] of reaches) {
-    try {
-      await assertRejects(reach, ToolNotFoundError);
-    } catch (error) {
-      throw new Error(
-        `DockerComposeTasks.${name} did not reach tool resolution`,
-        {
-          cause: error,
-        },
-      );
+  await withDetectedCompose(async () => {
+    for (const [name, reach] of reaches) {
+      try {
+        await assertRejects(reach, ToolNotFoundError);
+      } catch (error) {
+        throw new Error(
+          `DockerComposeTasks.${name} did not reach tool resolution`,
+          { cause: error },
+        );
+      }
     }
-  }
+  });
 });
 
 Deno.test("waitExitCode fails loudly when compose is missing", async () => {
   // noThrow lets a container's non-zero status through, but a missing binary
   // is not a container status — the reader must still fail.
-  await assertRejects(
-    () => DockerComposeTasks.waitExitCode((s) => missingTool(s).services("a")),
-    ToolNotFoundError,
-  );
+  await withDetectedCompose(async () => {
+    await assertRejects(
+      () =>
+        DockerComposeTasks.waitExitCode((s) => missingTool(s).services("a")),
+      ToolNotFoundError,
+    );
+  });
 });
