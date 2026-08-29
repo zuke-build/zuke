@@ -64,6 +64,89 @@ export {
   GhReleaseViewSettings,
   RELEASE_LIST_FIELDS,
 } from "./src/release.ts";
+export type {
+  GhCacheApi,
+  GhRunApi,
+  GhSecretApi,
+  GhVariableApi,
+  GhWorkflowApi,
+} from "./src/actions_tasks.ts";
+export type { GhLabelApi, GhRepoApi } from "./src/repo_tasks.ts";
+export {
+  GhRunCancelSettings,
+  GhRunDeleteSettings,
+  GhRunDownloadSettings,
+  type GhRunEntry,
+  GhRunListSettings,
+  GhRunRerunSettings,
+  type GhRunStatus,
+  GhRunTargetSettings,
+  GhRunViewSettings,
+  GhRunWatchSettings,
+  RUN_LIST_FIELDS,
+} from "./src/actions_run.ts";
+export {
+  GhWorkflowDisableSettings,
+  GhWorkflowEnableSettings,
+  type GhWorkflowEntry,
+  GhWorkflowListSettings,
+  GhWorkflowRunSettings,
+  GhWorkflowTargetSettings,
+  GhWorkflowViewSettings,
+  WORKFLOW_LIST_FIELDS,
+} from "./src/workflow_command.ts";
+export {
+  type GhSecretApp,
+  GhSecretDeleteSettings,
+  type GhSecretEntry,
+  GhSecretListSettings,
+  GhSecretScopeSettings,
+  GhSecretSetSettings,
+  SECRET_LIST_FIELDS,
+} from "./src/secret.ts";
+export {
+  GhVariableDeleteSettings,
+  type GhVariableEntry,
+  GhVariableGetSettings,
+  GhVariableListSettings,
+  GhVariableSetSettings,
+  VARIABLE_LIST_FIELDS,
+} from "./src/variable.ts";
+export {
+  CACHE_LIST_FIELDS,
+  GhCacheDeleteSettings,
+  type GhCacheEntry,
+  GhCacheListSettings,
+  type GhCacheSort,
+} from "./src/cache.ts";
+export {
+  GhLabelCloneSettings,
+  GhLabelCreateSettings,
+  GhLabelDeleteSettings,
+  GhLabelEditSettings,
+  type GhLabelEntry,
+  GhLabelListSettings,
+  type GhLabelSort,
+  LABEL_LIST_FIELDS,
+} from "./src/label.ts";
+export {
+  GhRepoArchiveSettings,
+  GhRepoCloneSettings,
+  GhRepoCommandSettings,
+  GhRepoCreateSettings,
+  GhRepoDeleteSettings,
+  GhRepoEditSettings,
+  GhRepoForkSettings,
+  GhRepoListSettings,
+  GhRepoRenameSettings,
+  GhRepoSetDefaultSettings,
+  type GhRepositoryEntry,
+  GhRepoSyncSettings,
+  GhRepoViewSettings,
+  type GhRepoVisibility,
+  REPO_LIST_FIELDS,
+} from "./src/repo.ts";
+export type { GhScopeVisibility } from "./src/actions_scope.ts";
 export { GhApiSettings } from "./src/api_command.ts";
 export {
   assertRefName,

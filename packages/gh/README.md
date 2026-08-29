@@ -2,11 +2,12 @@
 
 Typed [`gh`](https://cli.github.com/) (GitHub CLI) task wrapper for
 [Zuke](https://github.com/zuke-build/zuke#readme) builds, in a fluent
-settings-lambda API. The three groups a build reaches for — `pr`, `issue`, and
-`release` — have typed tasks with their real flags; `gh` is broad, so
-`GhTasks.run` stays the builder for everything else: name the command with
-`.command(...)`, set `--repo`, and pass anything else with `.flag(...)`.
-Arguments stay a discrete argv array, so command construction is injection-free.
+settings-lambda API. The groups a build reaches for — `pr`, `issue`, `release`,
+`run`, `workflow`, `repo`, `secret`, `variable`, `label`, and `cache` — have
+typed tasks with their real flags; `gh` is broad, so `GhTasks.run` stays the
+builder for the long tail: name the command with `.command(...)`, set `--repo`,
+and pass anything else with `.flag(...)`. Arguments stay a discrete argv array,
+so command construction is injection-free.
 
 ```ts
 import { GhTasks } from "jsr:@zuke/gh";
@@ -57,6 +58,79 @@ that `gh` silently resolves in its own favour (a draft that is also the latest
 release, `--pattern` alongside `--archive`, `--clobber` alongside
 `--skip-existing`) are refused the same way, so a build never quietly gets an
 outcome other than the one it asked for.
+
+## GitHub Actions — runs, workflows, secrets, variables, caches
+
+The CI-facing half of `gh`, typed the same way. `runListEntries` is the one a
+release build reads for control flow: which run failed, on which branch, with
+what conclusion.
+
+| Group      | Tasks                                                                                                     |
+| ---------- | --------------------------------------------------------------------------------------------------------- |
+| `run`      | `runList`, `runListEntries`, `runView`, `runRerun`, `runCancel`, `runDelete`, `runDownload`, `runWatch`   |
+| `workflow` | `workflowList`, `workflowListEntries`, `workflowView`, `workflowRun`, `workflowEnable`, `workflowDisable` |
+| `secret`   | `secretSet`, `secretList`, `secretListEntries`, `secretDelete`                                            |
+| `variable` | `variableSet`, `variableGet`, `variableValue`, `variableList`, `variableListEntries`, `variableDelete`    |
+| `cache`    | `cacheList`, `cacheListEntries`, `cacheDelete`                                                            |
+
+```ts
+import { GhTasks } from "jsr:@zuke/gh";
+
+const failed = await GhTasks.runListEntries((s) =>
+  s.status("failure").branch("master").limit(20)
+);
+await GhTasks.runRerun((s) => s.selector(failed[0].databaseId ?? 0).failed());
+await GhTasks.workflowRun((s) =>
+  s.workflow("e2e.yml").ref("master").field("environment", "staging")
+);
+await GhTasks.cacheDelete((s) => s.all().ref(ref).succeedOnNoCaches());
+```
+
+`workflowRun` returns once the dispatch is accepted. When the build must wait
+for the result instead, use the `githubWorkflow` wait trigger below — it
+suspends the run and resurfaces the per-job conclusions.
+
+### Passing a secret
+
+`GhTasks.secretSet` puts `.body(...)` in the process's arguments, which other
+processes on the same machine can read while it runs. That is a property of the
+command line, not of this wrapper. Omit the value and gh reads standard input,
+or point at a dotenv file:
+
+```ts
+await GhTasks.secretSet((s) => s.name("NPM_TOKEN").envFile(".env.ci"));
+```
+
+Source the value from a `parameter().secret()` either way, so Zuke redacts it in
+its own output. A variable is not a secret — GitHub returns its value in the
+clear, and `variableValue` hands it back.
+
+## Repositories and labels
+
+| Group   | Tasks                                                                                                                                                                 |
+| ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `repo`  | `repoClone`, `repoCreate`, `repoView`, `repoList`, `repoListEntries`, `repoFork`, `repoSync`, `repoEdit`, `repoRename`, `repoArchive`, `repoDelete`, `repoSetDefault` |
+| `label` | `labelList`, `labelListEntries`, `labelCreate`, `labelEdit`, `labelDelete`, `labelClone`                                                                              |
+
+```ts
+await GhTasks.repoClone((s) =>
+  s.repository("acme/app").directory("vendor/app").gitArgs("--depth=1")
+);
+await GhTasks.repoSync((s) => s.source("upstream/app").branch("master"));
+await GhTasks.labelCreate((s) => s.name("flaky").color("d73a4a").force());
+```
+
+`gh repo clone` and `gh repo fork` forward what follows a `--` separator to
+`git clone`, so shallow-clone flags go through `.gitArgs(...)` rather than a
+flag of gh's own. This group also names its repository as an **operand** rather
+than with `--repo` — `repoRename` is the one exception, where `-R` names the
+repository being renamed — so `.repo(...)` is refused here with a message naming
+the operand to use instead. `repoEdit`'s toggles are tri-state, as gh's are:
+`.enableIssues()` turns one on and `.enableIssues(false)` turns it off.
+
+The group has subcommands beyond these — `gitignore`, `license`, `read-file`,
+`read-dir`, `deploy-key`, `autolink` — which a build has no reason to drive;
+`GhTasks.run` stays the builder for those.
 
 ## Wait for an external GitHub workflow
 
@@ -238,12 +312,20 @@ async function uploadReleaseAsset(configure?: Configure<GhReleaseAssetSettings>)
 async function uploadSarifReport(configure?: Configure<GhSarifSettings>): Promise<GhSarifUploadResult>
   Upload the SARIF report the settings describe.
 
+const CACHE_LIST_FIELDS: readonly string[]
+  The `--json` fields {@link readCaches} asks for; gh requires the list by
+  name, so the reader pins the set {@link GhCacheEntry} describes.
+
 const GhTasks: GhTasksApi
   Typed task functions for GitHub: the `gh` CLI and the REST-only operations.
 
 const ISSUE_LIST_FIELDS: readonly string[]
   The `--json` fields {@link readIssues} asks for; gh requires the list by
   name, so the reader pins the set {@link GhIssueEntry} describes.
+
+const LABEL_LIST_FIELDS: readonly string[]
+  The `--json` fields {@link readLabels} asks for; gh requires the list by
+  name, so the reader pins the set {@link GhLabelEntry} describes.
 
 const PR_LIST_FIELDS: readonly string[]
   The `--json` fields {@link readPullRequests} asks for. gh requires the list
@@ -253,6 +335,26 @@ const PR_LIST_FIELDS: readonly string[]
 const RELEASE_LIST_FIELDS: readonly string[]
   The `--json` fields {@link readReleases} asks for; gh requires the list by
   name, so the reader pins the set {@link GhReleaseEntry} describes.
+
+const REPO_LIST_FIELDS: readonly string[]
+  The `--json` fields {@link readRepositories} asks for; gh requires the list
+  by name, so the reader pins the set {@link GhRepositoryEntry} describes.
+
+const RUN_LIST_FIELDS: readonly string[]
+  The `--json` fields {@link readRuns} asks for; gh requires the list by name,
+  so the reader pins the set {@link GhRunEntry} describes.
+
+const SECRET_LIST_FIELDS: readonly string[]
+  The `--json` fields {@link readSecrets} asks for; gh requires the list by
+  name, so the reader pins the set {@link GhSecretEntry} describes.
+
+const VARIABLE_LIST_FIELDS: readonly string[]
+  The `--json` fields {@link readVariables} asks for; gh requires the list by
+  name, so the reader pins the set {@link GhVariableEntry} describes.
+
+const WORKFLOW_LIST_FIELDS: readonly string[]
+  The `--json` fields {@link readWorkflows} asks for; gh requires the list by
+  name, so the reader pins the set {@link GhWorkflowEntry} describes.
 
 class GhApiError extends Error
   A GitHub REST call that did not succeed, carrying the status.
@@ -361,6 +463,40 @@ abstract class GhBodySettings extends GhCommandSettings
   protected bodyFlags(task: string): string[]
     The body flags, after refusing both at once: gh takes one source for the
     text, and silently preferring one would hide which text was posted.
+
+class GhCacheDeleteSettings extends GhCommandSettings
+  Settings for `gh cache delete`.
+
+  selector(idOrKey: string | number): this
+    The cache to delete, by its id or its key.
+  all(): this
+    Delete every cache (`--all`), narrowed by {@link ref} when one is set.
+  ref(name: string): this
+    Restrict the deletion to one ref (`--ref`).
+  succeedOnNoCaches(): this
+    Exit zero when there was nothing to delete (`--succeed-on-no-caches`).
+  override protected commandPath(): string[]
+    The `gh cache delete` command path.
+  override protected commandFlags(): string[]
+    Assemble the `gh cache delete` flags.
+
+class GhCacheListSettings extends GhReadSettings
+  Settings for `gh cache list`.
+
+  key(prefix: string): this
+    Only caches whose key starts with this (`--key`).
+  ref(name: string): this
+    Only caches for this ref (`--ref`), e.g. `refs/heads/master`.
+  sort(field: GhCacheSort): this
+    What to order by (`--sort`); gh's default is `last_accessed_at`.
+  order(direction: "asc" | "desc"): this
+    The direction (`--order`): `asc` or `desc`.
+  limit(count: number): this
+    Cap how many are fetched (`--limit`); gh's default is 30.
+  override protected commandPath(): string[]
+    The `gh cache list` command path.
+  override protected commandFlags(): string[]
+    Assemble the `gh cache list` flags.
 
 class GhCheckRunSettings
   Settings for posting a completed check run.
@@ -599,6 +735,78 @@ class GhIssueViewSettings extends GhWebReadSettings
     The `gh issue view` command path.
   override protected commandFlags(): string[]
     Assemble the `gh issue view` flags.
+
+class GhLabelCloneSettings extends GhCommandSettings
+  Settings for `gh label clone`.
+
+  source(slug: string): this
+    The repository to copy the labels from, as `owner/name` (required).
+  force(): this
+    Overwrite labels of the same name in the destination (`--force`).
+  override protected commandPath(): string[]
+    The `gh label clone` command path.
+  override protected commandFlags(): string[]
+    Assemble the `gh label clone` flags.
+
+class GhLabelCreateSettings extends GhCommandSettings
+  Settings for `gh label create`.
+
+  name(value: string): this
+    The label's name (required).
+  color(hex: string): this
+    Its colour (`--color`), as a hex triplet; gh accepts it with or without `#`.
+  description(text: string): this
+    Its description (`--description`).
+  force(): this
+    Update the label when it already exists rather than failing (`--force`).
+  override protected commandPath(): string[]
+    The `gh label create` command path.
+  override protected commandFlags(): string[]
+    Assemble the `gh label create` flags.
+
+class GhLabelDeleteSettings extends GhCommandSettings
+  Settings for `gh label delete`.
+
+  name(value: string): this
+    The label to delete (required).
+  yes(): this
+    Skip the confirmation a delete otherwise prompts for (`--yes`).
+  override protected commandPath(): string[]
+    The `gh label delete` command path.
+  override protected commandFlags(): string[]
+    Assemble the `gh label delete` flags.
+
+class GhLabelEditSettings extends GhCommandSettings
+  Settings for `gh label edit`.
+
+  name(value: string): this
+    The label to edit, by its current name (required).
+  newName(value: string): this
+    Rename it (`--name`).
+  color(hex: string): this
+    Set its colour (`--color`).
+  description(text: string): this
+    Set its description (`--description`).
+  override protected commandPath(): string[]
+    The `gh label edit` command path.
+  override protected commandFlags(): string[]
+    Assemble the `gh label edit` flags.
+
+class GhLabelListSettings extends GhWebReadSettings
+  Settings for `gh label list`.
+
+  search(query: string): this
+    Search names and descriptions (`--search`).
+  sort(field: GhLabelSort): this
+    What to order by (`--sort`); gh's default is `created`.
+  order(direction: "asc" | "desc"): this
+    The direction (`--order`): `asc` or `desc`.
+  limit(count: number): this
+    Cap how many are fetched (`--limit`); gh's default is 30.
+  override protected commandPath(): string[]
+    The `gh label list` command path.
+  override protected commandFlags(): string[]
+    Assemble the `gh label list` flags.
 
 class GhPrChecksSettings extends GhPrReadSettings
   Settings for `gh pr checks`.
@@ -1106,6 +1314,410 @@ class GhReleaseViewSettings extends GhWebReadSettings
   override protected commandFlags(): string[]
     Assemble the `gh release view` flags.
 
+class GhRepoArchiveSettings extends GhRepoCommandSettings
+  Settings for `gh repo archive` and `gh repo unarchive`.
+
+  override protected readonly taskName: string
+    The task this settings class backs.
+  override protected readonly operandHint: string
+    How this command names its repository.
+  repository(slug: string): this
+    The repository; gh acts on the current one otherwise.
+  unarchive(): this
+    Restore an archived repository instead — `gh repo unarchive`.
+  yes(): this
+    Skip the confirmation gh otherwise prompts for (`--yes`).
+  override protected commandPath(): string[]
+    The `gh repo archive` or `gh repo unarchive` command path.
+  override protected commandFlags(): string[]
+    Assemble the flags.
+
+class GhRepoCloneSettings extends GhRepoCommandSettings
+  Settings for `gh repo clone`.
+
+  override protected readonly taskName: string
+    The task this settings class backs.
+  override protected readonly operandHint: string
+    How this command names its repository.
+  repository(slug: string): this
+    The repository, as `owner/name` or a URL (required).
+  directory(path: PathLike): this
+    The directory to clone into; gh names it after the repository otherwise.
+  upstreamRemoteName(name: string): this
+    The remote name for a fork's parent (`--upstream-remote-name`).
+  noUpstream(): this
+    Do not add the upstream remote when cloning a fork (`--no-upstream`).
+  gitArgs(...args: string[]): this
+    Flags for the underlying `git clone`, which gh takes after a `--`
+    separator — `.gitArgs("--depth=1")` for a shallow clone.
+  override protected commandPath(): string[]
+    The `gh repo clone` command path, with the repository and directory.
+  override protected commandFlags(): string[]
+    Assemble the `gh repo clone` flags, with any git flags after `--`.
+
+abstract class GhRepoCommandSettings extends GhCommandSettings
+  Base for the `gh repo` commands that neither print JSON nor take `--repo`.
+  {@link GhRepoListSettings} and {@link GhRepoViewSettings} do print JSON, so
+  they extend the read bases and call {@link refuseRepoFlag} themselves.
+
+  abstract protected readonly taskName: string
+    The task name a refusal names, e.g. `repoClone`.
+  abstract protected readonly operandHint: string
+    How this command names its repository, e.g. `.repository(...)`.
+  override protected middleTokens(): string[]
+    This command's flags, after refusing a `--repo` it cannot render.
+
+class GhRepoCreateSettings extends GhRepoCommandSettings
+  Settings for `gh repo create`.
+
+  override protected readonly taskName: string
+    The task this settings class backs.
+  override protected readonly operandHint: string
+    How this command names its repository.
+  name(value: string): this
+    The repository's name, or `owner/name` to create it elsewhere (required).
+  visibility(value: GhRepoVisibility): this
+    How visible it is: `--public`, `--private`, or `--internal` (required).
+  description(text: string): this
+    Its description (`--description`).
+  homepage(url: string): this
+    Its homepage (`--homepage`).
+  team(name: string): this
+    Grant an organization team access (`--team`).
+  template(slug: string): this
+    Base it on a template repository (`--template`).
+  gitignore(name: string): this
+    Start from a gitignore template (`--gitignore`).
+  license(name: string): this
+    Add an open-source license (`--license`).
+  source(path: PathLike): this
+    Create it from a local repository (`--source`).
+  remote(name: string): this
+    The remote name for the new repository (`--remote`).
+  clone(): this
+    Clone it after creating it (`--clone`).
+  push(): this
+    Push the local commits to it (`--push`).
+  addReadme(): this
+    Add a README (`--add-readme`).
+  includeAllBranches(): this
+    Copy every branch of the template, not just its default (`--include-all-branches`).
+  disableIssues(): this
+    Turn issues off (`--disable-issues`).
+  disableWiki(): this
+    Turn the wiki off (`--disable-wiki`).
+  override protected commandPath(): string[]
+    The `gh repo create` command path.
+  override protected commandFlags(): string[]
+    Assemble the `gh repo create` flags.
+
+class GhRepoDeleteSettings extends GhRepoCommandSettings
+  Settings for `gh repo delete`.
+
+  override protected readonly taskName: string
+    The task this settings class backs.
+  override protected readonly operandHint: string
+    How this command names its repository.
+  repository(slug: string): this
+    The repository to delete, as `owner/name` (required — see below).
+  yes(): this
+    Skip the confirmation a delete otherwise prompts for (`--yes`).
+  override protected commandPath(): string[]
+    The `gh repo delete` command path.
+  override protected commandFlags(): string[]
+    Assemble the `gh repo delete` flags.
+
+class GhRepoEditSettings extends GhRepoCommandSettings
+  Settings for `gh repo edit`.
+
+  override protected readonly taskName: string
+    The task this settings class backs.
+  override protected readonly operandHint: string
+    How this command names its repository.
+  repository(slug: string): this
+    The repository to edit; gh edits the current one otherwise.
+  description(text: string): this
+    Set the description (`--description`).
+  homepage(url: string): this
+    Set the homepage (`--homepage`).
+  defaultBranch(name: string): this
+    Set the default branch (`--default-branch`).
+  visibility(value: GhRepoVisibility): this
+    Change the visibility (`--visibility`), which needs {@link acceptVisibilityChangeConsequences}.
+  acceptVisibilityChangeConsequences(): this
+    Acknowledge what a visibility change does (`--accept-visibility-change-consequences`).
+  addTopic(...names: string[]): this
+    Add a topic (`--add-topic`); repeatable.
+  removeTopic(...names: string[]): this
+    Remove a topic (`--remove-topic`); repeatable.
+  enableIssues(enabled: boolean): this
+    Turn issues on or off (`--enable-issues`).
+  enableWiki(enabled: boolean): this
+    Turn the wiki on or off (`--enable-wiki`).
+  enableProjects(enabled: boolean): this
+    Turn projects on or off (`--enable-projects`).
+  enableDiscussions(enabled: boolean): this
+    Turn discussions on or off (`--enable-discussions`).
+  enableAutoMerge(enabled: boolean): this
+    Turn auto-merge on or off (`--enable-auto-merge`).
+  enableMergeCommit(enabled: boolean): this
+    Allow or forbid merge commits (`--enable-merge-commit`).
+  enableSquashMerge(enabled: boolean): this
+    Allow or forbid squash merges (`--enable-squash-merge`).
+  enableRebaseMerge(enabled: boolean): this
+    Allow or forbid rebase merges (`--enable-rebase-merge`).
+  deleteBranchOnMerge(enabled: boolean): this
+    Delete the head branch after a merge, or stop (`--delete-branch-on-merge`).
+  allowForking(enabled: boolean): this
+    Allow or forbid forking (`--allow-forking`).
+  allowUpdateBranch(enabled: boolean): this
+    Allow or forbid updating a pull request branch (`--allow-update-branch`).
+  enableSecretScanning(enabled: boolean): this
+    Turn secret scanning on or off (`--enable-secret-scanning`).
+  enableSecretScanningPushProtection(enabled: boolean): this
+    Turn push protection on or off (`--enable-secret-scanning-push-protection`).
+  override protected commandPath(): string[]
+    The `gh repo edit` command path.
+  override protected commandFlags(): string[]
+    Assemble the `gh repo edit` flags.
+
+class GhRepoForkSettings extends GhRepoCommandSettings
+  Settings for `gh repo fork`.
+
+  override protected readonly taskName: string
+    The task this settings class backs.
+  override protected readonly operandHint: string
+    How this command names its repository.
+  repository(slug: string): this
+    The repository to fork; gh forks the current one otherwise.
+  org(name: string): this
+    Create the fork in an organization (`--org`).
+  forkName(value: string): this
+    Name the fork something else (`--fork-name`).
+  remoteName(value: string): this
+    The remote name to add for the fork (`--remote-name`).
+  clone(): this
+    Clone the fork after creating it (`--clone`).
+  remote(): this
+    Add a git remote for the fork (`--remote`).
+  defaultBranchOnly(): this
+    Fork only the default branch (`--default-branch-only`).
+  gitArgs(...args: string[]): this
+    Flags for the underlying `git clone`, passed after a `--` separator.
+  override protected commandPath(): string[]
+    The `gh repo fork` command path.
+  override protected commandFlags(): string[]
+    Assemble the `gh repo fork` flags, with any git flags after `--`.
+
+class GhRepoListSettings extends GhReadSettings
+  Settings for `gh repo list`.
+
+  owner(login: string): this
+    Whose repositories to list; gh lists your own when it is omitted.
+  language(name: string): this
+    Filter by primary language (`--language`).
+  topic(...names: string[]): this
+    Filter by topic (`--topic`); repeatable.
+  visibility(value: GhRepoVisibility): this
+    Filter by visibility (`--visibility`).
+  archived(): this
+    Only archived repositories (`--archived`).
+  noArchived(): this
+    Leave archived repositories out (`--no-archived`).
+  fork(): this
+    Only forks (`--fork`).
+  source(): this
+    Only repositories that are not forks (`--source`).
+  limit(count: number): this
+    Cap how many are fetched (`--limit`); gh's default is 30.
+  override protected commandPath(): string[]
+    The `gh repo list` command path, with the owner when one was given.
+  override protected middleTokens(): string[]
+    This command's flags, after refusing a `--repo` gh would reject.
+  override protected commandFlags(): string[]
+    Assemble the `gh repo list` flags.
+
+class GhRepoRenameSettings extends GhCommandSettings
+  Settings for `gh repo rename`.
+
+  newName(value: string): this
+    The repository's new name, without the owner (required).
+  yes(): this
+    Skip the confirmation a rename otherwise prompts for (`--yes`).
+  override protected commandPath(): string[]
+    The `gh repo rename` command path.
+  override protected commandFlags(): string[]
+    Assemble the `gh repo rename` flags.
+
+class GhRepoSetDefaultSettings extends GhRepoCommandSettings
+  Settings for `gh repo set-default`.
+
+  override protected readonly taskName: string
+    The task this settings class backs.
+  override protected readonly operandHint: string
+    How this command names its repository.
+  repository(slugOrRemote: string): this
+    The repository to make the default, as `owner/name` or a remote name.
+  unset(): this
+    Forget the current default instead (`--unset`).
+  view(): this
+    Report the current default instead (`--view`).
+  override protected commandPath(): string[]
+    The `gh repo set-default` command path.
+  override protected commandFlags(): string[]
+    Assemble the `gh repo set-default` flags.
+
+class GhRepoSyncSettings extends GhRepoCommandSettings
+  Settings for `gh repo sync`.
+
+  override protected readonly taskName: string
+    The task this settings class backs.
+  override protected readonly operandHint: string
+    How this command names its repository.
+  destination(slug: string): this
+    The repository to update; gh syncs the local one otherwise.
+  source(slug: string): this
+    Where to sync from (`--source`); gh uses the fork's parent otherwise.
+  branch(name: string): this
+    The branch to sync (`--branch`); gh uses the default branch otherwise.
+  force(): this
+    Hard-reset the destination branch onto the source (`--force`).
+  override protected commandPath(): string[]
+    The `gh repo sync` command path.
+  override protected commandFlags(): string[]
+    Assemble the `gh repo sync` flags.
+
+class GhRepoViewSettings extends GhWebReadSettings
+  Settings for `gh repo view`.
+
+  repository(slug: string): this
+    The repository, as `owner/name`; gh uses the current one otherwise.
+  branch(name: string): this
+    View a particular branch (`--branch`).
+  override protected commandPath(): string[]
+    The `gh repo view` command path.
+  override protected middleTokens(): string[]
+    This command's flags, after refusing a `--repo` gh would reject.
+  override protected commandFlags(): string[]
+    Assemble the `gh repo view` flags.
+
+class GhRunCancelSettings extends GhRunTargetSettings
+  Settings for `gh run cancel`.
+
+  force(): this
+    Cancel a run the ordinary request will not stop (`--force`).
+  override protected commandPath(): string[]
+    The `gh run cancel` command path.
+  override protected commandFlags(): string[]
+    Assemble the `gh run cancel` flags.
+
+class GhRunDeleteSettings extends GhRunTargetSettings
+  Settings for `gh run delete`.
+
+  override protected commandPath(): string[]
+    The `gh run delete` command path.
+  override protected commandFlags(): string[]
+    `gh run delete` takes no flags of its own.
+
+class GhRunDownloadSettings extends GhRunTargetSettings
+  Settings for `gh run download`.
+
+  name(...names: string[]): this
+    Only artifacts with this exact name (`--name`); repeatable.
+  pattern(...globs: string[]): this
+    Only artifacts matching this glob (`--pattern`); repeatable.
+  dir(path: PathLike): this
+    The directory to download into (`--dir`); gh's default is the cwd.
+  override protected commandPath(): string[]
+    The `gh run download` command path.
+  override protected commandFlags(): string[]
+    Assemble the `gh run download` flags.
+
+class GhRunListSettings extends GhReadSettings
+  Settings for `gh run list`.
+
+  all(): this
+    Include runs of disabled workflows (`--all`).
+  branch(name: string): this
+    Filter by branch (`--branch`).
+  commit(sha: string): this
+    Filter by the commit that triggered them (`--commit`).
+  created(query: string): this
+    Filter by creation date (`--created`), in GitHub's date-query syntax.
+  event(name: string): this
+    Filter by the event that triggered them (`--event`).
+  status(value: GhRunStatus): this
+    Filter by status or conclusion (`--status`).
+  user(login: string): this
+    Filter by the user who triggered them (`--user`).
+  workflow(nameOrId: string): this
+    Filter by workflow, by name, id, or file name (`--workflow`).
+  limit(count: number): this
+    Cap how many are fetched (`--limit`); gh's default is 20.
+  override protected commandPath(): string[]
+    The `gh run list` command path.
+  override protected commandFlags(): string[]
+    Assemble the `gh run list` flags.
+
+class GhRunRerunSettings extends GhRunTargetSettings
+  Settings for `gh run rerun`.
+
+  failed(): this
+    Rerun only the failed jobs and their dependencies (`--failed`).
+  job(jobId: string | number): this
+    Rerun one job and its dependencies (`--job`), by job id.
+  debug(): this
+    Rerun with debug logging enabled (`--debug`).
+  override protected commandPath(): string[]
+    The `gh run rerun` command path.
+  override protected commandFlags(): string[]
+    Assemble the `gh run rerun` flags.
+
+abstract class GhRunTargetSettings extends GhCommandSettings
+  Base for the `run` commands that name one run. gh prompts for a run when the
+  operand is omitted, so unlike a pull request there is no useful default.
+
+  selector(runId: string | number): this
+    The run — its id (required).
+  protected requireSelector(task: string): string
+    The run id, or the failure explaining that gh would otherwise prompt.
+
+class GhRunViewSettings extends GhWebReadSettings
+  Settings for `gh run view`.
+
+  selector(runId: string | number): this
+    The run — its id; gh shows a picker without one.
+  attempt(number: number): this
+    View an earlier attempt (`--attempt`).
+  job(jobId: string | number): this
+    View one job of the run (`--job`), by job id.
+  log(): this
+    Print the full log (`--log`).
+  logFailed(): this
+    Print only the failed steps' log (`--log-failed`).
+  exitStatus(): this
+    Exit non-zero when the run failed (`--exit-status`).
+  verbose(): this
+    Include the individual job steps (`--verbose`).
+  override protected commandPath(): string[]
+    The `gh run view` command path.
+  override protected commandFlags(): string[]
+    Assemble the `gh run view` flags.
+
+class GhRunWatchSettings extends GhRunTargetSettings
+  Settings for `gh run watch`.
+
+  compact(): this
+    Report only the relevant and failed steps (`--compact`).
+  exitStatus(): this
+    Exit non-zero when the run fails (`--exit-status`).
+  interval(seconds: number): this
+    Seconds between refreshes (`--interval`); gh's default is 3.
+  override protected commandPath(): string[]
+    The `gh run watch` command path.
+  override protected commandFlags(): string[]
+    Assemble the `gh run watch` flags.
+
 class GhSarifSettings
   Settings for {@link GhSarifApi.uploadSarif}.
 
@@ -1148,6 +1760,71 @@ class GhSarifSettings
     The request body. The `sarif` field is the report gzipped then base64'd,
     which is what the endpoint accepts — a plain JSON body is rejected.
 
+class GhSecretDeleteSettings extends GhSecretScopeSettings
+  Settings for `gh secret delete`.
+
+  name(value: string): this
+    The secret's name (required).
+  override protected commandPath(): string[]
+    The `gh secret delete` command path.
+  override protected commandFlags(): string[]
+    Assemble the `gh secret delete` flags.
+
+class GhSecretListSettings extends GhReadSettings
+  Settings for `gh secret list`.
+
+  app(name: GhSecretApp): this
+    Which application's secrets to list (`--app`).
+  org(name: string): this
+    List an organization's secrets (`--org`).
+  environment(name: string): this
+    List an environment's secrets (`--env`).
+  user(): this
+    List your own secrets (`--user`).
+  override protected commandPath(): string[]
+    The `gh secret list` command path.
+  override protected commandFlags(): string[]
+    Assemble the `gh secret list` flags.
+
+abstract class GhSecretScopeSettings extends GhCommandSettings
+  Base for the `secret` commands that name one scope: the application, and
+  whether the secret belongs to a repository, an organization, an
+  environment, or the authenticated user.
+
+  app(name: GhSecretApp): this
+    Which application reads it (`--app`); gh's default is `actions`.
+  org(name: string): this
+    Scope it to an organization (`--org`).
+  environment(name: string): this
+    Scope it to a deployment environment (`--env`).
+  user(): this
+    Scope it to the authenticated user (`--user`).
+  repositories(...names: string[]): this
+    Share an organization secret with these repositories (`--repos`).
+  visibility(value: GhScopeVisibility): this
+    The visibility of an organization secret (`--visibility`).
+  protected scopeFlags(task: string): string[]
+    The scope flags, for a subclass to place among its own.
+
+class GhSecretSetSettings extends GhSecretScopeSettings
+  Settings for `gh secret set`.
+
+  name(value: string): this
+    The secret's name (required).
+  body(value: string): this
+    The secret's value (`--body`). Omit it and gh reads standard input, which
+    keeps the value out of the process's arguments — see the module docs.
+  envFile(path: PathLike): this
+    Read names and values from a dotenv file (`--env-file`).
+  noStore(): this
+    Print the encrypted value instead of storing it (`--no-store`).
+  noReposSelected(): this
+    Share the organization secret with no repositories (`--no-repos-selected`).
+  override protected commandPath(): string[]
+    The `gh secret set` command path.
+  override protected commandFlags(): string[]
+    Assemble the `gh secret set` flags.
+
 class GhSettings extends SubcommandSettings
   Settings for a `gh` invocation.
 
@@ -1155,6 +1832,9 @@ class GhSettings extends SubcommandSettings
     The default executable name: `gh`.
   repo(slug: string): this
     Target repository as `OWNER/REPO` (`-R`/`--repo`).
+  protected get repoSlug(): string | undefined
+    The repository `.repo(...)` named, for a subclass whose command does not
+    take the flag and has to say so.
   override protected middleTokens(): string[]
     Emit `--repo <slug>` between the command path and the flags, when set.
 
@@ -1202,6 +1882,68 @@ class GhTagSettings
   authToken_(): string
     The effective token, from the setting or the environment.
 
+class GhVariableDeleteSettings extends GhCommandSettings
+  Settings for `gh variable delete`.
+
+  name(value: string): this
+    The variable's name (required).
+  org(name: string): this
+    Delete an organization variable (`--org`).
+  environment(name: string): this
+    Delete an environment variable (`--env`).
+  override protected commandPath(): string[]
+    The `gh variable delete` command path.
+  override protected commandFlags(): string[]
+    Assemble the `gh variable delete` flags.
+
+class GhVariableGetSettings extends GhReadSettings
+  Settings for `gh variable get`.
+
+  name(value: string): this
+    The variable's name (required).
+  org(name: string): this
+    Read an organization variable (`--org`).
+  environment(name: string): this
+    Read an environment variable (`--env`).
+  override protected commandPath(): string[]
+    The `gh variable get` command path.
+  override protected commandFlags(): string[]
+    Assemble the `gh variable get` flags.
+
+class GhVariableListSettings extends GhReadSettings
+  Settings for `gh variable list`.
+
+  org(name: string): this
+    List an organization's variables (`--org`).
+  environment(name: string): this
+    List an environment's variables (`--env`).
+  override protected commandPath(): string[]
+    The `gh variable list` command path.
+  override protected commandFlags(): string[]
+    Assemble the `gh variable list` flags.
+
+class GhVariableSetSettings extends GhCommandSettings
+  Settings for `gh variable set`.
+
+  name(value: string): this
+    The variable's name (required).
+  body(value: string): this
+    Its value (`--body`); omit it and gh reads standard input.
+  envFile(path: PathLike): this
+    Read names and values from a dotenv file (`--env-file`).
+  org(name: string): this
+    Scope it to an organization (`--org`).
+  environment(name: string): this
+    Scope it to a deployment environment (`--env`).
+  repositories(...names: string[]): this
+    Share an organization variable with these repositories (`--repos`).
+  visibility(value: GhScopeVisibility): this
+    The visibility of an organization variable (`--visibility`).
+  override protected commandPath(): string[]
+    The `gh variable set` command path.
+  override protected commandFlags(): string[]
+    Assemble the `gh variable set` flags.
+
 abstract class GhWebReadSettings extends GhReadSettings
   Base for the read commands that also take `--web`: every one of them except
   `release list`, which gh gives no browser view. Keeping `.web()` here rather
@@ -1213,6 +1955,78 @@ abstract class GhWebReadSettings extends GhReadSettings
     has no browser, so this is for a developer running the target by hand.
   override protected readFlags(): string[]
     The read flags, with `--web` last as gh's own help lists it.
+
+class GhWorkflowDisableSettings extends GhWorkflowTargetSettings
+  Settings for `gh workflow disable`.
+
+  override protected commandPath(): string[]
+    The `gh workflow disable` command path.
+  override protected commandFlags(): string[]
+    `gh workflow disable` takes no flags of its own.
+
+class GhWorkflowEnableSettings extends GhWorkflowTargetSettings
+  Settings for `gh workflow enable`.
+
+  override protected commandPath(): string[]
+    The `gh workflow enable` command path.
+  override protected commandFlags(): string[]
+    `gh workflow enable` takes no flags of its own.
+
+class GhWorkflowListSettings extends GhReadSettings
+  Settings for `gh workflow list`.
+
+  all(): this
+    Include disabled workflows (`--all`).
+  limit(count: number): this
+    Cap how many are fetched (`--limit`); gh's default is 50.
+  override protected commandPath(): string[]
+    The `gh workflow list` command path.
+  override protected commandFlags(): string[]
+    Assemble the `gh workflow list` flags.
+
+class GhWorkflowRunSettings extends GhWorkflowTargetSettings
+  Settings for `gh workflow run` — dispatching a `workflow_dispatch` run.
+
+  ref(name: string): this
+    The branch or tag to run it on (`--ref`).
+  field(key: string, value: string | number | boolean): this
+    An input, as `--field key=value`. gh reads a leading `@` in the value as
+    a file to read, so use {@link rawField} for a value that starts with one.
+  rawField(key: string, value: string | number | boolean): this
+    An input passed verbatim (`--raw-field`), with no `@` file syntax.
+  jsonInput(): this
+    Read the whole input object as JSON on standard input (`--json`).
+  override protected commandPath(): string[]
+    The `gh workflow run` command path.
+  override protected commandFlags(): string[]
+    Assemble the `gh workflow run` flags.
+
+abstract class GhWorkflowTargetSettings extends GhCommandSettings
+  Base for the `workflow` commands that name one workflow, which gh takes by
+  file name, name, or numeric id.
+
+  workflow(nameOrId: string | number): this
+    The workflow — its file name, its name, or its id (required).
+  protected requireWorkflow(task: string): string
+    The workflow operand, or the failure explaining that gh would prompt.
+
+class GhWorkflowViewSettings extends GhWorkflowTargetSettings
+  Settings for `gh workflow view`.
+
+  Unlike the other viewing commands this one prints no JSON — gh gives it
+  `--yaml` and `--web` but no `--json` — so it does not carry the read flags.
+
+  ref(name: string): this
+    The branch or tag holding the version to view (`--ref`).
+  yaml(): this
+    Print the workflow's YAML rather than its summary (`--yaml`).
+  web(): this
+    Open it in a browser instead of printing it (`--web`). A build has no
+    browser, so this is for a developer running the target by hand.
+  override protected commandPath(): string[]
+    The `gh workflow view` command path.
+  override protected commandFlags(): string[]
+    Assemble the `gh workflow view` flags.
 
 class GithubWorkflowSettings
   Configuration for {@link githubWorkflow}, set through a settings lambda. Every
@@ -1286,6 +2100,33 @@ interface GhAppTokenResult
     ISO-8601 expiry — one hour out, as GitHub issues it.
   installationId: number
     The installation the token was minted for.
+
+interface GhCacheApi
+  The `gh cache` members of {@link "./gh.ts".GhTasks}.
+
+  cacheList(configure?: Configure<GhCacheListSettings>): Promise<CommandOutput>
+    List the Actions caches: `gh cache list`.
+  cacheListEntries(configure?: Configure<GhCacheListSettings>): Promise<GhCacheEntry[]>
+    The caches as parsed {@link GhCacheEntry} values — what a build reads to
+    decide which ones to reclaim.
+  cacheDelete(configure?: Configure<GhCacheDeleteSettings>): Promise<CommandOutput>
+    Reclaim caches: `gh cache delete`.
+
+interface GhCacheEntry
+  One cache of {@link "./gh.ts".GhTasks.cacheListEntries}.
+
+  id?: number
+    The cache's numeric id — what {@link GhCacheDeleteSettings} takes.
+  key?: string
+    Its key, as the workflow that saved it chose.
+  ref?: string
+    The ref it belongs to.
+  sizeInBytes?: number
+    How much space it occupies, in bytes.
+  createdAt?: string
+    When it was created, ISO 8601.
+  lastAccessedAt?: string
+    When it was last read, ISO 8601 — what eviction goes by.
 
 interface GhCheckRunApi
   The check-run operation {@link GhTasks} exposes.
@@ -1366,6 +2207,33 @@ interface GhIssueEntry
     Its web URL.
   author?: string
     The login of whoever opened it.
+
+interface GhLabelApi
+  The `gh label` members of {@link "./gh.ts".GhTasks}.
+
+  labelList(configure?: Configure<GhLabelListSettings>): Promise<CommandOutput>
+    List labels: `gh label list`.
+  labelListEntries(configure?: Configure<GhLabelListSettings>): Promise<GhLabelEntry[]>
+    The labels as parsed {@link GhLabelEntry} values. The `--json` field set
+    is pinned, since gh requires one by name.
+  labelCreate(configure?: Configure<GhLabelCreateSettings>): Promise<CommandOutput>
+    Add a label: `gh label create`.
+  labelEdit(configure?: Configure<GhLabelEditSettings>): Promise<CommandOutput>
+    Change a label: `gh label edit`.
+  labelDelete(configure?: Configure<GhLabelDeleteSettings>): Promise<CommandOutput>
+    Remove a label: `gh label delete`.
+  labelClone(configure?: Configure<GhLabelCloneSettings>): Promise<CommandOutput>
+    Copy another repository's labels: `gh label clone`.
+
+interface GhLabelEntry
+  One label of {@link "./gh.ts".GhTasks.labelListEntries}.
+
+  name?: string
+    The label's name.
+  color?: string
+    Its colour, as a hex triplet without the `#`.
+  description?: string
+    Its description.
 
 interface GhPrApi
   The `gh pr` members of {@link "./gh.ts".GhTasks}.
@@ -1544,6 +2412,102 @@ interface GhReleaseLatestResult
   releaseId?: number
     The id of the tag's release, when one was resolved.
 
+interface GhRepoApi
+  The `gh repo` members of {@link "./gh.ts".GhTasks}.
+
+  repoClone(configure?: Configure<GhRepoCloneSettings>): Promise<CommandOutput>
+    Clone a repository: `gh repo clone`.
+  repoCreate(configure?: Configure<GhRepoCreateSettings>): Promise<CommandOutput>
+    Create a repository: `gh repo create`.
+  repoView(configure?: Configure<GhRepoViewSettings>): Promise<CommandOutput>
+    Show a repository: `gh repo view`.
+  repoList(configure?: Configure<GhRepoListSettings>): Promise<CommandOutput>
+    List repositories: `gh repo list`.
+  repoListEntries(configure?: Configure<GhRepoListSettings>): Promise<GhRepositoryEntry[]>
+    The repositories as parsed {@link GhRepositoryEntry} values. The `--json`
+    field set is pinned, since gh requires one by name.
+  repoFork(configure?: Configure<GhRepoForkSettings>): Promise<CommandOutput>
+    Fork a repository: `gh repo fork`.
+  repoSync(configure?: Configure<GhRepoSyncSettings>): Promise<CommandOutput>
+    Bring a fork up to date: `gh repo sync`.
+  repoEdit(configure?: Configure<GhRepoEditSettings>): Promise<CommandOutput>
+    Change a repository's settings: `gh repo edit`.
+  repoRename(configure?: Configure<GhRepoRenameSettings>): Promise<CommandOutput>
+    Rename a repository: `gh repo rename`.
+  repoArchive(configure?: Configure<GhRepoArchiveSettings>): Promise<CommandOutput>
+    Archive or unarchive a repository: `gh repo archive`/`unarchive`.
+  repoDelete(configure?: Configure<GhRepoDeleteSettings>): Promise<CommandOutput>
+    Delete a repository: `gh repo delete`. Needs the `delete_repo` scope.
+  repoSetDefault(configure?: Configure<GhRepoSetDefaultSettings>): Promise<CommandOutput>
+    Choose the repository gh acts on by default: `gh repo set-default`.
+
+interface GhRepositoryEntry
+  One repository of {@link "./gh.ts".GhTasks.repoListEntries}.
+
+  name?: string
+    The repository's name, without the owner.
+  nameWithOwner?: string
+    Its full `owner/name`.
+  description?: string
+    Its description.
+  isPrivate?: boolean
+    Whether it is private.
+  isFork?: boolean
+    Whether it is a fork.
+  isArchived?: boolean
+    Whether it is archived.
+  url?: string
+    Its web URL.
+  updatedAt?: string
+    When it was last updated, ISO 8601.
+
+interface GhRunApi
+  The `gh run` members of {@link "./gh.ts".GhTasks}.
+
+  runList(configure?: Configure<GhRunListSettings>): Promise<CommandOutput>
+    List workflow runs: `gh run list`.
+  runListEntries(configure?: Configure<GhRunListSettings>): Promise<GhRunEntry[]>
+    The runs as parsed {@link GhRunEntry} values — the reader a build branches
+    on. The `--json` field set is pinned, since gh requires one by name.
+  runView(configure?: Configure<GhRunViewSettings>): Promise<CommandOutput>
+    Show a run: `gh run view`.
+  runRerun(configure?: Configure<GhRunRerunSettings>): Promise<CommandOutput>
+    Rerun a run, or its failed jobs: `gh run rerun`.
+  runCancel(configure?: Configure<GhRunCancelSettings>): Promise<CommandOutput>
+    Stop a run: `gh run cancel`.
+  runDelete(configure?: Configure<GhRunDeleteSettings>): Promise<CommandOutput>
+    Remove a run: `gh run delete`.
+  runDownload(configure?: Configure<GhRunDownloadSettings>): Promise<CommandOutput>
+    Fetch a run's artifacts: `gh run download`.
+  runWatch(configure?: Configure<GhRunWatchSettings>): Promise<CommandOutput>
+    Follow a run until it finishes: `gh run watch`. A target that watches
+    blocks until Actions is done, so pair it with `.killAfter(...)` unless
+    the wait is the point.
+
+interface GhRunEntry
+  One workflow run of {@link "./gh.ts".GhTasks.runListEntries}.
+
+  databaseId?: number
+    The run's numeric id — what every other `run` command takes.
+  number?: number
+    Its number within its workflow.
+  displayTitle?: string
+    The title GitHub displays, usually the head commit's subject.
+  workflowName?: string
+    The name of the workflow it ran.
+  headBranch?: string
+    The branch it ran on.
+  event?: string
+    The event that triggered it.
+  status?: string
+    Its status, as gh reports it: `completed`, `in_progress`, …
+  conclusion?: string
+    Its conclusion once complete: `success`, `failure`, …
+  url?: string
+    Its web URL.
+  createdAt?: string
+    When it was created, ISO 8601.
+
 interface GhSarifApi
   The shape of the SARIF task, mixed into `GhTasks`.
 
@@ -1559,7 +2523,33 @@ interface GhSarifUploadResult
   url: string
     The URL that reports whether GitHub finished processing the report.
 
-interface GhTasksApi extends GhAppTokenApi, GhSarifApi, GhReleaseAssetApi, GhReleaseLatestApi, GhCommitApi, GhPullRequestApi, GhCheckRunApi, GhPrApi, GhIssueApi, GhReleaseApi
+interface GhSecretApi
+  The `gh secret` members of {@link "./gh.ts".GhTasks}.
+
+  secretSet(configure?: Configure<GhSecretSetSettings>): Promise<CommandOutput>
+    Store a secret: `gh secret set`. A value passed as `.body(...)` becomes an
+    argv entry and is readable in a process listing — see the module docs of
+    {@link "./secret.ts".GhSecretSetSettings} for the alternatives.
+  secretList(configure?: Configure<GhSecretListSettings>): Promise<CommandOutput>
+    List the secrets' names: `gh secret list`.
+  secretListEntries(configure?: Configure<GhSecretListSettings>): Promise<GhSecretEntry[]>
+    The secrets as parsed {@link GhSecretEntry} values — names and metadata;
+    GitHub never returns a secret's value.
+  secretDelete(configure?: Configure<GhSecretDeleteSettings>): Promise<CommandOutput>
+    Remove a secret: `gh secret delete`.
+
+interface GhSecretEntry
+  One secret of {@link "./gh.ts".GhTasks.secretListEntries}. GitHub never
+  returns a secret's value, so an entry is its name and its metadata.
+
+  name?: string
+    The secret's name.
+  updatedAt?: string
+    When it was last updated, ISO 8601.
+  visibility?: string
+    The visibility of an organization secret.
+
+interface GhTasksApi extends GhAppTokenApi, GhSarifApi, GhReleaseAssetApi, GhReleaseLatestApi, GhCommitApi, GhPullRequestApi, GhCheckRunApi, GhPrApi, GhIssueApi, GhReleaseApi, GhRunApi, GhWorkflowApi, GhSecretApi, GhVariableApi, GhCacheApi, GhRepoApi, GhLabelApi
   The shape of {@link GhTasks}: the `gh` CLI plus the GitHub operations that
   have no CLI subcommand (see {@link GhAppTokenApi}, {@link GhSarifApi}) and
   would otherwise force a build back to a marketplace action.
@@ -1570,6 +2560,66 @@ interface GhTasksApi extends GhAppTokenApi, GhSarifApi, GhReleaseAssetApi, GhRel
     Call a REST endpoint through `gh api`, with the user's `gh` credentials —
     for operations that have no CLI verb, e.g. starring a repository:
     `GhTasks.api("user/starred/zuke-build/zuke", (s) => s.method("PUT"))`.
+
+interface GhVariableApi
+  The `gh variable` members of {@link "./gh.ts".GhTasks}.
+
+  variableSet(configure?: Configure<GhVariableSetSettings>): Promise<CommandOutput>
+    Store a variable: `gh variable set`.
+  variableGet(configure?: Configure<GhVariableGetSettings>): Promise<CommandOutput>
+    Read a variable: `gh variable get`.
+  variableValue(configure?: Configure<GhVariableGetSettings>): Promise<string>
+    A variable's value, with the trailing newline gh prints removed.
+  variableList(configure?: Configure<GhVariableListSettings>): Promise<CommandOutput>
+    List variables: `gh variable list`.
+  variableListEntries(configure?: Configure<GhVariableListSettings>): Promise<GhVariableEntry[]>
+    The variables as parsed {@link GhVariableEntry} values, values included —
+    a variable is not a secret.
+  variableDelete(configure?: Configure<GhVariableDeleteSettings>): Promise<CommandOutput>
+    Remove a variable: `gh variable delete`.
+
+interface GhVariableEntry
+  One variable of {@link "./gh.ts".GhTasks.variableListEntries}.
+
+  name?: string
+    The variable's name.
+  value?: string
+    Its value, which GitHub returns in the clear.
+  updatedAt?: string
+    When it was last updated, ISO 8601.
+  visibility?: string
+    The visibility of an organization variable.
+
+interface GhWorkflowApi
+  The `gh workflow` members of {@link "./gh.ts".GhTasks}.
+
+  workflowList(configure?: Configure<GhWorkflowListSettings>): Promise<CommandOutput>
+    List workflows: `gh workflow list`.
+  workflowListEntries(configure?: Configure<GhWorkflowListSettings>): Promise<GhWorkflowEntry[]>
+    The workflows as parsed {@link GhWorkflowEntry} values. The `--json` field
+    set is pinned, since gh requires one by name.
+  workflowView(configure?: Configure<GhWorkflowViewSettings>): Promise<CommandOutput>
+    Show a workflow, or its YAML: `gh workflow view`.
+  workflowRun(configure?: Configure<GhWorkflowRunSettings>): Promise<CommandOutput>
+    Dispatch a workflow: `gh workflow run`. This returns once the dispatch is
+    accepted; {@link "./workflow.ts".githubWorkflow} is the wait trigger that
+    suspends the build until the run finishes.
+  workflowEnable(configure?: Configure<GhWorkflowEnableSettings>): Promise<CommandOutput>
+    Turn a workflow on: `gh workflow enable`.
+  workflowDisable(configure?: Configure<GhWorkflowDisableSettings>): Promise<CommandOutput>
+    Turn a workflow off: `gh workflow disable`.
+
+interface GhWorkflowEntry
+  One workflow of {@link "./gh.ts".GhTasks.workflowListEntries}.
+
+  id?: number
+    The workflow's numeric id.
+  name?: string
+    Its name, as the `name:` key of its file declares it.
+  path?: string
+    Its path in the repository, e.g. `.github/workflows/ci.yml`.
+  state?: string
+    Its state, as gh reports it: `active`, `disabled_manually`, …
 
 interface WorkflowJob
   One job's outcome within a completed workflow run.
@@ -1605,6 +2655,9 @@ type CorrelateMode = "marker" | "created-window"
     created just after dispatch; best-effort, for workflows that can't echo
     the marker (fails loudly if two candidates are in the window).
 
+type GhCacheSort = "created_at" | "last_accessed_at" | "size_in_bytes"
+  What `gh cache list --sort` orders the caches by.
+
 type GhCheckConclusion = "success" | "failure" | "neutral" | "cancelled" | "skipped" | "timed_out" | "action_required"
   A check run's conclusion, as GitHub spells them.
 
@@ -1614,11 +2667,27 @@ type GhCheckConclusion = "success" | "failure" | "neutral" | "cancelled" | "skip
 type GhCloseReason = "completed" | "not planned" | "duplicate"
   Why an issue is being closed (`--reason`).
 
+type GhLabelSort = "created" | "name"
+  What `gh label list --sort` orders the labels by.
+
 type GhMergeMethod = "merge" | "squash" | "rebase"
   How `gh pr merge` combines the commits.
 
 type GhPermissionLevel = "read" | "write" | "admin"
   A permission level an installation token can be narrowed to.
+
+type GhRepoVisibility = "public" | "private" | "internal"
+  How visible a repository is (`--visibility`).
+
+type GhRunStatus = "queued" | "completed" | "in_progress" | "requested" | "waiting" | "pending" | "action_required" | "cancelled" | "failure" | "neutral" | "skipped" | "stale" | "startup_failure" | "success" | "timed_out"
+  The status `gh run list --status` filters by: the run's state while it is
+  going, then the conclusion it settles on.
+
+type GhScopeVisibility = "all" | "private" | "selected"
+  Who an organization value is visible to (`--visibility`).
+
+type GhSecretApp = "actions" | "agents" | "codespaces" | "dependabot"
+  Which application reads the secret (`--app`).
 ````
 
 </details>
