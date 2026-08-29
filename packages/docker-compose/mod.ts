@@ -32,13 +32,20 @@ export {
 } from "./src/invocation.ts";
 export { DockerComposeSettings } from "./src/settings.ts";
 export {
+  DockerComposeCreateSettings,
   DockerComposeDownSettings,
+  DockerComposeKillSettings,
+  DockerComposePauseSettings,
   type DockerComposePullPolicy,
   DockerComposeRestartSettings,
   DockerComposeRmSettings,
+  DockerComposeScaleSettings,
+  DockerComposeServiceListSettings,
   DockerComposeStartSettings,
   DockerComposeStopSettings,
+  DockerComposeUnpauseSettings,
   DockerComposeUpSettings,
+  DockerComposeWaitSettings,
 } from "./src/lifecycle.ts";
 export {
   DockerComposeBuildSettings,
@@ -46,9 +53,29 @@ export {
   DockerComposePushSettings,
 } from "./src/images.ts";
 export {
+  DockerComposeCommitSettings,
   DockerComposeConfigSettings,
+  DockerComposeCpSettings,
   DockerComposeExecSettings,
+  DockerComposeExportSettings,
   DockerComposeLogsSettings,
   DockerComposePsSettings,
   DockerComposeRunSettings,
+  DockerComposeTopSettings,
 } from "./src/containers.ts";
+export {
+  DockerComposeEventsSettings,
+  DockerComposeImagesSettings,
+  DockerComposeListingSettings,
+  DockerComposeLsSettings,
+  DockerComposePortSettings,
+  DockerComposeVersionSettings,
+  DockerComposeVolumesSettings,
+} from "./src/inventory.ts";
+export {
+  type ComposeRunOutcome,
+  type DockerComposeVersion,
+  parseComposeVersion,
+  parsePublishedPort,
+  waitStatus,
+} from "./src/reports.ts";

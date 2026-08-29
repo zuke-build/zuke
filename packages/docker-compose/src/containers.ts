@@ -260,3 +260,227 @@ export class DockerComposeConfigSettings extends DockerComposeSettings {
     return argv;
   }
 }
+
+/**
+ * Settings for `compose cp`.
+ *
+ * Compose copies between a service container and the local filesystem, so
+ * exactly one side names a service. Naming both or neither is refused rather
+ * than handed to Compose as a path it cannot resolve.
+ */
+export class DockerComposeCpSettings extends DockerComposeSettings {
+  #from?: string;
+  #to?: string;
+  #fromIsService = false;
+  #toIsService = false;
+  #index?: number;
+  #all = false;
+  #archive = false;
+  #followLink = false;
+
+  /** Copy out of `service` at `path` (`SERVICE:PATH`). */
+  fromService(service: string, path: PathLike): this {
+    this.#from = `${service}:${String(path)}`;
+    this.#fromIsService = true;
+    return this;
+  }
+
+  /** Copy out of a local path. */
+  fromLocal(path: PathLike): this {
+    this.#from = String(path);
+    this.#fromIsService = false;
+    return this;
+  }
+
+  /** Copy into `service` at `path` (`SERVICE:PATH`). */
+  toService(service: string, path: PathLike): this {
+    this.#to = `${service}:${String(path)}`;
+    this.#toIsService = true;
+    return this;
+  }
+
+  /** Copy into a local path. */
+  toLocal(path: PathLike): this {
+    this.#to = String(path);
+    this.#toIsService = false;
+    return this;
+  }
+
+  /** Pick the replica to copy from when the service has several (`--index`). */
+  index(value: number): this {
+    this.#index = value;
+    return this;
+  }
+
+  /** Include containers created by `compose run` (`--all`). */
+  all(): this {
+    this.#all = true;
+    return this;
+  }
+
+  /** Preserve uid/gid information (`--archive`). */
+  archive(): this {
+    this.#archive = true;
+    return this;
+  }
+
+  /** Follow symbolic links in the source path (`--follow-link`). */
+  followLink(): this {
+    this.#followLink = true;
+    return this;
+  }
+
+  /** Assemble the `compose cp` argv. */
+  protected override composeArgs(): string[] {
+    if (this.#from === undefined || this.#to === undefined) {
+      throw new Error(
+        "DockerComposeTasks.cp: both ends are required — use one of " +
+          ".fromService()/.fromLocal() and one of .toService()/.toLocal().",
+      );
+    }
+    if (this.#fromIsService === this.#toIsService) {
+      const both = this.#fromIsService ? "two services" : "two local paths";
+      throw new Error(
+        `DockerComposeTasks.cp: copying between ${both} is not what compose ` +
+          "cp does — one end names a service and the other is local.",
+      );
+    }
+    const argv = ["cp"];
+    if (this.#all) argv.push("--all");
+    if (this.#archive) argv.push("--archive");
+    if (this.#followLink) argv.push("--follow-link");
+    if (this.#index !== undefined) argv.push("--index", String(this.#index));
+    argv.push(this.#from, this.#to);
+    return argv;
+  }
+}
+
+/** Settings for `compose top`. */
+export class DockerComposeTopSettings extends DockerComposeSettings {
+  #services: string[] = [];
+
+  /** Restrict the report to these services. */
+  services(...names: string[]): this {
+    this.#services.push(...names);
+    return this;
+  }
+
+  /** Assemble the `compose top` argv. */
+  protected override composeArgs(): string[] {
+    return ["top", ...this.#services];
+  }
+}
+
+/** Settings for `compose export`. */
+export class DockerComposeExportSettings extends DockerComposeSettings {
+  #service?: string;
+  #output?: string;
+  #index?: number;
+
+  /** The service whose container filesystem to export (required). */
+  service(name: string): this {
+    this.#service = name;
+    return this;
+  }
+
+  /**
+   * Write the tar archive to a file (`--output`) instead of stdout. Prefer it:
+   * a tar stream captured as the command's stdout goes through Zuke's output
+   * buffer, which is text-shaped and size-capped.
+   */
+  output(path: PathLike): this {
+    this.#output = String(path);
+    return this;
+  }
+
+  /** Pick the replica to export when the service has several (`--index`). */
+  index(value: number): this {
+    this.#index = value;
+    return this;
+  }
+
+  /** Assemble the `compose export` argv. */
+  protected override composeArgs(): string[] {
+    if (this.#service === undefined) {
+      throw new Error("DockerComposeTasks.export: .service() is required.");
+    }
+    const argv = ["export"];
+    if (this.#output !== undefined) argv.push("--output", this.#output);
+    if (this.#index !== undefined) argv.push("--index", String(this.#index));
+    argv.push(this.#service);
+    return argv;
+  }
+}
+
+/** Settings for `compose commit`. */
+export class DockerComposeCommitSettings extends DockerComposeSettings {
+  #service?: string;
+  #reference?: string;
+  #author?: string;
+  #message?: string;
+  #changes: string[] = [];
+  #index?: number;
+  #noPause = false;
+
+  /** The service whose container to commit (required). */
+  service(name: string): this {
+    this.#service = name;
+    return this;
+  }
+
+  /** The image reference to create, e.g. `my-app:test`. */
+  reference(value: string): this {
+    this.#reference = value;
+    return this;
+  }
+
+  /** Image author (`--author`). */
+  author(value: string): this {
+    this.#author = value;
+    return this;
+  }
+
+  /** Commit message (`--message`). */
+  message(value: string): this {
+    this.#message = value;
+    return this;
+  }
+
+  /** Apply a Dockerfile instruction to the created image (`--change`). */
+  change(...instructions: string[]): this {
+    this.#changes.push(...instructions);
+    return this;
+  }
+
+  /** Pick the replica to commit when the service has several (`--index`). */
+  index(value: number): this {
+    this.#index = value;
+    return this;
+  }
+
+  /**
+   * Leave the container running during the commit (`--pause=false`). Compose
+   * pauses it by default so the filesystem cannot change mid-capture; turning
+   * that off trades a consistent image for uninterrupted service.
+   */
+  noPause(): this {
+    this.#noPause = true;
+    return this;
+  }
+
+  /** Assemble the `compose commit` argv. */
+  protected override composeArgs(): string[] {
+    if (this.#service === undefined) {
+      throw new Error("DockerComposeTasks.commit: .service() is required.");
+    }
+    const argv = ["commit"];
+    if (this.#author !== undefined) argv.push("--author", this.#author);
+    if (this.#message !== undefined) argv.push("--message", this.#message);
+    for (const change of this.#changes) argv.push("--change", change);
+    if (this.#index !== undefined) argv.push("--index", String(this.#index));
+    if (this.#noPause) argv.push("--pause=false");
+    argv.push(this.#service);
+    if (this.#reference !== undefined) argv.push(this.#reference);
+    return argv;
+  }
+}

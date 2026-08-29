@@ -281,3 +281,260 @@ export class DockerComposeRmSettings extends DockerComposeSettings {
     return argv;
   }
 }
+
+/** Settings for `compose create`. */
+export class DockerComposeCreateSettings extends DockerComposeSettings {
+  #services: string[] = [];
+  #build = false;
+  #noBuild = false;
+  #forceRecreate = false;
+  #noRecreate = false;
+  #removeOrphans = false;
+  #quietPull = false;
+  #yes = false;
+  #pull?: DockerComposePullPolicy;
+  #scale: string[] = [];
+
+  /** Restrict creation to these services. */
+  services(...names: string[]): this {
+    this.#services.push(...names);
+    return this;
+  }
+
+  /** Build images before creating containers (`--build`). */
+  build(): this {
+    this.#build = true;
+    return this;
+  }
+
+  /** Never build, whatever the policy says (`--no-build`). */
+  noBuild(): this {
+    this.#noBuild = true;
+    return this;
+  }
+
+  /** Recreate containers even when their configuration has not changed (`--force-recreate`). */
+  forceRecreate(): this {
+    this.#forceRecreate = true;
+    return this;
+  }
+
+  /** Leave existing containers in place (`--no-recreate`). */
+  noRecreate(): this {
+    this.#noRecreate = true;
+    return this;
+  }
+
+  /** Remove containers for services no longer in the file (`--remove-orphans`). */
+  removeOrphans(): this {
+    this.#removeOrphans = true;
+    return this;
+  }
+
+  /** Pull without progress output (`--quiet-pull`). */
+  quietPull(): this {
+    this.#quietPull = true;
+    return this;
+  }
+
+  /** When to pull images before creating (`--pull`). */
+  pull(policy: DockerComposePullPolicy): this {
+    this.#pull = policy;
+    return this;
+  }
+
+  /** Create `replicas` containers for `service` (`--scale`). */
+  scale(service: string, replicas: number): this {
+    this.#scale.push("--scale", `${service}=${replicas}`);
+    return this;
+  }
+
+  /** Answer every prompt affirmatively (`--yes`), so an unattended run cannot stall. */
+  yes(): this {
+    this.#yes = true;
+    return this;
+  }
+
+  /** Assemble the `compose create` argv. */
+  protected override composeArgs(): string[] {
+    if (this.#build && this.#noBuild) {
+      throw new Error(
+        "DockerComposeTasks.create: .build() and .noBuild() are opposite " +
+          "answers to whether images are built — pick one.",
+      );
+    }
+    if (this.#forceRecreate && this.#noRecreate) {
+      throw new Error(
+        "DockerComposeTasks.create: .forceRecreate() and .noRecreate() are " +
+          "opposite answers to whether existing containers are replaced — " +
+          "pick one.",
+      );
+    }
+    const argv = ["create"];
+    if (this.#build) argv.push("--build");
+    if (this.#noBuild) argv.push("--no-build");
+    if (this.#forceRecreate) argv.push("--force-recreate");
+    if (this.#noRecreate) argv.push("--no-recreate");
+    if (this.#removeOrphans) argv.push("--remove-orphans");
+    if (this.#quietPull) argv.push("--quiet-pull");
+    if (this.#pull !== undefined) argv.push("--pull", this.#pull);
+    argv.push(...this.#scale);
+    if (this.#yes) argv.push("--yes");
+    argv.push(...this.#services);
+    return argv;
+  }
+}
+
+/** Settings for `compose kill`. */
+export class DockerComposeKillSettings extends DockerComposeSettings {
+  #services: string[] = [];
+  #signal?: string;
+  #removeOrphans = false;
+
+  /** Restrict the kill to these services. */
+  services(...names: string[]): this {
+    this.#services.push(...names);
+    return this;
+  }
+
+  /**
+   * The signal to send (`--signal`), `SIGKILL` by default. Send `SIGTERM` to
+   * let a service run its shutdown path — `kill` skips the grace period `stop`
+   * gives it.
+   */
+  signal(name: string): this {
+    this.#signal = name;
+    return this;
+  }
+
+  /** Remove containers for services no longer in the file (`--remove-orphans`). */
+  removeOrphans(): this {
+    this.#removeOrphans = true;
+    return this;
+  }
+
+  /** Assemble the `compose kill` argv. */
+  protected override composeArgs(): string[] {
+    const argv = ["kill"];
+    if (this.#signal !== undefined) argv.push("--signal", this.#signal);
+    if (this.#removeOrphans) argv.push("--remove-orphans");
+    argv.push(...this.#services);
+    return argv;
+  }
+}
+
+/**
+ * Settings shared by `compose pause` and `compose unpause`, which take only a
+ * service list.
+ */
+export abstract class DockerComposeServiceListSettings
+  extends DockerComposeSettings {
+  #services: string[] = [];
+
+  /** Restrict the command to these services. */
+  services(...names: string[]): this {
+    this.#services.push(...names);
+    return this;
+  }
+
+  /** The subcommand this class renders. */
+  protected abstract get subcommand(): string;
+
+  /** Assemble the subcommand argv. */
+  protected override composeArgs(): string[] {
+    return [this.subcommand, ...this.#services];
+  }
+}
+
+/** Settings for `compose pause`. */
+export class DockerComposePauseSettings
+  extends DockerComposeServiceListSettings {
+  /** The subcommand this class renders. */
+  protected override get subcommand(): string {
+    return "pause";
+  }
+}
+
+/** Settings for `compose unpause`. */
+export class DockerComposeUnpauseSettings
+  extends DockerComposeServiceListSettings {
+  /** The subcommand this class renders. */
+  protected override get subcommand(): string {
+    return "unpause";
+  }
+}
+
+/** Settings for `compose scale`. */
+export class DockerComposeScaleSettings extends DockerComposeSettings {
+  #scales: string[] = [];
+  #noDeps = false;
+
+  /** Scale `service` to `replicas` instances; repeatable (required). */
+  scale(service: string, replicas: number): this {
+    this.#scales.push(`${service}=${replicas}`);
+    return this;
+  }
+
+  /** Do not start linked services (`--no-deps`). */
+  noDeps(): this {
+    this.#noDeps = true;
+    return this;
+  }
+
+  /** Assemble the `compose scale` argv. */
+  protected override composeArgs(): string[] {
+    if (this.#scales.length === 0) {
+      throw new Error(
+        "DockerComposeTasks.scale: at least one service is required (use " +
+          ".scale(service, replicas)).",
+      );
+    }
+    const argv = ["scale"];
+    if (this.#noDeps) argv.push("--no-deps");
+    argv.push(...this.#scales);
+    return argv;
+  }
+}
+
+/**
+ * Settings for `compose wait`.
+ *
+ * The command blocks until the named services' containers stop, then exits
+ * with the first container's own exit status. That makes its exit code a
+ * result rather than a failure — see {@link DockerComposeTasks.waitExitCode},
+ * which hands the code back instead of failing the target.
+ */
+export class DockerComposeWaitSettings extends DockerComposeSettings {
+  #services: string[] = [];
+  #downProject = false;
+
+  /** The services to wait on (required). */
+  services(...names: string[]): this {
+    this.#services.push(...names);
+    return this;
+  }
+
+  /**
+   * Tear the project down once the first container stops (`--down-project`),
+   * so a test run cleans up after itself without a second command.
+   */
+  downProject(): this {
+    this.#downProject = true;
+    return this;
+  }
+
+  /** Assemble the `compose wait` argv. */
+  protected override composeArgs(): string[] {
+    if (this.#services.length === 0) {
+      throw new Error(
+        "DockerComposeTasks.wait: at least one service is required (use " +
+          ".services()). Compose waits on named services, not on the whole " +
+          "project.",
+      );
+    }
+    const argv = ["wait"];
+    if (this.#downProject) argv.push("--down-project");
+    argv.push(...this.#services);
+    return argv;
+  }
+}

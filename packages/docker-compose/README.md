@@ -1,10 +1,21 @@
 # @zuke/docker-compose
 
 Typed Docker Compose task wrappers for
-[Zuke](https://github.com/zuke-build/zuke#readme) builds — `up`, `down`,
-`build`, `pull`, `push`, `run`, `exec`, `logs`, `ps`, `config`, `start`, `stop`,
-`restart`, and `rm` — in a fluent settings-lambda API. Arguments stay a discrete
-argv array, so command construction is injection-free.
+[Zuke](https://github.com/zuke-build/zuke#readme) builds, in a fluent
+settings-lambda API: `up`, `down`, `create`, `start`, `stop`, `restart`,
+`pause`, `unpause`, `kill`, `rm`, `scale` and `wait`; `build`, `pull`, `push`,
+`images` and `commit`; `run`, `exec`, `cp`, `top`, `export` and `logs`; and
+`ps`, `config`, `ls`, `volumes`, `port`, `events` and `version`. Arguments stay
+a discrete argv array, so command construction is injection-free.
+
+## Readers
+
+Three tasks return a value rather than an exit code, for the questions a build
+actually asks of a running project. `servicePort` reports the host port a
+service was published on — the point of letting Compose pick an ephemeral port
+is asking which one it picked. `waitExitCode` hands back the status the
+waited-on container stopped with, which is how a containerised test suite
+reports its verdict. `composeVersion` reports the installed Compose version.
 
 Compose ships in two shapes: the v2 CLI plugin invoked as `docker compose` and
 the legacy v1 standalone binary `docker-compose`. This wrapper detects which is
@@ -55,6 +66,15 @@ async function defaultComposeProbe(argv: readonly string[]): Promise<boolean>
   `false` rather than throwing, so detection can fall through to the next
   candidate.
 
+function parseComposeVersion(stdout: string): DockerComposeVersion
+  Parse `compose version --format json` stdout.
+
+function parsePublishedPort(stdout: string): number
+  The host port `compose port` printed, from output like `0.0.0.0:32768`.
+
+  Read as the segment after the final colon so an IPv6 binding (`[::]:32768`)
+  parses the same way as an IPv4 one.
+
 function resetComposeInvocationCache_(): void
   Clear the cached Compose invocation so the next
   {@link resolveComposeInvocation} re-detects. Internal test seam — the
@@ -67,6 +87,22 @@ function resolveComposeInvocation(probe: ComposeProbe): Promise<string[]>
   raised. The result is cached after the first successful detection (a failed
   detection is not cached, so a later call retries). Pass a custom
   {@link ComposeProbe} to override how candidates are tested.
+
+function waitStatus(output: ComposeRunOutcome): number
+  The exit status `compose wait` reported.
+
+  `wait` exits with the stopped container's own status, so every code is a
+  legitimate answer and none is reserved to mean "Compose itself failed".
+  There is therefore nothing here to distinguish the two on, and this returns
+  the code as it stands rather than guessing from the output.
+
+  What that does and does not cover: a missing Compose binary still fails,
+  because tool resolution raises before any process runs. A Compose that ran
+  but could not reach the daemon returns its own exit status, which is
+  indistinguishable from a container that exited with the same number — so a
+  build that needs to tell those apart should confirm the services are up
+  first, or use {@link DockerComposeTasks.wait}, which fails the target on any
+  non-zero status.
 
 const DockerComposeTasks: DockerComposeTasksApi
   Typed task functions for Docker Compose (`docker compose`/`docker-compose`).
@@ -85,6 +121,28 @@ class DockerComposeBuildSettings extends DockerComposeSettings
   override protected composeArgs(): string[]
     Assemble the `compose build` argv.
 
+class DockerComposeCommitSettings extends DockerComposeSettings
+  Settings for `compose commit`.
+
+  service(name: string): this
+    The service whose container to commit (required).
+  reference(value: string): this
+    The image reference to create, e.g. `my-app:test`.
+  author(value: string): this
+    Image author (`--author`).
+  message(value: string): this
+    Commit message (`--message`).
+  change(...instructions: string[]): this
+    Apply a Dockerfile instruction to the created image (`--change`).
+  index(value: number): this
+    Pick the replica to commit when the service has several (`--index`).
+  noPause(): this
+    Leave the container running during the commit (`--pause=false`). Compose
+    pauses it by default so the filesystem cannot change mid-capture; turning
+    that off trades a consistent image for uninterrupted service.
+  override protected composeArgs(): string[]
+    Assemble the `compose commit` argv.
+
 class DockerComposeConfigSettings extends DockerComposeSettings
   Settings for `compose config`.
 
@@ -99,6 +157,58 @@ class DockerComposeConfigSettings extends DockerComposeSettings
   override protected composeArgs(): string[]
     Assemble the `compose config` argv.
 
+class DockerComposeCpSettings extends DockerComposeSettings
+  Settings for `compose cp`.
+
+  Compose copies between a service container and the local filesystem, so
+  exactly one side names a service. Naming both or neither is refused rather
+  than handed to Compose as a path it cannot resolve.
+
+  fromService(service: string, path: PathLike): this
+    Copy out of `service` at `path` (`SERVICE:PATH`).
+  fromLocal(path: PathLike): this
+    Copy out of a local path.
+  toService(service: string, path: PathLike): this
+    Copy into `service` at `path` (`SERVICE:PATH`).
+  toLocal(path: PathLike): this
+    Copy into a local path.
+  index(value: number): this
+    Pick the replica to copy from when the service has several (`--index`).
+  all(): this
+    Include containers created by `compose run` (`--all`).
+  archive(): this
+    Preserve uid/gid information (`--archive`).
+  followLink(): this
+    Follow symbolic links in the source path (`--follow-link`).
+  override protected composeArgs(): string[]
+    Assemble the `compose cp` argv.
+
+class DockerComposeCreateSettings extends DockerComposeSettings
+  Settings for `compose create`.
+
+  services(...names: string[]): this
+    Restrict creation to these services.
+  build(): this
+    Build images before creating containers (`--build`).
+  noBuild(): this
+    Never build, whatever the policy says (`--no-build`).
+  forceRecreate(): this
+    Recreate containers even when their configuration has not changed (`--force-recreate`).
+  noRecreate(): this
+    Leave existing containers in place (`--no-recreate`).
+  removeOrphans(): this
+    Remove containers for services no longer in the file (`--remove-orphans`).
+  quietPull(): this
+    Pull without progress output (`--quiet-pull`).
+  pull(policy: DockerComposePullPolicy): this
+    When to pull images before creating (`--pull`).
+  scale(service: string, replicas: number): this
+    Create `replicas` containers for `service` (`--scale`).
+  yes(): this
+    Answer every prompt affirmatively (`--yes`), so an unattended run cannot stall.
+  override protected composeArgs(): string[]
+    Assemble the `compose create` argv.
+
 class DockerComposeDownSettings extends DockerComposeSettings
   Settings for `compose down`.
 
@@ -112,6 +222,23 @@ class DockerComposeDownSettings extends DockerComposeSettings
     Shutdown timeout in seconds (`-t`).
   override protected composeArgs(): string[]
     Assemble the `compose down` argv.
+
+class DockerComposeEventsSettings extends DockerComposeSettings
+  Settings for `compose events`.
+
+  services(...names: string[]): this
+    Restrict the stream to these services.
+  json(): this
+    Emit each event as a JSON object (`--json`).
+  since(timestamp: string): this
+    Include events since a timestamp (`--since`).
+  until(timestamp: string): this
+    Stop streaming at a timestamp (`--until`).
+
+    Without it the command streams until interrupted, so a build target that
+    awaits it blocks — bound the run with this or with `.killAfter(ms)`.
+  override protected composeArgs(): string[]
+    Assemble the `compose events` argv.
 
 class DockerComposeExecSettings extends DockerComposeSettings
   Settings for `compose exec`.
@@ -131,6 +258,58 @@ class DockerComposeExecSettings extends DockerComposeSettings
   override protected composeArgs(): string[]
     Assemble the `compose exec` argv.
 
+class DockerComposeExportSettings extends DockerComposeSettings
+  Settings for `compose export`.
+
+  service(name: string): this
+    The service whose container filesystem to export (required).
+  output(path: PathLike): this
+    Write the tar archive to a file (`--output`) instead of stdout. Prefer it:
+    a tar stream captured as the command's stdout goes through Zuke's output
+    buffer, which is text-shaped and size-capped.
+  index(value: number): this
+    Pick the replica to export when the service has several (`--index`).
+  override protected composeArgs(): string[]
+    Assemble the `compose export` argv.
+
+class DockerComposeImagesSettings extends DockerComposeListingSettings
+  Settings for `compose images`.
+
+  services(...names: string[]): this
+    Restrict the listing to these services.
+  override protected composeArgs(): string[]
+    Assemble the `compose images` argv.
+
+class DockerComposeKillSettings extends DockerComposeSettings
+  Settings for `compose kill`.
+
+  services(...names: string[]): this
+    Restrict the kill to these services.
+  signal(name: string): this
+    The signal to send (`--signal`), `SIGKILL` by default. Send `SIGTERM` to
+    let a service run its shutdown path — `kill` skips the grace period `stop`
+    gives it.
+  removeOrphans(): this
+    Remove containers for services no longer in the file (`--remove-orphans`).
+  override protected composeArgs(): string[]
+    Assemble the `compose kill` argv.
+
+abstract class DockerComposeListingSettings extends DockerComposeSettings
+  Shared by the listing subcommands that accept `--format` and `--quiet`.
+
+  `--format json` is what makes these readable by a build rather than by a
+  person, so the convenience {@link json} spells it rather than leaving the
+  caller to remember the value.
+
+  format(value: string): this
+    Format the output (`--format`), e.g. `table` or `json`.
+  json(): this
+    Emit JSON (`--format json`).
+  quietOutput(): this
+    Print only identifiers or names (`--quiet`).
+  protected listingFlags(): string[]
+    The shared listing flags, in the CLI's own order.
+
 class DockerComposeLogsSettings extends DockerComposeSettings
   Settings for `compose logs`.
 
@@ -144,6 +323,37 @@ class DockerComposeLogsSettings extends DockerComposeSettings
     Restrict to specific services (positional); optional.
   override protected composeArgs(): string[]
     Assemble the `compose logs` argv.
+
+class DockerComposeLsSettings extends DockerComposeListingSettings
+  Settings for `compose ls`, which lists Compose projects rather than services.
+
+  all(): this
+    Include stopped projects (`--all`).
+  filter(expression: string): this
+    Filter the listing (`--filter`), e.g. `name=my-project`.
+  override protected composeArgs(): string[]
+    Assemble the `compose ls` argv.
+
+class DockerComposePauseSettings extends DockerComposeServiceListSettings
+  Settings for `compose pause`.
+
+  override protected get subcommand(): string
+    The subcommand this class renders.
+
+class DockerComposePortSettings extends DockerComposeSettings
+  Settings for `compose port`, which prints the host address a service's
+  container port was published on.
+
+  service(name: string): this
+    The service to ask about (required).
+  privatePort(port: number): this
+    The container-side port to look up (required).
+  protocol(value: "tcp" | "udp"): this
+    The protocol of the binding (`--protocol`), `tcp` by default.
+  index(value: number): this
+    Pick the replica to ask when the service has several (`--index`).
+  override protected composeArgs(): string[]
+    Assemble the `compose port` argv.
 
 class DockerComposePsSettings extends DockerComposeSettings
   Settings for `compose ps`.
@@ -225,6 +435,27 @@ class DockerComposeRunSettings extends DockerComposeSettings
   override protected composeArgs(): string[]
     Assemble the `compose run` argv.
 
+class DockerComposeScaleSettings extends DockerComposeSettings
+  Settings for `compose scale`.
+
+  scale(service: string, replicas: number): this
+    Scale `service` to `replicas` instances; repeatable (required).
+  noDeps(): this
+    Do not start linked services (`--no-deps`).
+  override protected composeArgs(): string[]
+    Assemble the `compose scale` argv.
+
+abstract class DockerComposeServiceListSettings extends DockerComposeSettings
+  Settings shared by `compose pause` and `compose unpause`, which take only a
+  service list.
+
+  services(...names: string[]): this
+    Restrict the command to these services.
+  abstract protected get subcommand(): string
+    The subcommand this class renders.
+  override protected composeArgs(): string[]
+    Assemble the subcommand argv.
+
 abstract class DockerComposeSettings extends ToolSettings
   Base for all Compose subcommand settings. Holds the invocation prefix
   (`docker compose` vs `docker-compose`) and the global options that precede
@@ -273,6 +504,20 @@ class DockerComposeStopSettings extends DockerComposeSettings
   override protected composeArgs(): string[]
     Assemble the `compose stop` argv.
 
+class DockerComposeTopSettings extends DockerComposeSettings
+  Settings for `compose top`.
+
+  services(...names: string[]): this
+    Restrict the report to these services.
+  override protected composeArgs(): string[]
+    Assemble the `compose top` argv.
+
+class DockerComposeUnpauseSettings extends DockerComposeServiceListSettings
+  Settings for `compose unpause`.
+
+  override protected get subcommand(): string
+    The subcommand this class renders.
+
 class DockerComposeUpSettings extends DockerComposeSettings
   Settings for `compose up`.
 
@@ -314,6 +559,56 @@ class DockerComposeUpSettings extends DockerComposeSettings
   override protected composeArgs(): string[]
     Assemble the `compose up` argv.
 
+class DockerComposeVersionSettings extends DockerComposeSettings
+  Settings for `compose version`.
+
+  format(value: string): this
+    Format the output (`--format`), `pretty` or `json`.
+  json(): this
+    Emit JSON (`--format json`).
+  short(): this
+    Print only the version number (`--short`).
+  override protected composeArgs(): string[]
+    Assemble the `compose version` argv.
+
+class DockerComposeVolumesSettings extends DockerComposeListingSettings
+  Settings for `compose volumes`.
+
+  services(...names: string[]): this
+    Restrict the listing to the volumes these services use.
+  override protected composeArgs(): string[]
+    Assemble the `compose volumes` argv.
+
+class DockerComposeWaitSettings extends DockerComposeSettings
+  Settings for `compose wait`.
+
+  The command blocks until the named services' containers stop, then exits
+  with the first container's own exit status. That makes its exit code a
+  result rather than a failure — see {@link DockerComposeTasks.waitExitCode},
+  which hands the code back instead of failing the target.
+
+  services(...names: string[]): this
+    The services to wait on (required).
+  downProject(): this
+    Tear the project down once the first container stops (`--down-project`),
+    so a test run cleans up after itself without a second command.
+  override protected composeArgs(): string[]
+    Assemble the `compose wait` argv.
+
+interface ComposeRunOutcome
+  The part of a finished command this module reads.
+
+  Narrower than `CommandOutput` on purpose: these readers need the status and
+  the two streams and nothing else, so they take exactly that. A real
+  `CommandOutput` satisfies it structurally.
+
+  code: number
+    The process exit status.
+  stdout: string
+    Everything the command wrote to standard output.
+  stderr: string
+    Everything the command wrote to standard error.
+
 interface DockerComposeTasksApi
   The shape of {@link DockerComposeTasks}.
 
@@ -345,6 +640,62 @@ interface DockerComposeTasksApi
     Restart services: `compose restart`.
   rm(configure?: Configure<DockerComposeRmSettings>): Promise<CommandOutput>
     Remove stopped service containers: `compose rm`.
+  create(configure?: Configure<DockerComposeCreateSettings>): Promise<CommandOutput>
+    Create containers without starting them: `compose create`.
+  kill(configure?: Configure<DockerComposeKillSettings>): Promise<CommandOutput>
+    Force-stop service containers: `compose kill`.
+  pause(configure?: Configure<DockerComposePauseSettings>): Promise<CommandOutput>
+    Pause services: `compose pause`.
+  unpause(configure?: Configure<DockerComposeUnpauseSettings>): Promise<CommandOutput>
+    Resume paused services: `compose unpause`.
+  scale(configure?: Configure<DockerComposeScaleSettings>): Promise<CommandOutput>
+    Set service replica counts: `compose scale`.
+  wait(configure?: Configure<DockerComposeWaitSettings>): Promise<CommandOutput>
+    Block until services stop: `compose wait`.
+
+    Keeps the ordinary contract — a non-zero container status fails the
+    target. Use {@link DockerComposeTasksApi.waitExitCode} when the status is
+    the answer rather than a failure.
+  cp(configure?: Configure<DockerComposeCpSettings>): Promise<CommandOutput>
+    Copy between a service container and the local filesystem: `compose cp`.
+  top(configure?: Configure<DockerComposeTopSettings>): Promise<CommandOutput>
+    Show running processes: `compose top`.
+  export(configure?: Configure<DockerComposeExportSettings>): Promise<CommandOutput>
+    Export a container filesystem as a tar archive: `compose export`.
+  commit(configure?: Configure<DockerComposeCommitSettings>): Promise<CommandOutput>
+    Create an image from a container: `compose commit`.
+  images(configure?: Configure<DockerComposeImagesSettings>): Promise<CommandOutput>
+    List the images the containers use: `compose images`.
+  volumes(configure?: Configure<DockerComposeVolumesSettings>): Promise<CommandOutput>
+    List the project's volumes: `compose volumes`.
+  ls(configure?: Configure<DockerComposeLsSettings>): Promise<CommandOutput>
+    List Compose projects: `compose ls`.
+  version(configure?: Configure<DockerComposeVersionSettings>): Promise<CommandOutput>
+    Report the Compose version: `compose version`.
+  port(configure?: Configure<DockerComposePortSettings>): Promise<CommandOutput>
+    Print a published port binding: `compose port`.
+  events(configure?: Configure<DockerComposeEventsSettings>): Promise<CommandOutput>
+    Stream container events: `compose events`.
+  waitExitCode(configure?: Configure<DockerComposeWaitSettings>): Promise<number>
+    The exit status the waited-on container stopped with.
+
+    `compose wait` exits with the container's own status, so every code is a
+    legitimate answer and none is left to mean "compose broke". This hands the
+    code back rather than failing the target, and still fails when compose
+    never reached a container at all.
+  servicePort(configure?: Configure<DockerComposePortSettings>): Promise<number>
+    The host port a service's container port was published on.
+
+    The point of letting Compose pick an ephemeral port is asking which one it
+    picked, which is what this returns.
+  composeVersion(configure?: Configure<DockerComposeVersionSettings>): Promise<DockerComposeVersion>
+    The installed Compose version, parsed from `compose version --format json`.
+
+interface DockerComposeVersion
+  The version report `compose version --format json` emits.
+
+  version: string
+    The Compose version string, e.g. `v5.1.1`.
 
 type ComposeProbe = (argv: readonly string[]) => Promise<boolean>
   Probes whether a candidate Compose invocation is runnable on this host.
