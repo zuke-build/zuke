@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.0](https://github.com/zuke-build/zuke/compare/gh-v1.6.0...gh-v1.7.0) (2026-08-29)
+
+
+### Features
+
+* **gh:** wrap the pr, issue and release commands as typed tasks ([#407](https://github.com/zuke-build/zuke/issues/407)) ([45e5393](https://github.com/zuke-build/zuke/commit/45e539337ffce139b836b13ca2cf736b09cd8e77))
+
 ## [1.6.0](https://github.com/zuke-build/zuke/compare/gh-v1.5.0...gh-v1.6.0) (2026-08-22)
 
 
