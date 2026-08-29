@@ -32,6 +32,7 @@ export {
 export {
   DenoBenchSettings,
   DenoCoverageSettings,
+  type DenoTestReporter,
   DenoTestSettings,
 } from "./src/testing.ts";
 export {
@@ -39,7 +40,9 @@ export {
   DenoDocSettings,
   DenoFmtSettings,
   DenoLintSettings,
+  type DenoProseWrap,
 } from "./src/quality.ts";
+export { type NodeModulesLinker, type NodeModulesMode } from "./src/flags.ts";
 export {
   DenoAddSettings,
   DenoApproveScriptsSettings,

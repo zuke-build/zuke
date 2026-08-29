@@ -4891,6 +4891,16 @@ class DenoCheckSettings extends DenoSettings
 
   paths(...paths: PathLike[]): this
     The files to type-check (at least one is required).
+  all(): this
+    Type-check remote modules and npm packages too (`--all`), not just the
+    local code. Slower, and the only way to catch a dependency whose published
+    types do not actually compile.
+  doc(): this
+    Type-check the code blocks in JSDoc and Markdown as well (`--doc`).
+  docOnly(): this
+    Type-check only the code blocks in JSDoc and Markdown (`--doc-only`).
+  checkJs(): this
+    Type-check JavaScript files too (`--check-js`).
   config(path: PathLike): this
     Type-check against a specific configuration file (`--config`) instead of the
     one Deno would discover by walking up from the checked files.
@@ -4900,6 +4910,8 @@ class DenoCheckSettings extends DenoSettings
     set — for example checking a workspace member against the published
     version of a sibling it declares, rather than the local member that
     workspace resolution would substitute.
+  noConfig(): this
+    Discover no configuration file at all (`--no-config`).
   noLock(): this
     Ignore the lockfile entirely (`--no-lock`), neither reading nor writing it.
 
@@ -4910,6 +4922,28 @@ class DenoCheckSettings extends DenoSettings
     Error out if the lockfile is out of date (`--frozen`). See
     {@link DenoPermissionSettings.frozen} for why the name mirrors the real
     Deno flag rather than `PnpmSettings.frozenLockfile()`'s naming.
+  lock(path: PathLike): this
+    Use an explicit lockfile (`--lock`) instead of the discovered `deno.lock`.
+  importMap(path: PathLike): this
+    Load an import map from a file or URL (`--import-map`).
+  noNpm(): this
+    Do not resolve npm modules (`--no-npm`).
+  noRemote(): this
+    Do not resolve remote modules (`--no-remote`).
+  reload(...specifiers: string[]): this
+    Reload the module cache (`--reload`), optionally only these specifiers.
+  nodeModulesDir(mode: NodeModulesMode): this
+    Set the node-modules management mode (`--node-modules-dir`).
+  nodeModulesLinker(mode: NodeModulesLinker): this
+    Set the npm linker mode (`--node-modules-linker`).
+  vendor(enabled: boolean): this
+    Toggle the local vendor folder (`--vendor`).
+  watch(): this
+    Re-check when a watched file changes (`--watch`).
+  watchExclude(...paths: PathLike[]): this
+    Exclude paths from the watcher (`--watch-exclude`).
+  noClearScreen(): this
+    Keep previous output when re-running under `--watch` (`--no-clear-screen`).
   override protected buildArgs(): string[]
     Assemble the `deno check` argv.
 
@@ -4999,6 +5033,18 @@ class DenoCoverageSettings extends DenoSettings
     Write the report to a file (`--output=`).
   exclude(pattern: string): this
     Exclude files matching the pattern (`--exclude=`).
+  include(pattern: string): this
+    Report only on files matching the pattern (`--include=`).
+  ignore(...patterns: string[]): this
+    Skip files matching these patterns (`--ignore=`).
+  html(): this
+    Write an HTML report into the profile directory (`--html`).
+
+    Mutually exclusive with {@link lcov} and with any threshold: given both,
+    deno emits the lcov and silently produces no HTML, so asking for both is
+    refused rather than quietly honoured in half.
+  detailed(): this
+    Report per-line detail alongside the summary table (`--detailed`).
   linesThreshold(percent: number): this
     Fail the gate if line coverage is below `percent`. `deno coverage` has no
     fail-under flag, so {@link DenoTasks.coverage} enforces this after parsing
@@ -5026,22 +5072,42 @@ class DenoDocSettings extends DenoSettings
     The source files (entry points) to document.
   json(): this
     Output the documentation as JSON (`--json`).
-  frozen(): this
-    Error out if the lockfile is out of date (`--frozen`). See
-    {@link DenoPermissionSettings.frozen} for why the name mirrors the real
-    Deno flag rather than `PnpmSettings.frozenLockfile()`'s naming.
   html(): this
     Generate static HTML documentation (`--html`).
+  lint(): this
+    Report documentation diagnostics rather than rendering docs (`--lint`).
+  private(): this
+    Include private and internal symbols (`--private`).
+  stripTrailingHtml(): this
+    Drop the trailing `.html` from generated links (`--strip-trailing-html`).
   name(title: string): this
     Title for the generated HTML documentation (`--name`).
   output(dir: PathLike): this
     Output directory for HTML documentation (`--output`).
-  private(): this
-    Include private and internal symbols (`--private`).
   filter(symbol: string): this
     Document only the symbol at this dot-separated path (`--filter`).
-  lint(): this
-    Report documentation diagnostics rather than rendering docs (`--lint`).
+  categoryDocs(path: PathLike): this
+    JSON file of per-category Markdown docs (`--category-docs`).
+  symbolRedirectMap(path: PathLike): this
+    JSON file redirecting symbols to external links (`--symbol-redirect-map`).
+  defaultSymbolMap(path: PathLike): this
+    Mapping of default export names to the names usage blocks show (`--default-symbol-map`).
+  frozen(): this
+    Error out if the lockfile is out of date (`--frozen`). See
+    {@link DenoPermissionSettings.frozen} for why the name mirrors the real
+    Deno flag rather than `PnpmSettings.frozenLockfile()`'s naming.
+  noLock(): this
+    Ignore the lockfile entirely (`--no-lock`).
+  lock(path: PathLike): this
+    Use an explicit lockfile (`--lock`).
+  importMap(path: PathLike): this
+    Load an import map from a file or URL (`--import-map`).
+  noNpm(): this
+    Do not resolve npm modules (`--no-npm`).
+  noRemote(): this
+    Do not resolve remote modules (`--no-remote`).
+  reload(...specifiers: string[]): this
+    Reload the module cache (`--reload`), optionally only these specifiers.
   override protected buildArgs(): string[]
     Assemble the `deno doc` argv.
 
@@ -5068,6 +5134,43 @@ class DenoFmtSettings extends DenoSettings
 
   check(): this
     Verify formatting without writing changes (`--check`).
+  failFast(): this
+    Stop at the first badly formatted file (`--fail-fast`).
+  lineWidth(columns: number): this
+    Maximum line width (`--line-width`), 80 by default.
+  indentWidth(columns: number): this
+    Indentation width (`--indent-width`), 2 by default.
+  useTabs(enabled: boolean): this
+    Indent with tabs rather than spaces (`--use-tabs`).
+  singleQuote(enabled: boolean): this
+    Quote strings with single quotes (`--single-quote`).
+  noSemicolons(enabled: boolean): this
+    Omit semicolons except where they are required (`--no-semicolons`).
+  proseWrap(mode: DenoProseWrap): this
+    How to wrap prose in Markdown (`--prose-wrap`).
+  unstableComponent(): this
+    Format Svelte, Vue, Astro and Angular files (`--unstable-component`).
+  unstableSql(): this
+    Format SQL files (`--unstable-sql`).
+  ext(value: string): this
+    Treat the inputs as this content type (`--ext`). `deno fmt` accepts far
+    more than the script extensions — Markdown, JSON, CSS, HTML, YAML and the
+    component formats among them — so this takes a string rather than the
+    narrower script-only union the runtime subcommands use.
+  ignore(...patterns: string[]): this
+    Skip files matching these patterns (`--ignore`).
+  permitNoFiles(): this
+    Succeed when no files matched (`--permit-no-files`).
+  config(path: PathLike): this
+    Use an explicit config file (`--config`).
+  noConfig(): this
+    Discover no configuration file at all (`--no-config`).
+  watch(): this
+    Re-format when a watched file changes (`--watch`).
+  watchExclude(...paths: PathLike[]): this
+    Exclude paths from the watcher (`--watch-exclude`).
+  noClearScreen(): this
+    Keep previous output when re-running under `--watch` (`--no-clear-screen`).
   paths(...paths: PathLike[]): this
     Restrict formatting to specific files or directories.
   override protected buildArgs(): string[]
@@ -5148,7 +5251,77 @@ class DenoInstallSettings extends DenoPermissionSettings
   module(spec: string): this
     The module to install, e.g. `npm:cspell@9` (required for a global install).
   moduleArgs(...args: Array<string | number>): this
-    Arguments baked into the generated launcher (after the module).
+    Arguments baked into the generated launcher, emitted after the `--`
+    separator deno requires for them.
+  dev(): this
+    Install dev dependencies only alongside the rest (`--dev`).
+  prod(): this
+    Install production dependencies only (`--prod`).
+  saveExact(): this
+    Record exact versions, without a caret range (`--save-exact`).
+  lockfileOnly(): this
+    Update the lockfile without installing (`--lockfile-only`).
+  skipTypes(): this
+    Exclude `@types/*` packages (`--skip-types`).
+  jsr(): this
+    Read unprefixed package names as JSR packages (`--jsr`).
+  npm(): this
+    Read unprefixed package names as npm packages (`--npm`).
+  packageJson(): this
+    Install into `package.json` rather than `deno.json` (`--package-json`).
+  entrypoint(path: PathLike): this
+    Name the entrypoint the launcher runs (`--entrypoint`).
+  compile(): this
+    Build a compiled launcher (`--compile`) rather than a script shim, and
+    cross-compile it with {@link os} and {@link arch}.
+  os(value: string): this
+    Target operating system for a compiled launcher (`--os`).
+  arch(value: string): this
+    Target architecture for a compiled launcher (`--arch`).
+  config(path: PathLike): this
+    Use an explicit config file (`--config`).
+  noConfig(): this
+    Discover no configuration file at all (`--no-config`).
+  lock(path: PathLike): this
+    Use an explicit lockfile (`--lock`).
+  noLock(): this
+    Ignore the lockfile entirely (`--no-lock`).
+  importMap(path: PathLike): this
+    Load an import map from a file or URL (`--import-map`).
+  cachedOnly(): this
+    Resolve only from the cache (`--cached-only`).
+  noNpm(): this
+    Do not resolve npm modules (`--no-npm`).
+  noRemote(): this
+    Do not resolve remote modules (`--no-remote`).
+  reload(...specifiers: string[]): this
+    Reload the module cache (`--reload`), optionally only these specifiers.
+  nodeModulesDir(mode: NodeModulesMode): this
+    Set the node-modules management mode (`--node-modules-dir`).
+  nodeModulesLinker(mode: NodeModulesLinker): this
+    Set the npm linker mode (`--node-modules-linker`).
+  vendor(enabled: boolean): this
+    Toggle the local vendor folder (`--vendor`).
+  envFile(path: PathLike): this
+    Load environment variables from a file (`--env-file`).
+  allowScripts(...packages: string[]): this
+    Permit npm lifecycle scripts, optionally only for these packages (`--allow-scripts`).
+  conditions(...values: string[]): this
+    Resolve npm package exports with these conditions (`--conditions`).
+  preload(...paths: PathLike[]): this
+    Execute these modules before the main one (`--preload`).
+  require(...paths: PathLike[]): this
+    Execute these CommonJS modules before the main one (`--require`).
+  typeCheck(scope?: "all" | "remote"): this
+    Type-check before installing (`--check`).
+  noCheck(scope?: "all" | "remote"): this
+    Skip type-checking (`--no-check`).
+  inspect(hostPort?: string): this
+    Activate the inspector (`--inspect`).
+  inspectBrk(hostPort?: string): this
+    Activate the inspector and break at the start (`--inspect-brk`).
+  inspectWait(hostPort?: string): this
+    Activate the inspector and wait for a debugger (`--inspect-wait`).
   override protected buildArgs(): string[]
     Assemble the `deno install` argv.
 
@@ -5157,6 +5330,35 @@ class DenoLintSettings extends DenoSettings
 
   fix(): this
     Apply automatic fixes (`--fix`).
+  listRules(): this
+    List the available rules and exit (`--rules`) rather than linting. Pair it
+    with {@link json} to get the catalogue in machine-readable form.
+  json(): this
+    Report diagnostics as JSON (`--json`).
+  compact(): this
+    Report diagnostics one per line (`--compact`).
+  rulesTags(...tags: string[]): this
+    Enable the rule sets carrying these tags (`--rules-tags`).
+  rulesInclude(...rules: string[]): this
+    Enable these rules on top of the configured set (`--rules-include`).
+  rulesExclude(...rules: string[]): this
+    Disable these rules (`--rules-exclude`).
+  ext(value: string): this
+    Treat the inputs as this content type (`--ext`).
+  ignore(...patterns: string[]): this
+    Skip files matching these patterns (`--ignore`).
+  permitNoFiles(): this
+    Succeed when no files matched (`--permit-no-files`).
+  config(path: PathLike): this
+    Use an explicit config file (`--config`).
+  noConfig(): this
+    Discover no configuration file at all (`--no-config`).
+  watch(): this
+    Re-lint when a watched file changes (`--watch`).
+  watchExclude(...paths: PathLike[]): this
+    Exclude paths from the watcher (`--watch-exclude`).
+  noClearScreen(): this
+    Keep previous output when re-running under `--watch` (`--no-clear-screen`).
   paths(...paths: PathLike[]): this
     Restrict linting to specific files or directories.
   override protected buildArgs(): string[]
@@ -5263,6 +5465,22 @@ class DenoPublishSettings extends DenoSettings
     Use an explicit config file (`--config`).
   token(value: string): this
     Authenticate with a token instead of interactive/OIDC auth (`--token`).
+  setVersion(version: string): this
+    Publish under an overridden version (`--set-version`) instead of the one
+    in the manifest — how a release job publishes a version it computed
+    without first committing it.
+  noProvenance(): this
+    Disable provenance attestation (`--no-provenance`).
+
+    Provenance is what lets a consumer verify the published artifact came from
+    this repository's CI, so turning it off is a deliberate weakening rather
+    than a default worth reaching for.
+  typeCheck(scope?: "all" | "remote"): this
+    Type-check before publishing (`--check`), optionally including remote code.
+  noConfig(): this
+    Discover no configuration file at all (`--no-config`).
+  envFile(path: PathLike): this
+    Load environment variables from a file (`--env-file`).
   override protected buildArgs(): string[]
     Assemble the `deno publish` argv.
 
@@ -5287,8 +5505,68 @@ class DenoRunSettings extends DenoPermissionSettings
     Arguments passed to the script (after the script path).
   config(path: PathLike): this
     Use an explicit config file (`--config`).
-  reload(): this
-    Reload the module cache (`--reload`).
+  noConfig(): this
+    Discover no configuration file at all (`--no-config`).
+  reload(...specifiers: string[]): this
+    Reload the module cache (`--reload`), optionally only these specifiers.
+  lock(path: PathLike): this
+    Use an explicit lockfile (`--lock`).
+  noLock(): this
+    Ignore the lockfile entirely (`--no-lock`).
+  importMap(path: PathLike): this
+    Load an import map from a file or URL (`--import-map`).
+  cachedOnly(): this
+    Resolve only from the cache (`--cached-only`), fetching nothing.
+  noNpm(): this
+    Do not resolve npm modules (`--no-npm`).
+  noRemote(): this
+    Do not resolve remote modules (`--no-remote`).
+  nodeModulesDir(mode: NodeModulesMode): this
+    Set the node-modules management mode (`--node-modules-dir`).
+  nodeModulesLinker(mode: NodeModulesLinker): this
+    Set the npm linker mode (`--node-modules-linker`).
+  vendor(enabled: boolean): this
+    Toggle the local vendor folder (`--vendor`).
+  envFile(path: PathLike): this
+    Load environment variables from a file (`--env-file`).
+  cert(path: PathLike): this
+    Load a certificate authority from a PEM file (`--cert`).
+  location(href: string): this
+    Set `globalThis.location` (`--location`).
+  seed(value: number): this
+    Seed the random number generator (`--seed`).
+  v8Flags(...flags: string[]): this
+    Pass flags through to V8 (`--v8-flags`).
+  conditions(...values: string[]): this
+    Resolve npm package exports with these conditions (`--conditions`).
+  preload(...paths: PathLike[]): this
+    Execute these modules before the main one (`--preload`).
+  require(...paths: PathLike[]): this
+    Execute these CommonJS modules before the main one (`--require`).
+  noCodeCache(): this
+    Disable the V8 code cache (`--no-code-cache`).
+  allowScripts(...packages: string[]): this
+    Permit npm lifecycle scripts, optionally only for these packages (`--allow-scripts`).
+  typeCheck(scope?: "all" | "remote"): this
+    Type-check before running (`--check`), optionally including remote code.
+  noCheck(scope?: "all" | "remote"): this
+    Skip type-checking (`--no-check`), optionally only for remote code.
+  inspect(hostPort?: string): this
+    Activate the inspector (`--inspect`).
+  inspectBrk(hostPort?: string): this
+    Activate the inspector and break at the start (`--inspect-brk`).
+  inspectWait(hostPort?: string): this
+    Activate the inspector and wait for a debugger (`--inspect-wait`).
+  watch(): this
+    Restart when a watched file changes (`--watch`).
+  watchHmr(): this
+    Watch with hot-module replacement (`--watch-hmr`), which only `deno run`
+    offers. It implies watching, so it replaces `--watch` rather than joining
+    it.
+  watchExclude(...paths: PathLike[]): this
+    Exclude paths from the watcher (`--watch-exclude`).
+  noClearScreen(): this
+    Keep previous output when re-running under `--watch` (`--no-clear-screen`).
   override protected buildArgs(): string[]
     Assemble the `deno run` argv.
 
@@ -5333,10 +5611,40 @@ class DenoTaskSettings extends DenoSettings
     The task name from deno.json (required).
   taskArgs(...args: Array<string | number>): this
     Arguments forwarded to the task.
+  recursive(): this
+    Run the task in every workspace member (`--recursive`).
+  filter(pattern: string): this
+    Select the workspace members to run the task in (`--filter`). It selects
+    on its own — {@link recursive} is not a prerequisite.
+  noPrefix(): this
+    Drop the per-member name prefix from output (`--no-prefix`), which a
+    recursive run adds. Useful when the output is being parsed rather than
+    read.
+  evalShell(): this
+    Treat the task name as a shell command to evaluate (`--eval`) instead of
+    a task defined in the configuration file.
+  taskCwd(path: PathLike): this
+    Run the task from this directory (`--cwd`).
+
+    Distinct from the inherited `cwd`, which sets the directory the `deno`
+    process itself is spawned in: this one moves only the task, leaving
+    configuration discovery anchored where deno started.
+  config(path: PathLike): this
+    Use an explicit config file (`--config`).
   frozen(): this
     Error out if the lockfile is out of date (`--frozen`). See
     {@link DenoPermissionSettings.frozen} for why the name mirrors the real
     Deno flag rather than `PnpmSettings.frozenLockfile()`'s naming.
+  lock(path: PathLike): this
+    Use an explicit lockfile (`--lock`).
+  noLock(): this
+    Ignore the lockfile entirely (`--no-lock`).
+  nodeModulesDir(mode: NodeModulesMode): this
+    Set the node-modules management mode (`--node-modules-dir`).
+  nodeModulesLinker(mode: NodeModulesLinker): this
+    Set the npm linker mode (`--node-modules-linker`).
+  envFile(path: PathLike): this
+    Load environment variables from a file (`--env-file`).
   override protected buildArgs(): string[]
     Assemble the `deno task` argv.
 
@@ -5347,12 +5655,106 @@ class DenoTestSettings extends DenoPermissionSettings
     Restrict the run to specific test files or directories.
   coverage(dir: PathLike): this
     Collect coverage into the given profile directory (`--coverage=`).
+  coverageRawDataOnly(): this
+    Collect raw coverage data without generating a report (`--coverage-raw-data-only`).
+  clean(): this
+    Empty the coverage profile directory before running (`--clean`), so a run
+    reports on its own tests rather than on whatever a previous run left.
+
+    The directory need not come from {@link coverage}: `DENO_COVERAGE_DIR`
+    sets it too, which is why this is not tied to that setter.
   filter(pattern: string): this
     Only run tests whose name matches (`--filter`).
   parallel(): this
     Run test files in parallel (`--parallel`).
-  failFast(): this
-    Stop on the first failure (`--fail-fast`).
+  failFast(count?: number): this
+    Stop after `count` failures (`--fail-fast`), or after the first.
+  doc(): this
+    Evaluate the code blocks in JSDoc and Markdown as tests (`--doc`).
+  noRun(): this
+    Cache the test modules without running them (`--no-run`).
+  shuffle(seed?: number): this
+    Randomise test order (`--shuffle`), optionally with a fixed seed so a
+    failing order can be replayed.
+  traceLeaks(): this
+    Trace the ops a test leaks (`--trace-leaks`). It costs run time and is
+    the only practical way to find which test leaked a pending op — the
+    flakiest class of failure a suite has.
+  sanitizeOps(): this
+    Require every async op started in a test to finish in it (`--sanitize-ops`).
+  sanitizeResources(): this
+    Require every resource opened in a test to be closed in it (`--sanitize-resources`).
+  hideStacktraces(): this
+    Omit stack traces from failure output (`--hide-stacktraces`).
+  reporter(kind: DenoTestReporter): this
+    Select the console reporter (`--reporter`).
+  junitPath(path: PathLike): this
+    Also write a JUnit XML report to `path` (`--junit-path`), whatever the
+    console reporter is — this is the file a CI test-report UI ingests.
+  ext(value: string): this
+    Treat the inputs as this content type (`--ext`).
+  ignore(...patterns: string[]): this
+    Skip files matching these patterns (`--ignore`).
+  permitNoFiles(): this
+    Succeed when no test files matched (`--permit-no-files`).
+  config(path: PathLike): this
+    Use an explicit config file (`--config`).
+  noConfig(): this
+    Discover no configuration file at all (`--no-config`).
+  typeCheck(scope?: "all" | "remote"): this
+    Type-check before running (`--check`), optionally including remote code.
+  noCheck(scope?: "all" | "remote"): this
+    Skip type-checking (`--no-check`), optionally only for remote code.
+  inspect(hostPort?: string): this
+    Activate the inspector (`--inspect`).
+  inspectBrk(hostPort?: string): this
+    Activate the inspector and break at the start (`--inspect-brk`).
+  inspectWait(hostPort?: string): this
+    Activate the inspector and wait for a debugger (`--inspect-wait`).
+  envFile(path: PathLike): this
+    Load environment variables from a file (`--env-file`).
+  cert(path: PathLike): this
+    Load a certificate authority from a PEM file (`--cert`).
+  location(href: string): this
+    Set `globalThis.location` (`--location`).
+  seed(value: number): this
+    Seed the random number generator (`--seed`), making a run reproducible.
+  v8Flags(...flags: string[]): this
+    Pass flags through to V8 (`--v8-flags`).
+  conditions(...values: string[]): this
+    Resolve npm package exports with these conditions (`--conditions`).
+  preload(...paths: PathLike[]): this
+    Execute these modules before the main one (`--preload`).
+  require(...paths: PathLike[]): this
+    Execute these CommonJS modules before the main one (`--require`).
+  allowScripts(...packages: string[]): this
+    Permit npm lifecycle scripts, optionally only for these packages (`--allow-scripts`).
+  lock(path: PathLike): this
+    Use an explicit lockfile (`--lock`).
+  noLock(): this
+    Ignore the lockfile entirely (`--no-lock`).
+  importMap(path: PathLike): this
+    Load an import map from a file or URL (`--import-map`).
+  cachedOnly(): this
+    Resolve only from the cache (`--cached-only`).
+  noNpm(): this
+    Do not resolve npm modules (`--no-npm`).
+  noRemote(): this
+    Do not resolve remote modules (`--no-remote`).
+  reload(...specifiers: string[]): this
+    Reload the module cache (`--reload`), optionally only these specifiers.
+  nodeModulesDir(mode: NodeModulesMode): this
+    Set the node-modules management mode (`--node-modules-dir`).
+  nodeModulesLinker(mode: NodeModulesLinker): this
+    Set the npm linker mode (`--node-modules-linker`).
+  vendor(enabled: boolean): this
+    Toggle the local vendor folder (`--vendor`).
+  watch(): this
+    Re-run when a watched file changes (`--watch`).
+  watchExclude(...paths: PathLike[]): this
+    Exclude paths from the watcher (`--watch-exclude`).
+  noClearScreen(): this
+    Keep previous output when re-running under `--watch` (`--no-clear-screen`).
   override protected buildArgs(): string[]
     Assemble the `deno test` argv.
 
@@ -5547,11 +5949,23 @@ type DenoCompileTarget = "x86_64-unknown-linux-gnu" | "aarch64-unknown-linux-gnu
 type DenoPermission = "read" | "write" | "net" | "env" | "run" | "sys" | "ffi" | "import"
   A Deno permission domain, as used by `--allow-*` flags.
 
+type DenoProseWrap = "always" | "never" | "preserve"
+  How `deno fmt` wraps prose in Markdown (`--prose-wrap`).
+
 type DenoSourceExt = "ts" | "tsx" | "js" | "jsx" | "mts" | "mjs" | "cts" | "cjs"
   A content type `deno eval` and `deno bench` accept for `--ext`.
 
+type DenoTestReporter = "pretty" | "dot" | "junit" | "tap"
+  The report formats `deno test --reporter` accepts.
+
 type DenoVersionIncrement = "major" | "minor" | "patch" | "premajor" | "preminor" | "prepatch" | "prerelease"
   A version increment `deno bump-version` understands.
+
+type NodeModulesLinker = "isolated" | "hoisted"
+  The linker modes `--node-modules-linker` accepts.
+
+type NodeModulesMode = "auto" | "manual" | "none"
+  The node-modules management modes `--node-modules-dir` accepts.
 
 ========================================================================
 # @zuke/docs
