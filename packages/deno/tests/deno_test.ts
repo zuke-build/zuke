@@ -162,10 +162,13 @@ Deno.test("doc: flags precede the source paths", () => {
       .paths("mod.ts", "src/extra.ts")
       .argv()
       .slice(1),
+    // Flags render grouped by the CLI's own sections rather than in call
+    // order, so the dependency-management group leads regardless of where
+    // .frozen() was called.
     [
       "doc",
-      "--json",
       "--frozen",
+      "--json",
       "--private",
       "--filter",
       "MyClass.method",
@@ -188,11 +191,11 @@ Deno.test("doc: HTML output options", () => {
     [
       "doc",
       "--html",
+      "--lint",
       "--name",
       "My Lib",
       "--output",
       "docs/",
-      "--lint",
       "mod.ts",
     ],
   );
@@ -334,6 +337,9 @@ Deno.test("install: global executable from an npm module, with perms", () => {
     "--name",
     "cspell",
     "npm:cspell@9",
+    // deno install takes launcher arguments only after `--`; without it a
+    // flag-shaped argument is rejected as unexpected.
+    "--",
     "--version",
   ]);
 });
@@ -373,13 +379,15 @@ Deno.test("publish: bare and all options", () => {
       .argv()
       .slice(1),
     [
+      // Grouped by the CLI's own sections: the config flags lead, whatever
+      // order the setters were called in.
       "publish",
+      "--config",
+      "deno.json",
       "--allow-dirty",
       "--allow-slow-types",
       "--no-check",
       "--dry-run",
-      "--config",
-      "deno.json",
       "--token",
       "xyz",
     ],
