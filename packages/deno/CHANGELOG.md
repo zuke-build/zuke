@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/zuke-build/zuke/compare/deno-v1.0.1...deno-v1.1.0) (2026-08-29)
+
+
+### Features
+
+* **deno:** wrap the subcommands the package was missing ([#417](https://github.com/zuke-build/zuke/issues/417)) ([e2c495c](https://github.com/zuke-build/zuke/commit/e2c495c7379aefb6b94f665100e598b58d0b8431))
+
 ## [1.0.1](https://github.com/zuke-build/zuke/compare/deno-v1.0.0...deno-v1.0.1) (2026-08-13)
 
 

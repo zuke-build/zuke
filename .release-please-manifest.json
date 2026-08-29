@@ -1,6 +1,6 @@
 {
   "packages/core": "1.42.1",
-  "packages/deno": "1.0.1",
+  "packages/deno": "1.1.0",
   "packages/docs": "1.0.1",
   "packages/npm": "1.1.0",
   "packages/npx": "1.0.1",
@@ -12,7 +12,7 @@
   "packages/cli": "1.1.0",
   "packages/docker": "1.1.0",
   "packages/docker-compose": "1.1.0",
-  "packages/kubectl": "1.0.1",
+  "packages/kubectl": "1.1.0",
   "packages/helm": "1.0.1",
   "packages/kustomize": "1.0.1",
   "packages/oxlint": "1.0.1",
