@@ -503,6 +503,11 @@ export class DenoPublishSettings extends DenoSettings {
    * Publish under an overridden version (`--set-version`) instead of the one
    * in the manifest — how a release job publishes a version it computed
    * without first committing it.
+   *
+   * deno accepts it only when publishing a single package: it is rejected in
+   * a workspace, where the versions have to come from each member's own
+   * manifest. Whether the working directory is a workspace is not visible
+   * while the argv is being built, so this is a note rather than a refusal.
    */
   setVersion(version: string): this {
     this.#setVersion = version;
@@ -514,7 +519,14 @@ export class DenoPublishSettings extends DenoSettings {
    *
    * Provenance is what lets a consumer verify the published artifact came from
    * this repository's CI, so turning it off is a deliberate weakening rather
-   * than a default worth reaching for.
+   * than a default worth reaching for. It stays on unless this is called.
+   *
+   * deno produces it by default only on GitHub Actions, so elsewhere there is
+   * nothing to disable. The case it exists for is the trade it makes: the
+   * attestation publicly links the package to the repository, workflow and
+   * commit it was built from, which a package published from a private
+   * repository may not want disclosed. Weigh that against consumers losing
+   * the ability to verify the artifact's origin, and prefer keeping it.
    */
   noProvenance(): this {
     this.#noProvenance = true;
