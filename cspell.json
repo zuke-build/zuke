@@ -223,6 +223,8 @@
     "webpack",
     "xdg",
     "argvs",
+    "premajor",
+    "prepatch",
     "rundll",
     "strapline",
     "wordmark",
