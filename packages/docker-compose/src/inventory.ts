@@ -6,7 +6,11 @@
  * changing it: `images`, `ls`, `volumes`, `version`, `port` and `events`.
  */
 
-import { DockerComposeSettings, ReplicaIndex } from "./settings.ts";
+import {
+  DockerComposeSettings,
+  ReplicaIndex,
+  ServiceList,
+} from "./settings.ts";
 
 /**
  * Shared by the listing subcommands that accept `--format` and `--quiet`.
@@ -48,33 +52,33 @@ export abstract class DockerComposeListingSettings
 
 /** Settings for `compose images`. */
 export class DockerComposeImagesSettings extends DockerComposeListingSettings {
-  #services: string[] = [];
+  #services = new ServiceList();
 
   /** Restrict the listing to these services. */
   services(...names: string[]): this {
-    this.#services.push(...names);
+    this.#services.add(names);
     return this;
   }
 
   /** Assemble the `compose images` argv. */
   protected override composeArgs(): string[] {
-    return ["images", ...this.listingFlags(), ...this.#services];
+    return ["images", ...this.listingFlags(), ...this.#services.render()];
   }
 }
 
 /** Settings for `compose volumes`. */
 export class DockerComposeVolumesSettings extends DockerComposeListingSettings {
-  #services: string[] = [];
+  #services = new ServiceList();
 
   /** Restrict the listing to the volumes these services use. */
   services(...names: string[]): this {
-    this.#services.push(...names);
+    this.#services.add(names);
     return this;
   }
 
   /** Assemble the `compose volumes` argv. */
   protected override composeArgs(): string[] {
-    return ["volumes", ...this.listingFlags(), ...this.#services];
+    return ["volumes", ...this.listingFlags(), ...this.#services.render()];
   }
 }
 
@@ -188,14 +192,14 @@ export class DockerComposePortSettings extends DockerComposeSettings {
 
 /** Settings for `compose events`. */
 export class DockerComposeEventsSettings extends DockerComposeSettings {
-  #services: string[] = [];
+  #services = new ServiceList();
   #json = false;
   #since?: string;
   #until?: string;
 
   /** Restrict the stream to these services. */
   services(...names: string[]): this {
-    this.#services.push(...names);
+    this.#services.add(names);
     return this;
   }
 
@@ -228,7 +232,7 @@ export class DockerComposeEventsSettings extends DockerComposeSettings {
     if (this.#json) argv.push("--json");
     if (this.#since !== undefined) argv.push("--since", this.#since);
     if (this.#until !== undefined) argv.push("--until", this.#until);
-    argv.push(...this.#services);
+    argv.push(...this.#services.render());
     return argv;
   }
 }

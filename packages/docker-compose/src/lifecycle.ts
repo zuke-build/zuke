@@ -6,7 +6,7 @@
  * lifecycle: `up`, `down`, `start`, `stop`, `restart` and `rm`.
  */
 
-import { DockerComposeSettings } from "./settings.ts";
+import { DockerComposeSettings, ServiceList } from "./settings.ts";
 
 /**
  * When `compose up` fetches images before starting: `always` on every start,
@@ -284,7 +284,7 @@ export class DockerComposeRmSettings extends DockerComposeSettings {
 
 /** Settings for `compose create`. */
 export class DockerComposeCreateSettings extends DockerComposeSettings {
-  #services: string[] = [];
+  #services = new ServiceList();
   #build = false;
   #noBuild = false;
   #forceRecreate = false;
@@ -297,7 +297,7 @@ export class DockerComposeCreateSettings extends DockerComposeSettings {
 
   /** Restrict creation to these services. */
   services(...names: string[]): this {
-    this.#services.push(...names);
+    this.#services.add(names);
     return this;
   }
 
@@ -380,20 +380,20 @@ export class DockerComposeCreateSettings extends DockerComposeSettings {
     if (this.#pull !== undefined) argv.push("--pull", this.#pull);
     argv.push(...this.#scale);
     if (this.#yes) argv.push("--yes");
-    argv.push(...this.#services);
+    argv.push(...this.#services.render());
     return argv;
   }
 }
 
 /** Settings for `compose kill`. */
 export class DockerComposeKillSettings extends DockerComposeSettings {
-  #services: string[] = [];
+  #services = new ServiceList();
   #signal?: string;
   #removeOrphans = false;
 
   /** Restrict the kill to these services. */
   services(...names: string[]): this {
-    this.#services.push(...names);
+    this.#services.add(names);
     return this;
   }
 
@@ -418,7 +418,7 @@ export class DockerComposeKillSettings extends DockerComposeSettings {
     const argv = ["kill"];
     if (this.#signal !== undefined) argv.push("--signal", this.#signal);
     if (this.#removeOrphans) argv.push("--remove-orphans");
-    argv.push(...this.#services);
+    argv.push(...this.#services.render());
     return argv;
   }
 }
@@ -429,11 +429,11 @@ export class DockerComposeKillSettings extends DockerComposeSettings {
  */
 export abstract class DockerComposeServiceListSettings
   extends DockerComposeSettings {
-  #services: string[] = [];
+  #services = new ServiceList();
 
   /** Restrict the command to these services. */
   services(...names: string[]): this {
-    this.#services.push(...names);
+    this.#services.add(names);
     return this;
   }
 
@@ -442,7 +442,7 @@ export abstract class DockerComposeServiceListSettings
 
   /** Assemble the subcommand argv. */
   protected override composeArgs(): string[] {
-    return [this.subcommand, ...this.#services];
+    return [this.subcommand, ...this.#services.render()];
   }
 }
 
@@ -505,12 +505,12 @@ export class DockerComposeScaleSettings extends DockerComposeSettings {
  * which hands the code back instead of failing the target.
  */
 export class DockerComposeWaitSettings extends DockerComposeSettings {
-  #services: string[] = [];
+  #services = new ServiceList();
   #downProject = false;
 
   /** The services to wait on (required). */
   services(...names: string[]): this {
-    this.#services.push(...names);
+    this.#services.add(names);
     return this;
   }
 
@@ -525,7 +525,7 @@ export class DockerComposeWaitSettings extends DockerComposeSettings {
 
   /** Assemble the `compose wait` argv. */
   protected override composeArgs(): string[] {
-    if (this.#services.length === 0) {
+    if (this.#services.isEmpty) {
       throw new Error(
         "DockerComposeTasks.wait: at least one service is required (use " +
           ".services()). Compose waits on named services, not on the whole " +
@@ -534,7 +534,7 @@ export class DockerComposeWaitSettings extends DockerComposeSettings {
     }
     const argv = ["wait"];
     if (this.#downProject) argv.push("--down-project");
-    argv.push(...this.#services);
+    argv.push(...this.#services.render());
     return argv;
   }
 }

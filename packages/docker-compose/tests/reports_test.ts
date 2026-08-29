@@ -50,10 +50,14 @@ Deno.test("waitStatus: every exit code a container stopped with is an answer", (
   assertEquals(waitStatus(output(2, "2\n")), 2);
 });
 
-Deno.test("parsePublishedPort: IPv4, IPv6 and a bare port", () => {
+Deno.test("parsePublishedPort: IPv4, IPv6, a hostname and a bare port", () => {
   assertEquals(parsePublishedPort("0.0.0.0:32768\n"), 32768);
   assertEquals(parsePublishedPort("[::]:32768\n"), 32768);
+  assertEquals(parsePublishedPort("[::1]:5432"), 5432);
   assertEquals(parsePublishedPort("127.0.0.1:5432"), 5432);
+  assertEquals(parsePublishedPort("localhost:8080"), 8080);
+  assertEquals(parsePublishedPort(":5432"), 5432);
+  assertEquals(parsePublishedPort("0.0.0.0:65535"), 65535);
 });
 
 Deno.test("parsePublishedPort: an unpublished port and a malformed line", () => {
@@ -63,7 +67,37 @@ Deno.test("parsePublishedPort: an unpublished port and a malformed line", () => 
     () => parsePublishedPort("not-a-binding"),
     Error,
   );
-  assertEquals(malformed.message.includes("does not end in a port"), true);
+  assertEquals(malformed.message.includes("not a host and port"), true);
+});
+
+Deno.test("parsePublishedPort: several bindings are refused, not guessed at", () => {
+  // Taking the last line would hand a build a port it never asked about.
+  const error = assertThrows(
+    () => parsePublishedPort("0.0.0.0:32768\n0.0.0.0:32769\n"),
+    Error,
+  );
+  assertEquals(error.message.includes("more than one"), true);
+});
+
+Deno.test("parsePublishedPort: a line that merely ends in digits is not a binding", () => {
+  // Compose writes diagnostics too, and one ending in a number would have
+  // parsed as a port when only the tail after the last colon was read.
+  const error = assertThrows(
+    () => parsePublishedPort("error: cannot connect:123"),
+    Error,
+  );
+  assertEquals(error.message.includes("not a host and port"), true);
+});
+
+Deno.test("parsePublishedPort: a port outside 1-65535 is refused", () => {
+  for (const line of [":0", "0.0.0.0:0", ":99999"]) {
+    const error = assertThrows(() => parsePublishedPort(line), Error);
+    assertEquals(
+      error.message.includes("1-65535") ||
+        error.message.includes("not a host and port"),
+      true,
+    );
+  }
 });
 
 Deno.test("parseComposeVersion: the shape compose actually emits", () => {

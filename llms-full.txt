@@ -8380,7 +8380,14 @@ function parsePublishedPort(stdout: string): number
   The host port `compose port` printed, from output like `0.0.0.0:32768`.
 
   Read as the segment after the final colon so an IPv6 binding (`[::]:32768`)
-  parses the same way as an IPv4 one.
+  parses the same way as an IPv4 one, then checked rather than trusted.
+
+  Compose prints one binding, so anything else is refused instead of guessed
+  at: several lines mean several bindings and there is no way to know which
+  one was wanted, and a line that merely happens to end in digits — a
+  diagnostic, say — is not a binding at all. The number is range-checked too,
+  since a value outside 1-65535 cannot be a published port whatever produced
+  it.
 
 function resetComposeInvocationCache_(): void
   Clear the cached Compose invocation so the next
@@ -8901,6 +8908,35 @@ class DockerComposeWaitSettings extends DockerComposeSettings
     so a test run cleans up after itself without a second command.
   override protected composeArgs(): string[]
     Assemble the `compose wait` argv.
+
+class ReplicaIndex
+  The `--index` flag that picks one replica of a scaled service.
+
+  `cp`, `export`, `commit` and `port` all take it with the same meaning and
+  the same rendering, so they hold one of these rather than four copies of
+  the field and the `argv.push` that goes with it. Each still exposes its own
+  setter, because the public surface is per-command.
+
+  set(value: number): void
+    Record the replica to act on.
+  render(): string[]
+    The flag, if one was set.
+
+class ServiceList
+  The trailing service-name operands most Compose subcommands accept.
+
+  Same reasoning as {@link ReplicaIndex}: the list and the way it is appended
+  are identical wherever it appears, so it lives here once. Each settings
+  class still exposes its own `services()` setter, because which subcommands
+  take the operand — and what it means for each — is part of the public
+  surface.
+
+  add(names: readonly string[]): void
+    Add service names to the list.
+  get isEmpty(): boolean
+    Whether any service was named.
+  render(): string[]
+    The names, in the order they were added.
 
 interface ComposeRunOutcome
   The part of a finished command this module reads.

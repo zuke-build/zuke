@@ -122,3 +122,31 @@ export class ReplicaIndex {
     return this.#index === undefined ? [] : ["--index", String(this.#index)];
   }
 }
+
+/**
+ * The trailing service-name operands most Compose subcommands accept.
+ *
+ * Same reasoning as {@link ReplicaIndex}: the list and the way it is appended
+ * are identical wherever it appears, so it lives here once. Each settings
+ * class still exposes its own `services()` setter, because which subcommands
+ * take the operand — and what it means for each — is part of the public
+ * surface.
+ */
+export class ServiceList {
+  #services: string[] = [];
+
+  /** Add service names to the list. */
+  add(names: readonly string[]): void {
+    this.#services.push(...names);
+  }
+
+  /** Whether any service was named. */
+  get isEmpty(): boolean {
+    return this.#services.length === 0;
+  }
+
+  /** The names, in the order they were added. */
+  render(): string[] {
+    return [...this.#services];
+  }
+}

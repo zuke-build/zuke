@@ -30,7 +30,11 @@ export {
   resetComposeInvocationCache_,
   resolveComposeInvocation,
 } from "./src/invocation.ts";
-export { DockerComposeSettings } from "./src/settings.ts";
+export {
+  DockerComposeSettings,
+  ReplicaIndex,
+  ServiceList,
+} from "./src/settings.ts";
 export {
   DockerComposeCreateSettings,
   DockerComposeDownSettings,

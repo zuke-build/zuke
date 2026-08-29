@@ -7,7 +7,11 @@
  */
 
 import type { PathLike } from "@zuke/core/tooling";
-import { DockerComposeSettings, ReplicaIndex } from "./settings.ts";
+import {
+  DockerComposeSettings,
+  ReplicaIndex,
+  ServiceList,
+} from "./settings.ts";
 
 /** Settings for `compose run`. */
 export class DockerComposeRunSettings extends DockerComposeSettings {
@@ -357,17 +361,17 @@ export class DockerComposeCpSettings extends DockerComposeSettings {
 
 /** Settings for `compose top`. */
 export class DockerComposeTopSettings extends DockerComposeSettings {
-  #services: string[] = [];
+  #services = new ServiceList();
 
   /** Restrict the report to these services. */
   services(...names: string[]): this {
-    this.#services.push(...names);
+    this.#services.add(names);
     return this;
   }
 
   /** Assemble the `compose top` argv. */
   protected override composeArgs(): string[] {
-    return ["top", ...this.#services];
+    return ["top", ...this.#services.render()];
   }
 }
 
