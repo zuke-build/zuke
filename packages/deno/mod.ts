@@ -16,24 +16,25 @@
  * @module
  */
 
+export { DenoTasks, type DenoTasksApi } from "./src/deno.ts";
 export {
-  DenoCacheSettings,
-  DenoCheckSettings,
-  DenoCoverageSettings,
-  DenoDocSettings,
-  DenoFmtSettings,
-  DenoInstallSettings,
-  DenoLintSettings,
   type DenoPermission,
   DenoPermissionSettings,
-  DenoPublishSettings,
-  DenoRunSettings,
   DenoSettings,
-  DenoTasks,
-  type DenoTasksApi,
-  DenoTaskSettings,
-  DenoTestSettings,
-} from "./src/deno.ts";
+} from "./src/settings.ts";
+export { DenoRunSettings, DenoTaskSettings } from "./src/execution.ts";
+export { DenoCoverageSettings, DenoTestSettings } from "./src/testing.ts";
+export {
+  DenoCheckSettings,
+  DenoDocSettings,
+  DenoFmtSettings,
+  DenoLintSettings,
+} from "./src/quality.ts";
+export {
+  DenoCacheSettings,
+  DenoInstallSettings,
+  DenoPublishSettings,
+} from "./src/dependencies.ts";
 export {
   CoverageThresholdError,
   type CoverageThresholds,

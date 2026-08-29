@@ -21,7 +21,7 @@ import {
   DenoTasks,
   DenoTaskSettings,
   DenoTestSettings,
-} from "../src/deno.ts";
+} from "../mod.ts";
 
 Deno.test("run: script, permissions, config, reload, script args", () => {
   const argv = new DenoRunSettings()
@@ -399,6 +399,7 @@ Deno.test("every remaining DenoTasks function reaches execution", async () => {
     () => DenoTasks.install((s) => missingTool(s).module("npm:x")),
     ToolNotFoundError,
   );
+  await assertRejects(() => DenoTasks.doc(missingTool), ToolNotFoundError);
   await assertRejects(() => DenoTasks.publish(missingTool), ToolNotFoundError);
   await assertRejects(
     () => DenoTasks.task((s) => missingTool(s).name("x")),
