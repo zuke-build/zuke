@@ -21,3 +21,10 @@
  */
 
 export * from "./src/kubectl.ts";
+export * from "./src/settings.ts";
+export * from "./src/manifests.ts";
+export * from "./src/resources.ts";
+export * from "./src/workloads.ts";
+export * from "./src/pods.ts";
+export * from "./src/diagnostics.ts";
+export * from "./src/resource_json.ts";

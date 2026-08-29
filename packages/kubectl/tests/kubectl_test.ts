@@ -32,7 +32,7 @@ import {
   KubectlTopSettings,
   KubectlWaitSettings,
   parseNamespaces,
-} from "../src/kubectl.ts";
+} from "../mod.ts";
 import { withTemp } from "../../core/tests/_temp.ts";
 
 Deno.test("the default binary is kubectl", () => {
