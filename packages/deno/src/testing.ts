@@ -161,3 +161,80 @@ export class DenoCoverageSettings extends DenoSettings {
     return argv;
   }
 }
+
+/** Settings for `deno bench`. */
+export class DenoBenchSettings extends DenoPermissionSettings {
+  #paths: string[] = [];
+  #filter?: string;
+  #json = false;
+  #noRun = false;
+  #permitNoFiles = false;
+  #ignore: string[] = [];
+  #config?: string;
+
+  /** Restrict the run to specific benchmark files or directories. */
+  paths(...paths: PathLike[]): this {
+    this.#paths.push(...paths.map(String));
+    return this;
+  }
+
+  /** Only run benchmarks whose name matches (`--filter`). */
+  filter(pattern: string): this {
+    this.#filter = pattern;
+    return this;
+  }
+
+  /**
+   * Report results as JSON (`--json`) rather than the table. Deno marks the
+   * flag unstable, so treat the shape as subject to change between releases.
+   */
+  json(): this {
+    this.#json = true;
+    return this;
+  }
+
+  /**
+   * Cache the benchmark modules without running them (`--no-run`) — a cheap
+   * way to prove the benchmarks still compile without paying to run them.
+   */
+  noRun(): this {
+    this.#noRun = true;
+    return this;
+  }
+
+  /**
+   * Succeed when no benchmark files matched (`--permit-no-files`) instead of
+   * failing the target.
+   */
+  permitNoFiles(): this {
+    this.#permitNoFiles = true;
+    return this;
+  }
+
+  /** Skip files matching these patterns (`--ignore`). */
+  ignore(...patterns: string[]): this {
+    this.#ignore.push(...patterns);
+    return this;
+  }
+
+  /** Use an explicit config file (`--config`). */
+  config(path: PathLike): this {
+    this.#config = String(path);
+    return this;
+  }
+
+  /** Assemble the `deno bench` argv. */
+  protected override buildArgs(): string[] {
+    const argv = ["bench", ...this.permissionArgs, ...this.frozenArgs];
+    if (this.#config !== undefined) argv.push("--config", this.#config);
+    if (this.#filter !== undefined) argv.push("--filter", this.#filter);
+    if (this.#json) argv.push("--json");
+    if (this.#noRun) argv.push("--no-run");
+    if (this.#permitNoFiles) argv.push("--permit-no-files");
+    if (this.#ignore.length > 0) {
+      argv.push(`--ignore=${this.#ignore.join(",")}`);
+    }
+    argv.push(...this.#paths);
+    return argv;
+  }
+}

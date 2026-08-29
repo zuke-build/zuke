@@ -22,8 +22,18 @@ export {
   DenoPermissionSettings,
   DenoSettings,
 } from "./src/settings.ts";
-export { DenoRunSettings, DenoTaskSettings } from "./src/execution.ts";
-export { DenoCoverageSettings, DenoTestSettings } from "./src/testing.ts";
+export {
+  DenoEvalSettings,
+  DenoRunSettings,
+  DenoServeSettings,
+  type DenoSourceExt,
+  DenoTaskSettings,
+} from "./src/execution.ts";
+export {
+  DenoBenchSettings,
+  DenoCoverageSettings,
+  DenoTestSettings,
+} from "./src/testing.ts";
 export {
   DenoCheckSettings,
   DenoDocSettings,
@@ -31,10 +41,37 @@ export {
   DenoLintSettings,
 } from "./src/quality.ts";
 export {
+  DenoAddSettings,
+  DenoApproveScriptsSettings,
+  DenoBumpVersionSettings,
   DenoCacheSettings,
+  DenoCiSettings,
   DenoInstallSettings,
+  DenoLockSettings,
+  DenoOutdatedSettings,
+  DenoPackSettings,
   DenoPublishSettings,
+  DenoRemoveSettings,
+  DenoUninstallSettings,
+  type DenoVersionIncrement,
+  DenoWhySettings,
 } from "./src/dependencies.ts";
+export {
+  DenoCleanSettings,
+  DenoCompileSettings,
+  type DenoCompileTarget,
+  DenoInfoSettings,
+  DenoInitSettings,
+  DenoUpgradeSettings,
+} from "./src/toolchain.ts";
+export {
+  type DenoCacheInfo,
+  type DenoModule,
+  type DenoModuleDependency,
+  type DenoModuleGraph,
+  parseCacheInfo,
+  parseModuleGraph,
+} from "./src/module_json.ts";
 export {
   CoverageThresholdError,
   type CoverageThresholds,
