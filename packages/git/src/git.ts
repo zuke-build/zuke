@@ -1,326 +1,236 @@
-// Copyright (c) 2026 the Zuke contributors
-// SPDX-License-Identifier: MIT
-
-/**
- * `GitTasks` — typed task functions for the `git` commands, in the same
- * settings-lambda style as the other Zuke tool wrappers: configure a fluent
- * settings object in a lambda, and the task function builds the command line
- * and executes it.
- *
- * ```ts
- * import { GitTasks } from "jsr:@zuke/git";
- * await GitTasks.add((s) => s.all());
- * await GitTasks.commit((s) => s.message("ci: release"));
- * await GitTasks.push((s) => s.setUpstream().remote("origin").ref("main"));
- * const changed = await GitTasks.diffNames((s) => s.mergeBase("origin/main"));
- * ```
- *
- * Every command shares the global options `.dir()` (`-C <path>`) and
- * `.config()` (`-c key=value`). Most tasks resolve to the raw
- * {@link "@zuke/core/shell".CommandOutput}; the handful that end in a plural
- * noun (`statusEntries`, `logEntries`, `diffNames`, `remoteList`,
- * `worktreeList`, `lsFileNames`) run a machine-readable form and hand back
- * parsed values instead, so a target reads them rather than scraping stdout.
- * For anything without a typed task, use {@link GitTasksApi.run} with
- * `.command(...)`. Arguments stay a discrete argv array end-to-end — never a
- * concatenated shell string — so command construction is injection-free.
- *
- * @module
- */
-
-import { type Configure, runSettings } from "@zuke/core/tooling";
-import type { CommandOutput } from "@zuke/core/shell";
-import { GitSettings } from "./settings.ts";
-import { GitCloneSettings, GitInitSettings } from "./repository.ts";
 import {
-  GitAddSettings,
-  GitCleanSettings,
-  GitMvSettings,
-  GitRestoreSettings,
-  GitRmSettings,
-} from "./staging.ts";
-import { GitCommitSettings } from "./commit.ts";
+  CommandOutput,
+  Configure,
+  type PathLike,
+  ToolSettings,
+  type Normalize,
+  type MaybePromise,
+  type Command,
+} from "@zuke/core";
 import {
-  type GitStatusEntry,
-  GitStatusSettings,
-  readStatusEntries,
-} from "./status.ts";
+  BranchSettings,
+  type GitSettings,
+  gitSettings,
+} from "./shared.ts";
+import { type GitCommitSettings, readCommitHash } from "./commit.ts";
 import {
-  GitBranchSettings,
-  GitCheckoutSettings,
-  GitSwitchSettings,
-} from "./branch.ts";
-import { GitTagSettings } from "./tag.ts";
-import {
-  GitFetchSettings,
-  GitPullSettings,
-  GitPushSettings,
-} from "./transfer.ts";
-import {
-  GitLsRemoteSettings,
-  type GitRemote,
-  GitRemoteSettings,
-  listRemotes,
-} from "./remote.ts";
-import {
-  type GitCommitEntry,
-  GitLogSettings,
-  GitShowSettings,
-  readLogEntries,
+  type GitLogSettings,
+  readCommitList,
+  readCommitListEntries,
 } from "./log.ts";
-import { GitDiffSettings, readDiffNames } from "./diff.ts";
-import { GitLsFilesSettings, readLsFileNames } from "./ls_files.ts";
 import {
-  GitDescribeSettings,
-  GitRevParseSettings,
-  readRevision,
-} from "./revision.ts";
-import { GitMergeSettings, GitRebaseSettings } from "./merge.ts";
-import { GitCherryPickSettings, GitRevertSettings } from "./replay.ts";
+  GitCheckoutSettings,
+  GitRestoreSettings,
+  GitSwitchSettings,
+} from "./checkout.ts";
+import { GitAddSettings } from "./add.ts";
+import { GitBranchSettings } from "./branch.ts";
+import { GitCloneSettings } from "./clone.ts";
+import { GitConfigSettings } from "./config.ts";
+import { GitDiffSettings } from "./diff.ts";
+import { GitFetchSettings } from "./fetch.ts";
+import { GitInitSettings } from "./init.ts";
+import { GitLsRemoteSettings } from "./ls_remote.ts";
+import { GitMergeSettings } from "./merge.ts";
+import { GitMvSettings } from "./mv.ts";
+import { GitPullSettings } from "./pull.ts";
+import { GitPushSettings } from "./push.ts";
+import { GitRebaseSettings } from "./rebase.ts";
+import {
+  GitRemoteSettings,
+  readRemoteList,
+  readRemoteName,
+} from "./remote.ts";
 import { GitResetSettings } from "./reset.ts";
-import { GitStashSettings } from "./stash.ts";
-import { GitConfigSettings, readConfigValue } from "./config.ts";
+import { GitRmSettings } from "./rm.ts";
+import { GitShowSettings, readShowCommit } from "./show.ts";
+import {
+  GitStashSettings,
+  readStashEntries,
+  readStashStatus,
+} from "./stash.ts";
 import { GitSubmoduleSettings } from "./submodule.ts";
+import { GitTagSettings } from "./tag.ts";
+import { GitStatusSettings, readStatus } from "./status.ts";
 import { GitArchiveSettings } from "./archive.ts";
-import { GitApplySettings } from "./apply.ts";
+import { GitCherryPickSettings } from "./cherry_pick.ts";
+import { GitCleanSettings } from "./clean.ts";
+import { GitCommitSettings } from "./commit.ts";
+import { GitDescribeSettings } from "./describe.ts";
+import { GitHelpSettings } from "./help.ts";
+import { GitLsFilesSettings, readLsFiles } from "./ls_files.ts";
 import {
-  type GitWorktree,
-  GitWorktreeSettings,
-  parseWorktreeList,
-} from "./worktree.ts";
+  GitRevParseSettings,
+  readRevParse,
+  readRevParseList,
+} from "./rev_parse.ts";
 import {
-  type GitDefaultBranchSettings,
+  GitDefaultBranchSettings,
   resolveDefaultBranch,
 } from "./default_branch.ts";
+import {
+  type GitMergeBaseSettings,
+  readIsAncestor,
+  readMergeBase,
+} from "./merge_base.ts";
+import { GitRevListSettings, readCommitCount } from "./rev_list.ts";
+import {
+  GitForEachRefSettings,
+  GitNameRevSettings,
+  type GitRef,
+  GitShowRefSettings,
+  GitSymbolicRefSettings,
+  readRefs,
+} from "./for_each_ref.ts";
+import {
+  GitCatFileSettings,
+  GitLsTreeSettings,
+  type GitTreeEntry,
+  readBlobText,
+  readTreeEntries,
+} from "./tree.ts";
+import { GitCheckIgnoreSettings, readIsIgnored } from "./attributes.ts";
+import {
+  type GitBlameLine,
+  GitBlameSettings,
+  readBlameLines,
+} from "./blame.ts";
+import {
+  type GitShortlogEntry,
+  GitShortlogSettings,
+  readShortlogEntries,
+} from "./shortlog.ts";
+import { GitGrepSettings } from "./grep.ts";
+import {
+  GitVerifyCommitSettings,
+  GitVerifyTagSettings,
+  readIsSignatureValid,
+  readIsTagSignatureValid,
+} from "./signatures.ts";
+import { GitMergeTreeSettings, readMergesCleanly } from "./merge_tree.ts";
 
 /** Settings for an arbitrary `git` command not covered by a typed task. */
 export class GitRunSettings extends GitSettings {
-  #command: string[] = [];
-
-  /** The subcommand and its arguments, e.g. `command("bisect", "start")`. */
-  command(...parts: Array<string | number>): this {
-    this.#command.push(...parts.map(String));
-    return this;
-  }
-
-  /** Assemble the arbitrary `git` subcommand argv from `.command(...)`. */
-  protected override subcommandArgs(): string[] {
-    return [...this.#command];
-  }
+  protected subcommand = "run";
 }
 
-/** The shape of {@link GitTasks}. */
+/** API for git tasks exposed through `GitTasks`. */
 export interface GitTasksApi {
-  /** Create a repository: `git init`. */
-  init(configure?: Configure<GitInitSettings>): Promise<CommandOutput>;
-  /** Clone a repository: `git clone`. */
-  clone(configure?: Configure<GitCloneSettings>): Promise<CommandOutput>;
-  /** Stage changes: `git add`. */
   add(configure?: Configure<GitAddSettings>): Promise<CommandOutput>;
-  /** Remove tracked files: `git rm`. */
-  rm(configure?: Configure<GitRmSettings>): Promise<CommandOutput>;
-  /** Move or rename a tracked file: `git mv`. */
-  mv(configure?: Configure<GitMvSettings>): Promise<CommandOutput>;
-  /** Restore working-tree or index contents: `git restore`. */
-  restore(configure?: Configure<GitRestoreSettings>): Promise<CommandOutput>;
-  /** Delete untracked files: `git clean`. */
-  clean(configure?: Configure<GitCleanSettings>): Promise<CommandOutput>;
-  /** Record changes: `git commit`. */
-  commit(configure?: Configure<GitCommitSettings>): Promise<CommandOutput>;
-  /** Show working-tree status: `git status`. */
-  status(configure?: Configure<GitStatusSettings>): Promise<CommandOutput>;
-  /**
-   * The working tree's changes as parsed {@link GitStatusEntry} values, from
-   * `git status --porcelain -z` — the form no path can corrupt. An empty array
-   * means a clean tree.
-   *
-   * The lambda configures the rest (`.dir()`, `.untrackedFiles()`, `.paths()`);
-   * the output format is fixed, since the parse depends on it.
-   */
-  statusEntries(
-    configure?: Configure<GitStatusSettings>,
-  ): Promise<GitStatusEntry[]>;
-  /** Switch branches or restore files: `git checkout`. */
-  checkout(configure?: Configure<GitCheckoutSettings>): Promise<CommandOutput>;
-  /** Switch branches: `git switch`, `checkout`'s modern half. */
-  switch(configure?: Configure<GitSwitchSettings>): Promise<CommandOutput>;
-  /** Manage branches: `git branch`. */
-  branch(configure?: Configure<GitBranchSettings>): Promise<CommandOutput>;
-  /** Manage tags: `git tag`. */
-  tag(configure?: Configure<GitTagSettings>): Promise<CommandOutput>;
-  /** Update remote refs: `git push`. */
-  push(configure?: Configure<GitPushSettings>): Promise<CommandOutput>;
-  /** Fetch and integrate: `git pull`. */
-  pull(configure?: Configure<GitPullSettings>): Promise<CommandOutput>;
-  /** Download objects and refs: `git fetch`. */
-  fetch(configure?: Configure<GitFetchSettings>): Promise<CommandOutput>;
-  /** Manage remotes: `git remote add|remove|rename|set-url|get-url|show|prune`. */
-  remote(configure?: Configure<GitRemoteSettings>): Promise<CommandOutput>;
-  /**
-   * The configured remotes as parsed {@link GitRemote} entries, each with the
-   * fetch and push URL folded together, from `git remote --verbose`.
-   */
-  remoteList(configure?: Configure<GitRemoteSettings>): Promise<GitRemote[]>;
-  /** List a remote's refs without fetching them: `git ls-remote`. */
-  lsRemote(configure?: Configure<GitLsRemoteSettings>): Promise<CommandOutput>;
-  /** Show history: `git log`. */
-  log(configure?: Configure<GitLogSettings>): Promise<CommandOutput>;
-  /**
-   * History as parsed {@link GitCommitEntry} values — SHA, parents, author,
-   * dates, subject, and body — for building a changelog or deciding what a
-   * range contains.
-   *
-   * The lambda configures the walk (`.range()`, `.maxCount()`, `.paths()`);
-   * the `--format` is fixed, since the parse depends on it.
-   */
-  logEntries(configure?: Configure<GitLogSettings>): Promise<GitCommitEntry[]>;
-  /** Show an object: `git show`. */
-  show(configure?: Configure<GitShowSettings>): Promise<CommandOutput>;
-  /** Show changes: `git diff`. */
-  diff(configure?: Configure<GitDiffSettings>): Promise<CommandOutput>;
-  /**
-   * The changed paths of a diff, from `git diff --name-only -z`. What a target
-   * needs to decide whether the work it guards has to run at all.
-   */
-  diffNames(configure?: Configure<GitDiffSettings>): Promise<string[]>;
-  /** List index and working-tree files: `git ls-files`. */
-  lsFiles(configure?: Configure<GitLsFilesSettings>): Promise<CommandOutput>;
-  /**
-   * The paths of a `git ls-files -z` listing — git's own file list, ignore
-   * rules already applied.
-   */
-  lsFileNames(configure?: Configure<GitLsFilesSettings>): Promise<string[]>;
-  /** Resolve revisions and repository paths: `git rev-parse`. */
-  revParse(configure?: Configure<GitRevParseSettings>): Promise<CommandOutput>;
-  /**
-   * A `git rev-parse` result as a trimmed string — the commit SHA, ref name,
-   * or path a version stamp or cache key is built from.
-   */
-  revision(configure?: Configure<GitRevParseSettings>): Promise<string>;
-  /** Name a commit after the nearest tag: `git describe`. */
-  describe(configure?: Configure<GitDescribeSettings>): Promise<CommandOutput>;
-  /** Join two histories: `git merge`. */
-  merge(configure?: Configure<GitMergeSettings>): Promise<CommandOutput>;
-  /** Replay commits onto another base: `git rebase`. */
-  rebase(configure?: Configure<GitRebaseSettings>): Promise<CommandOutput>;
-  /** Apply existing commits here: `git cherry-pick`. */
-  cherryPick(
-    configure?: Configure<GitCherryPickSettings>,
-  ): Promise<CommandOutput>;
-  /** Undo commits with new ones: `git revert`. */
-  revert(configure?: Configure<GitRevertSettings>): Promise<CommandOutput>;
-  /** Move the branch, index, and optionally the working tree: `git reset`. */
-  reset(configure?: Configure<GitResetSettings>): Promise<CommandOutput>;
-  /** Park and restore uncommitted work: `git stash`. */
-  stash(configure?: Configure<GitStashSettings>): Promise<CommandOutput>;
-  /** Read or write configuration: `git config`. */
-  config(configure?: Configure<GitConfigSettings>): Promise<CommandOutput>;
-  /**
-   * One configuration value, or `undefined` when the key is unset — which
-   * `git config --get` reports as a non-zero exit rather than as empty output.
-   * The lambda must pick the key with `.get(...)` or `.getAll(...)`.
-   */
-  configGet(
-    configure?: Configure<GitConfigSettings>,
-  ): Promise<string | undefined>;
-  /** Manage submodules: `git submodule add|init|update|sync|status|foreach`. */
-  submodule(
-    configure?: Configure<GitSubmoduleSettings>,
-  ): Promise<CommandOutput>;
-  /** Package a tree as a tarball or zip: `git archive`. */
   archive(configure?: Configure<GitArchiveSettings>): Promise<CommandOutput>;
-  /** Apply a patch file: `git apply`. */
-  apply(configure?: Configure<GitApplySettings>): Promise<CommandOutput>;
-  /**
-   * Manage worktrees: `git worktree add|list|remove|prune`. Pick the
-   * subcommand in the lambda — `s.add(path)`, `s.list()`, `s.remove(path)`, or
-   * `s.prune()`. For a listing to read rather than print, use
-   * {@link GitTasksApi.worktreeList}.
-   */
-  worktree(configure?: Configure<GitWorktreeSettings>): Promise<CommandOutput>;
-  /**
-   * List the repository's worktrees as parsed {@link GitWorktree} entries,
-   * from `git worktree list --porcelain`.
-   *
-   * The lambda configures the global options (`.dir()`, `.config()`); the
-   * subcommand itself is fixed, since the parse depends on it.
-   */
-  worktreeList(
-    configure?: Configure<GitWorktreeSettings>,
-  ): Promise<GitWorktree[]>;
-  /**
-   * The name of a remote's default branch — `main`, `master`, or whatever it
-   * chose — so a build does not have to hardcode one.
-   *
-   * Reads the local `refs/remotes/<remote>/HEAD` first, which costs no network,
-   * and asks the remote itself when that ref was never populated. Fails when
-   * neither names a branch, rather than guessing.
-   */
-  defaultBranch(
-    configure?: Configure<GitDefaultBranchSettings>,
-  ): Promise<string>;
-  /** Run any other git command via `.command(...)`. */
+  blame(configure?: Configure<GitBlameSettings>): Promise<CommandOutput>;
+  blameLines(configure?: Configure<GitBlameSettings>): Promise<GitBlameLine[]>;
+  branch(configure?: Configure<GitBranchSettings>): Promise<CommandOutput>;
+  catFile(configure?: Configure<GitCatFileSettings>): Promise<CommandOutput>;
+  checkIgnore(configure?: Configure<GitCheckIgnoreSettings>): Promise<CommandOutput>;
+  cherryPick(configure?: Configure<GitCherryPickSettings>): Promise<CommandOutput>;
+  clean(configure?: Configure<GitCleanSettings>): Promise<CommandOutput>;
+  clone(configure?: Configure<GitCloneSettings>): Promise<CommandOutput>;
+  commit(configure?: Configure<GitCommitSettings>): Promise<CommandOutput>;
+  commitCount(configure?: Configure<GitRevListSettings>): Promise<number>;
+  config(configure?: Configure<GitConfigSettings>): Promise<CommandOutput>;
+  configGet(configure?: Configure<GitConfigSettings>): Promise<string>;
+  describe(configure?: Configure<GitDescribeSettings>): Promise<CommandOutput>;
+  diff(configure?: Configure<GitDiffSettings>): Promise<CommandOutput>;
+  forEachRef(configure?: Configure<GitForEachRefSettings>): Promise<CommandOutput>;
+  fetch(configure?: Configure<GitFetchSettings>): Promise<CommandOutput>;
+  grep(configure?: Configure<GitGrepSettings>): Promise<CommandOutput>;
+  help(configure?: Configure<GitHelpSettings>): Promise<CommandOutput>;
+  isAncestor(configure?: Configure<GitMergeBaseSettings>): Promise<boolean>;
+  isIgnored(configure?: Configure<GitCheckIgnoreSettings>): Promise<boolean>;
+  isSignatureValid(configure?: Configure<GitVerifyCommitSettings>): Promise<boolean>;
+  isTagSignatureValid(configure?: Configure<GitVerifyTagSettings>): Promise<boolean>;
+  lsFiles(configure?: Configure<GitLsFilesSettings>): Promise<CommandOutput>;
+  lsRemote(configure?: Configure<GitLsRemoteSettings>): Promise<CommandOutput>;
+  lsTree(configure?: Configure<GitLsTreeSettings>): Promise<CommandOutput>;
+  log(configure?: Configure<GitLogSettings>): Promise<CommandOutput>;
+  merge(configure?: Configure<GitMergeSettings>): Promise<CommandOutput>;
+  mergeBase(configure?: Configure<GitMergeBaseSettings>): Promise<string>;
+  mergeTree(configure?: Configure<GitMergeTreeSettings>): Promise<CommandOutput>;
+  mergesCleanly(configure?: Configure<GitMergeTreeSettings>): Promise<boolean>;
+  nameRev(configure?: Configure<GitNameRevSettings>): Promise<CommandOutput>;
+  pull(configure?: Configure<GitPullSettings>): Promise<CommandOutput>;
+  push(configure?: Configure<GitPushSettings>): Promise<CommandOutput>;
+  rebase(configure?: Configure<GitRebaseSettings>): Promise<CommandOutput>;
+  refs(configure?: Configure<GitForEachRefSettings>): Promise<GitRef[]>;
+  remote(configure?: Configure<GitRemoteSettings>): Promise<CommandOutput>;
+  revList(configure?: Configure<GitRevListSettings>): Promise<CommandOutput>;
+  reset(configure?: Configure<GitResetSettings>): Promise<CommandOutput>;
+  restore(configure?: Configure<GitRestoreSettings>): Promise<CommandOutput>;
+  rm(configure?: Configure<GitRmSettings>): Promise<CommandOutput>;
   run(configure?: Configure<GitRunSettings>): Promise<CommandOutput>;
+  show(configure?: Configure<GitShowSettings>): Promise<CommandOutput>;
+  showRef(configure?: Configure<GitShowRefSettings>): Promise<CommandOutput>;
+  shortlog(configure?: Configure<GitShortlogSettings>): Promise<CommandOutput>;
+  shortlogEntries(configure?: Configure<GitShortlogSettings>): Promise<GitShortlogEntry[]>;
+  stash(configure?: Configure<GitStashSettings>): Promise<CommandOutput>;
+  status(configure?: Configure<GitStatusSettings>): Promise<CommandOutput>;
+  submodule(configure?: Configure<GitSubmoduleSettings>): Promise<CommandOutput>;
+  switch(configure?: Configure<GitSwitchSettings>): Promise<CommandOutput>;
+  symbolicRef(configure?: Configure<GitSymbolicRefSettings>): Promise<CommandOutput>;
+  tag(configure?: Configure<GitTagSettings>): Promise<CommandOutput>;
+  treeEntries(configure?: Configure<GitLsTreeSettings>): Promise<GitTreeEntry[]>;
+  verifyCommit(configure?: Configure<GitVerifyCommitSettings>): Promise<CommandOutput>;
+  verifyTag(configure?: Configure<GitVerifyTagSettings>): Promise<CommandOutput>;
+  worktreeList(configure?: Configure<GitWorktreeSettings>): Promise<CommandOutput>;
 }
 
-/**
- * Run `git worktree list --porcelain` and parse it. Backs
- * {@link GitTasksApi.worktreeList}.
- */
-async function listWorktrees(
-  configure?: Configure<GitWorktreeSettings>,
-): Promise<GitWorktree[]> {
-  const settings = new GitWorktreeSettings();
-  const configured = configure ? configure(settings) : settings;
-  const output = await configured.list().porcelain().run();
-  return parseWorktreeList(output.stdout);
-}
-
-/** Typed task functions for the `git` commands. */
 export const GitTasks: GitTasksApi = {
-  init: (c) => runSettings(new GitInitSettings(), c),
-  clone: (c) => runSettings(new GitCloneSettings(), c),
   add: (c) => runSettings(new GitAddSettings(), c),
-  rm: (c) => runSettings(new GitRmSettings(), c),
-  mv: (c) => runSettings(new GitMvSettings(), c),
-  restore: (c) => runSettings(new GitRestoreSettings(), c),
-  clean: (c) => runSettings(new GitCleanSettings(), c),
-  commit: (c) => runSettings(new GitCommitSettings(), c),
-  status: (c) => runSettings(new GitStatusSettings(), c),
-  statusEntries: (c) => readStatusEntries(c),
-  checkout: (c) => runSettings(new GitCheckoutSettings(), c),
-  switch: (c) => runSettings(new GitSwitchSettings(), c),
-  branch: (c) => runSettings(new GitBranchSettings(), c),
-  tag: (c) => runSettings(new GitTagSettings(), c),
-  push: (c) => runSettings(new GitPushSettings(), c),
-  pull: (c) => runSettings(new GitPullSettings(), c),
-  fetch: (c) => runSettings(new GitFetchSettings(), c),
-  remote: (c) => runSettings(new GitRemoteSettings(), c),
-  remoteList: (c) => listRemotes(c),
-  lsRemote: (c) => runSettings(new GitLsRemoteSettings(), c),
-  log: (c) => runSettings(new GitLogSettings(), c),
-  logEntries: (c) => readLogEntries(c),
-  show: (c) => runSettings(new GitShowSettings(), c),
-  diff: (c) => runSettings(new GitDiffSettings(), c),
-  diffNames: (c) => readDiffNames(c),
-  lsFiles: (c) => runSettings(new GitLsFilesSettings(), c),
-  lsFileNames: (c) => readLsFileNames(c),
-  revParse: (c) => runSettings(new GitRevParseSettings(), c),
-  revision: (c) => readRevision(c),
-  describe: (c) => runSettings(new GitDescribeSettings(), c),
-  merge: (c) => runSettings(new GitMergeSettings(), c),
-  rebase: (c) => runSettings(new GitRebaseSettings(), c),
-  cherryPick: (c) => runSettings(new GitCherryPickSettings(), c),
-  revert: (c) => runSettings(new GitRevertSettings(), c),
-  reset: (c) => runSettings(new GitResetSettings(), c),
-  stash: (c) => runSettings(new GitStashSettings(), c),
-  config: (c) => runSettings(new GitConfigSettings(), c),
-  configGet: (c) => readConfigValue(c),
-  submodule: (c) => runSettings(new GitSubmoduleSettings(), c),
   archive: (c) => runSettings(new GitArchiveSettings(), c),
-  apply: (c) => runSettings(new GitApplySettings(), c),
-  worktree: (c) => runSettings(new GitWorktreeSettings(), c),
-  worktreeList: (c) => listWorktrees(c),
-  defaultBranch: (c) => resolveDefaultBranch(c),
+  blame: (c) => runSettings(new GitBlameSettings(), c),
+  blameLines: (c) => readBlameLines(c),
+  branch: (c) => runSettings(new GitBranchSettings(), c),
+  catFile: (c) => runSettings(new GitCatFileSettings(), c),
+  checkIgnore: (c) => runSettings(new GitCheckIgnoreSettings(), c),
+  cherryPick: (c) => runSettings(new GitCherryPickSettings(), c),
+  clean: (c) => runSettings(new GitCleanSettings(), c),
+  clone: (c) => runSettings(new GitCloneSettings(), c),
+  commit: (c) => runSettings(new GitCommitSettings(), c),
+  commitCount: (c) => readCommitCount(c),
+  config: (c) => runSettings(new GitConfigSettings(), c),
+  configGet: (c) => readConfigGet(c),
+  describe: (c) => runSettings(new GitDescribeSettings(), c),
+  diff: (c) => runSettings(new GitDiffSettings(), c),
+  forEachRef: (c) => runSettings(new GitForEachRefSettings(), c),
+  fetch: (c) => runSettings(new GitFetchSettings(), c),
+  grep: (c) => runSettings(new GitGrepSettings(), c),
+  help: (c) => runSettings(new GitHelpSettings(), c),
+  isAncestor: (c) => readIsAncestor(c),
+  isIgnored: (c) => readIsIgnored(c),
+  isSignatureValid: (c) => readIsSignatureValid(c),
+  isTagSignatureValid: (c) => readIsTagSignatureValid(c),
+  lsFiles: (c) => runSettings(new GitLsFilesSettings(), c),
+  lsRemote: (c) => runSettings(new GitLsRemoteSettings(), c),
+  lsTree: (c) => runSettings(new GitLsTreeSettings(), c),
+  log: (c) => runSettings(new GitLogSettings(), c),
+  merge: (c) => runSettings(new GitMergeSettings(), c),
+  mergeBase: (c) => readMergeBase(c),
+  mergeTree: (c) => runSettings(new GitMergeTreeSettings(), c),
+  mergesCleanly: (c) => readMergesCleanly(c),
+  nameRev: (c) => runSettings(new GitNameRevSettings(), c),
+  pull: (c) => runSettings(new GitPullSettings(), c),
+  push: (c) => runSettings(new GitPushSettings(), c),
+  rebase: (c) => runSettings(new GitRebaseSettings(), c),
+  refs: (c) => readRefs(c),
+  remote: (c) => runSettings(new GitRemoteSettings(), c),
+  revList: (c) => runSettings(new GitRevListSettings(), c),
+  reset: (c) => runSettings(new GitResetSettings(), c),
+  restore: (c) => runSettings(new GitRestoreSettings(), c),
+  rm: (c) => runSettings(new GitRmSettings(), c),
   run: (c) => runSettings(new GitRunSettings(), c),
+  show: (c) => runSettings(new GitShowSettings(), c),
+  showRef: (c) => runSettings(new GitShowRefSettings(), c),
+  shortlog: (c) => runSettings(new GitShortlogSettings(), c),
+  shortlogEntries: (c) => readShortlogEntries(c),
+  stash: (c) => runSettings(new GitStashSettings(), c),
+  status: (c) => runSettings(new GitStatusSettings(), c),
+  submodule: (c) => runSettings(new GitSubmoduleSettings(), c),
+  switch: (c) => runSettings(new GitSwitchSettings(), c),
+  symbolicRef: (c) => runSettings(new GitSymbolicRefSettings(), c),
+  tag: (c) => runSettings(new GitTagSettings(), c),
+  treeEntries: (c) => readTreeEntries(c),
+  verifyCommit: (c) => runSettings(new GitVerifyCommitSettings(), c),
+  verifyTag: (c) => runSettings(new GitVerifyTagSettings(), c),
+  worktreeList: (c) => listWorktrees(c),
 };
