@@ -257,7 +257,11 @@ export const TOOL_GROUPS: ToolGroup[] = [
     category: "Cloud & infrastructure",
     blurb: "Provision and deploy with infra-as-code, typed end to end.",
     tools: [
-      { name: "gcloud", pkg: "@zuke/gcloud", desc: "deploy, run, IAM" },
+      {
+        name: "gcloud",
+        pkg: "@zuke/gcloud",
+        desc: "auth, builds, Cloud Run, Artifact Registry, GKE, storage",
+      },
       {
         name: "Terraform",
         pkg: "@zuke/terraform",
