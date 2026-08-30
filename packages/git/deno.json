@@ -1,6 +1,6 @@
 {
   "name": "@zuke/git",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "license": "MIT",
   "description": "Typed git task wrappers for Zuke builds — common commands (add, commit, push, tag, checkout, …) and the interrogation surface (merge-base, rev-list, for-each-ref, ls-tree, cat-file, blame, shortlog, grep) with readers for the answers a build asks for, plus a generic escape hatch, via an injection-free settings-lambda API.",
   "exports": {

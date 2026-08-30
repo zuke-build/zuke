@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.0](https://github.com/zuke-build/zuke/compare/git-v1.4.0...git-v1.5.0) (2026-08-30)
+
+
+### Features
+
+* **git:** wrap the interrogation commands, with readers ([#424](https://github.com/zuke-build/zuke/issues/424)) ([0ff7405](https://github.com/zuke-build/zuke/commit/0ff7405c834a555f1530e80c00b8006cd813aae0))
+
 ## [1.4.0](https://github.com/zuke-build/zuke/compare/git-v1.3.0...git-v1.4.0) (2026-08-28)
 
 
