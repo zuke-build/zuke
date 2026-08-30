@@ -9,14 +9,19 @@ import {
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import { missingTool } from "@zuke/core/tooling/conformance";
 import {
-  type ComposeRunOutcome,
   DockerComposeTasks,
-  parseComposeVersion,
-  parsePublishedPort,
   resetComposeInvocationCache_,
   resolveComposeInvocation,
-  waitStatus,
 } from "../mod.ts";
+// The readers are internal to the package: the public surface is the
+// task-shaped `DockerComposeTasks.version`/`servicePort`/`waitExitCode`, so
+// these are imported from their module rather than re-exported by `mod.ts`.
+import {
+  type ComposeRunOutcome,
+  parseComposeVersion,
+  parsePublishedPort,
+  waitStatus,
+} from "../src/reports.ts";
 
 /**
  * Seed the invocation cache from a fake probe so detection never touches the

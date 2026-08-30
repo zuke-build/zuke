@@ -76,10 +76,4 @@ export {
   DockerComposeVersionSettings,
   DockerComposeVolumesSettings,
 } from "./src/inventory.ts";
-export {
-  type ComposeRunOutcome,
-  type DockerComposeVersion,
-  parseComposeVersion,
-  parsePublishedPort,
-  waitStatus,
-} from "./src/reports.ts";
+export { type DockerComposeVersion } from "./src/reports.ts";
