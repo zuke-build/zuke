@@ -16,6 +16,7 @@
  */
 
 import { GcloudSettings } from "./settings.ts";
+import { checkLimit } from "./limit.ts";
 import { commaJoined } from "./comma_list.ts";
 
 /** Settings for `gcloud builds submit`. */
@@ -176,17 +177,9 @@ export class GcloudBuildsListSettings extends GcloudSettings {
 
   /** Emit `builds list` with its flags. */
   protected override leadingTokens(): string[] {
+    checkLimit(this.#limit, "buildsList");
     const argv = ["builds", "list"];
-    if (this.#limit !== undefined) {
-      // gcloud: "argument --limit: Value must be greater than or equal to 1".
-      if (!Number.isInteger(this.#limit) || this.#limit < 1) {
-        throw new Error(
-          `GcloudTasks.buildsList: .limit(${this.#limit}) is not a count — ` +
-            "gcloud requires a whole number of at least 1.",
-        );
-      }
-      argv.push("--limit", String(this.#limit));
-    }
+    if (this.#limit !== undefined) argv.push("--limit", String(this.#limit));
     if (this.#filter !== undefined) argv.push("--filter", this.#filter);
     if (this.#region !== undefined) argv.push("--region", this.#region);
     if (this.#ongoing) argv.push("--ongoing");

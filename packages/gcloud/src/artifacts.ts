@@ -16,18 +16,7 @@
  */
 
 import { GcloudSettings } from "./settings.ts";
-
-/** Reject a `--limit` gcloud would, with the message it uses. */
-function checkLimit(limit: number | undefined, task: string): void {
-  if (limit === undefined) return;
-  // gcloud: "argument --limit: Value must be greater than or equal to 1".
-  if (!Number.isInteger(limit) || limit < 1) {
-    throw new Error(
-      `GcloudTasks.${task}: .limit(${limit}) is not a count — gcloud requires ` +
-        "a whole number of at least 1.",
-    );
-  }
-}
+import { checkLimit } from "./limit.ts";
 
 /** Settings for `gcloud artifacts docker images list`. */
 export class GcloudArtifactsImagesListSettings extends GcloudSettings {
