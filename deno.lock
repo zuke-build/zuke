@@ -1658,7 +1658,7 @@
       },
       "packages/git": {
         "dependencies": [
-          "jsr:@zuke/core@^1.25.0"
+          "jsr:@zuke/core@^1.32.0"
         ]
       },
       "packages/helm": {
