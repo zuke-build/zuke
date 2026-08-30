@@ -657,7 +657,7 @@ the full task list and settings methods of each):
 | `@zuke/husky`                                                                                                                                       | `HuskyTasks`                                              | git hooks                                                                                                                                                                                                                                                                                                    |
 | `@zuke/jest`, `@zuke/vitest`, `@zuke/playwright`, `@zuke/cypress`                                                                                   | `*Tasks`                                                  | test runners                                                                                                                                                                                                                                                                                                 |
 | `@zuke/jsr`, `@zuke/codecov`, `@zuke/release-please`                                                                                                | `JsrTasks`, `CodecovTasks`, ...                           | publish / coverage upload / releases                                                                                                                                                                                                                                                                         |
-| `@zuke/kubectl`, `@zuke/helm`, `@zuke/kustomize`, `@zuke/terraform`, `@zuke/tofu`, `@zuke/gcloud`                                                   | `*Tasks`                                                  | infra/deploy. `KubectlTasks` covers the deploy surface — manifests, workloads, pods, nodes, kubeconfig — with `diffHasChanges`, `canI`, `getEntries`, `eventEntries`, `currentContext`, `versionInfo` handing back values (see below)                                                                        |
+| `@zuke/kubectl`, `@zuke/helm`, `@zuke/kustomize`, `@zuke/terraform`, `@zuke/tofu`, `@zuke/gcloud`                                                   | `*Tasks`                                                  | infra/deploy. `KubectlTasks` covers the deploy surface — manifests, workloads, pods, nodes, kubeconfig — with `diffHasChanges`, `canI`, `getEntries`, `eventEntries`, `currentContext`, `versionInfo` handing back values (see below). `GcloudTasks` types the Google Cloud deploy path — auth, config, builds, Cloud Run, Artifact Registry, GKE credentials, storage, functions, secrets (see below)                                     |
 | `@zuke/security`                                                                                                                                    | `*Tasks`                                                  | security scanning                                                                                                                                                                                                                                                                                            |
 | `@zuke/claude`, `@zuke/codex`, `@zuke/gemini`                                                                                                       | `ClaudeTasks`, ...                                        | headless AI CLIs                                                                                                                                                                                                                                                                                             |
 | `@zuke/ai`                                                                                                                                          | `securityReviewer`, ..., `aiFixer`, `agentFixer`          | AI review gates + self-healing (see below)                                                                                                                                                                                                                                                                   |
@@ -792,6 +792,45 @@ checkout.
 
 `merge`, `rebase`, `cherryPick`, and `revert` share `.continue()`, `.abort()`,
 `.skip()`, `.quit()` for an operation a conflict left in progress.
+
+### Google Cloud — `GcloudTasks`
+
+The deploy path is typed, so a build never string-builds it:
+
+| Area        | Tasks                                                                                    |
+| ----------- | ---------------------------------------------------------------------------------------- |
+| Auth        | `authActivateServiceAccount`, `authConfigureDocker`, `authList`, `authRevoke`             |
+| Config      | `configSet`, `configUnset`, `configGetValue`, `configList`                                |
+| Cloud Build | `buildsSubmit`, `buildsList`, `buildsDescribe`, `buildsLog`                               |
+| Cloud Run   | `runDeploy`, `runServicesDescribe`, `runServicesList`, `runUpdateTraffic`                 |
+| Registry    | `artifactsImagesList`, `artifactsImagesDelete`, `artifactsRepositoriesList/Describe`      |
+| Storage     | `storageCp`, `storageRsync`, `storageLs`, `storageRm`                                     |
+| GKE         | `clustersGetCredentials`, `clustersList`, `clustersDescribe`                              |
+| Functions   | `functionsDeploy`, `functionsDescribe`                                                    |
+| Secrets     | `secretsAccess`                                                                            |
+
+`GcloudTasks.run` with `.command(...)` remains the escape hatch for the rest of
+gcloud, which is vast — but reaching for it where a typed task exists discards
+the flags and the refusals.
+
+Some tasks hand back **values**:
+
+```ts
+const token = await GcloudTasks.accessToken();
+const idToken = await GcloudTasks.identityToken((s) => s.audiences(serviceUrl));
+const project = await GcloudTasks.configValue((s) => s.property("project"));
+const url = await GcloudTasks.runServiceUrl((s) => s.service("api").region("us-central1"));
+const secret = await GcloudTasks.secretValue((s) => s.secret("api-key"));
+```
+
+They pin gcloud's own `value(...)` projection where a field has to be picked
+out, so **gcloud** does the extraction and nothing here parses a JSON document.
+Each refuses an empty answer rather than returning `""` — an unset property and
+a missing field both look like that, and an empty token or URL fails far from
+its cause. They run quiet, so a token never reaches the build log.
+
+`clustersGetCredentials` is the bridge to `@zuke/kubectl`: it writes the
+kubeconfig entry every kubectl task then works against.
 
 ### Worktrees — `GitTasks.worktree`
 
