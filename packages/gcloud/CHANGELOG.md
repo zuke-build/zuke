@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/zuke-build/zuke/compare/gcloud-v1.0.1...gcloud-v1.1.0) (2026-08-30)
+
+
+### Features
+
+* **gcloud:** type the commands a build drives, with scalar readers ([#427](https://github.com/zuke-build/zuke/issues/427)) ([02d8dc9](https://github.com/zuke-build/zuke/commit/02d8dc9b9bebb44f92d13153f1859923a9dfdc8f))
+
 ## [1.0.1](https://github.com/zuke-build/zuke/compare/gcloud-v1.0.0...gcloud-v1.0.1) (2026-08-13)
 
 
