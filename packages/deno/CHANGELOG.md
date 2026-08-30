@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/zuke-build/zuke/compare/deno-v1.1.0...deno-v1.2.0) (2026-08-29)
+
+
+### Features
+
+* **deno:** complete the flags on the subcommands already wrapped ([#418](https://github.com/zuke-build/zuke/issues/418)) ([ca19e1c](https://github.com/zuke-build/zuke/commit/ca19e1c5fe13065837a6cb79faac3f51d6cafeff))
+
 ## [1.1.0](https://github.com/zuke-build/zuke/compare/deno-v1.0.1...deno-v1.1.0) (2026-08-29)
 
 
