@@ -742,8 +742,10 @@ that exits on its own is unaffected.
 | Working tree & index | `add`, `rm`, `mv`, `restore`, `clean`, `reset`, `stash`, `commit`  |
 | Branches & tags      | `branch`, `checkout`, `switch`, `tag`                              |
 | Inspect              | `status`, `log`, `show`, `diff`, `lsFiles`, `revParse`, `describe` |
+| Interrogate          | `mergeBase`, `revList`, `forEachRef`, `showRef`, `symbolicRef`, `nameRev`, `lsTree`, `catFile`, `checkIgnore`, `blame`, `shortlog`, `grep`, `mergeTree` |
 | Integrate            | `merge`, `rebase`, `cherryPick`, `revert`, `apply`                 |
 | Collaborate          | `push`, `pull`, `fetch`, `remote`, `lsRemote`, `submodule`         |
+| Signatures           | `verifyCommit`, `verifyTag`                                        |
 | Everything else      | `config`, `archive`, `run`                                         |
 
 `run` (`s.command("bisect", "start")`) is for the long tail only — reaching for
@@ -765,6 +767,28 @@ const url = await GitTasks.configGet((s) => s.get("remote.origin.url")); // unde
 
 They pin the machine-readable form (`-z`, a separator-based `--format`), so a
 path with a space in it or a multi-line commit message parses correctly.
+
+The interrogation commands add the answers CI asks for most — a base ref, a
+commit count, whether one ref is contained in another:
+
+```ts
+const base = await GitTasks.mergeBase((s) => s.commits("HEAD", "origin/main"));
+const build = await GitTasks.commitCount((s) => s.commits("HEAD")); // number
+const shipped = await GitTasks.isAncestor((s) => s.commits("v1.2.0", "HEAD"));
+const tags = await GitTasks.refs((s) => s.patterns("refs/tags/").sort("-creatordate"));
+const ignored = await GitTasks.isIgnored((s) => s.paths("cov_profile"));
+const manifest = await GitTasks.blobText((s) => s.object("v1.2.0:deno.json"));
+const authors = await GitTasks.shortlogEntries((s) => s.email().commits("v1.2.0..HEAD"));
+const clean = await GitTasks.mergesCleanly((s) => s.branches("HEAD", "origin/main"));
+```
+
+`isAncestor`, `isIgnored`, `mergesCleanly` and `isSignatureValid` answer from
+git's **exit status**, where a `1` is a legitimate "no" rather than a failure.
+They read it back as a boolean, and still raise when git fails for a different
+reason — a revision that names no object, say — so a mistyped ref never comes
+back as a confident `false`. `mergesCleanly` tests a merge without touching the
+index or working tree, which is how a build checks mergeability without a
+checkout.
 
 `merge`, `rebase`, `cherryPick`, and `revert` share `.continue()`, `.abort()`,
 `.skip()`, `.quit()` for an operation a conflict left in progress.

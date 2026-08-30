@@ -12641,6 +12641,13 @@ const LOG_ENTRY_FORMAT: string
   commit message can contain, unlike the newlines a line-oriented format would
   rely on.
 
+const REF_ENTRY_FORMAT: string
+  The `--format` {@link "./git.ts".GitTasks.refs} pins: the fields of one ref,
+  separated by NUL and terminated by one, so a ref name cannot break a record.
+
+  `%00` is git's own NUL placeholder, which is why the reader can rely on the
+  separator surviving a ref name containing anything else.
+
 class GitAddSettings extends GitSettings
   Settings for `git add`.
 
@@ -12702,6 +12709,32 @@ class GitArchiveSettings extends GitSettings
   override protected subcommandArgs(): string[]
     Assemble the `git archive` argv.
 
+class GitBlameSettings extends GitSettings
+  Settings for `git blame`.
+
+  file(path: PathLike): this
+    The file to annotate (positional).
+  porcelain(): this
+    Machine-readable output (`--porcelain`). Prefer
+    {@link "./git.ts".GitTasks.blameLines}, which parses it.
+  linePorcelain(): this
+    Like {@link porcelain}, but repeating the commit header on every line
+    (`--line-porcelain`) rather than only its first appearance.
+  revision(value: string): this
+    Annotate the file as of this revision (positional).
+  lineRange(start: number, end: number | string): this
+    Annotate only these lines (`-L <start>,<end>`); repeatable.
+  showEmail(): this
+    Show the author's email rather than their name (`-e`).
+  ignoreWhitespace(): this
+    Ignore whitespace-only changes when assigning blame (`-w`).
+  reverse(value: string): this
+    Walk history forward from this revision instead (`--reverse <rev>`).
+  ignoreRevs(...revisions: string[]): this
+    Ignore a revision when assigning blame (`--ignore-rev`); repeatable.
+  override protected subcommandArgs(): string[]
+    Assemble the `git blame` argv.
+
 class GitBranchSettings extends GitSettings
   Settings for `git branch`.
 
@@ -12732,6 +12765,43 @@ class GitBranchSettings extends GitSettings
     Order a listing (`--sort=<key>`), e.g. `-committerdate` for most recent first.
   override protected subcommandArgs(): string[]
     Assemble the `git branch` argv.
+
+class GitCatFileSettings extends GitSettings
+  Settings for `git cat-file`.
+
+  object(value: string): this
+    The object to read (positional), e.g. `"HEAD:deno.json"`.
+  query(kind: GitCatFileQuery): this
+    Report an attribute rather than the contents: `type` (`-t`), `size`
+    (`-s`), or `exists` (`-e`, which answers by exit status and prints
+    nothing).
+  textconv(): this
+    Run the object through its textconv filter (`--textconv`).
+  filters(): this
+    Run the object through its working-tree filters (`--filters`).
+  override protected subcommandArgs(): string[]
+    Assemble the `git cat-file` argv.
+
+class GitCheckIgnoreSettings extends GitSettings
+  Settings for `git check-ignore`.
+
+  quietOutput(): this
+    Say nothing and answer by exit status alone (`-q`).
+
+    Named apart from the inherited `quiet`, which silences Zuke's echo of the
+    command rather than git's output.
+  verbose(): this
+    Also report the rule that excluded each path (`-v`).
+  nonMatching(): this
+    Include the paths that are not excluded (`-n`); needs {@link verbose}.
+  noIndex(): this
+    Ignore the index when checking (`--no-index`).
+  nulTerminated(): this
+    Terminate records with NUL rather than newline (`-z`).
+  paths(...values: string[]): this
+    The paths to check (positional); repeatable.
+  override protected subcommandArgs(): string[]
+    Assemble the `git check-ignore` argv.
 
 class GitCheckoutSettings extends GitSettings
   Settings for `git checkout`.
@@ -12981,6 +13051,75 @@ class GitFetchSettings extends GitSettings
   override protected subcommandArgs(): string[]
     Assemble the `git fetch` argv.
 
+class GitForEachRefSettings extends GitSettings
+  Settings for `git for-each-ref`.
+
+  format(value: string): this
+    The output format (`--format=<format>`), in git's placeholder language.
+  count(value: number): this
+    Show only this many matched refs (`--count=<n>`).
+  sort(...keys: string[]): this
+    Sort by a field (`--sort=<key>`), e.g. `"-creatordate"` for newest first;
+    repeatable, and git applies the keys in the order given.
+  exclude(...patterns: string[]): this
+    Exclude refs matching a pattern (`--exclude=<pattern>`); repeatable.
+  pointsAt(object: string): this
+    Only refs pointing at this object (`--points-at=<object>`).
+  merged(commit: string): this
+    Only refs merged into this commit (`--merged=<commit>`).
+  noMerged(commit: string): this
+    Only refs not merged into this commit (`--no-merged=<commit>`).
+  contains(commit: string): this
+    Only refs whose history contains this commit (`--contains=<commit>`).
+  noContains(commit: string): this
+    Only refs not containing this commit (`--no-contains=<commit>`).
+  ignoreCase(): this
+    Sort and filter case-insensitively (`--ignore-case`).
+  omitEmpty(): this
+    Skip the newline after a ref that formats to nothing (`--omit-empty`).
+  patterns(...values: string[]): this
+    The ref patterns to match (positional), e.g. `"refs/tags/"`; repeatable.
+  override protected subcommandArgs(): string[]
+    Assemble the `git for-each-ref` argv.
+
+class GitGrepSettings extends GitSettings
+  Settings for `git grep`.
+
+  pattern(...values: string[]): this
+    A pattern to search for (`-e <pattern>`); repeatable.
+  ignoreCase(): this
+    Match case-insensitively (`-i`).
+  wordRegexp(): this
+    Match only at word boundaries (`-w`).
+  invert(): this
+    Report the lines that do not match (`-v`).
+  lineNumber(): this
+    Prefix each match with its line number (`-n`).
+  namesOnly(): this
+    Report only the names of matching files (`-l`).
+  countMatches(): this
+    Report only how many lines matched per file (`-c`).
+  extendedRegexp(): this
+    Read the pattern as a POSIX extended regexp (`-E`).
+  fixedStrings(): this
+    Read the pattern as a literal string (`-F`).
+  cached(): this
+    Search the index rather than the working tree (`--cached`).
+  untracked(): this
+    Search untracked files as well as tracked ones (`--untracked`).
+  nulTerminated(): this
+    Terminate output records with NUL (`-z`).
+  maxDepth(value: number): this
+    Descend at most this many directories (`--max-depth=<n>`).
+  context(lines: number): this
+    Show this many lines of context around each match (`-C <n>`).
+  revisions(...values: string[]): this
+    Search these revisions rather than the working tree (positional).
+  paths(...values: string[]): this
+    Limit the search to these paths (positional); repeatable.
+  override protected subcommandArgs(): string[]
+    Assemble the `git grep` argv.
+
 class GitInitSettings extends GitSettings
   Settings for `git init`.
 
@@ -13077,6 +13216,57 @@ class GitLsRemoteSettings extends GitSettings
   override protected subcommandArgs(): string[]
     Assemble the `git ls-remote` argv.
 
+class GitLsTreeSettings extends GitSettings
+  Settings for `git ls-tree`.
+
+  tree(value: string): this
+    The tree-ish to list (positional), e.g. `"HEAD"` or `"v1.0.0"`.
+  recursive(): this
+    Recurse into subtrees (`-r`).
+  treesOnly(): this
+    Show only trees, not blobs (`-d`).
+  showTrees(): this
+    Show the trees themselves while recursing (`-t`).
+  nulTerminated(): this
+    Terminate entries with NUL rather than newline (`-z`).
+  long(): this
+    Include each object's size (`--long`).
+  nameOnly(): this
+    List only the file names (`--name-only`).
+  objectOnly(): this
+    List only the object names (`--object-only`).
+  fullName(): this
+    Report paths from the repository root (`--full-name`).
+  fullTree(): this
+    List the whole tree, not just the current directory (`--full-tree`).
+  abbrev(digits: number): this
+    Abbreviate object names to this many digits (`--abbrev=<n>`).
+  paths(...values: string[]): this
+    Limit the listing to these paths (positional); repeatable.
+  override protected subcommandArgs(): string[]
+    Assemble the `git ls-tree` argv.
+
+class GitMergeBaseSettings extends GitSettings
+  Settings for `git merge-base`.
+
+  all(): this
+    Output every common ancestor rather than one (`--all`).
+  octopus(): this
+    Find the ancestors for a single n-way merge (`--octopus`).
+  independent(): this
+    List the revisions not reachable from any other (`--independent`).
+  isAncestor(): this
+    Ask whether the first commit is an ancestor of the second
+    (`--is-ancestor`), which git answers by exit status and prints nothing.
+    Prefer {@link "./git.ts".GitTasks.isAncestor}, which reads that status
+    back as a boolean.
+  forkPoint(): this
+    Find where a commit forked from a ref's reflog (`--fork-point`).
+  commits(...values: string[]): this
+    The commits to consider (positional); repeatable.
+  override protected subcommandArgs(): string[]
+    Assemble the `git merge-base` argv.
+
 class GitMergeSettings extends GitSequencerSettings
   Settings for `git merge`.
 
@@ -13103,6 +13293,27 @@ class GitMergeSettings extends GitSequencerSettings
   override protected subcommandArgs(): string[]
     Assemble the `git merge` argv.
 
+class GitMergeTreeSettings extends GitSettings
+  Settings for `git merge-tree`.
+
+  writeTree(): this
+    Do a real merge and write the resulting tree (`--write-tree`), rather than
+    the trivial three-way form. This is the default in git 2.38 and later.
+  messages(): this
+    Also print the informational and conflict messages (`--messages`).
+  nameOnly(): this
+    List conflicted filenames without modes or object names (`--name-only`).
+  nulTerminated(): this
+    Separate paths with NUL rather than newline (`-z`).
+  allowUnrelatedHistories(): this
+    Permit merging histories with no common ancestor (`--allow-unrelated-histories`).
+  mergeBase(commit: string): this
+    Use this commit as the merge base (`--merge-base=<commit>`).
+  branches(...values: string[]): this
+    The two branches to merge (positional).
+  override protected subcommandArgs(): string[]
+    Assemble the `git merge-tree` argv.
+
 class GitMvSettings extends GitSettings
   Settings for `git mv`.
 
@@ -13117,6 +13328,24 @@ class GitMvSettings extends GitSettings
     Report what would move without moving it (`-n`/`--dry-run`).
   override protected subcommandArgs(): string[]
     Assemble the `git mv` argv.
+
+class GitNameRevSettings extends GitSettings
+  Settings for `git name-rev`.
+
+  tags(): this
+    Use only tags to name the commits (`--tags`).
+  all(): this
+    Name every reachable commit (`--all`).
+  nameOnly(): this
+    Print only the name, not the commit it names (`--name-only`).
+  alwaysName(): this
+    Fall back to the object name when nothing else names it (`--always`).
+  refs(...patterns: string[]): this
+    Only consider refs matching these patterns (`--refs=<pattern>`).
+  commits(...values: string[]): this
+    The commits to name (positional); repeatable.
+  override protected subcommandArgs(): string[]
+    Assemble the `git name-rev` argv.
 
 class GitPullSettings extends GitSettings
   Settings for `git pull`.
@@ -13294,6 +13523,51 @@ class GitRestoreSettings extends GitSettings
   override protected subcommandArgs(): string[]
     Assemble the `git restore` argv.
 
+class GitRevListSettings extends GitSettings
+  Settings for `git rev-list`.
+
+  count(): this
+    Print how many commits the walk found rather than listing them
+    (`--count`). Prefer {@link "./git.ts".GitTasks.commitCount}, which reads
+    that number back.
+  maxCount(value: number): this
+    Stop after this many commits (`--max-count=<n>`).
+  skip(value: number): this
+    Skip this many commits before printing (`--skip=<n>`).
+  all(): this
+    Walk every ref in `refs/` (`--all`).
+  branches(): this
+    Walk every branch (`--branches`).
+  tags(): this
+    Walk every tag (`--tags`).
+  remotes(): this
+    Walk every remote-tracking branch (`--remotes`).
+  noMerges(): this
+    Omit merge commits (`--no-merges`).
+  merges(): this
+    Keep only merge commits (`--merges`).
+  firstParent(): this
+    Follow only the first parent of each merge (`--first-parent`).
+  reverse(): this
+    Emit the commits oldest first (`--reverse`).
+  topoOrder(): this
+    Order by topology rather than date (`--topo-order`).
+  dateOrder(): this
+    Order by commit date (`--date-order`).
+  since(value: string): this
+    Only commits after this date (`--since=<date>`).
+  until(value: string): this
+    Only commits before this date (`--until=<date>`).
+  author(pattern: string): this
+    Only commits whose author matches (`--author=<pattern>`).
+  commits(...values: string[]): this
+    The commits or ranges to walk (positional), e.g. `"HEAD"` or
+    `"origin/main..HEAD"`; repeatable.
+  paths(...values: string[]): this
+    Limit the walk to commits touching these paths (positional); repeatable.
+  override protected subcommandArgs(): string[]
+    Assemble the `git rev-list` argv.
+
 class GitRevParseSettings extends GitSettings
   Settings for `git rev-parse`.
 
@@ -13395,6 +13669,58 @@ abstract class GitSettings extends ToolSettings
     Set a one-off config value (`-c key=value`); repeatable.
   override protected buildArgs(): string[]
     Assemble the `git` argv: global options followed by the subcommand.
+
+class GitShortlogSettings extends GitSettings
+  Settings for `git shortlog`.
+
+  summary(): this
+    Report only the commit count per author, without the subjects (`-s`).
+    Prefer {@link "./git.ts".GitTasks.shortlogEntries}, which reads that
+    output back.
+  numbered(): this
+    Sort by commit count rather than by name (`-n`).
+  email(): this
+    Include each author's email address (`-e`).
+  committer(): this
+    Group by committer rather than author (`-c`).
+  group(...fields: string[]): this
+    Group by a named field (`--group=<field>`), e.g. `"trailer:co-authored-by"`.
+  commits(...values: string[]): this
+    The revision range to summarise (positional); repeatable.
+  paths(...values: string[]): this
+    Limit the summary to commits touching these paths (positional).
+  override protected subcommandArgs(): string[]
+    Assemble the `git shortlog` argv.
+
+class GitShowRefSettings extends GitSettings
+  Settings for `git show-ref`.
+
+  tags(): this
+    Only tags (`--tags`); may be combined with {@link heads}.
+  heads(): this
+    Only branch heads (`--heads`); may be combined with {@link tags}.
+  head(): this
+    Include `HEAD` even when a filter would exclude it (`--head`).
+  dereference(): this
+    Dereference tags into the objects they point at (`--dereference`).
+  hash(): this
+    Print only the object name, without the ref (`--hash`).
+  verify(): this
+    Require an exact ref path and fail otherwise (`--verify`).
+  exists(): this
+    Check a ref exists without resolving it (`--exists`).
+  quietOutput(): this
+    Suppress git's own stdout (`--quiet`), leaving the exit status as the
+    answer — the useful pairing with {@link verify}.
+
+    Named apart from the inherited `quiet`, which silences Zuke's echo of the
+    command rather than git's output.
+  abbrev(digits: number): this
+    Abbreviate object names to this many digits (`--abbrev=<n>`).
+  patterns(...values: string[]): this
+    The ref patterns to show (positional); repeatable.
+  override protected subcommandArgs(): string[]
+    Assemble the `git show-ref` argv.
 
 class GitShowSettings extends GitSettings
   Settings for `git show`.
@@ -13539,6 +13865,26 @@ class GitSwitchSettings extends GitSettings
   override protected subcommandArgs(): string[]
     Assemble the `git switch` argv.
 
+class GitSymbolicRefSettings extends GitSettings
+  Settings for `git symbolic-ref`.
+
+  name(value: string): this
+    The symbolic ref to read or set (positional), e.g. `"HEAD"`.
+  ref(value: string): this
+    The ref to point it at (positional), which makes this a write.
+  short(): this
+    Shorten the reported ref name (`--short`).
+  delete(): this
+    Delete the symbolic ref (`--delete`).
+  quietOutput(): this
+    Say nothing and exit non-zero when the ref is not symbolic (`--quiet`).
+
+    Named apart from the inherited `quiet`, which silences Zuke's echo.
+  reason(value: string): this
+    The reflog reason to record for the update (`-m <reason>`).
+  override protected subcommandArgs(): string[]
+    Assemble the `git symbolic-ref` argv.
+
 class GitTagSettings extends GitSettings
   Settings for `git tag`.
 
@@ -13562,6 +13908,33 @@ class GitTagSettings extends GitSettings
     lexicographic and puts `v1.10.0` before `v1.9.0`.
   override protected subcommandArgs(): string[]
     Assemble the `git tag` argv.
+
+class GitVerifyCommitSettings extends GitSettings
+  Settings for `git verify-commit`.
+
+  verbose(): this
+    Also print the commit's contents (`-v`).
+  raw(): this
+    Print gpg's raw status output (`--raw`).
+  objects(...values: string[]): this
+    The commits to verify (positional); repeatable.
+  override protected subcommandArgs(): string[]
+    Assemble the `git verify-commit` argv.
+
+class GitVerifyTagSettings extends GitSettings
+  Settings for `git verify-tag`.
+
+  verbose(): this
+    Also print the tag's contents (`-v`).
+  raw(): this
+    Print gpg's raw status output (`--raw`).
+  format(value: string): this
+    The output format (`--format=<format>`), in git's placeholder language.
+    `verify-tag` accepts this where `verify-commit` does not.
+  objects(...values: string[]): this
+    The tags to verify (positional); repeatable.
+  override protected subcommandArgs(): string[]
+    Assemble the `git verify-tag` argv.
 
 class GitWorktreeSettings extends GitSettings
   Settings for `git worktree`. Pick the subcommand with {@link add},
@@ -13600,6 +13973,26 @@ class GitWorktreeSettings extends GitSettings
     Emit the stable machine-readable listing (`--porcelain`).
   override protected subcommandArgs(): string[]
     Assemble the `git worktree` argv.
+
+interface GitBlameLine
+  One annotated line of `git blame --porcelain`.
+
+  commit: string
+    The commit that last touched this line.
+  lineNumber: number
+    The line number in the file as it is now, 1-based.
+  originalLineNumber: number
+    The line number in the commit the content came from, 1-based.
+  content: string
+    The line's content, without its terminator.
+  author?: string
+    The author's name, as recorded on the commit.
+  authorMail?: string
+    The author's email address, with the angle brackets removed.
+  summary?: string
+    The commit's subject line.
+  filename?: string
+    The file the line came from, which differs from the target after a rename.
 
 interface GitCommitEntry
   One commit of {@link "./git.ts".GitTasks.logEntries}.
@@ -13647,6 +14040,18 @@ interface GitInfoOptions
   run?: GitRunner
     Override how git is invoked (defaults to spawning `git`); for testing.
 
+interface GitRef
+  One ref from `git for-each-ref`, as {@link REF_ENTRY_FORMAT} reports it.
+
+  objectName: string
+    The object the ref points at, as a full object name.
+  objectType: string
+    The kind of object: `commit`, `tag`, `tree`, or `blob`.
+  refName: string
+    The full ref name, e.g. `refs/tags/v1.0.0`.
+  upstream?: string
+    The upstream this ref tracks, if it has one.
+
 interface GitRemote
   One remote of `git remote --verbose`, with both of its URLs folded in.
 
@@ -13656,6 +14061,16 @@ interface GitRemote
     Where fetches read from, when the listing reported one.
   pushUrl?: string
     Where pushes write to, when the listing reported one.
+
+interface GitShortlogEntry
+  One line of `git shortlog -s`: a contributor and how many commits they have.
+
+  count: number
+    How many commits the group holds.
+  name: string
+    The contributor's name, as recorded on the commits.
+  email?: string
+    Their email address; present only when `-e` asked for it.
 
 interface GitStatusEntry
   One record of `git status --porcelain -z`: a path and how it changed.
@@ -13791,8 +14206,75 @@ interface GitTasksApi
     Reads the local `refs/remotes/<remote>/HEAD` first, which costs no network,
     and asks the remote itself when that ref was never populated. Fails when
     neither names a branch, rather than guessing.
+  mergeBase(configure?: Configure<GitMergeBaseSettings>): Promise<string>
+    Find the common ancestor of commits: `git merge-base`.
+  isAncestor(configure?: Configure<GitMergeBaseSettings>): Promise<boolean>
+    Whether the first commit is an ancestor of the second:
+    `git merge-base --is-ancestor`, read back from its exit status.
+  revList(configure?: Configure<GitRevListSettings>): Promise<CommandOutput>
+    Walk history as a list of commits: `git rev-list`.
+  commitCount(configure?: Configure<GitRevListSettings>): Promise<number>
+    How many commits the walk holds: `git rev-list --count`.
+  forEachRef(configure?: Configure<GitForEachRefSettings>): Promise<CommandOutput>
+    List refs with a format: `git for-each-ref`.
+  refs(configure?: Configure<GitForEachRefSettings>): Promise<GitRef[]>
+    The refs and what they point at, parsed: `git for-each-ref`.
+  showRef(configure?: Configure<GitShowRefSettings>): Promise<CommandOutput>
+    List or verify local refs: `git show-ref`.
+  symbolicRef(configure?: Configure<GitSymbolicRefSettings>): Promise<CommandOutput>
+    Read or set a symbolic ref: `git symbolic-ref`.
+  nameRev(configure?: Configure<GitNameRevSettings>): Promise<CommandOutput>
+    Find symbolic names for commits: `git name-rev`.
+  lsTree(configure?: Configure<GitLsTreeSettings>): Promise<CommandOutput>
+    List the contents of a tree: `git ls-tree`.
+  treeEntries(configure?: Configure<GitLsTreeSettings>): Promise<GitTreeEntry[]>
+    The entries of a tree, parsed: `git ls-tree -z`.
+  catFile(configure?: Configure<GitCatFileSettings>): Promise<CommandOutput>
+    Read an object's contents or attributes: `git cat-file`.
+  blobText(configure?: Configure<GitCatFileSettings>): Promise<string>
+    An object's contents as text, untrimmed: `git cat-file -p`.
+  checkIgnore(configure?: Configure<GitCheckIgnoreSettings>): Promise<CommandOutput>
+    Report which paths the ignore rules exclude: `git check-ignore`.
+  isIgnored(configure?: Configure<GitCheckIgnoreSettings>): Promise<boolean>
+    Whether a path is excluded, read from the exit status of
+    `git check-ignore`.
+  blame(configure?: Configure<GitBlameSettings>): Promise<CommandOutput>
+    Annotate a file's lines with their commits: `git blame`.
+  blameLines(configure?: Configure<GitBlameSettings>): Promise<GitBlameLine[]>
+    The annotated lines, parsed: `git blame --porcelain`.
+  shortlog(configure?: Configure<GitShortlogSettings>): Promise<CommandOutput>
+    Summarise commits by contributor: `git shortlog`.
+  shortlogEntries(configure?: Configure<GitShortlogSettings>): Promise<GitShortlogEntry[]>
+    The per-contributor commit counts, parsed: `git shortlog -s`.
+  grep(configure?: Configure<GitGrepSettings>): Promise<CommandOutput>
+    Search tracked content: `git grep`.
+  verifyCommit(configure?: Configure<GitVerifyCommitSettings>): Promise<CommandOutput>
+    Check a commit's signature: `git verify-commit`.
+  verifyTag(configure?: Configure<GitVerifyTagSettings>): Promise<CommandOutput>
+    Check a tag's signature: `git verify-tag`.
+  isSignatureValid(configure?: Configure<GitVerifyCommitSettings>): Promise<boolean>
+    Whether a commit's signature is good: `git verify-commit`.
+  isTagSignatureValid(configure?: Configure<GitVerifyTagSettings>): Promise<boolean>
+    Whether a tag's signature is good: `git verify-tag`.
+  mergeTree(configure?: Configure<GitMergeTreeSettings>): Promise<CommandOutput>
+    Merge in memory, leaving the index and working tree alone:
+    `git merge-tree`.
+  mergesCleanly(configure?: Configure<GitMergeTreeSettings>): Promise<boolean>
+    Whether two commits merge without conflict: `git merge-tree`.
   run(configure?: Configure<GitRunSettings>): Promise<CommandOutput>
     Run any other git command via `.command(...)`.
+
+interface GitTreeEntry
+  One entry of `git ls-tree`: an object in a tree, and how it is recorded.
+
+  mode: string
+    The file mode, e.g. `100644` for a regular file or `040000` for a tree.
+  type: string
+    The kind of object: `blob`, `tree`, or `commit` for a submodule.
+  objectName: string
+    The object name.
+  path: string
+    The path, relative to the tree that was listed.
 
 interface GitWorktree
   One entry of `git worktree list --porcelain`.
@@ -13809,6 +14291,9 @@ interface GitWorktree
     Whether `HEAD` is detached there.
   locked: boolean
     Whether the worktree is locked (`git worktree lock`).
+
+type GitCatFileQuery = "type" | "size" | "exists"
+  The object attribute `git cat-file` should report instead of contents.
 
 type GitRunner = (args: string[]) => Promise<string | null>
   Runs a `git` subcommand and resolves to its trimmed stdout, or `null` when
