@@ -33,6 +33,7 @@ export type {
   Usage,
 } from "./src/types.ts";
 export { AiFixer, aiFixer } from "./src/fixer.ts";
+export type { RunScope } from "./src/run_scope.ts";
 export type { Confidence, FileEdit, Fix, FixLocation } from "./src/fix.ts";
 export { AgentFixer, agentFixer } from "./src/agent_fixer.ts";
 export type {

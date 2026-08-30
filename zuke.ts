@@ -172,9 +172,17 @@ class ZukeBuild extends Build {
     // failing `deno lint` the fixer applies the fix, commits and pushes it to
     // the PR branch, re-runs lint to verify, and — because it auto-fixed —
     // posts an overview comment of what it changed (with the code) plus the job
-    // summary. A missing key (e.g. local runs, or fork PRs where the secret is
-    // withheld) is skipped cleanly and the lint failure still stands. The CI
-    // workflow grants this job `contents: write` so the push can land.
+    // summary. The CI workflow grants this job `contents: write` so the push
+    // can land.
+    //
+    // `.runOnly("ci")` is what keeps that loop off a contributor's machine. It
+    // used to be `.allowCI()`, which permits both hosts, and the
+    // local safety was assumed to come from the key being absent outside CI —
+    // which is false wherever OPENAI_API_KEY is exported, as it is in agent
+    // environments. A local `zuke lint` on a red tree therefore rewrote,
+    // committed and pushed it. Off CI the fixer now returns before the model
+    // call and the lint failure stands, which is the right outcome locally: the
+    // person running it is already looking at the error.
     .recoverWith(
       aiFixer((f) =>
         f
@@ -182,7 +190,7 @@ class ZukeBuild extends Build {
           .apiKey(this.openaiKey)
           .budget(this.aiBudget)
           .autoApply()
-          .allowCI()
+          .runOnly("ci")
           .commitFixes()
           .allowPaths("packages/**", "tests/**", "zuke.ts")
           // Fetch the PR base branch itself (auto-detected from the CI env) for

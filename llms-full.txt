@@ -18278,14 +18278,31 @@ class AgentFixer implements Remediation
   A fluent agent fixer. Construct one via {@link agentFixer} with a runner, and
   attach it to a target with `.recoverWith(...)`. Diagnose/report defaults are
   on; file changes happen through the agent, gated to local runs unless
-  `.allowCI()`.
+  `.runOnly(...)` says otherwise.
 
   constructor(run: AgentRunner)
     Create the fixer with the agent runner that performs the edits.
   name: string
     A name for diagnostics — `"agent fix"`.
+  runOnly(scope: RunScope): this
+    Where the agent may run. Defaults to `"local"` — run on a developer's
+    machine, refuse on CI.
+
+    `"ci"` is the inverse, and the shape a repository's own build wants: an
+    agent that heals a pull request must not be turned loose on a working tree
+    someone is in the middle of editing. Off CI the fixer then reports the skip
+    and leaves the failure standing, without ever starting the agent.
+
+    `"both"` permits either host. One setter on one axis, so the effective
+    scope never depends on the order two flags were called in.
   allowCI(): this
-    Permit the agent to run (and edit files) on CI; off by default.
+    Permit the agent to run (and edit files) on CI as well as locally.
+
+    @deprecated
+        Use `.runOnly("both")`, which says the same thing on the one
+        axis that governs it — or `.runOnly("ci")` to keep an autonomous agent off
+        developer machines entirely.
+
   suggest(): this
     Propose the agent's changes as committable inline `suggestion`s on the
     pull request (from its `git diff`) instead of committing them. The build
@@ -18323,8 +18340,9 @@ class AgentFixer implements Remediation
     The `fetch` implementation used to post the PR comment (test seam).
   async remediate(context: RemediationContext): Promise<RemediationResult>
     Run the agent against the failure, optionally commit its changes, and ask
-    the executor to re-run the target as the verifier. Skips (no retry) on CI
-    unless {@link allowCI} is set, or if the agent run itself fails.
+    the executor to re-run the target as the verifier. Skips (no retry)
+    outside the hosts {@link runOnly} permits, or if the agent run itself
+    fails.
 
 class AiCache
   A best-effort cache of AI provider responses, keyed by a {@link stableHash} of
@@ -18385,15 +18403,41 @@ class AiFixer implements Remediation
     Apply the proposed fix to the working tree and ask the executor to re-run
     the target. Off by default (the fixer only diagnoses). Writes are confined
     by {@link allowPaths}, the built-in exclusions, and {@link maxEdits}, and
-    are refused on CI unless {@link allowCI} is set.
+    are confined to the hosts {@link runOnly} permits.
   allowPaths(...globs: string[]): this
     Restrict applied edits to paths matching these globs (default: all).
   excludePaths(...globs: string[]): this
     Exclude paths matching these globs from edits, on top of the built-ins.
   maxEdits(count: number): this
     Cap how many files a single applied fix may touch (default 10).
+  runOnly(scope: RunScope): this
+    Where the fixer may run. Defaults to `"local"` — apply on a developer's
+    machine, refuse on CI.
+
+    `"ci"` is the inverse, and the shape a repository's own build wants:
+    self-heal a pull request without ever rewriting a working tree someone is
+    in the middle of editing. Off CI the fixer then returns before the model is
+    called, so it costs no tokens and the underlying failure stands unchanged.
+
+    That is a stronger refusal than the default scope makes on CI, where the
+    fixer still diagnoses and only declines to write: a diagnosis on a pull
+    request is worth reading, whereas one on a local run is an unasked-for
+    charge against the developer's own key.
+
+    `"both"` permits either host. One setter on one axis, so the effective
+    scope never depends on the order two flags were called in.
+
+    ```ts
+    aiFixer((f) => f.provider("openai").apiKey(key).autoApply().runOnly("ci"));
+    ```
   allowCI(): this
-    Permit auto-apply (and committing) on CI; off by default.
+    Permit auto-apply (and committing) on CI as well as locally.
+
+    @deprecated
+        Use `.runOnly("both")`, which says the same thing on the one
+        axis that governs it — or `.runOnly("ci")`, which is what most builds
+        attaching this to their own lint or test target actually want.
+
   commitFixes(): this
     After applying a fix, stage it, commit it, and push to the current branch —
     so a healed pull request carries the fix as a commit. Implies
@@ -18964,6 +19008,24 @@ type GateRule = { kind: "score"; value: number; } | { kind: "severity"; value: S
 
 type Provider = "claude" | "openai" | "gemini"
   A supported model provider.
+
+type RunScope = "local" | "ci" | "both"
+  Where a fixer may run, set with `.runOnly(...)`.
+
+  - `"local"` — apply on a developer's machine, refuse on CI. The default, and
+    what a fixer has when `.runOnly(...)` is never called.
+  - `"ci"` — apply on CI, and do not run at all off it. The scope a
+    repository's own build wants: heal a pull request without ever rewriting a
+    working tree someone is editing.
+  - `"both"` — apply on either host. What `.allowCI()` selects.
+
+  "On CI" means a host `detectCiHost` recognises: GitHub Actions, GitLab CI,
+  Azure Pipelines and Bitbucket Pipelines. Anywhere else — CircleCI, Jenkins,
+  or a runner that only sets the generic `CI` variable — counts as local, so
+  `"ci"` does not run there and `"local"` does. That is the safe direction for
+  `"ci"` (an unrecognised host gets no writes rather than unexpected ones), but
+  it does mean a fixer scoped to `"ci"` on such a runner will report a skip
+  every time instead of fixing anything. Use `"both"` there.
 
 type Severity = "none" | "low" | "medium" | "high" | "critical"
   A severity level, ordered `none` < `low` < `medium` < `high` < `critical`.

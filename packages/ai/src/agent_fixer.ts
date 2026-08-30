@@ -9,7 +9,8 @@
  *
  * Unlike {@link "./fixer.ts".AiFixer} (one structured API call, edits applied by
  * Zuke), the agent reads and edits files autonomously. It is therefore gated to
- * local runs by default — opt into CI with `.allowCI()`. Bring your own runner:
+ * local runs by default — `.runOnly("ci")` restricts it to CI instead, and
+ * `.runOnly("both")` permits either. Bring your own runner:
  *
  * ```ts
  * import { agentFixer } from "jsr:@zuke/ai";
@@ -47,6 +48,7 @@ import { fenceMarkdown } from "./markdown.ts";
 import { writeStepSummary } from "./report.ts";
 import { postComment, postGithubSuggestions } from "./comment.ts";
 import { type EnvReader, readEnv } from "./hosts.ts";
+import { outOfScope, type RunScope } from "./run_scope.ts";
 import { diffToSuggestions } from "./diff_suggest.ts";
 
 /** The failure context handed to an {@link AgentRunner}, plus a ready prompt. */
@@ -120,11 +122,11 @@ function agentMarkdown(
  * A fluent agent fixer. Construct one via {@link agentFixer} with a runner, and
  * attach it to a target with `.recoverWith(...)`. Diagnose/report defaults are
  * on; file changes happen through the agent, gated to local runs unless
- * `.allowCI()`.
+ * `.runOnly(...)` says otherwise.
  */
 export class AgentFixer implements Remediation {
   readonly #run: AgentRunner;
-  #onlyLocal = true;
+  #scope: RunScope = "local";
   #suggest = false;
   #commitFixes = false;
   #commitMessage?: string;
@@ -147,10 +149,32 @@ export class AgentFixer implements Remediation {
     this.#run = run;
   }
 
-  /** Permit the agent to run (and edit files) on CI; off by default. */
-  allowCI(): this {
-    this.#onlyLocal = false;
+  /**
+   * Where the agent may run. Defaults to `"local"` — run on a developer's
+   * machine, refuse on CI.
+   *
+   * `"ci"` is the inverse, and the shape a repository's own build wants: an
+   * agent that heals a pull request must not be turned loose on a working tree
+   * someone is in the middle of editing. Off CI the fixer then reports the skip
+   * and leaves the failure standing, without ever starting the agent.
+   *
+   * `"both"` permits either host. One setter on one axis, so the effective
+   * scope never depends on the order two flags were called in.
+   */
+  runOnly(scope: RunScope): this {
+    this.#scope = scope;
     return this;
+  }
+
+  /**
+   * Permit the agent to run (and edit files) on CI as well as locally.
+   *
+   * @deprecated Use `.runOnly("both")`, which says the same thing on the one
+   * axis that governs it — or `.runOnly("ci")` to keep an autonomous agent off
+   * developer machines entirely.
+   */
+  allowCI(): this {
+    return this.runOnly("both");
   }
 
   /**
@@ -316,14 +340,16 @@ export class AgentFixer implements Remediation {
 
   /**
    * Run the agent against the failure, optionally commit its changes, and ask
-   * the executor to re-run the target as the verifier. Skips (no retry) on CI
-   * unless {@link allowCI} is set, or if the agent run itself fails.
+   * the executor to re-run the target as the verifier. Skips (no retry)
+   * outside the hosts {@link runOnly} permits, or if the agent run itself
+   * fails.
    */
   async remediate(context: RemediationContext): Promise<RemediationResult> {
-    if (this.#onlyLocal && detectCiHost(this.#env) !== "local") {
+    const refusal = outOfScope(this.#scope, this.#env);
+    if (refusal !== undefined) {
       await this.#report(
         context.target,
-        "skipped — agent fixer is disabled on CI (.allowCI() to enable)",
+        `skipped — agent fixer is disabled ${refusal.where} (${refusal.hint})`,
         "",
       );
       return { retry: false };

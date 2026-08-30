@@ -104,7 +104,7 @@ aiFixer((f) =>
     .autoApply() // write the fix to the working tree
     .allowPaths("packages/**", "src/**") // allowlist; lockfiles/.git/workflows excluded
     .maxEdits(5) // blast-radius cap
-    .allowCI() // default is local-only; opt in for CI
+    .runOnly("ci") // heal the PR, never a local working tree
     .commitFixes() // stage, commit, and push to the PR branch
 );
 ```
@@ -114,20 +114,52 @@ aiFixer((f) =>
 | `.autoApply()`                      | Write the proposed fix to the working tree and re-run the target. Off by default.                                 |
 | `.allowPaths(...globs)`             | Restrict applied edits to matching paths (lockfiles, `.git`, CI workflows, and key material are always excluded). |
 | `.maxEdits(n)`                      | Cap how many files one fix may touch.                                                                             |
-| `.allowCI()`                        | Permit auto-apply/commit on CI (local-only by default).                                                           |
+| `.runOnly(scope)`                   | Where the fixer may run: `"local"` (default), `"ci"`, or `"both"`.                                                |
+| `.allowCI()`                        | **Deprecated** alias for `.runOnly("both")`.                                                                      |
 | `.commitFixes()`                    | Stage, commit, and push the fix so a healed PR carries it. Implies `.autoApply()`.                                |
 | `.noPush()` / `.commitMessage(...)` | Tune the commit.                                                                                                  |
 
 A fix is **never auto-committed** unless you opt in, and the post-apply re-run
 is always the gate: a bad edit fails the build instead of landing silently.
 
+### Where a fixer is allowed to act
+
+The scope is one axis with three states, set by `.runOnly(...)`. One setter
+means the effective scope never depends on the order two flags were called in,
+and a later call simply replaces an earlier one:
+
+| Scope               | Locally                 | On CI                          |
+| ------------------- | ----------------------- | ------------------------------ |
+| `"local"` (default) | applies                 | diagnoses only, does not write |
+| `"ci"`              | **does not run at all** | applies                        |
+| `"both"`            | applies                 | applies                        |
+
+The two refusals are deliberately different. On CI the default still diagnoses,
+because an explanation on a pull request is worth reading and costs no one an
+undo. Off CI, `"ci"` returns _before_ the model is called — a diagnosis there
+would be an unasked-for charge against the developer's own key, and the person
+running the build is already looking at the error.
+
+"On CI" means a host Zuke recognises: GitHub Actions, GitLab CI, Azure
+Pipelines, and Bitbucket Pipelines. A runner outside that set — CircleCI,
+Jenkins, or one that only sets the generic `CI` variable — counts as local, so
+`"ci"` skips there rather than applying. That is the safe direction, but it is a
+skip on every run rather than a fix; use `"both"` on those hosts.
+
+Reach for `.runOnly("ci")` whenever a fixer can write: it is the only scope that
+heals a pull request without ever rewriting a working tree someone is editing.
+Zuke's own `lint` target uses it. Do not rely on the API key being absent
+locally as the guard — it is exported on plenty of developer machines and in
+most agent environments, and the default scope permits local writes either way.
+
 ## Delegating to a coding agent — `agentFixer`
 
 `aiFixer` makes one structured API call and applies the edits itself. For
-open-ended failures, `agentFixer` instead hands the failure to a **coding agent**
-you inject — Claude Code, Codex, or the Gemini CLI — which reads and edits files
-autonomously; the executor then re-runs the target to verify. There's one
-generic fixer, not one per agent: you pick the agent at the call site.
+open-ended failures, `agentFixer` instead hands the failure to a **coding
+agent** you inject — Claude Code, Codex, or the Gemini CLI — which reads and
+edits files autonomously; the executor then re-runs the target to verify.
+There's one generic fixer, not one per agent: you pick the agent at the call
+site.
 
 ```ts
 import { agentFixer } from "jsr:@zuke/ai";
@@ -146,16 +178,19 @@ test = target()
 
 Any runner that takes the context and returns works — `CodexTasks.exec`,
 `GeminiTasks.run`, or a custom function. Because the agent edits files directly,
-`agentFixer` is **gated to local runs by default** (`.allowCI()` to opt in). It
+`agentFixer` is **gated to local runs by default**, and takes the same
+`.runOnly(...)` scope — `"ci"` is the one to reach for, since an autonomous
+agent editing a working tree someone is using is the worst version of this. It
 reuses the same `.comment()` / `.commentToken()` / `.criteria()` /
 `.conventions()` knobs as `aiFixer`, and mirrors the same propose-vs-apply rule:
 
 - **`.suggest()` (propose)** — render the agent's `git diff` as **committable
   inline suggestions** on the PR and leave the build failed for the human to
   apply. Suggestions only ever appear in this not-auto-fixing mode.
-- **`.commitFixes()` (apply)** — stage *all* of the agent's changes, commit, and
+- **`.commitFixes()` (apply)** — stage _all_ of the agent's changes, commit, and
   push (no commit if it changed nothing), then re-run the target to verify, and
-  post an **overview comment** of what it did. Takes precedence over `.suggest()`.
+  post an **overview comment** of what it did. Takes precedence over
+  `.suggest()`.
 
 ## Diff context without a CI step
 
@@ -186,16 +221,21 @@ class CI extends Build {
   ai = budget((b) => b.maxTokens(200_000)); // exact token cap
 
   lint = target().executes(() => DenoTasks.lint())
-    .recoverWith(aiFixer((f) => f.provider("openai").apiKey(this.key).budget(this.ai)));
+    .recoverWith(
+      aiFixer((f) => f.provider("openai").apiKey(this.key).budget(this.ai)),
+    );
   test = target().executes(() => DenoTasks.test((s) => s.allowAll()))
-    .recoverWith(aiFixer((f) => f.provider("openai").apiKey(this.key).budget(this.ai)));
+    .recoverWith(
+      aiFixer((f) => f.provider("openai").apiKey(this.key).budget(this.ai)),
+    );
 }
 ```
 
-Token counts come straight from the provider's reported usage, so `.maxTokens(n)`
-is an **exact** cap that never goes stale. **No prices ship** — provider pricing
-changes too often for a baked-in table to stay correct. A USD cap is opt-in: give
-the budget your own current rates and it estimates cost from them.
+Token counts come straight from the provider's reported usage, so
+`.maxTokens(n)` is an **exact** cap that never goes stale. **No prices ship** —
+provider pricing changes too often for a baked-in table to stay correct. A USD
+cap is opt-in: give the budget your own current rates and it estimates cost from
+them.
 
 ```ts
 budget((b) =>
@@ -206,7 +246,8 @@ budget((b) =>
 ```
 
 A model with no supplied price still counts toward the **token** cap — only its
-cost is left out, and a cost cap is enforced only once a priced call is recorded.
+cost is left out, and a cost cap is enforced only once a priced call is
+recorded.
 
 ### Fix / response cache
 
@@ -222,16 +263,16 @@ const cache = aiCache((c) => c.dir(".zuke/ai-cache").ttl(86_400)); // 1-day TTL
 aiFixer((f) => f.provider("openai").apiKey(this.key).cache(cache));
 ```
 
-The TTL defaults to 7 days (`0` never expires) and the store is best-effort — see
-[Caching → AI response cache](./caching.md#ai-response-cache) for the full
+The TTL defaults to 7 days (`0` never expires) and the store is best-effort —
+see [Caching → AI response cache](./caching.md#ai-response-cache) for the full
 behaviour, the `.disable()`/`.store()` knobs, and custom stores.
 
 ### Learned false-positive suppression (review)
 
-`suppressions(...)` hides reviewer findings whose **stable ID** you've dismissed.
-Every finding is fingerprinted and its ID surfaced in the report and PR comment,
-so silencing a recurring false positive is a copy-paste of that ID into the
-suppress list (`.zuke/ai-suppress.json`, a JSON array of IDs):
+`suppressions(...)` hides reviewer findings whose **stable ID** you've
+dismissed. Every finding is fingerprinted and its ID surfaced in the report and
+PR comment, so silencing a recurring false positive is a copy-paste of that ID
+into the suppress list (`.zuke/ai-suppress.json`, a JSON array of IDs):
 
 ```ts
 import { suppressions } from "jsr:@zuke/ai";

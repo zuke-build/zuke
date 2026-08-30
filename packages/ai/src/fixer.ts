@@ -15,12 +15,11 @@
  * @module
  */
 
-import {
-  type AnyParameter,
-  detectCiHost,
-  type Remediation,
-  type RemediationContext,
-  type RemediationResult,
+import type {
+  AnyParameter,
+  Remediation,
+  RemediationContext,
+  RemediationResult,
 } from "@zuke/core";
 import type { Configure } from "@zuke/core/tooling";
 import { Command } from "@zuke/core/shell";
@@ -57,6 +56,7 @@ import { postComment, postGithubSuggestions } from "./comment.ts";
 import type { RetryInfo, RetryOptions } from "./retry.ts";
 import type { Budget } from "./budget.ts";
 import type { AiCache } from "./cache.ts";
+import { outOfScope, type RunScope } from "./run_scope.ts";
 
 /**
  * A fluent AI fixer. Construct one via {@link aiFixer}, configure it, and attach
@@ -78,7 +78,7 @@ export class AiFixer implements Remediation {
   readonly #allow: string[] = [];
   readonly #excludePaths: string[] = [];
   #maxEdits = 10;
-  #onlyLocal = true;
+  #scope: RunScope = "local";
   #commitFixes = false;
   #commitMessage?: string;
   #push = true;
@@ -165,7 +165,7 @@ export class AiFixer implements Remediation {
    * Apply the proposed fix to the working tree and ask the executor to re-run
    * the target. Off by default (the fixer only diagnoses). Writes are confined
    * by {@link allowPaths}, the built-in exclusions, and {@link maxEdits}, and
-   * are refused on CI unless {@link allowCI} is set.
+   * are confined to the hosts {@link runOnly} permits.
    */
   autoApply(): this {
     this.#autoApply = true;
@@ -190,10 +190,41 @@ export class AiFixer implements Remediation {
     return this;
   }
 
-  /** Permit auto-apply (and committing) on CI; off by default. */
-  allowCI(): this {
-    this.#onlyLocal = false;
+  /**
+   * Where the fixer may run. Defaults to `"local"` — apply on a developer's
+   * machine, refuse on CI.
+   *
+   * `"ci"` is the inverse, and the shape a repository's own build wants:
+   * self-heal a pull request without ever rewriting a working tree someone is
+   * in the middle of editing. Off CI the fixer then returns before the model is
+   * called, so it costs no tokens and the underlying failure stands unchanged.
+   *
+   * That is a stronger refusal than the default scope makes on CI, where the
+   * fixer still diagnoses and only declines to write: a diagnosis on a pull
+   * request is worth reading, whereas one on a local run is an unasked-for
+   * charge against the developer's own key.
+   *
+   * `"both"` permits either host. One setter on one axis, so the effective
+   * scope never depends on the order two flags were called in.
+   *
+   * ```ts
+   * aiFixer((f) => f.provider("openai").apiKey(key).autoApply().runOnly("ci"));
+   * ```
+   */
+  runOnly(scope: RunScope): this {
+    this.#scope = scope;
     return this;
+  }
+
+  /**
+   * Permit auto-apply (and committing) on CI as well as locally.
+   *
+   * @deprecated Use `.runOnly("both")`, which says the same thing on the one
+   * axis that governs it — or `.runOnly("ci")`, which is what most builds
+   * attaching this to their own lint or test target actually want.
+   */
+  allowCI(): this {
+    return this.runOnly("both");
   }
 
   /**
@@ -428,6 +459,18 @@ export class AiFixer implements Remediation {
    * the executor re-runs the target as the verifier.
    */
   async remediate(context: RemediationContext): Promise<RemediationResult> {
+    // A fixer restricted to CI does no work off it — not even a diagnosis, so
+    // a failing local build costs nothing against the developer's key. The
+    // default scope is deliberately not handled here: on CI it still diagnoses
+    // and declines only the write, which is checked once a fix exists.
+    const refusal = outOfScope(this.#scope, this.#env);
+    if (this.#scope === "ci" && refusal !== undefined) {
+      await this.#reportSkip(
+        context.target,
+        `disabled ${refusal.where} — ${refusal.hint}`,
+      );
+      return { retry: false };
+    }
     const provider = this.#provider;
     if (provider === undefined) {
       console.warn(`[${this.name}] no provider configured — skipping`);
@@ -502,15 +545,16 @@ export class AiFixer implements Remediation {
     const fix = call.value;
     const usage = call.usage;
 
-    const ci = detectCiHost(this.#env) !== "local";
     const wantApply = this.#autoApply && fix.edits.length > 0;
-    const ciBlocked = wantApply && this.#onlyLocal && ci;
+    // Only a fix it actually wanted to apply can be blocked, so a diagnose-only
+    // fixer never claims auto-apply was refused.
+    const blockedBy = wantApply ? refusal : undefined;
 
-    if (!wantApply || ciBlocked) {
+    if (!wantApply || blockedBy !== undefined) {
       const action = fix.edits.length === 0
         ? "diagnosed (no fix proposed)"
-        : ciBlocked
-        ? `diagnosed (auto-apply disabled on CI; ${fix.edits.length} file(s) proposed)`
+        : blockedBy !== undefined
+        ? `diagnosed (auto-apply disabled ${blockedBy.where}; ${fix.edits.length} file(s) proposed)`
         : `diagnosed (${fix.edits.length} file(s) proposed)`;
       await this.#report(context.target, {
         ...fix,
