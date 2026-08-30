@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/zuke-build/zuke/compare/docker-compose-v1.1.0...docker-compose-v1.2.0) (2026-08-30)
+
+
+### Features
+
+* **docker-compose:** wrap the commands the package was missing, with readers ([#421](https://github.com/zuke-build/zuke/issues/421)) ([0aa9f75](https://github.com/zuke-build/zuke/commit/0aa9f75beca237d05523dfc335b92f4e055e24f2))
+
 ## [1.1.0](https://github.com/zuke-build/zuke/compare/docker-compose-v1.0.1...docker-compose-v1.1.0) (2026-08-26)
 
 
