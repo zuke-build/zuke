@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.3.0](https://github.com/zuke-build/zuke/compare/ai-v2.2.1...ai-v2.3.0) (2026-08-30)
+
+
+### Features
+
+* **ai:** a single runOnly scope for where a fixer may run ([#430](https://github.com/zuke-build/zuke/issues/430)) ([6d0ff7f](https://github.com/zuke-build/zuke/commit/6d0ff7f6e11d141ac049027300340880020b2df8)), closes [#429](https://github.com/zuke-build/zuke/issues/429)
+
 ## [2.2.1](https://github.com/zuke-build/zuke/compare/ai-v2.2.0...ai-v2.2.1) (2026-08-14)
 
 
