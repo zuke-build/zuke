@@ -30,7 +30,7 @@ import {
   DockerComposeUpSettings,
   resetComposeInvocationCache_,
   resolveComposeInvocation,
-} from "../src/docker_compose.ts";
+} from "../mod.ts";
 
 Deno.test("the default invocation is the v2 plugin", () => {
   assertEquals(new DockerComposePsSettings().argv(), [

@@ -26,796 +26,53 @@
  * @module
  */
 
+import type { Configure } from "@zuke/core/tooling";
+import { runSettings } from "@zuke/core/tooling";
+import type { CommandOutput } from "@zuke/core/shell";
 import {
-  type Configure,
-  type PathLike,
-  runSettings,
-  ToolSettings,
-} from "@zuke/core/tooling";
-import { ToolNotFoundError } from "@zuke/core/tooling";
-import { Command, type CommandOutput } from "@zuke/core/shell";
-
-/**
- * Probes whether a candidate Compose invocation is runnable on this host.
- * Receives the binary-and-prefix argv (`["docker", "compose"]` or
- * `["docker-compose"]`) and resolves to `true` when it works. Injectable so
- * detection can be unit-tested without a real Docker install.
- */
-export type ComposeProbe = (argv: readonly string[]) => Promise<boolean>;
-
-/**
- * The default {@link ComposeProbe}: run the candidate's `version` subcommand
- * quietly and treat a zero exit as success. A missing binary resolves to
- * `false` rather than throwing, so detection can fall through to the next
- * candidate.
- */
-export async function defaultComposeProbe(
-  argv: readonly string[],
-): Promise<boolean> {
-  try {
-    const out = await new Command([...argv, "version"]).noThrow().quiet();
-    return out.code === 0;
-  } catch (error) {
-    if (error instanceof Deno.errors.NotFound) return false;
-    throw error;
-  }
-}
-
-let cached: Promise<string[]> | undefined;
-
-/** Detect the installed Compose invocation, preferring the v2 plugin. */
-async function detect(probe: ComposeProbe): Promise<string[]> {
-  if (await probe(["docker", "compose"])) return ["docker", "compose"];
-  if (await probe(["docker-compose"])) return ["docker-compose"];
-  throw new ToolNotFoundError("docker compose");
-}
-
-/**
- * Resolve how Docker Compose is invoked on this host: `["docker", "compose"]`
- * for the v2 plugin or `["docker-compose"]` for the v1 standalone binary. The
- * v2 plugin is preferred; if neither is runnable a {@link ToolNotFoundError} is
- * raised. The result is cached after the first successful detection (a failed
- * detection is not cached, so a later call retries). Pass a custom
- * {@link ComposeProbe} to override how candidates are tested.
- */
-export function resolveComposeInvocation(
-  probe: ComposeProbe = defaultComposeProbe,
-): Promise<string[]> {
-  if (cached === undefined) {
-    cached = detect(probe).catch((error) => {
-      cached = undefined;
-      throw error;
-    });
-  }
-  return cached;
-}
-
-/**
- * Clear the cached Compose invocation so the next
- * {@link resolveComposeInvocation} re-detects. Internal test seam — the
- * trailing underscore signals it is not part of the stable public API.
- */
-export function resetComposeInvocationCache_(): void {
-  cached = undefined;
-}
-
-/**
- * Base for all Compose subcommand settings. Holds the invocation prefix
- * (`docker compose` vs `docker-compose`) and the global options that precede
- * every subcommand (`-f`, `-p`, `--profile`, …), and resolves the prefix at
- * run time unless it was pinned with {@link usePlugin}/{@link useStandalone}.
- */
-export abstract class DockerComposeSettings extends ToolSettings {
-  #invocation: string[] = ["docker", "compose"];
-  #detect = true;
-  #files: string[] = [];
-  #projectName?: string;
-  #profiles: string[] = [];
-  #projectDirectory?: string;
-  #envFile?: string;
-
-  /** The resolved binary (`docker` or `docker-compose`) for error messages. */
-  protected override defaultTool(): string {
-    return this.#invocation[0] ?? "docker";
-  }
-
-  /** Add a Compose file (`-f`); repeatable, order-significant. */
-  file(path: PathLike): this {
-    this.#files.push("-f", String(path));
-    return this;
-  }
-
-  /** Set the project name (`-p`). */
-  projectName(name: string): this {
-    this.#projectName = name;
-    return this;
-  }
-
-  /** Enable a service profile (`--profile`); repeatable. */
-  profile(name: string): this {
-    this.#profiles.push("--profile", name);
-    return this;
-  }
-
-  /** Set the project working directory (`--project-directory`). */
-  projectDirectory(path: PathLike): this {
-    this.#projectDirectory = String(path);
-    return this;
-  }
-
-  /** Load environment from a file (`--env-file`). */
-  envFile(path: PathLike): this {
-    this.#envFile = String(path);
-    return this;
-  }
-
-  /** Force the v2 plugin form (`docker compose`) and skip detection. */
-  usePlugin(): this {
-    this.#invocation = ["docker", "compose"];
-    this.#detect = false;
-    return this;
-  }
-
-  /** Force the v1 standalone form (`docker-compose`) and skip detection. */
-  useStandalone(): this {
-    this.#invocation = ["docker-compose"];
-    this.#detect = false;
-    return this;
-  }
-
-  /** The subcommand argv (without global options). Must be pure — no I/O. */
-  protected abstract composeArgs(): string[];
-
-  /** Assemble the global options followed by the subcommand argv. */
-  protected override buildArgs(): string[] {
-    const argv = this.#invocation.slice(1);
-    argv.push(...this.#files);
-    if (this.#projectName !== undefined) argv.push("-p", this.#projectName);
-    argv.push(...this.#profiles);
-    if (this.#projectDirectory !== undefined) {
-      argv.push("--project-directory", this.#projectDirectory);
-    }
-    if (this.#envFile !== undefined) argv.push("--env-file", this.#envFile);
-    argv.push(...this.composeArgs());
-    return argv;
-  }
-
-  /**
-   * Resolve the invocation prefix (unless pinned) and run, so the same build
-   * works against either the v2 plugin or the v1 standalone binary.
-   */
-  override async run(): Promise<CommandOutput> {
-    if (this.#detect) this.#invocation = await resolveComposeInvocation();
-    return super.run();
-  }
-}
-
-/**
- * When `compose up` fetches images before starting: `always` on every start,
- * `missing` only when the image is absent locally, `never` at all.
- */
-export type DockerComposePullPolicy = "always" | "missing" | "never";
-
-/** Settings for `compose up`. */
-export class DockerComposeUpSettings extends DockerComposeSettings {
-  #detach = false;
-  #build = false;
-  #forceRecreate = false;
-  #removeOrphans = false;
-  #wait = false;
-  #abortOnContainerExit = false;
-  #noDeps = false;
-  #pull?: DockerComposePullPolicy;
-  #exitCodeFrom?: string;
-  #scale: string[] = [];
-  #services: string[] = [];
-
-  /** Run in the background (`-d`). */
-  detach(): this {
-    this.#detach = true;
-    return this;
-  }
-
-  /** Build images before starting (`--build`). */
-  build(): this {
-    this.#build = true;
-    return this;
-  }
-
-  /** Recreate containers even if unchanged (`--force-recreate`). */
-  forceRecreate(): this {
-    this.#forceRecreate = true;
-    return this;
-  }
-
-  /** Remove containers for services no longer defined (`--remove-orphans`). */
-  removeOrphans(): this {
-    this.#removeOrphans = true;
-    return this;
-  }
-
-  /** Wait until services are running/healthy (`--wait`). */
-  wait(): this {
-    this.#wait = true;
-    return this;
-  }
-
-  /** Stop all containers if any container stops (`--abort-on-container-exit`). */
-  abortOnContainerExit(): this {
-    this.#abortOnContainerExit = true;
-    return this;
-  }
-
-  /**
-   * Start only the named services, leaving their dependencies alone
-   * (`--no-deps`).
-   *
-   * Without it compose starts or recreates a dependency that is stopped or
-   * whose configuration changed. With an already-healthy stack the two agree,
-   * so the difference shows up only on the runs where a dependency was not
-   * ready — which is where a target that meant "just this service" wants to be
-   * explicit.
-   */
-  noDeps(): this {
-    this.#noDeps = true;
-    return this;
-  }
-
-  /**
-   * When to fetch images before starting (`--pull`). `always` keeps a stack on
-   * the current published images rather than whatever was pulled last;
-   * `missing` fetches only what is absent locally; `never` uses what is there.
-   *
-   * Distinct from `DockerComposeBuildSettings.pull`, which is `build --pull`,
-   * and from the `pull` task, which is the subcommand — each mirrors its own
-   * command.
-   */
-  pull(policy: DockerComposePullPolicy): this {
-    this.#pull = policy;
-    return this;
-  }
-
-  /** Exit with this service's container's exit code (`--exit-code-from`). */
-  exitCodeFrom(service: string): this {
-    this.#exitCodeFrom = service;
-    return this;
-  }
-
-  /** Scale a service to N instances (`--scale service=N`); repeatable. */
-  scale(service: string, instances: number): this {
-    this.#scale.push("--scale", `${service}=${instances}`);
-    return this;
-  }
-
-  /** Restrict to specific services (positional); optional. */
-  services(...names: string[]): this {
-    this.#services.push(...names);
-    return this;
-  }
-
-  /** Assemble the `compose up` argv. */
-  protected override composeArgs(): string[] {
-    const argv = ["up"];
-    if (this.#detach) argv.push("-d");
-    if (this.#build) argv.push("--build");
-    if (this.#forceRecreate) argv.push("--force-recreate");
-    if (this.#removeOrphans) argv.push("--remove-orphans");
-    if (this.#wait) argv.push("--wait");
-    if (this.#abortOnContainerExit) argv.push("--abort-on-container-exit");
-    if (this.#noDeps) argv.push("--no-deps");
-    if (this.#pull !== undefined) argv.push("--pull", this.#pull);
-    if (this.#exitCodeFrom !== undefined) {
-      argv.push("--exit-code-from", this.#exitCodeFrom);
-    }
-    argv.push(...this.#scale, ...this.#services);
-    return argv;
-  }
-}
-
-/** Settings for `compose down`. */
-export class DockerComposeDownSettings extends DockerComposeSettings {
-  #volumes = false;
-  #removeOrphans = false;
-  #rmi?: string;
-  #timeout?: number;
-
-  /** Also remove named and anonymous volumes (`-v`). */
-  volumes(): this {
-    this.#volumes = true;
-    return this;
-  }
-
-  /** Remove containers for services no longer defined (`--remove-orphans`). */
-  removeOrphans(): this {
-    this.#removeOrphans = true;
-    return this;
-  }
-
-  /** Remove images of the given type (`--rmi`), e.g. `all` or `local`. */
-  rmi(type: string): this {
-    this.#rmi = type;
-    return this;
-  }
-
-  /** Shutdown timeout in seconds (`-t`). */
-  timeout(seconds: number): this {
-    this.#timeout = seconds;
-    return this;
-  }
-
-  /** Assemble the `compose down` argv. */
-  protected override composeArgs(): string[] {
-    const argv = ["down"];
-    if (this.#volumes) argv.push("-v");
-    if (this.#removeOrphans) argv.push("--remove-orphans");
-    if (this.#rmi !== undefined) argv.push("--rmi", this.#rmi);
-    if (this.#timeout !== undefined) argv.push("-t", String(this.#timeout));
-    return argv;
-  }
-}
-
-/** Settings for `compose build`. */
-export class DockerComposeBuildSettings extends DockerComposeSettings {
-  #noCache = false;
-  #pull = false;
-  #buildArgs: string[] = [];
-  #services: string[] = [];
-
-  /** Do not use the layer cache (`--no-cache`). */
-  noCache(): this {
-    this.#noCache = true;
-    return this;
-  }
-
-  /** Always attempt to pull newer base images (`--pull`). */
-  pull(): this {
-    this.#pull = true;
-    return this;
-  }
-
-  /** Pass a build-time variable (`--build-arg KEY=value`); repeatable. */
-  buildArg(key: string, value: string): this {
-    this.#buildArgs.push("--build-arg", `${key}=${value}`);
-    return this;
-  }
-
-  /** Restrict to specific services (positional); optional. */
-  services(...names: string[]): this {
-    this.#services.push(...names);
-    return this;
-  }
-
-  /** Assemble the `compose build` argv. */
-  protected override composeArgs(): string[] {
-    const argv = ["build"];
-    if (this.#noCache) argv.push("--no-cache");
-    if (this.#pull) argv.push("--pull");
-    argv.push(...this.#buildArgs, ...this.#services);
-    return argv;
-  }
-}
-
-/** Settings for `compose pull`. */
-export class DockerComposePullSettings extends DockerComposeSettings {
-  #ignorePullFailures = false;
-  #quiet = false;
-  #services: string[] = [];
-
-  /** Continue past services whose pull fails (`--ignore-pull-failures`). */
-  ignorePullFailures(): this {
-    this.#ignorePullFailures = true;
-    return this;
-  }
-
-  /** Pull without printing progress (`-q`). */
-  quietOutput(): this {
-    this.#quiet = true;
-    return this;
-  }
-
-  /** Restrict to specific services (positional); optional. */
-  services(...names: string[]): this {
-    this.#services.push(...names);
-    return this;
-  }
-
-  /** Assemble the `compose pull` argv. */
-  protected override composeArgs(): string[] {
-    const argv = ["pull"];
-    if (this.#ignorePullFailures) argv.push("--ignore-pull-failures");
-    if (this.#quiet) argv.push("-q");
-    argv.push(...this.#services);
-    return argv;
-  }
-}
-
-/** Settings for `compose push`. */
-export class DockerComposePushSettings extends DockerComposeSettings {
-  #ignorePushFailures = false;
-  #services: string[] = [];
-
-  /** Continue past services whose push fails (`--ignore-push-failures`). */
-  ignorePushFailures(): this {
-    this.#ignorePushFailures = true;
-    return this;
-  }
-
-  /** Restrict to specific services (positional); optional. */
-  services(...names: string[]): this {
-    this.#services.push(...names);
-    return this;
-  }
-
-  /** Assemble the `compose push` argv. */
-  protected override composeArgs(): string[] {
-    const argv = ["push"];
-    if (this.#ignorePushFailures) argv.push("--ignore-push-failures");
-    argv.push(...this.#services);
-    return argv;
-  }
-}
-
-/** Settings for `compose run`. */
-export class DockerComposeRunSettings extends DockerComposeSettings {
-  #service?: string;
-  #rm = false;
-  #detach = false;
-  #noDeps = false;
-  #name?: string;
-  #env: string[] = [];
-  #commandArgs: string[] = [];
-
-  /** The service to run (required). */
-  service(name: string): this {
-    this.#service = name;
-    return this;
-  }
-
-  /** Remove the container after it exits (`--rm`). */
-  rm(): this {
-    this.#rm = true;
-    return this;
-  }
-
-  /** Run in the background (`-d`). */
-  detach(): this {
-    this.#detach = true;
-    return this;
-  }
-
-  /** Do not start linked services (`--no-deps`). */
-  noDeps(): this {
-    this.#noDeps = true;
-    return this;
-  }
-
-  /** Assign a container name (`--name`). */
-  name(value: string): this {
-    this.#name = value;
-    return this;
-  }
-
-  /** Set an environment variable (`-e KEY=value`); repeatable. */
-  envVar(key: string, value: string): this {
-    this.#env.push("-e", `${key}=${value}`);
-    return this;
-  }
-
-  /** The command and arguments to run inside the container. */
-  commandArgs(...args: Array<string | number>): this {
-    this.#commandArgs.push(...args.map(String));
-    return this;
-  }
-
-  /** Assemble the `compose run` argv. */
-  protected override composeArgs(): string[] {
-    if (this.#service === undefined) {
-      throw new Error("DockerComposeTasks.run: .service() is required.");
-    }
-    const argv = ["run"];
-    if (this.#rm) argv.push("--rm");
-    if (this.#detach) argv.push("-d");
-    if (this.#noDeps) argv.push("--no-deps");
-    if (this.#name !== undefined) argv.push("--name", this.#name);
-    argv.push(...this.#env, this.#service, ...this.#commandArgs);
-    return argv;
-  }
-}
-
-/** Settings for `compose exec`. */
-export class DockerComposeExecSettings extends DockerComposeSettings {
-  #service?: string;
-  #detach = false;
-  #noTty = false;
-  #workdir?: string;
-  #env: string[] = [];
-  #commandArgs: string[] = [];
-
-  /** The service whose container to exec into (required). */
-  service(name: string): this {
-    this.#service = name;
-    return this;
-  }
-
-  /** Run in the background (`-d`). */
-  detach(): this {
-    this.#detach = true;
-    return this;
-  }
-
-  /** Disable pseudo-TTY allocation (`-T`). */
-  noTty(): this {
-    this.#noTty = true;
-    return this;
-  }
-
-  /** Working directory inside the container (`-w`). */
-  workdir(path: PathLike): this {
-    this.#workdir = String(path);
-    return this;
-  }
-
-  /** Set an environment variable (`-e KEY=value`); repeatable. */
-  envVar(key: string, value: string): this {
-    this.#env.push("-e", `${key}=${value}`);
-    return this;
-  }
-
-  /** The command and arguments to execute. */
-  commandArgs(...args: Array<string | number>): this {
-    this.#commandArgs.push(...args.map(String));
-    return this;
-  }
-
-  /** Assemble the `compose exec` argv. */
-  protected override composeArgs(): string[] {
-    if (this.#service === undefined) {
-      throw new Error("DockerComposeTasks.exec: .service() is required.");
-    }
-    const argv = ["exec"];
-    if (this.#detach) argv.push("-d");
-    if (this.#noTty) argv.push("-T");
-    if (this.#workdir !== undefined) argv.push("-w", this.#workdir);
-    argv.push(...this.#env, this.#service, ...this.#commandArgs);
-    return argv;
-  }
-}
-
-/** Settings for `compose logs`. */
-export class DockerComposeLogsSettings extends DockerComposeSettings {
-  #follow = false;
-  #timestamps = false;
-  #tail?: string;
-  #services: string[] = [];
-
-  /** Stream new log output (`-f`). */
-  follow(): this {
-    this.#follow = true;
-    return this;
-  }
-
-  /** Prefix each line with a timestamp (`-t`). */
-  timestamps(): this {
-    this.#timestamps = true;
-    return this;
-  }
-
-  /** Show only the last N lines, or `all` (`--tail`). */
-  tail(lines: number | "all"): this {
-    this.#tail = String(lines);
-    return this;
-  }
-
-  /** Restrict to specific services (positional); optional. */
-  services(...names: string[]): this {
-    this.#services.push(...names);
-    return this;
-  }
-
-  /** Assemble the `compose logs` argv. */
-  protected override composeArgs(): string[] {
-    const argv = ["logs"];
-    if (this.#follow) argv.push("-f");
-    if (this.#timestamps) argv.push("-t");
-    if (this.#tail !== undefined) argv.push("--tail", this.#tail);
-    argv.push(...this.#services);
-    return argv;
-  }
-}
-
-/** Settings for `compose ps`. */
-export class DockerComposePsSettings extends DockerComposeSettings {
-  #all = false;
-  #quiet = false;
-  #services = false;
-  #serviceNames: string[] = [];
-
-  /** Show stopped containers too (`-a`). */
-  all(): this {
-    this.#all = true;
-    return this;
-  }
-
-  /** Only show container IDs (`-q`). */
-  quietOutput(): this {
-    this.#quiet = true;
-    return this;
-  }
-
-  /** Display services instead of containers (`--services`). */
-  servicesOnly(): this {
-    this.#services = true;
-    return this;
-  }
-
-  /** Restrict to specific services (positional); optional. */
-  services(...names: string[]): this {
-    this.#serviceNames.push(...names);
-    return this;
-  }
-
-  /** Assemble the `compose ps` argv. */
-  protected override composeArgs(): string[] {
-    const argv = ["ps"];
-    if (this.#all) argv.push("-a");
-    if (this.#quiet) argv.push("-q");
-    if (this.#services) argv.push("--services");
-    argv.push(...this.#serviceNames);
-    return argv;
-  }
-}
-
-/** Settings for `compose config`. */
-export class DockerComposeConfigSettings extends DockerComposeSettings {
-  #quiet = false;
-  #servicesOnly = false;
-  #volumesOnly = false;
-  #format?: string;
-
-  /** Only validate, printing nothing (`-q`). */
-  quietOutput(): this {
-    this.#quiet = true;
-    return this;
-  }
-
-  /** Print the service names only (`--services`). */
-  servicesOnly(): this {
-    this.#servicesOnly = true;
-    return this;
-  }
-
-  /** Print the volume names only (`--volumes`). */
-  volumesOnly(): this {
-    this.#volumesOnly = true;
-    return this;
-  }
-
-  /** Output format (`--format`), e.g. `yaml` or `json`. */
-  format(value: string): this {
-    this.#format = value;
-    return this;
-  }
-
-  /** Assemble the `compose config` argv. */
-  protected override composeArgs(): string[] {
-    const argv = ["config"];
-    if (this.#quiet) argv.push("-q");
-    if (this.#servicesOnly) argv.push("--services");
-    if (this.#volumesOnly) argv.push("--volumes");
-    if (this.#format !== undefined) argv.push("--format", this.#format);
-    return argv;
-  }
-}
-
-/** Settings for `compose start`. */
-export class DockerComposeStartSettings extends DockerComposeSettings {
-  #services: string[] = [];
-
-  /** Restrict to specific services (positional); optional. */
-  services(...names: string[]): this {
-    this.#services.push(...names);
-    return this;
-  }
-
-  /** Assemble the `compose start` argv. */
-  protected override composeArgs(): string[] {
-    return ["start", ...this.#services];
-  }
-}
-
-/** Settings for `compose stop`. */
-export class DockerComposeStopSettings extends DockerComposeSettings {
-  #timeout?: number;
-  #services: string[] = [];
-
-  /** Shutdown timeout in seconds (`-t`). */
-  timeout(seconds: number): this {
-    this.#timeout = seconds;
-    return this;
-  }
-
-  /** Restrict to specific services (positional); optional. */
-  services(...names: string[]): this {
-    this.#services.push(...names);
-    return this;
-  }
-
-  /** Assemble the `compose stop` argv. */
-  protected override composeArgs(): string[] {
-    const argv = ["stop"];
-    if (this.#timeout !== undefined) argv.push("-t", String(this.#timeout));
-    argv.push(...this.#services);
-    return argv;
-  }
-}
-
-/** Settings for `compose restart`. */
-export class DockerComposeRestartSettings extends DockerComposeSettings {
-  #timeout?: number;
-  #services: string[] = [];
-
-  /** Restart timeout in seconds (`-t`). */
-  timeout(seconds: number): this {
-    this.#timeout = seconds;
-    return this;
-  }
-
-  /** Restrict to specific services (positional); optional. */
-  services(...names: string[]): this {
-    this.#services.push(...names);
-    return this;
-  }
-
-  /** Assemble the `compose restart` argv. */
-  protected override composeArgs(): string[] {
-    const argv = ["restart"];
-    if (this.#timeout !== undefined) argv.push("-t", String(this.#timeout));
-    argv.push(...this.#services);
-    return argv;
-  }
-}
-
-/** Settings for `compose rm`. */
-export class DockerComposeRmSettings extends DockerComposeSettings {
-  #force = false;
-  #stop = false;
-  #volumes = false;
-  #services: string[] = [];
-
-  /** Do not prompt for confirmation (`-f`). */
-  force(): this {
-    this.#force = true;
-    return this;
-  }
-
-  /** Stop the containers first if needed (`-s`). */
-  stop(): this {
-    this.#stop = true;
-    return this;
-  }
-
-  /** Also remove anonymous volumes (`-v`). */
-  volumes(): this {
-    this.#volumes = true;
-    return this;
-  }
-
-  /** Restrict to specific services (positional); optional. */
-  services(...names: string[]): this {
-    this.#services.push(...names);
-    return this;
-  }
-
-  /** Assemble the `compose rm` argv. */
-  protected override composeArgs(): string[] {
-    const argv = ["rm"];
-    if (this.#force) argv.push("-f");
-    if (this.#stop) argv.push("-s");
-    if (this.#volumes) argv.push("-v");
-    argv.push(...this.#services);
-    return argv;
-  }
-}
+  DockerComposeCreateSettings,
+  DockerComposeDownSettings,
+  DockerComposeKillSettings,
+  DockerComposePauseSettings,
+  DockerComposeRestartSettings,
+  DockerComposeRmSettings,
+  DockerComposeScaleSettings,
+  DockerComposeStartSettings,
+  DockerComposeStopSettings,
+  DockerComposeUnpauseSettings,
+  DockerComposeUpSettings,
+  DockerComposeWaitSettings,
+} from "./lifecycle.ts";
+import {
+  DockerComposeBuildSettings,
+  DockerComposePullSettings,
+  DockerComposePushSettings,
+} from "./images.ts";
+import {
+  DockerComposeCommitSettings,
+  DockerComposeConfigSettings,
+  DockerComposeCpSettings,
+  DockerComposeExecSettings,
+  DockerComposeExportSettings,
+  DockerComposeLogsSettings,
+  DockerComposePsSettings,
+  DockerComposeRunSettings,
+  DockerComposeTopSettings,
+} from "./containers.ts";
+import {
+  DockerComposeEventsSettings,
+  DockerComposeImagesSettings,
+  DockerComposeLsSettings,
+  DockerComposePortSettings,
+  DockerComposeVersionSettings,
+  DockerComposeVolumesSettings,
+} from "./inventory.ts";
+import {
+  type DockerComposeVersion,
+  parseComposeVersion,
+  parsePublishedPort,
+  waitStatus,
+} from "./reports.ts";
 
 /** The shape of {@link DockerComposeTasks}. */
 export interface DockerComposeTasksApi {
@@ -867,6 +124,94 @@ export interface DockerComposeTasksApi {
   ): Promise<CommandOutput>;
   /** Remove stopped service containers: `compose rm`. */
   rm(configure?: Configure<DockerComposeRmSettings>): Promise<CommandOutput>;
+  /** Create containers without starting them: `compose create`. */
+  create(
+    configure?: Configure<DockerComposeCreateSettings>,
+  ): Promise<CommandOutput>;
+  /** Force-stop service containers: `compose kill`. */
+  kill(
+    configure?: Configure<DockerComposeKillSettings>,
+  ): Promise<CommandOutput>;
+  /** Pause services: `compose pause`. */
+  pause(
+    configure?: Configure<DockerComposePauseSettings>,
+  ): Promise<CommandOutput>;
+  /** Resume paused services: `compose unpause`. */
+  unpause(
+    configure?: Configure<DockerComposeUnpauseSettings>,
+  ): Promise<CommandOutput>;
+  /** Set service replica counts: `compose scale`. */
+  scale(
+    configure?: Configure<DockerComposeScaleSettings>,
+  ): Promise<CommandOutput>;
+  /**
+   * Block until services stop: `compose wait`.
+   *
+   * Keeps the ordinary contract — a non-zero container status fails the
+   * target. Use {@link DockerComposeTasksApi.waitExitCode} when the status is
+   * the answer rather than a failure.
+   */
+  wait(
+    configure?: Configure<DockerComposeWaitSettings>,
+  ): Promise<CommandOutput>;
+  /** Copy between a service container and the local filesystem: `compose cp`. */
+  cp(configure?: Configure<DockerComposeCpSettings>): Promise<CommandOutput>;
+  /** Show running processes: `compose top`. */
+  top(configure?: Configure<DockerComposeTopSettings>): Promise<CommandOutput>;
+  /** Export a container filesystem as a tar archive: `compose export`. */
+  export(
+    configure?: Configure<DockerComposeExportSettings>,
+  ): Promise<CommandOutput>;
+  /** Create an image from a container: `compose commit`. */
+  commit(
+    configure?: Configure<DockerComposeCommitSettings>,
+  ): Promise<CommandOutput>;
+  /** List the images the containers use: `compose images`. */
+  images(
+    configure?: Configure<DockerComposeImagesSettings>,
+  ): Promise<CommandOutput>;
+  /** List the project's volumes: `compose volumes`. */
+  volumes(
+    configure?: Configure<DockerComposeVolumesSettings>,
+  ): Promise<CommandOutput>;
+  /** List Compose projects: `compose ls`. */
+  ls(configure?: Configure<DockerComposeLsSettings>): Promise<CommandOutput>;
+  /** Report the Compose version: `compose version`. */
+  version(
+    configure?: Configure<DockerComposeVersionSettings>,
+  ): Promise<CommandOutput>;
+  /** Print a published port binding: `compose port`. */
+  port(
+    configure?: Configure<DockerComposePortSettings>,
+  ): Promise<CommandOutput>;
+  /** Stream container events: `compose events`. */
+  events(
+    configure?: Configure<DockerComposeEventsSettings>,
+  ): Promise<CommandOutput>;
+  /**
+   * The exit status the waited-on container stopped with.
+   *
+   * `compose wait` exits with the container's own status, so every code is a
+   * legitimate answer and none is left to mean "compose broke". This hands the
+   * code back rather than failing the target, and still fails when compose
+   * never reached a container at all.
+   */
+  waitExitCode(
+    configure?: Configure<DockerComposeWaitSettings>,
+  ): Promise<number>;
+  /**
+   * The host port a service's container port was published on.
+   *
+   * The point of letting Compose pick an ephemeral port is asking which one it
+   * picked, which is what this returns.
+   */
+  servicePort(
+    configure?: Configure<DockerComposePortSettings>,
+  ): Promise<number>;
+  /** The installed Compose version, parsed from `compose version --format json`. */
+  composeVersion(
+    configure?: Configure<DockerComposeVersionSettings>,
+  ): Promise<DockerComposeVersion>;
 }
 
 /** Typed task functions for Docker Compose (`docker compose`/`docker-compose`). */
@@ -940,5 +285,104 @@ export const DockerComposeTasks: DockerComposeTasksApi = {
     configure?: Configure<DockerComposeRmSettings>,
   ): Promise<CommandOutput> {
     return runSettings(new DockerComposeRmSettings(), configure);
+  },
+  create(
+    configure?: Configure<DockerComposeCreateSettings>,
+  ): Promise<CommandOutput> {
+    return runSettings(new DockerComposeCreateSettings(), configure);
+  },
+  kill(
+    configure?: Configure<DockerComposeKillSettings>,
+  ): Promise<CommandOutput> {
+    return runSettings(new DockerComposeKillSettings(), configure);
+  },
+  pause(
+    configure?: Configure<DockerComposePauseSettings>,
+  ): Promise<CommandOutput> {
+    return runSettings(new DockerComposePauseSettings(), configure);
+  },
+  unpause(
+    configure?: Configure<DockerComposeUnpauseSettings>,
+  ): Promise<CommandOutput> {
+    return runSettings(new DockerComposeUnpauseSettings(), configure);
+  },
+  scale(
+    configure?: Configure<DockerComposeScaleSettings>,
+  ): Promise<CommandOutput> {
+    return runSettings(new DockerComposeScaleSettings(), configure);
+  },
+  wait(
+    configure?: Configure<DockerComposeWaitSettings>,
+  ): Promise<CommandOutput> {
+    return runSettings(new DockerComposeWaitSettings(), configure);
+  },
+  cp(configure?: Configure<DockerComposeCpSettings>): Promise<CommandOutput> {
+    return runSettings(new DockerComposeCpSettings(), configure);
+  },
+  top(
+    configure?: Configure<DockerComposeTopSettings>,
+  ): Promise<CommandOutput> {
+    return runSettings(new DockerComposeTopSettings(), configure);
+  },
+  export(
+    configure?: Configure<DockerComposeExportSettings>,
+  ): Promise<CommandOutput> {
+    return runSettings(new DockerComposeExportSettings(), configure);
+  },
+  commit(
+    configure?: Configure<DockerComposeCommitSettings>,
+  ): Promise<CommandOutput> {
+    return runSettings(new DockerComposeCommitSettings(), configure);
+  },
+  images(
+    configure?: Configure<DockerComposeImagesSettings>,
+  ): Promise<CommandOutput> {
+    return runSettings(new DockerComposeImagesSettings(), configure);
+  },
+  volumes(
+    configure?: Configure<DockerComposeVolumesSettings>,
+  ): Promise<CommandOutput> {
+    return runSettings(new DockerComposeVolumesSettings(), configure);
+  },
+  ls(configure?: Configure<DockerComposeLsSettings>): Promise<CommandOutput> {
+    return runSettings(new DockerComposeLsSettings(), configure);
+  },
+  version(
+    configure?: Configure<DockerComposeVersionSettings>,
+  ): Promise<CommandOutput> {
+    return runSettings(new DockerComposeVersionSettings(), configure);
+  },
+  port(
+    configure?: Configure<DockerComposePortSettings>,
+  ): Promise<CommandOutput> {
+    return runSettings(new DockerComposePortSettings(), configure);
+  },
+  events(
+    configure?: Configure<DockerComposeEventsSettings>,
+  ): Promise<CommandOutput> {
+    return runSettings(new DockerComposeEventsSettings(), configure);
+  },
+  async waitExitCode(
+    configure?: Configure<DockerComposeWaitSettings>,
+  ): Promise<number> {
+    const settings = new DockerComposeWaitSettings();
+    configure?.(settings);
+    // noThrow so a non-zero container status reaches the reader as data; the
+    // reader still fails when compose never reached a container.
+    return waitStatus(await settings.noThrow().run());
+  },
+  async servicePort(
+    configure?: Configure<DockerComposePortSettings>,
+  ): Promise<number> {
+    const settings = new DockerComposePortSettings();
+    configure?.(settings);
+    return parsePublishedPort((await settings.quiet().run()).stdout);
+  },
+  async composeVersion(
+    configure?: Configure<DockerComposeVersionSettings>,
+  ): Promise<DockerComposeVersion> {
+    const settings = new DockerComposeVersionSettings();
+    configure?.(settings);
+    return parseComposeVersion((await settings.json().quiet().run()).stdout);
   },
 };
