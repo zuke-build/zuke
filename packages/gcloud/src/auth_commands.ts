@@ -26,6 +26,7 @@
  */
 
 import { GcloudSettings } from "./settings.ts";
+import { commaJoined } from "./comma_list.ts";
 
 /** Settings for `gcloud auth activate-service-account`. */
 export class GcloudAuthActivateServiceAccountSettings extends GcloudSettings {
@@ -112,7 +113,10 @@ export class GcloudAuthPrintIdentityTokenSettings extends GcloudSettings {
     const argv = ["auth", "print-identity-token"];
     if (this.#account !== undefined) argv.push(this.#account);
     if (this.#audiences.length > 0) {
-      argv.push("--audiences", this.#audiences.join(","));
+      argv.push(
+        "--audiences",
+        commaJoined(this.#audiences, "identityToken", "--audiences"),
+      );
     }
     if (this.#includeEmail) argv.push("--include-email");
     return argv;
@@ -135,7 +139,15 @@ export class GcloudAuthConfigureDockerSettings extends GcloudSettings {
   /** Emit `auth configure-docker` and the registries. */
   protected override leadingTokens(): string[] {
     const argv = ["auth", "configure-docker"];
-    if (this.#registries.length > 0) argv.push(this.#registries.join(","));
+    if (this.#registries.length > 0) {
+      argv.push(
+        commaJoined(
+          this.#registries,
+          "authConfigureDocker",
+          "the registry list",
+        ),
+      );
+    }
     return argv;
   }
 }

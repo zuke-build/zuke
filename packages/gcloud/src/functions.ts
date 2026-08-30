@@ -16,6 +16,7 @@
  */
 
 import { GcloudSettings } from "./settings.ts";
+import { commaJoined } from "./comma_list.ts";
 
 /** Settings for `gcloud functions deploy`. */
 export class GcloudFunctionsDeploySettings extends GcloudSettings {
@@ -162,7 +163,10 @@ export class GcloudFunctionsDeploySettings extends GcloudSettings {
       argv.push("--service-account", this.#serviceAccount);
     }
     if (this.#envVars.length > 0) {
-      argv.push("--set-env-vars", this.#envVars.join(","));
+      argv.push(
+        "--set-env-vars",
+        commaJoined(this.#envVars, "functionsDeploy", "--set-env-vars"),
+      );
     }
     if (this.#memory !== undefined) argv.push("--memory", this.#memory);
     if (this.#timeout !== undefined) argv.push("--timeout", this.#timeout);

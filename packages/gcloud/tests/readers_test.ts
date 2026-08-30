@@ -240,3 +240,37 @@ Deno.test("the value readers fail when gcloud is absent", async () => {
     ToolNotFoundError,
   );
 });
+
+Deno.test("readScalar refuses output that is not one value", () => {
+  // A value(...) projection emits one line per resource. Joining them would
+  // return a string that looks like a single URL and is not — found by
+  // attacking the reader rather than by a failing command.
+  const error = assertThrows(
+    () =>
+      readScalar(
+        {
+          stdout: "https://a.run.app\nhttps://b.run.app\n",
+          truncated: false,
+          maxCapturedBytes: 8388608,
+        },
+        "runServiceUrl",
+        "service URL",
+      ),
+    Error,
+  );
+  assertEquals(error.message.includes("more than one line"), true);
+  assertEquals(error.message.includes("narrow it"), true);
+  // One line, however padded, is still one value.
+  assertEquals(
+    readScalar(
+      {
+        stdout: "\n  https://a.run.app  \n",
+        truncated: false,
+        maxCapturedBytes: 8,
+      },
+      "runServiceUrl",
+      "service URL",
+    ),
+    "https://a.run.app",
+  );
+});

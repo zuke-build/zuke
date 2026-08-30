@@ -61,5 +61,16 @@ export function readScalar(
         "not carry looks like — check the command against gcloud directly.",
     );
   }
+  // A `value(...)` projection emits one line per resource, so more than one
+  // line means the command matched more than one thing. Returning them joined
+  // would hand back a string that looks like a single value and is not — the
+  // caller would put two URLs in a fetch, or two tokens in a header.
+  if (/[\r\n]/.test(value)) {
+    throw new Error(
+      `GcloudTasks.${task}: gcloud printed more than one line, so this is not ` +
+        `one ${subject}. The command matched several resources — narrow it, ` +
+        "or read the listing with the matching non-reader task.",
+    );
+  }
   return value;
 }

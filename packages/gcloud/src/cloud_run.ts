@@ -26,6 +26,7 @@
  */
 
 import { GcloudSettings } from "./settings.ts";
+import { commaJoined } from "./comma_list.ts";
 
 /** The `--format` the service-URL reader pins, so gcloud does the extraction. */
 export const RUN_SERVICE_URL_FORMAT = "value(status.url)";
@@ -202,10 +203,16 @@ export class GcloudRunDeploySettings extends GcloudSettings {
       argv.push("--service-account", this.#serviceAccount);
     }
     if (this.#envVars.length > 0) {
-      argv.push("--set-env-vars", this.#envVars.join(","));
+      argv.push(
+        "--set-env-vars",
+        commaJoined(this.#envVars, "runDeploy", "--set-env-vars"),
+      );
     }
     if (this.#secrets.length > 0) {
-      argv.push("--set-secrets", this.#secrets.join(","));
+      argv.push(
+        "--set-secrets",
+        commaJoined(this.#secrets, "runDeploy", "--set-secrets"),
+      );
     }
     if (this.#memory !== undefined) argv.push("--memory", this.#memory);
     if (this.#cpu !== undefined) argv.push("--cpu", this.#cpu);
@@ -370,10 +377,16 @@ export class GcloudRunUpdateTrafficSettings extends GcloudSettings {
     if (this.#region !== undefined) argv.push("--region", this.#region);
     if (this.#toLatest) argv.push("--to-latest");
     if (this.#toRevisions.length > 0) {
-      argv.push("--to-revisions", this.#toRevisions.join(","));
+      argv.push(
+        "--to-revisions",
+        commaJoined(this.#toRevisions, "runUpdateTraffic", "--to-revisions"),
+      );
     }
     if (this.#toTags.length > 0) {
-      argv.push("--to-tags", this.#toTags.join(","));
+      argv.push(
+        "--to-tags",
+        commaJoined(this.#toTags, "runUpdateTraffic", "--to-tags"),
+      );
     }
     return argv;
   }

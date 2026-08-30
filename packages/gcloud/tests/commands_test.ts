@@ -950,3 +950,47 @@ Deno.test("the bare forms, with nothing configured", () => {
     ["gcloud", "run", "deploy", "api"],
   );
 });
+
+Deno.test("a value containing a comma is refused by the flag that joins on one", () => {
+  // gcloud does notice — "Bad syntax for dict arg: [2]" — but that names the
+  // argument it received, not the value responsible. The code doing the joining
+  // is the code that can say which value cannot be joined.
+  assertThrows(
+    () =>
+      new GcloudRunDeploySettings().service("api").setEnvVars("A=1,2", "B=3")
+        .argv(),
+    Error,
+    "cannot be passed this way",
+  );
+  assertThrows(
+    () =>
+      new GcloudRunDeploySettings().service("api").setSecrets("S=a,b").argv(),
+    Error,
+    "--set-secrets",
+  );
+  assertThrows(
+    () => new GcloudBuildsSubmitSettings().substitutions("_A=x,y").argv(),
+    Error,
+    "--substitutions",
+  );
+  assertThrows(
+    () =>
+      new GcloudRunUpdateTrafficSettings().service("a").toRevisions("r=1,2")
+        .argv(),
+    Error,
+    "--to-revisions",
+  );
+  assertThrows(
+    () =>
+      new GcloudFunctionsDeploySettings().function("f").setEnvVars("A=1,2")
+        .argv(),
+    Error,
+    "--set-env-vars",
+  );
+  // The ordinary multi-value case still joins, which is the form gcloud takes.
+  assertEquals(
+    new GcloudRunDeploySettings().service("api").setEnvVars("A=1", "B=2")
+      .argv(),
+    ["gcloud", "run", "deploy", "api", "--set-env-vars", "A=1,B=2"],
+  );
+});

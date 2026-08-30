@@ -16,6 +16,7 @@
  */
 
 import { GcloudSettings } from "./settings.ts";
+import { commaJoined } from "./comma_list.ts";
 
 /** Settings for `gcloud builds submit`. */
 export class GcloudBuildsSubmitSettings extends GcloudSettings {
@@ -125,7 +126,10 @@ export class GcloudBuildsSubmitSettings extends GcloudSettings {
       argv.push("--machine-type", this.#machineType);
     }
     if (this.#substitutions.length > 0) {
-      argv.push("--substitutions", this.#substitutions.join(","));
+      argv.push(
+        "--substitutions",
+        commaJoined(this.#substitutions, "buildsSubmit", "--substitutions"),
+      );
     }
     if (this.#async) argv.push("--async");
     if (this.#gcsSourceStagingDir !== undefined) {
