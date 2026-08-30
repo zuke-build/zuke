@@ -20,6 +20,7 @@
 
 import type { Configure } from "@zuke/core/tooling";
 import { GitSettings } from "./settings.ts";
+import { requireCompleteOutput } from "./complete_output.ts";
 
 /** Settings for `git shortlog`. */
 export class GitShortlogSettings extends GitSettings {
@@ -166,5 +167,6 @@ export async function readShortlogEntries(
     configured.commits("HEAD");
   }
   const output = await configured.quiet().run();
+  requireCompleteOutput(output, "shortlogEntries");
   return parseShortlogEntries(output.stdout);
 }

@@ -17,6 +17,7 @@ import { parseTreeEntries } from "../src/tree.ts";
 import { parseBlameLines } from "../src/blame.ts";
 import { parseShortlogEntries } from "../src/shortlog.ts";
 import { yesNoFromStatus } from "../src/status_answer.ts";
+import { requireCompleteOutput } from "../src/complete_output.ts";
 
 // The fixtures below are git 2.43.0's real output, captured byte-for-byte from
 // this repository. The framing each parser depends on — where the NULs fall,
@@ -405,4 +406,47 @@ Deno.test("parseShortlogEntries: only the count shape git emits is accepted", ()
     count: 7,
     name: "Ada",
   }]);
+});
+
+// Capture keeps the *newest* bytes, so a truncated capture is missing its head,
+// cut mid-record. Every reader that groups fields by position would then shift
+// and return plausible but wrong values, which is why the check refuses rather
+// than parses. Confirmed from a review finding on the pull request.
+Deno.test("requireCompleteOutput: a complete capture passes", () => {
+  requireCompleteOutput(
+    { truncated: false, maxCapturedBytes: 8388608 },
+    "refs",
+  );
+});
+
+Deno.test("requireCompleteOutput: a truncated capture is refused, not parsed", () => {
+  const error = assertThrows(
+    () =>
+      requireCompleteOutput(
+        { truncated: true, maxCapturedBytes: 8388608 },
+        "refs",
+      ),
+    Error,
+  );
+  // The message has to say which task, what the cap was, and what to do.
+  assertEquals(error.message.startsWith("GitTasks.refs:"), true);
+  assertEquals(error.message.includes("8388608"), true);
+  assertEquals(error.message.includes("drops the oldest bytes"), true);
+  assertEquals(error.message.includes(".maxCapturedBytes("), true);
+});
+
+Deno.test("parseRefs: a head-truncated capture is what the guard prevents", () => {
+  // What the parser would do if the guard were not there: the capture begins
+  // mid-record, so the four-field grouping shifts and every value is read as
+  // the wrong field. This asserts the damage, which is why it is refused
+  // upstream rather than handled here.
+  const whole = "aaa\0commit\0refs/heads/main\0up\0" +
+    "\nbbb\0commit\0refs/heads/topic\0\0";
+  const headCut = whole.slice(10); // drop the oldest bytes, as capture does
+  const shifted = parseRefs(headCut);
+  const intact = parseRefs(whole);
+  assertEquals(intact[0]?.objectName, "aaa");
+  assertEquals(intact[0]?.refName, "refs/heads/main");
+  // The shifted read is not empty and not obviously broken — it is wrong.
+  assertEquals(shifted[0]?.objectName === "aaa", false);
 });

@@ -20,6 +20,7 @@
 
 import type { Configure } from "@zuke/core/tooling";
 import { GitSettings } from "./settings.ts";
+import { requireCompleteOutput } from "./complete_output.ts";
 import { splitNul } from "./nul_records.ts";
 
 /** Settings for `git ls-tree`. */
@@ -203,6 +204,7 @@ export async function readTreeEntries(
     }
   }
   const output = await configured.nulTerminated().quiet().run();
+  requireCompleteOutput(output, "treeEntries");
   return parseTreeEntries(output.stdout);
 }
 
@@ -295,5 +297,8 @@ export async function readBlobText(
     }
   }
   const output = await configured.quiet().run();
+  // A file larger than the capture cap would come back as its last bytes,
+  // which is the reachable case here: this reader returns file contents.
+  requireCompleteOutput(output, "blobText");
   return output.stdout;
 }

@@ -20,6 +20,7 @@
 
 import type { Configure, PathLike } from "@zuke/core/tooling";
 import { GitSettings } from "./settings.ts";
+import { requireCompleteOutput } from "./complete_output.ts";
 
 /** Settings for `git blame`. */
 export class GitBlameSettings extends GitSettings {
@@ -242,5 +243,6 @@ export async function readBlameLines(
     configured.porcelain();
   }
   const output = await configured.quiet().run();
+  requireCompleteOutput(output, "blameLines");
   return parseBlameLines(output.stdout);
 }

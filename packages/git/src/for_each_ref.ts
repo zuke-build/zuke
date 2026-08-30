@@ -23,6 +23,7 @@
 
 import type { Configure } from "@zuke/core/tooling";
 import { GitSettings } from "./settings.ts";
+import { requireCompleteOutput } from "./complete_output.ts";
 
 /** The four fields the ref reader asks for, in the order it parses them. */
 const REF_FIELDS = ["objectname", "objecttype", "refname", "upstream"] as const;
@@ -228,6 +229,7 @@ export async function readRefs(
     );
   }
   const output = await configured.format(REF_ENTRY_FORMAT).quiet().run();
+  requireCompleteOutput(output, "refs");
   return parseRefs(output.stdout);
 }
 
