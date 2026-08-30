@@ -1,6 +1,6 @@
 {
   "name": "@zuke/docker-compose",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "license": "MIT",
   "description": "Typed Docker Compose task wrappers for Zuke builds — auto-detects `docker compose` (v2) vs `docker-compose` (v1); up, down, create, wait, scale, cp, port, logs, ps and the rest of the CLI, with readers for the published port and the waited-on exit status.",
   "exports": {
