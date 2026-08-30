@@ -43,7 +43,7 @@
   "packages/husky": "1.0.1",
   "packages/node": "1.2.0",
   "packages/dprint": "1.0.1",
-  "packages/gcloud": "1.0.1",
+  "packages/gcloud": "1.1.0",
   "packages/git": "1.5.0",
   "packages/gh": "1.8.0",
   "packages/codecov": "1.0.3",
