@@ -63,7 +63,7 @@ Deno.test("parseTreeEntries: the tab is what makes the path unambiguous", () => 
   // Captured from `git ls-tree -z -r HEAD`.
   const stdout = "100644 blob 998e8a5c\tpackages/git/deno.json\0" +
     "100644 blob 8fbd58c0\tpackages/git/mod.ts\0" +
-    "040000 tree aabbccdd\tpackages/git/src\0" +
+    "040000 tree 0a1b2c3d\tpackages/git/src\0" +
     "160000 commit deadbeef\tvendor/sub\0";
   assertEquals(parseTreeEntries(stdout), [
     {
@@ -81,7 +81,7 @@ Deno.test("parseTreeEntries: the tab is what makes the path unambiguous", () => 
     {
       mode: "040000",
       type: "tree",
-      objectName: "aabbccdd",
+      objectName: "0a1b2c3d",
       path: "packages/git/src",
     },
     {
@@ -391,4 +391,18 @@ Deno.test("yesNoFromStatus: merge-tree's 1 means 'no' only with a merge to show"
     Error,
   );
   assertEquals(error.message.includes("not something we can merge"), true);
+});
+
+Deno.test("parseShortlogEntries: only the count shape git emits is accepted", () => {
+  // Found by attacking the parser: Number() accepts "-3" and "1e3" and returns
+  // -3 and 1000, neither of which git can produce. A confident wrong number is
+  // worse than skipping the row.
+  assertEquals(parseShortlogEntries("  -3\tNeg"), []);
+  assertEquals(parseShortlogEntries("  1e3\tSci"), []);
+  assertEquals(parseShortlogEntries("  0x10\tHex"), []);
+  // The real shape still parses, leading spaces and all.
+  assertEquals(parseShortlogEntries("     7\tAda"), [{
+    count: 7,
+    name: "Ada",
+  }]);
 });

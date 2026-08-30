@@ -152,7 +152,7 @@ interface CommitMeta {
 }
 
 /** Strip the angle brackets git wraps an address in. */
-function unbracket(value: string): string {
+function stripAngleBrackets(value: string): string {
   return value.startsWith("<") && value.endsWith(">")
     ? value.slice(1, -1)
     : value;
@@ -219,7 +219,7 @@ export function parseBlameLines(stdout: string): GitBlameLine[] {
     const key = space === -1 ? raw : raw.slice(0, space);
     const value = space === -1 ? "" : raw.slice(space + 1);
     if (key === "author") meta.author = value;
-    else if (key === "author-mail") meta.authorMail = unbracket(value);
+    else if (key === "author-mail") meta.authorMail = stripAngleBrackets(value);
     else if (key === "summary") meta.summary = value;
     else if (key === "filename") meta.filename = value;
   }

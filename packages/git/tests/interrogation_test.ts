@@ -352,14 +352,16 @@ Deno.test("shortlog: argv, with paths kept apart from revisions", () => {
     ["git", "shortlog", "-s", "-n", "-e", "v1..HEAD"],
   );
   assertEquals(
-    new GitShortlogSettings().summary().committer().group("trailer:acked-by")
+    new GitShortlogSettings().summary().committer().group(
+      "trailer:co-authored-by",
+    )
       .commits("HEAD").paths("docs").argv(),
     [
       "git",
       "shortlog",
       "-s",
       "-c",
-      "--group=trailer:acked-by",
+      "--group=trailer:co-authored-by",
       "HEAD",
       "--",
       "docs",

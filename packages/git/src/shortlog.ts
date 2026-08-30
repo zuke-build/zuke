@@ -116,8 +116,12 @@ export function parseShortlogEntries(stdout: string): GitShortlogEntry[] {
     // Without a tab the line is not a summary row: the non-summary format
     // indents commit subjects under each author instead.
     if (tab === -1) continue;
-    const count = Number(line.slice(0, tab).trim());
-    if (!Number.isInteger(count)) continue;
+    // git right-aligns a plain non-negative integer here. Number() would also
+    // accept "-3" and "1e3" and hand back a confident -3 or 1000, so match the
+    // shape git actually emits rather than whatever parses.
+    const counted = line.slice(0, tab).trim();
+    if (!/^\d+$/.test(counted)) continue;
+    const count = Number(counted);
     const who = line.slice(tab + 1);
     // A name may itself contain angle brackets, so anchor on the last pair —
     // git appends the address, and only with -e.
