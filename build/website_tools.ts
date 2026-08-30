@@ -270,7 +270,11 @@ export const TOOL_GROUPS: ToolGroup[] = [
     category: "Version control, registry & CI",
     blurb: "Script Git, GitHub, and publishing straight from your build.",
     tools: [
-      { name: "Git", pkg: "@zuke/git", desc: "commit, tag, push, gitInfo()" },
+      {
+        name: "Git",
+        pkg: "@zuke/git",
+        desc: "commit, tag, push, merge-base, blame, gitInfo()",
+      },
       { name: "GitHub CLI", pkg: "@zuke/gh", desc: "releases, PRs, workflows" },
       { name: "Husky", pkg: "@zuke/husky", desc: "install & manage git hooks" },
       { name: "JSR", pkg: "@zuke/jsr", desc: "publish, add, remove" },

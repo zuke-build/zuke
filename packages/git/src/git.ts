@@ -92,6 +92,46 @@ import {
   type GitDefaultBranchSettings,
   resolveDefaultBranch,
 } from "./default_branch.ts";
+import {
+  type GitMergeBaseSettings,
+  readIsAncestor,
+  readMergeBase,
+} from "./merge_base.ts";
+import { GitRevListSettings, readCommitCount } from "./rev_list.ts";
+import {
+  GitForEachRefSettings,
+  GitNameRevSettings,
+  type GitRef,
+  GitShowRefSettings,
+  GitSymbolicRefSettings,
+  readRefs,
+} from "./for_each_ref.ts";
+import {
+  GitCatFileSettings,
+  GitLsTreeSettings,
+  type GitTreeEntry,
+  readBlobText,
+  readTreeEntries,
+} from "./tree.ts";
+import { GitCheckIgnoreSettings, readIsIgnored } from "./attributes.ts";
+import {
+  type GitBlameLine,
+  GitBlameSettings,
+  readBlameLines,
+} from "./blame.ts";
+import {
+  type GitShortlogEntry,
+  GitShortlogSettings,
+  readShortlogEntries,
+} from "./shortlog.ts";
+import { GitGrepSettings } from "./grep.ts";
+import {
+  GitVerifyCommitSettings,
+  GitVerifyTagSettings,
+  readIsSignatureValid,
+  readIsTagSignatureValid,
+} from "./signatures.ts";
+import { GitMergeTreeSettings, readMergesCleanly } from "./merge_tree.ts";
 
 /** Settings for an arbitrary `git` command not covered by a typed task. */
 export class GitRunSettings extends GitSettings {
@@ -259,6 +299,115 @@ export interface GitTasksApi {
   defaultBranch(
     configure?: Configure<GitDefaultBranchSettings>,
   ): Promise<string>;
+  /** Find the common ancestor of commits: `git merge-base`. */
+  mergeBase(configure?: Configure<GitMergeBaseSettings>): Promise<string>;
+
+  /**
+   * Whether the first commit is an ancestor of the second:
+   * `git merge-base --is-ancestor`, read back from its exit status.
+   */
+  isAncestor(configure?: Configure<GitMergeBaseSettings>): Promise<boolean>;
+
+  /** Walk history as a list of commits: `git rev-list`. */
+  revList(configure?: Configure<GitRevListSettings>): Promise<CommandOutput>;
+
+  /** How many commits the walk holds: `git rev-list --count`. */
+  commitCount(configure?: Configure<GitRevListSettings>): Promise<number>;
+
+  /** List refs with a format: `git for-each-ref`. */
+  forEachRef(
+    configure?: Configure<GitForEachRefSettings>,
+  ): Promise<CommandOutput>;
+
+  /** The refs and what they point at, parsed: `git for-each-ref`. */
+  refs(configure?: Configure<GitForEachRefSettings>): Promise<GitRef[]>;
+
+  /** List or verify local refs: `git show-ref`. */
+  showRef(configure?: Configure<GitShowRefSettings>): Promise<CommandOutput>;
+
+  /** Read or set a symbolic ref: `git symbolic-ref`. */
+  symbolicRef(
+    configure?: Configure<GitSymbolicRefSettings>,
+  ): Promise<CommandOutput>;
+
+  /** Find symbolic names for commits: `git name-rev`. */
+  nameRev(configure?: Configure<GitNameRevSettings>): Promise<CommandOutput>;
+
+  /** List the contents of a tree: `git ls-tree`. */
+  lsTree(configure?: Configure<GitLsTreeSettings>): Promise<CommandOutput>;
+
+  /** The entries of a tree, parsed: `git ls-tree -z`. */
+  treeEntries(
+    configure?: Configure<GitLsTreeSettings>,
+  ): Promise<GitTreeEntry[]>;
+
+  /** Read an object's contents or attributes: `git cat-file`. */
+  catFile(configure?: Configure<GitCatFileSettings>): Promise<CommandOutput>;
+
+  /** An object's contents as text, untrimmed: `git cat-file -p`. */
+  blobText(configure?: Configure<GitCatFileSettings>): Promise<string>;
+
+  /** Report which paths the ignore rules exclude: `git check-ignore`. */
+  checkIgnore(
+    configure?: Configure<GitCheckIgnoreSettings>,
+  ): Promise<CommandOutput>;
+
+  /**
+   * Whether a path is excluded, read from the exit status of
+   * `git check-ignore`.
+   */
+  isIgnored(configure?: Configure<GitCheckIgnoreSettings>): Promise<boolean>;
+
+  /** Annotate a file's lines with their commits: `git blame`. */
+  blame(configure?: Configure<GitBlameSettings>): Promise<CommandOutput>;
+
+  /** The annotated lines, parsed: `git blame --porcelain`. */
+  blameLines(configure?: Configure<GitBlameSettings>): Promise<GitBlameLine[]>;
+
+  /** Summarise commits by contributor: `git shortlog`. */
+  shortlog(configure?: Configure<GitShortlogSettings>): Promise<CommandOutput>;
+
+  /** The per-contributor commit counts, parsed: `git shortlog -s`. */
+  shortlogEntries(
+    configure?: Configure<GitShortlogSettings>,
+  ): Promise<GitShortlogEntry[]>;
+
+  /** Search tracked content: `git grep`. */
+  grep(configure?: Configure<GitGrepSettings>): Promise<CommandOutput>;
+
+  /** Check a commit's signature: `git verify-commit`. */
+  verifyCommit(
+    configure?: Configure<GitVerifyCommitSettings>,
+  ): Promise<CommandOutput>;
+
+  /** Check a tag's signature: `git verify-tag`. */
+  verifyTag(
+    configure?: Configure<GitVerifyTagSettings>,
+  ): Promise<CommandOutput>;
+
+  /** Whether a commit's signature is good: `git verify-commit`. */
+  isSignatureValid(
+    configure?: Configure<GitVerifyCommitSettings>,
+  ): Promise<boolean>;
+
+  /** Whether a tag's signature is good: `git verify-tag`. */
+  isTagSignatureValid(
+    configure?: Configure<GitVerifyTagSettings>,
+  ): Promise<boolean>;
+
+  /**
+   * Merge in memory, leaving the index and working tree alone:
+   * `git merge-tree`.
+   */
+  mergeTree(
+    configure?: Configure<GitMergeTreeSettings>,
+  ): Promise<CommandOutput>;
+
+  /** Whether two commits merge without conflict: `git merge-tree`. */
+  mergesCleanly(
+    configure?: Configure<GitMergeTreeSettings>,
+  ): Promise<boolean>;
+
   /** Run any other git command via `.command(...)`. */
   run(configure?: Configure<GitRunSettings>): Promise<CommandOutput>;
 }
@@ -323,4 +472,30 @@ export const GitTasks: GitTasksApi = {
   worktreeList: (c) => listWorktrees(c),
   defaultBranch: (c) => resolveDefaultBranch(c),
   run: (c) => runSettings(new GitRunSettings(), c),
+  mergeBase: (c) => readMergeBase(c),
+  isAncestor: (c) => readIsAncestor(c),
+  revList: (c) => runSettings(new GitRevListSettings(), c),
+  commitCount: (c) => readCommitCount(c),
+  forEachRef: (c) => runSettings(new GitForEachRefSettings(), c),
+  refs: (c) => readRefs(c),
+  showRef: (c) => runSettings(new GitShowRefSettings(), c),
+  symbolicRef: (c) => runSettings(new GitSymbolicRefSettings(), c),
+  nameRev: (c) => runSettings(new GitNameRevSettings(), c),
+  lsTree: (c) => runSettings(new GitLsTreeSettings(), c),
+  treeEntries: (c) => readTreeEntries(c),
+  catFile: (c) => runSettings(new GitCatFileSettings(), c),
+  blobText: (c) => readBlobText(c),
+  checkIgnore: (c) => runSettings(new GitCheckIgnoreSettings(), c),
+  isIgnored: (c) => readIsIgnored(c),
+  blame: (c) => runSettings(new GitBlameSettings(), c),
+  blameLines: (c) => readBlameLines(c),
+  shortlog: (c) => runSettings(new GitShortlogSettings(), c),
+  shortlogEntries: (c) => readShortlogEntries(c),
+  grep: (c) => runSettings(new GitGrepSettings(), c),
+  verifyCommit: (c) => runSettings(new GitVerifyCommitSettings(), c),
+  verifyTag: (c) => runSettings(new GitVerifyTagSettings(), c),
+  isSignatureValid: (c) => readIsSignatureValid(c),
+  isTagSignatureValid: (c) => readIsTagSignatureValid(c),
+  mergeTree: (c) => runSettings(new GitMergeTreeSettings(), c),
+  mergesCleanly: (c) => readMergesCleanly(c),
 };

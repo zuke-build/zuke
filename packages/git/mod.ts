@@ -66,3 +66,28 @@ export {
 } from "./src/replay.ts";
 export { type GitWorktree, GitWorktreeSettings } from "./src/worktree.ts";
 export { GitDefaultBranchSettings } from "./src/default_branch.ts";
+export { GitMergeBaseSettings } from "./src/merge_base.ts";
+export { GitRevListSettings } from "./src/rev_list.ts";
+export {
+  GitForEachRefSettings,
+  GitNameRevSettings,
+  type GitRef,
+  GitShowRefSettings,
+  GitSymbolicRefSettings,
+  REF_ENTRY_FORMAT,
+} from "./src/for_each_ref.ts";
+export {
+  type GitCatFileQuery,
+  GitCatFileSettings,
+  GitLsTreeSettings,
+  type GitTreeEntry,
+} from "./src/tree.ts";
+export { GitCheckIgnoreSettings } from "./src/attributes.ts";
+export { type GitBlameLine, GitBlameSettings } from "./src/blame.ts";
+export { type GitShortlogEntry, GitShortlogSettings } from "./src/shortlog.ts";
+export { GitGrepSettings } from "./src/grep.ts";
+export {
+  GitVerifyCommitSettings,
+  GitVerifyTagSettings,
+} from "./src/signatures.ts";
+export { GitMergeTreeSettings } from "./src/merge_tree.ts";
