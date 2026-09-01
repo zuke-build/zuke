@@ -179,6 +179,10 @@ export function githubWorkflows(
             persistCredentials: true,
             ref:
               "${{ (github.event.pull_request.head.repo.full_name == github.repository) && github.head_ref || '' }}",
+            // Full history, because `pluginVersionCheck` compares against a base
+            // ref. A shallow checkout has no `origin/<base>` at all, so the check
+            // reported itself skipped on every run — honestly, and invisibly.
+            fetchDepth: 0,
           },
           env: {
             OPENAI_API_KEY: "${{ secrets.OPENAI_API_KEY }}",
@@ -189,6 +193,15 @@ export function githubWorkflows(
             // body cannot inject a command.
             PR_BODY:
               "${{ github.event_name == 'pull_request' && github.event.pull_request.body || '' }}",
+            // On a pull request the check compares against the base branch, which
+            // it resolves itself. On a push there is no base — and the push is
+            // the one moment a *collision* is visible: two branches that both
+            // bump the same version merge cleanly, because each side made the
+            // identical edit, and neither pull request's check ever saw the
+            // other. Comparing the merge commit against its parent catches it.
+            // Empty on a pull request, which leaves the default resolution.
+            ZUKE_PLUGIN_BASE_REF:
+              "${{ github.event_name == 'push' && 'HEAD^' || '' }}",
           },
         },
         {

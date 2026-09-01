@@ -107,9 +107,9 @@ import {
   GEMINI_ASSET_NAMES,
 } from "./build/gemini_archive.ts";
 import {
-  bumpFailure,
   checkPluginVersionBump,
   defaultGitHistory,
+  reportFor,
   resolveBaseRef,
 } from "./build/plugin_version_check.ts";
 import { actionPin } from "./build/action_pins.ts";
@@ -540,29 +540,12 @@ class ZukeBuild extends Build {
         (path) => Deno.readTextFile(path).catch(() => null),
       );
       // Unlike the rest of the gate this needs history, so it can genuinely be
-      // unable to run. Say so rather than reporting success — a check that
-      // cannot fail is worse than no check, because it looks like one.
-      if (!verdict.checked) {
-        ConsoleTasks.info(
-          `Plugin version check skipped — ${verdict.reason}. ` +
-            "Set ZUKE_PLUGIN_BASE_REF to compare against a ref you do have.",
-        );
-        return;
-      }
-      if (verdict.headVersion === undefined) {
-        throw new Error(`Plugin version check failed — ${verdict.reason}.`);
-      }
-      if (verdict.changed.length === 0) {
-        ConsoleTasks.info(
-          `No published skill changed against ${base}; nothing to bump.`,
-        );
-        return;
-      }
-      if (!verdict.bumped) throw new Error(bumpFailure(verdict));
-      ConsoleTasks.info(
-        `Skills changed against ${base} and the plugin version moved ` +
-          `${verdict.baseVersion} → ${verdict.headVersion}.`,
-      );
+      // unable to run — and on CI that inability is itself the failure. The
+      // decision, including which outcome a skip gets, lives in the module so
+      // every branch of it is tested; this stays the dispatch.
+      const report = reportFor(verdict, base, isCI());
+      if (report.level === "error") throw new Error(report.message);
+      ConsoleTasks.info(report.message);
     });
 
   // Only meaningful on a `pull_request`-triggered run (the workflow passes it
