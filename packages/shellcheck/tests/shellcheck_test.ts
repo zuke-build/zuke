@@ -53,6 +53,16 @@ Deno.test("shellcheck: the dialect is what makes a portability gate mean anythin
   );
 });
 
+Deno.test("shellcheck: stdin is a path, spelled the way shellcheck spells it", () => {
+  // `shellcheck -` reads the script from stdin; an empty argv does not — it
+  // prints usage and exits non-zero. So stdin mode needs no special case here,
+  // and the refusal below does not stand in its way.
+  assertEquals(
+    new ShellcheckSettings().shell("sh").paths("-").argv(),
+    ["shellcheck", "-s", "sh", "-"],
+  );
+});
+
 Deno.test("shellcheck: a run with no scripts is refused, not sent", () => {
   assertThrows(
     () => new ShellcheckSettings().shell("sh").argv(),
