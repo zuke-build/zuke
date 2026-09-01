@@ -190,6 +190,11 @@ export const TOOL_GROUPS: ToolGroup[] = [
       { name: "dprint", pkg: "@zuke/dprint", desc: "fmt, check" },
       { name: "cspell", pkg: "@zuke/cspell", desc: "spell-check your sources" },
       {
+        name: "ShellCheck",
+        pkg: "@zuke/shellcheck",
+        desc: "lint shell scripts, with a dialect",
+      },
+      {
         name: "lint-staged",
         pkg: "@zuke/lint-staged",
         desc: "lint the staged files, or a diff",

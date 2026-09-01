@@ -29,6 +29,7 @@ export const PACKAGES = [
   "oxlint",
   "eslint",
   "cspell",
+  "shellcheck",
   "jest",
   "vitest",
   "playwright",
