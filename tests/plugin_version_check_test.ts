@@ -24,6 +24,7 @@ import {
   isSkillPath,
   manifestVersion,
   PLUGIN_MANIFEST,
+  reportFor,
   resolveBaseRef,
   skillPaths,
   VERSIONED_MANIFESTS,
@@ -250,6 +251,78 @@ Deno.test("the base ref follows the PR base, then an override, then master", () 
   );
   // An empty value is not a value.
   assertEquals(resolveBaseRef(env({ GITHUB_BASE_REF: "" })), "origin/master");
+});
+
+Deno.test("a skip is information locally and a failure on CI", async () => {
+  // The gate stopped guarding anything for months because a skip reads as
+  // green. Locally — a shallow clone, a worktree whose base is not fetched —
+  // it is still ordinary, so the two outcomes are asserted together.
+  const verdict = await checkPluginVersionBump(
+    fakeGit({ refs: [] }),
+    "origin/master",
+    headAt("0.33.0"),
+  );
+  assertEquals(verdict.checked, false);
+
+  const local = reportFor(verdict, "origin/master", false);
+  assertEquals(local.level, "info");
+  assertStringIncludes(local.message, "skipped");
+  assertStringIncludes(local.message, "ZUKE_PLUGIN_BASE_REF");
+
+  const ci = reportFor(verdict, "origin/master", true);
+  assertEquals(ci.level, "error");
+  // Naming the fix matters: the cause is a checkout setting, nowhere near the
+  // check itself.
+  assertStringIncludes(ci.message, "fetch-depth 0");
+});
+
+Deno.test("every other verdict reports the level its outcome deserves", async () => {
+  const changed = ["skills/zuke-write-build/SKILL.md"];
+  const base = "origin/master";
+
+  // Skills moved, version did not: the failure carries the bump instructions.
+  const stale = await checkPluginVersionBump(
+    fakeGit({
+      changed,
+      baseFiles: { [PLUGIN_MANIFEST]: '{"version":"0.3.0"}' },
+    }),
+    base,
+    headAt("0.3.0"),
+  );
+  const staleReport = reportFor(stale, base, false);
+  assertEquals(staleReport.level, "error");
+  assertStringIncludes(staleReport.message, "still 0.3.0");
+
+  // Skills moved and the version went up: information, naming both versions.
+  const bumped = await checkPluginVersionBump(
+    fakeGit({
+      changed,
+      baseFiles: { [PLUGIN_MANIFEST]: '{"version":"0.3.0"}' },
+    }),
+    base,
+    headAt("0.4.0"),
+  );
+  const bumpedReport = reportFor(bumped, base, true);
+  assertEquals(bumpedReport.level, "info");
+  assertStringIncludes(bumpedReport.message, "0.3.0 → 0.4.0");
+
+  // No skill touched: the common case, and never a demand to bump.
+  const untouched = await checkPluginVersionBump(
+    fakeGit({ changed: ["docs/cli.md"] }),
+    base,
+    headAt("0.3.0"),
+  );
+  const untouchedReport = reportFor(untouched, base, true);
+  assertEquals(untouchedReport.level, "info");
+  assertStringIncludes(untouchedReport.message, "nothing to bump");
+
+  // An unreadable head manifest is a real problem, on CI or not.
+  const unreadable = await checkPluginVersionBump(
+    fakeGit({ changed }),
+    base,
+    headAt(null),
+  );
+  assertEquals(reportFor(unreadable, base, false).level, "error");
 });
 
 /**

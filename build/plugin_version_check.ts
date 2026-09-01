@@ -177,6 +177,65 @@ export async function checkPluginVersionBump(
   return { checked: true, changed, baseVersion, headVersion, bumped };
 }
 
+/** What the caller should do with a verdict: print it, or fail the build. */
+export interface VerdictReport {
+  /** `"error"` fails the target; `"info"` is ordinary output. */
+  level: "info" | "error";
+  /** The line to print, or the message to fail with. */
+  message: string;
+}
+
+/**
+ * Turn a verdict into the report its caller should act on.
+ *
+ * The decision lives here rather than in the build file so every branch is
+ * testable — including the one that fails a run, which is the branch a build
+ * file cannot easily be asked about.
+ *
+ * `onCI` is the whole reason a skip has two outcomes. Locally a skip is
+ * ordinary: a shallow clone, a fresh worktree, a branch whose base is not
+ * fetched. On CI it means the gate silently stopped guarding the thing it
+ * exists for, which is exactly what a shallow checkout did to it — so there it
+ * is a failure, naming the fix.
+ */
+export function reportFor(
+  verdict: BumpVerdict,
+  base: string,
+  onCI: boolean,
+): VerdictReport {
+  if (!verdict.checked) {
+    const message = `Plugin version check skipped — ${verdict.reason}. ` +
+      "Set ZUKE_PLUGIN_BASE_REF to compare against a ref you do have.";
+    return onCI
+      ? {
+        level: "error",
+        message: `${message} On CI the base ref must be fetchable: check out ` +
+          "with full history (fetch-depth 0) so this check can run.",
+      }
+      : { level: "info", message };
+  }
+  if (verdict.headVersion === undefined) {
+    return {
+      level: "error",
+      message: `Plugin version check failed — ${verdict.reason}.`,
+    };
+  }
+  if (verdict.changed.length === 0) {
+    return {
+      level: "info",
+      message: `No published skill changed against ${base}; nothing to bump.`,
+    };
+  }
+  if (!verdict.bumped) {
+    return { level: "error", message: bumpFailure(verdict) };
+  }
+  return {
+    level: "info",
+    message: `Skills changed against ${base} and the plugin version moved ` +
+      `${verdict.baseVersion} → ${verdict.headVersion}.`,
+  };
+}
+
 /** The failure message for a verdict whose skills moved without a bump. */
 export function bumpFailure(verdict: BumpVerdict): string {
   const listed = verdict.changed.slice(0, 5).map((p) => `  ${p}`).join("\n");
