@@ -65,6 +65,7 @@ export {
   GcloudRunDeploySettings,
   GcloudRunServicesDescribeSettings,
   GcloudRunServicesListSettings,
+  GcloudRunServicesUpdateSettings,
   GcloudRunUpdateTrafficSettings,
   RUN_SERVICE_URL_FORMAT,
 } from "./src/cloud_run.ts";

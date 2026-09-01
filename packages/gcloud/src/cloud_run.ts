@@ -391,3 +391,209 @@ export class GcloudRunUpdateTrafficSettings extends GcloudSettings {
     return argv;
   }
 }
+
+/**
+ * Settings for `gcloud run services update` — amending a service that already
+ * exists.
+ *
+ * Distinct from {@link GcloudRunDeploySettings} on purpose. `run deploy`
+ * creates the service when it is absent and resets settings the invocation does
+ * not name; `run services update` only ever amends an existing one. A deploy
+ * that points a live service at a freshly built image wants the second
+ * guarantee, and getting the first by accident — a service quietly created, or
+ * scaling config quietly dropped — is a worse failure than an error.
+ */
+export class GcloudRunServicesUpdateSettings extends GcloudSettings {
+  #service?: string;
+  #region?: string;
+  #platform?: string;
+  #image?: string;
+  #updateEnvVars: string[] = [];
+  #removeEnvVars: string[] = [];
+  #clearEnvVars = false;
+  #updateSecrets: string[] = [];
+  #memory?: string;
+  #cpu?: string;
+  #concurrency?: number;
+  #maxInstances?: number;
+  #minInstances?: number;
+  #tag?: string;
+  #noTraffic = false;
+
+  /** The service to update (positional). */
+  service(name: string): this {
+    this.#service = name;
+    return this;
+  }
+
+  /** The region it runs in (`--region`). */
+  region(value: string): this {
+    this.#region = value;
+    return this;
+  }
+
+  /** The platform it runs on (`--platform`). */
+  platform(value: string): this {
+    this.#platform = value;
+    return this;
+  }
+
+  /** The container image to point the service at (`--image`). */
+  image(reference: string): this {
+    this.#image = reference;
+    return this;
+  }
+
+  /**
+   * Set or overwrite environment variables (`--update-env-vars`), as
+   * `KEY=value`; repeatable. Variables the call does not name are left alone —
+   * which is the difference from `run deploy`'s `--set-env-vars`.
+   */
+  updateEnvVars(...pairs: string[]): this {
+    this.#updateEnvVars.push(...pairs);
+    return this;
+  }
+
+  /** Remove environment variables by name (`--remove-env-vars`); repeatable. */
+  removeEnvVars(...names: string[]): this {
+    this.#removeEnvVars.push(...names);
+    return this;
+  }
+
+  /** Remove every environment variable the service has (`--clear-env-vars`). */
+  clearEnvVars(): this {
+    this.#clearEnvVars = true;
+    return this;
+  }
+
+  /**
+   * Set or overwrite Secret Manager mounts (`--update-secrets`), as
+   * `KEY=secret:version`; repeatable.
+   */
+  updateSecrets(...pairs: string[]): this {
+    this.#updateSecrets.push(...pairs);
+    return this;
+  }
+
+  /** Memory per instance (`--memory`), e.g. `"512Mi"`. */
+  memory(value: string): this {
+    this.#memory = value;
+    return this;
+  }
+
+  /** CPU per instance (`--cpu`). */
+  cpu(value: string): this {
+    this.#cpu = value;
+    return this;
+  }
+
+  /** Requests served concurrently per instance (`--concurrency`). */
+  concurrency(value: number): this {
+    this.#concurrency = value;
+    return this;
+  }
+
+  /** Upper bound on instances (`--max-instances`). */
+  maxInstances(value: number): this {
+    this.#maxInstances = value;
+    return this;
+  }
+
+  /** Lower bound on instances (`--min-instances`). */
+  minInstances(value: number): this {
+    this.#minInstances = value;
+    return this;
+  }
+
+  /** Tag the revision this update creates (`--tag`). */
+  tag(value: string): this {
+    this.#tag = value;
+    return this;
+  }
+
+  /** Create the revision without moving traffic to it (`--no-traffic`). */
+  noTraffic(): this {
+    this.#noTraffic = true;
+    return this;
+  }
+
+  /** Emit `run services update` with its operand and flags. */
+  protected override leadingTokens(): string[] {
+    if (this.#service === undefined) {
+      throw new Error(
+        "GcloudTasks.runServicesUpdate: no service named — add " +
+          ".service('api').",
+      );
+    }
+    // gcloud: "At most one of --clear-env-vars | --set-env-vars |
+    // --update-env-vars --remove-env-vars can be specified." The two spellings
+    // differ in what survives — .clearEnvVars() drops every variable the
+    // service has, .updateEnvVars() leaves the unnamed ones alone — so which
+    // one wins is not a thing to leave to gcloud's argument parser.
+    if (this.#clearEnvVars) {
+      const paired = [
+        [".updateEnvVars()", this.#updateEnvVars.length > 0],
+        [".removeEnvVars()", this.#removeEnvVars.length > 0],
+      ].filter(([, on]) => on).map(([name]) => name);
+      if (paired.length > 0) {
+        throw new Error(
+          `GcloudTasks.runServicesUpdate: .clearEnvVars() drops every ` +
+            `environment variable the service has, so ${
+              paired.join(" and ")
+            } would have nothing left to amend — gcloud accepts at most one ` +
+            "of --clear-env-vars and the --update-env-vars/--remove-env-vars " +
+            "pair. Keep one.",
+        );
+      }
+    }
+    const argv = ["run", "services", "update", this.#service];
+    if (this.#region !== undefined) argv.push("--region", this.#region);
+    if (this.#platform !== undefined) argv.push("--platform", this.#platform);
+    if (this.#image !== undefined) argv.push("--image", this.#image);
+    if (this.#updateEnvVars.length > 0) {
+      argv.push(
+        "--update-env-vars",
+        commaJoined(
+          this.#updateEnvVars,
+          "runServicesUpdate",
+          "--update-env-vars",
+        ),
+      );
+    }
+    if (this.#removeEnvVars.length > 0) {
+      argv.push(
+        "--remove-env-vars",
+        commaJoined(
+          this.#removeEnvVars,
+          "runServicesUpdate",
+          "--remove-env-vars",
+        ),
+      );
+    }
+    if (this.#clearEnvVars) argv.push("--clear-env-vars");
+    if (this.#updateSecrets.length > 0) {
+      argv.push(
+        "--update-secrets",
+        commaJoined(
+          this.#updateSecrets,
+          "runServicesUpdate",
+          "--update-secrets",
+        ),
+      );
+    }
+    if (this.#memory !== undefined) argv.push("--memory", this.#memory);
+    if (this.#cpu !== undefined) argv.push("--cpu", this.#cpu);
+    if (this.#concurrency !== undefined) {
+      argv.push("--concurrency", String(this.#concurrency));
+    }
+    if (this.#maxInstances !== undefined) {
+      argv.push("--max-instances", String(this.#maxInstances));
+    }
+    if (this.#minInstances !== undefined) {
+      argv.push("--min-instances", String(this.#minInstances));
+    }
+    if (this.#tag !== undefined) argv.push("--tag", this.#tag);
+    if (this.#noTraffic) argv.push("--no-traffic");
+    return argv;
+  }
+}

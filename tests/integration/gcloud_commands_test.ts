@@ -17,7 +17,10 @@
 
 import { assertEquals } from "../../packages/core/tests/_assert.ts";
 import { Build, target } from "../../packages/core/mod.ts";
-import { GcloudTasks } from "../../packages/gcloud/mod.ts";
+import {
+  GcloudRunServicesUpdateSettings,
+  GcloudTasks,
+} from "../../packages/gcloud/mod.ts";
 import { runCli } from "./_harness.ts";
 
 /** A tool path that cannot exist, so resolution fails before any process runs. */
@@ -47,6 +50,56 @@ Deno.test("a settings refusal fails the target and names the fix", async () => {
   const deploy = await runCli(RefusalBuild, ["deploy"]);
   assertEquals(deploy.code, 1);
   assertEquals(deploy.err.includes("publicly invokable"), true);
+});
+
+Deno.test("run services update amends without deploy's create-and-reset", async () => {
+  // The two commands are not interchangeable: `run deploy` creates a missing
+  // service and resets what it does not name, `run services update` only
+  // amends. A build that reached for the wrong one would find out in
+  // production, so the argv a target actually sends is worth asserting from
+  // the CLI in.
+  const sent: string[][] = [];
+  class UpdateBuild extends Build {
+    refresh = target().executes(async () => {
+      const settings = new GcloudRunServicesUpdateSettings()
+        .service("api").project("proj").region("europe-west1")
+        .image("gcr.io/proj/api:abc123")
+        .updateEnvVars("SECRETS_REFRESH_TIMESTAMP=2026-09-01T10:00:00Z");
+      sent.push(settings.argv());
+      await GcloudTasks.runServicesUpdate((s) =>
+        s.toolPath(ABSENT).service("api").image("gcr.io/proj/api:abc123")
+      );
+    });
+    // .clearEnvVars() drops every variable; .updateEnvVars() leaves the
+    // unnamed ones alone. gcloud refuses the pair, and so does the wrapper.
+    conflicting = target().executes(async () => {
+      await GcloudTasks.runServicesUpdate((s) =>
+        s.toolPath(ABSENT).service("api").clearEnvVars().updateEnvVars("A=1")
+      );
+    });
+  }
+  const refresh = await runCli(UpdateBuild, ["refresh"]);
+  // The tool is absent, so the target fails — after the argv was assembled.
+  assertEquals(refresh.code, 1);
+  assertEquals(sent, [[
+    "gcloud",
+    "run",
+    "services",
+    "update",
+    "api",
+    "--region",
+    "europe-west1",
+    "--image",
+    "gcr.io/proj/api:abc123",
+    "--update-env-vars",
+    "SECRETS_REFRESH_TIMESTAMP=2026-09-01T10:00:00Z",
+    "--project",
+    "proj",
+  ]]);
+
+  const conflicting = await runCli(UpdateBuild, ["conflicting"]);
+  assertEquals(conflicting.code, 1);
+  assertEquals(conflicting.err.includes(".updateEnvVars()"), true);
 });
 
 Deno.test("the value readers fail on an absent gcloud rather than returning empty", async () => {

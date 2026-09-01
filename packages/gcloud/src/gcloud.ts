@@ -51,6 +51,7 @@ import {
   GcloudRunDeploySettings,
   GcloudRunServicesDescribeSettings,
   GcloudRunServicesListSettings,
+  GcloudRunServicesUpdateSettings,
   GcloudRunUpdateTrafficSettings,
   RUN_SERVICE_URL_FORMAT,
 } from "./cloud_run.ts";
@@ -191,6 +192,15 @@ export interface GcloudTasksApi {
   /** List Cloud Run services: `gcloud run services list`. */
   runServicesList(
     configure?: Configure<GcloudRunServicesListSettings>,
+  ): Promise<CommandOutput>;
+
+  /**
+   * Amend an existing Cloud Run service: `gcloud run services update`. Unlike
+   * {@link runDeploy}, it never creates the service and never resets settings
+   * the call does not name.
+   */
+  runServicesUpdate(
+    configure?: Configure<GcloudRunServicesUpdateSettings>,
   ): Promise<CommandOutput>;
 
   /** Move traffic between revisions: `gcloud run services update-traffic`. */
@@ -355,6 +365,8 @@ export const GcloudTasks: GcloudTasksApi = {
     );
   },
   runServicesList: (c) => runSettings(new GcloudRunServicesListSettings(), c),
+  runServicesUpdate: (c) =>
+    runSettings(new GcloudRunServicesUpdateSettings(), c),
   runUpdateTraffic: (c) => runSettings(new GcloudRunUpdateTrafficSettings(), c),
 
   artifactsImagesList: (c) =>

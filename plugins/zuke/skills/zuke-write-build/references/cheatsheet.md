@@ -808,12 +808,17 @@ The deploy path is typed, so a build never string-builds it:
 | Auth        | `authActivateServiceAccount`, `authConfigureDocker`, `authList`, `authRevoke`        |
 | Config      | `configSet`, `configUnset`, `configGetValue`, `configList`                           |
 | Cloud Build | `buildsSubmit`, `buildsList`, `buildsDescribe`, `buildsLog`                          |
-| Cloud Run   | `runDeploy`, `runServicesDescribe`, `runServicesList`, `runUpdateTraffic`            |
+| Cloud Run   | `runDeploy`, `runServicesUpdate`, `runServicesDescribe`, `runServicesList`, `runUpdateTraffic` |
 | Registry    | `artifactsImagesList`, `artifactsImagesDelete`, `artifactsRepositoriesList/Describe` |
 | Storage     | `storageCp`, `storageRsync`, `storageLs`, `storageRm`                                |
 | GKE         | `clustersGetCredentials`, `clustersList`, `clustersDescribe`                         |
 | Functions   | `functionsDeploy`, `functionsDescribe`                                               |
 | Secrets     | `secretsAccess`                                                                      |
+
+`runDeploy` and `runServicesUpdate` are not interchangeable: `run deploy`
+creates the service when it is absent and resets settings the call does not
+name, while `run services update` only ever amends an existing one. Reach for
+the second when a pipeline points a live service at a new image.
 
 `GcloudTasks.run` with `.command(...)` remains the escape hatch for the rest of
 gcloud, which is vast — but reaching for it where a typed task exists discards

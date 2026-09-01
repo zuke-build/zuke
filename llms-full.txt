@@ -12853,6 +12853,53 @@ class GcloudRunServicesListSettings extends GcloudSettings
   override protected leadingTokens(): string[]
     Emit `run services list` with its flags.
 
+class GcloudRunServicesUpdateSettings extends GcloudSettings
+  Settings for `gcloud run services update` — amending a service that already
+  exists.
+
+  Distinct from {@link GcloudRunDeploySettings} on purpose. `run deploy`
+  creates the service when it is absent and resets settings the invocation does
+  not name; `run services update` only ever amends an existing one. A deploy
+  that points a live service at a freshly built image wants the second
+  guarantee, and getting the first by accident — a service quietly created, or
+  scaling config quietly dropped — is a worse failure than an error.
+
+  service(name: string): this
+    The service to update (positional).
+  region(value: string): this
+    The region it runs in (`--region`).
+  platform(value: string): this
+    The platform it runs on (`--platform`).
+  image(reference: string): this
+    The container image to point the service at (`--image`).
+  updateEnvVars(...pairs: string[]): this
+    Set or overwrite environment variables (`--update-env-vars`), as
+    `KEY=value`; repeatable. Variables the call does not name are left alone —
+    which is the difference from `run deploy`'s `--set-env-vars`.
+  removeEnvVars(...names: string[]): this
+    Remove environment variables by name (`--remove-env-vars`); repeatable.
+  clearEnvVars(): this
+    Remove every environment variable the service has (`--clear-env-vars`).
+  updateSecrets(...pairs: string[]): this
+    Set or overwrite Secret Manager mounts (`--update-secrets`), as
+    `KEY=secret:version`; repeatable.
+  memory(value: string): this
+    Memory per instance (`--memory`), e.g. `"512Mi"`.
+  cpu(value: string): this
+    CPU per instance (`--cpu`).
+  concurrency(value: number): this
+    Requests served concurrently per instance (`--concurrency`).
+  maxInstances(value: number): this
+    Upper bound on instances (`--max-instances`).
+  minInstances(value: number): this
+    Lower bound on instances (`--min-instances`).
+  tag(value: string): this
+    Tag the revision this update creates (`--tag`).
+  noTraffic(): this
+    Create the revision without moving traffic to it (`--no-traffic`).
+  override protected leadingTokens(): string[]
+    Emit `run services update` with its operand and flags.
+
 class GcloudRunUpdateTrafficSettings extends GcloudSettings
   Settings for `gcloud run services update-traffic`.
 
@@ -13021,6 +13068,10 @@ interface GcloudTasksApi
     `--format` to gcloud's own value projection, so gcloud extracts the field.
   runServicesList(configure?: Configure<GcloudRunServicesListSettings>): Promise<CommandOutput>
     List Cloud Run services: `gcloud run services list`.
+  runServicesUpdate(configure?: Configure<GcloudRunServicesUpdateSettings>): Promise<CommandOutput>
+    Amend an existing Cloud Run service: `gcloud run services update`. Unlike
+    {@link runDeploy}, it never creates the service and never resets settings
+    the call does not name.
   runUpdateTraffic(configure?: Configure<GcloudRunUpdateTrafficSettings>): Promise<CommandOutput>
     Move traffic between revisions: `gcloud run services update-traffic`.
   artifactsImagesList(configure?: Configure<GcloudArtifactsImagesListSettings>): Promise<CommandOutput>
