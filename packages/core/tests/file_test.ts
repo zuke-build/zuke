@@ -255,7 +255,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "force replaces a regular file, but not a populated directory",
+  name: "force replaces a regular file, but never a directory",
   ignore: !SYMLINKS_UNPRIVILEGED,
   fn: async () => {
     await withTemp(async (dir) => {
@@ -269,15 +269,54 @@ Deno.test({
         `${dir}/target.txt`,
       );
 
-      // A directory with contents is reported, not recursively deleted: force
-      // replaces a link or a file, and losing a tree to a link request is not
-      // a thing a build should do quietly.
+      // A directory is reported, not removed — empty or not. force replaces a
+      // link or a file; losing a directory to a link request is not a thing a
+      // build should do quietly, and the atomic rename refuses it outright.
       await Deno.mkdir(`${dir}/tree`);
       await Deno.writeTextFile(`${dir}/tree/kept.txt`, "kept");
       await assertRejects(() =>
         FileTasks.symlink(`${dir}/target.txt`, `${dir}/tree`, { force: true })
       );
       assertEquals(await FileTasks.readText(`${dir}/tree/kept.txt`), "kept");
+
+      await Deno.mkdir(`${dir}/bare`);
+      await assertRejects(() =>
+        FileTasks.symlink(`${dir}/target.txt`, `${dir}/bare`, { force: true })
+      );
+      assertEquals((await Deno.lstat(`${dir}/bare`)).isDirectory, true);
+
+      // A refused publish leaves nothing behind: the link written under a temp
+      // name is taken back out before the failure is reported.
+      const leftovers: string[] = [];
+      for await (const entry of Deno.readDir(dir)) {
+        if (entry.name.includes(".zuke-symlink-")) leftovers.push(entry.name);
+      }
+      assertEquals(leftovers, []);
+    });
+  },
+});
+
+Deno.test({
+  name: "a forced replacement never leaves the path missing",
+  ignore: !SYMLINKS_UNPRIVILEGED,
+  fn: async () => {
+    // The reason the replacement is a rename rather than an unlink-then-link:
+    // a reader racing the swap must see one link or the other, never a gap.
+    // Reading between every replacement is as close as an in-process test gets
+    // to that, and it would catch a regression to unlink-first immediately.
+    await withTemp(async (dir) => {
+      await Deno.writeTextFile(`${dir}/one.txt`, "one");
+      await Deno.writeTextFile(`${dir}/two.txt`, "two");
+      await FileTasks.symlink(`${dir}/one.txt`, `${dir}/link.txt`);
+      const seen: string[] = [];
+      for (let i = 0; i < 5; i++) {
+        const target = i % 2 === 0 ? "two.txt" : "one.txt";
+        await FileTasks.symlink(`${dir}/${target}`, `${dir}/link.txt`, {
+          force: true,
+        });
+        seen.push(await FileTasks.readText(`${dir}/link.txt`));
+      }
+      assertEquals(seen, ["two", "one", "two", "one", "two"]);
     });
   },
 });
