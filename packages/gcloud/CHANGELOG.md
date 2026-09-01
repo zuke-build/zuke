@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/zuke-build/zuke/compare/gcloud-v1.1.0...gcloud-v1.2.0) (2026-09-01)
+
+
+### Features
+
+* **gcloud:** type `gcloud run services update` ([#437](https://github.com/zuke-build/zuke/issues/437)) ([f8449b8](https://github.com/zuke-build/zuke/commit/f8449b8e66a35be3c9f0ce05e211d45eef9f9c51)), closes [#432](https://github.com/zuke-build/zuke/issues/432)
+
 ## [1.1.0](https://github.com/zuke-build/zuke/compare/gcloud-v1.0.1...gcloud-v1.1.0) (2026-08-30)
 
 
