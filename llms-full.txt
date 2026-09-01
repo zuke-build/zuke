@@ -13770,6 +13770,14 @@ class GitLsFilesSettings extends GitSettings
     Apply the standard ignore rules (`--exclude-standard`).
   directory(): this
     Report an untracked directory once rather than every file in it (`--directory`).
+  errorUnmatch(): this
+    Exit non-zero when a pathspec matches nothing (`--error-unmatch`), which
+    is how a build asserts that a path is tracked rather than reading the
+    listing to see whether it came back empty.
+
+    git only applies it to the paths it was given, so it needs
+    {@link paths} — the flag on its own describes a whole-tree listing, which
+    always matches something.
   nulTerminated(): this
     Terminate each entry with a NUL rather than a newline (`-z`).
   override protected subcommandArgs(): string[]

@@ -768,6 +768,12 @@ const url = await GitTasks.configGet((s) => s.get("remote.origin.url")); // unde
 They pin the machine-readable form (`-z`, a separator-based `--format`), so a
 path with a space in it or a multi-line commit message parses correctly.
 
+To assert that a generated file is tracked — which a drift check has to do
+before it diffs, since `git diff` reports nothing at all about an untracked
+file — either read the listing and check it is non-empty, or let git decide the
+exit code with `lsFiles` and `.errorUnmatch()`, which needs `.paths(...)` to
+have anything to assert about.
+
 The interrogation commands add the answers CI asks for most — a base ref, a
 commit count, whether one ref is contained in another:
 
