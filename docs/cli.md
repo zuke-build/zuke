@@ -67,6 +67,7 @@ below) attach to whichever launcher word you install them for.
 | `./zuke cancel <id> [--actor <name>]`                                   | Cancel a run and run its compensations ([details](./orchestration.md#cancellation--compensation--oncancel)). |
 | `./zuke register [--actor <name>] [--json]`                             | Register this build in the build registry (`--json` prints the written descriptor).                         |
 | `./zuke doc <spec>`                                                     | Print a package's API docs (`deno doc <spec>`) from an isolated empty directory.                            |
+| `./zuke outdated [--exit-code]`                                         | Report the JSR packages the lock resolves behind their latest release (needs the network).                  |
 | `./zuke --help` / `-h`                                                  | Usage.                                                                                                      |
 | `./zuke` (no target)                                                    | Run the `default` target if defined, else print `--list`.                                                   |
 
@@ -204,6 +205,59 @@ This is a different command from the global `zuke doc` above: the global one
 takes a bare package name (`zuke doc core`) and resolves it to `jsr:@zuke/core`
 for you; the build's own `./zuke doc` needs the full spec (or a relative
 path), since it is just another reserved command on your build's CLI.
+
+## `zuke outdated`
+
+`./zuke outdated` compares the versions your `deno.lock` resolves for every
+`jsr:` specifier against the latest each package publishes, and prints the ones
+that are behind:
+
+```text
+@zuke/git     1.5.0  →  1.11.0
+@zuke/gcloud  1.1.0  →  1.3.0
+
+2 packages are behind. Refresh the lock with a plain `deno cache --reload` …
+```
+
+It exists for the case nothing else covers. A build whose specifiers are
+written inline — `jsr:@zuke/git@^1` in `zuke.ts` and its helper modules, rather
+than in a `deno.json` imports map — gets no signal from `deno outdated`, which
+reads manifests. The lock keeps resolving the versions recorded when the build
+was written, and `--frozen` is content with that, because a stale-but-valid
+lock is exactly what `--frozen` is for. A build can therefore sit several minor
+versions behind a wrapper for months, still hand-rolling a command the package
+has since typed.
+
+The **lock** is what it reads, not the import map: the lock records what a run
+actually resolves, which is the number a stale pin hides.
+
+A package the registry cannot answer for — a private scope, a rename, an
+offline runner — does not fail the whole report, but it *is* named in it:
+
+```text
+1 package could not be checked:
+  @private/thing (1.0.0) — error sending request
+```
+
+That distinction is the point. A run behind a proxy that reached nothing at all
+would otherwise print "every package is at its latest release", which is the
+confident wrong answer this command exists to prevent. A missing lock file is
+an outright error, for the same reason.
+
+`--exit-code` makes it exit `1` when anything is behind **or** could not be
+checked — a gate asking "are we current?" has not been told yes by a run that
+never got an answer. Without the flag the command is a report and always exits
+`0`.
+
+It needs the network, which is why it is a command you run rather than a line in
+`--list` or the run summary: those stay offline and instant. `outdated` is a
+reserved command name.
+
+Two things about refreshing the lock afterwards, because the obvious move is
+wrong. In a repo that also has a `package.json`, `deno cache` resolves the whole
+npm tree and writes an `npm` section a jsr-only lock never had. And
+`--reload=jsr:` re-resolves from cached registry metadata, handing back the same
+stale versions — only a bare `--reload` actually re-resolves.
 
 ## Parallel execution
 
