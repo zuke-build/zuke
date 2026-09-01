@@ -29,6 +29,7 @@ import {
   GcloudRunDeploySettings,
   GcloudRunServicesDescribeSettings,
   GcloudRunServicesListSettings,
+  GcloudRunServicesUpdateSettings,
   GcloudRunUpdateTrafficSettings,
   GcloudSecretsVersionsAccessSettings,
   GcloudStorageCpSettings,
@@ -399,6 +400,80 @@ Deno.test("run update-traffic: one destination, and at least one", () => {
     () => new GcloudRunUpdateTrafficSettings().service("api").argv(),
     Error,
     "no destination",
+  );
+});
+
+Deno.test("run services update: image and env amendments", () => {
+  assertEquals(
+    new GcloudRunServicesUpdateSettings().service("api")
+      .region("europe-west1").platform("managed").image("gcr.io/p/i:tag")
+      .updateEnvVars("SECRETS_REFRESH_TIMESTAMP=2026-09-01", "MODE=live")
+      .removeEnvVars("LEGACY_FLAG")
+      .updateSecrets("DB_PASSWORD=db-password:latest")
+      .memory("512Mi").cpu("1").concurrency(40).maxInstances(10)
+      .minInstances(1).tag("candidate").noTraffic().argv(),
+    [
+      "gcloud",
+      "run",
+      "services",
+      "update",
+      "api",
+      "--region",
+      "europe-west1",
+      "--platform",
+      "managed",
+      "--image",
+      "gcr.io/p/i:tag",
+      "--update-env-vars",
+      "SECRETS_REFRESH_TIMESTAMP=2026-09-01,MODE=live",
+      "--remove-env-vars",
+      "LEGACY_FLAG",
+      "--update-secrets",
+      "DB_PASSWORD=db-password:latest",
+      "--memory",
+      "512Mi",
+      "--cpu",
+      "1",
+      "--concurrency",
+      "40",
+      "--max-instances",
+      "10",
+      "--min-instances",
+      "1",
+      "--tag",
+      "candidate",
+      "--no-traffic",
+    ],
+  );
+  // The minimal amendment — the image swap a deploy performs — carries nothing
+  // it was not asked to carry, which is the whole reason it is not `run deploy`.
+  assertEquals(
+    new GcloudRunServicesUpdateSettings().service("api").image("gcr.io/p/i")
+      .argv(),
+    ["gcloud", "run", "services", "update", "api", "--image", "gcr.io/p/i"],
+  );
+  assertEquals(
+    new GcloudRunServicesUpdateSettings().service("api").clearEnvVars().argv(),
+    ["gcloud", "run", "services", "update", "api", "--clear-env-vars"],
+  );
+});
+
+Deno.test("run services update: clearing and amending env vars are exclusive", () => {
+  // gcloud: "At most one of --clear-env-vars | --set-env-vars |
+  // --update-env-vars --remove-env-vars can be specified."
+  assertThrows(
+    () =>
+      new GcloudRunServicesUpdateSettings().service("api").clearEnvVars()
+        .updateEnvVars("A=1").argv(),
+    Error,
+    ".updateEnvVars()",
+  );
+  assertThrows(
+    () =>
+      new GcloudRunServicesUpdateSettings().service("api").clearEnvVars()
+        .removeEnvVars("A").argv(),
+    Error,
+    ".removeEnvVars()",
   );
 });
 
@@ -844,6 +919,11 @@ Deno.test("the remaining operands each command cannot do without", () => {
     "no service named",
   );
   assertThrows(
+    () => new GcloudRunServicesUpdateSettings().argv(),
+    Error,
+    "no service named",
+  );
+  assertThrows(
     () => new GcloudFunctionsDescribeSettings().argv(),
     Error,
     "no function named",
@@ -986,6 +1066,27 @@ Deno.test("a value containing a comma is refused by the flag that joins on one",
         .argv(),
     Error,
     "--set-env-vars",
+  );
+  assertThrows(
+    () =>
+      new GcloudRunServicesUpdateSettings().service("api")
+        .updateEnvVars("A=1,2").argv(),
+    Error,
+    "--update-env-vars",
+  );
+  assertThrows(
+    () =>
+      new GcloudRunServicesUpdateSettings().service("api")
+        .removeEnvVars("A,B").argv(),
+    Error,
+    "--remove-env-vars",
+  );
+  assertThrows(
+    () =>
+      new GcloudRunServicesUpdateSettings().service("api")
+        .updateSecrets("S=a,b").argv(),
+    Error,
+    "--update-secrets",
   );
   // The ordinary multi-value case still joins, which is the form gcloud takes.
   assertEquals(

@@ -145,6 +145,13 @@ const REACH: Array<[string, () => Promise<unknown>]> = [
   ],
   ["runServicesList", () => GcloudTasks.runServicesList((s) => missingTool(s))],
   [
+    "runServicesUpdate",
+    () =>
+      GcloudTasks.runServicesUpdate((s) =>
+        missingTool(s).service("api").image("gcr.io/p/i")
+      ),
+  ],
+  [
     "runUpdateTraffic",
     () =>
       GcloudTasks.runUpdateTraffic((s) =>
