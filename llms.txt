@@ -71,7 +71,7 @@ Option flags:
 - `--data` — With resume --signal, the signal's JSON payload
 - `--force-graph` — With resume, continue even if the build graph changed
 - `--resume-degraded` — With resume, continue even if a state write was dropped
-- `--exit-code` — With outdated, exit non-zero when a package is behind its latest
+- `--exit-code` — With outdated, exit non-zero when a package is behind or unchecked
 - `--status` — With runs list, keep only runs with this status
 - `--target` — With runs list, keep only runs whose graph has this target
 - `--since` — With runs list, keep only runs created at/after this time

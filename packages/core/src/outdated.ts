@@ -24,7 +24,7 @@
  */
 
 import { httpJson } from "./http.ts";
-import { readTextOrNull } from "./internal.ts";
+import { messageOf, readTextOrNull } from "./internal.ts";
 
 /** The default JSR registry origin; overridden in tests. */
 export const JSR_REGISTRY = "https://jsr.io";
@@ -42,6 +42,32 @@ export interface OutdatedPackage {
   resolved: string;
   /** The latest version the registry publishes. */
   latest: string;
+}
+
+/** A package the registry could not be asked about, and why. */
+export interface UncheckedPackage {
+  /** The package name, e.g. `@zuke/git`. */
+  name: string;
+  /** The version the lock resolves — reported so the line is still useful. */
+  resolved: string;
+  /** Why there is no answer: the transport error, or a meta document with no `latest`. */
+  reason: string;
+}
+
+/** What {@link findOutdated} found: the stale packages, and the unanswered ones. */
+export interface OutdatedReport {
+  /** Packages resolved to a version older than the registry's latest. */
+  behind: OutdatedPackage[];
+  /**
+   * Packages the registry could not answer for — a private scope, a rename, or
+   * a runner with no network.
+   *
+   * Reported rather than dropped, because "nothing is behind" and "I could not
+   * ask" must not look the same: a build offline behind a proxy would
+   * otherwise be told, confidently, that every pin is current — which is the
+   * exact silence this command exists to break.
+   */
+  unchecked: UncheckedPackage[];
 }
 
 /** Options for {@link findOutdated}. */
@@ -130,16 +156,17 @@ function latestOf(meta: unknown): string | undefined {
 
 /**
  * The JSR packages the lock at `lockPath` resolves to a version older than the
- * registry's latest.
+ * registry's latest, and the ones the registry could not answer for.
  *
  * One registry request per distinct package name, whatever the number of
- * specifiers pointing at it. A package the registry cannot answer for is
- * skipped rather than failing the whole report — one unpublished or renamed
- * dependency should not hide the news about the others.
+ * specifiers pointing at it. A package that cannot be checked does not fail
+ * the whole report — one unpublished or renamed dependency should not hide the
+ * news about the others — but it is *reported*, because a run that reached
+ * nothing at all must not read as "everything is current".
  */
 export async function findOutdated(
   options: OutdatedOptions = {},
-): Promise<OutdatedPackage[]> {
+): Promise<OutdatedReport> {
   const lockPath = options.lockPath ?? DEFAULT_LOCK_PATH;
   const lockText = await readTextOrNull(lockPath);
   if (lockText === null) {
@@ -151,65 +178,99 @@ export async function findOutdated(
   }
   const registry = options.registry ?? JSR_REGISTRY;
   const behind: OutdatedPackage[] = [];
-  const latestByName = new Map<string, string | undefined>();
+  const unchecked: UncheckedPackage[] = [];
+  const answers = new Map<string, string | Error>();
   for (const entry of lockedJsrSpecifiers(lockText)) {
-    if (!latestByName.has(entry.name)) {
-      latestByName.set(
-        entry.name,
-        await readLatest(registry, entry.name, options.fetch),
-      );
+    let answer = answers.get(entry.name);
+    if (answer === undefined) {
+      answer = await readLatest(registry, entry.name, options.fetch);
+      answers.set(entry.name, answer);
     }
-    const latest = latestByName.get(entry.name);
-    if (latest === undefined || !isBehind(entry.resolved, latest)) continue;
+    if (answer instanceof Error) {
+      // Once per package name, not once per specifier pointing at it.
+      if (!unchecked.some((p) => p.name === entry.name)) {
+        unchecked.push({
+          name: entry.name,
+          resolved: entry.resolved,
+          reason: messageOf(answer),
+        });
+      }
+      continue;
+    }
+    if (!isBehind(entry.resolved, answer)) continue;
     behind.push({
       name: entry.name,
       specifier: entry.specifier,
       resolved: entry.resolved,
-      latest,
+      latest: answer,
     });
   }
-  return behind;
+  return { behind, unchecked };
 }
 
-/** The registry's latest version for `name`, or `undefined` if it cannot say. */
+/**
+ * The registry's latest version for `name`, or the reason there is none.
+ *
+ * An `Error` rather than `undefined`: a transport failure and a 404 are both
+ * "no answer", and the difference between them is exactly what the caller has
+ * to print — an offline runner reported as an up-to-date one is the failure
+ * this command exists to prevent.
+ */
 async function readLatest(
   registry: string,
   name: string,
   fetchImpl?: typeof fetch,
-): Promise<string | undefined> {
+): Promise<string | Error> {
   try {
     const meta = await httpJson<unknown>(
       `${registry}/${name}/meta.json`,
       fetchImpl === undefined ? {} : { fetch: fetchImpl },
     );
-    return latestOf(meta);
-  } catch {
-    // A 404, a rename, a private scope, or an offline runner. The command's
-    // job is to surface the packages it *can* speak for.
-    return undefined;
+    const latest = latestOf(meta);
+    return latest ?? new Error(
+      "the registry's meta.json carries no latest version",
+    );
+  } catch (error) {
+    // A 404, a rename, a private scope, or an offline runner — each of which
+    // the caller reports as unchecked, with this as the reason.
+    return error instanceof Error ? error : new Error(String(error));
   }
 }
 
 /**
  * The report `zuke outdated` prints: one aligned line per package that is
- * behind, or a single line saying everything is current.
+ * behind, then one per package that could not be checked, and a line saying
+ * everything is current when there is neither.
  */
-export function formatOutdated(packages: readonly OutdatedPackage[]): string {
-  if (packages.length === 0) {
+export function formatOutdated(report: OutdatedReport): string {
+  const { behind, unchecked } = report;
+  const lines: string[] = [];
+  if (behind.length > 0) {
+    const width = Math.max(...behind.map((p) => p.name.length));
+    for (const p of behind) {
+      lines.push(`${p.name.padEnd(width)}  ${p.resolved}  →  ${p.latest}`);
+    }
+    const count = behind.length === 1
+      ? "1 package is"
+      : `${behind.length} packages are`;
+    lines.push(
+      "",
+      `${count} behind. Refresh the lock with a plain \`deno cache --reload\` ` +
+        "— `--reload=jsr:` re-resolves from cached registry metadata and hands " +
+        "back the same versions.",
+    );
+  } else if (unchecked.length === 0) {
     return "Every JSR package the lock resolves is at its latest release.";
   }
-  const width = Math.max(...packages.map((p) => p.name.length));
-  const lines = packages.map((p) =>
-    `${p.name.padEnd(width)}  ${p.resolved}  →  ${p.latest}`
-  );
-  const count = packages.length === 1
-    ? "1 package is"
-    : `${packages.length} packages are`;
-  lines.push(
-    "",
-    `${count} behind. Refresh the lock with a plain \`deno cache --reload\` ` +
-      "— `--reload=jsr:` re-resolves from cached registry metadata and hands " +
-      "back the same versions.",
-  );
+  if (unchecked.length > 0) {
+    if (lines.length > 0) lines.push("");
+    const count = unchecked.length === 1
+      ? "1 package"
+      : `${unchecked.length} packages`;
+    lines.push(`${count} could not be checked:`);
+    for (const p of unchecked) {
+      lines.push(`  ${p.name} (${p.resolved}) — ${p.reason}`);
+    }
+  }
   return lines.join("\n");
 }

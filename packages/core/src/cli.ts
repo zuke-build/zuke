@@ -667,8 +667,9 @@ Options:
                     is why it is a command rather than a line in --list: a
                     build whose specifiers are written inline (jsr:@zuke/x@^1)
                     gets no signal from deno outdated, which reads manifests.
-  --exit-code       With outdated, exit non-zero when a package is behind, so a
-                    gate can fail on one.
+  --exit-code       With outdated, exit non-zero when a package is behind or
+                    could not be checked, so a gate can fail on either — a run
+                    that reached nothing has not answered the question.
   --status <s>      With runs list, keep only runs with this status (running,
                     suspended, succeeded, failed, cancelled).
   --target <t>      With runs list, keep only runs whose graph contains this
@@ -1096,17 +1097,24 @@ async function runDoc(
  * finding as a non-zero exit so a gate can fail on one.
  *
  * A failure to read the lock is an exit 1 with the reason, matching the other
- * commands; being unable to reach the registry for one package is not, since
- * the report still speaks for the rest.
+ * commands. Being unable to reach the registry for a package is not: the
+ * report still speaks for the rest, and names the ones it could not check —
+ * which `--exit-code` also treats as a finding, since an unanswered question
+ * is not a "yes".
  */
 async function runOutdated(
   parsed: ParsedArgs,
   options: OutdatedOptions = {},
 ): Promise<number> {
   try {
-    const behind = await findOutdated(options);
-    console.log(formatOutdated(behind));
-    return parsed.exitCode && behind.length > 0 ? 1 : 0;
+    const report = await findOutdated(options);
+    console.log(formatOutdated(report));
+    // A package that could not be checked counts as a failure under
+    // --exit-code: a gate asking "are we current?" has not been told yes, and
+    // an offline runner passing quietly is the silence this command exists to
+    // break. Without the flag it stays a report and exits 0.
+    const unresolved = report.behind.length + report.unchecked.length;
+    return parsed.exitCode && unresolved > 0 ? 1 : 0;
   } catch (error) {
     console.error(messageOf(error));
     return 1;

@@ -156,7 +156,7 @@ export const BUILTIN_FLAGS: readonly BuiltinFlag[] = [
   {
     name: "--exit-code",
     description:
-      "With outdated, exit non-zero when a package is behind its latest",
+      "With outdated, exit non-zero when a package is behind or unchecked",
   },
   {
     name: "--status",

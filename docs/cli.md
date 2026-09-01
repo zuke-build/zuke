@@ -231,11 +231,23 @@ has since typed.
 The **lock** is what it reads, not the import map: the lock records what a run
 actually resolves, which is the number a stale pin hides.
 
-`--exit-code` makes it exit `1` when anything is behind, so a scheduled job can
-fail on one; without it the command is a report and always exits `0`. A package
-the registry cannot answer for — a private scope, a rename, an offline runner —
-is skipped rather than failing the whole report; a missing lock file is an
-error, since "nothing is behind" and "I never read a lock" must not look alike.
+A package the registry cannot answer for — a private scope, a rename, an
+offline runner — does not fail the whole report, but it *is* named in it:
+
+```text
+1 package could not be checked:
+  @private/thing (1.0.0) — error sending request
+```
+
+That distinction is the point. A run behind a proxy that reached nothing at all
+would otherwise print "every package is at its latest release", which is the
+confident wrong answer this command exists to prevent. A missing lock file is
+an outright error, for the same reason.
+
+`--exit-code` makes it exit `1` when anything is behind **or** could not be
+checked — a gate asking "are we current?" has not been told yes by a run that
+never got an answer. Without the flag the command is a report and always exits
+`0`.
 
 It needs the network, which is why it is a command you run rather than a line in
 `--list` or the run summary: those stay offline and instant. `outdated` is a

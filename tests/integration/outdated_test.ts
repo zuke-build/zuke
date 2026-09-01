@@ -91,6 +91,39 @@ Deno.test("outdated --exit-code fails when something is behind, not otherwise", 
   assertEquals(current.out.includes("at its latest release"), true);
 });
 
+Deno.test("an offline run is reported as unchecked, and --exit-code fails on it", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const lockPath = `${dir}/deno.lock`;
+    await Deno.writeTextFile(
+      lockPath,
+      JSON.stringify({ specifiers: { "jsr:@zuke/git@^1": "1.5.0" } }),
+    );
+    const options = {
+      lockPath,
+      registry: "https://registry.test",
+      fetch: () => Promise.reject(new TypeError("error sending request")),
+    };
+    // A runner that reached nothing must not be told every pin is current —
+    // that confident wrong answer is the silence this command exists to break.
+    const report = await runCli(OutdatedBuild, ["outdated"], {
+      outdatedOptions: options,
+    });
+    assertEquals(report.code, 0);
+    assertEquals(report.out.includes("at its latest release"), false);
+    assertEquals(report.out.includes("could not be checked"), true);
+    assertEquals(report.out.includes("error sending request"), true);
+
+    // Under --exit-code an unanswered question is not a "yes".
+    const gated = await runCli(OutdatedBuild, ["outdated", "--exit-code"], {
+      outdatedOptions: options,
+    });
+    assertEquals(gated.code, 1);
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
 Deno.test("outdated names a missing lock and fails", async () => {
   const dir = await Deno.makeTempDir();
   try {
