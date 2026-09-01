@@ -1771,6 +1771,11 @@
           "jsr:@zuke/core@^1.25.0"
         ]
       },
+      "packages/shellcheck": {
+        "dependencies": [
+          "jsr:@zuke/core@^1.25.0"
+        ]
+      },
       "packages/storybook": {
         "dependencies": [
           "jsr:@zuke/core@^1.25.0"

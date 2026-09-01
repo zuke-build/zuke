@@ -19,6 +19,7 @@
     "packages/oxlint",
     "packages/eslint",
     "packages/cspell",
+    "packages/shellcheck",
     "packages/jest",
     "packages/vitest",
     "packages/playwright",

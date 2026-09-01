@@ -18,6 +18,7 @@
   "packages/oxlint": "1.0.1",
   "packages/eslint": "1.0.1",
   "packages/cspell": "1.1.0",
+  "packages/shellcheck": "0.0.0",
   "packages/jest": "1.0.1",
   "packages/vitest": "1.0.1",
   "packages/playwright": "1.0.1",

@@ -10458,6 +10458,74 @@ interface CspellTasksApi
     Spell-check with `cspell lint`.
 
 ========================================================================
+# @zuke/shellcheck
+========================================================================
+
+`@zuke/shellcheck` — typed ShellCheck (https://www.shellcheck.net/) task
+wrappers for Zuke builds.
+
+Configure a fluent settings object in a lambda; the task builds the argv and
+runs it.
+
+```ts
+import { ShellcheckTasks } from "jsr:@zuke/shellcheck";
+await ShellcheckTasks.lint((s) =>
+  s.shell("sh").severity("warning").paths("sh/lib.sh", "bin/gate")
+);
+```
+@module
+
+const ShellcheckTasks: ShellcheckTasksApi
+  Typed task functions for the ShellCheck static analyser.
+
+class ShellcheckSettings extends ToolSettings
+  Settings for a `shellcheck` run.
+
+  override protected defaultTool(): string
+    The default executable name (`shellcheck`).
+  override protected defaultResolution(): ToolResolution
+    Resolve the binary from `PATH` — ShellCheck is a native binary (Haskell),
+    installed by a package manager rather than into `node_modules/.bin`.
+  paths(...values: PathLike[]): this
+    Scripts to check (positional); repeatable.
+  shell(dialect: ShellcheckShell): this
+    The dialect to analyse as (`-s`/`--shell`), overriding the shebang.
+
+    This is the flag that makes a portability gate mean something: a script
+    with a `#!/bin/bash` shebang, or none at all, is otherwise checked as
+    bash, so the POSIX violations the gate exists to catch go unreported.
+  severity(level: ShellcheckSeverity): this
+    The lowest severity to report (`-S`/`--severity`).
+  format(value: ShellcheckFormat): this
+    The output format (`-f`/`--format`).
+  exclude(...codes: string[]): this
+    Suppress specific checks by code (`-e`/`--exclude`); repeatable. Codes may
+    be given with or without the `SC` prefix, as ShellCheck accepts both.
+  externalSources(): this
+    Follow `source`d files outside the checked set (`-x`/`--external-sources`).
+  override protected buildArgs(): string[]
+    Assemble the `shellcheck` argv.
+
+interface ShellcheckTasksApi
+  The shape of {@link ShellcheckTasks}.
+
+  lint(configure?: Configure<ShellcheckSettings>): Promise<CommandOutput>
+    Analyse shell scripts with `shellcheck`.
+
+type ShellcheckFormat = "tty" | "gcc" | "checkstyle" | "diff" | "json" | "json1" | "quiet"
+  An output format ShellCheck can emit (`-f`).
+
+type ShellcheckSeverity = "error" | "warning" | "info" | "style"
+  The lowest severity ShellCheck reports (`-S`).
+
+type ShellcheckShell = "sh" | "bash" | "dash" | "ksh" | "busybox"
+  A shell dialect ShellCheck can analyse (`-s`), overriding the shebang.
+
+  A closed set: ShellCheck rejects anything else outright, so the type does
+  the same job the settings class does — the mistake is a compile error rather
+  than a failed run.
+
+========================================================================
 # @zuke/jest
 ========================================================================
 

@@ -215,6 +215,17 @@
         }
       ]
     },
+    "packages/shellcheck": {
+      "component": "shellcheck",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "deno.json",
+          "jsonpath": "$.version"
+        }
+      ]
+    },
     "packages/jest": {
       "component": "jest",
       "changelog-path": "CHANGELOG.md",

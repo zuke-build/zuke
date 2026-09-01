@@ -109,6 +109,7 @@ Full reference: [docs/cli.md](./docs/cli.md).
 - [@zuke/oxlint](https://jsr.io/@zuke/oxlint) — typed `oxlint` task wrappers for Zuke builds
 - [@zuke/eslint](https://jsr.io/@zuke/eslint) — typed `eslint` task wrappers for Zuke builds
 - [@zuke/cspell](https://jsr.io/@zuke/cspell) — typed `cspell` task wrappers for Zuke builds
+- [@zuke/shellcheck](https://jsr.io/@zuke/shellcheck) — typed ShellCheck (https://www.shellcheck.net/) task
 - [@zuke/jest](https://jsr.io/@zuke/jest) — typed `jest` task wrappers for Zuke builds
 - [@zuke/vitest](https://jsr.io/@zuke/vitest) — typed `vitest` task wrappers for Zuke builds
 - [@zuke/playwright](https://jsr.io/@zuke/playwright) — typed `PlaywrightTasks` wrappers for the Playwright CLI,
