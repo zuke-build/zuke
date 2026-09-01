@@ -182,6 +182,29 @@ Deno.test("ls-files renders its selectors", () => {
   );
 });
 
+Deno.test("ls-files --error-unmatch asserts a path is tracked", () => {
+  assertEquals(
+    new GitLsFilesSettings().cached().errorUnmatch().paths("openapi.json")
+      .argv(),
+    [
+      "git",
+      "ls-files",
+      "--cached",
+      "--error-unmatch",
+      "--",
+      "openapi.json",
+    ],
+  );
+  // The flag only applies to the paths git was given: without them the
+  // listing covers the whole tree and always matches, so the assertion the
+  // caller wanted would silently never fire.
+  assertThrows(
+    () => new GitLsFilesSettings().cached().errorUnmatch().argv(),
+    Error,
+    ".paths(",
+  );
+});
+
 Deno.test("rev-parse renders its resolution flags", () => {
   assertEquals(
     new GitRevParseSettings().verify().short().rev("HEAD").argv(),

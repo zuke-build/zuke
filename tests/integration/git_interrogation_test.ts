@@ -17,7 +17,7 @@
 
 import { assertEquals } from "../../packages/core/tests/_assert.ts";
 import { Build, target } from "../../packages/core/mod.ts";
-import { GitTasks } from "../../packages/git/mod.ts";
+import { GitLsFilesSettings, GitTasks } from "../../packages/git/mod.ts";
 import { runCli } from "./_harness.ts";
 
 /** A tool path that cannot exist, so resolution fails before any process runs. */
@@ -35,6 +35,45 @@ Deno.test("a settings refusal fails the target and names the fix", async () => {
   const { code, err } = await runCli(RefusalBuild, ["ancestor"]);
   assertEquals(code, 1);
   assertEquals(err.includes("exactly two commits"), true);
+});
+
+Deno.test("--error-unmatch needs the pathspecs it asserts about", async () => {
+  // The drift check this flag exists for has an order: git diff reports
+  // nothing at all about an untracked file, so "is it tracked?" has to be
+  // asked first. A caller who reached for the flag and forgot the pathspecs
+  // would get a whole-tree listing that always matches — the assertion
+  // silently never firing — so the settings refuse it, and the refusal has to
+  // reach the target rather than being swallowed by the executor.
+  const settings = new GitLsFilesSettings().cached().errorUnmatch()
+    .paths("openapi.json");
+  class DriftBuild extends Build {
+    tracked = target().executes(async () => {
+      await GitTasks.lsFiles((s) =>
+        s.toolPath(ABSENT).cached().errorUnmatch().paths("openapi.json")
+      );
+    });
+    unscoped = target().executes(async () => {
+      await GitTasks.lsFiles((s) => s.toolPath(ABSENT).cached().errorUnmatch());
+    });
+  }
+  assertEquals(settings.argv(), [
+    "git",
+    "ls-files",
+    "--cached",
+    "--error-unmatch",
+    "--",
+    "openapi.json",
+  ]);
+
+  // Scoped to a path, the task is well-formed and fails only because the tool
+  // is absent — the flag itself is not what stopped it.
+  const tracked = await runCli(DriftBuild, ["tracked"]);
+  assertEquals(tracked.code, 1);
+  assertEquals(tracked.err.includes(".paths("), false);
+
+  const unscoped = await runCli(DriftBuild, ["unscoped"]);
+  assertEquals(unscoped.code, 1);
+  assertEquals(unscoped.err.includes(".paths("), true);
 });
 
 Deno.test("a reader refuses the option that would misreport its result", async () => {

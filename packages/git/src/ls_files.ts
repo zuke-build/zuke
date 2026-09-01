@@ -37,6 +37,7 @@ export class GitLsFilesSettings extends GitSettings {
   #excludeStandard = false;
   #directory = false;
   #nul = false;
+  #errorUnmatch = false;
 
   /** Limit the listing to these pathspecs (positional); repeatable. */
   paths(...values: PathLike[]): this {
@@ -95,6 +96,20 @@ export class GitLsFilesSettings extends GitSettings {
     return this;
   }
 
+  /**
+   * Exit non-zero when a pathspec matches nothing (`--error-unmatch`), which
+   * is how a build asserts that a path is tracked rather than reading the
+   * listing to see whether it came back empty.
+   *
+   * git only applies it to the paths it was given, so it needs
+   * {@link paths} — the flag on its own describes a whole-tree listing, which
+   * always matches something.
+   */
+  errorUnmatch(): this {
+    this.#errorUnmatch = true;
+    return this;
+  }
+
   /** Terminate each entry with a NUL rather than a newline (`-z`). */
   nulTerminated(): this {
     this.#nul = true;
@@ -103,6 +118,13 @@ export class GitLsFilesSettings extends GitSettings {
 
   /** Assemble the `git ls-files` argv. */
   protected override subcommandArgs(): string[] {
+    if (this.#errorUnmatch && this.#paths.length === 0) {
+      throw new Error(
+        "GitTasks.lsFiles: .errorUnmatch() makes git fail when a pathspec " +
+          "matches nothing, so it needs the pathspecs — add .paths(...). " +
+          "Without them the listing covers the whole tree and always matches.",
+      );
+    }
     if (this.#ignored && !this.#others) {
       throw new Error(
         "GitTasks.lsFiles: .ignored() filters an untracked listing — add " +
@@ -118,6 +140,7 @@ export class GitLsFilesSettings extends GitSettings {
     if (this.#stage) argv.push("--stage");
     if (this.#excludeStandard) argv.push("--exclude-standard");
     if (this.#directory) argv.push("--directory");
+    if (this.#errorUnmatch) argv.push("--error-unmatch");
     if (this.#nul) argv.push("-z");
     if (this.#paths.length > 0) argv.push("--", ...this.#paths);
     return argv;
