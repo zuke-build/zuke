@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.0](https://github.com/zuke-build/zuke/compare/git-v1.5.0...git-v1.6.0) (2026-09-01)
+
+
+### Features
+
+* **git:** `--error-unmatch` on `lsFiles` ([#439](https://github.com/zuke-build/zuke/issues/439)) ([577daa5](https://github.com/zuke-build/zuke/commit/577daa5caa9021155d9e33afeb748361dfe9ce6e)), closes [#434](https://github.com/zuke-build/zuke/issues/434)
+
 ## [1.5.0](https://github.com/zuke-build/zuke/compare/git-v1.4.0...git-v1.5.0) (2026-08-30)
 
 
