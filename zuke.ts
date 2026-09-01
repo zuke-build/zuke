@@ -542,11 +542,21 @@ class ZukeBuild extends Build {
       // Unlike the rest of the gate this needs history, so it can genuinely be
       // unable to run. Say so rather than reporting success — a check that
       // cannot fail is worse than no check, because it looks like one.
+      //
+      // On CI it is not merely reported: a skip there means the gate silently
+      // stopped guarding the thing it exists for, which is exactly what a
+      // shallow checkout did to it for months. Locally — a shallow clone, a
+      // fresh worktree, a branch with no base — the skip stays informational.
       if (!verdict.checked) {
-        ConsoleTasks.info(
-          `Plugin version check skipped — ${verdict.reason}. ` +
-            "Set ZUKE_PLUGIN_BASE_REF to compare against a ref you do have.",
-        );
+        const message = `Plugin version check skipped — ${verdict.reason}. ` +
+          "Set ZUKE_PLUGIN_BASE_REF to compare against a ref you do have.";
+        if (isCI()) {
+          throw new Error(
+            `${message} On CI the base ref must be fetchable: check out with ` +
+              "full history (fetch-depth 0) so this check can run.",
+          );
+        }
+        ConsoleTasks.info(message);
         return;
       }
       if (verdict.headVersion === undefined) {

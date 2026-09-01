@@ -540,11 +540,24 @@ gemini-extension.json     # Gemini CLI extension manifest (serves skills/)
 
   Two gate targets hold this up, so a miss fails the build rather than shipping
   quietly: `pluginVersionCheck` fails when a published skill changed against the
-  base branch and the version did not move, and `tests/plugin_manifest_test.ts`
-  fails when the manifests disagree. `pluginVersionCheck` is the one part of the
-  gate that needs history — it compares against `origin/<PR base>`, or
-  `ZUKE_PLUGIN_BASE_REF` when you set one — and it reports itself _skipped_,
-  never passed, in a clone that has no base to compare against.
+  base branch and the version did not move **up**, and
+  `tests/plugin_manifest_test.ts` fails when the manifests disagree.
+  `pluginVersionCheck` is the one part of the gate that needs history — it
+  compares against `origin/<PR base>`, or `ZUKE_PLUGIN_BASE_REF` when you set
+  one — and it reports itself _skipped_, never passed, in a local clone that
+  has no base to compare against. **On CI a skip is fatal**, because a gate
+  that cannot run is not a gate: it went unnoticed for months that the job's
+  shallow checkout left it with no base ref at all.
+
+  Two things it insists on beyond "the version differs". It must go **up**, so
+  that resolving a version conflict by keeping the lower number is refused. And
+  on a push to master it compares the merge commit against its parent
+  (`ZUKE_PLUGIN_BASE_REF=HEAD^`), which is the only place a **collision** is
+  visible: two branches that both bump `1.2.0` to `1.3.0` merge without a
+  conflict — each side made the identical edit — and neither pull request's
+  check ever saw the other, because GitHub does not re-run a PR's checks when
+  its base moves. When you have several skill-touching PRs open at once, give
+  each a distinct version, or bump once more after the last one lands.
 - **Always read the reviewer comments on every PR.** This repo runs AI reviewers
   (`@zuke/ai`) that post their assessments as PR comments (and human reviewers
   do too). Before considering a PR done — and again after each push — fetch and

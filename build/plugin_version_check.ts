@@ -18,6 +18,14 @@
  * `plugins/zuke/skills/` match `skills/`. It cannot help here, because both
  * sides move together and the version sits outside them.
  *
+ * Two things it insists on beyond "the version differs". The version must go
+ * **up**, because resolving a conflict by keeping a lower number would ship the
+ * skills under a version clients already hold. And on a push to master the base
+ * is the previous commit (`ZUKE_PLUGIN_BASE_REF=HEAD^`), which is the only
+ * place a *collision* is visible: two branches that both bump 1.2.0 to 1.3.0
+ * merge without a conflict, since each side made the identical edit, and each
+ * one's pull-request check was computed against a base that had not moved yet.
+ *
  * This check needs history, which is what makes it different from the rest of
  * the gate: "the content changed but the version did not" is not a property of
  * one snapshot. It compares against a base ref, so it does real work in CI (and
@@ -29,6 +37,7 @@
  */
 
 import { GitTasks } from "@zuke/git";
+import { isNewerSemver } from "./semver.ts";
 
 /** The skills tree that is the source of truth for the plugin. */
 export const SKILLS_DIR = "skills/";
@@ -115,7 +124,14 @@ export interface BumpVerdict {
   baseVersion?: string;
   /** The plugin version in the working tree. */
   headVersion?: string;
-  /** Whether the version moved. Meaningless unless `checked` and `changed`. */
+  /**
+   * Whether the version moved **up**. Meaningless unless `checked` and
+   * `changed`.
+   *
+   * Up, not merely away from: resolving a version conflict by keeping your own
+   * lower number over the base's would otherwise read as a bump, and ship the
+   * skills under a version clients already have.
+   */
   bumped: boolean;
 }
 
@@ -156,7 +172,8 @@ export async function checkPluginVersionBump(
   const baseVersion = manifestVersion(await git.fileAt(base, PLUGIN_MANIFEST));
   // No manifest at the base means the plugin is new on this branch; there is
   // no previous version to differ from, so the bump requirement cannot apply.
-  const bumped = baseVersion === undefined || baseVersion !== headVersion;
+  const bumped = baseVersion === undefined ||
+    isNewerSemver(headVersion, baseVersion);
   return { checked: true, changed, baseVersion, headVersion, bumped };
 }
 
@@ -166,9 +183,15 @@ export function bumpFailure(verdict: BumpVerdict): string {
   const more = verdict.changed.length > 5
     ? `\n  …and ${verdict.changed.length - 5} more`
     : "";
+  const moved = verdict.baseVersion !== verdict.headVersion;
+  const headline = moved
+    ? `The published skills changed and the plugin version moved the wrong ` +
+      `way: ${verdict.baseVersion} → ${verdict.headVersion}, which is not an ` +
+      "increase."
+    : `The published skills changed but the plugin version did not (still ` +
+      `${verdict.headVersion}).`;
   return [
-    `The published skills changed but the plugin version did not (still ` +
-    `${verdict.headVersion}).`,
+    headline,
     "",
     "Changed:",
     `${listed}${more}`,
@@ -176,9 +199,15 @@ export function bumpFailure(verdict: BumpVerdict): string {
     "Clients use this version to decide whether an installed plugin is stale,",
     "so skills shipped without a bump never reach agents holding the old copy.",
     "",
-    `Bump the version in ALL of these manifests (they must agree):`,
+    `Set a version above ${verdict.baseVersion} in ALL of these manifests ` +
+    "(they must agree):",
     ...VERSIONED_MANIFESTS.map((path) => `  ${path}`),
     "Additive skill content is a minor bump; a correction is a patch.",
+    "",
+    "If another branch already shipped the version you picked, take the next",
+    "one above what the base branch now holds rather than matching it: two",
+    "branches landing the same version leave the second change invisible to",
+    "every client that already fetched the first.",
   ].join("\n");
 }
 

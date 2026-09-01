@@ -115,6 +115,67 @@ Deno.test("skills changed and the version moved — the check passes", async () 
   assertEquals(verdict.headVersion, "0.3.0");
 });
 
+Deno.test("a version that moved down is not a bump", async () => {
+  // The shape a badly resolved conflict takes: the branch keeps its own lower
+  // number over the base's. It "differs", and shipping it would put the skills
+  // under a version clients already hold.
+  const verdict = await checkPluginVersionBump(
+    fakeGit({
+      changed: ["skills/zuke-write-build/references/cheatsheet.md"],
+      baseFiles: { [PLUGIN_MANIFEST]: '{"version":"0.33.0"}' },
+    }),
+    "origin/master",
+    headAt("0.32.0"),
+  );
+  assertEquals(verdict.checked, true);
+  assertEquals(verdict.bumped, false);
+  const message = bumpFailure(verdict);
+  assertStringIncludes(message, "the wrong way: 0.33.0 → 0.32.0");
+  assertStringIncludes(message, "Set a version above 0.33.0");
+});
+
+Deno.test("the same version on two branches is a collision, not a bump", async () => {
+  // What a push-to-master run sees after the second of two branches that each
+  // bumped 0.31.0 to 0.32.0 lands: the merge changed skills, and the version
+  // is what the previous commit already had. Neither branch's own check could
+  // see this — each compared against a base that had not moved yet.
+  const verdict = await checkPluginVersionBump(
+    fakeGit({
+      refs: ["HEAD^"],
+      changed: ["skills/zuke-write-build/references/cheatsheet.md"],
+      baseFiles: { [PLUGIN_MANIFEST]: '{"version":"0.32.0"}' },
+    }),
+    "HEAD^",
+    headAt("0.32.0"),
+  );
+  assertEquals(verdict.checked, true);
+  assertEquals(verdict.bumped, false);
+  assertStringIncludes(bumpFailure(verdict), "still 0.32.0");
+  // The hint that names this exact situation (wrapped across lines in the
+  // message, so match the part that stays on one).
+  assertStringIncludes(
+    bumpFailure(verdict),
+    "leave the second change invisible",
+  );
+});
+
+Deno.test("a version that cannot be ordered is refused, not waved through", async () => {
+  // A manifest version that is not a plain triple cannot be compared, so it
+  // cannot be shown to be an increase. The gate refuses what it did not
+  // understand instead of assuming the best.
+  for (const [base, head] of [["0.32.0", "0.33"], ["latest", "0.33.0"]]) {
+    const verdict = await checkPluginVersionBump(
+      fakeGit({
+        changed: ["skills/zuke-write-build/SKILL.md"],
+        baseFiles: { [PLUGIN_MANIFEST]: JSON.stringify({ version: base }) },
+      }),
+      "origin/master",
+      headAt(head),
+    );
+    assertEquals(verdict.bumped, false, `${base} → ${head}`);
+  }
+});
+
 Deno.test("a change that touches no skill needs no bump", async () => {
   // The common case: an ordinary source PR must not be asked to bump a plugin
   // it never touched.
@@ -189,4 +250,38 @@ Deno.test("the base ref follows the PR base, then an override, then master", () 
   );
   // An empty value is not a value.
   assertEquals(resolveBaseRef(env({ GITHUB_BASE_REF: "" })), "origin/master");
+});
+
+/**
+ * The generated CI workflow, because the artifact is what GitHub runs: the
+ * decision above is only a check if the job it runs in can actually reach a
+ * base ref, and for months it could not.
+ */
+const CI_WORKFLOW = await Deno.readTextFile(".github/workflows/ci.yml");
+
+Deno.test("the gate job checks out enough history for this check to run", () => {
+  // A shallow checkout has no `origin/<base>` at all, so the check reported
+  // itself skipped on every CI run — honestly, and invisibly. Full history is
+  // what makes it able to fail.
+  const job = CI_WORKFLOW.slice(
+    CI_WORKFLOW.indexOf("  ci:"),
+    CI_WORKFLOW.indexOf("  coreFloorCheck:"),
+  );
+  assertStringIncludes(job, 'fetch-depth: "0"');
+});
+
+Deno.test("a push to master compares against the previous commit", () => {
+  // The one place a same-version collision between two branches is visible:
+  // neither pull request's check could see the other, because each compared
+  // against a base that had not moved yet.
+  assertStringIncludes(
+    CI_WORKFLOW,
+    "ZUKE_PLUGIN_BASE_REF: \"${{ github.event_name == 'push' && 'HEAD^' || '' }}\"",
+  );
+  // Empty on a pull request, which leaves the base resolution to the check.
+  assertEquals(resolveBaseRef(() => ""), "origin/master");
+  assertEquals(
+    resolveBaseRef((n) => n === "ZUKE_PLUGIN_BASE_REF" ? "HEAD^" : ""),
+    "HEAD^",
+  );
 });
