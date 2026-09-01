@@ -20,6 +20,11 @@ import {
   graphCommand,
   type GraphHost,
 } from "./graph_view.ts";
+import {
+  findOutdated,
+  formatOutdated,
+  type OutdatedOptions,
+} from "./outdated.ts";
 import { type AnyParameter, discoverParameters, flagName } from "./params.ts";
 import type { JsonValue, TargetBuilder } from "./target.ts";
 import type { Plugin } from "./plugin.ts";
@@ -38,6 +43,7 @@ import {
   GENERATE_CI_COMMAND,
   GRAPH_COMMAND,
   MCP_COMMAND,
+  OUTDATED_COMMAND,
   REGISTER_COMMAND,
   RESUME_COMMAND,
   RUNS_COMMAND,
@@ -182,6 +188,10 @@ export interface ParsedArgs {
   doc: boolean;
   /** The spec to document (the positional after `doc`): a `jsr:`/`npm:` URL or a path. */
   docSpec?: string;
+  /** The `outdated` command was requested (report JSR packages behind their latest). */
+  outdated: boolean;
+  /** Exit non-zero when `outdated` found something (`--exit-code`). */
+  exitCode: boolean;
   /** Raw parameter values from declared flags, keyed by property name. */
   values: Record<string, string>;
   help: boolean;
@@ -374,6 +384,8 @@ export function parseArgs(
     cancel: false,
     register: false,
     doc: false,
+    outdated: false,
+    exitCode: false,
     confirmDestructive: false,
     mcpRegistry: false,
     help: false,
@@ -417,6 +429,8 @@ export function parseArgs(
       parsed.runCounts = true;
     } else if (arg === "--check") {
       parsed.check = true;
+    } else if (arg === "--exit-code") {
+      parsed.exitCode = true;
     } else if (arg === "--allow-run") {
       parsed.allowRun = true;
     } else if (arg.startsWith("--allow-run=")) {
@@ -503,7 +517,7 @@ export function parseArgs(
     } else if (
       parsed.target === undefined && !parsed.graph && !parsed.generateCi &&
       !parsed.completions && !parsed.mcp && !parsed.resume && !parsed.runs &&
-      !parsed.cancel && !parsed.register && !parsed.doc
+      !parsed.cancel && !parsed.register && !parsed.doc && !parsed.outdated
     ) {
       if (arg === GRAPH_COMMAND) parsed.graph = true;
       else if (arg === GENERATE_CI_COMMAND) parsed.generateCi = true;
@@ -514,6 +528,7 @@ export function parseArgs(
       else if (arg === CANCEL_COMMAND) parsed.cancel = true;
       else if (arg === REGISTER_COMMAND) parsed.register = true;
       else if (arg === DOC_COMMAND) parsed.doc = true;
+      else if (arg === OUTDATED_COMMAND) parsed.outdated = true;
       else parsed.target = arg;
     }
   }
@@ -543,6 +558,7 @@ Usage:
   deno run -A zuke.ts cancel <run-id> [--actor <name>]
   deno run -A zuke.ts register [--actor <name>] [--json]
   deno run -A zuke.ts doc <spec>
+  deno run -A zuke.ts outdated [--exit-code]
 
 Options:
   <target>          Run the target and its transitive dependencies.
@@ -646,6 +662,13 @@ Options:
                     and buries the API under type-resolution warnings; the empty
                     cwd has nothing to resolve. A relative path (./mod.ts) is
                     resolved against the real working directory first.
+  outdated          Report the JSR packages the lock resolves to a version
+                    older than the registry's latest. Needs the network, which
+                    is why it is a command rather than a line in --list: a
+                    build whose specifiers are written inline (jsr:@zuke/x@^1)
+                    gets no signal from deno outdated, which reads manifests.
+  --exit-code       With outdated, exit non-zero when a package is behind, so a
+                    gate can fail on one.
   --status <s>      With runs list, keep only runs with this status (running,
                     suspended, succeeded, failed, cancelled).
   --target <t>      With runs list, keep only runs whose graph contains this
@@ -776,6 +799,11 @@ export interface MainOptions {
   graphHost?: GraphHost;
   /** Runner for the `doc` command's `deno doc` spawn (injected in tests). */
   docRunner?: DocRunner;
+  /**
+   * Lock path, registry origin and `fetch` for the `outdated` command
+   * (injected in tests, which have neither a lock nor a network).
+   */
+  outdatedOptions?: OutdatedOptions;
   /** Lifecycle observers to run alongside the build's own hooks. */
   plugins?: Plugin[];
   /** Overrides for `completions install` (home/config dir), injected in tests. */
@@ -1062,6 +1090,29 @@ async function runDoc(
   }
 }
 
+/**
+ * Run the `outdated` command: compare the versions the lock resolves against
+ * the registry's latest, print the report, and — with `--exit-code` — report a
+ * finding as a non-zero exit so a gate can fail on one.
+ *
+ * A failure to read the lock is an exit 1 with the reason, matching the other
+ * commands; being unable to reach the registry for one package is not, since
+ * the report still speaks for the rest.
+ */
+async function runOutdated(
+  parsed: ParsedArgs,
+  options: OutdatedOptions = {},
+): Promise<number> {
+  try {
+    const behind = await findOutdated(options);
+    console.log(formatOutdated(behind));
+    return parsed.exitCode && behind.length > 0 ? 1 : 0;
+  } catch (error) {
+    console.error(messageOf(error));
+    return 1;
+  }
+}
+
 /** Run the `runs` command: build the query (validating `--status`) and dispatch. */
 async function runRuns(build: Build, parsed: ParsedArgs): Promise<number> {
   const query: RunQuery = {};
@@ -1239,6 +1290,9 @@ async function runCommand(
   }
   if (parsed.doc) {
     return await runDoc(parsed, options.docRunner);
+  }
+  if (parsed.outdated) {
+    return await runOutdated(parsed, options.outdatedOptions);
   }
 
   let name = parsed.target;

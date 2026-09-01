@@ -50,6 +50,9 @@ export const REGISTER_COMMAND = "register";
 /** The `doc` command: print a package's API docs, isolated from the repo. */
 export const DOC_COMMAND = "doc";
 
+/** The `outdated` command: report JSR packages the lock resolves behind. */
+export const OUTDATED_COMMAND = "outdated";
+
 /** Every reserved command, in help and completion order. */
 export const RESERVED_COMMANDS: readonly ReservedCommand[] = [
   { name: GRAPH_COMMAND, description: "Show the dependency graph" },
@@ -82,6 +85,10 @@ export const RESERVED_COMMANDS: readonly ReservedCommand[] = [
     name: DOC_COMMAND,
     description:
       "Print a package's API docs (deno doc), isolated from the repo",
+  },
+  {
+    name: OUTDATED_COMMAND,
+    description: "Report JSR packages the lock resolves behind their latest",
   },
 ];
 
@@ -145,6 +152,11 @@ export const BUILTIN_FLAGS: readonly BuiltinFlag[] = [
   {
     name: "--resume-degraded",
     description: "With resume, continue even if a state write was dropped",
+  },
+  {
+    name: "--exit-code",
+    description:
+      "With outdated, exit non-zero when a package is behind its latest",
   },
   {
     name: "--status",

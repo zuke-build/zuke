@@ -1208,6 +1208,7 @@ else a friendly error.
 ./zuke runs show mcp-audit    # the MCP tool-call audit trail (host only, not served over MCP)
 ./zuke register [--json]      # record this build in the build registry (idempotent)
 ./zuke doc jsr:@zuke/deno     # print a package's API (deno doc) from an isolated empty dir
+./zuke outdated [--exit-code]  # jsr packages the lock resolves behind their latest (network)
 ./zuke mcp --registry --allow-run  # serve the registry: registered builds as tools, spawned
 ./zuke mcp --registry --max-concurrent-runs 4  # cap concurrent run-tool spawns (default 4)
 ```
