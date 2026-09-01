@@ -254,6 +254,7 @@ export {
   FileTasks,
   type FileTasksApi,
   type RemoveOptions,
+  type SymlinkOptions,
 } from "./src/file.ts";
 export {
   BrowserOpenSettings,

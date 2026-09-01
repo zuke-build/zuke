@@ -2978,6 +2978,22 @@ interface FileTasksApi
     are copied recursively).
   move(source: PathLike, destination: PathLike): Promise<void>
     Move (rename) `source` to `destination`.
+  symlink(target: PathLike, path: PathLike, options?: SymlinkOptions): Promise<void>
+    Create a symbolic link at `path` pointing to `target`.
+
+    `target` is stored in the link verbatim, so a relative one resolves
+    against the link's own directory — which is what makes a link between two
+    sibling checkouts survive both being moved together.
+
+    With {@link SymlinkOptions.force} an entry already at `path` is replaced,
+    which is the `ln -sfn` case a re-run of an idempotent target needs;
+    without it an existing entry is an `AlreadyExists` error.
+  readLink(path: PathLike): Promise<string>
+    The target of the symbolic link at `path`, exactly as stored in the link —
+    relative if it was created relative, and not checked for existence.
+
+    Throws if `path` is not a symbolic link, which is the same answer
+    `Deno.readLink` gives.
   readText(path: PathLike): Promise<string>
     Read the UTF-8 text content of the file at `path`.
   writeText(path: PathLike, content: string): Promise<void>
@@ -3719,6 +3735,22 @@ interface StateStore
     not having one. A caller that needs the listing rather than an empty result
     should go through {@link listStoreLocks}, which fails with a message naming
     the backend instead of pretending the store holds nothing.
+
+interface SymlinkOptions
+  Options for {@link FileTasksApi.symlink}.
+
+  force?: boolean
+    Replace an existing entry at the link path, the way `ln -sfn` does
+    (default `false`, which throws an `AlreadyExists` as `Deno.symlink` does).
+
+    Replacing is not atomic: the old entry is unlinked and the new link
+    created, so a concurrent reader can observe the path missing in between.
+    A populated directory at the path is not removed — that failure is
+    reported rather than recursively deleted.
+  type?: "file" | "dir"
+    What the link points at: `"file"` or `"dir"`. Windows needs the
+    distinction and ignores nothing else; POSIX ignores the option entirely.
+    Pass `"dir"` when linking a directory, or the link is unusable on Windows.
 
 interface TarEntry
   A single entry within a tar archive — a regular file or a symbolic link.

@@ -43,6 +43,26 @@ export interface CopyOptions {
   overwrite?: boolean;
 }
 
+/** Options for {@link FileTasksApi.symlink}. */
+export interface SymlinkOptions {
+  /**
+   * Replace an existing entry at the link path, the way `ln -sfn` does
+   * (default `false`, which throws an `AlreadyExists` as `Deno.symlink` does).
+   *
+   * Replacing is not atomic: the old entry is unlinked and the new link
+   * created, so a concurrent reader can observe the path missing in between.
+   * A populated directory at the path is *not* removed — that failure is
+   * reported rather than recursively deleted.
+   */
+  force?: boolean;
+  /**
+   * What the link points at: `"file"` or `"dir"`. Windows needs the
+   * distinction and ignores nothing else; POSIX ignores the option entirely.
+   * Pass `"dir"` when linking a directory, or the link is unusable on Windows.
+   */
+  type?: "file" | "dir";
+}
+
 /** Whether a filesystem entry exists; a `NotFound` maps to `false`. */
 async function entryExists(path: string): Promise<boolean> {
   try {
@@ -132,6 +152,32 @@ export interface FileTasksApi {
   /** Move (rename) `source` to `destination`. */
   move(source: PathLike, destination: PathLike): Promise<void>;
 
+  /**
+   * Create a symbolic link at `path` pointing to `target`.
+   *
+   * `target` is stored in the link verbatim, so a relative one resolves
+   * against the link's own directory — which is what makes a link between two
+   * sibling checkouts survive both being moved together.
+   *
+   * With {@link SymlinkOptions.force} an entry already at `path` is replaced,
+   * which is the `ln -sfn` case a re-run of an idempotent target needs;
+   * without it an existing entry is an `AlreadyExists` error.
+   */
+  symlink(
+    target: PathLike,
+    path: PathLike,
+    options?: SymlinkOptions,
+  ): Promise<void>;
+
+  /**
+   * The target of the symbolic link at `path`, exactly as stored in the link —
+   * relative if it was created relative, and not checked for existence.
+   *
+   * Throws if `path` is not a symbolic link, which is the same answer
+   * `Deno.readLink` gives.
+   */
+  readLink(path: PathLike): Promise<string>;
+
   /** Read the UTF-8 text content of the file at `path`. */
   readText(path: PathLike): Promise<string>;
 
@@ -206,6 +252,39 @@ export const FileTasks: FileTasksApi = {
 
   move(source: PathLike, destination: PathLike): Promise<void> {
     return Deno.rename(String(source), String(destination));
+  },
+
+  async symlink(
+    target: PathLike,
+    path: PathLike,
+    options: SymlinkOptions = {},
+  ): Promise<void> {
+    const linkPath = String(path);
+    // Deno.symlink takes `{ type }`, and rejects an unknown key, so the
+    // force flag is this layer's own and never reaches it.
+    const denoOptions = options.type === undefined
+      ? undefined
+      : { type: options.type };
+    try {
+      await Deno.symlink(String(target), linkPath, denoOptions);
+      return;
+    } catch (error) {
+      // Attempt first, then replace: a caller without `force` gets Deno's own
+      // AlreadyExists untouched, and nothing on disk is unlinked until the
+      // path is known to be occupied.
+      if (!(error instanceof Deno.errors.AlreadyExists) || !options.force) {
+        throw error;
+      }
+    }
+    // Not recursive: replacing a link or a file is the point, and silently
+    // deleting a populated directory tree because a link was requested over it
+    // is not a thing a build should do by default.
+    await Deno.remove(linkPath);
+    await Deno.symlink(String(target), linkPath, denoOptions);
+  },
+
+  readLink(path: PathLike): Promise<string> {
+    return Deno.readLink(String(path));
   },
 
   readText(path: PathLike): Promise<string> {

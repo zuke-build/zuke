@@ -178,3 +178,153 @@ Deno.test("readJson parses a JSON file", async () => {
     assertEquals(parsed.version, "1.0");
   });
 });
+
+// Creating a symlink is a privileged operation on Windows unless Developer
+// Mode is on, so the link tests are POSIX-only — the same line the tar
+// extractor's symlink tests draw.
+const SYMLINKS_UNPRIVILEGED = Deno.build.os !== "windows";
+
+Deno.test({
+  name: "symlink creates a link readLink reads back verbatim",
+  ignore: !SYMLINKS_UNPRIVILEGED,
+  fn: async () => {
+    await withTemp(async (dir) => {
+      await Deno.writeTextFile(`${dir}/real.txt`, "linked");
+      await FileTasks.symlink(`${dir}/real.txt`, `${dir}/link.txt`);
+      assertEquals(await FileTasks.readText(`${dir}/link.txt`), "linked");
+      assertEquals(
+        await FileTasks.readLink(`${dir}/link.txt`),
+        `${dir}/real.txt`,
+      );
+    });
+  },
+});
+
+Deno.test({
+  name: "symlink stores a relative target as given, not resolved",
+  ignore: !SYMLINKS_UNPRIVILEGED,
+  fn: async () => {
+    // The relative target is what makes a link between sibling checkouts
+    // survive both being moved together, so it must not be rewritten.
+    await withTemp(async (dir) => {
+      await Deno.mkdir(`${dir}/group`);
+      await Deno.writeTextFile(`${dir}/real.txt`, "sibling");
+      await FileTasks.symlink("../real.txt", `${dir}/group/link.txt`);
+      assertEquals(
+        await FileTasks.readLink(`${dir}/group/link.txt`),
+        "../real.txt",
+      );
+      assertEquals(
+        await FileTasks.readText(`${dir}/group/link.txt`),
+        "sibling",
+      );
+    });
+  },
+});
+
+Deno.test({
+  name:
+    "symlink without force refuses an occupied path, with force replaces it",
+  ignore: !SYMLINKS_UNPRIVILEGED,
+  fn: async () => {
+    await withTemp(async (dir) => {
+      await Deno.writeTextFile(`${dir}/one.txt`, "one");
+      await Deno.writeTextFile(`${dir}/two.txt`, "two");
+      await FileTasks.symlink(`${dir}/one.txt`, `${dir}/link.txt`);
+      await assertRejects(
+        () => FileTasks.symlink(`${dir}/two.txt`, `${dir}/link.txt`),
+        Deno.errors.AlreadyExists,
+      );
+      assertEquals(
+        await FileTasks.readLink(`${dir}/link.txt`),
+        `${dir}/one.txt`,
+      );
+
+      // The `ln -sfn` case: re-pointing an existing link is what makes a
+      // link-creating target re-runnable.
+      await FileTasks.symlink(`${dir}/two.txt`, `${dir}/link.txt`, {
+        force: true,
+      });
+      assertEquals(
+        await FileTasks.readLink(`${dir}/link.txt`),
+        `${dir}/two.txt`,
+      );
+      assertEquals(await FileTasks.readText(`${dir}/link.txt`), "two");
+    });
+  },
+});
+
+Deno.test({
+  name: "force replaces a regular file, but not a populated directory",
+  ignore: !SYMLINKS_UNPRIVILEGED,
+  fn: async () => {
+    await withTemp(async (dir) => {
+      await Deno.writeTextFile(`${dir}/target.txt`, "t");
+      await Deno.writeTextFile(`${dir}/occupied`, "a plain file");
+      await FileTasks.symlink(`${dir}/target.txt`, `${dir}/occupied`, {
+        force: true,
+      });
+      assertEquals(
+        await FileTasks.readLink(`${dir}/occupied`),
+        `${dir}/target.txt`,
+      );
+
+      // A directory with contents is reported, not recursively deleted: force
+      // replaces a link or a file, and losing a tree to a link request is not
+      // a thing a build should do quietly.
+      await Deno.mkdir(`${dir}/tree`);
+      await Deno.writeTextFile(`${dir}/tree/kept.txt`, "kept");
+      await assertRejects(() =>
+        FileTasks.symlink(`${dir}/target.txt`, `${dir}/tree`, { force: true })
+      );
+      assertEquals(await FileTasks.readText(`${dir}/tree/kept.txt`), "kept");
+    });
+  },
+});
+
+Deno.test({
+  name: "a directory link takes type dir, and force re-points it",
+  ignore: !SYMLINKS_UNPRIVILEGED,
+  fn: async () => {
+    await withTemp(async (dir) => {
+      await Deno.mkdir(`${dir}/first`);
+      await Deno.mkdir(`${dir}/second`);
+      await Deno.writeTextFile(`${dir}/second/inside.txt`, "in");
+      await FileTasks.symlink(`${dir}/first`, `${dir}/link`, { type: "dir" });
+      await FileTasks.symlink(`${dir}/second`, `${dir}/link`, {
+        type: "dir",
+        force: true,
+      });
+      assertEquals(await FileTasks.readText(`${dir}/link/inside.txt`), "in");
+    });
+  },
+});
+
+Deno.test({
+  name: "readLink refuses a path that is not a link",
+  ignore: !SYMLINKS_UNPRIVILEGED,
+  fn: async () => {
+    await withTemp(async (dir) => {
+      await Deno.writeTextFile(`${dir}/plain.txt`, "p");
+      await assertRejects(() => FileTasks.readLink(`${dir}/plain.txt`));
+    });
+  },
+});
+
+Deno.test({
+  name: "symlink surfaces a failure that is not an occupied path",
+  ignore: !SYMLINKS_UNPRIVILEGED,
+  fn: async () => {
+    // A missing parent directory is a NotFound, which force has no business
+    // swallowing — the caller asked for a link somewhere that does not exist.
+    await withTemp(async (dir) => {
+      await assertRejects(
+        () =>
+          FileTasks.symlink(`${dir}/t.txt`, `${dir}/absent/link.txt`, {
+            force: true,
+          }),
+        Deno.errors.NotFound,
+      );
+    });
+  },
+});

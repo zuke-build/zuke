@@ -331,12 +331,17 @@ await FileTasks.copy("static", "dist/static"); // recursive
 | `readText(path)`                        | Read a file's UTF-8 content.                                                                                                                                                                |
 | `writeText(path, content)`              | Write a file, creating or truncating it.                                                                                                                                                    |
 | `readJson<T>(path)`                     | Read and `JSON.parse` a file, typed as `T`.                                                                                                                                                 |
+| `symlink(target, path, { force?, type? })` | Create a symbolic link at `path` pointing to `target`, which is stored verbatim (a relative target resolves against the link's own directory). `force: true` replaces an entry already there, the `ln -sfn` case; `type: "dir"` is required for a directory link on Windows. |
+| `readLink(path)`                        | The target stored in the symbolic link at `path`. Throws if `path` is not a link.                                                                                                          |
 | `homeDirectory()`                       | The current user's home directory (`$HOME`, or `$USERPROFILE` on Windows); throws a clear error if neither is set.                                                                          |
 
 The mutating operations are deliberately **missing-target-tolerant**, so the
 common `clean`/`package` sequence stays idempotent: `cleanDirectory` and
 `remove` no-op on an absent path instead of throwing, and a recursive
-`createDirectory` is safe to call repeatedly.
+`createDirectory` is safe to call repeatedly. `symlink` joins that set only
+with `force: true` — without it, linking onto an occupied path throws, which is
+what `Deno.symlink` does and what a caller who did not expect an existing entry
+wants to hear about.
 
 ```ts
 clean = target().executes(async () => {
