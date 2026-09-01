@@ -43,6 +43,27 @@ export interface CopyOptions {
   overwrite?: boolean;
 }
 
+/** Options for {@link FileTasksApi.symlink}. */
+export interface SymlinkOptions {
+  /**
+   * Replace an existing entry at the link path, the way `ln -sfn` does
+   * (default `false`, which throws an `AlreadyExists` as `Deno.symlink` does).
+   *
+   * The replacement is atomic: the new link is created under a sibling temp
+   * name and renamed over the path, so a concurrent reader sees either the old
+   * entry or the new link and never a missing path. A **directory** at the
+   * path is never replaced — the rename refuses it, empty or not — so forcing
+   * a link cannot cost a caller a directory.
+   */
+  force?: boolean;
+  /**
+   * What the link points at: `"file"` or `"dir"`. Windows needs the
+   * distinction and ignores nothing else; POSIX ignores the option entirely.
+   * Pass `"dir"` when linking a directory, or the link is unusable on Windows.
+   */
+  type?: "file" | "dir";
+}
+
 /** Whether a filesystem entry exists; a `NotFound` maps to `false`. */
 async function entryExists(path: string): Promise<boolean> {
   try {
@@ -132,6 +153,33 @@ export interface FileTasksApi {
   /** Move (rename) `source` to `destination`. */
   move(source: PathLike, destination: PathLike): Promise<void>;
 
+  /**
+   * Create a symbolic link at `path` pointing to `target`.
+   *
+   * `target` is stored in the link verbatim, so a relative one resolves
+   * against the link's own directory — which is what makes a link between two
+   * sibling checkouts survive both being moved together.
+   *
+   * With {@link SymlinkOptions.force} an entry already at `path` is replaced
+   * atomically, which is the `ln -sfn` case a re-run of an idempotent target
+   * needs; without it an existing entry is an `AlreadyExists` error. A
+   * directory at `path` is never replaced.
+   */
+  symlink(
+    target: PathLike,
+    path: PathLike,
+    options?: SymlinkOptions,
+  ): Promise<void>;
+
+  /**
+   * The target of the symbolic link at `path`, exactly as stored in the link —
+   * relative if it was created relative, and not checked for existence.
+   *
+   * Throws if `path` is not a symbolic link, which is the same answer
+   * `Deno.readLink` gives.
+   */
+  readLink(path: PathLike): Promise<string>;
+
   /** Read the UTF-8 text content of the file at `path`. */
   readText(path: PathLike): Promise<string>;
 
@@ -206,6 +254,54 @@ export const FileTasks: FileTasksApi = {
 
   move(source: PathLike, destination: PathLike): Promise<void> {
     return Deno.rename(String(source), String(destination));
+  },
+
+  async symlink(
+    target: PathLike,
+    path: PathLike,
+    options: SymlinkOptions = {},
+  ): Promise<void> {
+    const linkPath = String(path);
+    // Deno.symlink takes `{ type }`, and rejects an unknown key, so the
+    // force flag is this layer's own and never reaches it.
+    const denoOptions = options.type === undefined
+      ? undefined
+      : { type: options.type };
+    try {
+      await Deno.symlink(String(target), linkPath, denoOptions);
+      return;
+    } catch (error) {
+      // Attempt first, then replace: a caller without `force` gets Deno's own
+      // AlreadyExists untouched, and nothing on disk is unlinked until the
+      // path is known to be occupied.
+      if (!(error instanceof Deno.errors.AlreadyExists) || !options.force) {
+        throw error;
+      }
+    }
+    // Occupied, and the caller asked to force it. Link at a sibling temp name
+    // and rename that over the path, rather than unlinking the path first.
+    //
+    // The rename is atomic, which buys two things an unlink-then-link cannot.
+    // A concurrent reader sees either the old entry or the new link, never a
+    // missing path. And nothing is ever removed *by name*: an entry that
+    // appeared between the failed attempt and this line is replaced, not
+    // deleted out from under whoever created it — including a directory, which
+    // rename refuses outright, so a link request cannot cost a caller a
+    // directory whether it was empty or not.
+    const tmp = `${linkPath}.zuke-symlink-${crypto.randomUUID()}`;
+    await Deno.symlink(String(target), tmp, denoOptions);
+    try {
+      await Deno.rename(tmp, linkPath);
+    } catch (error) {
+      // The link exists at a name nobody asked for; take it back out before
+      // reporting why it could not be published.
+      await Deno.remove(tmp).catch(() => {});
+      throw error;
+    }
+  },
+
+  readLink(path: PathLike): Promise<string> {
+    return Deno.readLink(String(path));
   },
 
   readText(path: PathLike): Promise<string> {
