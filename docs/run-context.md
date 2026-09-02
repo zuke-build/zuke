@@ -116,7 +116,7 @@ lines (JSON, JUnit, or a machine-readable format) reports nothing.
 
 | Wrapper | Notes on the row |
 | --- | --- |
-| `DenoTasks.test` | `Tests`, `Passed`, `Failed`, and `Ignored` when non-zero |
+| `DenoTasks.test` (and every test-runner wrapper) | `Tests`, `Passed`, `Failed`, then `Skipped`, `Todo`, `Flaky` when non-zero |
 | `DenoTasks.coverage` | `Lines`, and `Branches` when any were measured |
 | `DenoTasks.lint` | `Files`, `Problems` |
 | `DenoTasks.fmt` | `Files`, and `Unformatted` under `.check()` |
