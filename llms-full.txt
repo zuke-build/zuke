@@ -5796,8 +5796,8 @@ class DenoTestSettings extends DenoPermissionSettings
 
   A run reports its counts into the running target's row of the build
   summary — `// Tests: 837 · Passed: 837 · Failed: 0` — read from the result
-  line the pretty and dot reporters print; a failed run reports too, so a red
-  row says how many failed. The JUnit and TAP reporters print no such line,
+  line the pretty and dot reporters print (ignored tests count as `Skipped`);
+  a failed run reports too, so a red row says how many failed. The JUnit and TAP reporters print no such line,
   so a run under `.reporter("junit")`/`.reporter("tap")` reports nothing.
 
   paths(...paths: PathLike[]): this
@@ -7099,6 +7099,8 @@ class BunTestSettings extends BunSettings
     Collect coverage (`--coverage`).
   bail(): this
     Stop after the first failure (`--bail`).
+  override protected onOutput(output: CommandOutput): void
+    Report the run's counts onto the build summary (see the module docs).
   override protected buildArgs(): string[]
     Assemble the `bun test` argv.
 
@@ -10699,6 +10701,8 @@ class JestSettings extends ToolSettings
     Restrict to named projects (`--selectProjects`); repeatable.
   reporters(...names: string[]): this
     Use the named reporters (`--reporters`); repeatable.
+  override protected onOutput(output: CommandOutput): void
+    Report the run's counts onto the build summary (see the module docs).
   override protected buildArgs(): string[]
     Assemble the `jest` argv from the configured flags and patterns.
 
@@ -10778,6 +10782,8 @@ class VitestSettings extends ToolSettings
     Pass when no tests are found (`--passWithNoTests`).
   silent(): this
     Suppress test console output (`--silent`).
+  override protected onOutput(output: CommandOutput): void
+    Report the run's counts onto the build summary (see the module docs).
   override protected buildArgs(): string[]
     Assemble the `vitest run`/`vitest watch` argv.
 
@@ -10867,6 +10873,8 @@ class PlaywrightTestSettings extends PlaywrightSettings
     Use a specific config file (`--config=`).
   paths(...filters: string[]): this
     Test file or directory filters to run; omit to run all tests.
+  override protected onOutput(output: CommandOutput): void
+    Report the run's counts onto the build summary (see the module docs).
   override protected buildArgs(): string[]
     Assemble the `playwright test` argv.
 
@@ -10935,6 +10943,8 @@ class CypressRunSettings extends CypressTestingSettings
     Tag the recorded run (`--tag`).
   port(value: number): this
     Override the server port (`--port`).
+  override protected onOutput(output: CommandOutput): void
+    Report the run's counts onto the build summary (see the module docs).
   override protected buildArgs(): string[]
     Assemble the `cypress run` argv.
 
@@ -12559,6 +12569,8 @@ class NodeTestSettings extends NodeSettings
     Re-run tests on file changes (`--watch`).
   experimentalTestCoverage(): this
     Collect and report test coverage (`--experimental-test-coverage`).
+  override protected onOutput(output: CommandOutput): void
+    Report the run's counts onto the build summary (see the module docs).
   override protected buildArgs(): string[]
     Assemble the `node --test [paths] [flags]` argv.
 

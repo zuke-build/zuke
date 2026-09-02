@@ -25,6 +25,8 @@ import {
   ToolSettings,
 } from "@zuke/core/tooling";
 import type { CommandOutput } from "@zuke/core/shell";
+import { reportTestCounts } from "@zuke/core";
+import { parseTestSummary } from "./test_summary.ts";
 
 /** Base for all `cypress` subcommand settings: the binary is `cypress`. */
 export abstract class CypressSettings extends ToolSettings {
@@ -137,6 +139,12 @@ export class CypressRunSettings extends CypressTestingSettings {
   port(value: number): this {
     this.#port = value;
     return this;
+  }
+
+  /** Report the run's counts onto the build summary (see the module docs). */
+  protected override onOutput(output: CommandOutput): void {
+    const counts = parseTestSummary(output);
+    if (counts !== undefined) reportTestCounts(counts);
   }
 
   /** Assemble the `cypress run` argv. */

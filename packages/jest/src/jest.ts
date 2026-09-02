@@ -26,6 +26,8 @@ import {
   ToolSettings,
 } from "@zuke/core/tooling";
 import type { CommandOutput } from "@zuke/core/shell";
+import { reportTestCounts } from "@zuke/core";
+import { parseTestSummary } from "./test_summary.ts";
 
 /** Settings for a `jest` run. */
 export class JestSettings extends ToolSettings {
@@ -164,6 +166,12 @@ export class JestSettings extends ToolSettings {
   reporters(...names: string[]): this {
     this.#reporters.push(...names);
     return this;
+  }
+
+  /** Report the run's counts onto the build summary (see the module docs). */
+  protected override onOutput(output: CommandOutput): void {
+    const counts = parseTestSummary(output);
+    if (counts !== undefined) reportTestCounts(counts);
   }
 
   /** Assemble the `jest` argv from the configured flags and patterns. */

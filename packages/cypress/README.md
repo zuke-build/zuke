@@ -67,6 +67,8 @@ class CypressRunSettings extends CypressTestingSettings
     Tag the recorded run (`--tag`).
   port(value: number): this
     Override the server port (`--port`).
+  override protected onOutput(output: CommandOutput): void
+    Report the run's counts onto the build summary (see the module docs).
   override protected buildArgs(): string[]
     Assemble the `cypress run` argv.
 

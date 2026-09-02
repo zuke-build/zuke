@@ -25,6 +25,8 @@ import {
   ToolSettings,
 } from "@zuke/core/tooling";
 import type { CommandOutput } from "@zuke/core/shell";
+import { reportTestCounts } from "@zuke/core";
+import { parseTestSummary } from "./test_summary.ts";
 
 /** Base for all Playwright subcommand settings: binary is `playwright`. */
 export abstract class PlaywrightSettings extends ToolSettings {
@@ -103,6 +105,12 @@ export class PlaywrightTestSettings extends PlaywrightSettings {
   paths(...filters: string[]): this {
     this.#paths.push(...filters);
     return this;
+  }
+
+  /** Report the run's counts onto the build summary (see the module docs). */
+  protected override onOutput(output: CommandOutput): void {
+    const counts = parseTestSummary(output);
+    if (counts !== undefined) reportTestCounts(counts);
   }
 
   /** Assemble the `playwright test` argv. */

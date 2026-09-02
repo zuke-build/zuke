@@ -81,6 +81,8 @@ class JestSettings extends ToolSettings
     Restrict to named projects (`--selectProjects`); repeatable.
   reporters(...names: string[]): this
     Use the named reporters (`--reporters`); repeatable.
+  override protected onOutput(output: CommandOutput): void
+    Report the run's counts onto the build summary (see the module docs).
   override protected buildArgs(): string[]
     Assemble the `jest` argv from the configured flags and patterns.
 
