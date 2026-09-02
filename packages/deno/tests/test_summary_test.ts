@@ -10,10 +10,11 @@ import { CommandError } from "@zuke/core/shell";
 import { parseTestSummary, testSummaryPairs } from "../src/test_summary.ts";
 import { DenoTasks } from "../src/deno.ts";
 
-const PASSING =
-  new URL("./fixtures/passing_suite.ts", import.meta.url).pathname;
-const FAILING =
-  new URL("./fixtures/failing_suite.ts", import.meta.url).pathname;
+// The fixtures are addressed by `file://` URL, which is byte-identical on
+// every OS — a URL's `pathname` is not: on Windows it reads `/D:/…`, which
+// deno cannot open.
+const PASSING = new URL("./fixtures/passing_suite.ts", import.meta.url).href;
+const FAILING = new URL("./fixtures/failing_suite.ts", import.meta.url).href;
 
 Deno.test("parseTestSummary reads the pretty/dot result line in each of its shapes", () => {
   assertEquals(parseTestSummary("ok | 5 passed | 0 failed (12ms)\n"), {
