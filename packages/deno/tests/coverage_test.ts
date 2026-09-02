@@ -288,3 +288,20 @@ Deno.test("enforceCoverage reports no branch figure for a branchless report", as
   });
   assertEquals(summary.entries(), [{ key: "Lines", value: "100.0%" }]);
 });
+
+Deno.test("enforceCoverage outside a running target still gates, and its report goes nowhere", () => {
+  // No ambient collector is installed here: the report is a no-op, so the
+  // gate's own result is unaffected and nothing leaks into a later target.
+  const lcov = "SF:a.ts\nLF:10\nLH:9\nBRF:4\nBRH:3\nend_of_record\n";
+  assertEquals(enforceCoverage(lcov, { lines: 80 }, true), []);
+  assertThrows(
+    () => enforceCoverage(lcov, { lines: 95 }, true),
+    CoverageThresholdError,
+    "line coverage 90.0% < 95%",
+  );
+  const later = new TargetSummary();
+  return withAmbientSummary(later, () => {
+    assertEquals(later.entries(), []);
+    return Promise.resolve();
+  });
+});
