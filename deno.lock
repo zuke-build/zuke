@@ -1608,7 +1608,7 @@
       },
       "packages/deno": {
         "dependencies": [
-          "jsr:@zuke/core@^1.25.0"
+          "jsr:@zuke/core@^1.44.0"
         ]
       },
       "packages/docker": {
