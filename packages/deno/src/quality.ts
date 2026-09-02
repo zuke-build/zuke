@@ -7,7 +7,14 @@
  */
 
 import type { PathLike } from "@zuke/core/tooling";
+import type { CommandOutput } from "@zuke/core/shell";
+import { reportSummary } from "@zuke/core";
 import { DenoSettings } from "./settings.ts";
+import {
+  parseDenoCheckSummary,
+  parseDenoFmtSummary,
+  parseDenoLintSummary,
+} from "./quality_summary.ts";
 import {
   ConfigFlags,
   DependencyFlags,
@@ -174,6 +181,12 @@ export class DenoCheckSettings extends DenoSettings {
   noClearScreen(): this {
     this.#watch.noClearScreen();
     return this;
+  }
+
+  /** Report `Errors`, the diagnostics printed, onto the build summary. */
+  protected override onOutput(output: CommandOutput): void {
+    const pairs = parseDenoCheckSummary(output);
+    if (pairs !== undefined) reportSummary(pairs);
   }
 
   /** Assemble the `deno check` argv. */
@@ -348,6 +361,12 @@ export class DenoFmtSettings extends DenoSettings {
     return this;
   }
 
+  /** Report `Files` (and `Unformatted` under `--check`) onto the build summary. */
+  protected override onOutput(output: CommandOutput): void {
+    const pairs = parseDenoFmtSummary(output);
+    if (pairs !== undefined) reportSummary(pairs);
+  }
+
   /** Assemble the `deno fmt` argv. */
   protected override buildArgs(): string[] {
     if (this.#config.contradictory) {
@@ -501,6 +520,12 @@ export class DenoLintSettings extends DenoSettings {
     }
     this.#format = format;
     return this;
+  }
+
+  /** Report `Files` and `Problems` onto the build summary. */
+  protected override onOutput(output: CommandOutput): void {
+    const pairs = parseDenoLintSummary(output);
+    if (pairs !== undefined) reportSummary(pairs);
   }
 
   /** Assemble the `deno lint` argv. */

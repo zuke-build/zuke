@@ -26,6 +26,8 @@ import {
   ToolSettings,
 } from "@zuke/core/tooling";
 import type { CommandOutput } from "@zuke/core/shell";
+import { reportSummary } from "@zuke/core";
+import { parseCspellSummary } from "./summary.ts";
 
 /** Settings for a `cspell lint` run. */
 export class CspellSettings extends ToolSettings {
@@ -164,6 +166,12 @@ export class CspellSettings extends ToolSettings {
   maxDuplicateProblems(count: number): this {
     this.#maxDuplicateProblems = count;
     return this;
+  }
+
+  /** Report `Files` checked and `Issues` found onto the build summary. */
+  protected override onOutput(output: CommandOutput): void {
+    const pairs = parseCspellSummary(output);
+    if (pairs !== undefined) reportSummary(pairs);
   }
 
   /** Assemble the `cspell lint` argv. */

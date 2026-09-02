@@ -244,6 +244,8 @@ class DenoCheckSettings extends DenoSettings
     Exclude paths from the watcher (`--watch-exclude`).
   noClearScreen(): this
     Keep previous output when re-running under `--watch` (`--no-clear-screen`).
+  override protected onOutput(output: CommandOutput): void
+    Report `Errors`, the diagnostics printed, onto the build summary.
   override protected buildArgs(): string[]
     Assemble the `deno check` argv.
 
@@ -473,6 +475,8 @@ class DenoFmtSettings extends DenoSettings
     Keep previous output when re-running under `--watch` (`--no-clear-screen`).
   paths(...paths: PathLike[]): this
     Restrict formatting to specific files or directories.
+  override protected onOutput(output: CommandOutput): void
+    Report `Files` (and `Unformatted` under `--check`) onto the build summary.
   override protected buildArgs(): string[]
     Assemble the `deno fmt` argv.
 
@@ -661,6 +665,8 @@ class DenoLintSettings extends DenoSettings
     Keep previous output when re-running under `--watch` (`--no-clear-screen`).
   paths(...paths: PathLike[]): this
     Restrict linting to specific files or directories.
+  override protected onOutput(output: CommandOutput): void
+    Report `Files` and `Problems` onto the build summary.
   override protected buildArgs(): string[]
     Assemble the `deno lint` argv.
 

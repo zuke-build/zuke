@@ -89,6 +89,8 @@ class CspellSettings extends ToolSettings
     Exclude files matching a glob (`-e`/`--exclude`); repeatable.
   maxDuplicateProblems(count: number): this
     Cap the number of duplicate problems reported (`--max-duplicate-problems`).
+  override protected onOutput(output: CommandOutput): void
+    Report `Files` checked and `Issues` found onto the build summary.
   override protected buildArgs(): string[]
     Assemble the `cspell lint` argv.
 

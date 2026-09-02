@@ -77,6 +77,8 @@ class OxlintSettings extends ToolSettings
     Output format, e.g. `default`, `json`, `github` (`-f`/`--format`).
   threads(count: number): this
     Number of threads to use (`--threads`).
+  override protected onOutput(output: CommandOutput): void
+    Report `Errors`, `Warnings` (and `Files` when known) onto the build summary.
   override protected buildArgs(): string[]
     Assemble the `oxlint` argv from the configured settings.
 

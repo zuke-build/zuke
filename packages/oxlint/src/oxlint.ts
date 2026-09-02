@@ -26,6 +26,8 @@ import {
   ToolSettings,
 } from "@zuke/core/tooling";
 import type { CommandOutput } from "@zuke/core/shell";
+import { reportSummary } from "@zuke/core";
+import { parseOxlintSummary } from "./summary.ts";
 
 /** Settings for an `oxlint` run. */
 export class OxlintSettings extends ToolSettings {
@@ -141,6 +143,12 @@ export class OxlintSettings extends ToolSettings {
   threads(count: number): this {
     this.#threads = count;
     return this;
+  }
+
+  /** Report `Errors`, `Warnings` (and `Files` when known) onto the build summary. */
+  protected override onOutput(output: CommandOutput): void {
+    const pairs = parseOxlintSummary(output);
+    if (pairs !== undefined) reportSummary(pairs);
   }
 
   /** Assemble the `oxlint` argv from the configured settings. */
