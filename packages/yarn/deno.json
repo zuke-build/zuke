@@ -1,6 +1,6 @@
 {
   "name": "@zuke/yarn",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "license": "MIT",
   "description": "Typed yarn CLI task wrappers for Zuke builds — install, add, remove, run, and dlx via an injection-free settings-lambda API.",
   "exports": {
