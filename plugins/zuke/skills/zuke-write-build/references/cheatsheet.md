@@ -166,7 +166,10 @@ terminal and in the Actions job summary. A failed target keeps its notes.
 itself, and `DenoTasks.coverage` reports the measured Lines/Branches — a body
 only adds what its tools do not. Library code with no `ctx` (a wrapper, a
 helper) uses the ambient `reportSummary(pairs)` from `@zuke/core`, which lands
-on the running target's row and is a no-op outside a run.
+on the running target's row and is a no-op outside a run. Test counts have one
+shared shape: `reportTestCounts({ passed, failed, skipped?, todo?, flaky? })`
+reports `Tests` (the sum), `Passed`, `Failed`, then `Skipped`/`Todo`/`Flaky`
+only when non-zero — the labels every test-runner wrapper uses.
 
 `ctx.outcomes()` is a snapshot, not a live view, and a target that has not
 settled is **absent** rather than present with a placeholder — so depend on what

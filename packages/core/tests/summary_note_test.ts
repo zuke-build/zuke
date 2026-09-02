@@ -4,6 +4,7 @@
 import { assertEquals } from "./_assert.ts";
 import {
   reportSummary,
+  reportTestCounts,
   TargetSummary,
   withAmbientSummary,
 } from "../src/summary_note.ts";
@@ -79,4 +80,52 @@ Deno.test("withAmbientSummary returns the function's result and unwinds the coll
   assertEquals(value, 42);
   reportSummary({ After: "scope" });
   assertEquals(s.entries(), []);
+});
+
+Deno.test("reportTestCounts totals every category and names the optional ones only when non-zero", async () => {
+  const bare = new TargetSummary();
+  await withAmbientSummary(bare, () => {
+    reportTestCounts({ passed: 4, failed: 1 });
+    return Promise.resolve();
+  });
+  assertEquals(bare.entries(), [
+    { key: "Tests", value: "5" },
+    { key: "Passed", value: "4" },
+    { key: "Failed", value: "1" },
+  ]);
+
+  const full = new TargetSummary();
+  await withAmbientSummary(full, () => {
+    reportTestCounts({ passed: 2, failed: 0, skipped: 1, todo: 3, flaky: 1 });
+    return Promise.resolve();
+  });
+  assertEquals(full.entries(), [
+    { key: "Tests", value: "7" },
+    { key: "Passed", value: "2" },
+    { key: "Failed", value: "0" },
+    { key: "Skipped", value: "1" },
+    { key: "Todo", value: "3" },
+    { key: "Flaky", value: "1" },
+  ]);
+
+  // An explicit zero for an optional category is the same as leaving it out.
+  const zeros = new TargetSummary();
+  await withAmbientSummary(zeros, () => {
+    reportTestCounts({ passed: 1, failed: 0, skipped: 0, todo: 0, flaky: 0 });
+    return Promise.resolve();
+  });
+  assertEquals(zeros.entries().map((e) => e.key), [
+    "Tests",
+    "Passed",
+    "Failed",
+  ]);
+});
+
+Deno.test("reportTestCounts outside a running target is a no-op", () => {
+  reportTestCounts({ passed: 1, failed: 0 });
+  const s = new TargetSummary();
+  return withAmbientSummary(s, async () => {
+    await Promise.resolve();
+    assertEquals(s.entries(), []);
+  });
 });
