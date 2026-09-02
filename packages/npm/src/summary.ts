@@ -22,7 +22,7 @@ const CLOSING =
 /** One counted phrase of the closing line. */
 const COUNT = /\b(added|removed|changed) (\d+) packages?/g;
 /** The audit line, printed when the command audited. */
-const VULNERABILITIES = /^found (\d+) vulnerabilit(?:y|ies)/m;
+const VULNERABILITIES = /^found (\d+) (?:vulnerability|vulnerabilities)/m;
 
 /**
  * The notes for a run: `Added`, `Removed` and `Changed` (zero when the
