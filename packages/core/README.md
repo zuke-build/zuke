@@ -570,6 +570,22 @@ function repoRoot(...segments: string[]): AbsolutePath
   @throws
       if no {@link CONFIG_FILE} is found in the cwd or any ancestor.
 
+function reportSummary(pairs: SummaryPairs): void
+  Report `key: value` notes into the running target's row of the
+  end-of-build summary — the ambient form of
+  {@link "./target.ts".TargetContext.reportSummary}, for code that has no
+  context in hand: a tool wrapper reporting the counts its tool printed, or a
+  helper called from a body.
+
+  ```ts
+  reportSummary({ Tests: 837, Passed: 837, Failed: 0 });
+  ```
+
+  Notes accumulate across calls in the same target, and reporting a key again
+  replaces its value. Outside a running target (a wrapper called from a plain
+  script, a compensation) there is no row to report into, so the call is a
+  no-op rather than an error — a wrapper never has to ask where it runs.
+
 function resolveBuildId(readEnv: (name: string) => string | undefined): string | undefined
   The origin of the build running in this process — `ZUKE_BUILD_ID`, else
   `GITHUB_REPOSITORY`, else `undefined` when neither is set.
@@ -3791,6 +3807,14 @@ interface StateStore
     should go through {@link listStoreLocks}, which fails with a message naming
     the backend instead of pretending the store holds nothing.
 
+interface SummaryEntry
+  One rendered `key: value` note on a target's summary row.
+
+  readonly key: string
+    The note's label, as reported (whitespace collapsed to one line).
+  readonly value: string
+    The note's value, rendered as text (whitespace collapsed to one line).
+
 interface SymlinkOptions
   Options for {@link FileTasksApi.symlink}.
 
@@ -3871,6 +3895,22 @@ interface TargetContext
     Every outcome this run has settled so far, keyed by dotted target name — a
     snapshot, not a live view. Targets that have not settled are absent rather
     than present with a placeholder status.
+  reportSummary(pairs: SummaryPairs): void
+    Report `key: value` notes into this target's row of the end-of-build
+    summary — where a count or a version belongs once the body is done:
+
+    ```text
+    test        Succeeded    8.1s  // Tests: 837 · Passed: 837 · Failed: 0
+    ```
+
+    Notes accumulate across calls, and reporting a key again replaces its
+    value in place. Each key and value is rendered on one line (whitespace
+    collapsed, control sequences removed). Library code with no context in
+    hand — a tool wrapper reporting the counts its tool printed — reports
+    through the ambient {@link "./summary_note.ts".reportSummary}, and those
+    notes land in the same row. A failed target keeps its notes:
+    a red `test` row still says how many failed. A compensation (see
+    {@link TargetBuilder.onCancel}) has no row, so its calls are dropped.
 
 interface TargetOutcomeView
   What another target in this run did, as {@link TargetContext.outcomeOf}
@@ -3899,6 +3939,10 @@ interface TargetReport
     The target's terminal status.
   ms: number
     The target's wall-clock duration in milliseconds.
+  summary?: SummaryEntry[]
+    The notes the target reported into its row (see
+    {@link "./target.ts".TargetContext.reportSummary}) — present only when it
+    reported at least one, so a note-less row stays `{ name, status, ms }`.
 
 interface TargetRunState
   The recorded progress of a single target.
@@ -4170,6 +4214,13 @@ type RunStatus = "running" | "suspended" | "cancelling" | "succeeded" | "failed"
   The lifecycle status of a whole run. `cancelling` is the transient state a
   cancellation moves through — the run has been asked to stop and its
   compensations are running — before it settles as `cancelled`.
+
+type SummaryPairs = Readonly<Record<string, SummaryValue>>
+  The notes a target reports, keyed by their label — `{ Passed: 837, Failed: 0 }`.
+  Keys render in the order they are first reported.
+
+type SummaryValue = string | number
+  A value a summary note may carry; a number is rendered as written.
 
 type Target = TargetBuilder
   A configured target. Alias of {@link TargetBuilder} — the same object both
@@ -4515,6 +4566,13 @@ abstract class ToolSettings
     The binary to spawn when {@link toolPath} is not set.
   abstract protected buildArgs(): string[]
     The subcommand argv. Must be pure — no I/O, no environment reads.
+  protected onOutput(_output: CommandOutput): void
+    Called by {@link run} with the process's output once it has exited —
+    before a non-zero exit becomes a `CommandError`, so a wrapper sees the
+    output of a failed run too. The base does nothing. A wrapper overrides it
+    to read a result its tool prints and report it, e.g. a test runner's
+    pass/fail line into the build summary via `reportSummary`; it must not
+    throw. Not called when the process times out or could not be spawned.
   protected defaultResolution(): ToolResolution
     The wrapper's default binary-resolution strategy. The base returns
     `"path"` (bare name on `PATH`); a JS-ecosystem wrapper whose binary is

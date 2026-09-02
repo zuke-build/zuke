@@ -153,8 +153,18 @@ deploy = target().executes(async (ctx) => {
   ctx.signals.get("approved"); // an external signal's payload (see waits)
   ctx.outcomeOf("checks")?.status; // one target's settled outcome, or undefined
   ctx.outcomes(); // every outcome settled SO FAR, keyed by dotted name
+  ctx.reportSummary({ Version: "3.6.2" }); // a note on THIS row of the Build Summary
 });
 ```
+
+**Summary notes.** `ctx.reportSummary({ key: value, … })` puts `key: value`
+pairs on the target's own row of the end-of-build summary, NUKE-style:
+`test  Succeeded  8.1s  // Tests: 837 · Passed: 837 · Failed: 0`. Notes
+accumulate; a repeated key replaces its value; each renders on one line, in the
+terminal and in the Actions job summary. A failed target keeps its notes.
+Library code with no `ctx` (a wrapper reporting what its tool printed, a
+helper) uses the ambient `reportSummary(pairs)` from `@zuke/core`, which lands
+on the running target's row and is a no-op outside a run.
 
 `ctx.outcomes()` is a snapshot, not a live view, and a target that has not
 settled is **absent** rather than present with a placeholder — so depend on what

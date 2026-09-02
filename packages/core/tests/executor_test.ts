@@ -42,6 +42,7 @@ import {
 } from "../src/executor.ts";
 import type { Plugin } from "../src/plugin.ts";
 import { $ } from "../src/shell.ts";
+import { reportSummary } from "../src/summary_note.ts";
 import { FileSystemStateStore } from "../src/state/fs_store.ts";
 import { defaultStateHost } from "../src/state/store.ts";
 import { LockConflictError } from "../src/state/lock.ts";
@@ -3171,4 +3172,92 @@ Deno.test("teardown behind a gate that will never reopen runs, parallel or not",
       );
     });
   }
+});
+
+Deno.test("summary: a body's ctx.reportSummary and the ambient reportSummary land on its row", async () => {
+  const { lines, reporter } = recorder();
+  class B extends Build {
+    test = target().executes(async (ctx) => {
+      // A wrapper with no ctx reports through the ambient form; the body adds
+      // its own note.
+      await Promise.resolve();
+      reportSummary({ Tests: 3, Passed: 3 });
+      ctx.reportSummary({ Failed: 0, Version: "1.2.3" });
+    });
+    pack = target().dependsOn(this.test).executes(() => {});
+  }
+  const b = new B();
+  discoverTargets(b);
+
+  const result = await execute(b, b.pack, { reporter, github: false });
+  assertEquals(result.ok, true);
+  const test = lines.find((l) =>
+    l.startsWith("test ") && l.includes("Succeeded")
+  );
+  assertStringIncludes(
+    test ?? "",
+    "// Tests: 3 · Passed: 3 · Failed: 0 · Version: 1.2.3",
+  );
+  const pack = lines.find((l) =>
+    l.startsWith("pack ") && l.includes("Succeeded")
+  );
+  assertEquals(pack?.includes("//"), false);
+});
+
+Deno.test("summary: a failed target keeps the notes it reported before failing", async () => {
+  const { lines, reporter } = recorder();
+  class B extends Build {
+    test = target().executes((ctx) => {
+      ctx.reportSummary({ Tests: 2, Failed: 1 });
+      throw new Error("1 test failed");
+    });
+  }
+  const b = new B();
+  discoverTargets(b);
+
+  const result = await execute(b, b.test, { reporter, github: false });
+  assertEquals(result.ok, false);
+  const row = lines.find((l) => l.startsWith("test ") && l.includes("Failed "));
+  assertStringIncludes(row ?? "", "// Tests: 2 · Failed: 1");
+});
+
+Deno.test("summary: concurrent targets never see each other's notes", async () => {
+  const { lines, reporter } = recorder();
+  class B extends Build {
+    a = target().executes(async () => {
+      await new Promise((r) => setTimeout(r, 10));
+      reportSummary({ Who: "a" });
+    });
+    b = target().executes(async () => {
+      reportSummary({ Who: "b" });
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    all = target().dependsOn(this.a, this.b).executes(() => {});
+  }
+  const b = new B();
+  discoverTargets(b);
+
+  await execute(b, b.all, { reporter, github: false, parallel: true });
+  const rowA = lines.find((l) => l.startsWith("a ") && l.includes("Succeeded"));
+  const rowB = lines.find((l) => l.startsWith("b ") && l.includes("Succeeded"));
+  assertStringIncludes(rowA ?? "", "// Who: a");
+  assertStringIncludes(rowB ?? "", "// Who: b");
+});
+
+Deno.test("summary: a dry-runnable body's notes show under --dry-run", async () => {
+  const { lines, reporter } = recorder();
+  class B extends Build {
+    plan = target().dryRunnable().executes((ctx) => {
+      ctx.reportSummary({ Mode: ctx.dryRun ? "dry" : "wet" });
+      reportSummary({ Ambient: "yes" });
+    });
+  }
+  const b = new B();
+  discoverTargets(b);
+
+  await execute(b, b.plan, { reporter, github: false, dryRun: true });
+  const row = lines.find((l) =>
+    l.startsWith("plan ") && l.includes("Succeeded")
+  );
+  assertStringIncludes(row ?? "", "// Mode: dry · Ambient: yes");
 });

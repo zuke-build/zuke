@@ -36,6 +36,7 @@ import type { Configure } from "./tooling.ts";
 import { type LockHolder, lockKey } from "./state/lock.ts";
 import type { WaitTrigger } from "./wait.ts";
 import type { SignalRecord, TargetRunStatus } from "./state/types.ts";
+import type { SummaryPairs } from "./summary_note.ts";
 
 /**
  * Fluent configuration for {@link TargetBuilder.lock}, in the settings-lambda
@@ -359,6 +360,24 @@ export interface TargetContext {
   readonly signals: ReadonlyMap<string, SignalRecord>;
   /** True when the run is a dry run (bodies do not execute under a dry run). */
   readonly dryRun: boolean;
+  /**
+   * Report `key: value` notes into **this target's row** of the end-of-build
+   * summary — where a count or a version belongs once the body is done:
+   *
+   * ```text
+   * test        Succeeded    8.1s  // Tests: 837 · Passed: 837 · Failed: 0
+   * ```
+   *
+   * Notes accumulate across calls, and reporting a key again replaces its
+   * value in place. Each key and value is rendered on one line (whitespace
+   * collapsed, control sequences removed). Library code with no context in
+   * hand — a tool wrapper reporting the counts its tool printed — reports
+   * through the ambient {@link "./summary_note.ts".reportSummary}, and those
+   * notes land in the same row. A failed target keeps its notes:
+   * a red `test` row still says how many failed. A compensation (see
+   * {@link TargetBuilder.onCancel}) has no row, so its calls are dropped.
+   */
+  reportSummary(pairs: SummaryPairs): void;
 }
 
 /**

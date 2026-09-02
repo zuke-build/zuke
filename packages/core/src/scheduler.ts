@@ -27,6 +27,7 @@ import {
   type TargetOutcome,
 } from "./run_support.ts";
 import { withAmbientEcho } from "./ambient_echo.ts";
+import { TargetSummary, withAmbientSummary } from "./summary_note.ts";
 import { type Style, type TargetReport, targetWaitFooter } from "./report.ts";
 import type { Renderer } from "./renderer.ts";
 import {
@@ -208,6 +209,7 @@ function targetContextFor(
   name: string,
   env: RunEnv,
   dryRun: boolean,
+  summary: TargetSummary,
 ): TargetContext {
   // One own-state handle, reused for `stateOf(this target)` so the documented
   // `stateOf(self) === state` invariant holds even store-less (a fresh
@@ -228,7 +230,24 @@ function targetContextFor(
     outcomes: () => allOutcomes(env),
     signals: env.signals,
     dryRun,
+    reportSummary: (pairs) => summary.add(pairs),
   };
+}
+
+/**
+ * Attach the notes a target reported to its outcome — only when it reported
+ * any, so a note-less outcome stays a plain `{ status, ms }`.
+ */
+function noted(outcome: TargetOutcome, summary: TargetSummary): TargetOutcome {
+  const entries = summary.entries();
+  return entries.length === 0 ? outcome : { ...outcome, summary: entries };
+}
+
+/** The summary row for one target's outcome, carrying its notes when it has any. */
+function reportOf(name: string, outcome: TargetOutcome): TargetReport {
+  const report: TargetReport = { name, status: outcome.status, ms: outcome.ms };
+  if (outcome.summary !== undefined) report.summary = outcome.summary;
+  return report;
 }
 
 /**
@@ -388,6 +407,7 @@ async function runTarget(
     // or cache is taken.
     if (t.dryRunnable_ && t.fn_ !== undefined) {
       const echoState = inMemoryStateHandle();
+      const summary = new TargetSummary();
       const targetCtx: TargetContext = {
         runId: env.runId,
         target: name,
@@ -398,20 +418,25 @@ async function runTarget(
         outcomes: () => allOutcomes(env),
         signals: env.signals,
         dryRun: true,
+        reportSummary: (pairs) => summary.add(pairs),
       };
       const start = performance.now();
       try {
-        await withAmbientEcho(
-          (line) => reporter.info(`  $ ${line}`),
-          () => runBody(t, targetCtx),
+        await withAmbientSummary(
+          summary,
+          () =>
+            withAmbientEcho(
+              (line) => reporter.info(`  $ ${line}`),
+              () => runBody(t, targetCtx),
+            ),
         );
         const ms = performance.now() - start;
         passTarget(reporter, renderer, style, name, ms);
-        return { status: "passed", ms };
+        return noted({ status: "passed", ms }, summary);
       } catch (error) {
         const ms = performance.now() - start;
         failTarget(reporter, renderer, style, name, ms, error);
-        return { status: "failed", ms, error };
+        return noted({ status: "failed", ms, error }, summary);
       }
     }
     for (const line of renderer.targetDryRunFooter(style, name)) {
@@ -467,20 +492,25 @@ async function runTarget(
       // are owed now. Returning here without driving them would drop them
       // silently — the run reports success and nothing records the effect was
       // ever due.
+      const summary = new TargetSummary();
       try {
-        await driveEffects(
-          t,
-          name,
-          targetContextFor(name, env, dryRun),
-          env,
-          reporter,
+        await withAmbientSummary(
+          summary,
+          () =>
+            driveEffects(
+              t,
+              name,
+              targetContextFor(name, env, dryRun, summary),
+              env,
+              reporter,
+            ),
         );
       } catch (error) {
         failTarget(reporter, renderer, style, name, 0, error);
-        return { status: "failed", ms: 0, error };
+        return noted({ status: "failed", ms: 0, error }, summary);
       }
       passTarget(reporter, renderer, style, name, 0);
-      return { status: "passed", ms: 0 };
+      return noted({ status: "passed", ms: 0 }, summary);
     }
     env.statuses.set(name, { status: "waiting" });
     void env.writer?.markTargetWaiting(name, wait.waitState);
@@ -503,7 +533,10 @@ async function runTarget(
     return { status: "failed", ms: 0, error };
   }
 
-  const targetCtx = targetContextFor(name, env, dryRun);
+  // The collector behind `ctx.reportSummary` and the ambient `reportSummary`
+  // a tool wrapper calls; installed for the body's whole async subtree below.
+  const summary = new TargetSummary();
+  const targetCtx = targetContextFor(name, env, dryRun, summary);
 
   // Acquire the target's cross-run lock (if any) before the body. A conflict —
   // or a lock declared with no store — fails the target with the guidance.
@@ -517,18 +550,20 @@ async function runTarget(
   }
 
   try {
-    for (const v of t.validateBefore_) await v.validate({ target: name });
-    await runBodyWithRecovery(t, name, globalRecovery, targetCtx);
-    await driveEffects(t, name, targetCtx, env, reporter);
-    for (const v of t.validateAfter_) await v.validate({ target: name });
+    await withAmbientSummary(summary, async () => {
+      for (const v of t.validateBefore_) await v.validate({ target: name });
+      await runBodyWithRecovery(t, name, globalRecovery, targetCtx);
+      await driveEffects(t, name, targetCtx, env, reporter);
+      for (const v of t.validateAfter_) await v.validate({ target: name });
+    });
     const ms = performance.now() - start;
     if (cache !== undefined) await cache.record(t);
     passTarget(reporter, renderer, style, name, ms);
-    return { status: "passed", ms };
+    return noted({ status: "passed", ms }, summary);
   } catch (error) {
     const ms = performance.now() - start;
     failTarget(reporter, renderer, style, name, ms, error);
-    return { status: "failed", ms, error };
+    return noted({ status: "failed", ms, error }, summary);
   } finally {
     // Release on every path — success, failure, cancellation. The TTL is only
     // the backstop for a killed process.
@@ -717,7 +752,7 @@ export async function runSequential(
     }
     settleTarget(env, name, outcome.status, errorMessage(outcome.error));
     if (outcome.status === "passed" || outcome.status === "failed") opened++;
-    reports.push({ name, status: outcome.status, ms: outcome.ms });
+    reports.push(reportOf(name, outcome));
     // A fan-out target's sub-targets appear as their own rows beneath it.
     if (outcome.children !== undefined) reports.push(...outcome.children);
     if (outcome.status === "passed") executed.push(name);
@@ -968,7 +1003,7 @@ export async function runScheduled(
   for (const t of order) {
     const name = t.name_ ?? "<unnamed>";
     const outcome = outcomes.get(t) ?? { status: "skipped", ms: 0 };
-    reports.push({ name, status: outcome.status, ms: outcome.ms });
+    reports.push(reportOf(name, outcome));
     // A fan-out target's sub-targets appear as their own rows beneath it.
     if (outcome.children !== undefined) reports.push(...outcome.children);
     if (outcome.status === "passed") executed.push(name);

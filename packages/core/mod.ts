@@ -121,6 +121,12 @@ export {
   type Renderer,
   type TargetReport,
 } from "./src/renderer.ts";
+export {
+  reportSummary,
+  type SummaryEntry,
+  type SummaryPairs,
+  type SummaryValue,
+} from "./src/summary_note.ts";
 export type { Style } from "./src/render.ts";
 export type { BuildCache, OpenCacheOptions } from "./src/cache.ts";
 export {

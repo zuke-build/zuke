@@ -220,3 +220,99 @@ Deno.test("a group header cannot be broken out of either", () => {
   assertEquals(header.includes("\n"), false);
   assertStringIncludes(header, "%0A");
 });
+
+Deno.test("summaryBlock trails a row's notes after its duration, NUKE-style", () => {
+  const reports = [
+    {
+      name: "test",
+      status: "passed" as const,
+      ms: 8_100,
+      summary: [
+        { key: "Tests", value: "837" },
+        { key: "Passed", value: "837" },
+        { key: "Failed", value: "0" },
+      ],
+    },
+    { name: "pack", status: "passed" as const, ms: 100 },
+    { name: "empty", status: "passed" as const, ms: 100, summary: [] },
+  ];
+  const lines = summaryBlock(PLAIN, reports, 8_300, true, NOW);
+  const test = lines.find((l) => l.startsWith("test"));
+  assertEquals(
+    test?.endsWith("8.1s  // Tests: 837 · Passed: 837 · Failed: 0"),
+    true,
+  );
+  // Rows without notes are unchanged — and the notes do not widen the table.
+  const pack = lines.find((l) => l.startsWith("pack"));
+  assertEquals(pack?.trimEnd().endsWith("0.1s"), true);
+  const empty = lines.find((l) => l.startsWith("empty"));
+  assertEquals(empty?.trimEnd().endsWith("0.1s"), true);
+  // Target (6) + Succeeded (9) + Duration (8), two spaces between columns.
+  assertEquals(lines[2], "─".repeat(6 + 2 + 9 + 2 + 8));
+});
+
+Deno.test("summaryBlock dims a row's notes when colour is on", () => {
+  const lines = summaryBlock(
+    COLOR,
+    [{
+      name: "test",
+      status: "failed",
+      ms: 100,
+      summary: [{ key: "Failed", value: "1" }],
+    }],
+    100,
+    false,
+    NOW,
+  );
+  const row = lines.find((l) => l.startsWith("test"));
+  assertStringIncludes(row ?? "", "\x1b[2m// Failed: 1\x1b[0m");
+});
+
+Deno.test("jobSummaryMarkdown adds a Notes column only when some row has notes", () => {
+  const md = jobSummaryMarkdown(
+    [
+      {
+        name: "test",
+        status: "passed",
+        ms: 100,
+        summary: [{ key: "Tests", value: "3" }, { key: "Passed", value: "3" }],
+      },
+      { name: "pack", status: "passed", ms: 200 },
+    ],
+    300,
+    true,
+  );
+  assertStringIncludes(md, "| Target | Result | Time | Notes |\n");
+  assertStringIncludes(md, "| --- | --- | --- | --- |\n");
+  assertStringIncludes(
+    md,
+    "| test | ✔ Succeeded | 0.1s | Tests: 3 · Passed: 3 |",
+  );
+  assertStringIncludes(md, "| pack | ✔ Succeeded | 0.2s |  |");
+  assertStringIncludes(md, "| **Total** | | **0.3s** | |");
+
+  const plain = jobSummaryMarkdown(
+    [{ name: "pack", status: "passed", ms: 200 }],
+    200,
+    true,
+  );
+  assertEquals(plain.includes("Notes"), false);
+  assertStringIncludes(
+    plain,
+    "| Target | Result | Time |\n| --- | --- | --- |\n",
+  );
+});
+
+Deno.test("jobSummaryMarkdown escapes a pipe in a note so it cannot add a cell", () => {
+  const md = jobSummaryMarkdown(
+    [{
+      name: "t",
+      status: "passed",
+      ms: 0,
+      summary: [{ key: "Ratio", value: "a | b" }],
+    }],
+    0,
+    true,
+  );
+  assertStringIncludes(md, "| t | ✔ Succeeded | 0.0s | Ratio: a \\| b |");
+});
