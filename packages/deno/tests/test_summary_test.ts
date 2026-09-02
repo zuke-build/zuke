@@ -53,6 +53,25 @@ Deno.test("parseTestSummary ignores deno's colour codes and takes the last resul
   assertEquals(parseTestSummary(echoed), { passed: 1, failed: 2, ignored: 0 });
 });
 
+Deno.test("parseTestSummary reads the segments by name, whatever order they come in", () => {
+  // Deno prints ignored, then measured, then filtered out; a future release
+  // that reorders or renames nothing but shuffles them must still parse.
+  assertEquals(
+    parseTestSummary(
+      "ok | 3 filtered out | 2 measured | 1 ignored | 4 passed | 0 failed (7ms)",
+    ),
+    { passed: 4, failed: 0, ignored: 1 },
+  );
+  // A duration on the last segment must not swallow that segment's count.
+  assertEquals(
+    parseTestSummary("FAILED | 0 passed | 2 failed (1 step) (3ms)"),
+    { passed: 0, failed: 2, ignored: 0 },
+  );
+  // A verdict line without both passed and failed is not a result line.
+  assertEquals(parseTestSummary("ok | 3 filtered out (1ms)"), undefined);
+  assertEquals(parseTestSummary("ok | 3 passed (1ms)"), undefined);
+});
+
 Deno.test("parseTestSummary reports nothing for output without a result line", () => {
   assertEquals(parseTestSummary(""), undefined);
   assertEquals(
