@@ -360,6 +360,9 @@ export async function runCompensations(
       outcomes: () => outcomes,
       signals: deps.signals,
       dryRun: false,
+      // A compensation has no row in a build summary — the walk runs after the
+      // run it undoes has ended — so there is nowhere for a note to go.
+      reportSummary: () => {},
     };
     try {
       deps.reporter.info(

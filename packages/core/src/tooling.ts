@@ -22,7 +22,7 @@
  * @module
  */
 
-import { Command, type CommandOutput } from "./shell.ts";
+import { Command, CommandError, type CommandOutput } from "./shell.ts";
 import { checkMaxCapturedBytes } from "./capture.ts";
 import { type AbsolutePath, absolutePath, type PathLike } from "./path.ts";
 
@@ -221,6 +221,16 @@ export abstract class ToolSettings {
   protected abstract buildArgs(): string[];
 
   /**
+   * Called by {@link run} with the process's output once it has exited —
+   * **before** a non-zero exit becomes a `CommandError`, so a wrapper sees the
+   * output of a failed run too. The base does nothing. A wrapper overrides it
+   * to read a result its tool prints and report it, e.g. a test runner's
+   * pass/fail line into the build summary via `reportSummary`; it must not
+   * throw. Not called when the process times out or could not be spawned.
+   */
+  protected onOutput(_output: CommandOutput): void {}
+
+  /**
    * The wrapper's default binary-resolution strategy. The base returns
    * `"path"` (bare name on `PATH`); a JS-ecosystem wrapper whose binary is
    * almost always installed under `node_modules` overrides this to
@@ -368,15 +378,28 @@ export abstract class ToolSettings {
   }
 
   #command(argv: string[]): Command {
-    const command = new Command(argv).env(this.#env);
+    // Never let the command throw on exit: the exit code is judged in
+    // #execute, after onOutput has seen the output, so a wrapper can read a
+    // failed run's result before the failure propagates.
+    const command = new Command(argv).env(this.#env).noThrow();
     if (this.#cwd !== undefined) command.cwd(this.#cwd);
-    if (!this.#throwOnError) command.noThrow();
     if (this.#quiet) command.quiet();
     if (this.#timeoutMs !== undefined) command.killAfter(this.#timeoutMs);
     if (this.#maxCapturedBytes !== undefined) {
       command.maxCapturedBytes(this.#maxCapturedBytes);
     }
     return command;
+  }
+
+  /** Spawn `argv`, hand the output to {@link onOutput}, then judge the exit. */
+  async #execute(argv: string[]): Promise<CommandOutput> {
+    const command = this.#command(argv);
+    const output = await command;
+    this.onOutput(output);
+    if (output.code !== 0 && this.#throwOnError) {
+      throw new CommandError(command.commandLine, output.code, output.stderr);
+    }
+    return output;
   }
 
   /**
@@ -392,13 +415,13 @@ export abstract class ToolSettings {
     // NotFound retry below (which only fires for a bare name missing on PATH).
     const primary = windowsCmdShim(argv, this.os_);
     try {
-      return await this.#command(primary);
+      return await this.#execute(primary);
     } catch (error) {
       if (!(error instanceof Deno.errors.NotFound)) throw error;
       const fallback = shimFallbackArgv(argv, this.os_);
       if (fallback === null) throw new ToolNotFoundError(tool, sawNodeModules);
       try {
-        return await this.#command(fallback);
+        return await this.#execute(fallback);
       } catch (retryError) {
         if (retryError instanceof Deno.errors.NotFound) {
           throw new ToolNotFoundError(tool, sawNodeModules);

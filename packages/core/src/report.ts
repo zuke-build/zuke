@@ -16,6 +16,7 @@
 import { messageOf } from "./internal.ts";
 import type { TargetStatus } from "./build.ts";
 import { formatDuration, line, paint, SGR, type Style } from "./render.ts";
+import type { SummaryEntry } from "./summary_note.ts";
 
 export { detectWidth, formatDuration, type Style } from "./render.ts";
 
@@ -54,6 +55,24 @@ export interface TargetReport {
   status: TargetStatus;
   /** The target's wall-clock duration in milliseconds. */
   ms: number;
+  /**
+   * The notes the target reported into its row (see
+   * {@link "./target.ts".TargetContext.reportSummary}) — present only when it
+   * reported at least one, so a note-less row stays `{ name, status, ms }`.
+   */
+  summary?: SummaryEntry[];
+}
+
+/**
+ * Render a row's notes as `key: value · key: value`, or `""` for a row with
+ * none — the one shape both the terminal table and the job-summary Markdown
+ * print, so the two never drift.
+ */
+export function formatSummary(
+  entries: readonly SummaryEntry[] | undefined,
+): string {
+  if (entries === undefined) return "";
+  return entries.map((e) => `${e.key}: ${e.value}`).join(" · ");
 }
 
 /**
@@ -212,9 +231,17 @@ export function summaryBlock(
       STATUS_COLOR[r.status],
       STATUS_LABEL[r.status].padEnd(statusWidth),
     );
+    // A row's notes trail its duration NUKE-style (`// Passed: 837`), dimmed
+    // so the status and timing columns stay the thing the eye lands on. They
+    // are not part of the table's width: a long note overhangs the rules
+    // rather than pushing every duration to the right.
+    const note = formatSummary(r.summary);
+    const notes = note === ""
+      ? ""
+      : "  " + paint(style.color, SGR.dim, `// ${note}`);
     return r.name.padEnd(nameWidth) + "  " +
       status + "  " +
-      duration.padStart(durationWidth);
+      duration.padStart(durationWidth) + notes;
   });
 
   const totalLabel = paint(style.color, SGR.bold, "Total".padEnd(nameWidth));
@@ -314,21 +341,26 @@ export function jobSummaryMarkdown(
   const succeeded =
     reports.filter((r) => r.status === "passed" || r.status === "cached")
       .length;
+  // A Notes column only when some row has notes, so a build that reports none
+  // keeps the three-column table it always had.
+  const withNotes = reports.some((r) => formatSummary(r.summary) !== "");
+  const notesCell = (r: TargetReport) =>
+    withNotes ? ` ${formatSummary(r.summary).replaceAll("|", "\\|")} |` : "";
   const rows = reports.map((r) => {
     const ran = r.status === "passed" || r.status === "failed";
     const duration = ran ? formatDuration(r.ms) : "—";
     return `| ${r.name} | ${ICON[r.status]} ${
       STATUS_LABEL[r.status]
-    } | ${duration} |`;
+    } | ${duration} |${notesCell(r)}`;
   });
   return [
     `## ${ok ? "✅" : "❌"} Zuke build — ${succeeded}/${reports.length} ` +
     `targets in ${formatDuration(totalMs)}`,
     "",
-    "| Target | Result | Time |",
-    "| --- | --- | --- |",
+    `| Target | Result | Time |${withNotes ? " Notes |" : ""}`,
+    `| --- | --- | --- |${withNotes ? " --- |" : ""}`,
     ...rows,
-    `| **Total** | | **${formatDuration(totalMs)}** |`,
+    `| **Total** | | **${formatDuration(totalMs)}** |${withNotes ? " |" : ""}`,
     "",
   ].join("\n");
 }

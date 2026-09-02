@@ -15,6 +15,7 @@ import { messageOf } from "./internal.ts";
 import type { TargetStatus } from "./build.ts";
 import type { TargetOutcomeView } from "./target.ts";
 import type { TargetReport } from "./report.ts";
+import type { SummaryEntry } from "./summary_note.ts";
 import type { RunStateWriter } from "./state/writer.ts";
 import type { StateStore } from "./state/store.ts";
 import type {
@@ -32,6 +33,12 @@ export interface TargetOutcome {
   ms: number;
   /** The failure, when `status` is `"failed"`. */
   error?: unknown;
+  /**
+   * The notes the target reported into its summary row (see
+   * {@link "./target.ts".TargetContext.reportSummary}); present only when it
+   * reported at least one.
+   */
+  summary?: SummaryEntry[];
   /**
    * For a `.forEach(...)` fan-out target, the reports of its materialised
    * sub-targets, surfaced into the build summary and run record beneath the

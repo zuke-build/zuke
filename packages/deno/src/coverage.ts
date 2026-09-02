@@ -12,6 +12,8 @@
  * @module
  */
 
+import { reportSummary } from "@zuke/core";
+
 /** Raised when measured coverage falls below a configured threshold. */
 export class CoverageThresholdError extends Error {
   /** The error name, `"CoverageThresholdError"`. */
@@ -150,6 +152,13 @@ export function enforceCoverage(
     `Coverage — lines: ${fmt(lines)}% (${t.linesHit}/${t.linesFound}), ` +
       `branches: ${fmt(branches)}% (${t.branchesHit}/${t.branchesFound})`,
   );
+  // The same figures on the target's row of the build summary, so the gate's
+  // result is readable without scrolling back — branches only when some were
+  // measured, since a branchless report scores a vacuous 100%.
+  reportSummary({
+    Lines: `${fmt(lines)}%`,
+    ...(t.branchesFound > 0 ? { Branches: `${fmt(branches)}%` } : {}),
+  });
 
   const failures: string[] = [];
   const gated = thresholds.lines !== undefined ||

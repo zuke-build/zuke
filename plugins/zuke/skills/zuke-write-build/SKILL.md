@@ -116,9 +116,11 @@ it cannot answer "does one exist for this tool?"; only the catalogue
 - **Target context & cancellation:** a body may take a context —
   `.executes((ctx) => …)` — with `ctx.runId`, `ctx.target`, `ctx.signal` (an
   `AbortSignal` fired when the run is cancelled; a plain `` $`…` `` in the body
-  is `SIGTERM`'d automatically), `ctx.state`, and `ctx.dryRun`. Zero-argument
-  bodies keep working unchanged. Cancel a run programmatically by passing
-  `{ signal }` to `execute`. See the cheatsheet.
+  is `SIGTERM`'d automatically), `ctx.state`, `ctx.dryRun`, and
+  `ctx.reportSummary({ … })` (notes on the target's own row of the Build
+  Summary — `DenoTasks.test` reports its test counts there by itself).
+  Zero-argument bodies keep working unchanged. Cancel a run programmatically by
+  passing `{ signal }` to `execute`. See the cheatsheet.
 - **Caching:** `.inputs(...)` / `.outputs(...)` make a target incremental. Add a
   **remote store** to share results across machines (fresh CI, teammates);
   `--affected` runs only targets changed since a git base; `--no-cache` /

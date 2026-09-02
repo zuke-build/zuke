@@ -31,11 +31,58 @@ class Deploy extends Build {
 | `outcomes`   | `() => ReadonlyMap` | Every outcome settled so far, keyed by target name. |
 | `signals`    | `ReadonlyMap`       | Payloads of external signals received so far (see [waits](./orchestration.md)). |
 | `dryRun`     | `boolean`           | `true` when the run is a dry run (bodies don't execute in a dry run). |
+| `reportSummary` | `(pairs) => void` | Put `key: value` notes on **this target's row** of the Build Summary — see [Notes on the summary row](#notes-on-the-summary-row). |
 
 `runId` is minted once per run (`crypto.randomUUID()`), so it correlates every
 target, the run record ([Durable run state](./state.md)), a resumed run's
 spans ([Observability](./observability.md)), and a
 [resumption](./orchestration.md) of a suspended run.
+
+## Notes on the summary row
+
+The end-of-build summary says what each target did in one word — `Succeeded`,
+`Failed` — and how long it took. `ctx.reportSummary({ … })` adds the numbers
+that word hides, trailing the row NUKE-style:
+
+```text
+Target      Status       Duration
+──────────────────────────────────
+restore     Succeeded        4.0s
+test        Succeeded        8.1s  // Tests: 837 · Passed: 837 · Failed: 0
+pack        Succeeded        0.3s  // Packages: 1
+```
+
+<!-- check -->
+
+```ts
+import { Build, target } from "jsr:@zuke/core";
+import { DenoTasks } from "jsr:@zuke/deno";
+
+class CI extends Build {
+  test = target().executes(async (ctx) => {
+    // DenoTasks.test reports Tests/Passed/Failed itself, from deno's own
+    // result line — a body only adds what its tools do not.
+    await DenoTasks.test((s) => s.allowAll());
+    ctx.reportSummary({ Version: "3.6.2" });
+  });
+}
+```
+
+Notes accumulate across calls in one target, and reporting a key again
+replaces its value in place. Each key and value renders on a single line
+(whitespace collapsed, colour codes removed) in both the terminal table and the
+GitHub Actions job summary, where they form a `Notes` column. A failed target
+keeps the notes it reported before failing, so a red `test` row still says how
+many tests failed.
+
+Library code that has no `ctx` in hand — a tool wrapper, or a helper a body
+calls — reports through the **ambient** form, `reportSummary(pairs)` from
+`@zuke/core`. It lands on the row of whichever target is running, scoped like
+the [ambient signal](#scope-of-the-ambient-signal) to that target's async
+subtree, so concurrent targets never mix notes. Outside a running target it is
+a no-op: a wrapper never has to ask where it runs. `DenoTasks.test` (test
+counts) and `DenoTasks.coverage` (the measured line and branch percentages)
+report this way.
 
 ## Reading what the rest of the run did
 
