@@ -92,6 +92,8 @@ class PlaywrightTestSettings extends PlaywrightSettings
     Use a specific config file (`--config=`).
   paths(...filters: string[]): this
     Test file or directory filters to run; omit to run all tests.
+  override protected onOutput(output: CommandOutput): void
+    Report the run's counts onto the build summary (see the module docs).
   override protected buildArgs(): string[]
     Assemble the `playwright test` argv.
 

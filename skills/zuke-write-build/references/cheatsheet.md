@@ -162,9 +162,11 @@ pairs on the target's own row of the end-of-build summary, NUKE-style:
 `test  Succeeded  8.1s  // Tests: 837 · Passed: 837 · Failed: 0`. Notes
 accumulate; a repeated key replaces its value; each renders on one line, in the
 terminal and in the Actions job summary. A failed target keeps its notes.
-`DenoTasks.test` reports Tests/Passed/Failed (and Ignored when non-zero)
-itself, and `DenoTasks.coverage` reports the measured Lines/Branches — a body
-only adds what its tools do not. Library code with no `ctx` (a wrapper, a
+Every test-runner wrapper (`DenoTasks.test`, `VitestTasks.run`,
+`JestTasks.run`, `BunTasks.test`, `NodeTasks.test`, `PlaywrightTasks.test`,
+`CypressTasks.run`) reports Tests/Passed/Failed (and Skipped/Todo/Flaky when
+non-zero) itself, and `DenoTasks.coverage` reports the measured
+Lines/Branches — a body only adds what its tools do not. Library code with no `ctx` (a wrapper, a
 helper) uses the ambient `reportSummary(pairs)` from `@zuke/core`, which lands
 on the running target's row and is a no-op outside a run. Test counts have one
 shared shape: `reportTestCounts({ passed, failed, skipped?, todo?, flaky? })`

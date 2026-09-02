@@ -93,6 +93,8 @@ class BunTestSettings extends BunSettings
     Collect coverage (`--coverage`).
   bail(): this
     Stop after the first failure (`--bail`).
+  override protected onOutput(output: CommandOutput): void
+    Report the run's counts onto the build summary (see the module docs).
   override protected buildArgs(): string[]
     Assemble the `bun test` argv.
 

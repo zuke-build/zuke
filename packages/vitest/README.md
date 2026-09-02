@@ -94,6 +94,8 @@ class VitestSettings extends ToolSettings
     Pass when no tests are found (`--passWithNoTests`).
   silent(): this
     Suppress test console output (`--silent`).
+  override protected onOutput(output: CommandOutput): void
+    Report the run's counts onto the build summary (see the module docs).
   override protected buildArgs(): string[]
     Assemble the `vitest run`/`vitest watch` argv.
 

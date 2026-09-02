@@ -118,8 +118,10 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   `AbortSignal` fired when the run is cancelled; a plain `` $`…` `` in the body
   is `SIGTERM`'d automatically), `ctx.state`, `ctx.dryRun`, and
   `ctx.reportSummary({ … })` (`key: value` notes on the target's own row of
-  the Build Summary; `DenoTasks.test` reports its test counts there by
-  itself, and the ambient `reportSummary` does the same from code with no
+  the Build Summary; every test-runner wrapper — `DenoTasks.test`,
+  `VitestTasks.run`, `JestTasks.run`, `BunTasks.test`, `NodeTasks.test`,
+  `PlaywrightTasks.test`, `CypressTasks.run` — reports its test counts there
+  by itself, and the ambient `reportSummary` does the same from code with no
   `ctx`).
   Zero-argument bodies keep working unchanged. Cancel a run programmatically by
   passing `{ signal }` to `execute`. See the cheatsheet.

@@ -61,7 +61,7 @@ Deno.test("the test target's row carries the run's counts and the body's own not
   assertEquals(r.code, 0, r.err);
   assertStringIncludes(
     row(r.out, "test"),
-    "// Tests: 3 · Passed: 2 · Failed: 0 · Ignored: 1 · Version: 3.6.2",
+    "// Tests: 3 · Passed: 2 · Failed: 0 · Skipped: 1 · Version: 3.6.2",
   );
   assertEquals(row(r.out, "pack").includes("//"), false);
 });

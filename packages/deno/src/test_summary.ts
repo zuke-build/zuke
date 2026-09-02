@@ -5,25 +5,15 @@
  * The counts `deno test` prints on its result line, and how they land in a
  * build's summary row. `DenoTasks.test` reads them from the run's captured
  * stdout — the pretty and dot reporters both end with the same line — and
- * reports them through `@zuke/core`'s ambient `reportSummary`, so a `test`
- * target's row says `// Tests: 837 · Passed: 837 · Failed: 0` without the
- * build author writing a thing. Internal to the wrapper.
+ * reports them through `@zuke/core`'s `reportTestCounts`, so a `test`
+ * target's row says `// Tests: 837 · Passed: 837 · Failed: 0` in the shape
+ * every test-runner wrapper shares. Internal to the wrapper.
  *
  * @module
  */
 
 import { stripAnsi } from "@zuke/core/render";
-import type { SummaryPairs } from "@zuke/core";
-
-/** The counts on a `deno test` result line. */
-export interface DenoTestCounts {
-  /** Tests that passed. */
-  readonly passed: number;
-  /** Tests that failed. */
-  readonly failed: number;
-  /** Tests marked `ignore` (deno prints the count only when it is non-zero). */
-  readonly ignored: number;
-}
+import type { TestCounts } from "@zuke/core";
 
 /**
  * Deno's result line: `ok | 2 passed (2 steps) | 0 failed | 1 ignored (50ms)`
@@ -54,8 +44,8 @@ const DURATION = / \([^()]*\)$/;
  * ones (`ignored`, `measured`, `filtered out`) a run happens to include. A
  * line without both `passed` and `failed` is not a result line.
  */
-export function parseTestSummary(stdout: string): DenoTestCounts | undefined {
-  let counts: DenoTestCounts | undefined;
+export function parseTestSummary(stdout: string): TestCounts | undefined {
+  let counts: TestCounts | undefined;
   for (const m of stripAnsi(stdout).matchAll(RESULT_LINE)) {
     const found = new Map<string, number>();
     for (const segment of m[1].replace(DURATION, "").split(" | ")) {
@@ -65,22 +55,8 @@ export function parseTestSummary(stdout: string): DenoTestCounts | undefined {
     const passed = found.get("passed");
     const failed = found.get("failed");
     if (passed === undefined || failed === undefined) continue;
-    counts = { passed, failed, ignored: found.get("ignored") ?? 0 };
+    // Deno's `ignored` is the shared shape's `skipped`.
+    counts = { passed, failed, skipped: found.get("ignored") ?? 0 };
   }
   return counts;
-}
-
-/**
- * The notes a test run reports into its summary row: the total the run
- * selected (passed, failed and ignored), the passed and failed counts, and the
- * ignored count only when it is non-zero — mirroring the result line itself.
- */
-export function testSummaryPairs(counts: DenoTestCounts): SummaryPairs {
-  const pairs: Record<string, number> = {
-    Tests: counts.passed + counts.failed + counts.ignored,
-    Passed: counts.passed,
-    Failed: counts.failed,
-  };
-  if (counts.ignored > 0) pairs.Ignored = counts.ignored;
-  return pairs;
 }

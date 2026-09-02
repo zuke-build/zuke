@@ -164,6 +164,8 @@ class NodeTestSettings extends NodeSettings
     Re-run tests on file changes (`--watch`).
   experimentalTestCoverage(): this
     Collect and report test coverage (`--experimental-test-coverage`).
+  override protected onOutput(output: CommandOutput): void
+    Report the run's counts onto the build summary (see the module docs).
   override protected buildArgs(): string[]
     Assemble the `node --test [paths] [flags]` argv.
 

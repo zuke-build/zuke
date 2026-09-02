@@ -18,6 +18,8 @@
 
 import { type Configure, runSettings, ToolSettings } from "@zuke/core/tooling";
 import type { CommandOutput } from "@zuke/core/shell";
+import { reportTestCounts } from "@zuke/core";
+import { parseTestSummary } from "./test_summary.ts";
 
 /** Base for all `bun` subcommand settings: binary is `bun` from PATH. */
 export abstract class BunSettings extends ToolSettings {
@@ -201,6 +203,12 @@ export class BunTestSettings extends BunSettings {
   bail(): this {
     this.#bail = true;
     return this;
+  }
+
+  /** Report the run's counts onto the build summary (see the module docs). */
+  protected override onOutput(output: CommandOutput): void {
+    const counts = parseTestSummary(output);
+    if (counts !== undefined) reportTestCounts(counts);
   }
 
   /** Assemble the `bun test` argv. */

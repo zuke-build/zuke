@@ -971,8 +971,8 @@ class DenoTestSettings extends DenoPermissionSettings
 
   A run reports its counts into the running target's row of the build
   summary — `// Tests: 837 · Passed: 837 · Failed: 0` — read from the result
-  line the pretty and dot reporters print; a failed run reports too, so a red
-  row says how many failed. The JUnit and TAP reporters print no such line,
+  line the pretty and dot reporters print (ignored tests count as `Skipped`);
+  a failed run reports too, so a red row says how many failed. The JUnit and TAP reporters print no such line,
   so a run under `.reporter("junit")`/`.reporter("tap")` reports nothing.
 
   paths(...paths: PathLike[]): this

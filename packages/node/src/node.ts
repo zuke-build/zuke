@@ -31,6 +31,8 @@
 
 import { type Configure, type PathLike, runSettings } from "@zuke/core/tooling";
 import type { CommandOutput } from "@zuke/core/shell";
+import { reportTestCounts } from "@zuke/core";
+import { parseTestSummary } from "./test_summary.ts";
 import type { JsonValue } from "@zuke/core";
 import { NodeSettings } from "./settings.ts";
 import { evaluateModule, type NodeEvaluateSettings } from "./evaluate.ts";
@@ -240,6 +242,12 @@ export class NodeTestSettings extends NodeSettings {
   experimentalTestCoverage(): this {
     this.#experimentalTestCoverage = true;
     return this;
+  }
+
+  /** Report the run's counts onto the build summary (see the module docs). */
+  protected override onOutput(output: CommandOutput): void {
+    const counts = parseTestSummary(output);
+    if (counts !== undefined) reportTestCounts(counts);
   }
 
   /** Assemble the `node --test [paths] [flags]` argv. */

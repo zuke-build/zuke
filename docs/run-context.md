@@ -66,9 +66,9 @@ class CI extends Build {
 }
 ```
 
-A wrapper that knows what its tool printed reports for you. `DenoTasks.test`
-puts `// Tests: 837 · Passed: 837 · Failed: 0` on the row of whichever target
-ran it:
+A wrapper that knows what its tool printed reports for you. `DenoTasks.test`,
+like every test-runner wrapper, puts `// Tests: 837 · Passed: 837 · Failed: 0`
+on the row of whichever target ran it:
 
 <!-- check -->
 
@@ -98,16 +98,19 @@ the [ambient signal](#scope-of-the-ambient-signal) to that target's async
 subtree, so concurrent targets never mix notes. Outside a running target it is
 a no-op: a wrapper never has to ask where it runs. This is the seam a tool
 wrapper reports through, so a body only adds what its tools do not:
-`DenoTasks.test` reports Tests, Passed, Failed (and Ignored when non-zero)
-from deno's own result line — on a failed run too, so a red row says how many
-failed — and `DenoTasks.coverage` reports the measured line and branch
-percentages.
+every test-runner wrapper reports its counts from its runner's own result
+line — on a failed run too, so a red row says how many failed — and
+`DenoTasks.coverage` reports the measured line and branch percentages.
 
 Test runners share one shape. `reportTestCounts({ passed, failed, skipped?,
 todo?, flaky? })` from `@zuke/core` reports `Tests` (the sum), `Passed` and
 `Failed`, then `Skipped`, `Todo` and `Flaky` only when non-zero, so every
 test-runner wrapper puts the same labels on its row and a body that runs tests
-some other way can match them.
+some other way can match them. The wrappers that report this way, each from
+the closing lines its runner's default reporters print: `DenoTasks.test`,
+`VitestTasks.run`, `JestTasks.run`, `BunTasks.test`, `NodeTasks.test`,
+`PlaywrightTasks.test` and `CypressTasks.run`. A reporter that replaces those
+lines (JSON, JUnit, or a machine-readable format) reports nothing.
 
 ### What the wrappers report
 
