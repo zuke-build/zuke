@@ -69,7 +69,12 @@ import {
 export interface DenoTasksApi {
   /** Run a script: `deno run`. */
   run(configure?: Configure<DenoRunSettings>): Promise<CommandOutput>;
-  /** Run tests: `deno test`. */
+  /**
+   * Run tests: `deno test`. Reports the run's counts into the running
+   * target's row of the build summary (`// Tests: 837 · Passed: 837 ·
+   * Failed: 0`), read from deno's own result line — see
+   * {@link DenoTestSettings}.
+   */
   test(configure?: Configure<DenoTestSettings>): Promise<CommandOutput>;
   /** Type-check files: `deno check`. */
   check(configure?: Configure<DenoCheckSettings>): Promise<CommandOutput>;
@@ -176,7 +181,8 @@ export const DenoTasks: DenoTasksApi = {
    * Report coverage: `deno coverage`. When a threshold is configured
    * (`linesThreshold`/`branchesThreshold`/`threshold`), parse the lcov report
    * and enforce it — raising a {@link CoverageThresholdError} on a shortfall
-   * unless `noThrow()` was set.
+   * unless `noThrow()` was set — and report the measured line and branch
+   * percentages into the running target's row of the build summary.
    */
   async coverage(
     configure?: Configure<DenoCoverageSettings>,
