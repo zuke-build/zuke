@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.4.0](https://github.com/zuke-build/zuke/compare/deno-v1.3.0...deno-v1.4.0) (2026-09-02)
+
+
+### Features
+
+* linters and checkers report their findings on the build summary ([#460](https://github.com/zuke-build/zuke/issues/460)) ([dae6ebd](https://github.com/zuke-build/zuke/commit/dae6ebd33efb56c194e847265c56715bef83a6c1)), closes [#458](https://github.com/zuke-build/zuke/issues/458)
+* report test counts from every test-runner wrapper ([#461](https://github.com/zuke-build/zuke/issues/461)) ([2256d1e](https://github.com/zuke-build/zuke/commit/2256d1e41609067d42f40e3bc6107d3cec4fd379))
+
 ## [1.3.0](https://github.com/zuke-build/zuke/compare/deno-v1.2.0...deno-v1.3.0) (2026-09-02)
 
 

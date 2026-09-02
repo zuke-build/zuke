@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/zuke-build/zuke/compare/oxlint-v1.0.1...oxlint-v1.1.0) (2026-09-02)
+
+
+### Features
+
+* linters and checkers report their findings on the build summary ([#460](https://github.com/zuke-build/zuke/issues/460)) ([dae6ebd](https://github.com/zuke-build/zuke/commit/dae6ebd33efb56c194e847265c56715bef83a6c1)), closes [#458](https://github.com/zuke-build/zuke/issues/458)
+
 ## [1.0.1](https://github.com/zuke-build/zuke/compare/oxlint-v1.0.0...oxlint-v1.0.1) (2026-08-13)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/zuke-build/zuke/compare/bun-v1.0.1...bun-v1.1.0) (2026-09-02)
+
+
+### Features
+
+* report test counts from every test-runner wrapper ([#461](https://github.com/zuke-build/zuke/issues/461)) ([2256d1e](https://github.com/zuke-build/zuke/commit/2256d1e41609067d42f40e3bc6107d3cec4fd379))
+
 ## [1.0.1](https://github.com/zuke-build/zuke/compare/bun-v1.0.0...bun-v1.0.1) (2026-08-13)
 
 
