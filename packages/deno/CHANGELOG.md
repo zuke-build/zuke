@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/zuke-build/zuke/compare/deno-v1.2.0...deno-v1.3.0) (2026-09-02)
+
+
+### Features
+
+* **deno:** report test counts and coverage percentages into the build summary ([#452](https://github.com/zuke-build/zuke/issues/452)) ([29b974d](https://github.com/zuke-build/zuke/commit/29b974d0be44f9ea5d7abc495a52714ab70880ef))
+
 ## [1.2.0](https://github.com/zuke-build/zuke/compare/deno-v1.1.0...deno-v1.2.0) (2026-08-29)
 
 
