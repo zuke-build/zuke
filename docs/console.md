@@ -211,8 +211,8 @@ Log.summary(reports, totalMs, ok);
 ```
 
 A report's optional `summary` entries — the notes a target reported with
-`ctx.reportSummary`, or a wrapper reported through the ambient form — trail
-its row, dimmed:
+`ctx.reportSummary`, or a wrapper reported through the ambient form
+(`DenoTasks.test`'s test counts) — trail its row, dimmed:
 `test  Succeeded  8.1s  // Passed: 837`. See
 [Notes on the summary row](./run-context.md#notes-on-the-summary-row).
 

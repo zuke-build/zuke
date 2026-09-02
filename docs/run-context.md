@@ -66,6 +66,24 @@ class CI extends Build {
 }
 ```
 
+A wrapper that knows what its tool printed reports for you. `DenoTasks.test`
+puts `// Tests: 837 · Passed: 837 · Failed: 0` on the row of whichever target
+ran it:
+
+<!-- check -->
+
+```ts
+import { Build, target } from "jsr:@zuke/core";
+import { DenoTasks } from "jsr:@zuke/deno";
+
+class Checks extends Build {
+  test = target().executes(async (ctx) => {
+    await DenoTasks.test((s) => s.allowAll()); // reports the counts itself
+    ctx.reportSummary({ Version: "3.6.2" }); // the body adds what it knows
+  });
+}
+```
+
 Notes accumulate across calls in one target, and reporting a key again
 replaces its value in place. Each key and value renders on a single line
 (whitespace collapsed, colour codes removed) in both the terminal table and the
@@ -79,8 +97,11 @@ calls — reports through the **ambient** form, `reportSummary(pairs)` from
 the [ambient signal](#scope-of-the-ambient-signal) to that target's async
 subtree, so concurrent targets never mix notes. Outside a running target it is
 a no-op: a wrapper never has to ask where it runs. This is the seam a tool
-wrapper reports through — a test runner's pass/fail counts, a coverage gate's
-measured percentages — so a body only adds what its tools do not.
+wrapper reports through, so a body only adds what its tools do not:
+`DenoTasks.test` reports Tests, Passed, Failed (and Ignored when non-zero)
+from deno's own result line — on a failed run too, so a red row says how many
+failed — and `DenoTasks.coverage` reports the measured line and branch
+percentages.
 
 ## Reading what the rest of the run did
 
