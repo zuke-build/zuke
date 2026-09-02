@@ -237,6 +237,8 @@ abstract class NpmDependencySettings extends NpmWorkspaceSettings
     The package specs given, for the subclasses that must require them.
   protected dependencyArgs(): string[]
     The dependency-group and lifecycle-script flags these commands share.
+  override protected onOutput(output: CommandOutput): void
+    Report `Added`, `Removed`, `Changed` (and `Vulnerabilities` when audited) onto the build summary.
 
 class NpmDeprecateSettings extends NpmSettings
   Settings for `npm deprecate`.

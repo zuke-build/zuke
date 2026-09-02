@@ -3261,3 +3261,34 @@ Deno.test("summary: a dry-runnable body's notes show under --dry-run", async () 
   );
   assertStringIncludes(row ?? "", "// Mode: dry · Ambient: yes");
 });
+
+Deno.test("summary: a target's notes land in the run record and in a dependent's outcomeOf", async () => {
+  await withTempStore(async (store) => {
+    let seen: readonly { key: string; value: string }[] | undefined;
+    class B extends Build {
+      test = target().executes((ctx) => {
+        ctx.reportSummary({ Tests: 3, Passed: 3 });
+      });
+      gate = target().dependsOn(this.test).executes((ctx) => {
+        seen = ctx.outcomeOf("test")?.summary;
+      });
+    }
+    const b = new B();
+    discoverTargets(b);
+    const result = await execute(b, b.gate, {
+      silent: true,
+      stateStore: store,
+    });
+    assertEquals(result.ok, true);
+    assertEquals(seen, [{ key: "Tests", value: "3" }, {
+      key: "Passed",
+      value: "3",
+    }]);
+    const loaded = await store.getRun(result.runId ?? "");
+    assertEquals(loaded?.record.targets.test.summary, [
+      { key: "Tests", value: "3" },
+      { key: "Passed", value: "3" },
+    ]);
+    assertEquals(loaded?.record.targets.gate.summary, undefined);
+  });
+});

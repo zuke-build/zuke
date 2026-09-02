@@ -1773,3 +1773,55 @@ Deno.test("a lock listing from the server is validated, not trusted", async () =
     await assertRejects(() => store.listLocks(), Error);
   }
 });
+
+Deno.test("RunStateWriter stores a settled target's summary notes, values redacted", async () => {
+  const store = new MemStateStore();
+  const redactor = new Redactor();
+  redactor.add("hunter2");
+  const writer = await RunStateWriter.open(
+    store,
+    sampleRecord(),
+    () => "t",
+    redactor,
+  );
+  await writer.markTargetSettled("deploy", "passed", undefined, [
+    { key: "Tests", value: "12" },
+    { key: "Token", value: "hunter2" },
+  ]);
+  assertEquals(store.record?.targets.deploy.summary, [
+    { key: "Tests", value: "12" },
+    { key: "Token", value: "[redacted]" },
+  ]);
+  // No notes, no key: a note-less row stays exactly as it was.
+  await writer.markTargetSettled("deploy", "passed", undefined, []);
+  assertEquals("summary" in (store.record?.targets.deploy ?? {}), true);
+  await writer.markTargetSettled("verify", "passed");
+  assertEquals(store.record?.targets.verify.summary, undefined);
+});
+
+Deno.test("parseRunRecord round-trips a target's summary notes and rejects malformed ones", () => {
+  const record = sampleRecord({
+    targets: {
+      test: {
+        status: "succeeded",
+        meta: {},
+        summary: [{ key: "Tests", value: "3" }, { key: "Passed", value: "3" }],
+      },
+    },
+  });
+  assertEquals(parseRunRecord(stringifyRunRecord(record)), record);
+  const base = JSON.parse(stringifyRunRecord(sampleRecord()));
+  for (
+    const [summary, needle] of [
+      [{ Tests: 3 }, "summary is not an array"],
+      [["Tests: 3"], "summary note is not an object"],
+      [[{ key: "Tests" }], "value"],
+    ] as const
+  ) {
+    const broken = {
+      ...base,
+      targets: { t: { status: "succeeded", meta: {}, summary } },
+    };
+    assertThrows(() => parseRunRecord(JSON.stringify(broken)), Error, needle);
+  }
+});

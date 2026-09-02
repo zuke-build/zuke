@@ -33,6 +33,8 @@ import {
   ToolSettings,
 } from "@zuke/core/tooling";
 import type { CommandOutput } from "@zuke/core/shell";
+import { reportSummary } from "@zuke/core";
+import { parseDpdmSummary } from "./summary.ts";
 
 /** Settings for a `dpdm` analysis run. */
 export class DpdmAnalyzeSettings extends ToolSettings {
@@ -157,6 +159,12 @@ export class DpdmAnalyzeSettings extends ToolSettings {
   entries(...paths: PathLike[]): this {
     this.#entries.push(...paths.map(String));
     return this;
+  }
+
+  /** Report `Circular`, the cycles found, onto the build summary. */
+  protected override onOutput(output: CommandOutput): void {
+    const pairs = parseDpdmSummary(output);
+    if (pairs !== undefined) reportSummary(pairs);
   }
 
   /** Assemble the `dpdm <flags> <entries...>` argv. */

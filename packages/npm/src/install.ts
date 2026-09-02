@@ -22,6 +22,9 @@ import {
   NpmWorkspaceSettings,
 } from "./settings.ts";
 import { dependencyGroupArgs } from "./flags.ts";
+import type { CommandOutput } from "@zuke/core/shell";
+import { reportSummary } from "@zuke/core";
+import { parseNpmSummary } from "./summary.ts";
 
 /**
  * Shared base for the install-shaped commands: the `--omit`/`--include`
@@ -76,6 +79,12 @@ export abstract class NpmDependencySettings extends NpmWorkspaceSettings {
     if (this.#ignoreScripts) argv.push("--ignore-scripts");
     if (this.#foregroundScripts) argv.push("--foreground-scripts");
     return argv;
+  }
+
+  /** Report `Added`, `Removed`, `Changed` (and `Vulnerabilities` when audited) onto the build summary. */
+  protected override onOutput(output: CommandOutput): void {
+    const pairs = parseNpmSummary(output);
+    if (pairs !== undefined) reportSummary(pairs);
   }
 }
 

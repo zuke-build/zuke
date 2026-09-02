@@ -152,6 +152,7 @@ deploy = target().executes(async (ctx) => {
   ctx.stateOf("build").get(); // read ANOTHER target's published state
   ctx.signals.get("approved"); // an external signal's payload (see waits)
   ctx.outcomeOf("checks")?.status; // one target's settled outcome, or undefined
+  ctx.outcomeOf("test")?.summary; // its Build Summary notes (durable, e.g. Tests/Passed)
   ctx.outcomes(); // every outcome settled SO FAR, keyed by dotted name
   ctx.reportSummary({ Version: "3.6.2" }); // a note on THIS row of the Build Summary
 });

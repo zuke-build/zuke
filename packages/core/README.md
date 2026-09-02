@@ -3944,6 +3944,11 @@ interface TargetOutcomeView
     When it started, ISO-8601, if it did.
   readonly endedAt?: string
     When it settled, ISO-8601, if it has.
+  readonly summary?: readonly SummaryEntry[]
+    The notes it reported into its row of the build summary (see
+    {@link TargetContext.reportSummary}), when it reported any — so an
+    aggregating target can read a dependency's test counts, not only its
+    verdict. Durable: present after a resume too.
 
 interface TargetReport
   One row of the end-of-build summary.
@@ -3977,6 +3982,12 @@ interface TargetRunState
   effects?: Record<string, EffectState>
     The declared effects of this target, keyed by effect name — present only
     once at least one has been armed.
+  summary?: SummaryEntry[]
+    The notes the target reported into its row of the build summary (see
+    {@link "../target.ts".TargetContext.reportSummary}), in the order they
+    were first reported — present only when it reported at least one, and
+    redacted like every other stored string. What lets `zuke runs show` and
+    `ctx.outcomeOf` say a target ran 4094 tests, not only that it succeeded.
 
 interface TargetStateHandle
   A target's durable, per-target metadata, surfaced on {@link TargetContext} as

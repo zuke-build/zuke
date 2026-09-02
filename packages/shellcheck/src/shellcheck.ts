@@ -29,6 +29,8 @@ import {
   ToolSettings,
 } from "@zuke/core/tooling";
 import type { CommandOutput } from "@zuke/core/shell";
+import { reportSummary } from "@zuke/core";
+import { parseShellcheckSummary } from "./summary.ts";
 
 /**
  * A shell dialect ShellCheck can analyse (`-s`), overriding the shebang.
@@ -117,6 +119,12 @@ export class ShellcheckSettings extends ToolSettings {
   externalSources(): this {
     this.#externalSources = true;
     return this;
+  }
+
+  /** Report `Findings` onto the build summary. */
+  protected override onOutput(output: CommandOutput): void {
+    const pairs = parseShellcheckSummary(output);
+    if (pairs !== undefined) reportSummary(pairs);
   }
 
   /** Assemble the `shellcheck` argv. */

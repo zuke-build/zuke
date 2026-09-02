@@ -33,6 +33,7 @@ import type {
   TargetRunState,
   WaitState,
 } from "./types.ts";
+import type { SummaryEntry } from "../summary_note.ts";
 import { recordStatusOf } from "./record.ts";
 import { acquireCancelLock, type CancelLock } from "./cancel_lock.ts";
 import { messageOf } from "../internal.ts";
@@ -229,22 +230,34 @@ export class RunStateWriter {
     });
   }
 
-  /** Record a target's terminal status (mapped from the executor's vocabulary). */
+  /**
+   * Record a target's terminal status (mapped from the executor's vocabulary),
+   * with the notes it reported into its summary row, if any — each value
+   * redacted like the error, since a wrapper may echo what its tool printed.
+   */
   markTargetSettled(
     name: string,
     status: TargetStatus,
     error?: string,
+    summary?: readonly SummaryEntry[],
   ): Promise<void> {
     const at = this.#now();
     const recorded = recordStatusOf(status);
     const message = error === undefined
       ? undefined
       : this.#redactor.redact(error);
+    const notes = summary === undefined || summary.length === 0
+      ? undefined
+      : summary.map((e) => ({
+        key: e.key,
+        value: this.#redactor.redact(e.value),
+      }));
     return this.#update((record) => {
       const target = ensureTarget(record, name);
       target.status = recorded;
       target.endedAt = at;
       if (message !== undefined) target.error = message;
+      if (notes !== undefined) target.summary = notes;
       // A settled target is no longer waiting (e.g. a gate satisfied on resume).
       delete target.waitingFor;
     });

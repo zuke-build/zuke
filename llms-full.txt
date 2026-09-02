@@ -3890,6 +3890,11 @@ interface TargetOutcomeView
     When it started, ISO-8601, if it did.
   readonly endedAt?: string
     When it settled, ISO-8601, if it has.
+  readonly summary?: readonly SummaryEntry[]
+    The notes it reported into its row of the build summary (see
+    {@link TargetContext.reportSummary}), when it reported any — so an
+    aggregating target can read a dependency's test counts, not only its
+    verdict. Durable: present after a resume too.
 
 interface TargetReport
   One row of the end-of-build summary.
@@ -3923,6 +3928,12 @@ interface TargetRunState
   effects?: Record<string, EffectState>
     The declared effects of this target, keyed by effect name — present only
     once at least one has been armed.
+  summary?: SummaryEntry[]
+    The notes the target reported into its row of the build summary (see
+    {@link "../target.ts".TargetContext.reportSummary}), in the order they
+    were first reported — present only when it reported at least one, and
+    redacted like every other stored string. What lets `zuke runs show` and
+    `ctx.outcomeOf` say a target ran 4094 tests, not only that it succeeded.
 
 interface TargetStateHandle
   A target's durable, per-target metadata, surfaced on {@link TargetContext} as
@@ -6426,6 +6437,8 @@ abstract class NpmDependencySettings extends NpmWorkspaceSettings
     The package specs given, for the subclasses that must require them.
   protected dependencyArgs(): string[]
     The dependency-group and lifecycle-script flags these commands share.
+  override protected onOutput(output: CommandOutput): void
+    Report `Added`, `Removed`, `Changed` (and `Vulnerabilities` when audited) onto the build summary.
 
 class NpmDeprecateSettings extends NpmSettings
   Settings for `npm deprecate`.
@@ -7053,6 +7066,8 @@ class BunAddSettings extends BunSettings
     Pin the exact version (`--exact`).
   global(): this
     Install globally (`--global`).
+  override protected onOutput(output: CommandOutput): void
+    Report `Installed` and `Removed` onto the build summary.
   override protected buildArgs(): string[]
     Assemble the `bun add` argv.
 
@@ -7063,6 +7078,8 @@ class BunInstallSettings extends BunSettings
     Install without devDependencies (`--production`).
   frozenLockfile(): this
     Fail if the lockfile is out of date (`--frozen-lockfile`).
+  override protected onOutput(output: CommandOutput): void
+    Report `Installed` and `Removed` onto the build summary.
   override protected buildArgs(): string[]
     Assemble the `bun install` argv.
 
@@ -7071,6 +7088,8 @@ class BunRemoveSettings extends BunSettings
 
   packages(...names: string[]): this
     Package names to remove (required).
+  override protected onOutput(output: CommandOutput): void
+    Report `Installed` and `Removed` onto the build summary.
   override protected buildArgs(): string[]
     Assemble the `bun remove` argv.
 
@@ -7225,6 +7244,8 @@ abstract class PnpmSettings extends ToolSettings
 
   override protected defaultTool(): string
     The default binary: `pnpm` resolved from PATH.
+  override protected onOutput(output: CommandOutput): void
+    Report `Added`, `Downloaded` and `Reused` onto the build summary.
 
 interface PnpmTasksApi
   The shape of {@link PnpmTasks}.
@@ -7321,6 +7342,8 @@ abstract class YarnSettings extends ToolSettings
 
   override protected defaultTool(): string
     The default binary: `yarn` resolved from PATH.
+  override protected onOutput(output: CommandOutput): void
+    Report `Added` and `Removed` (Yarn Berry) onto the build summary.
 
 interface YarnTasksApi
   The shape of {@link YarnTasks}.
@@ -10618,6 +10641,8 @@ class ShellcheckSettings extends ToolSettings
     be given with or without the `SC` prefix, as ShellCheck accepts both.
   externalSources(): this
     Follow `source`d files outside the checked set (`-x`/`--external-sources`).
+  override protected onOutput(output: CommandOutput): void
+    Report `Findings` onto the build summary.
   override protected buildArgs(): string[]
     Assemble the `shellcheck` argv.
 
@@ -11125,6 +11150,8 @@ class KnipRunSettings extends ToolSettings
     Choose the reporter, e.g. `json` or `compact` (`--reporter`).
   include(...types: string[]): this
     Limit to specific issue types, e.g. `files`, `dependencies` (`--include`).
+  override protected onOutput(output: CommandOutput): void
+    Report `Issues`, the findings summed over every section, onto the build summary.
   override protected buildArgs(): string[]
     Assemble the `knip <flags>` argv.
 
@@ -11193,6 +11220,8 @@ class DpdmAnalyzeSettings extends ToolSettings
     Exit with a code when a case occurs, e.g. `circular:1` (`--exit-code`).
   entries(...paths: PathLike[]): this
     The entry files or globs to analyze (appended after all options).
+  override protected onOutput(output: CommandOutput): void
+    Report `Circular`, the cycles found, onto the build summary.
   override protected buildArgs(): string[]
     Assemble the `dpdm <flags> <entries...>` argv.
 
@@ -12031,6 +12060,8 @@ class TscAliasRunSettings extends ToolSettings
     Print debug output (`--debug`).
   silent(): this
     Suppress all output (`--silent`).
+  override protected onOutput(output: CommandOutput): void
+    Report `Files` rewritten (under `--verbose`) onto the build summary.
   override protected buildArgs(): string[]
     Assemble the `tsc-alias` argv from the configured settings.
 
