@@ -116,3 +116,53 @@ export function withAmbientSummary<T>(
 export function reportSummary(pairs: SummaryPairs): void {
   storage.getStore()?.add(pairs);
 }
+
+/**
+ * The counts a test run produced — the one shape every test-runner wrapper
+ * maps its runner's own summary line onto, so `DenoTasks.test`,
+ * `VitestTasks.run`, `JestTasks.run` and the rest all put the same labels on
+ * their rows. `passed` and `failed` are always known; the rest are the
+ * optional categories a runner may or may not have, left out when it has none.
+ */
+export interface TestCounts {
+  /** Tests that passed. */
+  readonly passed: number;
+  /** Tests that failed. */
+  readonly failed: number;
+  /** Tests the run selected but did not execute: skipped, ignored, pending. */
+  readonly skipped?: number;
+  /** Tests marked as still to be written. */
+  readonly todo?: number;
+  /** Tests that failed and then passed on a retry (Playwright's "flaky"). */
+  readonly flaky?: number;
+}
+
+/**
+ * Report a test run's counts into the **running target's** row of the
+ * end-of-build summary, in the shape every test-runner wrapper shares:
+ *
+ * ```text
+ * test        Succeeded    8.1s  // Tests: 837 · Passed: 835 · Failed: 0 · Skipped: 2
+ * ```
+ *
+ * `Tests` is the sum of every category; `Passed` and `Failed` always appear,
+ * and `Skipped`, `Todo` and `Flaky` only when non-zero — mirroring the
+ * runners, which print their optional counts the same way. The ambient form
+ * of reporting applies (see {@link reportSummary}): a wrapper calls this from
+ * its `onOutput` hook with what it parsed, and outside a running target the
+ * call is a no-op.
+ */
+export function reportTestCounts(counts: TestCounts): void {
+  const skipped = counts.skipped ?? 0;
+  const todo = counts.todo ?? 0;
+  const flaky = counts.flaky ?? 0;
+  const pairs: Record<string, number> = {
+    Tests: counts.passed + counts.failed + skipped + todo + flaky,
+    Passed: counts.passed,
+    Failed: counts.failed,
+  };
+  if (skipped > 0) pairs.Skipped = skipped;
+  if (todo > 0) pairs.Todo = todo;
+  if (flaky > 0) pairs.Flaky = flaky;
+  reportSummary(pairs);
+}

@@ -586,6 +586,21 @@ function reportSummary(pairs: SummaryPairs): void
   script, a compensation) there is no row to report into, so the call is a
   no-op rather than an error — a wrapper never has to ask where it runs.
 
+function reportTestCounts(counts: TestCounts): void
+  Report a test run's counts into the running target's row of the
+  end-of-build summary, in the shape every test-runner wrapper shares:
+
+  ```text
+  test        Succeeded    8.1s  // Tests: 837 · Passed: 835 · Failed: 0 · Skipped: 2
+  ```
+
+  `Tests` is the sum of every category; `Passed` and `Failed` always appear,
+  and `Skipped`, `Todo` and `Flaky` only when non-zero — mirroring the
+  runners, which print their optional counts the same way. The ambient form
+  of reporting applies (see {@link reportSummary}): a wrapper calls this from
+  its `onOutput` hook with what it parsed, and outside a running target the
+  call is a no-op.
+
 function resolveBuildId(readEnv: (name: string) => string | undefined): string | undefined
   The origin of the build running in this process — `ZUKE_BUILD_ID`, else
   `GITHUB_REPOSITORY`, else `undefined` when neither is set.
@@ -3985,6 +4000,24 @@ interface TargetTiming
     The run id (see {@link RunInfo}).
   readonly durationMs: number
     The target's wall-clock duration in milliseconds (0 for skipped/cached).
+
+interface TestCounts
+  The counts a test run produced — the one shape every test-runner wrapper
+  maps its runner's own summary line onto, so `DenoTasks.test`,
+  `VitestTasks.run`, `JestTasks.run` and the rest all put the same labels on
+  their rows. `passed` and `failed` are always known; the rest are the
+  optional categories a runner may or may not have, left out when it has none.
+
+  readonly passed: number
+    Tests that passed.
+  readonly failed: number
+    Tests that failed.
+  readonly skipped?: number
+    Tests the run selected but did not execute: skipped, ignored, pending.
+  readonly todo?: number
+    Tests marked as still to be written.
+  readonly flaky?: number
+    Tests that failed and then passed on a retry (Playwright's "flaky").
 
 interface ToolTasksApi
   The task surface of {@link ToolTasks}.

@@ -103,6 +103,12 @@ from deno's own result line — on a failed run too, so a red row says how many
 failed — and `DenoTasks.coverage` reports the measured line and branch
 percentages.
 
+Test runners share one shape. `reportTestCounts({ passed, failed, skipped?,
+todo?, flaky? })` from `@zuke/core` reports `Tests` (the sum), `Passed` and
+`Failed`, then `Skipped`, `Todo` and `Flaky` only when non-zero, so every
+test-runner wrapper puts the same labels on its row and a body that runs tests
+some other way can match them.
+
 ## Reading what the rest of the run did
 
 `ctx.outcomeOf(name)` reports another target's status in this run, and
