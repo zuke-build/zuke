@@ -44,12 +44,16 @@ class DprintCheckSettings extends DprintSettings
 
   override protected subcommand(): string
     The dprint subcommand this settings class runs: `check`.
+  override protected onOutput(output: CommandOutput): void
+    Report `Unformatted`, the files that need formatting, onto the build summary.
 
 class DprintFmtSettings extends DprintSettings
   Settings for `dprint fmt` (format files in place).
 
   override protected subcommand(): string
     The dprint subcommand this settings class runs: `fmt`.
+  override protected onOutput(output: CommandOutput): void
+    Report `Formatted`, the files the run changed, onto the build summary.
 
 abstract class DprintSettings extends ToolSettings
   Shared options for a `dprint` subcommand (`fmt` or `check`).

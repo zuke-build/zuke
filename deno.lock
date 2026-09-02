@@ -1556,7 +1556,7 @@
       },
       "packages/biome": {
         "dependencies": [
-          "jsr:@zuke/core@^1.25.0"
+          "jsr:@zuke/core@^1.44.0"
         ]
       },
       "packages/bun": {
@@ -1598,7 +1598,7 @@
       },
       "packages/cspell": {
         "dependencies": [
-          "jsr:@zuke/core@^1.25.0"
+          "jsr:@zuke/core@^1.44.0"
         ]
       },
       "packages/cypress": {
@@ -1633,12 +1633,12 @@
       },
       "packages/dprint": {
         "dependencies": [
-          "jsr:@zuke/core@^1.25.0"
+          "jsr:@zuke/core@^1.44.0"
         ]
       },
       "packages/eslint": {
         "dependencies": [
-          "jsr:@zuke/core@^1.25.0"
+          "jsr:@zuke/core@^1.44.0"
         ]
       },
       "packages/gcloud": {
@@ -1743,7 +1743,7 @@
       },
       "packages/oxlint": {
         "dependencies": [
-          "jsr:@zuke/core@^1.25.0"
+          "jsr:@zuke/core@^1.44.0"
         ]
       },
       "packages/playwright": {
@@ -1793,7 +1793,7 @@
       },
       "packages/tsc": {
         "dependencies": [
-          "jsr:@zuke/core@^1.25.0"
+          "jsr:@zuke/core@^1.44.0"
         ]
       },
       "packages/tsc-alias": {

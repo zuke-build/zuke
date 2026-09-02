@@ -26,6 +26,8 @@ import {
   ToolSettings,
 } from "@zuke/core/tooling";
 import type { CommandOutput } from "@zuke/core/shell";
+import { reportSummary } from "@zuke/core";
+import { parseEslintSummary } from "./summary.ts";
 
 /** Settings for an `eslint` run. */
 export class EslintSettings extends ToolSettings {
@@ -157,6 +159,12 @@ export class EslintSettings extends ToolSettings {
   reportUnusedDisableDirectives(): this {
     this.#reportUnusedDisableDirectives = true;
     return this;
+  }
+
+  /** Report `Problems`, `Errors` and `Warnings` onto the build summary. */
+  protected override onOutput(output: CommandOutput): void {
+    const pairs = parseEslintSummary(output);
+    if (pairs !== undefined) reportSummary(pairs);
   }
 
   /** Assemble the `eslint` argv from the configured settings. */

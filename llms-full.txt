@@ -5069,6 +5069,8 @@ class DenoCheckSettings extends DenoSettings
     Exclude paths from the watcher (`--watch-exclude`).
   noClearScreen(): this
     Keep previous output when re-running under `--watch` (`--no-clear-screen`).
+  override protected onOutput(output: CommandOutput): void
+    Report `Errors`, the diagnostics printed, onto the build summary.
   override protected buildArgs(): string[]
     Assemble the `deno check` argv.
 
@@ -5298,6 +5300,8 @@ class DenoFmtSettings extends DenoSettings
     Keep previous output when re-running under `--watch` (`--no-clear-screen`).
   paths(...paths: PathLike[]): this
     Restrict formatting to specific files or directories.
+  override protected onOutput(output: CommandOutput): void
+    Report `Files` (and `Unformatted` under `--check`) onto the build summary.
   override protected buildArgs(): string[]
     Assemble the `deno fmt` argv.
 
@@ -5486,6 +5490,8 @@ class DenoLintSettings extends DenoSettings
     Keep previous output when re-running under `--watch` (`--no-clear-screen`).
   paths(...paths: PathLike[]): this
     Restrict linting to specific files or directories.
+  override protected onOutput(output: CommandOutput): void
+    Report `Files` and `Problems` onto the build summary.
   override protected buildArgs(): string[]
     Assemble the `deno lint` argv.
 
@@ -10405,6 +10411,8 @@ class OxlintSettings extends ToolSettings
     Output format, e.g. `default`, `json`, `github` (`-f`/`--format`).
   threads(count: number): this
     Number of threads to use (`--threads`).
+  override protected onOutput(output: CommandOutput): void
+    Report `Errors`, `Warnings` (and `Files` when known) onto the build summary.
   override protected buildArgs(): string[]
     Assemble the `oxlint` argv from the configured settings.
 
@@ -10473,6 +10481,8 @@ class EslintSettings extends ToolSettings
     Do not search for a config file (`--no-config-lookup`).
   reportUnusedDisableDirectives(): this
     Report unused `eslint-disable` directives (`--report-unused-disable-directives`).
+  override protected onOutput(output: CommandOutput): void
+    Report `Problems`, `Errors` and `Warnings` onto the build summary.
   override protected buildArgs(): string[]
     Assemble the `eslint` argv from the configured settings.
 
@@ -10549,6 +10559,8 @@ class CspellSettings extends ToolSettings
     Exclude files matching a glob (`-e`/`--exclude`); repeatable.
   maxDuplicateProblems(count: number): this
     Cap the number of duplicate problems reported (`--max-duplicate-problems`).
+  override protected onOutput(output: CommandOutput): void
+    Report `Files` checked and `Issues` found onto the build summary.
   override protected buildArgs(): string[]
     Assemble the `cspell lint` argv.
 
@@ -11032,6 +11044,8 @@ abstract class BiomeSettings extends ToolSettings
     The tool binary: `biome`.
   override protected defaultResolution(): ToolResolution
     Resolve the binary from `node_modules/.bin` by default — biome is an npm-distributed tool.
+  override protected onOutput(output: CommandOutput): void
+    Report `Files`, `Errors` and `Warnings` onto the build summary.
   paths(...paths: PathLike[]): this
     Files or directories to operate on; omit to use the configured includes.
   config(path: PathLike): this
@@ -11883,6 +11897,8 @@ abstract class TscBaseSettings extends ToolSettings
     The default binary these settings invoke: `tsc`.
   override protected defaultResolution(): ToolResolution
     Resolve the binary from `node_modules/.bin` by default — tsc is an npm-distributed tool.
+  override protected onOutput(output: CommandOutput): void
+    Report `Errors`, the diagnostics printed, onto the build summary.
 
 class TscBuildSettings extends TscBaseSettings
   Settings for a `tsc --build` project-references run.
@@ -12610,12 +12626,16 @@ class DprintCheckSettings extends DprintSettings
 
   override protected subcommand(): string
     The dprint subcommand this settings class runs: `check`.
+  override protected onOutput(output: CommandOutput): void
+    Report `Unformatted`, the files that need formatting, onto the build summary.
 
 class DprintFmtSettings extends DprintSettings
   Settings for `dprint fmt` (format files in place).
 
   override protected subcommand(): string
     The dprint subcommand this settings class runs: `fmt`.
+  override protected onOutput(output: CommandOutput): void
+    Report `Formatted`, the files the run changed, onto the build summary.
 
 abstract class DprintSettings extends ToolSettings
   Shared options for a `dprint` subcommand (`fmt` or `check`).

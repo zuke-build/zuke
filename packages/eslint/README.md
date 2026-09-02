@@ -81,6 +81,8 @@ class EslintSettings extends ToolSettings
     Do not search for a config file (`--no-config-lookup`).
   reportUnusedDisableDirectives(): this
     Report unused `eslint-disable` directives (`--report-unused-disable-directives`).
+  override protected onOutput(output: CommandOutput): void
+    Report `Problems`, `Errors` and `Warnings` onto the build summary.
   override protected buildArgs(): string[]
     Assemble the `eslint` argv from the configured settings.
 

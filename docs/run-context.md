@@ -109,6 +109,30 @@ todo?, flaky? })` from `@zuke/core` reports `Tests` (the sum), `Passed` and
 test-runner wrapper puts the same labels on its row and a body that runs tests
 some other way can match them.
 
+### What the wrappers report
+
+| Wrapper | Notes on the row |
+| --- | --- |
+| `DenoTasks.test` | `Tests`, `Passed`, `Failed`, and `Ignored` when non-zero |
+| `DenoTasks.coverage` | `Lines`, and `Branches` when any were measured |
+| `DenoTasks.lint` | `Files`, `Problems` |
+| `DenoTasks.fmt` | `Files`, and `Unformatted` under `.check()` |
+| `DenoTasks.check` | `Errors` |
+| `EslintTasks.lint` | `Problems`, `Errors`, `Warnings` |
+| `OxlintTasks.lint` | `Errors`, `Warnings`, and `Files` when the timing line names them |
+| `BiomeTasks.check` / `lint` / `format` / `ci` | `Files`, `Errors`, `Warnings` |
+| `TscTasks.tsc` / `build` | `Errors` |
+| `CspellTasks.lint` | `Files`, `Issues` |
+| `DprintTasks.check` | `Unformatted` |
+| `DprintTasks.fmt` | `Formatted` |
+
+Each is read from the closing line the tool itself prints, on a failed run
+too, so a red row says how many. A clean run reports its zeros — a green
+`lint` row that says `Problems: 0` is the point. A run that exited non-zero
+without printing its closing line (a bad flag, a missing config) reports
+nothing rather than a misleading zero. A machine-readable reporter that
+replaces the closing line (`--format json`, JUnit) reports nothing either.
+
 ## Reading what the rest of the run did
 
 `ctx.outcomeOf(name)` reports another target's status in this run, and
