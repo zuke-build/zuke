@@ -1561,7 +1561,7 @@
       },
       "packages/bun": {
         "dependencies": [
-          "jsr:@zuke/core@^1.25.0"
+          "jsr:@zuke/core@^1.45.0"
         ]
       },
       "packages/claude": {
@@ -1603,12 +1603,12 @@
       },
       "packages/cypress": {
         "dependencies": [
-          "jsr:@zuke/core@^1.25.0"
+          "jsr:@zuke/core@^1.45.0"
         ]
       },
       "packages/deno": {
         "dependencies": [
-          "jsr:@zuke/core@^1.44.0"
+          "jsr:@zuke/core@^1.45.0"
         ]
       },
       "packages/docker": {
@@ -1673,7 +1673,7 @@
       },
       "packages/jest": {
         "dependencies": [
-          "jsr:@zuke/core@^1.25.0"
+          "jsr:@zuke/core@^1.45.0"
         ]
       },
       "packages/jsr": {
@@ -1708,7 +1708,7 @@
       },
       "packages/node": {
         "dependencies": [
-          "jsr:@zuke/core@^1.32.0"
+          "jsr:@zuke/core@^1.45.0"
         ]
       },
       "packages/npm": {
@@ -1748,7 +1748,7 @@
       },
       "packages/playwright": {
         "dependencies": [
-          "jsr:@zuke/core@^1.25.0"
+          "jsr:@zuke/core@^1.45.0"
         ]
       },
       "packages/pnpm": {
@@ -1828,7 +1828,7 @@
       },
       "packages/vitest": {
         "dependencies": [
-          "jsr:@zuke/core@^1.25.0"
+          "jsr:@zuke/core@^1.45.0"
         ]
       },
       "packages/yarn": {
