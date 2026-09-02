@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.45.0](https://github.com/zuke-build/zuke/compare/core-v1.44.0...core-v1.45.0) (2026-09-02)
+
+
+### Features
+
+* **core:** reportTestCounts, one summary shape for every test-runner wrapper ([#459](https://github.com/zuke-build/zuke/issues/459)) ([22c1c1b](https://github.com/zuke-build/zuke/commit/22c1c1beef91207412acfbcb1aeed4ba4696ed92)), closes [#456](https://github.com/zuke-build/zuke/issues/456)
+
 ## [1.44.0](https://github.com/zuke-build/zuke/compare/core-v1.43.0...core-v1.44.0) (2026-09-02)
 
 

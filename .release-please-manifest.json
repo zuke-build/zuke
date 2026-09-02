@@ -1,5 +1,5 @@
 {
-  "packages/core": "1.44.0",
+  "packages/core": "1.45.0",
   "packages/deno": "1.3.0",
   "packages/docs": "1.0.1",
   "packages/npm": "1.1.0",
