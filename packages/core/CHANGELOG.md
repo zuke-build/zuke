@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.44.0](https://github.com/zuke-build/zuke/compare/core-v1.43.0...core-v1.44.0) (2026-09-02)
+
+
+### Features
+
+* **core:** per-target summary notes in the build summary ([#450](https://github.com/zuke-build/zuke/issues/450)) ([7882f14](https://github.com/zuke-build/zuke/commit/7882f14967b9109aa391b214d3206a7f5388e027))
+
 ## [1.43.0](https://github.com/zuke-build/zuke/compare/core-v1.42.1...core-v1.43.0) (2026-09-02)
 
 
