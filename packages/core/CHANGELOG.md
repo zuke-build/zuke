@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.43.0](https://github.com/zuke-build/zuke/compare/core-v1.42.1...core-v1.43.0) (2026-09-02)
+
+
+### Features
+
+* **core:** `FileTasks.symlink` and `readLink`, with a force mode ([#438](https://github.com/zuke-build/zuke/issues/438)) ([6ce3bd0](https://github.com/zuke-build/zuke/commit/6ce3bd0763a093e4ed039d6fefd47e31b323ee9e))
+* **core:** a `zuke outdated` command for stale JSR pins ([#441](https://github.com/zuke-build/zuke/issues/441)) ([4d53db2](https://github.com/zuke-build/zuke/commit/4d53db2c2eb739c59c77b1119c3653b7fad821ed))
+
 ## [1.42.1](https://github.com/zuke-build/zuke/compare/core-v1.42.0...core-v1.42.1) (2026-08-26)
 
 
