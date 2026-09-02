@@ -1,6 +1,6 @@
 {
   "name": "@zuke/vitest",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "license": "MIT",
   "description": "Typed vitest task wrappers for Zuke builds — one-shot run by default, plus coverage, reporters, and watch mode via an injection-free settings-lambda API.",
   "exports": {

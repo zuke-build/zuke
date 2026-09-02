@@ -1,6 +1,6 @@
 {
   "name": "@zuke/bun",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "license": "MIT",
   "description": "Typed bun CLI task wrappers for Zuke builds — install, add, remove, run, x, and test via an injection-free settings-lambda API.",
   "exports": {

@@ -1,6 +1,6 @@
 {
   "name": "@zuke/jest",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "license": "MIT",
   "description": "Typed jest task wrappers for Zuke builds — coverage, CI mode, workers, snapshots, and reporters via an injection-free settings-lambda API.",
   "exports": {
