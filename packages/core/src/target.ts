@@ -370,10 +370,10 @@ export interface TargetContext {
    *
    * Notes accumulate across calls, and reporting a key again replaces its
    * value in place. Each key and value is rendered on one line (whitespace
-   * collapsed, control sequences removed). The tool wrappers report through
-   * the ambient {@link "./summary_note.ts".reportSummary} — `DenoTasks.test`
-   * reports its test counts this way — and those land in the same row, so a
-   * body only reports what its tools do not. A failed target keeps its notes:
+   * collapsed, control sequences removed). Library code with no context in
+   * hand — a tool wrapper reporting the counts its tool printed — reports
+   * through the ambient {@link "./summary_note.ts".reportSummary}, and those
+   * notes land in the same row. A failed target keeps its notes:
    * a red `test` row still says how many failed. A compensation (see
    * {@link TargetBuilder.onCancel}) has no row, so its calls are dropped.
    */

@@ -7,10 +7,7 @@
  */
 
 import type { PathLike } from "@zuke/core/tooling";
-import type { CommandOutput } from "@zuke/core/shell";
-import { reportSummary } from "@zuke/core";
 import { DenoPermissionSettings, DenoSettings } from "./settings.ts";
-import { parseTestSummary, testSummaryPairs } from "./test_summary.ts";
 import type { CoverageThresholds } from "./coverage.ts";
 import {
   ConfigFlags,
@@ -27,15 +24,7 @@ import {
 /** The report formats `deno test --reporter` accepts. */
 export type DenoTestReporter = "pretty" | "dot" | "junit" | "tap";
 
-/**
- * Settings for `deno test`.
- *
- * A run reports its counts into the running target's row of the build
- * summary — `// Tests: 837 · Passed: 837 · Failed: 0` — read from the result
- * line the pretty and dot reporters print; a failed run reports too, so a red
- * row says how many failed. The JUnit and TAP reporters print no such line,
- * so a run under `.reporter("junit")`/`.reporter("tap")` reports nothing.
- */
+/** Settings for `deno test`. */
 export class DenoTestSettings extends DenoPermissionSettings {
   #paths: string[] = [];
   #coverage?: string;
@@ -363,12 +352,6 @@ export class DenoTestSettings extends DenoPermissionSettings {
   noClearScreen(): this {
     this.#watch.noClearScreen();
     return this;
-  }
-
-  /** Report the run's counts into the build summary (see the class docs). */
-  protected override onOutput(output: CommandOutput): void {
-    const counts = parseTestSummary(output.stdout);
-    if (counts !== undefined) reportSummary(testSummaryPairs(counts));
   }
 
   /** Assemble the `deno test` argv. */

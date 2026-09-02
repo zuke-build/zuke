@@ -963,12 +963,6 @@ class DenoTaskSettings extends DenoSettings
 class DenoTestSettings extends DenoPermissionSettings
   Settings for `deno test`.
 
-  A run reports its counts into the running target's row of the build
-  summary — `// Tests: 837 · Passed: 837 · Failed: 0` — read from the result
-  line the pretty and dot reporters print; a failed run reports too, so a red
-  row says how many failed. The JUnit and TAP reporters print no such line,
-  so a run under `.reporter("junit")`/`.reporter("tap")` reports nothing.
-
   paths(...paths: PathLike[]): this
     Restrict the run to specific test files or directories.
   coverage(dir: PathLike): this
@@ -1073,8 +1067,6 @@ class DenoTestSettings extends DenoPermissionSettings
     Exclude paths from the watcher (`--watch-exclude`).
   noClearScreen(): this
     Keep previous output when re-running under `--watch` (`--no-clear-screen`).
-  override protected onOutput(output: CommandOutput): void
-    Report the run's counts into the build summary (see the class docs).
   override protected buildArgs(): string[]
     Assemble the `deno test` argv.
 
@@ -1200,9 +1192,7 @@ interface DenoTasksApi
   run(configure?: Configure<DenoRunSettings>): Promise<CommandOutput>
     Run a script: `deno run`.
   test(configure?: Configure<DenoTestSettings>): Promise<CommandOutput>
-    Run tests: `deno test`. Reports the run's counts into the running
-    target's row of the build summary (`// Tests: 837 · Passed: 837 · Failed: 0`), read from deno's own result line — see
-    {@link DenoTestSettings}.
+    Run tests: `deno test`.
   check(configure?: Configure<DenoCheckSettings>): Promise<CommandOutput>
     Type-check files: `deno check`.
   fmt(configure?: Configure<DenoFmtSettings>): Promise<CommandOutput>

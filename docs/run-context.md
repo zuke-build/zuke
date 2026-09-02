@@ -56,14 +56,12 @@ pack        Succeeded        0.3s  // Packages: 1
 
 ```ts
 import { Build, target } from "jsr:@zuke/core";
-import { DenoTasks } from "jsr:@zuke/deno";
 
 class CI extends Build {
-  test = target().executes(async (ctx) => {
-    // DenoTasks.test reports Tests/Passed/Failed itself, from deno's own
-    // result line — a body only adds what its tools do not.
-    await DenoTasks.test((s) => s.allowAll());
-    ctx.reportSummary({ Version: "3.6.2" });
+  pack = target().executes((ctx) => {
+    const packages = ["@zuke/core", "@zuke/deno"];
+    // …pack each one…
+    ctx.reportSummary({ Packages: packages.length, Version: "3.6.2" });
   });
 }
 ```
@@ -80,9 +78,9 @@ calls — reports through the **ambient** form, `reportSummary(pairs)` from
 `@zuke/core`. It lands on the row of whichever target is running, scoped like
 the [ambient signal](#scope-of-the-ambient-signal) to that target's async
 subtree, so concurrent targets never mix notes. Outside a running target it is
-a no-op: a wrapper never has to ask where it runs. `DenoTasks.test` (test
-counts) and `DenoTasks.coverage` (the measured line and branch percentages)
-report this way.
+a no-op: a wrapper never has to ask where it runs. This is the seam a tool
+wrapper reports through — a test runner's pass/fail counts, a coverage gate's
+measured percentages — so a body only adds what its tools do not.
 
 ## Reading what the rest of the run did
 

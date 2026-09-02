@@ -3,35 +3,36 @@
 
 /**
  * Integration: per-target summary notes, end to end through the CLI `main()`.
- * A `test` target running `DenoTasks.test` on a committed fixture gets its
- * counts on its row of the Build Summary without the build author writing a
- * thing; a body's own `ctx.reportSummary` lands on the same row; and a failed
- * run still says how many failed. The fixture is run by the deno already
- * executing the suite (the wrapper's default binary), so it stays hermetic.
+ * A body's `ctx.reportSummary` and the ambient `reportSummary` a helper with
+ * no context calls land on the same row of the Build Summary, a target that
+ * reports nothing keeps a plain row, and a failed target keeps the notes it
+ * reported before failing.
  */
 
 import {
   assertEquals,
   assertStringIncludes,
 } from "../../packages/core/tests/_assert.ts";
-import { Build, target } from "../../packages/core/mod.ts";
-import { DenoTasks } from "../../packages/deno/mod.ts";
+import { Build, reportSummary, target } from "../../packages/core/mod.ts";
 import { runCli } from "./_harness.ts";
 
-const PASSING = new URL(
-  "../../packages/deno/tests/fixtures/passing_suite.ts",
-  import.meta.url,
-).pathname;
-const FAILING = new URL(
-  "../../packages/deno/tests/fixtures/failing_suite.ts",
-  import.meta.url,
-).pathname;
+/** Stands in for a tool wrapper: reports what its tool printed, with no ctx. */
+function runSuite(counts: { passed: number; failed: number }): Promise<void> {
+  reportSummary({
+    Tests: counts.passed + counts.failed,
+    Passed: counts.passed,
+    Failed: counts.failed,
+  });
+  return counts.failed === 0
+    ? Promise.resolve()
+    : Promise.reject(new Error(`${counts.failed} test(s) failed`));
+}
 
 class CI extends Build {
   test = target()
-    .description("run the fixture suite")
+    .description("run the suite")
     .executes(async (ctx) => {
-      await DenoTasks.test((s) => s.paths(PASSING).noCheck().quiet());
+      await runSuite({ passed: 3, failed: 0 });
       ctx.reportSummary({ Version: "3.6.2" });
     });
 
@@ -43,8 +44,8 @@ class CI extends Build {
 
 class Broken extends Build {
   test = target()
-    .description("run the failing fixture suite")
-    .executes(() => DenoTasks.test((s) => s.paths(FAILING).noCheck().quiet()));
+    .description("run a suite with a failure")
+    .executes(() => runSuite({ passed: 1, failed: 1 }));
 }
 
 /** The summary row for `name`, or `""` when the table has none. */
@@ -54,17 +55,17 @@ function row(out: string, name: string): string {
   ) ?? "";
 }
 
-Deno.test("the test target's row carries the run's counts and the body's own note", async () => {
+Deno.test("a target's row carries the helper's counts and the body's own note", async () => {
   const r = await runCli(CI, ["pack"]);
   assertEquals(r.code, 0, r.err);
   assertStringIncludes(
     row(r.out, "test"),
-    "// Tests: 3 · Passed: 2 · Failed: 0 · Ignored: 1 · Version: 3.6.2",
+    "// Tests: 3 · Passed: 3 · Failed: 0 · Version: 3.6.2",
   );
   assertEquals(row(r.out, "pack").includes("//"), false);
 });
 
-Deno.test("a failed test target's row says how many tests failed", async () => {
+Deno.test("a failed target's row keeps the notes reported before the failure", async () => {
   const r = await runCli(Broken, ["test"]);
   assertEquals(r.code, 1);
   const line = row(r.out, "test");
