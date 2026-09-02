@@ -95,6 +95,8 @@ abstract class YarnSettings extends ToolSettings
 
   override protected defaultTool(): string
     The default binary: `yarn` resolved from PATH.
+  override protected onOutput(output: CommandOutput): void
+    Report `Added` and `Removed` (Yarn Berry) onto the build summary.
 
 interface YarnTasksApi
   The shape of {@link YarnTasks}.

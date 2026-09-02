@@ -18,6 +18,8 @@
 
 import { type Configure, runSettings, ToolSettings } from "@zuke/core/tooling";
 import type { CommandOutput } from "@zuke/core/shell";
+import { reportSummary } from "@zuke/core";
+import { parsePnpmSummary } from "./summary.ts";
 
 /** An access level accepted by pnpm's `--access` flag. */
 export type PnpmAccess = "public" | "restricted";
@@ -27,6 +29,12 @@ export abstract class PnpmSettings extends ToolSettings {
   /** The default binary: `pnpm` resolved from PATH. */
   protected override defaultTool(): string {
     return "pnpm";
+  }
+
+  /** Report `Added`, `Downloaded` and `Reused` onto the build summary. */
+  protected override onOutput(output: CommandOutput): void {
+    const pairs = parsePnpmSummary(output);
+    if (pairs !== undefined) reportSummary(pairs);
   }
 }
 

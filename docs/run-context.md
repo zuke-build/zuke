@@ -128,6 +128,14 @@ lines (JSON, JUnit, or a machine-readable format) reports nothing.
 | `CspellTasks.lint` | `Files`, `Issues` |
 | `DprintTasks.check` | `Unformatted` |
 | `DprintTasks.fmt` | `Formatted` |
+| `KnipTasks.run` | `Issues`, summed over its sections |
+| `DpdmTasks.analyze` | `Circular` |
+| `ShellcheckTasks.lint` | `Findings` |
+| `TscAliasTasks.run` | `Files` rewritten, under `.verbose()` only |
+| `NpmTasks.install` / `ci` / `uninstall` / `update` / … | `Added`, `Removed`, `Changed`, and `Vulnerabilities` when audited |
+| `PnpmTasks.install` / `add` / `remove` | `Added`, `Downloaded`, `Reused` |
+| `YarnTasks.install` / `add` / `remove` | `Added`, `Removed` (Yarn Berry; Classic prints no count) |
+| `BunTasks.install` / `add` / `remove` | `Installed`, `Removed` |
 
 Each is read from the closing line the tool itself prints, on a failed run
 too, so a red row says how many. A clean run reports its zeros — a green
@@ -135,6 +143,17 @@ too, so a red row says how many. A clean run reports its zeros — a green
 without printing its closing line (a bad flag, a missing config) reports
 nothing rather than a misleading zero. A machine-readable reporter that
 replaces the closing line (`--format json`, JUnit) reports nothing either.
+
+### Notes are durable
+
+A settled target's notes are written to its row of the
+[run record](./state.md) alongside its status and timing, redacted like every
+other stored string. So they survive the process: `zuke runs show <id>` prints
+them after each target's duration (`✔ test  succeeded  128.1s  // Tests: 4094
+· Passed: 4094 · Failed: 0`), the MCP `show_run` tool returns them in the
+record, and a target that reads a dependency's outcome sees them as
+`ctx.outcomeOf("test")?.summary` — after a resume too, since the record is
+what a resumed run reads.
 
 ## Reading what the rest of the run did
 

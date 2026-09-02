@@ -31,6 +31,8 @@ import {
   ToolSettings,
 } from "@zuke/core/tooling";
 import type { CommandOutput } from "@zuke/core/shell";
+import { reportSummary } from "@zuke/core";
+import { parseTscAliasSummary } from "./summary.ts";
 
 /** Settings for a `tsc-alias` run. */
 export class TscAliasRunSettings extends ToolSettings {
@@ -129,6 +131,12 @@ export class TscAliasRunSettings extends ToolSettings {
   silent(): this {
     this.#silent = true;
     return this;
+  }
+
+  /** Report `Files` rewritten (under `--verbose`) onto the build summary. */
+  protected override onOutput(output: CommandOutput): void {
+    const pairs = parseTscAliasSummary(output);
+    if (pairs !== undefined) reportSummary(pairs);
   }
 
   /** Assemble the `tsc-alias` argv from the configured settings. */

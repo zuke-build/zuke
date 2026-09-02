@@ -1628,7 +1628,7 @@
       },
       "packages/dpdm": {
         "dependencies": [
-          "jsr:@zuke/core@^1.25.0"
+          "jsr:@zuke/core@^1.44.0"
         ]
       },
       "packages/dprint": {
@@ -1683,7 +1683,7 @@
       },
       "packages/knip": {
         "dependencies": [
-          "jsr:@zuke/core@^1.25.0"
+          "jsr:@zuke/core@^1.44.0"
         ]
       },
       "packages/kubectl": {
@@ -1713,7 +1713,7 @@
       },
       "packages/npm": {
         "dependencies": [
-          "jsr:@zuke/core@^1.25.0"
+          "jsr:@zuke/core@^1.44.0"
         ]
       },
       "packages/npx": {
@@ -1753,7 +1753,7 @@
       },
       "packages/pnpm": {
         "dependencies": [
-          "jsr:@zuke/core@^1.25.0"
+          "jsr:@zuke/core@^1.44.0"
         ]
       },
       "packages/redocly": {
@@ -1773,7 +1773,7 @@
       },
       "packages/shellcheck": {
         "dependencies": [
-          "jsr:@zuke/core@^1.25.0"
+          "jsr:@zuke/core@^1.44.0"
         ]
       },
       "packages/storybook": {
@@ -1798,7 +1798,7 @@
       },
       "packages/tsc-alias": {
         "dependencies": [
-          "jsr:@zuke/core@^1.25.0"
+          "jsr:@zuke/core@^1.44.0"
         ]
       },
       "packages/tsdown": {
@@ -1833,7 +1833,7 @@
       },
       "packages/yarn": {
         "dependencies": [
-          "jsr:@zuke/core@^1.25.0"
+          "jsr:@zuke/core@^1.44.0"
         ]
       }
     }

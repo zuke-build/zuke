@@ -23,6 +23,7 @@ import type {
   TargetRunStatus,
 } from "./state/types.ts";
 import { formatDuration, table } from "./render.ts";
+import { formatSummary } from "./report.ts";
 
 /** Inputs for {@link runsCommand}. */
 export interface RunsOptions {
@@ -291,10 +292,16 @@ function targetDuration(state: TargetRunState): string | undefined {
   return Number.isFinite(ms) && ms >= 0 ? formatDuration(ms) : undefined;
 }
 
-/** The trailing note for one target line: a duration, error, or wait descriptor. */
+/**
+ * The trailing note for one target line: a duration, error, or wait
+ * descriptor, then the notes the target reported into its summary row, in the
+ * same `// key: value` form the build summary prints them.
+ */
 function targetNote(state: TargetRunState): string {
+  const notes = formatSummary(state.summary);
+  const trailing = notes === "" ? "" : `  // ${notes}`;
   if (state.status === "failed" && state.error !== undefined) {
-    return `  ${state.error}`;
+    return `  ${state.error}${trailing}`;
   }
   if (state.status === "waiting" && state.waitingFor !== undefined) {
     const { trigger, deadline } = state.waitingFor;
@@ -302,7 +309,7 @@ function targetNote(state: TargetRunState): string {
     return `  waiting for ${trigger}${until}`;
   }
   const duration = targetDuration(state);
-  return duration !== undefined ? `  ${duration}` : "";
+  return (duration !== undefined ? `  ${duration}` : "") + trailing;
 }
 
 /** Render `runs show <id>`: the run header, parameters, targets, and signals. */

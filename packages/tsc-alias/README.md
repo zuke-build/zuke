@@ -77,6 +77,8 @@ class TscAliasRunSettings extends ToolSettings
     Print debug output (`--debug`).
   silent(): this
     Suppress all output (`--silent`).
+  override protected onOutput(output: CommandOutput): void
+    Report `Files` rewritten (under `--verbose`) onto the build summary.
   override protected buildArgs(): string[]
     Assemble the `tsc-alias` argv from the configured settings.
 

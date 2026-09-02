@@ -56,6 +56,8 @@ class KnipRunSettings extends ToolSettings
     Choose the reporter, e.g. `json` or `compact` (`--reporter`).
   include(...types: string[]): this
     Limit to specific issue types, e.g. `files`, `dependencies` (`--include`).
+  override protected onOutput(output: CommandOutput): void
+    Report `Issues`, the findings summed over every section, onto the build summary.
   override protected buildArgs(): string[]
     Assemble the `knip <flags>` argv.
 

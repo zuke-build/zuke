@@ -80,6 +80,8 @@ class DpdmAnalyzeSettings extends ToolSettings
     Exit with a code when a case occurs, e.g. `circular:1` (`--exit-code`).
   entries(...paths: PathLike[]): this
     The entry files or globs to analyze (appended after all options).
+  override protected onOutput(output: CommandOutput): void
+    Report `Circular`, the cycles found, onto the build summary.
   override protected buildArgs(): string[]
     Assemble the `dpdm <flags> <entries...>` argv.
 

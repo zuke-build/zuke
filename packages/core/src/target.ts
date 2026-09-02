@@ -36,7 +36,7 @@ import type { Configure } from "./tooling.ts";
 import { type LockHolder, lockKey } from "./state/lock.ts";
 import type { WaitTrigger } from "./wait.ts";
 import type { SignalRecord, TargetRunStatus } from "./state/types.ts";
-import type { SummaryPairs } from "./summary_note.ts";
+import type { SummaryEntry, SummaryPairs } from "./summary_note.ts";
 
 /**
  * Fluent configuration for {@link TargetBuilder.lock}, in the settings-lambda
@@ -293,6 +293,13 @@ export interface TargetOutcomeView {
   readonly startedAt?: string;
   /** When it settled, ISO-8601, if it has. */
   readonly endedAt?: string;
+  /**
+   * The notes it reported into its row of the build summary (see
+   * {@link TargetContext.reportSummary}), when it reported any — so an
+   * aggregating target can read a dependency's test counts, not only its
+   * verdict. Durable: present after a resume too.
+   */
+  readonly summary?: readonly SummaryEntry[];
 }
 
 /**

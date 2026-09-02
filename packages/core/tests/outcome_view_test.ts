@@ -127,3 +127,17 @@ Deno.test("an effect record claiming zero attempts is refused", () => {
   }
   assertEquals(message.includes("positive integer"), true, message);
 });
+
+Deno.test("the settlement's notes win, and the row's fill in after a resume", () => {
+  const live = outcomeView(
+    { status: "succeeded", summary: [{ key: "Tests", value: "3" }] },
+    row({ summary: [{ key: "Tests", value: "2" }] }),
+  );
+  assertEquals(live.summary, [{ key: "Tests", value: "3" }]);
+  const durable = outcomeView(
+    { status: "succeeded" },
+    row({ summary: [{ key: "Lines", value: "98.4%" }] }),
+  );
+  assertEquals(durable.summary, [{ key: "Lines", value: "98.4%" }]);
+  assertEquals("summary" in outcomeView({ status: "succeeded" }, row()), false);
+});

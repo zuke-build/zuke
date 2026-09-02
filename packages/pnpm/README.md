@@ -110,6 +110,8 @@ abstract class PnpmSettings extends ToolSettings
 
   override protected defaultTool(): string
     The default binary: `pnpm` resolved from PATH.
+  override protected onOutput(output: CommandOutput): void
+    Report `Added`, `Downloaded` and `Reused` onto the build summary.
 
 interface PnpmTasksApi
   The shape of {@link PnpmTasks}.

@@ -20,6 +20,7 @@
  */
 
 import type { JsonValue } from "../target.ts";
+import type { SummaryEntry } from "../summary_note.ts";
 import { asObject, fields } from "../json_shape.ts";
 
 /** The field readers for a run record's own fields. */
@@ -148,6 +149,14 @@ export interface TargetRunState {
    * once at least one has been armed.
    */
   effects?: Record<string, EffectState>;
+  /**
+   * The notes the target reported into its row of the build summary (see
+   * {@link "../target.ts".TargetContext.reportSummary}), in the order they
+   * were first reported — present only when it reported at least one, and
+   * redacted like every other stored string. What lets `zuke runs show` and
+   * `ctx.outcomeOf` say a target ran 4094 tests, not only that it succeeded.
+   */
+  summary?: SummaryEntry[];
 }
 
 /** One entry of a run's graph-shape snapshot. */
@@ -371,7 +380,22 @@ function parseTargetState(value: unknown): TargetRunState {
   if (object.effects !== undefined) {
     state.effects = parseEffects(object.effects);
   }
+  if (object.summary !== undefined) {
+    state.summary = parseSummary(object.summary);
+  }
   return state;
+}
+
+/** Validate a target's stored summary notes: a list of `{ key, value }` strings. */
+function parseSummary(value: unknown): SummaryEntry[] {
+  if (!Array.isArray(value)) throw new Error("state: summary is not an array");
+  return value.map((entry) => {
+    const object = asObject(entry);
+    if (object === null) {
+      throw new Error("state: summary note is not an object");
+    }
+    return { key: str(object, "key"), value: str(object, "value") };
+  });
 }
 
 /** Validate a target's effect rows, keyed by effect name. */

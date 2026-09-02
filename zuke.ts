@@ -123,6 +123,19 @@ import { githubWorkflows } from "./build/workflows.ts";
  */
 const GITLEAKS_REPORT = "gitleaks-report.json";
 
+/**
+ * The files the `check` target type-checks: the globs of the root `check` task
+ * in `deno.json`, which stays the entry point for a plain `deno task check`.
+ */
+const CHECK_GLOBS = [
+  "zuke.ts",
+  "build/*.ts",
+  "tests/**/*.ts",
+  "packages/*/mod.ts",
+  "packages/*/src/**/*.ts",
+  "packages/*/tests/**/*.ts",
+];
+
 class ZukeBuild extends Build {
   clean = target()
     .description("Remove build artifacts")
@@ -219,7 +232,11 @@ class ZukeBuild extends Build {
     .description("Type-check the whole workspace")
     .dependsOn(this.restore)
     .executes(async () => {
-      await DenoTasks.task((s) => s.name("check"));
+      // The same files the root `check` task names, run through the wrapper
+      // rather than `deno task` so the row can say `// Errors: 0`: the task
+      // runner's shell would expand the globs, so they are expanded here.
+      const files = (await Promise.all(CHECK_GLOBS.map((g) => glob(g)))).flat();
+      await DenoTasks.check((s) => s.frozen().paths(...files));
     });
 
   test = target()

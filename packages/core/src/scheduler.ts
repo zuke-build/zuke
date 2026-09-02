@@ -27,7 +27,11 @@ import {
   type TargetOutcome,
 } from "./run_support.ts";
 import { withAmbientEcho } from "./ambient_echo.ts";
-import { TargetSummary, withAmbientSummary } from "./summary_note.ts";
+import {
+  type SummaryEntry,
+  TargetSummary,
+  withAmbientSummary,
+} from "./summary_note.ts";
 import { type Style, type TargetReport, targetWaitFooter } from "./report.ts";
 import type { Renderer } from "./renderer.ts";
 import {
@@ -706,9 +710,14 @@ function settleTarget(
   name: string,
   status: TargetStatus,
   error?: string,
+  summary?: SummaryEntry[],
 ): void {
-  env.statuses.set(name, { status: recordStatusOf(status), error });
-  void env.writer?.markTargetSettled(name, status, error);
+  env.statuses.set(name, {
+    status: recordStatusOf(status),
+    error,
+    ...(summary === undefined ? {} : { summary }),
+  });
+  void env.writer?.markTargetSettled(name, status, error, summary);
 }
 
 /** Sequentially run the plan, aborting (and skipping the rest) on first failure. */
@@ -750,7 +759,13 @@ export async function runSequential(
       failTarget(reporter, renderer, style, name, 0, error);
       outcome = { status: "failed", ms: 0, error };
     }
-    settleTarget(env, name, outcome.status, errorMessage(outcome.error));
+    settleTarget(
+      env,
+      name,
+      outcome.status,
+      errorMessage(outcome.error),
+      outcome.summary,
+    );
     if (outcome.status === "passed" || outcome.status === "failed") opened++;
     reports.push(reportOf(name, outcome));
     // A fan-out target's sub-targets appear as their own rows beneath it.
@@ -908,6 +923,7 @@ export async function runScheduled(
                   t.name_ ?? "<unnamed>",
                   outcome.status,
                   errorMessage(outcome.error),
+                  outcome.summary,
                 );
               }
               // An executed target (or a parked wait) prints a block worth

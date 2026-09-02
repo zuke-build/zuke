@@ -115,6 +115,8 @@ export interface TargetSettlement {
   status: TargetRunStatus;
   /** The failure's message, when it failed. */
   error?: string;
+  /** The notes it reported into its summary row, when it reported any. */
+  summary?: SummaryEntry[];
 }
 
 /**
@@ -130,11 +132,13 @@ export function outcomeView(
   row: TargetRunState | undefined,
 ): TargetOutcomeView {
   const error = settled.error ?? row?.error;
+  const summary = settled.summary ?? row?.summary;
   return {
     status: settled.status,
     ...(error === undefined ? {} : { error }),
     ...(row?.startedAt === undefined ? {} : { startedAt: row.startedAt }),
     ...(row?.endedAt === undefined ? {} : { endedAt: row.endedAt }),
+    ...(summary === undefined ? {} : { summary }),
   };
 }
 

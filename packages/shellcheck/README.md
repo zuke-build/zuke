@@ -85,6 +85,8 @@ class ShellcheckSettings extends ToolSettings
     be given with or without the `SC` prefix, as ShellCheck accepts both.
   externalSources(): this
     Follow `source`d files outside the checked set (`-x`/`--external-sources`).
+  override protected onOutput(output: CommandOutput): void
+    Report `Findings` onto the build summary.
   override protected buildArgs(): string[]
     Assemble the `shellcheck` argv.
 

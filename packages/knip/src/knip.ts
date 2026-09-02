@@ -28,6 +28,8 @@ import {
   ToolSettings,
 } from "@zuke/core/tooling";
 import type { CommandOutput } from "@zuke/core/shell";
+import { reportSummary } from "@zuke/core";
+import { parseKnipSummary } from "./summary.ts";
 
 /** Settings for a `knip` run. */
 export class KnipRunSettings extends ToolSettings {
@@ -103,6 +105,12 @@ export class KnipRunSettings extends ToolSettings {
   include(...types: string[]): this {
     this.#include.push(...types);
     return this;
+  }
+
+  /** Report `Issues`, the findings summed over every section, onto the build summary. */
+  protected override onOutput(output: CommandOutput): void {
+    const pairs = parseKnipSummary(output);
+    if (pairs !== undefined) reportSummary(pairs);
   }
 
   /** Assemble the `knip <flags>` argv. */

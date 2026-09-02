@@ -590,3 +590,29 @@ Deno.test("runs list honours --limit via the query", async () => {
     assertEquals(rows.length, 2);
   });
 });
+
+Deno.test("formatRunDetail trails a target's summary notes after its duration or error", () => {
+  const record = sampleRecord({
+    targets: {
+      test: {
+        status: "succeeded",
+        meta: {},
+        startedAt: "2026-07-17T10:00:00.000Z",
+        endedAt: "2026-07-17T10:00:08.000Z",
+        summary: [{ key: "Tests", value: "4094" }, {
+          key: "Failed",
+          value: "0",
+        }],
+      },
+      lint: {
+        status: "failed",
+        meta: {},
+        error: "Error: 2 problems",
+        summary: [{ key: "Problems", value: "2" }],
+      },
+    },
+  });
+  const text = formatRunDetail(record);
+  assertStringIncludes(text, "8.0s  // Tests: 4094 · Failed: 0");
+  assertStringIncludes(text, "Error: 2 problems  // Problems: 2");
+});
