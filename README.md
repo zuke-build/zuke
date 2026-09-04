@@ -83,18 +83,12 @@ capabilities Zuke was built to provide.
 
 Teams running Zuke in production:
 
-<table>
-  <tr>
-    <td align="center" width="260">
-      <a href="https://payhawk.com">
-        <picture>
-          <source media="(prefers-color-scheme: dark)" srcset="https://github.com/zuke-build/zuke/raw/master/assets/users/payhawk-white.svg" />
-          <img width="170px" alt="Payhawk" src="https://github.com/zuke-build/zuke/raw/master/assets/users/payhawk.svg" />
-        </picture>
-      </a>
-    </td>
-  </tr>
-</table>
+<a href="https://payhawk.com">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://github.com/zuke-build/zuke/raw/master/assets/users/payhawk-white.svg" />
+    <img width="170px" alt="Payhawk" src="https://github.com/zuke-build/zuke/raw/master/assets/users/payhawk.svg" />
+  </picture>
+</a>
 
 Using Zuke at your company? We'd love to list you — open a pull request adding
 your logo to `assets/users/` and a row to this table, or say hello in an
