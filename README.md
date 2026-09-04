@@ -79,6 +79,29 @@ See **[How Zuke compares](./docs/comparison.md)** for a capability-by-capability
 matrix against `deno task`, npm scripts, Make, Nx, Turborepo, and Dagger, on the
 capabilities Zuke was built to provide.
 
+## Who's using Zuke
+
+Teams running Zuke in production:
+
+<table>
+  <tr>
+    <td align="center" width="260">
+      <a href="https://payhawk.com">
+        <picture>
+          <source media="(prefers-color-scheme: dark)" srcset="https://github.com/zuke-build/zuke/raw/master/assets/users/payhawk-white.svg" />
+          <img width="170px" alt="Payhawk" src="https://github.com/zuke-build/zuke/raw/master/assets/users/payhawk.svg" />
+        </picture>
+      </a>
+      <br />
+      <sub>Runs Zuke for all of its deployment processes.</sub>
+    </td>
+  </tr>
+</table>
+
+Using Zuke at your company? We'd love to list you — open a pull request adding
+your logo to `assets/users/` and a row to this table, or say hello in an
+[issue](https://github.com/zuke-build/zuke/issues) and we'll add it for you.
+
 ## Install
 
 You need [Deno](https://deno.com/) installed. The fastest start is the
