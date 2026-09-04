@@ -90,9 +90,9 @@ Teams running Zuke in production:
   </picture>
 </a>
 
->Using Zuke at your company? We'd love to list you — open a pull request adding
-your logo to `assets/users/` and a row to this table, or say hello in an
-[issue](https://github.com/zuke-build/zuke/issues) and we'll add it for you.
+> Using Zuke at your company? We'd love to list you — open a pull request adding
+> your logo to `assets/users/` and an entry to this section, or say hello in an
+> [issue](https://github.com/zuke-build/zuke/issues) and we'll add it for you.
 
 ## Install
 
