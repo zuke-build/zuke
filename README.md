@@ -92,8 +92,6 @@ Teams running Zuke in production:
           <img width="170px" alt="Payhawk" src="https://github.com/zuke-build/zuke/raw/master/assets/users/payhawk.svg" />
         </picture>
       </a>
-      <br />
-      <sub>Runs Zuke for all of its deployment processes.</sub>
     </td>
   </tr>
 </table>
