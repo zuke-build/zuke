@@ -1766,6 +1766,42 @@ Deno.test("with no actor the inherited environment is left alone", async () => {
   );
 });
 
+Deno.test("kind and roles without an actor change nothing", async () => {
+  // The three describe one caller, so they are written together or not at all.
+  // Honouring a supplied kind/roles here would pair one caller's entitlements
+  // with the *inherited* actor — exactly the mismatch the coupling exists to
+  // prevent — so they are ignored, and the inherited triple stays internally
+  // consistent. Unreachable from the server (its actor floors at "anonymous"),
+  // but `defaultRegistryRunner` is exported, so the contract is pinned here.
+  await withEnv(
+    {
+      ZUKE_ACTOR: "inherited-actor",
+      ZUKE_ACTOR_KIND: "service",
+      ZUKE_ACTOR_ROLES: "operator",
+    },
+    async () => {
+      for (
+        const options of [
+          { actorKind: "service" as const, actorRoles: ["admin"] },
+          { actor: "", actorKind: "service" as const, actorRoles: ["admin"] },
+        ]
+      ) {
+        const result = await defaultRegistryRunner(
+          [Deno.execPath(), "eval", ACTOR_ECHO],
+          Deno.cwd(),
+          options,
+        );
+        assertEquals(result.code, 0);
+        assertEquals(
+          result.stdout.trim(),
+          "inherited-actor|service|operator",
+          JSON.stringify(options),
+        );
+      }
+    },
+  );
+});
+
 Deno.test("the server's tokens are stripped beside the exported claim", async () => {
   await withEnv(
     { ZUKE_OPERATOR_TOKEN: "server-secret", ZUKE_MCP_TOKEN: "bearer-secret" },

@@ -84,12 +84,18 @@ export interface RegistryRunOptions {
   /**
    * Whether a person or a machine asked for the run, exported as
    * `ZUKE_ACTOR_KIND`, so a build can tell an engineer's launch from a
-   * scheduler's.
+   * scheduler's. Honoured only together with {@link RegistryRunOptions.actor}.
    */
   actorKind?: "human" | "service";
   /**
    * The caller's roles, exported as `ZUKE_ACTOR_ROLES` (comma-separated), so a
-   * build can see what the caller was entitled to when it asked.
+   * build can see what the caller was entitled to when it asked. Honoured only
+   * together with {@link RegistryRunOptions.actor}.
+   *
+   * The three describe one caller and are written together or not at all:
+   * exporting entitlements beside an actor that came from somewhere else is the
+   * mismatch the coupling exists to prevent. Supplying these without an actor
+   * therefore changes nothing rather than half-describing a caller.
    */
   actorRoles?: readonly string[];
 }
