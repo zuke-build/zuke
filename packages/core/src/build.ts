@@ -333,7 +333,7 @@ export class Build {
    *
    * ```ts
    * class ControlPlane extends Build {
-   *   override mcpAuth() {
+   *   override mcpAuth(): McpAuthenticator {
    *     return {
    *       authenticate: async (ctx: McpRequestContext) => {
    *         const claims = await verifyBearer(ctx.headers.get("authorization"));

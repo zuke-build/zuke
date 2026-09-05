@@ -1084,7 +1084,7 @@ class Build
 
     ```ts
     class ControlPlane extends Build {
-      override mcpAuth() {
+      override mcpAuth(): McpAuthenticator {
         return {
           authenticate: async (ctx: McpRequestContext) => {
             const claims = await verifyBearer(ctx.headers.get("authorization"));
@@ -3287,7 +3287,9 @@ interface McpAuthReject
   detail?: string
     A short human-readable detail. Never a secret: it is returned to the caller.
   challenge?: string
-    The `WWW-Authenticate` header value to challenge with, when one applies.
+    The `WWW-Authenticate` header value to challenge with, when one applies. A
+    value a header cannot carry (a newline, a NUL, a character outside Latin-1)
+    is dropped rather than sent, so it cannot turn the refusal into a fault.
 
 interface McpAuthenticator
   Authenticates one request for the MCP server.

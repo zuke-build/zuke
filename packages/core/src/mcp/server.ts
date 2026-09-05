@@ -111,7 +111,7 @@ export interface McpServerOptions {
    * tool call is written to the audit log.
    */
   stateStore?: StateStore;
-  /** Who to attribute audited calls to (`--actor`); below {@link identity}. */
+  /** Who to attribute audited calls to (`--actor`); below {@link authenticator}. */
   actor?: string;
   /**
    * Authenticate the caller per request. When set, the identity it resolves

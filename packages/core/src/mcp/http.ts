@@ -155,7 +155,8 @@ function bearerToken(header: string | null): string | undefined {
 }
 
 /**
- * The request as an authenticator sees it: same method, URL and headers, no body.
+ * The request as an authenticator sees it: same method, URL and headers, no
+ * body. `undefined` when no such view can be built.
  *
  * The body belongs to the transport. A request's body can be read once, so an
  * authenticator that peeked at this one would leave nothing for the dispatcher
@@ -163,12 +164,23 @@ function bearerToken(header: string | null): string | undefined {
  * code that caused it. A credential never lives in the body anyway, so handing
  * over a bodiless view costs an authenticator nothing and makes that mistake
  * impossible rather than merely documented.
+ *
+ * The constructor can refuse: Deno builds `request.url` from the raw `Host`
+ * header, and it accepts hosts the WHATWG URL parser rejects (`Host: bad host`).
+ * Such a request is still a request — its headers, which is where a credential
+ * lives, are intact — so the view is simply absent and the authenticator falls
+ * back to them, rather than the whole exchange failing on a header the server
+ * itself was willing to accept.
  */
-function authenticatorView(request: Request): Request {
-  return new Request(request.url, {
-    method: request.method,
-    headers: request.headers,
-  });
+function authenticatorView(request: Request): Request | undefined {
+  try {
+    return new Request(request.url, {
+      method: request.method,
+      headers: request.headers,
+    });
+  } catch {
+    return undefined;
+  }
 }
 
 /**

@@ -303,3 +303,71 @@ Deno.test("UNAUTHORIZED is the bare 401 Bearer challenge", () => {
   // body is exactly `error` — "Unauthorized", with nothing about why.
   assertEquals(UNAUTHORIZED.detail, undefined);
 });
+
+// ---- Regressions: an authenticator's own failure is still a refusal ---------
+
+Deno.test("a throwing property getter on the result is a refusal, not a fault", async () => {
+  // Wrapping verified claims in getters is the natural shape for an OAuth
+  // authenticator, and a getter can throw — a missing `scope` claim, say. Every
+  // read of the result must therefore be guarded, not just the call that
+  // produced it, or the throw escapes as a transport fault carrying no
+  // challenge instead of the refusal this seam promises.
+  const throwing = (field: string): McpAuthenticator["authenticate"] => () => ({
+    actor: "ada",
+    get [field](): never {
+      throw new Error(`no ${field} claim`);
+    },
+  });
+  for (const field of ["actor", "kind", "roles", "via", "status"]) {
+    assertEquals(await run(throwing(field)), UNAUTHORIZED, field);
+  }
+
+  // Including the reject arm: a refusal whose own fields throw still refuses.
+  assertEquals(
+    await run(() => ({
+      status: 403,
+      get error(): never {
+        throw new Error("boom");
+      },
+    })),
+    UNAUTHORIZED,
+  );
+});
+
+Deno.test("a challenge a header cannot carry is dropped, not sent", async () => {
+  // `Headers.set` throws on CR/LF, NUL and anything outside Latin-1. The
+  // challenge is the one field of a refusal that becomes a header, so an
+  // one that cannot be sent is dropped exactly like an absent one — the refusal still
+  // goes out with its own status, rather than becoming a fault with no
+  // challenge at all. (A CR/LF value would otherwise be a header-injection
+  // attempt; `Headers` rejects it and so do we.)
+  for (
+    const challenge of [
+      'Bearer realm="x"\r\nX-Injected: 1',
+      "Bearer\nSet-Cookie: a=b",
+      "Bearer\u0000",
+      "Bearer \u{1f510}", // outside Latin-1
+    ]
+  ) {
+    assertEquals(
+      await run(() => ({ status: 401, error: "invalid_token", challenge })),
+      { status: 401, error: "invalid_token" },
+      JSON.stringify(challenge),
+    );
+  }
+
+  // A challenge that *is* sendable survives untouched — including a Latin-1
+  // character, which a header can carry, so the guard must not over-reject.
+  for (
+    const challenge of [
+      'Bearer realm="zuke", error="invalid_token"',
+      "Bearer é",
+    ]
+  ) {
+    assertEquals(
+      await run(() => ({ status: 401, error: "invalid_token", challenge })),
+      { status: 401, error: "invalid_token", challenge },
+      challenge,
+    );
+  }
+});

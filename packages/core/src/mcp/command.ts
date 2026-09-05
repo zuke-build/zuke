@@ -162,6 +162,15 @@ export async function serveMcp(
   }
   const authenticator = options.authenticator ?? declared ??
     (hook === undefined ? undefined : authenticatorFromHook(hook));
+  // Every authenticator runs on every request. Only one declared *as*
+  // authentication also satisfies the non-loopback bind guard: `mcpIdentity()`
+  // is sugar for trusting a header a proxy injected, and its whole contract
+  // assumes something in front has already authenticated the caller — so on a
+  // directly reachable endpoint it authenticates nobody, because any caller
+  // sets that header itself. Such a build needed a bearer token to bind before
+  // this seam existed, and still does.
+  const authenticates = options.authenticator !== undefined ||
+    declared !== undefined;
   // An injected registry (tests) wins; otherwise `--registry` resolves one.
   const registry = options.registry ??
     (options.useRegistry ? resolveMcpRegistry(build, readEnv) : undefined);
@@ -190,7 +199,13 @@ export async function serveMcp(
       authenticator,
     });
   if (options.http !== undefined) {
-    return await serveMcpHttp(server, options.http, options, authenticator);
+    return await serveMcpHttp(
+      server,
+      options.http,
+      options,
+      authenticator,
+      authenticates,
+    );
   }
   if (!options.quiet) {
     const mode = options.allowRun ? "run enabled" : "read-only";
@@ -211,26 +226,29 @@ export async function serveMcp(
  * Serve over the HTTP transport. Enforces the security default: a non-loopback
  * bind **must** authenticate its callers — with a bearer token (from
  * {@link ServeMcpOptions.token} or `ZUKE_MCP_TOKEN`) or with an authenticator
- * (`mcpAuth()`/`mcpIdentity()`) — else the server refuses to start rather than
- * exposing an unauthenticated endpoint. A loopback bind may run without either.
+ * declared as authentication (`authenticates`) — else the server refuses to
+ * start rather than exposing an unauthenticated endpoint. A loopback bind may
+ * run without either. `authenticator` is what actually runs per request, which
+ * includes a `mcpIdentity()` hook that does not itself satisfy the guard.
  */
 async function serveMcpHttp(
   server: McpHandler,
   address: HttpAddress,
   options: ServeMcpOptions,
   authenticator: McpAuthenticator | undefined,
+  authenticates: boolean,
 ): Promise<number> {
   const readEnv = options.readEnv ?? defaultReadEnv;
   const token = options.token ?? readEnv("ZUKE_MCP_TOKEN");
   const hasToken = token !== undefined && token !== "";
-  if (
-    !isLoopbackHost(address.host) && !hasToken && authenticator === undefined
-  ) {
+  if (!isLoopbackHost(address.host) && !hasToken && !authenticates) {
     console.error(
       `zuke mcp: refusing to bind ${address.host}:${address.port} without ` +
         `authentication. A non-loopback MCP endpoint must be authenticated — ` +
         `set ZUKE_MCP_TOKEN, declare mcpAuth() on the build, or bind 127.0.0.1 ` +
-        `for local-only access.`,
+        `for local-only access. (mcpIdentity() does not authenticate a ` +
+        `directly reachable endpoint: it trusts a header, which a direct ` +
+        `caller sets itself.)`,
     );
     return 1;
   }

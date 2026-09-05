@@ -808,3 +808,123 @@ Deno.test("serveMcp applies the build's mcpAuth() to HTTP requests", async () =>
     await Deno.remove(dir, { recursive: true });
   }
 });
+
+// ---- Regressions: a malformed Host, and what unlocks a non-loopback bind ----
+
+Deno.test("a Host the URL parser rejects still serves, with no request view", async () => {
+  // Deno builds `request.url` from the raw Host header and accepts hosts the
+  // WHATWG parser rejects (`Host: bad host`). Building the authenticator's view
+  // of such a request throws, so the view is simply absent — the headers, where
+  // a credential lives, are intact, and the exchange completes rather than
+  // failing on a header the server itself accepted.
+  const seen: Array<{ hasRequest: boolean; token: string | null }> = [];
+  const authenticator: McpAuthenticator = {
+    authenticate: (ctx) => {
+      seen.push({
+        hasRequest: ctx.request !== undefined,
+        token: ctx.headers.get("x-token"),
+      });
+      return { actor: "ada" };
+    },
+  };
+  const s = await startHttp(
+    (_m, _ctx, identity) =>
+      Promise.resolve({
+        jsonrpc: "2.0" as const,
+        id: 1,
+        result: { actor: identity?.actor ?? null },
+      }),
+    { authenticator },
+  );
+  try {
+    // A raw socket, because `fetch` will not send a Host this malformed.
+    const conn = await Deno.connect({ hostname: "127.0.0.1", port: s.port });
+    const body = '{"jsonrpc":"2.0","id":1,"method":"tools/call"}';
+    await conn.write(
+      new TextEncoder().encode(
+        `POST / HTTP/1.1\r\nHost: bad host\r\nx-token: t\r\n` +
+          `Content-Length: ${body.length}\r\n\r\n${body}`,
+      ),
+    );
+    const buf = new Uint8Array(1024);
+    const n = await conn.read(buf);
+    const response = new TextDecoder().decode(buf.subarray(0, n ?? 0));
+    conn.close();
+
+    assertStringIncludes(response, "200 OK");
+    assertStringIncludes(response, '"actor":"ada"');
+    // The authenticator ran, saw no request view, and still read its header.
+    assertEquals(seen, [{ hasRequest: false, token: "t" }]);
+  } finally {
+    await s.stop();
+  }
+});
+
+Deno.test("mcpIdentity() alone does not unlock a non-loopback bind", async () => {
+  // The hook trusts a header, which is an identity only when something in front
+  // strips the client's copy. On a directly reachable endpoint any caller sets
+  // it, so the hook authenticates nobody and the bind guard must still demand a
+  // token — exactly as it did before the authenticator seam existed.
+  class ProxyTrusting extends Build {
+    deploy = target().description("Deploy").executes(() => {});
+    override mcpIdentity() {
+      return (ctx: McpRequestContext) => {
+        const sub = ctx.headers.get("x-forwarded-user");
+        if (sub === null) throw new Error("no identity from proxy");
+        return { actor: sub };
+      };
+    }
+  }
+  const origErr = console.error;
+  const errs: string[] = [];
+  console.error = (...a: unknown[]) => void errs.push(a.join(" "));
+  try {
+    const code = await serveMcp(new ProxyTrusting(), {
+      http: { host: "0.0.0.0", port: 0 },
+      quiet: true,
+      readEnv: () => undefined, // no ZUKE_MCP_TOKEN
+    });
+    assertEquals(code, 1);
+    assertStringIncludes(errs.join("\n"), "must be authenticated");
+    // …and the message says why the hook did not count.
+    assertStringIncludes(
+      errs.join("\n"),
+      "mcpIdentity() does not authenticate",
+    );
+  } finally {
+    console.error = origErr;
+  }
+});
+
+Deno.test("mcpAuth() unlocks a non-loopback bind, and still runs the hook path", async () => {
+  // The general seam is a deliberate declaration of authentication, so it does
+  // satisfy the guard where the proxy hook does not.
+  class Guarded extends Build {
+    deploy = target().description("Deploy").executes(() => {});
+    override mcpAuth(): McpAuthenticator {
+      return { authenticate: () => ({ actor: "svc", kind: "service" }) };
+    }
+  }
+  const ac = new AbortController();
+  let setPort = (_: number) => {};
+  const portReady = new Promise<number>((r) => (setPort = r));
+  const finished = serveMcp(new Guarded(), {
+    http: { host: "0.0.0.0", port: 0 },
+    quiet: true,
+    signal: ac.signal,
+    readEnv: () => undefined, // no ZUKE_MCP_TOKEN
+    onListen: (a) => setPort(a.port),
+  });
+  const port = await portReady;
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/`, {
+      method: "POST",
+      body: rpc("tools/list", 1),
+    });
+    assertEquals(res.status, 200);
+    await res.json();
+  } finally {
+    ac.abort();
+    assertEquals(await finished, 0);
+  }
+});

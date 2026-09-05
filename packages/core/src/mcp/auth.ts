@@ -81,7 +81,11 @@ export interface McpAuthReject {
   error: string;
   /** A short human-readable detail. Never a secret: it is returned to the caller. */
   detail?: string;
-  /** The `WWW-Authenticate` header value to challenge with, when one applies. */
+  /**
+   * The `WWW-Authenticate` header value to challenge with, when one applies. A
+   * value a header cannot carry (a newline, a NUL, a character outside Latin-1)
+   * is dropped rather than sent, so it cannot turn the refusal into a fault.
+   */
   challenge?: string;
 }
 
@@ -134,6 +138,29 @@ function nonEmptyString(value: unknown): string | undefined {
   return typeof value === "string" && value !== "" ? value : undefined;
 }
 
+/**
+ * `value` when it is a non-empty string a `Headers` can actually carry, else
+ * `undefined`.
+ *
+ * The challenge is the one field of a refusal that becomes an HTTP header, and
+ * `Headers.set` throws on a CR/LF, a NUL, or any character outside Latin-1. A
+ * throw there would turn a refusal the authenticator wrote into a transport
+ * fault carrying no challenge at all — so a challenge a header cannot carry is dropped
+ * here, exactly like an absent one, and the refusal still goes out with its own
+ * status. `Headers` itself is the oracle: a hand-written character test would
+ * have to track the same rules and would drift.
+ */
+function headerValue(value: unknown): string | undefined {
+  const candidate = nonEmptyString(value);
+  if (candidate === undefined) return undefined;
+  try {
+    new Headers({ "www-authenticate": candidate });
+    return candidate;
+  } catch {
+    return undefined;
+  }
+}
+
 /** The non-empty strings in `value`, or an empty list when it is not an array. */
 function rolesOf(value: unknown): readonly string[] {
   if (!Array.isArray(value)) return [];
@@ -183,7 +210,7 @@ function normalizeReject(value: unknown): McpAuthReject {
   };
   const detail = nonEmptyString(value.detail);
   if (detail !== undefined) reject.detail = detail;
-  const challenge = nonEmptyString(value.challenge);
+  const challenge = headerValue(value.challenge);
   if (challenge !== undefined) reject.challenge = challenge;
   return reject;
 }
@@ -201,19 +228,24 @@ export async function authenticateRequest(
   authenticator: McpAuthenticator,
   ctx: McpRequestContext,
 ): Promise<ResolvedIdentity | McpAuthReject> {
-  let result: unknown;
   try {
-    result = await authenticator.authenticate(ctx);
+    const result = await authenticator.authenticate(ctx);
+    // Every read of the untrusted result stays inside this `try`, not just the
+    // call that produced it: an authenticator may return a lazy object — claims
+    // wrapped in getters is the natural shape — and a getter that throws must
+    // refuse the request like any other failure, rather than escaping as a
+    // transport-level fault with no challenge on it.
+    //
+    // A `status` is what a refusal carries and an identity does not, so a value
+    // bearing one is read as a refusal even if it also names an actor. The typed
+    // union cannot produce that, but an authenticator built in plain JS can —
+    // and between "deny" and "admit" for a value that says both, fail-closed
+    // means deny.
+    if (isRecord(result) && "status" in result) return normalizeReject(result);
+    return normalizeIdentity(result) ?? normalizeReject(result);
   } catch {
     return UNAUTHORIZED;
   }
-  // A `status` is what a refusal carries and an identity does not, so a value
-  // bearing one is read as a refusal even if it also names an actor. The typed
-  // union cannot produce that, but an authenticator built in plain JS can — and
-  // between "deny" and "admit" for a value that says both, fail-closed means
-  // deny.
-  if (isRecord(result) && "status" in result) return normalizeReject(result);
-  return normalizeIdentity(result) ?? normalizeReject(result);
 }
 
 /**

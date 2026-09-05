@@ -67,10 +67,16 @@ below), so one long `run:` never head-of-line-blocks another client's read.
   host.
 - Binding a **non-loopback** address requires authentication — **either** a
   bearer token (set `ZUKE_MCP_TOKEN`, and every request must send
-  `Authorization: Bearer <token>`; a missing or wrong token gets `401`) **or**
-  an [authenticator](#authentication) declared on the build. With neither, Zuke
-  **refuses to bind** a non-loopback address rather than exposing an
-  unauthenticated endpoint.
+  `Authorization: Bearer <token>`; a missing or wrong token gets `401`) **or** an
+  [`mcpAuth()`](#mcpauth--the-general-seam) authenticator on the build. With
+  neither, Zuke **refuses to bind** a non-loopback address rather than exposing
+  an unauthenticated endpoint.
+- [`mcpIdentity()`](#mcpidentity--sugar-for-a-proxy-header) does **not** satisfy
+  that requirement, though it still runs on every request. It trusts a header,
+  which is only an identity when something in front strips the client's copy and
+  injects its own — on a directly reachable endpoint any caller sets that header
+  itself. Such a build needs the bearer token to bind off loopback, or a proxy in
+  front of a loopback bind.
 - A token is also enforced on a loopback bind when `ZUKE_MCP_TOKEN` is set, and
   an authenticator runs on every bind, loopback included. The two compose: the
   token is a shared secret that gates the endpoint, the authenticator says _who_
@@ -216,7 +222,7 @@ may be asynchronous (verifying a token signature is), and it either returns an
 
 ```ts
 class ControlPlane extends Build {
-  override mcpAuth() {
+  override mcpAuth(): McpAuthenticator {
     return {
       authenticate: async (ctx: McpRequestContext) => {
         const claims = await verifyBearer(ctx.headers.get("authorization"));
@@ -283,6 +289,11 @@ It is the right seam when a proxy has already done the authenticating; reach for
 `mcpAuth()` when callers reach the server directly, when the check is async, or
 when you want to answer with a status and a challenge of your own.
 
+Because it authenticates nothing on its own, it does not unlock a
+[non-loopback bind](#http-transport): that still needs `ZUKE_MCP_TOKEN` or an
+`mcpAuth()` authenticator. Bind loopback and let the proxy reach it, or set the
+token as well.
+
 Declare **one or the other**. A build that declares both makes `./zuke mcp`
 print a message to stderr and **exit 1** rather than letting one silently win.
 
@@ -316,8 +327,9 @@ never tell it. A client that treats every `200` as "connected" will now see the
 refusal it should have seen all along.
 
 Over **stdio** there is no status to answer with, so a refusal is a JSON-RPC
-`-32600 Unauthorized` error — the reject's own `error`/`detail`/`challenge` have
-nowhere to go there.
+`-32600` error carrying the same reason the HTTP body does: the reject's
+`error`, and its `detail` after a colon when it has one. Only the status and the
+challenge have nowhere to go there.
 
 ### Fail-closed
 
