@@ -356,7 +356,9 @@ Without either override, stdio/local behaviour is unchanged.
 A [registry](#registry-mode-dynamic-discovery) run spawns the registered build,
 and the resolved caller travels with it as three environment variables:
 `ZUKE_ACTOR`, `ZUKE_ACTOR_KIND` (`"human"` when the authenticator omitted it)
-and `ZUKE_ACTOR_ROLES` (comma-joined, empty when there are none). They are
+and `ZUKE_ACTOR_ROLES` (comma-joined, empty when there are none — a role name
+containing a comma is dropped when the identity is resolved, so splitting on the
+separator is safe). They are
 written **together**, and only when the resolved actor is non-empty, so an
 inherited kind or role set can never survive beside a fresh actor — the child
 would otherwise read one caller's actor with another's entitlements. They

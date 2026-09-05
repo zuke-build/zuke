@@ -36,7 +36,9 @@ export interface McpIdentity {
   kind?: "human" | "service";
   /**
    * The roles this caller holds. Absent is read as none, so an authenticator
-   * that says nothing about roles grants nothing.
+   * that says nothing about roles grants nothing. A name containing a comma is
+   * dropped: the comma separates the roles a registry-spawned child reads, so
+   * such a name would reach it as two.
    */
   roles?: readonly string[];
   /** How the identity was established (e.g. `"oauth-proxy"`); informational. */
@@ -161,11 +163,20 @@ function headerValue(value: unknown): string | undefined {
   }
 }
 
-/** The non-empty strings in `value`, or an empty list when it is not an array. */
+/**
+ * The usable role names in `value`, or an empty list when it is not an array.
+ *
+ * A name is usable when it is a non-empty string containing no comma. The comma
+ * is the separator a registry-spawned child reads `ZUKE_ACTOR_ROLES` with, so a
+ * name carrying one would arrive there as two roles — and role names can come
+ * from an identity provider's group names, which the caller may influence. One
+ * dropped role is a smaller wrong answer than a forged one, and dropping it here
+ * keeps every consumer of the list honest rather than each escaping it again.
+ */
 function rolesOf(value: unknown): readonly string[] {
   if (!Array.isArray(value)) return [];
   return value.filter((role): role is string =>
-    typeof role === "string" && role !== ""
+    typeof role === "string" && role !== "" && !role.includes(",")
   );
 }
 

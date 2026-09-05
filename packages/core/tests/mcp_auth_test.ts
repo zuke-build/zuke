@@ -334,6 +334,22 @@ Deno.test("a throwing property getter on the result is a refusal, not a fault", 
   );
 });
 
+Deno.test("a role name carrying the child's separator is dropped", async () => {
+  // ZUKE_ACTOR_ROLES joins the list with a comma, so a name containing one would
+  // reach a registry-spawned child as two roles. Role names can come from an
+  // identity provider's group names, so the guard belongs here rather than in
+  // each consumer.
+  const identity = await run(() => ({
+    actor: "ada",
+    roles: ["ops", "team,operator", "release"],
+  }));
+  assertEquals(identity, {
+    actor: "ada",
+    kind: "human",
+    roles: ["ops", "release"],
+  });
+});
+
 Deno.test("a challenge a header cannot carry is dropped, not sent", async () => {
   // `Headers.set` throws on CR/LF, NUL and anything outside Latin-1. The
   // challenge is the one field of a refusal that becomes a header, so an

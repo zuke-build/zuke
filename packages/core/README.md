@@ -3373,7 +3373,9 @@ interface McpIdentity
     see the claim stated rather than inferred.
   roles?: readonly string[]
     The roles this caller holds. Absent is read as none, so an authenticator
-    that says nothing about roles grants nothing.
+    that says nothing about roles grants nothing. A name containing a comma is
+    dropped: the comma separates the roles a registry-spawned child reads, so
+    such a name would reach it as two.
   via?: string
     How the identity was established (e.g. `"oauth-proxy"`); informational.
 
