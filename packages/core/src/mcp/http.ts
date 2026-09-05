@@ -15,9 +15,10 @@
  * serial handling — a build's parameters resolve into shared state per run, so
  * two concurrent runs of one build instance would race.
  *
- * This is a **bridge, not an internet gateway**: it binds loopback by default,
- * a non-loopback bind requires a bearer token, and production deployments should
- * put real TLS/authentication in front of it.
+ * This is a **bridge, not an internet gateway**: it binds loopback by default, a
+ * non-loopback bind must authenticate its callers (a bearer token or an
+ * {@link "./auth.ts".McpAuthenticator}), and production deployments should put
+ * real TLS in front of it.
  *
  * @module
  */
