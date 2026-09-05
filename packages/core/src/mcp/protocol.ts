@@ -23,13 +23,18 @@ import {
   INVALID_PARAMS,
   INVALID_REQUEST,
   type JsonRpcResponse,
-  type McpIdentityHook,
   type McpRequestContext,
   messageId,
   METHOD_NOT_FOUND,
   ok,
-  resolveIdentity,
 } from "./jsonrpc.ts";
+import {
+  authenticateRequest,
+  isResolvedIdentity,
+  type McpAuthenticator,
+  refusalReason,
+  type ResolvedIdentity,
+} from "./auth.ts";
 
 /**
  * The MCP protocol versions these servers implement, newest first. The method
@@ -79,11 +84,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 /** What {@link dispatchMessage} needs from a server to answer one message. */
 export interface McpDispatchHooks {
   /**
-   * Resolve a trusted caller identity per request, when the server has one
-   * configured. A hook that throws or yields no usable actor rejects the whole
-   * request before any dispatch.
+   * Authenticate the caller per request, when the server has one configured.
+   * An authenticator that refuses — or throws — rejects the whole request before
+   * any dispatch. Skipped when the transport already authenticated (see the
+   * `identity` argument of {@link dispatchMessage}).
    */
-  readonly identity?: McpIdentityHook;
+  readonly authenticator?: McpAuthenticator;
   /** The `initialize` result (and the side effect of noting the client label). */
   initialize(params: unknown): Record<string, unknown>;
   /**
@@ -92,11 +98,11 @@ export interface McpDispatchHooks {
    * this dispatcher.
    */
   tools(): McpTool[] | Promise<McpTool[]>;
-  /** Dispatch a `tools/call`, attributed to the resolved caller `actor`. */
+  /** Dispatch a `tools/call`, attributed to the resolved caller `identity`. */
   callTool(
     id: string | number | null,
     params: unknown,
-    actor: string | undefined,
+    identity: ResolvedIdentity | undefined,
   ): Promise<JsonRpcResponse>;
 }
 
@@ -104,17 +110,24 @@ export interface McpDispatchHooks {
  * Handle one parsed JSON-RPC message against `hooks`. Returns the response to
  * send, or `null` for a notification (which takes no reply).
  *
- * The identity hook runs once, before any dispatch: a hook that yields no
+ * Authentication runs once, before any dispatch: an authenticator that yields no
  * trusted actor rejects the request outright — nothing runs, nothing is written,
- * and it never falls back to the (untrusted) static actor, so the hook's
- * precedence stays absolute. `tools/list` and `tools/call` are each wrapped in a
- * backstop, because neither may crash the transport for every later message on
- * the connection; the error is generic so no raw detail escapes.
+ * and it never falls back to the (untrusted) static actor, so its precedence
+ * stays absolute. `identity` is the transport's own already-authenticated
+ * caller (the HTTP transport authenticates at its edge, so a refusal becomes a
+ * real status and challenge); when it is absent and an authenticator is
+ * configured, this dispatcher runs it — so neither transport can dispatch a
+ * request nobody authenticated.
+ *
+ * `tools/list` and `tools/call` are each wrapped in a backstop, because neither
+ * may crash the transport for every later message on the connection; the error
+ * is generic so no raw detail escapes.
  */
 export async function dispatchMessage(
   message: unknown,
   ctx: McpRequestContext,
   hooks: McpDispatchHooks,
+  identity?: ResolvedIdentity,
 ): Promise<JsonRpcResponse | null> {
   if (
     typeof message !== "object" || message === null ||
@@ -129,11 +142,15 @@ export async function dispatchMessage(
   // Notifications (no id) never receive a response.
   if (id === null && method.startsWith("notifications/")) return null;
 
-  let identityActor: string | undefined;
-  if (hooks.identity !== undefined) {
-    const resolved = resolveIdentity(hooks.identity, ctx);
-    if (resolved === null) return err(id, INVALID_REQUEST, "Unauthorized");
-    identityActor = resolved;
+  let caller = identity;
+  if (caller === undefined && hooks.authenticator !== undefined) {
+    const resolved = await authenticateRequest(hooks.authenticator, ctx);
+    if (!isResolvedIdentity(resolved)) {
+      // JSON-RPC carries no status, so a stdio caller learns only the reason —
+      // the same sentence the HTTP transport writes beside the status.
+      return err(id, INVALID_REQUEST, refusalReason(resolved));
+    }
+    caller = resolved;
   }
 
   switch (method) {
@@ -149,7 +166,7 @@ export async function dispatchMessage(
       }
     case "tools/call":
       try {
-        return await hooks.callTool(id, params, identityActor);
+        return await hooks.callTool(id, params, caller);
       } catch {
         return err(id, INTERNAL_ERROR, "Internal error handling the tool call");
       }

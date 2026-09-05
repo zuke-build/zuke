@@ -179,8 +179,10 @@ to an audit trail, readable on the host with `./zuke runs show mcp-audit` and
 deliberately not served over MCP.
 
 `--http <host:port>` serves the streamable-HTTP transport instead of stdio
-(loopback by default; a non-loopback bind requires a `ZUKE_MCP_TOKEN` bearer
-token), and `--allowed-origin <origin>` permits one extra browser origin.
+(loopback by default; a non-loopback bind must authenticate its callers — a
+`ZUKE_MCP_TOKEN` bearer token, or an authenticator declared with
+[`mcpAuth()`](./mcp.md)), and `--allowed-origin <origin>` permits one extra
+browser origin.
 `--registry` serves the [build registry](./registry.md) instead of this build —
 every registered pipeline becomes a `run:<buildId>:<target>` tool, spawned in
 its own process, with `--max-concurrent-runs <n>` capping how many run at once

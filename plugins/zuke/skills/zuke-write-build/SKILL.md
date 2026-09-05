@@ -219,14 +219,15 @@ it cannot answer "does one exist for this tool?"; only the catalogue
 - **Operate the build from an agent:** `zuke mcp` serves the build over MCP so
   an AI client can list, inspect, and (with `--allow-run`) run targets — on
   stdio, or over HTTP with `--http <host:port>` (loopback by default; a
-  non-loopback bind needs a `ZUKE_MCP_TOKEN` bearer token). With a state store
-  it also exposes `list_runs`/`show_run` (+ `signal_run`, `resume_check` and
-  `cancel_run`). Tier access with `--allow-run=<globs>` (an allow-list over
-  **invocation** — invoking a target runs its dependencies, and the read tools
-  narrow to the allow-listed targets' closure), `--protect <globs>` +
-  `ZUKE_OPERATOR_TOKEN` (enforced over a run's **whole plan**, so a protected
-  target reached as a dependency still needs the token), and
-  `--confirm-destructive`; mark inspect-only targets `.readOnly()`.
+  non-loopback bind needs a `ZUKE_MCP_TOKEN` bearer token **or** an
+  `mcpAuth()`/`mcpIdentity()` authenticator, else the server exits 1). With a
+  state store it also exposes `list_runs`/`show_run` (+ `signal_run`,
+  `resume_check` and `cancel_run`). Tier access with `--allow-run=<globs>` (an
+  allow-list over **invocation** — invoking a target runs its dependencies, and
+  the read tools narrow to the allow-listed targets' closure),
+  `--protect <globs>` + `ZUKE_OPERATOR_TOKEN` (enforced over a run's **whole
+  plan**, so a protected target reached as a dependency still needs the token),
+  and `--confirm-destructive`; mark inspect-only targets `.readOnly()`.
   Mutating/denied calls are audited — read the trail on the host with
   `zuke runs show mcp-audit`; it is deliberately not readable over MCP. A
   **registry-backed** server (`zuke register` then `zuke mcp --registry`)
@@ -237,10 +238,17 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   **remote** entry module is refused unless its origin is in
   `ZUKE_REGISTRY_LAUNCH_HOSTS`; `zuke register` writes a local module, so this
   only affects a hand-authored or second-party entry. For a shared, multi-user
-  endpoint, `override mcpIdentity()` resolves a **trusted** caller per request
-  from an authenticating proxy's header (it overrides the client-reported actor
-  and flows to the audit trail, run records, and lock holders; a throwing hook
-  rejects the request).
+  endpoint, `override mcpAuth()` authenticates a **trusted** caller per request
+  — an async `authenticate(ctx)` returning `{ actor, kind?, roles?, via? }` or
+  an `McpAuthReject` (`{ status, error, detail?, challenge? }`), so a refused
+  HTTP request answers that status with `WWW-Authenticate` instead of a `200`.
+  `override mcpIdentity()` is the sugar for the proxy-header case (a sync hook
+  reading a header; any throw rejects), adapted onto the same path — declare one
+  or the other, never both, or the server exits 1. Either overrides the
+  client-reported actor and flows to the audit trail, run records, lock holders,
+  and a registry-spawned child's `ZUKE_ACTOR`/`ZUKE_ACTOR_KIND`/
+  `ZUKE_ACTOR_ROLES`. Both are fail-closed: a throw, a non-object, or an empty
+  actor refuses the request, and nothing runs.
 - **AI review & self-healing (`@zuke/ai`):** gate a target on a structured LLM
   review of the diff (`securityReviewer(...)` etc. via `.validateBefore`), or
   attach `aiFixer(...)` with `.recoverWith(...)` so a failing target is

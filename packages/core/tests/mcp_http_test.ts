@@ -6,6 +6,7 @@ import { Build, type McpRequestContext, target } from "../mod.ts";
 import type { JsonRpcResponse } from "../src/mcp/jsonrpc.ts";
 import { McpServer } from "../src/mcp/server.ts";
 import { originAllowed, serveHttp } from "../src/mcp/http.ts";
+import type { McpAuthenticator, ResolvedIdentity } from "../src/mcp/auth.ts";
 import { serveMcp } from "../src/mcp/command.ts";
 import { FileSystemStateStore } from "../src/state/fs_store.ts";
 import { defaultStateHost } from "../src/state/store.ts";
@@ -27,8 +28,12 @@ function rpc(method: string, id?: number, params?: unknown): string {
 
 /** Start `serveHttp` on an ephemeral loopback port; returns the port and a stop. */
 async function startHttp(
-  handle: (m: unknown) => Promise<JsonRpcResponse | null>,
-  opts: { token?: string } = {},
+  handle: (
+    m: unknown,
+    ctx: McpRequestContext,
+    identity?: ResolvedIdentity,
+  ) => Promise<JsonRpcResponse | null>,
+  opts: { token?: string; authenticator?: McpAuthenticator } = {},
 ): Promise<{ port: number; stop: () => Promise<void> }> {
   const ac = new AbortController();
   let setPort = (_: number) => {};
@@ -37,6 +42,7 @@ async function startHttp(
     host: "127.0.0.1",
     port: 0,
     token: opts.token,
+    authenticator: opts.authenticator,
     signal: ac.signal,
     onListen: (a) => setPort(a.port),
   });
@@ -339,11 +345,15 @@ Deno.test("serveMcp applies the build's identity hook to HTTP requests", async (
     await ok.json();
 
     // A request WITHOUT the header is rejected — the hook throws, nothing runs.
+    // The refusal is a real 401 with a challenge (what an MCP client needs to
+    // discover where to authenticate), and still carries the JSON-RPC error so a
+    // client that only reads the body sees a reason.
     const denied = await fetch(url, {
       method: "POST",
       body: rpc("tools/call", 2, { name: "run:deploy", arguments: {} }),
     });
-    assertEquals(denied.status, 200); // JSON-RPC error travels in the 200 body
+    assertEquals(denied.status, 401);
+    assertEquals(denied.headers.get("www-authenticate"), "Bearer");
     const deniedBody = await denied.json();
     assertEquals(deniedBody.error.message, "Unauthorized");
 
@@ -389,4 +399,532 @@ Deno.test("serveMcp prints an HTTP banner naming the mode and (lack of) auth", a
   assertStringIncludes(text, "read-only");
   assertStringIncludes(text, "no auth (loopback only)");
   assertEquals(text.includes("registry"), false);
+});
+
+Deno.test("http transport answers a refusal with the authenticator's own status", async () => {
+  const server = new McpServer(new Demo());
+  const s = await startHttp((m) => server.handleMessage(m), {
+    authenticator: {
+      authenticate: (ctx) => {
+        switch (ctx.headers.get("x-case")) {
+          case "forbidden":
+            return {
+              status: 403,
+              error: "insufficient_scope",
+              challenge: 'Bearer error="insufficient_scope"',
+            };
+          case "bare":
+            return { status: 403, error: "insufficient_scope" };
+          case "detail":
+            return {
+              status: 401,
+              error: "invalid_token",
+              detail: "token expired",
+              challenge: "Bearer",
+            };
+          default:
+            return { actor: "engineer-a" };
+        }
+      },
+    },
+  });
+  const url = `http://127.0.0.1:${s.port}/`;
+  try {
+    // The status and the challenge are the refusal's own — a 403 proves neither
+    // is a constant baked into the transport.
+    const forbidden = await fetch(url, {
+      method: "POST",
+      headers: { "x-case": "forbidden" },
+      body: rpc("ping", 1),
+    });
+    assertEquals(forbidden.status, 403);
+    assertEquals(
+      forbidden.headers.get("www-authenticate"),
+      'Bearer error="insufficient_scope"',
+    );
+    // The reason still reaches a client that only reads the JSON-RPC body.
+    const forbiddenBody = await forbidden.json();
+    assertEquals(forbiddenBody.error.message, "insufficient_scope");
+
+    // A refusal that carries no challenge gets no invented WWW-Authenticate.
+    const bare = await fetch(url, {
+      method: "POST",
+      headers: { "x-case": "bare" },
+      body: rpc("ping", 2),
+    });
+    assertEquals(bare.status, 403);
+    assertEquals(bare.headers.get("www-authenticate"), null);
+    await bare.json();
+
+    // A detail is appended to the reason as "<error>: <detail>".
+    const detail = await fetch(url, {
+      method: "POST",
+      headers: { "x-case": "detail" },
+      body: rpc("ping", 3),
+    });
+    assertEquals(detail.status, 401);
+    assertEquals(detail.headers.get("www-authenticate"), "Bearer");
+    const detailBody = await detail.json();
+    assertEquals(detailBody.error.message, "invalid_token: token expired");
+
+    // An accepted caller is dispatched normally.
+    const ok = await fetch(url, { method: "POST", body: rpc("ping", 4) });
+    assertEquals(ok.status, 200);
+    await ok.json();
+  } finally {
+    await s.stop();
+  }
+});
+
+Deno.test("http transport hands the resolved identity to the handler", async () => {
+  const server = new McpServer(new Demo());
+  const seen: (ResolvedIdentity | undefined)[] = [];
+  const views: { method: string; hasBody: boolean }[] = [];
+  const s = await startHttp((m, _ctx, identity) => {
+    seen.push(identity);
+    return server.handleMessage(m);
+  }, {
+    authenticator: {
+      authenticate: (ctx) => {
+        const request = ctx.request;
+        if (request !== undefined) {
+          views.push({
+            method: request.method,
+            hasBody: request.body !== null,
+          });
+        }
+        return ctx.headers.get("x-kind") === "service"
+          ? {
+            actor: "deploy-bot",
+            kind: "service",
+            roles: ["deploy", "read"],
+            via: "oidc",
+          }
+          : { actor: "engineer-a" };
+      },
+    },
+  });
+  const url = `http://127.0.0.1:${s.port}/`;
+  try {
+    const service = await fetch(url, {
+      method: "POST",
+      headers: { "x-kind": "service" },
+      body: rpc("ping", 1),
+    });
+    assertEquals(service.status, 200);
+    await service.json();
+
+    const human = await fetch(url, { method: "POST", body: rpc("ping", 2) });
+    assertEquals(human.status, 200);
+    await human.json();
+  } finally {
+    await s.stop();
+  }
+  assertEquals(seen[0], {
+    actor: "deploy-bot",
+    kind: "service",
+    roles: ["deploy", "read"],
+    via: "oidc",
+  });
+  // The defaults are settled before the handler sees them: an authenticator that
+  // says nothing about kind or roles is read as a human holding none.
+  assertEquals(seen[1], { actor: "engineer-a", kind: "human", roles: [] });
+  // The authenticator sees the request, but not its body — that belongs to the
+  // transport, and a body can only be read once.
+  assertEquals(views, [
+    { method: "POST", hasBody: false },
+    { method: "POST", hasBody: false },
+  ]);
+});
+
+Deno.test("http transport authenticates after the method, Origin and token checks", async () => {
+  const server = new McpServer(new Demo());
+  let calls = 0;
+  const s = await startHttp((m) => server.handleMessage(m), {
+    token: "swordfish",
+    authenticator: {
+      authenticate: () => {
+        calls += 1;
+        return { actor: "engineer-a" };
+      },
+    },
+  });
+  const url = `http://127.0.0.1:${s.port}/`;
+  const authorized = { authorization: "Bearer swordfish" };
+  try {
+    // A non-POST is refused before the authenticator runs …
+    const get = await fetch(url, { headers: authorized });
+    assertEquals(get.status, 405);
+    await get.json();
+    assertEquals(calls, 0);
+
+    // … so is a cross-origin browser request …
+    const origin = await fetch(url, {
+      method: "POST",
+      headers: { ...authorized, origin: "https://evil.example" },
+      body: rpc("ping", 1),
+    });
+    assertEquals(origin.status, 403);
+    await origin.json();
+    assertEquals(calls, 0);
+
+    // … and so is a bad static bearer token: a caller who fails the cheap,
+    // constant-time check never reaches the (possibly expensive) authenticator.
+    const badToken = await fetch(url, {
+      method: "POST",
+      headers: { authorization: "Bearer nope" },
+      body: rpc("ping", 2),
+    });
+    assertEquals(badToken.status, 401);
+    await badToken.json();
+    assertEquals(calls, 0);
+
+    // Past all three, it runs exactly once.
+    const ok = await fetch(url, {
+      method: "POST",
+      headers: authorized,
+      body: rpc("ping", 3),
+    });
+    assertEquals(ok.status, 200);
+    await ok.json();
+    assertEquals(calls, 1);
+  } finally {
+    await s.stop();
+  }
+});
+
+Deno.test("http transport refuses an unauthenticated caller before reading its body", async () => {
+  const server = new McpServer(new Demo());
+  const s = await startHttp((m) => server.handleMessage(m), {
+    authenticator: {
+      authenticate: () => ({
+        status: 401,
+        error: "invalid_token",
+        challenge: "Bearer",
+      }),
+    },
+  });
+  try {
+    // Over the 1 MiB body cap: were the body read first this would be a 413.
+    // It is a 401, so an unauthenticated caller never makes the server buffer
+    // a megabyte for it.
+    const huge = `{"jsonrpc":"2.0","id":1,"method":"ping","params":"${
+      "x".repeat(1024 * 1024 + 64)
+    }"}`;
+    const res = await fetch(`http://127.0.0.1:${s.port}/`, {
+      method: "POST",
+      body: huge,
+    });
+    assertEquals(res.status, 401);
+    const body = await res.json();
+    assertEquals(body.error.message, "invalid_token");
+  } finally {
+    await s.stop();
+  }
+});
+
+Deno.test("http transport answers a throwing authenticator with the bare 401", async () => {
+  const server = new McpServer(new Demo());
+  const s = await startHttp((m) => server.handleMessage(m), {
+    authenticator: {
+      authenticate: () => {
+        throw new Error("jwks fetch failed: https://idp.example/keys");
+      },
+    },
+  });
+  try {
+    const res = await fetch(`http://127.0.0.1:${s.port}/`, {
+      method: "POST",
+      body: rpc("ping", 1),
+    });
+    assertEquals(res.status, 401);
+    assertEquals(res.headers.get("www-authenticate"), "Bearer");
+    // The generic refusal, so a broken authenticator leaks nothing about why.
+    const body = await res.json();
+    assertEquals(body.error.message, "Unauthorized");
+  } finally {
+    await s.stop();
+  }
+});
+
+Deno.test("serveMcp refuses a build declaring both mcpAuth() and mcpIdentity()", async () => {
+  // Two gates on one build: one would silently win, so the server refuses to
+  // start instead of leaving the other one only *looking* enforced.
+  class Ambiguous extends Build {
+    deploy = target().description("Deploy").executes(() => {});
+    override mcpIdentity() {
+      return () => ({ actor: "from-hook" });
+    }
+    override mcpAuth(): McpAuthenticator {
+      return { authenticate: () => ({ actor: "from-authenticator" }) };
+    }
+  }
+  const origErr = console.error;
+  const errs: string[] = [];
+  console.error = (...a: unknown[]) => void errs.push(a.join(" "));
+  try {
+    const code = await serveMcp(new Ambiguous(), { quiet: true });
+    assertEquals(code, 1);
+    const text = errs.join("\n");
+    assertStringIncludes(text, "mcpAuth()");
+    assertStringIncludes(text, "mcpIdentity()");
+  } finally {
+    console.error = origErr;
+  }
+});
+
+Deno.test("serveMcp accepts a non-loopback bind authenticated by mcpAuth()", async () => {
+  class Guarded extends Build {
+    lint = target().description("Lint").executes(() => {});
+    override mcpAuth(): McpAuthenticator {
+      return { authenticate: () => ({ actor: "engineer-a" }) };
+    }
+  }
+  const ac = new AbortController();
+  let setPort = (_: number) => {};
+  const portReady = new Promise<number>((r) => (setPort = r));
+  // No ZUKE_MCP_TOKEN: the authenticator alone satisfies the rule that a
+  // non-loopback endpoint must authenticate its callers.
+  const finished = serveMcp(new Guarded(), {
+    http: { host: "0.0.0.0", port: 0 },
+    quiet: true,
+    readEnv: () => undefined,
+    signal: ac.signal,
+    onListen: (a) => setPort(a.port),
+  });
+  await portReady; // it bound rather than exiting 1
+  ac.abort();
+  assertEquals(await finished, 0);
+});
+
+Deno.test("serveMcp's HTTP banner names the authenticator", async () => {
+  class Guarded extends Build {
+    lint = target().description("Lint").executes(() => {});
+    override mcpAuth(): McpAuthenticator {
+      return { authenticate: () => ({ actor: "engineer-a" }) };
+    }
+  }
+  const bannerFor = async (token?: string): Promise<string> => {
+    const origErr = console.error;
+    const lines: string[] = [];
+    console.error = (...a: unknown[]) => void lines.push(a.join(" "));
+    try {
+      const ac = new AbortController();
+      let setPort = (_: number) => {};
+      const portReady = new Promise<number>((r) => (setPort = r));
+      const finished = serveMcp(new Guarded(), {
+        http: { host: "127.0.0.1", port: 0 },
+        token,
+        readEnv: () => undefined, // no ZUKE_MCP_TOKEN
+        signal: ac.signal,
+        onListen: (a) => setPort(a.port),
+      });
+      await portReady;
+      ac.abort();
+      assertEquals(await finished, 0);
+    } finally {
+      console.error = origErr;
+    }
+    return lines.join("\n");
+  };
+
+  // An authenticator alone: the operator is told the endpoint is guarded, and
+  // not told about a token that isn't configured.
+  const authOnly = await bannerFor();
+  assertStringIncludes(authOnly, "authenticator");
+  assertEquals(authOnly.includes("bearer token"), false);
+
+  // Both gates configured: the banner names both.
+  const both = await bannerFor("swordfish");
+  assertStringIncludes(both, "authenticator + bearer token");
+});
+
+Deno.test("serveMcp applies the build's mcpAuth() to HTTP requests", async () => {
+  // The general seam, refusing by *returning* a rejection rather than throwing.
+  class Guarded extends Build {
+    deploy = target().description("Deploy").executes(() => {});
+    override mcpAuth(): McpAuthenticator {
+      return {
+        authenticate: (ctx) => {
+          const user = ctx.headers.get("x-user");
+          return user === null
+            ? {
+              status: 403,
+              error: "insufficient_scope",
+              detail: "no x-user header",
+            }
+            : { actor: user, kind: "service", roles: ["deploy"] };
+        },
+      };
+    }
+  }
+  const dir = await Deno.makeTempDir();
+  const store = new FileSystemStateStore(`${dir}/runs`, defaultStateHost);
+  const ac = new AbortController();
+  let setPort = (_: number) => {};
+  const portReady = new Promise<number>((r) => (setPort = r));
+  const finished = serveMcp(new Guarded(), {
+    http: { host: "127.0.0.1", port: 0 },
+    allowRun: true,
+    stateStore: store,
+    quiet: true,
+    signal: ac.signal,
+    onListen: (a) => setPort(a.port),
+  });
+  const url = `http://127.0.0.1:${await portReady}/`;
+  try {
+    // Accepted: the target runs, attributed to the authenticated actor.
+    const ok = await fetch(url, {
+      method: "POST",
+      headers: { "x-user": "deploy-bot" },
+      body: rpc("tools/call", 1, { name: "run:deploy", arguments: {} }),
+    });
+    assertEquals(ok.status, 200);
+    await ok.json();
+
+    // Refused: the rejection's own status, no challenge (it offered none), and
+    // the reason in the body.
+    const denied = await fetch(url, {
+      method: "POST",
+      body: rpc("tools/call", 2, { name: "run:deploy", arguments: {} }),
+    });
+    assertEquals(denied.status, 403);
+    assertEquals(denied.headers.get("www-authenticate"), null);
+    const deniedBody = await denied.json();
+    assertEquals(
+      deniedBody.error.message,
+      "insufficient_scope: no x-user header",
+    );
+
+    // Nothing ran for the refused call, so the audit trail holds the accepted
+    // one and nothing else.
+    const events = (await store.getRun("mcp-audit"))?.record.events ?? [];
+    assertEquals(events.length, 1);
+    assertEquals(events[0].tool, "run:deploy");
+    assertEquals(events[0].actor, "deploy-bot");
+  } finally {
+    ac.abort();
+    await finished;
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+// ---- Regressions: a malformed Host, and what unlocks a non-loopback bind ----
+
+Deno.test("a Host the URL parser rejects still serves, with no request view", async () => {
+  // Deno builds `request.url` from the raw Host header and accepts hosts the
+  // WHATWG parser rejects (`Host: bad host`). Building the authenticator's view
+  // of such a request throws, so the view is simply absent — the headers, where
+  // a credential lives, are intact, and the exchange completes rather than
+  // failing on a header the server itself accepted.
+  const seen: Array<{ hasRequest: boolean; token: string | null }> = [];
+  const authenticator: McpAuthenticator = {
+    authenticate: (ctx) => {
+      seen.push({
+        hasRequest: ctx.request !== undefined,
+        token: ctx.headers.get("x-token"),
+      });
+      return { actor: "ada" };
+    },
+  };
+  const s = await startHttp(
+    (_m, _ctx, identity) =>
+      Promise.resolve({
+        jsonrpc: "2.0" as const,
+        id: 1,
+        result: { actor: identity?.actor ?? null },
+      }),
+    { authenticator },
+  );
+  try {
+    // A raw socket, because `fetch` will not send a Host this malformed.
+    const conn = await Deno.connect({ hostname: "127.0.0.1", port: s.port });
+    const body = '{"jsonrpc":"2.0","id":1,"method":"tools/call"}';
+    await conn.write(
+      new TextEncoder().encode(
+        `POST / HTTP/1.1\r\nHost: bad host\r\nx-token: t\r\n` +
+          `Content-Length: ${body.length}\r\n\r\n${body}`,
+      ),
+    );
+    const buf = new Uint8Array(1024);
+    const n = await conn.read(buf);
+    const response = new TextDecoder().decode(buf.subarray(0, n ?? 0));
+    conn.close();
+
+    assertStringIncludes(response, "200 OK");
+    assertStringIncludes(response, '"actor":"ada"');
+    // The authenticator ran, saw no request view, and still read its header.
+    assertEquals(seen, [{ hasRequest: false, token: "t" }]);
+  } finally {
+    await s.stop();
+  }
+});
+
+Deno.test("mcpIdentity() alone does not unlock a non-loopback bind", async () => {
+  // The hook trusts a header, which is an identity only when something in front
+  // strips the client's copy. On a directly reachable endpoint any caller sets
+  // it, so the hook authenticates nobody and the bind guard must still demand a
+  // token — exactly as it did before the authenticator seam existed.
+  class ProxyTrusting extends Build {
+    deploy = target().description("Deploy").executes(() => {});
+    override mcpIdentity() {
+      return (ctx: McpRequestContext) => {
+        const sub = ctx.headers.get("x-forwarded-user");
+        if (sub === null) throw new Error("no identity from proxy");
+        return { actor: sub };
+      };
+    }
+  }
+  const origErr = console.error;
+  const errs: string[] = [];
+  console.error = (...a: unknown[]) => void errs.push(a.join(" "));
+  try {
+    const code = await serveMcp(new ProxyTrusting(), {
+      http: { host: "0.0.0.0", port: 0 },
+      quiet: true,
+      readEnv: () => undefined, // no ZUKE_MCP_TOKEN
+    });
+    assertEquals(code, 1);
+    assertStringIncludes(errs.join("\n"), "must be authenticated");
+    // …and the message says why the hook did not count.
+    assertStringIncludes(
+      errs.join("\n"),
+      "mcpIdentity() does not authenticate",
+    );
+  } finally {
+    console.error = origErr;
+  }
+});
+
+Deno.test("mcpAuth() unlocks a non-loopback bind, and still runs the hook path", async () => {
+  // The general seam is a deliberate declaration of authentication, so it does
+  // satisfy the guard where the proxy hook does not.
+  class Guarded extends Build {
+    deploy = target().description("Deploy").executes(() => {});
+    override mcpAuth(): McpAuthenticator {
+      return { authenticate: () => ({ actor: "svc", kind: "service" }) };
+    }
+  }
+  const ac = new AbortController();
+  let setPort = (_: number) => {};
+  const portReady = new Promise<number>((r) => (setPort = r));
+  const finished = serveMcp(new Guarded(), {
+    http: { host: "0.0.0.0", port: 0 },
+    quiet: true,
+    signal: ac.signal,
+    readEnv: () => undefined, // no ZUKE_MCP_TOKEN
+    onListen: (a) => setPort(a.port),
+  });
+  const port = await portReady;
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/`, {
+      method: "POST",
+      body: rpc("tools/list", 1),
+    });
+    assertEquals(res.status, 200);
+    await res.json();
+  } finally {
+    ac.abort();
+    assertEquals(await finished, 0);
+  }
 });
