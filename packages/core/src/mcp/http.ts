@@ -188,6 +188,17 @@ function authenticatorView(request: Request): Request | undefined {
  * JSON-RPC error so a client that only speaks JSON-RPC still sees one, and its
  * `WWW-Authenticate` challenge when it carries one — the header an MCP client
  * reads to discover where to authenticate.
+ *
+ * The status is deliberately a real HTTP status rather than a `200` carrying a
+ * JSON-RPC error. A challenge is only meaningful on a `401`, so a refusal
+ * wrapped in a `200` cannot tell a client where to authenticate — which is the
+ * whole point of an authenticator that can be discovered rather than
+ * pre-configured. This is not a new status class for this transport either: a
+ * bad or absent bearer token has always been answered `401` here, a non-`POST`
+ * `405`, and unparseable JSON `400`, so a client that reads any non-`200` as a
+ * transport failure was already broken against a token-protected server. The
+ * body still carries the JSON-RPC error, so a client that reads it sees the
+ * same reason it saw before.
  */
 function refusedResponse(reject: McpAuthReject): Response {
   const headers = new Headers({ "content-type": "application/json" });
