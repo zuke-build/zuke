@@ -43,10 +43,10 @@ import {
   err,
   INVALID_PARAMS,
   type JsonRpcResponse,
-  type McpIdentityHook,
   type McpRequestContext,
   ok,
 } from "./jsonrpc.ts";
+import type { McpAuthenticator, ResolvedIdentity } from "./auth.ts";
 import {
   confirmationResult,
   dispatchMessage,
@@ -114,13 +114,13 @@ export interface McpServerOptions {
   /** Who to attribute audited calls to (`--actor`); below {@link identity}. */
   actor?: string;
   /**
-   * Resolve a trusted caller identity per request (e.g. from an authenticating
-   * reverse proxy's header). When set, its actor overrides `--actor`, the
-   * environment, and the client's self-reported label for every call, and a
-   * throwing hook rejects the request before anything runs. Off by default, so
-   * stdio/local use is unchanged.
+   * Authenticate the caller per request. When set, the identity it resolves
+   * overrides `--actor`, the environment, and the client's self-reported label
+   * for every call, and a refusal stops the request before anything runs. Off by
+   * default, so stdio/local use is unchanged. The CLI builds this from the
+   * build's `mcpAuth()` or `mcpIdentity()` (see `serveMcp`).
    */
-  identity?: McpIdentityHook;
+  authenticator?: McpAuthenticator;
   /** Reads an environment variable (injectable for tests). */
   readEnv?: (name: string) => string | undefined;
   /** The server version reported in `initialize`. Defaults to `"0.0.0"`. */
@@ -193,7 +193,7 @@ export class McpServer {
   readonly #confirmDestructive: boolean;
   readonly #store?: StateStore;
   readonly #actor?: string;
-  readonly #identity?: McpIdentityHook;
+  readonly #authenticator?: McpAuthenticator;
   readonly #readEnv: (name: string) => string | undefined;
   /** The connecting client's `initialize` name, a low-priority audit actor. */
   #clientLabel?: string;
@@ -222,7 +222,7 @@ export class McpServer {
     this.#confirmDestructive = options.confirmDestructive ?? false;
     this.#store = options.stateStore;
     this.#actor = options.actor;
-    this.#identity = options.identity;
+    this.#authenticator = options.authenticator;
     this.#readEnv = options.readEnv ?? (() => undefined);
     this.#version = options.version ?? "0.0.0";
   }
@@ -387,13 +387,14 @@ export class McpServer {
   handleMessage(
     message: unknown,
     ctx: McpRequestContext = EMPTY_CONTEXT,
+    identity?: ResolvedIdentity,
   ): Promise<JsonRpcResponse | null> {
     return dispatchMessage(message, ctx, {
-      identity: this.#identity,
+      authenticator: this.#authenticator,
       initialize: (params) => this.#initialize(params),
       tools: () => this.tools(),
-      callTool: (id, params, actor) => this.#callTool(id, params, actor),
-    });
+      callTool: (id, params, caller) => this.#callTool(id, params, caller),
+    }, identity);
   }
 
   /**
@@ -409,11 +410,11 @@ export class McpServer {
     return result;
   }
 
-  /** Dispatch a `tools/call`, attributed to `actor` (the resolved caller). */
+  /** Dispatch a `tools/call`, attributed to `identity` (the resolved caller). */
   async #callTool(
     id: string | number | null,
     params: unknown,
-    actor: string | undefined,
+    identity: ResolvedIdentity | undefined,
   ): Promise<JsonRpcResponse> {
     const call = toolCall(params);
     if ("error" in call) return err(id, INVALID_PARAMS, call.error);
@@ -429,9 +430,9 @@ export class McpServer {
       return ok(id, textResult(this.#describe().graph));
     }
     if (name.startsWith(RUN_PREFIX)) {
-      return await this.#run(id, name.slice(RUN_PREFIX.length), args, actor);
+      return await this.#run(id, name.slice(RUN_PREFIX.length), args, identity);
     }
-    const runStateResult = await this.#callRunStateTool(name, args, actor);
+    const runStateResult = await this.#callRunStateTool(name, args, identity);
     if (runStateResult !== null) return ok(id, runStateResult);
     // An unknown tool is reported through the result (isError), per MCP, so the
     // model sees it rather than a transport-level failure.
@@ -447,11 +448,11 @@ export class McpServer {
   async #callRunStateTool(
     name: string,
     args: Record<string, unknown>,
-    identityActor: string | undefined,
+    identity: ResolvedIdentity | undefined,
   ): Promise<Record<string, unknown> | null> {
     const store = this.#store;
     if (store === undefined) return null;
-    const actor = identityActor ?? this.#resolveActor();
+    const actor = identity?.actor ?? this.#resolveActor();
     const mutating = isMutatingRunTool(name);
     if (mutating && !this.#allowRun) {
       return textResult(
@@ -503,10 +504,10 @@ export class McpServer {
     id: string | number | null,
     targetName: string,
     args: Record<string, unknown>,
-    identityActor: string | undefined,
+    identity: ResolvedIdentity | undefined,
   ): Promise<JsonRpcResponse> {
     const runName = `${RUN_PREFIX}${targetName}`;
-    const actor = identityActor ?? this.#resolveActor();
+    const actor = identity?.actor ?? this.#resolveActor();
     // Execution off entirely: a generic message (reveals no specific target).
     if (!this.#allowRun) {
       await this.#audit(runName, args, "denied", actor, "run_disabled");

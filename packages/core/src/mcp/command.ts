@@ -24,6 +24,11 @@ import {
   serveStdio,
 } from "./jsonrpc.ts";
 import { serveHttp } from "./http.ts";
+import {
+  authenticatorFromHook,
+  type McpAuthenticator,
+  type ResolvedIdentity,
+} from "./auth.ts";
 import { McpServer, type McpServerOptions } from "./server.ts";
 import { RegistryMcpServer, type RegistryRunner } from "./registry_server.ts";
 
@@ -36,6 +41,7 @@ interface McpHandler {
   handleMessage(
     message: unknown,
     ctx?: McpRequestContext,
+    identity?: ResolvedIdentity,
   ): Promise<JsonRpcResponse | null>;
   /**
    * Whether messages may be handled concurrently. The registry server sets this
@@ -140,9 +146,22 @@ export async function serveMcp(
   // then hand them to the server alongside the caller's options.
   const store = resolveMcpStore(build, options.stateStore, readEnv);
   const operatorToken = options.operatorToken ?? readEnv("ZUKE_OPERATOR_TOKEN");
-  // The trusted identity hook: an explicit option wins, else the build declares
-  // one via `override mcpIdentity()` (the CLI-reachable seam).
-  const identity = options.identity ?? build.mcpIdentity();
+  // The authenticator: an explicit option wins outright, else the build's own
+  // seams — `override mcpAuth()`, or the older `override mcpIdentity()` adapted
+  // onto it. Declaring both is refused rather than resolved, so an author never
+  // ends up with one gate live and the other only looking it.
+  const declared = build.mcpAuth();
+  const hook = build.mcpIdentity();
+  if (declared !== undefined && hook !== undefined) {
+    console.error(
+      "zuke mcp: this build declares both mcpAuth() and mcpIdentity() — keep " +
+        "one: mcpAuth() is the general seam, and mcpIdentity() is sugar for a " +
+        "header-trusting authenticator.",
+    );
+    return 1;
+  }
+  const authenticator = options.authenticator ?? declared ??
+    (hook === undefined ? undefined : authenticatorFromHook(hook));
   // An injected registry (tests) wins; otherwise `--registry` resolves one.
   const registry = options.registry ??
     (options.useRegistry ? resolveMcpRegistry(build, readEnv) : undefined);
@@ -157,7 +176,7 @@ export async function serveMcp(
       operatorToken,
       stateStore: store,
       actor: options.actor,
-      identity,
+      authenticator,
       readEnv,
       version: options.version,
       runner: options.runner,
@@ -168,10 +187,10 @@ export async function serveMcp(
       readEnv,
       stateStore: store,
       operatorToken,
-      identity,
+      authenticator,
     });
   if (options.http !== undefined) {
-    return await serveMcpHttp(server, options.http, options);
+    return await serveMcpHttp(server, options.http, options, authenticator);
   }
   if (!options.quiet) {
     const mode = options.allowRun ? "run enabled" : "read-only";
@@ -190,23 +209,28 @@ export async function serveMcp(
 
 /**
  * Serve over the HTTP transport. Enforces the security default: a non-loopback
- * bind **must** have a bearer token (from {@link ServeMcpOptions.token} or
- * `ZUKE_MCP_TOKEN`), else the server refuses to start rather than exposing an
- * unauthenticated endpoint. A loopback bind may run without one.
+ * bind **must** authenticate its callers — with a bearer token (from
+ * {@link ServeMcpOptions.token} or `ZUKE_MCP_TOKEN`) or with an authenticator
+ * (`mcpAuth()`/`mcpIdentity()`) — else the server refuses to start rather than
+ * exposing an unauthenticated endpoint. A loopback bind may run without either.
  */
 async function serveMcpHttp(
   server: McpHandler,
   address: HttpAddress,
   options: ServeMcpOptions,
+  authenticator: McpAuthenticator | undefined,
 ): Promise<number> {
   const readEnv = options.readEnv ?? defaultReadEnv;
   const token = options.token ?? readEnv("ZUKE_MCP_TOKEN");
   const hasToken = token !== undefined && token !== "";
-  if (!isLoopbackHost(address.host) && !hasToken) {
+  if (
+    !isLoopbackHost(address.host) && !hasToken && authenticator === undefined
+  ) {
     console.error(
-      `zuke mcp: refusing to bind ${address.host}:${address.port} without a ` +
-        `bearer token. A non-loopback MCP endpoint must be authenticated — set ` +
-        `ZUKE_MCP_TOKEN, or bind 127.0.0.1 for local-only access.`,
+      `zuke mcp: refusing to bind ${address.host}:${address.port} without ` +
+        `authentication. A non-loopback MCP endpoint must be authenticated — ` +
+        `set ZUKE_MCP_TOKEN, declare mcpAuth() on the build, or bind 127.0.0.1 ` +
+        `for local-only access.`,
     );
     return 1;
   }
@@ -216,20 +240,28 @@ async function serveMcpHttp(
       options.registry !== undefined || options.useRegistry === true
         ? "registry, "
         : "";
-    const auth = hasToken ? "bearer token required" : "no auth (loopback only)";
+    const auth = authenticator !== undefined
+      ? (hasToken ? "authenticator + bearer token" : "authenticator")
+      : hasToken
+      ? "bearer token required"
+      : "no auth (loopback only)";
     console.error(
       `zuke mcp: serving on http://${address.host}:${address.port} ` +
         `(${source}${mode}, ${auth}). Press Ctrl-C to stop.`,
     );
   }
-  await serveHttp((message, ctx) => server.handleMessage(message, ctx), {
-    host: address.host,
-    port: address.port,
-    token: hasToken ? token : undefined,
-    allowedOrigins: options.allowedOrigins,
-    signal: options.signal,
-    onListen: options.onListen,
-    concurrent: server.concurrent,
-  });
+  await serveHttp(
+    (message, ctx, identity) => server.handleMessage(message, ctx, identity),
+    {
+      host: address.host,
+      port: address.port,
+      token: hasToken ? token : undefined,
+      allowedOrigins: options.allowedOrigins,
+      signal: options.signal,
+      onListen: options.onListen,
+      concurrent: server.concurrent,
+      authenticator,
+    },
+  );
   return 0;
 }

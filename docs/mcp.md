@@ -47,7 +47,7 @@ For a client that connects over the network rather than launching the process,
 
 ```sh
 ./zuke mcp --http 7777                 # bind 127.0.0.1:7777 (local only)
-./zuke mcp --http 0.0.0.0:7777         # bind all interfaces — needs a token
+./zuke mcp --http 0.0.0.0:7777         # all interfaces — token or mcpAuth()
 ```
 
 Each request is a `POST` whose body is one JSON-RPC message; the response is
@@ -65,12 +65,21 @@ below), so one long `run:` never head-of-line-blocks another client's read.
 
 - `--http <port>` binds **loopback** (`127.0.0.1`), reachable only from the same
   host.
-- Binding a **non-loopback** address requires a bearer token: set
-  `ZUKE_MCP_TOKEN`, and every request must send `Authorization: Bearer <token>`
-  (a missing or wrong token gets `401`). Without a token, Zuke **refuses to
-  bind** a non-loopback address rather than exposing an unauthenticated
-  endpoint.
-- A token is also enforced on a loopback bind when `ZUKE_MCP_TOKEN` is set.
+- Binding a **non-loopback** address requires authentication — **either** a
+  bearer token (set `ZUKE_MCP_TOKEN`, and every request must send
+  `Authorization: Bearer <token>`; a missing or wrong token gets `401`) **or**
+  an [authenticator](#authentication) declared on the build. With neither, Zuke
+  **refuses to bind** a non-loopback address rather than exposing an
+  unauthenticated endpoint.
+- A token is also enforced on a loopback bind when `ZUKE_MCP_TOKEN` is set, and
+  an authenticator runs on every bind, loopback included. The two compose: the
+  token is a shared secret that gates the endpoint, the authenticator says _who_
+  is calling.
+- **The order a request passes:** HTTP method (a non-`POST` gets `405`) →
+  `Origin` (`403`) → the static bearer token (`401`) → the
+  [authenticator](#authentication) (the refusal's own status) → the body (capped
+  at 1 MiB; over it, `413`). Authentication runs **before** the body is read, so
+  an unauthenticated caller never makes the server buffer its payload.
 - **Origin validation** guards against a browser drive-by / DNS-rebinding page:
   on a loopback bind, a request that carries an `Origin` header is accepted only
   when it is a loopback origin, and rejected `403` otherwise. A client that sends
@@ -183,19 +192,78 @@ The trail lives in a store-level record; read it with `./zuke runs show mcp-audi
 **on the host**. It is deliberately not readable over MCP — `show_run` refuses
 it and `list_runs` omits it — because the clients it audits must not be able to
 read who called what, or to confirm which of their calls were denied. The actor
-resolves by precedence: the **identity
-hook** (below) → `--actor` → `ZUKE_ACTOR` → the CI actor → the connecting
-client's `initialize` name → `"anonymous"`. The client name is an **untrusted
-label** for the trail only — it never influences authorization. On a shared HTTP
-endpoint it reflects the most recent client to connect, so use the identity hook
-(or `--actor`) for authoritative attribution there.
+resolves by precedence: the **authenticated identity**
+([below](#authentication)) → `--actor` → `ZUKE_ACTOR` → the CI actor → the
+connecting client's `initialize` name → `"anonymous"`. The client name is an
+**untrusted label** for the trail only — it never influences authorization. On a
+shared HTTP endpoint it reflects the most recent client to connect, so declare
+an authenticator (or set `--actor`) for authoritative attribution there.
 
-### Trusted per-call identity
+## Authentication
 
-On a shared, multi-user endpoint "who did this" must not be self-reported. Front
-the server with an authenticating reverse proxy (e.g. OAuth 2.1) that injects
-the real caller in a header it strips from client input, and resolve it with a
-per-request **identity hook** — `override mcpIdentity()` on the build:
+By default the server does not identify its callers: on stdio it inherits the
+trust of the shell that launched it, and over HTTP `ZUKE_MCP_TOKEN` is a shared
+secret, not an identity. On a shared, multi-user endpoint "who did this" must
+not be self-reported, so a build can declare an **authenticator** that runs once
+per request, **before any dispatch**, on both transports.
+
+### `mcpAuth()` — the general seam
+
+`override mcpAuth()` returns an object with an `authenticate(ctx)` method. It
+may be asynchronous (verifying a token signature is), and it either returns an
+**identity** — `{ actor, kind?, roles?, via? }` — or refuses with an
+**`McpAuthReject`**:
+
+```ts
+class ControlPlane extends Build {
+  override mcpAuth() {
+    return {
+      authenticate: async (ctx: McpRequestContext) => {
+        const claims = await verifyBearer(ctx.headers.get("authorization"));
+        if (claims === null) {
+          return {
+            status: 401,
+            error: "invalid_token",
+            detail: "expired or unknown bearer token",
+            challenge: 'Bearer realm="zuke", error="invalid_token"',
+          };
+        }
+        return { actor: claims.sub, kind: "service", roles: claims.roles };
+      },
+    };
+  }
+}
+```
+
+`ctx` is the request context: its `headers`, plus the underlying `request` (so
+an authenticator can read the method and URL) when the caller arrived over HTTP.
+On **stdio** both are empty — an authenticator that insists on a header refuses
+every stdio call, which is the point: declare one for the endpoint you actually
+expose.
+
+The identity's fields:
+
+| Field   | Meaning                                                                                                      |
+| ------- | ------------------------------------------------------------------------------------------------------------ |
+| `actor` | The authenticated caller. Required and non-empty — anything else refuses the request.                        |
+| `kind`  | `"human"` or `"service"`. Omitted reads as `"human"`, so a service claim must be stated.                     |
+| `roles` | The caller's roles. Omitted reads as none, so an authenticator that says nothing about roles grants nothing. |
+| `via`   | How the identity was established (`"oauth-proxy"`). Informational only.                                      |
+
+The resolved `actor` overrides `--actor`, the environment, and the client label
+for that call, and flows to the [audit trail](#audit-log), run records,
+lock-holder identity, and a registry-spawned child's `ZUKE_ACTOR`. `kind` and
+`roles` reach a [registry](#registry-mode-dynamic-discovery)-spawned child as
+`ZUKE_ACTOR_KIND` and `ZUKE_ACTOR_ROLES`; they are **not** an authorization
+input — the [allow-list, `--protect` and the operator token](#authorization)
+remain what gates a call.
+
+### `mcpIdentity()` — sugar for a proxy header
+
+`override mcpIdentity()` is the older, synchronous seam, unchanged for authors:
+front the server with an authenticating reverse proxy (e.g. OAuth 2.1) that
+injects the real caller in a header it strips from client input, and return that
+caller. **Any throw rejects the request.**
 
 ```ts
 class ControlPlane extends Build {
@@ -209,16 +277,83 @@ class ControlPlane extends Build {
 }
 ```
 
-The hook runs **once per request, before any dispatch**. Its `actor` overrides
-`--actor`, the environment, and the client label for that call, and flows to the
-audit trail, run records, lock-holder identity, and — for a registry-spawned
-build — the child's `ZUKE_ACTOR`. It is **fail-closed**: a hook that throws _or_
-yields no usable actor (an empty string, e.g. from `headers.get(…) ?? ""` when
-the header is missing) **rejects the request** with an auth error — nothing
-executes, nothing is written, and it never falls back to the static actor, so
-the hook's precedence stays absolute. Without a hook, stdio/local behavior is
-unchanged. This is deliberately the _minimal_ seam — TLS, the OAuth flow, and
-header stripping are the proxy's job, not Zuke's.
+Internally it is adapted onto an `McpAuthenticator` and runs on exactly the same
+path, so there is one authentication code path rather than two that can drift.
+It is the right seam when a proxy has already done the authenticating; reach for
+`mcpAuth()` when callers reach the server directly, when the check is async, or
+when you want to answer with a status and a challenge of your own.
+
+Declare **one or the other**. A build that declares both makes `./zuke mcp`
+print a message to stderr and **exit 1** rather than letting one silently win.
+
+### Refusing: the `McpAuthReject` contract
+
+| Field       | Meaning                                                                                                                   |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `status`    | The HTTP status to answer with. Must be an integer **client error** (`400`–`499`) — `401` or `403` in practice.           |
+| `error`     | A short reason, machine-readable where a standard code exists (`"invalid_token"`). It becomes the JSON-RPC error message. |
+| `detail`    | Optional human-readable detail, appended as `error: detail`. Returned to the caller — never put a secret in it.           |
+| `challenge` | Optional `WWW-Authenticate` header value.                                                                                 |
+
+A `status` outside `400`–`499` — or a non-integer, or none at all — **collapses
+to a bare `401`**
+(`{ status: 401, error: "Unauthorized", challenge: "Bearer" }`). The rule exists
+so an authenticator cannot turn its own refusal into a success at the transport:
+a returned `status: 200` would otherwise answer `200` to a request the build
+meant to deny.
+
+### The refusal a client sees (behaviour change)
+
+A refused HTTP request now answers **`401`** — or the reject's own status —
+carrying its `WWW-Authenticate` challenge when it has one. It previously
+answered `200` with a JSON-RPC error. **The JSON-RPC error is still in the
+body** (`-32600`, message `error` or `error: detail`, with a `null` id since the
+body was never read), so a client that only reads JSON-RPC still sees a reason.
+
+This is the point of the change: an MCP client discovers _where_ to authenticate
+from the `401` and its challenge, which a JSON-RPC error inside a `200` can
+never tell it. A client that treats every `200` as "connected" will now see the
+refusal it should have seen all along.
+
+Over **stdio** there is no status to answer with, so a refusal is a JSON-RPC
+`-32600 Unauthorized` error — the reject's own `error`/`detail`/`challenge` have
+nowhere to go there.
+
+### Fail-closed
+
+The seam denies rather than admits, whatever the authenticator does. All of
+these refuse the request — nothing executes, nothing is written to state, and
+none of them falls back to the static actor, so the identity's precedence stays
+absolute:
+
+- the authenticator **throws** (the refusal is a bare `401`, so a throw leaks
+  nothing about why it threw);
+- it returns something that is **not an object** (`null`, a string, an array);
+- its `actor` is **empty or not a string** — e.g. `headers.get(…) ?? ""` when
+  the header is missing;
+- its rejection is **malformed** (see the status rule above).
+
+An unknown `kind` reads as `"human"` and malformed `roles` entries drop out,
+rather than refusing: a value that is _nearly_ an identity must never become a
+_more privileged_ one than the authenticator meant.
+
+Without either override, stdio/local behaviour is unchanged.
+
+### In a registry-spawned child
+
+A [registry](#registry-mode-dynamic-discovery) run spawns the registered build,
+and the resolved caller travels with it as three environment variables:
+`ZUKE_ACTOR`, `ZUKE_ACTOR_KIND` (`"human"` when the authenticator omitted it)
+and `ZUKE_ACTOR_ROLES` (comma-joined, empty when there are none). They are
+written **together**, and only when the resolved actor is non-empty, so an
+inherited kind or role set can never survive beside a fresh actor — the child
+would otherwise read one caller's actor with another's entitlements. They
+override anything inherited; the spawned build reads them itself (`ZUKE_ACTOR`
+is the usual actor source, and the other two are there for a build that wants to
+branch on who launched it).
+
+TLS, the OAuth flow, and header stripping remain the proxy's job, not Zuke's —
+this is deliberately the _minimal_ seam.
 
 ## Registry mode (dynamic discovery)
 
@@ -301,8 +436,9 @@ endpoint: it speaks only over the stdin/stdout of a process the client launches,
 so its trust boundary is the local machine — anyone who can start `./zuke mcp`
 already has a shell there and could run `deno run -A zuke.ts <target>` directly.
 The [HTTP transport](#http-transport) adds a network endpoint, so it moves that
-boundary: it binds loopback by default, requires a bearer token off loopback,
-and is meant to sit behind real TLS/authentication. Either way, treat the server
+boundary: it binds loopback by default, requires a bearer token or an
+[authenticator](#authentication) off loopback, and is meant to sit behind real
+TLS/authentication. Either way, treat the server
 like any other local developer tool and don't wire an untrusted client to it.
 
 Running a target executes real build code, so execution is **off by default**: a

@@ -1064,6 +1064,39 @@ class Build
       }
     }
     ```
+  mcpAuth(): McpAuthenticator | undefined
+    An authenticator for `zuke mcp` — the general form of
+    {@link Build.mcpIdentity}, for a server callers reach directly rather than
+    through a proxy that has already identified them.
+
+    It runs before any dispatch, may be asynchronous (verifying a signature is),
+    and refuses by returning an {@link McpAuthReject} rather than by throwing —
+    so over HTTP the refusal is answered with its own status and
+    `WWW-Authenticate` challenge, which is how an MCP client discovers where to
+    authenticate. The identity it resolves overrides `--actor`, the environment,
+    and the client label for that call, and flows to the audit trail, run
+    records, lock holders, and (for a registry-spawned build) the child's
+    `ZUKE_ACTOR`, `ZUKE_ACTOR_KIND` and `ZUKE_ACTOR_ROLES`. Throwing still
+    refuses the request: the seam is fail-closed. Default: none.
+
+    Declare either this or {@link Build.mcpIdentity}; declaring both is
+    refused when the server starts, rather than letting one silently win.
+
+    ```ts
+    class ControlPlane extends Build {
+      override mcpAuth() {
+        return {
+          authenticate: async (ctx: McpRequestContext) => {
+            const claims = await verifyBearer(ctx.headers.get("authorization"));
+            if (claims === null) {
+              return { status: 401, error: "invalid_token", challenge: "Bearer" };
+            }
+            return { actor: claims.sub, kind: "human", roles: claims.roles };
+          },
+        };
+      }
+    }
+    ```
 
 class CiFile
   A declared CI file. Assign one (via {@link cicd}) to a build field and Zuke
@@ -3238,24 +3271,71 @@ interface LockHolder
   runUrl?: string
     A link to the holding run (e.g. its CI job), when known.
 
+interface McpAuthReject
+  Why a request was refused, and how the transport should say so.
+
+  The status and challenge are what make OAuth discovery work: an MCP client
+  learns where to authenticate from a `401` carrying `WWW-Authenticate`, which a
+  JSON-RPC error inside a `200` can never tell it.
+
+  status: number
+    The HTTP status to answer with — a client error, `401` or `403` in practice.
+  error: string
+    A short reason, machine-readable where there is a standard code for it (an
+    OAuth authenticator's `"invalid_token"`, say). It becomes the JSON-RPC
+    error message on the refusal, so it is read by people too.
+  detail?: string
+    A short human-readable detail. Never a secret: it is returned to the caller.
+  challenge?: string
+    The `WWW-Authenticate` header value to challenge with, when one applies.
+
+interface McpAuthenticator
+  Authenticates one request for the MCP server.
+
+  Invoked once per message, before any dispatch: a rejection stops the request
+  outright, so nothing executes and nothing is written to state. Returning an
+  {@link McpIdentity} accepts the caller; returning an {@link McpAuthReject}
+  refuses it. Throwing also refuses it — the seam is fail-closed, so a bug in an
+  authenticator denies rather than admits.
+
+  Configure one with `override mcpAuth()` on the build.
+
+  authenticate(ctx: McpRequestContext): Promise<McpIdentity | McpAuthReject> | McpIdentity | McpAuthReject
+    Resolve the caller's identity from the request, or refuse the request.
+
 interface McpIdentity
-  A trusted caller identity, resolved per request by a {@link McpIdentityHook}
-  (typically from an authenticating reverse proxy's header). Its
-  {@link McpIdentity.actor} is the highest-precedence attribution — it overrides
-  `--actor`, the environment, and the client's self-reported label for the call.
+  A trusted caller identity, resolved per request by an
+  {@link McpAuthenticator}. Its {@link McpIdentity.actor} is the
+  highest-precedence attribution — it overrides `--actor`, the environment, and
+  the client's self-reported label for the call.
 
   actor: string
-    The authenticated actor (e.g. an OAuth subject).
+    The authenticated actor — an OAuth subject, a GitHub login, a service name.
+  kind?: "human" | "service"
+    Whether a person or a machine is calling. Absent is read as `"human"`, the
+    conservative default: a policy that treats service callers differently must
+    see the claim stated rather than inferred.
+  roles?: readonly string[]
+    The roles this caller holds. Absent is read as none, so an authenticator
+    that says nothing about roles grants nothing.
   via?: string
     How the identity was established (e.g. `"oauth-proxy"`); informational.
 
 interface McpRequestContext
-  The per-request context a transport hands the message handler. Carries the
-  request's headers, so a server's identity hook can authenticate the caller
-  from a trusted proxy header. Empty on the stdio transport (no headers).
+  The per-request context a transport hands the message handler, and the only
+  thing an authenticator sees of the request. Empty on the stdio transport,
+  which has no request to describe.
 
   readonly headers: Headers
     The request headers; an empty {@link Headers} on stdio.
+  readonly request?: Request
+    The HTTP request the caller arrived on, when it did — so an authenticator
+    can read its method and URL, not just its headers. Absent on the stdio
+    transport, which has no request.
+
+    Its body is deliberately empty: the body belongs to the transport, which
+    reads it once to parse the JSON-RPC message, and a credential never lives
+    there. Everything else — method, URL, headers — is the real request's.
 
 interface NpmToolSpec
   A specification of an npm-registry package to provision as a tool.
@@ -4149,10 +4229,11 @@ type LockResult = { ok: true; token: string; } | { ok: false; holder: LockHolder
   the current `holder` when the lock is already held.
 
 type McpIdentityHook = (ctx: McpRequestContext) => McpIdentity
-  Resolve a trusted {@link McpIdentity} from a request's context. Invoked once
-  per message, before any dispatch; throwing rejects the whole request with
-  an auth error, so nothing executes and nothing is written to state — the seam
-  a proxy in front of the server uses to inject an authenticated identity.
+  Resolve a trusted {@link McpIdentity} from a request's context. The original,
+  synchronous identity seam, kept as sugar for the common case of trusting a
+  header an authenticating reverse proxy injected: throwing rejects the whole
+  request. {@link authenticatorFromHook} adapts one onto
+  {@link McpAuthenticator}, which is what the server actually runs.
 
 type NpmRunner = (args: string[]) => Promise<void>
   Runs `npm install <args>` — the injectable subprocess seam. Defaults to

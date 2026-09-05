@@ -30,6 +30,15 @@ import {
   PARSE_ERROR,
 } from "./jsonrpc.ts";
 import { timingSafeEqual } from "./authz.ts";
+import {
+  authenticateRequest,
+  isResolvedIdentity,
+  type McpAuthenticator,
+  type McpAuthReject,
+  refusalReason,
+  type ResolvedIdentity,
+  UNAUTHORIZED,
+} from "./auth.ts";
 import { isLoopbackHost } from "../http.ts";
 
 /** Options for {@link serveHttp}. */
@@ -66,6 +75,13 @@ export interface HttpTransportOptions {
    * the CAS store) opts in, so a long run never head-of-line-blocks a read.
    */
   concurrent?: boolean;
+  /**
+   * Authenticates every request before its body is read, when the server has
+   * one. A refusal becomes a real HTTP status and `WWW-Authenticate` challenge
+   * here rather than a JSON-RPC error inside a `200`, which is what lets an MCP
+   * client discover where to authenticate.
+   */
+  authenticator?: McpAuthenticator;
 }
 
 /** A JSON `Response` with the given status and `application/json` content type. */
@@ -137,6 +153,40 @@ function bearerToken(header: string | null): string | undefined {
   return parts[1];
 }
 
+/**
+ * The request as an authenticator sees it: same method, URL and headers, no body.
+ *
+ * The body belongs to the transport. A request's body can be read once, so an
+ * authenticator that peeked at this one would leave nothing for the dispatcher
+ * to parse — and the next read fails with a bare `TypeError`, nowhere near the
+ * code that caused it. A credential never lives in the body anyway, so handing
+ * over a bodiless view costs an authenticator nothing and makes that mistake
+ * impossible rather than merely documented.
+ */
+function authenticatorView(request: Request): Request {
+  return new Request(request.url, {
+    method: request.method,
+    headers: request.headers,
+  });
+}
+
+/**
+ * The response for a refused request: the refusal's status, its reason as a
+ * JSON-RPC error so a client that only speaks JSON-RPC still sees one, and its
+ * `WWW-Authenticate` challenge when it carries one — the header an MCP client
+ * reads to discover where to authenticate.
+ */
+function refusedResponse(reject: McpAuthReject): Response {
+  const headers = new Headers({ "content-type": "application/json" });
+  if (reject.challenge !== undefined) {
+    headers.set("www-authenticate", reject.challenge);
+  }
+  return new Response(
+    JSON.stringify(err(null, INVALID_REQUEST, refusalReason(reject))),
+    { status: reject.status, headers },
+  );
+}
+
 /** The hostname of an `Origin` value, or `null` if it can't be parsed. */
 function originHost(origin: string): string | null {
   try {
@@ -170,7 +220,8 @@ export function originAllowed(
  * body, `handle` produces the response, and it is returned as JSON. A
  * notification (`handle` returns `null`) is answered `202 Accepted` with no
  * body. Unparseable JSON gets a `400` JSON-RPC parse error; a non-`POST` gets
- * `405`; a bad/absent bearer token (when one is configured) gets `401`.
+ * `405`; a bad/absent bearer token (when one is configured) gets `401`; an
+ * authenticator's refusal gets that refusal's own status and challenge.
  *
  * Resolves when the server closes (abort {@link HttpTransportOptions.signal}).
  */
@@ -178,11 +229,20 @@ export async function serveHttp(
   handle: (
     message: unknown,
     ctx: McpRequestContext,
+    identity?: ResolvedIdentity,
   ) => Promise<JsonRpcResponse | null>,
   options: HttpTransportOptions,
 ): Promise<void> {
-  const { host, port, token, signal, onListen, concurrent, allowedOrigins } =
-    options;
+  const {
+    host,
+    port,
+    token,
+    signal,
+    onListen,
+    concurrent,
+    allowedOrigins,
+    authenticator,
+  } = options;
 
   // By default, process messages one at a time: the single-build server/execute
   // path mutates per-run parameter state, so concurrent handling of two POSTs
@@ -192,8 +252,9 @@ export async function serveHttp(
   const serial = (
     message: unknown,
     ctx: McpRequestContext,
+    identity?: ResolvedIdentity,
   ): Promise<JsonRpcResponse | null> => {
-    const result = queue.then(() => handle(message, ctx));
+    const result = queue.then(() => handle(message, ctx, identity));
     queue = result.then(() => {}, () => {});
     return result;
   };
@@ -221,17 +282,20 @@ export async function serveHttp(
     if (token !== undefined && token !== "") {
       const provided = bearerToken(request.headers.get("authorization"));
       if (provided === undefined || !timingSafeEqual(provided, token)) {
-        return new Response(
-          JSON.stringify(err(null, INVALID_REQUEST, "Unauthorized")),
-          {
-            status: 401,
-            headers: {
-              "content-type": "application/json",
-              "www-authenticate": "Bearer",
-            },
-          },
-        );
+        return refusedResponse(UNAUTHORIZED);
       }
+    }
+    // Authenticate before reading the body: an unauthenticated caller never gets
+    // to make the server buffer a megabyte for it.
+    const ctx: McpRequestContext = {
+      headers: request.headers,
+      request: authenticatorView(request),
+    };
+    let identity: ResolvedIdentity | undefined;
+    if (authenticator !== undefined) {
+      const resolved = await authenticateRequest(authenticator, ctx);
+      if (!isResolvedIdentity(resolved)) return refusedResponse(resolved);
+      identity = resolved;
     }
     const body = await readBounded(request, MAX_BODY_BYTES);
     if (body === null) {
@@ -246,7 +310,7 @@ export async function serveHttp(
     } catch {
       return jsonResponse(err(null, PARSE_ERROR, "Parse error"), 400);
     }
-    const response = await dispatch(message, { headers: request.headers });
+    const response = await dispatch(message, ctx, identity);
     if (response === null) return new Response(null, { status: 202 });
     return jsonResponse(response, 200);
   };

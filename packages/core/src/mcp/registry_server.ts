@@ -58,10 +58,10 @@ import {
   err,
   INVALID_PARAMS,
   type JsonRpcResponse,
-  type McpIdentityHook,
   type McpRequestContext,
   ok,
 } from "./jsonrpc.ts";
+import type { McpAuthenticator, ResolvedIdentity } from "./auth.ts";
 
 /** The captured result of spawning a registered build. */
 export interface RegistryRunResult {
@@ -78,9 +78,20 @@ export interface RegistryRunOptions {
   /**
    * The resolved caller actor. The default runner exports it as `ZUKE_ACTOR` in
    * the child environment so the spawned build attributes its run to the same
-   * (trusted, when an identity hook is active) actor as the MCP audit trail.
+   * (trusted, when an authenticator is active) actor as the MCP audit trail.
    */
   actor?: string;
+  /**
+   * Whether a person or a machine asked for the run, exported as
+   * `ZUKE_ACTOR_KIND`, so a build can tell an engineer's launch from a
+   * scheduler's.
+   */
+  actorKind?: "human" | "service";
+  /**
+   * The caller's roles, exported as `ZUKE_ACTOR_ROLES` (comma-separated), so a
+   * build can see what the caller was entitled to when it asked.
+   */
+  actorRoles?: readonly string[];
 }
 
 /**
@@ -106,10 +117,15 @@ export const defaultRegistryRunner: RegistryRunner = async (
   const env = Deno.env.toObject();
   delete env.ZUKE_OPERATOR_TOKEN;
   delete env.ZUKE_MCP_TOKEN;
-  // Attribute the child run to the resolved caller (a trusted identity when a
-  // hook is active), overriding any inherited ZUKE_ACTOR.
+  // Attribute the child run to the resolved caller (a trusted identity when an
+  // authenticator is active), overriding any inherited ZUKE_ACTOR. The three
+  // travel together: an inherited kind or role set must not survive beside a
+  // fresh actor, or the child would read one caller's actor with another's
+  // entitlements.
   if (options?.actor !== undefined && options.actor !== "") {
     env.ZUKE_ACTOR = options.actor;
+    env.ZUKE_ACTOR_KIND = options.actorKind ?? "human";
+    env.ZUKE_ACTOR_ROLES = (options.actorRoles ?? []).join(",");
   }
   const command = new Deno.Command(argv[0], {
     args: [...argv.slice(1)],
@@ -147,16 +163,17 @@ export interface RegistryMcpServerOptions {
   confirmDestructive?: boolean;
   /** The durable store; when set, every mutating/denied call is audited. */
   stateStore?: StateStore;
-  /** Who to attribute audited calls to (`--actor`); below {@link identity}. */
+  /** Who to attribute audited calls to (`--actor`); below {@link authenticator}. */
   actor?: string;
   /**
-   * Resolve a trusted caller identity per request (e.g. from an authenticating
-   * reverse proxy's header). When set, its actor overrides `--actor`, the
-   * environment, and the client label for every call — flowing to the audit
-   * trail and to the spawned build (as `ZUKE_ACTOR`) — and a throwing hook
-   * rejects the request before anything spawns. Off by default.
+   * Authenticate the caller per request. When set, the identity it resolves
+   * overrides `--actor`, the environment, and the client label for every call —
+   * flowing to the audit trail and to the spawned build (as `ZUKE_ACTOR`,
+   * `ZUKE_ACTOR_KIND` and `ZUKE_ACTOR_ROLES`) — and a refusal stops the request
+   * before anything spawns. Off by default. The CLI builds this from the
+   * build's `mcpAuth()` or `mcpIdentity()` (see `serveMcp`).
    */
-  identity?: McpIdentityHook;
+  authenticator?: McpAuthenticator;
   /** Reads an environment variable (injectable for tests). */
   readEnv?: (name: string) => string | undefined;
   /** The server version reported in `initialize`. Defaults to `"0.0.0"`. */
@@ -331,7 +348,7 @@ export class RegistryMcpServer {
   readonly #confirmDestructive: boolean;
   readonly #store?: StateStore;
   readonly #actor?: string;
-  readonly #identity?: McpIdentityHook;
+  readonly #authenticator?: McpAuthenticator;
   readonly #readEnv: (name: string) => string | undefined;
   readonly #runner: RegistryRunner;
   readonly #maxConcurrentRuns: number;
@@ -363,7 +380,7 @@ export class RegistryMcpServer {
     this.#confirmDestructive = options.confirmDestructive ?? false;
     this.#store = options.stateStore;
     this.#actor = options.actor;
-    this.#identity = options.identity;
+    this.#authenticator = options.authenticator;
     this.#readEnv = options.readEnv ?? (() => undefined);
     this.#version = options.version ?? "0.0.0";
     this.#runner = options.runner ?? defaultRegistryRunner;
@@ -378,17 +395,18 @@ export class RegistryMcpServer {
   handleMessage(
     message: unknown,
     ctx: McpRequestContext = EMPTY_CONTEXT,
+    identity?: ResolvedIdentity,
   ): Promise<JsonRpcResponse | null> {
     // `tools/list` reads the registry live (a hosted backend can throw on a
     // transient fault or a malformed descriptor); the shared dispatcher guards
     // it, and `tools/call`, so one hiccup returns an error instead of tearing
     // down the transport for every client.
     return dispatchMessage(message, ctx, {
-      identity: this.#identity,
+      authenticator: this.#authenticator,
       initialize: (params) => this.#initialize(params),
       tools: () => this.tools(),
-      callTool: (id, params, actor) => this.#callTool(id, params, actor),
-    });
+      callTool: (id, params, caller) => this.#callTool(id, params, caller),
+    }, identity);
   }
 
   /**
@@ -511,11 +529,11 @@ export class RegistryMcpServer {
     return result;
   }
 
-  /** Dispatch a `tools/call`, attributed to `actor` (the resolved caller). */
+  /** Dispatch a `tools/call`, attributed to `identity` (the resolved caller). */
   async #callTool(
     id: string | number | null,
     params: unknown,
-    actor: string | undefined,
+    identity: ResolvedIdentity | undefined,
   ): Promise<JsonRpcResponse> {
     const call = toolCall(params);
     if ("error" in call) return err(id, INVALID_PARAMS, call.error);
@@ -528,7 +546,7 @@ export class RegistryMcpServer {
       return ok(id, await this.#describeBuild(args));
     }
     if (name.startsWith(RUN_PREFIX)) {
-      return await this.#run(id, name.slice(RUN_PREFIX.length), args, actor);
+      return await this.#run(id, name.slice(RUN_PREFIX.length), args, identity);
     }
     return ok(id, textResult(`Unknown tool: ${name}`, true));
   }
@@ -558,10 +576,10 @@ export class RegistryMcpServer {
     id: string | number | null,
     qualified: string,
     args: Record<string, unknown>,
-    identityActor: string | undefined,
+    identity: ResolvedIdentity | undefined,
   ): Promise<JsonRpcResponse> {
     const runName = `${RUN_PREFIX}${qualified}`;
-    const actor = identityActor ?? this.#resolveActor();
+    const actor = identity?.actor ?? this.#resolveActor();
     if (!this.#allowRun) {
       await this.#audit(runName, args, "denied", actor, "run_disabled");
       return ok(id, runDisabledResult("--registry --allow-run"));
@@ -732,7 +750,11 @@ export class RegistryMcpServer {
     this.#inFlightRuns++;
     let result: RegistryRunResult;
     try {
-      result = await this.#runner(launch.argv, launch.cwd, { actor });
+      result = await this.#runner(launch.argv, launch.cwd, {
+        actor,
+        actorKind: identity?.kind,
+        actorRoles: identity?.roles,
+      });
     } catch (error) {
       await this.#audit(
         runName,
