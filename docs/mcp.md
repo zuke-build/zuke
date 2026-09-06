@@ -256,6 +256,13 @@ carrying *less* information bought *more* privilege. An override of
 `mcpAuthorize` still runs in every case, including the legacy seam, since a
 change window or a freeze applies whether or not roles are in play.
 
+`requiresRole` is the exception to "the legacy seam is left alone": a target
+that declares one is **refused** for a caller whose authenticator cannot express
+roles, naming the seam. Silently ignoring the declaration would tell you a
+target is gated when nothing is checking. A server that declares no roles — every
+server that predates this — is unaffected, since the refusal can only fire on a
+declaration someone has just added.
+
 In **registry mode** the policy decides on the tiers alone — `read` to list or
 describe a registered build, `run` to spawn one — because a registry descriptor
 carries no per-target `requiresRole`.

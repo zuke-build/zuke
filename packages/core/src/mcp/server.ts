@@ -767,6 +767,19 @@ export class McpServer {
     // information bought *more* privilege. Only the legacy `mcpIdentity()`
     // adapter, which never had roles to give, leaves them unclaimed.
     const claimed = this.#enforceRoles ? identity.roles ?? [] : identity.roles;
+    // The legacy seam cannot express roles, which is fine until a target
+    // actually declares one. Silently ignoring an explicit `requiresRole` would
+    // tell an author their target is gated when nothing is checking — so the
+    // call is refused, naming the seam that cannot answer it. An existing
+    // server declares no roles and is unaffected; this can only fire on a
+    // declaration the author just added.
+    const required = call.requiredRoles ?? [];
+    if (claimed === undefined && required.length > 0) {
+      return `${call.tool} requires the ${
+        required.map((role) => `"${role}"`).join(", ")
+      } role, which mcpIdentity() cannot provide — declare mcpAuth() to gate ` +
+        `by role`;
+    }
     const roles = claimed === undefined
       ? undefined
       : this.#hasOperatorToken(args)

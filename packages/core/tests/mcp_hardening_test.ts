@@ -1325,3 +1325,49 @@ Deno.test("an overridden mcpAuthorize runs even for the legacy identity seam", a
     assertStringIncludes(JSON.stringify(res), "frozen");
   });
 });
+
+Deno.test("a role-gated target is refused on a seam that cannot express roles", async () => {
+  // The legacy hook has no roles to give, so the policy leaves it alone — until
+  // a target actually declares a requirement. Ignoring that declaration would
+  // tell an author their target is gated when nothing is checking, and the
+  // refusal names the seam that cannot answer it.
+  class Mixed extends Build {
+    deploy = target().executes(() => {});
+    promote = target().requiresRole("operator").executes(() => {});
+  }
+  await withTempStore(async (store) => {
+    const server = new McpServer(new Mixed(), {
+      allowRun: true,
+      stateStore: store,
+      // The legacy seam: an identity with no roles, enforcement off.
+      authenticator: withRoles("ada"),
+    });
+
+    // A target with no declared role is untouched — an existing server declares no roles and
+    // sees no change at all.
+    const ordinary = await server.handleMessage(
+      req("tools/call", { name: "run:deploy", arguments: {} }),
+    );
+    assertEquals(JSON.stringify(ordinary).includes("unauthorized"), false);
+
+    // The gated one is refused, and says why rather than failing silently.
+    const gated = await server.handleMessage(
+      req("tools/call", { name: "run:promote", arguments: {} }),
+    );
+    const text = JSON.stringify(gated);
+    assertStringIncludes(text, "unauthorized");
+    assertStringIncludes(text, "mcpAuth()");
+
+    // …and the same holds through a run-scoped tool, which executes the same
+    // plan and so cannot be a way around the declaration.
+    const id = await seedSuspended(store, "promote");
+    const viaSignal = await server.handleMessage(
+      req("tools/call", {
+        name: "signal_run",
+        arguments: { runId: id, signal: "go" },
+      }),
+    );
+    assertStringIncludes(JSON.stringify(viaSignal), "unauthorized");
+    assertEquals((await store.getRun(id))?.record.status, "suspended");
+  });
+});
