@@ -108,7 +108,12 @@ export interface RunInitiator {
   actor: string;
   /** Whether a person or a machine asked. Stated, never inferred from the actor. */
   kind: ActorKind;
-  /** ISO-8601 time the run was created — when this attribution was fixed. */
+  /**
+   * ISO-8601 time this attribution was fixed. The run's `createdAt` for a run
+   * stamped at creation, and the *original* run's `createdAt` for one backfilled
+   * when a resume was about to overwrite the evidence — so it dates the
+   * attribution, not the write that recorded it.
+   */
   at: string;
 }
 
@@ -550,10 +555,15 @@ function parseRunEvent(value: unknown): RunEvent {
  * Validate and narrow an optional {@link RunInitiator}, or `undefined` when the
  * record carries none (every record written before the field existed).
  *
- * A present but malformed initiator throws rather than being dropped: silently
- * reading it as "no initiator" would make a record fall back to `actor`, which
- * a resume may already have rewritten — quietly answering a question about who
- * started a run with the name of whoever last resumed it.
+ * A present but malformed initiator throws rather than being dropped. Dropping
+ * it would make the record fall back to `actor`, which a resume may already have
+ * rewritten — quietly answering "who started this run" with the name of whoever
+ * last resumed it. A throw is the louder failure: the record does not parse, so
+ * the filesystem store skips that file and the run disappears from a listing
+ * rather than appearing under the wrong name. That is the intended trade — a
+ * run you cannot see prompts a look, one attributed to the wrong person does
+ * not — but it does mean a corrupted initiator costs the whole record, so the
+ * shape written here is deliberately small.
  */
 function parseInitiator(value: unknown): RunInitiator | undefined {
   if (value === undefined) return undefined;

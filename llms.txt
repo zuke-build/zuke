@@ -64,6 +64,7 @@ Option flags:
 - `--dry-run` — Print the plan without running targets
 - `--state` — Persist durable run state to .zuke/runs
 - `--actor` — Attribute the run to <name> in its state record
+- `--actor-kind` — Who asked for the run: human (default) or service
 - `--output` — Graph output format: text or html
 - `--no-open` — With --output=html, do not open a browser
 - `--check` — With generate-ci verify files; with resume re-check suspended runs
@@ -76,6 +77,7 @@ Option flags:
 - `--target` — With runs list, keep only runs whose graph has this target
 - `--since` — With runs list, keep only runs created at/after this time
 - `--limit` — With runs list, return at most this many runs (newest)
+- `--initiator` — With runs list, keep only runs this actor started
 - `--counts` — With runs list, print aggregate counts (total + per status)
 - `--keep` — With runs prune, keep runs newer than this age (e.g. 90d)
 - `--keep-last` — With runs prune, always keep the newest N terminal runs

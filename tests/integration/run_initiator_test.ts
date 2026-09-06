@@ -208,3 +208,118 @@ Deno.test("a resumed run is still found by the person who started it", async () 
     assertStringIncludes(sweep.out, "No runs found.");
   });
 });
+
+// ---- Regressions from the adversarial review -------------------------------
+
+Deno.test("a legacy record keeps its starter when a resume would erase it", async () => {
+  // A record written before initiators existed still knows who started it — in
+  // `actor`, right until a resume overwrites that. Without a backfill the run
+  // would silently become the sweep's, which is the exact confusion the field
+  // exists to prevent.
+  await withStateDir(async (dir) => {
+    assertEquals(
+      (await runCli(Gated, ["approve", "--state", "--actor", "engineer-a"]))
+        .code,
+      0,
+    );
+    const id = await onlyRunId(dir);
+
+    // Strip the field, so the record reads as one written before this shipped.
+    const store = new FileSystemStateStore(dir, defaultStateHost);
+    const before = await store.getRun(id);
+    if (before === null) throw new Error("no record");
+    const legacy = { ...before.record };
+    delete legacy.initiator;
+    await store.putRun(legacy, before.version);
+    assertEquals((await recordOf(dir, id)).initiator, undefined);
+
+    // A sweep resumes it under its own identity.
+    assertEquals(
+      (await runCli(Gated, [
+        "resume",
+        id,
+        "--signal",
+        "go",
+        "--actor",
+        "sweeper-bot",
+      ])).code,
+      0,
+    );
+
+    const record = await recordOf(dir, id);
+    assertEquals(record.actor, "sweeper-bot");
+    // Captured from the actor at the moment it was about to be overwritten,
+    // dated to the original run rather than to the backfill.
+    assertEquals(record.initiator?.actor, "engineer-a");
+    assertEquals(record.initiator?.kind, "human");
+    assertEquals(record.initiator?.at, record.createdAt);
+
+    // And the filter now answers correctly in both directions.
+    assertStringIncludes(
+      (await runCli(Gated, ["runs", "list", "--initiator", "engineer-a"])).out,
+      id,
+    );
+    assertStringIncludes(
+      (await runCli(Gated, ["runs", "list", "--initiator", "sweeper-bot"])).out,
+      "No runs found.",
+    );
+  });
+});
+
+Deno.test("--initiator with --limit returns that actor's newest, not nothing", async () => {
+  // `--limit` is applied by the store and the initiator filter runs after it,
+  // so truncating first would answer "whose runs are among the newest N" —
+  // usually none of them — when the question was "this actor's newest N".
+  await withStateDir(async (dir) => {
+    assertEquals(
+      (await runCli(Simple, ["deploy", "--state", "--actor", "alice"])).code,
+      0,
+    );
+    for (let i = 0; i < 3; i++) {
+      assertEquals(
+        (await runCli(Simple, ["deploy", "--state", "--actor", "bob"])).code,
+        0,
+      );
+    }
+    const store = new FileSystemStateStore(dir, defaultStateHost);
+    const all = await store.listRuns({});
+    assertEquals(all.length, 4);
+    const aliceRun = all.find((s) => s.initiator?.actor === "alice");
+    if (aliceRun === undefined) throw new Error("no run for alice");
+
+    // Alice's single run is the oldest of the four, so a store-side limit of 2
+    // would have hidden it entirely.
+    const limited = await runCli(Simple, [
+      "runs",
+      "list",
+      "--initiator",
+      "alice",
+      "--limit",
+      "2",
+    ]);
+    assertEquals(limited.code, 0);
+    assertStringIncludes(limited.out, aliceRun.id);
+
+    // The limit still bounds the result for an actor who has more than it.
+    const bobs = await runCli(Simple, [
+      "runs",
+      "list",
+      "--initiator",
+      "bob",
+      "--limit",
+      "2",
+    ]);
+    assertEquals(bobs.out.trim().split("\n").length, 3); // header + 2 rows
+  });
+});
+
+Deno.test("both new flags are in the CLI surface", async () => {
+  // They drive `--list --json` and the generated shell completions, so a flag
+  // missing from the registry is invisible to every tool that reads it.
+  const { code, out } = await runCli(Simple, ["--list", "--json"]);
+  assertEquals(code, 0);
+  const surface = JSON.parse(out);
+  const names = surface.flags.map((f: { name: string }) => f.name);
+  assertEquals(names.includes("--actor-kind"), true, out);
+  assertEquals(names.includes("--initiator"), true, out);
+});

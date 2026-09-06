@@ -127,6 +127,10 @@ export const BUILTIN_FLAGS: readonly BuiltinFlag[] = [
     name: "--actor",
     description: "Attribute the run to <name> in its state record",
   },
+  {
+    name: "--actor-kind",
+    description: "Who asked for the run: human (default) or service",
+  },
   { name: "--output", description: "Graph output format: text or html" },
   {
     name: "--no-open",
@@ -173,6 +177,10 @@ export const BUILTIN_FLAGS: readonly BuiltinFlag[] = [
   {
     name: "--limit",
     description: "With runs list, return at most this many runs (newest)",
+  },
+  {
+    name: "--initiator",
+    description: "With runs list, keep only runs this actor started",
   },
   {
     name: "--counts",

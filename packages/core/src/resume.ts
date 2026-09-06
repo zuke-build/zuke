@@ -306,9 +306,23 @@ async function transitionToRunning(
     }
     const next = structuredClone(record);
     next.status = "running";
-    // The resumer becomes the record's last writer. `initiator` is deliberately
-    // *not* touched: it is the answer to who asked for this run, and a sweep
-    // picking the run up is not that. The clone carries it through untouched.
+    // A record written before initiators existed still knows who started it —
+    // in `actor`, right up until the line below overwrites it. Capture it here,
+    // the one moment the evidence is about to be destroyed, so an old run keeps
+    // its owner instead of silently acquiring the sweep that resumed it. `??=`
+    // so a record that already has one is never rewritten: that is the whole
+    // guarantee of the field.
+    next.initiator ??= {
+      actor: record.actor,
+      // Unknowable for a record from before the field; `human` is the
+      // conservative reading, and never claims machinery a policy would treat
+      // as unowned.
+      kind: "human",
+      at: record.createdAt,
+    };
+    // The resumer becomes the record's last writer. `initiator` above is
+    // deliberately not touched again: it answers who asked for this run, and a
+    // sweep picking it up is not that.
     next.actor = resumerActor;
     const at = now();
     // Give back the time the run spent parked. A run's deadline is a budget for

@@ -65,7 +65,7 @@ import { type RemoteCacheStore, resolveRemoteStore } from "./remote_cache.ts";
 import { ServiceRegistry } from "./service.ts";
 import { absolutePath } from "./path.ts";
 import type { TargetBuilder } from "./target.ts";
-import type { RunRecord } from "./state/types.ts";
+import type { ActorKind, RunRecord } from "./state/types.ts";
 import { withAmbientSignal } from "./ambient_signal.ts";
 import { withAmbientRedactor } from "./ambient_redactor.ts";
 import type { StateStore } from "./state/store.ts";
@@ -196,7 +196,7 @@ export interface ExecuteOptions {
    * back to `ZUKE_ACTOR_KIND`, else `"human"`. Recorded on the run's immutable
    * initiator, never inferred from the actor's name.
    */
-  actorKind?: string;
+  actorKind?: ActorKind;
   /**
    * Continue a suspended run instead of starting a fresh one. Set by
    * {@link "./resume.ts".resumeRun} after it has transitioned the run to

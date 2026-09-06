@@ -39,7 +39,12 @@ import {
   type HeldLease,
   RUN_LEASE_PREFIX,
 } from "./state/run_lease.ts";
-import type { RunRecord, SignalRecord, WaitState } from "./state/types.ts";
+import type {
+  ActorKind,
+  RunRecord,
+  SignalRecord,
+  WaitState,
+} from "./state/types.ts";
 import type { ResumeState } from "./executor.ts";
 
 /**
@@ -190,7 +195,7 @@ export async function openRunState(opts: {
   stateStore?: StateStore | false;
   state?: boolean;
   actor?: string;
-  actorKind?: string;
+  actorKind?: ActorKind;
   resume?: ResumeState;
 }): Promise<{ ok: true; state: RunState } | { ok: false; error: Error }> {
   const { dryRun, order, readEnv, nowIso, redactor, resume } = opts;

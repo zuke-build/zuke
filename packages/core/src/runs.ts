@@ -139,13 +139,20 @@ export async function runsCommand(
 
   const action = options.action ?? "list";
   if (action === "list") {
-    const listed = await store.listRuns(options.query ?? {});
+    const query = options.query ?? {};
+    // `--limit` is applied by the store, and the initiator filter runs here, so
+    // letting the store truncate first would answer "whose runs are among the
+    // newest N" — usually none of them — when the question was "this actor's
+    // newest N". List unbounded, filter, then take N.
+    const listed = await store.listRuns(
+      options.initiator === undefined ? query : { ...query, limit: undefined },
+    );
     // Matched against the initiator *or* the actor it falls back to, so a run
     // recorded before the field existed is still findable by the person who
     // started it.
-    const summaries = options.initiator === undefined
-      ? listed
-      : listed.filter((s) => initiatorOf(s) === options.initiator);
+    const summaries = options.initiator === undefined ? listed : listed
+      .filter((s) => initiatorOf(s) === options.initiator)
+      .slice(0, query.limit ?? listed.length);
     if (options.counts) {
       const counts = aggregateRunCounts(summaries);
       console.log(

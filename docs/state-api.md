@@ -87,11 +87,18 @@ List runs as an array of **summaries** (a subset of the record):
     "rootTarget": "deploy",
     "status": "succeeded",
     "actor": "alice",
+    "initiator": { "actor": "alice", "kind": "human", "at": "2026-07-17T…Z" },
     "createdAt": "2026-07-17T…Z",
     "updatedAt": "2026-07-17T…Z"
   }
 ]
 ```
+
+`initiator` is **optional but load-bearing**: it is who asked for the run, while
+`actor` is whoever wrote it last, so a store that omits it from a summary makes
+`zuke runs list --initiator` fall back to `actor` — which on a resumed run is the
+process that resumed it, not the person who started it. Project it whenever the
+record has one. It is absent only on records written before the field existed.
 
 Query parameters (all optional, combined with AND):
 

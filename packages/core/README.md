@@ -3036,7 +3036,7 @@ interface ExecuteOptions
   actor?: string
     Who to attribute the run to in its state record (CLI `--actor`). Falls back
     to `ZUKE_ACTOR`, then the CI actor, then `"anonymous"`.
-  actorKind?: string
+  actorKind?: ActorKind
     Whether a person or a machine asked for the run (CLI `--actor-kind`). Falls
     back to `ZUKE_ACTOR_KIND`, else `"human"`. Recorded on the run's immutable
     initiator, never inferred from the actor's name.
@@ -3709,7 +3709,10 @@ interface RunInitiator
   kind: ActorKind
     Whether a person or a machine asked. Stated, never inferred from the actor.
   at: string
-    ISO-8601 time the run was created — when this attribution was fixed.
+    ISO-8601 time this attribution was fixed. The run's `createdAt` for a run
+    stamped at creation, and the original run's `createdAt` for one backfilled
+    when a resume was about to overwrite the evidence — so it dates the
+    attribution, not the write that recorded it.
 
 interface RunOptions
   Options for {@link run}.

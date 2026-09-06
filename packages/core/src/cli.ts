@@ -1351,10 +1351,10 @@ async function runCommand(
   // environment fallback stays lenient — an unrecognised ZUKE_ACTOR_KIND reads
   // as unstated — because that value can arrive from anywhere, while this one
   // was typed by someone who meant something by it.
-  if (
-    parsed.actorKind !== undefined &&
-    !ACTOR_KINDS.some((kind) => kind === parsed.actorKind)
-  ) {
+  // `find` both validates and narrows, so the value handed to `execute` is the
+  // union rather than a string the type system has to be told about.
+  const actorKind = ACTOR_KINDS.find((kind) => kind === parsed.actorKind);
+  if (parsed.actorKind !== undefined && actorKind === undefined) {
     console.error(
       `--actor-kind must be one of: ${ACTOR_KINDS.join(", ")} ` +
         `(got "${parsed.actorKind}").`,
@@ -1393,7 +1393,7 @@ async function runCommand(
       dryRun: parsed.dryRun,
       state: parsed.state,
       actor: parsed.actor,
-      actorKind: parsed.actorKind,
+      actorKind,
       plugins: options.plugins,
       renderer: options.renderer,
       signal: cleanupSignals ? controller.signal : options.signal,
