@@ -1285,15 +1285,34 @@ a descriptor whose entry module is **remote** (not a local path or `file:` URL �
 spawned. `zuke register` writes a local `file:` module, so this only bites a
 hand-authored or second-party registry entry.
 
-**Trusted per-call identity** (`docs/mcp.md`): on a shared, multi-user endpoint,
-`override mcpIdentity()` returns a hook `(ctx) => ({ actor, via? })` that
-resolves the **real** caller from a request header an authenticating reverse
-proxy injects (`ctx.headers.get("x-forwarded-user")`). It runs once per request
-before any dispatch; its actor overrides `--actor`/env/the client label and
-flows to the audit trail, run records, lock holders, and a registry-spawned
-child's `ZUKE_ACTOR`. A **throwing hook rejects the request** (nothing runs,
-nothing is written). The minimal seam — TLS/OAuth/header-stripping is the
-proxy's job.
+**Authentication** (`docs/mcp.md`): on a shared, multi-user endpoint,
+`override mcpAuth()` returns an `McpAuthenticator` —
+`{ authenticate: async (ctx) => … }` — that either resolves the caller
+(`{ actor, kind?, roles?, via? }`; `kind` defaults `"human"`, `roles` defaults
+none) or refuses with an `McpAuthReject`
+(`{ status, error, detail?, challenge? }`). `ctx` carries the request `headers`
+and, over HTTP, the `request` itself. `override mcpIdentity()` is the sugar for
+the proxy-header case — a sync hook `(ctx) => ({ actor, via? })` reading a
+header an authenticating reverse proxy injects
+(`ctx.headers.get("x-forwarded-user")`), where **any throw rejects the request**
+— adapted onto the same authenticator internally. Declare **one or the other**:
+a build declaring both makes `zuke mcp` exit 1.
+
+Either runs once per request before any dispatch; the resolved actor overrides
+`--actor`/env/the client label and flows to the audit trail, run records, lock
+holders, and a registry-spawned child's `ZUKE_ACTOR` (with `ZUKE_ACTOR_KIND` and
+comma-joined `ZUKE_ACTOR_ROLES` written beside it, so an inherited claim never
+outlives a fresh actor). `roles` are **not** an authorization input — the
+allow-list/`--protect`/operator token still gate a call. Fail-closed: a throw, a
+non-object, an empty actor, or a rejection whose `status` is outside `400`–`499`
+all refuse, each collapsing to a bare `401`
+(`{ status: 401, error: "Unauthorized", challenge: "Bearer" }`), so an
+authenticator can never turn its own refusal into a success. Over HTTP a refusal
+answers that **status** with its `WWW-Authenticate` challenge (the JSON-RPC
+error is still in the body) — previously a `200` — which is how an MCP client
+discovers where to authenticate; either override also satisfies the
+authentication a non-loopback bind requires, in place of `ZUKE_MCP_TOKEN`. The
+minimal seam — TLS/OAuth/header-stripping is the proxy's job.
 
 **Caching:** a target with `.inputs(...)`/`.outputs(...)` is incremental
 (skipped and reported `cached` when inputs are unchanged and outputs exist). Add

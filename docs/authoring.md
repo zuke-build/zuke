@@ -714,7 +714,8 @@ that finished.
 `Build` exposes one override per subsystem, each documented on its own page:
 [`stateStore()`](./state.md), [`deadline()`](./state.md),
 [`remoteCache()`](./caching.md), [`recoverWith()`](./self-healing.md),
-[`registry()`](./registry.md) and [`mcpIdentity()`](./mcp.md).
+[`registry()`](./registry.md), [`mcpAuth()`](./mcp.md) and
+[`mcpIdentity()`](./mcp.md).
 
 **External ordering — `override extraEdges(targets)`.** Return `[before, after]`
 pairs to impose soft ordering on the plan beyond the per-target `.before()` /

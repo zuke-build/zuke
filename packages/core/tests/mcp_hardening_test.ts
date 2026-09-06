@@ -4,8 +4,17 @@
 import { assertEquals, assertStringIncludes } from "./_assert.ts";
 import { Build, parameter, target } from "../mod.ts";
 import { McpServer, type McpServerOptions } from "../src/mcp/server.ts";
+import {
+  authenticatorFromHook,
+  type McpAuthenticator,
+  UNAUTHORIZED,
+} from "../src/mcp/auth.ts";
 import type { McpTool } from "../src/mcp/protocol.ts";
-import { INTERNAL_ERROR, type JsonRpcResponse } from "../src/mcp/jsonrpc.ts";
+import {
+  EMPTY_CONTEXT,
+  INTERNAL_ERROR,
+  type JsonRpcResponse,
+} from "../src/mcp/jsonrpc.ts";
 import type { FileSystemStateStore } from "../src/state/fs_store.ts";
 import type { StateStore } from "../src/state/store.ts";
 import { AUDIT_RUN_ID } from "../src/mcp/audit.ts";
@@ -452,7 +461,11 @@ const xUser = (ctx: { headers: Headers }): { actor: string } => {
 };
 
 Deno.test("an identity hook overrides --actor and the client label", async () => {
-  await withServer({ allowRun: true, actor: "ci-bot", identity: xUser }, async (
+  await withServer({
+    allowRun: true,
+    actor: "ci-bot",
+    authenticator: authenticatorFromHook(xUser),
+  }, async (
     server,
     store,
   ) => {
@@ -473,7 +486,7 @@ Deno.test("an identity hook overrides --actor and the client label", async () =>
 
 Deno.test("a run and a later signal are attributed to their own callers", async () => {
   await withServer(
-    { allowRun: true, identity: xUser },
+    { allowRun: true, authenticator: authenticatorFromHook(xUser) },
     async (server, store) => {
       // Engineer A runs deploy…
       await callWith(server, "run:deploy", { "x-user": "engineer-a" }, {
@@ -500,7 +513,7 @@ Deno.test("a run and a later signal are attributed to their own callers", async 
 
 Deno.test("a throwing identity hook rejects the request and writes nothing", async () => {
   await withServer(
-    { allowRun: true, identity: xUser },
+    { allowRun: true, authenticator: authenticatorFromHook(xUser) },
     async (server, store) => {
       // No `x-user` header → the hook throws → a JSON-RPC auth error.
       const res = await callWith(server, "run:deploy", {}, {
@@ -522,7 +535,9 @@ Deno.test("a hook yielding an empty actor is rejected, never the static fallback
     {
       allowRun: true,
       actor: "ci-bot",
-      identity: (ctx) => ({ actor: ctx.headers.get("x-user") ?? "" }),
+      authenticator: authenticatorFromHook(
+        (ctx) => ({ actor: ctx.headers.get("x-user") ?? "" }),
+      ),
     },
     async (server, store) => {
       const res = await callWith(server, "run:deploy", {}, {
@@ -732,6 +747,203 @@ Deno.test("null and object argument values are recorded faithfully in the trail"
       assertEquals(last?.detail, "invalid_arguments");
       assertEquals(last?.args.environment, "null");
       assertEquals(last?.args.note, '{"nested":1}');
+    },
+  );
+});
+
+// ---- M15: the authenticator seam ------------------------------------------
+
+/**
+ * An authenticator that settles only on a later microtask — the shape a real
+ * one has (a token introspection call, a key-set lookup), and header-trusting,
+ * so it refuses wherever there are no headers.
+ */
+const asyncProxy: McpAuthenticator = {
+  authenticate: async (ctx) => {
+    const sub = await Promise.resolve(ctx.headers.get("x-user"));
+    return sub === null ? UNAUTHORIZED : {
+      actor: sub,
+      kind: "service",
+      roles: ["deployer"],
+      via: "oauth-proxy",
+    };
+  },
+};
+
+/** A build whose target records that it really ran. */
+class Recording extends Build {
+  readonly ran: string[] = [];
+  deploy = target().executes(() => void this.ran.push("deploy"));
+}
+
+Deno.test("an async authenticator attributes the run to its resolved actor", async () => {
+  await withServer(
+    { allowRun: true, actor: "ci-bot", authenticator: asyncProxy },
+    async (server, store) => {
+      await callWith(server, "run:deploy", { "x-user": "engineer-a" }, {
+        environment: "dev",
+      });
+      const deploy = (await auditEvents(store)).find((e) =>
+        e.tool === "run:deploy"
+      );
+      // Awaited, not dropped on the floor: the static --actor never applies.
+      assertEquals(deploy?.actor, "engineer-a");
+    },
+  );
+});
+
+Deno.test("a returned rejection refuses exactly as a throw does", async () => {
+  // The modern seam refuses by *returning* a reject; the older hook refuses by
+  // throwing. The *effect* must be identical — nothing executed, nothing
+  // audited, no result — while each still reports its own reason: a throw leaks
+  // nothing and collapses to the bare "Unauthorized", and an explicit reject
+  // says what it said. (Only the HTTP transport also carries the status and the
+  // challenge; JSON-RPC has nowhere to put them.)
+  const reject403: McpAuthenticator = {
+    authenticate: () => ({
+      status: 403,
+      error: "forbidden",
+      detail: "role missing",
+      challenge: 'Bearer realm="zuke"',
+    }),
+  };
+  const refusals: Array<JsonRpcResponse | null> = [];
+  for (const authenticator of [reject403, authenticatorFromHook(xUser)]) {
+    await withTempStore(async (store) => {
+      const build = new Recording();
+      const server = new McpServer(build, {
+        allowRun: true,
+        actor: "ci-bot",
+        stateStore: store,
+        authenticator,
+      });
+      refusals.push(
+        await server.handleMessage(
+          req("tools/call", { name: "run:deploy", arguments: {} }),
+        ),
+      );
+      assertEquals(build.ran, []); // nothing executed
+      assertEquals((await auditEvents(store)).length, 0); // nothing audited
+    });
+  }
+  assertEquals(refusals[0]?.result, undefined);
+  assertEquals(refusals[1]?.result, undefined);
+  assertEquals(refusals[0]?.error?.message, "forbidden: role missing");
+  assertEquals(refusals[1]?.error?.message, "Unauthorized");
+  assertEquals(refusals[0]?.error?.code, refusals[1]?.error?.code);
+});
+
+Deno.test("a transport-authenticated identity is used and skips the authenticator", async () => {
+  // The HTTP transport authenticates at its edge so a refusal can carry a real
+  // status; dispatch must then trust that caller and not authenticate twice.
+  let calls = 0;
+  const counting: McpAuthenticator = {
+    authenticate: () => {
+      calls += 1;
+      return { actor: "server-side" };
+    },
+  };
+  await withServer(
+    { allowRun: true, actor: "ci-bot", authenticator: counting },
+    async (server, store) => {
+      await server.handleMessage(
+        req("tools/call", {
+          name: "run:deploy",
+          arguments: { environment: "dev" },
+        }),
+        EMPTY_CONTEXT,
+        { actor: "edge-user", kind: "human", roles: [] },
+      );
+      assertEquals(calls, 0);
+      const deploy = (await auditEvents(store)).find((e) =>
+        e.tool === "run:deploy"
+      );
+      assertEquals(deploy?.actor, "edge-user");
+    },
+  );
+});
+
+Deno.test("without an authenticator, a transport identity still attributes the call", async () => {
+  await withServer(
+    { allowRun: true, actor: "ci-bot" },
+    async (server, store) => {
+      await server.handleMessage(
+        req("tools/call", {
+          name: "run:deploy",
+          arguments: { environment: "dev" },
+        }),
+        EMPTY_CONTEXT,
+        { actor: "edge-user", kind: "service", roles: ["deployer"] },
+      );
+      const deploy = (await auditEvents(store)).find((e) =>
+        e.tool === "run:deploy"
+      );
+      assertEquals(deploy?.actor, "edge-user");
+    },
+  );
+});
+
+Deno.test("on stdio the authenticator still runs, so a header-trusting one refuses", async () => {
+  // The stdio transport has no request to describe, so it hands the handler
+  // EMPTY_CONTEXT. Authentication is not skipped there: an authenticator that
+  // needs a header finds none and refuses, which is the fail-closed answer.
+  await withServer(
+    { allowRun: true, actor: "ci-bot", authenticator: asyncProxy },
+    async (server, store) => {
+      const res = await server.handleMessage(
+        req("tools/call", {
+          name: "run:deploy",
+          arguments: { environment: "dev" },
+        }),
+      );
+      assertEquals(res?.result, undefined);
+      assertEquals(res?.error?.message, "Unauthorized");
+      assertEquals((await auditEvents(store)).length, 0);
+    },
+  );
+});
+
+Deno.test("the authenticator gates initialize, ping and tools/list too", async () => {
+  await withServer(
+    { allowRun: true, authenticator: authenticatorFromHook(xUser) },
+    async (server) => {
+      for (const method of ["initialize", "ping", "tools/list"]) {
+        const refused = await server.handleMessage(req(method));
+        assertEquals(refused?.result, undefined, `${method} was answered`);
+        assertEquals(refused?.error?.message, "Unauthorized", method);
+      }
+      // With the header, every one of them answers normally.
+      const ctx = { headers: new Headers({ "x-user": "engineer-a" }) };
+      const init = (await server.handleMessage(req("initialize"), ctx))?.result;
+      assertEquals(
+        isRec(init) && typeof init.protocolVersion === "string",
+        true,
+      );
+      assertEquals((await server.handleMessage(req("ping"), ctx))?.result, {});
+      const listed = await server.handleMessage(req("tools/list"), ctx);
+      assertEquals(listed?.error, undefined);
+    },
+  );
+});
+
+Deno.test("an authenticator's kind, roles and via never reach the audit row", async () => {
+  // The claims exist to be authorized against, not to be persisted: the trail
+  // records the actor and the (redacted) arguments, and nothing else new.
+  await withServer(
+    { allowRun: true, authenticator: asyncProxy },
+    async (server, store) => {
+      await callWith(server, "run:deploy", { "x-user": "engineer-a" }, {
+        environment: "dev",
+      });
+      const deploy = (await auditEvents(store)).find((e) =>
+        e.tool === "run:deploy"
+      );
+      assertEquals(deploy?.actor, "engineer-a");
+      assertEquals(deploy?.args, { environment: "dev" });
+      const row = JSON.stringify(deploy);
+      assertEquals(row.includes("deployer"), false);
+      assertEquals(row.includes("oauth-proxy"), false);
+      assertEquals(row.includes("service"), false);
     },
   );
 });

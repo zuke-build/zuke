@@ -76,56 +76,23 @@ export interface ByteWriter {
 }
 
 /**
- * The per-request context a transport hands the message handler. Carries the
- * request's headers, so a server's identity hook can authenticate the caller
- * from a trusted proxy header. Empty on the stdio transport (no headers).
+ * The per-request context a transport hands the message handler, and the only
+ * thing an authenticator sees of the request. Empty on the stdio transport,
+ * which has no request to describe.
  */
 export interface McpRequestContext {
   /** The request headers; an empty {@link Headers} on stdio. */
   readonly headers: Headers;
-}
-
-/**
- * A trusted caller identity, resolved per request by a {@link McpIdentityHook}
- * (typically from an authenticating reverse proxy's header). Its
- * {@link McpIdentity.actor} is the highest-precedence attribution — it overrides
- * `--actor`, the environment, and the client's self-reported label for the call.
- */
-export interface McpIdentity {
-  /** The authenticated actor (e.g. an OAuth subject). */
-  actor: string;
-  /** How the identity was established (e.g. `"oauth-proxy"`); informational. */
-  via?: string;
-}
-
-/**
- * Resolve a trusted {@link McpIdentity} from a request's context. Invoked once
- * per message, before any dispatch; **throwing rejects the whole request** with
- * an auth error, so nothing executes and nothing is written to state — the seam
- * a proxy in front of the server uses to inject an authenticated identity.
- */
-export type McpIdentityHook = (ctx: McpRequestContext) => McpIdentity;
-
-/**
- * Run an identity `hook` and return its trusted actor, or `null` when the hook
- * throws or yields an unusable actor (empty, or not a string). A caller must
- * reject the request on `null` rather than fall back to a static actor — the
- * hook's precedence is absolute and fail-closed, so a missing identity is a
- * rejection, never an anonymous/spoofable attribution.
- */
-export function resolveIdentity(
-  hook: McpIdentityHook,
-  ctx: McpRequestContext,
-): string | null {
-  let actor: unknown;
-  try {
-    // Guard both the call and the property read: a hook returning `undefined`
-    // (looser JS typing) must be rejected, not throw out of the dispatch loop.
-    actor = hook(ctx).actor;
-  } catch {
-    return null;
-  }
-  return typeof actor === "string" && actor !== "" ? actor : null;
+  /**
+   * The HTTP request the caller arrived on, when it did — so an authenticator
+   * can read its method and URL, not just its headers. Absent on the stdio
+   * transport, which has no request.
+   *
+   * Its **body is deliberately empty**: the body belongs to the transport, which
+   * reads it once to parse the JSON-RPC message, and a credential never lives
+   * there. Everything else — method, URL, headers — is the real request's.
+   */
+  readonly request?: Request;
 }
 
 /**

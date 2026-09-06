@@ -17,7 +17,7 @@ import type { OrderingEdge } from "./graph.ts";
 import type { RemoteCacheStore } from "./remote_cache.ts";
 import type { StateStore } from "./state/store.ts";
 import type { BuildRegistry } from "./registry/registry.ts";
-import type { McpIdentityHook } from "./mcp/jsonrpc.ts";
+import type { McpAuthenticator, McpIdentityHook } from "./mcp/auth.ts";
 
 /** Whether a value is a plain object (a component bundle), not a class instance. */
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -310,6 +310,44 @@ export class Build {
    * ```
    */
   mcpIdentity(): McpIdentityHook | undefined {
+    return undefined;
+  }
+
+  /**
+   * An authenticator for `zuke mcp` — the general form of
+   * {@link Build.mcpIdentity}, for a server callers reach directly rather than
+   * through a proxy that has already identified them.
+   *
+   * It runs before any dispatch, may be asynchronous (verifying a signature is),
+   * and refuses by returning an {@link McpAuthReject} rather than by throwing —
+   * so over HTTP the refusal is answered with its own status and
+   * `WWW-Authenticate` challenge, which is how an MCP client discovers where to
+   * authenticate. The identity it resolves overrides `--actor`, the environment,
+   * and the client label for that call, and flows to the audit trail, run
+   * records, lock holders, and (for a registry-spawned build) the child's
+   * `ZUKE_ACTOR`, `ZUKE_ACTOR_KIND` and `ZUKE_ACTOR_ROLES`. Throwing still
+   * refuses the request: the seam is fail-closed. Default: none.
+   *
+   * Declare **either** this or {@link Build.mcpIdentity}; declaring both is
+   * refused when the server starts, rather than letting one silently win.
+   *
+   * ```ts
+   * class ControlPlane extends Build {
+   *   override mcpAuth(): McpAuthenticator {
+   *     return {
+   *       authenticate: async (ctx: McpRequestContext) => {
+   *         const claims = await verifyBearer(ctx.headers.get("authorization"));
+   *         if (claims === null) {
+   *           return { status: 401, error: "invalid_token", challenge: "Bearer" };
+   *         }
+   *         return { actor: claims.sub, kind: "human", roles: claims.roles };
+   *       },
+   *     };
+   *   }
+   * }
+   * ```
+   */
+  mcpAuth(): McpAuthenticator | undefined {
     return undefined;
   }
 }

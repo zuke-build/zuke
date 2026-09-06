@@ -623,8 +623,9 @@ Options:
   --http <host:port>
                     With mcp, serve the streamable-HTTP transport on the given
                     address instead of stdio. Just <port> binds 127.0.0.1. A
-                    non-loopback host requires a bearer token (ZUKE_MCP_TOKEN);
-                    put real TLS/authn in front for production. See docs/mcp.md.
+                    non-loopback host must authenticate its callers: a bearer
+                    token (ZUKE_MCP_TOKEN) or an mcpAuth() authenticator on the
+                    build. Put real TLS in front for production. See docs/mcp.md.
   --allowed-origin <origin>
                     With mcp --http, permit this browser Origin (repeatable). By
                     default a loopback bind accepts only loopback origins (the

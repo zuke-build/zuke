@@ -15,11 +15,13 @@ import {
   METHOD_NOT_FOUND,
 } from "../src/mcp/jsonrpc.ts";
 import { PROTOCOL_VERSION } from "../src/mcp/protocol.ts";
+import { authenticatorFromHook } from "../src/mcp/auth.ts";
 import { serveMcp } from "../src/mcp/command.ts";
 import {
   defaultRegistryRunner,
   RegistryMcpServer,
   type RegistryRunner,
+  type RegistryRunOptions,
   type RegistryRunResult,
 } from "../src/mcp/registry_server.ts";
 import {
@@ -90,16 +92,19 @@ function descriptor(
   };
 }
 
-/** A runner that records every spawn (argv, cwd, actor) and returns a fixed result. */
+/** One recorded spawn: where it ran, and the caller claims it carried. */
+type RecordedRun = { argv: string[]; cwd: string } & RegistryRunOptions;
+
+/** A runner that records every spawn (argv, cwd, claims) and returns a fixed result. */
 function recordingRunner(
   result: RegistryRunResult = { code: 0, stdout: "ran", stderr: "" },
 ): {
   runner: RegistryRunner;
-  calls: { argv: string[]; cwd: string; actor?: string }[];
+  calls: RecordedRun[];
 } {
-  const calls: { argv: string[]; cwd: string; actor?: string }[] = [];
+  const calls: RecordedRun[] = [];
   const runner: RegistryRunner = (argv, cwd, options) => {
-    calls.push({ argv: [...argv], cwd, actor: options?.actor });
+    calls.push({ argv: [...argv], cwd, ...options });
     return Promise.resolve(result);
   };
   return { runner, calls };
@@ -987,11 +992,11 @@ Deno.test("an identity hook attributes the call to the trusted actor, not the la
     runner,
     stateStore: store,
     actor: "config-actor", // even an explicit --actor is overridden by the hook
-    identity: (ctx) => {
+    authenticator: authenticatorFromHook((ctx) => {
       const sub = ctx.headers.get("x-user");
       if (sub === null) throw new Error("no identity from proxy");
       return { actor: sub, via: "oauth-proxy" };
-    },
+    }),
   });
 
   // The client self-reports a name; the hook must win over it.
@@ -1021,11 +1026,11 @@ Deno.test("a throwing identity hook rejects the request and writes nothing", asy
     allowRun: true,
     runner,
     stateStore: store,
-    identity: (ctx) => {
+    authenticator: authenticatorFromHook((ctx) => {
       const sub = ctx.headers.get("x-user");
       if (sub === null) throw new Error("no identity from proxy");
       return { actor: sub };
-    },
+    }),
   });
 
   // No `x-user` header → the hook throws → a JSON-RPC auth error, no dispatch.
@@ -1064,7 +1069,9 @@ Deno.test("a hook yielding an empty actor is rejected, never a spawn", async () 
     stateStore: store,
     actor: "ci-bot", // the static fallback that must NOT be used
     // `headers.get(...) ?? ""` yields `{ actor: "" }` on a missing header.
-    identity: (ctx) => ({ actor: ctx.headers.get("x-user") ?? "" }),
+    authenticator: authenticatorFromHook(
+      (ctx) => ({ actor: ctx.headers.get("x-user") ?? "" }),
+    ),
   });
   const res = await callWith(server, "run:Api:deploy", {});
   assertEquals(res?.error?.message, "Unauthorized");
@@ -1611,4 +1618,208 @@ Deno.test("a runner rejecting with a non-Error is still a structured failure", a
   assertEquals(result.isError, true);
   assertStringIncludes(result.text, "Failed to spawn Api:deploy (Error)");
   assertEquals(result.text.includes("token=abc"), false);
+});
+
+// ---- M15: the caller's kind and roles reach the child -----------------------
+
+/**
+ * A child program printing the three actor variables as `actor|kind|roles`.
+ * An unset variable prints `-`, but an empty role list prints `NONE`: Windows
+ * can drop an empty-valued variable from a spawned environment altogether, so
+ * "no roles" is asserted as unset-or-empty rather than exactly `""`.
+ */
+const ACTOR_ECHO = "const v = (n: string) => Deno.env.get(n) ?? '-'; " +
+  "console.log([v('ZUKE_ACTOR'), v('ZUKE_ACTOR_KIND'), " +
+  "Deno.env.get('ZUKE_ACTOR_ROLES') || 'NONE'].join('|'))";
+
+/** Run `fn` with `vars` set in this process's environment, restoring them after. */
+async function withEnv(
+  vars: Record<string, string>,
+  fn: () => Promise<void>,
+): Promise<void> {
+  const prev = Object.keys(vars).map((
+    k,
+  ): [string, string | undefined] => [k, Deno.env.get(k)]);
+  for (const [k, v] of Object.entries(vars)) Deno.env.set(k, v);
+  try {
+    await fn();
+  } finally {
+    for (const [k, v] of prev) {
+      if (v === undefined) Deno.env.delete(k);
+      else Deno.env.set(k, v);
+    }
+  }
+}
+
+Deno.test("an authenticated run passes the caller's kind and roles to the runner", async () => {
+  const registry = new FakeRegistry();
+  registry.add(descriptor("Api", ["deploy"]));
+  const { runner, calls } = recordingRunner();
+  const server = new RegistryMcpServer(registry, {
+    allowRun: true,
+    runner,
+    actor: "config-actor", // overridden by the authenticator, as for the actor
+    authenticator: authenticatorFromHook((ctx) => {
+      const sub = ctx.headers.get("x-user");
+      if (sub === null) throw new Error("no identity from proxy");
+      return sub === "scheduler"
+        ? { actor: sub, kind: "service", roles: ["deployer", "reader"] }
+        : { actor: sub };
+    }),
+  });
+
+  const res = await callWith(server, "run:Api:deploy", {
+    "x-user": "scheduler",
+  });
+  assertEquals(res?.result !== undefined, true);
+  assertEquals(calls.length, 1);
+  assertEquals(calls[0].actor, "scheduler");
+  assertEquals(calls[0].actorKind, "service");
+  assertEquals(calls[0].actorRoles, ["deployer", "reader"]);
+
+  // A bare `{ actor }` settles to the conservative defaults before the spawn:
+  // the runner never sees an unstated claim it would have to default itself.
+  await callWith(server, "run:Api:deploy", { "x-user": "engineer-a" });
+  assertEquals(calls.length, 2);
+  assertEquals(calls[1].actor, "engineer-a");
+  assertEquals(calls[1].actorKind, "human");
+  assertEquals(calls[1].actorRoles, []);
+});
+
+Deno.test("without an authenticator the runner gets the actor and no claim", async () => {
+  const registry = new FakeRegistry();
+  registry.add(descriptor("Api", ["deploy"]));
+  const { runner, calls } = recordingRunner();
+  const server = new RegistryMcpServer(registry, {
+    allowRun: true,
+    runner,
+    actor: "ci-bot",
+  });
+  assertEquals((await call(server, "run:Api:deploy")).isError, false);
+  assertEquals(calls.length, 1);
+  // The resolved actor still flows; kind and roles are left unstated, so the
+  // defaults are the runner's to apply rather than the server's to invent.
+  assertEquals(calls[0].actor, "ci-bot");
+  assertEquals(calls[0].actorKind, undefined);
+  assertEquals(calls[0].actorRoles, undefined);
+});
+
+Deno.test("defaultRegistryRunner exports the actor, kind and roles", async () => {
+  const withRoles = await defaultRegistryRunner(
+    [Deno.execPath(), "eval", ACTOR_ECHO],
+    Deno.cwd(),
+    {
+      actor: "scheduler",
+      actorKind: "service",
+      actorRoles: ["deployer", "reader"],
+    },
+  );
+  assertEquals(withRoles.code, 0);
+  assertEquals(withRoles.stdout.trim(), "scheduler|service|deployer,reader");
+
+  // A caller with no roles: the variable is still exported, and it is empty.
+  const noRoles = await defaultRegistryRunner(
+    [Deno.execPath(), "eval", ACTOR_ECHO],
+    Deno.cwd(),
+    { actor: "engineer-a", actorKind: "human", actorRoles: [] },
+  );
+  assertEquals(noRoles.code, 0);
+  assertEquals(noRoles.stdout.trim(), "engineer-a|human|NONE");
+});
+
+Deno.test("a fresh actor never inherits the parent's kind and roles", async () => {
+  // The privilege-inheritance case: the server process itself runs as a
+  // privileged service, and a spawn for an unprivileged human caller must not
+  // hand the child that actor beside the parent's entitlements.
+  await withEnv(
+    { ZUKE_ACTOR_KIND: "service", ZUKE_ACTOR_ROLES: "operator" },
+    async () => {
+      const result = await defaultRegistryRunner(
+        [Deno.execPath(), "eval", ACTOR_ECHO],
+        Deno.cwd(),
+        { actor: "engineer-a" },
+      );
+      assertEquals(result.code, 0);
+      // The three moved together: neither inherited value survived.
+      assertEquals(result.stdout.trim(), "engineer-a|human|NONE");
+    },
+  );
+});
+
+Deno.test("with no actor the inherited environment is left alone", async () => {
+  // No actor means no claim to overwrite the inherited one with — a local
+  // stdio server keeps attributing runs the way the environment already did.
+  await withEnv(
+    {
+      ZUKE_ACTOR: "inherited-actor",
+      ZUKE_ACTOR_KIND: "service",
+      ZUKE_ACTOR_ROLES: "operator",
+    },
+    async () => {
+      const result = await defaultRegistryRunner(
+        [Deno.execPath(), "eval", ACTOR_ECHO],
+        Deno.cwd(),
+      );
+      assertEquals(result.code, 0);
+      assertEquals(result.stdout.trim(), "inherited-actor|service|operator");
+    },
+  );
+});
+
+Deno.test("kind and roles without an actor change nothing", async () => {
+  // The three describe one caller, so they are written together or not at all.
+  // Honouring a supplied kind/roles here would pair one caller's entitlements
+  // with the *inherited* actor — exactly the mismatch the coupling exists to
+  // prevent — so they are ignored, and the inherited triple stays internally
+  // consistent. Unreachable from the server (its actor floors at "anonymous"),
+  // but `defaultRegistryRunner` is exported, so the contract is pinned here.
+  await withEnv(
+    {
+      ZUKE_ACTOR: "inherited-actor",
+      ZUKE_ACTOR_KIND: "service",
+      ZUKE_ACTOR_ROLES: "operator",
+    },
+    async () => {
+      for (
+        const options of [
+          { actorKind: "service" as const, actorRoles: ["admin"] },
+          { actor: "", actorKind: "service" as const, actorRoles: ["admin"] },
+        ]
+      ) {
+        const result = await defaultRegistryRunner(
+          [Deno.execPath(), "eval", ACTOR_ECHO],
+          Deno.cwd(),
+          options,
+        );
+        assertEquals(result.code, 0);
+        assertEquals(
+          result.stdout.trim(),
+          "inherited-actor|service|operator",
+          JSON.stringify(options),
+        );
+      }
+    },
+  );
+});
+
+Deno.test("the server's tokens are stripped beside the exported claim", async () => {
+  await withEnv(
+    { ZUKE_OPERATOR_TOKEN: "server-secret", ZUKE_MCP_TOKEN: "bearer-secret" },
+    async () => {
+      const result = await defaultRegistryRunner(
+        [
+          Deno.execPath(),
+          "eval",
+          "console.log(Deno.env.get('ZUKE_OPERATOR_TOKEN') ?? 'STRIPPED', " +
+          "Deno.env.get('ZUKE_MCP_TOKEN') ?? 'STRIPPED', " +
+          "Deno.env.get('ZUKE_ACTOR') ?? '-')",
+        ],
+        Deno.cwd(),
+        { actor: "engineer-a", actorKind: "service", actorRoles: ["ops"] },
+      );
+      assertEquals(result.code, 0);
+      // Exporting the caller's claim does not reopen the secrets it replaced.
+      assertStringIncludes(result.stdout, "STRIPPED STRIPPED engineer-a");
+    },
+  );
 });

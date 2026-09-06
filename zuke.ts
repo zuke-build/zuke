@@ -1021,8 +1021,30 @@ class ZukeBuild extends Build {
       // prompt_markers_test.ts, which pins the full announced-marker inventory
       // against the actual prompts (its earlier wordings were q4wvfi90ig3c
       // and 3mcvjgd95cj96).
+      // `23ldpwpbdzryb` claims `defaultRegistryRunner` drops the child's
+      // inherited actor metadata when only a kind/roles are supplied. It does
+      // the opposite: the whole three-variable write sits inside the
+      // `options.actor` guard, so with no actor nothing is written and the
+      // inherited triple reaches the child untouched — pinned by the test
+      // "kind and roles without an actor change nothing", which spawns a real
+      // child under a different caller's claim. Honouring the supplied values
+      // there is the unsafe option, since it would pair one caller's actor with
+      // another's entitlements. Its round-2 rewording (`3e30ptl9ksk1y`,
+      // "inherited actor metadata can still be dropped") inverts the behaviour
+      // rather than describing it, and escalated 4/10 to 5/10 against a JSDoc
+      // and a regression test, so it is pinned here.
       // cspell:ignore tz9w4ef nal6fieqlp q4wvfi90ig mcvjgd95cj mzsyzzio
-      .suppress(suppressions((s) => s.add("31ce99tz9w4ef", "nal6fieqlp45")))
+      // cspell:ignore ldpwpbdzryb ptl9ksk1y
+      .suppress(
+        suppressions((s) =>
+          s.add(
+            "31ce99tz9w4ef",
+            "nal6fieqlp45",
+            "23ldpwpbdzryb",
+            "3e30ptl9ksk1y",
+          )
+        ),
+      )
       .failWhen((g) => g.scoreAbove(5))
       .onError("warn")
   );
