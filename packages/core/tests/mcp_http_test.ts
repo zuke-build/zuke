@@ -528,7 +528,7 @@ Deno.test("http transport hands the resolved identity to the handler", async () 
   });
   // The defaults are settled before the handler sees them: an authenticator that
   // says nothing about kind or roles is read as a human holding none.
-  assertEquals(seen[1], { actor: "engineer-a", kind: "human", roles: [] });
+  assertEquals(seen[1], { actor: "engineer-a", kind: "human" });
   // The authenticator sees the request, but not its body — that belongs to the
   // transport, and a body can only be read once.
   assertEquals(views, [

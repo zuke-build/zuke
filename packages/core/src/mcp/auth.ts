@@ -35,10 +35,17 @@ export interface McpIdentity {
    */
   kind?: "human" | "service";
   /**
-   * The roles this caller holds. Absent is read as none, so an authenticator
-   * that says nothing about roles grants nothing. A name containing a comma is
-   * dropped: the comma separates the roles a registry-spawned child reads, so
-   * such a name would reach it as two.
+   * The roles this caller holds.
+   *
+   * Omitting it means this authenticator does not speak roles: the
+   * [role policy](../../docs/mcp.md#authorization) then does not constrain the
+   * caller, and the server's allow-list, `--protect` globs and operator token
+   * remain the only gates — what a server did before roles existed. An **empty
+   * list** is the opposite claim: the question was considered and nothing was
+   * granted, so the policy denies.
+   *
+   * A name containing a comma is dropped: the comma separates the roles a
+   * registry-spawned child reads, so such a name would reach it as two.
    */
   roles?: readonly string[];
   /** How the identity was established (e.g. `"oauth-proxy"`); informational. */
@@ -55,8 +62,19 @@ export interface ResolvedIdentity {
   readonly actor: string;
   /** The caller's kind, defaulted to `"human"` when the authenticator omitted it. */
   readonly kind: "human" | "service";
-  /** The caller's roles, defaulted to empty. Each entry is a non-empty string. */
-  readonly roles: readonly string[];
+  /**
+   * The roles the authenticator claimed, or `undefined` when it claimed none at
+   * all.
+   *
+   * The distinction is load-bearing, and it is not the same as an empty list.
+   * `undefined` means this authenticator does not speak roles — a
+   * proxy-header `mcpIdentity()` hook, say — so the role policy does not
+   * constrain it and the server's own gates remain the only ones, exactly as
+   * before roles existed. `[]` means the authenticator considered the question
+   * and granted nothing, which denies. Collapsing the two would silently lock
+   * out every server whose authenticator predates the policy.
+   */
+  readonly roles?: readonly string[];
   /**
    * How the identity was established, when the authenticator said. Carried
    * through to whatever inspects the caller; not written to the audit trail,
@@ -193,11 +211,18 @@ export function normalizeIdentity(value: unknown): ResolvedIdentity | null {
   const actor = value.actor;
   if (typeof actor !== "string" || actor === "") return null;
   const kind = value.kind === "service" ? "service" : "human";
-  const roles = rolesOf(value.roles);
+  // Preserved rather than defaulted: see `ResolvedIdentity.roles` — an
+  // authenticator that never mentions roles is not the same as one that grants
+  // none, and treating it as the latter would deny every caller of a server
+  // whose authenticator predates the policy.
+  const roles = value.roles === undefined ? undefined : rolesOf(value.roles);
   const via = nonEmptyString(value.via);
-  return via === undefined
-    ? { actor, kind, roles }
-    : { actor, kind, roles, via };
+  return {
+    actor,
+    kind,
+    ...(roles === undefined ? {} : { roles }),
+    ...(via === undefined ? {} : { via }),
+  };
 }
 
 /**

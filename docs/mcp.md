@@ -187,13 +187,76 @@ ZUKE_OPERATOR_TOKEN=… ./zuke mcp --http 7777 \
   --allow-run --protect promoteToProd --confirm-destructive
 ```
 
+### Roles
+
+The three flags above are **process-wide**: they say what *anyone* reaching this
+server may do. Once the server [authenticates](#authentication) its callers it
+can say what *this* caller may do, which is what roles are for.
+
+Three built-in roles are ordered — `read` < `run` < `operator` — so an operator
+satisfies a requirement for `run` without being granted it separately. Any other
+name is matched **exactly**: an identity provider's own group (`sre`,
+`release-manager`) works with `requiresRole` without being ranked into a
+hierarchy it never agreed to. Map your groups onto the three tiers for the
+general permission and use your own names for the specific one.
+
+The shipped default policy:
+
+| Call | Needs |
+| --- | --- |
+| `list_*` / `show_*` / `describe_*` / `graph` | `read` |
+| `run:<target>` | `run`, **and** the target's `requiresRole` when it declares one |
+| `cancel_run` / `signal_run` / `force_target`, and `resume_check` on one run | the run's [initiator](./state.md#actor-and-initiator--two-different-questions), or `operator` |
+| `resume_check` sweeping every run | `operator` |
+
+`requiresRole` can only **raise** the bar — `run` is the floor for executing
+anything, so declaring `requiresRole("read")` does not let a read-only caller
+run a target.
+
+A run whose initiator is a **service** may be steered by any caller holding
+`run`: a scheduler's run has no person to ask, and treating the scheduler as its
+owner would mean nobody could intervene.
+
+Presenting a valid `ZUKE_OPERATOR_TOKEN` **grants the `operator` role** for that
+call, so the shared secret and the role model are one policy rather than two
+that can disagree — and a deployment can move to roles a piece at a time.
+
+Override the whole decision with `mcpAuthorize` when the rule is something the
+engine cannot know — a change window, team ownership, a freeze:
+
+```ts
+class ControlPlane extends Build {
+  override mcpAuthorize(identity: McpIdentity, call: McpCall) {
+    if (call.tool === "run:promote" && !inChangeWindow()) {
+      return { allow: false, reason: "outside the change window" };
+    }
+    return defaultMcpAuthorize(identity, call);
+  }
+}
+```
+
+It runs **after** the allow-list and operator-token checks, so it can narrow
+what those permit and never widen it.
+
+**Two servers are deliberately unaffected.** One with no authenticator at all
+treats every caller as holding every role, so `--allow-run`, `--protect` and the
+operator token remain exactly the gates they were. And an authenticator that
+never mentions `roles` — a header-trusting `mcpIdentity()` hook, say — does not
+speak roles, so the policy does not constrain it either. Those two are what keep
+a local stdio server, and every deployment that predates roles, working
+unchanged. Granting an **empty** role list is the opposite claim: the question
+was considered and nothing was granted, so the policy denies.
+
 ## Audit log
 
 With a store configured, **every mutating or denied tool call** (`run:<target>`,
 `signal_run`, `resume_check`, `cancel_run`, `force_target`) is appended to an
 audit trail: the
 time, the tool, the resolved **actor**, the outcome (`ok` / `denied` / `error`),
-and the call's arguments. Arguments are **redacted** — the operator token is
+and the call's arguments — plus, when the server authenticated the caller, the
+**roles** they held, which is what makes a denial answerable afterwards: who was
+refused, by which rule, and what they were carrying at the time. Arguments are
+**redacted** — the operator token is
 dropped and every `.secret()` parameter's value is masked — before anything is
 persisted.
 

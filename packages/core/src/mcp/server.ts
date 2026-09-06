@@ -47,6 +47,7 @@ import {
   ok,
 } from "./jsonrpc.ts";
 import type { McpAuthenticator, ResolvedIdentity } from "./auth.ts";
+import type { McpAuthorization, McpCall } from "./roles.ts";
 import {
   confirmationResult,
   dispatchMessage,
@@ -420,6 +421,28 @@ export class McpServer {
     if ("error" in call) return err(id, INVALID_PARAMS, call.error);
     const { name, args } = call;
 
+    // The read tools are gated here, where they are dispatched. The two other
+    // families carry context the policy needs and so are gated where they have
+    // it: a `run:` tool by the target's own `requiresRole`, and a run-scoped
+    // mutation by the run it names. Gating those here as well would ask the
+    // policy about a call it cannot see properly — a `cancel_run` with no run
+    // attached reads as a sweep, which demands `operator`.
+    if (!name.startsWith(RUN_PREFIX) && !isMutatingRunTool(name)) {
+      const denial = this.#authorizePolicy(identity, args, { tool: name });
+      if (denial !== null) {
+        await this.#audit(
+          name,
+          args,
+          "denied",
+          identity?.actor ??
+            this.#resolveActor(),
+          denial,
+          identity,
+        );
+        return ok(id, unauthorizedResult(name, clientDenial(denial)));
+      }
+    }
+
     if (name === "list_targets") {
       return ok(id, textResult(this.#describe().targets));
     }
@@ -467,8 +490,12 @@ export class McpServer {
         build: this.build,
         actor,
         readEnv: this.#readEnv,
-        authorize: (targetName, callArgs) => {
-          const denial = this.#authorizeTarget(targetName, callArgs);
+        authorize: (targetName, callArgs, run) => {
+          const denial = this.#authorizeTarget(targetName, callArgs) ??
+            this.#authorizePolicy(identity, callArgs, {
+              tool: name,
+              ...(run === undefined ? {} : { run }),
+            });
           return denial === null ? null : clientDenial(denial);
         },
       },
@@ -525,11 +552,18 @@ export class McpServer {
     // protected target reached as a dependency still demands the operator
     // token. Fail-closed twice over: a plan that cannot be resolved is denied,
     // and so is a protected target with no server-side token configured.
-    const denial = this.#authorizeTarget(targetName, args);
+    const denial = this.#authorizeTarget(targetName, args) ??
+      this.#authorizePolicy(identity, args, {
+        tool: runName,
+        target: targetName,
+        ...(root.requiresRole_ === undefined
+          ? {}
+          : { requiredRole: root.requiresRole_ }),
+      });
     if (denial !== null) {
       // The precise reason goes to the audit trail, which is operator-only; the
       // caller gets the collapsed one (see clientDenial).
-      await this.#audit(runName, args, "denied", actor, denial);
+      await this.#audit(runName, args, "denied", actor, denial, identity);
       return ok(id, unauthorizedResult(runName, clientDenial(denial)));
     }
 
@@ -644,6 +678,49 @@ export class McpServer {
     return null;
   }
 
+  /**
+   * Whether the call carried a valid operator token — which grants the
+   * `operator` role for that call, so the shared secret and the role model are
+   * one policy rather than two that can disagree.
+   */
+  #hasOperatorToken(args: Record<string, unknown>): boolean {
+    return operatorTokenDenial(args, this.#operatorToken) === null;
+  }
+
+  /**
+   * Apply the build's role policy to one call, or `null` when it allows it.
+   *
+   * Skipped entirely when no caller was authenticated: with no authenticator
+   * the server cannot know who is calling, so every caller is treated as
+   * holding every role and `--allow-run`/`--protect`/the operator token remain
+   * the only gates — exactly the behaviour of a server that predates roles.
+   * Running only *after* those gates means a policy can narrow what they permit
+   * and never widen it.
+   */
+  #authorizePolicy(
+    identity: ResolvedIdentity | undefined,
+    args: Record<string, unknown>,
+    call: McpCall,
+  ): string | null {
+    if (identity === undefined) return null;
+    // An authenticator that claimed no roles at all does not speak roles, so the
+    // policy has nothing to decide with and the server's own gates stand alone
+    // — the behaviour of every server whose authenticator predates this.
+    if (identity.roles === undefined) return null;
+    const roles = this.#hasOperatorToken(args)
+      ? [...identity.roles, "operator"]
+      : identity.roles;
+    let verdict: McpAuthorization;
+    try {
+      verdict = this.build.mcpAuthorize({ ...identity, roles }, call);
+    } catch {
+      // A policy that throws denies. It is the last thing standing between a
+      // caller and the build's code, so a bug in it must not open the door.
+      return "policy_error";
+    }
+    return verdict.allow ? null : verdict.reason;
+  }
+
   /** Resolve the actor for audited calls: --actor → env → the client label. */
   #resolveActor(): string {
     return resolveActor(this.#actor, this.#readEnv, [this.#clientLabel]);
@@ -662,6 +739,7 @@ export class McpServer {
     outcome: RunEventOutcome,
     actor: string,
     detail?: string,
+    identity?: ResolvedIdentity,
   ): Promise<void> {
     const store = this.#store;
     if (store === undefined) return;
@@ -673,6 +751,9 @@ export class McpServer {
       args: this.#auditArgs(args),
     };
     if (detail !== undefined) event.detail = detail;
+    // Only when a caller was authenticated: a server with no authenticator
+    // knows of no roles, and an empty list would read as "held nothing".
+    if (identity !== undefined) event.roles = identity.roles;
     this.#trail ??= new AuditTrail(store);
     await this.#trail.append(event);
   }

@@ -1683,7 +1683,10 @@ Deno.test("an authenticated run passes the caller's kind and roles to the runner
   assertEquals(calls.length, 2);
   assertEquals(calls[1].actor, "engineer-a");
   assertEquals(calls[1].actorKind, "human");
-  assertEquals(calls[1].actorRoles, []);
+  // The bare identity claimed no roles at all, which is not the same as
+  // claiming none — the runner passes the claim through untouched, and its own
+  // env export is what turns an unclaimed list into an empty variable.
+  assertEquals(calls[1].actorRoles, undefined);
 });
 
 Deno.test("without an authenticator the runner gets the actor and no claim", async () => {

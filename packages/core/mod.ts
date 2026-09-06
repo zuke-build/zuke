@@ -228,6 +228,13 @@ export {
   type McpIdentity,
   type McpIdentityHook,
 } from "./src/mcp/auth.ts";
+export {
+  defaultMcpAuthorize,
+  type McpAuthorization,
+  type McpCall,
+  ROLE_TIERS,
+  satisfiesRole,
+} from "./src/mcp/roles.ts";
 export { type AbsolutePath, absolutePath, type PathLike } from "./src/path.ts";
 export { CONFIG_FILE, repoRoot } from "./src/config.ts";
 export {

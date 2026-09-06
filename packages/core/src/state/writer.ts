@@ -381,6 +381,11 @@ export class RunStateWriter {
     if (event.detail !== undefined) {
       out.detail = this.#redactor.redact(event.detail);
     }
+    // Role names are static identifiers chosen by the operator's role mapping,
+    // never caller-supplied values, so they carry nothing to redact — but they
+    // are copied explicitly, because this rebuilds the event field by field and
+    // anything not named here is silently dropped.
+    if (event.roles !== undefined) out.roles = event.roles;
     return out;
   }
 

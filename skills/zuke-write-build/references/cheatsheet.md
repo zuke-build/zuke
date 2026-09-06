@@ -1286,6 +1286,18 @@ a descriptor whose entry module is **remote** (not a local path or `file:` URL �
 spawned. `zuke register` writes a local `file:` module, so this only bites a
 hand-authored or second-party registry entry.
 
+**Authorization by role** (`docs/mcp.md`): once the server authenticates its
+callers, `target().requiresRole("operator")` raises the bar for one target and
+`override mcpAuthorize(identity, call)` decides the rest, defaulting to
+`defaultMcpAuthorize`. Built-ins are ordered `read` < `run` < `operator`; any
+other name matches exactly, so an identity provider's group works with
+`requiresRole`. `run` is the floor for executing anything, so `requiresRole` can
+only raise. A run-scoped mutation needs the run's initiator or `operator`; a
+sweep over every run needs `operator`; a valid `ZUKE_OPERATOR_TOKEN` grants
+`operator` for that call. A server with **no** authenticator, or one whose
+authenticator never mentions `roles`, is not constrained by the policy at all —
+`--allow-run`/`--protect` remain its only gates.
+
 **Forcing a target** (`docs/state.md`):
 `zuke force <run-id> <target> --outcome skipped|succeeded [--reason "…"]`
 settles one target of a live run **without running its body** — ahead of its

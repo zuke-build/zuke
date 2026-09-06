@@ -926,9 +926,10 @@ Deno.test("the authenticator gates initialize, ping and tools/list too", async (
   );
 });
 
-Deno.test("an authenticator's kind, roles and via never reach the audit row", async () => {
-  // The claims exist to be authorized against, not to be persisted: the trail
-  // records the actor and the (redacted) arguments, and nothing else new.
+Deno.test("the audit row carries the roles, but not the kind or via", async () => {
+  // The roles are what makes a denial answerable afterwards — who was refused,
+  // by which rule, and what they were carrying — so they are persisted. The
+  // other claims are inputs to that decision, not part of the account of it.
   await withServer(
     { allowRun: true, authenticator: asyncProxy },
     async (server, store) => {
@@ -940,8 +941,8 @@ Deno.test("an authenticator's kind, roles and via never reach the audit row", as
       );
       assertEquals(deploy?.actor, "engineer-a");
       assertEquals(deploy?.args, { environment: "dev" });
+      assertEquals(deploy?.roles, ["deployer"]);
       const row = JSON.stringify(deploy);
-      assertEquals(row.includes("deployer"), false);
       assertEquals(row.includes("oauth-proxy"), false);
       assertEquals(row.includes("service"), false);
     },
@@ -1063,5 +1064,183 @@ Deno.test("force_target is not exposed without execution enabled", async () => {
   await withServer({ allowRun: false }, async (server) => {
     const names = (await server.tools()).map((t) => t.name);
     assertEquals(names.includes("force_target"), false);
+  });
+});
+
+// ---- M17: the role policy --------------------------------------------------
+
+/** An authenticator granting `roles` to a fixed actor. */
+function withRoles(actor: string, roles?: readonly string[]): McpAuthenticator {
+  return {
+    authenticate: () => ({
+      actor,
+      kind: "human" as const,
+      ...(roles === undefined ? {} : { roles }),
+    }),
+  };
+}
+
+Deno.test("an authenticator claiming no roles is not constrained by the policy", async () => {
+  // The compatibility guarantee: a proxy-header hook never spoke roles, so the
+  // policy has nothing to decide with and the server's own gates stand alone.
+  // Without this, every server whose authenticator predates roles would be
+  // denied everything on upgrade.
+  await withServer(
+    { allowRun: true, authenticator: withRoles("ada") },
+    async (server, store) => {
+      const ran = await call(server, "run:deploy", {});
+      assertEquals(ran.isError, false, ran.text);
+      const listed = await call(server, "list_runs");
+      assertEquals(listed.isError, false);
+      void store;
+    },
+  );
+});
+
+Deno.test("an authenticator claiming an empty role set is denied", async () => {
+  // The opposite claim: the question was considered and nothing granted.
+  await withServer(
+    { allowRun: true, authenticator: withRoles("ada", []) },
+    async (server) => {
+      const ran = await call(server, "run:deploy", {});
+      assertEquals(ran.isError, true);
+      assertStringIncludes(ran.text, "run");
+      const listed = await call(server, "list_runs");
+      assertEquals(listed.isError, true);
+    },
+  );
+});
+
+Deno.test("with no authenticator at all the policy never runs", async () => {
+  // The other half of the guarantee — an unauthenticated server is exactly what
+  // it was before roles existed.
+  await withServer({ allowRun: true }, async (server) => {
+    const ran = await call(server, "run:deploy", {});
+    assertEquals(ran.isError, false, ran.text);
+  });
+});
+
+Deno.test("the role policy gates running a target, and a denial is audited with the roles", async () => {
+  await withServer(
+    { allowRun: true, authenticator: withRoles("ada", ["read"]) },
+    async (server, store) => {
+      const denied = await call(server, "run:deploy", {});
+      assertEquals(denied.isError, true);
+
+      const audit = await auditEvents(store);
+      const row = audit.find((e) => e.tool === "run:deploy");
+      assertEquals(row?.outcome, "denied");
+      assertEquals(row?.actor, "ada");
+      // What makes a denial answerable afterwards: who, which rule, and what
+      // they were carrying at the time.
+      assertEquals(row?.roles, ["read"]);
+      assertStringIncludes(row?.detail ?? "", "run");
+    },
+  );
+  // …and `run` gets through.
+  await withServer(
+    { allowRun: true, authenticator: withRoles("ada", ["run"]) },
+    async (server) => {
+      const ran = await call(server, "run:deploy", {});
+      assertEquals(ran.isError, false, ran.text);
+    },
+  );
+});
+
+Deno.test("the operator token grants the operator role for that call", async () => {
+  // The shared secret and the role model are one policy, not two that can
+  // disagree: presenting the token is presenting the role.
+  class Guarded extends Build {
+    promote = target().requiresRole("operator").executes(() => {});
+  }
+  await withTempStore(async (store) => {
+    const server = new McpServer(new Guarded(), {
+      allowRun: true,
+      stateStore: store,
+      operatorToken: "operator-secret",
+      authenticator: withRoles("ada", ["run"]),
+    });
+    const denied = await server.handleMessage(
+      req("tools/call", { name: "run:promote", arguments: {} }),
+    );
+    assertStringIncludes(JSON.stringify(denied), "operator");
+
+    const allowed = await server.handleMessage(
+      req("tools/call", {
+        name: "run:promote",
+        arguments: { operatorToken: "operator-secret" },
+      }),
+    );
+    assertEquals(JSON.stringify(allowed).includes("unauthorized"), false);
+  });
+});
+
+Deno.test("a run-scoped mutation needs the run's initiator or an operator", async () => {
+  const initiator = {
+    actor: "ada",
+    kind: "human" as const,
+    at: "2026-09-06T10:00:00.000Z",
+  };
+  const seed = async (store: FileSystemStateStore) => {
+    const id = await seedSuspended(store, "deploy");
+    const loaded = await store.getRun(id);
+    if (loaded === null) throw new Error("no record");
+    await store.putRun({ ...loaded.record, initiator }, loaded.version);
+    return id;
+  };
+
+  // A stranger holding `run` is refused…
+  await withServer(
+    { allowRun: true, authenticator: withRoles("bob", ["run"]) },
+    async (server, store) => {
+      const id = await seed(store);
+      const denied = await call(server, "cancel_run", { runId: id });
+      assertEquals(denied.isError, true);
+      assertEquals((await store.getRun(id))?.record.status, "suspended");
+    },
+  );
+  // …the initiator is not…
+  await withServer(
+    { allowRun: true, authenticator: withRoles("ada", ["run"]) },
+    async (server, store) => {
+      const id = await seed(store);
+      const ok = await call(server, "cancel_run", { runId: id });
+      assertEquals(ok.isError, false, ok.text);
+    },
+  );
+  // …and neither is an operator.
+  await withServer(
+    { allowRun: true, authenticator: withRoles("bob", ["operator"]) },
+    async (server, store) => {
+      const id = await seed(store);
+      const ok = await call(server, "cancel_run", { runId: id });
+      assertEquals(ok.isError, false, ok.text);
+    },
+  );
+});
+
+Deno.test("a policy that throws denies rather than opening the door", async () => {
+  class Broken extends Build {
+    deploy = target().executes(() => {});
+    override mcpAuthorize(): never {
+      throw new Error("policy blew up");
+    }
+  }
+  await withTempStore(async (store) => {
+    const server = new McpServer(new Broken(), {
+      allowRun: true,
+      stateStore: store,
+      authenticator: withRoles("ada", ["operator"]),
+    });
+    const response = await server.handleMessage(
+      req("tools/call", { name: "run:deploy", arguments: {} }),
+    );
+    assertStringIncludes(JSON.stringify(response), "unauthorized");
+    // The reason reaches the trail without leaking the thrown message.
+    const audit = await auditEvents(store);
+    assertEquals(
+      audit.find((e) => e.tool === "run:deploy")?.detail,
+      "policy_error",
+    );
   });
 });

@@ -114,6 +114,8 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   lifecycle instead of `.executes(...)`; the executor starts it, waits until
   ready, then stops it in a `finally` so it never leaks. See the cheatsheet.
 - **Target context & cancellation:** a body may take a context —
+  `.requiresRole("operator")` raises the bar for running one target over MCP
+  (see the cheatsheet), and
   `.executes((ctx) => …)` — with `ctx.runId`, `ctx.initiator` (who asked for the
   run, unchanged by a resume), `ctx.target`, `ctx.signal` (an
   `AbortSignal` fired when the run is cancelled; a plain `` $`…` `` in the body

@@ -65,7 +65,10 @@ class Fleet extends Build {
           ? {
             actor: "svc-releaser",
             kind: "service",
-            roles: ["deploy"],
+            // "run" is what the default policy asks for to execute a target;
+            // "deploy" is a group name from the identity provider, which only
+            // means something to a target declaring requiresRole("deploy").
+            roles: ["run", "deploy"],
             via: "api-key",
           }
           : {
@@ -241,7 +244,7 @@ Deno.test("in registry mode the caller's kind and roles reach the spawned build"
       assertEquals(spawns.length, 1);
       assertEquals(spawns[0].actor, "svc-releaser");
       assertEquals(spawns[0].actorKind, "service");
-      assertEquals(spawns[0].actorRoles, ["deploy"]);
+      assertEquals(spawns[0].actorRoles, ["run", "deploy"]);
     } finally {
       assertEquals(await server.stop(), 0);
     }
