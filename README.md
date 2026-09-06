@@ -540,6 +540,17 @@ Questions, ideas, or just want to say hi? Open an
   <a href="https://linktr.ee/totollygeek"><img alt="Linktree" src="https://img.shields.io/badge/totollygeek-39E09B?style=for-the-badge&logo=linktree&logoColor=white" /></a>
 </p>
 
+## Swag
+
+Zuke has a swag shop! Grab some Zuke-branded apparel and accessories and wear
+the build:
+
+<p align="center">
+  <a href="https://totollyshop.myspreadshop.net/"><img alt="Zuke swag shop" src="https://img.shields.io/badge/Swag_shop-totollyshop.myspreadshop.net-F5A623?style=for-the-badge" /></a>
+</p>
+
+👉 **<https://totollyshop.myspreadshop.net/>**
+
 ## Activity
 
 [![Repobeats analytics](https://repobeats.axiom.co/api/embed/cfe0a93aaa851e719386dc9469ec91ee1b9cf0d0.svg "Repobeats analytics image")](https://github.com/zuke-build/zuke/pulse)
