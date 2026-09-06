@@ -596,6 +596,11 @@ export class McpServer {
         dryRun,
         github: false,
         actor,
+        // The caller's kind travels with their actor. Without it the run's
+        // initiator would take its kind from the *server process's*
+        // environment — recording a service token as a person, or every
+        // engineer as machinery on a host where ZUKE_ACTOR_KIND is set.
+        ...(identity?.kind === undefined ? {} : { actorKind: identity.kind }),
         readEnv: this.#readEnv,
       });
     } catch (error) {

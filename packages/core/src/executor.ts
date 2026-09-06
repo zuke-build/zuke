@@ -65,7 +65,7 @@ import { type RemoteCacheStore, resolveRemoteStore } from "./remote_cache.ts";
 import { ServiceRegistry } from "./service.ts";
 import { absolutePath } from "./path.ts";
 import type { TargetBuilder } from "./target.ts";
-import type { RunRecord } from "./state/types.ts";
+import type { ActorKind, RunRecord } from "./state/types.ts";
 import { withAmbientSignal } from "./ambient_signal.ts";
 import { withAmbientRedactor } from "./ambient_redactor.ts";
 import type { StateStore } from "./state/store.ts";
@@ -191,6 +191,12 @@ export interface ExecuteOptions {
    * to `ZUKE_ACTOR`, then the CI actor, then `"anonymous"`.
    */
   actor?: string;
+  /**
+   * Whether a person or a machine asked for the run (CLI `--actor-kind`). Falls
+   * back to `ZUKE_ACTOR_KIND`, else `"human"`. Recorded on the run's immutable
+   * initiator, never inferred from the actor's name.
+   */
+  actorKind?: ActorKind;
   /**
    * Continue a suspended run instead of starting a fresh one. Set by
    * {@link "./resume.ts".resumeRun} after it has transitioned the run to
@@ -382,6 +388,7 @@ export async function execute(
     stateStore: options.stateStore,
     state: options.state,
     actor: options.actor,
+    actorKind: options.actorKind,
     resume: options.resume,
   });
   if (!opened.ok) {

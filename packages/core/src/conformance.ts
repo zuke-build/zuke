@@ -246,6 +246,20 @@ const STATE_SCENARIOS: StateScenario[] = [
         since.length === 2,
         `since filter should return the 2 at/after the cutoff, got ${since.length}`,
       );
+      // An unlimited list returns everything, which is what lets a client
+      // filter on a field the query does not carry and then take the newest N
+      // itself. A store that caps this silently would hand that client the
+      // wrong window to search. Compared against a generous explicit limit,
+      // because the realistic failure is a server that honours the limit it is
+      // given but quietly applies a default of its own when given none — a
+      // fixture this size cannot outgrow a cap directly.
+      const unlimited = await store.listRuns({});
+      const generous = await store.listRuns({ limit: 1000 });
+      expect(
+        unlimited.length === generous.length,
+        `an unlimited listRuns must not cap its result: got ` +
+          `${unlimited.length} with no limit, ${generous.length} with limit=1000`,
+      );
       const limited = await store.listRuns({ target, limit: 2 });
       expect(
         limited.length === 2,

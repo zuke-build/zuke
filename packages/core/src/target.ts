@@ -35,7 +35,11 @@ import type { AnyParameter } from "./params.ts";
 import type { Configure } from "./tooling.ts";
 import { type LockHolder, lockKey } from "./state/lock.ts";
 import type { WaitTrigger } from "./wait.ts";
-import type { SignalRecord, TargetRunStatus } from "./state/types.ts";
+import type {
+  RunInitiator,
+  SignalRecord,
+  TargetRunStatus,
+} from "./state/types.ts";
 import type { SummaryEntry, SummaryPairs } from "./summary_note.ts";
 
 /**
@@ -312,6 +316,15 @@ export interface TargetOutcomeView {
 export interface TargetContext {
   /** Unique ID of this run, stable for every target in the run. */
   readonly runId: string;
+  /**
+   * Who asked for this run — stamped once when the run was created, and
+   * unchanged by any later resume, so it still names the engineer who started a
+   * deploy that a sweep has since picked up several times.
+   *
+   * Absent when the run has no durable record to have stamped one (no state
+   * store), and on a record written before the field existed.
+   */
+  readonly initiator?: RunInitiator;
   /** Dotted name of the executing target. */
   readonly target: string;
   /**

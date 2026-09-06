@@ -145,6 +145,7 @@ parameter is optional.
 ```ts
 deploy = target().executes(async (ctx) => {
   ctx.runId; // stable id for the whole run
+  ctx.initiator; // who ASKED for the run — { actor, kind, at }, never rewritten
   ctx.target; // "deploy"
   ctx.signal; // AbortSignal, fired when the run is cancelled
   ctx.dryRun; // true under a dry run

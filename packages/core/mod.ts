@@ -165,11 +165,14 @@ export {
 } from "./src/state/run_lease.ts";
 export { parseDuration } from "./src/duration.ts";
 export {
+  type ActorKind,
   type EffectState,
   type EffectStatus,
+  initiatorOf,
   type RunEvent,
   type RunEventOutcome,
   type RunGraphNode,
+  type RunInitiator,
   type RunQuery,
   type RunRecord,
   type RunStatus,

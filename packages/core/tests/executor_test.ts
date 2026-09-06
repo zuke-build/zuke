@@ -2632,6 +2632,7 @@ async function seedResumableRun(
     order,
     params: [],
     actor: "tester",
+    actorKind: "human" as const,
     now: new Date().toISOString(),
   });
   const put = await store.putRun(record, null);

@@ -947,3 +947,49 @@ Deno.test("an authenticator's kind, roles and via never reach the audit row", as
     },
   );
 });
+
+// ---- M15: the caller's kind reaches the run record -------------------------
+
+Deno.test("a run's initiator takes its kind from the caller, not the server", async () => {
+  // The kind travels with the actor. Without it the initiator would take its
+  // kind from the *server process's* environment — recording a service token as
+  // a person, or, on a host where ZUKE_ACTOR_KIND is set, every engineer as
+  // machinery. Both are wrong in a way a policy would act on.
+  const callers: Array<{ kind: "human" | "service"; env: string | undefined }> =
+    [
+      // A machine caller on a server whose own environment says nothing.
+      { kind: "service", env: undefined },
+      // A human caller on a server whose environment claims service.
+      { kind: "human", env: "service" },
+    ];
+  for (const caller of callers) {
+    await withTempStore(async (store, dir) => {
+      const build = new Recording();
+      const server = new McpServer(build, {
+        allowRun: true,
+        stateStore: store,
+        // The spawned run resolves its own store from the environment, so point
+        // it at the same directory the audit trail uses.
+        readEnv: (name) =>
+          name === "ZUKE_ACTOR_KIND"
+            ? caller.env
+            : name === "ZUKE_STATE_DIR"
+            ? `${dir}/runs`
+            : undefined,
+        authenticator: {
+          authenticate: () => ({ actor: "caller-a", kind: caller.kind }),
+        },
+      });
+      await server.handleMessage(
+        req("tools/call", { name: "run:deploy", arguments: {} }),
+      );
+      assertEquals(build.ran, ["deploy"]);
+
+      const runs = await store.listRuns({});
+      const run = runs.find((s) => s.id !== AUDIT_RUN_ID);
+      if (run === undefined) throw new Error("no run record");
+      assertEquals(run.initiator?.actor, "caller-a");
+      assertEquals(run.initiator?.kind, caller.kind, JSON.stringify(caller));
+    });
+  }
+});

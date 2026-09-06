@@ -69,11 +69,11 @@ Delete one run. Backs `zuke runs prune`. **Optional** — a server that manages
 retention itself (see [the retention note](#notes-for-implementers)) may leave
 this unimplemented; the client only calls it from an explicit prune.
 
-| Response | Meaning                                                    |
-| -------- | ---------------------------------------------------------- |
-| `2xx`    | Deleted (or already absent).                               |
-| `404`    | No such run — treated as success (delete is idempotent).   |
-| other    | The client raises an error.                                |
+| Response | Meaning                                                  |
+| -------- | -------------------------------------------------------- |
+| `2xx`    | Deleted (or already absent).                             |
+| `404`    | No such run — treated as success (delete is idempotent). |
+| other    | The client raises an error.                              |
 
 ### `GET /runs?status=&target=&since=&limit=`
 
@@ -87,20 +87,36 @@ List runs as an array of **summaries** (a subset of the record):
     "rootTarget": "deploy",
     "status": "succeeded",
     "actor": "alice",
+    "initiator": { "actor": "alice", "kind": "human", "at": "2026-07-17T…Z" },
     "createdAt": "2026-07-17T…Z",
     "updatedAt": "2026-07-17T…Z"
   }
 ]
 ```
 
+`initiator` is **optional but load-bearing**: it is who asked for the run, while
+`actor` is whoever wrote it last, so a store that omits it from a summary makes
+`zuke runs list --initiator` fall back to `actor` — which on a resumed run is
+the process that resumed it, not the person who started it. Project it whenever
+the record has one. It is absent only on records written before the field
+existed.
+
 Query parameters (all optional, combined with AND):
 
-| Param    | Keeps runs where…                                                |
-| -------- | ---------------------------------------------------------------- |
-| `status` | the run status equals this value                                 |
-| `target` | the run's graph contains a target with this dotted name          |
-| `since`  | `createdAt` is at or after this ISO-8601 timestamp               |
+| Param    | Keeps runs where…                                                                |
+| -------- | -------------------------------------------------------------------------------- |
+| `status` | the run status equals this value                                                 |
+| `target` | the run's graph contains a target with this dotted name                          |
+| `since`  | `createdAt` is at or after this ISO-8601 timestamp                               |
 | `limit`  | at most this many are returned — the **newest**, so a large store stays listable |
+
+**With no `limit`, every matching run is returned.** A server must not impose a
+cap of its own on an unlimited list. The client relies on this whenever it has
+to filter on a field the query does not carry — `zuke runs list --initiator`
+lists without a limit precisely so it can filter and then take the newest N —
+and a silent server-side cap would hand it the wrong window to search, returning
+a confident subset that is not the newest anything. A store that cannot answer
+an unlimited list should fail the request rather than truncate it.
 
 The client validates every summary it receives (an untrusted service is checked,
 not trusted) and expects newest-first ordering is applied server-side where it
@@ -112,9 +128,9 @@ recent runs.
 
 Four routes back everything that needs mutual exclusion: a target's
 [`.lock()`](./locks.md), and the **run lease** every stateful run holds on its
-own id (key `zuke-run-<id>`, 60s TTL) — which is also what lets
-`resume --check` tell an abandoned run from a merely slow one. A service that
-omits these can store run records but cannot support locks, leases, or reaping.
+own id (key `zuke-run-<id>`, 60s TTL) — which is also what lets `resume --check`
+tell an abandoned run from a merely slow one. A service that omits these can
+store run records but cannot support locks, leases, or reaping.
 
 A lock is `{ key, holder, token, expiresAt }`. The **token** is an opaque string
 the server mints on acquire; only a caller presenting it may renew or release.
@@ -123,8 +139,8 @@ holder's lock is reclaimed without anyone calling `DELETE`.
 
 ### `GET /locks`
 
-List the locks currently held — the read-only answer to "who has this, and
-until when?". No body.
+List the locks currently held — the read-only answer to "who has this, and until
+when?". No body.
 
 - `200 [ { "key": "…", "holder": { … }, "expiresAt": 1700000000000 }, … ]` —
   every **live** lock. An expired one is free and must be left out; reporting it

@@ -19,6 +19,7 @@ import type { SummaryEntry } from "./summary_note.ts";
 import type { RunStateWriter } from "./state/writer.ts";
 import type { StateStore } from "./state/store.ts";
 import type {
+  RunInitiator,
   SignalRecord,
   TargetRunState,
   TargetRunStatus,
@@ -77,6 +78,12 @@ export interface RunEnv {
   store?: StateStore;
   /** The run's actor, stamped on a lock holder. */
   actor: string;
+  /**
+   * Who asked for the run, when the run has a durable record to have stamped
+   * one. Absent for a store-less run, and on a record written before the field
+   * existed — {@link RunEnv.actor} is the closest answer in both cases.
+   */
+  initiator?: RunInitiator;
   /** A link to this run (CI job), stamped on a lock holder when known. */
   runUrl?: string;
   /** External signals received so far, exposed to bodies via `ctx.signals`. */

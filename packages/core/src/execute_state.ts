@@ -26,7 +26,12 @@ import { messageOf } from "./internal.ts";
 import { ARTIFACT_DIR, findConfigDir, pathExists } from "./config.ts";
 import { defaultStateHost, type StateStore } from "./state/store.ts";
 import { resolveStateStore } from "./state/resolve.ts";
-import { buildRunRecord, ciRunUrl, resolveActor } from "./state/record.ts";
+import {
+  buildRunRecord,
+  ciRunUrl,
+  resolveActor,
+  resolveActorKind,
+} from "./state/record.ts";
 import { resolveBuildId } from "./ownership.ts";
 import { RunStateWriter } from "./state/writer.ts";
 import {
@@ -34,7 +39,12 @@ import {
   type HeldLease,
   RUN_LEASE_PREFIX,
 } from "./state/run_lease.ts";
-import type { RunRecord, SignalRecord, WaitState } from "./state/types.ts";
+import type {
+  ActorKind,
+  RunRecord,
+  SignalRecord,
+  WaitState,
+} from "./state/types.ts";
 import type { ResumeState } from "./executor.ts";
 
 /**
@@ -185,6 +195,7 @@ export async function openRunState(opts: {
   stateStore?: StateStore | false;
   state?: boolean;
   actor?: string;
+  actorKind?: ActorKind;
   resume?: ResumeState;
 }): Promise<{ ok: true; state: RunState } | { ok: false; error: Error }> {
   const { dryRun, order, readEnv, nowIso, redactor, resume } = opts;
@@ -310,6 +321,7 @@ export async function openRunState(opts: {
         ...(buildId === undefined ? {} : { buildId }),
         rootTarget: opts.root.name_ ?? "<unnamed>",
         actor,
+        actorKind: resolveActorKind(opts.actorKind, readEnv),
         now: nowIso(),
         order,
         params: opts.params,
@@ -320,12 +332,17 @@ export async function openRunState(opts: {
       warn,
       opts.onExternalCancel,
     );
+  // Read back from the record rather than from the options: on a resume the
+  // record is the only place the original initiator survives, and this process
+  // may be running under a completely different actor.
+  const initiator = writer?.snapshot().initiator;
   const env: RunEnv = {
     runId: opts.runId,
     signal: opts.signal,
     writer,
     store: stateStore,
     actor,
+    ...(initiator === undefined ? {} : { initiator }),
     runUrl,
     signals: writer ? writer.signals() : new Map<string, SignalRecord>(),
     // Seeded from the record so a resumed run's targets keep the outcomes an

@@ -370,6 +370,14 @@ async function httpJson<T = unknown>(url: string, options: HttpOptions): Promise
 async function httpText(url: string, options: HttpOptions): Promise<string>
   Fetch `url` and return its body as text. Throws {@link HttpError} on non-2xx.
 
+function initiatorOf(run: RunRecord | RunSummary): string
+  Who a run is attributed to for a reader that wants its owner rather than
+  its last writer: the recorded initiator, else the actor.
+
+  The fallback is not a guess — on a record written before the initiator
+  existed, and on any run that was never resumed, `actor` still holds exactly
+  the value the initiator would have been stamped with.
+
 async function installNpmTool(spec: NpmToolSpec, options: InstallNpmToolOptions): Promise<AbsolutePath>
   Provision an npm-registry package as a version-pinned, cached tool and return
   the installed bin's {@link AbsolutePath} — hand it straight to a wrapper's
@@ -2974,6 +2982,10 @@ interface ExecuteOptions
   actor?: string
     Who to attribute the run to in its state record (CLI `--actor`). Falls back
     to `ZUKE_ACTOR`, then the CI actor, then `"anonymous"`.
+  actorKind?: ActorKind
+    Whether a person or a machine asked for the run (CLI `--actor-kind`). Falls
+    back to `ZUKE_ACTOR_KIND`, else `"human"`. Recorded on the run's immutable
+    initiator, never inferred from the actor's name.
   resume?: ResumeState
     Continue a suspended run instead of starting a fresh one. Set by
     {@link "./resume.ts".resumeRun} after it has transitioned the run to
@@ -3628,6 +3640,26 @@ interface RunInfo
   readonly dryRun: boolean
     True when the run is a dry run (no target body executes).
 
+interface RunInitiator
+  Who asked for a run, stamped once when it is created and never rewritten.
+
+  Distinct from {@link RunRecord.actor}, which every resume overwrites with
+  whoever picked the run up — so on a run that suspended and was resumed by a
+  sweep, `actor` is the sweep's service account and this is still the engineer
+  who started it. That is the subject a run-scoped authorization rule means by
+  "whoever started this run", and the difference a notification needs to tell a
+  person's deploy from a scheduler's.
+
+  actor: string
+    Who asked for the run, resolved once at creation.
+  kind: ActorKind
+    Whether a person or a machine asked. Stated, never inferred from the actor.
+  at: string
+    ISO-8601 time this attribution was fixed. The run's `createdAt` for a run
+    stamped at creation, and the original run's `createdAt` for one backfilled
+    when a resume was about to overwrite the evidence — so it dates the
+    attribution, not the write that recorded it.
+
 interface RunOptions
   Options for {@link run}.
 
@@ -3676,7 +3708,16 @@ interface RunRecord
   status: RunStatus
     The run's lifecycle status.
   actor: string
-    Who started the run (resolved from `--actor`, `ZUKE_ACTOR`, or CI env).
+    The run's last writer (resolved from `--actor`, `ZUKE_ACTOR`, or CI
+    env). Every resume overwrites it with whoever picked the run up, so it
+    answers "who touched this most recently", not "whose run is this" — see
+    {@link RunRecord.initiator} for that.
+  initiator?: RunInitiator
+    Who asked for the run, stamped once at creation and immutable thereafter.
+
+    Absent on a record written before this field existed; such a record's
+    {@link RunRecord.actor} is the closest answer available, and is exactly the
+    right one on a run that was never resumed.
   createdAt: string
     ISO-8601 timestamp when the run was created.
   updatedAt: string
@@ -3740,7 +3781,11 @@ interface RunSummary
   status: RunStatus
     The run's lifecycle status.
   actor: string
-    Who started the run.
+    The run's last writer (see {@link RunRecord.actor}).
+  initiator?: RunInitiator
+    Who asked for the run (see {@link RunRecord.initiator}). Absent on a record
+    written before the field existed, and from a store that does not project
+    it — {@link RunSummary.actor} is the fallback in both cases.
   createdAt: string
     ISO-8601 creation timestamp.
   updatedAt: string
@@ -3898,6 +3943,13 @@ interface TargetContext
 
   readonly runId: string
     Unique ID of this run, stable for every target in the run.
+  readonly initiator?: RunInitiator
+    Who asked for this run — stamped once when the run was created, and
+    unchanged by any later resume, so it still names the engineer who started a
+    deploy that a sweep has since picked up several times.
+
+    Absent when the run has no durable record to have stamped one (no state
+    store), and on a record written before the field existed.
   readonly target: string
     Dotted name of the executing target.
   readonly signal: AbortSignal
@@ -4151,6 +4203,9 @@ interface WaitTrigger
     and a durable {@link WaitContext}. The context lets a trigger persist
     correlation state across a suspend/resume; a trigger that only inspects
     signals may ignore it (fewer parameters stay assignable).
+
+type ActorKind = "human" | "service"
+  Whether a person or a machine asked for a run (see {@link RunInitiator}).
 
 type AnnouncementLevel = "success" | "failure" | "warning" | "info"
   The outcome an announcement conveys. It drives the accent colour and the icon
