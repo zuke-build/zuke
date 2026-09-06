@@ -122,6 +122,20 @@ export interface McpServerOptions {
    * build's `mcpAuth()` or `mcpIdentity()` (see `serveMcp`).
    */
   authenticator?: McpAuthenticator;
+  /**
+   * Whether the configured authenticator participates in the
+   * [role policy](../../../docs/mcp.md#roles).
+   *
+   * True for one declared with `mcpAuth()`, whose identities are expected to
+   * carry roles — an absent list then settles to none and denies. False for the
+   * legacy `mcpIdentity()` adapter, which never had roles to give, so its
+   * callers are governed by the allow-list and operator token alone.
+   *
+   * A property of the seam rather than of a single identity, so an authenticator
+   * that omits roles for one caller cannot hand that caller more privilege than
+   * one that names them.
+   */
+  enforceRoles?: boolean;
   /** Reads an environment variable (injectable for tests). */
   readEnv?: (name: string) => string | undefined;
   /** The server version reported in `initialize`. Defaults to `"0.0.0"`. */
@@ -195,6 +209,8 @@ export class McpServer {
   readonly #store?: StateStore;
   readonly #actor?: string;
   readonly #authenticator?: McpAuthenticator;
+  /** Whether the configured authenticator participates in the role policy. */
+  readonly #enforceRoles: boolean;
   readonly #readEnv: (name: string) => string | undefined;
   /** The connecting client's `initialize` name, a low-priority audit actor. */
   #clientLabel?: string;
@@ -224,6 +240,7 @@ export class McpServer {
     this.#store = options.stateStore;
     this.#actor = options.actor;
     this.#authenticator = options.authenticator;
+    this.#enforceRoles = options.enforceRoles ?? false;
     this.#readEnv = options.readEnv ?? (() => undefined);
     this.#version = options.version ?? "0.0.0";
   }
@@ -477,6 +494,8 @@ export class McpServer {
     if (store === undefined) return null;
     const actor = identity?.actor ?? this.#resolveActor();
     const mutating = isMutatingRunTool(name);
+    /** The authorization reason, when the call was refused rather than run. */
+    let refusal: string | undefined;
     if (mutating && !this.#allowRun) {
       return textResult(
         `${name} changes run state and needs execution enabled — start the ` +
@@ -494,8 +513,18 @@ export class McpServer {
           const denial = this.#authorizeTarget(targetName, callArgs) ??
             this.#authorizePolicy(identity, callArgs, {
               tool: name,
+              target: targetName,
+              // Resuming, signalling or forcing a run executes that run's plan,
+              // so the roles its targets declare apply here exactly as they do
+              // to `run:` — otherwise a caller refused `run:promote` could reach
+              // the same body through `signal_run`.
+              requiredRoles: this.#plannedRoles(targetName) ?? [],
               ...(run === undefined ? {} : { run }),
             });
+          // Remembered so the audit row can say this was a *denial* — and by
+          // which rule, and with which roles — rather than the generic "error"
+          // an unauthorized tool result would otherwise be recorded as.
+          if (denial !== null) refusal = denial;
           return denial === null ? null : clientDenial(denial);
         },
       },
@@ -503,8 +532,15 @@ export class McpServer {
       args,
     );
     if (result === null) return null;
-    if (mutating) {
-      await this.#audit(name, args, result.isError ? "error" : "ok", actor);
+    if (mutating || refusal !== undefined) {
+      await this.#audit(
+        name,
+        args,
+        refusal !== undefined ? "denied" : result.isError ? "error" : "ok",
+        actor,
+        refusal,
+        identity,
+      );
     }
     return textResult(result.text, result.isError);
   }
@@ -556,9 +592,10 @@ export class McpServer {
       this.#authorizePolicy(identity, args, {
         tool: runName,
         target: targetName,
-        ...(root.requiresRole_ === undefined
-          ? {}
-          : { requiredRole: root.requiresRole_ }),
+        // Undefined means the plan could not be resolved, which
+        // `#authorizeTarget` has already denied above; an empty list means it
+        // resolved and declared nothing.
+        requiredRoles: this.#plannedRoles(targetName) ?? [],
       });
     if (denial !== null) {
       // The precise reason goes to the audit trail, which is operator-only; the
@@ -679,6 +716,26 @@ export class McpServer {
   }
 
   /**
+   * Every role declared by any target in the plan rooted at `name`.
+   *
+   * Plan-wide for the same reason `--protect` is: invoking a target runs its
+   * dependencies, so a requirement that guarded only the entry point would be
+   * bypassed by invoking anything that depends on it. An unresolvable plan
+   * yields `undefined`, which the caller must treat as a denial rather than as
+   * "no requirements".
+   */
+  #plannedRoles(name: string): readonly string[] | undefined {
+    const planned = this.#plannedNames(name);
+    if (planned === null) return undefined;
+    const roles = new Set<string>();
+    for (const target of planned) {
+      const declared = this.#targets.get(target)?.requiresRole_;
+      if (declared !== undefined) roles.add(declared);
+    }
+    return [...roles];
+  }
+
+  /**
    * Whether the call carried a valid operator token — which grants the
    * `operator` role for that call, so the shared secret and the role model are
    * one policy rather than two that can disagree.
@@ -703,16 +760,28 @@ export class McpServer {
     call: McpCall,
   ): string | null {
     if (identity === undefined) return null;
-    // An authenticator that claimed no roles at all does not speak roles, so the
-    // policy has nothing to decide with and the server's own gates stand alone
-    // — the behaviour of every server whose authenticator predates this.
-    if (identity.roles === undefined) return null;
-    const roles = this.#hasOperatorToken(args)
-      ? [...identity.roles, "operator"]
-      : identity.roles;
+    // Whether roles are enforced is a property of the **seam**, not of one
+    // call's value. A modern `mcpAuth()` authenticator that happens to omit
+    // roles for one caller settles to none and is denied — inferring "does not
+    // speak roles" from the value would mean a token carrying *less*
+    // information bought *more* privilege. Only the legacy `mcpIdentity()`
+    // adapter, which never had roles to give, leaves them unclaimed.
+    const claimed = this.#enforceRoles ? identity.roles ?? [] : identity.roles;
+    const roles = claimed === undefined
+      ? undefined
+      : this.#hasOperatorToken(args)
+      ? [...claimed, "operator"]
+      : claimed;
     let verdict: McpAuthorization;
     try {
-      verdict = this.build.mcpAuthorize({ ...identity, roles }, call);
+      // Always consulted, even for an unclaimed identity: an override exists to
+      // express rules the engine cannot know (a change window, a freeze), and
+      // those apply whether or not the authenticator speaks roles. The default
+      // implementation is what allows the unclaimed case.
+      verdict = this.build.mcpAuthorize(
+        { ...identity, ...(roles === undefined ? {} : { roles }) },
+        call,
+      );
     } catch {
       // A policy that throws denies. It is the last thing standing between a
       // caller and the build's code, so a bug in it must not open the door.

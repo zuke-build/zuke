@@ -20,6 +20,7 @@
 
 import type { RunSummary } from "../state/types.ts";
 import type { McpIdentity } from "./auth.ts";
+import { isMutatingRunTool } from "./runtools.ts";
 
 /**
  * The built-in roles, least to most privileged. A caller holding one satisfies
@@ -53,8 +54,16 @@ export interface McpCall {
   tool: string;
   /** The target a `run:` call names, when it names one. */
   target?: string;
-  /** The role that target declared with `.requiresRole(...)`, when it declared one. */
-  requiredRole?: string;
+  /**
+   * Every role declared with `.requiresRole(...)` **anywhere in the plan** this
+   * call would execute — not just on the target it names.
+   *
+   * Invoking a target runs its dependencies, so a requirement that only guarded
+   * the entry point would be bypassed by invoking anything that depends on it.
+   * This mirrors `--protect`, which is enforced across the whole plan for the
+   * same reason. The caller must satisfy all of them.
+   */
+  requiredRoles?: readonly string[];
   /**
    * The run a run-scoped call acts on, when it acts on one. Absent for a sweep
    * over every run, which no single run's owner can authorize.
@@ -82,14 +91,13 @@ function isReadOnlyTool(tool: string): boolean {
 }
 
 /**
- * The tools that act on **one** run, and so ask who owns it. `resume_check`
- * appears here only when the call named a run; without one it sweeps every run
- * and is handled as an operator action.
+ * The tools that act on **one** run, and so ask who owns it — the mutating
+ * run-state tools, whose membership `runtools.ts` already owns so the two
+ * classifications cannot drift apart. `resume_check` is among them; without a
+ * run named it sweeps every run and is handled as an operator action.
  */
 function isRunScopedTool(tool: string): boolean {
-  return tool === "cancel_run" || tool === "signal_run" ||
-    tool === "force_target" || tool === "retry_target" ||
-    tool === "resume_check";
+  return isMutatingRunTool(tool);
 }
 
 /**
@@ -111,9 +119,14 @@ export function defaultMcpAuthorize(
   identity: McpIdentity,
   call: McpCall,
 ): McpAuthorization {
-  // Reached only for an identity that claimed roles; the server skips the
-  // policy entirely for one that did not (see `McpIdentity.roles`).
-  const held = identity.roles ?? [];
+  // An identity that claimed no roles at all does not speak roles — a
+  // header-trusting `mcpIdentity()` hook, which predates them. There is nothing
+  // to decide with, so this policy allows and the server's own gates stand
+  // alone. The server settles an `mcpAuth()` identity's absent list to empty
+  // before calling, so that case denies here rather than arriving unclaimed:
+  // less information must never buy more privilege.
+  const held = identity.roles;
+  if (held === undefined) return ALLOW;
 
   if (isReadOnlyTool(call.tool)) {
     return satisfiesRole(held, "read")
@@ -122,6 +135,13 @@ export function defaultMcpAuthorize(
   }
 
   if (isRunScopedTool(call.tool)) {
+    // A run-scoped call still executes whatever the run's plan declares, so a
+    // target's own requirement applies here exactly as it does to `run:`.
+    for (const required of call.requiredRoles ?? []) {
+      if (!satisfiesRole(held, required)) {
+        return deny(`${call.tool} needs the "${required}" role`);
+      }
+    }
     // No run named: a sweep touches every run at once, which no single run's
     // owner is in a position to authorize.
     if (call.run === undefined) {
@@ -149,14 +169,14 @@ export function defaultMcpAuthorize(
   if (!satisfiesRole(held, "run")) {
     return deny(`${call.tool} needs the "run" role`);
   }
-  // A target's own requirement is checked *in addition*, so it can only raise
-  // the bar. Requiring it instead of `run` would let `requiresRole("read")`
+  // Each declared requirement is checked *in addition*, so they can only raise
+  // the bar. Requiring one instead of `run` would let `requiresRole("read")`
   // hand a read-only caller the ability to execute build code — a declaration
   // in the build silently widening what the server exposes.
-  if (
-    call.requiredRole !== undefined && !satisfiesRole(held, call.requiredRole)
-  ) {
-    return deny(`${call.tool} needs the "${call.requiredRole}" role`);
+  for (const required of call.requiredRoles ?? []) {
+    if (!satisfiesRole(held, required)) {
+      return deny(`${call.tool} needs the "${required}" role`);
+    }
   }
   return ALLOW;
 }

@@ -778,10 +778,6 @@ const HARDEN_RUNNER_ACTION: "step-security/harden-runner"
 const REDACTED: "[redacted]"
   The placeholder a {@link Redactor} substitutes for each secret value.
 
-const ROLE_TIERS: readonly string[]
-  The built-in roles, least to most privileged. A caller holding one satisfies
-  a requirement for any role at or below it.
-
 const RUN_LEASE_PREFIX: "zuke-run"
   The lease name a run's own claim is taken under.
 
@@ -3459,8 +3455,14 @@ interface McpCall
     The tool name, e.g. `run:deploy`, `cancel_run`, `list_runs`.
   target?: string
     The target a `run:` call names, when it names one.
-  requiredRole?: string
-    The role that target declared with `.requiresRole(...)`, when it declared one.
+  requiredRoles?: readonly string[]
+    Every role declared with `.requiresRole(...)` anywhere in the plan this
+    call would execute — not just on the target it names.
+
+    Invoking a target runs its dependencies, so a requirement that only guarded
+    the entry point would be bypassed by invoking anything that depends on it.
+    This mirrors `--protect`, which is enforced across the whole plan for the
+    same reason. The caller must satisfy all of them.
   run?: RunSummary
     The run a run-scoped call acts on, when it acts on one. Absent for a sweep
     over every run, which no single run's owner can authorize.
@@ -3487,8 +3489,9 @@ interface McpIdentity
     list is the opposite claim: the question was considered and nothing was
     granted, so the policy denies.
 
-    A name containing a comma is dropped: the comma separates the roles a
-    registry-spawned child reads, so such a name would reach it as two.
+    Role names are passed through as given; the comma-separated environment
+    variable a registry-spawned child reads escapes them rather than this
+    dropping them, so sanitisation cannot turn a granted set into an empty one.
   via?: string
     How the identity was established (e.g. `"oauth-proxy"`); informational.
 

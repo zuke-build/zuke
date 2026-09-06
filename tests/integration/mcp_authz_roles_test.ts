@@ -54,11 +54,15 @@ class ControlPlane extends Build {
   }
 }
 
-/** A build whose authenticator never mentions roles — the pre-policy shape. */
+/**
+ * A build using the legacy proxy-header seam — the pre-policy shape. That seam
+ * never had roles to give, so the policy leaves it alone; an `mcpAuth()`
+ * authenticator omitting roles is a different claim and is denied.
+ */
 class Legacy extends Build {
   deploy = target().executes(() => void ran.push("deploy"));
-  override mcpAuth(): McpAuthenticator {
-    return { authenticate: () => ({ actor: "ada", kind: "human" as const }) };
+  override mcpIdentity() {
+    return () => ({ actor: "ada", via: "proxy" });
   }
 }
 
@@ -158,9 +162,9 @@ Deno.test("the role policy gates a real server's tools", async () => {
   });
 });
 
-Deno.test("an authenticator that never mentions roles is unconstrained", async () => {
-  // The compatibility guarantee, end to end: a server whose authenticator
-  // predates the policy keeps working exactly as it did.
+Deno.test("the legacy identity hook is unconstrained by the policy", async () => {
+  // The compatibility guarantee, end to end: a server using the seam that
+  // predates roles keeps working exactly as it did.
   await withStateDir(async () => {
     ran.length = 0;
     const server = await startMcp(Legacy);
@@ -188,6 +192,118 @@ Deno.test("a caller granted no roles at all is refused everything", async () => 
         assertStringIncludes(res.text, "unauthorized", tool);
       }
       assertEquals(ran, []);
+    } finally {
+      await server.stop();
+    }
+  });
+});
+
+// ---- Regressions from the adversarial review -------------------------------
+
+/** A build whose operator-only target sits behind an ordinary one. */
+class Chained extends Build {
+  promote = target().requiresRole("operator").executes(() =>
+    void ran.push("promote")
+  );
+  release = target().dependsOn(this.promote).executes(() =>
+    void ran.push("release")
+  );
+  override mcpAuth(): McpAuthenticator {
+    return {
+      authenticate: (ctx: McpRequestContext) => {
+        const roles = ctx.headers.get("x-roles");
+        if (roles === null) {
+          return { status: 401, error: "no_identity", challenge: "Bearer" };
+        }
+        return {
+          actor: ctx.headers.get("x-user") ?? "anon",
+          kind: "human" as const,
+          roles: roles === "" ? [] : roles.split(","),
+        };
+      },
+    };
+  }
+}
+
+Deno.test("requiresRole is enforced across the plan, not just the entry point", async () => {
+  // Invoking a target runs its dependencies, so a requirement guarding only the
+  // named target would be bypassed by invoking anything that depends on it —
+  // which is why --protect is plan-wide too.
+  await withStateDir(async () => {
+    ran.length = 0;
+    const server = await startMcp(Chained);
+    try {
+      const direct = await callTool(server.url, "run:promote", {
+        "x-user": "mallory",
+        "x-roles": "run",
+      });
+      assertStringIncludes(direct.text, "unauthorized");
+
+      // The dependency route must be refused identically.
+      const viaDependent = await callTool(server.url, "run:release", {
+        "x-user": "mallory",
+        "x-roles": "run",
+      });
+      assertStringIncludes(viaDependent.text, "unauthorized");
+      assertEquals(ran, [], `bodies ran: ${ran.join(",")}`);
+
+      // An operator gets through both.
+      const asOperator = await callTool(server.url, "run:release", {
+        "x-user": "ada",
+        "x-roles": "operator",
+      });
+      assertEquals(
+        asOperator.text.includes("unauthorized"),
+        false,
+        asOperator.text,
+      );
+      assertEquals(ran.includes("promote"), true);
+    } finally {
+      await server.stop();
+    }
+  });
+});
+
+/** An mcpAuth() authenticator that omits roles for one caller. */
+class Partial extends Build {
+  promote = target().requiresRole("operator").executes(() =>
+    void ran.push("promote")
+  );
+  override mcpAuth(): McpAuthenticator {
+    return {
+      authenticate: (ctx: McpRequestContext) => {
+        const roles = ctx.headers.get("x-roles");
+        return {
+          actor: ctx.headers.get("x-user") ?? "anon",
+          kind: "human" as const,
+          // The shape of the shipped example: a claim that is simply absent
+          // from some tokens.
+          ...(roles === null ? {} : { roles: roles.split(",") }),
+        };
+      },
+    };
+  }
+}
+
+Deno.test("a token carrying no roles gets no privilege from the omission", async () => {
+  // Less information must never buy more privilege. Whether roles are enforced
+  // is a property of the seam, so an mcpAuth() identity that omits them settles
+  // to none and is denied — rather than skipping the policy entirely.
+  await withStateDir(async () => {
+    ran.length = 0;
+    const server = await startMcp(Partial);
+    try {
+      const withRole = await callTool(server.url, "run:promote", {
+        "x-user": "ada",
+        "x-roles": "read",
+      });
+      assertStringIncludes(withRole.text, "unauthorized");
+
+      const withoutAny = await callTool(server.url, "run:promote", {
+        "x-user": "mallory",
+      });
+      assertStringIncludes(withoutAny.text, "unauthorized");
+      assertEquals(ran, [], `bodies ran: ${ran.join(",")}`);
     } finally {
       await server.stop();
     }

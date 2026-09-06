@@ -1663,7 +1663,9 @@ Deno.test("an authenticated run passes the caller's kind and roles to the runner
       const sub = ctx.headers.get("x-user");
       if (sub === null) throw new Error("no identity from proxy");
       return sub === "scheduler"
-        ? { actor: sub, kind: "service", roles: ["deployer", "reader"] }
+        // `run` is what the policy asks for to spawn anything; the other two
+        // are group names from the identity provider.
+        ? { actor: sub, kind: "service", roles: ["run", "deployer", "reader"] }
         : { actor: sub };
     }),
   });
@@ -1675,7 +1677,7 @@ Deno.test("an authenticated run passes the caller's kind and roles to the runner
   assertEquals(calls.length, 1);
   assertEquals(calls[0].actor, "scheduler");
   assertEquals(calls[0].actorKind, "service");
-  assertEquals(calls[0].actorRoles, ["deployer", "reader"]);
+  assertEquals(calls[0].actorRoles, ["run", "deployer", "reader"]);
 
   // A bare `{ actor }` settles to the conservative defaults before the spawn:
   // the runner never sees an unstated claim it would have to default itself.
@@ -1825,4 +1827,66 @@ Deno.test("the server's tokens are stripped beside the exported claim", async ()
       assertStringIncludes(result.stdout, "STRIPPED STRIPPED engineer-a");
     },
   );
+});
+
+Deno.test("in registry mode the role policy gates listing and spawning", async () => {
+  // Without this the registry server applied no policy at all: a caller granted
+  // nothing could list every registered build and spawn any of them, on a
+  // server that does authenticate its callers.
+  const registry = new FakeRegistry();
+  registry.add(descriptor("Api", ["deploy"]));
+  const { runner, calls } = recordingRunner();
+  const server = new RegistryMcpServer(registry, {
+    allowRun: true,
+    runner,
+    enforceRoles: true,
+    authenticator: authenticatorFromHook((ctx) => ({
+      actor: ctx.headers.get("x-user") ?? "anon",
+      roles: (ctx.headers.get("x-roles") ?? "").split(",").filter((r) =>
+        r !== ""
+      ),
+    })),
+  });
+
+  // Granted nothing: refused everything, and nothing is spawned.
+  for (const tool of ["list_builds", "run:Api:deploy"]) {
+    const res = await callWith(server, tool, { "x-user": "mallory" });
+    assertStringIncludes(JSON.stringify(res), "unauthorized", tool);
+  }
+  assertEquals(calls.length, 0);
+
+  // `read` can list but not spawn.
+  const listed = await callWith(server, "list_builds", {
+    "x-user": "ada",
+    "x-roles": "read",
+  });
+  assertEquals(JSON.stringify(listed).includes("unauthorized"), false);
+  const refused = await callWith(server, "run:Api:deploy", {
+    "x-user": "ada",
+    "x-roles": "read",
+  });
+  assertStringIncludes(JSON.stringify(refused), "unauthorized");
+  assertEquals(calls.length, 0);
+
+  // `run` can spawn.
+  await callWith(server, "run:Api:deploy", {
+    "x-user": "ada",
+    "x-roles": "run",
+  });
+  assertEquals(calls.length, 1);
+});
+
+Deno.test("a role name carrying the separator survives the child's env", async () => {
+  // Kept in the identity and escaped here, so sanitisation cannot turn a
+  // granted role set into the empty one the policy reads as "granted nothing".
+  const result = await defaultRegistryRunner(
+    [Deno.execPath(), "eval", ACTOR_ECHO],
+    Deno.cwd(),
+    { actor: "ada", actorKind: "human", actorRoles: ["team,ops", "run"] },
+  );
+  assertEquals(result.code, 0);
+  const roles = result.stdout.trim().split("|")[2];
+  assertEquals(roles, "team%2Cops,run");
+  // A child splitting on "," and decoding gets the original two names back.
+  assertEquals(roles.split(",").map(decodeURIComponent), ["team,ops", "run"]);
 });

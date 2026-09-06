@@ -72,14 +72,14 @@ Deno.test("read tools need read, and running needs run", () => {
 Deno.test("a target may ask for more than run, and only more", () => {
   const runner = caller("ada", ["run"]);
   const op = caller("ada", ["operator"]);
-  const call = { tool: "run:promote", requiredRole: "operator" };
+  const call = { tool: "run:promote", requiredRoles: ["operator"] };
   assertEquals(allows(runner, call), false);
   assertEquals(allows(op, call), true);
 
   // A custom requirement is checked *in addition* to `run`, and is satisfied
   // only by that exact role — an operator does not inherit someone else's
   // group, and holding the group alone is not permission to execute anything.
-  const custom = { tool: "run:release", requiredRole: "release-manager" };
+  const custom = { tool: "run:release", requiredRoles: ["release-manager"] };
   assertEquals(allows(op, custom), false);
   assertEquals(allows(caller("ada", ["release-manager"]), custom), false);
   assertEquals(allows(caller("ada", ["run", "release-manager"]), custom), true);
@@ -87,11 +87,11 @@ Deno.test("a target may ask for more than run, and only more", () => {
   // requiresRole can only raise the bar. Requiring it *instead of* `run` would
   // let a build declaration hand a read-only caller the ability to execute.
   assertEquals(
-    allows(caller("ada", ["read"]), { tool: "run:x", requiredRole: "read" }),
+    allows(caller("ada", ["read"]), { tool: "run:x", requiredRoles: ["read"] }),
     false,
   );
   assertEquals(
-    allows(caller("ada", ["run"]), { tool: "run:x", requiredRole: "read" }),
+    allows(caller("ada", ["run"]), { tool: "run:x", requiredRoles: ["read"] }),
     true,
   );
 });
@@ -194,7 +194,7 @@ Deno.test("a denial says which rule refused, and names the owner", () => {
   // The floor is reported first for a caller who cannot run at all…
   const noRun = defaultMcpAuthorize(caller("bob", ["read"]), {
     tool: "run:promote",
-    requiredRole: "operator",
+    requiredRoles: ["operator"],
   });
   if (noRun.allow) throw new Error("expected a denial");
   assertStringIncludes(noRun.reason, '"run"');
@@ -202,7 +202,7 @@ Deno.test("a denial says which rule refused, and names the owner", () => {
   // …and the target's own requirement once they clear it.
   const needsRole = defaultMcpAuthorize(caller("bob", ["run"]), {
     tool: "run:promote",
-    requiredRole: "operator",
+    requiredRoles: ["operator"],
   });
   if (needsRole.allow) throw new Error("expected a denial");
   assertStringIncludes(needsRole.reason, '"operator"');

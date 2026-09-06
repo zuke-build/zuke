@@ -162,6 +162,11 @@ export async function serveMcp(
   }
   const authenticator = options.authenticator ?? declared ??
     (hook === undefined ? undefined : authenticatorFromHook(hook));
+  // The role policy applies to a seam that was declared *as* an authenticator.
+  // The legacy `mcpIdentity()` hook never had roles to give, so a build using it
+  // keeps the allow-list and operator token as its only gates.
+  const enforceRoles = options.enforceRoles ??
+    (options.authenticator !== undefined || declared !== undefined);
   // Every authenticator runs on every request. Only one declared *as*
   // authentication also satisfies the non-loopback bind guard: `mcpIdentity()`
   // is sugar for trusting a header a proxy injected, and its whole contract
@@ -186,6 +191,7 @@ export async function serveMcp(
       stateStore: store,
       actor: options.actor,
       authenticator,
+      enforceRoles,
       readEnv,
       version: options.version,
       runner: options.runner,
@@ -197,6 +203,7 @@ export async function serveMcp(
       stateStore: store,
       operatorToken,
       authenticator,
+      enforceRoles,
     });
   if (options.http !== undefined) {
     return await serveMcpHttp(

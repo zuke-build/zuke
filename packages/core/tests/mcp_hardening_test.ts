@@ -1244,3 +1244,84 @@ Deno.test("a policy that throws denies rather than opening the door", async () =
     );
   });
 });
+
+Deno.test("a run-scoped tool cannot reach a target its role gate refuses", async () => {
+  // Resuming, signalling or forcing a run executes that run's plan, so the
+  // roles its targets declare apply there exactly as they do to `run:`. Without
+  // this, a caller refused `run:promote` reached the same body via signal_run.
+  class Gated extends Build {
+    promote = target().requiresRole("operator").executes(() => {});
+  }
+  await withTempStore(async (store) => {
+    const server = new McpServer(new Gated(), {
+      allowRun: true,
+      stateStore: store,
+      enforceRoles: true,
+      authenticator: withRoles("mallory", ["run"]),
+    });
+    const id = await seedSuspended(store, "promote");
+
+    for (const tool of ["signal_run", "cancel_run", "resume_check"]) {
+      const res = await server.handleMessage(
+        req("tools/call", {
+          name: tool,
+          arguments: { runId: id, signal: "go" },
+        }),
+      );
+      assertStringIncludes(JSON.stringify(res), "unauthorized", tool);
+    }
+    // The run is untouched.
+    assertEquals((await store.getRun(id))?.record.status, "suspended");
+  });
+});
+
+Deno.test("a role denial on a run-scoped tool is audited as a denial, with the roles", async () => {
+  class Gated extends Build {
+    promote = target().requiresRole("operator").executes(() => {});
+  }
+  await withTempStore(async (store) => {
+    const server = new McpServer(new Gated(), {
+      allowRun: true,
+      stateStore: store,
+      enforceRoles: true,
+      authenticator: withRoles("mallory", ["run"]),
+    });
+    const id = await seedSuspended(store, "promote");
+    await server.handleMessage(
+      req("tools/call", {
+        name: "signal_run",
+        arguments: { runId: id, signal: "go" },
+      }),
+    );
+    const row = (await auditEvents(store)).find((e) => e.tool === "signal_run");
+    // Not the generic "error" an unauthorized result would otherwise record.
+    assertEquals(row?.outcome, "denied");
+    assertEquals(row?.actor, "mallory");
+    assertEquals(row?.roles, ["run"]);
+    assertStringIncludes(row?.detail ?? "", "operator");
+  });
+});
+
+Deno.test("an overridden mcpAuthorize runs even for the legacy identity seam", async () => {
+  // The override exists to express rules the engine cannot know — a change
+  // window, a freeze — and those apply whether or not the authenticator speaks
+  // roles. Only the *default* policy steps aside for an unclaimed identity.
+  class Frozen extends Build {
+    deploy = target().executes(() => {});
+    override mcpAuthorize() {
+      return { allow: false as const, reason: "deploys are frozen" };
+    }
+  }
+  await withTempStore(async (store) => {
+    const server = new McpServer(new Frozen(), {
+      allowRun: true,
+      stateStore: store,
+      // The legacy seam: no roles, and enforcement off.
+      authenticator: withRoles("ada"),
+    });
+    const res = await server.handleMessage(
+      req("tools/call", { name: "run:deploy", arguments: {} }),
+    );
+    assertStringIncludes(JSON.stringify(res), "frozen");
+  });
+});

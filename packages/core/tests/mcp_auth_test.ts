@@ -348,11 +348,12 @@ Deno.test("a throwing property getter on the result is a refusal, not a fault", 
   );
 });
 
-Deno.test("a role name carrying the child's separator is dropped", async () => {
-  // ZUKE_ACTOR_ROLES joins the list with a comma, so a name containing one would
-  // reach a registry-spawned child as two roles. Role names can come from an
-  // identity provider's group names, so the guard belongs here rather than in
-  // each consumer.
+Deno.test("a role name carrying the child's separator is kept", async () => {
+  // It is escaped where it matters — the comma-joined environment variable a
+  // registry-spawned child reads — rather than dropped here. Dropping would let
+  // sanitisation manufacture an empty list, which the role policy reads as
+  // "granted nothing" and denies: a guard that turns a granted role set into a
+  // deny-all is worse than the encoding problem it avoids.
   const identity = await run(() => ({
     actor: "ada",
     roles: ["ops", "team,operator", "release"],
@@ -360,7 +361,7 @@ Deno.test("a role name carrying the child's separator is dropped", async () => {
   assertEquals(identity, {
     actor: "ada",
     kind: "human",
-    roles: ["ops", "release"],
+    roles: ["ops", "team,operator", "release"],
   });
 });
 

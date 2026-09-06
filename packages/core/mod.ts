@@ -232,7 +232,6 @@ export {
   defaultMcpAuthorize,
   type McpAuthorization,
   type McpCall,
-  ROLE_TIERS,
   satisfiesRole,
 } from "./src/mcp/roles.ts";
 export { type AbsolutePath, absolutePath, type PathLike } from "./src/path.ts";
