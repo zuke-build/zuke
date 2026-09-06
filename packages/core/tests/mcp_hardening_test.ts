@@ -993,3 +993,75 @@ Deno.test("a run's initiator takes its kind from the caller, not the server", as
     });
   }
 });
+
+// ---- M16: force_target is gated exactly as cancel_run is -------------------
+
+Deno.test("force_target requires the operator token for a protected run", async () => {
+  // It routes through the same `runDenial` gate `cancel_run` uses, so the
+  // operator token in the call's arguments reaches `operatorTokenDenial` and a
+  // protected plan is refused without it.
+  await withServer(
+    {
+      allowRun: true,
+      protectPatterns: ["deploy"],
+      operatorToken: "operator-secret",
+      actor: "ops",
+    },
+    async (server, store) => {
+      const id = await seedSuspended(store, "deploy");
+
+      const noToken = await call(server, "force_target", {
+        runId: id,
+        target: "deploy",
+        outcome: "skipped",
+      });
+      assertEquals(noToken.isError, true);
+      assertEquals(JSON.parse(noToken.text).reason, "missing_operator_token");
+
+      const wrongToken = await call(server, "force_target", {
+        runId: id,
+        target: "deploy",
+        outcome: "skipped",
+        operatorToken: "guess",
+      });
+      assertEquals(wrongToken.isError, true);
+      assertEquals(
+        JSON.parse(wrongToken.text).reason,
+        "invalid_operator_token",
+      );
+
+      // Nothing was written by either refusal.
+      assertEquals((await store.getRun(id))?.record.overrides, undefined);
+
+      // With the token it gets past authorization and reaches the force itself.
+      const allowed = await call(server, "force_target", {
+        runId: id,
+        target: "deploy",
+        outcome: "skipped",
+        operatorToken: "operator-secret",
+      });
+      assertEquals(allowed.isError, false, allowed.text);
+      assertEquals(
+        (await store.getRun(id))?.record.overrides?.deploy.outcome,
+        "skipped",
+      );
+
+      // …and the call is audited, with the token dropped from the trail.
+      const audit = await auditEvents(store);
+      const event = audit.find((e) => e.tool === "force_target");
+      assertEquals(event?.actor, "ops");
+      assertEquals(
+        JSON.stringify(event?.args).includes("operator-secret"),
+        false,
+        JSON.stringify(event?.args),
+      );
+    },
+  );
+});
+
+Deno.test("force_target is not exposed without execution enabled", async () => {
+  await withServer({ allowRun: false }, async (server) => {
+    const names = (await server.tools()).map((t) => t.name);
+    assertEquals(names.includes("force_target"), false);
+  });
+});
