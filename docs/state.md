@@ -128,7 +128,11 @@ machinery, so it must be stated rather than guessed from an actor's name. A typo
 in the flag fails the run; an unrecognised environment value reads as unstated.
 
 Read it from a body as `ctx.initiator`, see it on `zuke runs show`, and filter by
-it with `zuke runs list --initiator <name>`. The field is optional: a record
+it with `zuke runs list --initiator <name>`. That filter is applied after the
+store answers, so that a store which does not project the field cannot return an
+unfiltered list that looks filtered — which also means `--limit` is applied after
+it, not by the store. On a large store, narrow server-side first with `--since`
+or `--status`; those still go to the store. The field is optional: a record
 written before it existed has none, and `actor` is then the closest answer —
 which is the exact one for a run nobody ever resumed.
 
