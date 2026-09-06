@@ -65,6 +65,7 @@ below) attach to whichever launcher word you install them for.
 | `./zuke runs show <id> [--json]`                                        | Show one run's full per-target status and metadata.                                                         |
 | `./zuke runs prune [--keep <age>] [--keep-last <n>] [--dry-run]`        | Delete old terminal run records; never touches non-terminal runs.                                           |
 | `./zuke cancel <id> [--actor <name>]`                                   | Cancel a run and run its compensations ([details](./orchestration.md#cancellation--compensation--oncancel)). |
+| `./zuke force <id> <target> --outcome skipped\|succeeded [--reason <why>]` | Settle one target of a live run without running it ([details](./state.md#forcing-a-target--overrides)). |
 | `./zuke register [--actor <name>] [--json]`                             | Register this build in the build registry (`--json` prints the written descriptor).                         |
 | `./zuke doc <spec>`                                                     | Print a package's API docs (`deno doc <spec>`) from an isolated empty directory.                            |
 | `./zuke outdated [--exit-code]`                                         | Report the JSR packages the lock resolves behind their latest release (needs the network).                  |

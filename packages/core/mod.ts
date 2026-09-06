@@ -165,9 +165,16 @@ export {
 } from "./src/state/run_lease.ts";
 export { parseDuration } from "./src/duration.ts";
 export {
+  type ForceDenial,
+  type ForceOptions,
+  type ForceResult,
+  forceTarget,
+} from "./src/force.ts";
+export {
   type ActorKind,
   type EffectState,
   type EffectStatus,
+  type ForcedOutcome,
   initiatorOf,
   type RunEvent,
   type RunEventOutcome,
@@ -178,6 +185,7 @@ export {
   type RunStatus,
   type RunSummary,
   type SignalRecord,
+  type TargetOverride,
   type TargetRunState,
   type TargetRunStatus,
   type WaitDisposition,

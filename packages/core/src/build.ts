@@ -350,6 +350,33 @@ export class Build {
   mcpAuth(): McpAuthenticator | undefined {
     return undefined;
   }
+
+  /**
+   * Targets an operator may **not** force with `zuke force` — the steps whose
+   * body must actually run, whatever a live incident looks like.
+   *
+   * Forcing settles a target without executing it: `skipped` takes a step off
+   * the plan, `succeeded` records that a person did it by hand. That is the
+   * right tool for a step that cannot succeed and the wrong one for a step
+   * whose whole purpose is to be the thing that happened — a production apply,
+   * a signing step, a migration. Naming those here refuses the force rather
+   * than trusting an operator under pressure to remember which is which.
+   *
+   * Returns target **references**, not names, so renaming a target keeps the
+   * list correct instead of silently emptying it.
+   *
+   * ```ts
+   * class CD extends Build {
+   *   applyProduction = target().executes(() => applyTerraform());
+   *   override unforceable() {
+   *     return [this.applyProduction];
+   *   }
+   * }
+   * ```
+   */
+  unforceable(): TargetBuilder[] {
+    return [];
+  }
 }
 
 /**

@@ -136,6 +136,44 @@ or `--status`; those still go to the store. The field is optional: a record
 written before it existed has none, and `actor` is then the closest answer —
 which is the exact one for a run nobody ever resumed.
 
+### Forcing a target — `overrides`
+
+An operator sometimes has to take a step off a live run: one that cannot
+succeed, or one a person completed by hand.
+
+```sh
+zuke force <run-id> <target> --outcome skipped|succeeded [--reason "…"]
+```
+
+That records an entry under `overrides`, keyed by target name, carrying the
+outcome, who forced it, when, and why. The executor reads it when it reaches the
+target and settles it **without running the body** — ahead of the target's
+`onlyWhen` conditions and its cache, because forcing is a decision that outranks
+what the build would work out for itself. Dependents proceed either way.
+
+The two outcomes differ in what a later cancellation does. A forced `succeeded`
+asserts the target's effects exist, so it is compensated like any other
+succeeded target; a forced `skipped` never happened, so it is not — exactly like
+a target a condition skipped.
+
+It is refused, naming the rule, when the target has already settled (the record
+is the account of what happened, and rewriting a settled outcome would make it
+untrue), when the run is terminal, when the target is not in the run's graph, or
+when the build declared it off-limits:
+
+```ts
+class CD extends Build {
+  override unforceable() {
+    return [this.applyProduction]; // references, so a rename cannot empty this
+  }
+}
+```
+
+An override lands for any target the run has not started yet, which in practice
+means the next resume — that is the process which loads the record after the
+force was written. `zuke runs show` prints every override, and over
+[MCP](./mcp.md) the same operation is the `force_target` tool.
+
 A record also carries an append-only `events` array — the **audit trail** of
 [MCP](./mcp.md) tool calls against the run (time, tool, actor, outcome, redacted
 args). It is empty for a plain run and populated by the MCP server;

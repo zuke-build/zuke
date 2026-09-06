@@ -304,6 +304,14 @@ function findCycle(targets: Map<string, TargetBuilder>): string[] | null
   @return
       the cycle as a path of names (e.g. `["a", "b", "a"]`) or `null`.
 
+async function forceTarget(build: Build, options: ForceOptions): Promise<ForceResult>
+  Record an operator's forced outcome for one target of a run.
+
+  The write is a compare-and-swap, retried against a re-read record, so two
+  operators forcing different targets at once cannot lose each other's
+  decision. Every refusal is re-checked on each attempt, because the thing that
+  beat us to the record may be the target settling.
+
 function generateCi(pipeline: CiPipeline, provider: CiProvider): string
   Render `pipeline` as the YAML configuration for `provider`:
   `.github/workflows/*.yml`, `.gitlab-ci.yml`, `azure-pipelines.yml`, or
@@ -1102,6 +1110,28 @@ class Build
             return { actor: claims.sub, kind: "human", roles: claims.roles };
           },
         };
+      }
+    }
+    ```
+  unforceable(): TargetBuilder[]
+    Targets an operator may not force with `zuke force` — the steps whose
+    body must actually run, whatever a live incident looks like.
+
+    Forcing settles a target without executing it: `skipped` takes a step off
+    the plan, `succeeded` records that a person did it by hand. That is the
+    right tool for a step that cannot succeed and the wrong one for a step
+    whose whole purpose is to be the thing that happened — a production apply,
+    a signing step, a migration. Naming those here refuses the force rather
+    than trusting an operator under pressure to remember which is which.
+
+    Returns target references, not names, so renaming a target keeps the
+    list correct instead of silently emptying it.
+
+    ```ts
+    class CD extends Build {
+      applyProduction = target().executes(() => applyTerraform());
+      override unforceable() {
+        return [this.applyProduction];
       }
     }
     ```
@@ -3097,6 +3127,36 @@ interface ForEachSpec
   configure?: Configure<ForEachSettings>
     Optional fan-out settings (concurrency, per-item failure isolation).
 
+interface ForceOptions
+  Options for {@link forceTarget}.
+
+  runId: string
+    The run to act on.
+  target: string
+    The dotted target name to force.
+  outcome: ForcedOutcome
+    What the target should settle to without running.
+  reason?: string
+    Why — recorded on the override and shown by `zuke runs show`.
+  actor?: string
+    Who to attribute the decision to (`--actor`); resolved as for a run.
+  stateStore?: StateStore | false
+    The durable store the run lives in; resolved as for a run when absent.
+  readEnv?: (name: string) => string | undefined
+    Reads an environment variable (injectable for tests).
+
+interface ForceResult
+  The result of a {@link forceTarget} call.
+
+  ok: boolean
+    Whether the override was recorded.
+  denial?: ForceDenial
+    Why it was refused, when it was.
+  message: string
+    A message naming the target and the rule, suitable for an operator.
+  override?: TargetOverride
+    The override as recorded, when it was.
+
 interface GlobOptions
   Options for {@link glob}.
 
@@ -3718,6 +3778,13 @@ interface RunRecord
     Absent on a record written before this field existed; such a record's
     {@link RunRecord.actor} is the closest answer available, and is exactly the
     right one on a run that was never resumed.
+  overrides?: Record<string, TargetOverride>
+    Operator-forced target outcomes, keyed by dotted target name (see
+    {@link TargetOverride}). Absent until something is forced.
+
+    Read when the executor reaches the target, so an override lands for any
+    target the run has not started yet — in practice on the next resume, since
+    that is the process that loads the record after the force was written.
   createdAt: string
     ISO-8601 timestamp when the run was created.
   updatedAt: string
@@ -4032,6 +4099,25 @@ interface TargetOutcomeView
     aggregating target can read a dependency's test counts, not only its
     verdict. Durable: present after a resume too.
 
+interface TargetOverride
+  An operator's decision to settle a target without running it — recorded on
+  the run so the executor honours it and the trail says who decided.
+
+  Two shapes of intervention, both of which a build cannot express itself:
+  `skipped` takes a step off the plan that cannot succeed, and `succeeded`
+  marks one that a person completed by hand. Dependents proceed either way; the
+  difference is what a later cancellation compensates, since only the second
+  asserts that the target's effects exist.
+
+  outcome: ForcedOutcome
+    What the target settles to when the executor reaches it.
+  actor: string
+    Who forced it (a resolved actor).
+  at: string
+    ISO-8601 time the override was recorded.
+  reason?: string
+    Why, when the operator gave a reason.
+
 interface TargetReport
   One row of the end-of-build summary.
 
@@ -4278,6 +4364,13 @@ type ForEachFactory<Item> = (item: Item, index: number) => Record<string, Target
   The returned record's keys are stage names and its values are targets; each
   stage implicitly depends on the one declared before it, so an item's stages
   run in insertion order.
+
+type ForceDenial = "unknown_run" | "run_terminal" | "unknown_target" | "already_settled" | "unforceable" | "has_effects" | "foreign_run" | "write_failed"
+  Why a force was refused. Each maps to a message naming the target, so an
+  operator learns which rule stopped them rather than that "it failed".
+
+type ForcedOutcome = "skipped" | "succeeded"
+  What an operator may force a target to, without running it.
 
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue; }
   A JSON-serialisable value — the only thing that may be persisted in a

@@ -395,6 +395,12 @@ function expiredWait(
   nowMs: number,
 ): { name: string; waitingFor: WaitState } | null {
   for (const [name, state] of Object.entries(record.targets)) {
+    // An operator's forced outcome outranks the deadline, as it outranks the
+    // target's conditions and its cache. Timing out a gate someone has just
+    // forced would run the `onTimeout` disposition — a cancel, or a rollback
+    // target — against the decision they had already made, and the force would
+    // never take effect at all.
+    if (record.overrides?.[name] !== undefined) continue;
     const deadline = state.waitingFor?.deadline;
     if (
       state.status === "waiting" && state.waitingFor !== undefined &&

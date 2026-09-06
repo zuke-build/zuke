@@ -10,6 +10,7 @@ import { type Build, discoverGroups, discoverTargets } from "./build.ts";
 import { discoverCiFiles, syncCiFiles } from "./ci.ts";
 import { isEntryModule } from "./entry.ts";
 import { messageOf } from "./internal.ts";
+import { forceTarget } from "./force.ts";
 import { isCI } from "./host.ts";
 import { GraphError, validateGraph } from "./graph.ts";
 import { InsecureBackendUrlError } from "./http.ts";
@@ -40,6 +41,7 @@ import {
   COMPLETIONS_COMMAND,
   DEFAULT_TARGET,
   DOC_COMMAND,
+  FORCE_COMMAND,
   GENERATE_CI_COMMAND,
   GRAPH_COMMAND,
   MCP_COMMAND,
@@ -56,6 +58,7 @@ import { parseDuration } from "./duration.ts";
 import { registerCommand } from "./registry/register.ts";
 import {
   ACTOR_KINDS,
+  FORCED_OUTCOMES,
   isRunStatus,
   RUN_STATUS_NAMES,
   type RunQuery,
@@ -189,8 +192,20 @@ export interface ParsedArgs {
   keepLast?: string;
   /** The `cancel` command was requested (cancel a run and run its compensations). */
   cancel: boolean;
+  /** True when the `force` command was requested. */
+  force: boolean;
   /** The run id to cancel (the positional after `cancel`). */
   cancelRunId?: string;
+  /** `force`: the run to act on (first positional). */
+  forceRunId?: string;
+  /** `force`: the target to settle (second positional). */
+  forceTarget?: string;
+  /** `force`: a third positional, which the command does not take. */
+  forceExtra?: string;
+  /** `force`: what the target settles to (`--outcome`). */
+  outcome?: string;
+  /** `force`: why it was forced (`--reason`). */
+  reason?: string;
   /** The `register` command was requested (record this build in the registry). */
   register: boolean;
   /** The `doc` command was requested (print a package's API docs, isolated). */
@@ -334,6 +349,8 @@ const VALUE_FLAGS: ReadonlyMap<string, ValueFlag> = new Map([
   ["actor", { set: (p, v) => (p.actor = v) }],
   ["actor-kind", { set: (p, v) => (p.actorKind = v) }],
   ["initiator", { set: (p, v) => (p.initiator = v) }],
+  ["outcome", { set: (p, v) => (p.outcome = v) }],
+  ["reason", { set: (p, v) => (p.reason = v), keepEmpty: true }],
   ["signal", { set: (p, v) => (p.signal = v) }],
   ["data", { set: (p, v) => (p.data = v), keepEmpty: true }],
   ["status", { set: (p, v) => (p.runStatus = v) }],
@@ -393,6 +410,7 @@ export function parseArgs(
     resumeDegraded: false,
     runs: false,
     cancel: false,
+    force: false,
     register: false,
     doc: false,
     outdated: false,
@@ -522,13 +540,23 @@ export function parseArgs(
     } else if (parsed.cancel && parsed.cancelRunId === undefined) {
       // `cancel` takes the run id as its positional.
       parsed.cancelRunId = arg;
+    } else if (parsed.force && parsed.forceRunId === undefined) {
+      // `force` takes the run id, then the target.
+      parsed.forceRunId = arg;
+    } else if (parsed.force && parsed.forceTarget === undefined) {
+      parsed.forceTarget = arg;
+    } else if (parsed.force && parsed.forceExtra === undefined) {
+      // Kept rather than ignored, so a third positional is an error naming
+      // itself instead of silently changing what the command does.
+      parsed.forceExtra = arg;
     } else if (parsed.doc && parsed.docSpec === undefined) {
       // `doc` takes the spec to document as its positional.
       parsed.docSpec = arg;
     } else if (
       parsed.target === undefined && !parsed.graph && !parsed.generateCi &&
       !parsed.completions && !parsed.mcp && !parsed.resume && !parsed.runs &&
-      !parsed.cancel && !parsed.register && !parsed.doc && !parsed.outdated
+      !parsed.cancel && !parsed.force && !parsed.register && !parsed.doc &&
+      !parsed.outdated
     ) {
       if (arg === GRAPH_COMMAND) parsed.graph = true;
       else if (arg === GENERATE_CI_COMMAND) parsed.generateCi = true;
@@ -537,6 +565,7 @@ export function parseArgs(
       else if (arg === RESUME_COMMAND) parsed.resume = true;
       else if (arg === RUNS_COMMAND) parsed.runs = true;
       else if (arg === CANCEL_COMMAND) parsed.cancel = true;
+      else if (arg === FORCE_COMMAND) parsed.force = true;
       else if (arg === REGISTER_COMMAND) parsed.register = true;
       else if (arg === DOC_COMMAND) parsed.doc = true;
       else if (arg === OUTDATED_COMMAND) parsed.outdated = true;
@@ -567,6 +596,7 @@ Usage:
   deno run -A zuke.ts runs show <run-id> [--json]
   deno run -A zuke.ts runs prune [--keep <age>] [--keep-last <n>] [--dry-run]
   deno run -A zuke.ts cancel <run-id> [--actor <name>]
+  deno run -A zuke.ts force <run-id> <target> --outcome skipped|succeeded [--reason <why>]
   deno run -A zuke.ts register [--actor <name>] [--json]
   deno run -A zuke.ts doc <spec>
   deno run -A zuke.ts outdated [--exit-code]
@@ -696,6 +726,11 @@ Options:
   --initiator <n>   With runs list, keep only runs <n> started. Matches the
                     recorded initiator, falling back to the actor on a run
                     recorded before initiators existed.
+  --outcome <o>     With force, what the target settles to without running:
+                    skipped (take the step off the plan) or succeeded (a person
+                    did it by hand — a later cancel compensates it).
+  --reason <why>    With force, why — recorded on the run beside who forced it,
+                    and shown by runs show.
   --limit <n>       With runs list, return at most this many runs (the newest).
   --counts          With runs list, print aggregate counts (total + per status).
   --keep <age>      With runs prune, keep runs newer than this age (e.g. 90d);
@@ -1025,6 +1060,57 @@ async function runCancel(build: Build, parsed: ParsedArgs): Promise<number> {
   }
 }
 
+/**
+ * Run the `force` command: settle one target of a live run without running it.
+ *
+ * Validation lives in {@link forceTarget}, which re-checks it against a
+ * freshly-read record on every compare-and-swap attempt; this layer only turns
+ * the flags into options and the result into an exit code.
+ */
+async function runForce(build: Build, parsed: ParsedArgs): Promise<number> {
+  if (parsed.forceExtra !== undefined) {
+    console.error(
+      `force: unexpected argument "${parsed.forceExtra}". ` +
+        `Usage: zuke force <run-id> <target> --outcome skipped|succeeded ` +
+        `[--reason <why>] [--actor <name>]`,
+    );
+    return 1;
+  }
+  if (parsed.forceRunId === undefined || parsed.forceTarget === undefined) {
+    console.error(
+      "Usage: zuke force <run-id> <target> --outcome skipped|succeeded " +
+        "[--reason <why>] [--actor <name>]",
+    );
+    return 1;
+  }
+  const outcome = FORCED_OUTCOMES.find((o) => o === parsed.outcome);
+  if (outcome === undefined) {
+    console.error(
+      `force: --outcome must be one of: ${FORCED_OUTCOMES.join(", ")}` +
+        (parsed.outcome === undefined ? "." : ` (got "${parsed.outcome}").`),
+    );
+    return 1;
+  }
+  try {
+    const result = await forceTarget(build, {
+      runId: parsed.forceRunId,
+      target: parsed.forceTarget,
+      outcome,
+      ...(parsed.reason === undefined ? {} : { reason: parsed.reason }),
+      actor: parsed.actor,
+    });
+    if (!result.ok) {
+      console.error(result.message);
+      return 1;
+    }
+    console.log(result.message);
+    return 0;
+  } catch (error) {
+    console.error(messageOf(error));
+    return 1;
+  }
+}
+
 /** Run the `register` command: record this build in the build registry. */
 async function runRegister(build: Build, parsed: ParsedArgs): Promise<number> {
   try {
@@ -1313,6 +1399,9 @@ async function runCommand(
   }
   if (parsed.cancel) {
     return await runCancel(build, parsed);
+  }
+  if (parsed.force) {
+    return await runForce(build, parsed);
   }
   if (parsed.register) {
     return await runRegister(build, parsed);

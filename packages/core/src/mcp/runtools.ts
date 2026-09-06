@@ -20,11 +20,13 @@ import { AlreadyResumedError, resumeCheck, resumeRun } from "../resume.ts";
 import { LockConflictError } from "../state/lock.ts";
 import type { StateStore } from "../state/store.ts";
 import {
+  FORCED_OUTCOMES,
   isRunStatus,
   RUN_STATUS_NAMES,
   type RunQuery,
   toJsonValue,
 } from "../state/types.ts";
+import { forceTarget } from "../force.ts";
 import type { JsonValue } from "../target.ts";
 import { AUDIT_RUN_ID } from "./audit.ts";
 import type { McpTool } from "./protocol.ts";
@@ -165,6 +167,36 @@ const MUTATING_TOOLS: readonly McpTool[] = [
     },
     annotations: { title: "Cancel run", destructiveHint: true },
   },
+  {
+    name: "force_target",
+    description:
+      "Settle one target of a run without running it: skipped (take the step " +
+      "off the plan) or succeeded (a person did it by hand). Refused for a " +
+      "target that already settled, or one the build declares unforceable.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        runId: { type: "string", description: "The run to act on." },
+        target: { type: "string", description: "The dotted target name." },
+        outcome: {
+          type: "string",
+          enum: ["skipped", "succeeded"],
+          description: "What the target settles to without running.",
+        },
+        reason: {
+          type: "string",
+          description: "Why — recorded on the run beside who forced it.",
+        },
+        operatorToken: {
+          type: "string",
+          description:
+            "Operator token, required if the run's target is protected.",
+        },
+      },
+      required: ["runId", "target", "outcome"],
+    },
+    annotations: { title: "Force target", destructiveHint: true },
+  },
 ];
 
 /**
@@ -184,7 +216,7 @@ export const RUN_STATE_TOOL_NAMES: readonly string[] = [
 /** Whether `name` is one of the mutating run-state tools (audited, gated). */
 export function isMutatingRunTool(name: string): boolean {
   return name === "signal_run" || name === "resume_check" ||
-    name === "cancel_run";
+    name === "cancel_run" || name === "force_target";
 }
 
 /** Read an optional string argument, or `undefined` when absent/not a string. */
@@ -270,6 +302,7 @@ export async function callRunStateTool(
   if (name === "signal_run") return await signalRun(deps, args);
   if (name === "resume_check") return await resumeCheckTool(deps, args);
   if (name === "cancel_run") return await cancelRunTool(deps, args);
+  if (name === "force_target") return await forceTargetTool(deps, args);
   return null;
 }
 
@@ -412,6 +445,51 @@ async function resumeCheckTool(
     }
   }
   return jsonResult({ ok: failed === 0, checked, failed });
+}
+
+/** `force_target`: settle one target without running it, exactly like `zuke force`. */
+async function forceTargetTool(
+  deps: RunToolDeps,
+  args: Record<string, unknown>,
+): Promise<RunToolResult> {
+  const runId = stringArg(args, "runId");
+  if (runId === undefined) {
+    return jsonResult({ error: "missing_argument", argument: "runId" }, true);
+  }
+  const target = stringArg(args, "target");
+  if (target === undefined) {
+    return jsonResult({ error: "missing_argument", argument: "target" }, true);
+  }
+  const outcome = FORCED_OUTCOMES.find((o) => o === stringArg(args, "outcome"));
+  if (outcome === undefined) {
+    return jsonResult(
+      { error: "invalid_outcome", allowed: FORCED_OUTCOMES },
+      true,
+    );
+  }
+  const denied = await runDenial(deps, args, runId);
+  if (denied !== null) return denied;
+  const reason = stringArg(args, "reason");
+  try {
+    const result = await forceTarget(deps.build, {
+      runId,
+      target,
+      outcome,
+      ...(reason === undefined ? {} : { reason }),
+      stateStore: deps.store,
+      actor: deps.actor,
+      readEnv: deps.readEnv,
+    });
+    return jsonResult({
+      ok: result.ok,
+      runId,
+      target,
+      ...(result.denial === undefined ? {} : { error: result.denial }),
+      message: result.message,
+    }, !result.ok);
+  } catch (error) {
+    return structuredError(error, runId);
+  }
 }
 
 /** `cancel_run`: cancel a run and run its compensations, exactly like `zuke cancel`. */
