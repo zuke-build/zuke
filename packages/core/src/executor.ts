@@ -192,6 +192,12 @@ export interface ExecuteOptions {
    */
   actor?: string;
   /**
+   * Whether a person or a machine asked for the run (CLI `--actor-kind`). Falls
+   * back to `ZUKE_ACTOR_KIND`, else `"human"`. Recorded on the run's immutable
+   * initiator, never inferred from the actor's name.
+   */
+  actorKind?: string;
+  /**
    * Continue a suspended run instead of starting a fresh one. Set by
    * {@link "./resume.ts".resumeRun} after it has transitioned the run to
    * `running`; carries the existing record, its store version, and the targets
@@ -382,6 +388,7 @@ export async function execute(
     stateStore: options.stateStore,
     state: options.state,
     actor: options.actor,
+    actorKind: options.actorKind,
     resume: options.resume,
   });
   if (!opened.ok) {

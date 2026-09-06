@@ -223,6 +223,7 @@ function targetContextFor(
     : inMemoryStateHandle();
   return {
     runId: env.runId,
+    ...(env.initiator === undefined ? {} : { initiator: env.initiator }),
     target: name,
     signal: env.signal,
     state: ownState,

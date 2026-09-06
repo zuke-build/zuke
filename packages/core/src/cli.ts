@@ -54,7 +54,12 @@ import { resumeCheck, resumeRun } from "./resume.ts";
 import { runsCommand } from "./runs.ts";
 import { parseDuration } from "./duration.ts";
 import { registerCommand } from "./registry/register.ts";
-import { isRunStatus, RUN_STATUS_NAMES, type RunQuery } from "./state/types.ts";
+import {
+  ACTOR_KINDS,
+  isRunStatus,
+  RUN_STATUS_NAMES,
+  type RunQuery,
+} from "./state/types.ts";
 import {
   installCompletions,
   type InstallOptions,
@@ -146,6 +151,10 @@ export interface ParsedArgs {
   state: boolean;
   /** Attribute the run to this actor in its state record (`--actor <name>`). */
   actor?: string;
+  /** Whether a person or a machine asked for the run (`--actor-kind <kind>`). */
+  actorKind?: string;
+  /** With `runs list`, keep only runs this actor started (`--initiator <name>`). */
+  initiator?: string;
   /** The `resume` command was requested (continue a suspended run). */
   resume: boolean;
   /** The run id to resume (the positional after `resume`). */
@@ -323,6 +332,8 @@ interface ValueFlag {
  */
 const VALUE_FLAGS: ReadonlyMap<string, ValueFlag> = new Map([
   ["actor", { set: (p, v) => (p.actor = v) }],
+  ["actor-kind", { set: (p, v) => (p.actorKind = v) }],
+  ["initiator", { set: (p, v) => (p.initiator = v) }],
   ["signal", { set: (p, v) => (p.signal = v) }],
   ["data", { set: (p, v) => (p.data = v), keepEmpty: true }],
   ["status", { set: (p, v) => (p.runStatus = v) }],
@@ -552,7 +563,7 @@ Usage:
   deno run -A zuke.ts mcp [--allow-run] [--registry] [--http <host:port>]
   deno run -A zuke.ts resume <run-id> [--signal <name>] [--data <json>]
   deno run -A zuke.ts resume --check [<run-id>]
-  deno run -A zuke.ts runs list [--status <s>] [--target <t>] [--since <iso>] [--limit <n>] [--counts] [--json]
+  deno run -A zuke.ts runs list [--status <s>] [--target <t>] [--since <iso>] [--initiator <n>] [--limit <n>] [--counts] [--json]
   deno run -A zuke.ts runs show <run-id> [--json]
   deno run -A zuke.ts runs prune [--keep <age>] [--keep-last <n>] [--dry-run]
   deno run -A zuke.ts cancel <run-id> [--actor <name>]
@@ -579,7 +590,12 @@ Options:
                     already configured via ZUKE_STATE_URL/ZUKE_STATE_DIR or the
                     build's stateStore(). See docs/state.md.
   --actor <name>    Attribute the run to <name> in its state record (else
-                    ZUKE_ACTOR, the CI actor, or "anonymous").
+                    ZUKE_ACTOR, the CI actor, or "anonymous"). Every resume
+                    rewrites it with whoever picked the run up.
+  --actor-kind <k>  Whether a person or a machine asked: human (default) or
+                    service (else ZUKE_ACTOR_KIND). Recorded on the run's
+                    initiator, which — unlike --actor — is stamped once at
+                    creation and never rewritten.
   --list, -l        List all targets with descriptions and dependencies.
   --json            With --list, print the build surface (commands, flags,
                     targets, parameters) as JSON for tools and agents.
@@ -677,6 +693,9 @@ Options:
                     target.
   --since <iso>     With runs list, keep only runs created at or after this
                     ISO-8601 timestamp.
+  --initiator <n>   With runs list, keep only runs <n> started. Matches the
+                    recorded initiator, falling back to the actor on a run
+                    recorded before initiators existed.
   --limit <n>       With runs list, return at most this many runs (the newest).
   --counts          With runs list, print aggregate counts (total + per status).
   --keep <age>      With runs prune, keep runs newer than this age (e.g. 90d);
@@ -1174,6 +1193,7 @@ async function runRuns(build: Build, parsed: ParsedArgs): Promise<number> {
     json: parsed.json,
     counts: parsed.runCounts,
     query,
+    ...(parsed.initiator === undefined ? {} : { initiator: parsed.initiator }),
     keepMs,
     keepLast,
     dryRun: parsed.dryRun,
@@ -1327,6 +1347,21 @@ async function runCommand(
     return 1;
   }
 
+  // A typo in an explicit flag is an error, not a silent default. The
+  // environment fallback stays lenient — an unrecognised ZUKE_ACTOR_KIND reads
+  // as unstated — because that value can arrive from anywhere, while this one
+  // was typed by someone who meant something by it.
+  if (
+    parsed.actorKind !== undefined &&
+    !ACTOR_KINDS.some((kind) => kind === parsed.actorKind)
+  ) {
+    console.error(
+      `--actor-kind must be one of: ${ACTOR_KINDS.join(", ")} ` +
+        `(got "${parsed.actorKind}").`,
+    );
+    return 1;
+  }
+
   // Keep declared CI config in sync as part of running the build: write
   // changes locally, but only verify on CI so an ephemeral checkout is never
   // dirtied — a drifted file fails the build there instead.
@@ -1358,6 +1393,7 @@ async function runCommand(
       dryRun: parsed.dryRun,
       state: parsed.state,
       actor: parsed.actor,
+      actorKind: parsed.actorKind,
       plugins: options.plugins,
       renderer: options.renderer,
       signal: cleanupSignals ? controller.signal : options.signal,

@@ -114,7 +114,8 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   lifecycle instead of `.executes(...)`; the executor starts it, waits until
   ready, then stops it in a `finally` so it never leaks. See the cheatsheet.
 - **Target context & cancellation:** a body may take a context —
-  `.executes((ctx) => …)` — with `ctx.runId`, `ctx.target`, `ctx.signal` (an
+  `.executes((ctx) => …)` — with `ctx.runId`, `ctx.initiator` (who asked for the
+  run, unchanged by a resume), `ctx.target`, `ctx.signal` (an
   `AbortSignal` fired when the run is cancelled; a plain `` $`…` `` in the body
   is `SIGTERM`'d automatically), `ctx.state`, `ctx.dryRun`, and
   `ctx.reportSummary({ … })` (`key: value` notes on the target's own row of

@@ -87,6 +87,31 @@ export interface RunEvent {
   detail?: string;
 }
 
+/** Whether a person or a machine asked for a run (see {@link RunInitiator}). */
+export type ActorKind = "human" | "service";
+
+/** The {@link ActorKind} values, for validating an untrusted string. */
+export const ACTOR_KINDS: readonly ActorKind[] = ["human", "service"];
+
+/**
+ * Who asked for a run, stamped once when it is created and never rewritten.
+ *
+ * Distinct from {@link RunRecord.actor}, which every resume overwrites with
+ * whoever picked the run up — so on a run that suspended and was resumed by a
+ * sweep, `actor` is the sweep's service account and this is still the engineer
+ * who started it. That is the subject a run-scoped authorization rule means by
+ * "whoever started this run", and the difference a notification needs to tell a
+ * person's deploy from a scheduler's.
+ */
+export interface RunInitiator {
+  /** Who asked for the run, resolved once at creation. */
+  actor: string;
+  /** Whether a person or a machine asked. Stated, never inferred from the actor. */
+  kind: ActorKind;
+  /** ISO-8601 time the run was created — when this attribution was fixed. */
+  at: string;
+}
+
 /** What a timed-out wait does: fail, cancel the run, or run a compensation target. */
 export type WaitDisposition = "fail" | "cancel-run" | { target: string };
 
@@ -192,8 +217,21 @@ export interface RunRecord {
   rootTarget: string;
   /** The run's lifecycle status. */
   status: RunStatus;
-  /** Who started the run (resolved from `--actor`, `ZUKE_ACTOR`, or CI env). */
+  /**
+   * The run's **last writer** (resolved from `--actor`, `ZUKE_ACTOR`, or CI
+   * env). Every resume overwrites it with whoever picked the run up, so it
+   * answers "who touched this most recently", not "whose run is this" — see
+   * {@link RunRecord.initiator} for that.
+   */
   actor: string;
+  /**
+   * Who asked for the run, stamped once at creation and immutable thereafter.
+   *
+   * Absent on a record written before this field existed; such a record's
+   * {@link RunRecord.actor} is the closest answer available, and is exactly the
+   * right one on a run that was never resumed.
+   */
+  initiator?: RunInitiator;
   /** ISO-8601 timestamp when the run was created. */
   createdAt: string;
   /** ISO-8601 timestamp of the last write. */
@@ -262,8 +300,14 @@ export interface RunSummary {
   rootTarget: string;
   /** The run's lifecycle status. */
   status: RunStatus;
-  /** Who started the run. */
+  /** The run's last writer (see {@link RunRecord.actor}). */
   actor: string;
+  /**
+   * Who asked for the run (see {@link RunRecord.initiator}). Absent on a record
+   * written before the field existed, and from a store that does not project
+   * it — {@link RunSummary.actor} is the fallback in both cases.
+   */
+  initiator?: RunInitiator;
   /** ISO-8601 creation timestamp. */
   createdAt: string;
   /** ISO-8601 timestamp of the last write. */
@@ -292,6 +336,7 @@ export function toSummary(record: RunRecord): RunSummary {
     build: record.build,
     rootTarget: record.rootTarget,
     status: record.status,
+    ...(record.initiator === undefined ? {} : { initiator: record.initiator }),
     actor: record.actor,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
@@ -501,6 +546,26 @@ function parseRunEvent(value: unknown): RunEvent {
   return event;
 }
 
+/**
+ * Validate and narrow an optional {@link RunInitiator}, or `undefined` when the
+ * record carries none (every record written before the field existed).
+ *
+ * A present but malformed initiator throws rather than being dropped: silently
+ * reading it as "no initiator" would make a record fall back to `actor`, which
+ * a resume may already have rewritten — quietly answering a question about who
+ * started a run with the name of whoever last resumed it.
+ */
+function parseInitiator(value: unknown): RunInitiator | undefined {
+  if (value === undefined) return undefined;
+  const object = asObject(value);
+  if (object === null) throw new Error("state: run initiator is not an object");
+  const kind = ACTOR_KINDS.find((k) => k === object.kind);
+  if (kind === undefined) {
+    throw new Error(`state: unknown initiator kind "${object.kind}"`);
+  }
+  return { actor: str(object, "actor"), kind, at: str(object, "at") };
+}
+
 /** Validate and narrow a {@link SignalRecord}. */
 function parseSignalRecord(value: unknown): SignalRecord {
   const object = asObject(value);
@@ -642,6 +707,8 @@ export function parseRunRecord(text: string): RunRecord {
   if (buildId !== undefined) record.buildId = buildId;
   const deadlineAt = optionalStr(object, "deadlineAt");
   if (deadlineAt !== undefined) record.deadlineAt = deadlineAt;
+  const initiator = parseInitiator(object.initiator);
+  if (initiator !== undefined) record.initiator = initiator;
   const intended = optionalStr(object, "intendedTerminal");
   if (intended !== undefined) {
     const found = RUN_STATUSES.find((s) => s === intended);
@@ -665,7 +732,7 @@ export function parseRunSummary(value: unknown): RunSummary {
   if (runStatus === undefined) {
     throw new Error(`state: unknown run status "${status}"`);
   }
-  return {
+  const summary: RunSummary = {
     id: str(object, "id"),
     build: str(object, "build"),
     rootTarget: str(object, "rootTarget"),
@@ -674,4 +741,19 @@ export function parseRunSummary(value: unknown): RunSummary {
     createdAt: str(object, "createdAt"),
     updatedAt: str(object, "updatedAt"),
   };
+  const initiator = parseInitiator(object.initiator);
+  if (initiator !== undefined) summary.initiator = initiator;
+  return summary;
+}
+
+/**
+ * Who a run is attributed to for a reader that wants its *owner* rather than
+ * its last writer: the recorded initiator, else the actor.
+ *
+ * The fallback is not a guess — on a record written before the initiator
+ * existed, and on any run that was never resumed, `actor` still holds exactly
+ * the value the initiator would have been stamped with.
+ */
+export function initiatorOf(run: RunRecord | RunSummary): string {
+  return run.initiator?.actor ?? run.actor;
 }

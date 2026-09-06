@@ -55,7 +55,12 @@ Each run is stored as one JSON document:
   "buildId": "acme/api", // optional; which build instance owns it (see below)
   "rootTarget": "deploy", // the requested target
   "status": "succeeded", // running | suspended | cancelling | succeeded | failed | cancelled
-  "actor": "alice", // who ran it (see below)
+  "actor": "alice", // the run's LAST writer (see below)
+  "initiator": { // optional; who ASKED for the run, stamped once at creation
+    "actor": "alice",
+    "kind": "human", // human | service
+    "at": "2026-07-17T…Z"
+  },
   "createdAt": "2026-07-17T…Z",
   "updatedAt": "2026-07-17T…Z",
   "graph": [ // the shape it planned, in declaration order
@@ -105,6 +110,27 @@ path compares it and touches a run only when the two origins agree; an absent on
 on either side abstains rather than refusing, so records written before the field
 existed stay recoverable. See
 [Whose run is it?](./orchestration.md#whose-run-is-it).
+
+### `actor` and `initiator` — two different questions
+
+`actor` is the run's **last writer**. It resolves from `--actor`, then
+`ZUKE_ACTOR`, then the CI actor, else `"anonymous"` — and **every resume
+overwrites it** with whoever picked the run up. On a deploy that parked at a gate
+and was resumed by a sweep, `actor` is the sweep's service account.
+
+`initiator` is who **asked for** the run. It is stamped once when the run is
+created and never written again, so it still names the engineer who started that
+deploy. Its `kind` comes from `--actor-kind` (`human` or `service`), else
+`ZUKE_ACTOR_KIND` — which the [MCP](./mcp.md) registry exports into a spawned
+child, so a run launched by an authenticated caller records that caller. The
+default is `human`: a service claim is what lets a policy treat a run as unowned
+machinery, so it must be stated rather than guessed from an actor's name. A typo
+in the flag fails the run; an unrecognised environment value reads as unstated.
+
+Read it from a body as `ctx.initiator`, see it on `zuke runs show`, and filter by
+it with `zuke runs list --initiator <name>`. The field is optional: a record
+written before it existed has none, and `actor` is then the closest answer —
+which is the exact one for a run nobody ever resumed.
 
 A record also carries an append-only `events` array — the **audit trail** of
 [MCP](./mcp.md) tool calls against the run (time, tool, actor, outcome, redacted

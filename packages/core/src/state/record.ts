@@ -16,7 +16,13 @@
 import type { TargetStatus } from "../build.ts";
 import type { AnyParameter } from "../params.ts";
 import type { TargetBuilder } from "../target.ts";
-import type { RunRecord, TargetRunState, TargetRunStatus } from "./types.ts";
+import {
+  ACTOR_KINDS,
+  type ActorKind,
+  type RunRecord,
+  type TargetRunState,
+  type TargetRunStatus,
+} from "./types.ts";
 
 /** Map an executor {@link TargetStatus} onto a {@link TargetRunStatus}. */
 export function recordStatusOf(status: TargetStatus): TargetRunStatus {
@@ -58,6 +64,25 @@ export function resolveActor(
 }
 
 /**
+ * Resolve whether a person or a machine asked for a run, by the same precedence
+ * as {@link resolveActor}: the explicit `--actor-kind`, then `ZUKE_ACTOR_KIND`
+ * (which the MCP registry runner exports for an authenticated caller), else
+ * `"human"`.
+ *
+ * The default is the conservative one: a service claim is what lets a policy
+ * treat a run as unowned machinery, so it must be stated rather than guessed
+ * from an actor that happens to look like a bot. An unrecognised value is
+ * treated as unstated for the same reason.
+ */
+export function resolveActorKind(
+  explicit: string | undefined,
+  readEnv: (name: string) => string | undefined,
+): ActorKind {
+  const candidate = explicit ?? readEnv("ZUKE_ACTOR_KIND");
+  return ACTOR_KINDS.find((kind) => kind === candidate) ?? "human";
+}
+
+/**
  * A URL for the current CI run, when derivable — used as a lock holder's
  * `runUrl` so a conflict can link to who holds it. GitHub Actions only for now
  * (`GITHUB_SERVER_URL`/`GITHUB_REPOSITORY`/`GITHUB_RUN_ID`); `undefined`
@@ -88,8 +113,10 @@ export interface RunRecordInput {
   buildId?: string;
   /** The dotted name of the requested (root) target. */
   rootTarget: string;
-  /** The resolved run actor. */
+  /** The resolved run actor — the record's first writer, and its initiator. */
   actor: string;
+  /** Whether a person or a machine asked for the run (see {@link resolveActorKind}). */
+  actorKind: ActorKind;
   /** ISO-8601 timestamp used for `createdAt` and the initial `updatedAt`. */
   now: string;
   /** The planned targets, in execution/declaration order. */
@@ -139,6 +166,13 @@ export function buildRunRecord(input: RunRecordInput): RunRecord {
     // the same trap the wait deadlines avoid by being recorded once.
     ...(input.deadlineAt === undefined ? {} : { deadlineAt: input.deadlineAt }),
     actor: input.actor,
+    // Stamped once, here, and never written again: this is the whole point of
+    // the field, since `actor` above is rewritten by every later resume.
+    initiator: {
+      actor: input.actor,
+      kind: input.actorKind,
+      at: input.now,
+    },
     createdAt: input.now,
     updatedAt: input.now,
     graph,

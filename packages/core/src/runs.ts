@@ -14,13 +14,14 @@ import type { Build } from "./build.ts";
 import { defaultReadEnv } from "./internal.ts";
 import type { StateStore } from "./state/store.ts";
 import { resolveRunStore } from "./run_store.ts";
-import type {
-  RunQuery,
-  RunRecord,
-  RunStatus,
-  RunSummary,
-  TargetRunState,
-  TargetRunStatus,
+import {
+  initiatorOf,
+  type RunQuery,
+  type RunRecord,
+  type RunStatus,
+  type RunSummary,
+  type TargetRunState,
+  type TargetRunStatus,
 } from "./state/types.ts";
 import { formatDuration, table } from "./render.ts";
 import { formatSummary } from "./report.ts";
@@ -37,6 +38,15 @@ export interface RunsOptions {
   counts?: boolean;
   /** Filters for `list` — status, a target in the run, a creation time, a limit. */
   query?: RunQuery;
+  /**
+   * With `list`, keep only runs this actor started (`--initiator <name>`).
+   *
+   * Applied here rather than in {@link RunQuery} deliberately: the query goes to
+   * the store, and a store that does not know the field would answer an
+   * unfiltered list that reads exactly like a filtered one. Filtering after the
+   * list costs a little more traffic and cannot silently return the wrong runs.
+   */
+  initiator?: string;
   /**
    * `prune`: keep runs created within this many milliseconds of now; older
    * terminal runs become eligible. Omitted means no age rule.
@@ -129,7 +139,13 @@ export async function runsCommand(
 
   const action = options.action ?? "list";
   if (action === "list") {
-    const summaries = await store.listRuns(options.query ?? {});
+    const listed = await store.listRuns(options.query ?? {});
+    // Matched against the initiator *or* the actor it falls back to, so a run
+    // recorded before the field existed is still findable by the person who
+    // started it.
+    const summaries = options.initiator === undefined
+      ? listed
+      : listed.filter((s) => initiatorOf(s) === options.initiator);
     if (options.counts) {
       const counts = aggregateRunCounts(summaries);
       console.log(
@@ -320,6 +336,11 @@ export function formatRunDetail(record: RunRecord): string {
     `  target:   ${record.rootTarget}`,
     `  status:   ${record.status}`,
     `  actor:    ${record.actor}`,
+    ...(record.initiator === undefined ? [] : [
+      // Only worth a line when it says something `actor` does not: on a run
+      // nobody has resumed the two are the same string.
+      `  started:  ${record.initiator.actor} (${record.initiator.kind})`,
+    ]),
     `  created:  ${record.createdAt}`,
     `  updated:  ${record.updatedAt}`,
   ];

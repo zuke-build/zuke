@@ -306,6 +306,9 @@ async function transitionToRunning(
     }
     const next = structuredClone(record);
     next.status = "running";
+    // The resumer becomes the record's last writer. `initiator` is deliberately
+    // *not* touched: it is the answer to who asked for this run, and a sweep
+    // picking the run up is not that. The clone carries it through untouched.
     next.actor = resumerActor;
     const at = now();
     // Give back the time the run spent parked. A run's deadline is a budget for

@@ -23,6 +23,7 @@ class Deploy extends Build {
 | Field        | Type                | What it is                                                            |
 | ------------ | ------------------- | -------------------------------------------------------------------- |
 | `runId`      | `string`            | Unique id of this run, **stable for every target** in the run.       |
+| `initiator`  | `RunInitiator?`     | Who **asked for** this run (`actor`, `kind`, `at`) — stamped once at creation, so a resume never rewrites it. Absent with no state store. See [Durable run state](./state.md). |
 | `target`     | `string`            | The executing target's dotted name.                                  |
 | `signal`     | `AbortSignal`       | Aborted when the run is cancelled (see below).                       |
 | `state`      | `TargetStateHandle` | Durable per-target metadata — see [Durable run state](./state.md).   |

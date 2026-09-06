@@ -8,6 +8,7 @@ import {
   assertThrows,
 } from "./_assert.ts";
 import {
+  initiatorOf,
   parseRunRecord,
   parseRunSummary,
   type RunRecord,
@@ -29,6 +30,7 @@ import {
   ciRunUrl,
   recordStatusOf,
   resolveActor,
+  resolveActorKind,
 } from "../src/state/record.ts";
 import { inMemoryStateHandle, RunStateWriter } from "../src/state/writer.ts";
 import { acquireCancelLock } from "../src/state/cancel_lock.ts";
@@ -666,6 +668,7 @@ Deno.test("buildRunRecord snapshots the graph, seeds targets, excludes secrets",
     build: "B",
     rootTarget: "deploy",
     actor: "alice",
+    actorKind: "human" as const,
     now: "2026-07-17T10:00:00.000Z",
     order: [build.clean, build.deploy],
     params: params.values(),
@@ -1321,6 +1324,7 @@ Deno.test("deleting a run leaves its lock records alone", async () => {
         order: [],
         params: [],
         actor: "tester",
+        actorKind: "human" as const,
         now: new Date().toISOString(),
       }),
       null,
@@ -1543,6 +1547,7 @@ Deno.test("buildRunRecord tolerates an unnamed target and stamps optional fields
     buildId: "org/app",
     rootTarget: "work",
     actor: "alice",
+    actorKind: "human" as const,
     now: "2026-07-17T10:00:00.000Z",
     order: [anonymous],
     params: [],
@@ -1824,4 +1829,116 @@ Deno.test("parseRunRecord round-trips a target's summary notes and rejects malfo
     };
     assertThrows(() => parseRunRecord(JSON.stringify(broken)), Error, needle);
   }
+});
+
+// ---- The run initiator: stamped once, never rewritten ----------------------
+
+Deno.test("buildRunRecord stamps the initiator from the actor and kind", () => {
+  const record = buildRunRecord({
+    runId: "r1",
+    build: "Demo",
+    rootTarget: "deploy",
+    actor: "engineer-a",
+    actorKind: "service",
+    now: "2026-09-06T10:00:00.000Z",
+    order: [],
+    params: [],
+  });
+  assertEquals(record.actor, "engineer-a");
+  assertEquals(record.initiator, {
+    actor: "engineer-a",
+    kind: "service",
+    at: "2026-09-06T10:00:00.000Z",
+  });
+});
+
+Deno.test("resolveActorKind states a service claim rather than guessing it", () => {
+  const env = (vars: Record<string, string>) => (name: string) => vars[name];
+  // The explicit flag wins.
+  assertEquals(resolveActorKind("service", env({})), "service");
+  assertEquals(
+    resolveActorKind("human", env({ ZUKE_ACTOR_KIND: "service" })),
+    "human",
+  );
+  // Then the environment — which is how an MCP-spawned child inherits it.
+  assertEquals(
+    resolveActorKind(undefined, env({ ZUKE_ACTOR_KIND: "service" })),
+    "service",
+  );
+  // Absent, empty or unrecognised all read as unstated, never as a service
+  // claim: the claim is what lets a policy treat a run as unowned machinery, so
+  // a typo must not grant it.
+  for (const value of ["", "Service", "SERVICE", "robot", "true", " service"]) {
+    assertEquals(
+      resolveActorKind(undefined, env({ ZUKE_ACTOR_KIND: value })),
+      "human",
+      value,
+    );
+  }
+  assertEquals(resolveActorKind(undefined, env({})), "human");
+});
+
+Deno.test("parseRunRecord round-trips an initiator and refuses a malformed one", () => {
+  const record = buildRunRecord({
+    runId: "r1",
+    build: "Demo",
+    rootTarget: "deploy",
+    actor: "engineer-a",
+    actorKind: "human",
+    now: "2026-09-06T10:00:00.000Z",
+    order: [],
+    params: [],
+  });
+  const round = parseRunRecord(JSON.stringify(record));
+  assertEquals(round.initiator, record.initiator);
+
+  // A record written before the field existed parses, with no initiator.
+  const legacy = JSON.parse(JSON.stringify(record));
+  delete legacy.initiator;
+  assertEquals(parseRunRecord(JSON.stringify(legacy)).initiator, undefined);
+
+  // A present but malformed initiator throws rather than being dropped:
+  // silently reading it as absent would fall back to `actor`, which a resume
+  // may already have rewritten — answering "who started this" with the name of
+  // whoever last resumed it.
+  for (
+    const bad of [
+      { actor: "a", kind: "robot", at: "t" },
+      { actor: "a", at: "t" },
+      { kind: "human", at: "t" },
+      { actor: "a", kind: "human" },
+      "engineer-a",
+      42,
+    ]
+  ) {
+    const broken = JSON.parse(JSON.stringify(record));
+    broken.initiator = bad;
+    assertThrows(() => parseRunRecord(JSON.stringify(broken)));
+  }
+});
+
+Deno.test("initiatorOf falls back to the actor when no initiator was recorded", () => {
+  const record = buildRunRecord({
+    runId: "r1",
+    build: "Demo",
+    rootTarget: "deploy",
+    actor: "engineer-a",
+    actorKind: "human",
+    now: "2026-09-06T10:00:00.000Z",
+    order: [],
+    params: [],
+  });
+  assertEquals(initiatorOf(record), "engineer-a");
+
+  // On a record that predates the field, `actor` is not a guess: a run nobody
+  // resumed carries exactly the value the initiator would have been stamped
+  // with.
+  const legacy: RunRecord = { ...record };
+  delete legacy.initiator;
+  assertEquals(initiatorOf(legacy), "engineer-a");
+
+  // And once a resume has rewritten `actor`, the initiator still answers.
+  const resumed: RunRecord = { ...record, actor: "sweep-bot" };
+  assertEquals(initiatorOf(resumed), "engineer-a");
+  assertEquals(toSummary(resumed).initiator?.actor, "engineer-a");
 });
