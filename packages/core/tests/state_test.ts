@@ -1804,6 +1804,43 @@ Deno.test("RunStateWriter stores a settled target's summary notes, values redact
   assertEquals(store.record?.targets.verify.summary, undefined);
 });
 
+Deno.test("an audit event's roles are persisted, and redacted like every other field", async () => {
+  // Role names are normally the operator's own identifiers, which the redactor
+  // leaves alone — but they go through it anyway, so no field of the trail is
+  // safe only because of an assumption about where its value came from.
+  const store = new MemStateStore();
+  const redactor = new Redactor();
+  redactor.add("hunter2");
+  const writer = await RunStateWriter.open(
+    store,
+    sampleRecord(),
+    () => "t",
+    redactor,
+  );
+  await writer.appendEvent({
+    at: "t",
+    tool: "run:deploy",
+    actor: "ada",
+    outcome: "denied",
+    args: {},
+    detail: 'needs the "operator" role',
+    roles: ["run", "hunter2"],
+  });
+  const event = store.record?.events[0];
+  assertEquals(event?.roles, ["run", "[redacted]"]);
+
+  // An event carrying none stays without the key, rather than gaining an empty
+  // list that would read as "held nothing".
+  await writer.appendEvent({
+    at: "t",
+    tool: "list_runs",
+    actor: "ada",
+    outcome: "ok",
+    args: {},
+  });
+  assertEquals("roles" in (store.record?.events[1] ?? {}), false);
+});
+
 Deno.test("parseRunRecord round-trips a target's summary notes and rejects malformed ones", () => {
   const record = sampleRecord({
     targets: {
