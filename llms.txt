@@ -48,6 +48,7 @@ Reserved commands:
 - `resume` — Resume a suspended run (or --check all suspended runs)
 - `runs` — List, show, or prune persisted run records
 - `cancel` — Cancel a run and run its compensations
+- `force` — Force a target of a run to skipped or succeeded
 - `register` — Register this build in the build registry
 - `doc` — Print a package's API docs (deno doc), isolated from the repo
 - `outdated` — Report JSR packages the lock resolves behind their latest
@@ -78,6 +79,8 @@ Option flags:
 - `--since` — With runs list, keep only runs created at/after this time
 - `--limit` — With runs list, return at most this many runs (newest)
 - `--initiator` — With runs list, keep only runs this actor started
+- `--outcome` — With force, what the target settles to: skipped or succeeded
+- `--reason` — With force, why the target was forced (recorded on the run)
 - `--counts` — With runs list, print aggregate counts (total + per status)
 - `--keep` — With runs prune, keep runs newer than this age (e.g. 90d)
 - `--keep-last` — With runs prune, always keep the newest N terminal runs

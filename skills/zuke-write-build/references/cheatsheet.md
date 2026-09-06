@@ -1286,6 +1286,17 @@ a descriptor whose entry module is **remote** (not a local path or `file:` URL �
 spawned. `zuke register` writes a local `file:` module, so this only bites a
 hand-authored or second-party registry entry.
 
+**Forcing a target** (`docs/state.md`):
+`zuke force <run-id> <target> --outcome skipped|succeeded [--reason "…"]`
+settles one target of a live run **without running its body** — ahead of its
+`onlyWhen` conditions and its cache — and records who decided and why under
+`record.overrides`. A forced `succeeded` is compensated by a later cancel (its
+effects were asserted to exist); a forced `skipped` is not. Refused for a target
+that already settled, a terminal run, or one the build protects with
+`override unforceable() { return [this.applyProduction]; }` — target
+**references**, so a rename cannot silently empty the list. The MCP equivalent
+is the `force_target` tool.
+
 **Authentication** (`docs/mcp.md`): on a shared, multi-user endpoint,
 `override mcpAuth()` returns an `McpAuthenticator` —
 `{ authenticate: async (ctx) => … }` — that either resolves the caller

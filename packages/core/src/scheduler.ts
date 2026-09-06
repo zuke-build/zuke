@@ -389,6 +389,23 @@ async function runTarget(
   const { services, env } = ctx;
   const name = t.name_ ?? "<unnamed>";
 
+  // An operator's forced outcome outranks everything the build would decide:
+  // the point of forcing a target is to settle it without running, so its
+  // conditions and cache are not consulted either. Read from the record the run
+  // is executing against, so a force lands for any target this process has not
+  // started yet.
+  const forced = env.writer?.snapshot().overrides?.[name];
+  if (forced !== undefined) {
+    reporter.info(
+      `${name}: forced ${forced.outcome} by ${forced.actor}` +
+        (forced.reason === undefined ? "" : ` — ${forced.reason}`),
+    );
+    return {
+      status: forced.outcome === "skipped" ? "skipped" : "passed",
+      ms: 0,
+    };
+  }
+
   for (const condition of t.onlyWhen_) {
     if (!(await condition())) return { status: "skipped", ms: 0 };
   }

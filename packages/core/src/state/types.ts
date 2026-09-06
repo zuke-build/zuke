@@ -87,6 +87,36 @@ export interface RunEvent {
   detail?: string;
 }
 
+/** What an operator may force a target to, without running it. */
+export type ForcedOutcome = "skipped" | "succeeded";
+
+/** The {@link ForcedOutcome} values, for validating an untrusted string. */
+export const FORCED_OUTCOMES: readonly ForcedOutcome[] = [
+  "skipped",
+  "succeeded",
+];
+
+/**
+ * An operator's decision to settle a target without running it — recorded on
+ * the run so the executor honours it and the trail says who decided.
+ *
+ * Two shapes of intervention, both of which a build cannot express itself:
+ * `skipped` takes a step off the plan that cannot succeed, and `succeeded`
+ * marks one that a person completed by hand. Dependents proceed either way; the
+ * difference is what a later cancellation compensates, since only the second
+ * asserts that the target's effects exist.
+ */
+export interface TargetOverride {
+  /** What the target settles to when the executor reaches it. */
+  outcome: ForcedOutcome;
+  /** Who forced it (a resolved actor). */
+  actor: string;
+  /** ISO-8601 time the override was recorded. */
+  at: string;
+  /** Why, when the operator gave a reason. */
+  reason?: string;
+}
+
 /** Whether a person or a machine asked for a run (see {@link RunInitiator}). */
 export type ActorKind = "human" | "service";
 
@@ -237,6 +267,15 @@ export interface RunRecord {
    * right one on a run that was never resumed.
    */
   initiator?: RunInitiator;
+  /**
+   * Operator-forced target outcomes, keyed by dotted target name (see
+   * {@link TargetOverride}). Absent until something is forced.
+   *
+   * Read when the executor reaches the target, so an override lands for any
+   * target the run has not started yet — in practice on the next resume, since
+   * that is the process that loads the record after the force was written.
+   */
+  overrides?: Record<string, TargetOverride>;
   /** ISO-8601 timestamp when the run was created. */
   createdAt: string;
   /** ISO-8601 timestamp of the last write. */
@@ -576,6 +615,45 @@ function parseInitiator(value: unknown): RunInitiator | undefined {
   return { actor: str(object, "actor"), kind, at: str(object, "at") };
 }
 
+/**
+ * Validate and narrow the optional {@link RunRecord.overrides} map, or
+ * `undefined` when the record carries none.
+ *
+ * Strict for the same reason {@link parseInitiator} is: an override changes
+ * whether a target's body runs, so a malformed one must not be quietly read as
+ * "nothing was forced" — that would execute a step an operator had taken off
+ * the plan.
+ */
+function parseOverrides(
+  value: unknown,
+): Record<string, TargetOverride> | undefined {
+  if (value === undefined) return undefined;
+  const object = asObject(value);
+  if (object === null) throw new Error("state: run overrides is not an object");
+  const overrides: Record<string, TargetOverride> = {};
+  for (const [name, raw] of Object.entries(object)) {
+    const entry = asObject(raw);
+    if (entry === null) {
+      throw new Error(`state: override for "${name}" is not an object`);
+    }
+    const outcome = FORCED_OUTCOMES.find((o) => o === entry.outcome);
+    if (outcome === undefined) {
+      throw new Error(
+        `state: unknown forced outcome "${entry.outcome}" for "${name}"`,
+      );
+    }
+    const override: TargetOverride = {
+      outcome,
+      actor: str(entry, "actor"),
+      at: str(entry, "at"),
+    };
+    const reason = optionalStr(entry, "reason");
+    if (reason !== undefined) override.reason = reason;
+    overrides[name] = override;
+  }
+  return overrides;
+}
+
 /** Validate and narrow a {@link SignalRecord}. */
 function parseSignalRecord(value: unknown): SignalRecord {
   const object = asObject(value);
@@ -719,6 +797,8 @@ export function parseRunRecord(text: string): RunRecord {
   if (deadlineAt !== undefined) record.deadlineAt = deadlineAt;
   const initiator = parseInitiator(object.initiator);
   if (initiator !== undefined) record.initiator = initiator;
+  const overrides = parseOverrides(object.overrides);
+  if (overrides !== undefined) record.overrides = overrides;
   const intended = optionalStr(object, "intendedTerminal");
   if (intended !== undefined) {
     const found = RUN_STATUSES.find((s) => s === intended);

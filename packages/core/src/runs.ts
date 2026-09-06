@@ -351,6 +351,14 @@ export function formatRunDetail(record: RunRecord): string {
     `  created:  ${record.createdAt}`,
     `  updated:  ${record.updatedAt}`,
   ];
+  const overrides = Object.entries(record.overrides ?? {});
+  if (overrides.length > 0) {
+    lines.push("  forced:");
+    for (const [name, o] of overrides) {
+      const why = o.reason === undefined ? "" : ` — ${o.reason}`;
+      lines.push(`    ${name}: ${o.outcome} by ${o.actor} at ${o.at}${why}`);
+    }
+  }
   if (record.degraded) {
     // The one thing an operator asked to override a refused resume needs to see.
     lines.push(

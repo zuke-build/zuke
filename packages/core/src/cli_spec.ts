@@ -44,6 +44,9 @@ export const RUNS_COMMAND = "runs";
 /** The `cancel` command: cancel a run and run its compensations. */
 export const CANCEL_COMMAND = "cancel";
 
+/** The `force` command: settle a target of a live run without running it. */
+export const FORCE_COMMAND = "force";
+
 /** The `register` command: record this build in the build registry. */
 export const REGISTER_COMMAND = "register";
 
@@ -76,6 +79,10 @@ export const RESERVED_COMMANDS: readonly ReservedCommand[] = [
   {
     name: CANCEL_COMMAND,
     description: "Cancel a run and run its compensations",
+  },
+  {
+    name: FORCE_COMMAND,
+    description: "Force a target of a run to skipped or succeeded",
   },
   {
     name: REGISTER_COMMAND,
@@ -181,6 +188,14 @@ export const BUILTIN_FLAGS: readonly BuiltinFlag[] = [
   {
     name: "--initiator",
     description: "With runs list, keep only runs this actor started",
+  },
+  {
+    name: "--outcome",
+    description: "With force, what the target settles to: skipped or succeeded",
+  },
+  {
+    name: "--reason",
+    description: "With force, why the target was forced (recorded on the run)",
   },
   {
     name: "--counts",
