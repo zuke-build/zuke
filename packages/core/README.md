@@ -1183,7 +1183,7 @@ class Build
 
     ```ts
     class CD extends Build {
-      applyProduction = target().executes(…);
+      applyProduction = target().executes(() => applyTerraform());
       override unforceable() {
         return [this.applyProduction];
       }
@@ -4419,7 +4419,7 @@ type ForEachFactory<Item> = (item: Item, index: number) => Record<string, Target
   stage implicitly depends on the one declared before it, so an item's stages
   run in insertion order.
 
-type ForceDenial = "unknown_run" | "run_terminal" | "unknown_target" | "already_settled" | "unforceable" | "write_failed"
+type ForceDenial = "unknown_run" | "run_terminal" | "unknown_target" | "already_settled" | "unforceable" | "has_effects" | "foreign_run" | "write_failed"
   Why a force was refused. Each maps to a message naming the target, so an
   operator learns which rule stopped them rather than that "it failed".
 

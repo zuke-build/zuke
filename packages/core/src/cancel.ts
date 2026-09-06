@@ -52,12 +52,13 @@ import type { StateStore } from "./state/store.ts";
 import { resolveRunStore } from "./run_store.ts";
 import { acquireCancelLock } from "./state/cancel_lock.ts";
 import { resolveActor } from "./state/record.ts";
-import type {
-  RunEvent,
-  RunRecord,
-  RunStatus,
-  SignalRecord,
-  TargetRunStatus,
+import {
+  isTerminalRunStatus,
+  type RunEvent,
+  type RunRecord,
+  type RunStatus,
+  type SignalRecord,
+  type TargetRunStatus,
 } from "./state/types.ts";
 
 /** How many times a conflicting cancel CAS is re-read and retried. */
@@ -113,12 +114,6 @@ export function compensationSummary(
  */
 export function cancelledElsewhere(runId: string): string {
   return `Run ${runId} cancelled by another process — stopping.`;
-}
-
-/** A run status past which nothing more happens. */
-function isTerminal(status: RunStatus): boolean {
-  return status === "succeeded" || status === "failed" ||
-    status === "cancelled";
 }
 
 /** An empty compensation outcome (nothing ran, nothing failed). */
@@ -275,7 +270,16 @@ export async function runCompensations(
     }
     const status = record.targets[name]?.status;
     const possiblySucceeded = degraded && isUnproven(status);
-    if (status !== "succeeded" && !possiblySucceeded) continue;
+    // A forced `succeeded` counts even before the run has reached the target.
+    // The operator asserted the target's effects exist — that is the whole
+    // difference between forcing `succeeded` and forcing `skipped` — so a
+    // cancel that lands in between must still unwind them. Reading only the
+    // status would make the two forced outcomes indistinguishable here, while
+    // the row is still `pending`.
+    const forcedSucceeded = record.overrides?.[name]?.outcome === "succeeded";
+    if (status !== "succeeded" && !possiblySucceeded && !forcedSucceeded) {
+      continue;
+    }
     if (t.onCancel_ === undefined) continue;
     // The thunk is user code: a throw here must be recorded, not allowed to
     // escape and wedge the run mid-cancel (cleanup stays maximal).
@@ -741,7 +745,7 @@ export async function settleExternally(
   // silently skipped: unlike a sweep, this path was handed one run by name, so
   // the caller asked about a run that is not this build's to unwind.
   const initial = await loadOwnedRun(store, runId, "cancel", readEnv);
-  if (isTerminal(initial.record.status)) {
+  if (isTerminalRunStatus(initial.record.status)) {
     reporter.info(
       `Run ${runId} is already ${initial.record.status}; nothing to ` +
         `${terminal === "cancelled" ? "cancel" : "settle"}.`,
@@ -941,7 +945,7 @@ async function transitionToCancelling(
   let record = initial.record;
   let version = initial.version;
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-    if (isTerminal(record.status)) return "noop";
+    if (isTerminalRunStatus(record.status)) return "noop";
     if (record.status === "cancelling") return "recover";
     const next = structuredClone(record);
     next.status = "cancelling";
@@ -981,7 +985,7 @@ async function finalizeCancelled(
 ): Promise<void> {
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     const loaded = await store.getRun(id);
-    if (loaded === null || isTerminal(loaded.record.status)) return;
+    if (loaded === null || isTerminalRunStatus(loaded.record.status)) return;
     const at = now();
     const next = structuredClone(loaded.record);
     next.status = terminal;

@@ -200,6 +200,8 @@ export interface ParsedArgs {
   forceRunId?: string;
   /** `force`: the target to settle (second positional). */
   forceTarget?: string;
+  /** `force`: a third positional, which the command does not take. */
+  forceExtra?: string;
   /** `force`: what the target settles to (`--outcome`). */
   outcome?: string;
   /** `force`: why it was forced (`--reason`). */
@@ -543,13 +545,18 @@ export function parseArgs(
       parsed.forceRunId = arg;
     } else if (parsed.force && parsed.forceTarget === undefined) {
       parsed.forceTarget = arg;
+    } else if (parsed.force && parsed.forceExtra === undefined) {
+      // Kept rather than ignored, so a third positional is an error naming
+      // itself instead of silently changing what the command does.
+      parsed.forceExtra = arg;
     } else if (parsed.doc && parsed.docSpec === undefined) {
       // `doc` takes the spec to document as its positional.
       parsed.docSpec = arg;
     } else if (
       parsed.target === undefined && !parsed.graph && !parsed.generateCi &&
       !parsed.completions && !parsed.mcp && !parsed.resume && !parsed.runs &&
-      !parsed.cancel && !parsed.register && !parsed.doc && !parsed.outdated
+      !parsed.cancel && !parsed.force && !parsed.register && !parsed.doc &&
+      !parsed.outdated
     ) {
       if (arg === GRAPH_COMMAND) parsed.graph = true;
       else if (arg === GENERATE_CI_COMMAND) parsed.generateCi = true;
@@ -1061,6 +1068,14 @@ async function runCancel(build: Build, parsed: ParsedArgs): Promise<number> {
  * the flags into options and the result into an exit code.
  */
 async function runForce(build: Build, parsed: ParsedArgs): Promise<number> {
+  if (parsed.forceExtra !== undefined) {
+    console.error(
+      `force: unexpected argument "${parsed.forceExtra}". ` +
+        `Usage: zuke force <run-id> <target> --outcome skipped|succeeded ` +
+        `[--reason <why>] [--actor <name>]`,
+    );
+    return 1;
+  }
   if (parsed.forceRunId === undefined || parsed.forceTarget === undefined) {
     console.error(
       "Usage: zuke force <run-id> <target> --outcome skipped|succeeded " +

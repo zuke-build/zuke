@@ -16,9 +16,9 @@ import type { StateStore } from "./state/store.ts";
 import { resolveRunStore } from "./run_store.ts";
 import {
   initiatorOf,
+  isTerminalRunStatus,
   type RunQuery,
   type RunRecord,
-  type RunStatus,
   type RunSummary,
   type TargetRunState,
   type TargetRunStatus,
@@ -67,18 +67,6 @@ export interface RunsOptions {
   readEnv?: (name: string) => string | undefined;
 }
 
-/** The run statuses past which nothing more happens — the only prunable ones. */
-const TERMINAL_STATUSES: readonly RunStatus[] = [
-  "succeeded",
-  "failed",
-  "cancelled",
-];
-
-/** Whether a run has reached a terminal (prunable) status. */
-function isTerminalStatus(status: RunStatus): boolean {
-  return TERMINAL_STATUSES.includes(status);
-}
-
 /** Options for {@link selectRunsToPrune}. */
 export interface PruneRules {
   /** Keep runs created within this many ms of `nowMs`; omitted means no age rule. */
@@ -101,7 +89,7 @@ export function selectRunsToPrune(
   nowMs: number,
 ): string[] {
   const cutoff = rules.keepMs === undefined ? undefined : nowMs - rules.keepMs;
-  const terminal = summaries.filter((s) => isTerminalStatus(s.status));
+  const terminal = summaries.filter((s) => isTerminalRunStatus(s.status));
   const toPrune: string[] = [];
   terminal.forEach((s, index) => {
     if (rules.keepLast !== undefined && index < rules.keepLast) return;

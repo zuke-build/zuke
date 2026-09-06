@@ -367,7 +367,7 @@ export class Build {
    *
    * ```ts
    * class CD extends Build {
-   *   applyProduction = target().executes(…);
+   *   applyProduction = target().executes(() => applyTerraform());
    *   override unforceable() {
    *     return [this.applyProduction];
    *   }

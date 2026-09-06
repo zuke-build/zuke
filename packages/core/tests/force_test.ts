@@ -209,3 +209,68 @@ Deno.test("an override round-trips through the record parser", async () => {
     assertEquals(round.overrides?.deploy, loaded.record.overrides?.deploy);
   });
 });
+
+Deno.test("declaring a fan-out parent unforceable covers its per-item stages", async () => {
+  // A fan-out's stages are named `parent[item].stage` at run time, so no target
+  // reference can denote one. Without the prefix rule the guard would protect
+  // the target that only schedules work and leave the ones that do it exposed.
+  class Fleet extends Build {
+    deploy = target().executes(() => {});
+    override unforceable() {
+      return [this.deploy];
+    }
+  }
+  await withTempStore(async (store) => {
+    const record: RunRecord = {
+      ...buildRunRecord({
+        runId: "run-fanout",
+        build: "Fleet",
+        rootTarget: "deploy",
+        actor: "engineer-a",
+        actorKind: "human",
+        now: "2026-09-06T10:00:00.000Z",
+        order: [],
+        params: [],
+      }),
+      targets: {
+        "deploy": { status: "running", meta: {} },
+        "deploy[b].apply": { status: "pending", meta: {} },
+      },
+    };
+    await store.putRun(record, null);
+
+    const result = await forceTarget(new Fleet(), {
+      runId: record.id,
+      target: "deploy[b].apply",
+      outcome: "succeeded",
+      stateStore: store,
+      readEnv: () => undefined,
+    });
+    assertEquals(result.ok, false, result.message);
+    assertEquals(result.denial, "unforceable");
+    assertEquals((await store.getRun(record.id))?.record.overrides, undefined);
+  });
+});
+
+Deno.test("a running target is refused, and the message says why", async () => {
+  // A force promises the body will not run; for a target a live process is
+  // already executing, that promise is already broken.
+  await withTempStore(async (store) => {
+    const runId = await seed(store, {
+      targets: {
+        deploy: { status: "running", meta: {} },
+        applyProduction: { status: "pending", meta: {} },
+      },
+    });
+    const result = await forceTarget(new CD(), {
+      runId,
+      target: "deploy",
+      outcome: "skipped",
+      stateStore: store,
+      readEnv: () => undefined,
+    });
+    assertEquals(result.ok, false);
+    assertEquals(result.denial, "already_settled");
+    assertStringIncludes(result.message, "is running");
+  });
+});

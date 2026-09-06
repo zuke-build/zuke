@@ -400,6 +400,25 @@ const RUN_STATUSES: readonly RunStatus[] = [
 /** The {@link RunStatus} values as a list, for CLI help and error messages. */
 export const RUN_STATUS_NAMES: readonly string[] = RUN_STATUSES;
 
+/** The run statuses past which nothing more happens. */
+const TERMINAL_STATUSES: readonly RunStatus[] = [
+  "succeeded",
+  "failed",
+  "cancelled",
+];
+
+/**
+ * Whether a run has reached a status past which nothing more happens — the only
+ * prunable ones, and the ones no operator verb can act on.
+ *
+ * `cancelling` is deliberately **not** terminal: the run is still settling, and
+ * a caller that treats it as finished would act on a plan that is being torn
+ * down. Callers that must refuse it too should say so themselves.
+ */
+export function isTerminalRunStatus(status: RunStatus): boolean {
+  return TERMINAL_STATUSES.includes(status);
+}
+
 /** True when `value` is a valid {@link RunStatus} (used to validate CLI filters). */
 export function isRunStatus(value: string): value is RunStatus {
   return RUN_STATUSES.some((s) => s === value);

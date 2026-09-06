@@ -20,13 +20,17 @@
 import type { Build } from "./build.ts";
 import { discoverTargets } from "./build.ts";
 import { messageOf } from "./internal.ts";
+import { assertOwnsRun, resolveBuildId } from "./ownership.ts";
 import { resolveActor } from "./state/record.ts";
 import { resolveRunStore } from "./run_store.ts";
 import type { StateStore } from "./state/store.ts";
-import type {
-  ForcedOutcome,
-  RunRecord,
-  TargetOverride,
+import type { TargetBuilder } from "./target.ts";
+import {
+  type ForcedOutcome,
+  isTerminalRunStatus,
+  type RunRecord,
+  type TargetOverride,
+  type TargetRunStatus,
 } from "./state/types.ts";
 
 /** How many times a losing compare-and-swap is retried before giving up. */
@@ -60,6 +64,8 @@ export type ForceDenial =
   | "unknown_target"
   | "already_settled"
   | "unforceable"
+  | "has_effects"
+  | "foreign_run"
   | "write_failed";
 
 /** The result of a {@link forceTarget} call. */
@@ -74,15 +80,35 @@ export interface ForceResult {
   override?: TargetOverride;
 }
 
-/** Target statuses that mean the target is done and cannot be taken off the plan. */
-const SETTLED = new Set(["succeeded", "failed", "skipped"]);
+/**
+ * Target statuses a force may not touch: the three settled ones, and `running`.
+ *
+ * `running` is here because a force promises the body will not run, and for a
+ * target a live process is already executing that promise is already broken —
+ * the operator would be told the step was taken off the plan while it is
+ * finishing. A hung target belongs to the reaper, which returns it to `pending`
+ * and makes it forceable again.
+ */
+const STARTED: ReadonlySet<TargetRunStatus> = new Set<TargetRunStatus>([
+  "running",
+  "succeeded",
+  "failed",
+  "skipped",
+]);
 
-/** Run statuses that mean there is no longer a plan to act on. */
-const TERMINAL = new Set(["succeeded", "failed", "cancelled"]);
-
-/** Whether `build` declared `target` off-limits to a force. */
+/**
+ * Whether `build` declared `target` off-limits to a force.
+ *
+ * A fan-out's per-item stages are named `parent[item].stage` at run time, so no
+ * `TargetBuilder` reference can denote one. Declaring the parent unforceable
+ * therefore covers its stages too — otherwise the guard would protect the
+ * target that only schedules work while leaving the ones that do it exposed.
+ */
 function isUnforceable(build: Build, target: string): boolean {
-  return build.unforceable().some((t) => t.name_ === target);
+  return build.unforceable().some((t) =>
+    t.name_ !== undefined &&
+    (t.name_ === target || target.startsWith(`${t.name_}[`))
+  );
 }
 
 /**
@@ -97,12 +123,28 @@ function denialFor(
   build: Build,
   record: RunRecord,
   target: string,
+  buildId: string | undefined,
+  outcome: ForcedOutcome,
+  targets: ReadonlyMap<string, TargetBuilder>,
 ): { denial: ForceDenial; message: string } | null {
-  if (TERMINAL.has(record.status)) {
+  // The same ownership gate `resume` and `cancel` apply, and for a sharper
+  // reason here: `unforceable()` is read from the build in *this* process, so
+  // acting on another build's run would check the wrong safety declaration
+  // entirely — a template shared across services would let one service force a
+  // target its owner had declared off-limits.
+  try {
+    assertOwnsRun(record, buildId);
+  } catch (error) {
+    return { denial: "foreign_run", message: messageOf(error) };
+  }
+  // `cancelling` is refused alongside the terminal statuses: the run is being
+  // torn down, so a target forced onto it would be promised a settlement the
+  // cancel walk will never deliver.
+  if (isTerminalRunStatus(record.status) || record.status === "cancelling") {
     return {
       denial: "run_terminal",
-      message: `Run ${record.id} is already ${record.status}; ` +
-        `there is nothing left to force.`,
+      message: `Run ${record.id} is ${record.status}; ` +
+        `there is no longer a plan to take a target off.`,
     };
   }
   const state = record.targets[target];
@@ -112,12 +154,31 @@ function denialFor(
       message: `Run ${record.id} has no target "${target}".`,
     };
   }
-  if (SETTLED.has(state.status)) {
+  if (STARTED.has(state.status)) {
     return {
       denial: "already_settled",
-      message: `Target "${target}" already ${state.status} in run ` +
-        `${record.id}. Forcing it would make the record say something that ` +
-        `did not happen.`,
+      message: state.status === "running"
+        ? `Target "${target}" is running in run ${record.id}. Forcing it ` +
+          `cannot stop a body that has already started; cancel the run, or ` +
+          `wait for the process to be reaped.`
+        : `Target "${target}" already ${state.status} in run ${record.id}. ` +
+          `Forcing it would make the record say something that did not happen.`,
+    };
+  }
+  // The same refusal `isCacheable` and `ServiceBuilder.effect` already make: a
+  // path that settles a target without running its body drops every declared
+  // effect — not defers it, drops it, with nothing recorded as owed and the run
+  // reporting success. Forcing `skipped` is fine, because a skipped target's
+  // effects are not owed either.
+  const declared = targets.get(target);
+  if (outcome === "succeeded" && (declared?.effects_.length ?? 0) > 0) {
+    const names = declared?.effects_.map((e) => `"${e.name}"`).join(", ");
+    return {
+      denial: "has_effects",
+      message: `Target "${target}" declares effect(s) ${names}, which a ` +
+        `forced success would drop rather than defer — nothing would record ` +
+        `them as owed and the run would report success. Force it skipped, or ` +
+        `let the body run.`,
     };
   }
   if (isUnforceable(build, target)) {
@@ -156,13 +217,12 @@ export async function forceTarget(
         "ZUKE_STATE_URL, or override stateStore().",
     };
   }
-  // Called for its side effect: target names are recovered by introspecting the
-  // instance's fields, so without this a target builder's name is unset and
-  // `unforceable()` would match nothing — silently allowing a force the build
-  // declared off-limits. The targets themselves come from the record below,
-  // which is what the executor will actually read.
-  discoverTargets(build);
+  // Also binds each builder's name as a side effect, which `unforceable()`
+  // depends on: without it a target builder's name is unset, nothing matches,
+  // and a force the build declared off-limits would silently be allowed.
+  const targets = discoverTargets(build);
   const actor = resolveActor(options.actor, readEnv);
+  const buildId = resolveBuildId(readEnv);
 
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     const loaded = await store.getRun(options.runId);
@@ -173,7 +233,14 @@ export async function forceTarget(
         message: `force: no run ${options.runId} in the store.`,
       };
     }
-    const refused = denialFor(build, loaded.record, options.target);
+    const refused = denialFor(
+      build,
+      loaded.record,
+      options.target,
+      buildId,
+      options.outcome,
+      targets,
+    );
     if (refused !== null) return { ok: false, ...refused };
 
     const at = new Date().toISOString();
