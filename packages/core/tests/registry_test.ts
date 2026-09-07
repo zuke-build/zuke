@@ -551,3 +551,59 @@ Deno.test("envBuildRegistry prefers URL over DIR", () => {
 
   assertEquals(envBuildRegistry(() => undefined, host), undefined);
 });
+
+Deno.test("parseBuildDescriptor refuses a parameter flag that shadows a built-in", () => {
+  // A registry backend is a service Zuke does not control, and the MCP host
+  // renders a descriptor's `flag` straight onto the spawned child's argv. The
+  // child's parser matches a built-in ahead of a declared parameter, so a
+  // descriptor naming `--actor` would attribute the run to a value of its own
+  // choosing, over the ZUKE_ACTOR the runner exported for the resolved caller.
+  const withParam = (parameter: Record<string, unknown>) =>
+    JSON.stringify({
+      ...sampleDescriptor(),
+      surface: {
+        commands: [],
+        flags: [],
+        targets: [],
+        parameters: [{
+          description: "",
+          required: false,
+          boolean: false,
+          array: false,
+          options: [],
+          ...parameter,
+        }],
+      },
+    });
+
+  // A flag that does not follow from its name: the tampering shape.
+  assertThrows(
+    () => parseBuildDescriptor(withParam({ name: "message", flag: "actor" })),
+    Error,
+    "does not follow from its parameter's name",
+  );
+  // A name that honestly renders as a built-in: a build registered before the
+  // declaration itself was refused. Refused now on read, not silently honoured.
+  assertThrows(
+    () => parseBuildDescriptor(withParam({ name: "actor", flag: "actor" })),
+    Error,
+    "built-in Zuke CLI flag",
+  );
+  // Pre-M12, where the name is recovered from the flag, is checked the same way.
+  assertThrows(
+    () => parseBuildDescriptor(withParam({ flag: "limit" })),
+    Error,
+    "built-in Zuke CLI flag",
+  );
+  // A name merely near a built-in, and a grouped one, still parse.
+  assertEquals(
+    parseBuildDescriptor(withParam({ name: "actorName", flag: "actor-name" }))
+      .surface.parameters[0].flag,
+    "actor-name",
+  );
+  assertEquals(
+    parseBuildDescriptor(withParam({ name: "runs.limit", flag: "runs-limit" }))
+      .surface.parameters[0].name,
+    "runs.limit",
+  );
+});

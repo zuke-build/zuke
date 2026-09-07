@@ -26,7 +26,12 @@ import {
   formatOutdated,
   type OutdatedOptions,
 } from "./outdated.ts";
-import { type AnyParameter, discoverParameters, flagName } from "./params.ts";
+import {
+  type AnyParameter,
+  discoverParameters,
+  flagName,
+  ParameterError,
+} from "./params.ts";
 import type { JsonValue, TargetBuilder } from "./target.ts";
 import type { Plugin } from "./plugin.ts";
 import {
@@ -1317,7 +1322,22 @@ async function runCommand(
   const graphHost = options.graphHost ?? defaultGraphHost;
   const build = new BuildClass();
   const targets = discoverTargets(build);
-  const params = discoverParameters(build);
+  let params: Map<string, AnyParameter>;
+  try {
+    params = discoverParameters(build);
+  } catch (error) {
+    // A parameter whose name is refused (a reserved MCP control key, or a
+    // name that renders as a built-in flag) is an authoring mistake, so it
+    // reads as a named message and exit 1 — the same treatment as an invalid
+    // graph — rather than as an uncaught throw with a stack trace. It has to
+    // come before `--help`, because the help text lists the parameters that
+    // discovery is what produces.
+    if (error instanceof ParameterError) {
+      console.error(error.message);
+      return 1;
+    }
+    throw error;
+  }
   discoverGroups(build); // names group batches so the graph can label them
   const paramFlags: ParamFlag[] = [...params.entries()].map(([name, p]) => ({
     name,

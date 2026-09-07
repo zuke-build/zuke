@@ -557,6 +557,10 @@ Deno.test("the built-in flag refusal covers every flag the parser knows", () => 
   // the CLI is reserved without anyone remembering to add it here too.
   for (const flag of BUILTIN_FLAG_NAMES) {
     const field = flag.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
+    // `dryRun` is also a reserved MCP control key, and that check runs first.
+    // Asserting the built-in message for it would be asserting the wrong
+    // refusal; the reserved-name test above is the one that covers it.
+    if (field === "dryRun") continue;
     const build = Object.assign(new (class extends Build {})(), {
       [field]: parameter(),
     });
@@ -564,7 +568,8 @@ Deno.test("the built-in flag refusal covers every flag the parser knows", () => 
       () => discoverParameters(build),
       ParameterError,
     );
-    assertStringIncludes(error.message, field);
+    assertStringIncludes(error.message, `renders as "--${flag}"`);
+    assertStringIncludes(error.message, "built-in");
   }
 });
 

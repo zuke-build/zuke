@@ -59,14 +59,16 @@ const RESERVED_PARAM_NAMES: ReadonlySet<string> = new Set([
 
 /**
  * The built-in CLI flags, by the name a parameter would have to render as to
- * collide with one. `parseArgs` matches a built-in ahead of a declared
- * parameter of the same name, so such a parameter is unreachable: the value
- * lands on the built-in and the parameter is left to its environment variable
- * or its default. Worse for `--actor`, which attributes the run — an MCP
- * caller passing the parameter would set the run's actor over the one the
- * registry runner resolved for it. {@link discoverParameters} refuses the
- * collision at discovery instead, so it is a build-time error naming the
- * field rather than a silent substitution at run time.
+ * collide with one. `parseArgs` matches a built-in first, so the flag means
+ * the built-in and not the parameter — for a value-taking built-in in both
+ * `--flag value` and `--flag=value` form, and for a boolean one (`--state`,
+ * `--check`) in its bare form, leaving only `--flag=value` to reach the
+ * parameter. What makes that worth refusing rather than documenting is that
+ * the parameter is still settable by its environment variable and through the
+ * MCP run tool, so it works until someone uses its flag — and then the value
+ * silently does something else. For `--actor` that something is the run's
+ * attribution. {@link discoverParameters} refuses the collision at discovery,
+ * so it is a build-time error naming the field.
  */
 const BUILTIN_FLAGS: ReadonlySet<string> = new Set(BUILTIN_FLAG_NAMES);
 
@@ -464,8 +466,9 @@ export function discoverParameters(build: object): Map<string, AnyParameter> {
       if (BUILTIN_FLAGS.has(flag)) {
         throw new ParameterError(
           `Parameter "${path}" renders as "--${flag}", which is a built-in ` +
-            `Zuke CLI flag. The built-in wins, so the parameter would never ` +
-            `receive a value. Rename the parameter field.`,
+            `Zuke CLI flag: the parser matches the built-in first, so the ` +
+            `flag would mean the built-in and not this parameter. Rename the ` +
+            `parameter field.`,
         );
       }
       value.name_ = path;

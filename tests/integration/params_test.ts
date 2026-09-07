@@ -11,11 +11,9 @@
 
 import {
   assertEquals,
-  assertRejects,
   assertStringIncludes,
 } from "../../packages/core/tests/_assert.ts";
 import { Build, parameter, REDACTED, target } from "../../packages/core/mod.ts";
-import { ParameterError } from "../../packages/core/src/params.ts";
 import { runCli, withStateDir } from "./_harness.ts";
 
 Deno.test("a missing required parameter fails the build with a clear error", async () => {
@@ -126,11 +124,18 @@ Deno.test("a parameter that would render as a built-in flag is refused by the CL
     actor = parameter("Who to greet");
     greet = target().executes(() => {});
   }
-  const error = await assertRejects(
-    () => runCli(Shadowing, ["greet", "--actor=intruder"]),
-    ParameterError,
-  );
-  assertStringIncludes(error.message, `renders as "--actor"`);
+  // It reads as a named message and exit 1, like an invalid graph — not as an
+  // uncaught throw with a stack trace, which is what it was before the refusal
+  // was given the same treatment.
+  const { code, err } = await runCli(Shadowing, ["greet", "--actor=intruder"]);
+  assertEquals(code, 1);
+  assertStringIncludes(err, `renders as "--actor"`);
+  assertStringIncludes(err, "Rename the parameter field");
+  // `--help` cannot list a surface discovery refused, so it reports the same
+  // message rather than crashing.
+  const help = await runCli(Shadowing, ["--help"]);
+  assertEquals(help.code, 1);
+  assertStringIncludes(help.err, `renders as "--actor"`);
 });
 
 Deno.test("a parameter beside --actor keeps its own value and the run's actor", async () => {
