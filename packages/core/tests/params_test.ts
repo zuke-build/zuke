@@ -15,6 +15,7 @@ import {
   ParameterError,
   resolveParameters,
 } from "../src/params.ts";
+import { BUILTIN_FLAG_NAMES } from "../src/cli_spec.ts";
 import { REDACTED, Redactor } from "../src/redact.ts";
 import type { SecretSource } from "../src/secret.ts";
 
@@ -520,6 +521,70 @@ Deno.test("discoverParameters rejects a reserved MCP control name", () => {
     assertStringIncludes(error.message, name);
     assertStringIncludes(error.message, "reserved");
   }
+});
+
+Deno.test("discoverParameters rejects a parameter that renders as a built-in flag", () => {
+  // `parseArgs` matches a built-in ahead of a declared parameter of the same
+  // name, so `actor = parameter()` is not merely shadowed: `--actor=x` sets
+  // the run's attribution and the parameter never sees the value.
+  class BadActor extends Build {
+    actor = parameter();
+  }
+  class BadActorKind extends Build {
+    actorKind = parameter();
+  }
+  class BadLimit extends Build {
+    limit = parameter();
+  }
+  for (
+    const [Bad, field, flag] of [
+      [BadActor, "actor", "--actor"],
+      [BadActorKind, "actorKind", "--actor-kind"],
+      [BadLimit, "limit", "--limit"],
+    ] as const
+  ) {
+    const error = assertThrows(
+      () => discoverParameters(new Bad()),
+      ParameterError,
+    );
+    assertStringIncludes(error.message, field);
+    assertStringIncludes(error.message, flag);
+  }
+});
+
+Deno.test("the built-in flag refusal covers every flag the parser knows", () => {
+  // Derived from the same list `parseArgs` matches against, so a flag added to
+  // the CLI is reserved without anyone remembering to add it here too.
+  for (const flag of BUILTIN_FLAG_NAMES) {
+    const field = flag.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
+    // `dryRun` is also a reserved MCP control key, and that check runs first.
+    // Asserting the built-in message for it would be asserting the wrong
+    // refusal; the reserved-name test above is the one that covers it.
+    if (field === "dryRun") continue;
+    const build = Object.assign(new (class extends Build {})(), {
+      [field]: parameter(),
+    });
+    const error = assertThrows(
+      () => discoverParameters(build),
+      ParameterError,
+    );
+    assertStringIncludes(error.message, `renders as "--${flag}"`);
+    assertStringIncludes(error.message, "built-in");
+  }
+});
+
+Deno.test("a parameter merely near a built-in flag is accepted", () => {
+  // The check is on the rendered flag, not on a substring of the field, so a
+  // longer name and a nested one both stay usable.
+  class Fine extends Build {
+    actorName = parameter();
+    runs = { limit: parameter() };
+  }
+  const params = discoverParameters(new Fine());
+  assertEquals(
+    [...params.keys()].map(flagName).sort(),
+    ["actor-name", "runs-limit"],
+  );
 });
 
 Deno.test("a parameter exposes its default as a display string", () => {

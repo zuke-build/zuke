@@ -204,7 +204,10 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   with `.requires(this.x)`. `.array()` composes and comes **last**:
   `.options(...).array()` validates each element, `.number().array()` →
   `number[]`, and a required list is `.required().array()` (required before
-  array — `.array().required()` does not typecheck).
+  array — `.array().required()` does not typecheck). A parameter may not be
+  named so that it renders as a built-in CLI flag (`actor`, `actorKind`,
+  `limit`, `target`, `output`, …) or as an MCP control key (`dryRun`,
+  `confirm`, `operatorToken`) — the build refuses to load, naming the field.
 - **Secrets from a manager:** `parameter(...).secret().from(source)` sources a
   value at run time (e.g. `execSecret(...)` shelling out to a secret CLI) and
   **redacts** it from all of Zuke's output. See the cheatsheet.

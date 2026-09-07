@@ -32,6 +32,7 @@
  * @module
  */
 
+import { BUILTIN_FLAG_NAMES } from "./cli_spec.ts";
 import { messageOf } from "./internal.ts";
 import { forEachField } from "./build.ts";
 import type { Redactor } from "./redact.ts";
@@ -55,6 +56,21 @@ const RESERVED_PARAM_NAMES: ReadonlySet<string> = new Set([
   "confirm",
   "operatorToken",
 ]);
+
+/**
+ * The built-in CLI flags, by the name a parameter would have to render as to
+ * collide with one. `parseArgs` matches a built-in first, so the flag means
+ * the built-in and not the parameter — for a value-taking built-in in both
+ * `--flag value` and `--flag=value` form, and for a boolean one (`--state`,
+ * `--check`) in its bare form, leaving only `--flag=value` to reach the
+ * parameter. What makes that worth refusing rather than documenting is that
+ * the parameter is still settable by its environment variable and through the
+ * MCP run tool, so it works until someone uses its flag — and then the value
+ * silently does something else. For `--actor` that something is the run's
+ * attribution. {@link discoverParameters} refuses the collision at discovery,
+ * so it is a build-time error naming the field.
+ */
+const BUILTIN_FLAGS: ReadonlySet<string> = new Set(BUILTIN_FLAG_NAMES);
 
 /** Render a declared default as a display string, or `undefined` when it has none. */
 function defaultToString(value: unknown): string | undefined {
@@ -444,6 +460,15 @@ export function discoverParameters(build: object): Map<string, AnyParameter> {
         throw new ParameterError(
           `Parameter "${path}" collides with a reserved MCP control name ` +
             `(dryRun, confirm, operatorToken). Rename the parameter field.`,
+        );
+      }
+      const flag = flagName(path);
+      if (BUILTIN_FLAGS.has(flag)) {
+        throw new ParameterError(
+          `Parameter "${path}" renders as "--${flag}", which is a built-in ` +
+            `Zuke CLI flag: the parser matches the built-in first, so the ` +
+            `flag would mean the built-in and not this parameter. Rename the ` +
+            `parameter field.`,
         );
       }
       value.name_ = path;

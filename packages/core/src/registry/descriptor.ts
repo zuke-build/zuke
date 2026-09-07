@@ -27,7 +27,9 @@ import type {
   CliParameterInfo,
   CliTargetInfo,
 } from "../describe.ts";
+import { BUILTIN_FLAG_NAMES } from "../cli_spec.ts";
 import { asObject, fields } from "../json_shape.ts";
+import { flagName } from "../params.ts";
 
 /** The field readers for a build descriptor's fields. */
 const { optionalStr, str, strArray } = fields("registry: descriptor field");
@@ -185,7 +187,18 @@ function paramKind(
   throw new Error(`registry: descriptor field "kind" is not a valid kind`);
 }
 
-/** Validate one {@link CliParameterInfo}. */
+/**
+ * Validate one {@link CliParameterInfo}.
+ *
+ * A descriptor's `flag` is not taken on trust. The registry MCP server renders
+ * it straight onto the spawned child's argv, and the child's parser matches a
+ * built-in flag ahead of a declared parameter — so a descriptor naming a
+ * built-in would put the caller's value on that flag instead. With `--actor`
+ * that overrides the `ZUKE_ACTOR` the runner exported for the resolved caller,
+ * and the run is recorded under an actor the descriptor chose. A registry's
+ * backend is a service Zuke does not control, so both shapes are refused here,
+ * at the parse boundary every backend goes through.
+ */
 function parseParameterInfo(value: unknown): CliParameterInfo {
   const object = asObject(value);
   if (object === null) {
@@ -193,9 +206,26 @@ function parseParameterInfo(value: unknown): CliParameterInfo {
   }
   const flag = str(object, "flag");
   const boolean = bool(object, "boolean");
+  // Pre-M12 descriptors carry no `name`; the flag is the best available key.
+  const name = optionalStr(object, "name") ?? flag;
+  const derived = flagName(name);
+  if (flag !== derived) {
+    throw new Error(
+      `registry: descriptor parameter "${name}" declares flag "--${flag}", ` +
+        `but its name renders as "--${derived}". A flag that does not follow ` +
+        `from its parameter's name is refused.`,
+    );
+  }
+  if (BUILTIN_FLAG_NAMES.includes(flag)) {
+    throw new Error(
+      `registry: descriptor parameter "${name}" renders as "--${flag}", ` +
+        `which is a built-in Zuke CLI flag. A spawned run would apply the ` +
+        `value to the built-in instead of to the parameter, so the ` +
+        `descriptor is refused.`,
+    );
+  }
   const info: CliParameterInfo = {
-    // Pre-M12 descriptors carry no `name`; the flag is the best available key.
-    name: optionalStr(object, "name") ?? flag,
+    name,
     flag,
     description: str(object, "description"),
     required: bool(object, "required"),
