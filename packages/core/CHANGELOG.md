@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.47.0](https://github.com/zuke-build/zuke/compare/core-v1.46.0...core-v1.47.0) (2026-09-07)
+
+
+### Features
+
+* **core:** add an McpAuthenticator seam for the MCP server ([#473](https://github.com/zuke-build/zuke/issues/473)) ([6b31312](https://github.com/zuke-build/zuke/commit/6b31312682b8f6106aaf5ff60f047f37cb52e5c0))
+* **core:** force a target's outcome on a live run ([#482](https://github.com/zuke-build/zuke/issues/482)) ([94beca0](https://github.com/zuke-build/zuke/commit/94beca0f8505f99d7488adf6f4ec2393514ee6ac))
+* **core:** record a run's initiator, distinct from its last writer ([#476](https://github.com/zuke-build/zuke/issues/476)) ([b4ab66c](https://github.com/zuke-build/zuke/commit/b4ab66c71aa6e9ff346c6ce66127bdbbfd4aca2e))
+* **core:** refuse a build parameter that renders as a built-in CLI flag ([#486](https://github.com/zuke-build/zuke/issues/486)) ([2605aaf](https://github.com/zuke-build/zuke/commit/2605aaf4cf4584bb2571326a75609c9b9d4a2650))
+* **core:** role-based authorization for the MCP server ([#483](https://github.com/zuke-build/zuke/issues/483)) ([d8c2b97](https://github.com/zuke-build/zuke/commit/d8c2b97fac51f2e132e4b4005000b5cd9d88fb14))
+
 ## [1.46.0](https://github.com/zuke-build/zuke/compare/core-v1.45.0...core-v1.46.0) (2026-09-02)
 
 
