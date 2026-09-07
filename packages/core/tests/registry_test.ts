@@ -9,7 +9,8 @@
 
 import { assertEquals, assertRejects, assertThrows } from "./_assert.ts";
 import { defaultStateHost } from "../src/state/store.ts";
-import type { CliDescription } from "../src/describe.ts";
+import { type CliDescription, describeCli } from "../src/describe.ts";
+import { Build, parameter, target } from "../mod.ts";
 import {
   type BuildDescriptor,
   parseBuildDescriptor,
@@ -605,5 +606,39 @@ Deno.test("parseBuildDescriptor refuses a parameter flag that shadows a built-in
     parseBuildDescriptor(withParam({ name: "runs.limit", flag: "runs-limit" }))
       .surface.parameters[0].name,
     "runs.limit",
+  );
+});
+
+Deno.test("any surface describeCli produces still parses, awkward names included", () => {
+  // The refusal above rejects a descriptor whose `flag` does not follow from
+  // its `name`. That is safe only while `describeCli` is the sole producer of
+  // the field and always derives it — including for a pre-M12 descriptor,
+  // where the name is recovered from the flag, so `flagName` must be
+  // idempotent. Pinned here rather than argued: a change to `flagName` that
+  // broke either property would fail this test rather than quietly start
+  // refusing descriptors a previous Zuke wrote.
+  class Awkward extends Build {
+    actorName = parameter("near a built-in");
+    xmlHttpTimeout = parameter("consecutive capitals").number();
+    runs = { keepLast: parameter("grouped"), limit: parameter("grouped") };
+    deploy = target().executes(() => {});
+  }
+  const surface = describeCli(new Awkward());
+  const descriptor = sampleDescriptor({ surface });
+  const parsed = parseBuildDescriptor(stringifyBuildDescriptor(descriptor));
+  assertEquals(parsed.surface.parameters, surface.parameters);
+
+  // The same surface with each parameter's `name` dropped is the pre-M12
+  // shape: the name is recovered from the flag, and must render back to it.
+  const legacy = JSON.stringify({
+    ...descriptor,
+    surface: {
+      ...surface,
+      parameters: surface.parameters.map(({ name: _name, ...rest }) => rest),
+    },
+  });
+  assertEquals(
+    parseBuildDescriptor(legacy).surface.parameters.map((p) => p.flag),
+    surface.parameters.map((p) => p.flag),
   );
 });
