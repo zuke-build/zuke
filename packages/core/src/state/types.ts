@@ -85,6 +85,13 @@ export interface RunEvent {
   args: Record<string, string>;
   /** A short, redacted human detail (e.g. a denial reason), when present. */
   detail?: string;
+  /**
+   * The roles the caller held, when the server authenticated them. What makes a
+   * denial answerable afterwards: the actor and the reason say who was refused
+   * and by which rule, and this says what they were carrying at the time.
+   * Absent on a server with no authenticator, which knows of no roles.
+   */
+  roles?: readonly string[];
 }
 
 /** What an operator may force a target to, without running it. */
@@ -606,6 +613,11 @@ function parseRunEvent(value: unknown): RunEvent {
   };
   const detail = optionalStr(object, "detail");
   if (detail !== undefined) event.detail = detail;
+  if (Array.isArray(object.roles)) {
+    event.roles = object.roles.filter((role): role is string =>
+      typeof role === "string"
+    );
+  }
   return event;
 }
 

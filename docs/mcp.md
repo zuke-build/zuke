@@ -187,13 +187,96 @@ ZUKE_OPERATOR_TOKEN=… ./zuke mcp --http 7777 \
   --allow-run --protect promoteToProd --confirm-destructive
 ```
 
+### Roles
+
+The three flags above are **process-wide**: they say what *anyone* reaching this
+server may do. Once the server [authenticates](#authentication) its callers it
+can say what *this* caller may do, which is what roles are for.
+
+Three built-in roles are ordered — `read` < `run` < `operator` — so an operator
+satisfies a requirement for `run` without being granted it separately. Any other
+name is matched **exactly**: an identity provider's own group (`sre`,
+`release-manager`) works with `requiresRole` without being ranked into a
+hierarchy it never agreed to. Map your groups onto the three tiers for the
+general permission and use your own names for the specific one.
+
+The shipped default policy:
+
+| Call | Needs |
+| --- | --- |
+| `list_*` / `show_*` / `describe_*` / `graph` | `read` |
+| `run:<target>` | `run`, **and** every `requiresRole` declared anywhere in the plan it would run |
+| `cancel_run` / `signal_run` / `force_target`, and `resume_check` on one run | the run's [initiator](./state.md#actor-and-initiator--two-different-questions) or `operator`, **and** every `requiresRole` in the run's plan |
+| `resume_check` sweeping every run | `operator` |
+
+`requiresRole` can only **raise** the bar — `run` is the floor for executing
+anything, so declaring `requiresRole("read")` does not let a read-only caller
+run a target. It is enforced **across the whole plan**, like `--protect` and for
+the same reason: invoking a target runs its dependencies, so a requirement that
+guarded only the entry point would be bypassed by invoking anything that depends
+on it. A run-scoped mutation executes the run's plan too, so the same
+requirements apply to resuming, signalling, cancelling or forcing it.
+
+A run whose initiator is a **service** may be steered by any caller holding
+`run`: a scheduler's run has no person to ask, and treating the scheduler as its
+owner would mean nobody could intervene.
+
+Presenting a valid `ZUKE_OPERATOR_TOKEN` **grants the `operator` role** for that
+call, so the shared secret and the role model are one policy rather than two
+that can disagree — and a deployment can move to roles a piece at a time.
+
+Override the whole decision with `mcpAuthorize` when the rule is something the
+engine cannot know — a change window, team ownership, a freeze:
+
+```ts
+class ControlPlane extends Build {
+  override mcpAuthorize(identity: McpIdentity, call: McpCall) {
+    if (call.tool === "run:promote" && !inChangeWindow()) {
+      return { allow: false, reason: "outside the change window" };
+    }
+    return defaultMcpAuthorize(identity, call);
+  }
+}
+```
+
+It runs **after** the allow-list and operator-token checks, so it can narrow
+what those permit and never widen it.
+
+**Two servers are deliberately unaffected.** One with no authenticator at all
+treats every caller as holding every role, so `--allow-run`, `--protect` and the
+operator token remain exactly the gates they were. And a build using the legacy
+`mcpIdentity()` hook — the header-trusting seam, which never had roles to give —
+is not constrained by the policy either. Those two are what keep a local stdio
+server, and every deployment that predates roles, working unchanged.
+
+Whether roles are enforced is a property of the **seam**, not of one identity:
+declaring `mcpAuth()` opts in, and an identity it returns without a `roles` list
+settles to none and is denied. Inferring it per identity would mean a token
+carrying *less* information bought *more* privilege. An override of
+`mcpAuthorize` still runs in every case, including the legacy seam, since a
+change window or a freeze applies whether or not roles are in play.
+
+`requiresRole` is the exception to "the legacy seam is left alone": a target
+that declares one is **refused** for a caller whose authenticator cannot express
+roles, naming the seam. Silently ignoring the declaration would tell you a
+target is gated when nothing is checking. A server that declares no roles — every
+server that predates this — is unaffected, since the refusal can only fire on a
+declaration someone has just added.
+
+In **registry mode** the policy decides on the tiers alone — `read` to list or
+describe a registered build, `run` to spawn one — because a registry descriptor
+carries no per-target `requiresRole`.
+
 ## Audit log
 
 With a store configured, **every mutating or denied tool call** (`run:<target>`,
 `signal_run`, `resume_check`, `cancel_run`, `force_target`) is appended to an
 audit trail: the
 time, the tool, the resolved **actor**, the outcome (`ok` / `denied` / `error`),
-and the call's arguments. Arguments are **redacted** — the operator token is
+and the call's arguments — plus, when the server authenticated the caller, the
+**roles** they held, which is what makes a denial answerable afterwards: who was
+refused, by which rule, and what they were carrying at the time. Arguments are
+**redacted** — the operator token is
 dropped and every `.secret()` parameter's value is masked — before anything is
 persisted.
 
@@ -256,16 +339,18 @@ The identity's fields:
 | ------- | ------------------------------------------------------------------------------------------------------------ |
 | `actor` | The authenticated caller. Required and non-empty — anything else refuses the request.                        |
 | `kind`  | `"human"` or `"service"`. Omitted reads as `"human"`, so a service claim must be stated.                     |
-| `roles` | The caller's roles. Omitted reads as none, so an authenticator that says nothing about roles grants nothing. |
+| `roles` | The caller's roles, in three states. **Omitted** means this authenticator does not speak roles — only meaningful for the legacy `mcpIdentity()` seam, whose callers the [policy](#roles) leaves alone. An **empty list** means the question was considered and nothing granted, which denies. A **non-empty list** is evaluated. An `mcpAuth()` identity that omits the list settles to empty, so a token carrying less information never buys more privilege. |
 | `via`   | How the identity was established (`"oauth-proxy"`). Informational only.                                      |
 
 The resolved `actor` overrides `--actor`, the environment, and the client label
 for that call, and flows to the [audit trail](#audit-log), run records,
 lock-holder identity, and a registry-spawned child's `ZUKE_ACTOR`. `kind` and
 `roles` reach a [registry](#registry-mode-dynamic-discovery)-spawned child as
-`ZUKE_ACTOR_KIND` and `ZUKE_ACTOR_ROLES`; they are **not** an authorization
-input — the [allow-list, `--protect` and the operator token](#authorization)
-remain what gates a call.
+`ZUKE_ACTOR_KIND` and `ZUKE_ACTOR_ROLES` (each role percent-encoded, so a name
+containing the separator survives). `roles` **is** an authorization input — see
+[Roles](#roles) — alongside the
+[allow-list, `--protect` and the operator token](#authorization), which still
+gate a call first.
 
 ### `mcpIdentity()` — sugar for a proxy header
 

@@ -715,7 +715,8 @@ that finished.
 [`stateStore()`](./state.md), [`deadline()`](./state.md),
 [`remoteCache()`](./caching.md), [`recoverWith()`](./self-healing.md),
 [`registry()`](./registry.md), [`mcpAuth()`](./mcp.md),
-[`mcpIdentity()`](./mcp.md) and [`unforceable()`](./state.md).
+[`mcpIdentity()`](./mcp.md), [`mcpAuthorize()`](./mcp.md#roles) and
+[`unforceable()`](./state.md).
 
 **External ordering — `override extraEdges(targets)`.** Return `[before, after]`
 pairs to impose soft ordering on the plan beyond the per-target `.before()` /

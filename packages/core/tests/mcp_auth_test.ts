@@ -43,10 +43,21 @@ Deno.test("normalizeIdentity refuses anything that is not an identity object", (
   assertEquals(normalizeIdentity({ actor: "" }), null); // empty actor
 });
 
-Deno.test("normalizeIdentity settles kind and roles on a minimal identity", () => {
-  // The key count is compared too, so this also pins that no `via` key is
-  // invented for an identity that carried none.
+Deno.test("normalizeIdentity settles kind, and leaves unclaimed roles unclaimed", () => {
+  // The key count is compared too, so this pins that neither `via` nor `roles`
+  // is invented for an identity that carried neither. An authenticator that
+  // never mentions roles does not speak roles, which is not the same claim as
+  // granting none — the role policy skips the former and denies the latter.
   assertEquals(normalizeIdentity({ actor: "ada" }), {
+    actor: "ada",
+    kind: "human",
+  });
+});
+
+Deno.test("normalizeIdentity keeps an explicitly empty role list", () => {
+  // The opposite claim to omitting it: the authenticator considered the
+  // question and granted nothing, so the policy has something to deny with.
+  assertEquals(normalizeIdentity({ actor: "ada", roles: [] }), {
     actor: "ada",
     kind: "human",
     roles: [],
@@ -57,7 +68,6 @@ Deno.test("normalizeIdentity honours an explicit service kind", () => {
   assertEquals(normalizeIdentity({ actor: "deploy-bot", kind: "service" }), {
     actor: "deploy-bot",
     kind: "service",
-    roles: [],
   });
 });
 
@@ -80,17 +90,21 @@ Deno.test("normalizeIdentity keeps only the non-empty string roles", () => {
 });
 
 Deno.test("normalizeIdentity yields no roles for a non-array roles", () => {
-  for (const roles of ["ops", 7, null, undefined, { ops: true }]) {
+  // A malformed claim is still a claim: the authenticator meant to say
+  // something about roles, so it settles to "none" rather than to unclaimed.
+  for (const roles of ["ops", 7, null, { ops: true }]) {
     const identity = normalizeIdentity({ actor: "ada", roles });
     assertEquals(identity?.roles, [], `roles ${JSON.stringify(roles)}`);
   }
+  // …while omitting the key entirely leaves it unclaimed.
+  const omitted = normalizeIdentity({ actor: "ada", roles: undefined });
+  assertEquals(omitted !== null && Object.hasOwn(omitted, "roles"), false);
 });
 
 Deno.test("normalizeIdentity keeps a non-empty via and omits any other", () => {
   assertEquals(normalizeIdentity({ actor: "ada", via: "oauth-proxy" }), {
     actor: "ada",
     kind: "human",
-    roles: [],
     via: "oauth-proxy",
   });
   for (const via of ["", 7, null, {}]) {
@@ -107,7 +121,7 @@ Deno.test("normalizeIdentity keeps a non-empty via and omits any other", () => {
 
 Deno.test("authenticateRequest settles a synchronous identity", async () => {
   const result = await run(() => ({ actor: "ada", kind: "service" }));
-  assertEquals(result, { actor: "ada", kind: "service", roles: [] });
+  assertEquals(result, { actor: "ada", kind: "service" });
 });
 
 Deno.test("authenticateRequest awaits an asynchronous identity", async () => {
@@ -136,7 +150,7 @@ Deno.test("authenticateRequest passes the request context through", async () => 
   );
   assertEquals(seen.length, 1);
   assertEquals(seen[0], ctx);
-  assertEquals(result, { actor: "ada", kind: "human", roles: [] });
+  assertEquals(result, { actor: "ada", kind: "human" });
 });
 
 // ---- authenticateRequest: fail-closed on a misbehaving authenticator -------
@@ -334,11 +348,12 @@ Deno.test("a throwing property getter on the result is a refusal, not a fault", 
   );
 });
 
-Deno.test("a role name carrying the child's separator is dropped", async () => {
-  // ZUKE_ACTOR_ROLES joins the list with a comma, so a name containing one would
-  // reach a registry-spawned child as two roles. Role names can come from an
-  // identity provider's group names, so the guard belongs here rather than in
-  // each consumer.
+Deno.test("a role name carrying the child's separator is kept", async () => {
+  // It is escaped where it matters — the comma-joined environment variable a
+  // registry-spawned child reads — rather than dropped here. Dropping would let
+  // sanitisation manufacture an empty list, which the role policy reads as
+  // "granted nothing" and denies: a guard that turns a granted role set into a
+  // deny-all is worse than the encoding problem it avoids.
   const identity = await run(() => ({
     actor: "ada",
     roles: ["ops", "team,operator", "release"],
@@ -346,7 +361,7 @@ Deno.test("a role name carrying the child's separator is dropped", async () => {
   assertEquals(identity, {
     actor: "ada",
     kind: "human",
-    roles: ["ops", "release"],
+    roles: ["ops", "team,operator", "release"],
   });
 });
 

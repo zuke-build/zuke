@@ -24,7 +24,9 @@ import {
   isRunStatus,
   RUN_STATUS_NAMES,
   type RunQuery,
+  type RunSummary,
   toJsonValue,
+  toSummary,
 } from "../state/types.ts";
 import { forceTarget } from "../force.ts";
 import type { JsonValue } from "../target.ts";
@@ -49,6 +51,7 @@ export interface RunToolDeps {
   authorize: (
     targetName: string,
     args: Record<string, unknown>,
+    run?: RunSummary,
   ) => string | null;
 }
 
@@ -281,7 +284,13 @@ async function runDenial(
 ): Promise<RunToolResult | null> {
   const loaded = await deps.store.getRun(runId);
   if (loaded === null) return jsonResult({ error: "no_run", runId }, true);
-  const denied = deps.authorize(loaded.record.rootTarget, args);
+  // The run travels with the call: a policy asking "does this caller own it"
+  // needs the record's initiator, which only this layer has loaded.
+  const denied = deps.authorize(
+    loaded.record.rootTarget,
+    args,
+    toSummary(loaded.record),
+  );
   if (denied !== null) {
     return jsonResult({ error: "unauthorized", reason: denied, runId }, true);
   }

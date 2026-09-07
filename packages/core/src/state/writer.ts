@@ -381,6 +381,16 @@ export class RunStateWriter {
     if (event.detail !== undefined) {
       out.detail = this.#redactor.redact(event.detail);
     }
+    // Copied explicitly, because this rebuilds the event field by field and
+    // anything not named here is silently dropped — and redacted like every
+    // other field. Role names are normally an operator's own identifiers, which
+    // the redactor leaves untouched since it only substitutes known secret
+    // values; running them through it anyway costs nothing and means this
+    // function has no field whose safety rests on an assumption about where its
+    // value came from.
+    if (event.roles !== undefined) {
+      out.roles = event.roles.map((role) => this.#redactor.redact(role));
+    }
     return out;
   }
 

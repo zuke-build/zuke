@@ -62,6 +62,7 @@ import {
   ok,
 } from "./jsonrpc.ts";
 import type { McpAuthenticator, ResolvedIdentity } from "./auth.ts";
+import { defaultMcpAuthorize, type McpCall } from "./roles.ts";
 
 /** The captured result of spawning a registered build. */
 export interface RegistryRunResult {
@@ -88,9 +89,10 @@ export interface RegistryRunOptions {
    */
   actorKind?: "human" | "service";
   /**
-   * The caller's roles, exported as `ZUKE_ACTOR_ROLES` (comma-separated), so a
-   * build can see what the caller was entitled to when it asked. Honoured only
-   * together with {@link RegistryRunOptions.actor}.
+   * The caller's roles, exported as `ZUKE_ACTOR_ROLES` — each name
+   * percent-encoded and joined with commas, so a name containing the separator
+   * survives — so a build can see what the caller was entitled to when it
+   * asked. Honoured only together with {@link RegistryRunOptions.actor}.
    *
    * The three describe one caller and are written together or not at all:
    * exporting entitlements beside an actor that came from somewhere else is the
@@ -131,7 +133,12 @@ export const defaultRegistryRunner: RegistryRunner = async (
   if (options?.actor !== undefined && options.actor !== "") {
     env.ZUKE_ACTOR = options.actor;
     env.ZUKE_ACTOR_KIND = options.actorKind ?? "human";
-    env.ZUKE_ACTOR_ROLES = (options.actorRoles ?? []).join(",");
+    // Percent-encoded per role, so a name containing the separator survives
+    // the round trip instead of arriving as two roles. A child reads this by
+    // splitting on "," and decoding each part.
+    env.ZUKE_ACTOR_ROLES = (options.actorRoles ?? [])
+      .map(encodeURIComponent)
+      .join(",");
   }
   const command = new Deno.Command(argv[0], {
     args: [...argv.slice(1)],
@@ -180,6 +187,16 @@ export interface RegistryMcpServerOptions {
    * build's `mcpAuth()` or `mcpIdentity()` (see `serveMcp`).
    */
   authenticator?: McpAuthenticator;
+  /**
+   * Whether the configured authenticator participates in the
+   * [role policy](../../../docs/mcp.md#roles). See
+   * {@link "./server.ts".McpServerOptions.enforceRoles}.
+   *
+   * A registry descriptor carries no per-target `requiresRole`, so here the
+   * policy decides on the tiers alone: `read` to list or describe a build,
+   * `run` to spawn one.
+   */
+  enforceRoles?: boolean;
   /** Reads an environment variable (injectable for tests). */
   readEnv?: (name: string) => string | undefined;
   /** The server version reported in `initialize`. Defaults to `"0.0.0"`. */
@@ -355,6 +372,8 @@ export class RegistryMcpServer {
   readonly #store?: StateStore;
   readonly #actor?: string;
   readonly #authenticator?: McpAuthenticator;
+  /** Whether the configured authenticator participates in the role policy. */
+  readonly #enforceRoles: boolean;
   readonly #readEnv: (name: string) => string | undefined;
   readonly #runner: RegistryRunner;
   readonly #maxConcurrentRuns: number;
@@ -387,6 +406,7 @@ export class RegistryMcpServer {
     this.#store = options.stateStore;
     this.#actor = options.actor;
     this.#authenticator = options.authenticator;
+    this.#enforceRoles = options.enforceRoles ?? false;
     this.#readEnv = options.readEnv ?? (() => undefined);
     this.#version = options.version ?? "0.0.0";
     this.#runner = options.runner ?? defaultRegistryRunner;
@@ -544,6 +564,17 @@ export class RegistryMcpServer {
     const call = toolCall(params);
     if ("error" in call) return err(id, INVALID_PARAMS, call.error);
     const { name, args } = call;
+
+    // The role policy, on the tiers alone: a registry descriptor carries no
+    // per-target `requiresRole`, but "a caller granted nothing can spawn every
+    // registered build" is the hole worth closing. Applied to every tool here,
+    // since all of them are either a read or a spawn.
+    const denial = this.#authorizePolicy(identity, args, { tool: name });
+    if (denial !== null) {
+      const actor = identity?.actor ?? this.#resolveActor();
+      await this.#audit(name, args, "denied", actor, denial);
+      return ok(id, unauthorizedResult(name, denial));
+    }
 
     if (name === "list_builds") {
       return ok(id, textResult(await this.#listBuilds()));
@@ -813,6 +844,36 @@ export class RegistryMcpServer {
       argv: [Deno.execPath(), "run", "-A", location.module, ...trailing],
       cwd: absolutePath(location.cwd).path,
     };
+  }
+
+  /**
+   * Apply the build's role policy to one call, or `null` when it allows it.
+   * The registry's twin of {@link "./server.ts".McpServer}'s, minus the
+   * per-target requirement its descriptors do not carry.
+   */
+  #authorizePolicy(
+    identity: ResolvedIdentity | undefined,
+    args: Record<string, unknown>,
+    call: McpCall,
+  ): string | null {
+    if (identity === undefined) return null;
+    const claimed = this.#enforceRoles ? identity.roles ?? [] : identity.roles;
+    const roles = claimed === undefined
+      ? undefined
+      : operatorTokenDenial(args, this.#operatorToken) === null
+      ? [...claimed, "operator"]
+      : claimed;
+    try {
+      const verdict = defaultMcpAuthorize(
+        { ...identity, ...(roles === undefined ? {} : { roles }) },
+        call,
+      );
+      return verdict.allow ? null : verdict.reason;
+    } catch {
+      // A policy that throws denies: it is the last thing between a caller and
+      // a spawned build.
+      return "policy_error";
+    }
   }
 
   /** Resolve the actor for audited calls: --actor → env → the client label. */

@@ -17,7 +17,16 @@ import type { OrderingEdge } from "./graph.ts";
 import type { RemoteCacheStore } from "./remote_cache.ts";
 import type { StateStore } from "./state/store.ts";
 import type { BuildRegistry } from "./registry/registry.ts";
-import type { McpAuthenticator, McpIdentityHook } from "./mcp/auth.ts";
+import type {
+  McpAuthenticator,
+  McpIdentity,
+  McpIdentityHook,
+} from "./mcp/auth.ts";
+import {
+  defaultMcpAuthorize,
+  type McpAuthorization,
+  type McpCall,
+} from "./mcp/roles.ts";
 
 /** Whether a value is a plain object (a component bundle), not a class instance. */
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -376,6 +385,40 @@ export class Build {
    */
   unforceable(): TargetBuilder[] {
     return [];
+  }
+
+  /**
+   * Decide whether an authenticated MCP caller may make one call — the
+   * build-level half of [authorization](../../docs/mcp.md#authorization).
+   *
+   * The default implementation is {@link defaultMcpAuthorize}: read tools need
+   * `read`, running a target needs `run` (or whatever the target's
+   * `requiresRole` asks for), and a run-scoped mutation needs the run's
+   * initiator or `operator`. Override to express what the engine cannot know —
+   * a change window, team ownership, a freeze.
+   *
+   * Only consulted when the server authenticates its callers. With no
+   * `mcpAuth()`/`mcpIdentity()` every caller is treated as holding every role,
+   * so `--allow-run`, `--protect` and the operator token remain exactly the
+   * gates they were; a local stdio server is unchanged.
+   *
+   * Called **after** the allow-list and operator-token checks, so it can only
+   * narrow what those already permit — an override cannot open a target the
+   * server was not started to expose.
+   *
+   * ```ts
+   * class ControlPlane extends Build {
+   *   override mcpAuthorize(identity: McpIdentity, call: McpCall) {
+   *     if (call.tool === "run:promote" && !inChangeWindow()) {
+   *       return { allow: false, reason: "outside the change window" };
+   *     }
+   *     return defaultMcpAuthorize(identity, call);
+   *   }
+   * }
+   * ```
+   */
+  mcpAuthorize(identity: McpIdentity, call: McpCall): McpAuthorization {
+    return defaultMcpAuthorize(identity, call);
   }
 }
 

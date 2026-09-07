@@ -560,6 +560,8 @@ export class TargetBuilder {
   unlisted_ = false;
   /** Advertise this target as query-only over MCP (set by {@link readOnly}). */
   readOnly_ = false;
+  /** The role an MCP caller needs to run this target (set by {@link requiresRole}). */
+  requiresRole_?: string;
   /** Run this target's body under `--dry-run` with `$` echoed (set by {@link dryRunnable}). */
   dryRunnable_ = false;
   /** Extra cache-key contributors beyond input files (set by {@link cacheKey}). */
@@ -789,6 +791,29 @@ export class TargetBuilder {
    */
   readOnly(): this {
     this.readOnly_ = true;
+    return this;
+  }
+
+  /**
+   * The role an MCP caller must hold to run this target — the per-target half
+   * of [authorization](../../docs/mcp.md#authorization).
+   *
+   * The built-in roles are ordered `read` < `run` < `operator`, so an operator
+   * satisfies a requirement for `run`; any other name is matched exactly, so an
+   * identity provider's own group (`sre`, `release-manager`) works here without
+   * being ranked into a hierarchy it never agreed to.
+   *
+   * Only meaningful when the server authenticates its callers — a build with no
+   * `mcpAuth()`/`mcpIdentity()` is gated by `--allow-run` and `--protect` as
+   * before, and this is inert. It raises the bar for one target; it cannot
+   * lower it, so a target requiring `read` still needs `run` to be executed.
+   *
+   * ```ts
+   * promote = target().requiresRole("operator").executes(() => deployProd());
+   * ```
+   */
+  requiresRole(role: string): this {
+    this.requiresRole_ = role;
     return this;
   }
 

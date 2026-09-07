@@ -160,6 +160,21 @@ async function createTarGzip(files: PathLike[], dest: PathLike, options: { cwd?:
   Read `files` (relative to `cwd`), pack them into a tar archive named by their
   path relative to `cwd`, gzip it, and write the result to `dest`.
 
+function defaultMcpAuthorize(identity: McpIdentity, call: McpCall): McpAuthorization
+  The shipped default policy.
+
+  | Call | Needs |
+  | --- | --- |
+  | `list_*` / `show_*` / `describe_*` | `read` |
+  | `run:<target>` | `run`, and the target's `requiresRole` when it declares one |
+  | a run-scoped mutation | the run's initiator, or `operator` |
+  | a sweep over every run | `operator` |
+
+  A run whose initiator is a service may be steered by any caller holding
+  `run`: a scheduler's run has no person to ask, and treating the scheduler as
+  its owner would mean nobody could intervene. Documented, and overridable by
+  `Build.mcpAuthorize`.
+
 function describeCli(build: Build, options: DescribeCliOptions): CliDescription
   Describe a build's full CLI surface — reserved commands, option flags, targets
   (with descriptions and dependencies), and declared parameters — as a plain
@@ -660,6 +675,14 @@ async function run(BuildClass: new () => Build, options: RunOptions): Promise<vo
   await run(MyBuild, { plugins: [timing] });
   ```
 
+function satisfiesRole(held: readonly string[], required: string): boolean
+  Whether a caller holding `held` satisfies a requirement for `required`.
+
+  A built-in role is satisfied by any built-in at or above it; anything else is
+  satisfied only by holding that exact name. The two rules cannot be collapsed:
+  ordering a name the model does not know would mean guessing where an identity
+  provider's group sits in a hierarchy it never agreed to.
+
 function service(): ServiceBuilder
   Create a service target — a long-lived process kept running while its
   dependents execute. Configure it with {@link ServiceBuilder.start} /
@@ -1132,6 +1155,35 @@ class Build
       applyProduction = target().executes(() => applyTerraform());
       override unforceable() {
         return [this.applyProduction];
+      }
+    }
+    ```
+  mcpAuthorize(identity: McpIdentity, call: McpCall): McpAuthorization
+    Decide whether an authenticated MCP caller may make one call — the
+    build-level half of authorization (../../docs/mcp.md#authorization).
+
+    The default implementation is {@link defaultMcpAuthorize}: read tools need
+    `read`, running a target needs `run` (or whatever the target's
+    `requiresRole` asks for), and a run-scoped mutation needs the run's
+    initiator or `operator`. Override to express what the engine cannot know —
+    a change window, team ownership, a freeze.
+
+    Only consulted when the server authenticates its callers. With no
+    `mcpAuth()`/`mcpIdentity()` every caller is treated as holding every role,
+    so `--allow-run`, `--protect` and the operator token remain exactly the
+    gates they were; a local stdio server is unchanged.
+
+    Called after the allow-list and operator-token checks, so it can only
+    narrow what those already permit — an override cannot open a target the
+    server was not started to expose.
+
+    ```ts
+    class ControlPlane extends Build {
+      override mcpAuthorize(identity: McpIdentity, call: McpCall) {
+        if (call.tool === "run:promote" && !inChangeWindow()) {
+          return { allow: false, reason: "outside the change window" };
+        }
+        return defaultMcpAuthorize(identity, call);
       }
     }
     ```
@@ -1734,6 +1786,8 @@ class TargetBuilder
     Hide this target from `--list`/`--help` (set by {@link unlisted}).
   readOnly_: boolean
     Advertise this target as query-only over MCP (set by {@link readOnly}).
+  requiresRole_?: string
+    The role an MCP caller needs to run this target (set by {@link requiresRole}).
   dryRunnable_: boolean
     Run this target's body under `--dry-run` with `$` echoed (set by {@link dryRunnable}).
   readonly cacheKeys_: Array<() => string | Promise<string>>
@@ -1860,6 +1914,23 @@ class TargetBuilder
     from `--confirm-destructive`. A hint about intent only — the target still
     runs its real body — so declare it on targets that inspect rather than
     mutate (a status check, a report).
+  requiresRole(role: string): this
+    The role an MCP caller must hold to run this target — the per-target half
+    of authorization (../../docs/mcp.md#authorization).
+
+    The built-in roles are ordered `read` < `run` < `operator`, so an operator
+    satisfies a requirement for `run`; any other name is matched exactly, so an
+    identity provider's own group (`sre`, `release-manager`) works here without
+    being ranked into a hierarchy it never agreed to.
+
+    Only meaningful when the server authenticates its callers — a build with no
+    `mcpAuth()`/`mcpIdentity()` is gated by `--allow-run` and `--protect` as
+    before, and this is inert. It raises the bar for one target; it cannot
+    lower it, so a target requiring `read` still needs `run` to be executed.
+
+    ```ts
+    promote = target().requiresRole("operator").executes(() => deployProd());
+    ```
   always(): this
     Run this target even after the build has failed — for cleanup, teardown, or
     an aggregate that has to report on the failure.
@@ -3377,6 +3448,25 @@ interface McpAuthenticator
   authenticate(ctx: McpRequestContext): Promise<McpIdentity | McpAuthReject> | McpIdentity | McpAuthReject
     Resolve the caller's identity from the request, or refuse the request.
 
+interface McpCall
+  What is being authorized — one MCP tool call, described for a policy.
+
+  tool: string
+    The tool name, e.g. `run:deploy`, `cancel_run`, `list_runs`.
+  target?: string
+    The target a `run:` call names, when it names one.
+  requiredRoles?: readonly string[]
+    Every role declared with `.requiresRole(...)` anywhere in the plan this
+    call would execute — not just on the target it names.
+
+    Invoking a target runs its dependencies, so a requirement that only guarded
+    the entry point would be bypassed by invoking anything that depends on it.
+    This mirrors `--protect`, which is enforced across the whole plan for the
+    same reason. The caller must satisfy all of them.
+  run?: RunSummary
+    The run a run-scoped call acts on, when it acts on one. Absent for a sweep
+    over every run, which no single run's owner can authorize.
+
 interface McpIdentity
   A trusted caller identity, resolved per request by an
   {@link McpAuthenticator}. Its {@link McpIdentity.actor} is the
@@ -3390,10 +3480,18 @@ interface McpIdentity
     conservative default: a policy that treats service callers differently must
     see the claim stated rather than inferred.
   roles?: readonly string[]
-    The roles this caller holds. Absent is read as none, so an authenticator
-    that says nothing about roles grants nothing. A name containing a comma is
-    dropped: the comma separates the roles a registry-spawned child reads, so
-    such a name would reach it as two.
+    The roles this caller holds.
+
+    Omitting it means this authenticator does not speak roles: the
+    role policy (../../docs/mcp.md#authorization) then does not constrain the
+    caller, and the server's allow-list, `--protect` globs and operator token
+    remain the only gates — what a server did before roles existed. An empty
+    list is the opposite claim: the question was considered and nothing was
+    granted, so the policy denies.
+
+    Role names are passed through as given; the comma-separated environment
+    variable a registry-spawned child reads escapes them rather than this
+    dropping them, so sanitisation cannot turn a granted set into an empty one.
   via?: string
     How the identity was established (e.g. `"oauth-proxy"`); informational.
 
@@ -3681,6 +3779,11 @@ interface RunEvent
     The call's arguments, redacted — secret values masked, tokens dropped.
   detail?: string
     A short, redacted human detail (e.g. a denial reason), when present.
+  roles?: readonly string[]
+    The roles the caller held, when the server authenticated them. What makes a
+    denial answerable afterwards: the actor and the reason say who was refused
+    and by which rule, and this says what they were carrying at the time.
+    Absent on a server with no authenticator, which knows of no roles.
 
 interface RunGraphNode
   One entry of a run's graph-shape snapshot.
@@ -4379,6 +4482,9 @@ type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string
 type LockResult = { ok: true; token: string; } | { ok: false; holder: LockHolder; }
   The result of {@link StateStore.acquireLock}: a `token` proving ownership, or
   the current `holder` when the lock is already held.
+
+type McpAuthorization = { readonly allow: true; } | { readonly allow: false; readonly reason: string; }
+  A policy's verdict on one call.
 
 type McpIdentityHook = (ctx: McpRequestContext) => McpIdentity
   Resolve a trusted {@link McpIdentity} from a request's context. The original,

@@ -35,10 +35,18 @@ export interface McpIdentity {
    */
   kind?: "human" | "service";
   /**
-   * The roles this caller holds. Absent is read as none, so an authenticator
-   * that says nothing about roles grants nothing. A name containing a comma is
-   * dropped: the comma separates the roles a registry-spawned child reads, so
-   * such a name would reach it as two.
+   * The roles this caller holds.
+   *
+   * Omitting it means this authenticator does not speak roles: the
+   * [role policy](../../docs/mcp.md#authorization) then does not constrain the
+   * caller, and the server's allow-list, `--protect` globs and operator token
+   * remain the only gates — what a server did before roles existed. An **empty
+   * list** is the opposite claim: the question was considered and nothing was
+   * granted, so the policy denies.
+   *
+   * Role names are passed through as given; the comma-separated environment
+   * variable a registry-spawned child reads escapes them rather than this
+   * dropping them, so sanitisation cannot turn a granted set into an empty one.
    */
   roles?: readonly string[];
   /** How the identity was established (e.g. `"oauth-proxy"`); informational. */
@@ -46,17 +54,29 @@ export interface McpIdentity {
 }
 
 /**
- * An {@link McpIdentity} after {@link normalizeIdentity}: `kind` and `roles` are
- * settled, so nothing downstream re-applies the defaults (and no two callers can
- * disagree about what they are).
+ * An {@link McpIdentity} after {@link normalizeIdentity}: `kind` is settled, so
+ * nothing downstream re-applies that default, while `roles` is preserved
+ * exactly as claimed — absent when the authenticator never mentioned it, which
+ * is a different claim from granting none.
  */
 export interface ResolvedIdentity {
   /** The authenticated actor. Never empty. */
   readonly actor: string;
   /** The caller's kind, defaulted to `"human"` when the authenticator omitted it. */
   readonly kind: "human" | "service";
-  /** The caller's roles, defaulted to empty. Each entry is a non-empty string. */
-  readonly roles: readonly string[];
+  /**
+   * The roles the authenticator claimed, or `undefined` when it claimed none at
+   * all.
+   *
+   * The distinction is load-bearing, and it is not the same as an empty list.
+   * `undefined` means this authenticator does not speak roles — a
+   * proxy-header `mcpIdentity()` hook, say — so the role policy does not
+   * constrain it and the server's own gates remain the only ones, exactly as
+   * before roles existed. `[]` means the authenticator considered the question
+   * and granted nothing, which denies. Collapsing the two would silently lock
+   * out every server whose authenticator predates the policy.
+   */
+  readonly roles?: readonly string[];
   /**
    * How the identity was established, when the authenticator said. Carried
    * through to whatever inspects the caller; not written to the audit trail,
@@ -166,17 +186,17 @@ function headerValue(value: unknown): string | undefined {
 /**
  * The usable role names in `value`, or an empty list when it is not an array.
  *
- * A name is usable when it is a non-empty string containing no comma. The comma
- * is the separator a registry-spawned child reads `ZUKE_ACTOR_ROLES` with, so a
- * name carrying one would arrive there as two roles — and role names can come
- * from an identity provider's group names, which the caller may influence. One
- * dropped role is a smaller wrong answer than a forged one, and dropping it here
- * keeps every consumer of the list honest rather than each escaping it again.
+ * Only empty and non-string entries are dropped. A name containing a comma is
+ * **kept**: the comma matters only to the environment variable a
+ * registry-spawned child reads, which escapes it there, and dropping the role
+ * here would let sanitisation manufacture an empty list — which the role policy
+ * reads as "granted nothing" and denies. A guard that turns a granted role set
+ * into a deny-all is a worse answer than the encoding problem it avoids.
  */
 function rolesOf(value: unknown): readonly string[] {
   if (!Array.isArray(value)) return [];
   return value.filter((role): role is string =>
-    typeof role === "string" && role !== "" && !role.includes(",")
+    typeof role === "string" && role !== ""
   );
 }
 
@@ -193,11 +213,18 @@ export function normalizeIdentity(value: unknown): ResolvedIdentity | null {
   const actor = value.actor;
   if (typeof actor !== "string" || actor === "") return null;
   const kind = value.kind === "service" ? "service" : "human";
-  const roles = rolesOf(value.roles);
+  // Preserved rather than defaulted: see `ResolvedIdentity.roles` — an
+  // authenticator that never mentions roles is not the same as one that grants
+  // none, and treating it as the latter would deny every caller of a server
+  // whose authenticator predates the policy.
+  const roles = value.roles === undefined ? undefined : rolesOf(value.roles);
   const via = nonEmptyString(value.via);
-  return via === undefined
-    ? { actor, kind, roles }
-    : { actor, kind, roles, via };
+  return {
+    actor,
+    kind,
+    ...(roles === undefined ? {} : { roles }),
+    ...(via === undefined ? {} : { via }),
+  };
 }
 
 /**
