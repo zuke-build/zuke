@@ -243,3 +243,14 @@ export const BUILTIN_FLAGS: readonly BuiltinFlag[] = [
   },
   { name: "--help", description: "Show usage" },
 ];
+
+/**
+ * Every built-in flag's name without its leading dashes (`list`, `actor`,
+ * `actor-kind`, …). The parser matches a built-in before a declared parameter
+ * of the same name, so this is also the set of flags a build parameter may not
+ * render as — {@link "./params.ts".discoverParameters} refuses one that does,
+ * rather than letting the parameter sit there unreachable.
+ */
+export const BUILTIN_FLAG_NAMES: readonly string[] = BUILTIN_FLAGS.map((flag) =>
+  flag.name.slice(2)
+);

@@ -23,14 +23,14 @@ class Deploy extends Build {
 
   workers = parameter("Parallel upload workers").number().default(4);
 
-  dryRun = parameter("Print actions without performing them").boolean();
+  preview = parameter("Print actions without performing them").boolean();
 
   // A required list: `.required()` comes before `.array()` — the reverse order
   // does not type-check.
   repos = parameter("Repos to deploy").required().array();
 
   deploy = target().executes(() => {
-    if (this.dryRun.value) console.log("(dry run)");
+    if (this.preview.value) console.log("(preview)");
     console.log(
       `Deploying ${this.repos.value.join(", ")} to ${this.environment.value} ` +
         `with ${this.workers.value} workers`,
@@ -42,7 +42,7 @@ await run(Deploy);
 ```
 
 ```sh
-./zuke deploy --environment production --workers 8 --dry-run
+./zuke deploy --environment production --workers 8 --preview
 ENVIRONMENT=staging ./zuke deploy        # value from the environment
 ```
 
@@ -151,6 +151,25 @@ The flag and environment variable are derived from the property name:
 `environment` → `--environment` / `ENVIRONMENT`; a camelCase name like
 `targetEnv` → `--target-env` / `TARGET_ENV`. Override the environment variable
 with `.env("NAME")`.
+
+### Names a parameter may not use
+
+Two sets of names are refused when the build is loaded, with a `ParameterError`
+naming the field:
+
+- **A name that renders as a built-in CLI flag** — `actor` → `--actor`,
+  `actorKind` → `--actor-kind`, `limit` → `--limit`, and so on for every flag
+  `zuke --help` lists. The parser matches a built-in ahead of a declared
+  parameter of the same name, so such a parameter would never receive a value:
+  `--actor=alice` would attribute the run and leave the parameter unresolved.
+- **`dryRun`, `confirm` and `operatorToken`** — the control keys an MCP
+  `run:<target>` tool adds to its input schema alongside the build's
+  parameters, which would shadow a parameter of the same name.
+
+Only the rendered flag matters, so a longer or nested name is fine:
+`actorName` → `--actor-name` and a grouped `runs.limit` → `--runs-limit` both
+stay usable. Rename the field; there is no opt-out, because the alternative is
+a flag that silently belongs to something else.
 
 ## Without the CLI
 

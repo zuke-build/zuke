@@ -32,6 +32,7 @@
  * @module
  */
 
+import { BUILTIN_FLAG_NAMES } from "./cli_spec.ts";
 import { messageOf } from "./internal.ts";
 import { forEachField } from "./build.ts";
 import type { Redactor } from "./redact.ts";
@@ -55,6 +56,19 @@ const RESERVED_PARAM_NAMES: ReadonlySet<string> = new Set([
   "confirm",
   "operatorToken",
 ]);
+
+/**
+ * The built-in CLI flags, by the name a parameter would have to render as to
+ * collide with one. `parseArgs` matches a built-in ahead of a declared
+ * parameter of the same name, so such a parameter is unreachable: the value
+ * lands on the built-in and the parameter is left to its environment variable
+ * or its default. Worse for `--actor`, which attributes the run — an MCP
+ * caller passing the parameter would set the run's actor over the one the
+ * registry runner resolved for it. {@link discoverParameters} refuses the
+ * collision at discovery instead, so it is a build-time error naming the
+ * field rather than a silent substitution at run time.
+ */
+const BUILTIN_FLAGS: ReadonlySet<string> = new Set(BUILTIN_FLAG_NAMES);
 
 /** Render a declared default as a display string, or `undefined` when it has none. */
 function defaultToString(value: unknown): string | undefined {
@@ -444,6 +458,14 @@ export function discoverParameters(build: object): Map<string, AnyParameter> {
         throw new ParameterError(
           `Parameter "${path}" collides with a reserved MCP control name ` +
             `(dryRun, confirm, operatorToken). Rename the parameter field.`,
+        );
+      }
+      const flag = flagName(path);
+      if (BUILTIN_FLAGS.has(flag)) {
+        throw new ParameterError(
+          `Parameter "${path}" renders as "--${flag}", which is a built-in ` +
+            `Zuke CLI flag. The built-in wins, so the parameter would never ` +
+            `receive a value. Rename the parameter field.`,
         );
       }
       value.name_ = path;

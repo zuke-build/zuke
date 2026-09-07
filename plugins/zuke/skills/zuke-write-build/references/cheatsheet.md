@@ -566,6 +566,13 @@ yields a `number[]`. Order is kind/options → `.required()` → `.array()`: put
 `.array().required()` fails to typecheck, and a non-required list defaults to
 `[]`.
 
+Reserved names: a parameter may not be named so that it renders as a built-in
+CLI flag (`actor` → `--actor`, `actorKind` → `--actor-kind`, `limit`,
+`target`, `output`, `state`, … — every flag `zuke --help` lists), nor
+`dryRun`, `confirm` or `operatorToken` (the MCP run-tool control keys). The
+build fails to load with a `ParameterError` naming the field. Only the
+rendered flag collides, so `actorName` and a grouped `runs.limit` are fine.
+
 ### Secrets from a manager — `.from(source)`
 
 A `.secret()` parameter can be **sourced at run time** so the value never lands

@@ -36,7 +36,7 @@ import {
   isCompletionShell,
 } from "./completions.ts";
 import {
-  BUILTIN_FLAGS,
+  BUILTIN_FLAG_NAMES,
   CANCEL_COMMAND,
   COMPLETIONS_COMMAND,
   DEFAULT_TARGET,
@@ -422,7 +422,7 @@ export function parseArgs(
   const byFlag = new Map<string, ParamFlag>();
   for (const pf of paramFlags) byFlag.set(pf.flag, pf);
   const knownFlags = [
-    ...BUILTIN_FLAGS.map((f) => f.name.slice(2)),
+    ...BUILTIN_FLAG_NAMES,
     ...paramFlags.map((pf) => pf.flag),
   ];
   // The first unrecognized flag, thrown only after the whole line is parsed so

@@ -11,10 +11,12 @@
 
 import {
   assertEquals,
+  assertRejects,
   assertStringIncludes,
 } from "../../packages/core/tests/_assert.ts";
 import { Build, parameter, REDACTED, target } from "../../packages/core/mod.ts";
-import { runCli } from "./_harness.ts";
+import { ParameterError } from "../../packages/core/src/params.ts";
+import { runCli, withStateDir } from "./_harness.ts";
 
 Deno.test("a missing required parameter fails the build with a clear error", async () => {
   class Deploy extends Build {
@@ -113,4 +115,51 @@ Deno.test("a secret parameter's value is redacted if it leaks into reported outp
   assertEquals(code, 1);
   assertStringIncludes(err, REDACTED);
   assertEquals(err.includes("hunter2"), false);
+});
+
+Deno.test("a parameter that would render as a built-in flag is refused by the CLI", async () => {
+  // `--actor` attributes a run. A build declaring `actor = parameter()` used
+  // to render onto the same flag, and `parseArgs` matches the built-in first:
+  // the value set the run's actor and the parameter was left unresolved. The
+  // refusal is at discovery, so it fires before any argument is even parsed.
+  class Shadowing extends Build {
+    actor = parameter("Who to greet");
+    greet = target().executes(() => {});
+  }
+  const error = await assertRejects(
+    () => runCli(Shadowing, ["greet", "--actor=intruder"]),
+    ParameterError,
+  );
+  assertStringIncludes(error.message, `renders as "--actor"`);
+});
+
+Deno.test("a parameter beside --actor keeps its own value and the run's actor", async () => {
+  // The other half of the refusal: a name merely close to a built-in stays
+  // usable, and the two flags do not contend.
+  await withStateDir(async () => {
+    const seen: string[] = [];
+    class Deploy extends Build {
+      actorName = parameter("Display name").required();
+      deploy = target().executes(() => void seen.push(this.actorName.value));
+    }
+    const { code } = await runCli(Deploy, [
+      "deploy",
+      "--state",
+      "--actor",
+      "alice",
+      "--actor-name",
+      "bob",
+    ]);
+    assertEquals([code, seen], [0, ["bob"]]);
+    // The run is attributed to `--actor`, not to the parameter that resembles it.
+    const alice = await runCli(Deploy, [
+      "runs",
+      "list",
+      "--initiator",
+      "alice",
+    ]);
+    const bob = await runCli(Deploy, ["runs", "list", "--initiator", "bob"]);
+    assertStringIncludes(alice.out, "deploy");
+    assertEquals(bob.out.includes("deploy"), false);
+  });
 });
