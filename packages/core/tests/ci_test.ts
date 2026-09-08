@@ -483,7 +483,7 @@ Deno.test("fanOutPipeline makes one job per runnable target, wired by dependenci
   const test = jobs.find((j) => j.id === "test");
   assertEquals(test?.needs, ["lint"]); // mirrors dependsOn
   assertEquals(test?.steps?.at(-1)?.run, "./zuke test"); // default launcher command
-  assertEquals(test?.steps?.[0]?.uses, "actions/checkout@v4"); // default setup
+  assertEquals(test?.steps?.length, 1); // no default setup: the prelude checks out
 
   const lint = jobs.find((j) => j.id === "lint");
   assertEquals(lint?.needs, undefined); // no dependencies → no needs
@@ -568,6 +568,24 @@ Deno.test("cicd fanOut expands into a per-target workflow via discoverCiFiles", 
   assertStringIncludes(yaml, "run: ./zuke lint");
   assertStringIncludes(yaml, "run: ./zuke test");
   assertStringIncludes(yaml, "needs:");
+});
+
+Deno.test("a fan-out job checks out once, through the pinned prelude", () => {
+  // Regression: the fan-out default setup used to add `actions/checkout@v4`
+  // after the prelude had already checked out — a second, unpinned checkout in
+  // every job, which zizmor flags and the pinning policy forbids.
+  class WithFanOut extends Build {
+    lint = target().executes(() => {});
+    test = target().dependsOn(this.lint).executes(() => {});
+    ci = cicd({ provider: "github", fanOut: true });
+  }
+  const yaml = discoverCiFiles(new WithFanOut())[0].render();
+  const uses = yaml.split("\n").filter((line) => line.includes("uses:"));
+  assertEquals(uses.length, 2); // one per job, and nothing else
+  for (const line of uses) {
+    assertStringIncludes(line, "uses: zuke-build/zuke@");
+  }
+  assertEquals(yaml.includes("actions/checkout"), false);
 });
 
 Deno.test("a non-fan-out cicd file is unaffected by discovery resolution", () => {
