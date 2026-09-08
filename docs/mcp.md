@@ -516,6 +516,18 @@ The `authorizationServer(...)` value is the provider's **issuer identifier**
 `issuer` in that provider's own metadata document, or a client is required to
 reject it.
 
+**Everything in this document is public.** It has to be: a caller asking where
+to authenticate has nothing to authenticate with, so the route is served before
+the bearer token and the authenticator, and it is readable cross-origin because
+browser-based clients fetch it that way. Treat the four fields you supply as
+published — the resource URI, the issuer, the scope names, and the resource name
+and documentation URL. On a machine where the server binds loopback, that also
+means a web page the developer happens to visit can read them; an internal
+hostname in the resource URI is the realistic thing to think twice about. A
+credential in the identifier is refused outright rather than left to judgement,
+since a `https://user:pass@host/mcp` would otherwise be published verbatim in a
+cacheable document.
+
 The path is derived for you, because getting it wrong is silent. The well-known
 segment is inserted **between the host and the path**, so an endpoint at `/mcp`
 publishes at `/.well-known/oauth-protected-resource/mcp` rather than the
