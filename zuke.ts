@@ -448,6 +448,7 @@ class ZukeBuild extends Build {
       // to the real API — never a published version that could drift.
       const files = [
         ...await glob("docs/*.md"),
+        ...await glob("docs/recipes/*.md"),
         ...await glob("skills/**/*.md"),
       ];
       const failures = await checkSnippets(files);

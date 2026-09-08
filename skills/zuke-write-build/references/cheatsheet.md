@@ -1214,6 +1214,24 @@ schedules are UI-side and ignored. Numeric fields + whole-hour offsets only,
 else a friendly error.
 `cicd({ provider: "github", pipeline: { triggers: { schedule: [{ cron: "30 9 * * 1-5", tz: "Europe/Sofia" }] } } })`.
 
+## Recipes — complete builds for the common small-project jobs
+
+Copy the closest one instead of composing from primitives; each is a full
+`zuke.ts` with the commands to run it, and has a runnable twin under
+`examples/`:
+
+- **Replace a shell script** (`docs/recipes/replace-shell-scripts.md`,
+  `examples/scripts-to-zuke`) — `$` from `jsr:@zuke/core/shell` with no `Build`
+  class at all, then the same steps as targets.
+- **Generate the CI** (`docs/recipes/generate-ci.md`, `examples/ci-only`) —
+  `cicd({ provider, fanOut: true })` per provider, `generate-ci --check` as the
+  gate.
+- **Release a library** (`docs/recipes/release-a-library.md`,
+  `examples/release-library`) — `parameter().required()` version, then
+  `GitTasks.add/commit/tag/push` → `GhTasks.releaseCreate((s) =>
+  s.generateNotes().latest())` → `DenoTasks.publish()`, one chain you can stop
+  anywhere.
+
 ## Run & inspect
 
 ```sh
