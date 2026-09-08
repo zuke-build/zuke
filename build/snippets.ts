@@ -108,8 +108,12 @@ export type SnippetChecker = (
   path: string,
 ) => Promise<{ ok: boolean; detail: string }>;
 
-/** The default checker: `deno check` against the local workspace. */
-const denoCheck: SnippetChecker = async (path) => {
+/**
+ * The default checker: `deno check` against the local workspace. Shared with
+ * the examples gate (`build/examples.ts`), which checks whole build files the
+ * same way.
+ */
+export const denoCheck: SnippetChecker = async (path) => {
   // `--quiet` drops deno's `Check <relative-path>` progress line, which would
   // otherwise leak the random temp-dir name into failure output as a relative
   // path (a form {@link reduceTempPath} can't match); the `file://` error

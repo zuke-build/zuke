@@ -4,7 +4,7 @@
 
 The dependency graph of [`zuke.ts`](../zuke.ts) — Zuke building itself. An arrow points from a dependency to the target that depends on it, so a target runs after everything that points at it. This is the same graph `./zuke graph` prints as text and `./zuke graph --output=html` renders interactively.
 
-39 target(s), 25 dependency edge(s). Regenerate with `./zuke graphDoc`; the `graphDocCheck` target in the CI gate fails when this page drifts from the build.
+40 target(s), 26 dependency edge(s). Regenerate with `./zuke graphDoc`; the `graphDocCheck` target in the CI gate fails when this page drifts from the build.
 
 ```mermaid
 flowchart TD
@@ -24,54 +24,56 @@ flowchart TD
   t13["syncWebsite"]
   t14["docLint"]
   t15["snippetsCheck"]
-  t16["hclGen"]
-  t17["hclSyncCheck"]
-  t18["pluginSync"]
-  t19["pluginSyncCheck"]
-  t20["skillsCheck"]
-  t21["graphDoc"]
-  t22["graphDocCheck"]
-  t23["pluginVersionCheck"]
-  t24["prBodyLint"]
-  t25["coreFloorCheck"]
-  t26["lockCheck"]
-  t27["security"]
-  t28["actionPinCheck"]
-  t29["ci"]
-  t30["scorecardSarif"]
-  t31["codeql"]
-  t32["reviewBase"]
-  t33["review"]
-  t34["release"]
-  t35["actionRelease"]
-  t36["publishJsr"]
-  t37["publish"]
-  t38["default"]
+  t16["examplesCheck"]
+  t17["hclGen"]
+  t18["hclSyncCheck"]
+  t19["pluginSync"]
+  t20["pluginSyncCheck"]
+  t21["skillsCheck"]
+  t22["graphDoc"]
+  t23["graphDocCheck"]
+  t24["pluginVersionCheck"]
+  t25["prBodyLint"]
+  t26["coreFloorCheck"]
+  t27["lockCheck"]
+  t28["security"]
+  t29["actionPinCheck"]
+  t30["ci"]
+  t31["scorecardSarif"]
+  t32["codeql"]
+  t33["reviewBase"]
+  t34["review"]
+  t35["release"]
+  t36["actionRelease"]
+  t37["publishJsr"]
+  t38["publish"]
+  t39["default"]
   t1 --> t5
   t5 --> t6
   t6 --> t8
   t8 --> t9
-  t2 --> t29
-  t3 --> t29
-  t4 --> t29
-  t8 --> t29
-  t9 --> t29
-  t11 --> t29
-  t14 --> t29
-  t15 --> t29
-  t17 --> t29
-  t19 --> t29
-  t20 --> t29
-  t22 --> t29
-  t23 --> t29
-  t24 --> t29
-  t28 --> t29
-  t27 --> t29
-  t26 --> t29
-  t32 --> t33
-  t34 --> t37
-  t36 --> t37
-  t29 --> t38
+  t2 --> t30
+  t3 --> t30
+  t4 --> t30
+  t8 --> t30
+  t9 --> t30
+  t11 --> t30
+  t14 --> t30
+  t15 --> t30
+  t16 --> t30
+  t18 --> t30
+  t20 --> t30
+  t21 --> t30
+  t23 --> t30
+  t24 --> t30
+  t25 --> t30
+  t29 --> t30
+  t28 --> t30
+  t27 --> t30
+  t33 --> t34
+  t35 --> t38
+  t37 --> t38
+  t30 --> t39
 ```
 
 ## Targets
@@ -94,6 +96,7 @@ flowchart TD
 | `syncWebsite` | Open and merge a website PR with refreshed llms.txt + api.json | — |
 | `docLint` | Fail on missing JSDoc or first-party private-type refs (deno doc --lint) | — |
 | `snippetsCheck` | Type-check the marked ts snippets in docs and skills | — |
+| `examplesCheck` | Type-check every example project and list its targets | — |
 | `hclGen` | Regenerate the Terraform/OpenTofu wrappers from one template | — |
 | `hclSyncCheck` | Verify the Terraform/OpenTofu wrappers match their template | — |
 | `pluginSync` | Sync plugins/zuke/skills/ from skills/ (real copies, not a symlink) | — |
@@ -107,7 +110,7 @@ flowchart TD
 | `lockCheck` | Verify the run did not rewrite deno.lock | — |
 | `security` | Run supply-chain security scanners (zuke/security) | — |
 | `actionPinCheck` | Verify the workflows only use inputs the released action has | — |
-| `ci` | Full pre-commit / CI gate | `format`, `lint`, `spell`, `coverage`, `coverageUpload`, `apiDocsCheck`, `docLint`, `snippetsCheck`, `hclSyncCheck`, `pluginSyncCheck`, `skillsCheck`, `graphDocCheck`, `pluginVersionCheck`, `prBodyLint`, `actionPinCheck`, `security`, `lockCheck` |
+| `ci` | Full pre-commit / CI gate | `format`, `lint`, `spell`, `coverage`, `coverageUpload`, `apiDocsCheck`, `docLint`, `snippetsCheck`, `examplesCheck`, `hclSyncCheck`, `pluginSyncCheck`, `skillsCheck`, `graphDocCheck`, `pluginVersionCheck`, `prBodyLint`, `actionPinCheck`, `security`, `lockCheck` |
 | `scorecardSarif` | Upload the Scorecard SARIF to GitHub code scanning | — |
 | `codeql` | CodeQL static analysis (runs in CI via codeql.yml) | — |
 | `reviewBase` | Fetch the base branch the AI review diffs against | — |

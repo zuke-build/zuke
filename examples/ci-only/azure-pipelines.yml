@@ -1,0 +1,15 @@
+trigger:
+  branches:
+    include:
+      - main
+pr:
+  branches:
+    include:
+      - main
+jobs:
+  - job: build
+    pool:
+      vmImage: ubuntu-latest
+    steps:
+      - script: ./zuke
+        displayName: Build

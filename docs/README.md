@@ -31,6 +31,9 @@
   execution.
 - [Paths (`absolutePath`)](./paths.md) — the fluent path type.
 - [Packages](./packages.md) — the full package matrix with JSR badges.
+- [Examples](../examples/README.md) — five cloneable mini projects: a Deno
+  library gate, generated CI, a Node app, a library release, and shell scripts
+  to targets.
 - [Tools](./tools.md) — the typed tool-wrapper packages and their tasks.
 - [Installing tools](./installing-tools.md) — fetch pinned, checksum-verified
   CLIs from a build with `installRelease()` and `toolchain()`.

@@ -1,0 +1,14 @@
+{
+  "name": "node-app-example",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A Node project whose build is driven by Zuke — see zuke.ts.",
+  "type": "module",
+  "main": "greet.mjs",
+  "scripts": {
+    "test": "node --test",
+    "build": "node build.mjs",
+    "zuke": "deno run -A zuke.ts"
+  },
+  "license": "MIT"
+}

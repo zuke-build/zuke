@@ -5,6 +5,10 @@
 
 # Build output (example builds produce this)
 /dist/
+examples/*/dist/
+examples/*/cov_profile/
+examples/*/node_modules/
+examples/*/.zuke/
 
 # Generated Zuke artifacts (e.g. `zuke graph` output)
 /.zuke/

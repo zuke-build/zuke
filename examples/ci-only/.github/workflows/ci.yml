@@ -1,0 +1,51 @@
+name: CI
+"on":
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+permissions:
+  contents: read
+jobs:
+  lint:
+    name: Lint the sources
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden and check out with Zuke
+        uses: zuke-build/zuke@7a62523bb4569e4d90e972dee74bf9cf09cd436f # v1.0.1
+        with:
+          egress-policy: audit
+          persist-credentials: "false"
+      - uses: actions/checkout@v4
+      - name: Run lint
+        run: ./zuke lint
+  test:
+    name: Type-check and test
+    runs-on: ubuntu-latest
+    needs:
+      - lint
+    steps:
+      - name: Harden and check out with Zuke
+        uses: zuke-build/zuke@7a62523bb4569e4d90e972dee74bf9cf09cd436f # v1.0.1
+        with:
+          egress-policy: audit
+          persist-credentials: "false"
+      - uses: actions/checkout@v4
+      - name: Run test
+        run: ./zuke test
+  default:
+    name: "Default: lint and test"
+    runs-on: ubuntu-latest
+    needs:
+      - test
+    steps:
+      - name: Harden and check out with Zuke
+        uses: zuke-build/zuke@7a62523bb4569e4d90e972dee74bf9cf09cd436f # v1.0.1
+        with:
+          egress-policy: audit
+          persist-credentials: "false"
+      - uses: actions/checkout@v4
+      - name: Run default
+        run: ./zuke default

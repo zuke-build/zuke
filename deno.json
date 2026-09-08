@@ -80,10 +80,14 @@
       "zuke.ts",
       "build/",
       "tests/",
-      "packages/"
+      "packages/",
+      "examples/"
     ],
     "exclude": [
-      "packages/*/CHANGELOG.md"
+      "packages/*/CHANGELOG.md",
+      "examples/*/.github/",
+      "examples/*/*.yml",
+      "examples/*/package-lock.json"
     ]
   },
   "lint": {
@@ -91,7 +95,8 @@
       "zuke.ts",
       "build/",
       "tests/",
-      "packages/"
+      "packages/",
+      "examples/"
     ],
     "rules": {
       "tags": [
