@@ -18,7 +18,6 @@ jobs:
         with:
           egress-policy: audit
           persist-credentials: "false"
-      - uses: actions/checkout@v4
       - name: Run lint
         run: ./zuke lint
   test:
@@ -32,7 +31,6 @@ jobs:
         with:
           egress-policy: audit
           persist-credentials: "false"
-      - uses: actions/checkout@v4
       - name: Run test
         run: ./zuke test
   default:
@@ -46,6 +44,5 @@ jobs:
         with:
           egress-policy: audit
           persist-credentials: "false"
-      - uses: actions/checkout@v4
       - name: Run default
         run: ./zuke default
