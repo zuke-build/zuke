@@ -483,3 +483,37 @@ Deno.test("an unusable protected-resource declaration stops the server starting"
   assertEquals(code, 1);
   assertStringIncludes(err, "authorization server");
 });
+
+Deno.test("an unsupported protocol version header is refused over HTTP", async () => {
+  const server = await startMcp(new Guarded(), {});
+  try {
+    const body = JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/list",
+    });
+    // The next revision after the newest we implement. Refused rather than
+    // served, because a client proceeding on a protocol the server never
+    // agreed to is exactly what this header exists to prevent.
+    const refused = await fetch(server.url, {
+      method: "POST",
+      headers: { "mcp-protocol-version": "2026-07-28" },
+      body,
+    });
+    assertEquals(refused.status, 400);
+    assertStringIncludes(await refused.text(), "2026-07-28");
+
+    // A version we do implement, and an absent header, both pass through.
+    const accepted: Record<string, string>[] = [
+      { "mcp-protocol-version": "2025-11-25" },
+      {},
+    ];
+    for (const headers of accepted) {
+      const ok = await fetch(server.url, { method: "POST", headers, body });
+      assertEquals(ok.status, 200);
+      await ok.body?.cancel();
+    }
+  } finally {
+    await server.stop();
+  }
+});

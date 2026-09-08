@@ -42,10 +42,42 @@ import {
  * them; {@link PROTOCOL_VERSION} is the newest.
  */
 export const SUPPORTED_PROTOCOL_VERSIONS: readonly string[] = [
+  "2025-11-25",
   "2025-06-18",
   "2025-03-26",
   "2024-11-05",
 ];
+
+/**
+ * The HTTP header carrying the negotiated protocol version on every request
+ * after `initialize`, required of clients since `2025-06-18`.
+ */
+export const PROTOCOL_VERSION_HEADER = "mcp-protocol-version";
+
+/**
+ * The refusal message for a `MCP-Protocol-Version` header naming a version this
+ * server does not implement, or `undefined` when the header is acceptable.
+ *
+ * Absent is acceptable: the header is the client's obligation, and the
+ * specification's backwards-compatible reading is to assume `2025-03-26` when
+ * it is missing. Nothing here branches on the version — the method surface is
+ * identical across every revision in {@link SUPPORTED_PROTOCOL_VERSIONS} — so
+ * that assumption changes no behaviour and is not worth materialising. A
+ * version we do **not** implement is a different matter: the specification
+ * makes answering it `400` a MUST, because a client proceeding on a version the
+ * server never agreed to is the failure this header exists to prevent.
+ */
+export function unsupportedProtocolVersion(
+  header: string | null,
+): string | undefined {
+  if (header === null) return undefined;
+  const requested = header.trim();
+  if (requested === "" || SUPPORTED_PROTOCOL_VERSIONS.includes(requested)) {
+    return undefined;
+  }
+  return `Unsupported MCP-Protocol-Version "${requested}". This server ` +
+    `implements ${SUPPORTED_PROTOCOL_VERSIONS.join(", ")}.`;
+}
 
 /** The newest MCP protocol version these servers implement. */
 export const PROTOCOL_VERSION = SUPPORTED_PROTOCOL_VERSIONS[0];

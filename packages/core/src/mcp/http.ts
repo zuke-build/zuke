@@ -32,6 +32,10 @@ import {
 } from "./jsonrpc.ts";
 import { timingSafeEqual } from "./authz.ts";
 import {
+  PROTOCOL_VERSION_HEADER,
+  unsupportedProtocolVersion,
+} from "./protocol.ts";
+import {
   authenticateRequest,
   bearerChallenge,
   INVALID_TOKEN,
@@ -426,6 +430,17 @@ export async function serveHttp(
         err(null, INVALID_REQUEST, "Forbidden: Origin not allowed."),
         403,
       );
+    }
+    // A version this server never agreed to is refused before anything acts on
+    // the message: the header exists precisely so a client cannot proceed on a
+    // revision the server does not implement, and the specification makes the
+    // `400` a MUST. An absent header is the ordinary case for a client that has
+    // not initialized yet, and is left alone.
+    const badVersion = unsupportedProtocolVersion(
+      request.headers.get(PROTOCOL_VERSION_HEADER),
+    );
+    if (badVersion !== undefined) {
+      return jsonResponse(err(null, INVALID_REQUEST, badVersion), 400);
     }
     if (token !== undefined && token !== "") {
       const provided = bearerToken(request.headers.get("authorization"));

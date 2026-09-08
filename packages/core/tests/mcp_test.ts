@@ -9,7 +9,11 @@ import {
   serveStdio,
 } from "../src/mcp/jsonrpc.ts";
 import { McpServer } from "../src/mcp/server.ts";
-import { PROTOCOL_VERSION } from "../src/mcp/protocol.ts";
+import {
+  PROTOCOL_VERSION,
+  SUPPORTED_PROTOCOL_VERSIONS,
+  unsupportedProtocolVersion,
+} from "../src/mcp/protocol.ts";
 import { serveMcp } from "../src/mcp/command.ts";
 
 /** A small build with parameters and a dependency edge, for the server tests. */
@@ -445,4 +449,30 @@ Deno.test("the stdio banner reports read-only when running is not enabled", asyn
   const text = banner.join("\n");
   assertStringIncludes(text, "read-only");
   assertEquals(text.includes("run enabled"), false);
+});
+
+Deno.test("the newest advertised revision is the newest one this server implements", () => {
+  // Guards against the version list drifting ahead of the behaviour. The
+  // revision after this one, 2026-07-28, is not a superset: it removes
+  // `initialize` and `ping`, requires a `server/discover` RPC, and makes
+  // `resultType` and the `tools/list` caching hints mandatory. Adding it here
+  // without that work would advertise a wire protocol this server does not
+  // speak, so the list stops where the behaviour does.
+  assertEquals(PROTOCOL_VERSION, "2025-11-25");
+  assertEquals(SUPPORTED_PROTOCOL_VERSIONS.includes("2026-07-28"), false);
+  // Newest first: negotiation offers SUPPORTED_PROTOCOL_VERSIONS[0].
+  assertEquals(SUPPORTED_PROTOCOL_VERSIONS[0], PROTOCOL_VERSION);
+});
+
+Deno.test("an unsupported MCP-Protocol-Version header is refused", () => {
+  // Required of a server since 2025-06-18: a client must not proceed on a
+  // revision the server never agreed to.
+  assertEquals(unsupportedProtocolVersion(null), undefined);
+  assertEquals(unsupportedProtocolVersion("2025-11-25"), undefined);
+  assertEquals(unsupportedProtocolVersion("2024-11-05"), undefined);
+  // Absent in practice, but an empty header is not a claim about a version.
+  assertEquals(unsupportedProtocolVersion("  "), undefined);
+  const refused = unsupportedProtocolVersion("2026-07-28");
+  assertStringIncludes(refused ?? "", "2026-07-28");
+  assertStringIncludes(refused ?? "", "2025-11-25");
 });

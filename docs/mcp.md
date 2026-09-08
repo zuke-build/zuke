@@ -702,6 +702,25 @@ tool argument is masked in the [audit log](#audit-log) too.
   `protocolVersion`), `notifications/initialized` (no reply), `ping`,
   `tools/list`, and `tools/call`. Unknown requests get a JSON-RPC
   `-32601 Method not found`; notifications never get a reply.
+- **Protocol revisions:** `2025-11-25` (the newest offered), `2025-06-18`,
+  `2025-03-26` and `2024-11-05`. A client's requested version is echoed when
+  this server implements it, and otherwise answered with the newest — the
+  client then proceeds or disconnects. Over HTTP, a `MCP-Protocol-Version`
+  header naming a revision this server does not implement is refused `400`; an
+  absent header is fine, since nothing here behaves differently across these
+  revisions.
+- **Why not `2026-07-28`:** it is not a newer version of this protocol so much
+  as a different one. It removes `initialize` and `ping` entirely, requires a
+  new `server/discover` RPC, carries the protocol version and client
+  capabilities in per-request `_meta` instead of a handshake, and makes
+  `resultType` on every result and `ttlMs`/`cacheScope` on `tools/list`
+  mandatory. Those are base-protocol requirements rather than capability-gated
+  features, so a server cannot decline them and still claim the revision — the
+  specification's own compatibility matrix calls a server like this one
+  "legacy" and says a modern client talking to it simply fails. Supporting it
+  means a second request path serving both eras, which is a project rather than
+  a version-string edit. Until then, advertising it would be a claim this
+  server cannot honour.
 - **Errors:** a bad _tool_ call (unknown tool, unknown target, a failed run) is
   reported through the tool result (`isError: true`) so the model sees it,
   rather than as a transport-level error — matching the MCP convention. Typed
