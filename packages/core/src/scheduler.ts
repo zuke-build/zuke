@@ -44,6 +44,7 @@ import {
   type TargetBuilder,
   type TargetContext,
   type TargetOutcomeView,
+  type TargetStateHandle,
 } from "./target.ts";
 import type { BuildCache } from "./cache.ts";
 import { ServiceBuilder, type ServiceRegistry } from "./service.ts";
@@ -209,28 +210,64 @@ async function runBodyWithRecovery(
  * `.waitsFor(...)` gate whose trigger is already satisfied — that gate returns
  * early, and its effects are owed at exactly that moment.
  */
+/**
+ * A family of in-memory state handles, one per target, created on demand.
+ *
+ * The handles have to be *stable*: a fresh {@link inMemoryStateHandle} per
+ * `stateOf(...)` call writes into a throwaway the next call cannot see, and
+ * because such a write cannot fail it reports that drop as a successful write.
+ * Keeping one per target is also what makes `stateOf(self) === state` hold
+ * store-less, which {@link "./target.ts".TargetContext.stateOf} documents.
+ */
+function inMemoryHandles(): (target: string) => TargetStateHandle {
+  const byTarget = new Map<string, TargetStateHandle>();
+  return (target) => {
+    const existing = byTarget.get(target);
+    if (existing !== undefined) return existing;
+    const handle = inMemoryStateHandle();
+    byTarget.set(target, handle);
+    return handle;
+  };
+}
+
+/**
+ * The store-less handles of one run, keyed by its env so they live exactly as
+ * long as the run does.
+ */
+const noStoreHandles = new WeakMap<
+  RunEnv,
+  (target: string) => TargetStateHandle
+>();
+
+/** The state handle for `target`: durable when the run has a writer. */
+function stateHandleFor(env: RunEnv, target: string): TargetStateHandle {
+  if (env.writer) return env.writer.stateHandle(target);
+  let handles = noStoreHandles.get(env);
+  if (handles === undefined) {
+    handles = inMemoryHandles();
+    noStoreHandles.set(env, handles);
+  }
+  return handles(target);
+}
+
 function targetContextFor(
   name: string,
   env: RunEnv,
   dryRun: boolean,
   summary: TargetSummary,
 ): TargetContext {
-  // One own-state handle, reused for `stateOf(this target)` so the documented
-  // `stateOf(self) === state` invariant holds even store-less (a fresh
-  // inMemoryStateHandle per call would drop writes).
-  const ownState = env.writer
-    ? env.writer.stateHandle(name)
-    : inMemoryStateHandle();
+  // One own-state handle, reused for `stateOf(this target)`. The name check
+  // below is what holds the documented `stateOf(self) === state` invariant:
+  // the writer builds a fresh handle object per call, so asking it twice would
+  // otherwise hand a body two different objects for its own state.
+  const ownState = stateHandleFor(env, name);
   return {
     runId: env.runId,
     ...(env.initiator === undefined ? {} : { initiator: env.initiator }),
     target: name,
     signal: env.signal,
     state: ownState,
-    stateOf: (t) =>
-      t === name
-        ? ownState
-        : (env.writer ? env.writer.stateHandle(t) : inMemoryStateHandle()),
+    stateOf: (t) => t === name ? ownState : stateHandleFor(env, t),
     outcomeOf: (t) => outcomeOf(env, t),
     outcomes: () => allOutcomes(env),
     signals: env.signals,
@@ -428,14 +465,17 @@ async function runTarget(
     // execute. State is in-memory only (a dry run persists nothing), and no lock
     // or cache is taken.
     if (t.dryRunnable_ && t.fn_ !== undefined) {
-      const echoState = inMemoryStateHandle();
+      // Echoed, never persisted — but still one handle per target, so a dry
+      // run does not report writes it silently discarded.
+      const echo = inMemoryHandles();
+      const echoState = echo(name);
       const summary = new TargetSummary();
       const targetCtx: TargetContext = {
         runId: env.runId,
         target: name,
         signal: env.signal,
         state: echoState,
-        stateOf: (t2) => t2 === name ? echoState : inMemoryStateHandle(),
+        stateOf: (t2) => echo(t2),
         outcomeOf: (t2) => outcomeOf(env, t2),
         outcomes: () => allOutcomes(env),
         signals: env.signals,

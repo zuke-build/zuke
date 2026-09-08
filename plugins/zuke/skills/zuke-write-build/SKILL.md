@@ -142,7 +142,11 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   `ZUKE_*_URL` backend must be `https:` (loopback exempt;
   `ZUKE_ALLOW_INSECURE_URL=1` opts out). In a body, `ctx.state.set({ … })` /
   `ctx.state.get()` records per-target metadata (JSON, **never secrets** —
-  secret parameters and redacted values are excluded). Inspect persisted runs
+  secret parameters and redacted values are excluded). `set` awaits the
+  write; `ctx.state.trySet({ … })` is the same write reporting `true` when it
+  reached the store and `false` when it was dropped — use it before an
+  irreversible step that depends on the value. A store-less build and a
+  compensation body always see `true` (nothing durable behind them). Inspect persisted runs
   afterwards with `zuke runs list` (filter by
   `--status`/`--target`/`--since`/`--limit`) and `zuke runs show <id>` (`--json`
   on both). Prune old ones with `zuke runs prune --keep <age> --keep-last <n>`

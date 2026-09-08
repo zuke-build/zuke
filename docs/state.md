@@ -204,6 +204,35 @@ in-memory no-op — `set`/`get` are consistent within the run, but nothing is
 persisted. It is the carrier for anything that must survive a
 [suspend/resume](./orchestration.md) boundary.
 
+### Checking that a write landed
+
+`set` resolves when the write has been attempted, whether or not it landed.
+When a body needs to *know*, use **`trySet`**, which resolves `true` when the
+patch reached the store and `false` when the write was dropped — conflicted
+away for good, or refused by a store that errored:
+
+```ts
+deploy = target().executes(async (ctx) => {
+  const slot = await lease();
+  if (!await ctx.state.trySet({ slot })) {
+    // Nothing has been deployed yet, so failing here is cheap. Going ahead
+    // would leave a slot held that no compensation can find again.
+    throw new Error(`could not record the leased slot ${slot}`);
+  }
+  await deployTo(slot);
+});
+```
+
+Treat `false` as **not recorded**: a dropped write is sometimes re-persisted by
+a later one, but nothing guarantees it. A dropped write also warns, and one
+that is definitely unrecoverable marks the record `degraded` so a later resume
+refuses it rather than repeating a step against state it cannot trust.
+
+Two contexts have nothing durable behind them and so always answer `true`: a
+build with no state store, and a compensation body, whose `ctx.state` is seeded
+from the original target's metadata and kept in memory (the run is ending, so
+cleanup state is not persisted).
+
 ### Secrets never touch state
 
 State is persisted in plain JSON and read back by later runs and by anyone who
