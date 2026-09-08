@@ -132,7 +132,7 @@ export class RunStateWriter {
    * already sitting on the chain are neutralised too.
    */
   #disowned = false;
-  #chain: Promise<void> = Promise.resolve();
+  #chain: Promise<unknown> = Promise.resolve();
 
   private constructor(
     store: StateStore,
@@ -218,13 +218,13 @@ export class RunStateWriter {
 
   /** Await every write queued so far, so nothing is still persisting on return. */
   drain(): Promise<void> {
-    return this.#chain;
+    return this.#chain.then(() => {});
   }
 
   /** Mark a target `running` and stamp its start time. */
   markTargetRunning(name: string): Promise<void> {
     const at = this.#now();
-    return this.#update((record) => {
+    return this.#updateVoid((record) => {
       const target = ensureTarget(record, name);
       target.status = "running";
       target.startedAt = at;
@@ -253,7 +253,7 @@ export class RunStateWriter {
         key: e.key,
         value: this.#redactor.redact(e.value),
       }));
-    return this.#update((record) => {
+    return this.#updateVoid((record) => {
       const target = ensureTarget(record, name);
       // Settling drops the target's `waitingFor` (e.g. a gate satisfied on
       // resume) — see `settleTargetRow`.
@@ -290,7 +290,7 @@ export class RunStateWriter {
 
   /** Record the run's terminal status, unless another process already has. */
   markRunFinished(ok: boolean): Promise<void> {
-    return this.#update((record) => {
+    return this.#updateVoid((record) => {
       // Whoever settled this run owns how it ended. The per-target progress
       // recorded alongside is still worth keeping, so this is a no-op rather
       // than a refusal.
@@ -301,7 +301,7 @@ export class RunStateWriter {
 
   /** Record a target as waiting on an external event, with its pending wait. */
   markTargetWaiting(name: string, wait: WaitState): Promise<void> {
-    return this.#update((record) => {
+    return this.#updateVoid((record) => {
       // A run someone else has already settled has no gate left to park on.
       // Without this, the settled-elsewhere re-apply below would put `waiting`
       // back onto a terminal record — the one window where a `zuke cancel`
@@ -323,7 +323,7 @@ export class RunStateWriter {
 
   /** Record the run as suspended, unless another process already settled it. */
   markRunSuspended(): Promise<void> {
-    return this.#update((record) => {
+    return this.#updateVoid((record) => {
       if (this.#settledElsewhere) return;
       record.status = "suspended";
     });
@@ -331,7 +331,7 @@ export class RunStateWriter {
 
   /** Record the run as `cancelling` — asked to stop; compensations are running. */
   markRunCancelling(): Promise<void> {
-    return this.#update((record) => {
+    return this.#updateVoid((record) => {
       record.status = "cancelling";
     });
   }
@@ -339,7 +339,7 @@ export class RunStateWriter {
   /** Record the run as `cancelled` — the terminal state after compensations. */
   markRunCancelled(): Promise<void> {
     const at = this.#now();
-    return this.#update((record) => {
+    return this.#updateVoid((record) => {
       record.status = "cancelled";
       // The in-process half of the same sweep `finalizeCancelled` runs for an
       // out-of-process `zuke cancel`: a cancelled run has no live waiter, and
@@ -371,7 +371,7 @@ export class RunStateWriter {
     // happened", and it stays true whoever owns the run now. Losing them is the
     // worse outcome, because the thing most worth recording at that moment is
     // the rollback this process had already performed before it stopped.
-    return this.#update((record) => {
+    return this.#updateVoid((record) => {
       record.events.push(redacted);
     }, { evenIfDisowned: true });
   }
@@ -412,18 +412,22 @@ export class RunStateWriter {
 
   /** A {@link TargetStateHandle} bound to `name`, persisting through this writer. */
   stateHandle(name: string): TargetStateHandle {
+    const write = (patch: Record<string, JsonValue>): Promise<boolean> => {
+      const redacted: Record<string, JsonValue> = {};
+      for (const [key, value] of Object.entries(patch)) {
+        redacted[key] = redactJson(value, this.#redactor);
+      }
+      return this.#update((record) => {
+        const target = ensureTarget(record, name);
+        target.meta = { ...target.meta, ...redacted };
+      });
+    };
     return {
       get: () => ({ ...(this.#record.targets[name]?.meta ?? {}) }),
-      set: (patch) => {
-        const redacted: Record<string, JsonValue> = {};
-        for (const [key, value] of Object.entries(patch)) {
-          redacted[key] = redactJson(value, this.#redactor);
-        }
-        return this.#update((record) => {
-          const target = ensureTarget(record, name);
-          target.meta = { ...target.meta, ...redacted };
-        });
-      },
+      // One write, two ways to ask about it: `set` discards the answer, which
+      // is what almost every body wants.
+      set: async (patch) => void await write(patch),
+      trySet: write,
     };
   }
 
@@ -506,14 +510,34 @@ export class RunStateWriter {
   }
 
   /** Serialise `mutator` after all pending writes, then persist (best-effort). */
-  #update(
+  /**
+   * {@link "#update"} for the transitions whose caller has no use for whether
+   * the write landed — the run's own status bookkeeping, which reports a
+   * dropped write through the warning and the `degraded` flag rather than to a
+   * caller. Only a target's `set` hands the answer back to a build body.
+   */
+  #updateVoid(
     mutator: (record: RunRecord) => void,
     options: { evenIfDisowned?: boolean } = {},
   ): Promise<void> {
-    this.#chain = this.#chain.then(() =>
+    return this.#update(mutator, options).then(() => {});
+  }
+
+  #update(
+    mutator: (record: RunRecord) => void,
+    options: { evenIfDisowned?: boolean } = {},
+  ): Promise<boolean> {
+    // Stored and returned as the *same* promise, as it always was. Deriving a
+    // second one for the chain would leave that copy's rejection unhandled —
+    // and `#applyAndPersist` can reject, because the warning callback it calls
+    // is outside its try (a reporter writing to a closed pipe throws). Deno
+    // kills the process on an unhandled rejection, so `zuke build | head -1`
+    // would exit 1 for want of a `.catch` nobody could see.
+    const landed = this.#chain.then(() =>
       this.#applyAndPersist(mutator, options.evenIfDisowned === true)
     );
-    return this.#chain;
+    this.#chain = landed;
+    return landed;
   }
 
   /**
@@ -665,8 +689,8 @@ export class RunStateWriter {
   async #applyAndPersist(
     mutator: (record: RunRecord) => void,
     evenIfDisowned = false,
-  ): Promise<void> {
-    if (this.#disowned && !evenIfDisowned) return;
+  ): Promise<boolean> {
+    if (this.#disowned && !evenIfDisowned) return false;
     try {
       for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
         mutator(this.#record);
@@ -674,7 +698,7 @@ export class RunStateWriter {
         const result = await this.#store.putRun(this.#record, this.#version);
         if (result.ok) {
           this.#version = result.version;
-          return;
+          return true;
         }
         // Another writer moved the record on: re-read a FRESH base and re-apply
         // the mutator to it on the next iteration. If the run has vanished
@@ -688,7 +712,7 @@ export class RunStateWriter {
             `state: run "${this.#record.id}" vanished from the store ` +
               `mid-write; dropping one update`,
           );
-          return;
+          return false;
         }
         // Adopt the fresh base, but carry a degraded flag across: whoever wrote
         // the record in the store never saw the write we already lost.
@@ -729,19 +753,21 @@ export class RunStateWriter {
             );
           }
           this.#onExternalCancel?.();
-          return;
+          return reapply.ok;
         }
       }
       this.#lostWrite(
         `state: gave up persisting run "${this.#record.id}" after ` +
           `${MAX_RETRIES} conflicting writes`,
       );
+      return false;
     } catch (error) {
       this.#retainedWrite(
         `state: failed to persist run "${this.#record.id}": ${
           messageOf(error)
         }`,
       );
+      return false;
     }
   }
 }
@@ -758,6 +784,13 @@ export function inMemoryStateHandle(): TargetStateHandle {
     set: (patch) => {
       Object.assign(meta, patch);
       return Promise.resolve();
+    },
+    // Nothing is persisted, but nothing is dropped either: the patch is
+    // retained for this process, which is all a build with no store asked for.
+    // Answering `false` here would make every such write look failed.
+    trySet: (patch) => {
+      Object.assign(meta, patch);
+      return Promise.resolve(true);
     },
   };
 }

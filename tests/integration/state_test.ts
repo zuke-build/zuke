@@ -250,3 +250,60 @@ Deno.test("a target loses a held lock and fails with the conflict guidance", asy
     assertEquals(log.includes("deploy"), false); // body never ran
   });
 });
+
+Deno.test("a body reads back whether its durable write landed", async () => {
+  await withStateDir(async (dir) => {
+    const reported: boolean[] = [];
+    class B extends Build {
+      deploy = target().executes(async (ctx) => {
+        // The result is what a body checks before doing something irreversible
+        // that depends on the value having been recorded.
+        reported.push(await ctx.state.trySet({ slot: "sit-7" }));
+      });
+    }
+    const run = await runCli(B, ["deploy"]);
+    assertEquals(run.code, 0);
+    assertEquals(reported, [true]);
+
+    // And the value really is in the record the next process would read.
+    const id = (await storeAt(dir).listRuns({}))[0].id;
+    const meta = (await storeAt(dir).getRun(id))?.record.targets["deploy"].meta;
+    assertEquals(meta, { slot: "sit-7" });
+  });
+});
+
+Deno.test("a store-less build still reports its write as recorded", async () => {
+  const reported: boolean[] = [];
+  class B extends Build {
+    // No wait, no lock, no effect: nothing turns the state store on, so the
+    // handle is the in-memory one. Its writes are never dropped, so telling
+    // the body they failed would be a lie in the unhelpful direction.
+    build = target().executes(async (ctx) => {
+      reported.push(await ctx.state.trySet({ tag: "v1" }));
+    });
+  }
+  const run = await runCli(B, ["build"]);
+  assertEquals(run.code, 0);
+  assertEquals(reported, [true]);
+});
+
+Deno.test("a store-less run keeps one state handle per target", async () => {
+  const seen: Record<string, unknown>[] = [];
+  let sameObject = false;
+  class B extends Build {
+    build = target().executes(async (ctx) => {
+      sameObject = ctx.stateOf("build") === ctx.state;
+      await ctx.stateOf("build").trySet({ tag: "v1" });
+    });
+    ship = target().dependsOn(this.build).executes(async (ctx) => {
+      await ctx.stateOf("build").trySet({ note: "x" });
+      // Read through a *second* call: a fresh handle per call would drop the
+      // write above and answer {}, while reporting that write as successful.
+      seen.push(ctx.stateOf("build").get());
+    });
+  }
+  const run = await runCli(B, ["ship"]);
+  assertEquals(run.code, 0);
+  assertEquals(sameObject, true); // stateOf(self) === state, as documented
+  assertEquals(seen, [{ tag: "v1", note: "x" }]);
+});

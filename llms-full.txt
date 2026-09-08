@@ -4424,6 +4424,26 @@ interface TargetStateHandle
 
   set(patch: Record<string, JsonValue>): Promise<void>
     Merge a JSON patch into this target's persisted metadata (awaits the write).
+  trySet(patch: Record<string, JsonValue>): Promise<boolean>
+    {@link set}, reporting whether the patch was recorded: `true` when it
+    reached the store, `false` when the write was dropped.
+
+    A write can be dropped — conflicted away for good, or refused by a store
+    that errored — and {@link set} resolves the same either way, so a body
+    that needs the value to be durable cannot tell. This is the seam for the
+    cases that do need to know: before an irreversible step that depends on
+    the value, or before handing a compensation something it will have to read
+    back.
+
+    Do not read `false` as "it may still land": a dropped write is sometimes
+    re-persisted by a later one, but nothing guarantees it, so treat `false`
+    as not recorded. A dropped write also warns, and one that is definitely
+    unrecoverable marks the run {@link "./state/types.ts".RunRecord.degraded}
+    so a later resume knows the record is missing something.
+
+    A handle with nothing durable behind it always answers `true` — a build
+    with no state store, and a compensation, whose state is in-memory by
+    design. Nothing is persisted, but nothing is dropped either.
   get(): Record<string, JsonValue>
     Read this target's persisted metadata (from prior attempts/runs too).
 
