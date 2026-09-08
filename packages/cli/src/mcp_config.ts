@@ -42,10 +42,23 @@ export function mcpServerEntry(allowRun: boolean): McpServerEntry {
   };
 }
 
-/** Whether an `.mcp.json` text already registers the `zuke` server. */
+/**
+ * Whether an `.mcp.json` text already registers the `zuke` server:
+ * `present` means a well-formed {@link McpServerEntry} is there (whatever its
+ * arguments — a deliberate `--allow-run` or transport choice survives a
+ * re-run without `--force`); `absent` covers a missing key and a malformed
+ * one alike, so a broken registration is repaired rather than kept.
+ */
 export type McpConfigState = "present" | "absent" | "unparseable";
 
-/** Classify an `.mcp.json` text by whether it already has the `zuke` entry. */
+/** Whether `value` is a well-formed server entry: a command and its arguments. */
+function isServerEntry(value: unknown): value is McpServerEntry {
+  return isRecord(value) && typeof value.command === "string" &&
+    Array.isArray(value.args) &&
+    value.args.every((arg) => typeof arg === "string");
+}
+
+/** Classify an `.mcp.json` text by the state of its `zuke` entry. */
 export function mcpConfigState(text: string): McpConfigState {
   let parsed: unknown;
   try {
@@ -55,7 +68,7 @@ export function mcpConfigState(text: string): McpConfigState {
   }
   if (
     isRecord(parsed) && isRecord(parsed.mcpServers) &&
-    MCP_SERVER_NAME in parsed.mcpServers
+    isServerEntry(parsed.mcpServers[MCP_SERVER_NAME])
   ) {
     return "present";
   }

@@ -437,6 +437,19 @@ Deno.test("runSetup merges .mcp.json around other servers and skips a present zu
   assertEquals(replaced.mcpServers.zuke.args.at(-1), "--allow-run");
 });
 
+Deno.test("runSetup repairs a malformed zuke entry without --force", async () => {
+  const host = new FakeHost({
+    ".mcp.json": JSON.stringify({ mcpServers: { zuke: { command: "deno" } } }),
+  });
+  const result = await runSetup(
+    { dir: ".", force: false, name: "Foo", mcp: { allowRun: false } },
+    host,
+  );
+  assertEquals(result.files.at(-1)?.status, "overwritten");
+  const repaired = JSON.parse(host.files.get(".mcp.json") ?? "{}");
+  assertEquals(repaired.mcpServers.zuke.args, ["run", "-A", "zuke.ts", "mcp"]);
+});
+
 Deno.test("runSetup skips an unparseable .mcp.json with a notice", async () => {
   const host = new FakeHost({ ".mcp.json": "{not json" });
   const result = await runSetup(

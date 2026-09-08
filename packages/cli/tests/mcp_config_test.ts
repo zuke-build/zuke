@@ -52,6 +52,25 @@ Deno.test("mergeMcpConfig ignores a non-object document", () => {
 
 Deno.test("mcpConfigState classifies .mcp.json text", () => {
   assertEquals(mcpConfigState(mergeMcpConfig(null, false)), "present");
+  // A customised but well-formed entry is present: it is kept without --force.
+  assertEquals(
+    mcpConfigState(
+      '{"mcpServers":{"zuke":{"command":"deno","args":["run","-A","zuke.ts","mcp","--http","7777"]}}}',
+    ),
+    "present",
+  );
+  // A malformed entry is not a registration; it reads as absent so a re-run
+  // repairs it instead of leaving a broken client config in place.
+  for (
+    const broken of [
+      '{"mcpServers":{"zuke":5}}',
+      '{"mcpServers":{"zuke":{"command":"deno"}}}',
+      '{"mcpServers":{"zuke":{"command":5,"args":[]}}}',
+      '{"mcpServers":{"zuke":{"command":"deno","args":["run",7]}}}',
+    ]
+  ) {
+    assertEquals(mcpConfigState(broken), "absent", broken);
+  }
   assertEquals(mcpConfigState('{"mcpServers":{"other":{}}}'), "absent");
   assertEquals(mcpConfigState("{}"), "absent");
   assertEquals(mcpConfigState("[]"), "absent");
