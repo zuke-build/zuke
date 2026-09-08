@@ -39,7 +39,7 @@ flowchart TD
   t28["security"]
   t29["actionPinCheck"]
   t30["ci"]
-  t31["scorecardSarif"]
+  t31["scorecard"]
   t32["codeql"]
   t33["reviewBase"]
   t34["review"]
@@ -111,7 +111,7 @@ flowchart TD
 | `security` | Run supply-chain security scanners (zuke/security) | — |
 | `actionPinCheck` | Verify the workflows only use inputs the released action has | — |
 | `ci` | Full pre-commit / CI gate | `format`, `lint`, `spell`, `coverage`, `coverageUpload`, `apiDocsCheck`, `docLint`, `snippetsCheck`, `examplesCheck`, `hclSyncCheck`, `pluginSyncCheck`, `skillsCheck`, `graphDocCheck`, `pluginVersionCheck`, `prBodyLint`, `actionPinCheck`, `security`, `lockCheck` |
-| `scorecardSarif` | Upload the Scorecard SARIF to GitHub code scanning | — |
+| `scorecard` | OpenSSF Scorecard (runs in CI via scorecard.yml) | — |
 | `codeql` | CodeQL static analysis (runs in CI via codeql.yml) | — |
 | `reviewBase` | Fetch the base branch the AI review diffs against | — |
 | `review` | AI review of the diff (security + code quality) | `reviewBase` |
