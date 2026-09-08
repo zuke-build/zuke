@@ -444,6 +444,47 @@ Deno.test("a preflight for the metadata document is answered", async () => {
   }
 });
 
+Deno.test("two real protocol-version header lines arrive comma-joined", async () => {
+  // The unit tests exercise the comma-joined string; this pins that a genuine
+  // duplicate header line is what produces one, so the tolerance for an
+  // agreeing proxy copy is about the wire shape rather than about a string a
+  // test made up. `fetch` cannot send a header twice, hence the raw socket.
+  const server = await startMcp(new Guarded(), {});
+  const port = Number(new URL(server.url).port);
+  const send = async (first: string, second: string): Promise<string> => {
+    const message = JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/list",
+    });
+    const connection = await Deno.connect({ hostname: "127.0.0.1", port });
+    await connection.write(
+      new TextEncoder().encode(
+        "POST / HTTP/1.1\r\nHost: 127.0.0.1\r\n" +
+          `MCP-Protocol-Version: ${first}\r\n` +
+          `MCP-Protocol-Version: ${second}\r\n` +
+          "Content-Type: application/json\r\n" +
+          `Content-Length: ${message.length}\r\n` +
+          "Connection: close\r\n\r\n" + message,
+      ),
+    );
+    const buffer = new Uint8Array(512);
+    const read = await connection.read(buffer);
+    connection.close();
+    return new TextDecoder().decode(buffer.subarray(0, read ?? 0));
+  };
+  try {
+    // Copies that agree: a proxy re-adding what the client already sent.
+    assertStringIncludes(await send("2025-11-25", "2025-11-25"), "200");
+    // Copies that disagree: nothing can say which applies, so neither is used.
+    const conflicting = await send("2025-11-25", "2025-06-18");
+    assertStringIncludes(conflicting, "400");
+    assertStringIncludes(conflicting, "more than one revision");
+  } finally {
+    await server.stop();
+  }
+});
+
 Deno.test("the metadata response is a cacheable JSON document, and answers HEAD", async () => {
   // RFC 9728 3.2 makes the 200 + application/json a MUST; the cache header is
   // what stops every cold client re-fetching a constant.
@@ -482,4 +523,67 @@ Deno.test("an unusable protected-resource declaration stops the server starting"
   const { code, err } = await runCli(Broken, ["mcp"]);
   assertEquals(code, 1);
   assertStringIncludes(err, "authorization server");
+});
+
+Deno.test("an unsupported protocol version header is refused over HTTP", async () => {
+  const server = await startMcp(new Guarded(), {});
+  try {
+    const body = JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/list",
+    });
+    // The next revision after the newest we implement. Refused rather than
+    // served, because a client proceeding on a protocol the server never
+    // agreed to is exactly what this header exists to prevent.
+    const refused = await fetch(server.url, {
+      method: "POST",
+      headers: { "mcp-protocol-version": "2026-07-28" },
+      body,
+    });
+    assertEquals(refused.status, 400);
+    assertStringIncludes(await refused.text(), "2026-07-28");
+
+    // ...but only once the caller is authenticated. The refusal names every
+    // revision this build supports, which an unauthenticated caller has no
+    // business enumerating, so the 401 wins.
+    const guarded = await startMcp(new Guarded(), { token: "shared-token" });
+    try {
+      const unauthenticated = await fetch(guarded.url, {
+        method: "POST",
+        headers: { "mcp-protocol-version": "2026-07-28" },
+        body,
+      });
+      assertEquals(unauthenticated.status, 401);
+      assertEquals(
+        (await unauthenticated.text()).includes("2025-06-18"),
+        false,
+      );
+      const authenticated = await fetch(guarded.url, {
+        method: "POST",
+        headers: {
+          "mcp-protocol-version": "2026-07-28",
+          authorization: "Bearer shared-token",
+        },
+        body,
+      });
+      assertEquals(authenticated.status, 400);
+      await authenticated.body?.cancel();
+    } finally {
+      await guarded.stop();
+    }
+
+    // A version we do implement, and an absent header, both pass through.
+    const accepted: Record<string, string>[] = [
+      { "mcp-protocol-version": "2025-11-25" },
+      {},
+    ];
+    for (const headers of accepted) {
+      const ok = await fetch(server.url, { method: "POST", headers, body });
+      assertEquals(ok.status, 200);
+      await ok.body?.cancel();
+    }
+  } finally {
+    await server.stop();
+  }
 });

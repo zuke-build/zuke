@@ -32,6 +32,10 @@ import {
 } from "./jsonrpc.ts";
 import { timingSafeEqual } from "./authz.ts";
 import {
+  PROTOCOL_VERSION_HEADER,
+  unsupportedProtocolVersion,
+} from "./protocol.ts";
+import {
   authenticateRequest,
   bearerChallenge,
   INVALID_TOKEN,
@@ -451,6 +455,21 @@ export async function serveHttp(
         return refusedResponse(resolved, discovery);
       }
       identity = resolved;
+    }
+    // Placed after authentication on purpose. A version this server never
+    // agreed to must be refused — the header exists so a client cannot proceed
+    // on a revision the server does not implement, and the specification makes
+    // the `400` a MUST — but the refusal names every revision this build
+    // supports, and an unauthenticated caller has no business enumerating them.
+    // The specification does not order this against the `401`, and the check
+    // is an O(1) compare that still precedes reading the body. An absent header
+    // is left alone: it is the ordinary case before a client has initialized,
+    // and nothing here behaves differently across the supported revisions.
+    const badVersion = unsupportedProtocolVersion(
+      request.headers.get(PROTOCOL_VERSION_HEADER),
+    );
+    if (badVersion !== undefined) {
+      return jsonResponse(err(null, INVALID_REQUEST, badVersion), 400);
     }
     const body = await readBounded(request, MAX_BODY_BYTES);
     if (body === null) {

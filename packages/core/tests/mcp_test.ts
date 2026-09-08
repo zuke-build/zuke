@@ -9,7 +9,12 @@ import {
   serveStdio,
 } from "../src/mcp/jsonrpc.ts";
 import { McpServer } from "../src/mcp/server.ts";
-import { PROTOCOL_VERSION } from "../src/mcp/protocol.ts";
+import {
+  negotiateInitialize,
+  PROTOCOL_VERSION,
+  SUPPORTED_PROTOCOL_VERSIONS,
+  unsupportedProtocolVersion,
+} from "../src/mcp/protocol.ts";
 import { serveMcp } from "../src/mcp/command.ts";
 
 /** A small build with parameters and a dependency edge, for the server tests. */
@@ -445,4 +450,59 @@ Deno.test("the stdio banner reports read-only when running is not enabled", asyn
   const text = banner.join("\n");
   assertStringIncludes(text, "read-only");
   assertEquals(text.includes("run enabled"), false);
+});
+
+Deno.test("the newest advertised revision is the newest one this server implements", () => {
+  // Guards against the version list drifting ahead of the behaviour. The
+  // revision after this one, 2026-07-28, is not a superset: it removes
+  // `initialize` and `ping`, requires a `server/discover` RPC, and makes
+  // `resultType` and the `tools/list` caching hints mandatory. Adding it here
+  // without that work would advertise a wire protocol this server does not
+  // speak, so the list stops where the behaviour does.
+  assertEquals(PROTOCOL_VERSION, "2025-11-25");
+  assertEquals(SUPPORTED_PROTOCOL_VERSIONS.includes("2026-07-28"), false);
+  // The list is newest-first, which is what makes the offer correct: asserted
+  // through negotiation rather than by comparing the constant to its own
+  // definition, which no edit could have made fail.
+  const { result } = negotiateInitialize(
+    { protocolVersion: "1999-01-01" },
+    "v",
+  );
+  assertEquals(result.protocolVersion, "2025-11-25");
+});
+
+Deno.test("an unsupported MCP-Protocol-Version header is refused", () => {
+  // Required of a server since 2025-06-18: a client must not proceed on a
+  // revision the server never agreed to.
+  assertEquals(unsupportedProtocolVersion(null), undefined);
+  assertEquals(unsupportedProtocolVersion("2025-11-25"), undefined);
+  assertEquals(unsupportedProtocolVersion("2024-11-05"), undefined);
+  // Absent in practice, but an empty header is not a claim about a version.
+  assertEquals(unsupportedProtocolVersion("  "), undefined);
+  // A proxy that re-adds a header the client already sent produces a
+  // comma-joined pair. Every value is checked, so a correctly-versioned client
+  // is not refused for its proxy's duplication...
+  assertEquals(
+    unsupportedProtocolVersion("2025-11-25, 2025-11-25"),
+    undefined,
+  );
+  // ...while copies that disagree are refused rather than resolved by picking
+  // one. Nothing here could say which applies, and a header whose meaning
+  // depends on which intermediary you ask is the ambiguity the check removes.
+  assertStringIncludes(
+    unsupportedProtocolVersion("2025-11-25, 2025-06-18") ?? "",
+    "more than one revision",
+  );
+  // A single unsupported value still refuses, and names itself.
+  assertStringIncludes(
+    unsupportedProtocolVersion("2026-07-28") ?? "",
+    "2026-07-28",
+  );
+  assertStringIncludes(
+    unsupportedProtocolVersion("2025-11-25, 2026-07-28") ?? "",
+    "more than one revision",
+  );
+  const refused = unsupportedProtocolVersion("2026-07-28");
+  assertStringIncludes(refused ?? "", "2026-07-28");
+  assertStringIncludes(refused ?? "", "2025-11-25");
 });

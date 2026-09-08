@@ -42,10 +42,61 @@ import {
  * them; {@link PROTOCOL_VERSION} is the newest.
  */
 export const SUPPORTED_PROTOCOL_VERSIONS: readonly string[] = [
+  "2025-11-25",
   "2025-06-18",
   "2025-03-26",
   "2024-11-05",
 ];
+
+/**
+ * The HTTP header carrying the negotiated protocol version on every request
+ * after `initialize`, required of clients since `2025-06-18`.
+ */
+export const PROTOCOL_VERSION_HEADER = "mcp-protocol-version";
+
+/**
+ * The refusal message for a `MCP-Protocol-Version` header naming a version this
+ * server does not implement, or `undefined` when the header is acceptable.
+ *
+ * Absent is acceptable: the header is the client's obligation, and the
+ * specification's backwards-compatible reading is to assume `2025-03-26` when
+ * it is missing. Nothing here branches on the version — the method surface is
+ * identical across every revision in {@link SUPPORTED_PROTOCOL_VERSIONS} — so
+ * that assumption changes no behaviour and is not worth materialising. A
+ * version we do **not** implement is a different matter: the specification
+ * makes answering it `400` a MUST, because a client proceeding on a version the
+ * server never agreed to is the failure this header exists to prevent.
+ */
+export function unsupportedProtocolVersion(
+  header: string | null,
+): string | undefined {
+  if (header === null) return undefined;
+  // Repeated header lines arrive comma-joined, and the two ways that happens
+  // want opposite answers. A proxy re-adding a header the client already sent
+  // — and this transport expects to be fronted by one — produces copies that
+  // **agree**, which is a deployment accident rather than a claim about an
+  // unsupported revision; refusing it would be a self-inflicted outage for a
+  // correctly-versioned client. Copies that **disagree** are a different thing:
+  // nothing here can say which one applies, and a header whose meaning depends
+  // on which intermediary you ask is exactly the ambiguity a version check
+  // exists to remove. So identical copies collapse, and conflicting ones are
+  // refused rather than resolved by picking one.
+  const requested = new Set(
+    header.split(",").map((value) => value.trim()).filter((value) =>
+      value !== ""
+    ),
+  );
+  if (requested.size === 0) return undefined;
+  if (requested.size > 1) {
+    return `MCP-Protocol-Version names more than one revision ` +
+      `(${[...requested].map((value) => `"${value}"`).join(", ")}). A ` +
+      `repeated header is tolerated only when every copy agrees.`;
+  }
+  const [version] = requested;
+  if (SUPPORTED_PROTOCOL_VERSIONS.includes(version)) return undefined;
+  return `Unsupported MCP-Protocol-Version "${version}". This server ` +
+    `implements ${SUPPORTED_PROTOCOL_VERSIONS.join(", ")}.`;
+}
 
 /** The newest MCP protocol version these servers implement. */
 export const PROTOCOL_VERSION = SUPPORTED_PROTOCOL_VERSIONS[0];
