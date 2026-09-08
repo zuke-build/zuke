@@ -28,7 +28,7 @@
 > made so you know what you're getting.
 
 > [!NOTE]
-> **Maturity.** Every one of the 54 packages is `1.x` and follows full semver —
+> **Maturity.** Every one of the 58 packages is `1.x` and follows full semver —
 > `@zuke/core`, the `@zuke/cli` command, and all the tool wrappers. A minor or
 > patch release never breaks a public symbol; a breaking change bumps the major.
 > See [Versioning & compatibility](./docs/versioning.md) for the pinning
@@ -194,7 +194,7 @@ latest release on JSR.
 | [`@zuke/otel`](https://jsr.io/@zuke/otel)         | [![JSR](https://jsr.io/badges/@zuke/otel)](https://jsr.io/@zuke/otel) [![JSR score](https://jsr.io/badges/@zuke/otel/score)](https://jsr.io/@zuke/otel)                 |
 
 <details>
-<summary><strong>All tool wrappers</strong> (44 packages)</summary>
+<summary><strong>All tool wrappers</strong> (48 packages)</summary>
 
 | Package                                                       | Version                                                                                                                                                                                         |
 | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
