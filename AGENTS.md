@@ -88,7 +88,7 @@ regenerate them in the same PR.
   runner, formatter, linter, type-checker, coverage — is the built-in `deno`
   CLI. No Node, npm, or external build tools.
 - **Language:** TypeScript, strict mode (Deno's default).
-- **Distribution:** [JSR](https://jsr.io/) as a workspace of 54 packages:
+- **Distribution:** [JSR](https://jsr.io/) as a workspace of 58 packages:
   `@zuke/core` (exports `.`, `./shell`, `./tooling`, `./tooling/conformance`,
   `./render`, `./conformance`) plus the `@zuke/cli` command, a generic
   `@zuke/cmd` fallback, and 50+ typed tool wrappers and plugins (`@zuke/deno`,
@@ -415,7 +415,7 @@ packages/
   deno/                   # @zuke/deno — DenoTasks
   npm/                    # @zuke/npm  — NpmTasks
   cmd/                    # @zuke/cmd  — CmdTasks (generic fallback)
-  …                       # + 50 more: @zuke/cli, @zuke/docs, @zuke/ai, and tool wrappers (54 total)
+  …                       # + the rest: @zuke/cli, @zuke/docs, @zuke/ai, and tool wrappers (58 total)
 tests/
   integration/            # in-process: real builds via the CLI main() + _harness.ts
   e2e/                    # subprocess: *_e2e.ts + fixtures/ (run by the `integration` target)

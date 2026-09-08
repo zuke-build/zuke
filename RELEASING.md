@@ -1,6 +1,6 @@
 # Releasing
 
-Zuke publishes 54 packages to [JSR](https://jsr.io/@zuke) from a single
+Zuke publishes 58 packages to [JSR](https://jsr.io/@zuke) from a single
 workspace — `@zuke/core`, the `@zuke/cli` command, a generic `@zuke/cmd`
 fallback, and 50+ typed tool wrappers and plugins (`@zuke/deno`, `@zuke/npm`,
 `@zuke/ai`, …). Releases are automated end to end; you only ever merge a pull

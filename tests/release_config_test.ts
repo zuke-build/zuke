@@ -150,3 +150,70 @@ Deno.test("deno.lock captures release-please's full npm tree", async () => {
     );
   }
 });
+
+/**
+ * The files whose prose quotes the size of the workspace. The README package
+ * *table* is checked above; this is the number written in sentences ("the 58
+ * packages", "a 58-package workspace", "(58 total)"), which drifted for months
+ * because nothing compared it to the real list.
+ */
+const PACKAGE_COUNT_PROSE = [
+  "README.md",
+  "AGENTS.md",
+  "RELEASING.md",
+  "docs/versioning.md",
+  "docs/comparison.md",
+  "docs/getting-started.md",
+];
+
+/**
+ * A number that states the workspace size: `58 packages`, `58 JSR packages`,
+ * `58 independent JSR packages`, `58-package`, or `(58 total)`. A `50+`-style
+ * lower bound has no trailing count keyword and is deliberately not matched.
+ */
+const PACKAGE_COUNT =
+  /\b(\d+)(?=(?:-package\b| (?:independent )?(?:JSR )?packages\b| total\)))/g;
+
+/**
+ * The README's collapsed wrapper catalogue: its `<summary>` states how many
+ * packages the table inside holds. That is a subset count, checked against its
+ * own table below and stripped before the workspace-count scan.
+ */
+const WRAPPER_SUMMARY = /<summary>.*\((\d+) packages\)<\/summary>/;
+
+Deno.test("every prose mention of the package count matches the workspace", async () => {
+  const expected = PACKAGE_DIRS.length;
+  const wrong: string[] = [];
+  for (const path of PACKAGE_COUNT_PROSE) {
+    const text = (await Deno.readTextFile(path)).replace(WRAPPER_SUMMARY, "");
+    const counts = [...text.matchAll(PACKAGE_COUNT)].map((m) => Number(m[1]));
+    assertEquals(
+      counts.length > 0,
+      true,
+      `${path} no longer states the package count; drop it from the list`,
+    );
+    for (const count of counts) {
+      if (count !== expected) wrong.push(`${path}: ${count}`);
+    }
+  }
+  assertEquals(
+    wrong,
+    [],
+    `package count is ${expected}; stale mentions: ${wrong.join(", ")}`,
+  );
+});
+
+Deno.test("the README wrapper summary counts the rows of its own table", async () => {
+  const readme = await Deno.readTextFile("README.md");
+  const summary = readme.match(WRAPPER_SUMMARY);
+  assertEquals(summary !== null, true, "README.md wrapper <summary> not found");
+  const stated = Number(summary?.[1]);
+  const details = readme.slice(readme.indexOf("<details>"));
+  const block = details.slice(0, details.indexOf("</details>"));
+  const rows = block.match(/^\| \[`@zuke\//gm)?.length;
+  assertEquals(
+    stated,
+    rows,
+    `README.md wrapper summary says ${stated} packages; the table has ${rows}`,
+  );
+});
