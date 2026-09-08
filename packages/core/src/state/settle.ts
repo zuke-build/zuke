@@ -56,9 +56,14 @@ export function settleWaitingTargets(
   at: string,
   expired?: { target: string; message: string },
 ): void {
-  for (const [name, row] of Object.entries(record.targets)) {
-    if (row.status !== "waiting") continue;
-    settleTargetRow(row, "skipped", at);
-    if (name === expired?.target) row.error = expired.message;
+  for (const row of Object.values(record.targets)) {
+    if (row.status === "waiting") settleTargetRow(row, "skipped", at);
   }
+  if (expired === undefined) return;
+  // Looked up, not matched by name while sweeping: the reason belongs to the
+  // run, so recording it does not depend on catching that row mid-sweep. A
+  // caller naming a target the record does not have gets nothing rather than a
+  // throw — a cancellation is the wrong moment to fail over a diagnostic.
+  const row = record.targets[expired.target];
+  if (row !== undefined) row.error = expired.message;
 }
