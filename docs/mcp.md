@@ -516,25 +516,35 @@ The `authorizationServer(...)` value is the provider's **issuer identifier**
 `issuer` in that provider's own metadata document, or a client is required to
 reject it.
 
-Two details are handled for you, because both are silent when wrong. The
-well-known segment is inserted **between the host and the path**, so an endpoint
-at `/mcp` publishes at `/.well-known/oauth-protected-resource/mcp` rather than
-the appended form — a client fetches only the inserted one. And the identical
-document is also published at the root, because a client that had no challenge
-to follow constructs the root URL instead, and the two routes validate the
-`resource` field against different expectations.
+The path is derived for you, because getting it wrong is silent. The well-known
+segment is inserted **between the host and the path**, so an endpoint at `/mcp`
+publishes at `/.well-known/oauth-protected-resource/mcp` rather than the
+appended form — a client fetches only the inserted one.
 
-Dynamic client registration is **not** required. It was demoted to optional and
-then deprecated in the MCP specification, and a client configured with a
-pre-registered client id never asks for it — verified against a real client,
-which goes straight from discovery to `/authorize` with the id it was given. So
-a provider that does not offer registration, including a GitHub OAuth App, is
-usable: register the client once, out of band.
+It is published at exactly that one location. Serving a second copy at the root
+looks like cheap insurance and is not: RFC 9728 has a client derive the
+`resource` it expects from the URL it fetched, so a client that probed the root
+expects the bare origin and must discard a document naming a path. That copy
+would have no correct consumer — a conformant client tries the path-inserted URL
+first and never asks for the root, and one that only asks for the root would
+throw away what it found. A resource declared as a bare origin publishes at the
+root, because for that identifier the root *is* the derived location.
+
+Dynamic client registration is **not** required. The MCP specification asked for
+it in revision `2025-06-18`, demoted it to optional in `2025-11-25`, and marks
+it deprecated in the current `2026-07-28` — client id metadata documents and
+pre-registration are the sanctioned routes now. Verified against a real client:
+given a pre-registered client id it goes straight from discovery to
+`/authorize` and never touches a registration endpoint. So a provider that
+offers no registration — a GitHub OAuth App, for one — is usable: register the
+client once, out of band.
 
 Verifying tokens is still not Zuke's job. Do not hand-roll it — import a
 maintained JOSE library in your build file (the build is ordinary code and may
 depend on whatever you like, unlike the published packages) and let it do the
-signature, the claims and the key rotation:
+signature, the claims and the key rotation. The fragment below shows the shape,
+not a complete file — `UNAUTHORIZED`, `INVALID_TOKEN` and `McpAuthenticator`
+come from `jsr:@zuke/core`, and `rolesOf` is yours to write:
 
 ```ts
 import { createRemoteJWKSet, jwtVerify } from "npm:jose";

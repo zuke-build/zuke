@@ -4,7 +4,7 @@
 import { assertEquals, assertStringIncludes, assertThrows } from "./_assert.ts";
 import {
   metadataDocument,
-  metadataPaths,
+  metadataPath,
   metadataUrl,
   protectedResource,
   ProtectedResourceError,
@@ -20,33 +20,36 @@ Deno.test("the well-known segment is inserted between host and path", () => {
   // The bug this pins: appending the well-known suffix to the path instead of
   // inserting it. A client fetches only the inserted form, so the appended one
   // is a 404 and discovery silently never happens.
-  assertEquals(metadataPaths("https://build.example.com/mcp"), [
+  assertEquals(
+    metadataPath("https://build.example.com/mcp"),
     "/.well-known/oauth-protected-resource/mcp",
-    "/.well-known/oauth-protected-resource",
-  ]);
+  );
   assertEquals(
     metadataUrl("https://build.example.com/mcp"),
     "https://build.example.com/.well-known/oauth-protected-resource/mcp",
   );
 });
 
-Deno.test("a resource with no path publishes at one location only", () => {
-  // The two locations coincide, and RFC 9728 has no notion of publishing the
-  // same document twice at the same URL.
-  assertEquals(metadataPaths("https://build.example.com"), [
+Deno.test("a resource that is a bare origin publishes at the root", () => {
+  // Which is the conformant location *for that identifier* — not a second copy.
+  // A path-bearing resource publishes only at its inserted path: a client that
+  // probed the root would derive the bare origin as the expected `resource`
+  // and, per RFC 9728 3.3, discard a document naming a path. Such a copy has no
+  // correct consumer, so there is not one.
+  assertEquals(
+    metadataPath("https://build.example.com"),
     "/.well-known/oauth-protected-resource",
-  ]);
-  assertEquals(metadataPaths("https://build.example.com/"), [
+  );
+  assertEquals(
+    metadataPath("https://build.example.com/"),
     "/.well-known/oauth-protected-resource",
-  ]);
+  );
 });
 
 Deno.test("a deeper path and a trailing slash both insert correctly", () => {
   assertEquals(
-    metadataPaths("https://build.example.com/team/mcp/")[0],
-    [
-      "/.well-known/oauth-protected-resource/team/mcp",
-    ][0],
+    metadataPath("https://build.example.com/team/mcp/"),
+    "/.well-known/oauth-protected-resource/team/mcp",
   );
 });
 
@@ -92,19 +95,19 @@ Deno.test("a declaration with no authorization server is refused", () => {
 
 Deno.test("a resource identifier that is not a usable URL is refused", () => {
   assertThrows(
-    () => metadataPaths("build.example.com/mcp"),
+    () => metadataPath("build.example.com/mcp"),
     ProtectedResourceError,
     "absolute URL",
   );
   assertThrows(
-    () => metadataPaths("https://build.example.com/mcp#frag"),
+    () => metadataPath("https://build.example.com/mcp#frag"),
     ProtectedResourceError,
     "fragment",
   );
 });
 
 Deno.test("a bare challenge carries no error, an invalid token does", () => {
-  // OAuth 2.1 5.3.2: a request that presented no credentials gets no error
+  // OAuth 2.1 5.3.1: a request that presented no credentials gets no error
   // information, because nothing of the client's has been rejected yet.
   assertEquals(UNAUTHORIZED.challenge, "Bearer");
   assertEquals(bearerChallenge(), "Bearer");
@@ -158,4 +161,71 @@ Deno.test("the metadata URL is added to a challenge, once", () => {
   // An authenticator that set its own is left alone rather than given a second.
   const own = `Bearer resource_metadata="https://other.example.com/doc"`;
   assertEquals(withResourceMetadata(own, "https://x.example.com/y"), own);
+});
+
+Deno.test("the resource is emitted exactly as declared, not re-serialised", () => {
+  // RFC 9728 3.3 has a client discard the document unless `resource` is
+  // byte-identical to the URL it called. `new URL(x).toString()` is not
+  // byte-preserving — it appends a slash to a bare origin — so normalising here
+  // would break the very agreement the field exists to state.
+  for (
+    const declared of [
+      "https://build.example.com/mcp",
+      "https://build.example.com/mcp/",
+      "https://build.example.com",
+      "https://build.example.com/",
+      "https://build.example.com:8443/mcp",
+    ]
+  ) {
+    const document = metadataDocument(
+      protectedResource(declared).authorizationServer(
+        "https://idp.example.com",
+      ),
+    );
+    assertEquals(document.resource, declared);
+  }
+});
+
+Deno.test("an identifier that cannot make a well-known URL is refused at declaration", () => {
+  // Each of these parses as a URL and would otherwise pass the startup check,
+  // then fail when the transport derived a path or an absolute URL from it —
+  // a throw on a public, unauthenticated route rather than a startup error.
+  for (
+    const [resource, expected] of [
+      ["urn:example:zuke", "http(s)"],
+      ["file:///srv/mcp", "http(s)"],
+      ["https://build.example.com/mcp?tenant=a", "query string"],
+      ["https://svc:hunter2@build.example.com/mcp", "userinfo"],
+    ] as const
+  ) {
+    const error = assertThrows(
+      () => metadataPath(resource),
+      ProtectedResourceError,
+    );
+    assertStringIncludes(error.message, expected);
+  }
+});
+
+Deno.test("the metadata parameter is matched as a parameter, not a substring", () => {
+  // Both directions were wrong with a plain `includes`. A description merely
+  // mentioning the word suppressed a real URL, silently killing discovery...
+  const mentions = `Bearer error_description="see resource_metadata= docs"`;
+  assertStringIncludes(
+    withResourceMetadata(mentions, "https://x.example.com/doc"),
+    `resource_metadata="https://x.example.com/doc"`,
+  );
+  // ...and a challenge that spelled the parameter differently got a second
+  // copy, which RFC 7235 forbids and leaves clients to resolve as they like.
+  // Auth-param names are case-insensitive and space around `=` is legal.
+  for (
+    const existing of [
+      `Bearer resource_metadata = "https://attacker.example.com/as"`,
+      `Bearer Resource_Metadata="https://attacker.example.com/as"`,
+    ]
+  ) {
+    assertEquals(
+      withResourceMetadata(existing, "https://x.example.com/y"),
+      existing,
+    );
+  }
 });

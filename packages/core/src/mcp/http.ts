@@ -33,6 +33,7 @@ import {
 import { timingSafeEqual } from "./authz.ts";
 import {
   authenticateRequest,
+  bearerChallenge,
   INVALID_TOKEN,
   isResolvedIdentity,
   type McpAuthenticator,
@@ -44,7 +45,7 @@ import {
 } from "./auth.ts";
 import {
   metadataDocument,
-  metadataPaths,
+  metadataPath,
   metadataUrl,
   type ProtectedResourceSettings,
 } from "./resource_metadata.ts";
@@ -98,7 +99,7 @@ export interface HttpTransportOptions {
    *
    * The document is served on unauthenticated `GET`s — necessarily, since a
    * caller asking where to authenticate has nothing to authenticate with — at
-   * the paths {@link "./resource_metadata.ts".metadataPaths} derives. There is
+   * the path {@link "./resource_metadata.ts".metadataPath} derives. There is
    * deliberately no general "extra routes" hook here: this document is the only
    * thing that has to be reachable before authentication, and a seam that let
    * anything else in would be a seam whose entries are unauthenticated by
@@ -219,31 +220,50 @@ function authenticatorView(request: Request): Request | undefined {
  * bad or absent bearer token has always been answered `401` here, a non-`POST`
  * `405`, and unparseable JSON `400`, so a client that reads any non-`200` as a
  * transport failure was already broken against a token-protected server. The
- * body still carries the JSON-RPC error, so a client that reads it sees the
- * same reason it saw before.
+ * body still carries the JSON-RPC error. One reason did change: a bearer token
+ * that was presented and rejected now reads `invalid_token` rather than the
+ * generic `Unauthorized`, which is what OAuth defines it as and what tells a
+ * client its stored credential — rather than its absence — is the problem.
  */
 function refusedResponse(
   reject: McpAuthReject,
-  metadataUrl?: string,
+  discovery?: { metadataUrl: string; scopes: readonly string[] },
 ): Response {
   const headers = new Headers({ "content-type": "application/json" });
   if (reject.challenge !== undefined) {
-    headers.set(
-      "www-authenticate",
-      metadataUrl === undefined
-        ? reject.challenge
-        : withResourceMetadata(reject.challenge, metadataUrl),
-    );
-    // A browser-based client reads the challenge to learn where to
-    // authenticate, and cannot see a response header across origins unless it
-    // is exposed. Without this the whole discovery mechanism is invisible to
-    // exactly the clients that need a redirect.
-    headers.set("access-control-expose-headers", "WWW-Authenticate");
+    headers.set("www-authenticate", challengeFor(reject, discovery));
   }
   return new Response(
     JSON.stringify(err(null, INVALID_REQUEST, refusalReason(reject))),
     { status: reject.status, headers },
   );
+}
+
+/**
+ * The challenge to send with `reject`.
+ *
+ * Zuke's own two refusals are **rebuilt** rather than patched, so the declared
+ * scopes go in as a proper `scope` parameter — the specification asks a
+ * protected resource to name what the operation needs, and a client with no
+ * challenge scope falls back to requesting the entire advertised catalogue. An
+ * authenticator's own challenge is a string this code did not write and cannot
+ * safely re-derive, so that one is only given the metadata URL it lacks.
+ */
+function challengeFor(
+  reject: McpAuthReject,
+  discovery?: { metadataUrl: string; scopes: readonly string[] },
+): string {
+  const challenge = reject.challenge ?? "Bearer";
+  if (discovery === undefined) return challenge;
+  const ours = reject === UNAUTHORIZED || reject === INVALID_TOKEN;
+  if (!ours) return withResourceMetadata(challenge, discovery.metadataUrl);
+  return bearerChallenge({
+    metadataUrl: discovery.metadataUrl,
+    scopes: discovery.scopes,
+    // Only a token that was presented and rejected names an error; a request
+    // that carried no credentials has had nothing of its own refused yet.
+    ...(reject === INVALID_TOKEN ? { error: "invalid_token" as const } : {}),
+  });
 }
 
 /**
@@ -256,8 +276,8 @@ function refusedResponse(
  * it cross-origin, so gating it on `Origin` would break them while protecting
  * nothing.
  */
-function metadataResponse(settings: ProtectedResourceSettings): Response {
-  return new Response(JSON.stringify(metadataDocument(settings), null, 2), {
+function metadataResponse(body: string): Response {
+  return new Response(body, {
     status: 200,
     headers: {
       "content-type": "application/json",
@@ -342,21 +362,40 @@ export async function serveHttp(
   const dispatch = concurrent === true ? handle : serial;
 
   const metadataAt = protectedResource === undefined
-    ? new Set<string>()
-    : new Set(metadataPaths(protectedResource.resource_));
-  const resourceMetadataUrl = protectedResource === undefined
     ? undefined
-    : metadataUrl(protectedResource.resource_);
+    : metadataPath(protectedResource.resource_);
+  const discovery = protectedResource === undefined ? undefined : {
+    metadataUrl: metadataUrl(protectedResource.resource_),
+    scopes: protectedResource.scopes_,
+  };
+  // Rendered once, here, rather than per request. Building it in the handler
+  // would put a throw on an unauthenticated public path — a declaration mutated
+  // after startup, say — where it becomes a 500 with no error boundary. It is
+  // also a constant, so re-serialising it for every caller was pure waste.
+  const metadataBody = protectedResource === undefined
+    ? undefined
+    : JSON.stringify(metadataDocument(protectedResource), null, 2);
 
   const onRequest = async (request: Request): Promise<Response> => {
     // Before every other check, including the method one: this is the document
     // an unauthenticated client reads to find out where to authenticate, and it
     // is fetched with GET.
-    if (protectedResource !== undefined) {
-      const path = new URL(request.url).pathname;
-      if (metadataAt.has(path)) {
+    if (metadataBody !== undefined) {
+      // Guarded, because Deno builds `request.url` from the raw `Host` header
+      // and accepts hosts the WHATWG parser rejects (`Host: bad host`). This
+      // runs before every other check, so an unguarded throw here would answer
+      // *every* request — authenticated ones included — with a 500. That is the
+      // same trap `authenticatorView` below already documents; it is one call
+      // earlier, and it must be caught the same way.
+      let path: string;
+      try {
+        path = new URL(request.url).pathname;
+      } catch {
+        path = "";
+      }
+      if (path === metadataAt) {
         if (request.method === "GET" || request.method === "HEAD") {
-          return metadataResponse(protectedResource);
+          return metadataResponse(metadataBody);
         }
         if (request.method === "OPTIONS") {
           return new Response(null, {
@@ -395,7 +434,7 @@ export async function serveHttp(
         // caller whose token was rejected is told that much and no more.
         return refusedResponse(
           provided === undefined ? UNAUTHORIZED : INVALID_TOKEN,
-          resourceMetadataUrl,
+          discovery,
         );
       }
     }
@@ -409,7 +448,7 @@ export async function serveHttp(
     if (authenticator !== undefined) {
       const resolved = await authenticateRequest(authenticator, ctx);
       if (!isResolvedIdentity(resolved)) {
-        return refusedResponse(resolved, resourceMetadataUrl);
+        return refusedResponse(resolved, discovery);
       }
       identity = resolved;
     }

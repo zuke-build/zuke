@@ -141,8 +141,9 @@ export type McpIdentityHook = (ctx: McpRequestContext) => McpIdentity;
 /**
  * The bare `401` challenge: the refusal an authenticator's own failure produces
  * (so a throw leaks nothing about why it threw), and the one the transport
- * answers a bad or absent static bearer token with — one shape for "you are not
- * authenticated", rather than a second spelling per call site.
+ * answers an **absent** static bearer token with. A token that was presented
+ * and rejected gets {@link INVALID_TOKEN} instead: the two are different facts
+ * about the caller, and only the second one is about a credential.
  */
 export const UNAUTHORIZED: McpAuthReject = Object.freeze({
   status: 401,
@@ -154,7 +155,7 @@ export const UNAUTHORIZED: McpAuthReject = Object.freeze({
  * The refusal for a request that **presented** a token which did not hold up —
  * expired, wrong signature, wrong audience.
  *
- * Distinct from {@link UNAUTHORIZED} on purpose: OAuth 2.1 §5.3.2 says a
+ * Distinct from {@link UNAUTHORIZED} on purpose: OAuth 2.1 §5.3.1 says a
  * challenge SHOULD NOT carry error information when the request had no
  * credentials at all, because there is nothing yet to have been wrong. Sending
  * `invalid_token` to a client that simply has not logged in tells it its stored
@@ -230,9 +231,18 @@ export function withResourceMetadata(
   challenge: string,
   metadataUrl: string,
 ): string {
-  if (challenge.includes("resource_metadata=")) return challenge;
+  // Matched as a parameter, not as a substring, and only outside quoted
+  // values — a plain `includes` was wrong in both directions. An
+  // `error_description` merely mentioning the word suppressed a real URL,
+  // silently killing discovery; and a challenge spelling the parameter
+  // `Resource_Metadata =` (auth-param names are case-insensitive, and RFC 7235
+  // permits space around the `=`) got a second copy, which RFC 7235 §2.1
+  // forbids and leaves clients to resolve however they like. Blanking the
+  // quoted strings first is what separates the two cases: a value can contain
+  // anything, a parameter name cannot.
+  const outsideValues = challenge.replace(/"(?:[^"\\]|\\.)*"/g, `""`);
+  if (/(^|[\s,])resource_metadata\s*=/i.test(outsideValues)) return challenge;
   const url = paramValue(metadataUrl);
-  if (url === "") return challenge;
   const separator = challenge.trim() === "Bearer" ? " " : ", ";
   const merged = `${challenge}${separator}resource_metadata="${url}"`;
   return headerValue(merged) ?? challenge;

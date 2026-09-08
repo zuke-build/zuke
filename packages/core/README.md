@@ -532,13 +532,13 @@ function metadataDocument(settings: ProtectedResourceSettings): Record<string, u
   that a MUST, and an empty `scopes_supported` would in any case advertise
   "this resource accepts no scopes".
 
-function metadataPaths(resource: string): string[]
-  Every path the metadata document is published at, most specific first.
+function metadataPath(resource: string): string
+  The path the metadata document is published at: the well-known suffix with
+  the resource's own path inserted after it.
 
-  For a resource with a path this is the path-inserted location followed by the
-  root one; for a resource that is a bare origin the two coincide and only one
-  is returned. A trailing slash on the resource is dropped before insertion, as
-  RFC 9728 §3.1 requires.
+  For a resource that is a bare origin this is the root well-known path, which
+  is then the conformant location for that identifier. A trailing slash is
+  dropped before insertion, as RFC 9728 §3.1 requires.
 
 function metadataUrl(resource: string): string
   The absolute URL a `WWW-Authenticate` challenge points at: always the
@@ -877,7 +877,7 @@ const INVALID_TOKEN: McpAuthReject
   The refusal for a request that presented a token which did not hold up —
   expired, wrong signature, wrong audience.
 
-  Distinct from {@link UNAUTHORIZED} on purpose: OAuth 2.1 §5.3.2 says a
+  Distinct from {@link UNAUTHORIZED} on purpose: OAuth 2.1 §5.3.1 says a
   challenge SHOULD NOT carry error information when the request had no
   credentials at all, because there is nothing yet to have been wrong. Sending
   `invalid_token` to a client that simply has not logged in tells it its stored
@@ -910,8 +910,9 @@ const ToolTasks: ToolTasksApi
 const UNAUTHORIZED: McpAuthReject
   The bare `401` challenge: the refusal an authenticator's own failure produces
   (so a throw leaks nothing about why it threw), and the one the transport
-  answers a bad or absent static bearer token with — one shape for "you are not
-  authenticated", rather than a second spelling per call site.
+  answers an absent static bearer token with. A token that was presented
+  and rejected gets {@link INVALID_TOKEN} instead: the two are different facts
+  about the caller, and only the second one is about a credential.
 
 const ZUKE_ACTION: "zuke-build/zuke"
   The name a {@link CiPinResolver} is asked for the prelude action, so a

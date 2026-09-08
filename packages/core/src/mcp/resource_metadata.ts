@@ -14,19 +14,20 @@
  * the tokens it mints are verified.
  *
  * Two details in here are easy to get wrong and silent when wrong, so both are
- * handled by {@link metadataPaths} rather than left to a caller:
+ * handled by {@link metadataPath} rather than left to a caller:
  *
  * - The well-known segment is inserted **between the host and the path**, so a
  *   resource at `/mcp` publishes at `/.well-known/oauth-protected-resource/mcp`.
  *   Appending it to the path instead is the common bug, and a client that finds
  *   nothing there simply never authenticates.
- * - RFC 9728 §3.3 pulls two ways for a resource whose identifier has a path. A
- *   client that probed the root expects `resource` to be the bare origin; one
- *   that followed the challenge expects it to equal the URL it called. Each is
- *   told it MUST discard the document on a mismatch, so the same document is
- *   published at both locations — §3 permits exactly that ("The same protected
- *   resource MAY choose to publish its metadata at multiple well-known
- *   locations") — while the challenge always names the path-inserted one.
+ * - The document is published at **one** location, the path-inserted one, and
+ *   the challenge names it. Publishing a copy at the root as well is a tempting
+ *   belt-and-braces move, and it is wrong: RFC 9728 §3.3 has a client derive
+ *   the expected `resource` from the URL it fetched, so a client that probed
+ *   the root expects the bare origin and MUST discard a document naming a path.
+ *   Such a copy therefore has no correct consumer — a conformant client tries
+ *   the path-inserted URL first and never asks for the root, and one that only
+ *   asks for the root would discard what it found there.
  *
  * @module
  */
@@ -145,26 +146,52 @@ function resourceUrl(resource: string): URL {
         `"https://build.example.com/mcp".`,
     );
   }
+  // Only http(s) has an origin, and everything downstream — the well-known
+  // path, the absolute challenge URL — is derived from one. A `urn:` or `file:`
+  // identifier parses happily and then produces `origin === "null"`, so
+  // refusing it here is what keeps the startup check and the serving path from
+  // disagreeing.
+  if (url.protocol !== "https:" && url.protocol !== "http:") {
+    throw new ProtectedResourceError(
+      `The protected resource identifier "${resource}" is not an http(s) ` +
+        `URL. RFC 9728 requires https (http is tolerated only for local ` +
+        `development).`,
+    );
+  }
   if (url.hash !== "") {
     throw new ProtectedResourceError(
       `The protected resource identifier "${resource}" has a fragment, which ` +
         `RFC 9728 forbids. Drop everything from the "#".`,
     );
   }
+  if (url.search !== "") {
+    throw new ProtectedResourceError(
+      `The protected resource identifier "${resource}" has a query string. ` +
+        `RFC 8707 says a resource identifier should not carry one, and the ` +
+        `well-known path derived from it would not round-trip. Drop it.`,
+    );
+  }
+  if (url.username !== "" || url.password !== "") {
+    throw new ProtectedResourceError(
+      `The protected resource identifier "${resource}" carries userinfo. The ` +
+        `metadata document is served publicly and unauthenticated, so a ` +
+        `credential in the identifier would be published. Drop it.`,
+    );
+  }
   return url;
 }
 
 /**
- * Every path the metadata document is published at, most specific first.
+ * The path the metadata document is published at: the well-known suffix with
+ * the resource's own path inserted after it.
  *
- * For a resource with a path this is the path-inserted location followed by the
- * root one; for a resource that is a bare origin the two coincide and only one
- * is returned. A trailing slash on the resource is dropped before insertion, as
- * RFC 9728 §3.1 requires.
+ * For a resource that is a bare origin this is the root well-known path, which
+ * is then the conformant location for that identifier. A trailing slash is
+ * dropped before insertion, as RFC 9728 §3.1 requires.
  */
-export function metadataPaths(resource: string): string[] {
+export function metadataPath(resource: string): string {
   const path = resourceUrl(resource).pathname.replace(/\/+$/, "");
-  return path === "" ? [WELL_KNOWN] : [`${WELL_KNOWN}${path}`, WELL_KNOWN];
+  return `${WELL_KNOWN}${path}`;
 }
 
 /**
@@ -174,7 +201,7 @@ export function metadataPaths(resource: string): string[] {
  */
 export function metadataUrl(resource: string): string {
   const url = resourceUrl(resource);
-  return new URL(metadataPaths(resource)[0], url.origin).toString();
+  return new URL(metadataPath(resource), url.origin).toString();
 }
 
 /**
@@ -187,10 +214,13 @@ export function metadataUrl(resource: string): string {
 export function metadataDocument(
   settings: ProtectedResourceSettings,
 ): Record<string, unknown> {
-  const resource = resourceUrl(settings.resource_).toString().replace(
-    /\/$/,
-    "",
-  );
+  // Validated, then emitted **verbatim**. RFC 9728 §3.3 makes a client discard
+  // the document unless `resource` is byte-identical to the URL it called, and
+  // `new URL(...).toString()` is not byte-preserving — it appends a slash to a
+  // bare origin — so re-serialising here would break the very agreement this
+  // field exists to state.
+  resourceUrl(settings.resource_);
+  const resource = settings.resource_;
   if (settings.authorizationServers_.length === 0) {
     throw new ProtectedResourceError(
       `The protected resource "${settings.resource_}" declares no ` +

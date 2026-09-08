@@ -235,7 +235,7 @@ export {
 } from "./src/mcp/auth.ts";
 export {
   metadataDocument,
-  metadataPaths,
+  metadataPath,
   metadataUrl,
   protectedResource,
   ProtectedResourceError,

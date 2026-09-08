@@ -1382,7 +1382,8 @@ maintained JOSE library even though the published packages may not.
 
 `authorizationServer(...)` takes the provider's **issuer identifier**, not its
 metadata URL. The well-known path insertion (`/mcp` publishes at
-`/.well-known/oauth-protected-resource/mcp`, plus the root fallback) is handled
-for you. `UNAUTHORIZED` and `INVALID_TOKEN` are separate refusals on purpose:
+`/.well-known/oauth-protected-resource/mcp`) is handled for you, and only that
+one location is served — a root copy would name a path the root route does not
+expect, so a conformant client must discard it. `UNAUTHORIZED` and `INVALID_TOKEN` are separate refusals on purpose:
 a caller that presented nothing gets no `error` parameter, one whose token was
 rejected gets `error="invalid_token"`.

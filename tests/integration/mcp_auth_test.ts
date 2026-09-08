@@ -286,18 +286,14 @@ class Guarded extends Build {
   }
 }
 
-Deno.test("the metadata document is served at both well-known paths", async () => {
+Deno.test("the metadata document is served at the path-inserted location", async () => {
   const server = await startMcp(new Guarded(), {});
   try {
-    // Path-inserted is the one a client reaches from the challenge; the root is
-    // the fallback it constructs when there is no challenge to follow. RFC 9728
-    // 3.3 validates `resource` differently on each route, so both must answer.
-    for (
-      const path of [
-        ".well-known/oauth-protected-resource/mcp",
-        ".well-known/oauth-protected-resource",
-      ]
-    ) {
+    // Only there. A client that probed the root would derive the bare origin as
+    // the expected `resource` and, per RFC 9728 3.3, discard a document naming
+    // a path — so a copy at the root would have no correct consumer.
+    {
+      const path = ".well-known/oauth-protected-resource/mcp";
       const response = await fetch(`${server.url}${path}`);
       assertEquals(response.status, 200);
       // Public and cross-origin readable: a browser-based client fetches this
@@ -311,6 +307,39 @@ Deno.test("the metadata document is served at both well-known paths", async () =
         resource_name: "Acme build server",
       });
     }
+    const root = await fetch(
+      `${server.url}.well-known/oauth-protected-resource`,
+    );
+    assertEquals(root.status, 405);
+    await root.body?.cancel();
+  } finally {
+    await server.stop();
+  }
+});
+
+Deno.test("a malformed Host header does not fault the server", async () => {
+  // The metadata branch runs before every other check and parses the request
+  // URL, which Deno builds from the raw Host header — and it accepts hosts the
+  // WHATWG parser rejects. Unguarded, that answered *every* request with a 500,
+  // authenticated ones included: an unauthenticated caller could fault the
+  // whole endpoint just by declaring a protected resource on it.
+  const server = await startMcp(new Guarded(), {});
+  try {
+    const port = Number(new URL(server.url).port);
+    const connection = await Deno.connect({ hostname: "127.0.0.1", port });
+    await connection.write(
+      new TextEncoder().encode(
+        "GET / HTTP/1.1\r\nHost: bad host\r\nConnection: close\r\n\r\n",
+      ),
+    );
+    const buffer = new Uint8Array(256);
+    const read = await connection.read(buffer);
+    connection.close();
+    const statusLine = new TextDecoder()
+      .decode(buffer.subarray(0, read ?? 0))
+      .split("\r\n")[0];
+    // The ordinary refusal for a GET on the MCP endpoint — not a fault.
+    assertStringIncludes(statusLine, "405");
   } finally {
     await server.stop();
   }
@@ -332,12 +361,9 @@ Deno.test("an unauthenticated call is refused with a challenge naming the docume
     );
     // Nothing was presented, so nothing of the client's has been rejected.
     assertEquals(challenge.includes("error="), false);
-    // And the header is readable across origins, or a browser client cannot
-    // act on it at all.
-    assertEquals(
-      bare.headers.get("access-control-expose-headers"),
-      "WWW-Authenticate",
-    );
+    // The declared scopes are named, rather than left for the client to guess
+    // by requesting the whole advertised catalogue.
+    assertStringIncludes(challenge, `scope="zuke:run"`);
 
     // A token that was presented and rejected says so, which is a different
     // thing for a client to act on than "you have not logged in".
@@ -355,9 +381,10 @@ Deno.test("an unauthenticated call is refused with a challenge naming the docume
   }
 });
 
-Deno.test("a build declaring no protected resource is unchanged", async () => {
-  // The whole surface is opt-in: nothing is published, and the challenge stays
-  // the bare one a token-protected server has always sent.
+Deno.test("a build declaring no protected resource publishes nothing", async () => {
+  // The surface is opt-in: no document, and no discovery parameters on any
+  // challenge. The one thing that did change for such a build is deliberate —
+  // a token that was presented and rejected now says so.
   const server = await startMcp(new Fleet(), { token: "shared-token" });
   try {
     const document = await fetch(
@@ -372,6 +399,28 @@ Deno.test("a build declaring no protected resource is unchanged", async () => {
     assertEquals(refused.status, 401);
     assertEquals(refused.headers.get("www-authenticate"), "Bearer");
     await refused.body?.cancel();
+
+    // A wrong token names itself. This is the one behaviour that changed for a
+    // build declaring nothing, and it is the OAuth-defined answer: the client
+    // learns its stored credential was refused rather than that it has none.
+    const wrong = await fetch(`${server.url}`, {
+      method: "POST",
+      headers: { authorization: "Bearer nope" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
+    });
+    assertEquals(wrong.status, 401);
+    assertEquals(
+      wrong.headers.get("www-authenticate"),
+      `Bearer error="invalid_token"`,
+    );
+    // ...and still no discovery, because none was declared.
+    assertEquals(
+      (wrong.headers.get("www-authenticate") ?? "").includes(
+        "resource_metadata",
+      ),
+      false,
+    );
+    await wrong.body?.cancel();
   } finally {
     await server.stop();
   }
@@ -393,4 +442,44 @@ Deno.test("a preflight for the metadata document is answered", async () => {
   } finally {
     await server.stop();
   }
+});
+
+Deno.test("the metadata response is a cacheable JSON document, and answers HEAD", async () => {
+  // RFC 9728 3.2 makes the 200 + application/json a MUST; the cache header is
+  // what stops every cold client re-fetching a constant.
+  const server = await startMcp(new Guarded(), {});
+  try {
+    const url = `${server.url}.well-known/oauth-protected-resource/mcp`;
+    const response = await fetch(url);
+    assertEquals(response.headers.get("content-type"), "application/json");
+    assertStringIncludes(
+      response.headers.get("cache-control") ?? "",
+      "max-age=3600",
+    );
+    await response.body?.cancel();
+
+    const head = await fetch(url, { method: "HEAD" });
+    assertEquals(head.status, 200);
+    assertEquals(head.headers.get("content-type"), "application/json");
+    await head.body?.cancel();
+  } finally {
+    await server.stop();
+  }
+});
+
+Deno.test("an unusable protected-resource declaration stops the server starting", async () => {
+  // Validated once at startup rather than per request: a client discovering the
+  // mistake would be a client that cannot authenticate, and the throw would
+  // land on a public route as a 500.
+  class Broken extends Build {
+    deploy = target().executes(() => {});
+    override mcpProtectedResource(): ProtectedResourceSettings {
+      return protectedResource("https://build.example.com/mcp");
+    }
+  }
+  // Through the real CLI: it exits before binding a transport, so the whole
+  // command runs in-process, exactly like the both-seams refusal above.
+  const { code, err } = await runCli(Broken, ["mcp"]);
+  assertEquals(code, 1);
+  assertStringIncludes(err, "authorization server");
 });
