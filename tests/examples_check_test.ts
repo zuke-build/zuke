@@ -129,9 +129,10 @@ Deno.test("formatExampleFailures names the example, the step, and the output", (
 
 Deno.test("the shipped examples are discovered and pass the real gate", async () => {
   // Integration: the default runner spawns the real `deno check` and
-  // `deno run … --list` (Deno.execPath() via the wrapper), resolving the
-  // examples' jsr:@zuke/* imports to this workspace. One example keeps the
-  // suite fast; `./zuke examplesCheck` runs them all in the gate.
+  // `deno run … --list` (Deno.execPath() via the wrapper) over every shipped
+  // example, resolving their jsr:@zuke/* imports to this workspace — the same
+  // work `./zuke examplesCheck` does in the gate, so the normal test lane
+  // proves the runner and the examples end to end on every OS the suite runs.
   const all = await discoverExamples();
   assertEquals(
     all.map((e) => e.dir.replace(/^.*[\\/]/, "")),
@@ -143,6 +144,5 @@ Deno.test("the shipped examples are discovered and pass the real gate", async ()
       "scripts-to-zuke",
     ],
   );
-  const one = all.filter((e) => e.dir.endsWith("ci-only"));
-  assertEquals(await checkExamples(one), []);
+  assertEquals(await checkExamples(all), []);
 });
