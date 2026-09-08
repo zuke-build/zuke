@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.48.1](https://github.com/zuke-build/zuke/compare/core-v1.48.0...core-v1.48.1) (2026-09-08)
+
+
+### Bug Fixes
+
+* **core:** fan-out jobs no longer add an unpinned checkout after the prelude ([#502](https://github.com/zuke-build/zuke/issues/502)) ([2d109b3](https://github.com/zuke-build/zuke/commit/2d109b36155afc10107239b6d2431fff953f95f6)), closes [#501](https://github.com/zuke-build/zuke/issues/501)
+
 ## [1.48.0](https://github.com/zuke-build/zuke/compare/core-v1.47.0...core-v1.48.0) (2026-09-08)
 
 
