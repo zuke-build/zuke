@@ -43,13 +43,26 @@ export function mcpServerEntry(allowRun: boolean): McpServerEntry {
 }
 
 /**
- * Whether an `.mcp.json` text already registers the `zuke` server:
- * `present` means a well-formed {@link McpServerEntry} is there (whatever its
- * arguments — a deliberate `--allow-run` or transport choice survives a
- * re-run without `--force`); `absent` covers a missing key and a malformed
- * one alike, so a broken registration is repaired rather than kept.
+ * A parsed `.mcp.json`, ready to merge. `present` means a well-formed
+ * {@link McpServerEntry} is registered as `zuke` (whatever its arguments — a
+ * deliberate `--allow-run` or transport choice survives a re-run without
+ * `--force`); `absent` covers a missing key and a malformed one alike, so a
+ * broken registration is repaired rather than kept. `document` is the file's
+ * top-level object — empty when the text was not one — for the merge to
+ * extend. An `unparseable` text carries no document: it is never rewritten,
+ * because there is no telling what it held.
  */
-export type McpConfigState = "present" | "absent" | "unparseable";
+export type McpConfig =
+  | {
+    /** The `zuke` entry is registered, or not. */
+    state: "present" | "absent";
+    /** The top-level object every other key and server is preserved from. */
+    document: Record<string, unknown>;
+  }
+  | {
+    /** The text is not JSON. */
+    state: "unparseable";
+  };
 
 /** Whether `value` is a well-formed server entry: a command and its arguments. */
 function isServerEntry(value: unknown): value is McpServerEntry {
@@ -58,41 +71,40 @@ function isServerEntry(value: unknown): value is McpServerEntry {
     value.args.every((arg) => typeof arg === "string");
 }
 
-/** Classify an `.mcp.json` text by the state of its `zuke` entry. */
-export function mcpConfigState(text: string): McpConfigState {
+/**
+ * Parse an `.mcp.json` text and classify its `zuke` entry. This is the only
+ * place the text is parsed: {@link mergeMcpConfig} takes the document it
+ * yields, so an unparseable file is rejected here, once, and can never reach
+ * the merge.
+ */
+export function parseMcpConfig(text: string): McpConfig {
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
   } catch {
-    return "unparseable";
+    return { state: "unparseable" };
   }
-  if (
-    isRecord(parsed) && isRecord(parsed.mcpServers) &&
-    isServerEntry(parsed.mcpServers[MCP_SERVER_NAME])
-  ) {
-    return "present";
-  }
-  return "absent";
+  const document = isRecord(parsed) ? parsed : {};
+  const state = isRecord(document.mcpServers) &&
+      isServerEntry(document.mcpServers[MCP_SERVER_NAME])
+    ? "present"
+    : "absent";
+  return { state, document };
 }
 
 /**
- * Merge the `zuke` server into an `.mcp.json` document, preserving every
- * other server and top-level key. `existing` is the file text, or `null` to
- * start fresh; an existing `zuke` entry is replaced.
+ * Merge the `zuke` server into a parsed `.mcp.json` document, preserving
+ * every other server and top-level key. `document` is the object
+ * {@link parseMcpConfig} yielded, or `{}` to start fresh; an existing `zuke`
+ * entry is replaced. Pure: it parses nothing and cannot throw.
  */
 export function mergeMcpConfig(
-  existing: string | null,
+  document: Record<string, unknown>,
   allowRun: boolean,
 ): string {
-  const root: Record<string, unknown> = {};
-  if (existing !== null) {
-    const parsed: unknown = JSON.parse(existing);
-    if (isRecord(parsed)) Object.assign(root, parsed);
-  }
-  const servers: Record<string, unknown> = isRecord(root.mcpServers)
-    ? { ...root.mcpServers }
+  const servers: Record<string, unknown> = isRecord(document.mcpServers)
+    ? { ...document.mcpServers }
     : {};
   servers[MCP_SERVER_NAME] = mcpServerEntry(allowRun);
-  root.mcpServers = servers;
-  return `${JSON.stringify(root, null, 2)}\n`;
+  return `${JSON.stringify({ ...document, mcpServers: servers }, null, 2)}\n`;
 }

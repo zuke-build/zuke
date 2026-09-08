@@ -5,10 +5,16 @@ import { assertEquals } from "../../core/tests/_assert.ts";
 import {
   MCP_CONFIG_FILE,
   MCP_SERVER_NAME,
-  mcpConfigState,
   mcpServerEntry,
   mergeMcpConfig,
+  parseMcpConfig,
 } from "../src/mcp_config.ts";
+
+/** The document `parseMcpConfig` yields for `text`, or `{}` when it has none. */
+function documentOf(text: string): Record<string, unknown> {
+  const config = parseMcpConfig(text);
+  return config.state === "unparseable" ? {} : config.document;
+}
 
 Deno.test("mcpServerEntry launches the build's server, read-only by default", () => {
   assertEquals(mcpServerEntry(false), {
@@ -19,7 +25,7 @@ Deno.test("mcpServerEntry launches the build's server, read-only by default", ()
 });
 
 Deno.test("mergeMcpConfig writes a fresh file with just the zuke server", () => {
-  const text = mergeMcpConfig(null, false);
+  const text = mergeMcpConfig({}, false);
   assertEquals(text.endsWith("\n"), true);
   assertEquals(JSON.parse(text), {
     mcpServers: {
@@ -29,34 +35,36 @@ Deno.test("mergeMcpConfig writes a fresh file with just the zuke server", () => 
 });
 
 Deno.test("mergeMcpConfig keeps other servers and top-level keys", () => {
-  const existing = JSON.stringify({
+  const existing = {
     mcpServers: { github: { command: "gh-mcp", args: [] } },
     other: { kept: true },
-  });
+  };
   const merged = JSON.parse(mergeMcpConfig(existing, true));
   assertEquals(merged.other, { kept: true });
   assertEquals(merged.mcpServers.github, { command: "gh-mcp", args: [] });
   assertEquals(merged.mcpServers.zuke.args.at(-1), "--allow-run");
+  // The caller's document is left alone: the merge builds a new object.
+  assertEquals(Object.keys(existing.mcpServers), ["github"]);
 });
 
 Deno.test("mergeMcpConfig replaces an existing zuke entry", () => {
-  const existing = mergeMcpConfig(null, true);
+  const existing = documentOf(mergeMcpConfig({}, true));
   const merged = JSON.parse(mergeMcpConfig(existing, false));
   assertEquals(merged.mcpServers.zuke.args.includes("--allow-run"), false);
 });
 
-Deno.test("mergeMcpConfig ignores a non-object document", () => {
-  const merged = JSON.parse(mergeMcpConfig("[1, 2]", false));
-  assertEquals(Object.keys(merged), ["mcpServers"]);
+Deno.test("mergeMcpConfig replaces a non-object mcpServers", () => {
+  const merged = JSON.parse(mergeMcpConfig({ mcpServers: "nope" }, false));
+  assertEquals(Object.keys(merged.mcpServers), ["zuke"]);
 });
 
-Deno.test("mcpConfigState classifies .mcp.json text", () => {
-  assertEquals(mcpConfigState(mergeMcpConfig(null, false)), "present");
+Deno.test("parseMcpConfig classifies .mcp.json text", () => {
+  assertEquals(parseMcpConfig(mergeMcpConfig({}, false)).state, "present");
   // A customised but well-formed entry is present: it is kept without --force.
   assertEquals(
-    mcpConfigState(
+    parseMcpConfig(
       '{"mcpServers":{"zuke":{"command":"deno","args":["run","-A","zuke.ts","mcp","--http","7777"]}}}',
-    ),
+    ).state,
     "present",
   );
   // A malformed entry is not a registration; it reads as absent so a re-run
@@ -69,12 +77,20 @@ Deno.test("mcpConfigState classifies .mcp.json text", () => {
       '{"mcpServers":{"zuke":{"command":"deno","args":["run",7]}}}',
     ]
   ) {
-    assertEquals(mcpConfigState(broken), "absent", broken);
+    assertEquals(parseMcpConfig(broken).state, "absent", broken);
   }
-  assertEquals(mcpConfigState('{"mcpServers":{"other":{}}}'), "absent");
-  assertEquals(mcpConfigState("{}"), "absent");
-  assertEquals(mcpConfigState("[]"), "absent");
-  assertEquals(mcpConfigState("not json"), "unparseable");
+  assertEquals(parseMcpConfig('{"mcpServers":{"other":{}}}').state, "absent");
+  assertEquals(parseMcpConfig("{}"), { state: "absent", document: {} });
+  // A document that is not an object has nothing to preserve.
+  assertEquals(parseMcpConfig("[1, 2]"), { state: "absent", document: {} });
+  // Not JSON: no document, so nothing downstream can rewrite the file.
+  assertEquals(parseMcpConfig("not json"), { state: "unparseable" });
+  assertEquals(parseMcpConfig(""), { state: "unparseable" });
+});
+
+Deno.test("parseMcpConfig hands the whole document to the merge", () => {
+  const document = documentOf('{"mcpServers":{"a":{}},"b":1}');
+  assertEquals(document, { mcpServers: { a: {} }, b: 1 });
 });
 
 Deno.test("the file and server names are the ones clients look for", () => {

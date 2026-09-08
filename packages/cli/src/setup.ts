@@ -13,8 +13,8 @@
 
 import {
   MCP_CONFIG_FILE,
-  mcpConfigState,
   mergeMcpConfig,
+  parseMcpConfig,
 } from "./mcp_config.ts";
 import { isRecord } from "./records.ts";
 
@@ -437,22 +437,21 @@ async function setupMcpConfig(
   const name = MCP_CONFIG_FILE;
   const path = joinPath(dir, name);
   if (!(await host.exists(path))) {
-    await host.writeText(path, mergeMcpConfig(null, mcp.allowRun));
+    await host.writeText(path, mergeMcpConfig({}, mcp.allowRun));
     host.log(`  create   ${name}`);
     return { path: name, status: "created" };
   }
 
-  const before = await host.readText(path);
-  const state = mcpConfigState(before);
-  if (state === "unparseable") {
+  const config = parseMcpConfig(await host.readText(path));
+  if (config.state === "unparseable") {
     host.log(`  skip     ${name}  (unparseable, edit by hand)`);
     return { path: name, status: "skipped" };
   }
-  if (state === "present" && !force) {
+  if (config.state === "present" && !force) {
     host.log(`  skip     ${name}  (zuke server already registered)`);
     return { path: name, status: "skipped" };
   }
-  await host.writeText(path, mergeMcpConfig(before, mcp.allowRun));
+  await host.writeText(path, mergeMcpConfig(config.document, mcp.allowRun));
   host.log(`  update   ${name}`);
   return { path: name, status: "overwritten" };
 }
