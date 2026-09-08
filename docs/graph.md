@@ -4,7 +4,7 @@
 
 The dependency graph of [`zuke.ts`](../zuke.ts) — Zuke building itself. An arrow points from a dependency to the target that depends on it, so a target runs after everything that points at it. This is the same graph `./zuke graph` prints as text and `./zuke graph --output=html` renders interactively.
 
-40 target(s), 26 dependency edge(s). Regenerate with `./zuke graphDoc`; the `graphDocCheck` target in the CI gate fails when this page drifts from the build.
+42 target(s), 27 dependency edge(s). Regenerate with `./zuke graphDoc`; the `graphDocCheck` target in the CI gate fails when this page drifts from the build.
 
 ```mermaid
 flowchart TD
@@ -29,51 +29,54 @@ flowchart TD
   t18["hclSyncCheck"]
   t19["pluginSync"]
   t20["pluginSyncCheck"]
-  t21["skillsCheck"]
-  t22["graphDoc"]
-  t23["graphDocCheck"]
-  t24["pluginVersionCheck"]
-  t25["prBodyLint"]
-  t26["coreFloorCheck"]
-  t27["lockCheck"]
-  t28["security"]
-  t29["actionPinCheck"]
-  t30["ci"]
-  t31["scorecardSarif"]
-  t32["codeql"]
-  t33["reviewBase"]
-  t34["review"]
-  t35["release"]
-  t36["actionRelease"]
-  t37["publishJsr"]
-  t38["publish"]
-  t39["default"]
+  t21["launcherSync"]
+  t22["launcherSyncCheck"]
+  t23["skillsCheck"]
+  t24["graphDoc"]
+  t25["graphDocCheck"]
+  t26["pluginVersionCheck"]
+  t27["prBodyLint"]
+  t28["coreFloorCheck"]
+  t29["lockCheck"]
+  t30["security"]
+  t31["actionPinCheck"]
+  t32["ci"]
+  t33["scorecardSarif"]
+  t34["codeql"]
+  t35["reviewBase"]
+  t36["review"]
+  t37["release"]
+  t38["actionRelease"]
+  t39["publishJsr"]
+  t40["publish"]
+  t41["default"]
   t1 --> t5
   t5 --> t6
   t6 --> t8
   t8 --> t9
-  t2 --> t30
-  t3 --> t30
-  t4 --> t30
-  t8 --> t30
-  t9 --> t30
-  t11 --> t30
-  t14 --> t30
-  t15 --> t30
-  t16 --> t30
-  t18 --> t30
-  t20 --> t30
-  t21 --> t30
-  t23 --> t30
-  t24 --> t30
-  t25 --> t30
-  t29 --> t30
-  t28 --> t30
-  t27 --> t30
-  t33 --> t34
-  t35 --> t38
-  t37 --> t38
-  t30 --> t39
+  t2 --> t32
+  t3 --> t32
+  t4 --> t32
+  t8 --> t32
+  t9 --> t32
+  t11 --> t32
+  t14 --> t32
+  t15 --> t32
+  t16 --> t32
+  t18 --> t32
+  t20 --> t32
+  t22 --> t32
+  t23 --> t32
+  t25 --> t32
+  t26 --> t32
+  t27 --> t32
+  t31 --> t32
+  t30 --> t32
+  t29 --> t32
+  t35 --> t36
+  t37 --> t40
+  t39 --> t40
+  t32 --> t41
 ```
 
 ## Targets
@@ -101,6 +104,8 @@ flowchart TD
 | `hclSyncCheck` | Verify the Terraform/OpenTofu wrappers match their template | — |
 | `pluginSync` | Sync plugins/zuke/skills/ from skills/ (real copies, not a symlink) | — |
 | `pluginSyncCheck` | Verify plugins/zuke/skills/ matches skills/ (no drift) | — |
+| `launcherSync` | Regenerate ./zuke and zuke.ps1 from @zuke/cli's launcher template | — |
+| `launcherSyncCheck` | Verify ./zuke and zuke.ps1 match @zuke/cli's launcher template | — |
 | `skillsCheck` | Validate skills/ against the Agent Skills spec (frontmatter, names) | — |
 | `graphDoc` | Regenerate docs/graph.md — this build's graph as a Mermaid page | — |
 | `graphDocCheck` | Verify docs/graph.md matches the current build graph | — |
@@ -110,7 +115,7 @@ flowchart TD
 | `lockCheck` | Verify the run did not rewrite deno.lock | — |
 | `security` | Run supply-chain security scanners (zuke/security) | — |
 | `actionPinCheck` | Verify the workflows only use inputs the released action has | — |
-| `ci` | Full pre-commit / CI gate | `format`, `lint`, `spell`, `coverage`, `coverageUpload`, `apiDocsCheck`, `docLint`, `snippetsCheck`, `examplesCheck`, `hclSyncCheck`, `pluginSyncCheck`, `skillsCheck`, `graphDocCheck`, `pluginVersionCheck`, `prBodyLint`, `actionPinCheck`, `security`, `lockCheck` |
+| `ci` | Full pre-commit / CI gate | `format`, `lint`, `spell`, `coverage`, `coverageUpload`, `apiDocsCheck`, `docLint`, `snippetsCheck`, `examplesCheck`, `hclSyncCheck`, `pluginSyncCheck`, `launcherSyncCheck`, `skillsCheck`, `graphDocCheck`, `pluginVersionCheck`, `prBodyLint`, `actionPinCheck`, `security`, `lockCheck` |
 | `scorecardSarif` | Upload the Scorecard SARIF to GitHub code scanning | — |
 | `codeql` | CodeQL static analysis (runs in CI via codeql.yml) | — |
 | `reviewBase` | Fetch the base branch the AI review diffs against | — |

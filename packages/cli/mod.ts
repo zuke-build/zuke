@@ -27,6 +27,7 @@ import {
   type StarActions,
 } from "./src/star.ts";
 import { VERSION } from "./src/version.ts";
+import { DENO_PIN } from "./src/deno_pin.ts";
 
 export type { SetupHost } from "./src/setup.ts";
 export type { ImportSource } from "./src/import.ts";
@@ -74,6 +75,13 @@ export interface SetupFlags {
   mcp: boolean;
   /** Register that server with `--allow-run`, so the agent may execute targets. Implies `mcp`. */
   allowRun: boolean;
+  /**
+   * Which launchers to scaffold: `true` (`--bootstrap-deno`) for ones that
+   * install a pinned, checksum-verified Deno when none is on `PATH`, `false`
+   * (`--no-bootstrap-deno`) for ones that require it and fail closed. Unset:
+   * ask when interactive, else take the default (bootstrap).
+   */
+  bootstrapDeno?: boolean;
 }
 
 /** Parse the argument list following `zuke setup`. */
@@ -97,6 +105,10 @@ export function parseSetupFlags(args: string[]): SetupFlags {
       // implies --mcp rather than being silently ignored without it.
       flags.mcp = true;
       flags.allowRun = true;
+    } else if (arg === "--bootstrap-deno") {
+      flags.bootstrapDeno = true;
+    } else if (arg === "--no-bootstrap-deno") {
+      flags.bootstrapDeno = false;
     } else if (arg === "--name") {
       if (i + 1 < args.length) {
         i++;
@@ -126,6 +138,27 @@ export function parseSetupFlags(args: string[]): SetupFlags {
 /** The `.mcp.json` request the flags make, or `undefined` for none. */
 function mcpOption(flags: SetupFlags): McpSetupOptions | undefined {
   return flags.mcp ? { allowRun: flags.allowRun } : undefined;
+}
+
+/** The launcher question, naming the release a yes will pin. */
+const BOOTSTRAP_QUESTION =
+  `Launchers: bootstrap a pinned, checksum-verified Deno v${DENO_PIN.version} ` +
+  "when none is on PATH? [y/n]";
+
+/**
+ * Which launchers to scaffold. A flag decides outright; otherwise the wizard
+ * asks when it is interactive, and the default — bootstrap — stands under
+ * `--yes` or a non-TTY. Only an explicit "n…" opts out, so Enter keeps the
+ * default the question shows.
+ */
+function resolveBootstrapDeno(
+  flags: SetupFlags,
+  prompter: Prompter,
+  interactive: boolean,
+): boolean {
+  if (flags.bootstrapDeno !== undefined) return flags.bootstrapDeno;
+  if (!interactive) return true;
+  return !/^n/i.test(prompter.ask(BOOTSTRAP_QUESTION, "y").trim());
 }
 
 /** The one-line identity printed under the logo and atop `--help`. */
@@ -163,17 +196,21 @@ Setup options:
   --launcher-name <name>  Launcher base name when a zuke/ directory is in the way
   --mcp                   Also write .mcp.json registering the build's MCP server
   --allow-run             …with --allow-run, so an agent may execute targets (implies --mcp)
+  --bootstrap-deno        Launchers install a pinned, checksum-verified Deno when none is on PATH (default)
+  --no-bootstrap-deno     Launchers require Deno on PATH and fail closed without it
   --force, -f             Overwrite existing files
   --yes, -y               Accept defaults without prompting
 
 Import options:
-  --dir <path>     Directory to read from and scaffold into (default: .)
-  --name <Class>   Build class name for zuke.ts (default: MyBuild)
-  --from <source>  Force a source: package.json or makefile (default: auto-detect)
-  --mcp            Also write .mcp.json registering the build's MCP server
-  --allow-run      …with --allow-run, so an agent may execute targets (implies --mcp)
-  --force, -f      Overwrite existing files
-  --yes, -y        Accept defaults without prompting
+  --dir <path>            Directory to read from and scaffold into (default: .)
+  --name <Class>          Build class name for zuke.ts (default: MyBuild)
+  --from <source>         Force a source: package.json or makefile (default: auto-detect)
+  --mcp                   Also write .mcp.json registering the build's MCP server
+  --allow-run             …with --allow-run, so an agent may execute targets (implies --mcp)
+  --bootstrap-deno        Launchers install a pinned, checksum-verified Deno when none is on PATH (default)
+  --no-bootstrap-deno     Launchers require Deno on PATH and fail closed without it
+  --force, -f             Overwrite existing files
+  --yes, -y               Accept defaults without prompting
 
 Doc:
   zuke doc core           API of @zuke/core
@@ -201,12 +238,13 @@ async function commandSetup(
       force = prompter.confirm("Overwrite existing files if present?");
     }
   }
+  const bootstrapDeno = resolveBootstrapDeno(flags, prompter, interactive);
 
   const where = dir === "." ? "the current directory" : dir;
   host.log(`Scaffolding Zuke into ${where}:`);
   const launcherName = flags.launcherName;
   const result = await runSetup(
-    { dir, force, name, launcherName, mcp: mcpOption(flags) },
+    { dir, force, name, launcherName, mcp: mcpOption(flags), bootstrapDeno },
     host,
   );
   const written = result.files.filter((f) => f.status !== "skipped").length;
@@ -259,15 +297,24 @@ async function commandImport(
   const dir = flags.dir ?? ".";
 
   printBanner(host);
-  if (!flags.yes && prompter.interactive()) {
+  const interactive = !flags.yes && prompter.interactive();
+  if (interactive) {
     name = prompter.ask("Build class name", name);
     if (!force) {
       force = prompter.confirm("Overwrite existing files if present?");
     }
   }
+  const bootstrapDeno = resolveBootstrapDeno(flags, prompter, interactive);
 
   const result = await runImport(
-    { dir, force, name, from: flags.from, mcp: mcpOption(flags) },
+    {
+      dir,
+      force,
+      name,
+      from: flags.from,
+      mcp: mcpOption(flags),
+      bootstrapDeno,
+    },
     host,
   );
   if (result.source === null) {

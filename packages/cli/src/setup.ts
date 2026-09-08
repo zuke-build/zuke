@@ -3,8 +3,8 @@
 
 /**
  * The scaffolding engine behind `zuke setup`. It writes a starter `zuke.ts`,
- * the `./zuke` bootstrap launchers, and a `deno.json` task into a target
- * directory.
+ * the `./zuke` launchers (see {@link "./launcher.ts"} for the two variants),
+ * and a `deno.json` task into a target directory.
  *
  * All filesystem and console effects go through an injectable {@link SetupHost}
  * so the logic stays pure and unit-testable; {@link defaultHost} is the real
@@ -17,6 +17,7 @@ import {
   parseMcpConfig,
 } from "./mcp_config.ts";
 import { isRecord } from "./records.ts";
+import { launcherBash, launcherPwsh } from "./launcher.ts";
 
 // Re-exported so the merge guard keeps its historical home for importers.
 export { isRecord };
@@ -52,89 +53,6 @@ await run(${name});
 export function starterConfig(name: string): string {
   return `${JSON.stringify({ name }, null, 2)}\n`;
 }
-
-/**
- * The URL the launchers point at when Deno is missing. They deliberately do not
- * install it themselves: piping an install script straight into a shell
- * downloads and executes code with no integrity check, and a scaffolded
- * launcher has no pinned per-platform checksum to verify against (Zuke's own
- * `./zuke` carries one because it pins the Deno version it bootstraps). Telling
- * the user which one command to run keeps the scaffold honest about that.
- */
-const DENO_INSTALL_DOCS =
-  "https://docs.deno.com/runtime/getting_started/installation/";
-
-/* cspell:disable */
-
-/**
- * The bash launcher (`./zuke`). Runs `zuke.ts` with the Deno on `PATH`.
- *
- * `--frozen` is passed only when a `deno.lock` is already there: a freshly
- * scaffolded project has none, and `deno run --frozen` against a missing
- * lockfile fails outright ("The lockfile is out of date") instead of writing
- * one. So the first run resolves and records the graph, and every run after
- * that verifies it and fails loudly if it changed.
- *
- * The unfrozen branch prints a notice to stderr. The same branch is taken if a
- * `deno.lock` is later removed, which drops integrity verification, so it says
- * so rather than running unverified in silence.
- */
-export function launcherBash(): string {
-  return `#!/usr/bin/env bash
-# Zuke launcher — runs zuke.ts with Deno.
-set -euo pipefail
-dir="$(cd "$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
-cd "$dir"
-if ! command -v deno >/dev/null 2>&1; then
-  echo "zuke: Deno not found on PATH. Install it, then re-run this launcher:" >&2
-  echo "      ${DENO_INSTALL_DOCS}" >&2
-  exit 1
-fi
-# The first run has no lockfile to verify against, so let Deno write one; from
-# then on --frozen fails the build if the module graph changed. Say so when
-# skipping, so a deleted lockfile downgrades verification visibly instead of
-# silently.
-if [ -f deno.lock ]; then
-  deno run -A --frozen zuke.ts "$@"
-else
-  echo "zuke: no deno.lock here yet — running without lockfile verification so Deno can write one." >&2
-  deno run -A zuke.ts "$@"
-fi
-`;
-}
-
-/**
- * The PowerShell launcher (`.\\zuke.ps1`). Mirrors {@link launcherBash},
- * including its conditional `--frozen`.
- */
-export function launcherPwsh(): string {
-  return `#!/usr/bin/env pwsh
-# Zuke launcher — runs zuke.ts with Deno.
-$ErrorActionPreference = "Stop"
-$dir = Split-Path -Parent $MyInvocation.MyCommand.Path
-Set-Location $dir
-$found = Get-Command deno -ErrorAction SilentlyContinue
-if (-not $found) {
-  Write-Error "zuke: Deno not found on PATH. Install it, then re-run this launcher: ${DENO_INSTALL_DOCS}"
-  exit 1
-}
-# The first run has no lockfile to verify against, so let Deno write one; from
-# then on --frozen fails the build if the module graph changed. Say so when
-# skipping, so a deleted lockfile downgrades verification visibly instead of
-# silently.
-$denoArgs = @("run", "-A")
-if (Test-Path (Join-Path $dir "deno.lock")) {
-  $denoArgs += "--frozen"
-} else {
-  Write-Warning "zuke: no deno.lock here yet - running without lockfile verification so Deno can write one."
-}
-$denoArgs += (Join-Path $dir "zuke.ts")
-& $found.Source @denoArgs @args
-exit $LASTEXITCODE
-`;
-}
-
-/* cspell:enable */
 
 /**
  * The task names `setup` writes into `deno.json`, with their commands.
@@ -259,6 +177,12 @@ export interface SetupOptions {
    */
   buildContent?: string;
   /**
+   * Scaffold launchers that bootstrap a pinned, checksum-verified Deno when
+   * none is on `PATH` (the default), or plain ones that require Deno and fail
+   * closed when it is missing (`false`). See {@link "./launcher.ts"}.
+   */
+  bootstrapDeno?: boolean;
+  /**
    * Also write an `.mcp.json` registering the build's MCP server (`--mcp`), so
    * an agent client picks the build up from the first commit. `allowRun`
    * adds `--allow-run`, letting the agent execute targets rather than only
@@ -354,14 +278,20 @@ export async function runSetup(
   const files: FileResult[] = [];
   const launcher = options.launcherName ?? DEFAULT_LAUNCHER;
   assertLauncherName(launcher);
+  const variant = { bootstrapDeno: options.bootstrapDeno ?? true };
 
   const scaffold: readonly ScaffoldFile[] = [
     {
       name: "zuke.ts",
       content: options.buildContent ?? starterBuild(options.name),
     },
-    { name: launcher, content: launcherBash(), mode: 0o755, launcher: true },
-    { name: `${launcher}.ps1`, content: launcherPwsh(), launcher: true },
+    {
+      name: launcher,
+      content: launcherBash(variant),
+      mode: 0o755,
+      launcher: true,
+    },
+    { name: `${launcher}.ps1`, content: launcherPwsh(variant), launcher: true },
     { name: "zuke.json", content: starterConfig(options.name) },
   ];
 

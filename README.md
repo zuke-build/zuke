@@ -135,11 +135,13 @@ Teams running Zuke in production:
 ## Install
 
 Zuke runs on [Deno](https://deno.com/) and is imported straight from
-[JSR](https://jsr.io/@zuke) — there is nothing else to install. The scaffolded
-`./zuke` launcher (and `zuke.ps1` on Windows) runs the build with the Deno on
-your `PATH`; for a checkout that needs **nothing** installed up front, copy
-Zuke's own [`zuke`](./zuke) / [`zuke.ps1`](./zuke.ps1), which bootstrap a
-pinned, checksum-verified Deno on first use.
+[JSR](https://jsr.io/@zuke) — there is nothing else to install. By default the
+scaffolded `./zuke` launcher (and `zuke.ps1` on Windows) bootstraps a pinned,
+checksum-verified Deno on first use, so a checkout needs **nothing** installed
+up front — it is the same script this repository runs on, [`zuke`](./zuke) /
+[`zuke.ps1`](./zuke.ps1). `zuke setup` asks; `--no-bootstrap-deno` scaffolds a
+launcher that uses the Deno on your `PATH` and fails closed without one, for a
+project that must never download a tool from its build entry point.
 
 ```sh
 deno install -A -g -n zuke jsr:@zuke/cli   # the CLI: setup, import, doc
