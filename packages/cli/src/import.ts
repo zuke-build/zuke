@@ -24,6 +24,7 @@ import { splitShellArgs } from "@zuke/core/shell";
 import {
   isRecord,
   joinPath,
+  type McpSetupOptions,
   runSetup,
   type SetupHost,
   type SetupResult,
@@ -436,6 +437,8 @@ export interface ImportOptions {
   name: string;
   /** Force a specific source; auto-detected (package.json, then Makefile) when unset. */
   from?: ImportSource;
+  /** Also register the build's MCP server in `.mcp.json` (see {@link "./setup.ts".SetupOptions.mcp}). */
+  mcp?: McpSetupOptions;
 }
 
 /** The outcome of {@link runImport}. */
@@ -483,6 +486,7 @@ export async function runImport(
       force: options.force,
       name: options.name,
       buildContent: generateBuild(options.name, tasks),
+      mcp: options.mcp,
     }, host);
     return { ...setup, source: candidate.source, taskCount: tasks.length };
   }

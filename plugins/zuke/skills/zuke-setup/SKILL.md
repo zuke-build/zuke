@@ -27,10 +27,15 @@ deno run -A jsr:@zuke/cli setup
 ```
 
 `setup` flags: `--dir <path>`, `--name <ClassName>`, `--force` (overwrite
-existing files), `--yes` (non-interactive), `--launcher-name <name>` (write the
-launcher under a different name when a `zuke/` directory already occupies it — a
-directory collision now fails with an actionable error instead of silently
-skipping the launcher).
+existing files), `--yes` (non-interactive), `--mcp` (also write `.mcp.json`
+registering the build's MCP server, so this agent — and any other stdio MCP
+client — can list and run the targets through typed calls; `--allow-run`
+registers it with execution enabled and implies `--mcp`), `--launcher-name
+<name>` (write the launcher under a different name when a `zuke/` directory
+already occupies it — a directory collision now fails with an actionable error
+instead of silently skipping the launcher). Pass `--mcp` when the project is
+going to be worked on by agents: it is the difference between guessing
+`npm run what?` and calling `run:test`.
 
 Running as an agent, always pass `--yes`: it skips every interactive question,
 including the closing "star the Zuke repository?" prompt — that question is for
@@ -63,7 +68,7 @@ is a bug, not a shortcut. An `&&` chain becomes sequential steps, a
 shell-specific to translate (pipes, redirects, env assignments) is preserved
 behind a `// TODO` so the file still compiles. It scaffolds the launchers and
 `deno.json` exactly like `setup`, and takes the same `--dir`, `--name`,
-`--force`, `--yes` flags. Afterwards, use the **zuke-write-build** skill to
+`--force`, `--yes`, `--mcp` and `--allow-run` flags. Afterwards, use the **zuke-write-build** skill to
 finish replacing any remaining generated `CmdTasks.exec` calls with typed
 `*Tasks` wrappers.
 
@@ -82,6 +87,10 @@ finish replacing any remaining generated `CmdTasks.exec` calls with typed
 - **`zuke.json`** — `{ "name": "..." }`, which marks the repo root.
 - **`.gitignore`** — created or appended so `.zuke/` is ignored (the cache and
   durable run state live there); untouched if it already covers it.
+- **`.mcp.json`** (with `--mcp`) — `mcpServers.zuke` launching
+  `deno run -A zuke.ts mcp` (plus `--allow-run` when asked). Merged around any
+  other servers already in the file; an existing `zuke` entry is kept unless
+  `--force` is set.
 
 ## Running the build
 

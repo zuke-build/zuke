@@ -8114,6 +8114,10 @@ interface SetupFlags
     Directory to scaffold into (defaults to the current directory).
   launcherName?: string
     Base name for the launcher scripts, when `zuke` is taken by a directory.
+  mcp: boolean
+    Also write `.mcp.json`, registering the build's MCP server for agent clients.
+  allowRun: boolean
+    Register that server with `--allow-run`, so the agent may execute targets. Implies `mcp`.
 
 interface SetupHost
   Injected side effects, so {@link runSetup} is unit-testable.

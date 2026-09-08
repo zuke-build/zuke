@@ -25,7 +25,11 @@ zuke setup                                  # in your project
 ```
 
 Without installing, the same wizard runs via `deno run -A jsr:@zuke/cli setup`
-(flags: `--dir <path>`, `--name <Class>`, `--force`, `--yes`). If a `zuke/`
+(flags: `--dir <path>`, `--name <Class>`, `--force`, `--yes`, `--mcp`). Pass
+`--mcp` to also write a `.mcp.json` that registers the build's
+[MCP server](./mcp.md), so Claude Code, Codex or any stdio MCP client can list
+the targets and run one through typed calls from day one (`--allow-run` lets
+the agent execute targets, not just inspect them). If a `zuke/`
 directory already occupies the launcher's name, setup stops with an actionable
 error — pass `--launcher-name <name>` to write the launcher (and its `.ps1`)
 under a different name.

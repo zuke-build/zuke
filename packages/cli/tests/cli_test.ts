@@ -29,7 +29,12 @@ async function withBanner(fn: () => Promise<void>): Promise<void> {
 }
 
 Deno.test("parseSetupFlags reads every flag form", () => {
-  assertEquals(parseSetupFlags([]), { force: false, yes: false });
+  assertEquals(parseSetupFlags([]), {
+    force: false,
+    yes: false,
+    mcp: false,
+    allowRun: false,
+  });
   assertEquals(parseSetupFlags(["--force"]).force, true);
   assertEquals(parseSetupFlags(["-f"]).force, true);
   assertEquals(parseSetupFlags(["--yes"]).yes, true);
@@ -47,6 +52,40 @@ Deno.test("parseSetupFlags reads every flag form", () => {
   assertEquals(parseSetupFlags(["--launcher-name=go"]).launcherName, "go");
   assertEquals(parseSetupFlags(["--launcher-name"]).launcherName, undefined);
   assertEquals(parseSetupFlags(["whatever"]).name, undefined);
+  assertEquals(parseSetupFlags([]).mcp, false);
+  assertEquals(parseSetupFlags(["--mcp"]).mcp, true);
+  assertEquals(parseSetupFlags(["--mcp"]).allowRun, false);
+  // --allow-run implies --mcp: execution is a property of the registration.
+  assertEquals(parseSetupFlags(["--allow-run"]), {
+    force: false,
+    yes: false,
+    mcp: true,
+    allowRun: true,
+  });
+});
+
+Deno.test("main setup --mcp writes .mcp.json and import --allow-run passes it through", async () => {
+  const host = new FakeHost();
+  const code = await main(
+    ["setup", "--yes", "--dir", "app", "--mcp"],
+    host,
+    new FakePrompter(false),
+  );
+  assertEquals(code, 0);
+  const config = JSON.parse(host.files.get("app/.mcp.json") ?? "{}");
+  assertEquals(config.mcpServers.zuke.args, ["run", "-A", "zuke.ts", "mcp"]);
+
+  const imported = new FakeHost({
+    "package.json": JSON.stringify({ scripts: { test: "node --test" } }),
+  });
+  const importCode = await main(
+    ["import", "--yes", "--allow-run"],
+    imported,
+    new FakePrompter(false),
+  );
+  assertEquals(importCode, 0);
+  const importedConfig = JSON.parse(imported.files.get(".mcp.json") ?? "{}");
+  assertEquals(importedConfig.mcpServers.zuke.args.at(-1), "--allow-run");
 });
 
 Deno.test("main setup surfaces a directory collision as a friendly exit 1", async () => {

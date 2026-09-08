@@ -380,3 +380,98 @@ Deno.test("defaultHost.isDirectory distinguishes dirs, files, and missing paths"
     }
   });
 });
+
+Deno.test("runSetup writes .mcp.json only when --mcp asks for it", async () => {
+  const plain = new FakeHost();
+  await runSetup({ dir: ".", force: false, name: "Foo" }, plain);
+  assertEquals(plain.files.has(".mcp.json"), false);
+
+  const host = new FakeHost();
+  const result = await runSetup(
+    { dir: ".", force: false, name: "Foo", mcp: { allowRun: false } },
+    host,
+  );
+  assertEquals(result.files.at(-1), { path: ".mcp.json", status: "created" });
+  const config = JSON.parse(host.files.get(".mcp.json") ?? "{}");
+  assertEquals(config.mcpServers.zuke.args, ["run", "-A", "zuke.ts", "mcp"]);
+});
+
+Deno.test("runSetup --mcp --allow-run registers the server with execution enabled", async () => {
+  const host = new FakeHost();
+  await runSetup(
+    { dir: "app", force: false, name: "Foo", mcp: { allowRun: true } },
+    host,
+  );
+  const config = JSON.parse(host.files.get("app/.mcp.json") ?? "{}");
+  assertEquals(config.mcpServers.zuke.args.at(-1), "--allow-run");
+});
+
+Deno.test("runSetup merges .mcp.json around other servers and skips a present zuke entry", async () => {
+  const other = JSON.stringify({
+    mcpServers: { github: { command: "gh-mcp" } },
+  });
+  const host = new FakeHost({ ".mcp.json": other });
+  const first = await runSetup(
+    { dir: ".", force: false, name: "Foo", mcp: { allowRun: false } },
+    host,
+  );
+  assertEquals(first.files.at(-1)?.status, "overwritten");
+  const merged = JSON.parse(host.files.get(".mcp.json") ?? "{}");
+  assertEquals(merged.mcpServers.github, { command: "gh-mcp" });
+  assertEquals(merged.mcpServers.zuke.command, "deno");
+
+  // Already registered: left alone without --force (it may carry a deliberate
+  // --allow-run choice), replaced with it.
+  const again = await runSetup(
+    { dir: ".", force: false, name: "Foo", mcp: { allowRun: true } },
+    host,
+  );
+  assertEquals(again.files.at(-1)?.status, "skipped");
+  assertEquals(host.logs.some((l) => l.includes("already registered")), true);
+  const forced = await runSetup(
+    { dir: ".", force: true, name: "Foo", mcp: { allowRun: true } },
+    host,
+  );
+  assertEquals(forced.files.at(-1)?.status, "overwritten");
+  const replaced = JSON.parse(host.files.get(".mcp.json") ?? "{}");
+  assertEquals(replaced.mcpServers.zuke.args.at(-1), "--allow-run");
+});
+
+Deno.test("runSetup skips an unparseable .mcp.json with a notice", async () => {
+  const host = new FakeHost({ ".mcp.json": "{not json" });
+  const result = await runSetup(
+    { dir: ".", force: true, name: "Foo", mcp: { allowRun: false } },
+    host,
+  );
+  assertEquals(result.files.at(-1)?.status, "skipped");
+  assertEquals(host.files.get(".mcp.json"), "{not json");
+  assertEquals(host.logs.some((l) => l.includes("edit by hand")), true);
+});
+
+Deno.test("runSetup fails when .mcp.json is a directory, only if --mcp asked for it", async () => {
+  const host = new FakeHost();
+  host.directories.add(".mcp.json");
+  await runSetup({ dir: ".", force: false, name: "Foo" }, host); // fine: not requested
+  await assertRejects(
+    () =>
+      runSetup(
+        { dir: ".", force: false, name: "Foo", mcp: { allowRun: false } },
+        host,
+      ),
+    Error,
+    ".mcp.json is reserved by Zuke",
+  );
+});
+
+Deno.test("runSetup rejects a launcher name that shadows .mcp.json", async () => {
+  const host = new FakeHost();
+  await assertRejects(
+    () =>
+      runSetup(
+        { dir: ".", force: false, name: "Foo", launcherName: ".mcp.json" },
+        host,
+      ),
+    Error,
+    "would overwrite a file setup writes",
+  );
+});

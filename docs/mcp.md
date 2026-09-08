@@ -30,7 +30,18 @@ until stdin closes.
 
 ### Registering with a client
 
-Most clients take a command to launch the server. For example, with Claude Code:
+The scaffolder can do it for you: `zuke setup --mcp` (and `zuke import --mcp`)
+writes a project-scoped `.mcp.json` next to `zuke.ts` that registers this
+server as `zuke`, in the format Claude Code, Codex and most stdio clients read.
+`--allow-run` registers it with execution enabled. An existing file is merged
+around its other servers.
+
+```sh
+zuke setup --mcp                # read-only registration
+zuke setup --mcp --allow-run    # …and let the agent run targets
+```
+
+Any client also takes the command directly. For example, with Claude Code:
 
 ```sh
 claude mcp add zuke -- deno run -A zuke.ts mcp

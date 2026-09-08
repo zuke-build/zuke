@@ -11,10 +11,15 @@
  * `Deno`-backed implementation used in production.
  */
 
-/** Narrow an unknown value to a plain JSON object (record). */
-export function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
+import {
+  MCP_CONFIG_FILE,
+  mcpConfigState,
+  mergeMcpConfig,
+} from "./mcp_config.ts";
+import { isRecord } from "./records.ts";
+
+// Re-exported so the merge guard keeps its historical home for importers.
+export { isRecord };
 
 /** The starter `zuke.ts`, with the build class named `name`. */
 export function starterBuild(name: string): string {
@@ -253,6 +258,19 @@ export interface SetupOptions {
    * import` passes a build generated from an existing project's tasks instead.
    */
   buildContent?: string;
+  /**
+   * Also write an `.mcp.json` registering the build's MCP server (`--mcp`), so
+   * an agent client picks the build up from the first commit. `allowRun`
+   * adds `--allow-run`, letting the agent execute targets rather than only
+   * inspect them. Omitted: no file is written.
+   */
+  mcp?: McpSetupOptions;
+}
+
+/** What `--mcp` writes into `.mcp.json`. */
+export interface McpSetupOptions {
+  /** Register the server with `--allow-run`, so the agent may run targets. */
+  allowRun: boolean;
 }
 
 /** What happened to one scaffolded file. */
@@ -295,6 +313,7 @@ const RESERVED_NON_LAUNCHER = new Set([
   "zuke.json",
   "deno.json",
   ".gitignore",
+  MCP_CONFIG_FILE,
 ]);
 
 /**
@@ -354,6 +373,7 @@ export async function runSetup(
     ...scaffold.map((s) => ({ name: s.name, launcher: s.launcher === true })),
     { name: "deno.json", launcher: false },
     { name: ".gitignore", launcher: false },
+    ...(options.mcp ? [{ name: MCP_CONFIG_FILE, launcher: false }] : []),
   ];
   for (const item of collisionTargets) {
     const path = joinPath(options.dir, item.name);
@@ -394,7 +414,47 @@ export async function runSetup(
 
   files.push(await setupDenoJson(options.dir, host));
   files.push(await setupGitignore(options.dir, host));
+  if (options.mcp) {
+    files.push(
+      await setupMcpConfig(options.dir, options.mcp, options.force, host),
+    );
+  }
   return { files };
+}
+
+/**
+ * Create or merge `.mcp.json` so the build's MCP server is registered. An
+ * existing `zuke` entry is left alone unless `force` is set (it may carry a
+ * deliberate `--allow-run` choice); every other server in the file survives
+ * either way. An unparseable file is skipped with a notice, like `deno.json`.
+ */
+async function setupMcpConfig(
+  dir: string,
+  mcp: McpSetupOptions,
+  force: boolean,
+  host: SetupHost,
+): Promise<FileResult> {
+  const name = MCP_CONFIG_FILE;
+  const path = joinPath(dir, name);
+  if (!(await host.exists(path))) {
+    await host.writeText(path, mergeMcpConfig(null, mcp.allowRun));
+    host.log(`  create   ${name}`);
+    return { path: name, status: "created" };
+  }
+
+  const before = await host.readText(path);
+  const state = mcpConfigState(before);
+  if (state === "unparseable") {
+    host.log(`  skip     ${name}  (unparseable, edit by hand)`);
+    return { path: name, status: "skipped" };
+  }
+  if (state === "present" && !force) {
+    host.log(`  skip     ${name}  (zuke server already registered)`);
+    return { path: name, status: "skipped" };
+  }
+  await host.writeText(path, mergeMcpConfig(before, mcp.allowRun));
+  host.log(`  update   ${name}`);
+  return { path: name, status: "overwritten" };
 }
 
 /** The line `setup` ensures is present in `.gitignore` for generated output. */
