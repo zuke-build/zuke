@@ -587,7 +587,8 @@ runs only its own target (`./zuke <target>`); its dependencies run in their own
 jobs, so pair fan-out with the [remote cache](./cli.md#remote-cache) (configured
 here via `env`) to restore their outputs instead of rebuilding them. Pass
 `fanOut: true` for the defaults, or `FanOutOptions` to set the per-job
-`command`, `setupSteps` (default: a checkout), `runsOn`, `env`, or
+`command`, `setupSteps` (default: none — the prelude action already checks
+out), `runsOn`, `env`, or
 `includeUnlisted`. The `pipeline` field still supplies the workflow-level
 `name`, `triggers`, `permissions`, and `concurrency`. Targets with no body, and
 `unlisted` ones, are omitted. `fanOutPipeline(targets, base, options)` exposes
