@@ -1360,3 +1360,29 @@ refused archive is a cache miss (rebuild + warning), never a build failure, so
 whoever can write the store can neither plant files nor halt the build.
 `--affected` limits a run to targets touched since a git base (great for CI job
 fan-out).
+
+**Telling a client where to authenticate** (`docs/mcp.md`): verifying a token
+only helps a caller that already has one. `override mcpProtectedResource()`
+returns `protectedResource(canonicalUri).authorizationServer(issuer)` (plus
+optional `.scopes(...)`, `.name(...)`, `.documentation(...)`), which makes
+`zuke mcp --http` an OAuth 2.0 **protected resource**: it publishes the RFC 9728
+metadata document and names it in every `WWW-Authenticate` challenge, so
+`claude mcp add --transport http <url>` can discover the identity provider and
+authenticate in a browser. Zuke issues no tokens and hosts no `/authorize`,
+`/token` or `/register` — those belong to the provider named here, and
+`mcpAuth()` verifies what it mints. Dynamic client registration is **not**
+required (deprecated in the MCP spec; a pre-registered client id works).
+
+Three strings must agree byte for byte or every token fails validation: the
+`resource` you declare, the `resource` parameter the client sends, and the
+**audience** the provider puts in the token. Your `mcpAuth()` verifier must
+check `aud` — a resource server that skips it accepts tokens minted for other
+services. Do not hand-roll JWT verification: a build file may depend on a
+maintained JOSE library even though the published packages may not.
+
+`authorizationServer(...)` takes the provider's **issuer identifier**, not its
+metadata URL. The well-known path insertion (`/mcp` publishes at
+`/.well-known/oauth-protected-resource/mcp`, plus the root fallback) is handled
+for you. `UNAUTHORIZED` and `INVALID_TOKEN` are separate refusals on purpose:
+a caller that presented nothing gets no `error` parameter, one whose token was
+rejected gets `error="invalid_token"`.

@@ -150,6 +150,94 @@ export const UNAUTHORIZED: McpAuthReject = Object.freeze({
   challenge: "Bearer",
 });
 
+/**
+ * The refusal for a request that **presented** a token which did not hold up —
+ * expired, wrong signature, wrong audience.
+ *
+ * Distinct from {@link UNAUTHORIZED} on purpose: OAuth 2.1 §5.3.2 says a
+ * challenge SHOULD NOT carry error information when the request had no
+ * credentials at all, because there is nothing yet to have been wrong. Sending
+ * `invalid_token` to a client that simply has not logged in tells it its stored
+ * token was rejected, which is a different and misleading thing.
+ */
+export const INVALID_TOKEN: McpAuthReject = Object.freeze({
+  status: 401,
+  error: "invalid_token",
+  challenge: `Bearer error="invalid_token"`,
+});
+
+/** How a bearer challenge names the failure, when there is one to name. */
+export type ChallengeError = "invalid_token" | "insufficient_scope";
+
+/** The parts of a `WWW-Authenticate: Bearer` challenge Zuke emits. */
+export interface BearerChallenge {
+  /** Absolute URL of the protected resource metadata document (RFC 9728). */
+  metadataUrl?: string;
+  /** Scopes required for the attempted operation — all of them, in one go. */
+  scopes?: readonly string[];
+  /** The failure, omitted for a request that presented no credentials. */
+  error?: ChallengeError;
+  /** Developer-facing explanation; never shown to an end user. */
+  description?: string;
+}
+
+/**
+ * Characters an `auth-param` value may carry, per OAuth 2.1 §5.3.1: the set
+ * excludes `"` and `\`, so anything interpolated into a challenge has to be
+ * filtered or it is a header-injection bug. Dropping the offending characters
+ * beats escaping them, because nothing downstream needs the original back.
+ */
+function paramValue(value: string): string {
+  return value.replace(/[^\x20-\x21\x23-\x5B\x5D-\x7E]/g, "");
+}
+
+/**
+ * A `WWW-Authenticate: Bearer` challenge built from `parts`.
+ *
+ * Returns a bare `Bearer` when nothing usable is supplied, and drops any single
+ * part that survives filtering as empty, so a caller cannot produce a malformed
+ * header by passing an odd string.
+ */
+export function bearerChallenge(parts: BearerChallenge = {}): string {
+  const params: string[] = [];
+  const add = (name: string, raw: string | undefined) => {
+    const value = raw === undefined ? "" : paramValue(raw);
+    if (value !== "") params.push(`${name}="${value}"`);
+  };
+  add("error", parts.error);
+  add("error_description", parts.description);
+  // Space-delimited, and each value filtered the same way; an empty result is
+  // dropped by `add` rather than emitted as `scope=""`.
+  add("scope", parts.scopes?.join(" "));
+  add("resource_metadata", parts.metadataUrl);
+  const challenge = params.length === 0
+    ? "Bearer"
+    : `Bearer ${params.join(", ")}`;
+  return headerValue(challenge) ?? "Bearer";
+}
+
+/**
+ * `challenge` with a `resource_metadata` parameter naming `metadataUrl`, unless
+ * it already carries one.
+ *
+ * The refusal constants and an authenticator's own challenge are both written
+ * without knowing the server's public URL, which is configuration the transport
+ * holds — so the parameter is added here, at the point the response is built,
+ * rather than threaded through every place a refusal is constructed. An
+ * authenticator that set its own is left alone.
+ */
+export function withResourceMetadata(
+  challenge: string,
+  metadataUrl: string,
+): string {
+  if (challenge.includes("resource_metadata=")) return challenge;
+  const url = paramValue(metadataUrl);
+  if (url === "") return challenge;
+  const separator = challenge.trim() === "Bearer" ? " " : ", ";
+  const merged = `${challenge}${separator}resource_metadata="${url}"`;
+  return headerValue(merged) ?? challenge;
+}
+
 /** Whether `value` is a plain object (a string-keyed record). */
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);

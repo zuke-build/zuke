@@ -33,13 +33,21 @@ import {
 import { timingSafeEqual } from "./authz.ts";
 import {
   authenticateRequest,
+  INVALID_TOKEN,
   isResolvedIdentity,
   type McpAuthenticator,
   type McpAuthReject,
   refusalReason,
   type ResolvedIdentity,
   UNAUTHORIZED,
+  withResourceMetadata,
 } from "./auth.ts";
+import {
+  metadataDocument,
+  metadataPaths,
+  metadataUrl,
+  type ProtectedResourceSettings,
+} from "./resource_metadata.ts";
 import { isLoopbackHost } from "../http.ts";
 
 /** Options for {@link serveHttp}. */
@@ -83,6 +91,20 @@ export interface HttpTransportOptions {
    * client discover where to authenticate.
    */
   authenticator?: McpAuthenticator;
+  /**
+   * Publishes this endpoint's OAuth 2.0 Protected Resource Metadata (RFC 9728)
+   * and names it in every `WWW-Authenticate` challenge, so a client that has
+   * never authenticated can discover where to get a token.
+   *
+   * The document is served on unauthenticated `GET`s — necessarily, since a
+   * caller asking where to authenticate has nothing to authenticate with — at
+   * the paths {@link "./resource_metadata.ts".metadataPaths} derives. There is
+   * deliberately no general "extra routes" hook here: this document is the only
+   * thing that has to be reachable before authentication, and a seam that let
+   * anything else in would be a seam whose entries are unauthenticated by
+   * construction.
+   */
+  protectedResource?: ProtectedResourceSettings;
 }
 
 /** A JSON `Response` with the given status and `application/json` content type. */
@@ -200,15 +222,49 @@ function authenticatorView(request: Request): Request | undefined {
  * body still carries the JSON-RPC error, so a client that reads it sees the
  * same reason it saw before.
  */
-function refusedResponse(reject: McpAuthReject): Response {
+function refusedResponse(
+  reject: McpAuthReject,
+  metadataUrl?: string,
+): Response {
   const headers = new Headers({ "content-type": "application/json" });
   if (reject.challenge !== undefined) {
-    headers.set("www-authenticate", reject.challenge);
+    headers.set(
+      "www-authenticate",
+      metadataUrl === undefined
+        ? reject.challenge
+        : withResourceMetadata(reject.challenge, metadataUrl),
+    );
+    // A browser-based client reads the challenge to learn where to
+    // authenticate, and cannot see a response header across origins unless it
+    // is exposed. Without this the whole discovery mechanism is invisible to
+    // exactly the clients that need a redirect.
+    headers.set("access-control-expose-headers", "WWW-Authenticate");
   }
   return new Response(
     JSON.stringify(err(null, INVALID_REQUEST, refusalReason(reject))),
     { status: reject.status, headers },
   );
+}
+
+/**
+ * The metadata document as a public, cacheable, cross-origin-readable
+ * response.
+ *
+ * No `Origin` check runs on this one. The document is public by definition —
+ * it names authorization servers and scopes, and carries nothing a caller could
+ * not learn by attempting to authenticate — and browser-based MCP clients fetch
+ * it cross-origin, so gating it on `Origin` would break them while protecting
+ * nothing.
+ */
+function metadataResponse(settings: ProtectedResourceSettings): Response {
+  return new Response(JSON.stringify(metadataDocument(settings), null, 2), {
+    status: 200,
+    headers: {
+      "content-type": "application/json",
+      "access-control-allow-origin": "*",
+      "cache-control": "public, max-age=3600",
+    },
+  });
 }
 
 /** The hostname of an `Origin` value, or `null` if it can't be parsed. */
@@ -266,6 +322,7 @@ export async function serveHttp(
     concurrent,
     allowedOrigins,
     authenticator,
+    protectedResource,
   } = options;
 
   // By default, process messages one at a time: the single-build server/execute
@@ -284,7 +341,35 @@ export async function serveHttp(
   };
   const dispatch = concurrent === true ? handle : serial;
 
+  const metadataAt = protectedResource === undefined
+    ? new Set<string>()
+    : new Set(metadataPaths(protectedResource.resource_));
+  const resourceMetadataUrl = protectedResource === undefined
+    ? undefined
+    : metadataUrl(protectedResource.resource_);
+
   const onRequest = async (request: Request): Promise<Response> => {
+    // Before every other check, including the method one: this is the document
+    // an unauthenticated client reads to find out where to authenticate, and it
+    // is fetched with GET.
+    if (protectedResource !== undefined) {
+      const path = new URL(request.url).pathname;
+      if (metadataAt.has(path)) {
+        if (request.method === "GET" || request.method === "HEAD") {
+          return metadataResponse(protectedResource);
+        }
+        if (request.method === "OPTIONS") {
+          return new Response(null, {
+            status: 204,
+            headers: {
+              "access-control-allow-origin": "*",
+              "access-control-allow-methods": "GET, HEAD, OPTIONS",
+              "access-control-allow-headers": "authorization, content-type",
+            },
+          });
+        }
+      }
+    }
     if (request.method !== "POST") {
       return jsonResponse(
         err(null, INVALID_REQUEST, "This MCP endpoint accepts POST only."),
@@ -306,7 +391,12 @@ export async function serveHttp(
     if (token !== undefined && token !== "") {
       const provided = bearerToken(request.headers.get("authorization"));
       if (provided === undefined || !timingSafeEqual(provided, token)) {
-        return refusedResponse(UNAUTHORIZED);
+        // A caller that sent nothing is told only that it must authenticate; a
+        // caller whose token was rejected is told that much and no more.
+        return refusedResponse(
+          provided === undefined ? UNAUTHORIZED : INVALID_TOKEN,
+          resourceMetadataUrl,
+        );
       }
     }
     // Authenticate before reading the body: an unauthenticated caller never gets
@@ -318,7 +408,9 @@ export async function serveHttp(
     let identity: ResolvedIdentity | undefined;
     if (authenticator !== undefined) {
       const resolved = await authenticateRequest(authenticator, ctx);
-      if (!isResolvedIdentity(resolved)) return refusedResponse(resolved);
+      if (!isResolvedIdentity(resolved)) {
+        return refusedResponse(resolved, resourceMetadataUrl);
+      }
       identity = resolved;
     }
     const body = await readBounded(request, MAX_BODY_BYTES);

@@ -10,7 +10,7 @@
 
 import type { Build } from "../build.ts";
 import { isLoopbackHost } from "../http.ts";
-import { defaultReadEnv } from "../internal.ts";
+import { defaultReadEnv, messageOf } from "../internal.ts";
 import { absolutePath } from "../path.ts";
 import { findConfigDir, pathExists } from "../config.ts";
 import { defaultStateHost, type StateStore } from "../state/store.ts";
@@ -24,6 +24,10 @@ import {
   serveStdio,
 } from "./jsonrpc.ts";
 import { serveHttp } from "./http.ts";
+import {
+  metadataDocument,
+  type ProtectedResourceSettings,
+} from "./resource_metadata.ts";
 import {
   authenticatorFromHook,
   type McpAuthenticator,
@@ -162,6 +166,18 @@ export async function serveMcp(
   }
   const authenticator = options.authenticator ?? declared ??
     (hook === undefined ? undefined : authenticatorFromHook(hook));
+  // Validated here rather than on first request: a malformed resource
+  // identifier is an authoring mistake, and discovering it when a client
+  // finally asks means discovering it as a client that cannot authenticate.
+  const protectedResource = build.mcpProtectedResource();
+  if (protectedResource !== undefined) {
+    try {
+      metadataDocument(protectedResource);
+    } catch (error) {
+      console.error(`zuke mcp: ${messageOf(error)}`);
+      return 1;
+    }
+  }
   // The role policy applies to a seam that was declared *as* an authenticator.
   // The legacy `mcpIdentity()` hook never had roles to give, so a build using it
   // keeps the allow-list and operator token as its only gates.
@@ -212,6 +228,7 @@ export async function serveMcp(
       options,
       authenticator,
       authenticates,
+      protectedResource,
     );
   }
   if (!options.quiet) {
@@ -244,6 +261,7 @@ async function serveMcpHttp(
   options: ServeMcpOptions,
   authenticator: McpAuthenticator | undefined,
   authenticates: boolean,
+  protectedResource: ProtectedResourceSettings | undefined,
 ): Promise<number> {
   const readEnv = options.readEnv ?? defaultReadEnv;
   const token = options.token ?? readEnv("ZUKE_MCP_TOKEN");
@@ -286,6 +304,7 @@ async function serveMcpHttp(
       onListen: options.onListen,
       concurrent: server.concurrent,
       authenticator,
+      protectedResource,
     },
   );
   return 0;

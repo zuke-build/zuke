@@ -31,6 +31,8 @@ import {
   type McpAuthenticator,
   type McpIdentityHook,
   type McpRequestContext,
+  protectedResource,
+  type ProtectedResourceSettings,
   target,
 } from "../../packages/core/mod.ts";
 import {
@@ -270,4 +272,125 @@ Deno.test("a build declaring both mcpAuth() and mcpIdentity() refuses to start",
   assertEquals(code, 1);
   assertStringIncludes(err, "mcpAuth() and mcpIdentity()");
   assertStringIncludes(err, "keep");
+});
+
+/** A build that declares itself an OAuth protected resource. */
+class Guarded extends Build {
+  deploy = target().description("Deploy").executes(() => {});
+
+  override mcpProtectedResource(): ProtectedResourceSettings {
+    return protectedResource("https://build.example.com/mcp")
+      .authorizationServer("https://acme.eu.auth0.com")
+      .scopes("zuke:run")
+      .name("Acme build server");
+  }
+}
+
+Deno.test("the metadata document is served at both well-known paths", async () => {
+  const server = await startMcp(new Guarded(), {});
+  try {
+    // Path-inserted is the one a client reaches from the challenge; the root is
+    // the fallback it constructs when there is no challenge to follow. RFC 9728
+    // 3.3 validates `resource` differently on each route, so both must answer.
+    for (
+      const path of [
+        ".well-known/oauth-protected-resource/mcp",
+        ".well-known/oauth-protected-resource",
+      ]
+    ) {
+      const response = await fetch(`${server.url}${path}`);
+      assertEquals(response.status, 200);
+      // Public and cross-origin readable: a browser-based client fetches this
+      // before it has any credential to be checked.
+      assertEquals(response.headers.get("access-control-allow-origin"), "*");
+      assertEquals(await response.json(), {
+        resource: "https://build.example.com/mcp",
+        authorization_servers: ["https://acme.eu.auth0.com"],
+        bearer_methods_supported: ["header"],
+        scopes_supported: ["zuke:run"],
+        resource_name: "Acme build server",
+      });
+    }
+  } finally {
+    await server.stop();
+  }
+});
+
+Deno.test("an unauthenticated call is refused with a challenge naming the document", async () => {
+  const server = await startMcp(new Guarded(), { token: "shared-token" });
+  try {
+    const bare = await fetch(`${server.url}`, {
+      method: "POST",
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
+    });
+    assertEquals(bare.status, 401);
+    const challenge = bare.headers.get("www-authenticate") ?? "";
+    assertStringIncludes(
+      challenge,
+      `resource_metadata="https://build.example.com` +
+        `/.well-known/oauth-protected-resource/mcp"`,
+    );
+    // Nothing was presented, so nothing of the client's has been rejected.
+    assertEquals(challenge.includes("error="), false);
+    // And the header is readable across origins, or a browser client cannot
+    // act on it at all.
+    assertEquals(
+      bare.headers.get("access-control-expose-headers"),
+      "WWW-Authenticate",
+    );
+
+    // A token that was presented and rejected says so, which is a different
+    // thing for a client to act on than "you have not logged in".
+    const wrong = await fetch(`${server.url}`, {
+      method: "POST",
+      headers: { authorization: "Bearer nope" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
+    });
+    assertEquals(wrong.status, 401);
+    const rejected = wrong.headers.get("www-authenticate") ?? "";
+    assertStringIncludes(rejected, `error="invalid_token"`);
+    assertStringIncludes(rejected, "resource_metadata=");
+  } finally {
+    await server.stop();
+  }
+});
+
+Deno.test("a build declaring no protected resource is unchanged", async () => {
+  // The whole surface is opt-in: nothing is published, and the challenge stays
+  // the bare one a token-protected server has always sent.
+  const server = await startMcp(new Fleet(), { token: "shared-token" });
+  try {
+    const document = await fetch(
+      `${server.url}.well-known/oauth-protected-resource`,
+    );
+    assertEquals(document.status, 405);
+    await document.body?.cancel();
+    const refused = await fetch(`${server.url}`, {
+      method: "POST",
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
+    });
+    assertEquals(refused.status, 401);
+    assertEquals(refused.headers.get("www-authenticate"), "Bearer");
+    await refused.body?.cancel();
+  } finally {
+    await server.stop();
+  }
+});
+
+Deno.test("a preflight for the metadata document is answered", async () => {
+  const server = await startMcp(new Guarded(), {});
+  try {
+    const response = await fetch(
+      `${server.url}.well-known/oauth-protected-resource/mcp`,
+      { method: "OPTIONS" },
+    );
+    assertEquals(response.status, 204);
+    assertEquals(response.headers.get("access-control-allow-origin"), "*");
+    assertStringIncludes(
+      response.headers.get("access-control-allow-methods") ?? "",
+      "GET",
+    );
+  } finally {
+    await server.stop();
+  }
 });
