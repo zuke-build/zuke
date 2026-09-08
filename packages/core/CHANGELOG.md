@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.48.0](https://github.com/zuke-build/zuke/compare/core-v1.47.0...core-v1.48.0) (2026-09-08)
+
+
+### Features
+
+* **core:** advertise MCP protocol revision 2025-11-25 ([#491](https://github.com/zuke-build/zuke/issues/491)) ([9e0d982](https://github.com/zuke-build/zuke/commit/9e0d982e1cdf5bea6027e2b106e94f26e8bcc206))
+* **core:** serve OAuth protected resource metadata from the MCP server ([#488](https://github.com/zuke-build/zuke/issues/488)) ([092dba1](https://github.com/zuke-build/zuke/commit/092dba13fe095bfc3369df02eee121cf78b7065f))
+
 ## [1.47.0](https://github.com/zuke-build/zuke/compare/core-v1.46.0...core-v1.47.0) (2026-09-07)
 
 
