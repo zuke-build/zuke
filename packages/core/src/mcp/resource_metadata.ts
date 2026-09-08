@@ -32,6 +32,13 @@
  * @module
  */
 
+/**
+ * The scope that asks an authorization server for a refresh token. It is a
+ * request about the *session*, not about access to this resource, which is why
+ * MCP tells a protected resource not to advertise it.
+ */
+const OFFLINE_ACCESS = "offline_access";
+
 /** The well-known URI suffix RFC 9728 reserves for this document. */
 const WELL_KNOWN = "/.well-known/oauth-protected-resource";
 
@@ -235,6 +242,16 @@ export function metadataDocument(
     // forbidden by MCP outright, and the body form is meaningless for JSON-RPC.
     bearer_methods_supported: ["header"],
   };
+  if (settings.scopes_.includes(OFFLINE_ACCESS)) {
+    throw new ProtectedResourceError(
+      `The protected resource "${settings.resource_}" advertises the ` +
+        `"${OFFLINE_ACCESS}" scope. That scope asks the authorization server ` +
+        `for a refresh token; it says nothing about access to this resource, ` +
+        `and MCP says a protected resource should not advertise it. Drop it ` +
+        `— a client that needs a refresh token requests it of the ` +
+        `authorization server itself.`,
+    );
+  }
   if (settings.scopes_.length > 0) {
     document.scopes_supported = [...settings.scopes_];
   }

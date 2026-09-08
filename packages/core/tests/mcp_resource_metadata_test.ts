@@ -229,3 +229,20 @@ Deno.test("the metadata parameter is matched as a parameter, not a substring", (
     );
   }
 });
+
+Deno.test("advertising offline_access is refused", () => {
+  // It asks the authorization server for a refresh token and says nothing
+  // about access to this resource; MCP tells a protected resource not to
+  // advertise it. Refused rather than dropped, so the declaration does not
+  // quietly mean something other than what it says.
+  const error = assertThrows(
+    () =>
+      metadataDocument(
+        protectedResource("https://build.example.com/mcp")
+          .authorizationServer("https://idp.example.com")
+          .scopes("zuke:run", "offline_access"),
+      ),
+    ProtectedResourceError,
+  );
+  assertStringIncludes(error.message, "offline_access");
+});
