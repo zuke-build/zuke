@@ -109,21 +109,35 @@ Deno.test("the deno workspace lists exactly the configured packages", async () =
   assertEquals(workspace.map(String).sort(), [...PACKAGES].sort());
 });
 
-Deno.test("the docs package matrix lists every workspace package", async () => {
+/** The `[\`@zuke/<name>\`](https://jsr.io/@zuke/<name>)` link that heads a matrix row. */
+const MATRIX_ROW =
+  /^\| \[`@zuke\/([a-z-]+)`\]\(https:\/\/jsr\.io\/@zuke\/\1\)/gm;
+
+Deno.test("the docs package matrix lists exactly the workspace packages", async () => {
   // docs/packages.md is the human-facing catalogue; a package missing there is
-  // invisible to anyone browsing the repo. Enforce it so the membership lists
-  // (workspace, release-please config/manifest, the build/packages.ts publish
-  // loop, and the matrix) never drift apart.
+  // invisible to anyone browsing the repo, and a row for a package that does
+  // not exist (or listed twice) makes the stated count a lie. Enforce exact
+  // membership so the lists (workspace, release-please config/manifest, the
+  // build/packages.ts publish loop, and the matrix) never drift apart.
   const matrix = await Deno.readTextFile("docs/packages.md");
-  const missing = PACKAGES
-    .map((path) => path.replace("packages/", ""))
-    .filter((name) =>
-      !matrix.includes(`[\`@zuke/${name}\`](https://jsr.io/@zuke/${name})`)
-    );
+  const rows = [...matrix.matchAll(MATRIX_ROW)].map((m) => m[1]);
   assertEquals(
-    missing,
-    [],
-    `docs/packages.md is missing: ${missing.join(", ")}`,
+    rows.length,
+    new Set(rows).size,
+    "docs/packages.md lists a package more than once",
+  );
+  assertEquals([...rows].sort(), [...PACKAGE_DIRS].sort());
+});
+
+Deno.test("the README still reaches the package matrix", async () => {
+  // The README names only the notable wrappers; the full catalogue lives in
+  // docs/packages.md, so the README must keep linking to it or the catalogue
+  // becomes unreachable from the landing page.
+  const readme = await Deno.readTextFile("README.md");
+  assertEquals(
+    readme.includes("](./docs/packages.md)"),
+    true,
+    "README.md no longer links docs/packages.md",
   );
 });
 
