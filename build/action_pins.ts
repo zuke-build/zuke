@@ -74,17 +74,22 @@ export const SEED_PINS: Readonly<Record<string, CiActionRef>> = {
     ref: "ossf/scorecard-action@2d1146689b8cda280b9bc96326124645441f03bc",
     version: "v2.4.4",
   },
-  // The two halves of one action are pinned separately because pins are keyed
-  // by the full `uses:` path, subpath included — and must agree, since they
-  // ship as one release.
+  // The three subpaths of one action are pinned separately because pins are
+  // keyed by the full `uses:` path, subpath included — and must agree, since
+  // they ship as one release.
   "github/codeql-action/init": {
-    ref: "github/codeql-action/init@5595ccaf912efad79be6eef63a5619ff05969be3",
-    version: "v4.37.6",
+    ref: "github/codeql-action/init@cdf488f595d80d6e07e03d4674febd5ab45fa938",
+    version: "v4.37.9",
   },
   "github/codeql-action/analyze": {
     ref:
-      "github/codeql-action/analyze@5595ccaf912efad79be6eef63a5619ff05969be3",
-    version: "v4.37.6",
+      "github/codeql-action/analyze@cdf488f595d80d6e07e03d4674febd5ab45fa938",
+    version: "v4.37.9",
+  },
+  "github/codeql-action/upload-sarif": {
+    ref:
+      "github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938",
+    version: "v4.37.9",
   },
 };
 
