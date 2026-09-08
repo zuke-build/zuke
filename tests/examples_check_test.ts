@@ -12,27 +12,27 @@ import {
 
 /** A runner that records the order of its calls and answers from a script. */
 function fakeRunner(
-  verdicts: { check?: Record<string, string>; list?: Record<string, string> },
+  verdicts: {
+    check?: Record<string, string>;
+    list?: Record<string, string>;
+    pipeline?: Record<string, string>;
+  },
 ): ExampleRunner & { calls: string[] } {
   const calls: string[] = [];
+  const step =
+    (name: string, scripted?: Record<string, string>) => (key: string) => {
+      calls.push(`${name} ${key}`);
+      const detail = scripted?.[key];
+      return Promise.resolve({
+        ok: detail === undefined,
+        detail: detail ?? "",
+      });
+    };
   return {
     calls,
-    check: (path) => {
-      calls.push(`check ${path}`);
-      const detail = verdicts.check?.[path];
-      return Promise.resolve({
-        ok: detail === undefined,
-        detail: detail ?? "",
-      });
-    },
-    list: (dir) => {
-      calls.push(`list ${dir}`);
-      const detail = verdicts.list?.[dir];
-      return Promise.resolve({
-        ok: detail === undefined,
-        detail: detail ?? "",
-      });
-    },
+    check: step("check", verdicts.check),
+    list: step("list", verdicts.list),
+    pipeline: step("pipeline", verdicts.pipeline),
   };
 }
 
@@ -75,14 +75,16 @@ Deno.test("discoverExamples refuses an empty match rather than passing vacuously
   assertEquals(message.includes("No example builds match"), true);
 });
 
-Deno.test("checkExamples type-checks then lists each example, in order", async () => {
+Deno.test("checkExamples runs all three steps per example, in order", async () => {
   const runner = fakeRunner({});
   assertEquals(await checkExamples(EXAMPLES, runner), []);
   assertEquals(runner.calls, [
     "check examples/a/zuke.ts",
     "list examples/a",
+    "pipeline examples/a",
     "check examples/b/zuke.ts",
     "list examples/b",
+    "pipeline examples/b",
   ]);
 });
 
@@ -95,6 +97,7 @@ Deno.test("a build that fails to type-check is reported once and not listed", as
     { dir: "examples/a", step: "check", detail: "TS2339: no such method" },
   ]);
   assertEquals(runner.calls.includes("list examples/a"), false);
+  assertEquals(runner.calls.includes("pipeline examples/a"), false);
   assertEquals(runner.calls.includes("list examples/b"), true);
 });
 
@@ -109,14 +112,35 @@ Deno.test("a build whose --list fails is reported with the list output", async (
       detail: "forward reference to this.test",
     },
   ]);
+  // The pipeline step would only repeat a build that does not run.
+  assertEquals(runner.calls.includes("pipeline examples/b"), false);
+});
+
+Deno.test("an example whose committed pipeline drifted is reported", async () => {
+  // The step this covers: an example commits the workflow files `cicd()`
+  // renders, and a change to the renderer leaves them stale. Type-checking and
+  // `--list` both still pass, so without this the gate is blind to it.
+  const runner = fakeRunner({
+    pipeline: {
+      "examples/a": "CI configuration is out of date: .gitlab-ci.yml.",
+    },
+  });
+  assertEquals(await checkExamples(EXAMPLES, runner), [
+    {
+      dir: "examples/a",
+      step: "pipeline",
+      detail: "CI configuration is out of date: .gitlab-ci.yml.",
+    },
+  ]);
 });
 
 Deno.test("formatExampleFailures names the example, the step, and the output", () => {
   const text = formatExampleFailures([
     { dir: "examples/a", step: "check", detail: "line one\nline two" },
     { dir: "examples/b", step: "list", detail: "boom" },
+    { dir: "examples/c", step: "pipeline", detail: "stale .gitlab-ci.yml" },
   ]);
-  assertEquals(text.startsWith("2 example(s) failed the gate:"), true);
+  assertEquals(text.startsWith("3 example(s) failed the gate:"), true);
   assertEquals(
     text.includes(
       "  examples/a does not type-check:\n    line one\n    line two",
@@ -124,6 +148,12 @@ Deno.test("formatExampleFailures names the example, the step, and the output", (
     true,
   );
   assertEquals(text.includes("  examples/b fails --list:\n    boom"), true);
+  assertEquals(
+    text.includes(
+      "  examples/c has stale pipeline files:\n    stale .gitlab-ci.yml",
+    ),
+    true,
+  );
   assertEquals(text.includes("it is what readers copy"), true);
 });
 
