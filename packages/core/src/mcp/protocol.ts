@@ -71,20 +71,30 @@ export function unsupportedProtocolVersion(
   header: string | null,
 ): string | undefined {
   if (header === null) return undefined;
-  // Repeated header lines arrive comma-joined. A singleton field sent twice is
-  // malformed HTTP, but the way it happens in practice is a proxy re-adding a
-  // header the client already sent — and this transport expects to be fronted
-  // by one — so `2025-11-25, 2025-11-25` is a deployment accident, not a claim
-  // about an unsupported revision. Every value is checked; refusing only when
-  // one of them is genuinely unsupported keeps the guard from becoming an
-  // outage for a correctly-versioned client.
-  const requested = header.split(",").map((value) => value.trim())
-    .filter((value) => value !== "");
-  const unsupported = requested.find((value) =>
-    !SUPPORTED_PROTOCOL_VERSIONS.includes(value)
+  // Repeated header lines arrive comma-joined, and the two ways that happens
+  // want opposite answers. A proxy re-adding a header the client already sent
+  // — and this transport expects to be fronted by one — produces copies that
+  // **agree**, which is a deployment accident rather than a claim about an
+  // unsupported revision; refusing it would be a self-inflicted outage for a
+  // correctly-versioned client. Copies that **disagree** are a different thing:
+  // nothing here can say which one applies, and a header whose meaning depends
+  // on which intermediary you ask is exactly the ambiguity a version check
+  // exists to remove. So identical copies collapse, and conflicting ones are
+  // refused rather than resolved by picking one.
+  const requested = new Set(
+    header.split(",").map((value) => value.trim()).filter((value) =>
+      value !== ""
+    ),
   );
-  if (unsupported === undefined) return undefined;
-  return `Unsupported MCP-Protocol-Version "${unsupported}". This server ` +
+  if (requested.size === 0) return undefined;
+  if (requested.size > 1) {
+    return `MCP-Protocol-Version names more than one revision ` +
+      `(${[...requested].map((value) => `"${value}"`).join(", ")}). A ` +
+      `repeated header is tolerated only when every copy agrees.`;
+  }
+  const [version] = requested;
+  if (SUPPORTED_PROTOCOL_VERSIONS.includes(version)) return undefined;
+  return `Unsupported MCP-Protocol-Version "${version}". This server ` +
     `implements ${SUPPORTED_PROTOCOL_VERSIONS.join(", ")}.`;
 }
 

@@ -714,8 +714,10 @@ tool argument is masked in the [audit log](#audit-log) too.
   unauthenticated caller can enumerate. An absent header is fine: the
   specification says to assume `2025-03-26` then, and since nothing here
   behaves differently across these revisions that assumption changes nothing.
-  A repeated header (a proxy re-adding one the client already sent) is accepted
-  when every value it carries is supported.
+  A repeated header — a proxy re-adding one the client already sent — is
+  accepted when every copy agrees and names a supported revision; copies that
+  disagree are refused rather than resolved by picking one, since nothing here
+  could say which applies.
 - **Why not `2026-07-28`:** it is not a newer version of this protocol so much
   as a different one. It removes `initialize` and `ping` entirely, requires a
   new `server/discover` RPC, carries the protocol version and client

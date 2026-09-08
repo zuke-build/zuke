@@ -486,10 +486,21 @@ Deno.test("an unsupported MCP-Protocol-Version header is refused", () => {
     unsupportedProtocolVersion("2025-11-25, 2025-11-25"),
     undefined,
   );
-  // ...while one genuinely unsupported value still refuses, and names itself.
+  // ...while copies that disagree are refused rather than resolved by picking
+  // one. Nothing here could say which applies, and a header whose meaning
+  // depends on which intermediary you ask is the ambiguity the check removes.
+  assertStringIncludes(
+    unsupportedProtocolVersion("2025-11-25, 2025-06-18") ?? "",
+    "more than one revision",
+  );
+  // A single unsupported value still refuses, and names itself.
+  assertStringIncludes(
+    unsupportedProtocolVersion("2026-07-28") ?? "",
+    "2026-07-28",
+  );
   assertStringIncludes(
     unsupportedProtocolVersion("2025-11-25, 2026-07-28") ?? "",
-    "2026-07-28",
+    "more than one revision",
   );
   const refused = unsupportedProtocolVersion("2026-07-28");
   assertStringIncludes(refused ?? "", "2026-07-28");
