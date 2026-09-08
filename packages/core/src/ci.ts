@@ -996,10 +996,11 @@ export interface FanOutOptions {
    */
   command?: (target: string) => string;
   /**
-   * Steps prepended to every job — checkout, tool setup, cache restore. Defaults
-   * to a single `actions/checkout` (rendered on GitHub; GitLab and Azure check
-   * out automatically). Provide `env` for `ZUKE_REMOTE_CACHE_*` here or via
-   * {@link env}.
+   * Steps prepended to every job — tool setup, cache restore. None by default:
+   * the prelude action every job starts with already hardens the runner and
+   * checks the repository out (and GitLab and Azure check out on their own), so
+   * a job's steps are just `Run <target>` unless you add to them. Provide `env`
+   * for `ZUKE_REMOTE_CACHE_*` here or via {@link env}.
    */
   setupSteps?: CiStep[];
   /** The runner for every job (see {@link CiJob.runsOn}). */
@@ -1009,9 +1010,6 @@ export interface FanOutOptions {
   /** Environment variables set on every job (e.g. the remote-cache config). */
   env?: Record<string, string>;
 }
-
-/** The default per-job setup: check out the repo (GitHub only; others auto-checkout). */
-const DEFAULT_SETUP_STEPS: CiStep[] = [{ uses: "actions/checkout@v4" }];
 
 /**
  * The workflow path a field name implies: `releaseWorkflow` →
@@ -1154,7 +1152,9 @@ export function fanOutPipeline(
   options: FanOutOptions = {},
 ): CiPipeline {
   const command = options.command ?? ((target) => `./zuke ${target}`);
-  const setup = options.setupSteps ?? DEFAULT_SETUP_STEPS;
+  // No default setup: the prelude checks out, so a second `actions/checkout`
+  // here was a redundant — and unpinned — step in every generated job.
+  const setup = options.setupSteps ?? [];
   const included = new Map<string, TargetBuilder>();
   for (const [name, t] of targets) {
     if (t.fn_ === undefined) continue; // nothing to run

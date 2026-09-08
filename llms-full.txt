@@ -3260,10 +3260,11 @@ interface FanOutOptions
     its own target; its dependencies run in their own jobs and are shared via
     the {@link "./remote_cache.ts" | remote cache}, so pair fan-out with one.
   setupSteps?: CiStep[]
-    Steps prepended to every job — checkout, tool setup, cache restore. Defaults
-    to a single `actions/checkout` (rendered on GitHub; GitLab and Azure check
-    out automatically). Provide `env` for `ZUKE_REMOTE_CACHE_*` here or via
-    {@link env}.
+    Steps prepended to every job — tool setup, cache restore. None by default:
+    the prelude action every job starts with already hardens the runner and
+    checks the repository out (and GitLab and Azure check out on their own), so
+    a job's steps are just `Run <target>` unless you add to them. Provide `env`
+    for `ZUKE_REMOTE_CACHE_*` here or via {@link env}.
   runsOn?: string
     The runner for every job (see {@link CiJob.runsOn}).
   includeUnlisted?: boolean
