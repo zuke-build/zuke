@@ -390,7 +390,7 @@ can drift from it. `zuke.ts`'s `ci` target depends on: `format`
 (`deno fmt --check`), `lint` (`deno lint`), `spell` (cspell), `coverage`
 (type-check, then the test suite with the 95% coverage gate), `coverageUpload`
 (skips locally without a `CODECOV_TOKEN`), `apiDocsCheck`, `docLint`,
-`snippetsCheck`, `hclSyncCheck`, `pluginSyncCheck`, `skillsCheck`,
+`snippetsCheck`, `examplesCheck`, `hclSyncCheck`, `pluginSyncCheck`, `skillsCheck`,
 `graphDocCheck`, `pluginVersionCheck`, `prBodyLint`, `actionPinCheck`,
 `security`, and `lockCheck`. Read `zuke.ts`'s `ci` target for the current,
 authoritative list — this is a snapshot, not a second source of truth.
@@ -419,6 +419,7 @@ packages/
 tests/
   integration/            # in-process: real builds via the CLI main() + _harness.ts
   e2e/                    # subprocess: *_e2e.ts + fixtures/ (run by the `integration` target)
+examples/                 # cloneable mini projects, type-checked and listed by `examplesCheck`
 zuke.ts                   # Zuke's own build (runnable example)
 build/                    # reusable helpers behind zuke.ts's targets (docs, publish, snippets, …)
 zuke, zuke.ps1            # bootstrap launchers (install Deno, run the build); zuke.json names the build class

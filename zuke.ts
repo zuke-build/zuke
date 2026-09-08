@@ -88,6 +88,11 @@ import {
   parseGitleaksReport,
 } from "./build/gitleaks_report.ts";
 import { checkSnippets, formatSnippetFailures } from "./build/snippets.ts";
+import {
+  checkExamples,
+  discoverExamples,
+  formatExampleFailures,
+} from "./build/examples.ts";
 import { checkHclWrappers, generateHclWrappers } from "./build/hcl_gen.ts";
 import {
   checkGraphDoc,
@@ -452,6 +457,23 @@ class ZukeBuild extends Build {
       ConsoleTasks.info("Doc snippets type-check clean.");
     });
 
+  examplesCheck = target()
+    .description("Type-check every example project and list its targets")
+    .executes(async () => {
+      // The examples import `jsr:@zuke/*`, which resolves to the workspace from
+      // inside this repository — so each one is held to the real source, not a
+      // published version that could lag behind it. A failing `--list` catches
+      // what a type-check cannot: a build that no longer constructs.
+      const examples = await discoverExamples();
+      const failures = await checkExamples(examples);
+      if (failures.length > 0) {
+        throw new Error(formatExampleFailures(failures));
+      }
+      ConsoleTasks.info(
+        `${examples.length} example(s) type-check and list their targets.`,
+      );
+    });
+
   hclGen = target()
     .description("Regenerate the Terraform/OpenTofu wrappers from one template")
     .executes(async () => {
@@ -776,6 +798,7 @@ class ZukeBuild extends Build {
       this.apiDocsCheck,
       this.docLint,
       this.snippetsCheck,
+      this.examplesCheck,
       this.hclSyncCheck,
       this.pluginSyncCheck,
       this.skillsCheck,

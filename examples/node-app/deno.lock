@@ -1,0 +1,19 @@
+{
+  "version": "5",
+  "specifiers": {
+    "jsr:@zuke/core@1": "1.48.0",
+    "jsr:@zuke/core@^1.44.0": "1.48.0",
+    "jsr:@zuke/npm@1": "1.2.0"
+  },
+  "jsr": {
+    "@zuke/core@1.48.0": {
+      "integrity": "83935d89f1b6fd8e8c399835caa2d1dbc852ad092cda3dd72b44cdde8283e2dd"
+    },
+    "@zuke/npm@1.2.0": {
+      "integrity": "78effe5ac1c8ed402cd48e8cee07030d39d5f23b36a61b981d78c1d72bdc2388",
+      "dependencies": [
+        "jsr:@zuke/core@^1.44.0"
+      ]
+    }
+  }
+}

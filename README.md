@@ -72,6 +72,11 @@ Already have `package.json` scripts or a `Makefile`? `zuke import` turns them
 into a `zuke.ts` with a target per script. Details, the launcher, and a longer
 first build: **[Getting started](./docs/getting-started.md)**.
 
+Prefer to poke at something real? [`examples/`](./examples) holds five
+cloneable projects — a Deno library gate, a generated-CI-only project, a Node
+app, a library release routine, and a shell script turned into targets — each
+runnable from its own folder with `deno run -A zuke.ts`.
+
 ## Why Zuke
 
 - **Typed, refactor-safe dependencies.** You wire targets together with

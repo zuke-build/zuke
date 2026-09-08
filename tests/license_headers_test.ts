@@ -16,7 +16,7 @@ const COPYRIGHT = "Copyright (c) ";
 const SPDX = "SPDX-License-Identifier: MIT";
 
 /** Directories whose `.ts` files are all subject to the header requirement. */
-const TS_ROOTS = ["packages", "build", "tests"];
+const TS_ROOTS = ["packages", "build", "tests", "examples"];
 
 /** Every `.ts` file under `dir`, recursively. */
 async function tsFiles(dir: string): Promise<string[]> {
@@ -33,7 +33,13 @@ async function tsFiles(dir: string): Promise<string[]> {
 async function allSources(): Promise<string[]> {
   const files: string[] = [];
   for (const root of TS_ROOTS) files.push(...await tsFiles(root));
-  files.push("zuke.ts", "zuke", "zuke.ps1", "internal/hcl_tool.ts.tmpl");
+  files.push(
+    "zuke.ts",
+    "zuke",
+    "zuke.ps1",
+    "internal/hcl_tool.ts.tmpl",
+    "examples/scripts-to-zuke/scripts/release.sh",
+  );
   return files.sort();
 }
 
