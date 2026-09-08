@@ -253,7 +253,8 @@
     "zudoku",
     "zuke",
     "zukebox",
-    "zukeeper"
+    "zukeeper",
+    "pipefail"
   ],
   "ignoreRegExpList": [
     "/`[0-9a-z]{10,14}`/"

@@ -31,6 +31,11 @@
   execution.
 - [Paths (`absolutePath`)](./paths.md) — the fluent path type.
 - [Packages](./packages.md) — the full package matrix with JSR badges.
+- Recipes — the three things a small project wants first:
+  [replace your shell scripts](./recipes/replace-shell-scripts.md) with the `$`
+  shell, [generate your CI](./recipes/generate-ci.md) and stop editing YAML,
+  and [release a small library](./recipes/release-a-library.md) as one chain
+  of targets.
 - [Examples](../examples/README.md) — five cloneable mini projects: a Deno
   library gate, generated CI, a Node app, a library release, and shell scripts
   to targets.

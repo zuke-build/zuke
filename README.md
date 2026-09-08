@@ -77,6 +77,11 @@ cloneable projects — a Deno library gate, a generated-CI-only project, a Node
 app, a library release routine, and a shell script turned into targets — each
 runnable from its own folder with `deno run -A zuke.ts`.
 
+Three short recipes cover what a small project wants first:
+[replace your shell scripts](./docs/recipes/replace-shell-scripts.md),
+[generate your CI and stop editing YAML](./docs/recipes/generate-ci.md), and
+[release a small library](./docs/recipes/release-a-library.md).
+
 ## Why Zuke
 
 - **Typed, refactor-safe dependencies.** You wire targets together with
