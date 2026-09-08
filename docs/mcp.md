@@ -1,13 +1,13 @@
 # MCP server
 
-`./zuke mcp` — a command on **your build's own CLI**, not the globally
-installed `jsr:@zuke/cli` (see the [CLI reference](./cli.md) for the
-difference) — runs a [Model Context Protocol](https://modelcontextprotocol.io)
-server over your build. MCP is the open standard that lets an AI client — Claude
-Desktop, Claude Code, an IDE, any agent — discover a server's **tools** (typed,
-schema-described functions) and call them. Pointing a client at `./zuke mcp`
-lets an agent **operate the pipeline through typed calls** — list the targets,
-inspect the graph, run one with the right parameters — instead of guessing shell
+`./zuke mcp` — a command on **your build's own CLI**, not the globally installed
+`jsr:@zuke/cli` (see the [CLI reference](./cli.md) for the difference) — runs a
+[Model Context Protocol](https://modelcontextprotocol.io) server over your
+build. MCP is the open standard that lets an AI client — Claude Desktop, Claude
+Code, an IDE, any agent — discover a server's **tools** (typed, schema-described
+functions) and call them. Pointing a client at `./zuke mcp` lets an agent
+**operate the pipeline through typed calls** — list the targets, inspect the
+graph, run one with the right parameters — instead of guessing shell
 invocations.
 
 It's a natural extension of what Zuke already does: it publishes `llms.txt`, a
@@ -67,16 +67,16 @@ below), so one long `run:` never head-of-line-blocks another client's read.
   host.
 - Binding a **non-loopback** address requires authentication — **either** a
   bearer token (set `ZUKE_MCP_TOKEN`, and every request must send
-  `Authorization: Bearer <token>`; a missing or wrong token gets `401`) **or** an
-  [`mcpAuth()`](#mcpauth--the-general-seam) authenticator on the build. With
+  `Authorization: Bearer <token>`; a missing or wrong token gets `401`) **or**
+  an [`mcpAuth()`](#mcpauth--the-general-seam) authenticator on the build. With
   neither, Zuke **refuses to bind** a non-loopback address rather than exposing
   an unauthenticated endpoint.
 - [`mcpIdentity()`](#mcpidentity--sugar-for-a-proxy-header) does **not** satisfy
   that requirement, though it still runs on every request. It trusts a header,
   which is only an identity when something in front strips the client's copy and
   injects its own — on a directly reachable endpoint any caller sets that header
-  itself. Such a build needs the bearer token to bind off loopback, or a proxy in
-  front of a loopback bind.
+  itself. Such a build needs the bearer token to bind off loopback, or a proxy
+  in front of a loopback bind.
 - A token is also enforced on a loopback bind when `ZUKE_MCP_TOKEN` is set, and
   an authenticator runs on every bind, loopback included. The two compose: the
   token is a shared secret that gates the endpoint, the authenticator says _who_
@@ -88,9 +88,9 @@ below), so one long `run:` never head-of-line-blocks another client's read.
   an unauthenticated caller never makes the server buffer its payload.
 - **Origin validation** guards against a browser drive-by / DNS-rebinding page:
   on a loopback bind, a request that carries an `Origin` header is accepted only
-  when it is a loopback origin, and rejected `403` otherwise. A client that sends
-  no `Origin` (a CLI/MCP client — not a browser) is always allowed, so this is
-  invisible to normal use. Permit a specific extra origin with
+  when it is a loopback origin, and rejected `403` otherwise. A client that
+  sends no `Origin` (a CLI/MCP client — not a browser) is always allowed, so
+  this is invisible to normal use. Permit a specific extra origin with
   `--allowed-origin <origin>` (repeatable); when set, a present `Origin` must
   match one exactly. A non-loopback bind runs no default Origin check — front it
   with your own policy.
@@ -113,9 +113,9 @@ Read tools are always available:
 When a [state store](./state.md) resolves, two more read tools appear, so an
 agent can query runs it did not start:
 
-| Tool        | Returns                                                                             |
-| ----------- | ----------------------------------------------------------------------------------- |
-| `list_runs` | Persisted run summaries (optional `status`/`target`/`since` filters), newest first. |
+| Tool        | Returns                                                                                    |
+| ----------- | ------------------------------------------------------------------------------------------ |
+| `list_runs` | Persisted run summaries (optional `status`/`target`/`since` filters), newest first.        |
 | `show_run`  | One run's full record — status, per-target progress, and signals. Refuses the audit trail. |
 
 With `--allow-run`, the server also exposes one **`run:<target>`** tool per
@@ -135,10 +135,10 @@ timeouts), `cancel_run` (cancel a run and run its
 [compensations](./orchestration.md#cancellation--compensation--oncancel)), and
 `force_target` (settle one target without running it — see
 [forcing a target](./state.md#forcing-a-target--overrides)). They are the MCP
-counterparts of `./zuke resume`, `./zuke cancel` and `./zuke force`. Each runs the
-target's code (a resume continues it; a cancel runs its compensations), so it is
-gated by the same [allow-list and operator-token](#authorization) policy as a
-`run:` tool and appended to the [audit log](#audit-log).
+counterparts of `./zuke resume`, `./zuke cancel` and `./zuke force`. Each runs
+the target's code (a resume continues it; a cancel runs its compensations), so
+it is gated by the same [allow-list and operator-token](#authorization) policy
+as a `run:` tool and appended to the [audit log](#audit-log).
 
 ```jsonc
 // tools/call
@@ -189,9 +189,9 @@ ZUKE_OPERATOR_TOKEN=… ./zuke mcp --http 7777 \
 
 ### Roles
 
-The three flags above are **process-wide**: they say what *anyone* reaching this
+The three flags above are **process-wide**: they say what _anyone_ reaching this
 server may do. Once the server [authenticates](#authentication) its callers it
-can say what *this* caller may do, which is what roles are for.
+can say what _this_ caller may do, which is what roles are for.
 
 Three built-in roles are ordered — `read` < `run` < `operator` — so an operator
 satisfies a requirement for `run` without being granted it separately. Any other
@@ -202,12 +202,12 @@ general permission and use your own names for the specific one.
 
 The shipped default policy:
 
-| Call | Needs |
-| --- | --- |
-| `list_*` / `show_*` / `describe_*` / `graph` | `read` |
-| `run:<target>` | `run`, **and** every `requiresRole` declared anywhere in the plan it would run |
+| Call                                                                        | Needs                                                                                                                                        |
+| --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `list_*` / `show_*` / `describe_*` / `graph`                                | `read`                                                                                                                                       |
+| `run:<target>`                                                              | `run`, **and** every `requiresRole` declared anywhere in the plan it would run                                                               |
 | `cancel_run` / `signal_run` / `force_target`, and `resume_check` on one run | the run's [initiator](./state.md#actor-and-initiator--two-different-questions) or `operator`, **and** every `requiresRole` in the run's plan |
-| `resume_check` sweeping every run | `operator` |
+| `resume_check` sweeping every run                                           | `operator`                                                                                                                                   |
 
 `requiresRole` can only **raise** the bar — `run` is the floor for executing
 anything, so declaring `requiresRole("read")` does not let a read-only caller
@@ -252,16 +252,16 @@ server, and every deployment that predates roles, working unchanged.
 Whether roles are enforced is a property of the **seam**, not of one identity:
 declaring `mcpAuth()` opts in, and an identity it returns without a `roles` list
 settles to none and is denied. Inferring it per identity would mean a token
-carrying *less* information bought *more* privilege. An override of
+carrying _less_ information bought _more_ privilege. An override of
 `mcpAuthorize` still runs in every case, including the legacy seam, since a
 change window or a freeze applies whether or not roles are in play.
 
 `requiresRole` is the exception to "the legacy seam is left alone": a target
 that declares one is **refused** for a caller whose authenticator cannot express
 roles, naming the seam. Silently ignoring the declaration would tell you a
-target is gated when nothing is checking. A server that declares no roles — every
-server that predates this — is unaffected, since the refusal can only fire on a
-declaration someone has just added.
+target is gated when nothing is checking. A server that declares no roles —
+every server that predates this — is unaffected, since the refusal can only fire
+on a declaration someone has just added.
 
 In **registry mode** the policy decides on the tiers alone — `read` to list or
 describe a registered build, `run` to spawn one — because a registry descriptor
@@ -271,25 +271,24 @@ carries no per-target `requiresRole`.
 
 With a store configured, **every mutating or denied tool call** (`run:<target>`,
 `signal_run`, `resume_check`, `cancel_run`, `force_target`) is appended to an
-audit trail: the
-time, the tool, the resolved **actor**, the outcome (`ok` / `denied` / `error`),
-and the call's arguments — plus, when the server authenticated the caller, the
-**roles** they held, which is what makes a denial answerable afterwards: who was
-refused, by which rule, and what they were carrying at the time. Arguments are
-**redacted** — the operator token is
-dropped and every `.secret()` parameter's value is masked — before anything is
+audit trail: the time, the tool, the resolved **actor**, the outcome (`ok` /
+`denied` / `error`), and the call's arguments — plus, when the server
+authenticated the caller, the **roles** they held, which is what makes a denial
+answerable afterwards: who was refused, by which rule, and what they were
+carrying at the time. Arguments are **redacted** — the operator token is dropped
+and every `.secret()` parameter's value is masked — before anything is
 persisted.
 
-The trail lives in a store-level record; read it with `./zuke runs show mcp-audit`
-**on the host**. It is deliberately not readable over MCP — `show_run` refuses
-it and `list_runs` omits it — because the clients it audits must not be able to
-read who called what, or to confirm which of their calls were denied. The actor
-resolves by precedence: the **authenticated identity**
-([below](#authentication)) → `--actor` → `ZUKE_ACTOR` → the CI actor → the
-connecting client's `initialize` name → `"anonymous"`. The client name is an
-**untrusted label** for the trail only — it never influences authorization. On a
-shared HTTP endpoint it reflects the most recent client to connect, so declare
-an authenticator (or set `--actor`) for authoritative attribution there.
+The trail lives in a store-level record; read it with
+`./zuke runs show mcp-audit` **on the host**. It is deliberately not readable
+over MCP — `show_run` refuses it and `list_runs` omits it — because the clients
+it audits must not be able to read who called what, or to confirm which of their
+calls were denied. The actor resolves by precedence: the **authenticated
+identity** ([below](#authentication)) → `--actor` → `ZUKE_ACTOR` → the CI actor
+→ the connecting client's `initialize` name → `"anonymous"`. The client name is
+an **untrusted label** for the trail only — it never influences authorization.
+On a shared HTTP endpoint it reflects the most recent client to connect, so
+declare an authenticator (or set `--actor`) for authoritative attribution there.
 
 ## Authentication
 
@@ -335,12 +334,12 @@ expose.
 
 The identity's fields:
 
-| Field   | Meaning                                                                                                      |
-| ------- | ------------------------------------------------------------------------------------------------------------ |
-| `actor` | The authenticated caller. Required and non-empty — anything else refuses the request.                        |
-| `kind`  | `"human"` or `"service"`. Omitted reads as `"human"`, so a service claim must be stated.                     |
+| Field   | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `actor` | The authenticated caller. Required and non-empty — anything else refuses the request.                                                                                                                                                                                                                                                                                                                                                                          |
+| `kind`  | `"human"` or `"service"`. Omitted reads as `"human"`, so a service claim must be stated.                                                                                                                                                                                                                                                                                                                                                                       |
 | `roles` | The caller's roles, in three states. **Omitted** means this authenticator does not speak roles — only meaningful for the legacy `mcpIdentity()` seam, whose callers the [policy](#roles) leaves alone. An **empty list** means the question was considered and nothing granted, which denies. A **non-empty list** is evaluated. An `mcpAuth()` identity that omits the list settles to empty, so a token carrying less information never buys more privilege. |
-| `via`   | How the identity was established (`"oauth-proxy"`). Informational only.                                      |
+| `via`   | How the identity was established (`"oauth-proxy"`). Informational only.                                                                                                                                                                                                                                                                                                                                                                                        |
 
 The resolved `actor` overrides `--actor`, the environment, and the client label
 for that call, and flows to the [audit trail](#audit-log), run records,
@@ -446,16 +445,154 @@ and the resolved caller travels with it as three environment variables:
 `ZUKE_ACTOR`, `ZUKE_ACTOR_KIND` (`"human"` when the authenticator omitted it)
 and `ZUKE_ACTOR_ROLES` (comma-joined, empty when there are none — a role name
 containing a comma is dropped when the identity is resolved, so splitting on the
-separator is safe). They are
-written **together**, and only when the resolved actor is non-empty, so an
-inherited kind or role set can never survive beside a fresh actor — the child
-would otherwise read one caller's actor with another's entitlements. They
-override anything inherited; the spawned build reads them itself (`ZUKE_ACTOR`
-is the usual actor source, and the other two are there for a build that wants to
-branch on who launched it).
+separator is safe). They are written **together**, and only when the resolved
+actor is non-empty, so an inherited kind or role set can never survive beside a
+fresh actor — the child would otherwise read one caller's actor with another's
+entitlements. They override anything inherited; the spawned build reads them
+itself (`ZUKE_ACTOR` is the usual actor source, and the other two are there for
+a build that wants to branch on who launched it).
 
-TLS, the OAuth flow, and header stripping remain the proxy's job, not Zuke's —
-this is deliberately the _minimal_ seam.
+### Telling a client where to authenticate
+
+Verifying a token only helps a client that already has one. A fresh
+`claude mcp add --transport http <url>` has nothing, and no way to guess where
+to get one — so it asks, the way OAuth 2.0 defines: it reads the
+`WWW-Authenticate` challenge on the `401`, fetches the metadata document that
+challenge names, and finds the authorization server there.
+
+`mcpProtectedResource()` publishes that document. Zuke is only ever the
+**resource**: it issues no tokens and hosts no `/authorize`, `/token` or
+`/register` endpoint. Those belong to whatever identity provider you already run
+— Auth0, Okta, Entra, Keycloak, Dex — and `mcpAuth()` above is where the tokens
+it mints are verified.
+
+<!-- check -->
+
+```ts
+import { Build, protectedResource, run, target } from "jsr:@zuke/core";
+
+class ControlPlane extends Build {
+  deploy = target().executes(() => {});
+
+  override mcpProtectedResource() {
+    return protectedResource("https://build.example.com/mcp")
+      .authorizationServer("https://acme.eu.auth0.com")
+      .scopes("zuke:run")
+      .name("Acme build server");
+  }
+}
+
+await run(ControlPlane);
+```
+
+That is the whole configuration. The server then answers an unauthenticated call
+with
+
+```http
+401 Unauthorized
+WWW-Authenticate: Bearer resource_metadata="https://build.example.com/.well-known/oauth-protected-resource/mcp"
+```
+
+and serves the document that URL names.
+
+**Three strings must agree, byte for byte.** This is the one thing that goes
+wrong, and when it does, every token fails validation and nothing in the error
+says why:
+
+1. the `resource` in the document — what you pass to `protectedResource(...)`;
+2. the `resource` parameter the client sends on both the authorization and the
+   token request, which is this same string echoed back;
+3. the **audience** your identity provider puts in the token — Auth0's API
+   Identifier, Okta's audience, Entra's `api://{app-id-uri}`.
+
+Set all three to the canonical URI of the MCP endpoint, with no trailing slash
+and no fragment. Your `mcpAuth()` verifier must then check that `aud` really is
+this server: a resource server that skips the audience check accepts tokens
+minted for some other service, which is the confused-deputy hole the MCP
+specification prohibits outright.
+
+The `authorizationServer(...)` value is the provider's **issuer identifier**
+(`https://acme.eu.auth0.com`), not its metadata URL. It has to string-match the
+`issuer` in that provider's own metadata document, or a client is required to
+reject it.
+
+**Everything in this document is public.** It has to be: a caller asking where
+to authenticate has nothing to authenticate with, so the route is served before
+the bearer token and the authenticator, and it is readable cross-origin because
+browser-based clients fetch it that way. Treat the four fields you supply as
+published — the resource URI, the issuer, the scope names, and the resource name
+and documentation URL. On a machine where the server binds loopback, that also
+means a web page the developer happens to visit can read them; an internal
+hostname in the resource URI is the realistic thing to think twice about. A
+credential in the identifier is refused outright rather than left to judgement,
+since a `https://user:pass@host/mcp` would otherwise be published verbatim in a
+cacheable document.
+
+The path is derived for you, because getting it wrong is silent. The well-known
+segment is inserted **between the host and the path**, so an endpoint at `/mcp`
+publishes at `/.well-known/oauth-protected-resource/mcp` rather than the
+appended form — a client fetches only the inserted one.
+
+It is published at exactly that one location. Serving a second copy at the root
+looks like cheap insurance and is not: RFC 9728 has a client derive the
+`resource` it expects from the URL it fetched, so a client that probed the root
+expects the bare origin and must discard a document naming a path. That copy
+would have no correct consumer — a conformant client tries the path-inserted URL
+first and never asks for the root, and one that only asks for the root would
+throw away what it found. A resource declared as a bare origin publishes at the
+root, because for that identifier the root *is* the derived location.
+
+Dynamic client registration is **not** required. The MCP specification asked for
+it in revision `2025-06-18`, demoted it to optional in `2025-11-25`, and marks
+it deprecated in the current `2026-07-28` — client id metadata documents and
+pre-registration are the sanctioned routes now. Verified against a real client:
+given a pre-registered client id it goes straight from discovery to
+`/authorize` and never touches a registration endpoint. So a provider that
+offers no registration — a GitHub OAuth App, for one — is usable: register the
+client once, out of band.
+
+Verifying tokens is still not Zuke's job. Do not hand-roll it — import a
+maintained JOSE library in your build file (the build is ordinary code and may
+depend on whatever you like, unlike the published packages) and let it do the
+signature, the claims and the key rotation. The fragment below shows the shape,
+not a complete file — `UNAUTHORIZED`, `INVALID_TOKEN` and `McpAuthenticator`
+come from `jsr:@zuke/core`, and `rolesOf` is yours to write:
+
+```ts
+import { createRemoteJWKSet, jwtVerify } from "npm:jose";
+
+const jwks = createRemoteJWKSet(
+  new URL("https://acme.eu.auth0.com/.well-known/jwks.json"),
+);
+
+override mcpAuth(): McpAuthenticator {
+  return {
+    authenticate: async (ctx) => {
+      const token = (ctx.headers.get("authorization") ?? "").replace(/^Bearer /i, "");
+      if (token === "") return UNAUTHORIZED;
+      try {
+        const { payload } = await jwtVerify(token, jwks, {
+          issuer: "https://acme.eu.auth0.com",
+          audience: "https://build.example.com/mcp", // the same third string
+        });
+        return { actor: String(payload.sub), kind: "human", roles: rolesOf(payload) };
+      } catch {
+        return INVALID_TOKEN;
+      }
+    },
+  };
+}
+```
+
+`UNAUTHORIZED` and `INVALID_TOKEN` are two refusals on purpose. A caller that
+presented nothing is told only that it must authenticate; one whose token was
+rejected is told that much. Sending `invalid_token` to a client that has simply
+never logged in tells it its stored credential was refused, which is both untrue
+and the wrong thing to act on.
+
+TLS and header stripping remain the proxy's job, and the OAuth flow itself
+remains the identity provider's. Zuke authenticates, authorizes and says where
+to go — deliberately nothing more.
 
 ## Registry mode (dynamic discovery)
 
@@ -475,10 +612,10 @@ tool in an already-running server with **no restart**:
   a `run:<buildId>:<target>` tool, re-read live.
 - **Execution is a spawn.** A registered build has no live instance in the
   server, so a run tool **spawns the build's registered launch location** (the
-  `deno run <module> <target>` `./zuke register` recorded, or an explicit command)
-  and returns its captured output. This is code execution, so it is off unless
-  `--allow-run`, and it honours the same [authorization](#authorization) tiers —
-  the allow-list and `--protect` globs match the **qualified**
+  `deno run <module> <target>` `./zuke register` recorded, or an explicit
+  command) and returns its captured output. This is code execution, so it is off
+  unless `--allow-run`, and it honours the same [authorization](#authorization)
+  tiers — the allow-list and `--protect` globs match the **qualified**
   `<buildId>:<target>` name (e.g. `--allow-run=Api:*`, `--protect=Api:deploy`).
   Every mutating or denied call is [audited](#audit-log).
 - **Where it spawns from is checked too.** The registry names the launch
@@ -487,12 +624,14 @@ tool in an already-running server with **no restart**:
   local path or `file:` URL — `https:`, `jsr:`, `npm:`, `data:`) is refused
   unless its origin appears in `ZUKE_REGISTRY_LAUNCH_HOSTS` (comma- or
   space-separated; `*` allows any; the token is the hostname, or the scheme when
-  the specifier carries none, like `jsr:`). An allow-listed `http:` origin additionally
-  needs `ZUKE_ALLOW_INSECURE_URL=1`; loopback does not. The check runs **before**
-  the `--confirm-destructive` prompt, so a refused location fails fast: the call
-  returns a structured `launch_origin_not_allowed` (or `insecure_launch_url`)
-  error and is audited as `denied`, with nothing spawned. Locations `./zuke
-  register` writes are local, so this is invisible to the ordinary setup.
+  the specifier carries none, like `jsr:`). An allow-listed `http:` origin
+  additionally needs `ZUKE_ALLOW_INSECURE_URL=1`; loopback does not. The check
+  runs **before** the `--confirm-destructive` prompt, so a refused location
+  fails fast: the call returns a structured `launch_origin_not_allowed` (or
+  `insecure_launch_url`) error and is audited as `denied`, with nothing spawned.
+  Locations `./zuke
+  register` writes are local, so this is invisible to the
+  ordinary setup.
 - **Parameters.** A run tool exposes the registered build's declared parameters
   as its input schema — keyed by the parameter's property name (e.g. `skipE2e`),
   with the kind, description, enum, and default from the descriptor. Supplied
@@ -504,8 +643,8 @@ tool in an already-running server with **no restart**:
   call omits it. Because a descriptor does not record whether a target is
   read-only, every registry run tool is treated as destructive.
 - **Secrets never cross the boundary.** `.secret()` parameters are omitted from
-  the descriptor entirely (`./zuke register` writes the secret-free surface), so a
-  secret can neither be requested nor forwarded — it is rejected as an unknown
+  the descriptor entirely (`./zuke register` writes the secret-free surface), so
+  a secret can neither be requested nor forwarded — it is rejected as an unknown
   parameter if a client tries. The spawned build resolves a secret from its own
   environment / `.from()` source instead. In the [audit log](#audit-log) only a
   recognised parameter's value is recorded; any unknown argument keeps its name
@@ -540,8 +679,8 @@ already has a shell there and could run `deno run -A zuke.ts <target>` directly.
 The [HTTP transport](#http-transport) adds a network endpoint, so it moves that
 boundary: it binds loopback by default, requires a bearer token or an
 [authenticator](#authentication) off loopback, and is meant to sit behind real
-TLS/authentication. Either way, treat the server
-like any other local developer tool and don't wire an untrusted client to it.
+TLS/authentication. Either way, treat the server like any other local developer
+tool and don't wire an untrusted client to it.
 
 Running a target executes real build code, so execution is **off by default**: a
 freshly-connected agent can only _inspect_ the build. Add `--allow-run`

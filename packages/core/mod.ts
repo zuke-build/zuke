@@ -223,11 +223,24 @@ export {
 } from "./src/registry/resolve.ts";
 export { type McpRequestContext } from "./src/mcp/jsonrpc.ts";
 export {
+  type BearerChallenge,
+  bearerChallenge,
+  type ChallengeError,
+  INVALID_TOKEN,
   type McpAuthenticator,
   type McpAuthReject,
   type McpIdentity,
   type McpIdentityHook,
+  UNAUTHORIZED,
 } from "./src/mcp/auth.ts";
+export {
+  metadataDocument,
+  metadataPath,
+  metadataUrl,
+  protectedResource,
+  ProtectedResourceError,
+  ProtectedResourceSettings,
+} from "./src/mcp/resource_metadata.ts";
 export {
   defaultMcpAuthorize,
   type McpAuthorization,

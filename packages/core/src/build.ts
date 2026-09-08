@@ -13,6 +13,7 @@
  */
 
 import { Group, type Remediation, TargetBuilder } from "./target.ts";
+import type { ProtectedResourceSettings } from "./mcp/resource_metadata.ts";
 import type { OrderingEdge } from "./graph.ts";
 import type { RemoteCacheStore } from "./remote_cache.ts";
 import type { StateStore } from "./state/store.ts";
@@ -357,6 +358,39 @@ export class Build {
    * ```
    */
   mcpAuth(): McpAuthenticator | undefined {
+    return undefined;
+  }
+
+  /**
+   * Declares this MCP endpoint an OAuth 2.0 **protected resource**, so a client
+   * that has never authenticated can find out where to get a token.
+   *
+   * `zuke mcp --http` then publishes the RFC 9728 metadata document and names
+   * it in every `WWW-Authenticate` challenge, which is the whole of what
+   * `claude mcp add --transport http <url>` needs to open a browser and
+   * authenticate with nothing pasted. Zuke issues no tokens and hosts no
+   * `/authorize`, `/token` or `/register` endpoint — those belong to the
+   * identity provider named here, and {@link Build.mcpAuth} is where the tokens
+   * it mints are verified. Default: none, and the server behaves exactly as
+   * before.
+   *
+   * The one thing to get right is that **three strings must agree byte for
+   * byte**: the resource identifier below, the `resource` parameter the client
+   * sends, and the audience the identity provider puts in the token. When they
+   * differ every token fails validation, and nothing in the error says why.
+   *
+   * ```ts
+   * class ControlPlane extends Build {
+   *   override mcpProtectedResource(): ProtectedResourceSettings {
+   *     return protectedResource("https://build.example.com/mcp")
+   *       .authorizationServer("https://acme.eu.auth0.com")
+   *       .scopes("zuke:run")
+   *       .name("Acme build server");
+   *   }
+   * }
+   * ```
+   */
+  mcpProtectedResource(): ProtectedResourceSettings | undefined {
     return undefined;
   }
 

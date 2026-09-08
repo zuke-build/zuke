@@ -33,13 +33,22 @@ import {
 import { timingSafeEqual } from "./authz.ts";
 import {
   authenticateRequest,
+  bearerChallenge,
+  INVALID_TOKEN,
   isResolvedIdentity,
   type McpAuthenticator,
   type McpAuthReject,
   refusalReason,
   type ResolvedIdentity,
   UNAUTHORIZED,
+  withResourceMetadata,
 } from "./auth.ts";
+import {
+  metadataDocument,
+  metadataPath,
+  metadataUrl,
+  type ProtectedResourceSettings,
+} from "./resource_metadata.ts";
 import { isLoopbackHost } from "../http.ts";
 
 /** Options for {@link serveHttp}. */
@@ -83,6 +92,20 @@ export interface HttpTransportOptions {
    * client discover where to authenticate.
    */
   authenticator?: McpAuthenticator;
+  /**
+   * Publishes this endpoint's OAuth 2.0 Protected Resource Metadata (RFC 9728)
+   * and names it in every `WWW-Authenticate` challenge, so a client that has
+   * never authenticated can discover where to get a token.
+   *
+   * The document is served on unauthenticated `GET`s — necessarily, since a
+   * caller asking where to authenticate has nothing to authenticate with — at
+   * the path {@link "./resource_metadata.ts".metadataPath} derives. There is
+   * deliberately no general "extra routes" hook here: this document is the only
+   * thing that has to be reachable before authentication, and a seam that let
+   * anything else in would be a seam whose entries are unauthenticated by
+   * construction.
+   */
+  protectedResource?: ProtectedResourceSettings;
 }
 
 /** A JSON `Response` with the given status and `application/json` content type. */
@@ -197,18 +220,71 @@ function authenticatorView(request: Request): Request | undefined {
  * bad or absent bearer token has always been answered `401` here, a non-`POST`
  * `405`, and unparseable JSON `400`, so a client that reads any non-`200` as a
  * transport failure was already broken against a token-protected server. The
- * body still carries the JSON-RPC error, so a client that reads it sees the
- * same reason it saw before.
+ * body still carries the JSON-RPC error. One reason did change: a bearer token
+ * that was presented and rejected now reads `invalid_token` rather than the
+ * generic `Unauthorized`, which is what OAuth defines it as and what tells a
+ * client its stored credential — rather than its absence — is the problem.
  */
-function refusedResponse(reject: McpAuthReject): Response {
+function refusedResponse(
+  reject: McpAuthReject,
+  discovery?: { metadataUrl: string; scopes: readonly string[] },
+): Response {
   const headers = new Headers({ "content-type": "application/json" });
   if (reject.challenge !== undefined) {
-    headers.set("www-authenticate", reject.challenge);
+    headers.set("www-authenticate", challengeFor(reject, discovery));
   }
   return new Response(
     JSON.stringify(err(null, INVALID_REQUEST, refusalReason(reject))),
     { status: reject.status, headers },
   );
+}
+
+/**
+ * The challenge to send with `reject`.
+ *
+ * Zuke's own two refusals are **rebuilt** rather than patched, so the declared
+ * scopes go in as a proper `scope` parameter — the specification asks a
+ * protected resource to name what the operation needs, and a client with no
+ * challenge scope falls back to requesting the entire advertised catalogue. An
+ * authenticator's own challenge is a string this code did not write and cannot
+ * safely re-derive, so that one is only given the metadata URL it lacks.
+ */
+function challengeFor(
+  reject: McpAuthReject,
+  discovery?: { metadataUrl: string; scopes: readonly string[] },
+): string {
+  const challenge = reject.challenge ?? "Bearer";
+  if (discovery === undefined) return challenge;
+  const ours = reject === UNAUTHORIZED || reject === INVALID_TOKEN;
+  if (!ours) return withResourceMetadata(challenge, discovery.metadataUrl);
+  return bearerChallenge({
+    metadataUrl: discovery.metadataUrl,
+    scopes: discovery.scopes,
+    // Only a token that was presented and rejected names an error; a request
+    // that carried no credentials has had nothing of its own refused yet.
+    ...(reject === INVALID_TOKEN ? { error: "invalid_token" as const } : {}),
+  });
+}
+
+/**
+ * The metadata document as a public, cacheable, cross-origin-readable
+ * response.
+ *
+ * No `Origin` check runs on this one. The document is public by definition —
+ * it names authorization servers and scopes, and carries nothing a caller could
+ * not learn by attempting to authenticate — and browser-based MCP clients fetch
+ * it cross-origin, so gating it on `Origin` would break them while protecting
+ * nothing.
+ */
+function metadataResponse(body: string): Response {
+  return new Response(body, {
+    status: 200,
+    headers: {
+      "content-type": "application/json",
+      "access-control-allow-origin": "*",
+      "cache-control": "public, max-age=3600",
+    },
+  });
 }
 
 /** The hostname of an `Origin` value, or `null` if it can't be parsed. */
@@ -266,6 +342,7 @@ export async function serveHttp(
     concurrent,
     allowedOrigins,
     authenticator,
+    protectedResource,
   } = options;
 
   // By default, process messages one at a time: the single-build server/execute
@@ -284,7 +361,54 @@ export async function serveHttp(
   };
   const dispatch = concurrent === true ? handle : serial;
 
+  const metadataAt = protectedResource === undefined
+    ? undefined
+    : metadataPath(protectedResource.resource_);
+  const discovery = protectedResource === undefined ? undefined : {
+    metadataUrl: metadataUrl(protectedResource.resource_),
+    scopes: protectedResource.scopes_,
+  };
+  // Rendered once, here, rather than per request. Building it in the handler
+  // would put a throw on an unauthenticated public path — a declaration mutated
+  // after startup, say — where it becomes a 500 with no error boundary. It is
+  // also a constant, so re-serialising it for every caller was pure waste.
+  const metadataBody = protectedResource === undefined
+    ? undefined
+    : JSON.stringify(metadataDocument(protectedResource), null, 2);
+
   const onRequest = async (request: Request): Promise<Response> => {
+    // Before every other check, including the method one: this is the document
+    // an unauthenticated client reads to find out where to authenticate, and it
+    // is fetched with GET.
+    if (metadataBody !== undefined) {
+      // Guarded, because Deno builds `request.url` from the raw `Host` header
+      // and accepts hosts the WHATWG parser rejects (`Host: bad host`). This
+      // runs before every other check, so an unguarded throw here would answer
+      // *every* request — authenticated ones included — with a 500. That is the
+      // same trap `authenticatorView` below already documents; it is one call
+      // earlier, and it must be caught the same way.
+      let path: string;
+      try {
+        path = new URL(request.url).pathname;
+      } catch {
+        path = "";
+      }
+      if (path === metadataAt) {
+        if (request.method === "GET" || request.method === "HEAD") {
+          return metadataResponse(metadataBody);
+        }
+        if (request.method === "OPTIONS") {
+          return new Response(null, {
+            status: 204,
+            headers: {
+              "access-control-allow-origin": "*",
+              "access-control-allow-methods": "GET, HEAD, OPTIONS",
+              "access-control-allow-headers": "authorization, content-type",
+            },
+          });
+        }
+      }
+    }
     if (request.method !== "POST") {
       return jsonResponse(
         err(null, INVALID_REQUEST, "This MCP endpoint accepts POST only."),
@@ -306,7 +430,12 @@ export async function serveHttp(
     if (token !== undefined && token !== "") {
       const provided = bearerToken(request.headers.get("authorization"));
       if (provided === undefined || !timingSafeEqual(provided, token)) {
-        return refusedResponse(UNAUTHORIZED);
+        // A caller that sent nothing is told only that it must authenticate; a
+        // caller whose token was rejected is told that much and no more.
+        return refusedResponse(
+          provided === undefined ? UNAUTHORIZED : INVALID_TOKEN,
+          discovery,
+        );
       }
     }
     // Authenticate before reading the body: an unauthenticated caller never gets
@@ -318,7 +447,9 @@ export async function serveHttp(
     let identity: ResolvedIdentity | undefined;
     if (authenticator !== undefined) {
       const resolved = await authenticateRequest(authenticator, ctx);
-      if (!isResolvedIdentity(resolved)) return refusedResponse(resolved);
+      if (!isResolvedIdentity(resolved)) {
+        return refusedResponse(resolved, discovery);
+      }
       identity = resolved;
     }
     const body = await readBounded(request, MAX_BODY_BYTES);
