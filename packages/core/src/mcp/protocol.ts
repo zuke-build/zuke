@@ -71,11 +71,20 @@ export function unsupportedProtocolVersion(
   header: string | null,
 ): string | undefined {
   if (header === null) return undefined;
-  const requested = header.trim();
-  if (requested === "" || SUPPORTED_PROTOCOL_VERSIONS.includes(requested)) {
-    return undefined;
-  }
-  return `Unsupported MCP-Protocol-Version "${requested}". This server ` +
+  // Repeated header lines arrive comma-joined. A singleton field sent twice is
+  // malformed HTTP, but the way it happens in practice is a proxy re-adding a
+  // header the client already sent — and this transport expects to be fronted
+  // by one — so `2025-11-25, 2025-11-25` is a deployment accident, not a claim
+  // about an unsupported revision. Every value is checked; refusing only when
+  // one of them is genuinely unsupported keeps the guard from becoming an
+  // outage for a correctly-versioned client.
+  const requested = header.split(",").map((value) => value.trim())
+    .filter((value) => value !== "");
+  const unsupported = requested.find((value) =>
+    !SUPPORTED_PROTOCOL_VERSIONS.includes(value)
+  );
+  if (unsupported === undefined) return undefined;
+  return `Unsupported MCP-Protocol-Version "${unsupported}". This server ` +
     `implements ${SUPPORTED_PROTOCOL_VERSIONS.join(", ")}.`;
 }
 

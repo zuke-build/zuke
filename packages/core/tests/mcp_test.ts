@@ -10,6 +10,7 @@ import {
 } from "../src/mcp/jsonrpc.ts";
 import { McpServer } from "../src/mcp/server.ts";
 import {
+  negotiateInitialize,
   PROTOCOL_VERSION,
   SUPPORTED_PROTOCOL_VERSIONS,
   unsupportedProtocolVersion,
@@ -460,8 +461,14 @@ Deno.test("the newest advertised revision is the newest one this server implemen
   // speak, so the list stops where the behaviour does.
   assertEquals(PROTOCOL_VERSION, "2025-11-25");
   assertEquals(SUPPORTED_PROTOCOL_VERSIONS.includes("2026-07-28"), false);
-  // Newest first: negotiation offers SUPPORTED_PROTOCOL_VERSIONS[0].
-  assertEquals(SUPPORTED_PROTOCOL_VERSIONS[0], PROTOCOL_VERSION);
+  // The list is newest-first, which is what makes the offer correct: asserted
+  // through negotiation rather than by comparing the constant to its own
+  // definition, which no edit could have made fail.
+  const { result } = negotiateInitialize(
+    { protocolVersion: "1999-01-01" },
+    "v",
+  );
+  assertEquals(result.protocolVersion, "2025-11-25");
 });
 
 Deno.test("an unsupported MCP-Protocol-Version header is refused", () => {
@@ -472,6 +479,18 @@ Deno.test("an unsupported MCP-Protocol-Version header is refused", () => {
   assertEquals(unsupportedProtocolVersion("2024-11-05"), undefined);
   // Absent in practice, but an empty header is not a claim about a version.
   assertEquals(unsupportedProtocolVersion("  "), undefined);
+  // A proxy that re-adds a header the client already sent produces a
+  // comma-joined pair. Every value is checked, so a correctly-versioned client
+  // is not refused for its proxy's duplication...
+  assertEquals(
+    unsupportedProtocolVersion("2025-11-25, 2025-11-25"),
+    undefined,
+  );
+  // ...while one genuinely unsupported value still refuses, and names itself.
+  assertStringIncludes(
+    unsupportedProtocolVersion("2025-11-25, 2026-07-28") ?? "",
+    "2026-07-28",
+  );
   const refused = unsupportedProtocolVersion("2026-07-28");
   assertStringIncludes(refused ?? "", "2026-07-28");
   assertStringIncludes(refused ?? "", "2025-11-25");

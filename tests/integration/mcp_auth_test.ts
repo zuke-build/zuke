@@ -503,6 +503,35 @@ Deno.test("an unsupported protocol version header is refused over HTTP", async (
     assertEquals(refused.status, 400);
     assertStringIncludes(await refused.text(), "2026-07-28");
 
+    // ...but only once the caller is authenticated. The refusal names every
+    // revision this build supports, which an unauthenticated caller has no
+    // business enumerating, so the 401 wins.
+    const guarded = await startMcp(new Guarded(), { token: "shared-token" });
+    try {
+      const unauthenticated = await fetch(guarded.url, {
+        method: "POST",
+        headers: { "mcp-protocol-version": "2026-07-28" },
+        body,
+      });
+      assertEquals(unauthenticated.status, 401);
+      assertEquals(
+        (await unauthenticated.text()).includes("2025-06-18"),
+        false,
+      );
+      const authenticated = await fetch(guarded.url, {
+        method: "POST",
+        headers: {
+          "mcp-protocol-version": "2026-07-28",
+          authorization: "Bearer shared-token",
+        },
+        body,
+      });
+      assertEquals(authenticated.status, 400);
+      await authenticated.body?.cancel();
+    } finally {
+      await guarded.stop();
+    }
+
     // A version we do implement, and an absent header, both pass through.
     const accepted: Record<string, string>[] = [
       { "mcp-protocol-version": "2025-11-25" },

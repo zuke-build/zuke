@@ -81,11 +81,14 @@ below), so one long `run:` never head-of-line-blocks another client's read.
   an authenticator runs on every bind, loopback included. The two compose: the
   token is a shared secret that gates the endpoint, the authenticator says _who_
   is calling.
-- **The order a request passes:** HTTP method (a non-`POST` gets `405`) →
-  `Origin` (`403`) → the static bearer token (`401`) → the
-  [authenticator](#authentication) (the refusal's own status) → the body (capped
-  at 1 MiB; over it, `413`). Authentication runs **before** the body is read, so
-  an unauthenticated caller never makes the server buffer its payload.
+- **The order a request passes:** the
+  [metadata document](#telling-a-client-where-to-authenticate) when one is
+  declared and the path matches (a public `GET`) → HTTP method (a non-`POST`
+  gets `405`) → `Origin` (`403`) → the static bearer token (`401`) → the
+  [authenticator](#authentication) (the refusal's own status) →
+  `MCP-Protocol-Version` (`400`) → the body (capped at 1 MiB; over it, `413`).
+  Authentication runs **before** the body is read, so an unauthenticated caller
+  never makes the server buffer its payload.
 - **Origin validation** guards against a browser drive-by / DNS-rebinding page:
   on a loopback bind, a request that carries an `Origin` header is accepted only
   when it is a loopback origin, and rejected `403` otherwise. A client that
@@ -706,9 +709,13 @@ tool argument is masked in the [audit log](#audit-log) too.
   `2025-03-26` and `2024-11-05`. A client's requested version is echoed when
   this server implements it, and otherwise answered with the newest — the
   client then proceeds or disconnects. Over HTTP, a `MCP-Protocol-Version`
-  header naming a revision this server does not implement is refused `400`; an
-  absent header is fine, since nothing here behaves differently across these
-  revisions.
+  header naming a revision this server does not implement is refused `400` —
+  after authentication, so the list of supported revisions is not something an
+  unauthenticated caller can enumerate. An absent header is fine: the
+  specification says to assume `2025-03-26` then, and since nothing here
+  behaves differently across these revisions that assumption changes nothing.
+  A repeated header (a proxy re-adding one the client already sent) is accepted
+  when every value it carries is supported.
 - **Why not `2026-07-28`:** it is not a newer version of this protocol so much
   as a different one. It removes `initialize` and `ping` entirely, requires a
   new `server/discover` RPC, carries the protocol version and client
@@ -721,6 +728,13 @@ tool argument is masked in the [audit log](#audit-log) too.
   means a second request path serving both eras, which is a project rather than
   a version-string edit. Until then, advertising it would be a claim this
   server cannot honour.
+
+  There is a side benefit to refusing the header rather than ignoring it. A
+  client that speaks both eras probes with a modern request and falls back to
+  `initialize` when it gets a `4xx` it does not recognise, so the `400` is
+  what makes that fallback work. Without it, a modern request would have been
+  answered under the older semantics — which is the specific confusion the
+  specification warns about.
 - **Errors:** a bad _tool_ call (unknown tool, unknown target, a failed run) is
   reported through the tool result (`isError: true`) so the model sees it,
   rather than as a transport-level error — matching the MCP convention. Typed
