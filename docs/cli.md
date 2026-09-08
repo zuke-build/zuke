@@ -24,9 +24,14 @@ with `./zuke <command>`, not the bare `zuke` you installed globally.
 | `zuke --help` / `-h`        | Usage.                                                                                                    |
 | `zuke --version` / `-V`     | Print the installed `@zuke/cli` version.                                                                 |
 
-`setup` and `import` share `--dir <path>`, `--name <Class>`, `--force`/`-f` and
-`--yes`/`-y`. `--launcher-name <name>` (for when a `zuke/` directory already
-occupies the launcher's name) applies to `setup` only; `import` additionally takes
+`setup` and `import` share `--dir <path>`, `--name <Class>`, `--force`/`-f`,
+`--yes`/`-y`, and `--mcp`, which also writes a `.mcp.json` registering the
+build's own [MCP server](./mcp.md) (`deno run -A zuke.ts mcp`) so an agent
+client picks the build up from the first commit; `--allow-run` registers it
+with execution enabled and implies `--mcp`. An existing `.mcp.json` is merged
+around its other servers, and an existing `zuke` entry is kept unless `--force`
+is set. `--launcher-name <name>` (for when a `zuke/` directory already occupies
+the launcher's name) applies to `setup` only; `import` additionally takes
 `--from <package.json|makefile>` to pin the source instead of auto-detecting
 it. Both finish by scaffolding the launchers and `deno.json`, so the very next
 command you run is your build's own CLI, `./zuke`.
