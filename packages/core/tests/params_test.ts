@@ -10,6 +10,7 @@ import {
   discoverParameters,
   envVarName,
   flagName,
+  flagOf,
   Parameter,
   parameter,
   ParameterError,
@@ -597,4 +598,75 @@ Deno.test("a parameter exposes its default as a display string", () => {
   // An empty-list array default and an undefined optional carry no default.
   assertEquals(parameter().array().default_, undefined);
   assertEquals(parameter().default_, undefined);
+});
+
+Deno.test("a declared flag replaces the one the name would derive", () => {
+  class B extends Build {
+    // The digit ends the run of capitals, so the derived flag would be
+    // `--skip-e2-e`. This is the case `.flag()` exists for.
+    skipE2E = parameter("skip the E2E suite").flag("--skip-e2e").boolean();
+    plain = parameter("derived as usual");
+  }
+  const params = discoverParameters(new B());
+  assertEquals(flagOf("skipE2E", params.get("skipE2E")!), "skip-e2e");
+  assertEquals(flagName("skipE2E"), "skip-e2-e"); // the rule itself is unchanged
+  assertEquals(flagOf("plain", params.get("plain")!), "plain");
+});
+
+Deno.test("the leading dashes are optional when declaring a flag", () => {
+  // Two builds, not two fields of one: a single build declaring the same flag
+  // twice is refused, which is its own test below.
+  class WithDashes extends Build {
+    a = parameter("with dashes").flag("--skip-e2e");
+  }
+  class Without extends Build {
+    a = parameter("without").flag("skip-e2e");
+  }
+  // The stored value, not merely that the two agree — a strip that mapped both
+  // to the empty string would satisfy equality alone.
+  assertEquals(new WithDashes().a.flagName_, "skip-e2e");
+  assertEquals(new Without().a.flagName_, "skip-e2e");
+});
+
+Deno.test("a declared flag that is not a valid flag name is refused", () => {
+  for (const bad of ["skip e2e", "-skip", "skip=e2e", "2fast", "Skip", ""]) {
+    class B extends Build {
+      thing = parameter("bad").flag(bad);
+    }
+    assertThrows(
+      () => discoverParameters(new B()),
+      Error,
+      "not a valid flag name",
+    );
+  }
+});
+
+Deno.test("a declared flag naming a built-in is refused, naming the declaration", () => {
+  class B extends Build {
+    message = parameter("would hijack attribution").flag("--actor");
+  }
+  // The derived-name refusal would not have caught this: `message` renders as
+  // `--message`. The check has to read the flag the parameter actually claims.
+  const error = assertThrows(
+    () => discoverParameters(new B()),
+    Error,
+    "built-in Zuke CLI flag",
+  );
+  assertStringIncludes(String(error), "declares the flag");
+});
+
+Deno.test("two parameters claiming one flag are refused, naming both", () => {
+  class B extends Build {
+    // Field names deliberately absent from the rendered flag, so the message
+    // has to name them rather than merely echo `--stage`.
+    stage = parameter("first").flag("--stage");
+    tier = parameter("second").flag("--stage");
+  }
+  const error = assertThrows(
+    () => discoverParameters(new B()),
+    Error,
+    "both render as",
+  );
+  assertStringIncludes(String(error), '"stage"');
+  assertStringIncludes(String(error), '"tier"');
 });

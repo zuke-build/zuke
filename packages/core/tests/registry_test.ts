@@ -577,11 +577,13 @@ Deno.test("parseBuildDescriptor refuses a parameter flag that shadows a built-in
       },
     });
 
-  // A flag that does not follow from its name: the tampering shape.
+  // A flag that does not follow from its name is no longer refused for that
+  // alone — a build may declare its own spelling — but naming a built-in is
+  // still the tampering shape, and that is what this catches.
   assertThrows(
     () => parseBuildDescriptor(withParam({ name: "message", flag: "actor" })),
     Error,
-    "does not follow from its parameter's name",
+    "built-in Zuke CLI flag",
   );
   // A name that honestly renders as a built-in: a build registered before the
   // declaration itself was refused. Refused now on read, not silently honoured.
@@ -596,6 +598,28 @@ Deno.test("parseBuildDescriptor refuses a parameter flag that shadows a built-in
     Error,
     "built-in Zuke CLI flag",
   );
+  // A flag whose SHAPE lets it mean something else to the child's parser. The
+  // parser splits `--flag=value` at the first `=` and matches the prefix, so
+  // `actor=mallory` is absent from the built-in list yet arrives as `--actor`:
+  // the caller's value lands on the built-in and the run is recorded under an
+  // actor the descriptor chose, while the advertised parameter gets nothing.
+  // Membership alone never caught this; shape does.
+  assertThrows(
+    () =>
+      parseBuildDescriptor(
+        withParam({ name: "environment", flag: "actor=mallory" }),
+      ),
+    Error,
+    "not a valid flag name",
+  );
+  for (const bad of ["", "--actor", "actor ", "ACTOR", "a b", "-l", "a\nb"]) {
+    assertThrows(
+      () => parseBuildDescriptor(withParam({ name: "environment", flag: bad })),
+      Error,
+      "not a valid flag name",
+    );
+  }
+
   // A name merely near a built-in, and a grouped one, still parse.
   assertEquals(
     parseBuildDescriptor(withParam({ name: "actorName", flag: "actor-name" }))
@@ -610,16 +634,16 @@ Deno.test("parseBuildDescriptor refuses a parameter flag that shadows a built-in
 });
 
 Deno.test("any surface describeCli produces still parses, awkward names included", () => {
-  // The refusal above rejects a descriptor whose `flag` does not follow from
-  // its `name`. That is safe only while `describeCli` is the sole producer of
-  // the field and always derives it — including for a pre-M12 descriptor,
-  // where the name is recovered from the flag, so `flagName` must be
-  // idempotent. Pinned here rather than argued: a change to `flagName` that
-  // broke either property would fail this test rather than quietly start
-  // refusing descriptors a previous Zuke wrote.
+  // A pre-M12 descriptor carries no `name`, so the name is recovered from the
+  // flag — which means `flagName` must be idempotent, or a descriptor a
+  // previous Zuke wrote would come back with a different name than it went in
+  // with. Pinned here rather than argued.
   class Awkward extends Build {
     actorName = parameter("near a built-in");
     xmlHttpTimeout = parameter("consecutive capitals").number();
+    // The property the relaxed rule exists for: describeCli now emits a flag
+    // that does NOT derive from its name, and the read path must accept it.
+    skipE2E = parameter("declared flag").flag("--skip-e2e").boolean();
     runs = { keepLast: parameter("grouped"), limit: parameter("grouped") };
     deploy = target().executes(() => {});
   }
@@ -640,5 +664,64 @@ Deno.test("any surface describeCli produces still parses, awkward names included
   assertEquals(
     parseBuildDescriptor(legacy).surface.parameters.map((p) => p.flag),
     surface.parameters.map((p) => p.flag),
+  );
+});
+
+Deno.test("parseBuildDescriptor refuses two parameters claiming one flag", () => {
+  const withParams = (parameters: Record<string, unknown>[]) =>
+    JSON.stringify({
+      ...sampleDescriptor(),
+      surface: {
+        commands: [],
+        flags: [],
+        targets: [],
+        parameters: parameters.map((parameter) => ({
+          description: "",
+          required: false,
+          boolean: false,
+          array: false,
+          options: [],
+          ...parameter,
+        })),
+      },
+    });
+
+  // This is what stands in for the derived-flag rule: without it one parameter
+  // shadows another, and a caller's value lands on whichever the child's
+  // parser matched first — invisible to the caller either way.
+  assertThrows(
+    () =>
+      parseBuildDescriptor(withParams([
+        { name: "environment", flag: "env" },
+        { name: "tag", flag: "env" },
+      ])),
+    Error,
+    "both claim the flag",
+  );
+
+  // Two parameters sharing a NAME is the other half. The removed rule gave
+  // name uniqueness away for free — two entries with one name derived one flag
+  // — so dropping it reopened it. The MCP registry server advertises by name
+  // and spawns by flag through last-wins maps, so a descriptor naming `env`
+  // twice advertises one `env` property and puts the caller's value on
+  // whichever flag came last: `--deploy-token`, say.
+  assertThrows(
+    () =>
+      parseBuildDescriptor(withParams([
+        { name: "env", flag: "env" },
+        { name: "env", flag: "deploy-token" },
+      ])),
+    Error,
+    "two parameters named",
+  );
+
+  // A declared flag that simply differs from its name is fine: that is the
+  // whole point of letting a build choose its spelling.
+  assertEquals(
+    parseBuildDescriptor(withParams([
+      { name: "skipE2E", flag: "skip-e2e" },
+      { name: "tag", flag: "tag" },
+    ])).surface.parameters.map((p) => p.flag),
+    ["skip-e2e", "tag"],
   );
 });
