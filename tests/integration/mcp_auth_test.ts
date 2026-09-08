@@ -444,6 +444,47 @@ Deno.test("a preflight for the metadata document is answered", async () => {
   }
 });
 
+Deno.test("two real protocol-version header lines arrive comma-joined", async () => {
+  // The unit tests exercise the comma-joined string; this pins that a genuine
+  // duplicate header line is what produces one, so the tolerance for an
+  // agreeing proxy copy is about the wire shape rather than about a string a
+  // test made up. `fetch` cannot send a header twice, hence the raw socket.
+  const server = await startMcp(new Guarded(), {});
+  const port = Number(new URL(server.url).port);
+  const send = async (first: string, second: string): Promise<string> => {
+    const message = JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/list",
+    });
+    const connection = await Deno.connect({ hostname: "127.0.0.1", port });
+    await connection.write(
+      new TextEncoder().encode(
+        "POST / HTTP/1.1\r\nHost: 127.0.0.1\r\n" +
+          `MCP-Protocol-Version: ${first}\r\n` +
+          `MCP-Protocol-Version: ${second}\r\n` +
+          "Content-Type: application/json\r\n" +
+          `Content-Length: ${message.length}\r\n` +
+          "Connection: close\r\n\r\n" + message,
+      ),
+    );
+    const buffer = new Uint8Array(512);
+    const read = await connection.read(buffer);
+    connection.close();
+    return new TextDecoder().decode(buffer.subarray(0, read ?? 0));
+  };
+  try {
+    // Copies that agree: a proxy re-adding what the client already sent.
+    assertStringIncludes(await send("2025-11-25", "2025-11-25"), "200");
+    // Copies that disagree: nothing can say which applies, so neither is used.
+    const conflicting = await send("2025-11-25", "2025-06-18");
+    assertStringIncludes(conflicting, "400");
+    assertStringIncludes(conflicting, "more than one revision");
+  } finally {
+    await server.stop();
+  }
+});
+
 Deno.test("the metadata response is a cacheable JSON document, and answers HEAD", async () => {
   // RFC 9728 3.2 makes the 200 + application/json a MUST; the cache header is
   // what stops every cold client re-fetching a constant.
