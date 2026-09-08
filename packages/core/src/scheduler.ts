@@ -256,8 +256,10 @@ function targetContextFor(
   dryRun: boolean,
   summary: TargetSummary,
 ): TargetContext {
-  // `stateOf(self)` returns this very handle, so the invariant documented on
-  // `TargetContext.stateOf` holds by construction rather than by a name check.
+  // One own-state handle, reused for `stateOf(this target)`. The name check
+  // below is what holds the documented `stateOf(self) === state` invariant:
+  // the writer builds a fresh handle object per call, so asking it twice would
+  // otherwise hand a body two different objects for its own state.
   const ownState = stateHandleFor(env, name);
   return {
     runId: env.runId,
@@ -265,7 +267,7 @@ function targetContextFor(
     target: name,
     signal: env.signal,
     state: ownState,
-    stateOf: (t) => stateHandleFor(env, t),
+    stateOf: (t) => t === name ? ownState : stateHandleFor(env, t),
     outcomeOf: (t) => outcomeOf(env, t),
     outcomes: () => allOutcomes(env),
     signals: env.signals,

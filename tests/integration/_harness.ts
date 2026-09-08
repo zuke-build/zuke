@@ -80,6 +80,28 @@ export async function runCli(
  * suspend a run and a later call resume it. Restores the previous env var and
  * removes the directory afterwards, even on failure.
  */
+/**
+ * Run `fn` with **no** state store configured, whatever the ambient
+ * environment says.
+ *
+ * A test asserting store-less behaviour is otherwise at the mercy of a
+ * developer's or a runner's `ZUKE_STATE_DIR`: the run quietly gets a real
+ * store, the premise evaporates, and the test either fails for a reason that
+ * has nothing to do with it or passes while proving something else.
+ */
+export async function withoutStateDir(fn: () => Promise<void>): Promise<void> {
+  const prev = Deno.env.get("ZUKE_STATE_DIR");
+  const prevUrl = Deno.env.get("ZUKE_STATE_URL");
+  Deno.env.delete("ZUKE_STATE_DIR");
+  Deno.env.delete("ZUKE_STATE_URL");
+  try {
+    await fn();
+  } finally {
+    if (prev !== undefined) Deno.env.set("ZUKE_STATE_DIR", prev);
+    if (prevUrl !== undefined) Deno.env.set("ZUKE_STATE_URL", prevUrl);
+  }
+}
+
 export async function withStateDir(
   fn: (dir: string) => Promise<void>,
 ): Promise<void> {

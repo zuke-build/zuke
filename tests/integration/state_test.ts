@@ -19,7 +19,7 @@ import {
   FileSystemStateStore,
   target,
 } from "../../packages/core/mod.ts";
-import { runCli, withStateDir } from "./_harness.ts";
+import { runCli, withoutStateDir, withStateDir } from "./_harness.ts";
 
 /** Open a store over the temp state dir the harness configured. */
 function storeAt(dir: string): FileSystemStateStore {
@@ -273,37 +273,57 @@ Deno.test("a body reads back whether its durable write landed", async () => {
 });
 
 Deno.test("a store-less build still reports its write as recorded", async () => {
-  const reported: boolean[] = [];
-  class B extends Build {
-    // No wait, no lock, no effect: nothing turns the state store on, so the
-    // handle is the in-memory one. Its writes are never dropped, so telling
-    // the body they failed would be a lie in the unhelpful direction.
-    build = target().executes(async (ctx) => {
-      reported.push(await ctx.state.trySet({ tag: "v1" }));
-    });
-  }
-  const run = await runCli(B, ["build"]);
-  assertEquals(run.code, 0);
-  assertEquals(reported, [true]);
+  await withoutStateDir(async () => {
+    const reported: boolean[] = [];
+    class B extends Build {
+      // No wait, no lock, no effect: nothing turns the state store on, so the
+      // handle is the in-memory one. Its writes are never dropped, so telling
+      // the body they failed would be a lie in the unhelpful direction.
+      build = target().executes(async (ctx) => {
+        reported.push(await ctx.state.trySet({ tag: "v1" }));
+      });
+    }
+    const run = await runCli(B, ["build"]);
+    assertEquals(run.code, 0);
+    assertEquals(reported, [true]);
+  });
 });
 
 Deno.test("a store-less run keeps one state handle per target", async () => {
-  const seen: Record<string, unknown>[] = [];
-  let sameObject = false;
-  class B extends Build {
-    build = target().executes(async (ctx) => {
-      sameObject = ctx.stateOf("build") === ctx.state;
-      await ctx.stateOf("build").trySet({ tag: "v1" });
-    });
-    ship = target().dependsOn(this.build).executes(async (ctx) => {
-      await ctx.stateOf("build").trySet({ note: "x" });
-      // Read through a *second* call: a fresh handle per call would drop the
-      // write above and answer {}, while reporting that write as successful.
-      seen.push(ctx.stateOf("build").get());
-    });
-  }
-  const run = await runCli(B, ["ship"]);
-  assertEquals(run.code, 0);
-  assertEquals(sameObject, true); // stateOf(self) === state, as documented
-  assertEquals(seen, [{ tag: "v1", note: "x" }]);
+  await withoutStateDir(async () => {
+    const seen: Record<string, unknown>[] = [];
+    let sameObject = false;
+    class B extends Build {
+      build = target().executes(async (ctx) => {
+        sameObject = ctx.stateOf("build") === ctx.state;
+        await ctx.stateOf("build").trySet({ tag: "v1" });
+      });
+      ship = target().dependsOn(this.build).executes(async (ctx) => {
+        await ctx.stateOf("build").trySet({ note: "x" });
+        // Read through a *second* call: a fresh handle per call would drop the
+        // write above and answer {}, while reporting it as a successful write.
+        seen.push(ctx.stateOf("build").get());
+      });
+    }
+    const run = await runCli(B, ["ship"]);
+    assertEquals(run.code, 0);
+    assertEquals(sameObject, true); // stateOf(self) === state, as documented
+    assertEquals(seen, [{ tag: "v1", note: "x" }]);
+  });
+});
+
+Deno.test("a run WITH a store also hands a body one handle for its own state", async () => {
+  await withStateDir(async () => {
+    let sameObject = false;
+    class B extends Build {
+      // The writer builds a fresh handle object per call, so this invariant is
+      // held by the context's own name check, not by the writer.
+      deploy = target().executes((ctx) => {
+        sameObject = ctx.stateOf("deploy") === ctx.state;
+      });
+    }
+    const run = await runCli(B, ["deploy"]);
+    assertEquals(run.code, 0);
+    assertEquals(sameObject, true);
+  });
 });
