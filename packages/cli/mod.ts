@@ -14,7 +14,12 @@
  */
 
 import { ConsoleTasks } from "@zuke/console";
-import { defaultHost, runSetup, type SetupHost } from "./src/setup.ts";
+import {
+  defaultHost,
+  type McpSetupOptions,
+  runSetup,
+  type SetupHost,
+} from "./src/setup.ts";
 import { type ImportSource, runImport } from "./src/import.ts";
 import {
   defaultStarActions,
@@ -65,17 +70,33 @@ export interface SetupFlags {
   dir?: string;
   /** Base name for the launcher scripts, when `zuke` is taken by a directory. */
   launcherName?: string;
+  /** Also write `.mcp.json`, registering the build's MCP server for agent clients. */
+  mcp: boolean;
+  /** Register that server with `--allow-run`, so the agent may execute targets. Implies `mcp`. */
+  allowRun: boolean;
 }
 
 /** Parse the argument list following `zuke setup`. */
 export function parseSetupFlags(args: string[]): SetupFlags {
-  const flags: SetupFlags = { force: false, yes: false };
+  const flags: SetupFlags = {
+    force: false,
+    yes: false,
+    mcp: false,
+    allowRun: false,
+  };
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (arg === "--force" || arg === "-f") {
       flags.force = true;
     } else if (arg === "--yes" || arg === "-y") {
       flags.yes = true;
+    } else if (arg === "--mcp") {
+      flags.mcp = true;
+    } else if (arg === "--allow-run") {
+      // Execution only makes sense for a registered server, so the flag
+      // implies --mcp rather than being silently ignored without it.
+      flags.mcp = true;
+      flags.allowRun = true;
     } else if (arg === "--name") {
       if (i + 1 < args.length) {
         i++;
@@ -100,6 +121,11 @@ export function parseSetupFlags(args: string[]): SetupFlags {
     }
   }
   return flags;
+}
+
+/** The `.mcp.json` request the flags make, or `undefined` for none. */
+function mcpOption(flags: SetupFlags): McpSetupOptions | undefined {
+  return flags.mcp ? { allowRun: flags.allowRun } : undefined;
 }
 
 /** The one-line identity printed under the logo and atop `--help`. */
@@ -135,6 +161,8 @@ Setup options:
   --dir <path>            Directory to scaffold into (default: .)
   --name <Class>          Build class name for zuke.ts (default: MyBuild)
   --launcher-name <name>  Launcher base name when a zuke/ directory is in the way
+  --mcp                   Also write .mcp.json registering the build's MCP server
+  --allow-run             …with --allow-run, so an agent may execute targets (implies --mcp)
   --force, -f             Overwrite existing files
   --yes, -y               Accept defaults without prompting
 
@@ -142,6 +170,8 @@ Import options:
   --dir <path>     Directory to read from and scaffold into (default: .)
   --name <Class>   Build class name for zuke.ts (default: MyBuild)
   --from <source>  Force a source: package.json or makefile (default: auto-detect)
+  --mcp            Also write .mcp.json registering the build's MCP server
+  --allow-run      …with --allow-run, so an agent may execute targets (implies --mcp)
   --force, -f      Overwrite existing files
   --yes, -y        Accept defaults without prompting
 
@@ -175,7 +205,10 @@ async function commandSetup(
   const where = dir === "." ? "the current directory" : dir;
   host.log(`Scaffolding Zuke into ${where}:`);
   const launcherName = flags.launcherName;
-  const result = await runSetup({ dir, force, name, launcherName }, host);
+  const result = await runSetup(
+    { dir, force, name, launcherName, mcp: mcpOption(flags) },
+    host,
+  );
   const written = result.files.filter((f) => f.status !== "skipped").length;
   host.log(
     `Done — ${written} file(s) written. Next: ./${launcherName ?? "zuke"}`,
@@ -233,7 +266,10 @@ async function commandImport(
     }
   }
 
-  const result = await runImport({ dir, force, name, from: flags.from }, host);
+  const result = await runImport(
+    { dir, force, name, from: flags.from, mcp: mcpOption(flags) },
+    host,
+  );
   if (result.source === null) {
     host.log(
       "Nothing to import: no package.json scripts or Makefile found" +
