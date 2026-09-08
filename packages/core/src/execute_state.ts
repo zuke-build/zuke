@@ -55,7 +55,13 @@ import type { ResumeState } from "./executor.ts";
 function priorWaitsOf(record: RunRecord): ReadonlyMap<string, WaitState> {
   const waits = new Map<string, WaitState>();
   for (const [name, state] of Object.entries(record.targets)) {
-    if (state.waitingFor !== undefined) waits.set(name, state.waitingFor);
+    // Checked, not assumed. Every settle drops the wait with the status, so a
+    // settled row should not carry one — but this map exists to preserve a
+    // deadline across a re-suspend, and a record written by an older version
+    // (or by a third-party store) is not migrated. Reading the status is what
+    // keeps the promise `docs/state.md` makes from being merely a promise.
+    if (state.status !== "waiting" || state.waitingFor === undefined) continue;
+    waits.set(name, state.waitingFor);
   }
   return waits;
 }

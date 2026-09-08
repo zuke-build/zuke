@@ -52,6 +52,7 @@ import type { StateStore } from "./state/store.ts";
 import { resolveRunStore } from "./run_store.ts";
 import { acquireCancelLock } from "./state/cancel_lock.ts";
 import { resolveActor } from "./state/record.ts";
+import { settleWaitingTargets } from "./state/settle.ts";
 import {
   isTerminalRunStatus,
   type RunEvent,
@@ -664,6 +665,12 @@ export interface CancelOptions {
    * `onTimeout` names a specific compensation target routes through here).
    */
   also?: string[];
+  /**
+   * The wait whose expired deadline caused this cancellation, when one did:
+   * the target's name and the message describing the miss. Recorded on that
+   * target's row as it settles, so the terminal record still says why.
+   */
+  expiredWait?: { target: string; message: string };
 }
 
 /** The outcome of {@link cancelRun}. */
@@ -896,7 +903,15 @@ export async function settleExternally(
       });
     }
 
-    await finalizeCancelled(store, runId, actor, outcome, now, terminal);
+    await finalizeCancelled(
+      store,
+      runId,
+      actor,
+      outcome,
+      now,
+      terminal,
+      options.expiredWait,
+    );
     reporter.info(`Run ${runId} ${verb} — ${compensationSummary(outcome)}.`);
     return {
       runId,
@@ -982,6 +997,7 @@ async function finalizeCancelled(
   outcome: CompensationOutcome,
   now: () => string,
   terminal: SettlementTerminal = "cancelled",
+  expiredWait?: { target: string; message: string },
 ): Promise<void> {
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     const loaded = await store.getRun(id);
@@ -990,6 +1006,13 @@ async function finalizeCancelled(
     const next = structuredClone(loaded.record);
     next.status = terminal;
     next.updatedAt = at;
+    // A run that has ended has no live waiter. Cancelling a *suspended* run
+    // settles nothing by itself — the walk only visits targets a process was
+    // running — so a gate would be left `waiting` on a terminal record, and
+    // `zuke runs show` would print it as still parked on a deadline nobody is
+    // watching. Runs after the compensation walk, which treats a `waiting`
+    // target as unproven and unwinds it.
+    settleWaitingTargets(next, at, expiredWait);
     for (const event of compensationEvents(outcome.attempts, actor, at)) {
       next.events.push(event);
     }

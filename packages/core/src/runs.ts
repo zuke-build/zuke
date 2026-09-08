@@ -311,7 +311,10 @@ function targetDuration(state: TargetRunState): string | undefined {
 function targetNote(state: TargetRunState): string {
   const notes = formatSummary(state.summary);
   const trailing = notes === "" ? "" : `  // ${notes}`;
-  if (state.status === "failed" && state.error !== undefined) {
+  // Any status, not just `failed`: a gate whose deadline expired under an
+  // `onTimeout` that cancels the run settles `skipped` and carries the miss in
+  // its error, and that is the one line telling a reader why the run ended.
+  if (state.error !== undefined) {
     return `  ${state.error}${trailing}`;
   }
   if (state.status === "waiting" && state.waitingFor !== undefined) {

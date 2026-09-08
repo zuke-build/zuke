@@ -328,6 +328,10 @@ Deno.test("resumeRun times out a wait past its deadline", async () => {
     const loaded = await store.getRun(runId);
     assertEquals(loaded?.record.status, "failed");
     assertEquals(loaded?.record.targets.gate.status, "failed");
+    // The target gave up on the wait, so it no longer carries it: a failed row
+    // holding a `waitingFor` reads to every consumer of the record — and to
+    // `zuke runs show` — as a target still parked on a deadline.
+    assertEquals(loaded?.record.targets.gate.waitingFor, undefined);
   });
 });
 
