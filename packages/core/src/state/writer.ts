@@ -35,6 +35,7 @@ import type {
 } from "./types.ts";
 import type { SummaryEntry } from "../summary_note.ts";
 import { recordStatusOf } from "./record.ts";
+import { settleTargetRow, settleWaitingTargets } from "./settle.ts";
 import { acquireCancelLock, type CancelLock } from "./cancel_lock.ts";
 import { messageOf } from "../internal.ts";
 
@@ -254,12 +255,11 @@ export class RunStateWriter {
       }));
     return this.#update((record) => {
       const target = ensureTarget(record, name);
-      target.status = recorded;
-      target.endedAt = at;
+      // Settling drops the target's `waitingFor` (e.g. a gate satisfied on
+      // resume) — see `settleTargetRow`.
+      settleTargetRow(target, recorded, at);
       if (message !== undefined) target.error = message;
       if (notes !== undefined) target.summary = notes;
-      // A settled target is no longer waiting (e.g. a gate satisfied on resume).
-      delete target.waitingFor;
     });
   }
 
@@ -302,6 +302,12 @@ export class RunStateWriter {
   /** Record a target as waiting on an external event, with its pending wait. */
   markTargetWaiting(name: string, wait: WaitState): Promise<void> {
     return this.#update((record) => {
+      // A run someone else has already settled has no gate left to park on.
+      // Without this, the settled-elsewhere re-apply below would put `waiting`
+      // back onto a terminal record — the one window where a `zuke cancel`
+      // races a process that is parking a gate right then — and leave a row
+      // that is `waiting` and `endedAt` at once.
+      if (this.#settledElsewhere) return;
       const target = ensureTarget(record, name);
       target.status = "waiting";
       // Redact the trigger descriptor like every other stored string (errors,
@@ -332,8 +338,13 @@ export class RunStateWriter {
 
   /** Record the run as `cancelled` — the terminal state after compensations. */
   markRunCancelled(): Promise<void> {
+    const at = this.#now();
     return this.#update((record) => {
       record.status = "cancelled";
+      // The in-process half of the same sweep `finalizeCancelled` runs for an
+      // out-of-process `zuke cancel`: a cancelled run has no live waiter, and
+      // its compensation walk has already finished by the time this is called.
+      settleWaitingTargets(record, at);
     });
   }
 

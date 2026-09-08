@@ -164,6 +164,107 @@ Deno.test("a wait past its deadline times out on resume --check", async () => {
     assertEquals(checked.code, 1);
     assertStringIncludes(checked.out, "1 failed.");
     assertEquals(await runStatus(dir, id), "failed");
+
+    // The failed target no longer carries the wait it gave up on — the timeout
+    // fast-path settles the row by hand, without the writer that would
+    // otherwise drop it, so `runs show` would print a failed target as parked
+    // on a deadline in the past.
+    const store = new FileSystemStateStore(dir, defaultStateHost);
+    const gate = (await store.getRun(id))?.record.targets["gate"];
+    assertEquals(gate?.status, "failed");
+    assertEquals(gate?.waitingFor, undefined);
+  });
+});
+
+Deno.test("a timeout settles the run's other parked gates too", async () => {
+  await withStateDir(async (dir) => {
+    class B extends Build {
+      // Two independent gates: only gateA's deadline has passed.
+      gateA = target().waitsFor((s) => s.on(externalSignal("a")).timeout(0));
+      gateB = target().waitsFor((s) => s.on(externalSignal("b")).timeout("1h"));
+      all = target().dependsOn(this.gateA, this.gateB).executes(() => {});
+    }
+    const first = await runCli(B, ["all"]);
+    assertEquals(first.code, 0);
+    const id = await onlyRunId(dir);
+
+    const checked = await runCli(B, ["resume", "--check"]);
+    assertEquals(checked.code, 1);
+    assertEquals(await runStatus(dir, id), "failed");
+
+    const store = new FileSystemStateStore(dir, defaultStateHost);
+    const targets = (await store.getRun(id))?.record.targets;
+    assertEquals(targets?.["gateA"].status, "failed");
+    // The run is terminal, so gateB is never resumed either. Failing only the
+    // wait that expired would leave its sibling `waiting` forever, on a record
+    // no sweep reaches again.
+    assertEquals(targets?.["gateB"].status, "skipped");
+    assertEquals(targets?.["gateB"].waitingFor, undefined);
+  });
+});
+
+Deno.test("a cancel-run timeout still records the deadline it missed", async () => {
+  await withStateDir(async (dir) => {
+    class B extends Build {
+      // A zero-length deadline is already past by the time the sweep runs.
+      approval = target().waitsFor((s) =>
+        s.on(externalSignal("go")).timeout(0).onTimeout(() => "cancel-run")
+      );
+      deploy = target().dependsOn(this.approval).executes(() => {});
+    }
+    const first = await runCli(B, ["deploy"]);
+    assertEquals(first.code, 0);
+    const id = await onlyRunId(dir);
+
+    const checked = await runCli(B, ["resume", "--check"]);
+    assertEquals(checked.code, 1);
+    assertEquals(await runStatus(dir, id), "cancelled");
+
+    // The `fail` disposition records the miss in the target's error. This
+    // disposition cancels the run instead, and settles the gate through the
+    // cancellation's sweep — which would otherwise leave a record that cannot
+    // tell a missed deadline from an operator typing `zuke cancel`.
+    const store = new FileSystemStateStore(dir, defaultStateHost);
+    const gate = (await store.getRun(id))?.record.targets["approval"];
+    assertEquals(gate?.status, "skipped");
+    assertEquals(gate?.waitingFor, undefined);
+    assertStringIncludes(gate?.error ?? "", 'wait "approval" timed out');
+
+    const shown = await runCli(B, ["runs", "show", id]);
+    assertStringIncludes(shown.out, 'wait "approval" timed out');
+  });
+});
+
+Deno.test("cancelling a suspended run settles the gate it was parked on", async () => {
+  await withStateDir(async (dir) => {
+    class B extends Build {
+      gate = target().waitsFor((s) =>
+        s.on(externalSignal("never")).timeout("1h")
+      );
+    }
+    const first = await runCli(B, ["gate"]);
+    assertEquals(first.code, 0);
+    const id = await onlyRunId(dir);
+    assertEquals(await runStatus(dir, id), "suspended");
+
+    const cancelled = await runCli(B, ["cancel", id]);
+    assertEquals(cancelled.code, 0);
+    assertEquals(await runStatus(dir, id), "cancelled");
+
+    // A terminal run has no live waiter, so the gate is settled rather than
+    // left claiming to wait for a signal nobody will send.
+    const store = new FileSystemStateStore(dir, defaultStateHost);
+    const gate = (await store.getRun(id))?.record.targets["gate"];
+    assertEquals(gate?.status, "skipped");
+    assertEquals(gate?.waitingFor, undefined);
+
+    // Which is what `runs show` reports — it prints a `waiting` target's
+    // trigger with no run-status guard, so a stale row is visible to an
+    // operator, not merely to a record reader.
+    const shown = await runCli(B, ["runs", "show", id]);
+    assertEquals(shown.code, 0);
+    assertStringIncludes(shown.out, "status:   cancelled");
+    assertStringIncludes(shown.out, "gate  skipped");
   });
 });
 

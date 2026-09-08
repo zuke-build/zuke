@@ -84,7 +84,7 @@ Each run is stored as one JSON document:
       "meta": { "target": "sit-7" },
       "startedAt": "…",
       "endedAt": "…",
-      "waitingFor": null, // the gate it is parked on, when suspended
+      "waitingFor": null, // the gate it is parked on; present only while `waiting`
       "effects": {} // per-effect intent + settlement, for crash re-drive
     }
   },
@@ -96,6 +96,12 @@ A target's `status` is one of `pending`, `running`, `succeeded`, `failed`,
 `skipped`, and `waiting` (parked at a [`.waitsFor()`](./orchestration.md) gate).
 This is a **separate vocabulary** from the console's `passed`/`cached`: both of
 those map to `succeeded` in the record.
+
+`waitingFor` belongs to that `waiting` status and goes with it: a target that
+settles by any path — the gate satisfied, the timeout fired, the run cancelled —
+no longer carries one. So a run that has reached a terminal status never has a
+target still claiming to be parked on a gate, and a reader can trust the two to
+agree.
 
 The executor writes the record when it is created, on each target's start and
 finish, and when the run ends. So if the process is killed mid-run, the record

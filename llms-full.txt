@@ -2638,6 +2638,10 @@ interface CancelOptions
   also?: string[]
     Extra compensation target names to run first (a timed-out wait whose
     `onTimeout` names a specific compensation target routes through here).
+  expiredWait?: { target: string; message: string; }
+    The wait whose expired deadline caused this cancellation, when one did:
+    the target's name and the message describing the miss. Recorded on that
+    target's row as it settles, so the terminal record still says why.
 
 interface CancelResult
   The outcome of {@link cancelRun}.

@@ -161,6 +161,13 @@ When the scheduler reaches a wait whose trigger is **not** satisfied:
 4. The process prints where the run was saved and **exits 0** — a suspended run
    has not failed.
 
+However the wait ends — satisfied, timed out, or the run cancelled under it —
+the target settles and its `waitingFor` goes with the `waiting` status. Both
+cancellation paths reach the parked target even though no process was running
+it — the executor's own abort and an out-of-process `zuke cancel` alike —
+recording it `skipped`, so a terminal run never leaves a target claiming to
+wait for something nobody will send.
+
 A satisfied trigger, by contrast, passes straight through: the gate is
 `succeeded` and its dependents run in the same process.
 
@@ -210,7 +217,9 @@ its recorded `onTimeout` disposition:
 - **`"cancel-run"`** — the run is **cancelled**: every succeeded target's
   compensation runs (see [Cancellation](#cancellation--compensation--oncancel))
   and the record settles `cancelled`. This is what unwinds a stuck deploy → wait
-  and releases its locks, rather than leaving them held until their TTL.
+  and releases its locks, rather than leaving them held until their TTL. The
+  gate settles `skipped`, carrying the deadline it missed as its error — so the
+  record still tells a missed deadline apart from an operator's `zuke cancel`.
 - **a sibling target** (`.onTimeout(() => this.rollback)`) — that specific
   target runs as a compensation, then the run is cancelled (running the rest of
   the compensations too).

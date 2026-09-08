@@ -33,6 +33,7 @@ import type { JsonValue, TargetBuilder } from "./target.ts";
 import type { StateStore } from "./state/store.ts";
 import { resolveRunStore } from "./run_store.ts";
 import { resolveActor } from "./state/record.ts";
+import { settleTargetRow, settleWaitingTargets } from "./state/settle.ts";
 import type {
   RunGraphNode,
   RunRecord,
@@ -433,6 +434,18 @@ async function announceRunState(
 }
 
 /**
+ * How a timed-out wait reads wherever it is reported — the target's `error` on
+ * the record, and the error the resume returns. One wording, so the record and
+ * the console cannot drift into describing the same missed deadline differently.
+ */
+function timedOutMessage(
+  expired: { name: string; waitingFor: WaitState },
+): string {
+  return `wait "${expired.name}" timed out ` +
+    `(deadline ${expired.waitingFor.deadline})`;
+}
+
+/**
  * Mark a timed-out wait's target `failed` and the run `failed` (CAS-retry), and
  * return a failing result. The onTimeout disposition is left recorded for the
  * cancellation milestone to act on.
@@ -447,19 +460,26 @@ async function failTimedOut(
   let record = initial.record;
   let version = initial.version;
   let settled = initial.record;
-  const message = `wait "${expired.name}" timed out (deadline ` +
-    `${expired.waitingFor.deadline})`;
+  const message = timedOutMessage(expired);
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     if (record.status !== "suspended") break; // someone else moved it on
     const next = structuredClone(record);
+    const at = now();
     const target = next.targets[expired.name];
     if (target !== undefined) {
-      target.status = "failed";
+      // Settling here rather than through `RunStateWriter` — this fast path
+      // never builds one — so the wait is dropped explicitly: the target has
+      // just given up on it, and its deadline is already in the past.
+      settleTargetRow(target, "failed", at);
       target.error = message;
-      target.endedAt = now();
     }
+    // A run can park several gates at once, and only the one whose deadline
+    // passed is failed above. The others are never resumed — this run is about
+    // to be terminal — so they settle too, the same rule the scheduler applies
+    // when a run fails with gates still parked.
+    settleWaitingTargets(next, at);
     next.status = "failed";
-    next.updatedAt = now();
+    next.updatedAt = at;
     const result = await store.putRun(next, version);
     if (result.ok) {
       settled = next;
@@ -508,6 +528,10 @@ async function cancelTimedOut(
     silent: options.silent,
     reporter: options.reporter,
     also,
+    // Without this the gate would settle indistinguishably from one an
+    // operator cancelled by hand, and the terminal record would no longer say
+    // a deadline was missed — which the `fail` disposition does record.
+    expiredWait: { target: expired.name, message: timedOutMessage(expired) },
   });
   // cancelRun settles the record directly (no execute() lifecycle), so re-read
   // the terminal record and let observers (e.g. @zuke/otel) see it.
@@ -519,9 +543,8 @@ async function cancelTimedOut(
     cancelled: true,
     runId: options.runId,
     error: new Error(
-      `resume: run ${options.runId}: wait "${expired.name}" timed out ` +
-        `(deadline ${expired.waitingFor.deadline}) — run cancelled ` +
-        `(${compensationSummary(result)}).`,
+      `resume: run ${options.runId}: ${timedOutMessage(expired)} — run ` +
+        `cancelled (${compensationSummary(result)}).`,
     ),
   };
 }

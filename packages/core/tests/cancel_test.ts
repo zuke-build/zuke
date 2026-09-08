@@ -115,6 +115,48 @@ Deno.test("cancelRun runs a suspended run's compensations in reverse order", asy
   });
 });
 
+Deno.test("cancelRun settles the target its run was parked on", async () => {
+  await withTempStore(async (store) => {
+    const makeBuild = () => {
+      class B extends Build {
+        gate = target().waitsFor((s) =>
+          s.on(externalSignal("approved")).timeout("1h")
+        );
+        promote = target().dependsOn(this.gate).executes(() => {});
+      }
+      const build = new B();
+      discoverTargets(build);
+      return build;
+    };
+    const a = makeBuild();
+    const res = await execute(a, a.promote, {
+      silent: true,
+      stateStore: store,
+    });
+    assertEquals(res.suspended, true);
+    const runId = (await store.listRuns({}))[0].id;
+
+    const result = await cancelRun(makeBuild(), {
+      runId,
+      stateStore: store,
+      silent: true,
+    });
+    assertEquals(result.status, "cancelled");
+
+    // Cancelling a *suspended* run settles nothing by walking — no process was
+    // running a body — so without settling the gate here the record would end
+    // terminal with a target still claiming to be waiting, on a deadline
+    // nobody is watching any more.
+    const loaded = await store.getRun(runId);
+    assertEquals(loaded?.record.status, "cancelled");
+    assertEquals(loaded?.record.targets.gate.status, "skipped");
+    assertEquals(loaded?.record.targets.gate.waitingFor, undefined);
+    assertEquals(typeof loaded?.record.targets.gate.endedAt, "string");
+    // A target the run never reached is untouched: it was never waiting.
+    assertEquals(loaded?.record.targets.promote?.status, "pending");
+  });
+});
+
 Deno.test("cancelRun is a friendly no-op on an already-finished run", async () => {
   await withTempStore(async (store) => {
     const makeBuild = () => {
