@@ -33,9 +33,9 @@ client — can list and run the targets through typed calls; `--allow-run`
 registers it with execution enabled and implies `--mcp`), `--launcher-name
 <name>` (write the launcher under a different name when a `zuke/` directory
 already occupies it — a directory collision now fails with an actionable error
-instead of silently skipping the launcher). Pass `--mcp` when the project is
-going to be worked on by agents: it is the difference between guessing
-`npm run what?` and calling `run:test`.
+instead of silently skipping the launcher). With `--mcp`, an MCP client lists
+and runs the targets through typed calls; without it, the build is still
+discoverable through `./zuke --list --json`.
 
 Running as an agent, always pass `--yes`: it skips every interactive question,
 including the closing "star the Zuke repository?" prompt — that question is for
