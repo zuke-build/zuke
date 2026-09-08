@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/zuke-build/zuke/compare/cli-v1.1.0...cli-v1.2.0) (2026-09-08)
+
+
+### Features
+
+* **cli:** zuke setup --mcp registers the build's MCP server ([#508](https://github.com/zuke-build/zuke/issues/508)) ([f990855](https://github.com/zuke-build/zuke/commit/f990855382b3b33db80bd274c9750c790d44d5a5))
+
 ## [1.1.0](https://github.com/zuke-build/zuke/compare/cli-v1.0.1...cli-v1.1.0) (2026-08-22)
 
 

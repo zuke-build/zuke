@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.48.2](https://github.com/zuke-build/zuke/compare/core-v1.48.1...core-v1.48.2) (2026-09-08)
+
+
+### Bug Fixes
+
+* **core:** settle a target's wait whenever its run settles ([#507](https://github.com/zuke-build/zuke/issues/507)) ([5714993](https://github.com/zuke-build/zuke/commit/5714993e2fd7112fcee8990e4d6111cd4084a1a0))
+
 ## [1.48.1](https://github.com/zuke-build/zuke/compare/core-v1.48.0...core-v1.48.1) (2026-09-08)
 
 
