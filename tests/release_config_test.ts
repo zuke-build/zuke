@@ -109,21 +109,21 @@ Deno.test("the deno workspace lists exactly the configured packages", async () =
   assertEquals(workspace.map(String).sort(), [...PACKAGES].sort());
 });
 
-Deno.test("the README package table lists every workspace package", async () => {
-  // The README's package tables are the human-facing catalog; a package missing
-  // there is invisible to anyone browsing the repo. Enforce it so the membership
-  // lists (workspace, release-please config/manifest, the build/packages.ts
-  // publish loop, and the README) never drift apart.
-  const readme = await Deno.readTextFile("README.md");
+Deno.test("the docs package matrix lists every workspace package", async () => {
+  // docs/packages.md is the human-facing catalogue; a package missing there is
+  // invisible to anyone browsing the repo. Enforce it so the membership lists
+  // (workspace, release-please config/manifest, the build/packages.ts publish
+  // loop, and the matrix) never drift apart.
+  const matrix = await Deno.readTextFile("docs/packages.md");
   const missing = PACKAGES
     .map((path) => path.replace("packages/", ""))
     .filter((name) =>
-      !readme.includes(`[\`@zuke/${name}\`](https://jsr.io/@zuke/${name})`)
+      !matrix.includes(`[\`@zuke/${name}\`](https://jsr.io/@zuke/${name})`)
     );
   assertEquals(
     missing,
     [],
-    `README.md package tables are missing: ${missing.join(", ")}`,
+    `docs/packages.md is missing: ${missing.join(", ")}`,
   );
 });
 
@@ -152,8 +152,8 @@ Deno.test("deno.lock captures release-please's full npm tree", async () => {
 });
 
 /**
- * The files whose prose quotes the size of the workspace. The README package
- * *table* is checked above; this is the number written in sentences ("the 58
+ * The files whose prose quotes the size of the workspace. The package *matrix*
+ * is checked above; this is the number written in sentences ("the 58
  * packages", "a 58-package workspace", "(58 total)"), which drifted for months
  * because nothing compared it to the real list.
  */
@@ -174,18 +174,11 @@ const PACKAGE_COUNT_PROSE = [
 const PACKAGE_COUNT =
   /\b(\d+)(?=(?:-package\b| (?:independent )?(?:JSR )?packages\b| total\)))/g;
 
-/**
- * The README's collapsed wrapper catalogue: its `<summary>` states how many
- * packages the table inside holds. That is a subset count, checked against its
- * own table below and stripped before the workspace-count scan.
- */
-const WRAPPER_SUMMARY = /<summary>.*\((\d+) packages\)<\/summary>/;
-
 Deno.test("every prose mention of the package count matches the workspace", async () => {
   const expected = PACKAGE_DIRS.length;
   const wrong: string[] = [];
   for (const path of PACKAGE_COUNT_PROSE) {
-    const text = (await Deno.readTextFile(path)).replace(WRAPPER_SUMMARY, "");
+    const text = await Deno.readTextFile(path);
     const counts = [...text.matchAll(PACKAGE_COUNT)].map((m) => Number(m[1]));
     assertEquals(
       counts.length > 0,
@@ -200,20 +193,5 @@ Deno.test("every prose mention of the package count matches the workspace", asyn
     wrong,
     [],
     `package count is ${expected}; stale mentions: ${wrong.join(", ")}`,
-  );
-});
-
-Deno.test("the README wrapper summary counts the rows of its own table", async () => {
-  const readme = await Deno.readTextFile("README.md");
-  const summary = readme.match(WRAPPER_SUMMARY);
-  assertEquals(summary !== null, true, "README.md wrapper <summary> not found");
-  const stated = Number(summary?.[1]);
-  const details = readme.slice(readme.indexOf("<details>"));
-  const block = details.slice(0, details.indexOf("</details>"));
-  const rows = block.match(/^\| \[`@zuke\//gm)?.length;
-  assertEquals(
-    stated,
-    rows,
-    `README.md wrapper summary says ${stated} packages; the table has ${rows}`,
   );
 });

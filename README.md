@@ -4,6 +4,7 @@
 </picture>
 
 > A code-first, strongly-typed build automation system for Deno & TypeScript.
+> Your build and your CI are one typed file — and your agent can run it.
 
 <p align="center">
   <a href="https://github.com/zuke-build/zuke/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/zuke-build/zuke/actions/workflows/ci.yml/badge.svg" /></a>
@@ -18,66 +19,92 @@
   <a href="https://deno.com/"><img alt="Built for Deno" src="https://img.shields.io/badge/Deno-2.x-000?logo=deno&logoColor=white" /></a>
 </p>
 
+Zuke lets you define a build as a **TypeScript class**. Each target is a class
+field; targets reference each other by `this.x`, not by string, so a rename is
+a refactor and a typo is a compile error. From that one file Zuke resolves the
+dependency graph, runs it in order, **generates your CI YAML**, and exposes the
+whole thing to **AI agents** as typed tools. Inspired by
+[NUKE](https://nuke.build/) for .NET. Zero runtime dependencies.
+
+## Five minutes to a typed build
+
+```sh
+deno install -A -g -n zuke jsr:@zuke/cli   # 1. the CLI, once
+zuke setup                                  # 2. scaffold zuke.ts + the ./zuke launcher
+./zuke                                      # 3. run it
+./zuke generate-ci                          # 4. write .github/workflows/ci.yml from the build
+```
+
+Step 4 needs one line in the build. Here is the whole file after you have
+replaced the scaffolded sample target with real work:
+
+<!-- check -->
+
+```ts
+import { Build, cicd, run, target } from "jsr:@zuke/core";
+import { DenoTasks } from "jsr:@zuke/deno";
+
+class MyBuild extends Build {
+  ci = cicd({ provider: "github" }); // ← the pipeline, generated and verified
+
+  lint = target().executes(() => DenoTasks.lint());
+
+  test = target()
+    .dependsOn(this.lint)
+    .executes(() => DenoTasks.test((s) => s.allowAll().coverage("cov")));
+
+  default = target().dependsOn(this.test).executes(() => {});
+}
+
+await run(MyBuild);
+```
+
+`./zuke test` runs `lint` then `test`. `./zuke --list` prints every target with
+its description and dependencies. `./zuke graph --output=html` draws the graph.
+And the workflow file is regenerated on every run and verified on CI, so the
+YAML can never drift from the build.
+
 <p align="center">
   <img src="https://github.com/zuke-build/zuke/raw/master/assets/demo.svg" alt="Zuke in action: scaffold a build, list targets, run the gate" width="760" />
 </p>
 
-> [!NOTE]
-> **Built with AI.** Much of Zuke — code, tests, and docs — was written with AI
-> assistance, then reviewed, type-checked, and tested in CI. Sharing how it was
-> made so you know what you're getting.
-
-> [!NOTE]
-> **Maturity.** Every one of the 58 packages is `1.x` and follows full semver —
-> `@zuke/core`, the `@zuke/cli` command, and all the tool wrappers. A minor or
-> patch release never breaks a public symbol; a breaking change bumps the major.
-> See [Versioning & compatibility](./docs/versioning.md) for the pinning
-> guidance and how to diagnose a version mismatch.
-
-Zuke lets you define builds as a **TypeScript class**. Each target is a class
-field declared with a fluent API; targets reference each other by `this.x` (not
-strings), forming a dependency graph that Zuke resolves and runs in topological
-order. Inspired by [NUKE](https://nuke.build/) for .NET. Zuke builds itself this
-way — see [its own build graph](./docs/graph.md), regenerated straight from
-`zuke.ts` and verified in CI.
-
-- **Runtime:** Deno
-- **Packages:** `jsr:@zuke/core` plus 50+ typed tool wrappers and plugins and a
-  generic `jsr:@zuke/cmd` fallback (raw shell via `jsr:@zuke/core/shell`) — see
-  [Packages](#packages) for the full matrix with published versions
-- **Build file:** `zuke.ts` in your project root
-- **Zero runtime dependencies**
-
-```ts
-class MyBuild extends Build {
-  compile = target()
-    .dependsOn(this.clean, this.restore)
-    .executes(async () => {
-      await DenoTasks.check((s) => s.paths("mod.ts"));
-    });
-}
-```
+Already have `package.json` scripts or a `Makefile`? `zuke import` turns them
+into a `zuke.ts` with a target per script. Details, the launcher, and a longer
+first build: **[Getting started](./docs/getting-started.md)**.
 
 ## Why Zuke
 
 - **Typed, refactor-safe dependencies.** You wire targets together with
   `this.clean`, not `"clean"`. Rename a target and every reference moves with
   it; a typo is a compile error, not a runtime surprise.
-- **Just TypeScript.** Your build logic is ordinary async functions with full
-  editor support — no YAML, no bespoke DSL.
-- **Ergonomic shell.** The `$` tagged template runs processes with sane defaults
-  (throw on failure, capture output) and is injection-safe.
-- **Small and explicit.** A tiny core: discover targets, build a graph, sort,
-  run. No magic, and no plugins to learn for a basic build — the
+- **Never write CI YAML again.** Declare the pipeline in the build with
+  `cicd({ provider: "github" })` — the provider is the only required field —
+  and Zuke generates GitHub Actions, GitLab CI, Azure Pipelines, or Bitbucket
+  YAML. `fanOut: true` turns every target into its own job wired by `needs:`
+  edges that mirror `dependsOn`. It is regenerated on every run, and
+  `generate-ci --check` fails CI when the committed file has drifted. You run
+  the exact same targets locally with `./zuke ci` before you push.
+- **Let your agent run the build.** `./zuke mcp` serves the build over the
+  [Model Context Protocol](./docs/mcp.md): an agent lists the targets, reads
+  the graph, and runs one with typed parameters, instead of guessing
+  `npm run what?`. `./zuke --list --json` and the generated
+  [`llms.txt`](./llms.txt) are the static counterparts, and the
+  [agent skills](./docs/agent-skills.md) teach Claude Code, Codex, and Gemini
+  CLI to write a `zuke.ts` the right way.
+- **Just TypeScript.** Build logic is ordinary async functions with full editor
+  support — no bespoke DSL. The `$` tagged template from `@zuke/core/shell`
+  runs processes with sane defaults and is injection-safe, so it also replaces
+  the `scripts/*.sh` nobody dares touch.
+- **A typed wrapper for every tool.** 58 packages: a tiny core, the CLI, and a
+  `*Tasks` object per tool — Deno, npm, pnpm, Bun, Docker, Kubernetes,
+  Terraform, Vite, Playwright, GitHub, Claude Code, and the rest — whose
+  settings lambdas mirror the real flags. See [Packages](./docs/packages.md).
+- **Small and explicit.** Discover targets, build a graph, sort, run. No magic,
+  and no plugins to learn for a basic build — the
   [plugin contract](./docs/extending.md) is there once you want one.
-- **Code-first CI.** Declare your pipeline in the build with
-  `cicd({ provider: "github" })` — the provider is the only required field — and
-  Zuke generates GitHub Actions, GitLab CI, or Azure Pipelines YAML,
-  regenerating it whenever the build runs (and verifying it on CI).
 
-See **[How Zuke compares](./docs/comparison.md)** for a capability-by-capability
-matrix against `deno task`, npm scripts, Make, Nx, Turborepo, and Dagger, on the
-capabilities Zuke was built to provide.
+See **[How Zuke compares](./docs/comparison.md)** for a capability matrix
+against `deno task`, npm scripts, Make, Nx, Turborepo, and Dagger.
 
 ## Who's using Zuke
 
@@ -96,25 +123,36 @@ Teams running Zuke in production:
 
 ## Install
 
-You need [Deno](https://deno.com/) installed. The fastest start is the
-`@zuke/cli` tool — install it once, then scaffold a starter `zuke.ts`, the
-`./zuke` launchers, and a `deno.json` task into any directory:
+Zuke runs on [Deno](https://deno.com/) and is imported straight from
+[JSR](https://jsr.io/@zuke) — there is nothing else to install. The scaffolded
+`./zuke` launcher (and `zuke.ps1` on Windows) runs the build with the Deno on
+your `PATH`; for a checkout that needs **nothing** installed up front, copy
+Zuke's own [`zuke`](./zuke) / [`zuke.ps1`](./zuke.ps1), which bootstrap a
+pinned, checksum-verified Deno on first use.
 
 ```sh
-deno install -A -g -n zuke jsr:@zuke/cli   # once
-zuke setup                                 # in your project
-./zuke                                     # run the build
+deno install -A -g -n zuke jsr:@zuke/cli   # the CLI: setup, import, doc
+zuke setup                                  # or: deno run -A jsr:@zuke/cli setup
+zuke import                                 # migrate package.json scripts / a Makefile instead
 ```
 
-See **[Getting started](./docs/getting-started.md)** for the full walkthrough
-(scaffolding, the `./zuke` launcher, a first build, and GitHub Actions output).
+> [!NOTE]
+> **Maturity.** Every one of the 58 packages is `1.x` and follows full semver —
+> `@zuke/core`, the `@zuke/cli` command, and all the tool wrappers. A minor or
+> patch release never breaks a public symbol; a breaking change bumps the major.
+> See [Versioning & compatibility](./docs/versioning.md). The npm scope `@zuke`
+> is not controlled by this project — install from JSR, not npm.
+
+> [!NOTE]
+> **Built with AI.** Much of Zuke — code, tests, and docs — was written with AI
+> assistance, then reviewed, type-checked, and tested in CI. Sharing how it was
+> made so you know what you're getting.
 
 ## GitHub Actions
 
 The [**Zuke Build**](https://github.com/marketplace/actions/zuke-build) action
-on the Marketplace is the whole prelude a Zuke job needs — it hardens the
-runner, checks the repository out, optionally installs Deno, and runs a target,
-in one step:
+is the whole prelude a Zuke job needs — it hardens the runner, checks the
+repository out, and runs a target, in one step:
 
 ```yaml
 jobs:
@@ -126,198 +164,52 @@ jobs:
           target: ci
 ```
 
-It goes **first**, before any checkout of your own: a remote action is fetched
-by the runner, not from your workspace, which is what lets it install an egress
-policy before the code that policy governs is ever fetched.
-
-| Input                 | Default | What it does                                                                       |
-| --------------------- | ------- | ---------------------------------------------------------------------------------- |
-| `target`              | `""`    | The Zuke target to run. Omit to harden and check out only.                         |
-| `egress-policy`       | `audit` | `audit` records outbound traffic; `block` enforces `allowed-endpoints`.            |
-| `allowed-endpoints`   | `""`    | Space-separated `host:port` list permitted under `block`.                          |
-| `persist-credentials` | `false` | Leave the token in git config, for a job that pushes.                              |
-| `fetch-depth`         | `1`     | Commits to fetch. `0` is the full history, which a secret scan needs.              |
-| `ref`                 | `""`    | Branch, tag or SHA to check out. Refused on a secret-bearing event — see below.    |
-| `deno-version`        | `""`    | Install this Deno. Usually unnecessary — the `./zuke` launcher bootstraps its own. |
-
-Two things worth knowing before you rely on it:
-
-- **`egress-policy` starts at `audit`, not `block`** — the opposite of
-  harden-runner's own default. That is deliberate, since `block` with an empty
-  allowlist fails a build on its first outbound request, but it means the
-  default **records** egress rather than enforcing it. Run once on `audit`, take
-  the endpoint list from the run's insights, then set both.
-- **`ref` is refused on an event whose content a contributor writes** —
-  `pull_request_target`, `issue_comment`, `workflow_run` and the rest. Those run
-  with your secrets and a writable token, so checking out a ref someone else
-  controls hands them both. `pull_request` and `push` are unaffected.
-
-Pin the full commit SHA rather than the moving `v1` tag when you commit it, the
-way you would any other action:
-
-```yaml
-- uses: zuke-build/zuke@<40-character-sha> # v1.0.2
-```
-
-[The action section](./docs/getting-started.md#the-zuke-buildzuke-action) covers
-the rest. Zuke's own six workflows all open with it, generated from the build —
-so the version documented here is the version this repository runs on itself.
-
-> [!NOTE]
-> All packages publish to [JSR](https://jsr.io/@zuke) from CI via release-please
-> and OIDC (see [`RELEASING.md`](./RELEASING.md)). The npm scope `@zuke` is not
-> controlled by this project — install from JSR, not npm.
+Pin the full commit SHA rather than the moving `v1` tag when you commit it, as
+you would any other action. Zuke's own six workflows all open with it,
+generated from the build. Every input, the `egress-policy` default, and why
+`ref` is refused on contributor-controlled events:
+[the action section](./docs/getting-started.md#the-zuke-buildzuke-action).
 
 ## Packages
 
-Zuke ships as a JSR workspace: a tiny core plus a typed wrapper per tool. Every
-package is versioned and published independently — the badges below track the
-latest release on JSR.
+Zuke ships as a JSR workspace of 58 packages: [`@zuke/core`](https://jsr.io/@zuke/core)
+(the engine, the `$` shell, and the tooling base classes), the
+[`@zuke/cli`](https://jsr.io/@zuke/cli) command, a generic
+[`@zuke/cmd`](https://jsr.io/@zuke/cmd) fallback, plugins such as
+[`@zuke/ai`](https://jsr.io/@zuke/ai), [`@zuke/console`](https://jsr.io/@zuke/console)
+and [`@zuke/otel`](https://jsr.io/@zuke/otel), and a typed wrapper per tool —
+[`@zuke/deno`](https://jsr.io/@zuke/deno), [`@zuke/npm`](https://jsr.io/@zuke/npm),
+[`@zuke/docker`](https://jsr.io/@zuke/docker), [`@zuke/gh`](https://jsr.io/@zuke/gh),
+[`@zuke/git`](https://jsr.io/@zuke/git), [`@zuke/kubectl`](https://jsr.io/@zuke/kubectl),
+[`@zuke/terraform`](https://jsr.io/@zuke/terraform), [`@zuke/vite`](https://jsr.io/@zuke/vite),
+[`@zuke/playwright`](https://jsr.io/@zuke/playwright), and more.
 
-> **Looking for the exact API (humans and agents)?** Don't guess and don't shell
-> out — every tool is a typed wrapper. The complete, typed surface of every
-> package is in [`llms-full.txt`](./llms-full.txt) (one file), summarised in
-> [`llms.txt`](./llms.txt); for a single package run
-> `deno doc jsr:@zuke/<package>`. See also [`AGENTS.md`](./AGENTS.md).
-
-| Package                                           | Version                                                                                                                                                                 |
-| ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`@zuke/core`](https://jsr.io/@zuke/core)         | [![JSR](https://jsr.io/badges/@zuke/core)](https://jsr.io/@zuke/core) [![JSR score](https://jsr.io/badges/@zuke/core/score)](https://jsr.io/@zuke/core)                 |
-| [`@zuke/cli`](https://jsr.io/@zuke/cli)           | [![JSR](https://jsr.io/badges/@zuke/cli)](https://jsr.io/@zuke/cli) [![JSR score](https://jsr.io/badges/@zuke/cli/score)](https://jsr.io/@zuke/cli)                     |
-| [`@zuke/cmd`](https://jsr.io/@zuke/cmd)           | [![JSR](https://jsr.io/badges/@zuke/cmd)](https://jsr.io/@zuke/cmd) [![JSR score](https://jsr.io/badges/@zuke/cmd/score)](https://jsr.io/@zuke/cmd)                     |
-| [`@zuke/deno`](https://jsr.io/@zuke/deno)         | [![JSR](https://jsr.io/badges/@zuke/deno)](https://jsr.io/@zuke/deno) [![JSR score](https://jsr.io/badges/@zuke/deno/score)](https://jsr.io/@zuke/deno)                 |
-| [`@zuke/docs`](https://jsr.io/@zuke/docs)         | [![JSR](https://jsr.io/badges/@zuke/docs)](https://jsr.io/@zuke/docs) [![JSR score](https://jsr.io/badges/@zuke/docs/score)](https://jsr.io/@zuke/docs)                 |
-| [`@zuke/npm`](https://jsr.io/@zuke/npm)           | [![JSR](https://jsr.io/badges/@zuke/npm)](https://jsr.io/@zuke/npm) [![JSR score](https://jsr.io/badges/@zuke/npm/score)](https://jsr.io/@zuke/npm)                     |
-| [`@zuke/security`](https://jsr.io/@zuke/security) | [![JSR](https://jsr.io/badges/@zuke/security)](https://jsr.io/@zuke/security) [![JSR score](https://jsr.io/badges/@zuke/security/score)](https://jsr.io/@zuke/security) |
-| [`@zuke/ai`](https://jsr.io/@zuke/ai)             | [![JSR](https://jsr.io/badges/@zuke/ai)](https://jsr.io/@zuke/ai) [![JSR score](https://jsr.io/badges/@zuke/ai/score)](https://jsr.io/@zuke/ai)                         |
-| [`@zuke/console`](https://jsr.io/@zuke/console)   | [![JSR](https://jsr.io/badges/@zuke/console)](https://jsr.io/@zuke/console) [![JSR score](https://jsr.io/badges/@zuke/console/score)](https://jsr.io/@zuke/console)     |
-| [`@zuke/otel`](https://jsr.io/@zuke/otel)         | [![JSR](https://jsr.io/badges/@zuke/otel)](https://jsr.io/@zuke/otel) [![JSR score](https://jsr.io/badges/@zuke/otel/score)](https://jsr.io/@zuke/otel)                 |
-
-<details>
-<summary><strong>All tool wrappers</strong> (48 packages)</summary>
-
-| Package                                                       | Version                                                                                                                                                                                         |
-| ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`@zuke/biome`](https://jsr.io/@zuke/biome)                   | [![JSR](https://jsr.io/badges/@zuke/biome)](https://jsr.io/@zuke/biome) [![JSR score](https://jsr.io/badges/@zuke/biome/score)](https://jsr.io/@zuke/biome)                                     |
-| [`@zuke/bun`](https://jsr.io/@zuke/bun)                       | [![JSR](https://jsr.io/badges/@zuke/bun)](https://jsr.io/@zuke/bun) [![JSR score](https://jsr.io/badges/@zuke/bun/score)](https://jsr.io/@zuke/bun)                                             |
-| [`@zuke/cypress`](https://jsr.io/@zuke/cypress)               | [![JSR](https://jsr.io/badges/@zuke/cypress)](https://jsr.io/@zuke/cypress) [![JSR score](https://jsr.io/badges/@zuke/cypress/score)](https://jsr.io/@zuke/cypress)                             |
-| [`@zuke/cspell`](https://jsr.io/@zuke/cspell)                 | [![JSR](https://jsr.io/badges/@zuke/cspell)](https://jsr.io/@zuke/cspell) [![JSR score](https://jsr.io/badges/@zuke/cspell/score)](https://jsr.io/@zuke/cspell)                                 |
-| [`@zuke/docker`](https://jsr.io/@zuke/docker)                 | [![JSR](https://jsr.io/badges/@zuke/docker)](https://jsr.io/@zuke/docker) [![JSR score](https://jsr.io/badges/@zuke/docker/score)](https://jsr.io/@zuke/docker)                                 |
-| [`@zuke/docker-compose`](https://jsr.io/@zuke/docker-compose) | [![JSR](https://jsr.io/badges/@zuke/docker-compose)](https://jsr.io/@zuke/docker-compose) [![JSR score](https://jsr.io/badges/@zuke/docker-compose/score)](https://jsr.io/@zuke/docker-compose) |
-| [`@zuke/dpdm`](https://jsr.io/@zuke/dpdm)                     | [![JSR](https://jsr.io/badges/@zuke/dpdm)](https://jsr.io/@zuke/dpdm) [![JSR score](https://jsr.io/badges/@zuke/dpdm/score)](https://jsr.io/@zuke/dpdm)                                         |
-| [`@zuke/dprint`](https://jsr.io/@zuke/dprint)                 | [![JSR](https://jsr.io/badges/@zuke/dprint)](https://jsr.io/@zuke/dprint) [![JSR score](https://jsr.io/badges/@zuke/dprint/score)](https://jsr.io/@zuke/dprint)                                 |
-| [`@zuke/eslint`](https://jsr.io/@zuke/eslint)                 | [![JSR](https://jsr.io/badges/@zuke/eslint)](https://jsr.io/@zuke/eslint) [![JSR score](https://jsr.io/badges/@zuke/eslint/score)](https://jsr.io/@zuke/eslint)                                 |
-| [`@zuke/gcloud`](https://jsr.io/@zuke/gcloud)                 | [![JSR](https://jsr.io/badges/@zuke/gcloud)](https://jsr.io/@zuke/gcloud) [![JSR score](https://jsr.io/badges/@zuke/gcloud/score)](https://jsr.io/@zuke/gcloud)                                 |
-| [`@zuke/gh`](https://jsr.io/@zuke/gh)                         | [![JSR](https://jsr.io/badges/@zuke/gh)](https://jsr.io/@zuke/gh) [![JSR score](https://jsr.io/badges/@zuke/gh/score)](https://jsr.io/@zuke/gh)                                                 |
-| [`@zuke/codecov`](https://jsr.io/@zuke/codecov)               | [![JSR](https://jsr.io/badges/@zuke/codecov)](https://jsr.io/@zuke/codecov) [![JSR score](https://jsr.io/badges/@zuke/codecov/score)](https://jsr.io/@zuke/codecov)                             |
-| [`@zuke/claude`](https://jsr.io/@zuke/claude)                 | [![JSR](https://jsr.io/badges/@zuke/claude)](https://jsr.io/@zuke/claude) [![JSR score](https://jsr.io/badges/@zuke/claude/score)](https://jsr.io/@zuke/claude)                                 |
-| [`@zuke/codex`](https://jsr.io/@zuke/codex)                   | [![JSR](https://jsr.io/badges/@zuke/codex)](https://jsr.io/@zuke/codex) [![JSR score](https://jsr.io/badges/@zuke/codex/score)](https://jsr.io/@zuke/codex)                                     |
-| [`@zuke/gemini`](https://jsr.io/@zuke/gemini)                 | [![JSR](https://jsr.io/badges/@zuke/gemini)](https://jsr.io/@zuke/gemini) [![JSR score](https://jsr.io/badges/@zuke/gemini/score)](https://jsr.io/@zuke/gemini)                                 |
-| [`@zuke/git`](https://jsr.io/@zuke/git)                       | [![JSR](https://jsr.io/badges/@zuke/git)](https://jsr.io/@zuke/git) [![JSR score](https://jsr.io/badges/@zuke/git/score)](https://jsr.io/@zuke/git)                                             |
-| [`@zuke/helm`](https://jsr.io/@zuke/helm)                     | [![JSR](https://jsr.io/badges/@zuke/helm)](https://jsr.io/@zuke/helm) [![JSR score](https://jsr.io/badges/@zuke/helm/score)](https://jsr.io/@zuke/helm)                                         |
-| [`@zuke/husky`](https://jsr.io/@zuke/husky)                   | [![JSR](https://jsr.io/badges/@zuke/husky)](https://jsr.io/@zuke/husky) [![JSR score](https://jsr.io/badges/@zuke/husky/score)](https://jsr.io/@zuke/husky)                                     |
-| [`@zuke/jest`](https://jsr.io/@zuke/jest)                     | [![JSR](https://jsr.io/badges/@zuke/jest)](https://jsr.io/@zuke/jest) [![JSR score](https://jsr.io/badges/@zuke/jest/score)](https://jsr.io/@zuke/jest)                                         |
-| [`@zuke/jsr`](https://jsr.io/@zuke/jsr)                       | [![JSR](https://jsr.io/badges/@zuke/jsr)](https://jsr.io/@zuke/jsr) [![JSR score](https://jsr.io/badges/@zuke/jsr/score)](https://jsr.io/@zuke/jsr)                                             |
-| [`@zuke/knip`](https://jsr.io/@zuke/knip)                     | [![JSR](https://jsr.io/badges/@zuke/knip)](https://jsr.io/@zuke/knip) [![JSR score](https://jsr.io/badges/@zuke/knip/score)](https://jsr.io/@zuke/knip)                                         |
-| [`@zuke/kubectl`](https://jsr.io/@zuke/kubectl)               | [![JSR](https://jsr.io/badges/@zuke/kubectl)](https://jsr.io/@zuke/kubectl) [![JSR score](https://jsr.io/badges/@zuke/kubectl/score)](https://jsr.io/@zuke/kubectl)                             |
-| [`@zuke/kustomize`](https://jsr.io/@zuke/kustomize)           | [![JSR](https://jsr.io/badges/@zuke/kustomize)](https://jsr.io/@zuke/kustomize) [![JSR score](https://jsr.io/badges/@zuke/kustomize/score)](https://jsr.io/@zuke/kustomize)                     |
-| [`@zuke/lint-staged`](https://jsr.io/@zuke/lint-staged)       | [![JSR](https://jsr.io/badges/@zuke/lint-staged)](https://jsr.io/@zuke/lint-staged) [![JSR score](https://jsr.io/badges/@zuke/lint-staged/score)](https://jsr.io/@zuke/lint-staged)             |
-| [`@zuke/nest`](https://jsr.io/@zuke/nest)                     | [![JSR](https://jsr.io/badges/@zuke/nest)](https://jsr.io/@zuke/nest) [![JSR score](https://jsr.io/badges/@zuke/nest/score)](https://jsr.io/@zuke/nest)                                         |
-| [`@zuke/node`](https://jsr.io/@zuke/node)                     | [![JSR](https://jsr.io/badges/@zuke/node)](https://jsr.io/@zuke/node) [![JSR score](https://jsr.io/badges/@zuke/node/score)](https://jsr.io/@zuke/node)                                         |
-| [`@zuke/npx`](https://jsr.io/@zuke/npx)                       | [![JSR](https://jsr.io/badges/@zuke/npx)](https://jsr.io/@zuke/npx) [![JSR score](https://jsr.io/badges/@zuke/npx/score)](https://jsr.io/@zuke/npx)                                             |
-| [`@zuke/nx`](https://jsr.io/@zuke/nx)                         | [![JSR](https://jsr.io/badges/@zuke/nx)](https://jsr.io/@zuke/nx) [![JSR score](https://jsr.io/badges/@zuke/nx/score)](https://jsr.io/@zuke/nx)                                                 |
-| [`@zuke/openapi-ts`](https://jsr.io/@zuke/openapi-ts)         | [![JSR](https://jsr.io/badges/@zuke/openapi-ts)](https://jsr.io/@zuke/openapi-ts) [![JSR score](https://jsr.io/badges/@zuke/openapi-ts/score)](https://jsr.io/@zuke/openapi-ts)                 |
-| [`@zuke/orval`](https://jsr.io/@zuke/orval)                   | [![JSR](https://jsr.io/badges/@zuke/orval)](https://jsr.io/@zuke/orval) [![JSR score](https://jsr.io/badges/@zuke/orval/score)](https://jsr.io/@zuke/orval)                                     |
-| [`@zuke/oxlint`](https://jsr.io/@zuke/oxlint)                 | [![JSR](https://jsr.io/badges/@zuke/oxlint)](https://jsr.io/@zuke/oxlint) [![JSR score](https://jsr.io/badges/@zuke/oxlint/score)](https://jsr.io/@zuke/oxlint)                                 |
-| [`@zuke/playwright`](https://jsr.io/@zuke/playwright)         | [![JSR](https://jsr.io/badges/@zuke/playwright)](https://jsr.io/@zuke/playwright) [![JSR score](https://jsr.io/badges/@zuke/playwright/score)](https://jsr.io/@zuke/playwright)                 |
-| [`@zuke/pnpm`](https://jsr.io/@zuke/pnpm)                     | [![JSR](https://jsr.io/badges/@zuke/pnpm)](https://jsr.io/@zuke/pnpm) [![JSR score](https://jsr.io/badges/@zuke/pnpm/score)](https://jsr.io/@zuke/pnpm)                                         |
-| [`@zuke/redocly`](https://jsr.io/@zuke/redocly)               | [![JSR](https://jsr.io/badges/@zuke/redocly)](https://jsr.io/@zuke/redocly) [![JSR score](https://jsr.io/badges/@zuke/redocly/score)](https://jsr.io/@zuke/redocly)                             |
-| [`@zuke/release-please`](https://jsr.io/@zuke/release-please) | [![JSR](https://jsr.io/badges/@zuke/release-please)](https://jsr.io/@zuke/release-please) [![JSR score](https://jsr.io/badges/@zuke/release-please/score)](https://jsr.io/@zuke/release-please) |
-| [`@zuke/shellcheck`](https://jsr.io/@zuke/shellcheck)         | [![JSR](https://jsr.io/badges/@zuke/shellcheck)](https://jsr.io/@zuke/shellcheck) [![JSR score](https://jsr.io/badges/@zuke/shellcheck/score)](https://jsr.io/@zuke/shellcheck)                 |
-| [`@zuke/storybook`](https://jsr.io/@zuke/storybook)           | [![JSR](https://jsr.io/badges/@zuke/storybook)](https://jsr.io/@zuke/storybook) [![JSR score](https://jsr.io/badges/@zuke/storybook/score)](https://jsr.io/@zuke/storybook)                     |
-| [`@zuke/terraform`](https://jsr.io/@zuke/terraform)           | [![JSR](https://jsr.io/badges/@zuke/terraform)](https://jsr.io/@zuke/terraform) [![JSR score](https://jsr.io/badges/@zuke/terraform/score)](https://jsr.io/@zuke/terraform)                     |
-| [`@zuke/tofu`](https://jsr.io/@zuke/tofu)                     | [![JSR](https://jsr.io/badges/@zuke/tofu)](https://jsr.io/@zuke/tofu) [![JSR score](https://jsr.io/badges/@zuke/tofu/score)](https://jsr.io/@zuke/tofu)                                         |
-| [`@zuke/tsc`](https://jsr.io/@zuke/tsc)                       | [![JSR](https://jsr.io/badges/@zuke/tsc)](https://jsr.io/@zuke/tsc) [![JSR score](https://jsr.io/badges/@zuke/tsc/score)](https://jsr.io/@zuke/tsc)                                             |
-| [`@zuke/tsc-alias`](https://jsr.io/@zuke/tsc-alias)           | [![JSR](https://jsr.io/badges/@zuke/tsc-alias)](https://jsr.io/@zuke/tsc-alias) [![JSR score](https://jsr.io/badges/@zuke/tsc-alias/score)](https://jsr.io/@zuke/tsc-alias)                     |
-| [`@zuke/tsdown`](https://jsr.io/@zuke/tsdown)                 | [![JSR](https://jsr.io/badges/@zuke/tsdown)](https://jsr.io/@zuke/tsdown) [![JSR score](https://jsr.io/badges/@zuke/tsdown/score)](https://jsr.io/@zuke/tsdown)                                 |
-| [`@zuke/tsup`](https://jsr.io/@zuke/tsup)                     | [![JSR](https://jsr.io/badges/@zuke/tsup)](https://jsr.io/@zuke/tsup) [![JSR score](https://jsr.io/badges/@zuke/tsup/score)](https://jsr.io/@zuke/tsup)                                         |
-| [`@zuke/tsx`](https://jsr.io/@zuke/tsx)                       | [![JSR](https://jsr.io/badges/@zuke/tsx)](https://jsr.io/@zuke/tsx) [![JSR score](https://jsr.io/badges/@zuke/tsx/score)](https://jsr.io/@zuke/tsx)                                             |
-| [`@zuke/turbo`](https://jsr.io/@zuke/turbo)                   | [![JSR](https://jsr.io/badges/@zuke/turbo)](https://jsr.io/@zuke/turbo) [![JSR score](https://jsr.io/badges/@zuke/turbo/score)](https://jsr.io/@zuke/turbo)                                     |
-| [`@zuke/vite`](https://jsr.io/@zuke/vite)                     | [![JSR](https://jsr.io/badges/@zuke/vite)](https://jsr.io/@zuke/vite) [![JSR score](https://jsr.io/badges/@zuke/vite/score)](https://jsr.io/@zuke/vite)                                         |
-| [`@zuke/vitest`](https://jsr.io/@zuke/vitest)                 | [![JSR](https://jsr.io/badges/@zuke/vitest)](https://jsr.io/@zuke/vitest) [![JSR score](https://jsr.io/badges/@zuke/vitest/score)](https://jsr.io/@zuke/vitest)                                 |
-| [`@zuke/yarn`](https://jsr.io/@zuke/yarn)                     | [![JSR](https://jsr.io/badges/@zuke/yarn)](https://jsr.io/@zuke/yarn) [![JSR score](https://jsr.io/badges/@zuke/yarn/score)](https://jsr.io/@zuke/yarn)                                         |
-
-</details>
+The full matrix with live JSR badges is in **[Packages](./docs/packages.md)**.
+The complete typed surface of every package is in
+[`llms-full.txt`](./llms-full.txt) (one file), summarised in
+[`llms.txt`](./llms.txt); for a single package run `deno doc jsr:@zuke/<package>`.
 
 ## AI in your pipeline
 
-Zuke ships typed wrappers for the major AI coding CLIs, so you can fold a model
-into a build the same way you'd run a linter or a test — as a typed target with
-refactor-safe dependencies.
+Three ways a model joins the build, each a typed target with refactor-safe
+dependencies:
 
-| Package                                       | CLI                                                                   | Flagship task               |
-| --------------------------------------------- | --------------------------------------------------------------------- | --------------------------- |
-| [`@zuke/claude`](https://jsr.io/@zuke/claude) | [Claude Code](https://docs.claude.com/en/docs/claude-code) (`claude`) | `run` (headless `--print`)  |
-| [`@zuke/codex`](https://jsr.io/@zuke/codex)   | [OpenAI Codex](https://developers.openai.com/codex/cli) (`codex`)     | `exec` (headless)           |
-| [`@zuke/gemini`](https://jsr.io/@zuke/gemini) | [Gemini CLI](https://github.com/google-gemini/gemini-cli) (`gemini`)  | `run` (headless `--prompt`) |
-
-Each runs the CLI **non-interactively** so it fits CI: drive a prompt, pick a
-model, constrain the tool set, and capture the response (request JSON for
-machine-readable output). Arguments stay a discrete argv array end-to-end —
-never a concatenated shell string — so command construction is injection-free,
-and API keys ride through the shared `.env(...)` chainer, backed by a
-`parameter().secret()` build input that Zuke masks in CI output.
-
-```ts
-import { Build, parameter, target } from "jsr:@zuke/core";
-import { ClaudeTasks } from "jsr:@zuke/claude";
-
-class MyBuild extends Build {
-  apiKey = parameter("Anthropic API key").secret();
-
-  review = target()
-    .dependsOn(this.test)
-    .executes(async () => {
-      const out = await ClaudeTasks.run((s) =>
-        s.prompt("Review the staged diff for bugs in one paragraph")
-          .model("sonnet")
-          .allowedTools("Read", "Grep")
-          .outputFormat("json")
-          .env({ ANTHROPIC_API_KEY: this.apiKey.value })
-      );
-      console.log(out.stdout);
-    });
-}
-```
-
-The `mcp` (and `config`/`extensions`) tasks are flexible command builders for
-each CLI's matching subcommand group — handy for provisioning MCP servers in CI.
-See [Tools](./docs/tools.md) for the full task matrix.
-
-### AI review and self-healing (`@zuke/ai`)
-
-Beyond driving the coding CLIs, [`@zuke/ai`](https://jsr.io/@zuke/ai) makes a
-model a first-class citizen of the build graph, two ways:
-
-- **AI code review** — a reviewer reads the diff, returns a _structured_
-  assessment (score, severity, findings), writes it to the job summary and the
-  pull request, and **breaks the build** when the risk crosses a threshold you
-  choose. The output is a typed verdict, not a blob of prose.
-- **Self-healing builds** — attach a fixer to any target with
-  `.recoverWith(...)`. When the target fails, `aiFixer` diagnoses it from the
-  error output and the diff and (diagnose-only default) posts a **committable,
-  Copilot-style inline suggestion** to the PR. Opt into `.autoApply()` /
-  `.commitFixes()` and it fixes the working tree, commits, and **re-runs the
-  real command to verify** — a fix only counts when the build actually goes
-  green — posting an overview of what it changed instead of a suggestion.
-- **Agent delegation** — for open-ended fixes, `agentFixer` hands the failure to
-  a coding agent you inject (Claude Code, Codex, Gemini CLI) which edits files
-  itself; one generic fixer, agent chosen at the call site.
-- **Cost controls** — a shared `budget(...)` caps spend across every reviewer
-  and fixer by an exact **token** count (no stale price tables; a USD cap is
-  opt-in with your own rates), `aiCache(...)` reuses a prior response for an
-  identical call, and `suppressions(...)` lets you dismiss a false positive by
-  its stable ID so it never fails the build again.
+- **Drive the coding CLIs.** [`@zuke/claude`](https://jsr.io/@zuke/claude),
+  [`@zuke/codex`](https://jsr.io/@zuke/codex) and
+  [`@zuke/gemini`](https://jsr.io/@zuke/gemini) run Claude Code, OpenAI Codex
+  and Gemini CLI **non-interactively** — a prompt, a model, a constrained tool
+  set, JSON out — with the API key riding a `parameter().secret()` that Zuke
+  masks in CI output. See [Tools](./docs/tools.md).
+- **AI code review that breaks the build.** [`@zuke/ai`](https://jsr.io/@zuke/ai)
+  reads the diff, returns a _structured_ assessment (score, severity, findings),
+  posts it to the pull request, and fails the run when the risk crosses your
+  threshold. See [AI code review](./docs/ai-review.md).
+- **Self-healing targets.** Attach `.recoverWith(aiFixer(…))` to any target:
+  on failure it diagnoses from the error and the diff and posts a committable
+  suggestion — or, opted in, applies the fix, commits, and **re-runs the real
+  command to verify**. `agentFixer` hands the failure to a coding agent
+  instead. A shared `budget(…)` caps spend by token count. See
+  [Self-healing builds](./docs/self-healing.md).
 
 ```ts
 test = target()
@@ -326,141 +218,56 @@ test = target()
   .recoverWith(aiFixer((f) => f.provider("openai").apiKey(this.key)));
 ```
 
-Apply a fixer to **every** target by overriding `recoverWith()` on the build.
-Safe by default (provider + key only): the fixer writes no files and just
-diagnoses. Edits are gated behind a path allowlist, a file cap, and local-only
-defaults, and nothing is committed unless you ask. See
-[AI code review](./docs/ai-review.md) and
-[Self-healing builds](./docs/self-healing.md).
-
 ## Agent skills
 
-Zuke ships **agent skills** so AI coding assistants set up and author builds the
-right way — using the typed `*Tasks` wrappers instead of guessing the API or
-shelling out. Two skills, authored once as portable
-[`SKILL.md`](https://agentskills.io) folders under [`skills/`](./skills):
-
-| Skill              | Use it to                                                                                    |
-| ------------------ | -------------------------------------------------------------------------------------------- |
-| `zuke-setup`       | Scaffold Zuke into a project (`zuke setup`, the `./zuke` launcher, a first build).           |
-| `zuke-write-build` | Write or edit a `zuke.ts` — add targets, wire dependencies, call tool wrappers, generate CI. |
-
-### Claude Code
-
-The skills are packaged as a Claude Code plugin distributed from this repo's
-marketplace. In Claude Code:
+Two skills — `zuke-setup` and `zuke-write-build` — teach an AI coding assistant
+to scaffold Zuke and write a `zuke.ts` using the typed wrappers instead of
+guessing the API. Authored once as portable [Agent Skills](https://agentskills.io)
+under [`skills/`](./skills), and installable into every harness:
 
 ```text
-/plugin marketplace add zuke-build/zuke
-/plugin install zuke@zuke
-```
-
-That makes `zuke-setup` and `zuke-write-build` available — they trigger
-automatically when you ask Claude to add Zuke to a project or write a build, and
-can be invoked explicitly as `/zuke:zuke-setup` and `/zuke:zuke-write-build`.
-
-### OpenAI Codex
-
-The same plugin installs into Codex from this repo (it carries a Codex-native
-`.agents/plugins/marketplace.json` and `.codex-plugin/plugin.json` alongside the
-Claude manifests):
-
-```text
-codex plugin marketplace add zuke-build/zuke
-codex plugin add zuke@zuke
-```
-
-A single skill can also be pulled straight from the repo with Codex's built-in
-installer skill, e.g.
-`$skill-installer install https://github.com/zuke-build/zuke/tree/master/skills/zuke-write-build`.
-
-### Gemini CLI
-
-The repo doubles as a Gemini CLI extension (the root `gemini-extension.json`;
-Gemini auto-discovers the `skills/` folder next to it):
-
-```text
+/plugin marketplace add zuke-build/zuke && /plugin install zuke@zuke   # Claude Code
+codex plugin marketplace add zuke-build/zuke && codex plugin add zuke@zuke
 gemini extensions install https://github.com/zuke-build/zuke
 ```
 
-Gemini installs a GitHub extension from the repo's **latest release**, so the
-extension tracks releases rather than `master`. Each release carries a minimal
-extension archive (the manifest plus `skills/`, attached by the `release`
-target), so the install downloads two skills, not the whole monorepo.
-
-> The `SKILL.md` content is harness-agnostic (the open
-> [Agent Skills](https://agentskills.io) standard); each manifest above is a
-> thin adapter over the shared [`skills/`](./skills) source, so every harness
-> serves the same two skills.
+Per-harness details: **[Agent skills](./docs/agent-skills.md)**.
 
 ## Documentation
 
-Full documentation lives in [`docs/`](./docs/):
+Start here, then browse the full index in [`docs/`](./docs/README.md):
 
 - [Getting started](./docs/getting-started.md) — install, scaffold, the
-  launcher, and a first build.
+  launcher, `zuke import`, and a first build.
 - [Core concepts](./docs/concepts.md) — the build/target/graph model and
   execution semantics.
-- [Zuke's build graph](./docs/graph.md) — the live dependency graph of `zuke.ts`
-  itself, generated by `./zuke graphDoc` and gate-checked in CI.
-- [Parameters](./docs/parameters.md) — typed build inputs from flags and env
-  vars (`parameter()`, `this.x.value`).
 - [Authoring API](./docs/authoring.md) — `target()`, `Build`, `run()`,
   code-first CI generation (`cicd()`), and gotchas.
-- [Run context & cancellation](./docs/run-context.md) — the `TargetContext` a
-  body receives (`runId`, `signal`, `state`) and cancelling a run.
-- [Secrets](./docs/secrets.md) — source secret values from a manager with
-  `.from(...)`, with guaranteed redaction from every output.
-- [Service targets](./docs/services.md) — `service()` for long-lived processes
-  (a dev server, a database) kept running while dependents execute.
-- [Caching](./docs/caching.md) — the incremental build cache
-  (`.inputs()`/`.outputs()`) and the AI response cache (`aiCache`).
-- [Durable run state](./docs/state.md) — persist a run's status and per-target
-  metadata to a pluggable store (`StateStore`, `ctx.state`), with an
-  [HTTP API](./docs/state-api.md) for hosting a production backend.
-- [Cross-run locks](./docs/locks.md) — `.lock()` claims an exclusive resource
-  across runs and machines, with a TTL backstop and typed `LockConflictError`s.
-- [Orchestration: waits](./docs/orchestration.md) — `.waitsFor()` suspends a run
-  until an external signal or predicate, saving its state to be resumed later.
-- [Build registry](./docs/registry.md) — `zuke register` catalogs a build for
-  dynamic, agentic discovery by an MCP server.
-- [Console output](./docs/console.md) — `@zuke/console`: the levelled logger,
-  markup, boxes/tables/rules, and the renderer behind Zuke's own build log.
+- [Parameters](./docs/parameters.md) and [Secrets](./docs/secrets.md) — typed
+  build inputs from flags and env vars, and secret values with guaranteed
+  redaction.
 - [Shell wrapper (`$`)](./docs/shell.md) — ergonomic, injection-safe process
   execution.
-- [Paths (`absolutePath`)](./docs/paths.md) — the fluent path type.
-- [Tools](./docs/tools.md) — the typed tool-wrapper packages and their tasks.
-- [Installing tools](./docs/installing-tools.md) — fetch pinned,
-  checksum-verified CLIs with `installRelease()` and `toolchain()`.
-- [Extending Zuke](./docs/extending.md) — the plugin contract: lifecycle
-  plugins, tool wrappers, and reusable target bundles.
-- [Observability (OpenTelemetry)](./docs/observability.md) — `@zuke/otel`
-  exports run and target spans plus counters as OTLP/HTTP JSON.
-- [MCP server](./docs/mcp.md) — `./zuke mcp` exposes the build to AI agents as
-  typed tools over the Model Context Protocol.
-- [AI code review](./docs/ai-review.md) — gate the build on a structured LLM
-  assessment of the diff (`@zuke/ai`).
-- [Self-healing builds](./docs/self-healing.md) — diagnose and fix failing
-  targets with `recoverWith` and `aiFixer`, including Copilot-style suggestions.
+- [Packages](./docs/packages.md) and [Tools](./docs/tools.md) — the package
+  matrix, and every wrapper's tasks.
 - [Using Zuke in a Node/npm project](./docs/node-projects.md) — drive a Node
   build with Deno.
-- [Scheduled runs](./docs/schedules.md) — `triggers.schedule` (`{ cron, tz }`)
-  compiled to UTC cron with a daylight-saving wall-clock guard.
-- [CLI reference](./docs/cli.md) — commands and flags.
-- [Programmatic API](./docs/programmatic-api.md) — drive Zuke from your own
-  code.
-- [Versioning & compatibility](./docs/versioning.md) — one semver tier across
-  every package, the `@zuke/core` floor, and pinning guidance.
-- [How Zuke compares](./docs/comparison.md) — a capability matrix against
-  `deno task`, npm scripts, Make, Nx, Turborepo, and Dagger, on the capabilities
-  Zuke provides.
+- [MCP server](./docs/mcp.md) and [Agent skills](./docs/agent-skills.md) —
+  the build as typed tools for an agent, and the skills that teach one to
+  write it.
+- [Caching](./docs/caching.md), [Service targets](./docs/services.md),
+  [Durable run state](./docs/state.md), [Cross-run locks](./docs/locks.md),
+  [Orchestration: waits](./docs/orchestration.md) — the layer for real
+  deployments.
+- [CLI reference](./docs/cli.md), [Programmatic API](./docs/programmatic-api.md),
+  [Versioning & compatibility](./docs/versioning.md),
+  [How Zuke compares](./docs/comparison.md).
 
 ## Development
 
 ```sh
 deno task test        # run the suite
 deno task cov         # run with coverage + enforce the 95% gate
-deno task cov:report  # print a per-file coverage table
 deno task check       # type-check
 deno task fmt         # format (fmt:check to verify only)
 deno task lint        # lint
@@ -476,28 +283,21 @@ pull request — see [`AGENTS.md`](./AGENTS.md#commands) for the full check list
 
 Contributions are welcome! Start with [`CONTRIBUTING.md`](./CONTRIBUTING.md) for
 the full workflow, and please be mindful of our
-[`Code of Conduct`](./CODE_OF_CONDUCT.md).
-
-- Read [`AGENTS.md`](AGENTS.md) for the coding standards (strict typing, no
-  `any`/`as`, 95%+ coverage, hermetic tests). `CLAUDE.md` is a one-line pointer
-  to it.
-- Run `deno task ci` before opening a PR — it must be green.
-- Add tests in the same change as the code they cover.
-- Keep commits small and descriptive; update docs when behaviour changes.
+[`Code of Conduct`](./CODE_OF_CONDUCT.md). [`AGENTS.md`](AGENTS.md) holds the
+coding standards (strict typing, no `any`/`as`, 95%+ coverage, hermetic tests);
+`CLAUDE.md` is a one-line pointer to it. Run `deno task ci` before opening a PR,
+add tests in the same change as the code they cover, and update docs when
+behaviour changes.
 
 ## Security
 
 As a build tool that runs in other people's pipelines, Zuke treats supply-chain
 integrity as a first-class concern: zero runtime dependencies, injection-free
 `Deno.Command` execution, OIDC trusted publishing with provenance,
-least-privilege and SHA-pinned CI, a frozen lockfile, and continuous scanning.
-Scanning runs as a typed Zuke target — `deno task zuke
-security` drives zizmor,
-actionlint, and gitleaks through [`@zuke/security`](./packages/security) (which
-also wraps osv-scanner, semgrep, and Trivy) — alongside CodeQL and OpenSSF
-Scorecard for the Security tab.
-
-See [`SECURITY.md`](./SECURITY.md) for the full posture and how to report a
+least-privilege and SHA-pinned CI, a frozen lockfile, and continuous scanning
+(zizmor, actionlint, gitleaks, CodeQL, and OpenSSF Scorecard) driven by a typed
+Zuke target through [`@zuke/security`](./packages/security). See
+[`SECURITY.md`](./SECURITY.md) for the full posture and how to report a
 vulnerability.
 
 ## License
@@ -521,7 +321,7 @@ Zuke stands on the shoulders of giants:
   hermetic build tool possible.
 - **[JSR](https://jsr.io/)** — modern, TypeScript-native package distribution.
 - Every author of the tools Zuke wraps — Docker, Kubernetes, Terraform, Vite,
-  Playwright, and the rest of the matrix above.
+  Playwright, and the rest of the matrix.
 
 ## Community & contact
 
@@ -540,7 +340,10 @@ Questions, ideas, or just want to say hi? Open an
   <a href="https://linktr.ee/totollygeek"><img alt="Linktree" src="https://img.shields.io/badge/totollygeek-39E09B?style=for-the-badge&logo=linktree&logoColor=white" /></a>
 </p>
 
-## Swag
+<details>
+<summary><strong>Swag, activity &amp; contributors</strong></summary>
+
+### Swag
 
 Zuke has a swag shop! Grab some Zuke-branded apparel and accessories and wear
 the build:
@@ -551,7 +354,7 @@ the build:
 
 👉 **<https://totollyshop.myspreadshop.net/>**
 
-## Activity
+### Activity
 
 [![Repobeats analytics](https://repobeats.axiom.co/api/embed/cfe0a93aaa851e719386dc9469ec91ee1b9cf0d0.svg "Repobeats analytics image")](https://github.com/zuke-build/zuke/pulse)
 
@@ -567,3 +370,5 @@ the project. ⭐
 <a href="https://github.com/zuke-build/zuke/graphs/contributors">
   <img alt="Contributors" src="https://contrib.rocks/image?repo=zuke-build/zuke" />
 </a>
+
+</details>
