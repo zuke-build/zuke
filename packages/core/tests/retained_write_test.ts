@@ -111,3 +111,44 @@ Deno.test("an ordinary conflict with nothing retained reports no loss", async ()
   assertEquals(writer.snapshot().degraded, undefined);
   assertEquals(warnings.length, 0);
 });
+
+Deno.test("an effect write that lands carries the retained mutation and clears the debt", async () => {
+  const store = new MemStateStore();
+  const { writer, handle, warnings } = await adopted(store);
+
+  store.failNextPut = true;
+  assertEquals(await handle.trySet({ a: "1" }), false);
+
+  // An effect writes strictly, through a different persist path — but it
+  // CAS-writes the very record the retained patch is sitting in, so landing
+  // carries it to the store exactly as an ordinary write would.
+  assertEquals(await writer.beginEffect("deploy", "post"), "run");
+  assertEquals(store.record?.targets.deploy.meta, { a: "1" });
+
+  // So a later conflict must not report a loss: the mutation is durably in
+  // the store, and a spuriously degraded record is one a resume refuses.
+  store.forceConflicts = 1;
+  assertEquals(await handle.trySet({ b: "2" }), true);
+  assertEquals(writer.snapshot().degraded, undefined);
+  assertEquals(warnings.length, 1); // only the store error itself
+});
+
+Deno.test("a retained write lost to an effect write's conflict is reported", async () => {
+  const store = new MemStateStore();
+  const { writer, handle, warnings } = await adopted(store);
+
+  store.failNextPut = true;
+  assertEquals(await handle.trySet({ a: "1" }), false);
+
+  // The strict path replaces the in-memory record on a conflict just as the
+  // best-effort one does, so it destroys a waiting mutation the same way and
+  // has to report it the same way. Having the check on only one of the two is
+  // how this went unnoticed.
+  store.forceConflicts = 1;
+  assertEquals(await writer.beginEffect("deploy", "post"), "run");
+
+  assertEquals(store.record?.targets.deploy.meta, {});
+  assertEquals(writer.snapshot().degraded, true);
+  assertEquals(warnings.length, 2);
+  assertStringIncludes(warnings[1], "held back and is now lost");
+});

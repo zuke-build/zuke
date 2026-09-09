@@ -620,7 +620,7 @@ export class RunStateWriter {
         throw error;
       }
       if (result.ok) {
-        this.#version = result.version;
+        this.#persisted(result.version);
         return;
       }
       // Another writer moved the record on. Re-read a fresh base and re-apply on
@@ -639,10 +639,7 @@ export class RunStateWriter {
             `recording an effect; refusing to run it without a durable intent`,
         );
       }
-      const degraded = this.#record.degraded;
-      this.#record = fresh.record;
-      this.#record.degraded ||= degraded;
-      this.#version = fresh.version;
+      this.#adoptFreshBase(fresh);
       if (fresh.record.status !== "running") {
         this.#onExternalCancel?.();
         throw new RunNotActiveError(fresh.record.id, fresh.record.status);
@@ -696,6 +693,51 @@ export class RunStateWriter {
     this.#warn?.(message);
   }
 
+  /**
+   * Adopt a freshly read record as the new base after a conflict.
+   *
+   * Both persist paths — the best-effort one and the strict one an effect
+   * uses — have to do exactly this, and having it twice is how they drifted:
+   * the retained-write check was added to one copy and not the other, so an
+   * effect's conflict went on destroying a waiting mutation silently. One
+   * implementation, so the next thing either path learns, both learn.
+   */
+  #adoptFreshBase(fresh: { record: RunRecord; version: string }): void {
+    // A mutation dropped earlier was still living in the record about to be
+    // replaced, and the fresh base has never seen it: the write that was going
+    // to carry it is the one that just conflicted. That is a permanent loss,
+    // so it is reported as one — `degraded` is what stops a later resume
+    // trusting the record.
+    if (this.#retainedPending) {
+      this.#lostWrite(
+        `state: an earlier update to run "${this.#record.id}" was held ` +
+          `back and is now lost — the write meant to carry it conflicted, ` +
+          `and the record it was waiting in has been replaced`,
+      );
+      this.#retainedPending = false;
+    }
+    // Carry the degraded flag across: whoever wrote the record in the store
+    // never saw the write we already lost.
+    const degraded = this.#record.degraded;
+    this.#record = fresh.record;
+    this.#record.degraded ||= degraded;
+    this.#version = fresh.version;
+  }
+
+  /**
+   * Note that a write reached the store: adopt its version, and clear any
+   * retained mutation, which that write has just carried.
+   *
+   * Both persist paths land writes, and both have to clear — a flag left armed
+   * after the mutation reached the store makes the *next* conflict report a
+   * loss that never happened, and a spuriously degraded record is one a resume
+   * refuses.
+   */
+  #persisted(version: string): void {
+    this.#version = version;
+    this.#retainedPending = false;
+  }
+
   /** Apply `mutator` and CAS-write, re-reading and retrying on conflict. */
   async #applyAndPersist(
     mutator: (record: RunRecord) => void,
@@ -708,10 +750,7 @@ export class RunStateWriter {
         this.#record.updatedAt = this.#now();
         const result = await this.#store.putRun(this.#record, this.#version);
         if (result.ok) {
-          this.#version = result.version;
-          // Whatever was waiting in the record went to the store with this
-          // write, which is exactly what `#retainedWrite` promised.
-          this.#retainedPending = false;
+          this.#persisted(result.version);
           return true;
         }
         // Another writer moved the record on: re-read a FRESH base and re-apply
@@ -728,25 +767,7 @@ export class RunStateWriter {
           );
           return false;
         }
-        // A mutation dropped earlier was still living in the record we are
-        // about to replace, and the fresh base has never seen it: the write
-        // that was going to carry it is the one that just conflicted. That is
-        // a permanent loss, so it is reported as one rather than vanishing —
-        // `degraded` is what stops a later resume trusting the record.
-        if (this.#retainedPending) {
-          this.#lostWrite(
-            `state: an earlier update to run "${this.#record.id}" was held ` +
-              `back and is now lost — the write meant to carry it conflicted, ` +
-              `and the record it was waiting in has been replaced`,
-          );
-          this.#retainedPending = false;
-        }
-        // Adopt the fresh base, but carry a degraded flag across: whoever wrote
-        // the record in the store never saw the write we already lost.
-        const degraded = this.#record.degraded;
-        this.#record = fresh.record;
-        this.#record.degraded ||= degraded;
-        this.#version = fresh.version;
+        this.#adoptFreshBase(fresh);
         // Another process has taken the run's outcome: a `zuke cancel`, or a
         // sweep settling a run it found abandoned or past its deadline. Re-apply
         // our (target-level) change onto its record — so a just-settled
@@ -769,8 +790,9 @@ export class RunStateWriter {
             this.#version,
           );
           if (reapply.ok) {
+            // Not `#persisted`: `#adoptFreshBase` above already settled any
+            // retained mutation, so there is never one left to clear here.
             this.#version = reapply.version;
-            this.#retainedPending = false;
           } else {
             // The canceller finalises the run from here, so no later write of
             // ours lands to carry this mutation: it is gone for good.
