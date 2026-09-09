@@ -11,7 +11,7 @@
  */
 
 import { type Build, discoverTargets } from "./build.ts";
-import { type AnyParameter, discoverParameters, flagName } from "./params.ts";
+import { type AnyParameter, discoverParameters, flagOf } from "./params.ts";
 import type { TargetBuilder } from "./target.ts";
 import {
   BUILTIN_FLAGS,
@@ -102,7 +102,7 @@ function targetInfo(name: string, t: TargetBuilder): CliTargetInfo {
 function parameterInfo(name: string, p: AnyParameter): CliParameterInfo {
   const info: CliParameterInfo = {
     name,
-    flag: flagName(name),
+    flag: flagOf(name, p),
     description: p.description_ ?? "",
     required: p.required_,
     kind: p.kind_,

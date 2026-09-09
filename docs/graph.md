@@ -41,7 +41,7 @@ flowchart TD
   t30["security"]
   t31["actionPinCheck"]
   t32["ci"]
-  t33["scorecardSarif"]
+  t33["scorecard"]
   t34["codeql"]
   t35["reviewBase"]
   t36["review"]
@@ -99,7 +99,7 @@ flowchart TD
 | `syncWebsite` | Open and merge a website PR with refreshed llms.txt + api.json | — |
 | `docLint` | Fail on missing JSDoc or first-party private-type refs (deno doc --lint) | — |
 | `snippetsCheck` | Type-check the marked ts snippets in docs and skills | — |
-| `examplesCheck` | Type-check every example project and list its targets | — |
+| `examplesCheck` | Type-check every example, list its targets, verify its CI | — |
 | `hclGen` | Regenerate the Terraform/OpenTofu wrappers from one template | — |
 | `hclSyncCheck` | Verify the Terraform/OpenTofu wrappers match their template | — |
 | `pluginSync` | Sync plugins/zuke/skills/ from skills/ (real copies, not a symlink) | — |
@@ -116,7 +116,7 @@ flowchart TD
 | `security` | Run supply-chain security scanners (zuke/security) | — |
 | `actionPinCheck` | Verify the workflows only use inputs the released action has | — |
 | `ci` | Full pre-commit / CI gate | `format`, `lint`, `spell`, `coverage`, `coverageUpload`, `apiDocsCheck`, `docLint`, `snippetsCheck`, `examplesCheck`, `hclSyncCheck`, `pluginSyncCheck`, `launcherSyncCheck`, `skillsCheck`, `graphDocCheck`, `pluginVersionCheck`, `prBodyLint`, `actionPinCheck`, `security`, `lockCheck` |
-| `scorecardSarif` | Upload the Scorecard SARIF to GitHub code scanning | — |
+| `scorecard` | OpenSSF Scorecard (runs in CI via scorecard.yml) | — |
 | `codeql` | CodeQL static analysis (runs in CI via codeql.yml) | — |
 | `reviewBase` | Fetch the base branch the AI review diffs against | — |
 | `review` | AI review of the diff (security + code quality) | `reviewBase` |

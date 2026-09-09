@@ -254,3 +254,17 @@ export const BUILTIN_FLAGS: readonly BuiltinFlag[] = [
 export const BUILTIN_FLAG_NAMES: readonly string[] = BUILTIN_FLAGS.map((flag) =>
   flag.name.slice(2)
 );
+
+/**
+ * What a usable flag name looks like: lowercase letters, digits and dashes,
+ * starting with a letter.
+ *
+ * Shape, not just membership, is what makes {@link BUILTIN_FLAG_NAMES} a
+ * sufficient check. The parser splits `--flag=value` at the first `=` and
+ * matches the prefix, so a "flag" of `actor=mallory` is not in the built-in
+ * list yet reaches the parser **as** `--actor` — landing a value on the
+ * built-in and forging the run's actor. Anything with an `=`, a space, a
+ * leading dash or a different case can mean something to the parser other than
+ * what it says, so it is refused wherever a flag is declared or read.
+ */
+export const VALID_FLAG_NAME = /^[a-z][a-z0-9-]*$/;

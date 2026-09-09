@@ -460,19 +460,22 @@ class ZukeBuild extends Build {
     });
 
   examplesCheck = target()
-    .description("Type-check every example project and list its targets")
+    .description("Type-check every example, list its targets, verify its CI")
     .executes(async () => {
       // The examples import `jsr:@zuke/*`, which resolves to the workspace from
       // inside this repository — so each one is held to the real source, not a
       // published version that could lag behind it. A failing `--list` catches
-      // what a type-check cannot: a build that no longer constructs.
+      // what a type-check cannot: a build that no longer constructs. And
+      // `generate-ci --check` catches what neither can: an example that commits
+      // generated pipeline files the current renderer no longer produces.
       const examples = await discoverExamples();
       const failures = await checkExamples(examples);
       if (failures.length > 0) {
         throw new Error(formatExampleFailures(failures));
       }
       ConsoleTasks.info(
-        `${examples.length} example(s) type-check and list their targets.`,
+        `${examples.length} example(s) type-check, list their targets, and ` +
+          "carry up-to-date pipeline files.",
       );
     });
 
@@ -847,22 +850,27 @@ class ZukeBuild extends Build {
     )
     .executes(() => {});
 
-  // Publish the OpenSSF Scorecard run's SARIF to code scanning, dogfooding
-  // @zuke/gh's `uploadSarif`. This replaced two steps in scorecard.yml — the
-  // `upload-artifact` and the `codeql-action/upload-sarif` — with one target;
-  // the scorecard action itself stays, because publishing the public score
-  // (`publish_results`) is something only it can do.
-  scorecardSarif = target()
-    .description("Upload the Scorecard SARIF to GitHub code scanning")
-    .executes(async () => {
-      const report = "results.sarif";
-      if (!await FileTasks.exists(report)) {
-        throw new Error(
-          `${report} is missing — run the scorecard step before this target.`,
-        );
-      }
-      const { url } = await GhTasks.uploadSarif((s) => s.file(report));
-      ConsoleTasks.success(`Uploaded ${report} to code scanning (${url}).`);
+  // The OpenSSF Scorecard is the supply-chain score behind the README badge.
+  // Like `codeql` below, the job in the generated `scorecard.yml` (declared in
+  // `build/workflows.ts`) is the marketplace actions and nothing else: the
+  // scorecard action computes and publishes the score, and `upload-sarif` puts
+  // its report on the Security tab. That is not a choice — scorecard.dev only
+  // accepts a score from a job made of a short allowlist of actions, so the
+  // Zuke prelude and a `./zuke` step that used to upload the SARIF through
+  // @zuke/gh both kept the badge frozen (issue #514). This body therefore runs
+  // only on a *local* invocation, where there is no scorecard CLI in the
+  // toolchain, and it fails rather than reports for the same reason `codeql`
+  // does.
+  scorecard = target()
+    .description("OpenSSF Scorecard (runs in CI via scorecard.yml)")
+    .executes(() => {
+      throw new Error(
+        "The OpenSSF Scorecard cannot run locally: there is no scorecard CLI " +
+          "in the toolchain. It runs in CI — the generated " +
+          ".github/workflows/scorecard.yml scores every push to master and " +
+          "a weekly schedule, publishes the result to scorecard.dev, and " +
+          "uploads the SARIF to the repository's Security tab.",
+      );
     });
 
   // CodeQL is the SAST lane: GitHub's hosted static analysis over the

@@ -1712,6 +1712,8 @@ class Parameter<K extends ParamValue = ParamValue, T extends K | K[] | undefined
     The allowed string choices, if restricted with {@link Parameter.options}.
   readonly envName_?: string
     An explicit environment variable name override.
+  readonly flagName_?: string
+    An explicit CLI flag name override, without the leading dashes.
   readonly hasFallback_: boolean
     Whether the parameter has a declared default value.
   readonly secret_: boolean
@@ -1752,6 +1754,19 @@ class Parameter<K extends ParamValue = ParamValue, T extends K | K[] | undefined
     Require a value, making `value` non-optional (`K`); errors if unsupplied.
   env(name: string): Parameter<K, T>
     Override the environment variable read as a fallback for this parameter.
+  flag(name: string): Parameter<K, T>
+    Override the CLI flag this parameter is set by. The leading `--` is
+    optional, so `.flag("--skip-e2e")` and `.flag("skip-e2e")` are the same.
+
+    The declared spelling replaces the derived one: only it is accepted on
+    the command line, and it is what `--help`, the JSON build surface, shell
+    completions and the registry descriptor all show. Reach for this when the
+    name-to-flag rule produces something you would not have chosen — a name
+    containing an initialism that ends in a digit is the usual case, since the
+    digit ends the run of capitals and `skipE2E` derives `--skip-e2-e`.
+
+    The environment variable is derived separately and is unaffected; override
+    it with {@link env}.
   array(this: Parameter<E, E | undefined>): Parameter<E, E[]>
     Accept a comma-separated list (or a repeated flag), exposing `value` as an
     array. `--tags a,b` and `--tags a --tags b` both yield `["a", "b"]`; blank
@@ -2538,6 +2553,8 @@ interface AnyParameter
     The allowed string choices, if restricted with {@link Parameter.options}.
   readonly envName_?: string
     An explicit environment variable name override.
+  readonly flagName_?: string
+    An explicit CLI flag name override, without the leading dashes.
   readonly hasFallback_: boolean
     Whether the parameter has a declared default value.
   readonly secret_: boolean
@@ -4102,6 +4119,13 @@ interface RunRecord
     The graph shape the run planned, in declaration order.
   params: Record<string, string>
     Resolved parameter values, keyed by name. Secrets are always omitted.
+
+    The values the run was launched with, and they are not rewritten. A
+    resume may supply different ones, in which case the run executes under two
+    sets and this field cannot hold both — so it keeps the launch's, which is
+    what the targets that ran before the suspension used, and what a
+    cancellation resolves each compensation body from. A resume that changed
+    anything records it in {@link RunRecord.events} instead.
   targets: Record<string, TargetRunState>
     Per-target progress, keyed by dotted target name.
   signals: Record<string, SignalRecord>
@@ -4478,6 +4502,26 @@ interface TargetStateHandle
 
   set(patch: Record<string, JsonValue>): Promise<void>
     Merge a JSON patch into this target's persisted metadata (awaits the write).
+  trySet(patch: Record<string, JsonValue>): Promise<boolean>
+    {@link set}, reporting whether the patch was recorded: `true` when it
+    reached the store, `false` when the write was dropped.
+
+    A write can be dropped — conflicted away for good, or refused by a store
+    that errored — and {@link set} resolves the same either way, so a body
+    that needs the value to be durable cannot tell. This is the seam for the
+    cases that do need to know: before an irreversible step that depends on
+    the value, or before handing a compensation something it will have to read
+    back.
+
+    Do not read `false` as "it may still land": a dropped write is sometimes
+    re-persisted by a later one, but nothing guarantees it, so treat `false`
+    as not recorded. A dropped write also warns, and one that is definitely
+    unrecoverable marks the run {@link "./state/types.ts".RunRecord.degraded}
+    so a later resume knows the record is missing something.
+
+    A handle with nothing durable behind it always answers `true` — a build
+    with no state store, and a compensation, whose state is in-memory by
+    design. Nothing is persisted, but nothing is dropped either.
   get(): Record<string, JsonValue>
     Read this target's persisted metadata (from prior attempts/runs too).
 

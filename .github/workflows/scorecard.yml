@@ -9,17 +9,20 @@ name: Scorecard supply-chain
 permissions:
   contents: read
 jobs:
-  scorecardSarif:
+  scorecard:
     name: OpenSSF Scorecard
     runs-on: ubuntu-latest
     permissions:
       security-events: write
       id-token: write
     steps:
-      - name: Harden and check out with Zuke
-        uses: zuke-build/zuke@ec0b756878572e04145cd766e2268e55b8577abf # v1.0.3
+      - name: Harden the runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
         with:
           egress-policy: audit
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
           persist-credentials: "false"
       - name: Run Scorecard
         uses: ossf/scorecard-action@2d1146689b8cda280b9bc96326124645441f03bc # v2.4.4
@@ -27,7 +30,7 @@ jobs:
           results_file: results.sarif
           results_format: sarif
           publish_results: "true"
-      - name: Run scorecardSarif with Zuke
-        run: ./zuke scorecardSarif
-        env:
-          GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+      - name: Upload the SARIF to code scanning
+        uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
+        with:
+          sarif_file: results.sarif

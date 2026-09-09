@@ -142,7 +142,11 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   `ZUKE_*_URL` backend must be `https:` (loopback exempt;
   `ZUKE_ALLOW_INSECURE_URL=1` opts out). In a body, `ctx.state.set({ … })` /
   `ctx.state.get()` records per-target metadata (JSON, **never secrets** —
-  secret parameters and redacted values are excluded). Inspect persisted runs
+  secret parameters and redacted values are excluded). `set` awaits the
+  write; `ctx.state.trySet({ … })` is the same write reporting `true` when it
+  reached the store and `false` when it was dropped — use it before an
+  irreversible step that depends on the value. A store-less build and a
+  compensation body always see `true` (nothing durable behind them). Inspect persisted runs
   afterwards with `zuke runs list` (filter by
   `--status`/`--target`/`--since`/`--limit`) and `zuke runs show <id>` (`--json`
   on both). Prune old ones with `zuke runs prune --keep <age> --keep-last <n>`
@@ -208,6 +212,9 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   named so that it renders as a built-in CLI flag (`actor`, `actorKind`,
   `limit`, `target`, `output`, …) or as an MCP control key (`dryRun`,
   `confirm`, `operatorToken`) — the build refuses to load, naming the field.
+  The flag is one dash per lower-to-upper transition, and a **digit ends a run
+  of capitals**, so `skipE2E` gives `--skip-e2-e`; name it `skipE2e` or declare
+  `.flag("--skip-e2e")`, which replaces the derived spelling everywhere.
 - **Secrets from a manager:** `parameter(...).secret().from(source)` sources a
   value at run time (e.g. `execSecret(...)` shelling out to a secret CLI) and
   **redacts** it from all of Zuke's output. See the cheatsheet.

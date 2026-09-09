@@ -67,7 +67,7 @@ Each run is stored as one JSON document:
     { "name": "build", "dependsOn": [] },
     { "name": "deploy", "dependsOn": ["build"] }
   ],
-  "params": { "env": "sit" }, // resolved, NON-secret parameters only
+  "params": { "env": "sit" }, // NON-secret values the run was LAUNCHED with
   "deadlineAt": "2026-07-17T…Z", // optional; from Build.deadline(), enforced by the reaper
   "intendedTerminal": "cancelled", // optional; set when a run enters `cancelling`
   "signals": {}, // external signals delivered to a .waitsFor() gate
@@ -107,6 +107,27 @@ The executor writes the record when it is created, on each target's start and
 finish, and when the run ends. So if the process is killed mid-run, the record
 on disk shows the target that was executing as `running`, with its `startedAt`
 stamped.
+
+`params` holds the values the run was **launched** with, and is never
+rewritten. A [resume](./orchestration.md#resuming-a-suspended-run) may supply
+different ones — re-supplying a rotated credential is the usual reason — and
+those take effect, so a resumed run can execute under two sets of values. One
+map cannot hold both, and this one keeps the launch's for a concrete reason: a
+cancellation resolves each compensation body's parameters from it, and the
+targets a compensation unwinds are the ones that ran *before* the suspension. A
+deploy that went to `sit` must be rolled back against `sit`, whatever a later
+resume was given.
+
+What the resume changed is recorded in the audit trail instead, naming the
+values and who supplied them:
+
+```
+Parameters:
+  env = sit
+
+Audit:
+  2026-07-17T09:12:03Z  resume  alice  ok  env=production
+```
 
 `buildId` is the run's **origin**: `ZUKE_BUILD_ID`, else `GITHUB_REPOSITORY`,
 resolved once when the run is created. It says which build a run belongs to when
@@ -203,6 +224,35 @@ returns the current metadata. When no store is configured, the handle is an
 in-memory no-op — `set`/`get` are consistent within the run, but nothing is
 persisted. It is the carrier for anything that must survive a
 [suspend/resume](./orchestration.md) boundary.
+
+### Checking that a write landed
+
+`set` resolves when the write has been attempted, whether or not it landed.
+When a body needs to *know*, use **`trySet`**, which resolves `true` when the
+patch reached the store and `false` when the write was dropped — conflicted
+away for good, or refused by a store that errored:
+
+```ts
+deploy = target().executes(async (ctx) => {
+  const slot = await lease();
+  if (!await ctx.state.trySet({ slot })) {
+    // Nothing has been deployed yet, so failing here is cheap. Going ahead
+    // would leave a slot held that no compensation can find again.
+    throw new Error(`could not record the leased slot ${slot}`);
+  }
+  await deployTo(slot);
+});
+```
+
+Treat `false` as **not recorded**: a dropped write is sometimes re-persisted by
+a later one, but nothing guarantees it. A dropped write also warns, and one
+that is definitely unrecoverable marks the record `degraded` so a later resume
+refuses it rather than repeating a step against state it cannot trust.
+
+Two contexts have nothing durable behind them and so always answer `true`: a
+build with no state store, and a compensation body, whose `ctx.state` is seeded
+from the original target's metadata and kept in memory (the run is ending, so
+cleanup state is not persisted).
 
 ### Secrets never touch state
 

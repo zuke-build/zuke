@@ -168,3 +168,60 @@ Deno.test("a parameter beside --actor keeps its own value and the run's actor", 
     assertEquals(bob.out.includes("deploy"), false);
   });
 });
+
+Deno.test("a declared flag is the one the CLI accepts, and the derived one is not", async () => {
+  const seen: boolean[] = [];
+  class Ship extends Build {
+    // `skipE2E` derives `--skip-e2-e`: the digit ends the run of capitals, so
+    // `2E` is a lower-to-upper transition. This is what `.flag()` is for.
+    skipE2E = parameter("skip the E2E suite").flag("--skip-e2e").boolean();
+    ship = target().executes(() => void seen.push(this.skipE2E.value));
+  }
+
+  const declared = await runCli(Ship, ["ship", "--skip-e2e"]);
+  assertEquals(declared.code, 0);
+  assertEquals(seen, [true]);
+
+  // The derived spelling is gone: the author chose, so only their spelling is
+  // accepted, and an unknown flag is an error rather than a silent no-op.
+  const derived = await runCli(Ship, ["ship", "--skip-e2-e"]);
+  assertEquals(derived.code, 1);
+  assertStringIncludes(derived.err + derived.out, "--skip-e2-e");
+});
+
+Deno.test("a declared flag is what --help and the JSON surface show", async () => {
+  class Ship extends Build {
+    skipE2E = parameter("skip the E2E suite").flag("--skip-e2e").boolean();
+    ship = target().executes(() => {});
+  }
+
+  const help = await runCli(Ship, ["--help"]);
+  assertEquals(help.code, 0);
+  assertStringIncludes(help.out, "--skip-e2e");
+  // The derived spelling must not appear anywhere a reader would copy it from.
+  assertEquals(help.out.includes("--skip-e2-e"), false);
+
+  const json = await runCli(Ship, ["--list", "--json"]);
+  assertEquals(json.code, 0);
+  assertStringIncludes(json.out, '"flag": "skip-e2e"');
+});
+
+Deno.test("the environment variable is unaffected by a declared flag", async () => {
+  const seen: boolean[] = [];
+  class Ship extends Build {
+    skipE2E = parameter("skip the E2E suite").flag("--skip-e2e").boolean();
+    ship = target().executes(() => void seen.push(this.skipE2E.value));
+  }
+  // The flag and the variable are derived separately, so overriding one leaves
+  // the other exactly where it was — `.env()` is the override for that half.
+  const prev = Deno.env.get("SKIP_E2_E");
+  Deno.env.set("SKIP_E2_E", "true");
+  try {
+    const run = await runCli(Ship, ["ship"]);
+    assertEquals(run.code, 0);
+    assertEquals(seen, [true]);
+  } finally {
+    if (prev === undefined) Deno.env.delete("SKIP_E2_E");
+    else Deno.env.set("SKIP_E2_E", prev);
+  }
+});

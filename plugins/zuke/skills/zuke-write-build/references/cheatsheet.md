@@ -150,6 +150,7 @@ deploy = target().executes(async (ctx) => {
   ctx.signal; // AbortSignal, fired when the run is cancelled
   ctx.dryRun; // true under a dry run
   await ctx.state.set({ where: "sit-7" }); // durable metadata — see below
+  await ctx.state.trySet({ where: "sit-7" }); // ...same write, false if dropped
   ctx.stateOf("build").get(); // read ANOTHER target's published state
   ctx.signals.get("approved"); // an external signal's payload (see waits)
   ctx.outcomeOf("checks")?.status; // one target's settled outcome, or undefined
@@ -210,7 +211,9 @@ class CD extends Build {
     return new HttpStateStore({ url: this.url.value, token: this.token.value });
   }
   deploy = target().executes(async (ctx) => {
-    await ctx.state.set({ image: tag }); // JSON patch, merged and persisted
+    // trySet resolves true when the patch reached the store, false when the
+    // write was dropped. Check it before an irreversible step that needs it.
+    if (!await ctx.state.trySet({ image: tag })) throw new Error("not recorded");
     const meta = ctx.state.get(); // read back (this run and later ones)
   });
 }
@@ -557,7 +560,17 @@ Secrets are masked in CI output. Read a resolved value with `this.x.value`.
 Kinds & modifiers: `.number()` → `number`, `.boolean()` → `boolean` (a flag,
 defaults to `false`), `.options("a", "b")` restricts a string, `.secret()`
 masks + redacts, `.default(v)`/`.required()` set optionality, `.env(NAME)`
-overrides the env var.
+overrides the env var, `.flag("--name")` overrides the CLI flag.
+
+Flag/env derivation: one dash (underscore) per lower-to-upper transition, so
+`targetEnv` gives `--target-env` / `TARGET_ENV` and `runs.limit` gives
+`--runs-limit`. A run of capitals stays together (`apiURL` gives `--api-url`),
+but a **digit ends the run** — `skipE2E` gives `--skip-e2-e`, not `--skip-e2e`.
+Either name it `skipE2e`, or declare `.flag("--skip-e2e")`. A declared flag
+replaces the derived one everywhere (parser, `--help`, JSON surface,
+completions, registry descriptor); it must be lowercase letters/digits/dashes
+starting with a letter, may not be a built-in, and no two parameters may claim
+the same one. The env var is derived separately and is unaffected.
 
 Lists: `.array()` (comma-separated or repeated flag) comes **last** and composes
 — `.options("a", "b").array()` validates each element, and `.number().array()`

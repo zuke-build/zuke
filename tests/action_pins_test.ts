@@ -179,6 +179,19 @@ Deno.test("every seed pin is a full SHA with a version", () => {
   }
 });
 
+Deno.test("the codeql-action seeds pin one SHA for every subpath", () => {
+  // init, analyze and upload-sarif are one action reached by three subpaths,
+  // and pins are keyed by the full path — so nothing else holds them together.
+  // Seeding two of them from one release and the third from another would
+  // generate a workflow that mixes releases of the same action.
+  const shas = new Set(
+    Object.entries(SEED_PINS)
+      .filter(([action]) => action.startsWith("github/codeql-action/"))
+      .map(([, pin]) => pin.ref.split("@")[1]),
+  );
+  assertEquals(shas.size, 1, `codeql-action seeds disagree: ${[...shas]}`);
+});
+
 Deno.test("no declared workflow hardcodes an action SHA", async () => {
   // The trap this module exists to remove, asserted rather than trusted: a
   // generated workflow whose SHA is a literal in the build (or in a published

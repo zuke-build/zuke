@@ -27,9 +27,8 @@ import type {
   CliParameterInfo,
   CliTargetInfo,
 } from "../describe.ts";
-import { BUILTIN_FLAG_NAMES } from "../cli_spec.ts";
+import { BUILTIN_FLAG_NAMES, VALID_FLAG_NAME } from "../cli_spec.ts";
 import { asObject, fields } from "../json_shape.ts";
-import { flagName } from "../params.ts";
 
 /** The field readers for a build descriptor's fields. */
 const { optionalStr, str, strArray } = fields("registry: descriptor field");
@@ -188,6 +187,52 @@ function paramKind(
 }
 
 /**
+ * Refuse a descriptor whose parameters collide — on their flag, or on their
+ * name.
+ *
+ * With the derived-flag rule gone, this is what stops one parameter shadowing
+ * another, and it has to cover both keys because the two are read by different
+ * consumers. The MCP registry server advertises a parameter by **name** and
+ * spawns it by **flag**, keying each through a last-wins map, so either
+ * duplicate hides a value from the caller who supplied it: two parameters
+ * named `env` with different flags advertise one `env` property and put the
+ * value on whichever flag came last, while two claiming `--env` land it on
+ * whichever the child's parser matched first.
+ *
+ * The removed rule enforced name uniqueness as a side effect — two entries
+ * with one name derived one flag — so dropping it needed both halves back, not
+ * just the flag half.
+ */
+function assertDistinctParameters(
+  parameters: CliParameterInfo[],
+): CliParameterInfo[] {
+  const byFlag = new Map<string, string>();
+  const names = new Set<string>();
+  for (const parameter of parameters) {
+    if (names.has(parameter.name)) {
+      throw new Error(
+        `registry: descriptor declares two parameters named ` +
+          `"${parameter.name}". A caller can only supply one of them, and ` +
+          `the value would reach whichever the registry read last, so the ` +
+          `descriptor is refused.`,
+      );
+    }
+    names.add(parameter.name);
+    const claimed = byFlag.get(parameter.flag);
+    if (claimed !== undefined) {
+      throw new Error(
+        `registry: descriptor parameters "${claimed}" and ` +
+          `"${parameter.name}" both claim the flag "--${parameter.flag}". A ` +
+          `spawned run would apply the caller's value to whichever the ` +
+          `child's parser matched first, so the descriptor is refused.`,
+      );
+    }
+    byFlag.set(parameter.flag, parameter.name);
+  }
+  return parameters;
+}
+
+/**
  * Validate one {@link CliParameterInfo}.
  *
  * A descriptor's `flag` is not taken on trust. The registry MCP server renders
@@ -196,8 +241,14 @@ function paramKind(
  * built-in would put the caller's value on that flag instead. With `--actor`
  * that overrides the `ZUKE_ACTOR` the runner exported for the resolved caller,
  * and the run is recorded under an actor the descriptor chose. A registry's
- * backend is a service Zuke does not control, so both shapes are refused here,
+ * backend is a service Zuke does not control, so that shape is refused here,
  * at the parse boundary every backend goes through.
+ *
+ * A flag that merely *differs* from what its `name` would derive is not
+ * refused. A build may declare its own spelling with
+ * {@link "../params.ts".Parameter.flag}, and the descriptor has to carry it or
+ * a spawned run could not set that parameter at all. What stands in its place
+ * is {@link assertDistinctParameters}, which stops one parameter shadowing another.
  */
 function parseParameterInfo(value: unknown): CliParameterInfo {
   const object = asObject(value);
@@ -208,12 +259,19 @@ function parseParameterInfo(value: unknown): CliParameterInfo {
   const boolean = bool(object, "boolean");
   // Pre-M12 descriptors carry no `name`; the flag is the best available key.
   const name = optionalStr(object, "name") ?? flag;
-  const derived = flagName(name);
-  if (flag !== derived) {
+  // Shape before membership, because membership alone is not a check. The
+  // child's parser splits `--flag=value` at the first `=` and matches the
+  // prefix, so a descriptor flag of `actor=mallory` is absent from the
+  // built-in list yet arrives as `--actor` — landing the caller's value on the
+  // built-in and recording the run under an actor the descriptor chose. The
+  // build side refuses the same shapes when a flag is declared; this is the
+  // same rule at the boundary where the flag comes from a service instead.
+  if (!VALID_FLAG_NAME.test(flag)) {
     throw new Error(
-      `registry: descriptor parameter "${name}" declares flag "--${flag}", ` +
-        `but its name renders as "--${derived}". A flag that does not follow ` +
-        `from its parameter's name is refused.`,
+      `registry: descriptor parameter "${name}" declares the flag ` +
+        `"--${flag}", which is not a valid flag name. A flag that the ` +
+        `child's parser would read as something other than it says — one ` +
+        `containing "=", a space or a leading dash — is refused.`,
     );
   }
   if (BUILTIN_FLAG_NAMES.includes(flag)) {
@@ -248,7 +306,9 @@ function parseCliDescription(value: unknown): CliDescription {
     commands: arrayOf(object, "commands", parseNamed),
     flags: arrayOf(object, "flags", parseNamed),
     targets: arrayOf(object, "targets", parseTargetInfo),
-    parameters: arrayOf(object, "parameters", parseParameterInfo),
+    parameters: assertDistinctParameters(
+      arrayOf(object, "parameters", parseParameterInfo),
+    ),
   };
 }
 

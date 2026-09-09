@@ -49,8 +49,8 @@ export interface WorkflowTargets {
   security: TargetBuilder;
   /** CodeQL static analysis, run entirely by the marketplace actions. */
   codeql: TargetBuilder;
-  /** Uploads the Scorecard SARIF to code scanning. */
-  scorecardSarif: TargetBuilder;
+  /** The OpenSSF Scorecard, run entirely by the marketplace actions. */
+  scorecard: TargetBuilder;
   /** The subprocess e2e suite, on an OS matrix. */
   integration: TargetBuilder;
 }
@@ -449,7 +449,7 @@ export function githubWorkflows(
         },
       },
       invokes: [{
-        target: targets.scorecardSarif,
+        target: targets.scorecard,
         name: "OpenSSF Scorecard",
         permissions: {
           // Upload the SARIF to the Security tab, and publish the score to the
@@ -457,19 +457,44 @@ export function githubWorkflows(
           "security-events": "write",
           "id-token": "write",
         },
-        // The one marketplace action that stays: publishing the public score is
-        // something only it can do, and it must run before the target that
-        // uploads its output.
-        before: [{
-          name: "Run Scorecard",
-          uses: actionPin("ossf/scorecard-action"),
-          with: {
-            results_file: "results.sarif",
-            results_format: "sarif",
-            publish_results: "true",
+        // scorecard.dev verifies this workflow before it accepts a published
+        // score, and the job holding `ossf/scorecard-action` must consist only
+        // of `uses:` steps from a short allowlist — checkout, harden-runner,
+        // upload-artifact, upload-sarif, and the scorecard action itself — with
+        // no `run:` step and no job-level `env`. Anything else is rejected with
+        // a 400 the action reports as a warning, so the job stays green while
+        // the badge silently stops moving. That happened here: the Zuke prelude
+        // and a `./zuke` step kept every publish since 2026-08-06 out.
+        //
+        // So this job opts out of the prelude — naming the two actions renders
+        // them as separate pinned steps — and the marketplace pair replaces
+        // the target's own step, exactly as the CodeQL job above does.
+        // `tests/scorecard_workflow_test.ts` holds the committed file to the
+        // allowlist. See https://github.com/ossf/scorecard-action#workflow-restrictions.
+        harden: {
+          action: actionPin("step-security/harden-runner"),
+          egress: "audit",
+        },
+        checkout: {
+          action: actionPin("actions/checkout"),
+          persistCredentials: false,
+        },
+        steps: [
+          {
+            name: "Run Scorecard",
+            uses: actionPin("ossf/scorecard-action"),
+            with: {
+              results_file: "results.sarif",
+              results_format: "sarif",
+              publish_results: "true",
+            },
           },
-        }],
-        env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" },
+          {
+            name: "Upload the SARIF to code scanning",
+            uses: actionPin("github/codeql-action/upload-sarif"),
+            with: { sarif_file: "results.sarif" },
+          },
+        ],
       }],
     }),
 

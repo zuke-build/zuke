@@ -16,25 +16,12 @@
  * @module
  */
 
-import { parse } from "@std/yaml";
 import { assertEquals } from "../packages/core/tests/_assert.ts";
-
-/** Whether a parsed YAML value is an object that can be indexed. */
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
+import { actionOf, isRecord, jobIn, stepsOf } from "./_workflow.ts";
 
 /** The `actionRelease` job as the committed workflow declares it. */
 function actionReleaseJob(): Record<string, unknown> {
-  const workflow = parse(
-    Deno.readTextFileSync(".github/workflows/release.yml"),
-  );
-  if (!isRecord(workflow) || !isRecord(workflow.jobs)) {
-    throw new Error("release.yml has no jobs");
-  }
-  const job = workflow.jobs.actionRelease;
-  if (!isRecord(job)) throw new Error("release.yml has no actionRelease job");
-  return job;
+  return jobIn(".github/workflows/release.yml", "actionRelease");
 }
 
 Deno.test("the action release job is granted no write permission", () => {
@@ -51,11 +38,8 @@ Deno.test("the action release job holds no GITHUB_TOKEN", () => {
   // pull request it opened would trigger no checks and so could never satisfy
   // the ruleset requiring them. Passing one anyway would mean a run that half
   // works and fails somewhere less obvious.
-  const job = actionReleaseJob();
-  const steps = job.steps;
-  if (!Array.isArray(steps)) throw new Error("the job has no steps");
-  const env = steps.flatMap((step) =>
-    isRecord(step) && isRecord(step.env) ? Object.keys(step.env) : []
+  const env = stepsOf(actionReleaseJob()).flatMap((step) =>
+    isRecord(step.env) ? Object.keys(step.env) : []
   );
   assertEquals(env.includes("GITHUB_TOKEN"), false);
   assertEquals(env.includes("ZUKE_BUILD_APP_ID"), true);
@@ -66,14 +50,10 @@ Deno.test("the action release job blocks egress and persists no credential", () 
   // The block bounds where a credential read out of this job could be sent; it
   // is not what stops the credential existing, which is what the API-based
   // writes address. Both, because neither is sufficient alone.
-  const job = actionReleaseJob();
-  const steps = job.steps;
-  if (!Array.isArray(steps)) throw new Error("the job has no steps");
-  const checkout = steps.find((step) =>
-    isRecord(step) && typeof step.uses === "string" &&
-    step.uses.startsWith("zuke-build/zuke@")
+  const checkout = stepsOf(actionReleaseJob()).find((step) =>
+    actionOf(step) === "zuke-build/zuke"
   );
-  if (!isRecord(checkout) || !isRecord(checkout.with)) {
+  if (checkout === undefined || !isRecord(checkout.with)) {
     throw new Error("the job does not check out with the Zuke action");
   }
   assertEquals(checkout.with["egress-policy"], "block");
@@ -89,14 +69,10 @@ Deno.test("the action release job can reach what it actually calls", () => {
   // the tags, the branch, the pull request. A blocked allowlist that omits it
   // would fail the job at its first write, after the release job has already
   // run.
-  const job = actionReleaseJob();
-  const steps = job.steps;
-  if (!Array.isArray(steps)) throw new Error("the job has no steps");
-  const checkout = steps.find((step) =>
-    isRecord(step) && isRecord(step.with) &&
-    typeof step.with["allowed-endpoints"] === "string"
+  const checkout = stepsOf(actionReleaseJob()).find((step) =>
+    isRecord(step.with) && typeof step.with["allowed-endpoints"] === "string"
   );
-  if (!isRecord(checkout) || !isRecord(checkout.with)) {
+  if (checkout === undefined || !isRecord(checkout.with)) {
     throw new Error("the job declares no allowed endpoints");
   }
   const allowed = String(checkout.with["allowed-endpoints"]).split(/\s+/);

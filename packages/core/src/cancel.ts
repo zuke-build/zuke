@@ -214,6 +214,15 @@ function seededStateHandle(seed: Record<string, JsonValue>): TargetStateHandle {
       Object.assign(meta, patch);
       return Promise.resolve();
     },
+    // In-memory by design, so the patch is never dropped and `true` is the
+    // honest answer — see the note above about not persisting cleanup state.
+    // A compensation runs only for a run that HAS a store, so this is the one
+    // durable-run context whose writes never reach it; `TargetStateHandle`
+    // names compensations in its carve-out for exactly that reason.
+    trySet: (patch) => {
+      Object.assign(meta, patch);
+      return Promise.resolve(true);
+    },
   };
 }
 
@@ -349,15 +358,27 @@ export async function runCompensations(
       );
       continue;
     }
+    // Built once each, so `stateOf(self) === state` holds here too — the
+    // invariant `TargetContext.stateOf` documents.
+    const ownState = seededStateHandle(step.meta);
+    const otherState = new Map<string, TargetStateHandle>();
     const ctx: TargetContext = {
       runId: deps.runId,
       target: compName,
       signal: NEVER_ABORTED,
-      state: seededStateHandle(step.meta),
+      state: ownState,
       // A compensation runs off the durable graph, so only its own seeded state
-      // is available; other targets read as empty here.
-      stateOf: (t) =>
-        t === compName ? seededStateHandle(step.meta) : seededStateHandle({}),
+      // is available; other targets read as empty here. One handle per name,
+      // because a fresh one per call drops every write into a throwaway the
+      // next call cannot see — and reports that drop as a successful write.
+      stateOf: (t) => {
+        if (t === compName) return ownState;
+        const existing = otherState.get(t);
+        if (existing !== undefined) return existing;
+        const handle = seededStateHandle({});
+        otherState.set(t, handle);
+        return handle;
+      },
       // Outcomes, unlike state, come from the record the walk is reading — so a
       // compensation can ask what actually happened to the run it is undoing,
       // including in a process that never executed any of it.

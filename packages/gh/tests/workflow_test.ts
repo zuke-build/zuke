@@ -47,6 +47,10 @@ function fakeState(
       meta = { ...meta, ...patch };
       return Promise.resolve();
     },
+    trySet: (patch) => {
+      meta = { ...meta, ...patch };
+      return Promise.resolve(true);
+    },
   };
 }
 

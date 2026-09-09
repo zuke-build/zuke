@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.49.0](https://github.com/zuke-build/zuke/compare/core-v1.48.2...core-v1.49.0) (2026-09-09)
+
+
+### Features
+
+* **core:** ctx.state.trySet reports whether a durable write landed ([#513](https://github.com/zuke-build/zuke/issues/513)) ([3f6f5f2](https://github.com/zuke-build/zuke/commit/3f6f5f2a88631b0edbc33a47c78e8ad0f91e8d2e))
+* **core:** let a parameter declare its CLI flag ([#518](https://github.com/zuke-build/zuke/issues/518)) ([2af2f24](https://github.com/zuke-build/zuke/commit/2af2f2484095628e79ad9c75ac4d06b8fdf02332)), closes [#517](https://github.com/zuke-build/zuke/issues/517)
+
 ## [1.48.2](https://github.com/zuke-build/zuke/compare/core-v1.48.1...core-v1.48.2) (2026-09-08)
 
 

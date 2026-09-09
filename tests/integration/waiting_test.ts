@@ -19,6 +19,7 @@ import {
   defaultStateHost,
   externalSignal,
   FileSystemStateStore,
+  parameter,
   resumeWhen,
   service,
   target,
@@ -315,4 +316,124 @@ Deno.test("a service starts, gates its dependent on readiness, and is stopped", 
   assertEquals(log, ["smoke"]);
   assertEquals(probes >= 2, true); // the dependent waited for readiness
   assertEquals(stopped, true); // the service was torn down after the run
+});
+
+Deno.test("a resume that overrides a parameter records it in the audit trail", async () => {
+  await withStateDir(async (dir) => {
+    const deployed: string[] = [];
+    class B extends Build {
+      env = parameter("environment");
+      token = parameter("deploy token").secret();
+      gate = target().waitsFor((s) => s.on(externalSignal("go")));
+      ship = target().dependsOn(this.gate).executes(() =>
+        void deployed.push(this.env.value ?? "?")
+      );
+    }
+    const first = await runCli(B, [
+      "ship",
+      "--env",
+      "sit",
+      "--token",
+      "launch-secret",
+    ]);
+    assertEquals(first.code, 0);
+    const id = await onlyRunId(dir);
+
+    const resumed = await runCli(B, [
+      "resume",
+      id,
+      "--signal",
+      "go",
+      "--env",
+      "production",
+      "--token",
+      "rotated-secret",
+    ]);
+    assertEquals(resumed.code, 0);
+    assertEquals(deployed, ["production"]);
+
+    const store = new FileSystemStateStore(dir, defaultStateHost);
+    const record = (await store.getRun(id))?.record;
+
+    // `params` keeps the launch's values: a cancellation resolves each
+    // compensation from them, and the targets a compensation unwinds are the
+    // ones that ran before the gate — on `sit`.
+    assertEquals(record?.params, { env: "sit" });
+
+    // The override is reported instead, naming the value and who supplied it.
+    const event = record?.events.find((e) => e.tool === "resume");
+    assertEquals(event?.args, { env: "production" });
+    assertEquals(event?.outcome, "ok");
+
+    // Neither secret reaches the record, on either pass.
+    const raw = JSON.stringify(record);
+    assertEquals(raw.includes("rotated-secret"), false);
+    assertEquals(raw.includes("launch-secret"), false);
+
+    // And a reader sees both halves: what the run launched with, and what the
+    // resume changed. The audit line prints the detail, not the arguments.
+    const shown = await runCli(B, ["runs", "show", id]);
+    assertStringIncludes(shown.out, "env = sit");
+    assertStringIncludes(shown.out, "env=production");
+  });
+});
+
+Deno.test("a resume that overrides nothing records no event", async () => {
+  await withStateDir(async (dir) => {
+    class B extends Build {
+      env = parameter("environment");
+      gate = target().waitsFor((s) => s.on(externalSignal("go")));
+      ship = target().dependsOn(this.gate).executes(() => {});
+    }
+    assertEquals((await runCli(B, ["ship", "--env", "sit"])).code, 0);
+    const id = await onlyRunId(dir);
+
+    // The env var supplies the same value the launch did, so nothing differs
+    // and an ordinary resume leaves no audit noise behind.
+    const prev = Deno.env.get("ENV");
+    Deno.env.set("ENV", "sit");
+    try {
+      assertEquals((await runCli(B, ["resume", id, "--signal", "go"])).code, 0);
+    } finally {
+      if (prev === undefined) Deno.env.delete("ENV");
+      else Deno.env.set("ENV", prev);
+    }
+    const store = new FileSystemStateStore(dir, defaultStateHost);
+    const record = (await store.getRun(id))?.record;
+    assertEquals(record?.params, { env: "sit" });
+    assertEquals(record?.events.some((e) => e.tool === "resume"), false);
+  });
+});
+
+Deno.test("a cancellation unwinds on the values its targets actually ran on", async () => {
+  await withStateDir(async (dir) => {
+    const log: string[] = [];
+    class B extends Build {
+      env = parameter("environment");
+      deploy = target()
+        .executes(() => void log.push(`deploy ${this.env.value}`))
+        .onCancel(() => this.rollback);
+      rollback = target().executes(() =>
+        void log.push(`rollback ${this.env.value}`)
+      );
+      gate = target().dependsOn(this.deploy).waitsFor((s) =>
+        s.on(externalSignal("go"))
+      );
+      ship = target().dependsOn(this.gate).executes(() => {});
+    }
+    assertEquals((await runCli(B, ["ship", "--env", "sit"])).code, 0);
+    const id = await onlyRunId(dir);
+
+    // The deploy happened before the gate, on `sit`. Writing the resumer's
+    // values over `record.params` would make this rollback undo it against
+    // `prod` — a compensation acting on an environment its target never
+    // touched, which is worse than the misreport it would have fixed.
+    // Resumed with a different value but no signal, so the gate re-suspends
+    // and the run is still cancellable — the deploy/gate/cancel shape a
+    // compensation exists for.
+    await runCli(B, ["resume", id, "--env", "prod"]);
+    assertEquals(await runStatus(dir, id), "suspended");
+    await runCli(B, ["cancel", id]);
+    assertEquals(log, ["deploy sit", "rollback sit"]);
+  });
 });
