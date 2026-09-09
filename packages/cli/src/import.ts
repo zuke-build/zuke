@@ -439,6 +439,8 @@ export interface ImportOptions {
   from?: ImportSource;
   /** Also register the build's MCP server in `.mcp.json` (see {@link "./setup.ts".SetupOptions.mcp}). */
   mcp?: McpSetupOptions;
+  /** Which launchers to scaffold (see {@link "./setup.ts".SetupOptions.bootstrapDeno}). */
+  bootstrapDeno?: boolean;
 }
 
 /** The outcome of {@link runImport}. */
@@ -487,6 +489,7 @@ export async function runImport(
       name: options.name,
       buildContent: generateBuild(options.name, tasks),
       mcp: options.mcp,
+      bootstrapDeno: options.bootstrapDeno,
     }, host);
     return { ...setup, source: candidate.source, taskCount: tasks.length };
   }

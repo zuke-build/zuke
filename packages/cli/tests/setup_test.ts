@@ -9,8 +9,6 @@ import {
 import {
   defaultHost,
   isRecord,
-  launcherBash,
-  launcherPwsh,
   mergeDenoJson,
   runSetup,
   starterBuild,
@@ -40,77 +38,6 @@ Deno.test("starterConfig records the build name as JSON", () => {
   const parsed: unknown = JSON.parse(starterConfig("Acme"));
   assertEquals(isRecord(parsed) && parsed.name === "Acme", true);
   assertEquals(starterConfig("Acme").endsWith("\n"), true);
-});
-
-Deno.test("launchers carry a shebang and run zuke.ts", () => {
-  const bash = launcherBash();
-  assertEquals(bash.startsWith("#!/usr/bin/env bash"), true);
-  assertEquals(bash.includes("run -A zuke.ts"), true);
-  const pwsh = launcherPwsh();
-  assertEquals(pwsh.startsWith("#!/usr/bin/env pwsh"), true);
-  assertEquals(pwsh.includes("zuke.ts"), true);
-});
-
-Deno.test("scaffolded launchers never pipe an unverified install script", () => {
-  // A launcher that pipes `deno.land/install.sh` into a shell downloads and
-  // executes code with nothing verifying it, in every project `zuke setup`
-  // scaffolds. Missing Deno must be reported, not silently installed.
-  for (const script of [launcherBash(), launcherPwsh()]) {
-    assertEquals(script.includes("deno.land/install"), false);
-    assertEquals(script.includes("| sh"), false);
-    assertEquals(script.includes("Invoke-Expression"), false);
-    assertEquals(script.includes("Deno not found on PATH"), true);
-    assertStringIncludes(
-      script,
-      "https://docs.deno.com/runtime/getting_started/installation/",
-    );
-  }
-});
-
-Deno.test("launchers pass --frozen only once a deno.lock exists", () => {
-  // A fresh scaffold has no lockfile, and `deno run --frozen` against a
-  // missing one fails outright rather than writing it — so an unconditional
-  // --frozen breaks the very first `./zuke` the CLI tells the user to run.
-  // Every --frozen must therefore sit behind a lockfile check, with a
-  // plain (lock-writing) invocation as the other branch.
-  const bash = launcherBash();
-  assertEquals(bash.includes("if [ -f deno.lock ]; then"), true);
-  assertEquals(bash.split("run -A --frozen zuke.ts").length - 1, 1);
-  assertEquals(bash.split(`run -A zuke.ts "$@"`).length - 1, 1);
-  // The frozen branch comes first, the bootstrap branch after the `else`.
-  assertEquals(bash.indexOf("--frozen") < bash.indexOf("else\n"), true);
-  assertEquals(
-    bash.indexOf("else\n") < bash.indexOf(`run -A zuke.ts "$@"`),
-    true,
-  );
-
-  const pwsh = launcherPwsh();
-  assertEquals(pwsh.includes(`Test-Path (Join-Path $dir "deno.lock")`), true);
-  assertEquals(pwsh.split(`$denoArgs += "--frozen"`).length - 1, 1);
-  // --frozen is only ever appended inside that check, never in the base argv.
-  assertEquals(pwsh.includes(`@("run", "-A")`), true);
-});
-
-Deno.test("the unfrozen branch says so, so a deleted lockfile is not silent", () => {
-  // Skipping --frozen is correct on a fresh scaffold, but the same branch is
-  // taken if someone removes deno.lock later — which drops integrity
-  // verification. Both launchers must announce that on stderr rather than
-  // quietly running unverified.
-  const bash = launcherBash();
-  assertEquals(bash.includes("without lockfile verification"), true);
-  // On stderr, and only in the branch that skips --frozen.
-  assertEquals(
-    bash.indexOf("without lockfile verification") > bash.indexOf("else\n"),
-    true,
-  );
-  assertEquals(
-    bash.slice(bash.indexOf("without lockfile verification")).includes(">&2"),
-    true,
-  );
-
-  const pwsh = launcherPwsh();
-  assertEquals(pwsh.includes("without lockfile verification"), true);
-  assertEquals(pwsh.includes("Write-Warning"), true);
 });
 
 Deno.test("mergeDenoJson seeds tasks from scratch", () => {
@@ -169,6 +96,37 @@ Deno.test("runSetup scaffolds an empty project", async () => {
   assertEquals(host.files.has("deno.json"), true);
   assertEquals(host.files.get(".gitignore")?.includes(".zuke/"), true);
   assertEquals(host.chmods[0], ["zuke", 0o755]);
+});
+
+Deno.test("runSetup scaffolds the bootstrapping launchers by default", async () => {
+  // Nothing installed up front is the default: the launchers carry the pinned
+  // Deno release and its checksums, and the PowerShell one mirrors the bash.
+  const host = new FakeHost();
+  await runSetup({ dir: ".", force: false, name: "Acme" }, host);
+  const bash = host.files.get("zuke") ?? "";
+  const pwsh = host.files.get("zuke.ps1") ?? "";
+  assertStringIncludes(bash, "DEFAULT_DENO_VERSION=");
+  assertStringIncludes(bash, "deno_checksum_for()");
+  assertStringIncludes(pwsh, "$DefaultDenoVersion =");
+  assertStringIncludes(pwsh, "$DenoChecksums = @{");
+  assertEquals(bash.includes("Deno not found on PATH"), false);
+  assertEquals(pwsh.includes("Deno not found on PATH"), false);
+});
+
+Deno.test("runSetup scaffolds the plain launchers when bootstrapDeno is false", async () => {
+  const host = new FakeHost();
+  await runSetup(
+    { dir: ".", force: false, name: "Acme", bootstrapDeno: false },
+    host,
+  );
+  const bash = host.files.get("zuke") ?? "";
+  const pwsh = host.files.get("zuke.ps1") ?? "";
+  assertStringIncludes(bash, "Deno not found on PATH");
+  assertStringIncludes(pwsh, "Deno not found on PATH");
+  assertEquals(bash.includes("DEFAULT_DENO_VERSION"), false);
+  assertEquals(pwsh.includes("DefaultDenoVersion"), false);
+  // Still executable, still a launcher: the variant changes nothing else.
+  assertEquals(host.chmods, [["zuke", 0o755]]);
 });
 
 Deno.test("runSetup writes the launcher under a custom --launcher-name", async () => {

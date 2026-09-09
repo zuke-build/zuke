@@ -62,6 +62,8 @@ export class FakeHost implements SetupHost {
 export class FakePrompter implements Prompter {
   /** Every question passed to {@link confirm}, in order. */
   readonly confirms: string[] = [];
+  /** Every question passed to {@link ask}, in order. */
+  readonly asks: string[] = [];
 
   constructor(
     private readonly tty: boolean,
@@ -70,13 +72,22 @@ export class FakePrompter implements Prompter {
     /** The answer to the star prompt (kept apart from `yes`, so tests of the
      * other confirms don't accidentally opt in to starring). */
     private readonly star: boolean = false,
+    /** The answer to the launcher question; `""` takes its default. Kept
+     * apart from `answer`, which is the build class name. */
+    private readonly bootstrap: string = "",
   ) {}
 
   interactive(): boolean {
     return this.tty;
   }
 
-  ask(_question: string, fallback: string): string {
+  ask(question: string, fallback: string): string {
+    this.asks.push(question);
+    // Match the launcher question narrowly, as `confirm` does for the star
+    // one, so the class-name answer never leaks into a yes/no question.
+    if (question.includes("bootstrap a pinned")) {
+      return this.bootstrap === "" ? fallback : this.bootstrap;
+    }
     return this.answer === "" ? fallback : this.answer;
   }
 
