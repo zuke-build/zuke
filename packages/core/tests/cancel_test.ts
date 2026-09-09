@@ -152,8 +152,9 @@ Deno.test("cancelRun settles the target its run was parked on", async () => {
     assertEquals(loaded?.record.targets.gate.status, "skipped");
     assertEquals(loaded?.record.targets.gate.waitingFor, undefined);
     assertEquals(typeof loaded?.record.targets.gate.endedAt, "string");
-    // A target the run never reached is untouched: it was never waiting.
-    assertEquals(loaded?.record.targets.promote?.status, "pending");
+    // A target the run never reached settles too: on a terminal record
+    // `pending` means nothing a reader can act on, and no sweep revisits it.
+    assertEquals(loaded?.record.targets.promote?.status, "skipped");
   });
 });
 

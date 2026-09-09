@@ -35,7 +35,7 @@ import type {
 } from "./types.ts";
 import type { SummaryEntry } from "../summary_note.ts";
 import { recordStatusOf } from "./record.ts";
-import { settleTargetRow, settleWaitingTargets } from "./settle.ts";
+import { settleTargetRow, settleUnreachedTargets } from "./settle.ts";
 import { acquireCancelLock, type CancelLock } from "./cancel_lock.ts";
 import { messageOf } from "../internal.ts";
 
@@ -354,7 +354,7 @@ export class RunStateWriter {
       // The in-process half of the same sweep `finalizeCancelled` runs for an
       // out-of-process `zuke cancel`: a cancelled run has no live waiter, and
       // its compensation walk has already finished by the time this is called.
-      settleWaitingTargets(record, at);
+      settleUnreachedTargets(record, at);
     });
   }
 

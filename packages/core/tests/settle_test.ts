@@ -8,7 +8,10 @@
  */
 
 import { assertEquals } from "./_assert.ts";
-import { settleTargetRow, settleWaitingTargets } from "../src/state/settle.ts";
+import {
+  settleTargetRow,
+  settleUnreachedTargets,
+} from "../src/state/settle.ts";
 import { runRecord } from "./_fakes.ts";
 import type { TargetRunState } from "../src/state/types.ts";
 
@@ -69,15 +72,16 @@ Deno.test("the sweep settles only the rows still parked on a gate", () => {
       later: { status: "pending", meta: {} },
     },
   });
-  settleWaitingTargets(record, "2026-09-08T10:30:00.000Z");
+  settleUnreachedTargets(record, "2026-09-08T10:30:00.000Z");
   assertEquals(record.targets.gate.status, "skipped");
   assertEquals(record.targets.gate.waitingFor, undefined);
   // A target that already settled keeps its own outcome and its own endedAt.
   assertEquals(record.targets.built.status, "succeeded");
   assertEquals(record.targets.built.endedAt, "2026-09-08T10:00:00.000Z");
-  // One the run never reached was never waiting, so it is left alone.
-  assertEquals(record.targets.later.status, "pending");
-  assertEquals(record.targets.later.endedAt, undefined);
+  // One the run never reached settles as well — a terminal run will not get
+  // to it, and the scheduler already says `skipped` for exactly this case.
+  assertEquals(record.targets.later.status, "skipped");
+  assertEquals(typeof record.targets.later.endedAt, "string");
 });
 
 Deno.test("the sweep records why, when a deadline is what cancelled the run", () => {
@@ -87,7 +91,7 @@ Deno.test("the sweep records why, when a deadline is what cancelled the run", ()
     status: "cancelled",
     targets: { gate: waitingRow(), other: waitingRow() },
   });
-  settleWaitingTargets(record, "2026-09-08T10:30:00.000Z", {
+  settleUnreachedTargets(record, "2026-09-08T10:30:00.000Z", {
     target: "gate",
     message: 'wait "gate" timed out (deadline 2026-09-08T11:00:00.000Z)',
   });

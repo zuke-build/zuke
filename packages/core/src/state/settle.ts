@@ -37,9 +37,16 @@ export function settleTargetRow(
 }
 
 /**
- * Settle every target still parked on a gate, for a run that has reached a
- * terminal status. `skipped` is the vocabulary the scheduler already uses when
- * a failed run leaves a gate nobody will ever resume.
+ * Settle every target a run that has reached a terminal status will never
+ * reach: the ones still parked on a gate, and the ones it never started.
+ * `skipped` is the vocabulary the scheduler already uses for both.
+ *
+ * `pending` earns its place on a **suspended** record, where it means "a resume
+ * will run this". On a terminal one it means nothing a reader can act on, and
+ * no sweep will ever revisit it — which is the scheduler's own stated reason
+ * for settling those rows when a run fails outright. Applying it here is what
+ * makes the three terminal paths agree: before this, a run that failed said
+ * `skipped` while a run that failed *by timing out* said `pending`.
  *
  * Both cancellation paths call this **after** their compensation walk, and that
  * order is load-bearing: the walk treats a `waiting` target as unproven and
@@ -51,13 +58,15 @@ export function settleTargetRow(
  * from one an operator cancelled by hand, and the terminal record would no
  * longer say a deadline was missed — which the `fail` disposition does record.
  */
-export function settleWaitingTargets(
+export function settleUnreachedTargets(
   record: RunRecord,
   at: string,
   expired?: { target: string; message: string },
 ): void {
   for (const row of Object.values(record.targets)) {
-    if (row.status === "waiting") settleTargetRow(row, "skipped", at);
+    if (row.status === "waiting" || row.status === "pending") {
+      settleTargetRow(row, "skipped", at);
+    }
   }
   if (expired === undefined) return;
   // Looked up, not matched by name while sweeping: the reason belongs to the

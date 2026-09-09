@@ -437,3 +437,59 @@ Deno.test("a cancellation unwinds on the values its targets actually ran on", as
     assertEquals(log, ["deploy sit", "rollback sit"]);
   });
 });
+
+Deno.test("every terminal path says the same thing about a target it never reached", async () => {
+  // Three ways a run ends without reaching `after`. They used to disagree: a
+  // run that failed outright said `skipped`, while one that failed by timing
+  // out said `pending`, and so did a cancelled one — the same situation
+  // described two different ways under the same terminal status.
+  const statuses = async (
+    build: new () => Build,
+    drive: (dir: string, id: string) => Promise<void>,
+  ): Promise<string> => {
+    let line = "";
+    await withStateDir(async (dir) => {
+      await runCli(build, ["after"]);
+      const id = await onlyRunId(dir);
+      await drive(dir, id);
+      const store = new FileSystemStateStore(dir, defaultStateHost);
+      const record = (await store.getRun(id))?.record;
+      line = `${record?.status} after=${record?.targets["after"].status}`;
+    });
+    return line;
+  };
+
+  class Fails extends Build {
+    boom = target().executes(() => {
+      throw new Error("boom");
+    });
+    after = target().dependsOn(this.boom).executes(() => {});
+  }
+  class TimesOut extends Build {
+    gate = target().waitsFor((s) => s.on(externalSignal("never")).timeout(0));
+    after = target().dependsOn(this.gate).executes(() => {});
+  }
+  class Cancelled extends Build {
+    gate = target().waitsFor((s) =>
+      s.on(externalSignal("never")).timeout("1h")
+    );
+    after = target().dependsOn(this.gate).executes(() => {});
+  }
+
+  assertEquals(
+    await statuses(Fails, () => Promise.resolve()),
+    "failed after=skipped",
+  );
+  assertEquals(
+    await statuses(TimesOut, async (_dir, _id) => {
+      await runCli(TimesOut, ["resume", "--check"]);
+    }),
+    "failed after=skipped",
+  );
+  assertEquals(
+    await statuses(Cancelled, async (_dir, id) => {
+      await runCli(Cancelled, ["cancel", id]);
+    }),
+    "cancelled after=skipped",
+  );
+});
