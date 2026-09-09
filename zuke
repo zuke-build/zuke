@@ -4,9 +4,9 @@
 #
 # Zuke bootstrap launcher — a `./build.sh`-style entry point for Deno.
 #
-#   ./zuke ci          # run the full gate
-#   ./zuke test        # type-check + tests
-#   ./zuke --list      # list every target
+#   ./zuke               # run the default target
+#   ./zuke <target>      # run one target and its prerequisites
+#   ./zuke --list        # list every target
 #
 # Ensures Deno is available (installing it on first use if missing), then runs
 # the project's build file (zuke.ts). No global install required.
@@ -14,29 +14,28 @@
 # Honoured environment variables:
 #   DENO_INSTALL   where Deno is installed/looked for (default: ~/.deno)
 #   DENO_VERSION   which Deno to install on bootstrap. Defaults to a pinned,
-#                  known-good version (see DEFAULT_DENO_VERSION) for reproducible
-#                  and more predictable installs. An override must name an exact
-#                  release tag (e.g. v2.8.3) — "latest" is rejected, because a
-#                  moving target has no checksum to pin — and is only installed
-#                  if DENO_SHA256 also supplies the matching per-platform
-#                  checksum (see below); this launcher never downloads an
-#                  unverified binary.
+#                  known-good version (see below) for reproducible and more
+#                  predictable installs. An override must name an exact release
+#                  tag (e.g. v2.8.3) — "latest" is rejected, because a moving
+#                  target has no checksum to pin — and is only installed if
+#                  DENO_SHA256 also supplies the matching per-platform checksum
+#                  (see below); this launcher never downloads an unverified
+#                  binary.
 #   DENO_SHA256    required alongside a DENO_VERSION override: the expected
 #                  SHA-256 of the release zip for the *current* platform (see
 #                  the asset name printed on a checksum mismatch).
 set -euo pipefail
 
 # Pinned default so the bootstrap installs a known version rather than whatever
-# "latest" happens to be. Bump deliberately; keep in sync with zuke.ps1.
+# "latest" happens to be.
 DEFAULT_DENO_VERSION="v2.8.3"
 
 # --- Pinned per-platform checksums for DEFAULT_DENO_VERSION -----------------
 # SHA-256 of each `deno-<target>.zip` release asset, from
 # https://github.com/denoland/deno/releases/tag/v2.8.3 (GitHub's own reported
 # asset `digest`, cross-checked by downloading and hashing the artifact).
-# Bump *together* with DEFAULT_DENO_VERSION — pull the new asset digests from
-# that release's page (or `gh release view <tag> --repo denoland/deno --json
-# assets`) before changing the version above.
+# Bump *together* with DEFAULT_DENO_VERSION: this file is generated from
+# @zuke/cli's deno_pin.ts, so change the pin there and regenerate.
 deno_checksum_for() {
   case "$1" in
     x86_64-unknown-linux-gnu)
@@ -53,8 +52,8 @@ deno_checksum_for() {
 }
 # -----------------------------------------------------------------------------
 
-script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$script_dir"
+dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$dir"
 
 deno_install="${DENO_INSTALL:-$HOME/.deno}"
 
@@ -177,10 +176,13 @@ fi
 # bootstrapped to a non-PATH location (e.g. ~/.deno/bin).
 export PATH="$(dirname "$deno_bin"):$PATH"
 
-# `--frozen` so this invocation cannot rewrite `deno.lock`. Loading zuke.ts
-# resolves the whole workspace, and an unfrozen `deno run` silently writes any
-# resolution the committed lock is missing — which made a green gate mean
-# "the lock resolves *after* we fixed it" rather than "the committed lock
-# resolves". Regenerating the lock is a deliberate act: `deno install`, then
-# commit and review the diff (docs/versioning.md).
-exec "$deno_bin" run -A --frozen zuke.ts "$@"
+# The first run has no lockfile to verify against, so let Deno write one; from
+# then on --frozen fails the build if the module graph changed. Say so when
+# skipping, so a deleted lockfile downgrades verification visibly instead of
+# silently.
+if [ -f deno.lock ]; then
+  exec "$deno_bin" run -A --frozen zuke.ts "$@"
+else
+  echo "zuke: no deno.lock here yet — running without lockfile verification so Deno can write one." >&2
+  exec "$deno_bin" run -A zuke.ts "$@"
+fi

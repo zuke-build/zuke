@@ -2,11 +2,11 @@
 # Copyright (c) 2026 the Zuke contributors
 # SPDX-License-Identifier: MIT
 #
-# Zuke bootstrap launcher (PowerShell) — a `.\build.ps1`-style entry point.
+# Zuke bootstrap launcher (PowerShell) - a `.\build.ps1`-style entry point.
 #
-#   .\zuke.ps1 ci          # run the full gate
-#   .\zuke.ps1 test        # type-check + tests
-#   .\zuke.ps1 --list      # list every target
+#   .\zuke.ps1               # run the default target
+#   .\zuke.ps1 <target>      # run one target and its prerequisites
+#   .\zuke.ps1 --list        # list every target
 #
 # Ensures Deno is available (installing it on first use if missing), then runs
 # the project's build file (zuke.ts). No global install required.
@@ -14,13 +14,13 @@
 # Honoured environment variables:
 #   DENO_INSTALL   where Deno is installed/looked for (default: ~/.deno)
 #   DENO_VERSION   which Deno to install on bootstrap. Defaults to a pinned,
-#                  known-good version ($DefaultDenoVersion) for reproducible and
-#                  more predictable installs. An override must name an exact
-#                  release tag (e.g. v2.8.3) - "latest" is rejected, because a
-#                  moving target has no checksum to pin - and is only installed
-#                  if DENO_SHA256 also supplies the matching per-platform
-#                  checksum (see below); this launcher never downloads an
-#                  unverified binary.
+#                  known-good version (see below) for reproducible and more
+#                  predictable installs. An override must name an exact release
+#                  tag (e.g. v2.8.3) - "latest" is rejected, because a moving
+#                  target has no checksum to pin - and is only installed if
+#                  DENO_SHA256 also supplies the matching per-platform checksum
+#                  (see below); this launcher never downloads an unverified
+#                  binary.
 #   DENO_SHA256    required alongside a DENO_VERSION override: the expected
 #                  SHA-256 of the release zip for the *current* platform (see
 #                  the asset name printed on a checksum mismatch).
@@ -28,24 +28,23 @@
 $ErrorActionPreference = "Stop"
 
 # Pinned default so the bootstrap installs a known version rather than whatever
-# "latest" happens to be. Bump deliberately; keep in sync with the zuke script.
+# "latest" happens to be.
 $DefaultDenoVersion = "2.8.3"
 
 # --- Pinned per-platform checksums for $DefaultDenoVersion ------------------
 # SHA-256 of each `deno-<target>.zip` release asset, from
 # https://github.com/denoland/deno/releases/tag/v2.8.3 (GitHub's own reported
 # asset `digest`, cross-checked by downloading and hashing the artifact).
-# Bump *together* with $DefaultDenoVersion - pull the new asset digests from
-# that release's page (or `gh release view <tag> --repo denoland/deno --json
-# assets`) before changing the version above.
+# Bump *together* with $DefaultDenoVersion: this file is generated from
+# @zuke/cli's deno_pin.ts, so change the pin there and regenerate.
 $DenoChecksums = @{
   "x86_64-pc-windows-msvc"  = "7fdd1f42e6b0855421ecf27bb406e2492ade1087c85e30ebf0deab6280ea743c"
   "aarch64-pc-windows-msvc" = "243f478ac577ade1bbd980ecf510607a10ed8cc977b462083ada48e5f6580de1"
 }
 # -----------------------------------------------------------------------------
 
-$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-Set-Location $scriptDir
+$dir = Split-Path -Parent $MyInvocation.MyCommand.Path
+Set-Location $dir
 
 if (-not $env:DENO_INSTALL) {
   $env:DENO_INSTALL = Join-Path $HOME ".deno"
@@ -140,12 +139,21 @@ if (-not $deno) {
   $deno = Join-Path $env:DENO_INSTALL "bin\deno.exe"
 }
 
-# Put this Deno on PATH so CLIs the build provisions with `deno install` — whose
-# generated launchers invoke `deno` by name — can find it even when Deno was
+# Put this Deno on PATH so CLIs the build provisions with `deno install` - whose
+# generated launchers invoke `deno` by name - can find it even when Deno was
 # bootstrapped to a non-PATH location.
 $env:PATH = (Split-Path -Parent $deno) + [IO.Path]::PathSeparator + $env:PATH
 
-# --frozen so this invocation cannot rewrite deno.lock; see the comment in the
-# POSIX launcher. Regenerate deliberately with `deno install`, then commit it.
-& $deno run -A --frozen (Join-Path $scriptDir "zuke.ts") @args
+# The first run has no lockfile to verify against, so let Deno write one; from
+# then on --frozen fails the build if the module graph changed. Say so when
+# skipping, so a deleted lockfile downgrades verification visibly instead of
+# silently.
+$denoArgs = @("run", "-A")
+if (Test-Path (Join-Path $dir "deno.lock")) {
+  $denoArgs += "--frozen"
+} else {
+  Write-Warning "zuke: no deno.lock here yet - running without lockfile verification so Deno can write one."
+}
+$denoArgs += (Join-Path $dir "zuke.ts")
+& $deno @denoArgs @args
 exit $LASTEXITCODE

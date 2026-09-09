@@ -9,6 +9,7 @@ import {
   resolveDocSpec,
 } from "../mod.ts";
 import { VERSION } from "../src/version.ts";
+import { DENO_PIN } from "../src/deno_pin.ts";
 import { FakeHost, FakePrompter, FakeStarActions } from "./_fakes.ts";
 import { withTemp } from "../../core/tests/_temp.ts";
 import { ConsoleTasks, ZUKE_LOGO } from "@zuke/console";
@@ -62,6 +63,116 @@ Deno.test("parseSetupFlags reads every flag form", () => {
     mcp: true,
     allowRun: true,
   });
+  // Unset means "ask, or take the default"; either flag decides outright, and
+  // the last one wins.
+  assertEquals(parseSetupFlags([]).bootstrapDeno, undefined);
+  assertEquals(parseSetupFlags(["--bootstrap-deno"]).bootstrapDeno, true);
+  assertEquals(parseSetupFlags(["--no-bootstrap-deno"]).bootstrapDeno, false);
+  assertEquals(
+    parseSetupFlags(["--bootstrap-deno", "--no-bootstrap-deno"]).bootstrapDeno,
+    false,
+  );
+});
+
+Deno.test("main setup --yes scaffolds the bootstrapping launchers by default", async () => {
+  const host = new FakeHost();
+  const prompter = new FakePrompter(true);
+  assertEquals(await main(["setup", "--yes"], host, prompter), 0);
+  assertEquals(host.files.get("zuke")?.includes("DEFAULT_DENO_VERSION"), true);
+  assertEquals(host.files.get("zuke.ps1")?.includes("$DenoChecksums"), true);
+  // --yes means no questions, the launcher one included.
+  assertEquals(prompter.asks, []);
+});
+
+Deno.test("main setup --no-bootstrap-deno scaffolds the plain launchers", async () => {
+  const host = new FakeHost();
+  const code = await main(
+    ["setup", "--yes", "--no-bootstrap-deno"],
+    host,
+    new FakePrompter(false),
+  );
+  assertEquals(code, 0);
+  assertEquals(
+    host.files.get("zuke")?.includes("Deno not found on PATH"),
+    true,
+  );
+  assertEquals(host.files.get("zuke")?.includes("DEFAULT_DENO_VERSION"), false);
+  assertEquals(
+    host.files.get("zuke.ps1")?.includes("Deno not found on PATH"),
+    true,
+  );
+});
+
+Deno.test("main setup (interactive) asks about the launcher and honours a no", async () => {
+  const host = new FakeHost();
+  const prompter = new FakePrompter(true, "", true, false, "n");
+  assertEquals(await main(["setup"], host, prompter), 0);
+  const question = prompter.asks.find((q) => q.includes("bootstrap a pinned"));
+  assertEquals(question !== undefined, true);
+  // The question names the release a yes will pin, so the choice is informed.
+  assertEquals(question?.includes(`Deno v${DENO_PIN.version}`), true);
+  assertEquals(
+    host.files.get("zuke")?.includes("Deno not found on PATH"),
+    true,
+  );
+});
+
+Deno.test("main setup (interactive) takes Enter as the default: bootstrap", async () => {
+  const host = new FakeHost();
+  const prompter = new FakePrompter(true, "", true);
+  assertEquals(await main(["setup"], host, prompter), 0);
+  assertEquals(
+    prompter.asks.some((q) => q.includes("bootstrap a pinned")),
+    true,
+  );
+  assertEquals(host.files.get("zuke")?.includes("DEFAULT_DENO_VERSION"), true);
+});
+
+Deno.test("main setup (interactive) does not ask when a flag already answered", async () => {
+  const host = new FakeHost();
+  const prompter = new FakePrompter(true, "", true, false, "n");
+  const code = await main(["setup", "--bootstrap-deno"], host, prompter);
+  assertEquals(code, 0);
+  assertEquals(
+    prompter.asks.some((q) => q.includes("bootstrap a pinned")),
+    false,
+  );
+  // The flag wins over the scripted "n" the prompt would have returned.
+  assertEquals(host.files.get("zuke")?.includes("DEFAULT_DENO_VERSION"), true);
+});
+
+Deno.test("main import honours the launcher flags and question too", async () => {
+  const flagged = new FakeHost({ Makefile: "build:\n\techo hi\n" });
+  const code = await main(
+    ["import", "--yes", "--no-bootstrap-deno"],
+    flagged,
+    new FakePrompter(false),
+  );
+  assertEquals(code, 0);
+  assertEquals(
+    flagged.files.get("zuke")?.includes("Deno not found on PATH"),
+    true,
+  );
+
+  const asked = new FakeHost({ Makefile: "build:\n\techo hi\n" });
+  const prompter = new FakePrompter(true, "", true, false, "no");
+  assertEquals(await main(["import"], asked, prompter), 0);
+  assertEquals(
+    prompter.asks.some((q) => q.includes("bootstrap a pinned")),
+    true,
+  );
+  assertEquals(
+    asked.files.get("zuke")?.includes("Deno not found on PATH"),
+    true,
+  );
+});
+
+Deno.test("main --help documents both launcher flags", async () => {
+  const host = new FakeHost();
+  assertEquals(await main(["--help"], host), 0);
+  const help = host.logs.join("\n");
+  assertEquals(help.includes("--bootstrap-deno"), true);
+  assertEquals(help.includes("--no-bootstrap-deno"), true);
 });
 
 Deno.test("main setup --mcp writes .mcp.json and import --allow-run passes it through", async () => {

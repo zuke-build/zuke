@@ -106,6 +106,7 @@ import {
   checkPluginSkillsSync,
   syncPluginSkills,
 } from "./build/plugin_sync.ts";
+import { checkRootLaunchers, syncRootLaunchers } from "./build/launchers.ts";
 import { checkSkillTree } from "./build/skill_check.ts";
 import {
   buildGeminiArchive,
@@ -529,6 +530,33 @@ class ZukeBuild extends Build {
       ConsoleTasks.info("plugins/zuke/skills/ is in sync with skills/.");
     });
 
+  launcherSync = target()
+    .description(
+      "Regenerate ./zuke and zuke.ps1 from @zuke/cli's launcher template",
+    )
+    .executes(async () => {
+      const written = await syncRootLaunchers();
+      ConsoleTasks.info(`Wrote ${written.join(", ")}.`);
+    });
+
+  launcherSyncCheck = target()
+    .description(
+      "Verify ./zuke and zuke.ps1 match @zuke/cli's launcher template",
+    )
+    .executes(async () => {
+      const stale = await checkRootLaunchers();
+      if (stale.length > 0) {
+        throw new Error(
+          `The launchers have drifted from the template:\n  ${
+            stale.join("\n  ")
+          }\n` +
+            "Run `./zuke launcherSync` and commit the result (edit " +
+            "packages/cli/src/launcher.ts or deno_pin.ts, never the scripts).",
+        );
+      }
+      ConsoleTasks.info("./zuke and zuke.ps1 are in sync with the template.");
+    });
+
   skillsCheck = target()
     .description(
       "Validate skills/ against the Agent Skills spec (frontmatter, names)",
@@ -805,6 +833,7 @@ class ZukeBuild extends Build {
       this.examplesCheck,
       this.hclSyncCheck,
       this.pluginSyncCheck,
+      this.launcherSyncCheck,
       this.skillsCheck,
       this.graphDocCheck,
       this.pluginVersionCheck,

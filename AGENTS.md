@@ -390,14 +390,16 @@ can drift from it. `zuke.ts`'s `ci` target depends on: `format`
 (`deno fmt --check`), `lint` (`deno lint`), `spell` (cspell), `coverage`
 (type-check, then the test suite with the 95% coverage gate), `coverageUpload`
 (skips locally without a `CODECOV_TOKEN`), `apiDocsCheck`, `docLint`,
-`snippetsCheck`, `examplesCheck`, `hclSyncCheck`, `pluginSyncCheck`, `skillsCheck`,
+`snippetsCheck`, `examplesCheck`, `hclSyncCheck`, `pluginSyncCheck`,
+`launcherSyncCheck`, `skillsCheck`,
 `graphDocCheck`, `pluginVersionCheck`, `prBodyLint`, `actionPinCheck`,
 `security`, and `lockCheck`. Read `zuke.ts`'s `ci` target for the current,
 authoritative list — this is a snapshot, not a second source of truth.
 
 **The lock is part of the gate.** Every entrypoint that loads `zuke.ts` — both
-launchers and the root tasks — passes `--frozen`, so a run cannot quietly heal a
-stale `deno.lock` by writing the resolutions it is missing. That mattered: a
+launchers (once a `deno.lock` exists, which in this repository is always) and
+the root tasks — passes `--frozen`, so a run cannot quietly heal a stale
+`deno.lock` by writing the resolutions it is missing. That mattered: a
 green gate used to be able to mean "the lock resolves _now that we fixed it_"
 while CI, whose checkout has the committed lock, failed with "The lockfile is
 out of date". `deno task` resolves the workspace before running its command, so
@@ -422,7 +424,7 @@ tests/
 examples/                 # cloneable mini projects, type-checked and listed by `examplesCheck`
 zuke.ts                   # Zuke's own build (runnable example)
 build/                    # reusable helpers behind zuke.ts's targets (docs, publish, snippets, …)
-zuke, zuke.ps1            # bootstrap launchers (install Deno, run the build); zuke.json names the build class
+zuke, zuke.ps1            # bootstrap launchers (install Deno, run the build) — GENERATED from packages/cli/src/launcher.ts by `./zuke launcherSync`; zuke.json names the build class
 docs/                     # long-form guides (linked from the README)
 skills/                   # agent skills: zuke-write-build, zuke-setup
 plugins/zuke/             # Claude Code + Codex plugin wrapping the skills

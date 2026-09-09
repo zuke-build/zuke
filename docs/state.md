@@ -345,10 +345,13 @@ freshly-read record on the next attempt; and when it gives up because the run
 vanished from the store, or because the store threw, the mutation is still held in
 memory for any later write to re-persist. Those paths warn and carry on.
 
-One path genuinely loses a write. If a **foreign writer** — an MCP audit append,
+Two paths genuinely lose a write. If a **foreign writer** — an MCP audit append,
 a concurrent `zuke cancel` — wins the compare-and-swap race often enough to
 exhaust the writer's retry budget, the last attempt's mutation is discarded along
-with the base it was applied to. The writer then sets **`degraded: true`** on the
+with the base it was applied to. And a mutation that was merely *held* in memory
+is lost the moment a conflict replaces the record it was waiting in: the write
+that was going to carry it is the one that just conflicted, and the freshly read
+base has never seen it. Either way the writer sets **`degraded: true`** on the
 record, and the next write that _does_ land persists the flag (the failing write,
 by definition, could not carry it). `zuke runs show` prints it. So `degraded`
 means exactly one thing: **a mutation was permanently lost.**

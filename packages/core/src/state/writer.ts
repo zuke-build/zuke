@@ -132,6 +132,16 @@ export class RunStateWriter {
    * already sitting on the chain are neutralised too.
    */
   #disowned = false;
+  /**
+   * Whether a write has been dropped-but-retained since the last one that
+   * landed — a mutation living only in {@link "#record"}, waiting for a later
+   * write to carry it to the store.
+   *
+   * Tracked because the conflict path replaces that record wholesale, which
+   * takes any such mutation with it. Knowing one was pending is what turns a
+   * silent loss into a reported one.
+   */
+  #retainedPending = false;
   #chain: Promise<unknown> = Promise.resolve();
 
   private constructor(
@@ -682,6 +692,7 @@ export class RunStateWriter {
    * record with nothing missing.
    */
   #retainedWrite(message: string): void {
+    this.#retainedPending = true;
     this.#warn?.(message);
   }
 
@@ -698,6 +709,9 @@ export class RunStateWriter {
         const result = await this.#store.putRun(this.#record, this.#version);
         if (result.ok) {
           this.#version = result.version;
+          // Whatever was waiting in the record went to the store with this
+          // write, which is exactly what `#retainedWrite` promised.
+          this.#retainedPending = false;
           return true;
         }
         // Another writer moved the record on: re-read a FRESH base and re-apply
@@ -713,6 +727,19 @@ export class RunStateWriter {
               `mid-write; dropping one update`,
           );
           return false;
+        }
+        // A mutation dropped earlier was still living in the record we are
+        // about to replace, and the fresh base has never seen it: the write
+        // that was going to carry it is the one that just conflicted. That is
+        // a permanent loss, so it is reported as one rather than vanishing —
+        // `degraded` is what stops a later resume trusting the record.
+        if (this.#retainedPending) {
+          this.#lostWrite(
+            `state: an earlier update to run "${this.#record.id}" was held ` +
+              `back and is now lost — the write meant to carry it conflicted, ` +
+              `and the record it was waiting in has been replaced`,
+          );
+          this.#retainedPending = false;
         }
         // Adopt the fresh base, but carry a degraded flag across: whoever wrote
         // the record in the store never saw the write we already lost.
@@ -743,6 +770,7 @@ export class RunStateWriter {
           );
           if (reapply.ok) {
             this.#version = reapply.version;
+            this.#retainedPending = false;
           } else {
             // The canceller finalises the run from here, so no later write of
             // ours lands to carry this mutation: it is gone for good.

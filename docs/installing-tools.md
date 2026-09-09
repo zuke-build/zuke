@@ -392,7 +392,10 @@ needs no "set up tool X" step:
   the pinned Deno release (`DEFAULT_DENO_VERSION`/`$DefaultDenoVersion`) as a
   zip and verify it against a hardcoded per-platform SHA-256 before unpacking it
   — the same pin-and-verify model as `installRelease` below, applied to Deno
-  itself. `DENO_VERSION` can still request a different release — an exact
+  itself. The pin lives in one place, `@zuke/cli`'s `deno_pin.ts`: the
+  launchers `zuke setup` scaffolds and this repository's own are rendered from
+  the same template (`./zuke launcherSync` regenerates them), so bumping Deno
+  is a change to that file, not to two shell scripts. `DENO_VERSION` can still request a different release — an exact
   release tag (`v2.9.0`), never `latest`, which has no fixed hash to pin — but
   the launcher then requires `DENO_SHA256` (the expected hash for the current
   platform) too; it never installs an unverified binary.
