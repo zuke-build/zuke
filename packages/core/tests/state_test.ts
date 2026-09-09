@@ -23,6 +23,9 @@ import {
 } from "../src/state/store.ts";
 import { FileSystemStateStore } from "../src/state/fs_store.ts";
 import { HttpStateStore } from "../src/state/http_store.ts";
+import { paramOverrideEvent, recordedParams } from "../src/state/record.ts";
+
+const NOW_ISO = "2026-09-09T08:12:00.000Z";
 import { envStateStore, resolveStateStore } from "../src/state/resolve.ts";
 import { HttpError } from "../src/http.ts";
 import {
@@ -1978,4 +1981,56 @@ Deno.test("initiatorOf falls back to the actor when no initiator was recorded", 
   const resumed: RunRecord = { ...record, actor: "sweep-bot" };
   assertEquals(initiatorOf(resumed), "engineer-a");
   assertEquals(toSummary(resumed).initiator?.actor, "engineer-a");
+});
+
+Deno.test("recordedParams keeps resolved non-secret values and drops the rest", () => {
+  class B extends Build {
+    env = parameter("environment");
+    token = parameter("deploy token").secret();
+    tags = parameter("labels").array();
+    unset = parameter("never supplied");
+  }
+  const build = new B();
+  const params = discoverParameters(build);
+  build.env.resolve_("prod");
+  build.token.resolve_("deploy-token-value");
+  build.tags.resolve_("a,b");
+
+  const recorded = recordedParams(params.values());
+  // A secret is excluded by construction — this projection is the only way a
+  // parameter reaches a record, so the record holds none.
+  assertEquals(recorded, { env: "prod", tags: "a,b" });
+  assertEquals("token" in recorded, false);
+  // Absent means never supplied, which an empty string would not.
+  assertEquals("unset" in recorded, false);
+});
+
+Deno.test("paramOverrideEvent names only what the resume changed", () => {
+  const event = paramOverrideEvent(
+    { env: "sit", region: "eu" },
+    { env: "production", region: "eu" },
+    "alice",
+    "2026-09-09T08:12:00.000Z",
+  );
+  assertEquals(event?.tool, "resume");
+  assertEquals(event?.actor, "alice");
+  // Only the changed key: a resume re-supplying the same value is not an
+  // override, and listing it would bury the one that is.
+  assertEquals(event?.args, { env: "production" });
+  // `runs show` prints the detail and not the arguments, so the values have to
+  // be in it or a reader learns only that something changed.
+  assertEquals(event?.detail, "env=production");
+});
+
+Deno.test("paramOverrideEvent is undefined when the resume changed nothing", () => {
+  assertEquals(
+    paramOverrideEvent({ env: "sit" }, { env: "sit" }, "alice", NOW_ISO),
+    undefined,
+  );
+  // A parameter the resumer's build no longer sets is not an override either:
+  // nothing was supplied, so there is nothing to report.
+  assertEquals(
+    paramOverrideEvent({ env: "sit" }, {}, "alice", NOW_ISO),
+    undefined,
+  );
 });

@@ -289,7 +289,16 @@ export interface RunRecord {
   updatedAt: string;
   /** The graph shape the run planned, in declaration order. */
   graph: RunGraphNode[];
-  /** Resolved parameter values, keyed by name. Secrets are always omitted. */
+  /**
+   * Resolved parameter values, keyed by name. Secrets are always omitted.
+   *
+   * The values the run was **launched** with, and they are not rewritten. A
+   * resume may supply different ones, in which case the run executes under two
+   * sets and this field cannot hold both — so it keeps the launch's, which is
+   * what the targets that ran before the suspension used, and what a
+   * cancellation resolves each compensation body from. A resume that changed
+   * anything records it in {@link RunRecord.events} instead.
+   */
   params: Record<string, string>;
   /** Per-target progress, keyed by dotted target name. */
   targets: Record<string, TargetRunState>;

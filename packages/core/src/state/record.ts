@@ -16,6 +16,7 @@
 import type { TargetStatus } from "../build.ts";
 import type { AnyParameter } from "../params.ts";
 import type { TargetBuilder } from "../target.ts";
+import type { RunEvent } from "./types.ts";
 import {
   ACTOR_KINDS,
   type ActorKind,
@@ -132,20 +133,37 @@ export interface RunRecordInput {
  * snapshot in declaration order, resolved non-secret parameters, and every
  * planned target seeded `pending`.
  */
+/**
+ * The parameters a run record carries: every resolved, **non-secret** value,
+ * keyed by property name.
+ *
+ * The exclusion is the record's whole promise about secrets — it holds none by
+ * construction — so this projection is the only way parameters reach a record,
+ * whether the record is being created or updated by a resume that supplied
+ * different values. An unset parameter is omitted rather than stored empty:
+ * absent means "never supplied", which an empty string would not.
+ */
+export function recordedParams(
+  params: Iterable<AnyParameter>,
+): Record<string, string> {
+  const recorded: Record<string, string> = {};
+  for (const parameter of params) {
+    if (parameter.secret_ || !parameter.isSet_()) continue;
+    const value = parameter.stringValue_();
+    if (parameter.name_ !== undefined && value !== undefined) {
+      recorded[parameter.name_] = value;
+    }
+  }
+  return recorded;
+}
+
 export function buildRunRecord(input: RunRecordInput): RunRecord {
   const graph = input.order.map((t) => ({
     name: t.name_ ?? "",
     dependsOn: dependencyNames(t),
   }));
 
-  const params: Record<string, string> = {};
-  for (const parameter of input.params) {
-    if (parameter.secret_ || !parameter.isSet_()) continue;
-    const value = parameter.stringValue_();
-    if (parameter.name_ !== undefined && value !== undefined) {
-      params[parameter.name_] = value;
-    }
-  }
+  const params = recordedParams(input.params);
 
   const targets: Record<string, TargetRunState> = {};
   for (const t of input.order) {
@@ -191,4 +209,47 @@ function dependencyNames(target: TargetBuilder): string[] {
     if (dependency.name_ !== undefined) names.push(dependency.name_);
   }
   return names;
+}
+
+/**
+ * The audit event recording that a resume ran with parameter values the launch
+ * did not supply — or `undefined` when it supplied the same ones.
+ *
+ * The values themselves are deliberately **not** written back over
+ * {@link RunRecord.params}. That field is not display-only: a cancellation
+ * resolves each compensation body's parameters from it, so a run that deployed
+ * to `sit` and was resumed with `prod` would have its rollback undo the `sit`
+ * deploy against `prod`. A resumed run genuinely executes under two sets of
+ * values, and one map cannot hold both — so `params` keeps the launch's, which
+ * is what the targets a compensation unwinds actually ran on, and the override
+ * is reported here instead. Nothing is overwritten, so a later resume still
+ * merges from the launch's values rather than inheriting an earlier resumer's,
+ * and a parameter the resumer's build no longer declares is not erased.
+ *
+ * `after` must already have been through {@link recordedParams}, so secrets are
+ * excluded before they reach an event that is stored and displayed.
+ */
+export function paramOverrideEvent(
+  before: Record<string, string>,
+  after: Record<string, string>,
+  actor: string,
+  at: string,
+): RunEvent | undefined {
+  const changed: Record<string, string> = {};
+  for (const [name, value] of Object.entries(after)) {
+    if (before[name] !== value) changed[name] = value;
+  }
+  if (Object.keys(changed).length === 0) return undefined;
+  return {
+    at,
+    tool: "resume",
+    actor,
+    outcome: "ok",
+    args: changed,
+    // Rendered into `detail` as well as carried in `args`, because
+    // `zuke runs show` prints the detail and not the arguments — and a line
+    // saying only that an override happened, without saying to what, would
+    // leave a reader no better off than the misreport this replaces.
+    detail: Object.entries(changed).map(([n, v]) => `${n}=${v}`).join(" "),
+  };
 }
