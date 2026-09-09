@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/zuke-build/zuke/compare/cli-v1.2.0...cli-v1.3.0) (2026-09-09)
+
+
+### Features
+
+* **cli:** let zuke setup choose launchers that bootstrap a pinned Deno ([#525](https://github.com/zuke-build/zuke/issues/525)) ([48a1e40](https://github.com/zuke-build/zuke/commit/48a1e408571f22d9e2c1084f2bbebc173e7ba609)), closes [#512](https://github.com/zuke-build/zuke/issues/512)
+
 ## [1.2.0](https://github.com/zuke-build/zuke/compare/cli-v1.1.0...cli-v1.2.0) (2026-09-08)
 
 
