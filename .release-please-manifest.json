@@ -1,5 +1,5 @@
 {
-  "packages/core": "1.48.2",
+  "packages/core": "1.49.0",
   "packages/deno": "1.4.0",
   "packages/docs": "1.0.1",
   "packages/npm": "1.2.0",
@@ -46,7 +46,7 @@
   "packages/dprint": "1.1.0",
   "packages/gcloud": "1.2.0",
   "packages/git": "1.6.0",
-  "packages/gh": "1.8.0",
+  "packages/gh": "1.9.0",
   "packages/codecov": "1.0.3",
   "packages/claude": "1.1.2",
   "packages/codex": "1.1.2",

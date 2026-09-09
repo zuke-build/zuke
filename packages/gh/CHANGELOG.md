@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.9.0](https://github.com/zuke-build/zuke/compare/gh-v1.8.0...gh-v1.9.0) (2026-09-09)
+
+
+### Features
+
+* **core:** ctx.state.trySet reports whether a durable write landed ([#513](https://github.com/zuke-build/zuke/issues/513)) ([3f6f5f2](https://github.com/zuke-build/zuke/commit/3f6f5f2a88631b0edbc33a47c78e8ad0f91e8d2e))
+
 ## [1.8.0](https://github.com/zuke-build/zuke/compare/gh-v1.7.0...gh-v1.8.0) (2026-08-29)
 
 
