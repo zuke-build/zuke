@@ -96,7 +96,7 @@ flowchart TD
 | `syncWebsite` | Open and merge a website PR with refreshed llms.txt + api.json | — |
 | `docLint` | Fail on missing JSDoc or first-party private-type refs (deno doc --lint) | — |
 | `snippetsCheck` | Type-check the marked ts snippets in docs and skills | — |
-| `examplesCheck` | Type-check every example project and list its targets | — |
+| `examplesCheck` | Type-check every example, list its targets, verify its CI | — |
 | `hclGen` | Regenerate the Terraform/OpenTofu wrappers from one template | — |
 | `hclSyncCheck` | Verify the Terraform/OpenTofu wrappers match their template | — |
 | `pluginSync` | Sync plugins/zuke/skills/ from skills/ (real copies, not a symlink) | — |

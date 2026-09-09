@@ -3,9 +3,9 @@
 
 /**
  * The examples gate. Every `examples/<name>/zuke.ts` is a complete build a
- * reader is meant to copy, so each one is type-checked against the workspace
- * and asked to list its targets on every run — an example cannot rot when the
- * API moves.
+ * reader is meant to copy, so each one is type-checked against the workspace,
+ * asked to list its targets, and asked to verify any pipeline files it commits
+ * — an example cannot rot when the API moves.
  *
  * The examples import `jsr:@zuke/*`. From inside this repository those
  * specifiers resolve to the workspace members, so the check holds an example
@@ -31,35 +31,63 @@ export interface Example {
 export interface ExampleFailure {
   /** The example's directory. */
   dir: string;
-  /** Which step failed: the type-check, or listing the build's targets. */
-  step: "check" | "list";
+  /**
+   * Which step failed: the type-check, listing the build's targets, or
+   * verifying the pipeline files the example commits.
+   */
+  step: "check" | "list" | "pipeline";
   /** The tool's output. */
   detail: string;
 }
 
-/** The two steps the gate runs per example, injectable for unit tests. */
+/** One step's verdict: whether it passed, and the tool output to report. */
+export interface ExampleVerdict {
+  /** Whether the step passed. */
+  ok: boolean;
+  /** The tool's output, reported when the step failed. */
+  detail: string;
+}
+
+/** The three steps the gate runs per example, injectable for unit tests. */
 export interface ExampleRunner {
   /** Type-check the build file. */
   check: SnippetChecker;
   /** Run the build's `--list` from inside its directory. */
-  list: (dir: string) => Promise<{ ok: boolean; detail: string }>;
+  list: (dir: string) => Promise<ExampleVerdict>;
+  /** Run the build's `generate-ci --check` from inside its directory. */
+  pipeline: (dir: string) => Promise<ExampleVerdict>;
 }
 
-/** The default runner: `deno check` and `deno run … --list`, both frozen. */
+/**
+ * Run one example's build with `args`, from inside its own directory.
+ *
+ * An example that drives a Node app carries that app's package.json. Deno
+ * would discover it from the example's directory and, under --frozen, refuse
+ * to run because the root lockfile does not list it as a workspace member —
+ * but it is the app's manifest, not the build's, so opt out of package.json
+ * discovery for every step the gate runs.
+ */
+async function runExampleBuild(
+  dir: string,
+  args: string[],
+): Promise<ExampleVerdict> {
+  const out = await DenoTasks.run((s) =>
+    s.allowAll().frozen().script("zuke.ts").scriptArgs(...args).cwd(dir)
+      .env({ DENO_NO_PACKAGE_JSON: "1" }).quiet().noThrow()
+  );
+  return { ok: out.code === 0, detail: `${out.stderr}${out.stdout}`.trim() };
+}
+
+/**
+ * The default runner: `deno check`, then the build's own `--list` and
+ * `generate-ci --check`, all frozen. An example that declares no pipeline
+ * reports that and exits zero, so the last step is safe to run over every
+ * example rather than only the ones that commit workflow files.
+ */
 const denoRunner: ExampleRunner = {
   check: denoCheck,
-  list: async (dir) => {
-    // An example that drives a Node app carries that app's package.json. Deno
-    // would discover it from the example's directory and, under --frozen,
-    // refuse to run because the root lockfile does not list it as a workspace
-    // member — but it is the app's manifest, not the build's, so opt out of
-    // package.json discovery for the listing.
-    const out = await DenoTasks.run((s) =>
-      s.allowAll().frozen().script("zuke.ts").scriptArgs("--list").cwd(dir)
-        .env({ DENO_NO_PACKAGE_JSON: "1" }).quiet().noThrow()
-    );
-    return { ok: out.code === 0, detail: `${out.stderr}${out.stdout}`.trim() };
-  },
+  list: (dir) => runExampleBuild(dir, ["--list"]),
+  pipeline: (dir) => runExampleBuild(dir, ["generate-ci", "--check"]),
 };
 
 /**
@@ -82,10 +110,11 @@ export async function discoverExamples(
 }
 
 /**
- * Run the gate over `examples`: type-check each build file, then list its
- * targets from inside its directory. A build that fails to type-check is not
- * listed — the check output is the root cause, and the list would only repeat
- * it — so each example contributes at most one failure.
+ * Run the gate over `examples`: type-check each build file, list its targets
+ * from inside its directory, then verify the pipeline files it commits are
+ * what the current core renders. Each step runs only when the one before it
+ * passed — the first failure is the root cause and the rest would repeat it —
+ * so each example contributes at most one failure.
  */
 export async function checkExamples(
   examples: Example[],
@@ -105,16 +134,32 @@ export async function checkExamples(
     const listed = await runner.list(example.dir);
     if (!listed.ok) {
       failures.push({ dir: example.dir, step: "list", detail: listed.detail });
+      continue;
+    }
+    const pipeline = await runner.pipeline(example.dir);
+    if (!pipeline.ok) {
+      failures.push({
+        dir: example.dir,
+        step: "pipeline",
+        detail: pipeline.detail,
+      });
     }
   }
   return failures;
 }
 
+/** How each step's failure reads in the gate's message. */
+const STEP_FAILURE: Record<ExampleFailure["step"], string> = {
+  check: "does not type-check",
+  list: "fails --list",
+  pipeline: "has stale pipeline files",
+};
+
 /** Render the failures as one actionable message, each example named first. */
 export function formatExampleFailures(failures: ExampleFailure[]): string {
   const blocks = failures.map((f) => {
     const detail = f.detail.split("\n").map((line) => `    ${line}`).join("\n");
-    const what = f.step === "check" ? "does not type-check" : "fails --list";
+    const what = STEP_FAILURE[f.step];
     return `  ${f.dir} ${what}:\n${detail}`;
   });
   return `${failures.length} example(s) failed the gate:\n${
