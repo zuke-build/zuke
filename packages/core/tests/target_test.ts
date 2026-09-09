@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { testPlan } from "./_fakes.ts";
 import { assertEquals, assertThrows } from "./_assert.ts";
 import { Build, discoverGroups, discoverTargets } from "../src/build.ts";
 import { Group, group, target, TargetBuilder } from "../src/target.ts";
@@ -106,9 +107,10 @@ Deno.test("inputs, outputs, and onlyWhen record their configuration", () => {
   assertEquals(t.inputs_, ["src", "deno.json"]);
   assertEquals(t.outputs_, ["dist"]);
   assertEquals(t.onlyWhen_.length, 1);
-  assertEquals(t.onlyWhen_[0](), false);
+  const conditionCtx = { target: "t", plan: () => testPlan() };
+  assertEquals(t.onlyWhen_[0](conditionCtx), false);
   allow = true;
-  assertEquals(t.onlyWhen_[0](), true);
+  assertEquals(t.onlyWhen_[0](conditionCtx), true);
 });
 
 Deno.test("cacheKey, produces, consumes, always, whenSkipped record config", () => {

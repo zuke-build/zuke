@@ -30,6 +30,7 @@ class Deploy extends Build {
 | `stateOf`    | `(t) => …`          | The state handle of **another** target — read a dependency's published metadata (e.g. a wait's result). |
 | `outcomeOf`  | `(t) => …`          | What another target in this run **did** — `succeeded`, `failed`, `skipped`, … or `undefined` if it has none yet. |
 | `outcomes`   | `() => ReadonlyMap` | Every outcome settled so far, keyed by target name. |
+| `plan`       | `() => RunPlan`     | The run's **planned shape** — which targets it set out to run, and how they relate. See [Reading the run's shape](#reading-the-runs-shape--ctxplan). |
 | `signals`    | `ReadonlyMap`       | Payloads of external signals received so far (see [waits](./orchestration.md)). |
 | `dryRun`     | `boolean`           | `true` when the run is a dry run (bodies don't execute in a dry run). |
 | `reportSummary` | `(pairs) => void` | Put `key: value` notes on **this target's row** of the Build Summary — see [Notes on the summary row](#notes-on-the-summary-row). |
@@ -155,6 +156,79 @@ them after each target's duration (`✔ test  succeeded  128.1s  // Tests: 4094
 record, and a target that reads a dependency's outcome sees them as
 `ctx.outcomeOf("test")?.summary` — after a resume too, since the record is
 what a resumed run reads.
+
+## Reading the run's shape — `ctx.plan()`
+
+`ctx.plan()` answers what the run *set out to do*: which targets it planned, in
+execution order, and which targets must finish before a given one starts. It is
+the seam for a body whose work depends on what else was asked for.
+
+<!-- check -->
+
+```ts
+import { Build, target } from "jsr:@zuke/core";
+
+class Ci extends Build {
+  build = target().executes((ctx) => {
+    // Only worth signing the artifact if this run is going to deploy it.
+    if (ctx.plan().includes("deploy")) console.log("signing");
+  });
+  deploy = target().dependsOn(this.build).executes(() => {});
+}
+```
+
+`zuke build` prints nothing; `zuke deploy` signs. Same body, same build — the
+plan describes **this run**, not the class.
+
+A condition reads the same view, so a target can gate on the graph rather than
+only on the environment:
+
+<!-- check -->
+
+```ts
+import { Build, target } from "jsr:@zuke/core";
+
+class Ci extends Build {
+  unit = target().executes(() => {});
+  coverage = target()
+    .dependsOn(this.unit)
+    .onlyWhen((ctx) => ctx.plan().includes("unit"))
+    .executes(() => {});
+}
+```
+
+Receiving the context is optional: an existing `.onlyWhen(() => …)` keeps
+working, since a zero-argument function is assignable to the one-parameter type.
+
+A condition gets a **narrower** context than a body — `target` and `plan()` only.
+A `.whenSkipped("skip-dependencies")` condition is evaluated *before* the run
+starts, to decide what the run prunes, and at that point the run's identity, its
+state handles, and its cancellation signal do not exist yet.
+
+### The plan is not the outcome
+
+This is the distinction to keep straight:
+
+- **`ctx.plan()`** says what the run **planned**. It is fixed for the whole run,
+  and identical in every process a resumed run passes through.
+- **`ctx.outcomeOf(name)`** says what **became** of a target, once it settled.
+
+A planned target can still be skipped — by a condition, by `--affected`, or by
+an operator's forced outcome — and a run that fails early never reaches its
+later targets at all. So `plan().includes("deploy")` means "`deploy` is part of
+this run", never "`deploy` will execute". Ask `outcomeOf` for that.
+
+There is a concrete reason the plan refuses to answer "will it run". A
+`whenSkipped("skip-dependencies")` condition is evaluated **twice**: once up
+front, to decide what the run prunes, and again when the scheduler reaches the
+target. A "will it run" view would answer differently at those two moments — and
+at the first one it would be circular, since that very condition is one of the
+things deciding the answer. Reporting the planned graph gives one answer
+everywhere.
+
+`dependenciesOf` returns an empty list both for a target with no predecessors
+and for a name that is not in the plan at all; use `includes` to tell those
+apart.
 
 ## Reading what the rest of the run did
 

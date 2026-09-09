@@ -265,6 +265,7 @@ function targetContextFor(
     runId: env.runId,
     ...(env.initiator === undefined ? {} : { initiator: env.initiator }),
     target: name,
+    plan: () => env.plan,
     signal: env.signal,
     state: ownState,
     stateOf: (t) => t === name ? ownState : stateHandleFor(env, t),
@@ -443,8 +444,9 @@ async function runTarget(
     };
   }
 
+  const conditionCtx = { target: name, plan: () => env.plan };
   for (const condition of t.onlyWhen_) {
-    if (!(await condition())) return { status: "skipped", ms: 0 };
+    if (!(await condition(conditionCtx))) return { status: "skipped", ms: 0 };
   }
 
   const missing = t.requires_.filter((p) => !p.isSet_());
@@ -473,6 +475,7 @@ async function runTarget(
       const targetCtx: TargetContext = {
         runId: env.runId,
         target: name,
+        plan: () => env.plan,
         signal: env.signal,
         state: echoState,
         stateOf: (t2) => echo(t2),

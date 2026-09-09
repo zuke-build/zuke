@@ -6,6 +6,7 @@
 import type { GraphHost } from "../src/graph_view.ts";
 import type { StateHost, StateStore } from "../src/state/store.ts";
 import type { RunRecord } from "../src/state/types.ts";
+import type { RunPlan } from "../src/run_plan.ts";
 import type { RemoteCacheStore } from "../src/remote_cache.ts";
 
 /**
@@ -228,5 +229,22 @@ export function runRecord(over: Partial<RunRecord> = {}): RunRecord {
     signals: {},
     events: [],
     ...over,
+  };
+}
+
+/**
+ * A {@link RunPlan} over `targets`, each with no dependencies — the plan a unit
+ * test hands an engine seam that requires one but is not exercising it.
+ *
+ * Pass names when the test asserts on the plan; the default empty plan says
+ * "this run planned nothing", which is the honest reading for a seam driven
+ * with no graph behind it.
+ */
+export function testPlan(targets: readonly string[] = []): RunPlan {
+  const planned = new Set(targets);
+  return {
+    targets: [...targets],
+    includes: (t) => planned.has(t),
+    dependenciesOf: () => [],
   };
 }

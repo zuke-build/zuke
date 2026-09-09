@@ -24,7 +24,7 @@ that declares only `.effect(...)` each legitimately have no `.executes(...)`.
 | `.dependentFor(...t)`                                                                                    | Reverse of `dependsOn`: make this a prerequisite of others.                                                                                               |
 | `.inputs(...p)` / `.outputs(...p)`                                                                       | Incremental cache: skip when inputs unchanged and outputs exist.                                                                                          |
 | `.cacheKey(fn)`                                                                                          | Add a non-file value (version, git sha, param) to the cache fingerprint.                                                                                  |
-| `.onlyWhen(cond)`                                                                                        | Run only when the (possibly async) predicate holds, else skip.                                                                                            |
+| `.onlyWhen(cond)`                                                                                        | Run only when the (possibly async) predicate holds, else skip. The predicate may take a context: `(ctx) => ctx.plan().includes("deploy")`.                 |
 | `.whenSkipped("skip-dependencies")`                                                                      | When `onlyWhen` skips this target, also skip deps no other planned target needs. Condition is evaluated up front, so it must not read run-produced state. |
 | `.requires(...params)`                                                                                   | Fail unless the listed parameters resolved to a value.                                                                                                    |
 | `.retry(times, delayMs?)`                                                                                | Retry the body on failure.                                                                                                                                |
@@ -156,6 +156,9 @@ deploy = target().executes(async (ctx) => {
   ctx.outcomeOf("checks")?.status; // one target's settled outcome, or undefined
   ctx.outcomeOf("test")?.summary; // its Build Summary notes (durable, e.g. Tests/Passed)
   ctx.outcomes(); // every outcome settled SO FAR, keyed by dotted name
+  ctx.plan().targets; // every target THIS run planned, in execution order
+  ctx.plan().includes("deploy"); // was `deploy` part of what was asked for?
+  ctx.plan().dependenciesOf("test"); // what must finish before `test` starts
   ctx.reportSummary({ Version: "3.6.2" }); // a note on THIS row of the Build Summary
 });
 ```

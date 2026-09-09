@@ -15,6 +15,7 @@
 
 import type { Build } from "./build.ts";
 import type { TargetBuilder } from "./target.ts";
+import type { RunPlan } from "./run_plan.ts";
 import type { OrderingEdge } from "./graph.ts";
 import type { Reporter } from "./reporter.ts";
 import type { Redactor } from "./redact.ts";
@@ -128,13 +129,15 @@ export function reportDanglingEdges(
 export async function conditionSkips(
   root: TargetBuilder,
   order: TargetBuilder[],
+  plan: RunPlan,
 ): Promise<Set<string>> {
   const pruned = new Set<TargetBuilder>();
   for (const t of order) {
     if (!t.skipDependencies_ || t.onlyWhen_.length === 0) continue;
     let run = true;
+    const ctx = { target: t.name_ ?? "<unnamed>", plan: () => plan };
     for (const condition of t.onlyWhen_) {
-      if (!(await condition())) {
+      if (!(await condition(ctx))) {
         run = false;
         break;
       }

@@ -3161,6 +3161,27 @@ interface CompensationFailure
   error: string
     The failure message.
 
+interface ConditionContext
+  The context a condition receives.
+
+  Deliberately narrower than a {@link TargetContext}. A condition on a
+  `.whenSkipped("skip-dependencies")` target is evaluated before the run
+  starts, to decide what the run prunes — at which point the run's identity,
+  its durable state handles, and its cancellation signal do not exist yet. This
+  type carries only what is available at every moment a condition can be
+  called.
+
+  readonly target: string
+    Dotted name of the target this condition gates.
+  plan(): RunPlan
+    The resolved shape of this run — which targets it plans, and how they
+    relate. Lets a condition gate on the graph ("only when `deploy` was asked
+    for") rather than only on the environment.
+
+    Reports the plan, not the outcome, which matters most here: a condition can
+    be one of the things deciding what runs, so the plan deliberately does not
+    claim to know what will execute. See {@link "./run_plan.ts".RunPlan}.
+
 interface CopyOptions
   Options for {@link FileTasksApi.copy}.
 
@@ -4058,6 +4079,38 @@ interface RunOptions
     Zuke's built-in look; inject `consoleRenderer` from `@zuke/console` (or a
     custom {@link Renderer}) to restyle a build's output.
 
+interface RunPlan
+  The resolved shape of this run: the targets it plans, in order, and the
+  dependencies between them.
+
+  This describes the plan, not the outcome. A target is in the plan because
+  the graph put it there; it may still be skipped by a condition, by
+  `--affected`, or by an operator's forced outcome, and a run that fails early
+  never reaches its later targets at all. Ask {@link RunPlan.includes} what the
+  run set out to do, and `ctx.outcomeOf(...)` what actually became of a target
+  once it settled.
+
+  The plan is fixed for the whole run: every body and every condition, in every
+  process a resumed run passes through, reads the same answer.
+
+  readonly targets: readonly string[]
+    Every planned target's dotted name, in the run's deterministic execution
+    order — the same order the build summary lists.
+  includes(target: string): boolean
+    Whether `target` is part of this run's planned set.
+
+    The question a body asks to decide whether its work is needed by something
+    else in the run — "am I building for a `deploy` that was actually asked
+    for?". An unknown name is `false`, never an error, so probing for an
+    optional target does not need a guard.
+  dependenciesOf(target: string): readonly string[]
+    The targets that must complete before `target` may start: its declared
+    dependencies plus the soft `before`/`after` edges that apply within this
+    run's set.
+
+    Empty for a target with no predecessors and for a name that is not in
+    the plan — use {@link RunPlan.includes} to tell those apart.
+
 interface RunQuery
   Filters for {@link "./store.ts".StateStore.listRuns}; all fields are optional.
 
@@ -4392,6 +4445,12 @@ interface TargetContext
     Every outcome this run has settled so far, keyed by dotted target name — a
     snapshot, not a live view. Targets that have not settled are absent rather
     than present with a placeholder status.
+  plan(): RunPlan
+    The resolved shape of this run — which targets it plans, and how they
+    relate. The seam for a body whose work depends on what else was asked
+    for: a build that signs its artifact only when `deploy` is in the run.
+
+    Reports the plan, not the outcome — see {@link "./run_plan.ts".RunPlan}.
   reportSummary(pairs: SummaryPairs): void
     Report `key: value` notes into this target's row of the end-of-build
     summary — where a count or a version belongs once the body is done:
@@ -4695,8 +4754,12 @@ type CiSyncStatus = "written" | "unchanged" | "stale"
 type CiUses = string | CiActionRef
   A step's `uses:` value — a bare reference, or one carrying its version.
 
-type Condition = () => boolean | Promise<boolean>
+type Condition = (ctx: ConditionContext) => boolean | Promise<boolean>
   A predicate gating whether a target runs; may be synchronous or async.
+
+  Receiving the context is optional — a zero-argument
+  `.onlyWhen(() => …)` stays valid, since a zero-argument function is
+  assignable to this one-parameter type.
 
 type DownloadFn = (url: string, dest: PathLike) => Promise<void>
   A download function: fetch `url` into the file at `dest`.

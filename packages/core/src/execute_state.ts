@@ -16,6 +16,7 @@
 
 import type { Build } from "./build.ts";
 import type { TargetBuilder } from "./target.ts";
+import type { RunPlan } from "./run_plan.ts";
 import type { Reporter } from "./reporter.ts";
 import type { Redactor } from "./redact.ts";
 import type { AnyParameter } from "./params.ts";
@@ -184,6 +185,8 @@ export async function openRunState(opts: {
   build: Build;
   root: TargetBuilder;
   order: TargetBuilder[];
+  /** The run's resolved shape, handed to every body via `ctx.plan()`. */
+  plan: RunPlan;
   /**
    * The run's resolved parameters, copied into the record. An array rather than
    * an `Iterable` on purpose: a `MapIterator` is one-shot, so a second read
@@ -344,6 +347,7 @@ export async function openRunState(opts: {
   const initiator = writer?.snapshot().initiator;
   const env: RunEnv = {
     runId: opts.runId,
+    plan: opts.plan,
     signal: opts.signal,
     writer,
     store: stateStore,

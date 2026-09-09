@@ -29,6 +29,7 @@ import {
   emitActionsMasks,
   writeJobSummary,
 } from "./execute_output.ts";
+import { buildRunPlan } from "./run_plan.ts";
 import {
   applyAffectedSkips,
   conditionSkips,
@@ -294,10 +295,16 @@ export async function execute(
     return { ok: false, executed: [], error };
   }
   const { order, predecessors } = planGraph(root, extraEdges);
+  // The run's shape, fixed here and read by every body and condition — the same
+  // answer in every process a resumed run passes through, since it is derived
+  // from the graph rather than from what has happened so far.
+  const planView = buildRunPlan(order, predecessors);
   reportDanglingEdges(extraEdges, order, discovered.values(), reporter);
   // Evaluate up-front conditions for `whenSkipped("skip-dependencies")` targets
   // and skip them plus any dependencies that nothing else needs.
-  for (const name of await conditionSkips(root, order)) skip.add(name);
+  for (const name of await conditionSkips(root, order, planView)) {
+    skip.add(name);
+  }
 
   // With `--affected`, skip every planned target a change cannot reach. Skipped
   // targets still unblock their dependents (their prior outputs are assumed
@@ -380,6 +387,7 @@ export async function execute(
     params: [...params.values()],
     runId,
     dryRun,
+    plan: planView,
     signal: runController.signal,
     redactor,
     reporter,
@@ -549,6 +557,7 @@ export async function execute(
         writer,
         life,
         order,
+        plan: planView,
         runId,
         actor,
         signals: env.signals,
