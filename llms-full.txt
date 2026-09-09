@@ -8166,6 +8166,11 @@ interface SetupFlags
     Also write `.mcp.json`, registering the build's MCP server for agent clients.
   allowRun: boolean
     Register that server with `--allow-run`, so the agent may execute targets. Implies `mcp`.
+  bootstrapDeno?: boolean
+    Which launchers to scaffold: `true` (`--bootstrap-deno`) for ones that
+    install a pinned, checksum-verified Deno when none is on `PATH`, `false`
+    (`--no-bootstrap-deno`) for ones that require it and fail closed. Unset:
+    ask when interactive, else take the default (bootstrap).
 
 interface SetupHost
   Injected side effects, so {@link runSetup} is unit-testable.

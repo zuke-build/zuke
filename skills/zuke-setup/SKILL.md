@@ -27,7 +27,9 @@ deno run -A jsr:@zuke/cli setup
 ```
 
 `setup` flags: `--dir <path>`, `--name <ClassName>`, `--force` (overwrite
-existing files), `--yes` (non-interactive), `--mcp` (also write `.mcp.json`
+existing files), `--yes` (non-interactive), `--bootstrap-deno` /
+`--no-bootstrap-deno` (which launchers to write — see below; the wizard asks
+when interactive, and `--yes` takes the default, bootstrap), `--mcp` (also write `.mcp.json`
 registering the build's MCP server, so this agent — and any other stdio MCP
 client — can list and run the targets through typed calls; `--allow-run`
 registers it with execution enabled and implies `--mcp`), `--launcher-name
@@ -68,7 +70,8 @@ is a bug, not a shortcut. An `&&` chain becomes sequential steps, a
 shell-specific to translate (pipes, redirects, env assignments) is preserved
 behind a `// TODO` so the file still compiles. It scaffolds the launchers and
 `deno.json` exactly like `setup`, and takes the same `--dir`, `--name`,
-`--force`, `--yes`, `--mcp` and `--allow-run` flags. Afterwards, use the **zuke-write-build** skill to
+`--force`, `--yes`, `--bootstrap-deno` / `--no-bootstrap-deno`, `--mcp` and
+`--allow-run` flags. Afterwards, use the **zuke-write-build** skill to
 finish replacing any remaining generated `CmdTasks.exec` calls with typed
 `*Tasks` wrappers.
 
@@ -76,10 +79,14 @@ finish replacing any remaining generated `CmdTasks.exec` calls with typed
 
 - **`zuke.ts`** — a starter build class with a sample target and a `default`.
 - **`./zuke`** + **`./zuke.ps1`** — launchers that locate the project and run
-  `zuke.ts` with the Deno on `PATH`. If Deno is missing they point at the
-  official install docs and exit rather than piping an install script into a
-  shell, which would download and execute code unverified. They pass `--frozen`
-  once a `deno.lock` exists, so the first run writes the lockfile and every run
+  `zuke.ts`. By default (`--bootstrap-deno`) they use the Deno on `PATH` and,
+  when there is none, download the pinned release Zuke itself runs on, verify
+  it against a per-platform SHA-256, and install it under `~/.deno` — never an
+  install script, never an unverified binary — so a clone needs nothing
+  installed first. With `--no-bootstrap-deno` they require Deno on `PATH` and
+  exit with the install docs URL when it is missing, for a project that must
+  never download a tool from its build entry point. Both pass `--frozen` once
+  a `deno.lock` exists, so the first run writes the lockfile and every run
   after verifies it.
 - **`deno.json`** — merged to add a `zuke` task, plus `fmt`/`lint`/`test` if
   absent. The merge is all-or-nothing: if a `zuke` task is already declared the

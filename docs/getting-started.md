@@ -25,14 +25,18 @@ zuke setup                                  # in your project
 ```
 
 Without installing, the same wizard runs via `deno run -A jsr:@zuke/cli setup`
-(flags: `--dir <path>`, `--name <Class>`, `--force`, `--yes`, `--mcp`). Pass
-`--mcp` to also write a `.mcp.json` that registers the build's
-[MCP server](./mcp.md), so Claude Code, Codex or any stdio MCP client can list
-the targets and run one through typed calls from day one (`--allow-run` lets
-the agent execute targets, not just inspect them). If a `zuke/`
-directory already occupies the launcher's name, setup stops with an actionable
-error — pass `--launcher-name <name>` to write the launcher (and its `.ps1`)
-under a different name.
+(flags: `--dir <path>`, `--name <Class>`, `--force`, `--yes`, `--mcp`,
+`--bootstrap-deno` / `--no-bootstrap-deno`). Pass `--mcp` to also write a
+`.mcp.json` that registers the build's [MCP server](./mcp.md), so Claude Code,
+Codex or any stdio MCP client can list the targets and run one through typed
+calls from day one (`--allow-run` lets the agent execute targets, not just
+inspect them). The wizard asks which launchers you want: by default they
+bootstrap a pinned, checksum-verified Deno when none is on `PATH` — the same
+scripts this repository runs on — so a clone needs nothing installed first;
+`--no-bootstrap-deno` writes launchers that require Deno on `PATH` and fail
+closed without it. If a `zuke/` directory already occupies the launcher's name,
+setup stops with an actionable error — pass `--launcher-name <name>` to write
+the launcher (and its `.ps1`) under a different name.
 
 Already have a `@zuke/*` package's API in hand? `zuke doc <package>` prints it
 (`zuke doc core`, `zuke doc @scope/pkg`), running `deno doc` in an isolated
