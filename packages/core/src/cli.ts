@@ -14,7 +14,7 @@ import { forceTarget } from "./force.ts";
 import { isCI } from "./host.ts";
 import { GraphError, validateGraph } from "./graph.ts";
 import { InsecureBackendUrlError } from "./http.ts";
-import { execute } from "./executor.ts";
+import { execute, type Reporter } from "./executor.ts";
 import type { Renderer } from "./renderer.ts";
 import {
   defaultGraphHost,
@@ -872,6 +872,13 @@ export interface MainOptions {
   /** Renderer for the build's banners and summary (see {@link RunOptions}). */
   renderer?: Renderer;
   /**
+   * Where the run narrates its progress — the lock-wait notice, cancellation
+   * lines, and the like. Injected in tests, which need to observe those lines
+   * **while** a run is still going: `main` otherwise writes to the console, and
+   * two concurrent runs cannot be told apart there.
+   */
+  reporter?: Reporter;
+  /**
    * Cancel a running **build** when this signal aborts (its compensations run and
    * the record is marked cancelled). Applies only to a target run; other
    * commands ignore it. Tests inject one directly; {@link run} does not use it —
@@ -1505,6 +1512,7 @@ async function runCommand(
       actorKind,
       plugins: options.plugins,
       renderer: options.renderer,
+      ...(options.reporter === undefined ? {} : { reporter: options.reporter }),
       signal: cleanupSignals ? controller.signal : options.signal,
     });
     return result.ok ? 0 : 1;
