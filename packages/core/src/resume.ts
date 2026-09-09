@@ -33,7 +33,7 @@ import type { JsonValue, TargetBuilder } from "./target.ts";
 import type { StateStore } from "./state/store.ts";
 import { resolveRunStore } from "./run_store.ts";
 import { resolveActor } from "./state/record.ts";
-import { settleTargetRow, settleWaitingTargets } from "./state/settle.ts";
+import { settleTargetRow, settleUnreachedTargets } from "./state/settle.ts";
 import type {
   RunGraphNode,
   RunRecord,
@@ -477,7 +477,7 @@ async function failTimedOut(
     // passed is failed above. The others are never resumed — this run is about
     // to be terminal — so they settle too, the same rule the scheduler applies
     // when a run fails with gates still parked.
-    settleWaitingTargets(next, at);
+    settleUnreachedTargets(next, at);
     next.status = "failed";
     next.updatedAt = at;
     const result = await store.putRun(next, version);

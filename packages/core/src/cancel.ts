@@ -52,7 +52,7 @@ import type { StateStore } from "./state/store.ts";
 import { resolveRunStore } from "./run_store.ts";
 import { acquireCancelLock } from "./state/cancel_lock.ts";
 import { resolveActor } from "./state/record.ts";
-import { settleWaitingTargets } from "./state/settle.ts";
+import { settleUnreachedTargets } from "./state/settle.ts";
 import {
   isTerminalRunStatus,
   type RunEvent,
@@ -1033,7 +1033,7 @@ async function finalizeCancelled(
     // `zuke runs show` would print it as still parked on a deadline nobody is
     // watching. Runs after the compensation walk, which treats a `waiting`
     // target as unproven and unwinds it.
-    settleWaitingTargets(next, at, expiredWait);
+    settleUnreachedTargets(next, at, expiredWait);
     for (const event of compensationEvents(outcome.attempts, actor, at)) {
       next.events.push(event);
     }

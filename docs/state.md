@@ -103,6 +103,12 @@ no longer carries one. So a run that has reached a terminal status never has a
 target still claiming to be parked on a gate, and a reader can trust the two to
 agree.
 
+`pending` is bounded the same way. It earns its place on a **suspended** record,
+where it means "a resume will run this"; on a terminal one there is nothing left
+to run it, and no sweep will revisit it. So every terminal run settles the
+targets it never reached to `skipped`, whichever way it ended — failed, timed
+out, or cancelled. A terminal record therefore has no `pending` rows at all.
+
 The executor writes the record when it is created, on each target's start and
 finish, and when the run ends. So if the process is killed mid-run, the record
 on disk shows the target that was executing as `running`, with its `startedAt`
