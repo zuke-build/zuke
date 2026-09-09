@@ -37,6 +37,7 @@ import {
   resolveRunParameters,
 } from "./execute_plan.ts";
 import { openRunState } from "./execute_state.ts";
+import { paramOverrideEvent, recordedParams } from "./state/record.ts";
 import type { HeldLease } from "./state/run_lease.ts";
 import { settleCancelledRun } from "./execute_cancel.ts";
 import { cancelledElsewhere } from "./cancel.ts";
@@ -419,6 +420,21 @@ export async function execute(
     };
     if (lease.lost.aborted) stopOwning();
     else lease.lost.addEventListener("abort", stopOwning, { once: true });
+  }
+
+  // A resume may have been given parameter values the launch did not supply,
+  // and they are what the bodies below will read. Record that in the audit
+  // trail — after the lease wiring above, so a process that has already lost
+  // the run writes nothing. `params` itself is deliberately left alone; see
+  // `paramOverrideEvent`.
+  if (options.resume !== undefined && writer !== undefined) {
+    const override = paramOverrideEvent(
+      options.resume.record.params,
+      recordedParams(params.values()),
+      actor,
+      new Date().toISOString(),
+    );
+    if (override !== undefined) await writer.appendEvent(override);
   }
 
   // Announce the run's initial durable state (`running`) to plugins — a no-op
