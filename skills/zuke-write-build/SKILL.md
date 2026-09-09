@@ -212,6 +212,9 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   named so that it renders as a built-in CLI flag (`actor`, `actorKind`,
   `limit`, `target`, `output`, …) or as an MCP control key (`dryRun`,
   `confirm`, `operatorToken`) — the build refuses to load, naming the field.
+  The flag is one dash per lower-to-upper transition, and a **digit ends a run
+  of capitals**, so `skipE2E` gives `--skip-e2-e`; name it `skipE2e` or declare
+  `.flag("--skip-e2e")`, which replaces the derived spelling everywhere.
 - **Secrets from a manager:** `parameter(...).secret().from(source)` sources a
   value at run time (e.g. `execSecret(...)` shelling out to a secret CLI) and
   **redacts** it from all of Zuke's output. See the cheatsheet.

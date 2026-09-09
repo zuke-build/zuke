@@ -32,7 +32,7 @@
  * @module
  */
 
-import { BUILTIN_FLAG_NAMES } from "./cli_spec.ts";
+import { BUILTIN_FLAG_NAMES, VALID_FLAG_NAME } from "./cli_spec.ts";
 import { messageOf } from "./internal.ts";
 import { forEachField } from "./build.ts";
 import type { Redactor } from "./redact.ts";
@@ -142,6 +142,8 @@ export interface AnyParameter {
   readonly options_?: readonly string[];
   /** An explicit environment variable name override. */
   readonly envName_?: string;
+  /** An explicit CLI flag name override, without the leading dashes. */
+  readonly flagName_?: string;
   /** Whether the parameter has a declared default value. */
   readonly hasFallback_: boolean;
   /** Whether the value is sensitive and should be masked in CI output. */
@@ -171,6 +173,7 @@ interface ParamSpec<K extends ParamValue, T extends K | K[] | undefined> {
   required: boolean;
   options?: readonly string[];
   envName?: string;
+  flagName?: string;
   parse: (raw: string) => T;
   fallback: Fallback<T>;
   secret?: boolean;
@@ -203,6 +206,8 @@ export class Parameter<
   readonly options_?: readonly string[];
   /** An explicit environment variable name override. */
   readonly envName_?: string;
+  /** An explicit CLI flag name override, without the leading dashes. */
+  readonly flagName_?: string;
   /** Whether the parameter has a declared default value. */
   readonly hasFallback_: boolean;
   /** Whether the value is sensitive and should be masked in CI output. */
@@ -252,6 +257,7 @@ export class Parameter<
     this.required_ = spec.required;
     this.options_ = spec.options;
     this.envName_ = spec.envName;
+    this.flagName_ = spec.flagName;
     this.#parse = spec.parse;
     this.#fallback = spec.fallback;
     this.hasFallback_ = spec.fallback.has;
@@ -374,6 +380,27 @@ export class Parameter<
   }
 
   /**
+   * Override the CLI flag this parameter is set by. The leading `--` is
+   * optional, so `.flag("--skip-e2e")` and `.flag("skip-e2e")` are the same.
+   *
+   * The declared spelling **replaces** the derived one: only it is accepted on
+   * the command line, and it is what `--help`, the JSON build surface, shell
+   * completions and the registry descriptor all show. Reach for this when the
+   * name-to-flag rule produces something you would not have chosen — a name
+   * containing an initialism that ends in a digit is the usual case, since the
+   * digit ends the run of capitals and `skipE2E` derives `--skip-e2-e`.
+   *
+   * The environment variable is derived separately and is unaffected; override
+   * it with {@link env}.
+   */
+  flag(name: string): Parameter<K, T> {
+    return new Parameter<K, T>({
+      ...this.#spec,
+      flagName: name.replace(/^--/, ""),
+    });
+  }
+
+  /**
    * Accept a comma-separated list (or a repeated flag), exposing `value` as an
    * array. `--tags a,b` and `--tags a --tags b` both yield `["a", "b"]`; blank
    * entries are dropped, and an unsupplied *optional* list defaults to `[]`
@@ -454,6 +481,8 @@ export function parameter(
  */
 export function discoverParameters(build: object): Map<string, AnyParameter> {
   const params = new Map<string, AnyParameter>();
+  // Which parameter already claims each flag, so a collision names both.
+  const byFlag = new Map<string, string>();
   forEachField(build, (path, value) => {
     if (value instanceof Parameter) {
       if (RESERVED_PARAM_NAMES.has(path)) {
@@ -462,15 +491,38 @@ export function discoverParameters(build: object): Map<string, AnyParameter> {
             `(dryRun, confirm, operatorToken). Rename the parameter field.`,
         );
       }
-      const flag = flagName(path);
-      if (BUILTIN_FLAGS.has(flag)) {
+      const declared = value.flagName_;
+      if (declared !== undefined && !VALID_FLAG_NAME.test(declared)) {
         throw new ParameterError(
-          `Parameter "${path}" renders as "--${flag}", which is a built-in ` +
-            `Zuke CLI flag: the parser matches the built-in first, so the ` +
-            `flag would mean the built-in and not this parameter. Rename the ` +
-            `parameter field.`,
+          `Parameter "${path}" declares the flag "--${declared}", which is ` +
+            `not a valid flag name. Use lowercase letters, digits and ` +
+            `dashes, starting with a letter — for example "--skip-e2e".`,
         );
       }
+      const flag = flagOf(path, value);
+      if (BUILTIN_FLAGS.has(flag)) {
+        throw new ParameterError(
+          declared === undefined
+            ? `Parameter "${path}" renders as "--${flag}", which is a ` +
+              `built-in Zuke CLI flag: the parser matches the built-in ` +
+              `first, so the flag would mean the built-in and not this ` +
+              `parameter. Rename the parameter field, or declare a ` +
+              `different flag with .flag("--…").`
+            : `Parameter "${path}" declares the flag "--${flag}", which is ` +
+              `a built-in Zuke CLI flag: the parser matches the built-in ` +
+              `first, so the flag would mean the built-in and not this ` +
+              `parameter. Declare a different one.`,
+        );
+      }
+      const owner = byFlag.get(flag);
+      if (owner !== undefined) {
+        throw new ParameterError(
+          `Parameters "${owner}" and "${path}" both render as "--${flag}", ` +
+            `so a value on that flag is ambiguous. Rename one, or declare a ` +
+            `different flag with .flag("--…").`,
+        );
+      }
+      byFlag.set(flag, path);
       value.name_ = path;
       params.set(path, value);
     }
@@ -478,7 +530,28 @@ export function discoverParameters(build: object): Map<string, AnyParameter> {
   return params;
 }
 
-/** The CLI flag for a parameter: its property path in kebab-case. */
+/**
+ * The CLI flag a parameter is actually set by: the one it declared with
+ * {@link Parameter.flag}, else {@link flagName} of its property path.
+ *
+ * Every place a flag is rendered or matched goes through here — the parser,
+ * `--help`, the JSON surface, completions, the registry descriptor — so a
+ * declared flag cannot be honoured in one of them and derived in another.
+ */
+export function flagOf(name: string, param: AnyParameter): string {
+  return param.flagName_ ?? flagName(name);
+}
+
+/**
+ * The CLI flag derived from a parameter's property path: kebab-case, with a
+ * dash inserted at each lower-to-upper transition.
+ *
+ * The transition rule is worth knowing before naming a field. A run of
+ * capitals has no internal transition, so `apiURL` gives `--api-url` and
+ * `useHTTPS` gives `--use-https`. A digit ends such a run, so `skipE2E` gives
+ * `--skip-e2-e` — declare {@link Parameter.flag} when that is not the spelling
+ * you want.
+ */
 export function flagName(name: string): string {
   return name.replace(/([a-z0-9])([A-Z])/g, "$1-$2").replace(/\./g, "-")
     .toLowerCase();
@@ -523,7 +596,7 @@ export async function resolveParameters(
     let raw = name in cliValues ? cliValues[name] : readEnv(envName);
     // Prompt for a missing required value when an input source is available.
     if (raw === undefined && param.required_ && !param.hasFallback_ && prompt) {
-      const answer = prompt(flagName(name), param.description_);
+      const answer = prompt(flagOf(name, param), param.description_);
       if (answer !== undefined && answer !== "") raw = answer;
     }
     // Fall back to a secret source when nothing else supplied a value.
@@ -532,7 +605,7 @@ export async function resolveParameters(
         raw = await param.source_.resolve();
       } catch (error) {
         const message = messageOf(error);
-        errors.push(`--${flagName(name)}: ${message}`);
+        errors.push(`--${flagOf(name, param)}: ${message}`);
         continue;
       }
     }
@@ -545,11 +618,11 @@ export async function resolveParameters(
       param.resolve_(raw);
     } catch (error) {
       const message = messageOf(error);
-      errors.push(`--${flagName(name)}: ${message}`);
+      errors.push(`--${flagOf(name, param)}: ${message}`);
       continue;
     }
     if (raw === undefined && param.required_ && !param.hasFallback_) {
-      errors.push(`--${flagName(name)} is required (or set ${envName}).`);
+      errors.push(`--${flagOf(name, param)} is required (or set ${envName}).`);
     }
   }
   return errors;

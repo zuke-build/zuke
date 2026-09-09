@@ -1658,6 +1658,8 @@ class Parameter<K extends ParamValue = ParamValue, T extends K | K[] | undefined
     The allowed string choices, if restricted with {@link Parameter.options}.
   readonly envName_?: string
     An explicit environment variable name override.
+  readonly flagName_?: string
+    An explicit CLI flag name override, without the leading dashes.
   readonly hasFallback_: boolean
     Whether the parameter has a declared default value.
   readonly secret_: boolean
@@ -1698,6 +1700,19 @@ class Parameter<K extends ParamValue = ParamValue, T extends K | K[] | undefined
     Require a value, making `value` non-optional (`K`); errors if unsupplied.
   env(name: string): Parameter<K, T>
     Override the environment variable read as a fallback for this parameter.
+  flag(name: string): Parameter<K, T>
+    Override the CLI flag this parameter is set by. The leading `--` is
+    optional, so `.flag("--skip-e2e")` and `.flag("skip-e2e")` are the same.
+
+    The declared spelling replaces the derived one: only it is accepted on
+    the command line, and it is what `--help`, the JSON build surface, shell
+    completions and the registry descriptor all show. Reach for this when the
+    name-to-flag rule produces something you would not have chosen — a name
+    containing an initialism that ends in a digit is the usual case, since the
+    digit ends the run of capitals and `skipE2E` derives `--skip-e2-e`.
+
+    The environment variable is derived separately and is unaffected; override
+    it with {@link env}.
   array(this: Parameter<E, E | undefined>): Parameter<E, E[]>
     Accept a comma-separated list (or a repeated flag), exposing `value` as an
     array. `--tags a,b` and `--tags a --tags b` both yield `["a", "b"]`; blank
@@ -2484,6 +2499,8 @@ interface AnyParameter
     The allowed string choices, if restricted with {@link Parameter.options}.
   readonly envName_?: string
     An explicit environment variable name override.
+  readonly flagName_?: string
+    An explicit CLI flag name override, without the leading dashes.
   readonly hasFallback_: boolean
     Whether the parameter has a declared default value.
   readonly secret_: boolean

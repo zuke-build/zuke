@@ -560,7 +560,17 @@ Secrets are masked in CI output. Read a resolved value with `this.x.value`.
 Kinds & modifiers: `.number()` → `number`, `.boolean()` → `boolean` (a flag,
 defaults to `false`), `.options("a", "b")` restricts a string, `.secret()`
 masks + redacts, `.default(v)`/`.required()` set optionality, `.env(NAME)`
-overrides the env var.
+overrides the env var, `.flag("--name")` overrides the CLI flag.
+
+Flag/env derivation: one dash (underscore) per lower-to-upper transition, so
+`targetEnv` gives `--target-env` / `TARGET_ENV` and `runs.limit` gives
+`--runs-limit`. A run of capitals stays together (`apiURL` gives `--api-url`),
+but a **digit ends the run** — `skipE2E` gives `--skip-e2-e`, not `--skip-e2e`.
+Either name it `skipE2e`, or declare `.flag("--skip-e2e")`. A declared flag
+replaces the derived one everywhere (parser, `--help`, JSON surface,
+completions, registry descriptor); it must be lowercase letters/digits/dashes
+starting with a letter, may not be a built-in, and no two parameters may claim
+the same one. The env var is derived separately and is unaffected.
 
 Lists: `.array()` (comma-separated or repeated flag) comes **last** and composes
 — `.options("a", "b").array()` validates each element, and `.number().array()`

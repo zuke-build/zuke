@@ -20,7 +20,7 @@
  */
 
 import type { TargetBuilder } from "./target.ts";
-import { type AnyParameter, flagName } from "./params.ts";
+import { type AnyParameter, flagOf } from "./params.ts";
 import { BUILTIN_FLAGS, RESERVED_COMMANDS } from "./cli_spec.ts";
 
 /** The shells for which a completion script can be emitted. */
@@ -60,7 +60,7 @@ function paramCandidates(params: Map<string, AnyParameter>): Candidate[] {
   const out: Candidate[] = [];
   for (const [name, p] of params) {
     out.push({
-      name: `--${flagName(name)}`,
+      name: `--${flagOf(name, p)}`,
       description: oneLine(p.description_ ?? ""),
     });
   }

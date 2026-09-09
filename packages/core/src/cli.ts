@@ -29,7 +29,7 @@ import {
 import {
   type AnyParameter,
   discoverParameters,
-  flagName,
+  flagOf,
   ParameterError,
 } from "./params.ts";
 import type { JsonValue, TargetBuilder } from "./target.ts";
@@ -786,7 +786,7 @@ function renderTargets(targets: Map<string, TargetBuilder>): string {
 /** Render the parameters section, or `""` when no parameters are declared. */
 function formatParameters(params: Map<string, AnyParameter>): string {
   if (params.size === 0) return "";
-  const flags = [...params.keys()].map(flagName);
+  const flags = [...params].map(([n, p]) => flagOf(n, p));
   const width = Math.max(...flags.map((f) => f.length));
   const lines = ["Parameters:"];
   for (const [name, p] of params) {
@@ -797,7 +797,7 @@ function formatParameters(params: Map<string, AnyParameter>): string {
     }
     const meta = bits.length > 0 ? `  (${bits.join("; ")})` : "";
     const desc = p.description_ ?? "";
-    lines.push(`  --${flagName(name).padEnd(width)}  ${desc}${meta}`);
+    lines.push(`  --${flagOf(name, p).padEnd(width)}  ${desc}${meta}`);
   }
   return lines.join("\n");
 }
@@ -1341,7 +1341,7 @@ async function runCommand(
   discoverGroups(build); // names group batches so the graph can label them
   const paramFlags: ParamFlag[] = [...params.entries()].map(([name, p]) => ({
     name,
-    flag: flagName(name),
+    flag: flagOf(name, p),
     boolean: p.kind_ === "boolean",
     array: p.array_,
   }));
