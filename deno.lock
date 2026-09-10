@@ -481,8 +481,7 @@
       ]
     },
     "@xmldom/xmldom@0.8.13": {
-      "integrity": "sha512-KRYzxepc14G/CEpEGc3Yn+JKaAeT63smlDr+vjB8jRfgTBBI9wRj/nkQEO+ucV8p8I9bfKLWp37uHgFrbntPvw==",
-      "deprecated": true
+      "integrity": "sha512-KRYzxepc14G/CEpEGc3Yn+JKaAeT63smlDr+vjB8jRfgTBBI9wRj/nkQEO+ucV8p8I9bfKLWp37uHgFrbntPvw=="
     },
     "agent-base@7.1.4": {
       "integrity": "sha512-MnA+YT8fwfJPgBx3m60MNqakm30XOkyIoH1y6huTQvC0PwZG7ki8NacLBcrPbNoo8vEZy7Jpuk7+jMO+CUovTQ=="
@@ -1593,7 +1592,7 @@
       },
       "packages/console": {
         "dependencies": [
-          "jsr:@zuke/core@^1.25.0"
+          "jsr:@zuke/core@^1.51.0"
         ]
       },
       "packages/cspell": {

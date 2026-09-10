@@ -17,12 +17,16 @@
  */
 
 import { defaultRenderer, type Renderer } from "@zuke/core";
-import { line, type Style, stylize } from "@zuke/core/render";
+import { escapeData, line, type Style, stylize } from "@zuke/core/render";
 import { defaultTheme, type Theme } from "./theme.ts";
 
 /** The ruled, theme-coloured banner that opens a target's section. */
 function themedHeader(theme: Theme, style: Style, name: string): string[] {
-  if (style.github) return [`::group::${name}`];
+  // A command body, like core's own group header — so it takes `escapeData`,
+  // not `escapeLine`. The name is a target's, which for a fan-out carries an
+  // item key, and this header is emitted BEFORE the body: a suspend directive
+  // here would disarm everything the target goes on to print.
+  if (style.github) return [`::group::${escapeData(name)}`];
   const rule = line(style);
   const label = stylize(style.color, ["bold", ...theme.info], name);
   return [rule, label, rule];

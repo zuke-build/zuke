@@ -267,6 +267,11 @@ export async function forceTarget(
       };
     }
     if (result.ok) {
+      // Not escaped here. This message is data: the MCP `force_target` tool
+      // returns it inside a JSON payload, and encoding it for a terminal the
+      // producer does not own would corrupt that payload for every client
+      // whenever the *server* happened to run under Actions. The CLI escapes it
+      // where it prints it.
       const why = override.reason === undefined ? "" : ` (${override.reason})`;
       return {
         ok: true,
