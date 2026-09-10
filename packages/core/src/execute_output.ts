@@ -140,15 +140,28 @@ export function emitActionsMasks(
   }
 }
 
-/** Append the Markdown job-summary table to `GITHUB_STEP_SUMMARY`, if set. */
+/**
+ * Append the Markdown job-summary table to `GITHUB_STEP_SUMMARY`, if set.
+ *
+ * The Markdown goes through `redactor` first. Every other sink for a resolved
+ * `secret()` parameter is redacted — the console through the reporter, the run
+ * record as it is persisted — and this one was not, so a summary note carrying
+ * a secret read `[redacted]` on the terminal and in the record while the job
+ * summary published it in the clear, to everyone who can view the workflow run.
+ * The `::add-mask::` directives do not cover this: they mask the runner's log
+ * stream, not a file the build writes.
+ */
 export function writeJobSummary(
   renderer: Renderer,
   reports: TargetReport[],
   totalMs: number,
   ok: boolean,
+  redactor: Redactor,
 ): void {
   // Append, not overwrite: validations like the AI reviewers/fixer write their
   // own sections to this same file during the run, and overwriting would wipe
   // them. Best-effort — an unwritable summary must never fail the build.
-  appendJobSummary(renderer.jobSummaryMarkdown(reports, totalMs, ok));
+  appendJobSummary(
+    redactor.redact(renderer.jobSummaryMarkdown(reports, totalMs, ok)),
+  );
 }

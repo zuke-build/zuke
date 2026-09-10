@@ -22,6 +22,7 @@
 
 import type { Build, BuildResult } from "./build.ts";
 import { defaultReadEnv, messageOf } from "./internal.ts";
+import { escapeLine } from "./render.ts";
 import type { Reporter } from "./reporter.ts";
 export type { Reporter } from "./reporter.ts";
 import {
@@ -651,7 +652,7 @@ export async function execute(
   // A cancelled run never resumes, so it skips this even if it parked a wait.
   if (run.suspended && !cancelled) {
     const waiting = run.reports.filter((r) => r.status === "waiting")
-      .map((r) => r.name);
+      .map((r) => style.github ? escapeLine(r.name) : r.name);
     reporter.info(
       `Run ${runId} suspended — state saved; waiting on: ${
         waiting.join(", ")
@@ -659,7 +660,7 @@ export async function execute(
     );
   }
   if (style.github && writesToConsole) {
-    writeJobSummary(renderer, run.reports, totalMs, result.ok);
+    writeJobSummary(renderer, run.reports, totalMs, result.ok, redactor);
   }
   await life.finish(result);
   return result;

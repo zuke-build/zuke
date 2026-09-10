@@ -15,10 +15,26 @@
 
 import { messageOf } from "./internal.ts";
 import type { TargetStatus } from "./build.ts";
-import { formatDuration, line, paint, SGR, type Style } from "./render.ts";
+import {
+  escapeData,
+  escapeLine,
+  escapeProperty,
+  formatDuration,
+  line,
+  paint,
+  SGR,
+  type Style,
+} from "./render.ts";
 import type { SummaryEntry } from "./summary_note.ts";
 
-export { detectWidth, formatDuration, type Style } from "./render.ts";
+export {
+  detectWidth,
+  escapeData,
+  escapeLine,
+  escapeProperty,
+  formatDuration,
+  type Style,
+} from "./render.ts";
 
 /** Per-status icon shown in headers, footers, and summary rows. */
 export const ICON: Record<TargetStatus, string> = {
@@ -76,36 +92,6 @@ export function formatSummary(
 }
 
 /**
- * Escape a value interpolated into the body of a GitHub Actions workflow
- * command (`::error::<data>`).
- *
- * A workflow command is terminated by the end of its line, so a value carrying
- * a newline continues into what the runner parses as a *fresh* command. A
- * target's failure message embeds a subprocess's stderr verbatim, which is not
- * ours to trust: a tool that writes `::stop-commands::` on a line of its own
- * would otherwise suspend the runner's command processing, and one that writes
- * `::error::` would forge an annotation. Percent-encoding is the escape the
- * Actions spec defines for exactly this, and `%` is encoded first so the
- * encoding cannot be spoofed by a literal `%0A` in the input.
- */
-export function escapeData(value: string): string {
-  return value
-    .replaceAll("%", "%25")
-    .replaceAll("\r", "%0D")
-    .replaceAll("\n", "%0A");
-}
-
-/**
- * Escape a value interpolated into a workflow command's **property** list
- * (`::error title=<property>::`). Properties are comma-separated and
- * colon-terminated, so those two characters need encoding on top of what
- * {@link escapeData} handles.
- */
-export function escapeProperty(value: string): string {
-  return escapeData(value).replaceAll(":", "%3A").replaceAll(",", "%2C");
-}
-
-/**
  * The ruled header that opens a target's section in the terminal. Two `═` rules
  * frame the target name (bold cyan), so the stream is easy to scan into blocks.
  * In GitHub Actions, a `::group::` command is used instead — the collapsible
@@ -130,7 +116,11 @@ export function targetPassFooter(
     SGR.dim,
     `succeeded in ${formatDuration(ms)}`,
   );
-  const line = `${icon} ${name} ${tail}`;
+  // A fan-out sub-target's name carries the item key, which comes from repo or
+  // remote data, so on the runner's stream it is neutralised like any other
+  // untrusted text.
+  const safe = style.github ? escapeLine(name) : name;
+  const line = `${icon} ${safe} ${tail}`;
   return style.github ? [line, "::endgroup::"] : [line];
 }
 
@@ -146,18 +136,36 @@ export function targetFailFooter(
   error: unknown,
 ): { info: string[]; error: string[] } {
   const message = messageOf(error);
-  const line = paint(
-    style.color,
-    SGR.red,
-    `${ICON.failed} ${name} failed in ${formatDuration(ms)}`,
-  );
-  const detail = paint(style.color, SGR.red, `  ${message}`);
-  if (!style.github) return { info: [], error: [line, detail] };
+  if (!style.github) {
+    return {
+      info: [],
+      error: [
+        paint(
+          style.color,
+          SGR.red,
+          `${ICON.failed} ${name} failed in ${formatDuration(ms)}`,
+        ),
+        paint(style.color, SGR.red, `  ${message}`),
+      ],
+    };
+  }
+  // Both of these are printed as themselves on a stream the runner parses for
+  // commands. The message embeds a failed subprocess's stderr verbatim, which
+  // is the very content escapeData's contract names as untrusted, and the name
+  // can carry a fan-out item key. Escaping only the annotation below would have
+  // left the detail line able to suspend command processing — and it is emitted
+  // *first*, so it would have disarmed the annotation that follows it.
+  const safeName = escapeLine(name);
+  const safeMessage = escapeLine(message);
   return {
     info: ["::endgroup::"],
     error: [
-      line,
-      detail,
+      paint(
+        style.color,
+        SGR.red,
+        `${ICON.failed} ${safeName} failed in ${formatDuration(ms)}`,
+      ),
+      paint(style.color, SGR.red, `  ${safeMessage}`),
       `::error title=${escapeProperty(name)}::${
         escapeData(`${name} failed: ${message}`)
       }`,
@@ -172,8 +180,12 @@ export function targetWaitFooter(
   trigger: string,
 ): string[] {
   const icon = paint(style.color, SGR.magenta, ICON.waiting);
-  const note = paint(style.color, SGR.dim, `waiting for ${trigger}`);
-  const line = `${icon} ${name} ${note}`;
+  // The trigger describes what is being waited on, which for a workflow gate
+  // names a repository and a workflow file, so it is no more ours than the
+  // target name beside it.
+  const safe = (text: string) => style.github ? escapeLine(text) : text;
+  const note = paint(style.color, SGR.dim, `waiting for ${safe(trigger)}`);
+  const line = `${icon} ${safe(name)} ${note}`;
   return style.github ? [line, "::endgroup::"] : [line];
 }
 
@@ -181,7 +193,7 @@ export function targetWaitFooter(
 export function targetDryRunFooter(style: Style, name: string): string[] {
   const icon = paint(style.color, SGR.cyan, ICON.passed);
   const note = paint(style.color, SGR.dim, "(dry run — not executed)");
-  const line = `${icon} ${name} ${note}`;
+  const line = `${icon} ${style.github ? escapeLine(name) : name} ${note}`;
   return style.github ? [line, "::endgroup::"] : [line];
 }
 
@@ -235,11 +247,19 @@ export function summaryBlock(
     // so the status and timing columns stay the thing the eye lands on. They
     // are not part of the table's width: a long note overhangs the rules
     // rather than pushing every duration to the right.
-    const note = formatSummary(r.summary);
+    // Notes are parsed out of a tool's own output by the wrapper packages, so
+    // they are the same untrusted class as the name. They need no newline to
+    // matter: the legacy bracketed command form is recognised mid-line.
+    const raw = formatSummary(r.summary);
+    const note = style.github ? escapeLine(raw) : raw;
     const notes = note === ""
       ? ""
       : "  " + paint(style.color, SGR.dim, `// ${note}`);
-    return r.name.padEnd(nameWidth) + "  " +
+    // A row starts at column 0, so a target name is the one thing here that
+    // could open a command; the padding is computed from the raw name so the
+    // columns stay aligned when nothing needed escaping.
+    const name = style.github ? escapeLine(r.name) : r.name;
+    return name + " ".repeat(Math.max(0, nameWidth - r.name.length)) + "  " +
       status + "  " +
       duration.padStart(durationWidth) + notes;
   });
@@ -315,7 +335,7 @@ export function closingLine(
   }
   const failed = reports.filter((r) => r.status === "failed");
   const culprit = failed.length === 1
-    ? `'${failed[0].name}' failed`
+    ? `'${style.github ? escapeLine(failed[0].name) : failed[0].name}' failed`
     : failed.length > 1
     ? `${failed.length} targets failed`
     : "no target succeeded";
@@ -349,7 +369,10 @@ export function jobSummaryMarkdown(
   const rows = reports.map((r) => {
     const ran = r.status === "passed" || r.status === "failed";
     const duration = ran ? formatDuration(r.ms) : "—";
-    return `| ${r.name} | ${ICON[r.status]} ${
+    // A pipe in a name would otherwise open a column of its own, the way the
+    // note cell already guards against.
+    const name = r.name.replaceAll("|", "\\|");
+    return `| ${name} | ${ICON[r.status]} ${
       STATUS_LABEL[r.status]
     } | ${duration} |${notesCell(r)}`;
   });
