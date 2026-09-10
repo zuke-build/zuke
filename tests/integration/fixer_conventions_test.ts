@@ -11,7 +11,8 @@
  * conventions around the builder is caught rather than trusted.
  *
  * Hermetic: the model call, the file write, git and the environment are all
- * injected seams.
+ * injected seams, so the result does not depend on whether this runs on a
+ * developer's machine or a CI runner.
  *
  * @module
  */
@@ -63,6 +64,12 @@ Deno.test("a build's conventions reach the model fenced as untrusted data", asyn
       return Promise.resolve();
     })
     .fetch(fetchImpl)
+    // The environment is a seam here for a reason, not for tidiness: the
+    // default `runOnly` scope is "local", which on a real CI runner means
+    // diagnose-only. Reading the ambient environment would make this test pass
+    // on a developer's machine and fail on every CI runner, which is exactly
+    // what it did before this line existed.
+    .env(() => undefined)
     .noComment()
     .quiet();
 
