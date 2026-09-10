@@ -84,8 +84,13 @@ export function formatSummary(
  * Neutralise a value that is about to be printed as itself, when the runner is
  * listening. Off GitHub the value is returned untouched, so terminal output is
  * unaffected by any of this.
+ *
+ * Exported because the engine prints untrusted values through the reporter as
+ * well as through this module — an operator's forced-override line carries an
+ * actor and a reason straight from the shared state store — and a guard whose
+ * whole value is being applied everywhere must have exactly one implementation.
  */
-function safe(style: Style, value: string): string {
+export function safe(style: Style, value: string): string {
   return style.github ? neutralizeWorkflowCommands(value) : value;
 }
 

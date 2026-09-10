@@ -17,8 +17,13 @@ import {
   assertEquals,
   assertStringIncludes,
 } from "../../packages/core/tests/_assert.ts";
-import { Build, parameter, target } from "../../packages/core/mod.ts";
-import { runCli } from "./_harness.ts";
+import {
+  Build,
+  externalSignal,
+  parameter,
+  target,
+} from "../../packages/core/mod.ts";
+import { runCli, withStateDir } from "./_harness.ts";
 
 /** Run `args` with the runner's environment in place, and restore it after. */
 async function underActions(
@@ -144,4 +149,49 @@ Deno.test("a secret in a summary note is redacted in the job summary file", asyn
     "the job summary published a secret in the clear",
   );
   assertStringIncludes(written, "[redacted]");
+});
+
+Deno.test("a force's echoed reason cannot forge a command", async () => {
+  // `zuke force` echoes the operator's reason back to the log. In a scripted
+  // force that reason is often interpolated from a pull request title or an
+  // issue body, so it is not something the job's own author controls.
+  //
+  // This asserts on the FORCE command's own output. An earlier version of this
+  // test asserted on the resumed run instead and passed with the escaping
+  // removed — the forced target settles before the scheduler prints anything
+  // about it, so that stream never carried the value at all.
+  await withStateDir(async () => {
+    class B extends Build {
+      migrate = target().executes(() => {});
+      gate = target()
+        .dependsOn(this.migrate)
+        .waitsFor((s) => s.on(externalSignal("go")));
+      report = target().dependsOn(this.gate).executes(() => {});
+    }
+
+    const first = await runCli(B, ["report"]);
+    assertEquals(first.code, 0, first.err);
+    const listed = await runCli(B, ["runs", "list", "--json"]);
+    const runId = String(JSON.parse(listed.out)[0].id);
+
+    // `report` is still pending behind the gate; forcing an already-succeeded
+    // target is refused, since the record would then claim something that did
+    // not happen.
+    const { code, stream } = await underActions(B, [
+      "force",
+      runId,
+      "report",
+      "--outcome",
+      "skipped",
+      "--reason",
+      "done\n::stop-commands::TOKEN",
+      "--actor",
+      "ops",
+    ]);
+    assertEquals(code, 0, stream);
+    for (const line of commandLines(stream)) {
+      assertEquals(false, true, `unexpected workflow command: ${line}`);
+    }
+    assertStringIncludes(stream, "%3A%3Astop-commands::TOKEN");
+  });
 });

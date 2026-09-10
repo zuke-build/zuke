@@ -32,7 +32,12 @@ import {
   TargetSummary,
   withAmbientSummary,
 } from "./summary_note.ts";
-import { type Style, type TargetReport, targetWaitFooter } from "./report.ts";
+import {
+  safe,
+  type Style,
+  type TargetReport,
+  targetWaitFooter,
+} from "./report.ts";
 import type { Renderer } from "./renderer.ts";
 import {
   cloneTarget,
@@ -434,9 +439,14 @@ async function runTarget(
   // started yet.
   const forced = env.writer?.snapshot().overrides?.[name];
   if (forced !== undefined) {
+    // The actor and the reason come from the shared state store, written by
+    // whichever process forced the target — so under Actions they are escaped
+    // like any other value the build does not control.
     reporter.info(
-      `${name}: forced ${forced.outcome} by ${forced.actor}` +
-        (forced.reason === undefined ? "" : ` — ${forced.reason}`),
+      `${safe(style, name)}: forced ${forced.outcome} by ${
+        safe(style, forced.actor)
+      }` +
+        (forced.reason === undefined ? "" : ` — ${safe(style, forced.reason)}`),
     );
     return {
       status: forced.outcome === "skipped" ? "skipped" : "passed",

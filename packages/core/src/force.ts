@@ -19,6 +19,8 @@
 
 import type { Build } from "./build.ts";
 import { discoverTargets } from "./build.ts";
+import { neutralizeWorkflowCommands } from "./github_command.ts";
+import { detectCiHost } from "./host.ts";
 import { messageOf } from "./internal.ts";
 import { assertOwnsRun, resolveBuildId } from "./ownership.ts";
 import { resolveActor } from "./state/record.ts";
@@ -267,7 +269,17 @@ export async function forceTarget(
       };
     }
     if (result.ok) {
-      const why = override.reason === undefined ? "" : ` (${override.reason})`;
+      // The reason is echoed back to whatever prints this message, which under
+      // Actions is the job log. In a scripted force the reason is often
+      // interpolated from a pull request title or an issue body, so it is
+      // escaped here — where it is embedded — rather than at each printer.
+      const why = override.reason === undefined
+        ? ""
+        : ` (${
+          detectCiHost() === "github"
+            ? neutralizeWorkflowCommands(override.reason)
+            : override.reason
+        })`;
       return {
         ok: true,
         override,
