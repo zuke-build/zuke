@@ -19,7 +19,21 @@
  * label is closed by the next block that legitimately uses it, swallowing
  * whatever sits between — including the trusted sections, such as the build
  * file's own project notes, that a model is meant to weigh differently from the
- * data around them.
+ * data around them. Restricting the rewrite to this block's own label would
+ * reopen exactly that.
+ *
+ * **The contract, since it applies to every call site.** A marker is three
+ * angle brackets followed by an uppercase letter, then any run of uppercase
+ * letters and underscores — and the mirror of that before three closing
+ * brackets. Every such sequence in `content` gains a trailing underscore, so it
+ * survives as legible text but matches no label. The cost is that content
+ * legitimately shaped like a marker is altered; that is accepted, because the
+ * content is data being shown to a model rather than anything parsed, and an
+ * added underscore cannot change what the surrounding prompt instructs. Since a
+ * defanged marker always ends in `_` and no label does, defanging can never
+ * produce a live label. A git conflict marker is outside the grammar — nothing
+ * uppercase follows its brackets — so a diff, the most common fenced content
+ * there is, passes through untouched.
  *
  * This is defense-in-depth alongside the system-prompt clause, not a hard
  * structural guarantee (an LLM can still be coaxed); it removes the one
