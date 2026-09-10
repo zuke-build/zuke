@@ -87,6 +87,7 @@ const CTX: RemediationContext = {
   target: "test",
   attempt: 1,
   error: new Error("boom: a test failed"),
+  redact: (text: string) => text,
 };
 
 const ONE_EDIT: Partial<Fix> = {

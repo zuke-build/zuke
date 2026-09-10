@@ -362,3 +362,46 @@ Deno.test("under echo, .spawn() echoes and returns a no-op stub", async () => {
   assertEquals((await proc.status).code, 0);
   await proc.stop(); // no-op, does not throw
 });
+
+Deno.test("stdin writes to the child and closes the stream", async () => {
+  // A real subprocess, because the property is about a real pipe: the child has
+  // to see end-of-input, or a tool reading a credential from stdin hangs.
+  const out = await $`${Deno.execPath()} eval --no-lock ${
+    "const b=new Uint8Array(1024);let n=0,r;" +
+    "while((r=await Deno.stdin.read(b))!==null)n+=r;" +
+    "console.log('read',n)"
+  }`.stdin("hunter2").quiet().text();
+  assertEquals(out.trim(), "read 7");
+});
+
+Deno.test("a credential passed on stdin stays out of the command line", async () => {
+  // The whole reason the setter exists. argv is what `ps` and `/proc` expose,
+  // and what every rendered form of the command is built from.
+  const command = $`${Deno.execPath()} eval --no-lock ${"console.log(1)"}`
+    .stdin("s3cr3t").quiet();
+  assertEquals(command.commandLine.includes("s3cr3t"), false);
+  await command;
+});
+
+Deno.test("stdin does not deadlock on a child that outruns its pipe", async () => {
+  // Writing before draining stdout would wedge here: the child fills its output
+  // pipe and stops, while the parent is still blocked writing input. Both sides
+  // have to move at once.
+  const script = "const b=new Uint8Array(65536);" +
+    "console.log('x'.repeat(200000));" +
+    "let n=0,r;while((r=await Deno.stdin.read(b))!==null)n+=r;" +
+    "console.error('read',n)";
+  const result = await $`${Deno.execPath()} eval --no-lock ${script}`
+    .stdin("y".repeat(100000)).quiet();
+  assertEquals(result.code, 0);
+  assertStringIncludes(result.stderr, "read 100000");
+});
+
+Deno.test("without stdin the child keeps an inherited stream", async () => {
+  // The non-breaking half: nothing changes for every existing call site.
+  const result =
+    await $`${Deno.execPath()} eval --no-lock ${"console.log('ok')"}`
+      .quiet();
+  assertEquals(result.code, 0);
+  assertStringIncludes(result.stdout, "ok");
+});

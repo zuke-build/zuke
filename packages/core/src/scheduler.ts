@@ -13,6 +13,7 @@
  * @module
  */
 
+import { redactLine } from "./ambient_redactor.ts";
 import { delay, messageOf, runWithTimeout } from "./internal.ts";
 import { bufferReporter, type Reporter } from "./reporter.ts";
 import type { Lifecycle } from "./lifecycle.ts";
@@ -189,6 +190,11 @@ async function runBodyWithRecovery(
             target: name,
             attempt,
             error: lastError,
+            // The run's redactor, reached through the ambient scope the executor
+            // installed. Handed over rather than left for the remediation to
+            // find, because the one that most needs it lives in another package
+            // and cannot reach core's internals.
+            redact: redactLine,
           });
           if (result.retry) willRetry = true;
         } catch {

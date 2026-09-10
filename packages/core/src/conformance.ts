@@ -29,7 +29,7 @@
  */
 
 import type { RunEvent, RunRecord } from "./state/types.ts";
-import { delay, messageOf } from "./internal.ts";
+import { defaultReadEnv, delay, messageOf } from "./internal.ts";
 import type { StateStore } from "./state/store.ts";
 import type { LockHolder } from "./state/lock.ts";
 import { HttpStateStore } from "./state/http_store.ts";
@@ -521,25 +521,48 @@ export interface ConformanceCliDeps {
   makeBuildRegistry?: (url: string, token?: string) => BuildRegistry;
   /** Emit a line of output (default `console.log`). */
   log?: (line: string) => void;
+  /** Read an environment variable (default the process environment). */
+  readEnv?: (name: string) => string | undefined;
 }
 
 /**
- * Run the conformance kit as a CLI: `--url <base>` (required) and `--token
- * <bearer>` (optional) name the backend, then both suites run against it. Prints
- * a `PASS`/`FAIL` line per scenario and resolves to a process exit code — `0`
- * when every scenario passes, `1` when any fails or `--url` is missing.
+ * Run the conformance kit as a CLI: `--url <base>` (required) names the backend
+ * and both suites run against it. Prints a `PASS`/`FAIL` line per scenario and
+ * resolves to a process exit code — `0` when every scenario passes, `1` when any
+ * fails, `--url` is missing, or a credential was passed as an argument.
+ *
+ * **The bearer token comes from the environment**, `ZUKE_STATE_TOKEN` and
+ * `ZUKE_REGISTRY_TOKEN`, exactly as every other consumer of these stores reads
+ * it. It used to be a `--token` argument, which put a credential that can forge
+ * run records, the audit trail and lock exclusivity into the process table for
+ * any local user to read, and into the transcript of whatever invoked it.
+ *
+ * `--token` is now **refused** rather than ignored: an invocation that still
+ * passes one would otherwise authenticate as anonymous and fail somewhere less
+ * obvious, and the credential would already have been exposed by the time it
+ * did.
  */
 export async function runConformanceCli(
   args: string[],
   deps: ConformanceCliDeps = {},
 ): Promise<number> {
   const log = deps.log ?? ((line: string) => console.log(line));
+  const env = deps.readEnv ?? defaultReadEnv;
   const url = flag(args, "--url");
-  const token = flag(args, "--token");
+  if (args.includes("--token")) {
+    log(
+      "conformance: --token is no longer accepted — a credential passed as an " +
+        "argument is visible to every local process and in this command's own " +
+        "transcript. Set ZUKE_STATE_TOKEN and ZUKE_REGISTRY_TOKEN instead.",
+    );
+    return 1;
+  }
   if (url === undefined) {
     log("conformance: --url <base> is required.");
     return 1;
   }
+  const stateToken = env("ZUKE_STATE_TOKEN");
+  const registryToken = env("ZUKE_REGISTRY_TOKEN");
   const makeState = deps.makeStateStore ??
     ((u: string, t?: string) => new HttpStateStore({ url: u, token: t }));
   const makeRegistry = deps.makeBuildRegistry ??
@@ -547,8 +570,10 @@ export async function runConformanceCli(
 
   const results: ConformanceResult[] = [];
   try {
-    results.push(...await checkStateStore(() => makeState(url, token)));
-    results.push(...await checkBuildRegistry(() => makeRegistry(url, token)));
+    results.push(...await checkStateStore(() => makeState(url, stateToken)));
+    results.push(
+      ...await checkBuildRegistry(() => makeRegistry(url, registryToken)),
+    );
   } catch (error) {
     // A transport/protocol failure (e.g. a version mismatch) aborts the run.
     log(`conformance: aborted — ${messageOf(error)}`);

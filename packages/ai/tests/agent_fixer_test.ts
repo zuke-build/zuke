@@ -11,6 +11,7 @@ const CTX: RemediationContext = {
   target: "test",
   attempt: 1,
   error: new Error("boom: a test failed"),
+  redact: (text: string) => text,
 };
 
 /** A runner that records each AgentContext it receives. */
@@ -60,6 +61,7 @@ Deno.test("the failed command and stderr feed the prompt", async () => {
     target: "lint",
     attempt: 1,
     error: new CommandError("deno lint", 1, "error: unused variable x"),
+    redact: (text: string) => text,
   });
   assertEquals(r.calls[0].command, "deno lint");
   assertEquals(r.calls[0].prompt.includes("deno lint"), true);

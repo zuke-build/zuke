@@ -104,3 +104,59 @@ Deno.test("operatingSystem normalises Deno's os names to a friendly union", () =
   const host = operatingSystem();
   assertEquals(["linux", "macos", "windows"].includes(host), true);
 });
+
+Deno.test("isCI recognises a CI system Zuke has no specific support for", () => {
+  // The dangerous direction is reading CI as local: a fixer scoped to CI stops
+  // running, and one at its default applies changes to what it believes is a
+  // working tree someone is editing. Jenkins is the case that matters — it sets
+  // none of the four hosts, and does not set `CI` either.
+  for (
+    const marker of [
+      "JENKINS_URL",
+      "BUILDKITE",
+      "CIRCLECI",
+      "TRAVIS",
+      "TEAMCITY_VERSION",
+    ]
+  ) {
+    const env = (name: string) => name === marker ? "set" : undefined;
+    assertEquals(isCI(env), true, `${marker} should read as CI`);
+    assertEquals(ciHost(env), "ci", `${marker} should read as generic CI`);
+    // The host-specific answer is unchanged: these are not one of the four.
+    assertEquals(detectCiHost(env), "local");
+  }
+});
+
+Deno.test("a developer's machine is still local", () => {
+  assertEquals(isCI(() => undefined), false);
+  assertEquals(ciHost(() => undefined), "local");
+});
+
+Deno.test("CI=false is not CI, but another marker set to false still is", () => {
+  // `CI` has a conventional "not CI" value; the others are presence-only, so a
+  // literal "false" in one of them is still a set marker.
+  assertEquals(isCI((name) => name === "CI" ? "false" : undefined), false);
+  assertEquals(isCI((name) => name === "CI" ? "" : undefined), false);
+  assertEquals(
+    isCI((name) => name === "BUILDKITE" ? "false" : undefined),
+    true,
+  );
+});
+
+Deno.test("a named host still wins over the generic markers", () => {
+  const env = (name: string) =>
+    name === "GITHUB_ACTIONS"
+      ? "true"
+      : name === "JENKINS_URL"
+      ? "x"
+      : undefined;
+  assertEquals(ciHost(env), "github-actions");
+  assertEquals(detectCiHost(env), "github");
+});
+
+Deno.test("ciHost and isCI default to the process environment", () => {
+  // The reader is an added optional parameter, so every existing call site keeps
+  // reading the real environment — the property that makes this non-breaking.
+  assertEquals(typeof ciHost(), "string");
+  assertEquals(typeof isCI(), "boolean");
+});

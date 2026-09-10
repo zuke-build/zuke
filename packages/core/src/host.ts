@@ -42,15 +42,55 @@ export function detectCiHost(
 }
 
 /**
+ * Environment variables that mean "some CI system is running this", beyond the
+ * four hosts {@link detectCiHost} names.
+ *
+ * A CI system Zuke has no specific support for is still CI, and treating it as a
+ * developer's machine is the dangerous direction: a fixer scoped to CI silently
+ * stops running, and one left at its default applies changes to what it believes
+ * is a working tree someone is editing. Jenkins is the case that matters most —
+ * it sets none of the four, and does not set `CI` either.
+ *
+ * Presence is what counts for all but `CI`, whose conventional "not CI" value is
+ * the string `false`.
+ */
+const GENERIC_CI_MARKERS = [
+  "CI",
+  "JENKINS_URL",
+  "BUILDKITE",
+  "CIRCLECI",
+  "TRAVIS",
+  "TEAMCITY_VERSION",
+];
+
+/** Whether any generic marker says this is CI. */
+function genericCi(env: (name: string) => string | undefined): boolean {
+  return GENERIC_CI_MARKERS.some((name) => {
+    const value = env(name);
+    if (value === undefined || value === "") return false;
+    return name !== "CI" || value !== "false";
+  });
+}
+
+/**
  * A short identifier for the detected CI host, or `"local"` when not on CI.
  * Recognises GitHub Actions, GitLab CI, Azure Pipelines, Bitbucket Pipelines,
- * and the generic `CI` convention.
+ * and — as the generic `"ci"` — the common markers other systems set, including
+ * Jenkins, Buildkite, CircleCI, Travis and TeamCity.
  *
  * Prefer {@link detectCiHost} for new code: its values match {@link CiProvider}.
  * This function is kept for compatibility and uses longer, host-specific names.
+ *
+ * @param env The environment reader, injectable so detection can be unit-tested
+ *   hermetically; defaults to the process environment. {@link detectCiHost} has
+ *   taken one since it was written, and this takes the same one so a caller that
+ *   wants "am I on CI?" does not have to reach for the host-specific function to
+ *   get a testable answer.
  */
-export function ciHost(): string {
-  switch (detectCiHost()) {
+export function ciHost(
+  env: (name: string) => string | undefined = defaultReadEnv,
+): string {
+  switch (detectCiHost(env)) {
     case "github":
       return "github-actions";
     case "gitlab":
@@ -59,16 +99,24 @@ export function ciHost(): string {
       return "azure-pipelines";
     case "bitbucket":
       return "bitbucket-pipelines";
-    case "local": {
-      const ci = defaultReadEnv("CI");
-      return ci !== undefined && ci !== "" && ci !== "false" ? "ci" : "local";
-    }
+    case "local":
+      return genericCi(env) ? "ci" : "local";
   }
 }
 
-/** Whether the build appears to be running in a CI environment. */
-export function isCI(): boolean {
-  return ciHost() !== "local";
+/**
+ * Whether the build appears to be running in a CI environment.
+ *
+ * Broader than `detectCiHost(env) !== "local"`, which answers only whether the
+ * host is one of the four Zuke names: a system it has no specific support for is
+ * still CI, and this says so.
+ *
+ * @param env The environment reader; defaults to the process environment.
+ */
+export function isCI(
+  env: (name: string) => string | undefined = defaultReadEnv,
+): boolean {
+  return ciHost(env) !== "local";
 }
 
 /**
