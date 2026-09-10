@@ -24,7 +24,7 @@ that declares only `.effect(...)` each legitimately have no `.executes(...)`.
 | `.dependentFor(...t)`                                                                                    | Reverse of `dependsOn`: make this a prerequisite of others.                                                                                               |
 | `.inputs(...p)` / `.outputs(...p)`                                                                       | Incremental cache: skip when inputs unchanged and outputs exist.                                                                                          |
 | `.cacheKey(fn)`                                                                                          | Add a non-file value (version, git sha, param) to the cache fingerprint.                                                                                  |
-| `.onlyWhen(cond)`                                                                                        | Run only when the (possibly async) predicate holds, else skip.                                                                                            |
+| `.onlyWhen(cond)`                                                                                        | Run only when the (possibly async) predicate holds, else skip. The predicate may take a context: `(ctx) => ctx.plan().includes("deploy")`.                 |
 | `.whenSkipped("skip-dependencies")`                                                                      | When `onlyWhen` skips this target, also skip deps no other planned target needs. Condition is evaluated up front, so it must not read run-produced state. |
 | `.requires(...params)`                                                                                   | Fail unless the listed parameters resolved to a value.                                                                                                    |
 | `.retry(times, delayMs?)`                                                                                | Retry the body on failure.                                                                                                                                |
@@ -39,7 +39,7 @@ that declares only `.effect(...)` each legitimately have no `.executes(...)`.
 | `.unlisted()`                                                                                            | Hide from `--list`/`--help`; still runnable by name.                                                                                                      |
 | `.dryRunnable()`                                                                                         | Run this body under `--dry-run` with `$` in echo mode (prints argv, no spawn); others stay skipped.                                                       |
 | `.validateBefore(...v)` / `.validateAfter(...v)`                                                         | Run `Validation` checks around the body; a throw fails the target.                                                                                        |
-| `.recoverWith(...r)` / `.recoverAttempts(n)`                                                             | Run `Remediation`s if the body fails (self-healing); re-run when one asks to. See AI section.                                                             |
+| `.recoverWith(...r)` / `.recoverAttempts(n)`                                                             | Run `Remediation`s if the body fails (self-healing); re-run when one asks to. A remediation gets the target name, attempt and error — **no state handle**. |
 | `.partOf(group)`                                                                                         | Join a parallel batch (see `group()`).                                                                                                                    |
 | `.produces(...p)` / `.consumes(...t)`                                                                    | Declare and consume artifact paths.                                                                                                                       |
 | `.readOnly()`                                                                                            | Advertise the target as query-only over MCP (`readOnlyHint` instead of `destructiveHint`).                                                                |
@@ -156,6 +156,9 @@ deploy = target().executes(async (ctx) => {
   ctx.outcomeOf("checks")?.status; // one target's settled outcome, or undefined
   ctx.outcomeOf("test")?.summary; // its Build Summary notes (durable, e.g. Tests/Passed)
   ctx.outcomes(); // every outcome settled SO FAR, keyed by dotted name
+  ctx.plan().targets; // every target THIS run planned, in execution order
+  ctx.plan().includes("deploy"); // was `deploy` part of what was asked for?
+  ctx.plan().dependenciesOf("test"); // what must finish before `test` starts
   ctx.reportSummary({ Version: "3.6.2" }); // a note on THIS row of the Build Summary
 });
 ```
@@ -439,7 +442,15 @@ class CD extends Build {
 
 - The compensation body's `ctx.state` exposes **the original target's**
   persisted metadata (persist what a rollback needs in `ctx.state` when you do
-  the work).
+  the work). `ctx.state` is seeded with the meta of the target the step is
+  **for**: under `.onCancel` that is the compensated target (so `ctx.target`
+  names the compensation but `ctx.state` holds `deploy`'s meta), while a
+  timed-out `.onTimeout(() => this.cleanup)` makes `cleanup` compensate
+  **itself** — its own meta, `{}` if it never ran forward. One rule spans both:
+  `ctx.stateOf(ctx.target)` is `ctx.state`, every other name reads **empty**
+  (so `stateOf("deploy")` is empty under `.onCancel`). Writes stay in memory.
+  `ctx.outcomeOf(...)` works; `ctx.plan()` is the whole run's plan, so a
+  compensation is in it only when it is also a graph target.
 - Cancel with `zuke cancel <id>`, `Ctrl-C`/`SIGTERM`, or the MCP `cancel_run`
   tool (all run the same walk). A live run aborts on its next state write.
 - A compensation that throws is recorded but does **not** stop the walk (cleanup

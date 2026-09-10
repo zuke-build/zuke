@@ -10,6 +10,7 @@
  * @module
  */
 
+import { testPlan } from "./_fakes.ts";
 import { assertEquals } from "./_assert.ts";
 import { Build, discoverTargets } from "../src/build.ts";
 import { target } from "../src/target.ts";
@@ -139,7 +140,7 @@ Deno.test("conditionSkips keeps triggered targets and tolerates an unbound depen
     b.optional,
     b.fire,
     b.root,
-  ]);
+  ], testPlan());
   // The pruned target and the dependency only it needed are skipped; the
   // target reachable through `triggers` survives (the walk follows trigger
   // edges, not just dependencies); the unbound forward reference is ignored.

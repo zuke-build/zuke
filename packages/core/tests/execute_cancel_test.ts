@@ -10,6 +10,7 @@
  * @module
  */
 
+import { testPlan } from "./_fakes.ts";
 import { assertEquals } from "./_assert.ts";
 import { Build, discoverTargets } from "../src/build.ts";
 import { target } from "../src/target.ts";
@@ -69,6 +70,7 @@ Deno.test("the settlement stops when the cancel changes hands during the drain",
 
     const settlement = await settleCancelledRun({
       writer,
+      plan: testPlan(),
       life: makeLifecycle(
         build,
         [],

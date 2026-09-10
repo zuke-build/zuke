@@ -43,6 +43,20 @@ await run(CI);
 Any object with a `remediate` method qualifies, so `recoverWith` is not
 AI-specific (a deterministic "run `deno fmt`, then retry" remediation is valid).
 
+### What a remediation is given
+
+A remediation receives a `RemediationContext` carrying exactly three things: the
+failed target's name, the 1-based `attempt` number, and the `error` itself. When
+the target failed through the shell, that error is a `CommandError` carrying the
+failed command and its captured `stderr` — which is where a fixer gets what it
+needs to diagnose.
+
+There is **no state handle**. Unlike a target body or a compensation, a
+remediation cannot read the target's durable metadata, and that is deliberate
+rather than an omission: the failure carries the command and its output, which
+is what a fix is derived from. If a remediation needs a value the body computed,
+close over it in the build class rather than looking for it on the context.
+
 ### Per-target or global
 
 Attach a fixer to one target with `.recoverWith(...)`, or override

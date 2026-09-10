@@ -208,3 +208,134 @@ Deno.test("zuke cancel with a missing run id fails with usage", async () => {
     assertStringIncludes(bad.err, "Usage: zuke cancel");
   });
 });
+
+Deno.test("a compensation's context reads its target's meta, and nothing else's", async () => {
+  // Pins the contract documented in docs/orchestration.md. The trap it exists
+  // to stop: `ctx.state` holds the COMPENSATED target's meta while `ctx.target`
+  // names the compensation, and asking for that same target through `stateOf`
+  // reads empty — so a rollback written the obvious way silently does nothing.
+  await withStateDir(async () => {
+    const seen: string[] = [];
+    const controller = new AbortController();
+    class CD extends Build {
+      rollback = target().executes(async (ctx) => {
+        seen.push(`target=${ctx.target}`);
+        // The compensated target's meta, reached through `state`...
+        seen.push(`state=${JSON.stringify(ctx.state.get())}`);
+        // ...and not through its name.
+        seen.push(
+          `stateOf(deploy)=${JSON.stringify(ctx.stateOf("deploy").get())}`,
+        );
+        seen.push(
+          `stateOf(other)=${JSON.stringify(ctx.stateOf("other").get())}`,
+        );
+        // The documented self-identity still holds for the compensation itself.
+        seen.push(`selfIdentity=${ctx.stateOf(ctx.target) === ctx.state}`);
+        // Outcomes come from the durable record, so these do work.
+        seen.push(`outcomeOf(deploy)=${ctx.outcomeOf("deploy")?.status}`);
+        // `rollback` is not a node in THIS graph, so it is not in the plan.
+        // That is a fact about this fixture, not about compensations — the
+        // test below covers a compensation that is also a graph target.
+        seen.push(`inPlan=${ctx.plan().includes("rollback")}`);
+        // Writes merge into the seeded meta, in memory only.
+        await ctx.state.set({ undone: "yes" });
+        seen.push(`afterSet=${JSON.stringify(ctx.state.get())}`);
+      });
+      other = target().executes((ctx) => ctx.state.set({ from: "other" }));
+      deploy = target()
+        .dependsOn(this.other)
+        .executes(async (ctx) => {
+          await ctx.state.set({ slot: "sit-7" });
+          controller.abort();
+        })
+        .onCancel(() => this.rollback);
+      promote = target().dependsOn(this.deploy).executes(() => {});
+    }
+    const { code } = await runCli(CD, ["promote"], {
+      signal: controller.signal,
+    });
+    assertEquals(code, 1);
+    assertEquals(seen, [
+      "target=rollback",
+      'state={"slot":"sit-7"}',
+      "stateOf(deploy)={}",
+      "stateOf(other)={}",
+      "selfIdentity=true",
+      "outcomeOf(deploy)=succeeded",
+      "inPlan=false",
+      'afterSet={"slot":"sit-7","undone":"yes"}',
+    ]);
+  });
+});
+
+Deno.test("a compensation that is also a graph target is in the run's plan", async () => {
+  // The companion to the test above, whose fixture declares its compensation
+  // off the graph. `ctx.plan()` is the whole run's plan and nothing filters a
+  // compensation out of it, so "a compensation is not in the plan" would be a
+  // property of that fixture rather than of compensations.
+  await withStateDir(async () => {
+    const seen: string[] = [];
+    const controller = new AbortController();
+    class CD extends Build {
+      rollback = target().executes((ctx) => {
+        seen.push(`${ctx.target} inPlan=${ctx.plan().includes("rollback")}`);
+      });
+      deploy = target()
+        .dependsOn(this.rollback)
+        .executes(async (ctx) => {
+          await ctx.state.set({ slot: "sit-7" });
+          controller.abort();
+        })
+        .onCancel(() => this.rollback);
+      promote = target().dependsOn(this.deploy).executes(() => {});
+    }
+    await runCli(CD, ["promote"], { signal: controller.signal });
+    // Once running forward as an ordinary target, once as the compensation —
+    // in the plan both times.
+    assertEquals(seen, [
+      "rollback inPlan=true",
+      "rollback inPlan=true",
+    ]);
+  });
+});
+
+Deno.test("a timed-out wait's compensation target compensates itself", async () => {
+  // The other way a compensation is reached. `.onTimeout(() => this.cleanup)`
+  // builds the step FOR `cleanup`, so `ctx.state` is cleanup's own meta — not
+  // the deployed target's. A rollback written for the `.onCancel` shape, going
+  // after deploy's slot, finds nothing here.
+  await withStateDir(async () => {
+    const seen: string[] = [];
+    class B extends Build {
+      cleanup = target().executes((ctx) => {
+        seen.push(`target=${ctx.target}`);
+        // Its OWN meta, empty because it never ran forward...
+        seen.push(`state=${JSON.stringify(ctx.state.get())}`);
+        // ...and emphatically not the deployed target's.
+        seen.push(
+          `stateOf(deploy)=${JSON.stringify(ctx.stateOf("deploy").get())}`,
+        );
+        // The one invariant that holds on both compensation paths.
+        seen.push(`selfIdentity=${ctx.stateOf(ctx.target) === ctx.state}`);
+      });
+      deploy = target().executes((ctx) => ctx.state.set({ slot: "sit-7" }));
+      gate = target()
+        .dependsOn(this.deploy)
+        .waitsFor((s) =>
+          s.on(externalSignal("approved")).timeout(0).onTimeout(() =>
+            this.cleanup
+          )
+        );
+      promote = target().dependsOn(this.gate).executes(() => {});
+    }
+    assertEquals((await runCli(B, ["promote"])).code, 0);
+    // The sweep finds the missed deadline and runs the named target.
+    assertEquals((await runCli(B, ["resume", "--check"])).code, 1);
+    assertEquals(seen, [
+      "target=cleanup",
+      "state={}",
+      "stateOf(deploy)={}",
+      "selfIdentity=true",
+    ]);
+  });
+});

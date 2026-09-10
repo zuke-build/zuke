@@ -31,6 +31,7 @@
  */
 
 import type { PathLike } from "./path.ts";
+import type { RunPlan } from "./run_plan.ts";
 import type { AnyParameter } from "./params.ts";
 import type { Configure } from "./tooling.ts";
 import { type LockHolder, lockKey } from "./state/lock.ts";
@@ -403,6 +404,14 @@ export interface TargetContext {
   /** True when the run is a dry run (bodies do not execute under a dry run). */
   readonly dryRun: boolean;
   /**
+   * The resolved shape of this run — which targets it plans, and how they
+   * relate. The seam for a body whose work depends on what *else* was asked
+   * for: a build that signs its artifact only when `deploy` is in the run.
+   *
+   * Reports the plan, not the outcome — see {@link "./run_plan.ts".RunPlan}.
+   */
+  plan(): RunPlan;
+  /**
    * Report `key: value` notes into **this target's row** of the end-of-build
    * summary — where a count or a version belongs once the body is done:
    *
@@ -462,8 +471,41 @@ export interface DeclaredEffect {
   fn: EffectFn;
 }
 
-/** A predicate gating whether a target runs; may be synchronous or async. */
-export type Condition = () => boolean | Promise<boolean>;
+/**
+ * The context a condition receives.
+ *
+ * Deliberately narrower than a {@link TargetContext}. A condition on a
+ * `.whenSkipped("skip-dependencies")` target is evaluated **before** the run
+ * starts, to decide what the run prunes — at which point the run's identity,
+ * its durable state handles, and its cancellation signal do not exist yet. This
+ * type carries only what is available at every moment a condition can be
+ * called.
+ */
+export interface ConditionContext {
+  /** Dotted name of the target this condition gates. */
+  readonly target: string;
+  /**
+   * The resolved shape of this run — which targets it plans, and how they
+   * relate. Lets a condition gate on the graph ("only when `deploy` was asked
+   * for") rather than only on the environment.
+   *
+   * Reports the plan, not the outcome, which matters most here: a condition can
+   * be one of the things *deciding* what runs, so the plan deliberately does not
+   * claim to know what will execute. See {@link "./run_plan.ts".RunPlan}.
+   */
+  plan(): RunPlan;
+}
+
+/**
+ * A predicate gating whether a target runs; may be synchronous or async.
+ *
+ * Receiving the context is optional — a zero-argument
+ * `.onlyWhen(() => …)` stays valid, since a zero-argument function is
+ * assignable to this one-parameter type.
+ */
+export type Condition = (
+  ctx: ConditionContext,
+) => boolean | Promise<boolean>;
 
 /** Context passed to a {@link Validation} when it runs. */
 export interface ValidationContext {
