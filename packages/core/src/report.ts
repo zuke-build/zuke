@@ -14,6 +14,7 @@
  */
 
 import { messageOf } from "./internal.ts";
+import { singleLine } from "./summary_note.ts";
 import type { TargetStatus } from "./build.ts";
 import {
   escapeData,
@@ -353,6 +354,35 @@ export function closingLine(
  * Render the GitHub Actions job-summary Markdown for a build — an aligned table
  * with a Total row and a verdict heading, mirroring the terminal summary.
  */
+/**
+ * Render `value` as the contents of one Markdown table cell.
+ *
+ * Neither a target name nor a summary note is necessarily the build author's
+ * text: a wrapper hands over what a tool printed, and a fan-out sub-target's
+ * name carries its item key, which comes from repository or remote data. Three
+ * things in such a value would otherwise escape the cell:
+ *
+ * - a **newline** ends the row, so everything after it is published as document
+ *   content — a heading, a list, raw markup — rather than as a cell;
+ * - a **pipe** opens a column of its own, shifting every later cell;
+ * - an **HTML comment marker** comments out the rest of the table, so the rows
+ *   below it silently vanish from the rendered summary.
+ *
+ * The collapsing is {@link "./summary_note.ts".singleLine}, which a note
+ * already went through when it was recorded; applying it here as well is what
+ * covers the name, which went through nothing.
+ *
+ * Matches `@zuke/ai`'s own cell renderer deliberately, including in what it
+ * does *not* do: other markup is left as written, since a cell is rendered by
+ * GitHub's sanitiser and over-escaping would mangle ordinary names.
+ */
+function markdownCell(value: string): string {
+  return singleLine(value)
+    .replaceAll("|", "\\|")
+    .replaceAll("<!--", "&lt;!--")
+    .replaceAll("-->", "--&gt;");
+}
+
 export function jobSummaryMarkdown(
   reports: TargetReport[],
   totalMs: number,
@@ -365,13 +395,11 @@ export function jobSummaryMarkdown(
   // keeps the three-column table it always had.
   const withNotes = reports.some((r) => formatSummary(r.summary) !== "");
   const notesCell = (r: TargetReport) =>
-    withNotes ? ` ${formatSummary(r.summary).replaceAll("|", "\\|")} |` : "";
+    withNotes ? ` ${markdownCell(formatSummary(r.summary))} |` : "";
   const rows = reports.map((r) => {
     const ran = r.status === "passed" || r.status === "failed";
     const duration = ran ? formatDuration(r.ms) : "—";
-    // A pipe in a name would otherwise open a column of its own, the way the
-    // note cell already guards against.
-    const name = r.name.replaceAll("|", "\\|");
+    const name = markdownCell(r.name);
     return `| ${name} | ${ICON[r.status]} ${
       STATUS_LABEL[r.status]
     } | ${duration} |${notesCell(r)}`;

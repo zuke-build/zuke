@@ -155,6 +155,57 @@ Deno.test("colour mode wraps headers, rows, and the closing line in ANSI codes",
   assertEquals(block[block.length - 1].includes("\x1b["), true);
 });
 
+Deno.test("a hostile target name cannot escape its job-summary cell", () => {
+  // A fan-out sub-target's name carries its item key, which comes from
+  // repository or remote data. Three ways a cell leaks without this guard.
+  const NL = String.fromCharCode(10);
+  const md = jobSummaryMarkdown(
+    [
+      {
+        name: [
+          "ok |",
+          "",
+          "## Injected heading",
+          "",
+          "<img src=x onerror=1>",
+        ].join(NL),
+        status: "passed",
+        ms: 100,
+      },
+      { name: "after", status: "passed", ms: 100 },
+    ],
+    200,
+    true,
+  );
+
+  // One row per target: the newline no longer ends the row early, so the
+  // heading below it is cell text rather than a document heading.
+  const rows = md.split(NL).filter((l) => l.startsWith("|"));
+  // header, separator, two target rows, Total.
+  assertEquals(rows.length, 5);
+  assertEquals(md.includes(`${NL}## Injected heading`), false);
+  // The pipe is escaped, so it does not open a column of its own.
+  assertEquals(md.includes("ok \\|"), true);
+  // The row that follows is still present and still a row of its own.
+  assertEquals(md.includes("| after | ✔ Succeeded | 0.1s |"), true);
+});
+
+Deno.test("a comment marker in a cell cannot hide the rows below it", () => {
+  // `<!--` would otherwise comment out the remainder of the table, so the rows
+  // after it vanish from the rendered summary without any error.
+  const md = jobSummaryMarkdown(
+    [
+      { name: "a<!--", status: "passed", ms: 100 },
+      { name: "b", status: "passed", ms: 100 },
+    ],
+    200,
+    true,
+  );
+  assertEquals(md.includes("<!--"), false);
+  assertEquals(md.includes("a&lt;!--"), true);
+  assertEquals(md.includes("| b | ✔ Succeeded | 0.1s |"), true);
+});
+
 Deno.test("jobSummaryMarkdown renders an aligned table with a bold Total row", () => {
   const reports = [
     { name: "a", status: "passed" as const, ms: 100 },

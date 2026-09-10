@@ -42,14 +42,22 @@ export interface SummaryEntry {
 }
 
 /**
- * Collapse a reported key or value to a single line of printable text.
+ * Collapse a value to a single line of printable text, for anything that lands
+ * in a table cell.
  *
- * A note lands in a terminal table row and a Markdown table cell, and a wrapper
- * may hand over text a tool printed: a newline would start a new row and an
- * ANSI sequence would restyle the rest of the table, so both are removed here —
- * the one place — rather than at each renderer.
+ * A note or a target name lands in a terminal table row and a Markdown table
+ * cell, and neither is necessarily the build author's text: a wrapper hands
+ * over what a tool printed, and a fan-out sub-target's name carries its item
+ * key. A newline would start a new row — in Markdown, ending the row early and
+ * publishing whatever follows as document content — and an ANSI sequence would
+ * restyle the rest of the table. Both are removed here, the one place, rather
+ * than at each renderer.
+ *
+ * Exported within the package for that reason: the second caller is the job
+ * summary's target column, which had no such guard and let a newline in a name
+ * break the table and inject Markdown.
  */
-function singleLine(text: string): string {
+export function singleLine(text: string): string {
   return stripAnsi(text)
     // deno-lint-ignore no-control-regex
     .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, "")
