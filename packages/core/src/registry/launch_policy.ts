@@ -50,18 +50,28 @@ export const LAUNCH_HOSTS_ENV = "ZUKE_REGISTRY_LAUNCH_HOSTS";
 
 /**
  * The environment variable listing the programs a `command` location may spawn
- * — comma- or space-separated (`ZUKE_REGISTRY_LAUNCH_COMMANDS="make,
- * /usr/local/bin/deploy.sh"`). A lone `*` allows any, for an operator who has
- * decided the registry itself is trusted. Unset (the default) refuses every
- * command location.
+ * — comma-separated (`ZUKE_REGISTRY_LAUNCH_COMMANDS="make,
+ * /usr/local/bin/deploy.sh"`), with newlines accepted too. Commas rather than
+ * whitespace, because a program path may contain a space. A lone `*` allows
+ * any, for an operator who has decided the registry itself is trusted. Unset
+ * (the default) refuses every command location.
  *
- * An entry is matched against the descriptor's `command[0]`, both as written
- * and as its trailing path segment, so `make` admits `/usr/bin/make` and an
- * absolute entry admits only itself. Two things follow, and both are the
- * operator's call to make: naming a bare program name admits **any** program
- * that resolves under that name (pin an absolute path to bind it), and naming
- * an interpreter — `sh`, `bash`, `deno`, `node`, `python` — hands the registry
- * writer full code execution, because the arguments are theirs.
+ * An entry must match the descriptor's `command[0]` **exactly** (case-folded,
+ * since Windows program names are). It is deliberately not matched by basename:
+ * the descriptor chooses the program string, so admitting `/tmp/anywhere/make`
+ * because an operator wrote `make` would let a registry writer point a trusted
+ * name at a file of their own. `make` therefore admits the bare name only — the
+ * one the operating system resolves on `PATH` — and `/usr/bin/make` admits that
+ * path only. A refusal names the exact string to add, so the list is built from
+ * what a run actually asks for rather than from guesswork.
+ *
+ * Two consequences are the operator's call to make. A **relative** program is
+ * resolved against the descriptor's own working directory, which the same
+ * writer chooses, so listing one trusts the registry with both — prefer an
+ * absolute path. And listing an interpreter — `sh`, `bash`, `deno`, `node`,
+ * `python` — hands the registry writer full code execution, because the
+ * arguments are theirs; listing `deno` in particular reinstates exactly what
+ * {@link LAUNCH_HOSTS_ENV} exists to refuse.
  */
 export const LAUNCH_COMMANDS_ENV = "ZUKE_REGISTRY_LAUNCH_COMMANDS";
 
@@ -99,31 +109,35 @@ function launchOrigin(url: URL): string {
 }
 
 /**
- * Split an allow-list environment variable into its entries, dropping empties.
- * Shared by the module-origin and command-program gates so the two lists are
- * spelled, split and matched exactly alike.
+ * Split an allow-list environment variable into its entries on `separator`,
+ * trimming each and dropping empties. Shared by the module-origin and
+ * command-program gates so one implementation decides what an entry is, and
+ * both lists trim, case-fold and honour `*` alike.
+ *
+ * The separator differs because the entries do. A hostname cannot contain a
+ * space, so the origin list accepts either a comma or whitespace; a program
+ * path routinely does — `C:\Program Files\...` — so the command list separates
+ * on commas and newlines only, and would otherwise be unable to name it.
  */
 function allowList(
   name: string,
   readEnv: (name: string) => string | undefined,
+  separator: RegExp,
 ): string[] {
   const raw = readEnv(name) ?? "";
-  return raw.split(/[,\s]+/).map((entry) => entry.trim().toLowerCase()).filter(
+  return raw.split(separator).map((entry) => entry.trim().toLowerCase()).filter(
     (entry) => entry !== "",
   );
 }
 
+/** Entry separator for {@link LAUNCH_HOSTS_ENV}: a comma or any whitespace. */
+const HOST_SEPARATOR = /[,\s]+/;
+
 /**
- * The tokens a command's program may be allow-listed by: the program as the
- * descriptor wrote it, and its trailing path segment. Both lowercased, because
- * Windows program names are case-insensitive and an operator should not have to
- * guess the descriptor's casing.
+ * Entry separator for {@link LAUNCH_COMMANDS_ENV}: a comma or a newline, so a
+ * program path containing a space can still be named.
  */
-function programTokens(program: string): string[] {
-  const lower = program.toLowerCase();
-  const segment = lower.split(/[\\/]/).pop() ?? lower;
-  return segment === lower ? [lower] : [lower, segment];
-}
+const COMMAND_SEPARATOR = /[,\n\r]+/;
 
 /**
  * Decide whether `location` may be spawned, returning `null` when it may and a
@@ -149,7 +163,7 @@ export function launchDenial(
     return null;
   }
   const origin = launchOrigin(url);
-  const allowed = allowList(LAUNCH_HOSTS_ENV, readEnv);
+  const allowed = allowList(LAUNCH_HOSTS_ENV, readEnv, HOST_SEPARATOR);
   if (!allowed.includes("*") && !allowed.includes(origin.toLowerCase())) {
     return {
       reason: "launch_origin_not_allowed",
@@ -186,11 +200,9 @@ function commandDenial(
 ): LaunchDenial | null {
   const program = command[0];
   if (program === undefined || program === "") return null;
-  const allowed = allowList(LAUNCH_COMMANDS_ENV, readEnv);
+  const allowed = allowList(LAUNCH_COMMANDS_ENV, readEnv, COMMAND_SEPARATOR);
   if (allowed.includes("*")) return null;
-  if (programTokens(program).some((token) => allowed.includes(token))) {
-    return null;
-  }
+  if (allowed.includes(program.toLowerCase())) return null;
   return {
     reason: "launch_command_not_allowed",
     detail:
