@@ -50,10 +50,13 @@ const FIX = JSON.stringify({
 Deno.test("a build's conventions reach the model fenced as untrusted data", async () => {
   const bodies: string[] = [];
   const writes: string[] = [];
-  const fetchImpl = ((_input: string | URL | Request, init?: RequestInit) => {
+  // Annotated rather than cast: `as` would let this drift from the real `fetch`
+  // signature and still compile, which is the one thing a transport double must
+  // not be able to do (AGENTS.md guideline 1).
+  const fetchImpl: typeof fetch = (_input, init) => {
     bodies.push(typeof init?.body === "string" ? init.body : "");
     return Promise.resolve(new Response(FIX, { status: 200 }));
-  }) as typeof fetch;
+  };
 
   const fixer = aiFixer((f) => f.provider("claude").apiKey("k").autoApply())
     .conventions(HOSTILE)
