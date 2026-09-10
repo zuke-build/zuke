@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.50.0](https://github.com/zuke-build/zuke/compare/core-v1.49.1...core-v1.50.0) (2026-09-10)
+
+
+### Features
+
+* **core:** expose the resolved run plan to a body and a condition ([#533](https://github.com/zuke-build/zuke/issues/533)) ([be5bb9b](https://github.com/zuke-build/zuke/commit/be5bb9b19333897bd0aad718dbb9919b35f7e135))
+
 ## [1.49.1](https://github.com/zuke-build/zuke/compare/core-v1.49.0...core-v1.49.1) (2026-09-09)
 
 
