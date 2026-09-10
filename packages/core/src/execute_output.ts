@@ -146,9 +146,17 @@ export function writeJobSummary(
   reports: TargetReport[],
   totalMs: number,
   ok: boolean,
+  redactor: Redactor,
 ): void {
   // Append, not overwrite: validations like the AI reviewers/fixer write their
   // own sections to this same file during the run, and overwriting would wipe
   // them. Best-effort — an unwritable summary must never fail the build.
-  appendJobSummary(renderer.jobSummaryMarkdown(reports, totalMs, ok));
+  // Redacted like every other sink. The console goes through the reporter and
+  // the run record is masked as it is persisted; this file was the one place a
+  // resolved `secret()` parameter reached the outside world in the clear, and
+  // `::add-mask::` does not cover it — that masks the runner's log stream, not
+  // a file the build writes.
+  appendJobSummary(
+    redactor.redact(renderer.jobSummaryMarkdown(reports, totalMs, ok)),
+  );
 }

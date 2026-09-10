@@ -659,7 +659,7 @@ export async function execute(
     );
   }
   if (style.github && writesToConsole) {
-    writeJobSummary(renderer, run.reports, totalMs, result.ok);
+    writeJobSummary(renderer, run.reports, totalMs, result.ok, redactor);
   }
   await life.finish(result);
   return result;

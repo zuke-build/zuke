@@ -15,6 +15,16 @@
  * @module
  */
 
+// The GitHub Actions escapes are published from this entrypoint because it is
+// the one every renderer already imports — `@zuke/console` included, so it can
+// share them rather than growing a second copy of a guard whose whole value is
+// being applied everywhere.
+export {
+  escapeData,
+  escapeProperty,
+  neutralizeWorkflowCommands,
+} from "./github_command.ts";
+
 /** ANSI select-graphic-rendition codes, keyed by style name. */
 export const SGR = {
   reset: "\x1b[0m",

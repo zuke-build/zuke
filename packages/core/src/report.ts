@@ -14,6 +14,11 @@
  */
 
 import { messageOf } from "./internal.ts";
+import {
+  escapeData,
+  escapeProperty,
+  neutralizeWorkflowCommands,
+} from "./github_command.ts";
 import type { TargetStatus } from "./build.ts";
 import { formatDuration, line, paint, SGR, type Style } from "./render.ts";
 import type { SummaryEntry } from "./summary_note.ts";
@@ -76,33 +81,12 @@ export function formatSummary(
 }
 
 /**
- * Escape a value interpolated into the body of a GitHub Actions workflow
- * command (`::error::<data>`).
- *
- * A workflow command is terminated by the end of its line, so a value carrying
- * a newline continues into what the runner parses as a *fresh* command. A
- * target's failure message embeds a subprocess's stderr verbatim, which is not
- * ours to trust: a tool that writes `::stop-commands::` on a line of its own
- * would otherwise suspend the runner's command processing, and one that writes
- * `::error::` would forge an annotation. Percent-encoding is the escape the
- * Actions spec defines for exactly this, and `%` is encoded first so the
- * encoding cannot be spoofed by a literal `%0A` in the input.
+ * Neutralise a value that is about to be printed as itself, when the runner is
+ * listening. Off GitHub the value is returned untouched, so terminal output is
+ * unaffected by any of this.
  */
-export function escapeData(value: string): string {
-  return value
-    .replaceAll("%", "%25")
-    .replaceAll("\r", "%0D")
-    .replaceAll("\n", "%0A");
-}
-
-/**
- * Escape a value interpolated into a workflow command's **property** list
- * (`::error title=<property>::`). Properties are comma-separated and
- * colon-terminated, so those two characters need encoding on top of what
- * {@link escapeData} handles.
- */
-export function escapeProperty(value: string): string {
-  return escapeData(value).replaceAll(":", "%3A").replaceAll(",", "%2C");
+function safe(style: Style, value: string): string {
+  return style.github ? neutralizeWorkflowCommands(value) : value;
 }
 
 /**
@@ -130,7 +114,7 @@ export function targetPassFooter(
     SGR.dim,
     `succeeded in ${formatDuration(ms)}`,
   );
-  const line = `${icon} ${name} ${tail}`;
+  const line = `${icon} ${safe(style, name)} ${tail}`;
   return style.github ? [line, "::endgroup::"] : [line];
 }
 
@@ -149,9 +133,14 @@ export function targetFailFooter(
   const line = paint(
     style.color,
     SGR.red,
-    `${ICON.failed} ${name} failed in ${formatDuration(ms)}`,
+    `${ICON.failed} ${safe(style, name)} failed in ${formatDuration(ms)}`,
   );
-  const detail = paint(style.color, SGR.red, `  ${message}`);
+  // The detail carries a failed subprocess's stderr verbatim, and it is printed
+  // BEFORE the annotation below — so an unescaped `::stop-commands::` here would
+  // disarm the very annotation the escaping protects, and the `::endgroup::`
+  // after it. It is printed as itself, so it is neutralised rather than
+  // percent-encoded whole: a compiler dump has to stay readable.
+  const detail = paint(style.color, SGR.red, `  ${safe(style, message)}`);
   if (!style.github) return { info: [], error: [line, detail] };
   return {
     info: ["::endgroup::"],
@@ -172,8 +161,12 @@ export function targetWaitFooter(
   trigger: string,
 ): string[] {
   const icon = paint(style.color, SGR.magenta, ICON.waiting);
-  const note = paint(style.color, SGR.dim, `waiting for ${trigger}`);
-  const line = `${icon} ${name} ${note}`;
+  const note = paint(
+    style.color,
+    SGR.dim,
+    `waiting for ${safe(style, trigger)}`,
+  );
+  const line = `${icon} ${safe(style, name)} ${note}`;
   return style.github ? [line, "::endgroup::"] : [line];
 }
 
@@ -181,7 +174,7 @@ export function targetWaitFooter(
 export function targetDryRunFooter(style: Style, name: string): string[] {
   const icon = paint(style.color, SGR.cyan, ICON.passed);
   const note = paint(style.color, SGR.dim, "(dry run — not executed)");
-  const line = `${icon} ${name} ${note}`;
+  const line = `${icon} ${safe(style, name)} ${note}`;
   return style.github ? [line, "::endgroup::"] : [line];
 }
 
@@ -198,8 +191,14 @@ export function summaryBlock(
   now: Date = new Date(),
 ): string[] {
   const headers = { name: "Target", status: "Status", duration: "Duration" };
+  // Neutralised up front, before any width is measured: a fan-out sub-target's
+  // name carries its item key, and a summary note carries a tool's own output.
+  // Escaping after the maths would leave the columns measured against the
+  // shorter, unescaped strings and the table visibly ragged.
+  const safeName = new Map(reports.map((r) => [r, safe(style, r.name)]));
+  const nameOf = (r: TargetReport): string => safeName.get(r) ?? r.name;
   const nameWidth = reports.reduce(
-    (w, r) => Math.max(w, r.name.length),
+    (w, r) => Math.max(w, nameOf(r).length),
     headers.name.length,
   );
   const statusWidth = Object.values(STATUS_LABEL).reduce(
@@ -235,11 +234,11 @@ export function summaryBlock(
     // so the status and timing columns stay the thing the eye lands on. They
     // are not part of the table's width: a long note overhangs the rules
     // rather than pushing every duration to the right.
-    const note = formatSummary(r.summary);
+    const note = safe(style, formatSummary(r.summary));
     const notes = note === ""
       ? ""
       : "  " + paint(style.color, SGR.dim, `// ${note}`);
-    return r.name.padEnd(nameWidth) + "  " +
+    return nameOf(r).padEnd(nameWidth) + "  " +
       status + "  " +
       duration.padStart(durationWidth) + notes;
   });
@@ -315,7 +314,7 @@ export function closingLine(
   }
   const failed = reports.filter((r) => r.status === "failed");
   const culprit = failed.length === 1
-    ? `'${failed[0].name}' failed`
+    ? `'${safe(style, failed[0].name)}' failed`
     : failed.length > 1
     ? `${failed.length} targets failed`
     : "no target succeeded";
