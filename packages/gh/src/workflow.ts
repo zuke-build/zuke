@@ -138,11 +138,15 @@ export interface GhWorkflowApi {
     inputs: Record<string, string>,
   ): Promise<void>;
   /**
-   * Every run of `workflow` whose display title equals `marker`, newest first.
+   * Every `workflow_dispatch` run of `workflow` whose display title equals
+   * `marker`, newest first.
    *
    * All of them, not just the newest: the title is copyable, so more than one
    * run can wear the marker, and {@link correlateByMarker} has to see them all
-   * to bind the right one — or to refuse when it cannot tell them apart.
+   * to bind the right one — or to refuse when it cannot tell them apart. An
+   * implementation should return only `workflow_dispatch` runs, so a paginated
+   * scan is not spent on runs that could never be ours; correlation re-checks
+   * the event regardless.
    */
   findMarkedRuns(
     repo: string,
@@ -496,13 +500,20 @@ export class RestGhWorkflowApi implements GhWorkflowApi {
   }
 
   /**
-   * Find every run of `workflow` whose display title equals `marker`, newest
-   * first, paginating so a run that has scrolled past the first page in a busy
-   * repo is still seen (up to {@link MAX_RUN_PAGES} pages of 100).
+   * Find every `workflow_dispatch` run of `workflow` whose display title equals
+   * `marker`, newest first, paginating so a run that has scrolled past the
+   * first page in a busy repo is still seen (up to {@link MAX_RUN_PAGES} pages
+   * of 100).
    *
-   * The scan collects all matches rather than returning at the first: which of
-   * them is ours is a question about the dispatch, and it is answered by
-   * {@link correlateByMarker}, not here.
+   * The event filter is applied by the API rather than here, so the page budget
+   * is spent only on runs that could be ours. In a repository where most runs
+   * come from pushes, filtering after the fact would let our own run fall past
+   * the last page and strand the gate.
+   *
+   * The scan still collects every match rather than returning at the first:
+   * which of them is ours is a question about the dispatch, and
+   * {@link correlateByMarker} answers it — re-checking the event itself, since
+   * a transport is not where that guarantee should rest.
    */
   async findMarkedRuns(
     repo: string,
@@ -512,7 +523,8 @@ export class RestGhWorkflowApi implements GhWorkflowApi {
     const found: WorkflowRun[] = [];
     for (let page = 1; page <= MAX_RUN_PAGES; page++) {
       const body = await this.#get(
-        `/repos/${repo}/actions/workflows/${workflow}/runs?per_page=100&page=${page}`,
+        `/repos/${repo}/actions/workflows/${workflow}/runs` +
+          `?event=workflow_dispatch&per_page=100&page=${page}`,
       );
       const runs = body.workflow_runs;
       if (!Array.isArray(runs)) return found;

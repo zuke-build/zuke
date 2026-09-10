@@ -746,7 +746,7 @@ Deno.test("RestGhWorkflowApi.dispatch POSTs ref+inputs with auth", async () => {
 
 Deno.test("RestGhWorkflowApi.findMarkedRuns matches runs by display title", async () => {
   const { fetch } = routerFetch({
-    "GET https://api.github.com/repos/a/b/actions/workflows/w.yml/runs?per_page=100&page=1":
+    "GET https://api.github.com/repos/a/b/actions/workflows/w.yml/runs?event=workflow_dispatch&per_page=100&page=1":
       {
         workflow_runs: [
           {
@@ -773,7 +773,7 @@ Deno.test("RestGhWorkflowApi.findMarkedRuns matches runs by display title", asyn
 
 Deno.test("RestGhWorkflowApi.findMarkedRuns returns nothing when no run matches", async () => {
   const { fetch } = routerFetch({
-    "GET https://api.github.com/repos/a/b/actions/workflows/w.yml/runs?per_page=100&page=1":
+    "GET https://api.github.com/repos/a/b/actions/workflows/w.yml/runs?event=workflow_dispatch&per_page=100&page=1":
       {
         workflow_runs: [],
       },
@@ -885,7 +885,7 @@ Deno.test("RestGhWorkflowApi.dispatch throws on a non-2xx", async () => {
 
 Deno.test("RestGhWorkflowApi.findMarkedRuns tolerates a malformed runs payload", async () => {
   const base =
-    "https://api.github.com/repos/a/b/actions/workflows/w.yml/runs?per_page=100&page=1";
+    "https://api.github.com/repos/a/b/actions/workflows/w.yml/runs?event=workflow_dispatch&per_page=100&page=1";
   const notArray = routerFetch({ [`GET ${base}`]: { workflow_runs: "nope" } });
   assertEquals(
     await new RestGhWorkflowApi({ fetch: notArray.fetch }).findMarkedRuns(
@@ -925,8 +925,10 @@ Deno.test("RestGhWorkflowApi.findMarkedRuns paginates beyond the first page", as
   }));
   const w = "https://api.github.com/repos/a/b/actions/workflows/w.yml/runs";
   const { fetch } = routerFetch({
-    [`GET ${w}?per_page=100&page=1`]: { workflow_runs: page1 },
-    [`GET ${w}?per_page=100&page=2`]: {
+    [`GET ${w}?event=workflow_dispatch&per_page=100&page=1`]: {
+      workflow_runs: page1,
+    },
+    [`GET ${w}?event=workflow_dispatch&per_page=100&page=2`]: {
       workflow_runs: [{
         id: 999,
         display_title: "zuke:r1:e2e",
@@ -1260,4 +1262,24 @@ Deno.test("a persisted run id that no longer looks like ours is refused", async 
     WorkflowCorrelationError,
   );
   assertEquals(readWorkflowResult(state), undefined); // no gate result recorded
+});
+
+Deno.test("findMarkedRuns asks the API for dispatch runs only", async () => {
+  // The page budget is finite, so a repository whose runs are mostly pushes
+  // could otherwise push our own run past the last page and strand the gate.
+  // Filtering at the API keeps the budget on runs that could be ours.
+  const asked: string[] = [];
+  const fetchSpy: FetchFn = (input) => {
+    asked.push(String(input));
+    return Promise.resolve(
+      new Response(JSON.stringify({ workflow_runs: [] }), { status: 200 }),
+    );
+  };
+  await new RestGhWorkflowApi({ fetch: fetchSpy }).findMarkedRuns(
+    "a/b",
+    "w.yml",
+    "zuke:r1:e2e",
+  );
+  assertEquals(asked.length, 1);
+  assertEquals(asked[0]?.includes("event=workflow_dispatch"), true);
 });
