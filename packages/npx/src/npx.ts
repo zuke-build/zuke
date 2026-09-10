@@ -12,9 +12,8 @@
  * ```
  *
  * `npx` downloads and runs a package binary in one step; it is npm's sibling of
- * `bun x` and `pnpm dlx`. On Windows, npx ships as a `.cmd` shim; the shared
- * tooling base retries through `cmd /c` automatically when direct spawning
- * fails.
+ * `bun x` and `pnpm dlx`. On Windows, npx ships as a `.cmd` shim, which the
+ * shared tooling base resolves and spawns directly.
  *
  * @module
  */

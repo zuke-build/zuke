@@ -16,8 +16,8 @@
  * diverge, the option is named after the flag and its applicable line noted —
  * e.g. `.immutable()` is Berry's `--immutable` and `.frozenLockfile()` is
  * Classic's `--frozen-lockfile`; `dlx` is a Berry command. On Windows, yarn
- * ships as a `.cmd` shim; the shared tooling base retries through `cmd /c`
- * automatically when direct spawning fails.
+ * ships as a `.cmd` shim, which the shared tooling base resolves and spawns
+ * directly.
  */
 
 import { type Configure, runSettings, ToolSettings } from "@zuke/core/tooling";

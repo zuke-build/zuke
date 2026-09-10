@@ -119,6 +119,17 @@ export interface SetupHost {
    * refuses to write through one: the writes below follow links, so a link
    * planted at a scaffold name by the very repository being set up would
    * redirect them outside the target directory.
+   *
+   * The guard covers the names scaffolding chooses, which is where the hazard
+   * is — the caller never asked for `.gitignore` to be written, so a repository
+   * redirecting it is a decision nobody made. Three things are deliberately out
+   * of its scope. The directory the caller names with `--dir` is the caller's
+   * to name, symlink or not. A **hard** link is indistinguishable from the file
+   * it shares, so no probe can see one; git cannot check one out either, which
+   * is what keeps it out of the threat this guards. And because every name is
+   * checked before any is written, a link planted in between is still followed
+   * — closing that needs an open-without-following the runtime does not expose,
+   * and it already presumes local code execution.
    */
   isSymlink(path: string): Promise<boolean>;
   /** Read a file as UTF-8 text. */

@@ -12,8 +12,8 @@
  * await PnpmTasks.run((s) => s.script("build").filter("app"));
  * ```
  *
- * On Windows, pnpm ships as a `.cmd` shim; the shared tooling base retries
- * through `cmd /c` automatically when direct spawning fails.
+ * On Windows, pnpm ships as a `.cmd` shim, which the shared tooling base
+ * resolves and spawns directly.
  */
 
 import { type Configure, runSettings, ToolSettings } from "@zuke/core/tooling";

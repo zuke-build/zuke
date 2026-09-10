@@ -667,7 +667,7 @@ tool wrappers, which inherit `Deno.env` — finds the provisioned tool.
 are hoisted to the repo root, a wrapper can find its binary npx-style instead of
 needing a `.toolPath(...)`. `.fromNodeModules()` on any settings object walks up
 from the working directory for `node_modules/.bin/<tool>` (the `.cmd`/`.bat`
-shims on Windows, launched via `cmd /c`) and falls back to `PATH` on a miss;
+shims on Windows, spawned as themselves) and falls back to `PATH` on a miss;
 `.fromPath()` forces `PATH`; and `ZUKE_TOOL_RESOLUTION=node_modules|path` flips
 every wrapper repo-wide without touching call sites (a per-call setting wins
 over it). An explicit `.toolPath(...)` always wins, so a `toolchain()` pin stays

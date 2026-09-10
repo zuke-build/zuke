@@ -477,6 +477,18 @@ export async function runImport(
   for (const candidate of candidates) {
     const path = joinPath(options.dir, candidate.file);
     if (!(await host.exists(path))) continue;
+    // The source file's name is chosen here, not by the caller, so a repository
+    // that ships a link at it decides what gets read — and whatever is read is
+    // parsed into the generated build file, which import then writes back into
+    // the repository. Refuse rather than follow, exactly as scaffolding does.
+    if (await host.isSymlink(path)) {
+      throw new Error(
+        `zuke import: refusing to read "${candidate.file}" — ${path} is a ` +
+          `symbolic link, so its contents would come from the file it points ` +
+          `at and end up in the generated build. Replace the link with a ` +
+          `regular file (or remove it), then re-run import.`,
+      );
+    }
     const tasks = candidate.parse(await host.readText(path));
     host.log(
       `Importing ${tasks.length} task(s) from ${candidate.file} into ${

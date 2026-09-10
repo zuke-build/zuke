@@ -5064,11 +5064,26 @@ function shimFallbackArgv(argv: ReadonlyArray<string>, os: typeof Deno.build.os)
   On Windows, wrap an argv in a `cmd /c` invocation so `.cmd`/`.bat` shims
   (such as npm's) become spawnable; returns `null` on other platforms.
 
+  @deprecated
+      Unsafe, and no longer used. The wrapped argv is handed to
+      `cmd.exe` as one command line quoted by C-runtime rules, which quote on
+      spaces but not on the metacharacters cmd.exe acts on, so an operand
+      containing `&`, `|` or `^` and no space is re-parsed as further commands.
+      Nothing needs the wrapper: `Deno.Command` spawns a `.cmd`/`.bat` directly,
+      escaping for the command processor as it does. Scheduled for removal in the
+      next major.
+
 function windowsCmdShim(argv: ReadonlyArray<string>, os: typeof Deno.build.os): string[]
-  On Windows, spawn a resolved `.cmd`/`.bat` shim (such as npm's `node_modules`
-  shims) through `cmd /c` — a batch shim is not a PE executable, so
-  `Deno.Command` cannot launch it directly. Returns `argv` unchanged on other
-  platforms or when the binary is not a batch shim.
+  On Windows, wrap a resolved `.cmd`/`.bat` shim in `cmd /c`. Returns `argv`
+  unchanged on other platforms or when the binary is not a batch shim.
+
+  @deprecated
+      Unsafe, and no longer used. Its premise — that `Deno.Command`
+      cannot launch a batch shim — does not hold: Deno spawns one through the
+      command processor itself, quoting each argument for it. Wrapping instead
+      makes `cmd.exe` the direct child, whose command line is quoted by C-runtime
+      rules that leave `&`, `|` and `^` bare, so a caller operand carrying one is
+      re-parsed as a command. Scheduled for removal in the next major.
 
 class DynamicToolSettings extends ToolSettings
   Fluent settings for a {@link defineTool} tool: build the argv with
@@ -5207,9 +5222,18 @@ abstract class ToolSettings
     tests and diagnostics: it reveals whether a wrapper resolved to a local
     shim or fell back to the bare name on `PATH`.
   async run(): Promise<CommandOutput>
-    Run the configured tool. If the binary is missing and the platform is
-    Windows, retry once through `cmd /c` (covers `.cmd`/`.bat` shims);
-    otherwise raise a {@link ToolNotFoundError} naming the tool.
+    Run the configured tool, raising a {@link ToolNotFoundError} naming it when
+    the binary is missing.
+
+    The argv is spawned as it was resolved, on every platform. Windows batch
+    shims used to be wrapped in `cmd /c` here, which silently gave up the
+    argv-boundary guarantee every wrapper relies on: `Deno.Command` hands
+    `cmd.exe` a single command line built with C-runtime quoting, which quotes
+    on spaces but not on `&`, `|` or `^`, so cmd.exe re-parsed an operand like
+    `A=1&whoami` as a second command. Spawning the shim itself instead keeps
+    that decision where it belongs: Deno resolves a bare name through `PATHEXT`
+    and launches a `.cmd`/`.bat` through the command processor with quoting
+    hardened for it, so the operand stays one argument.
 
 interface DefineToolOptions
   Options for {@link defineTool}.
@@ -5283,9 +5307,8 @@ function missingTool<S extends ToolSettings>(settings: S): S
   process — the way a wrapper test proves each of its task functions reaches
   execution.
 
-  The platform is pinned to `linux` because on Windows a missing binary is
-  retried through `cmd /c`, which exists, so the failure would surface as a
-  command error instead:
+  The platform is pinned to `linux` so the assertion reads the same on every
+  runner, rather than depending on how the host reports a missing binary:
 
   ```ts
   await assertRejects(() => BiomeTasks.check(missingTool), ToolNotFoundError);
