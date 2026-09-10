@@ -9,6 +9,7 @@ import {
   extractTarGzip,
   extractZip,
   gunzip,
+  gunzipBounded,
   gzip,
   tar,
   type TarEntry,
@@ -873,4 +874,27 @@ Deno.test("assertSafeEntryName accepts safe names and rejects escapes", () => {
     Error,
     "escapes the destination",
   );
+});
+
+Deno.test("gunzipBounded returns the bytes when they fit under the limit", async () => {
+  const data = new TextEncoder().encode("hello");
+  assertEquals(await gunzipBounded(await gzip(data), 1024), data);
+});
+
+Deno.test("gunzipBounded refuses a stream that expands past the limit", async () => {
+  // A zip bomb in miniature: highly compressible input whose *decompressed*
+  // size is what has to be caught. The compressed artifact is tiny, so any cap
+  // applied to the archive rather than to the inflating stream would pass it.
+  const bomb = await gzip(new Uint8Array(1024 * 1024)); // 1 MiB of zeroes
+  assertEquals(bomb.byteLength < 8192, true); // compresses to almost nothing
+  assertEquals(await gunzipBounded(bomb, 64 * 1024), null);
+});
+
+Deno.test("gunzipBounded counts decompressed bytes, not compressed ones", async () => {
+  // The same bytes pass under a limit above their inflated size and fail under
+  // one below it, which is what makes the bound meaningful.
+  const payload = new Uint8Array(4096);
+  const archive = await gzip(payload);
+  assertEquals((await gunzipBounded(archive, 4096))?.byteLength, 4096);
+  assertEquals(await gunzipBounded(archive, 4095), null);
 });

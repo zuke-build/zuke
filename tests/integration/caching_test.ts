@@ -28,6 +28,10 @@ import { runCli, withStateDir } from "./_harness.ts";
 // otherwise a run through the real CLI would write its cache store into this
 // repository's own `.zuke/` directory.
 import { withTempCwd } from "../../packages/core/tests/_temp.ts";
+import { gzip, tar } from "../../packages/core/src/compression.ts";
+
+/** Encode test fixture text as archive bytes. */
+const enc = (text: string) => new TextEncoder().encode(text);
 
 Deno.test("a target with unchanged inputs is skipped as cached, and reruns when the input changes", async () => {
   await withStateDir(async () => {
@@ -164,6 +168,70 @@ Deno.test("a FileSystemCacheStore (env-configured) restores outputs on a fresh c
         assertEquals(second.code, 0);
         assertEquals(log, ["build"]); // restored from the remote store, body not re-run
         assertEquals(await Deno.readTextFile(`${dir}/out.txt`), "built");
+      } finally {
+        if (prevRemote === undefined) {
+          Deno.env.delete("ZUKE_REMOTE_CACHE_DIR");
+        } else {
+          Deno.env.set("ZUKE_REMOTE_CACHE_DIR", prevRemote);
+        }
+        await Deno.remove(remoteDir, { recursive: true });
+      }
+    });
+  });
+});
+
+Deno.test("a remote restore onto a symlinked output is refused, and rebuilds", async () => {
+  if (Deno.build.os === "windows") return; // symlink creation is privileged there
+  await withStateDir(async () => {
+    await withTempCwd(async (dir) => {
+      const remoteDir = await Deno.makeTempDir({ prefix: "zuke-it-remote-" });
+      const prevRemote = Deno.env.get("ZUKE_REMOTE_CACHE_DIR");
+      Deno.env.set("ZUKE_REMOTE_CACHE_DIR", remoteDir);
+      try {
+        await Deno.writeTextFile(`${dir}/input.txt`, "v1");
+        const log: string[] = [];
+        class B extends Build {
+          build = target().inputs("input.txt").outputs("out.txt").executes(
+            async () => {
+              log.push("build");
+              await Deno.writeTextFile("out.txt", "built");
+            },
+          );
+        }
+
+        const first = await runCli(B, ["build"]);
+        assertEquals(first.code, 0);
+        assertEquals(log, ["build"]); // populates the remote store
+
+        // Fresh checkout, except the workspace now has a symlink where the
+        // declared output goes — pointing at a file outside the workspace.
+        await Deno.remove(`${dir}/.zuke`, { recursive: true });
+        await Deno.remove(`${dir}/out.txt`);
+        const outside = await Deno.makeTempDir({ prefix: "zuke-it-outside-" });
+        const victim = `${outside}/victim.txt`;
+        await Deno.writeTextFile(victim, "untouched");
+        await Deno.symlink(victim, `${dir}/out.txt`);
+
+        // Poison the stored artifact. The rebuild writes "built" through the
+        // link itself — that is the workspace owner's own symlink doing what
+        // they asked for — so only content the *store* chose distinguishes a
+        // restore that followed the link from an honest rebuild.
+        const stored = [...Deno.readDirSync(remoteDir)];
+        assertEquals(stored.length, 1);
+        await Deno.writeFile(
+          `${remoteDir}/${stored[0].name}`,
+          await gzip(tar([{ name: "out.txt", data: enc("poisoned") }])),
+        );
+
+        const second = await runCli(B, ["build"]);
+        assertEquals(second.code, 0);
+        // Refused, so the target re-executes rather than the build failing.
+        assertEquals(log, ["build", "build"]);
+        assertStringIncludes(second.err + second.out, "refused, rebuilding");
+
+        // The store's bytes never reached the file the link named.
+        assertEquals(await Deno.readTextFile(victim), "built");
+        await Deno.remove(outside, { recursive: true });
       } finally {
         if (prevRemote === undefined) {
           Deno.env.delete("ZUKE_REMOTE_CACHE_DIR");
