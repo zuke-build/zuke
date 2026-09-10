@@ -51,7 +51,7 @@ inputs:
     required: false
     default: "1"
   ref:
-    description: "Branch, tag or SHA to check out. Empty checks out what the event points at. Refused outright on an event whose content a contributor writes (`pull_request_target`, `issue_comment`, `workflow_run`, …) — see the refusal below."
+    description: "Branch, tag or SHA to check out. Leave it empty — the default — and the checkout follows the event, which on an event whose content a contributor writes (`pull_request_target`, `issue_comment`, `workflow_run`, …) is the base or default branch: code that is already trusted. Setting it is what those events refuse, because a ref chosen from a contributor's text would run with this repository's secrets — see the refusal below."
     required: false
     default: ""
   deno-version:

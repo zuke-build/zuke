@@ -163,8 +163,12 @@ export function gitleaksSummary(
       findings.length === 1 ? "" : "s"
     }`,
     "",
-    "Values are redacted: this names where a secret is, not what it is. To " +
-    "dismiss a false positive, add its fingerprint to the gitleaks allowlist.",
+    "Values are redacted: this names where a secret is, not what it is. If a " +
+    "finding is real, rotate the credential first — it is in the history, so " +
+    "removing the line does not withdraw it. If it is a false positive, say so " +
+    "on the pull request: scanner configuration is not carried in a feature " +
+    "branch, because a diff that narrows the scan is a change to the gate and " +
+    "is reviewed as one.",
     "",
     "| Rule | File | Line | Commit | Fingerprint |",
     "| --- | --- | --- | --- | --- |",

@@ -222,7 +222,7 @@ only governs what runs after it.
 | `allowed-endpoints`   | `""`    | Space-separated `host:port` list permitted under `block`.                          |
 | `persist-credentials` | `false` | Leave the token in git config, for a later push.                                   |
 | `fetch-depth`         | `1`     | Commits to fetch. `0` is the full history, which a secret scan needs.              |
-| `ref`                 | `""`    | Branch, tag or SHA to check out. Empty follows the event. See the warning below.   |
+| `ref`                 | `""`    | Branch, tag or SHA to check out. Empty follows the event — the base or default branch on a secret-bearing one. See below. |
 | `deno-version`        | `""`    | Install this Deno. Usually unnecessary — the `./zuke` launcher bootstraps its own. |
 
 Running a target needs a committed `./zuke` launcher in the repository (that is
@@ -300,6 +300,16 @@ today would be silently wrong the moment the list grew.
 It is also **not keyed on `target`**: a `ref` checkout with no target is refused
 just the same, because a caller who omits it and writes `run: ./zuke ci` in
 their own next step reaches the identical outcome.
+
+**Leaving `ref` empty is the safe default, on those events too**, and the guard
+deliberately does not touch it. An empty `ref` is passed straight through to
+`actions/checkout`, which then follows `GITHUB_REF`/`GITHUB_SHA` — and on
+`pull_request_target` that pair is the **base** branch and its tip, not the
+contributor's head; on `issue_comment` and `workflow_run` it is the default
+branch. So the workspace holds code that is already trusted, which is what makes
+the standard base-checkout pattern possible at all. Refusing an empty `ref`
+would refuse every such job while protecting nothing: what a pwn-request needs
+is a `ref` pointing at the head, and that is the case the guard rejects.
 
 Zuke's own six workflows all start with the published action — the generated
 YAML opens with `uses: zuke-build/zuke@<sha>`, so the repository dogfoods the

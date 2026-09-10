@@ -58,11 +58,18 @@ export interface WorkflowTargets {
 /**
  * The hosts `./zuke ci` legitimately reaches, for the one job that runs build
  * code while holding live secrets and a write-scoped token. Egress is blocked
- * rather than audited there: even if untrusted code in the gate read a token
- * from the environment, it could not POST it anywhere. Each entry is traceable
- * to something the build does — the Deno bootstrap, module resolution (JSR, plus
- * npm for the cspell tooling), the OpenAI API for the lint fixer, GitHub for the
- * fixer's comment and push, and Codecov's CDN, API, and upload bucket.
+ * rather than audited there, which bounds where those secrets could go — but
+ * not whether they could go anywhere. GitHub itself is on this list, and must
+ * be, because the lint fixer pushes and comments through it; a token read from
+ * this environment can be sent there, and on a public repository the job log is
+ * world-readable, so masking is defeated by any encoding. What blocking buys is
+ * that a *third-party* destination is not reachable, which is the realistic
+ * shape of a compromised build-time dependency.
+ *
+ * Each entry is traceable to something the build does — the Deno bootstrap,
+ * module resolution (JSR, plus npm for the cspell tooling), the OpenAI API for
+ * the lint fixer, GitHub for the fixer's comment and push, and Codecov's CDN,
+ * API, and upload bucket.
  */
 const GATE_ENDPOINTS = [
   "deno.land:443",
@@ -167,9 +174,11 @@ export function githubWorkflows(
           // job needs both scopes. On a fork PR the key is absent, the token is
           // read-only whatever is asked for, and the fixer skips.
           permissions: { contents: "write", "pull-requests": "write" },
-          // Runs build code while holding live secrets and a write-scoped token,
-          // so block egress rather than audit it: even if untrusted code in the
-          // gate read a token, it could not POST it anywhere.
+          // Runs build code while holding live secrets and a write-scoped
+          // token, so block egress rather than audit it. That bounds the
+          // destinations, not the exfiltration: GitHub is necessarily on the
+          // allowlist, so this stops a third party receiving a token, not
+          // GitHub receiving one. See GATE_ENDPOINTS.
           harden: { egress: "block", allowedEndpoints: GATE_ENDPOINTS },
           checkout: {
             // Keeps the token in git config so the fixer can push, and checks out

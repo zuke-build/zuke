@@ -36,6 +36,7 @@ Adversaries considered, and the assets they target:
 | Registry-level attacker              | Consumers of `@zuke/*`          | OIDC trusted publishing; Sigstore provenance per version; no long-lived registry tokens exist                                                       |
 | Network attacker (MITM) on bootstrap | Developer/CI machines           | Launcher downloads the pinned Deno release over HTTPS and verifies a per-platform SHA-256 baked into the launcher; `DENO_VERSION=latest` is refused |
 | Careless or compromised insider      | Repository history              | gitleaks scans full history on schedule and pushes; PR-scoped scans on every pull request; secret parameters are redacted from output               |
+| Contributor with write access (same-repo PR) | CI secrets, write token  | Not defended against, by design: the lint fixer pushes fixes and Codecov uploads from pull-request runs, so same-repo PRs carry `OPENAI_API_KEY`, `CODECOV_TOKEN` and a write-scoped token. Write access is held only by maintainers, whose own secrets these are; the residual is a compromised maintainer account yielding an OpenAI key and an upload-only Codecov token |
 
 Out of scope: vulnerabilities in GitHub, JSR, or Deno themselves (they are the
 trusted computing base — see the boundaries below), and denial of service
@@ -57,8 +58,13 @@ against public CI.
    job (OIDC) never holds a write-scoped repo token. A compromise of one job
    does not yield the other's authority.
 4. **CI jobs → network.** Every job that holds a write-scoped token runs with
-   egress _blocked_ to a named allowlist, so even code that reads a token has
-   nowhere unauthorized to send it.
+   egress _blocked_ to a named allowlist. That bounds **which third parties** a
+   job can reach; it does not stop a secret leaving. GitHub is on the
+   allowlist by necessity — the lint fixer pushes and comments through it — and
+   a public repository's job log is world-readable, so masking is defeated by
+   any encoding. The counter this boundary provides is against a compromised
+   build-time dependency phoning home, not against code that is already trusted
+   with the token.
 5. **Repository → third-party code.** Actions cross the boundary only at pinned
    commit SHAs; scanner binaries only with verified checksums
    (`build/scanners.ts`); modules only through the committed, frozen
