@@ -1167,6 +1167,16 @@ at all off it), or `"both"`. **Any fixer that can write should be
 rewriting a working tree someone is editing, and an exported API key is not a
 local guard. `.allowCI()` is the deprecated alias for `"both"`.
 
+Everything a fixer sends the model comes from the branch under repair — the error
+output, the diff, and the conventions read from `CLAUDE.md`/`AGENTS.md` — so all
+three go out fenced as untrusted data, with the system prompt naming them as
+data rather than instructions. **`.conventions(text)` is a trust pin**: it
+overrides that read, so a fixer authorized to write (`.autoApply()`,
+`.commitFixes()`, or any `agentFixer`, which runs an agent with no path
+allowlist) is not taking direction from a document the author of the failing
+change controls. `.conventions("")` sends none. The reviewers do the stronger
+thing already — `.conventionsFile(...)` reads from the diff base.
+
 **Delegate to a coding agent** — `agentFixer(runner)` is a `Remediation` that
 hands the failure to a coding agent you inject (`@zuke/claude`, `@zuke/codex`,
 `@zuke/gemini`) which edits files itself, then re-runs the target to verify. One

@@ -83,7 +83,9 @@ class CI extends Build {
 With only a provider and key, `aiFixer` is **diagnose-only**: it sends the
 failed command, its output, the diff, and your project conventions (`CLAUDE.md`
 / `AGENTS.md`) to the model, parses a **structured fix**, and reports — without
-touching any files. The diagnosis lands in the GitHub Actions job summary and on
+touching any files. The output, the diff and the conventions all travel
+[fenced as untrusted data](#untrusted-input), because all three come from the
+branch under repair. The diagnosis lands in the GitHub Actions job summary and on
 the pull request.
 
 ```ts
@@ -309,11 +311,44 @@ suppression mutes the build break without burying the finding: a reviewer
 reading the PR can always see what was dismissed (and that nothing serious is
 being hidden behind the suppress list).
 
+## Untrusted input
+
+Everything a fixer sends the model comes from the branch being repaired, and on a
+pull request that branch belongs to the contributor:
+
+- the **error output** — a failing test prints whatever its author wrote;
+- the **diff** — the change itself;
+- the **conventions** — `CLAUDE.md` / `AGENTS.md` as they exist on that branch.
+
+All three are wrapped in fence markers and the system prompt names them as data,
+never instructions. That matters most for the conventions, because the same
+prompt separately tells the model to *respect the project's conventions* — so
+without the fence, the one input a contributor can edit would arrive as
+direction.
+
+A fence is defence-in-depth, not a guarantee: it removes the deterministic
+breakout (forging the closing marker, which is neutralised) but a model can still
+be coaxed by persuasive text. So where a fixer is authorized to **write** —
+`.autoApply()`, `.commitFixes()`, or any `agentFixer`, which runs an agent with
+no path allow-list — pin the conventions instead of reading them from the branch:
+
+```ts
+aiFixer((f) => f.provider("openai").apiKey(this.key).autoApply())
+  .conventions(await FileTasks.readText("AGENTS.md")) // from your default branch
+```
+
+Passing `""` sends none at all. The reviewer already does the stronger thing
+automatically — `.conventionsFile(...)` reads from the diff's **base** — so a
+pull request cannot rewrite the rules it is judged by.
+
 ## Other knobs
 
 - `.model(...)`, `.effort(...)` — pick the model and thinking depth.
-- `.criteria(...)` / `.conventions(...)` — add or override the project notes
-  sent to the model.
+- `.criteria(...)` — add project notes to the prompt. These come from your build
+  file, so they are the trusted half.
+- `.conventions(...)` — override the conventions document instead of reading
+  `CLAUDE.md`/`AGENTS.md` from the tree under repair. A **trust pin**: see
+  [Untrusted input](#untrusted-input).
 - `.comment()` / `.noComment()` — toggle PR posting (the job summary is always
   written).
 - `.maxDiffTokens(n)`, `.retry({ ... })`, `.quiet()` — budget, transient-failure

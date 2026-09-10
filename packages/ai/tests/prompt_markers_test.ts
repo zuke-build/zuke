@@ -9,6 +9,8 @@ import {
   buildVerifyPrompt,
 } from "../src/prompt.ts";
 import { rebuttalComment } from "../src/prompts/templates.ts";
+import { fixSystemPrompt, fixUserPrompt } from "../src/prompts/fix.ts";
+import { agentPrompt } from "../src/prompts/agent.ts";
 
 /**
  * Every fence marker a system prompt announces (the `"<<<NAME"` strings the
@@ -45,6 +47,23 @@ Deno.test("announced injection-guard markers match the emitted fences", () => {
       detail: "the detail",
       priorTitle: "old wording",
     }]),
+    // The fixers, which act on what they are told rather than only scoring it,
+    // and so are the prompts where a missing fence costs the most.
+    {
+      system: fixSystemPrompt(),
+      user: fixUserPrompt({
+        target: "test",
+        output: "boom",
+        diff: "a diff",
+        conventions: "no `any`",
+      }),
+    },
+    // The agent gets one message, so it announces and emits in the same string.
+    ((p: string) => ({ system: p, user: p }))(agentPrompt({
+      target: "test",
+      output: "boom",
+      conventions: "no `any`",
+    })),
   ];
   const announced: string[] = [];
   for (const { system, user } of prompts) {
@@ -76,5 +95,9 @@ Deno.test("announced injection-guard markers match the emitted fences", () => {
     "UNTRUSTED_FILES",
     "UNTRUSTED_COMMENT",
     "UNTRUSTED_PAIR",
+    "UNTRUSTED",
+    "PROJECT_CONVENTIONS",
+    "UNTRUSTED",
+    "PROJECT_CONVENTIONS",
   ]);
 });

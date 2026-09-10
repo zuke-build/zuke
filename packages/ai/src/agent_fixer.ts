@@ -236,8 +236,21 @@ export class AgentFixer implements Remediation {
   }
 
   /**
-   * Supply the project conventions text directly instead of reading
-   * `CLAUDE.md`/`AGENTS.md`. Pass an empty string to send none.
+   * Supply the project conventions text directly, instead of letting the fixer
+   * read `CLAUDE.md`/`AGENTS.md` from the working tree. Pass an empty string to
+   * send none.
+   *
+   * This is a **trust pin**, not only a convenience. By default the conventions
+   * are read from the tree under repair, which on a contributor's branch is
+   * content that contributor wrote — so the model is told to respect a document
+   * the author of the failing change controls. The prompt fences it as untrusted
+   * data and says so, but a fence is defence-in-depth against a model that can
+   * still be coaxed, not a guarantee.
+   *
+   * Pinning the text here — or passing `""` — takes the branch out of the loop
+   * entirely, and is worth doing wherever the fixer is authorized to write:
+   * an {@link AgentFixer} runs an agent that edits files and runs
+   * commands with no path allow-list at all.
    */
   conventions(text: string): this {
     this.#conventions = text;
