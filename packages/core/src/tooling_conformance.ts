@@ -56,9 +56,8 @@ const MISSING = "zuke-no-such-tool-xyz";
  * process — the way a wrapper test proves each of its task functions reaches
  * execution.
  *
- * The platform is pinned to `linux` because on Windows a missing binary is
- * retried through `cmd /c`, which exists, so the failure would surface as a
- * command error instead:
+ * The platform is pinned to `linux` so the assertion reads the same on every
+ * runner, rather than depending on how the host reports a missing binary:
  *
  * ```ts
  * await assertRejects(() => BiomeTasks.check(missingTool), ToolNotFoundError);

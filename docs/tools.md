@@ -26,17 +26,16 @@ flags without a typed option). Awaiting a task resolves to the same
 
 Need the binary itself? A build can fetch a pinned, checksum-verified CLI and
 hand its path to `.toolPath(...)` — see
-[Installing tools](./installing-tools.md). If a binary is missing, Zuke retries
-through `cmd /c` on Windows (npm ships as a `.cmd` shim there) and otherwise
-raises a `ToolNotFoundError` that names the tool and the fix.
+[Installing tools](./installing-tools.md). If a binary is missing, Zuke raises
+a `ToolNotFoundError` that names the tool and the fix.
 
 ## Resolving from `node_modules/.bin`
 
 By default a wrapper spawns the bare tool name and lets the OS find it on
 `PATH`. In a Node monorepo the tools are usually installed locally and hoisted
 to the repo root instead, so Zuke can resolve them npx-style — walking up from
-the working directory for `node_modules/.bin/<tool>` (the `.cmd`/`.bat` shims,
-launched through `cmd /c`, on Windows) and falling back to `PATH` on a miss.
+the working directory for `node_modules/.bin/<tool>` (the `.cmd`/`.bat` shims on
+Windows, spawned as themselves) and falling back to `PATH` on a miss.
 There are three ways to turn it on, most specific first:
 
 - **Per call:** `.fromNodeModules()` (or `.fromPath()` to force `PATH`) on any

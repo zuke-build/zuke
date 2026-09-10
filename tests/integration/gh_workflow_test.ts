@@ -36,14 +36,21 @@ class FakeApi implements GhWorkflowApi {
   throwOnGetRun = false;
   appears = true; // whether the dispatched run can be correlated
 
+  /** Overridden per test to describe a run our dispatch did not create. */
+  event = "workflow_dispatch";
+  headBranch = "main";
+
   #run(): WorkflowRun {
     return {
       id: 55,
       status: this.status,
       conclusion: this.conclusion,
       url: "u",
-      createdAt: "2026-07-19T00:00:05.000Z",
-      headBranch: "main",
+      // Recent, on the dispatch ref, raised by a dispatch: the three facts the
+      // gate now requires before it will adopt a marked run as its own.
+      createdAt: new Date().toISOString(),
+      headBranch: this.headBranch,
+      event: this.event,
     };
   }
 
@@ -51,8 +58,8 @@ class FakeApi implements GhWorkflowApi {
     this.dispatched++;
     return Promise.resolve();
   }
-  findRun(): Promise<WorkflowRun | null> {
-    return Promise.resolve(this.appears ? this.#run() : null);
+  findMarkedRuns(): Promise<WorkflowRun[]> {
+    return Promise.resolve(this.appears ? [this.#run()] : []);
   }
   recentRuns(): Promise<WorkflowRun[]> {
     return Promise.resolve(this.appears ? [this.#run()] : []);
@@ -192,5 +199,38 @@ Deno.test("a transient GitHub error during a resume poll re-suspends, never stra
       "succeeded",
     );
     assertEquals(log, ["ship:passed=true"]);
+  });
+});
+
+Deno.test("a gate never adopts a marked run that its dispatch did not create", async () => {
+  await withStateDir(async () => {
+    // The marker is echoed into a public run title, so a party who can list the
+    // workflow's runs can read it and a party who can dispatch that workflow can
+    // raise a run wearing it. Such a run must not decide the gate: its
+    // conclusion would authorize whatever the gate guards.
+    const api = new FakeApi();
+    api.event = "push"; // raised by someone pushing a branch, not by us
+    api.status = "completed";
+    api.conclusion = "success";
+    const log: string[] = [];
+    class Ship extends Build {
+      e2e = target().waitsFor((s) =>
+        s.on(
+          githubWorkflowWith(
+            (g) => g.repo("acme/app").workflow("e2e.yml"),
+            { api },
+          ),
+        )
+      );
+      ship = target().dependsOn(this.e2e).executes(() => {
+        log.push("ship-ran");
+      });
+    }
+
+    const first = await runCli(Ship, ["ship"]);
+    assertEquals(first.code, 0);
+    assertEquals(api.dispatched, 1);
+    // The foreign run is visible and successful, and the gate stays shut.
+    assertEquals(log, []);
   });
 });

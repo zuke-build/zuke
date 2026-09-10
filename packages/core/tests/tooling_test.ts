@@ -147,14 +147,41 @@ Deno.test("missing binary without a shim raises ToolNotFoundError", async () => 
 });
 
 Deno.test({
-  name: "missing binary on windows retries via cmd /c, then reports the tool",
-  // On real Windows `cmd` exists and yields a CommandError instead; the
-  // retry construction itself is covered by the shimFallbackArgv tests.
+  name: "a missing binary on windows reports the tool, with no cmd /c retry",
   ignore: Deno.build.os === "windows",
   fn: async () => {
     const s = new EvalSettings().toolPath("zuke-no-such-tool-xyz");
-    s.os_ = "windows"; // forces the cmd /c retry; `cmd` is absent here
+    s.os_ = "windows";
     await assertRejects(() => s.run(), ToolNotFoundError, "zuke-no-such");
+  },
+});
+
+Deno.test({
+  name: "run() spawns a batch shim itself rather than wrapping it in cmd /c",
+  // Wrapping handed cmd.exe one command line quoted by C-runtime rules, which
+  // leave `&` bare, so a caller operand could be re-parsed as a command. The
+  // shim is spawned directly instead. Proven here without Windows: a file
+  // named `.cmd` whose shebang makes it executable runs only if it is the
+  // process being spawned — a `cmd /c` wrap would look for `cmd` and fail.
+  ignore: Deno.build.os === "windows",
+  fn: async () => {
+    await withTemp(async (dir) => {
+      const shim = `${dir}/tool.cmd`;
+      await Deno.writeTextFile(
+        shim,
+        '#!/bin/sh\nfor a in "$@"; do echo "arg:$a"; done\n',
+      );
+      await Deno.chmod(shim, 0o755);
+
+      const s = new EvalSettings().toolPath(shim).args("A=1&whoami").quiet();
+      s.os_ = "windows"; // the branch that used to wrap
+      const out = await s.run();
+
+      assertEquals(out.code, 0);
+      // The metacharacter arrived as exactly one argument, not as a second
+      // command, and the shim itself is what ran.
+      assertEquals(out.stdout.includes("arg:A=1&whoami"), true);
+    });
   },
 });
 

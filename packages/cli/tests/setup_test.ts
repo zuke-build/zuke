@@ -446,3 +446,122 @@ Deno.test("runSetup rejects a launcher name that shadows .mcp.json", async () =>
     "would overwrite a file setup writes",
   );
 });
+
+Deno.test("setup refuses a symlink at any scaffold name, writing nothing", async () => {
+  // Setup is what a developer runs inside a freshly cloned project, so the
+  // directory's layout is the untrusted input here. Writes follow links, and
+  // the probes are lstat-based, so a link planted at a scaffold name would
+  // otherwise redirect a write outside the directory entirely.
+  for (
+    const name of [
+      ".gitignore", // rewritten on every run — no --force needed
+      "deno.json",
+      ".mcp.json",
+      "zuke.ts",
+      "zuke",
+      "zuke.ps1",
+      "zuke.json",
+    ]
+  ) {
+    const host = new FakeHost();
+    host.symlinks.add(name);
+    await assertRejects(
+      () =>
+        runSetup(
+          { dir: ".", force: true, name: "Acme", mcp: { allowRun: false } },
+          host,
+        ),
+      Error,
+      "symbolic link",
+    );
+    // Nothing was written or chmod'ed: the refusal precedes every write.
+    assertEquals(host.files.size, 0);
+    assertEquals(host.chmods.length, 0);
+  }
+});
+
+Deno.test("setup refuses a real symlink rather than writing through it", async () => {
+  if (Deno.build.os === "windows") return; // Deno.symlink needs privileges.
+  await withTemp(async (dir) => {
+    await withTemp(async (outside) => {
+      const victim = `${outside}/victim.txt`;
+      await Deno.writeTextFile(victim, "original");
+      await Deno.symlink(victim, `${dir}/.gitignore`);
+
+      await assertRejects(
+        () => runSetup({ dir, force: false, name: "Acme" }),
+        Error,
+        "symbolic link",
+      );
+      // The file the link named is byte-identical, and the scaffold did not
+      // half-write itself before noticing.
+      assertEquals(await Deno.readTextFile(victim), "original");
+      assertEquals(await defaultHost.exists(`${dir}/zuke.ts`), false);
+    }, { prefix: "zuke-setup-outside-" });
+  });
+});
+
+Deno.test("defaultHost.isSymlink reads the link, not its target", async () => {
+  if (Deno.build.os === "windows") return; // Deno.symlink needs privileges.
+  await withTemp(async (dir) => {
+    const file = `${dir}/f.txt`;
+    await Deno.writeTextFile(file, "x");
+    const link = `${dir}/link`;
+    await Deno.symlink(file, link);
+    assertEquals(await defaultHost.isSymlink(link), true);
+    assertEquals(await defaultHost.isSymlink(file), false);
+    assertEquals(await defaultHost.isSymlink(`${dir}/missing`), false);
+    // A link to a directory is a link, not a directory — which is what makes
+    // the collision pass see it at all.
+    const dirLink = `${dir}/dirlink`;
+    await Deno.symlink(dir, dirLink);
+    assertEquals(await defaultHost.isSymlink(dirLink), true);
+    assertEquals(await defaultHost.isDirectory(dirLink), false);
+    // A dangling link still counts: writing through it would create the target.
+    const dangling = `${dir}/dangling`;
+    await Deno.symlink(`${dir}/nope`, dangling);
+    assertEquals(await defaultHost.isSymlink(dangling), true);
+  });
+});
+
+Deno.test("a link planted after the check is replaced, not written through", async () => {
+  if (Deno.build.os === "windows") return; // Deno.symlink needs privileges.
+  // The pre-write check reports what is there when it runs, so a link planted
+  // between the check and the write would escape it. Writing beside the
+  // destination and renaming into place removes that race outright: renaming
+  // replaces the link instead of following it. This drives the seam directly,
+  // because the race itself cannot be scheduled reliably in a test.
+  await withTemp(async (dir) => {
+    await withTemp(async (outside) => {
+      const victim = `${outside}/victim.txt`;
+      await Deno.writeTextFile(victim, "ORIGINAL");
+      const target = `${dir}/deno.json`;
+      await Deno.symlink(victim, target);
+
+      await defaultHost.writeText(target, "SCAFFOLDED");
+
+      // The file the link named is untouched, and the link is gone.
+      assertEquals(await Deno.readTextFile(victim), "ORIGINAL");
+      assertEquals(await Deno.readTextFile(target), "SCAFFOLDED");
+      assertEquals((await Deno.lstat(target)).isSymlink, false);
+    }, { prefix: "zuke-setup-victim-" });
+  });
+});
+
+Deno.test("writeText leaves no temporary file behind, on success or failure", async () => {
+  await withTemp(async (dir) => {
+    await defaultHost.writeText(`${dir}/zuke.json`, "{}");
+    const after: string[] = [];
+    for await (const entry of Deno.readDir(dir)) after.push(entry.name);
+    assertEquals(after, ["zuke.json"]);
+
+    // A destination whose parent does not exist fails the rename; the
+    // temporary file must not survive it.
+    await assertRejects(() =>
+      defaultHost.writeText(`${dir}/missing/zuke.json`, "{}")
+    );
+    const still: string[] = [];
+    for await (const entry of Deno.readDir(dir)) still.push(entry.name);
+    assertEquals(still, ["zuke.json"]);
+  });
+});

@@ -35,8 +35,11 @@ function fakeRun(): WorkflowRun {
     status,
     conclusion: conclusion === "" ? null : conclusion,
     url: "https://gh/r777",
-    createdAt: "2026-07-19T00:00:05.000Z",
+    // Recent, on the dispatch ref, raised by a dispatch — what the gate
+    // requires before it adopts a marked run as the one it created.
+    createdAt: new Date().toISOString(),
     headBranch: "main",
+    event: "workflow_dispatch",
   };
 }
 
@@ -50,8 +53,8 @@ const api: GhWorkflowApi = {
     }
     return Promise.resolve();
   },
-  findRun(): Promise<WorkflowRun | null> {
-    return Promise.resolve(fakeRun());
+  findMarkedRuns(): Promise<WorkflowRun[]> {
+    return Promise.resolve([fakeRun()]);
   },
   recentRuns(): Promise<WorkflowRun[]> {
     return Promise.resolve([fakeRun()]);

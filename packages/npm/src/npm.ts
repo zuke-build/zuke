@@ -20,8 +20,8 @@
  * `outdatedEntries`, `auditSummary`, `pkgGet`, `whoamiName` — run a
  * machine-readable form and hand back parsed data instead.
  *
- * On Windows, npm ships as a `.cmd` shim; the shared tooling base retries
- * through `cmd /c` automatically when direct spawning fails.
+ * On Windows, npm ships as a `.cmd` shim, which the shared tooling base
+ * resolves and spawns directly.
  *
  * @module
  */

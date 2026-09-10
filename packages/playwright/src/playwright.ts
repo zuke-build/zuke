@@ -13,9 +13,8 @@
  * ```
  *
  * The binary is `playwright` from PATH (install it as a project dependency and
- * expose it, or use a wrapper that resolves `npx playwright`). On Windows the
- * shared tooling base retries through `cmd /c` automatically when direct
- * spawning fails.
+ * expose it, or use a wrapper that resolves `npx playwright`). On Windows a
+ * `.cmd` shim is resolved and spawned directly by the shared tooling base.
  */
 
 import {

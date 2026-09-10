@@ -90,10 +90,33 @@ interface SetupHost
     Whether a path exists.
   isDirectory(path: string): Promise<boolean>
     Whether a path exists and is a directory (a reserved-name collision).
+  isSymlink(path: string): Promise<boolean>
+    Whether a path is a symbolic link, without following it. Scaffolding
+    refuses to write through one: the writes below follow links, so a link
+    planted at a scaffold name by the very repository being set up would
+    redirect them outside the target directory.
+
+    The guard covers the names scaffolding chooses, which is where the hazard
+    is — the caller never asked for `.gitignore` to be written, so a repository
+    redirecting it is a decision nobody made. It reports what is there when it
+    runs, and a link planted after it would escape it; that is why
+    {@link SetupHost.writeText} does not write through a link either, so the
+    refusal is the friendly answer rather than the only defence.
+
+    Two things stay out of scope. The directory the caller names with `--dir`
+    is the caller's to name, symlink or not. And a hard link is
+    indistinguishable from the file it shares, so no probe can see one; git
+    cannot check one out either, which is what keeps it out of the threat this
+    guards.
   readText(path: string): Promise<string>
     Read a file as UTF-8 text.
   writeText(path: string, content: string): Promise<void>
-    Write UTF-8 text to a file, creating or truncating it.
+    Write UTF-8 text to a file, creating or replacing it.
+
+    An implementation must not write through a symbolic link standing at
+    `path`: the scaffolder's confinement to its target directory rests on this,
+    and the pre-write {@link SetupHost.isSymlink} check alone cannot carry it,
+    since a link can appear after the check.
   chmod(path: string, mode: number): Promise<void>
     Set a file's permission bits (may be unsupported on some platforms).
   log(message: string): void

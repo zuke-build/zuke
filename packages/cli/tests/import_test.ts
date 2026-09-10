@@ -3,6 +3,7 @@
 
 import {
   assertEquals,
+  assertRejects,
   assertStringIncludes,
 } from "../../core/tests/_assert.ts";
 import { FakeHost, FakePrompter } from "./_fakes.ts";
@@ -404,4 +405,20 @@ Deno.test("help lists the import command", async () => {
   const host = new FakeHost({});
   await main(["--help"], host, new FakePrompter(false));
   assertStringIncludes(host.logs.join("\n"), "zuke import");
+});
+
+Deno.test("import refuses a symlinked source file rather than reading through it", async () => {
+  // `Makefile` / `package.json` are names import chooses, so a repository that
+  // ships a link at one decides what gets read — and what is read is parsed
+  // into the build file import then writes back into that repository.
+  for (const file of ["package.json", "Makefile"]) {
+    const host = new FakeHost();
+    host.symlinks.add(file);
+    await assertRejects(
+      () => runImport({ dir: ".", force: false, name: "Acme" }, host),
+      Error,
+      "symbolic link",
+    );
+    assertEquals(host.files.size, 0);
+  }
 });

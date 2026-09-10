@@ -371,8 +371,15 @@ class Deploy extends Build {
   an external GitHub Actions workflow, satisfied when it finishes; read its
   per-job result with `readWorkflowResult(ctx.stateOf("<gate>"))`). By default
   it correlates via a marker echoed into the run's `run-name:`; for a workflow
-  you can't modify use `.correlate("created-window")` (best-effort). Either way
-  it **fails fast** (`.discoveryTimeout(...)`, default 1m) if the run never
+  you can't modify use `.correlate("created-window")` (best-effort). A marker is
+  copyable and anyone who can dispatch the workflow can wear it, so a run is
+  adopted only if it is *also* a `workflow_dispatch`, on the dispatched ref, and
+  created within the discovery window; two survivors are a refusal, and the
+  identity is re-checked before the result is read. A holder of `actions: write`
+  on that repo can still dispatch the same workflow (branch protection does not
+  gate a dispatch), so narrow that permission or use an environment with
+  required reviewers when the gate authorizes work in another trust domain. Either way it
+  **fails fast** (`.discoveryTimeout(...)`, default 1m) if the run never
   correlates, instead of eating the whole `.timeout()`. The **dispatched**
   workflow has its own contract (marker input, run-name, required inputs) — see
   [The dispatched workflow's contract](#the-dispatched-workflows-contract-githubworkflow)
@@ -678,7 +685,7 @@ tool wrappers, which inherit `Deno.env` — finds the provisioned tool.
 are hoisted to the repo root, a wrapper can find its binary npx-style instead of
 needing a `.toolPath(...)`. `.fromNodeModules()` on any settings object walks up
 from the working directory for `node_modules/.bin/<tool>` (the `.cmd`/`.bat`
-shims on Windows, launched via `cmd /c`) and falls back to `PATH` on a miss;
+shims on Windows, spawned as themselves) and falls back to `PATH` on a miss;
 `.fromPath()` forces `PATH`; and `ZUKE_TOOL_RESOLUTION=node_modules|path` flips
 every wrapper repo-wide without touching call sites (a per-call setting wins
 over it). An explicit `.toolPath(...)` always wins, so a `toolchain()` pin stays
@@ -1332,8 +1339,16 @@ a descriptor whose entry module is **remote** (not a local path or `file:` URL �
 `https:`, `jsr:`, `npm:`, `data:`) is refused unless its origin is listed in
 `ZUKE_REGISTRY_LAUNCH_HOSTS` (`*` allows any); the call is denied and audited
 `launch_origin_not_allowed`, before the confirmation prompt, with nothing
-spawned. `zuke register` writes a local `file:` module, so this only bites a
-hand-authored or second-party registry entry.
+spawned. A `command` location is gated the same way against
+`ZUKE_REGISTRY_LAUNCH_COMMANDS` (comma-separated; matched against `command[0]`
+exactly, never by basename, since the descriptor picks the program string; `*`
+allows any), because the registry writer chooses the program *and its
+arguments* — audited `launch_command_not_allowed`. Listing a program does not
+license it to fetch: a remote argument still has to pass
+`ZUKE_REGISTRY_LAUNCH_HOSTS`. Prefer absolute paths: a relative program resolves
+against the descriptor's own cwd. `zuke register`
+writes a local `file:` module, so both only bite a hand-authored or
+second-party registry entry.
 
 **Authorization by role** (`docs/mcp.md`): once the server authenticates its
 callers, `target().requiresRole("operator")` raises the bar for one target and

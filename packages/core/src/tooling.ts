@@ -73,9 +73,10 @@ function isFile(path: string): boolean {
 
 /**
  * Search `node_modules/.bin` for `tool`, walking up from `cwd` to the
- * filesystem root. On Windows the spawnable `.cmd`/`.bat` shim variants are
- * matched (a batch shim is launched via {@link windowsCmdShim}). The result is
- * memoized for the process, keyed by os+tool+cwd.
+ * filesystem root. On Windows the `.cmd`/`.bat` shim variants are matched too;
+ * they are spawned directly, since `Deno.Command` launches a batch shim through
+ * the command processor with quoting hardened for it. The result is memoized
+ * for the process, keyed by os+tool+cwd.
  */
 function findNodeModulesBin(
   tool: string,
@@ -152,6 +153,14 @@ export class ToolNotFoundError extends Error {
 /**
  * On Windows, wrap an argv in a `cmd /c` invocation so `.cmd`/`.bat` shims
  * (such as npm's) become spawnable; returns `null` on other platforms.
+ *
+ * @deprecated Unsafe, and no longer used. The wrapped argv is handed to
+ * `cmd.exe` as one command line quoted by C-runtime rules, which quote on
+ * spaces but not on the metacharacters cmd.exe acts on, so an operand
+ * containing `&`, `|` or `^` and no space is re-parsed as further commands.
+ * Nothing needs the wrapper: `Deno.Command` spawns a `.cmd`/`.bat` directly,
+ * escaping for the command processor as it does. Scheduled for removal in the
+ * next major.
  */
 export function shimFallbackArgv(
   argv: ReadonlyArray<string>,
@@ -161,10 +170,15 @@ export function shimFallbackArgv(
 }
 
 /**
- * On Windows, spawn a resolved `.cmd`/`.bat` shim (such as npm's `node_modules`
- * shims) through `cmd /c` — a batch shim is not a PE executable, so
- * `Deno.Command` cannot launch it directly. Returns `argv` unchanged on other
- * platforms or when the binary is not a batch shim.
+ * On Windows, wrap a resolved `.cmd`/`.bat` shim in `cmd /c`. Returns `argv`
+ * unchanged on other platforms or when the binary is not a batch shim.
+ *
+ * @deprecated Unsafe, and no longer used. Its premise — that `Deno.Command`
+ * cannot launch a batch shim — does not hold: Deno spawns one through the
+ * command processor itself, quoting each argument for it. Wrapping instead
+ * makes `cmd.exe` the direct child, whose command line is quoted by C-runtime
+ * rules that leave `&`, `|` and `^` bare, so a caller operand carrying one is
+ * re-parsed as a command. Scheduled for removal in the next major.
  */
 export function windowsCmdShim(
   argv: ReadonlyArray<string>,
@@ -403,31 +417,29 @@ export abstract class ToolSettings {
   }
 
   /**
-   * Run the configured tool. If the binary is missing and the platform is
-   * Windows, retry once through `cmd /c` (covers `.cmd`/`.bat` shims);
-   * otherwise raise a {@link ToolNotFoundError} naming the tool.
+   * Run the configured tool, raising a {@link ToolNotFoundError} naming it when
+   * the binary is missing.
+   *
+   * The argv is spawned as it was resolved, on every platform. Windows batch
+   * shims used to be wrapped in `cmd /c` here, which silently gave up the
+   * argv-boundary guarantee every wrapper relies on: `Deno.Command` hands
+   * `cmd.exe` a single command line built with C-runtime quoting, which quotes
+   * on spaces but not on `&`, `|` or `^`, so cmd.exe re-parsed an operand like
+   * `A=1&whoami` as a second command. Spawning the shim itself instead keeps
+   * that decision where it belongs: Deno resolves a bare name through `PATHEXT`
+   * and launches a `.cmd`/`.bat` through the command processor with quoting
+   * hardened for it, so the operand stays one argument.
    */
   async run(): Promise<CommandOutput> {
     const { argv, sawNodeModules } = this.#resolveBinary();
     const tool = argv[0] ?? "";
-    // A resolved `node_modules/.bin/*.cmd` shim must go through `cmd /c` up
-    // front — it is not directly spawnable — rather than relying on the
-    // NotFound retry below (which only fires for a bare name missing on PATH).
-    const primary = windowsCmdShim(argv, this.os_);
     try {
-      return await this.#execute(primary);
+      return await this.#execute(argv);
     } catch (error) {
-      if (!(error instanceof Deno.errors.NotFound)) throw error;
-      const fallback = shimFallbackArgv(argv, this.os_);
-      if (fallback === null) throw new ToolNotFoundError(tool, sawNodeModules);
-      try {
-        return await this.#execute(fallback);
-      } catch (retryError) {
-        if (retryError instanceof Deno.errors.NotFound) {
-          throw new ToolNotFoundError(tool, sawNodeModules);
-        }
-        throw retryError;
+      if (error instanceof Deno.errors.NotFound) {
+        throw new ToolNotFoundError(tool, sawNodeModules);
       }
+      throw error;
     }
   }
 }

@@ -12,8 +12,8 @@
  * await BunTasks.run((s) => s.script("build"));
  * ```
  *
- * On Windows, bun ships as `bun.exe`; the shared tooling base retries through
- * `cmd /c` automatically when direct spawning fails.
+ * On Windows, bun ships as `bun.exe`, which the shared tooling base spawns
+ * directly.
  */
 
 import { type Configure, runSettings, ToolSettings } from "@zuke/core/tooling";
