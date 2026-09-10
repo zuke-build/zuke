@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/zuke-build/zuke/compare/yarn-v1.1.0...yarn-v1.2.0) (2026-09-10)
+
+
+### Features
+
+* **core:** harden the registry launch, scaffold, spawn and workflow-gate paths ([#542](https://github.com/zuke-build/zuke/issues/542)) ([4257b0b](https://github.com/zuke-build/zuke/commit/4257b0bc5ef5e387a44f913349646d4baccd1654))
+
 ## [1.1.0](https://github.com/zuke-build/zuke/compare/yarn-v1.0.1...yarn-v1.1.0) (2026-09-02)
 
 
