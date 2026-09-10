@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.10.0](https://github.com/zuke-build/zuke/compare/gh-v1.9.0...gh-v1.10.0) (2026-09-10)
+
+
+### Features
+
+* **core:** harden the registry launch, scaffold, spawn and workflow-gate paths ([#542](https://github.com/zuke-build/zuke/issues/542)) ([4257b0b](https://github.com/zuke-build/zuke/commit/4257b0bc5ef5e387a44f913349646d4baccd1654))
+
 ## [1.9.0](https://github.com/zuke-build/zuke/compare/gh-v1.8.0...gh-v1.9.0) (2026-09-09)
 
 
