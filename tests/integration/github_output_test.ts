@@ -17,8 +17,8 @@
  */
 
 import { assertEquals } from "../../packages/core/tests/_assert.ts";
-import { Build, target } from "../../packages/core/mod.ts";
-import { runCli } from "./_harness.ts";
+import { Build, externalSignal, target } from "../../packages/core/mod.ts";
+import { runCli, withStateDir } from "./_harness.ts";
 import { withEnv } from "../../packages/core/tests/_env.ts";
 
 /** Zuke's own workflow commands, which are supposed to open with `::`. */
@@ -109,4 +109,52 @@ Deno.test("integration: a hostile target name cannot forge workflow commands", a
     [],
     `these lines would run as workflow commands:\n${stray.join("\n")}`,
   );
+});
+
+Deno.test("a force's echoed reason cannot forge a command", async () => {
+  // `zuke force` echoes the operator's reason back to the log. In a scripted
+  // force that reason is often interpolated from a pull request title or an
+  // issue body, so it is not something the job's own author controls.
+  //
+  // This asserts on the FORCE command's own output, not on a later run: the
+  // forced target settles before the scheduler prints anything about it, so a
+  // test that watched the resumed run would pass with the escaping removed.
+  await withStateDir(async () => {
+    class Pipeline extends Build {
+      migrate = target().executes(() => {});
+      gate = target()
+        .dependsOn(this.migrate)
+        .waitsFor((s) => s.on(externalSignal("go")));
+      report = target().dependsOn(this.gate).executes(() => {});
+    }
+
+    const first = await runCli(Pipeline, ["report"]);
+    assertEquals(first.code, 0, first.err);
+    const listed = await runCli(Pipeline, ["runs", "list", "--json"]);
+    const runId = String(JSON.parse(listed.out)[0].id);
+
+    let forced = { code: -1, out: "", err: "" };
+    await withEnv({ GITHUB_ACTIONS: "true" }, async () => {
+      // `report` is still pending behind the gate; forcing an already-succeeded
+      // target is refused, since the record would then claim something that did
+      // not happen.
+      forced = await runCli(Pipeline, [
+        "force",
+        runId,
+        "report",
+        "--outcome",
+        "skipped",
+        "--reason",
+        HOSTILE,
+        "--actor",
+        "ops",
+      ]);
+    });
+    assertEquals(forced.code, 0, forced.err);
+    assertEquals(
+      unintendedCommands(`${forced.out}\n${forced.err}`),
+      [],
+      "the force echo let hostile text reach the runner as a command",
+    );
+  });
 });
