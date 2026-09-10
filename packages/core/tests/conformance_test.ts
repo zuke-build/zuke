@@ -214,24 +214,33 @@ Deno.test("runConformanceCli refuses a token passed as an argument", async () =>
 
 Deno.test("runConformanceCli reads each token from its own variable", async () => {
   // The two stores have separate credentials, and every other consumer of them
-  // already reads these names.
+  // already reads these names. Both factories return a working store so the run
+  // completes and *both* are actually reached — an earlier cut of this test
+  // threw from the state factory, which meant the registry token was captured
+  // but never exercised, and asserting it would have been asserting nothing.
+  const dir = await Deno.makeTempDir({ prefix: "zuke-conf-token-" });
   const seen: Record<string, string | undefined> = {};
-  await runConformanceCli(["--url", "https://backend.example"], {
-    log: () => {},
-    readEnv: (name) =>
-      name === "ZUKE_STATE_TOKEN"
-        ? "state-token"
-        : name === "ZUKE_REGISTRY_TOKEN"
-        ? "registry-token"
-        : undefined,
-    makeStateStore: (_url, token) => {
-      seen.state = token;
-      throw new Error("stop after capturing the token");
-    },
-    makeBuildRegistry: (_url, token) => {
-      seen.registry = token;
-      throw new Error("stop after capturing the token");
-    },
-  });
-  assertEquals(seen.state, "state-token");
+  try {
+    await runConformanceCli(["--url", "unused"], {
+      log: () => {},
+      readEnv: (name) =>
+        name === "ZUKE_STATE_TOKEN"
+          ? "state-token"
+          : name === "ZUKE_REGISTRY_TOKEN"
+          ? "registry-token"
+          : undefined,
+      makeStateStore: (_url, token) => {
+        seen.state = token;
+        return new FileSystemStateStore(`${dir}/a`, defaultStateHost);
+      },
+      makeBuildRegistry: (_url, token) => {
+        seen.registry = token;
+        return new FileSystemBuildRegistry(`${dir}/b`, defaultStateHost);
+      },
+    });
+    assertEquals(seen.state, "state-token");
+    assertEquals(seen.registry, "registry-token");
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
 });
