@@ -56,6 +56,7 @@ function contextFor(
         [],
         { runId: "run-1", dryRun: false },
         () => {},
+        new Redactor(),
       ),
       reporter: { info: (l) => lines.push(l), error: (l) => lines.push(l) },
       renderer: defaultRenderer,

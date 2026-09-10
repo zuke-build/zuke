@@ -211,3 +211,43 @@ Deno.test("a remediation's job-summary section is redacted", async () => {
     await Deno.remove(dir, { recursive: true });
   }
 });
+
+Deno.test("a build's lifecycle hooks write a redacted job summary", async () => {
+  // `onStart` and `onFinish` are the natural places for a build to add its own
+  // section to the job summary, and they run OUTSIDE the executor's own ambient
+  // scope, which covers the plan rather than the calls around it. The redaction
+  // is installed where the hooks are dispatched for that reason — an earlier
+  // version of this fix guarded only the plan and published both hooks' output
+  // in the clear.
+  const dir = await Deno.makeTempDir();
+  const summaryPath = `${dir}/summary.md`;
+  await Deno.writeTextFile(summaryPath, "");
+  try {
+    class B extends Build {
+      token = parameter("Deploy token").secret().required();
+      ok = target().executes(() => {});
+      override onStart(): void {
+        appendJobSummary(`start: ${this.token.value}`);
+      }
+      override onFinish(): void {
+        appendJobSummary(`finish: ${this.token.value}`);
+      }
+    }
+    await withEnv(
+      { GITHUB_ACTIONS: "true", GITHUB_STEP_SUMMARY: summaryPath },
+      async () => {
+        await runCli(B, ["ok", "--token", "s3cr3t-value-xyz"]);
+      },
+    );
+    const written = await Deno.readTextFile(summaryPath);
+    assertEquals(
+      written.includes("s3cr3t-value-xyz"),
+      false,
+      "a lifecycle hook published a secret to the job summary",
+    );
+    assertStringIncludes(written, "start: [redacted]");
+    assertStringIncludes(written, "finish: [redacted]");
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});

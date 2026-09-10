@@ -36,9 +36,15 @@ export function appendJobSummary(markdown: string): boolean {
   // cover it: those mask the runner's log stream, not a file the build writes.
   //
   // The ambient redactor is the only seam available to a caller outside this
-  // package — a validation or a remediation has no redactor on its context —
-  // and the executor installs it around the whole run, so every in-run caller
-  // is covered. Outside a run there is nothing to mask and nothing is changed.
+  // package: a validation, a remediation and a lifecycle hook all have no
+  // redactor on their context. It is installed in two places — around the plan
+  // by the executor, and around every hook by the lifecycle, since `onStart`
+  // and `onFinish` run outside the plan and are exactly where a build adds its
+  // own summary section.
+  //
+  // What this does not cover is a caller with no run in scope at all: a
+  // detached callback that outlives the run, or a script calling this directly.
+  // There is no redactor to find there, and the text is written as given.
   const redactor = ambientRedactor();
   if (redactor !== undefined) markdown = redactor.redact(markdown);
   let path: string | undefined;

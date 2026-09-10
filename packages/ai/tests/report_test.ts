@@ -251,12 +251,16 @@ Deno.test("writeStepSummary is a silent no-op without env access", async () => {
       // carrying its own copy of the writer — so its bare specifier needs the
       // import map that a published consumer would get from the registry. The
       // property under test is unchanged: no permissions, no throw, no write.
+      // `import.meta.dirname`, not a URL's `pathname`: the latter is
+      // percent-encoded and carries a leading slash before a Windows drive
+      // letter, so a repository path containing a space — or any run on the
+      // Windows leg of the matrix — would fail to find the config.
       args: [
         "run",
         "--quiet",
         "--no-check",
         "--config",
-        new URL("../../../deno.json", import.meta.url).pathname,
+        `${import.meta.dirname}/../../../deno.json`,
         script,
       ],
       env: { GITHUB_STEP_SUMMARY: summary, NO_COLOR: "1" },

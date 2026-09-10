@@ -464,11 +464,21 @@ export function skipMarkdown(
  * Append `markdown` to the GitHub Actions job-summary file, if one is set.
  * Best-effort: a missing or unwritable file never fails the review.
  *
- * Delegates to `@zuke/core`, which redacts the run's secrets before writing.
- * This package used to carry its own copy because its declared core floor
- * predated that export; the floor has moved, so the copy is gone — and with it
- * the reason a reviewer's or fixer's markdown reached the summary unmasked
- * while every other sink was redacted.
+ * Delegates to `@zuke/core`, which redacts the run's secrets before writing —
+ * closing the gap that let a reviewer's or fixer's markdown reach the job
+ * summary unmasked while every other sink was redacted.
+ *
+ * This package used to carry its own copy of the writer, on the stated grounds
+ * that its core floor predated the export. That was not so: `appendJobSummary`
+ * has been exported since core 1.33.0, below the floor even then, so the copy
+ * never had a reason to exist.
+ *
+ * One residual, stated rather than glossed: the redaction arrived in the core
+ * release *after* this package's floor, so a consumer pinned at the floor
+ * itself gets the delegation without the masking — no worse than the copy it
+ * replaces, and correct as soon as they move up. Raising the floor is a
+ * follow-up once that release is out, since a floor above the workspace's own
+ * core version stops the repository resolving at all.
  */
 export function writeStepSummary(markdown: string): void {
   appendJobSummary(markdown);
