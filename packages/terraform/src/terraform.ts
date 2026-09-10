@@ -14,8 +14,8 @@
  *
  * Terraform uses single-dash flags (`-out`, `-var`); the wrappers below build
  * them exactly. Each `-var` is emitted as `-var=name=value`, a single argv
- * entry, so values are never re-split by a shell. On Windows the shared tooling
- * base retries through `cmd /c` automatically when direct spawning fails.
+ * entry, so values are never re-split by a shell. On Windows a `.cmd` shim is
+ * resolved and spawned directly by the shared tooling base.
  */
 
 import { type Configure, runSettings, ToolSettings } from "@zuke/core/tooling";
