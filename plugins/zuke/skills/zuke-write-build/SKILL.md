@@ -250,8 +250,10 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   (secrets excluded, validated, forwarded to the spawn) — see the cheatsheet.
   Because the registry names _where_ a build launches from, a descriptor with a
   **remote** entry module is refused unless its origin is in
-  `ZUKE_REGISTRY_LAUNCH_HOSTS`; `zuke register` writes a local module, so this
-  only affects a hand-authored or second-party entry. For a shared, multi-user
+  `ZUKE_REGISTRY_LAUNCH_HOSTS`, and a `command` location is refused unless its
+  program is in `ZUKE_REGISTRY_LAUNCH_COMMANDS` (the registry writer picks the
+  program and its arguments); `zuke register` writes a local module, so both
+  only affect a hand-authored or second-party entry. For a shared, multi-user
   endpoint, `override mcpAuth()` authenticates a **trusted** caller per request
   — an async `authenticate(ctx)` returning `{ actor, kind?, roles?, via? }` or
   an `McpAuthReject` (`{ status, error, detail?, challenge? }`), so a refused

@@ -1321,8 +1321,12 @@ a descriptor whose entry module is **remote** (not a local path or `file:` URL â
 `https:`, `jsr:`, `npm:`, `data:`) is refused unless its origin is listed in
 `ZUKE_REGISTRY_LAUNCH_HOSTS` (`*` allows any); the call is denied and audited
 `launch_origin_not_allowed`, before the confirmation prompt, with nothing
-spawned. `zuke register` writes a local `file:` module, so this only bites a
-hand-authored or second-party registry entry.
+spawned. A `command` location is gated the same way against
+`ZUKE_REGISTRY_LAUNCH_COMMANDS` (matched on `command[0]`, as written or by its
+trailing path segment; `*` allows any), because the registry writer picks the
+program *and its arguments* â€” audited `launch_command_not_allowed`. `zuke
+register` writes a local `file:` module, so both only bite a hand-authored or
+second-party registry entry.
 
 **Authorization by role** (`docs/mcp.md`): once the server authenticates its
 callers, `target().requiresRole("operator")` raises the bar for one target and
