@@ -95,6 +95,33 @@ Deno.test("a settled target cannot be forced", async () => {
   }
 });
 
+Deno.test("the returned message is data, not terminal-encoded output", async () => {
+  // The MCP `force_target` tool returns this message inside a JSON payload. If
+  // `forceTarget` encoded it for a terminal, every client would get mangled
+  // text whenever the *server* happened to run under Actions — so the escaping
+  // lives at the CLI printer instead, and this pins the producer's side of that
+  // split. An earlier version of this change escaped here and broke it.
+  await withTempStore(async (store) => {
+    const runId = await seed(store);
+    const reason = ["done", "::stop-commands::TOKEN"].join(
+      String.fromCharCode(10),
+    );
+    const result = await forceTarget(new CD(), {
+      runId,
+      target: "deploy",
+      outcome: "skipped",
+      reason,
+      actor: "operator-b",
+      stateStore: store,
+      // Claim to be inside Actions: the producer must not care.
+      readEnv: (name) => name === "GITHUB_ACTIONS" ? "true" : undefined,
+    });
+    assertEquals(result.ok, true);
+    assertStringIncludes(result.message, reason);
+    assertEquals(result.message.includes("%3A%3A"), false);
+  });
+});
+
 Deno.test("a target the build declares unforceable is refused", async () => {
   await withTempStore(async (store) => {
     const runId = await seed(store);

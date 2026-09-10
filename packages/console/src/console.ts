@@ -27,6 +27,7 @@ import {
   box as renderBox,
   type BoxOptions,
   detectWidth,
+  escapeData,
   line as renderLine,
   type LineOptions,
   type Style,
@@ -173,7 +174,13 @@ function logAt(
       color: false,
       tags: themeTags(state.theme),
     });
-    emit([`::${command}::${detail ? `${plain}: ${detail}` : plain}`], stream);
+    // A command body, so it takes the body escape rather than `escapeLine`: a
+    // newline here would end the command and let what follows open a new one.
+    // `detail` is `messageOf(options.error)`, which for a failed command
+    // carries that subprocess's stderr verbatim.
+    emit([
+      `::${command}::${escapeData(detail ? `${plain}: ${detail}` : plain)}`,
+    ], stream);
     return;
   }
 
@@ -375,7 +382,9 @@ export const ConsoleTasks: ConsoleTasksApi = {
     if (muted()) return;
     const style = currentStyle();
     if (style.github) {
-      emit([`::group::${renderMarkup(name, { color: false })}`], "out");
+      emit([
+        `::group::${escapeData(renderMarkup(name, { color: false }))}`,
+      ], "out");
     } else {
       emit([renderRule(style, name, {})], "out");
     }
