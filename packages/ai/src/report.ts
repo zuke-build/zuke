@@ -14,6 +14,7 @@ import type {
   Provider,
   Usage,
 } from "./types.ts";
+import { appendJobSummary } from "@zuke/core";
 import type { RetryInfo } from "./retry.ts";
 import type { StoredFinding } from "./state.ts";
 import { cell } from "./markdown.ts";
@@ -462,22 +463,13 @@ export function skipMarkdown(
 /**
  * Append `markdown` to the GitHub Actions job-summary file, if one is set.
  * Best-effort: a missing or unwritable file never fails the review.
+ *
+ * Delegates to `@zuke/core`, which redacts the run's secrets before writing.
+ * This package used to carry its own copy because its declared core floor
+ * predated that export; the floor has moved, so the copy is gone — and with it
+ * the reason a reviewer's or fixer's markdown reached the summary unmasked
+ * while every other sink was redacted.
  */
 export function writeStepSummary(markdown: string): void {
-  // Deliberately not delegating to `@zuke/core`'s `appendJobSummary`: this
-  // package declares an older core floor than the release that introduced it,
-  // and a consumer installing that floor from JSR would get a missing export.
-  // Revisit once this package's declared floor has moved past it.
-  let path: string | undefined;
-  try {
-    path = Deno.env.get("GITHUB_STEP_SUMMARY");
-  } catch {
-    return; // no env access — nothing to write to
-  }
-  if (path === undefined || path === "") return;
-  try {
-    Deno.writeTextFileSync(path, `${markdown}\n`, { append: true });
-  } catch {
-    // Best-effort: an unwritable summary file must never fail the review.
-  }
+  appendJobSummary(markdown);
 }

@@ -16,8 +16,17 @@
  * @module
  */
 
-import { assertEquals } from "../../packages/core/tests/_assert.ts";
-import { Build, externalSignal, target } from "../../packages/core/mod.ts";
+import {
+  assertEquals,
+  assertStringIncludes,
+} from "../../packages/core/tests/_assert.ts";
+import {
+  appendJobSummary,
+  Build,
+  externalSignal,
+  parameter,
+  target,
+} from "../../packages/core/mod.ts";
 import { runCli, withStateDir } from "./_harness.ts";
 import { withEnv } from "../../packages/core/tests/_env.ts";
 
@@ -157,4 +166,48 @@ Deno.test("a force's echoed reason cannot forge a command", async () => {
       "the force echo let hostile text reach the runner as a command",
     );
   });
+});
+
+Deno.test("a remediation's job-summary section is redacted", async () => {
+  // Where the AI fixer writes. Its markdown is built from a failed command's
+  // output and the model's response to it, which is exactly where a secret in
+  // an argv would appear — and the summary is published to everyone who can
+  // view the run. A remediation has no redactor on its context, so this works
+  // only because the writer itself applies the ambient one.
+  const dir = await Deno.makeTempDir();
+  const summaryPath = `${dir}/summary.md`;
+  await Deno.writeTextFile(summaryPath, "");
+  try {
+    class B extends Build {
+      token = parameter("Deploy token").secret().required();
+      check = target()
+        .recoverWith({
+          name: "probe-fixer",
+          remediate: () => {
+            appendJobSummary(
+              "## Fix attempt\n\ncommand failed: deploy --token s3cr3t-value-xyz",
+            );
+            return { retry: false };
+          },
+        })
+        .executes(() => {
+          throw new Error("boom");
+        });
+    }
+    await withEnv(
+      { GITHUB_ACTIONS: "true", GITHUB_STEP_SUMMARY: summaryPath },
+      async () => {
+        await runCli(B, ["check", "--token", "s3cr3t-value-xyz"]);
+      },
+    );
+    const written = await Deno.readTextFile(summaryPath);
+    assertEquals(
+      written.includes("s3cr3t-value-xyz"),
+      false,
+      "a remediation published a secret to the job summary",
+    );
+    assertStringIncludes(written, "[redacted]");
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
 });

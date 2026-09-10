@@ -18,6 +18,8 @@
  * @module
  */
 
+import { ambientRedactor } from "./ambient_redactor.ts";
+
 /**
  * Append `markdown` to the Actions job summary, returning whether it was
  * written. Outside Actions (no `GITHUB_STEP_SUMMARY`) it is a no-op returning
@@ -28,6 +30,17 @@
  * that produced it — the build's own result is the signal that matters.
  */
 export function appendJobSummary(markdown: string): boolean {
+  // Redacted here, at the one exported function that writes this file, so a
+  // caller cannot publish a secret by forgetting to. The job summary is visible
+  // to everyone who can view the run, and the `::add-mask::` directives do not
+  // cover it: those mask the runner's log stream, not a file the build writes.
+  //
+  // The ambient redactor is the only seam available to a caller outside this
+  // package — a validation or a remediation has no redactor on its context —
+  // and the executor installs it around the whole run, so every in-run caller
+  // is covered. Outside a run there is nothing to mask and nothing is changed.
+  const redactor = ambientRedactor();
+  if (redactor !== undefined) markdown = redactor.redact(markdown);
   let path: string | undefined;
   try {
     path = Deno.env.get("GITHUB_STEP_SUMMARY");

@@ -244,8 +244,21 @@ Deno.test("writeStepSummary is a silent no-op without env access", async () => {
   );
   try {
     const output = await new Deno.Command(Deno.execPath(), {
-      // No permissions at all: Deno.env.get throws inside writeStepSummary.
-      args: ["run", "--quiet", "--no-check", script],
+      // No permissions at all: Deno.env.get throws inside the writer.
+      //
+      // The workspace config is passed because the probe script lives in a temp
+      // directory, and this module now delegates to `@zuke/core` rather than
+      // carrying its own copy of the writer — so its bare specifier needs the
+      // import map that a published consumer would get from the registry. The
+      // property under test is unchanged: no permissions, no throw, no write.
+      args: [
+        "run",
+        "--quiet",
+        "--no-check",
+        "--config",
+        new URL("../../../deno.json", import.meta.url).pathname,
+        script,
+      ],
       env: { GITHUB_STEP_SUMMARY: summary, NO_COLOR: "1" },
       stdout: "piped",
       stderr: "piped",

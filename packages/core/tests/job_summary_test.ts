@@ -4,6 +4,8 @@
 import { assertEquals } from "./_assert.ts";
 import { appendJobSummary } from "../src/job_summary.ts";
 import { withTemp } from "./_temp.ts";
+import { withAmbientRedactor } from "../src/ambient_redactor.ts";
+import { REDACTED, Redactor } from "../src/redact.ts";
 
 /** Run `fn` with `GITHUB_STEP_SUMMARY` set to `value` (or unset). */
 async function withSummaryPath(
@@ -70,4 +72,45 @@ Deno.test("an unwritable summary reports false instead of failing the build", as
       assertEquals(appendJobSummary("## nowhere"), false);
     });
   });
+});
+
+Deno.test("appendJobSummary masks the run's secrets", async () => {
+  // The job summary is visible to everyone who can view the run, and the
+  // `::add-mask::` directives do not cover it — they mask the runner's log
+  // stream, not a file the build writes. Redacting at this one exported writer
+  // is what stops a caller publishing a secret by forgetting to: a validation
+  // or a remediation has no redactor on its context to forget with.
+  const dir = await Deno.makeTempDir();
+  const path = `${dir}/summary.md`;
+  try {
+    await withSummaryPath(path, async () => {
+      const redactor = new Redactor();
+      redactor.add("s3cr3t-value-xyz");
+      await withAmbientRedactor(redactor, () => {
+        appendJobSummary("deploy --token s3cr3t-value-xyz failed");
+        return Promise.resolve();
+      });
+      const written = await Deno.readTextFile(path);
+      assertEquals(written.includes("s3cr3t-value-xyz"), false);
+      assertEquals(written.includes(REDACTED), true);
+    });
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("appendJobSummary writes verbatim when no run is in scope", async () => {
+  // Outside a run there is no redactor and nothing to mask, so the text is
+  // written exactly as given rather than routed through a no-op that could
+  // change it.
+  const dir = await Deno.makeTempDir();
+  const path = `${dir}/summary.md`;
+  try {
+    await withSummaryPath(path, async () => {
+      appendJobSummary("## plain 100% report");
+      assertEquals(await Deno.readTextFile(path), "## plain 100% report\n");
+    });
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
 });
