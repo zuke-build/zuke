@@ -211,8 +211,10 @@ export function summaryBlock(
   now: Date = new Date(),
 ): string[] {
   const headers = { name: "Target", status: "Status", duration: "Duration" };
+  const shownName = new Map(reports.map((r) => [r, displayName(r.name)]));
+  const nameOf = (r: TargetReport): string => shownName.get(r) ?? r.name;
   const nameWidth = reports.reduce(
-    (w, r) => Math.max(w, r.name.length),
+    (w, r) => Math.max(w, nameOf(r).length),
     headers.name.length,
   );
   const statusWidth = Object.values(STATUS_LABEL).reduce(
@@ -259,8 +261,9 @@ export function summaryBlock(
     // A row starts at column 0, so a target name is the one thing here that
     // could open a command; the padding is computed from the raw name so the
     // columns stay aligned when nothing needed escaping.
-    const name = style.github ? escapeLine(r.name) : r.name;
-    return name + " ".repeat(Math.max(0, nameWidth - r.name.length)) + "  " +
+    const shown = nameOf(r);
+    const name = style.github ? escapeLine(shown) : shown;
+    return name + " ".repeat(Math.max(0, nameWidth - shown.length)) + "  " +
       status + "  " +
       duration.padStart(durationWidth) + notes;
   });
@@ -336,7 +339,11 @@ export function closingLine(
   }
   const failed = reports.filter((r) => r.status === "failed");
   const culprit = failed.length === 1
-    ? `'${style.github ? escapeLine(failed[0].name) : failed[0].name}' failed`
+    ? `'${
+      style.github
+        ? escapeLine(displayName(failed[0].name))
+        : displayName(failed[0].name)
+    }' failed`
     : failed.length > 1
     ? `${failed.length} targets failed`
     : "no target succeeded";
@@ -354,6 +361,20 @@ export function closingLine(
  * Render the GitHub Actions job-summary Markdown for a build — an aligned table
  * with a Total row and a verdict heading, mirroring the terminal summary.
  */
+/**
+ * A target's name as any renderer should print it: collapsed to one line.
+ *
+ * A name is not necessarily the build author's text — a fan-out sub-target's
+ * carries its item key, which comes from repository or remote data — and every
+ * renderer here puts it in a table. A newline breaks the row in each of them:
+ * the terminal table loses its alignment and gains a line that can imitate a
+ * Total row, and a Markdown row ends early, publishing what follows as document
+ * content. So it is collapsed once, here, rather than at each renderer.
+ */
+function displayName(name: string): string {
+  return singleLine(name);
+}
+
 /**
  * Render `value` as the contents of one Markdown table cell.
  *
@@ -378,9 +399,10 @@ export function closingLine(
  */
 function markdownCell(value: string): string {
   return singleLine(value)
-    .replaceAll("|", "\\|")
-    .replaceAll("<!--", "&lt;!--")
-    .replaceAll("-->", "--&gt;");
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll("|", "\\|");
 }
 
 export function jobSummaryMarkdown(

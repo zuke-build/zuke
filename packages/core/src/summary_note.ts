@@ -50,12 +50,12 @@ export interface SummaryEntry {
  * over what a tool printed, and a fan-out sub-target's name carries its item
  * key. A newline would start a new row — in Markdown, ending the row early and
  * publishing whatever follows as document content — and an ANSI sequence would
- * restyle the rest of the table. Both are removed here, the one place, rather
- * than at each renderer.
+ * restyle the rest of the table.
  *
- * Exported within the package for that reason: the second caller is the job
- * summary's target column, which had no such guard and let a newline in a name
- * break the table and inject Markdown.
+ * This is the collapsing itself, not the whole guard. A note goes through it
+ * when it is recorded; a name goes through it in `report.ts`, which applies it
+ * for every renderer it owns. A Markdown cell needs more on top — escaping the
+ * markup that would otherwise close the table — and that lives with the cell.
  */
 export function singleLine(text: string): string {
   return stripAnsi(text)
