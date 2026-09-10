@@ -7,6 +7,8 @@
  */
 
 import { type Build, discoverGroups, discoverTargets } from "./build.ts";
+import { detectCiHost } from "./host.ts";
+import { escapeLine } from "./render.ts";
 import { discoverCiFiles, syncCiFiles } from "./ci.ts";
 import { isEntryModule } from "./entry.ts";
 import { messageOf } from "./internal.ts";
@@ -1111,11 +1113,19 @@ async function runForce(build: Build, parsed: ParsedArgs): Promise<number> {
       ...(parsed.reason === undefined ? {} : { reason: parsed.reason }),
       actor: parsed.actor,
     });
+    // The reason inside this message is the operator's, and in a scripted force
+    // it is often interpolated from a pull request title or an issue body. The
+    // escape belongs here, at the printer that owns the terminal, rather than in
+    // `forceTarget` — the MCP tool returns the same message inside a JSON
+    // payload, which must not carry a terminal's encoding.
+    const shown = detectCiHost() === "github"
+      ? escapeLine(result.message)
+      : result.message;
     if (!result.ok) {
-      console.error(result.message);
+      console.error(shown);
       return 1;
     }
-    console.log(result.message);
+    console.log(shown);
     return 0;
   } catch (error) {
     console.error(messageOf(error));

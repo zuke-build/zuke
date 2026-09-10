@@ -25,6 +25,23 @@ Deno.test("consoleRenderer opens a group under GitHub Actions", () => {
   ]);
 });
 
+Deno.test("a hostile target name cannot forge a command from the header", () => {
+  // The header is emitted BEFORE the target's body, so a suspend directive in
+  // the name would disarm everything the target goes on to print — including
+  // core's own escaped footers and annotation. A fan-out sub-target's name
+  // carries its item key, which comes from repository or remote data.
+  const NL = String.fromCharCode(10);
+  assertEquals(
+    consoleRenderer.targetHeader(actions, `fan[item${NL}::stop-commands::x]`),
+    ["::group::fan[item%0A::stop-commands::x]"],
+  );
+  // Off Actions the name is untouched, newline and all.
+  assertEquals(
+    consoleRenderer.targetHeader(plain, `a${NL}b`)[1],
+    `a${NL}b`,
+  );
+});
+
 Deno.test("the header colour comes from the theme's info token", () => {
   const green: Theme = { ...defaultTheme, info: ["green"] };
   const renderer = createConsoleRenderer(green);

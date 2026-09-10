@@ -83,6 +83,31 @@ Deno.test("GitHub Actions mode emits workflow commands for warn/error", () => {
   ConsoleTasks.reset();
 });
 
+Deno.test("a workflow command's body cannot be forged from its own arguments", () => {
+  // The runner ends a command at the end of its line, so a newline in the body
+  // lets what follows open a command of its own. `error`'s detail is
+  // `messageOf(options.error)`, which for a failed command carries that
+  // subprocess's stderr verbatim — not something this package controls.
+  const { err } = capture({ github: true });
+  ConsoleTasks.warn("heads up\n::stop-commands::TOKEN");
+  ConsoleTasks.error("bad", {
+    error: new Error("boom\n::error::forged annotation"),
+  });
+  // One physical line per command, with the newline encoded rather than live.
+  assertEquals(err, [
+    "::warning::heads up%0A::stop-commands::TOKEN",
+    "::error::bad: boom%0A::error::forged annotation",
+  ]);
+  ConsoleTasks.reset();
+});
+
+Deno.test("a group name cannot forge a workflow command", () => {
+  const { out } = capture({ github: true });
+  ConsoleTasks.group("deploy\n::stop-commands::TOKEN");
+  assertEquals(out, ["::group::deploy%0A::stop-commands::TOKEN"]);
+  ConsoleTasks.reset();
+});
+
 Deno.test("line and rule draw across the configured width", () => {
   const { out } = capture();
   ConsoleTasks.line();
