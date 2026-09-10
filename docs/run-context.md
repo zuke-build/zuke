@@ -30,6 +30,7 @@ class Deploy extends Build {
 | `stateOf`    | `(t) => …`          | The state handle of **another** target — read a dependency's published metadata (e.g. a wait's result). |
 | `outcomeOf`  | `(t) => …`          | What another target in this run **did** — `succeeded`, `failed`, `skipped`, … or `undefined` if it has none yet. |
 | `outcomes`   | `() => ReadonlyMap` | Every outcome settled so far, keyed by target name. |
+| `plan`       | `() => RunPlan`     | The run's **planned shape** — which targets it set out to run, and how they relate. See [Reading the run's shape](#reading-the-runs-shape--ctxplan). |
 | `signals`    | `ReadonlyMap`       | Payloads of external signals received so far (see [waits](./orchestration.md)). |
 | `dryRun`     | `boolean`           | `true` when the run is a dry run (bodies don't execute in a dry run). |
 | `reportSummary` | `(pairs) => void` | Put `key: value` notes on **this target's row** of the Build Summary — see [Notes on the summary row](#notes-on-the-summary-row). |
@@ -155,6 +156,108 @@ them after each target's duration (`✔ test  succeeded  128.1s  // Tests: 4094
 record, and a target that reads a dependency's outcome sees them as
 `ctx.outcomeOf("test")?.summary` — after a resume too, since the record is
 what a resumed run reads.
+
+## Reading the run's shape — `ctx.plan()`
+
+`ctx.plan()` answers what the run *set out to do*: which targets it planned, in
+execution order, and which targets must finish before a given one starts. It is
+the seam for a body whose work depends on what else was asked for.
+
+<!-- check -->
+
+```ts
+import { Build, target } from "jsr:@zuke/core";
+
+class Ci extends Build {
+  build = target().executes((ctx) => {
+    // Only worth signing the artifact if this run is going to deploy it.
+    if (ctx.plan().includes("deploy")) console.log("signing");
+  });
+  deploy = target().dependsOn(this.build).executes(() => {});
+}
+```
+
+`zuke build` prints nothing; `zuke deploy` signs. Same body, same build — the
+plan describes **this run**, not the class.
+
+A condition reads the same view, so a target can gate on the graph rather than
+only on the environment. Gate on a target you do **not** depend on — a hard
+dependency is in the plan whenever its dependent is, so gating on one is a
+condition that can never be false:
+
+<!-- check -->
+
+```ts
+import { Build, target } from "jsr:@zuke/core";
+
+class Ci extends Build {
+  unit = target().executes(() => {});
+  // Only worth publishing coverage when the run is also going to deploy.
+  coverage = target()
+    .dependsOn(this.unit)
+    .onlyWhen((ctx) => ctx.plan().includes("deploy"))
+    .executes(() => {});
+  deploy = target().dependsOn(this.unit).executes(() => {});
+}
+```
+
+Receiving the context is optional: an existing `.onlyWhen(() => …)` keeps
+working, since a zero-argument function is assignable to the one-parameter type.
+
+A condition gets a **narrower** context than a body — `target` and `plan()` only.
+A `.whenSkipped("skip-dependencies")` condition is evaluated *before* the run
+starts, to decide what the run prunes, and at that point the run's identity, its
+state handles, and its cancellation signal do not exist yet.
+
+### The plan is not the outcome
+
+This is the distinction to keep straight:
+
+- **`ctx.plan()`** says what the run **planned**, as this process resolved it.
+- **`ctx.outcomeOf(name)`** says what **became** of a target, once it settled.
+
+A planned target can still be skipped — by a condition, by `--affected`, or by
+an operator's forced outcome — and a run that fails early never reaches its
+later targets at all. So `plan().includes("deploy")` means "`deploy` is part of
+this run", never "`deploy` will execute". Ask `outcomeOf` for that.
+
+There is a concrete reason the plan refuses to answer "will it run". A
+`whenSkipped("skip-dependencies")` condition is evaluated **twice**: once up
+front, to decide what the run prunes, and again when the scheduler reaches the
+target. A "will it run" view would answer differently at those two moments — and
+at the first one it would be circular, since that very condition is one of the
+things deciding the answer. Reporting the planned graph gives one answer
+everywhere.
+
+`dependenciesOf` returns an empty list both for a target with no predecessors
+and for a name that is not in the plan at all; use `includes` to tell those
+apart.
+
+### Fan-out sub-targets are not in the plan
+
+A `.forEach()` fan-out expands into its sub-targets **while the run executes**,
+after the graph has been planned. So `fan[us].prep` has a summary row, a run
+record entry and an outcome — but `plan().includes("fan[us].prep")` is `false`,
+and only the `fan` target that produced it is in `targets`. This is the one
+place the plan reports *less* than the outcomes do; ask `outcomeOf` about a
+fan-out's sub-targets.
+
+### The plan does not cross processes
+
+Within one process the plan is fixed: two bodies agree, and both evaluations of
+a `skip-dependencies` condition agree. A **second** process re-resolves the graph
+from the build class it was handed, so it can legitimately differ:
+
+- a resume runs against today's build class, which may have changed since the run
+  was suspended — `--force-graph` exists precisely for that case;
+- a lazy `orderWith` provider may answer differently, and `zuke cancel` degrades
+  to the base topological order when the provider is unreachable, rather than
+  abandoning the rollback.
+
+So a compensation's `ctx.plan()` is this canceller's reading of the graph, not a
+recording of what the original run planned. Anything a later process must agree
+with belongs in durable state (see [Durable run state](./state.md)), which is
+what crosses the boundary.
 
 ## Reading what the rest of the run did
 

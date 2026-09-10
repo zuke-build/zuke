@@ -45,6 +45,7 @@ export {
 } from "./src/host.ts";
 export {
   type Condition,
+  type ConditionContext,
   type DeclaredEffect,
   type EffectContext,
   type EffectFn,
@@ -404,3 +405,4 @@ export {
   ZUKE_ACTION,
 } from "./src/ci.ts";
 export { type ScheduleEntry } from "./src/ci_schedule.ts";
+export { type RunPlan } from "./src/run_plan.ts";

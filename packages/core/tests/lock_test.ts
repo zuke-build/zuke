@@ -1,6 +1,7 @@
 // Copyright (c) 2026 the Zuke contributors
 // SPDX-License-Identifier: MIT
 
+import { testPlan } from "./_fakes.ts";
 import {
   assertEquals,
   assertRejects,
@@ -66,6 +67,7 @@ class FakeStore implements StateStore {
 function envWith(store: StateStore, signal?: AbortSignal): RunEnv {
   return {
     runId: "run-2",
+    plan: testPlan(),
     signal: signal ?? new AbortController().signal,
     store,
     actor: "bob",

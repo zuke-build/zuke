@@ -29,7 +29,7 @@ import { execute } from "../src/executor.ts";
 import { resumeRun } from "../src/resume.ts";
 import { externalSignal } from "../src/wait.ts";
 import { withTemp } from "./_temp.ts";
-import { runRecord } from "./_fakes.ts";
+import { runRecord, testPlan } from "./_fakes.ts";
 import { withTempStore } from "./_store.ts";
 
 const NOW = "2026-08-10T12:00:00.000Z";
@@ -42,6 +42,7 @@ function contextFor(
   const lines: string[] = [];
   const env: RunEnv = {
     runId: "run-1",
+    plan: testPlan(),
     signal: new AbortController().signal,
     actor: "tester",
     signals: new Map(),

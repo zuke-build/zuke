@@ -120,7 +120,10 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   `.executes((ctx) => …)` — with `ctx.runId`, `ctx.initiator` (who asked for the
   run, unchanged by a resume), `ctx.target`, `ctx.signal` (an
   `AbortSignal` fired when the run is cancelled; a plain `` $`…` `` in the body
-  is `SIGTERM`'d automatically), `ctx.state`, `ctx.dryRun`, and
+  is `SIGTERM`'d automatically), `ctx.state`, `ctx.dryRun`, `ctx.plan()` (the
+  run's planned shape — `targets`, `includes(name)`, `dependenciesOf(name)` — so
+  a body can ask whether `deploy` was part of what was asked for; it reports the
+  plan, never what will actually execute, which is `ctx.outcomeOf(name)`), and
   `ctx.reportSummary({ … })` (`key: value` notes on the target's own row of
   the Build Summary; every test-runner wrapper — `DenoTasks.test`,
   `VitestTasks.run`, `JestTasks.run`, `BunTasks.test`, `NodeTasks.test`,

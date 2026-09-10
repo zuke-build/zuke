@@ -15,6 +15,7 @@
  */
 
 import type { TargetBuilder } from "./target.ts";
+import type { RunPlan } from "./run_plan.ts";
 import type { Reporter } from "./reporter.ts";
 import type { Redactor } from "./redact.ts";
 import type { Lifecycle } from "./lifecycle.ts";
@@ -58,6 +59,8 @@ export async function settleCancelledRun(opts: {
   isExternallyCancelled: () => boolean;
   /** Whether this process has lost the run's lease (see {@link "../cancel.ts".CompensationDeps.stop}). */
   isLeaseLost?: () => boolean;
+  /** The run's resolved shape, read by a compensation via `ctx.plan()`. */
+  plan: RunPlan;
 }): Promise<CancelSettlement> {
   const { writer, life, order, runId, actor, reporter } = opts;
   // Hold the per-run cancel lock while we compensate, so a concurrent
@@ -98,6 +101,7 @@ export async function settleCancelledRun(opts: {
         // settle.
         const comp = await runCompensations(order, writer.snapshot(), {
           runId,
+          plan: opts.plan,
           signals: opts.signals,
           reporter,
           redactor: opts.redactor,

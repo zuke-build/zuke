@@ -6,6 +6,7 @@
 import type { GraphHost } from "../src/graph_view.ts";
 import type { StateHost, StateStore } from "../src/state/store.ts";
 import type { RunRecord } from "../src/state/types.ts";
+import type { RunPlan } from "../src/run_plan.ts";
 import type { RemoteCacheStore } from "../src/remote_cache.ts";
 
 /**
@@ -229,4 +230,15 @@ export function runRecord(over: Partial<RunRecord> = {}): RunRecord {
     events: [],
     ...over,
   };
+}
+
+/**
+ * The empty {@link RunPlan} — the plan a unit test hands an engine seam that
+ * requires one but is not exercising it. It says "this run planned nothing",
+ * which is the honest reading for a seam driven with no graph behind it.
+ *
+ * A test that asserts on a real plan builds one with `buildRunPlan` instead.
+ */
+export function testPlan(): RunPlan {
+  return { targets: [], includes: () => false, dependenciesOf: () => [] };
 }

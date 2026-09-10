@@ -17,6 +17,8 @@ import {
 } from "../src/cancel.ts";
 import { resumeRun } from "../src/resume.ts";
 import type { OrderingEdge } from "../src/graph.ts";
+import { planGraph } from "../src/graph.ts";
+import { buildRunPlan } from "../src/run_plan.ts";
 import { FileSystemStateStore } from "../src/state/fs_store.ts";
 import {
   defaultStateHost,
@@ -28,7 +30,7 @@ import type { RunRecord } from "../src/state/types.ts";
 import type { Reporter } from "../src/executor.ts";
 import { externalSignal } from "../src/wait.ts";
 import { withTemp } from "./_temp.ts";
-import { runRecord } from "./_fakes.ts";
+import { runRecord, testPlan } from "./_fakes.ts";
 import { withTempStore } from "./_store.ts";
 
 /** A run record scaffold for driving {@link runCompensations} directly. */
@@ -834,6 +836,7 @@ Deno.test("an in-flight (running) fan-out item is compensated; a stage with no o
   });
   const outcome = await runCompensations([build.deployBatch], record, {
     runId: "run",
+    plan: testPlan(),
     signals: new Map(),
     reporter: { info: () => {}, error: () => {} },
   });
@@ -862,6 +865,7 @@ Deno.test("a pending fan-out item (never started) is not compensated", async () 
   });
   const outcome = await runCompensations([build.deployBatch], record, {
     runId: "run",
+    plan: testPlan(),
     signals: new Map(),
     reporter: { info: () => {}, error: () => {} },
   });
@@ -890,6 +894,7 @@ Deno.test("a non-deterministic forEach list reports an unmatched recorded item",
   const { reporter, errors } = capturingReporter();
   const outcome = await runCompensations([build.deployBatch], record, {
     runId: "run",
+    plan: testPlan(),
     signals: new Map(),
     reporter,
   });
@@ -922,6 +927,7 @@ Deno.test("a forEach item list that throws at cancel is recorded, not fatal", as
   const { reporter } = capturingReporter();
   const outcome = await runCompensations([build.deployBatch], record, {
     runId: "run",
+    plan: testPlan(),
     signals: new Map(),
     reporter,
   });
@@ -957,6 +963,7 @@ Deno.test("an item .onCancel() thunk that throws or returns undefined is skipped
   const { reporter } = capturingReporter();
   const outcome = await runCompensations([build.deployBatch], record, {
     runId: "run",
+    plan: testPlan(),
     signals: new Map(),
     reporter,
   });
@@ -1012,6 +1019,7 @@ Deno.test("cancel runs a nested fan-out item's onCancel without false-warning", 
   const { reporter, errors } = capturingReporter();
   const outcome = await runCompensations([build.deployBatch], record, {
     runId: "run",
+    plan: testPlan(),
     signals: new Map(),
     reporter,
   });
@@ -1049,6 +1057,7 @@ Deno.test("a declared target reused as a fan-out stage keeps its own name at can
     record,
     {
       runId: "run",
+      plan: testPlan(),
       signals: new Map(),
       reporter: capturingReporter().reporter,
     },
@@ -1082,6 +1091,7 @@ Deno.test("a fan-out parent's own onCancel runs after its item compensations", a
   });
   await runCompensations([build.deployBatch], record, {
     runId: "run",
+    plan: testPlan(),
     signals: new Map(),
     reporter: { info: () => {}, error: () => {} },
   });
@@ -1357,6 +1367,7 @@ Deno.test("a degraded record compensates targets whose settlement was lost", asy
     record,
     {
       runId: "run",
+      plan: testPlan(),
       signals: new Map(),
       reporter: { info: (l) => void info.push(l), error: () => {} },
     },
@@ -1384,6 +1395,7 @@ Deno.test("a healthy record still skips a pending target's compensation", async 
   });
   const outcome = await runCompensations([build.deploy], record, {
     runId: "run",
+    plan: testPlan(),
     signals: new Map(),
     reporter: { info: () => {}, error: () => {} },
   });
@@ -1418,6 +1430,7 @@ Deno.test("a degraded record compensates a pending fan-out item", async () => {
   };
   const outcome = await runCompensations([build.deployBatch], record, {
     runId: "run",
+    plan: testPlan(),
     signals: new Map(),
     reporter: { info: () => {}, error: () => {} },
   });
@@ -1855,10 +1868,44 @@ Deno.test("without a redactor, a compensation failure message is kept verbatim",
   });
   const outcome = await runCompensations([build.deploy], record, {
     runId: "run",
+    plan: testPlan(),
     signals: new Map(),
     reporter: { info: () => {}, error: () => {} },
     // no redactor
   });
   assertEquals(outcome.failures.length, 1);
   assertEquals(outcome.failures[0].error, "exact diagnostic text");
+});
+
+Deno.test("a compensation reads the run's plan, not an empty one", async () => {
+  // `CompensationDeps.plan` promises a compensation body sees the graph this
+  // walk is ordered by. Every other cancel test passes the empty `testPlan()`,
+  // so nothing asserted the wiring: handing `runCompensations` an empty plan
+  // used to leave the whole suite green.
+  const seen: string[] = [];
+  class B extends Build {
+    rollback = target().executes((ctx) => {
+      seen.push([...ctx.plan().targets].sort().join(","));
+      seen.push(`includes(deploy)=${ctx.plan().includes("deploy")}`);
+    });
+    build = target().executes(() => {});
+    deploy = target()
+      .dependsOn(this.build)
+      .executes(() => {})
+      .onCancel(() => this.rollback);
+  }
+  const build = new B();
+  discoverTargets(build);
+  const { order, predecessors } = planGraph(build.deploy);
+  const record = craftRecord("deploy", {
+    build: { status: "succeeded", meta: {} },
+    deploy: { status: "succeeded", meta: {} },
+  });
+  await runCompensations(order, record, {
+    runId: "run",
+    plan: buildRunPlan(order, predecessors),
+    signals: new Map(),
+    reporter: { info: () => {}, error: () => {} },
+  });
+  assertEquals(seen, ["build,deploy", "includes(deploy)=true"]);
 });

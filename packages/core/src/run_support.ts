@@ -17,6 +17,7 @@ import type { TargetOutcomeView } from "./target.ts";
 import type { TargetReport } from "./report.ts";
 import type { SummaryEntry } from "./summary_note.ts";
 import type { RunStateWriter } from "./state/writer.ts";
+import type { RunPlan } from "./run_plan.ts";
 import type { StateStore } from "./state/store.ts";
 import type {
   RunInitiator,
@@ -70,6 +71,8 @@ export interface RunOutcome {
 export interface RunEnv {
   /** The run's stable identity (across a resume). */
   runId: string;
+  /** The resolved shape of the run, read by bodies via `ctx.plan()`. */
+  plan: RunPlan;
   /** The cancellation signal handed to every target context. */
   signal: AbortSignal;
   /** The durable-state writer that records transitions, if any. */

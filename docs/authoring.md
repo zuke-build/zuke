@@ -17,7 +17,7 @@ body, which is required before the target can run.
 | `.dependentFor(...targets)` | `(...t: Target[]) => this`                            | Reverse of `dependsOn`: run this _before_ those.                                                   |
 | `.inputs(...paths)`         | `(...p: PathLike[]) => this`                          | Cache inputs: skip the target when these are unchanged.                                            |
 | `.outputs(...paths)`        | `(...p: PathLike[]) => this`                          | Cache outputs: a hit also requires these to still exist.                                           |
-| `.onlyWhen(condition)`      | `(c: () => boolean \| Promise<boolean>) => this`      | Run only when the condition holds, else skip.                                                      |
+| `.onlyWhen(condition)`      | `(c: (ctx?) => boolean \| Promise<boolean>) => this`  | Run only when the condition holds, else skip. The condition may read `ctx.plan()`.                  |
 | `.requires(...params)`      | `(...p: Parameter[]) => this`                         | Fail the target unless these parameters are set.                                                   |
 | `.proceedAfterFailure()`    | `() => this`                                          | Keep the build going if this target fails.                                                         |
 | `.always()`                 | `() => this`                                          | Run even after the build has failed; waits for dependencies to settle, not succeed.                |

@@ -33,6 +33,7 @@
  */
 
 import { type Build, discoverTargets, resolveOrderingEdges } from "./build.ts";
+import { buildRunPlan, type RunPlan } from "./run_plan.ts";
 import { defaultReadEnv, messageOf, runWithTimeout } from "./internal.ts";
 import { consoleReporter, type Reporter, silentReporter } from "./reporter.ts";
 import { type OrderingEdge, planGraph } from "./graph.ts";
@@ -175,6 +176,17 @@ export interface CompensationOutcome {
 export interface CompensationDeps {
   /** The run id, stamped on every compensation's {@link TargetContext}. */
   runId: string;
+  /**
+   * The run's resolved plan, read by a compensation body via `ctx.plan()` —
+   * the same graph this walk is ordered by.
+   *
+   * Resolved by **this** process, which for an out-of-process `zuke cancel` is
+   * not the process that ran the build: if the build class has changed since,
+   * or the lazy `orderWith` provider answers differently (or is unreachable, so
+   * the walk degrades to base topological order), this plan can differ from the
+   * one the original run's bodies read.
+   */
+  plan: RunPlan;
   /** The run's received signals, exposed to compensation bodies via `ctx.signals`. */
   signals: ReadonlyMap<string, SignalRecord>;
   /** Where the walk narrates its progress. */
@@ -365,6 +377,7 @@ export async function runCompensations(
     const ctx: TargetContext = {
       runId: deps.runId,
       target: compName,
+      plan: () => deps.plan,
       signal: NEVER_ABORTED,
       state: ownState,
       // A compensation runs off the durable graph, so only its own seeded state
@@ -914,9 +927,10 @@ export async function settleExternally(
             `compensating in base topological order.`,
         );
       }
-      const order = planGraph(root, edges).order;
+      const { order, predecessors } = planGraph(root, edges);
       outcome = await runCompensations(order, record, {
         runId,
+        plan: buildRunPlan(order, predecessors),
         signals: new Map(Object.entries(record.signals)),
         reporter,
         redactor,
