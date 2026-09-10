@@ -119,6 +119,7 @@ import {
   resolveBaseRef,
 } from "./build/plugin_version_check.ts";
 import { actionPin } from "./build/action_pins.ts";
+import { scannerConfigDenial } from "./build/scanner_policy.ts";
 import { actionlintTool, gitleaksTool, zizmorTool } from "./build/scanners.ts";
 import { githubWorkflows } from "./build/workflows.ts";
 
@@ -128,6 +129,19 @@ import { githubWorkflows } from "./build/workflows.ts";
  * because a local `./zuke security` writes it too.
  */
 const GITLEAKS_REPORT = "gitleaks-report.json";
+
+/**
+ * The ruleset `./zuke security` scans with: gitleaks' own defaults, extended by
+ * nothing.
+ *
+ * Written to a file the build controls and passed with `--config`, rather than
+ * left to gitleaks' own lookup, which reads `<source>/.gitleaks.toml`. That
+ * lookup is the hole: a config file that merged unnoticed would narrow every
+ * later scan — including the scheduled full-history one, which no pull-request
+ * diff can see. Refusing a diff that *changes* such a file (see the `security`
+ * target) covers the branch; this covers the branch that already landed.
+ */
+const GITLEAKS_CONFIG = ["[extend]", "useDefault = true", ""].join("\n");
 
 /**
  * The files the `check` target type-checks: the globs of the root `check` task
@@ -737,20 +751,57 @@ class ZukeBuild extends Build {
       // under review; a push to the default branch and the weekly schedule still
       // walk the whole history, so nothing stops being covered.
       const prBase = Deno.env.get("GITHUB_BASE_REF");
+      // On a pull request, refuse a diff that changes what the scanners look
+      // for. They read their rules from the working tree, so a branch that adds
+      // a config chooses the scan that judges it. This is visibility, not a
+      // seal: the gate runs the branch's own `zuke.ts` and could simply drop
+      // the scanner call — but a config change now has to be argued for rather
+      // than merged as a detail of something else.
+      if (prBase !== undefined && prBase !== "") {
+        const diff = await GitTasks.run((s) =>
+          s.command(
+            "diff",
+            "--name-only",
+            `origin/${prBase}...HEAD`,
+          ).noThrow()
+        );
+        if (diff.code !== 0) {
+          // Fail closed. A missing `origin/<base>` — a shallow checkout, a
+          // renamed branch — makes the diff empty, and an empty diff is
+          // indistinguishable from "changed nothing". Reporting nothing here
+          // would turn the check off exactly when it could not run, which is
+          // the failure mode `pluginVersionCheck` already learned the hard way.
+          failures.push(
+            `scanner config (could not diff against origin/${prBase}; ` +
+              `the check needs the base ref, so a shallow checkout disables ` +
+              `it silently)`,
+          );
+        } else {
+          const denial = scannerConfigDenial(diff.text().split("\n"));
+          if (denial !== null) failures.push(`scanner config\n${denial}`);
+        }
+      }
       // The report stays redacted — it carries the file, line, rule and
       // fingerprint of each finding but not the secret itself, which is what
       // makes a failure diagnosable from the uploaded artifact instead of only
       // from a bare count in the log.
-      await gate(
-        "gitleaks",
-        SecurityTasks.gitleaks((s) => {
-          const settings = s.toolPath(scanner("gitleaks")).source(".").redact()
-            .reportFormat("json").reportPath(GITLEAKS_REPORT).noThrow();
-          return prBase === undefined || prBase === ""
-            ? settings
-            : settings.logOpts(`origin/${prBase}..HEAD`);
-        }),
-      );
+      const gitleaksConfig = await Deno.makeTempFile({ suffix: ".toml" });
+      try {
+        await FileTasks.writeText(gitleaksConfig, GITLEAKS_CONFIG);
+        await gate(
+          "gitleaks",
+          SecurityTasks.gitleaks((s) => {
+            const settings = s.toolPath(scanner("gitleaks")).source(".")
+              .config(gitleaksConfig).redact()
+              .reportFormat("json").reportPath(GITLEAKS_REPORT).noThrow();
+            return prBase === undefined || prBase === ""
+              ? settings
+              : settings.logOpts(`origin/${prBase}..HEAD`);
+          }),
+        );
+      } finally {
+        await Deno.remove(gitleaksConfig).catch(() => {});
+      }
       // osv-scanner is omitted here: it has no extractor for Deno's lockfile.
       // The @zuke/security wrapper still ships it for projects with npm/cargo/
       // go/etc. lockfiles it does understand.
