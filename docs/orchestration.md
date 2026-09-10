@@ -113,9 +113,13 @@ class Release extends Build {
   is why both modes now share one predicate. Two runs surviving that is a
   refusal, not a coin toss, and the identity is re-checked on the run the gate
   finally reads its result from, so a resume in another process cannot inherit a
-  stale id. Anyone with `actions: write` on the workflow's repository can still
-  start a run of it, so when a gate authorizes something in a different trust
-  domain — a release, a publish — protect the ref you dispatch.
+  stale id. What that leaves is the holder of `actions: write` on the workflow's
+  repository, who can dispatch it on the same ref and produce a run genuinely
+  indistinguishable from ours. Branch protection does **not** help — a
+  `workflow_dispatch` is not gated by it — so when a gate authorizes something
+  in a different trust domain, narrow who holds that permission, or put the
+  workflow behind an environment with required reviewers, or have the workflow
+  check its own `github.actor`.
 - **Fast-fail.** If no run is identified within a short discovery window
   (`.discoveryTimeout(...)`, default one minute), the gate fails with guidance
   instead of eating the whole `.timeout()` — so a workflow that silently never

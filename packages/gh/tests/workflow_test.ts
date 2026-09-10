@@ -1114,19 +1114,74 @@ Deno.test("a marked run on another ref is not adopted", async () => {
   assertEquals(readWorkflowResult(state), undefined);
 });
 
-Deno.test("a marked run created before the dispatch is not adopted", async () => {
+Deno.test("a marked run created long after the dispatch is not adopted", async () => {
+  // The upper bound is the security-carrying one. A marker contains a random
+  // per-run id, so it has to be observed before it can be copied — a run
+  // wearing ours was necessarily created after we dispatched. Without a
+  // ceiling, one created hours later would still be adopted at the next poll,
+  // which is the whole attack the discovery window is supposed to bound.
   const api = new ScriptedApi();
-  api.createdAt = "2020-01-01T00:00:00.000Z";
   api.status = "completed";
   api.conclusion = "success";
+  const c = clock(DISPATCH_AT);
+  api.createdAt = new Date(DISPATCH_AT + 60 * 60 * 1000).toISOString();
   const state = fakeState();
   const trigger = githubWorkflowWith((g) => g.repo("a/b").workflow("w"), {
     api,
+    now: c.now,
   });
-  const c = ctx(state);
-  await trigger.isSatisfied(NO_SIGNALS, c);
-  assertEquals(await trigger.isSatisfied(NO_SIGNALS, c), false);
+  const cv = ctx(state);
+  await trigger.isSatisfied(NO_SIGNALS, cv); // dispatch
+  c.advance(2 * 60 * 60 * 1000); // two hours later, someone polls again
+  await assertRejects(
+    () => Promise.resolve(trigger.isSatisfied(NO_SIGNALS, cv)),
+    WorkflowCorrelationError, // the discovery deadline has passed
+  );
   assertEquals(readWorkflowResult(state), undefined);
+});
+
+Deno.test("marker mode tolerates a clock that leads GitHub's", async () => {
+  // Marker mode deliberately has no lower bound: the marker already rules out
+  // an older run, and comparing our clock to GitHub's would strand a healthy
+  // gate whenever the build machine's clock drifts ahead.
+  const api = new ScriptedApi();
+  api.status = "completed";
+  api.conclusion = "success";
+  const c = clock(DISPATCH_AT);
+  api.createdAt = new Date(DISPATCH_AT - 10 * 60 * 1000).toISOString();
+  const state = fakeState();
+  const trigger = githubWorkflowWith((g) => g.repo("a/b").workflow("w"), {
+    api,
+    now: c.now,
+  });
+  const cv = ctx(state);
+  await trigger.isSatisfied(NO_SIGNALS, cv);
+  assertEquals(await trigger.isSatisfied(NO_SIGNALS, cv), true);
+  assertEquals(readWorkflowResult(state)?.passed, true);
+});
+
+Deno.test("the completion re-check judges identity, not recency", async () => {
+  // A record written before the dispatch time was persisted backfills the
+  // anchor to "now". Re-applying a creation window to the already-correlated
+  // run would then fail a healthy gate, and fail it on every later resume too.
+  const api = new ScriptedApi();
+  api.status = "in_progress";
+  api.createdAt = new Date(DISPATCH_AT - 60 * 60 * 1000).toISOString();
+  const c = clock(DISPATCH_AT);
+  const state = fakeState();
+  const trigger = githubWorkflowWith((g) => g.repo("a/b").workflow("w"), {
+    api,
+    now: c.now,
+  });
+  const cv = ctx(state);
+  await trigger.isSatisfied(NO_SIGNALS, cv); // dispatch
+  assertEquals(await trigger.isSatisfied(NO_SIGNALS, cv), false); // adopted
+
+  c.advance(3 * 60 * 60 * 1000); // the run takes hours, as real suites do
+  api.status = "completed";
+  api.conclusion = "success";
+  assertEquals(await trigger.isSatisfied(NO_SIGNALS, cv), true);
+  assertEquals(readWorkflowResult(state)?.passed, true);
 });
 
 Deno.test("a ref written in full form matches the short branch GitHub reports", async () => {

@@ -659,9 +659,11 @@ tool in an already-running server with **no restart**:
   writer's own. A refusal names the exact string to add. Two consequences are the
   operator's call: a **relative** program resolves against the descriptor's own
   working directory, which the same writer chooses, so prefer an absolute path;
-  and listing an interpreter (`sh`, `deno`, `node`) hands the registry writer
-  full execution, since the arguments are theirs — listing `deno` reinstates
-  exactly what `ZUKE_REGISTRY_LAUNCH_HOSTS` exists to refuse. The refusal is
+  and listing a shell or interpreter hands over anything reachable locally,
+  since `sh -c` needs no fetch at all. Listing a program does **not** license it
+  to fetch, though: every argument naming a remote specifier still has to pass
+  `ZUKE_REGISTRY_LAUNCH_HOSTS`, so `deno run -A https://…` is refused by origin
+  exactly as the module form is. The refusal is
   a structured `launch_command_not_allowed` error, audited as `denied`, before
   the confirmation prompt, with nothing spawned. `zuke register` writes a module
   location, so this only bites a hand-authored or second-party entry.

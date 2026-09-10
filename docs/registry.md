@@ -79,11 +79,14 @@ The **location** is one of two forms:
 > code with no fetch. The entry must match `command[0]` **exactly**, case-folded,
 > and deliberately not by basename: the descriptor chooses the program string, so
 > matching `make` against `/tmp/anywhere/make` would point a trusted name at a
-> file of the writer's own. A refusal names the exact string to add. A
-> **relative** program resolves against the descriptor's own working directory,
-> which the same writer chooses, so prefer an absolute path; and listing an
-> interpreter hands the registry writer full execution, since the arguments are
-> theirs. A refusal is an audited `launch_command_not_allowed` event.
+> file of the writer's own. A refusal names the exact string to add. Listing a
+> program does not license it to fetch: an argument naming a remote specifier
+> still has to pass `ZUKE_REGISTRY_LAUNCH_HOSTS`, so `deno run -A https://…` is
+> refused by origin just as the module form is. What remains is inherent to
+> allow-listing — an approved program with local arguments the writer chose — so
+> prefer absolute programs, and know that listing a shell hands over anything
+> reachable locally. A refusal is an audited `launch_command_not_allowed` (or
+> `launch_origin_not_allowed`) event.
 
 ## Backends
 

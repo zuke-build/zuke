@@ -599,6 +599,12 @@ export interface GithubWorkflowDeps {
  * The short name GitHub reports as a run's `head_branch`. A dispatch `ref` may
  * be written either way — `main` or `refs/heads/main` — and the runs API always
  * answers with the short form, so both are compared in that form.
+ *
+ * A tag is shortened the same way, because a tag dispatch is reported under the
+ * tag's own short name and leaving the prefix on would match nothing at all.
+ * The cost is that the API gives no way to tell a tag from a branch of the same
+ * name, so those two are indistinguishable here — one more reason to dispatch
+ * on a ref nothing else uses.
  */
 function shortRef(ref: string): string {
   return ref.replace(/^refs\/(?:heads|tags)\//, "");
@@ -620,13 +626,40 @@ function shortRef(ref: string): string {
 function isOurDispatch(
   run: WorkflowRun,
   ref: string,
-  dispatchedAtMs: number,
+  window: CreatedWindow,
 ): boolean {
   if (run.event !== "workflow_dispatch") return false;
   if (run.headBranch !== shortRef(ref)) return false;
   const created = Date.parse(run.createdAt);
-  return !Number.isNaN(created) &&
-    created >= dispatchedAtMs - CREATED_WINDOW_SKEW_MS;
+  if (Number.isNaN(created)) return false;
+  if (window.from !== undefined && created < window.from) return false;
+  if (window.to !== undefined && created > window.to) return false;
+  return true;
+}
+
+/**
+ * When a run must have been created to be ours. Each bound is optional because
+ * the two correlation modes need different ones, and applying a bound that
+ * carries no meaning only creates ways for a healthy gate to fail.
+ *
+ * The **upper** bound matters in both modes and is the security-carrying one. A
+ * marker has to be *observed* before it can be copied — it contains a random
+ * per-run id — so a run wearing ours was necessarily created after we
+ * dispatched, and without an upper bound a run created hours or days later
+ * would still be adopted at the next poll.
+ *
+ * The **lower** bound is what created-window mode has instead of a marker: with
+ * nothing else to distinguish runs, "created no earlier than we dispatched" is
+ * load-bearing. Marker mode does not use it. The marker already rules out an
+ * older run, and comparing our clock against GitHub's would let ordinary clock
+ * drift on the machine running the build strand a gate that is working
+ * perfectly.
+ */
+interface CreatedWindow {
+  /** Earliest creation time, or `undefined` to leave it unbounded. */
+  from?: number;
+  /** Latest creation time, or `undefined` to leave it unbounded. */
+  to?: number;
 }
 
 /**
@@ -642,11 +675,16 @@ function correlateByWindow(
   runs: readonly WorkflowRun[],
   ref: string,
   dispatchedAtMs: number,
+  discoveryTimeoutMs: number,
   workflow: string,
   baseline: readonly number[],
 ): WorkflowRun | null {
   const candidates = runs.filter((r) =>
-    !baseline.includes(r.id) && isOurDispatch(r, ref, dispatchedAtMs)
+    !baseline.includes(r.id) &&
+    isOurDispatch(r, ref, {
+      from: dispatchedAtMs - CREATED_WINDOW_SKEW_MS,
+      to: dispatchedAtMs + discoveryTimeoutMs + CREATED_WINDOW_SKEW_MS,
+    })
   );
   if (candidates.length === 0) return null;
   if (candidates.length > 1) {
@@ -680,9 +718,14 @@ function correlateByMarker(
   runs: readonly WorkflowRun[],
   ref: string,
   dispatchedAtMs: number,
+  discoveryTimeoutMs: number,
   workflow: string,
 ): WorkflowRun | null {
-  const candidates = runs.filter((r) => isOurDispatch(r, ref, dispatchedAtMs));
+  const candidates = runs.filter((r) =>
+    isOurDispatch(r, ref, {
+      to: dispatchedAtMs + discoveryTimeoutMs + CREATED_WINDOW_SKEW_MS,
+    })
+  );
   if (candidates.length === 0) return null;
   if (candidates.length > 1) {
     const urls = candidates.map((r) => r.url).join(", ");
@@ -690,9 +733,9 @@ function correlateByMarker(
       `githubWorkflow: marker correlation for "${workflow}" on "${ref}" is ` +
         `ambiguous — ${candidates.length} workflow_dispatch runs carry this ` +
         `run's marker (${urls}). A marker is copyable by anyone who can list ` +
-        `the workflow's runs, so refusing is the only safe answer: dispatch ` +
-        `on a ref only this pipeline uses, or restrict who may run the ` +
-        `workflow.`,
+        `the workflow's runs, so refusing is the only safe answer. Narrow who ` +
+        `holds actions:write on that repository, or put the workflow behind ` +
+        `an environment with required reviewers.`,
     );
   }
   return candidates[0];
@@ -848,6 +891,7 @@ export function githubWorkflowWith(
               await api.recentRuns(repo, workflow),
               settings.ref_,
               anchor,
+              discoveryTimeoutMs,
               workflow,
               baselineIds,
             )
@@ -855,6 +899,7 @@ export function githubWorkflowWith(
               await api.findMarkedRuns(repo, workflow, marker),
               settings.ref_,
               anchor,
+              discoveryTimeoutMs,
               workflow,
             );
           if (run === null) {
@@ -875,8 +920,12 @@ export function githubWorkflowWith(
         // a resume in another process trusts a run id out of durable state, and
         // this is what re-establishes that the id still names a run raised by
         // our dispatch before its conclusion is turned into a gate result.
+        // Identity only, with no creation window: when the run was created was
+        // settled at adoption, and re-judging it against an anchor that a
+        // legacy record backfilled to "now" would fail a run that is perfectly
+        // healthy — permanently, since the failure repeats on every resume.
         const run = await api.getRun(repo, runId);
-        if (!isOurDispatch(run, settings.ref_, anchor)) {
+        if (!isOurDispatch(run, settings.ref_, {})) {
           throw new WorkflowCorrelationError(
             `githubWorkflow: run ${runId} of "${workflow}" is not the run this ` +
               `dispatch created (${run.url}) — it is a "${run.event}" run on ` +

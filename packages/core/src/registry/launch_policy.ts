@@ -65,13 +65,17 @@ export const LAUNCH_HOSTS_ENV = "ZUKE_REGISTRY_LAUNCH_HOSTS";
  * path only. A refusal names the exact string to add, so the list is built from
  * what a run actually asks for rather than from guesswork.
  *
- * Two consequences are the operator's call to make. A **relative** program is
- * resolved against the descriptor's own working directory, which the same
- * writer chooses, so listing one trusts the registry with both — prefer an
- * absolute path. And listing an interpreter — `sh`, `bash`, `deno`, `node`,
- * `python` — hands the registry writer full code execution, because the
- * arguments are theirs; listing `deno` in particular reinstates exactly what
- * {@link LAUNCH_HOSTS_ENV} exists to refuse.
+ * Listing a program does not license it to fetch: every argument that names a
+ * remote specifier still has to pass {@link LAUNCH_HOSTS_ENV}, so
+ * `deno run -A https://…` is refused by origin exactly as the module form is.
+ *
+ * What that leaves is inherent to allow-listing: an approved program can be
+ * given ordinary local arguments the registry writer chose. A **relative**
+ * program is resolved against the descriptor's own working directory, which
+ * the same writer picks, so prefer an absolute path; and listing a shell or
+ * interpreter hands over anything reachable locally, since `sh -c` needs no
+ * fetch at all. The list is where the operator makes that judgement, which is
+ * why the default is to name nothing.
  */
 export const LAUNCH_COMMANDS_ENV = "ZUKE_REGISTRY_LAUNCH_COMMANDS";
 
@@ -154,10 +158,28 @@ export function launchDenial(
   if (location.kind === "command") {
     return commandDenial(location.command, readEnv);
   }
-  if (isLocalModule(location.module)) return null;
+  return remoteSpecifierDenial(location.module, "entry module", readEnv);
+}
+
+/**
+ * Decide whether a remote specifier may be fetched and run: its origin must be
+ * allow-listed, and a plaintext origin needs the insecure opt-out on top.
+ * Returns `null` for a local path, which is already code on the machine.
+ *
+ * One implementation, two callers. A module location is one specifier, and a
+ * command location can carry one among its arguments — `deno run -A <url>` is
+ * the same fetch-and-execute written a different way — so both are judged by
+ * the same rule rather than by two that could drift apart.
+ */
+function remoteSpecifierDenial(
+  raw: string,
+  what: string,
+  readEnv: (name: string) => string | undefined,
+): LaunchDenial | null {
+  if (isLocalModule(raw)) return null;
   let url: URL;
   try {
-    url = new URL(location.module);
+    url = new URL(raw);
   } catch {
     // Unreachable: isLocalModule() already accepted anything URL cannot parse.
     return null;
@@ -168,7 +190,7 @@ export function launchDenial(
     return {
       reason: "launch_origin_not_allowed",
       detail:
-        `Refusing to spawn a remote entry module from "${origin}": running it ` +
+        `Refusing to spawn a remote ${what} from "${origin}": running it ` +
         `would execute code this machine fetches from the network on a ` +
         `registry's say-so. Add the origin to ${LAUNCH_HOSTS_ENV} (or "*" to ` +
         `allow any) if that registry is trusted to name it.`,
@@ -179,8 +201,7 @@ export function launchDenial(
     if (optOut === undefined || optOut === "") {
       return {
         reason: "insecure_launch_url",
-        detail:
-          `Refusing to spawn a plaintext entry module from "${origin}": ` +
+        detail: `Refusing to spawn a plaintext ${what} from "${origin}": ` +
           `anyone on the path chooses the source that gets executed. Use an ` +
           `https URL, or set ${ALLOW_INSECURE_ENV}=1 to accept the risk.`,
       };
@@ -201,8 +222,19 @@ function commandDenial(
   const program = command[0];
   if (program === undefined || program === "") return null;
   const allowed = allowList(LAUNCH_COMMANDS_ENV, readEnv, COMMAND_SEPARATOR);
-  if (allowed.includes("*")) return null;
-  if (allowed.includes(program.toLowerCase())) return null;
+  if (allowed.includes("*") || allowed.includes(program.toLowerCase())) {
+    // Allowing a program does not allow it to fetch. `deno run -A <url>` is the
+    // refused remote-module case written as a command, so every argument that
+    // names a remote specifier faces the same origin rule the module form does.
+    // What remains after this — an approved program given ordinary local
+    // arguments — is what allow-listing a program means, and the operator
+    // decides it by choosing what to list.
+    for (const argument of command.slice(1)) {
+      const denial = remoteSpecifierDenial(argument, "argument", readEnv);
+      if (denial !== null) return denial;
+    }
+    return null;
+  }
   return {
     reason: "launch_command_not_allowed",
     detail:

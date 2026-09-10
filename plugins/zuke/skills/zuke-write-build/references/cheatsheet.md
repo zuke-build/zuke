@@ -374,9 +374,11 @@ class Deploy extends Build {
   you can't modify use `.correlate("created-window")` (best-effort). A marker is
   copyable and anyone who can dispatch the workflow can wear it, so a run is
   adopted only if it is *also* a `workflow_dispatch`, on the dispatched ref, and
-  created no earlier than the dispatch; two survivors are a refusal, and the
-  identity is re-checked before the result is read. Protect the ref you dispatch
-  when the gate authorizes work in another trust domain. Either way it
+  created within the discovery window; two survivors are a refusal, and the
+  identity is re-checked before the result is read. A holder of `actions: write`
+  on that repo can still dispatch the same workflow (branch protection does not
+  gate a dispatch), so narrow that permission or use an environment with
+  required reviewers when the gate authorizes work in another trust domain. Either way it
   **fails fast** (`.discoveryTimeout(...)`, default 1m) if the run never
   correlates, instead of eating the whole `.timeout()`. The **dispatched**
   workflow has its own contract (marker input, run-name, required inputs) — see
@@ -1341,8 +1343,10 @@ spawned. A `command` location is gated the same way against
 `ZUKE_REGISTRY_LAUNCH_COMMANDS` (comma-separated; matched against `command[0]`
 exactly, never by basename, since the descriptor picks the program string; `*`
 allows any), because the registry writer chooses the program *and its
-arguments* — audited `launch_command_not_allowed`. Prefer absolute paths: a
-relative program resolves against the descriptor's own cwd. `zuke register`
+arguments* — audited `launch_command_not_allowed`. Listing a program does not
+license it to fetch: a remote argument still has to pass
+`ZUKE_REGISTRY_LAUNCH_HOSTS`. Prefer absolute paths: a relative program resolves
+against the descriptor's own cwd. `zuke register`
 writes a local `file:` module, so both only bite a hand-authored or
 second-party registry entry.
 
