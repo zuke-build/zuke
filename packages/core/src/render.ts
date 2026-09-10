@@ -62,6 +62,13 @@ export function escapeProperty(value: string): string {
  * `##[command]` form is recognised *anywhere* in a line, so it needs no newline
  * to reach at all.
  *
+ * "Blank" is the runner's idea of it, not this language's. The two sets differ
+ * by exactly one character in the direction that matters: NEXT LINE (U+0085),
+ * which the runner trims and `\s` does not match. It is not a line terminator
+ * for the reader the runner uses, so it travels inside a line and disappears
+ * only when the command is parsed, which would let `::` reach the front of a
+ * line that looked indented here. It is matched explicitly for that reason.
+ *
  * Ordinary output is returned unchanged; only text that would have been
  * executed as a command comes back visibly encoded.
  */
@@ -71,7 +78,10 @@ export function escapeLine(text: string): string {
     .map((part) =>
       /^(?:\r\n|\r|\n)$/.test(part)
         ? part
-        : part.replace(/^(\s*)::/, "$1%3A%3A").replaceAll("##[", "%23%23[")
+        : part.replace(/^([\s\u0085]*)::/, "$1%3A%3A").replaceAll(
+          "##[",
+          "%23%23[",
+        )
     )
     .join("");
 }

@@ -12,6 +12,8 @@ import {
   targetFailFooter,
   targetHeader,
   targetPassFooter,
+  type TargetReport,
+  targetWaitFooter,
 } from "../src/report.ts";
 
 /** Plain (no colour, terminal mode), with a stable width for assertions. */
@@ -337,11 +339,17 @@ const OWN_COMMAND = /^::(?:endgroup::|group::|error title=)/;
  */
 function hasCommandLine(lines: readonly string[]): boolean {
   return physicalLines(lines).some((l) => {
-    const trimmed = l.trimStart();
+    // Trim what the *runner* considers blank, which includes NEXT LINE and so
+    // is wider than this language's `trimStart`. Using the narrower set would
+    // give the oracle the same blind spot as the code it checks.
+    const trimmed = l.replace(/^[\s\u0085]*/, "");
     if (OWN_COMMAND.test(trimmed)) return false;
     return trimmed.startsWith("::") || l.includes("##[");
   });
 }
+
+/** NEXT LINE: whitespace to the runner, not matched by this language's `\s`. */
+const NEL = String.fromCharCode(0x85);
 
 Deno.test("a failure message cannot open a workflow command", () => {
   // A CommandError embeds the failed subprocess's stderr verbatim, so this is
@@ -430,4 +438,51 @@ Deno.test("ordinary output is returned unchanged", () => {
     true,
   );
   assertEquals(github.filter((l) => l !== "::endgroup::"), plain);
+});
+
+Deno.test("a line the runner un-blanks cannot open a command", () => {
+  // NEXT LINE is trimmed by the runner before it tests for `::`, and is not
+  // matched by this language's `\s`. A line that looks indented here therefore
+  // starts with `::` by the time the runner reads it.
+  const { error } = targetFailFooter(
+    GITHUB,
+    "lint",
+    1,
+    new Error(`boom\n${NEL}::stop-commands::x`),
+  );
+  assertEquals(hasCommandLine(error.slice(0, 2)), false);
+});
+
+Deno.test("a summary note cannot open a command", () => {
+  // Notes are parsed out of a tool's own output by the wrapper packages, and
+  // the legacy bracketed form needs no newline to be recognised.
+  const reports: TargetReport[] = [{
+    name: "lint",
+    status: "passed",
+    ms: 1,
+    summary: [{ key: "Files", value: "##[add-mask]hunter2" }],
+  }];
+  assertEquals(hasCommandLine(summaryBlock(GITHUB, reports, 1, true)), false);
+});
+
+Deno.test("a wait footer's trigger cannot open a command", () => {
+  // The trigger names what is being waited on — for a workflow gate, a
+  // repository and a workflow file.
+  assertEquals(
+    hasCommandLine(targetWaitFooter(GITHUB, "e2e", "gh:acme/app##[error]x")),
+    false,
+  );
+});
+
+Deno.test("a pipe in a target name cannot add a column to the job summary", () => {
+  // The note cell already guarded against this; the name cell did not.
+  const md = jobSummaryMarkdown(
+    [{ name: "deploy|extra|cells", status: "passed", ms: 1 }],
+    1,
+    true,
+  );
+  const row = md.split("\n").find((l) => l.includes("deploy")) ?? "";
+  // Leading, name, result, time, trailing — the pipes in the name are escaped
+  // rather than opening columns of their own.
+  assertEquals(row.split(/(?<!\\)\|/).length, 5);
 });

@@ -329,6 +329,7 @@ async function driveEffects(
   ctx: TargetContext,
   env: RunEnv,
   reporter: Reporter,
+  style: Style,
 ): Promise<void> {
   if (t.effects_.length === 0) return;
   const writer = env.writer;
@@ -368,9 +369,10 @@ async function driveEffects(
           messageOf(error),
         );
       } catch (settleError) {
+        const safe = (text: string) => style.github ? escapeLine(text) : text;
         reporter.info(
-          `effect "${declared.name}" on "${name}" failed, and recording that ` +
-            `failed too: ${messageOf(settleError)}`,
+          `effect "${safe(declared.name)}" on "${safe(name)}" failed, and ` +
+            `recording that failed too: ${safe(messageOf(settleError))}`,
         );
       }
       throw error;
@@ -501,7 +503,10 @@ async function runTarget(
           summary,
           () =>
             withAmbientEcho(
-              (line) => reporter.info(`  $ ${line}`),
+              // The echoed command line is built from argv the build composed,
+              // which can carry a parameter value or a fan-out key.
+              (line) =>
+                reporter.info(`  $ ${style.github ? escapeLine(line) : line}`),
               () => runBody(t, targetCtx),
             ),
         );
@@ -578,6 +583,7 @@ async function runTarget(
               targetContextFor(name, env, dryRun, summary),
               env,
               reporter,
+              style,
             ),
         );
       } catch (error) {
@@ -628,7 +634,7 @@ async function runTarget(
     await withAmbientSummary(summary, async () => {
       for (const v of t.validateBefore_) await v.validate({ target: name });
       await runBodyWithRecovery(t, name, globalRecovery, targetCtx);
-      await driveEffects(t, name, targetCtx, env, reporter);
+      await driveEffects(t, name, targetCtx, env, reporter, style);
       for (const v of t.validateAfter_) await v.validate({ target: name });
     });
     const ms = performance.now() - start;

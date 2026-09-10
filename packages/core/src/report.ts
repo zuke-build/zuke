@@ -180,8 +180,12 @@ export function targetWaitFooter(
   trigger: string,
 ): string[] {
   const icon = paint(style.color, SGR.magenta, ICON.waiting);
-  const note = paint(style.color, SGR.dim, `waiting for ${trigger}`);
-  const line = `${icon} ${style.github ? escapeLine(name) : name} ${note}`;
+  // The trigger describes what is being waited on, which for a workflow gate
+  // names a repository and a workflow file, so it is no more ours than the
+  // target name beside it.
+  const safe = (text: string) => style.github ? escapeLine(text) : text;
+  const note = paint(style.color, SGR.dim, `waiting for ${safe(trigger)}`);
+  const line = `${icon} ${safe(name)} ${note}`;
   return style.github ? [line, "::endgroup::"] : [line];
 }
 
@@ -243,7 +247,11 @@ export function summaryBlock(
     // so the status and timing columns stay the thing the eye lands on. They
     // are not part of the table's width: a long note overhangs the rules
     // rather than pushing every duration to the right.
-    const note = formatSummary(r.summary);
+    // Notes are parsed out of a tool's own output by the wrapper packages, so
+    // they are the same untrusted class as the name. They need no newline to
+    // matter: the legacy bracketed command form is recognised mid-line.
+    const raw = formatSummary(r.summary);
+    const note = style.github ? escapeLine(raw) : raw;
     const notes = note === ""
       ? ""
       : "  " + paint(style.color, SGR.dim, `// ${note}`);
@@ -361,7 +369,10 @@ export function jobSummaryMarkdown(
   const rows = reports.map((r) => {
     const ran = r.status === "passed" || r.status === "failed";
     const duration = ran ? formatDuration(r.ms) : "—";
-    return `| ${r.name} | ${ICON[r.status]} ${
+    // A pipe in a name would otherwise open a column of its own, the way the
+    // note cell already guards against.
+    const name = r.name.replaceAll("|", "\\|");
+    return `| ${name} | ${ICON[r.status]} ${
       STATUS_LABEL[r.status]
     } | ${duration} |${notesCell(r)}`;
   });

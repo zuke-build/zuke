@@ -24,22 +24,38 @@ import { withEnv } from "../../packages/core/tests/_env.ts";
 /** Zuke's own workflow commands, which are supposed to open with `::`. */
 const OWN_COMMAND = /^::(?:endgroup::|group::|error title=|add-mask::)/;
 
+/**
+ * Trim what the *runner* considers blank before it tests for a command, which
+ * is not the same set this language trims: NEXT LINE (U+0085) is whitespace to
+ * the runner and not to `String.prototype.trimStart`. Using the language's
+ * idea here would give the oracle the same blind spot as the code it checks.
+ */
+function runnerTrimStart(line: string): string {
+  return line.replace(/^[\s\u0085]*/, "");
+}
+
 /** Physical lines the runner would parse, minus Zuke's own commands. */
 function unintendedCommands(stream: string): string[] {
   return stream
     .split(/\r\n|\r|\n/)
     .filter((l) => {
-      const trimmed = l.trimStart();
+      const trimmed = runnerTrimStart(l);
       if (OWN_COMMAND.test(trimmed)) return false;
       return trimmed.startsWith("::") || l.includes("##[");
     });
 }
+
+/** NEXT LINE: trimmed by the runner, not matched by this language's `\s`. */
+const NEL = String.fromCharCode(0x85);
 
 /** What a tool prints when it echoes hostile repository content back at us. */
 const HOSTILE = [
   "lint failed on src/x.ts",
   "::stop-commands::deadbeef",
   "   ::error::forged annotation",
+  // NEXT LINE is whitespace to the runner but not to this language, so it is
+  // trimmed at parse time and the `::` lands at the front of the line.
+  `${NEL}::error::forged past a language-specific trim`,
   "note: ##[error]forged too",
 ].join("\n");
 
