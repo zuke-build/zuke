@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.49.1](https://github.com/zuke-build/zuke/compare/core-v1.49.0...core-v1.49.1) (2026-09-09)
+
+
+### Bug Fixes
+
+* **core:** apply the retained-write check to the effect path too ([#531](https://github.com/zuke-build/zuke/issues/531)) ([13fee96](https://github.com/zuke-build/zuke/commit/13fee96ed3e74c25eb5fee02739961cd0bf91352)), closes [#530](https://github.com/zuke-build/zuke/issues/530)
+* **core:** record a resume's parameter overrides in the audit trail ([#523](https://github.com/zuke-build/zuke/issues/523)) ([d59d7af](https://github.com/zuke-build/zuke/commit/d59d7af3ceb5be3b8e3ae7c9652eaf19c756b1e7)), closes [#522](https://github.com/zuke-build/zuke/issues/522)
+* **core:** report a held-back state write that a later conflict destroys ([#527](https://github.com/zuke-build/zuke/issues/527)) ([4057e90](https://github.com/zuke-build/zuke/commit/4057e909edece34b6e9d72cb89543f208c1013c9)), closes [#511](https://github.com/zuke-build/zuke/issues/511)
+* **core:** settle the targets a terminal run never reached, whichever way it ended ([#528](https://github.com/zuke-build/zuke/issues/528)) ([b04127b](https://github.com/zuke-build/zuke/commit/b04127b29e3ebbf951ada322f8b6079d1cf28340)), closes [#505](https://github.com/zuke-build/zuke/issues/505)
+
 ## [1.49.0](https://github.com/zuke-build/zuke/compare/core-v1.48.2...core-v1.49.0) (2026-09-09)
 
 
