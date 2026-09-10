@@ -32,7 +32,12 @@ import {
   TargetSummary,
   withAmbientSummary,
 } from "./summary_note.ts";
-import { type Style, type TargetReport, targetWaitFooter } from "./report.ts";
+import {
+  escapeLine,
+  type Style,
+  type TargetReport,
+  targetWaitFooter,
+} from "./report.ts";
 import type { Renderer } from "./renderer.ts";
 import {
   cloneTarget,
@@ -434,9 +439,14 @@ async function runTarget(
   // started yet.
   const forced = env.writer?.snapshot().overrides?.[name];
   if (forced !== undefined) {
+    // The actor and reason come from the shared state store, so on the runner's
+    // stream they are neutralised like any other text this process did not
+    // author. The target name is ours, but a fan-out key is not, so it goes
+    // through too.
+    const safe = (text: string) => style.github ? escapeLine(text) : text;
     reporter.info(
-      `${name}: forced ${forced.outcome} by ${forced.actor}` +
-        (forced.reason === undefined ? "" : ` — ${forced.reason}`),
+      `${safe(name)}: forced ${forced.outcome} by ${safe(forced.actor)}` +
+        (forced.reason === undefined ? "" : ` — ${safe(forced.reason)}`),
     );
     return {
       status: forced.outcome === "skipped" ? "skipped" : "passed",

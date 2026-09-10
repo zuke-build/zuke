@@ -5426,6 +5426,45 @@ function box(style: Style, content: string | readonly string[], options: BoxOpti
 function detectWidth(): number
   Read the terminal width if available, clamped to a sane range.
 
+function escapeData(value: string): string
+  Escape a value interpolated into the body of a GitHub Actions workflow
+  command (`::error::<data>`).
+
+  A workflow command is terminated by the end of its line, so a value carrying
+  a newline continues into what the runner parses as a fresh command. A
+  target's failure message embeds a subprocess's stderr verbatim, which is not
+  ours to trust: a tool that writes `::stop-commands::` on a line of its own
+  would otherwise suspend the runner's command processing, and one that writes
+  `::error::` would forge an annotation. Percent-encoding is the escape the
+  Actions spec defines for exactly this, and `%` is encoded first so the
+  encoding cannot be spoofed by a literal `%0A` in the input.
+
+function escapeLine(text: string): string
+  Neutralise workflow commands in text that is printed as itself on a stream
+  the GitHub Actions runner parses — a failure message, a target name, a
+  summary row — rather than interpolated into a command's body.
+
+  {@link escapeData} is the wrong tool there. It answers the same threat, but
+  by encoding every newline, which would fold a multi-line compiler dump into
+  one unreadable `%0A`-joined line: correct, and useless to the person reading
+  the log. This keeps the text as it was written and disarms only the two
+  sequences the runner acts on.
+
+  Both forms are covered, because the runner accepts both. A line whose first
+  non-blank characters are `::` opens a command, and leading whitespace is
+  trimmed before that test, so indenting the text defends nothing. The legacy
+  `##[command]` form is recognised anywhere in a line, so it needs no newline
+  to reach at all.
+
+  Ordinary output is returned unchanged; only text that would have been
+  executed as a command comes back visibly encoded.
+
+function escapeProperty(value: string): string
+  Escape a value interpolated into a workflow command's property list
+  (`::error title=<property>::`). Properties are comma-separated and
+  colon-terminated, so those two characters need encoding on top of what
+  {@link escapeData} handles.
+
 function formatDuration(ms: number): string
   Format a duration in milliseconds as `1.2s`.
 

@@ -316,3 +316,118 @@ Deno.test("jobSummaryMarkdown escapes a pipe in a note so it cannot add a cell",
   );
   assertStringIncludes(md, "| t | ✔ Succeeded | 0.0s | Ratio: a \\| b |");
 });
+
+// --- workflow-command neutralisation on the runner's stream -----------------
+
+/** Every physical line of `lines`, as the Actions runner would split them. */
+function physicalLines(lines: readonly string[]): string[] {
+  return lines.flatMap((l) => l.split(/\r\n|\r|\n/));
+}
+
+/**
+ * Zuke's own workflow commands, which are supposed to open with `::`. Their
+ * bodies are percent-encoded, so untrusted text cannot break out of them.
+ */
+const OWN_COMMAND = /^::(?:endgroup::|group::|error title=)/;
+
+/**
+ * Whether any physical line would be taken by the runner as a command that
+ * Zuke did not intend to emit — the runner trims leading whitespace before
+ * testing for `::`, and recognises the legacy `##[...]` form anywhere.
+ */
+function hasCommandLine(lines: readonly string[]): boolean {
+  return physicalLines(lines).some((l) => {
+    const trimmed = l.trimStart();
+    if (OWN_COMMAND.test(trimmed)) return false;
+    return trimmed.startsWith("::") || l.includes("##[");
+  });
+}
+
+Deno.test("a failure message cannot open a workflow command", () => {
+  // A CommandError embeds the failed subprocess's stderr verbatim, so this is
+  // attacker-influenced whenever a tool echoes repository content. Both runner
+  // syntaxes are covered: a `::` line (leading whitespace is trimmed before the
+  // test, so indenting defends nothing) and the legacy `##[...]` form, which is
+  // recognised anywhere in a line and needs no newline at all.
+  const hostile = [
+    "Command failed (exit 1): lint",
+    "::stop-commands::deadbeef",
+    "   ::error::forged",
+    "trailing ##[error]forged",
+  ].join("\n");
+  const { info, error } = targetFailFooter(
+    GITHUB,
+    "lint",
+    5,
+    new Error(hostile),
+  );
+
+  assertEquals(hasCommandLine(error.slice(0, 2)), false);
+  // The text is still there and still readable — only the two sequences the
+  // runner acts on are encoded.
+  // The leading `::` is encoded, so the line no longer opens a command; the
+  // rest of the text is untouched.
+  assertStringIncludes(error[1], "%3A%3A" + "stop-commands::deadbeef");
+  assertStringIncludes(error[1], "%23%23[error]forged");
+  assertStringIncludes(error[1], "Command failed (exit 1): lint");
+  // Zuke's own commands still work: the annotation and the group close.
+  assertStringIncludes(error[2], "::error title=lint::");
+  assertEquals(info, ["::endgroup::"]);
+});
+
+Deno.test("plain mode leaves a failure message exactly as it was", () => {
+  // Nothing parses a terminal, so encoding there would only hurt legibility.
+  const hostile = "boom\n::stop-commands::x\n##[error]y";
+  const { error } = targetFailFooter(PLAIN, "lint", 5, new Error(hostile));
+  assertStringIncludes(error[1], "::stop-commands::x");
+  assertStringIncludes(error[1], "##[error]y");
+});
+
+Deno.test("a target name cannot open a workflow command in any footer", () => {
+  // A fan-out sub-target's name embeds its item key, which is derived from
+  // repository or remote data.
+  const name = "build[a\n::stop-commands::x].compile";
+  assertEquals(hasCommandLine(targetPassFooter(GITHUB, name, 1)), false);
+  assertEquals(hasCommandLine(targetDryRunFooter(GITHUB, name)), false);
+  const { error } = targetFailFooter(GITHUB, name, 1, new Error("x"));
+  assertEquals(hasCommandLine(error.slice(0, 2)), false);
+
+  // The group header is one of Zuke's own commands, so it opens with `::` by
+  // design. What matters there is that the name cannot break out of it: it is
+  // percent-encoded into the command body, leaving a single physical line.
+  const header = targetHeader(GITHUB, name);
+  assertEquals(header.length, 1);
+  assertEquals(physicalLines(header).length, 1);
+  assertStringIncludes(header[0], "%0A" + "::stop-commands::x");
+});
+
+Deno.test("a hostile target name cannot open a command from the summary", () => {
+  const reports = [
+    { name: "ok", status: "passed", ms: 1 },
+    { name: "b\n::stop-commands::x", status: "failed", ms: 2 },
+  ] as const;
+  const block = summaryBlock(GITHUB, [...reports], 3, false);
+  assertEquals(hasCommandLine(block), false);
+  // The closing line names the culprit, so it carries the name too.
+  assertEquals(
+    hasCommandLine([closingLine(GITHUB, [...reports], 3, false, new Date())]),
+    false,
+  );
+});
+
+Deno.test("ordinary output is returned unchanged", () => {
+  // The escape must be invisible to every build that is not under attack.
+  const plain = summaryBlock(
+    PLAIN,
+    [{ name: "lint", status: "passed", ms: 1 }],
+    1,
+    true,
+  );
+  const github = summaryBlock(
+    GITHUB,
+    [{ name: "lint", status: "passed", ms: 1 }],
+    1,
+    true,
+  );
+  assertEquals(github.filter((l) => l !== "::endgroup::"), plain);
+});

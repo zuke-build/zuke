@@ -3293,3 +3293,32 @@ Deno.test("summary: a target's notes land in the run record and in a dependent's
     assertEquals(loaded?.record.targets.gate.summary, undefined);
   });
 });
+
+Deno.test("a secret in a summary note is redacted in the job summary too", async () => {
+  // Every other sink for a resolved secret() parameter is redacted — the
+  // console through the reporter, the run record as it is persisted — and this
+  // one was not, so the value read [redacted] on the terminal while the job
+  // summary published it to everyone who can view the workflow run. The
+  // ::add-mask:: directives do not cover it: they mask the runner's log stream,
+  // not a file the build writes.
+  class B extends Build {
+    token = parameter("deploy token").secret().default("s3cr3t-value");
+    deploy = target().executes(() => {
+      // The shape this bites in practice: an identifier built from the secret.
+      reportSummary({ Endpoint: `https://api.example/${this.token.value}` });
+    });
+  }
+  const build = new B();
+  discoverTargets(build);
+  const tmp = await Deno.makeTempFile();
+  try {
+    await withEnv("GITHUB_STEP_SUMMARY", tmp, async () => {
+      await silence(() => execute(build, build.deploy, { github: true }));
+    });
+    const md = await Deno.readTextFile(tmp);
+    assertEquals(md.includes("s3cr3t-value"), false);
+    assertEquals(md.includes("[redacted]"), true);
+  } finally {
+    await Deno.remove(tmp);
+  }
+});
