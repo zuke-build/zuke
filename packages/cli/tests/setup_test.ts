@@ -523,3 +523,45 @@ Deno.test("defaultHost.isSymlink reads the link, not its target", async () => {
     assertEquals(await defaultHost.isSymlink(dangling), true);
   });
 });
+
+Deno.test("a link planted after the check is replaced, not written through", async () => {
+  if (Deno.build.os === "windows") return; // Deno.symlink needs privileges.
+  // The pre-write check reports what is there when it runs, so a link planted
+  // between the check and the write would escape it. Writing beside the
+  // destination and renaming into place removes that race outright: renaming
+  // replaces the link instead of following it. This drives the seam directly,
+  // because the race itself cannot be scheduled reliably in a test.
+  await withTemp(async (dir) => {
+    await withTemp(async (outside) => {
+      const victim = `${outside}/victim.txt`;
+      await Deno.writeTextFile(victim, "ORIGINAL");
+      const target = `${dir}/deno.json`;
+      await Deno.symlink(victim, target);
+
+      await defaultHost.writeText(target, "SCAFFOLDED");
+
+      // The file the link named is untouched, and the link is gone.
+      assertEquals(await Deno.readTextFile(victim), "ORIGINAL");
+      assertEquals(await Deno.readTextFile(target), "SCAFFOLDED");
+      assertEquals((await Deno.lstat(target)).isSymlink, false);
+    }, { prefix: "zuke-setup-victim-" });
+  });
+});
+
+Deno.test("writeText leaves no temporary file behind, on success or failure", async () => {
+  await withTemp(async (dir) => {
+    await defaultHost.writeText(`${dir}/zuke.json`, "{}");
+    const after: string[] = [];
+    for await (const entry of Deno.readDir(dir)) after.push(entry.name);
+    assertEquals(after, ["zuke.json"]);
+
+    // A destination whose parent does not exist fails the rename; the
+    // temporary file must not survive it.
+    await assertRejects(() =>
+      defaultHost.writeText(`${dir}/missing/zuke.json`, "{}")
+    );
+    const still: string[] = [];
+    for await (const entry of Deno.readDir(dir)) still.push(entry.name);
+    assertEquals(still, ["zuke.json"]);
+  });
+});

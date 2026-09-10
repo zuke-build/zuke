@@ -122,19 +122,28 @@ export interface SetupHost {
    *
    * The guard covers the names scaffolding chooses, which is where the hazard
    * is — the caller never asked for `.gitignore` to be written, so a repository
-   * redirecting it is a decision nobody made. Three things are deliberately out
-   * of its scope. The directory the caller names with `--dir` is the caller's
-   * to name, symlink or not. A **hard** link is indistinguishable from the file
-   * it shares, so no probe can see one; git cannot check one out either, which
-   * is what keeps it out of the threat this guards. And because every name is
-   * checked before any is written, a link planted in between is still followed
-   * — closing that needs an open-without-following the runtime does not expose,
-   * and it already presumes local code execution.
+   * redirecting it is a decision nobody made. It reports what is there when it
+   * runs, and a link planted after it would escape it; that is why
+   * {@link SetupHost.writeText} does not write through a link either, so the
+   * refusal is the friendly answer rather than the only defence.
+   *
+   * Two things stay out of scope. The directory the caller names with `--dir`
+   * is the caller's to name, symlink or not. And a **hard** link is
+   * indistinguishable from the file it shares, so no probe can see one; git
+   * cannot check one out either, which is what keeps it out of the threat this
+   * guards.
    */
   isSymlink(path: string): Promise<boolean>;
   /** Read a file as UTF-8 text. */
   readText(path: string): Promise<string>;
-  /** Write UTF-8 text to a file, creating or truncating it. */
+  /**
+   * Write UTF-8 text to a file, creating or replacing it.
+   *
+   * An implementation must not write *through* a symbolic link standing at
+   * `path`: the scaffolder's confinement to its target directory rests on this,
+   * and the pre-write {@link SetupHost.isSymlink} check alone cannot carry it,
+   * since a link can appear after the check.
+   */
   writeText(path: string, content: string): Promise<void>;
   /** Set a file's permission bits (may be unsupported on some platforms). */
   chmod(path: string, mode: number): Promise<void>;
@@ -170,8 +179,22 @@ export const defaultHost: SetupHost = {
   readText(path: string): Promise<string> {
     return Deno.readTextFile(path);
   },
-  writeText(path: string, content: string): Promise<void> {
-    return Deno.writeTextFile(path, content);
+  async writeText(path: string, content: string): Promise<void> {
+    // Write beside the destination and rename into place, rather than writing
+    // to the destination directly. Renaming replaces a symbolic link sitting at
+    // the destination instead of following it, so the bytes cannot be
+    // redirected outside this directory even by a link planted after the
+    // pre-write check. The temporary name is created exclusively, so it cannot
+    // itself be a link someone left waiting.
+    const temp = `${path}.zuke-${crypto.randomUUID().slice(0, 8)}.tmp`;
+    try {
+      await Deno.writeTextFile(temp, content, { createNew: true });
+      await Deno.rename(temp, path);
+    } catch (error) {
+      // Best effort: a failed write may not have created the file at all.
+      await Deno.remove(temp).catch(() => {});
+      throw error;
+    }
   },
   chmod(path: string, mode: number): Promise<void> {
     return Deno.chmod(path, mode);
