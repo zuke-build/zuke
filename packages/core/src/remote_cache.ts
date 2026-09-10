@@ -23,14 +23,16 @@
 
 import {
   assertSafeEntryName,
-  gunzip,
+  findSymlinkAncestor,
+  gunzipBounded,
   gzip,
+  type LinkProbe,
   tar,
   type TarEntry,
   untar,
 } from "./compression.ts";
 import { assertSecureBackendUrl, HttpError } from "./http.ts";
-import { readFileOrNull } from "./internal.ts";
+import { readBytesBounded, readFileOrNull } from "./internal.ts";
 
 /**
  * A content-addressed store for archived target outputs, keyed by
@@ -45,12 +47,40 @@ export interface RemoteCacheStore {
   put(key: string, artifact: Uint8Array): Promise<void>;
 }
 
+/**
+ * How many bytes of a fetched artifact the cache will read off the wire before
+ * refusing it. Far above any real target's compressed outputs, and a refusal is
+ * a warned rebuild rather than a failure, so the cost of the cap being wrong is
+ * one slow build.
+ */
+const DEFAULT_MAX_ARTIFACT_BYTES = 512 * 1024 * 1024;
+
+/**
+ * How much a fetched artifact may *decompress* to before it is refused.
+ *
+ * Deliberately larger than {@link DEFAULT_MAX_ARTIFACT_BYTES}: build outputs
+ * compress, so a legitimate archive routinely inflates several times over, and
+ * a bound equal to the on-the-wire one would refuse real artifacts. A
+ * decompression bomb overshoots this by orders of magnitude, so the headroom
+ * costs nothing.
+ */
+const DEFAULT_MAX_INFLATED_BYTES = 2 * 1024 * 1024 * 1024;
+
 /** Filesystem effects used to archive and restore a target's outputs. */
 export interface OutputHost {
   /** File contents, or `null` if the path does not exist. */
   readFile(path: string): Promise<Uint8Array | null>;
   /** Whether a path exists and is a directory, or `null` if it is missing. */
   stat(path: string): Promise<{ isDirectory: boolean } | null>;
+  /**
+   * Describe a path *without* following a final symlink, or `null` if it is
+   * missing. Distinct from {@link OutputHost.stat}, which resolves a link and so
+   * cannot see one: {@link restoreOutputs} refuses to write *through* a link,
+   * which is a question only an `lstat` can answer.
+   */
+  lstat(
+    path: string,
+  ): Promise<{ isSymlink: boolean; isDirectory: boolean } | null>;
   /** The entry names within a directory. */
   readDir(path: string): Promise<string[]>;
   /** Write a file, creating parent directories as needed. */
@@ -170,8 +200,23 @@ function assertPlainFileEntry(entry: TarEntry): void {
  * leaves no half-written, partially-trusted output tree. An entry is refused
  * when its name is absolute or escapes the workspace with `..`, when it is a
  * symlink or directory entry (which {@link archiveOutputs} never produces),
- * when it lands under `.git` or `.zuke`, and — when `outputs` is given — when it
- * falls outside the target's declared outputs.
+ * when it lands under `.git` or `.zuke`, when — given `outputs` — it falls
+ * outside the target's declared outputs, and when the path it would be written
+ * to passes through, or is, a symlink that already exists on disk.
+ *
+ * That last refusal is what makes the confinement real rather than lexical. The
+ * archive cannot plant a link, but a workspace can already hold one at a
+ * declared output — `dist -> /tmp/build`, a checked-out `bazel-bin`, a Windows
+ * junction — and `writeFile` follows it. Such a workspace no longer restores
+ * from the remote cache and rebuilds instead; the link is left alone, because
+ * the layout is the owner's and silently replacing it would be its own
+ * surprise.
+ *
+ * @param maxBytes The most the artifact may decompress to before it is refused,
+ *   defaulting to 2 GiB. The bound is applied *while* decompressing, so a small
+ *   archive that expands without limit is refused rather than buffered first.
+ *   It is larger than the bound a store puts on the compressed bytes because
+ *   outputs compress; both exist to stop memory exhaustion.
  *
  * @param outputs The declaring target's {@link TargetBuilder.outputs}. Pass them
  *   whenever they are known, which is what the executor does: an archive built
@@ -185,8 +230,23 @@ export async function restoreOutputs(
   artifact: Uint8Array,
   host: OutputHost,
   outputs?: readonly string[],
+  maxBytes: number = DEFAULT_MAX_INFLATED_BYTES,
 ): Promise<string[]> {
-  const entries = untar(await gunzip(artifact));
+  const inflated = await gunzipBounded(artifact, maxBytes);
+  if (inflated === null) {
+    throw new Error(
+      `remote cache: refusing an artifact that decompresses to more than ` +
+        `${maxBytes} bytes.`,
+    );
+  }
+  const entries = untar(inflated);
+  // Every ancestor confirmed to be a plain directory, so a deep output tree is
+  // not re-probed once per file. Restore writes nothing during this pass, so
+  // nothing can invalidate an entry in it — unlike the extractor, which creates
+  // as it goes and must evict.
+  const realDirs = new Set<string>(["."]);
+  const probe: LinkProbe = (path) => host.lstat(normalize(path));
+  const validated: { name: string; data: Uint8Array }[] = [];
   for (const entry of entries) {
     assertSafeEntryName(entry.name);
     assertPlainFileEntry(entry);
@@ -202,9 +262,35 @@ export async function restoreOutputs(
           `the target's declared outputs (${outputs.join(", ")}).`,
       );
     }
+    // The checks above are lexical — they reason about the entry's name. These
+    // two ask the filesystem what is already there, because `writeFile` follows
+    // a symlink: one the archive cannot have planted (a link entry is refused
+    // above), but one the workspace may already hold at a declared output.
+    const through = await findSymlinkAncestor(probe, ".", name, realDirs);
+    if (through !== null) {
+      throw new Error(
+        `remote cache: refusing to restore "${entry.name}" through the ` +
+          `symlink "${through}" — restoring would write outside the workspace. ` +
+          `Replace the link with a real directory to cache this target.`,
+      );
+    }
+    if ((await host.lstat(name))?.isSymlink === true) {
+      throw new Error(
+        `remote cache: refusing to restore over the symlink "${entry.name}" — ` +
+          `writing would follow it outside the workspace. Replace the link ` +
+          `with a real file to cache this target.`,
+      );
+    }
+    validated.push({ name, data: entry.data });
   }
+  // Write the *validated* path rather than the raw entry name. Every check
+  // above reasoned about the normalised form, and a name that differs from it
+  // — a literal backslash, legal on POSIX; a leading `./` — would otherwise be
+  // checked at one path and written at another, which is exactly the gap a
+  // guard must not have. `archiveOutputs` normalises on the way in, so for an
+  // archive Zuke produced the two are the same string.
   const written: string[] = [];
-  for (const entry of entries) {
+  for (const entry of validated) {
     await host.writeFile(entry.name, entry.data);
     written.push(entry.name);
   }
@@ -257,6 +343,14 @@ export interface HttpCacheStoreOptions {
   token?: string;
   /** The `fetch` implementation; defaults to the global. Overridable for tests. */
   fetch?: typeof fetch;
+  /**
+   * The most a fetched artifact may weigh on the wire, in bytes, before it is
+   * refused. Defaults to 512 MiB. Raise it for a target whose compressed
+   * outputs are genuinely larger; a refusal is a warned rebuild, not a build
+   * failure. What the bytes *decompress* to is bounded separately, by
+   * {@link restoreOutputs}.
+   */
+  maxArtifactBytes?: number;
 }
 
 /**
@@ -270,19 +364,27 @@ export interface HttpCacheStoreOptions {
  * a cache you control, and prefer a {@link "./params.ts" | secret parameter} or
  * an environment variable over a hard-coded value. On CI, restrict egress to
  * the cache host so a misconfigured or overridden URL can't exfiltrate
- * artifacts. Restored archives are always confined to the workspace (see
- * {@link restoreOutputs}), so a poisoned store cannot write outside it.
+ * artifacts. A restored archive cannot name a path outside the workspace, cannot
+ * carry a link or directory entry, and is refused if the path it would land on
+ * passes through a symlink the workspace already holds — so a poisoned store
+ * cannot write outside the workspace (see {@link restoreOutputs}). An artifact
+ * larger than {@link HttpCacheStoreOptions.maxArtifactBytes} is refused before
+ * it is buffered, and {@link restoreOutputs} separately bounds what it
+ * decompresses to.
  */
 export class HttpCacheStore implements RemoteCacheStore {
   readonly #base: string;
   readonly #token?: string;
   readonly #fetch: typeof fetch;
+  readonly #maxArtifactBytes: number;
 
-  /** Build the store from its URL, optional token, and `fetch` seam. */
+  /** Build the store from its URL, optional token, size cap, and `fetch` seam. */
   constructor(options: HttpCacheStoreOptions) {
     this.#base = options.url.replace(/\/+$/, "");
     this.#token = options.token;
     this.#fetch = options.fetch ?? fetch;
+    this.#maxArtifactBytes = options.maxArtifactBytes ??
+      DEFAULT_MAX_ARTIFACT_BYTES;
   }
 
   #url(key: string): string {
@@ -309,7 +411,17 @@ export class HttpCacheStore implements RemoteCacheStore {
       await response.body?.cancel();
       throw new HttpError(response.status, url);
     }
-    return new Uint8Array(await response.arrayBuffer());
+    // Read against the cap rather than buffering whole and measuring after: a
+    // store that answers with an endless body would otherwise exhaust memory
+    // before there was anything to reject.
+    const bytes = await readBytesBounded(response.body, this.#maxArtifactBytes);
+    if (bytes === null) {
+      throw new Error(
+        `remote cache: refusing an artifact larger than ` +
+          `${this.#maxArtifactBytes} bytes from ${url}.`,
+      );
+    }
+    return bytes;
   }
 
   /** Store `artifact` (a gzipped tar of a target's outputs) under `key`. */

@@ -54,6 +54,7 @@ import {
   type ProtectedResourceSettings,
 } from "./resource_metadata.ts";
 import { isLoopbackHost } from "../http.ts";
+import { readBytesBounded } from "../internal.ts";
 
 /** Options for {@link serveHttp}. */
 export interface HttpTransportOptions {
@@ -123,36 +124,16 @@ const MAX_BODY_BYTES = 1024 * 1024;
 
 /**
  * Read a request body as text, or return `null` once it exceeds `limit` bytes.
- * Reads incrementally and abandons the stream at the cap, so an oversized body
- * — including a chunked one that declares no `content-length` — is never
- * buffered whole just to be rejected.
+ * The byte-level bounding — reading incrementally and abandoning the stream at
+ * the cap — is {@link readBytesBounded}, shared with the remote cache, which
+ * bounds a fetched artifact the same way.
  */
 async function readBounded(
   request: Request,
   limit: number,
 ): Promise<string | null> {
-  const body = request.body;
-  if (body === null) return "";
-  const reader = body.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    if (total > limit) {
-      await reader.cancel();
-      return null;
-    }
-    chunks.push(value);
-  }
-  const joined = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    joined.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return new TextDecoder().decode(joined);
+  const bytes = await readBytesBounded(request.body, limit);
+  return bytes === null ? null : new TextDecoder().decode(bytes);
 }
 
 function jsonResponse(body: unknown, status: number): Response {

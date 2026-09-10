@@ -20,6 +20,8 @@ import {
 import { HttpError } from "../src/http.ts";
 import { gzip, tar } from "../src/compression.ts";
 import { withTemp } from "./_temp.ts";
+import { defaultCacheHost } from "../src/cache.ts";
+import { messageOf } from "../src/internal.ts";
 
 const enc = (text: string) => new TextEncoder().encode(text);
 const dec = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
@@ -35,6 +37,27 @@ class MemFs implements OutputHost {
   stat(path: string): Promise<{ isDirectory: boolean } | null> {
     if (this.dirs.has(path)) return Promise.resolve({ isDirectory: true });
     if (this.files.has(path)) return Promise.resolve({ isDirectory: false });
+    return Promise.resolve(null);
+  }
+  /**
+   * Paths that are symbolic links rather than the file or directory they name.
+   * `stat` still resolves them (a link to a file is a file), so only `lstat`
+   * can tell — which is the asymmetry the restore guard depends on.
+   */
+  readonly symlinks = new Set<string>();
+
+  lstat(
+    path: string,
+  ): Promise<{ isSymlink: boolean; isDirectory: boolean } | null> {
+    if (this.symlinks.has(path)) {
+      return Promise.resolve({ isSymlink: true, isDirectory: false });
+    }
+    if (this.dirs.has(path)) {
+      return Promise.resolve({ isSymlink: false, isDirectory: true });
+    }
+    if (this.files.has(path)) {
+      return Promise.resolve({ isSymlink: false, isDirectory: false });
+    }
     return Promise.resolve(null);
   }
   readDir(path: string): Promise<string[]> {
@@ -214,6 +237,7 @@ Deno.test("archiveOutputs ignores an entry whose file reads back as null", async
   // A host that claims a file exists (stat) but yields no bytes (readFile null).
   const host: OutputHost = {
     stat: () => Promise.resolve({ isDirectory: false }),
+    lstat: () => Promise.resolve({ isSymlink: false, isDirectory: false }),
     readFile: () => Promise.resolve(null),
     readDir: () => Promise.resolve([]),
     writeFile: () => Promise.resolve(),
@@ -359,4 +383,194 @@ Deno.test("archiveOutputs never archives what restore would refuse", async () =>
     ]),
     ["dist/app.js"],
   );
+});
+
+Deno.test("restoreOutputs refuses to write over a symlink at a declared output", async () => {
+  // The archive itself cannot carry a link — `assertPlainFileEntry` refuses one
+  // — so the link has to already be in the workspace. That is the whole finding:
+  // `writeFile` follows it, and every other check is lexical.
+  const src = new MemFs();
+  src.files.set("dist/app.js", enc("built"));
+  src.dirs.set("dist", ["app.js"]);
+  const artifact = await archiveOutputs(["dist"], src);
+
+  const out = new MemFs();
+  out.dirs.set("dist", []);
+  out.symlinks.add("dist/app.js");
+
+  const error = await assertRejects(
+    () => restoreOutputs(artifact, out, ["dist"]),
+  );
+  assertStringIncludes(
+    messageOf(error),
+    "refusing to restore over the symlink",
+  );
+  assertStringIncludes(messageOf(error), "dist/app.js");
+  // Refused before anything was written: the "nothing half-written" promise.
+  assertEquals(out.files.size, 0);
+});
+
+Deno.test("restoreOutputs refuses to write through a symlinked ancestor", async () => {
+  // `dist` itself is the link, so the leaf check would never see it — the
+  // ancestor walk is what catches this one.
+  const src = new MemFs();
+  src.files.set("dist/nested/app.js", enc("built"));
+  src.dirs.set("dist", ["nested"]);
+  src.dirs.set("dist/nested", ["app.js"]);
+  const artifact = await archiveOutputs(["dist"], src);
+
+  const out = new MemFs();
+  out.symlinks.add("dist");
+
+  const error = await assertRejects(
+    () => restoreOutputs(artifact, out, ["dist"]),
+  );
+  assertStringIncludes(
+    messageOf(error),
+    'refusing to restore "dist/nested/app.js" through the symlink "dist"',
+  );
+  assertEquals(out.files.size, 0);
+});
+
+Deno.test("restoreOutputs restores normally when the path holds a real file", async () => {
+  // The guard must not refuse an ordinary overwrite of a previous build's
+  // output, which is the common case.
+  const src = new MemFs();
+  src.files.set("dist/app.js", enc("built"));
+  src.dirs.set("dist", ["app.js"]);
+  const artifact = await archiveOutputs(["dist"], src);
+
+  const out = new MemFs();
+  out.dirs.set("dist", []);
+  out.files.set("dist/app.js", enc("stale"));
+
+  assertEquals(await restoreOutputs(artifact, out, ["dist"]), ["dist/app.js"]);
+  assertEquals(dec(out.files.get("dist/app.js") ?? new Uint8Array()), "built");
+});
+
+Deno.test("restoreOutputs refuses an artifact that decompresses past the cap", async () => {
+  const src = new MemFs();
+  src.files.set("dist/app.js", enc("x".repeat(4096)));
+  src.dirs.set("dist", ["app.js"]);
+  const artifact = await archiveOutputs(["dist"], src);
+
+  const out = new MemFs();
+  const error = await assertRejects(
+    () => restoreOutputs(artifact, out, ["dist"], 512),
+  );
+  assertStringIncludes(messageOf(error), "decompresses to more than 512 bytes");
+  assertEquals(out.files.size, 0);
+});
+
+Deno.test("HttpCacheStore.get refuses a body that exceeds the artifact cap", async () => {
+  // Streamed in chunks with no content-length, which is the shape a cap has to
+  // survive: there is nothing to read the size from up front.
+  let cancelled = false;
+  const body = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      controller.enqueue(new Uint8Array(64));
+    },
+    cancel() {
+      cancelled = true;
+    },
+  });
+  const store = new HttpCacheStore({
+    url: "https://cache.example",
+    maxArtifactBytes: 256,
+    fetch: () => Promise.resolve(new Response(body, { status: 200 })),
+  });
+
+  const error = await assertRejects(() => store.get("k"));
+  assertStringIncludes(
+    messageOf(error),
+    "refusing an artifact larger than 256 bytes",
+  );
+  // The stream is abandoned rather than drained, so an endless body cannot
+  // exhaust memory on its way to being rejected.
+  assertEquals(cancelled, true);
+});
+
+Deno.test("HttpCacheStore.get returns an artifact within the cap", async () => {
+  const store = new HttpCacheStore({
+    url: "https://cache.example",
+    maxArtifactBytes: 256,
+    fetch: () => Promise.resolve(new Response(enc("small"), { status: 200 })),
+  });
+  assertEquals(dec((await store.get("k")) ?? new Uint8Array()), "small");
+});
+
+Deno.test("restoreOutputs refuses a real on-disk symlink through defaultCacheHost", async () => {
+  if (Deno.build.os === "windows") return; // symlink creation is privileged there
+  await withTemp(async (dir) => {
+    const src = new MemFs();
+    src.files.set("dist/app.js", enc("built"));
+    src.dirs.set("dist", ["app.js"]);
+    const artifact = await archiveOutputs(["dist"], src);
+
+    // A workspace where a declared output is a link pointing outside it — the
+    // `dist -> /tmp/build` shape the docs now warn about.
+    const outside = `${dir}/outside.txt`;
+    await Deno.writeTextFile(outside, "untouched");
+    await Deno.mkdir(`${dir}/work/dist`, { recursive: true });
+    await Deno.symlink(outside, `${dir}/work/dist/app.js`);
+
+    const cwd = Deno.cwd();
+    Deno.chdir(`${dir}/work`);
+    try {
+      const error = await assertRejects(
+        () => restoreOutputs(artifact, defaultCacheHost, ["dist"]),
+      );
+      assertStringIncludes(
+        messageOf(error),
+        "refusing to restore over the symlink",
+      );
+    } finally {
+      Deno.chdir(cwd);
+    }
+    // The file the link pointed at is untouched, which is the actual guarantee.
+    assertEquals(await Deno.readTextFile(outside), "untouched");
+  });
+});
+
+Deno.test("restoreOutputs writes the path it validated, not the raw entry name", async () => {
+  // A backslash is a legal filename character on POSIX, and `normalize` treats
+  // it as a separator. So an entry named `dist\evil` is *checked* as
+  // "dist/evil" — forbidden paths, declared outputs and the symlink guard all
+  // reason about that form. Writing the raw name instead would check one path
+  // and write another, which is how a guard gets walked around.
+  const artifact = await gzip(
+    tar([{ name: "dist\\evil", data: enc("payload") }]),
+  );
+  const out = new MemFs();
+  out.dirs.set("dist", []);
+  // The link sits at the *raw* name, which the guard never looks at.
+  out.symlinks.add("dist\\evil");
+
+  assertEquals(await restoreOutputs(artifact, out, ["dist"]), ["dist/evil"]);
+  assertEquals(out.files.has("dist/evil"), true);
+  assertEquals(out.files.has("dist\\evil"), false); // never written at the link
+});
+
+Deno.test("restoreOutputs normalises a leading ./ in an entry name", async () => {
+  const artifact = await gzip(
+    tar([{ name: "./dist/app.js", data: enc("built") }]),
+  );
+  const out = new MemFs();
+  assertEquals(await restoreOutputs(artifact, out, ["dist"]), ["dist/app.js"]);
+});
+
+Deno.test("the inflated bound is not tied to the on-the-wire bound", async () => {
+  // Build outputs compress, so an archive well under a store's wire cap can
+  // legitimately inflate far past it. Restoring must not refuse that — the two
+  // bounds exist for the same reason but cannot share a number.
+  const src = new MemFs();
+  src.files.set("dist/big.bin", new Uint8Array(4 * 1024 * 1024)); // 4 MiB
+  src.dirs.set("dist", ["big.bin"]);
+  const artifact = await archiveOutputs(["dist"], src);
+  // Compresses to a tiny fraction of what it decompresses to.
+  assertEquals(artifact.byteLength < 64 * 1024, true);
+
+  const out = new MemFs();
+  assertEquals(await restoreOutputs(artifact, out, ["dist"]), ["dist/big.bin"]);
+  assertEquals(out.files.get("dist/big.bin")?.byteLength, 4 * 1024 * 1024);
 });
