@@ -371,8 +371,13 @@ class Deploy extends Build {
   an external GitHub Actions workflow, satisfied when it finishes; read its
   per-job result with `readWorkflowResult(ctx.stateOf("<gate>"))`). By default
   it correlates via a marker echoed into the run's `run-name:`; for a workflow
-  you can't modify use `.correlate("created-window")` (best-effort). Either way
-  it **fails fast** (`.discoveryTimeout(...)`, default 1m) if the run never
+  you can't modify use `.correlate("created-window")` (best-effort). A marker is
+  copyable and anyone who can dispatch the workflow can wear it, so a run is
+  adopted only if it is *also* a `workflow_dispatch`, on the dispatched ref, and
+  created no earlier than the dispatch; two survivors are a refusal, and the
+  identity is re-checked before the result is read. Protect the ref you dispatch
+  when the gate authorizes work in another trust domain. Either way it
+  **fails fast** (`.discoveryTimeout(...)`, default 1m) if the run never
   correlates, instead of eating the whole `.timeout()`. The **dispatched**
   workflow has its own contract (marker input, run-name, required inputs) — see
   [The dispatched workflow's contract](#the-dispatched-workflows-contract-githubworkflow)

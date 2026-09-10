@@ -119,8 +119,10 @@ export interface WorkflowRun {
   url: string;
   /** ISO-8601 time the run was created — used by created-window correlation. */
   createdAt: string;
-  /** The branch the run ran on — matched against the dispatch ref in created-window mode. */
+  /** The branch or tag the run ran on — matched against the dispatch ref. */
   headBranch: string;
+  /** The event that created the run (`workflow_dispatch`, `push`, …). */
+  event: string;
 }
 
 /**
@@ -135,12 +137,18 @@ export interface GhWorkflowApi {
     ref: string,
     inputs: Record<string, string>,
   ): Promise<void>;
-  /** The most recent run of `workflow` whose display title equals `marker`, or `null`. */
-  findRun(
+  /**
+   * Every run of `workflow` whose display title equals `marker`, newest first.
+   *
+   * All of them, not just the newest: the title is copyable, so more than one
+   * run can wear the marker, and {@link correlateByMarker} has to see them all
+   * to bind the right one — or to refuse when it cannot tell them apart.
+   */
+  findMarkedRuns(
     repo: string,
     workflow: string,
     marker: string,
-  ): Promise<WorkflowRun | null>;
+  ): Promise<WorkflowRun[]>;
   /**
    * Recent `workflow_dispatch` runs of `workflow`, newest first — the candidate
    * pool for created-window correlation (which filters them by branch and
@@ -488,29 +496,34 @@ export class RestGhWorkflowApi implements GhWorkflowApi {
   }
 
   /**
-   * Find the newest run of `workflow` whose display title equals `marker`,
-   * paginating so a run that has scrolled past the first page in a busy repo is
-   * still correlated (up to {@link MAX_RUN_PAGES} pages of 100).
+   * Find every run of `workflow` whose display title equals `marker`, newest
+   * first, paginating so a run that has scrolled past the first page in a busy
+   * repo is still seen (up to {@link MAX_RUN_PAGES} pages of 100).
+   *
+   * The scan collects all matches rather than returning at the first: which of
+   * them is ours is a question about the dispatch, and it is answered by
+   * {@link correlateByMarker}, not here.
    */
-  async findRun(
+  async findMarkedRuns(
     repo: string,
     workflow: string,
     marker: string,
-  ): Promise<WorkflowRun | null> {
+  ): Promise<WorkflowRun[]> {
+    const found: WorkflowRun[] = [];
     for (let page = 1; page <= MAX_RUN_PAGES; page++) {
       const body = await this.#get(
         `/repos/${repo}/actions/workflows/${workflow}/runs?per_page=100&page=${page}`,
       );
       const runs = body.workflow_runs;
-      if (!Array.isArray(runs)) return null;
+      if (!Array.isArray(runs)) return found;
       for (const raw of runs) {
         const run = asRecord(raw);
         if (run === undefined) continue;
-        if (readStr(run, "display_title") === marker) return toRun(run);
+        if (readStr(run, "display_title") === marker) found.push(toRun(run));
       }
       if (runs.length < 100) break; // last page reached
     }
-    return null;
+    return found;
   }
 
   /**
@@ -566,6 +579,7 @@ function toRun(run: Record<string, JsonValue>): WorkflowRun {
     url: readStr(run, "html_url") ?? "",
     createdAt: readStr(run, "created_at") ?? "",
     headBranch: readStr(run, "head_branch") ?? "",
+    event: readStr(run, "event") ?? "",
   };
 }
 
@@ -579,6 +593,40 @@ export interface GithubWorkflowDeps {
   readEnv?: (name: string) => string | undefined;
   /** The clock (epoch ms) for the discovery window; defaults to `Date.now` (tests inject it). */
   now?: () => number;
+}
+
+/**
+ * The short name GitHub reports as a run's `head_branch`. A dispatch `ref` may
+ * be written either way — `main` or `refs/heads/main` — and the runs API always
+ * answers with the short form, so both are compared in that form.
+ */
+function shortRef(ref: string): string {
+  return ref.replace(/^refs\/(?:heads|tags)\//, "");
+}
+
+/**
+ * Whether `run` can be the run our dispatch created: raised by that dispatch,
+ * on the ref we named, and not already in existence when we dispatched.
+ *
+ * This is what binds a correlated run to *our* dispatch. Neither half stands
+ * alone: a run's display title is echoed from an input, so anyone who can read
+ * the workflow's runs can copy it, and anyone who can dispatch that workflow can
+ * then produce a run wearing it. Requiring the event, the ref and the creation
+ * time as well means a foreign run has to be raised the same way, on the same
+ * ref, inside the discovery window — at which point it is indistinguishable
+ * from ours by anything the API exposes, and the caller is told rather than
+ * guessed at.
+ */
+function isOurDispatch(
+  run: WorkflowRun,
+  ref: string,
+  dispatchedAtMs: number,
+): boolean {
+  if (run.event !== "workflow_dispatch") return false;
+  if (run.headBranch !== shortRef(ref)) return false;
+  const created = Date.parse(run.createdAt);
+  return !Number.isNaN(created) &&
+    created >= dispatchedAtMs - CREATED_WINDOW_SKEW_MS;
 }
 
 /**
@@ -597,12 +645,9 @@ function correlateByWindow(
   workflow: string,
   baseline: readonly number[],
 ): WorkflowRun | null {
-  const floor = dispatchedAtMs - CREATED_WINDOW_SKEW_MS;
-  const candidates = runs.filter((r) => {
-    if (r.headBranch !== ref || baseline.includes(r.id)) return false;
-    const created = Date.parse(r.createdAt);
-    return !Number.isNaN(created) && created >= floor;
-  });
+  const candidates = runs.filter((r) =>
+    !baseline.includes(r.id) && isOurDispatch(r, ref, dispatchedAtMs)
+  );
   if (candidates.length === 0) return null;
   if (candidates.length > 1) {
     const urls = candidates.map((r) => r.url).join(", ");
@@ -611,6 +656,43 @@ function correlateByWindow(
         `is ambiguous — ${candidates.length} workflow_dispatch runs in the ` +
         `window (${urls}). Echo the marker into run-name: and use marker ` +
         `correlation, or dispatch on a dedicated ref.`,
+    );
+  }
+  return candidates[0];
+}
+
+/**
+ * Pick the run our dispatch produced from those wearing `marker`.
+ *
+ * The marker alone does not identify a run. It is echoed into the run's title
+ * by the workflow itself, so it is visible to anyone who can list the runs, and
+ * anyone who can dispatch the same workflow can raise a run wearing it. A
+ * gate that trusted the title alone could therefore be satisfied — or, by
+ * cancelling, blocked — by a run nobody here asked for. So a candidate must
+ * also be a `workflow_dispatch`, on the ref we dispatched, created no earlier
+ * than we dispatched it.
+ *
+ * Returns the sole match, `null` when none has appeared yet, or throws
+ * {@link WorkflowCorrelationError} when two survive: at that point they are
+ * alike in everything the API exposes, and picking either would be a guess.
+ */
+function correlateByMarker(
+  runs: readonly WorkflowRun[],
+  ref: string,
+  dispatchedAtMs: number,
+  workflow: string,
+): WorkflowRun | null {
+  const candidates = runs.filter((r) => isOurDispatch(r, ref, dispatchedAtMs));
+  if (candidates.length === 0) return null;
+  if (candidates.length > 1) {
+    const urls = candidates.map((r) => r.url).join(", ");
+    throw new WorkflowCorrelationError(
+      `githubWorkflow: marker correlation for "${workflow}" on "${ref}" is ` +
+        `ambiguous — ${candidates.length} workflow_dispatch runs carry this ` +
+        `run's marker (${urls}). A marker is copyable by anyone who can list ` +
+        `the workflow's runs, so refusing is the only safe answer: dispatch ` +
+        `on a ref only this pipeline uses, or restrict who may run the ` +
+        `workflow.`,
     );
   }
   return candidates[0];
@@ -769,7 +851,12 @@ export function githubWorkflowWith(
               workflow,
               baselineIds,
             )
-            : await api.findRun(repo, workflow, marker);
+            : correlateByMarker(
+              await api.findMarkedRuns(repo, workflow, marker),
+              settings.ref_,
+              anchor,
+              workflow,
+            );
           if (run === null) {
             if (now() - anchor > discoveryTimeoutMs) failDiscovery();
             return false;
@@ -783,8 +870,20 @@ export function githubWorkflowWith(
           });
         }
 
-        // 3. Poll until it completes, then record the per-job result.
+        // 3. Poll until it completes, then record the per-job result. The
+        // identity check is repeated on the fetched run, not just at adoption:
+        // a resume in another process trusts a run id out of durable state, and
+        // this is what re-establishes that the id still names a run raised by
+        // our dispatch before its conclusion is turned into a gate result.
         const run = await api.getRun(repo, runId);
+        if (!isOurDispatch(run, settings.ref_, anchor)) {
+          throw new WorkflowCorrelationError(
+            `githubWorkflow: run ${runId} of "${workflow}" is not the run this ` +
+              `dispatch created (${run.url}) — it is a "${run.event}" run on ` +
+              `"${run.headBranch}" created ${run.createdAt}. Refusing to read a ` +
+              `gate result from it.`,
+          );
+        }
         if (run.status !== "completed") return false;
         const jobs = await api.listJobs(repo, runId);
         const result: WorkflowResult = {
