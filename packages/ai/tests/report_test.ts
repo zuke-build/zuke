@@ -21,6 +21,7 @@ import {
   toMarkdown,
 } from "../src/report.ts";
 import type { Assessment } from "../src/types.ts";
+import { repoRoot } from "@zuke/core";
 
 /** A small assessment with one located, fingerprinted finding. */
 const ASSESSMENT: Assessment = {
@@ -251,16 +252,24 @@ Deno.test("writeStepSummary is a silent no-op without env access", async () => {
       // carrying its own copy of the writer — so its bare specifier needs the
       // import map that a published consumer would get from the registry. The
       // property under test is unchanged: no permissions, no throw, no write.
-      // `import.meta.dirname`, not a URL's `pathname`: the latter is
-      // percent-encoded and carries a leading slash before a Windows drive
-      // letter, so a repository path containing a space — or any run on the
-      // Windows leg of the matrix — would fail to find the config.
+      // The probe script sits in a temp directory, so it needs the workspace
+      // import map handed to it — this module delegates to `@zuke/core` rather
+      // than carrying its own copy of the writer, and a published consumer
+      // would get that resolution from the registry.
+      //
+      // Resolved through `repoRoot`, which walks up to the config file, rather
+      // than by counting `..` from this file: the count silently breaks if the
+      // test ever moves, and the failure would look like the behaviour under
+      // test regressing. Not a URL's `pathname` either — that is
+      // percent-encoded and puts a slash before a Windows drive letter, so a
+      // repository path with a space, or the Windows leg of the matrix, would
+      // not find the file.
       args: [
         "run",
         "--quiet",
         "--no-check",
         "--config",
-        `${import.meta.dirname}/../../../deno.json`,
+        repoRoot("deno.json").path,
         script,
       ],
       env: { GITHUB_STEP_SUMMARY: summary, NO_COLOR: "1" },
