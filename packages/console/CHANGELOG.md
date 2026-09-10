@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.1](https://github.com/zuke-build/zuke/compare/console-v1.1.0...console-v1.1.1) (2026-09-10)
+
+
+### Bug Fixes
+
+* **console:** escape the two workflow-command sites [#547](https://github.com/zuke-build/zuke/issues/547) left for later ([#550](https://github.com/zuke-build/zuke/issues/550)) ([ab68a70](https://github.com/zuke-build/zuke/commit/ab68a703b4a3dc4b58afbff620075b0008651c14)), closes [#546](https://github.com/zuke-build/zuke/issues/546)
+
 ## [1.1.0](https://github.com/zuke-build/zuke/compare/console-v1.0.2...console-v1.1.0) (2026-08-22)
 
 

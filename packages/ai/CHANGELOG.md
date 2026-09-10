@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.3.1](https://github.com/zuke-build/zuke/compare/ai-v2.3.0...ai-v2.3.1) (2026-09-10)
+
+
+### Bug Fixes
+
+* **ai:** fence the project conventions as untrusted data in every prompt ([#557](https://github.com/zuke-build/zuke/issues/557)) ([06e0f9d](https://github.com/zuke-build/zuke/commit/06e0f9dd3be240b70260f820e6b6daeda7b58237))
+* **core:** redact the job summary at the one writer that produces it ([#560](https://github.com/zuke-build/zuke/issues/560)) ([11569a2](https://github.com/zuke-build/zuke/commit/11569a289e71199abf85e45ef6ed195efcb69315))
+
 ## [2.3.0](https://github.com/zuke-build/zuke/compare/ai-v2.2.1...ai-v2.3.0) (2026-08-30)
 
 
