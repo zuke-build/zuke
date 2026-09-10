@@ -138,20 +138,23 @@ export interface GhWorkflowApi {
     inputs: Record<string, string>,
   ): Promise<void>;
   /**
-   * Every `workflow_dispatch` run of `workflow` whose display title equals
-   * `marker`, newest first.
+   * Every `workflow_dispatch` run of `workflow` on `ref` whose display title
+   * equals `marker`, newest first.
    *
    * All of them, not just the newest: the title is copyable, so more than one
    * run can wear the marker, and {@link correlateByMarker} has to see them all
-   * to bind the right one — or to refuse when it cannot tell them apart. An
-   * implementation should return only `workflow_dispatch` runs, so a paginated
-   * scan is not spent on runs that could never be ours; correlation re-checks
-   * the event regardless.
+   * to bind the right one — or to refuse when it cannot tell them apart.
+   *
+   * `ref` and the event are narrowing hints, not the check. An implementation
+   * passes them to the service so a paginated scan is not spent on runs that
+   * could never be ours; correlation re-checks both regardless, because which
+   * run is ours must not depend on a transport getting its query right.
    */
   findMarkedRuns(
     repo: string,
     workflow: string,
     marker: string,
+    ref: string,
   ): Promise<WorkflowRun[]>;
   /**
    * Recent `workflow_dispatch` runs of `workflow`, newest first — the candidate
@@ -505,26 +508,32 @@ export class RestGhWorkflowApi implements GhWorkflowApi {
    * first page in a busy repo is still seen (up to {@link MAX_RUN_PAGES} pages
    * of 100).
    *
-   * The event filter is applied by the API rather than here, so the page budget
-   * is spent only on runs that could be ours. In a repository where most runs
-   * come from pushes, filtering after the fact would let our own run fall past
-   * the last page and strand the gate.
+   * The event and ref filters are applied by the service rather than here, so
+   * the page budget is spent only on runs that could be ours. In a repository
+   * where most runs come from pushes, or from dispatches on other branches,
+   * filtering after the fact would let our own run fall past the last page and
+   * strand the gate.
    *
-   * The scan still collects every match rather than returning at the first:
-   * which of them is ours is a question about the dispatch, and
-   * {@link correlateByMarker} answers it — re-checking the event itself, since
-   * a transport is not where that guarantee should rest.
+   * Narrowing here cannot hide our run: the `branch` filter matches on the
+   * same `head_branch` that {@link isOurDispatch} compares against the same
+   * normalised ref, so a run this query drops is one correlation would have
+   * rejected anyway. The scan still collects every match rather than returning
+   * at the first, and {@link correlateByMarker} re-checks event, ref and
+   * creation time — which run is ours must not rest on a transport getting its
+   * query right.
    */
   async findMarkedRuns(
     repo: string,
     workflow: string,
     marker: string,
+    ref: string,
   ): Promise<WorkflowRun[]> {
+    const branch = encodeURIComponent(shortRef(ref));
     const found: WorkflowRun[] = [];
     for (let page = 1; page <= MAX_RUN_PAGES; page++) {
       const body = await this.#get(
         `/repos/${repo}/actions/workflows/${workflow}/runs` +
-          `?event=workflow_dispatch&per_page=100&page=${page}`,
+          `?event=workflow_dispatch&branch=${branch}&per_page=100&page=${page}`,
       );
       const runs = body.workflow_runs;
       if (!Array.isArray(runs)) return found;
@@ -908,7 +917,7 @@ export function githubWorkflowWith(
               baselineIds,
             )
             : correlateByMarker(
-              await api.findMarkedRuns(repo, workflow, marker),
+              await api.findMarkedRuns(repo, workflow, marker, settings.ref_),
               settings.ref_,
               anchor,
               discoveryTimeoutMs,

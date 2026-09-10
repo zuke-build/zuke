@@ -746,7 +746,7 @@ Deno.test("RestGhWorkflowApi.dispatch POSTs ref+inputs with auth", async () => {
 
 Deno.test("RestGhWorkflowApi.findMarkedRuns matches runs by display title", async () => {
   const { fetch } = routerFetch({
-    "GET https://api.github.com/repos/a/b/actions/workflows/w.yml/runs?event=workflow_dispatch&per_page=100&page=1":
+    "GET https://api.github.com/repos/a/b/actions/workflows/w.yml/runs?event=workflow_dispatch&branch=main&per_page=100&page=1":
       {
         workflow_runs: [
           {
@@ -766,20 +766,20 @@ Deno.test("RestGhWorkflowApi.findMarkedRuns matches runs by display title", asyn
       },
   });
   const api = new RestGhWorkflowApi({ fetch });
-  const runs = await api.findMarkedRuns("a/b", "w.yml", "zuke:r1:e2e");
+  const runs = await api.findMarkedRuns("a/b", "w.yml", "zuke:r1:e2e", "main");
   assertEquals(runs.map((r) => r.id), [2]);
   assertEquals(runs[0]?.url, "u2");
 });
 
 Deno.test("RestGhWorkflowApi.findMarkedRuns returns nothing when no run matches", async () => {
   const { fetch } = routerFetch({
-    "GET https://api.github.com/repos/a/b/actions/workflows/w.yml/runs?event=workflow_dispatch&per_page=100&page=1":
+    "GET https://api.github.com/repos/a/b/actions/workflows/w.yml/runs?event=workflow_dispatch&branch=main&per_page=100&page=1":
       {
         workflow_runs: [],
       },
   });
   const api = new RestGhWorkflowApi({ fetch });
-  assertEquals(await api.findMarkedRuns("a/b", "w.yml", "m"), []);
+  assertEquals(await api.findMarkedRuns("a/b", "w.yml", "m", "main"), []);
 });
 
 Deno.test("RestGhWorkflowApi.recentRuns maps workflow_dispatch runs", async () => {
@@ -885,13 +885,14 @@ Deno.test("RestGhWorkflowApi.dispatch throws on a non-2xx", async () => {
 
 Deno.test("RestGhWorkflowApi.findMarkedRuns tolerates a malformed runs payload", async () => {
   const base =
-    "https://api.github.com/repos/a/b/actions/workflows/w.yml/runs?event=workflow_dispatch&per_page=100&page=1";
+    "https://api.github.com/repos/a/b/actions/workflows/w.yml/runs?event=workflow_dispatch&branch=main&per_page=100&page=1";
   const notArray = routerFetch({ [`GET ${base}`]: { workflow_runs: "nope" } });
   assertEquals(
     await new RestGhWorkflowApi({ fetch: notArray.fetch }).findMarkedRuns(
       "a/b",
       "w.yml",
       "m",
+      "main",
     ),
     [],
   );
@@ -910,6 +911,7 @@ Deno.test("RestGhWorkflowApi.findMarkedRuns tolerates a malformed runs payload",
       "a/b",
       "w.yml",
       "m",
+      "main",
     ))[0]?.id,
     3,
   );
@@ -925,10 +927,10 @@ Deno.test("RestGhWorkflowApi.findMarkedRuns paginates beyond the first page", as
   }));
   const w = "https://api.github.com/repos/a/b/actions/workflows/w.yml/runs";
   const { fetch } = routerFetch({
-    [`GET ${w}?event=workflow_dispatch&per_page=100&page=1`]: {
+    [`GET ${w}?event=workflow_dispatch&branch=main&per_page=100&page=1`]: {
       workflow_runs: page1,
     },
-    [`GET ${w}?event=workflow_dispatch&per_page=100&page=2`]: {
+    [`GET ${w}?event=workflow_dispatch&branch=main&per_page=100&page=2`]: {
       workflow_runs: [{
         id: 999,
         display_title: "zuke:r1:e2e",
@@ -942,6 +944,7 @@ Deno.test("RestGhWorkflowApi.findMarkedRuns paginates beyond the first page", as
     "a/b",
     "w.yml",
     "zuke:r1:e2e",
+    "main",
   );
   assertEquals(runs.map((r) => r.id), [999]); // page 2, not just the first 100
 });
@@ -1264,7 +1267,7 @@ Deno.test("a persisted run id that no longer looks like ours is refused", async 
   assertEquals(readWorkflowResult(state), undefined); // no gate result recorded
 });
 
-Deno.test("findMarkedRuns asks the API for dispatch runs only", async () => {
+Deno.test("findMarkedRuns narrows the query to our dispatch and ref", async () => {
   // The page budget is finite, so a repository whose runs are mostly pushes
   // could otherwise push our own run past the last page and strand the gate.
   // Filtering at the API keeps the budget on runs that could be ours.
@@ -1279,7 +1282,13 @@ Deno.test("findMarkedRuns asks the API for dispatch runs only", async () => {
     "a/b",
     "w.yml",
     "zuke:r1:e2e",
+    "refs/heads/release/1.0",
   );
   assertEquals(asked.length, 1);
   assertEquals(asked[0]?.includes("event=workflow_dispatch"), true);
+  // The ref narrows it too, normalised and encoded. This cannot hide our run:
+  // the filter matches the same head_branch that correlation compares against
+  // the same normalised ref, so a run it drops is one correlation would have
+  // rejected anyway.
+  assertEquals(asked[0]?.includes("branch=release%2F1.0"), true);
 });
