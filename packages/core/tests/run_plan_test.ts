@@ -88,12 +88,14 @@ Deno.test("the plan honours soft ordering edges", () => {
   assertEquals(plan.dependenciesOf("b"), ["a"]);
 });
 
-Deno.test("the plan is deterministic across builds of the same graph", () => {
-  // Every body and condition in a run reads one plan, and a resumed run rebuilds
-  // it in another process — so two plans of the same graph must not disagree.
-  assertEquals(planFor("top").targets, planFor("top").targets);
-  assertEquals(
-    planFor("top").dependenciesOf("top"),
-    planFor("top").dependenciesOf("top"),
-  );
+Deno.test("the plan's arrays are frozen, so one body cannot corrupt another", () => {
+  // One plan object is shared by every body in a run, and bodies run
+  // concurrently. `readonly` is erased at runtime and does not exist at all for
+  // a JavaScript consumer, so without freezing, a body that sorts the array it
+  // was handed silently reorders what every other body reads.
+  const plan = planFor("top");
+  assertEquals(Object.isFrozen(plan.targets), true);
+  assertEquals(Object.isFrozen(plan.dependenciesOf("top")), true);
+  // The shared empty answer for an unknown name is frozen too.
+  assertEquals(Object.isFrozen(plan.dependenciesOf("nope")), true);
 });

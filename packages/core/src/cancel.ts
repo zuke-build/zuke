@@ -178,8 +178,13 @@ export interface CompensationDeps {
   runId: string;
   /**
    * The run's resolved plan, read by a compensation body via `ctx.plan()` —
-   * the same graph the walk is ordered by, so a compensation sees the run it
-   * is unwinding rather than an empty one.
+   * the same graph this walk is ordered by.
+   *
+   * Resolved by **this** process, which for an out-of-process `zuke cancel` is
+   * not the process that ran the build: if the build class has changed since,
+   * or the lazy `orderWith` provider answers differently (or is unreachable, so
+   * the walk degrades to base topological order), this plan can differ from the
+   * one the original run's bodies read.
    */
   plan: RunPlan;
   /** The run's received signals, exposed to compensation bodies via `ctx.signals`. */

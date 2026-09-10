@@ -17,6 +17,8 @@ import {
 } from "../src/cancel.ts";
 import { resumeRun } from "../src/resume.ts";
 import type { OrderingEdge } from "../src/graph.ts";
+import { planGraph } from "../src/graph.ts";
+import { buildRunPlan } from "../src/run_plan.ts";
 import { FileSystemStateStore } from "../src/state/fs_store.ts";
 import {
   defaultStateHost,
@@ -1873,4 +1875,37 @@ Deno.test("without a redactor, a compensation failure message is kept verbatim",
   });
   assertEquals(outcome.failures.length, 1);
   assertEquals(outcome.failures[0].error, "exact diagnostic text");
+});
+
+Deno.test("a compensation reads the run's plan, not an empty one", async () => {
+  // `CompensationDeps.plan` promises a compensation body sees the graph this
+  // walk is ordered by. Every other cancel test passes the empty `testPlan()`,
+  // so nothing asserted the wiring: handing `runCompensations` an empty plan
+  // used to leave the whole suite green.
+  const seen: string[] = [];
+  class B extends Build {
+    rollback = target().executes((ctx) => {
+      seen.push([...ctx.plan().targets].sort().join(","));
+      seen.push(`includes(deploy)=${ctx.plan().includes("deploy")}`);
+    });
+    build = target().executes(() => {});
+    deploy = target()
+      .dependsOn(this.build)
+      .executes(() => {})
+      .onCancel(() => this.rollback);
+  }
+  const build = new B();
+  discoverTargets(build);
+  const { order, predecessors } = planGraph(build.deploy);
+  const record = craftRecord("deploy", {
+    build: { status: "succeeded", meta: {} },
+    deploy: { status: "succeeded", meta: {} },
+  });
+  await runCompensations(order, record, {
+    runId: "run",
+    plan: buildRunPlan(order, predecessors),
+    signals: new Map(),
+    reporter: { info: () => {}, error: () => {} },
+  });
+  assertEquals(seen, ["build,deploy", "includes(deploy)=true"]);
 });

@@ -233,18 +233,12 @@ export function runRecord(over: Partial<RunRecord> = {}): RunRecord {
 }
 
 /**
- * A {@link RunPlan} over `targets`, each with no dependencies — the plan a unit
- * test hands an engine seam that requires one but is not exercising it.
+ * The empty {@link RunPlan} — the plan a unit test hands an engine seam that
+ * requires one but is not exercising it. It says "this run planned nothing",
+ * which is the honest reading for a seam driven with no graph behind it.
  *
- * Pass names when the test asserts on the plan; the default empty plan says
- * "this run planned nothing", which is the honest reading for a seam driven
- * with no graph behind it.
+ * A test that asserts on a real plan builds one with `buildRunPlan` instead.
  */
-export function testPlan(targets: readonly string[] = []): RunPlan {
-  const planned = new Set(targets);
-  return {
-    targets: [...targets],
-    includes: (t) => planned.has(t),
-    dependenciesOf: () => [],
-  };
+export function testPlan(): RunPlan {
+  return { targets: [], includes: () => false, dependenciesOf: () => [] };
 }

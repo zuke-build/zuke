@@ -181,7 +181,9 @@ class Ci extends Build {
 plan describes **this run**, not the class.
 
 A condition reads the same view, so a target can gate on the graph rather than
-only on the environment:
+only on the environment. Gate on a target you do **not** depend on — a hard
+dependency is in the plan whenever its dependent is, so gating on one is a
+condition that can never be false:
 
 <!-- check -->
 
@@ -190,10 +192,12 @@ import { Build, target } from "jsr:@zuke/core";
 
 class Ci extends Build {
   unit = target().executes(() => {});
+  // Only worth publishing coverage when the run is also going to deploy.
   coverage = target()
     .dependsOn(this.unit)
-    .onlyWhen((ctx) => ctx.plan().includes("unit"))
+    .onlyWhen((ctx) => ctx.plan().includes("deploy"))
     .executes(() => {});
+  deploy = target().dependsOn(this.unit).executes(() => {});
 }
 ```
 
@@ -209,8 +213,7 @@ state handles, and its cancellation signal do not exist yet.
 
 This is the distinction to keep straight:
 
-- **`ctx.plan()`** says what the run **planned**. It is fixed for the whole run,
-  and identical in every process a resumed run passes through.
+- **`ctx.plan()`** says what the run **planned**, as this process resolved it.
 - **`ctx.outcomeOf(name)`** says what **became** of a target, once it settled.
 
 A planned target can still be skipped — by a condition, by `--affected`, or by
@@ -229,6 +232,32 @@ everywhere.
 `dependenciesOf` returns an empty list both for a target with no predecessors
 and for a name that is not in the plan at all; use `includes` to tell those
 apart.
+
+### Fan-out sub-targets are not in the plan
+
+A `.forEach()` fan-out expands into its sub-targets **while the run executes**,
+after the graph has been planned. So `fan[us].prep` has a summary row, a run
+record entry and an outcome — but `plan().includes("fan[us].prep")` is `false`,
+and only the `fan` target that produced it is in `targets`. This is the one
+place the plan reports *less* than the outcomes do; ask `outcomeOf` about a
+fan-out's sub-targets.
+
+### The plan does not cross processes
+
+Within one process the plan is fixed: two bodies agree, and both evaluations of
+a `skip-dependencies` condition agree. A **second** process re-resolves the graph
+from the build class it was handed, so it can legitimately differ:
+
+- a resume runs against today's build class, which may have changed since the run
+  was suspended — `--force-graph` exists precisely for that case;
+- a lazy `orderWith` provider may answer differently, and `zuke cancel` degrades
+  to the base topological order when the provider is unreachable, rather than
+  abandoning the rollback.
+
+So a compensation's `ctx.plan()` is this canceller's reading of the graph, not a
+recording of what the original run planned. Anything a later process must agree
+with belongs in durable state (see [Durable run state](./state.md)), which is
+what crosses the boundary.
 
 ## Reading what the rest of the run did
 
