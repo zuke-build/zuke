@@ -442,11 +442,15 @@ class CD extends Build {
 
 - The compensation body's `ctx.state` exposes **the original target's**
   persisted metadata (persist what a rollback needs in `ctx.state` when you do
-  the work). Note `ctx.target` names the **compensation** while `ctx.state`
-  holds the **compensated** target's meta, and `ctx.stateOf("<compensated>")`
-  reads **empty** — `ctx.state` is the only state a compensation gets. Its
-  writes stay in memory (the run is ending). `ctx.outcomeOf(...)` does work; a
-  compensation is not in `ctx.plan()`.
+  the work). `ctx.state` is seeded with the meta of the target the step is
+  **for**: under `.onCancel` that is the compensated target (so `ctx.target`
+  names the compensation but `ctx.state` holds `deploy`'s meta), while a
+  timed-out `.onTimeout(() => this.cleanup)` makes `cleanup` compensate
+  **itself** — its own meta, `{}` if it never ran forward. One rule spans both:
+  `ctx.stateOf(ctx.target)` is `ctx.state`, every other name reads **empty**
+  (so `stateOf("deploy")` is empty under `.onCancel`). Writes stay in memory.
+  `ctx.outcomeOf(...)` works; `ctx.plan()` is the whole run's plan, so a
+  compensation is in it only when it is also a graph target.
 - Cancel with `zuke cancel <id>`, `Ctrl-C`/`SIGTERM`, or the MCP `cancel_run`
   tool (all run the same walk). A live run aborts on its next state write.
 - A compensation that throws is recorded but does **not** stop the walk (cleanup
