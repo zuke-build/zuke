@@ -114,6 +114,13 @@ export interface SetupHost {
   exists(path: string): Promise<boolean>;
   /** Whether a path exists and is a directory (a reserved-name collision). */
   isDirectory(path: string): Promise<boolean>;
+  /**
+   * Whether a path is a symbolic link, without following it. Scaffolding
+   * refuses to write through one: the writes below follow links, so a link
+   * planted at a scaffold name by the very repository being set up would
+   * redirect them outside the target directory.
+   */
+  isSymlink(path: string): Promise<boolean>;
   /** Read a file as UTF-8 text. */
   readText(path: string): Promise<string>;
   /** Write UTF-8 text to a file, creating or truncating it. */
@@ -124,24 +131,30 @@ export interface SetupHost {
   log(message: string): void;
 }
 
+/**
+ * `Deno.lstat` a path, or `null` when nothing is there. Every probe on
+ * {@link defaultHost} reads the link itself rather than its target, so a
+ * symlink is reported as a symlink instead of as whatever it points at.
+ */
+async function lstatOrNull(path: string): Promise<Deno.FileInfo | null> {
+  try {
+    return await Deno.lstat(path);
+  } catch (error) {
+    if (error instanceof Deno.errors.NotFound) return null;
+    throw error;
+  }
+}
+
 /** The real, `Deno`-backed {@link SetupHost}. */
 export const defaultHost: SetupHost = {
   async exists(path: string): Promise<boolean> {
-    try {
-      await Deno.lstat(path);
-      return true;
-    } catch (error) {
-      if (error instanceof Deno.errors.NotFound) return false;
-      throw error;
-    }
+    return await lstatOrNull(path) !== null;
   },
   async isDirectory(path: string): Promise<boolean> {
-    try {
-      return (await Deno.lstat(path)).isDirectory;
-    } catch (error) {
-      if (error instanceof Deno.errors.NotFound) return false;
-      throw error;
-    }
+    return (await lstatOrNull(path))?.isDirectory === true;
+  },
+  async isSymlink(path: string): Promise<boolean> {
+    return (await lstatOrNull(path))?.isSymlink === true;
   },
   readText(path: string): Promise<string> {
     return Deno.readTextFile(path);
@@ -307,6 +320,20 @@ export async function runSetup(
   ];
   for (const item of collisionTargets) {
     const path = joinPath(options.dir, item.name);
+    // A symlink at a scaffold name is refused for the same reason a directory
+    // is — nothing can be written there safely — but the stakes differ. Writing
+    // follows the link, so a repository that ships one (setup is precisely what
+    // a developer runs inside a freshly cloned project) would redirect the
+    // write to whatever it names, outside this directory entirely. Checked
+    // before any write, so a refusal leaves the tree untouched.
+    if (await host.isSymlink(path)) {
+      throw new Error(
+        `zuke setup: refusing to write "${item.name}" — ${path} is a symbolic ` +
+          `link, and writing through it would modify the file it points at, ` +
+          `outside this directory. Replace the link with a regular file (or ` +
+          `remove it), then re-run setup.`,
+      );
+    }
     if (await host.isDirectory(path)) {
       throw new Error(
         `zuke setup: cannot write "${item.name}" — a directory exists at ` +

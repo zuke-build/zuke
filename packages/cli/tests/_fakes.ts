@@ -12,6 +12,8 @@ export class FakeHost implements SetupHost {
   readonly files = new Map<string, string>();
   /** Paths that exist as directories (for reserved-name collision tests). */
   readonly directories = new Set<string>();
+  /** Paths that exist as symbolic links (for the refuse-to-follow tests). */
+  readonly symlinks = new Set<string>();
   /** Lines passed to {@link log}. */
   readonly logs: string[] = [];
   /** `[path, mode]` pairs passed to {@link chmod}. */
@@ -28,11 +30,18 @@ export class FakeHost implements SetupHost {
   }
 
   exists(path: string): Promise<boolean> {
-    return Promise.resolve(this.files.has(path) || this.directories.has(path));
+    return Promise.resolve(
+      this.files.has(path) || this.directories.has(path) ||
+        this.symlinks.has(path),
+    );
   }
 
   isDirectory(path: string): Promise<boolean> {
     return Promise.resolve(this.directories.has(path));
+  }
+
+  isSymlink(path: string): Promise<boolean> {
+    return Promise.resolve(this.symlinks.has(path));
   }
 
   readText(path: string): Promise<string> {

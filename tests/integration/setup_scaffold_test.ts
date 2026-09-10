@@ -91,3 +91,36 @@ Deno.test("zuke setup scaffolds a project whose first run has no lockfile to fre
   // meaningful for every run after it.
   assertEquals((await read("zuke.ts")).includes('jsr:@zuke/core@^1"'), true);
 });
+
+Deno.test("integration: setup exits 1 on a symlinked scaffold name, leaving it alone", async () => {
+  if (Deno.build.os === "windows") return; // Deno.symlink needs privileges.
+  const dir = await Deno.makeTempDir({ prefix: "zuke-setup-link-" });
+  const outside = await Deno.makeTempDir({ prefix: "zuke-setup-victim-" });
+  const victim = `${outside}/gitconfig`;
+  try {
+    await Deno.writeTextFile(victim, "[user]\n\tname = victim\n");
+    // What a hostile repository ships: a scaffold name that is really a link
+    // pointing at one of the developer's own files.
+    await Deno.symlink(victim, `${dir}/.gitignore`);
+
+    const lines: string[] = [];
+    const host: SetupHost = {
+      ...defaultHost,
+      log: (message: string) => void lines.push(message),
+    };
+    const code = await main(
+      ["setup", "--yes", "--name", "Foo", "--dir", dir],
+      host,
+    );
+
+    assertEquals(code, 1);
+    // The developer's file is untouched, and the scaffold wrote nothing at all.
+    assertEquals(await Deno.readTextFile(victim), "[user]\n\tname = victim\n");
+    const written: string[] = [];
+    for await (const entry of Deno.readDir(dir)) written.push(entry.name);
+    assertEquals(written, [".gitignore"]); // only the link the test planted
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+    await Deno.remove(outside, { recursive: true });
+  }
+});
