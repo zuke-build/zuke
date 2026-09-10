@@ -39,7 +39,7 @@ that declares only `.effect(...)` each legitimately have no `.executes(...)`.
 | `.unlisted()`                                                                                            | Hide from `--list`/`--help`; still runnable by name.                                                                                                      |
 | `.dryRunnable()`                                                                                         | Run this body under `--dry-run` with `$` in echo mode (prints argv, no spawn); others stay skipped.                                                       |
 | `.validateBefore(...v)` / `.validateAfter(...v)`                                                         | Run `Validation` checks around the body; a throw fails the target.                                                                                        |
-| `.recoverWith(...r)` / `.recoverAttempts(n)`                                                             | Run `Remediation`s if the body fails (self-healing); re-run when one asks to. See AI section.                                                             |
+| `.recoverWith(...r)` / `.recoverAttempts(n)`                                                             | Run `Remediation`s if the body fails (self-healing); re-run when one asks to. A remediation gets the target name, attempt and error — **no state handle**. |
 | `.partOf(group)`                                                                                         | Join a parallel batch (see `group()`).                                                                                                                    |
 | `.produces(...p)` / `.consumes(...t)`                                                                    | Declare and consume artifact paths.                                                                                                                       |
 | `.readOnly()`                                                                                            | Advertise the target as query-only over MCP (`readOnlyHint` instead of `destructiveHint`).                                                                |
@@ -442,7 +442,11 @@ class CD extends Build {
 
 - The compensation body's `ctx.state` exposes **the original target's**
   persisted metadata (persist what a rollback needs in `ctx.state` when you do
-  the work).
+  the work). Note `ctx.target` names the **compensation** while `ctx.state`
+  holds the **compensated** target's meta, and `ctx.stateOf("<compensated>")`
+  reads **empty** — `ctx.state` is the only state a compensation gets. Its
+  writes stay in memory (the run is ending). `ctx.outcomeOf(...)` does work; a
+  compensation is not in `ctx.plan()`.
 - Cancel with `zuke cancel <id>`, `Ctrl-C`/`SIGTERM`, or the MCP `cancel_run`
   tool (all run the same walk). A live run aborts on its next state write.
 - A compensation that throws is recorded but does **not** stop the walk (cleanup

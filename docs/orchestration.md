@@ -418,6 +418,23 @@ What a cancellation does:
   body gets a normal `ctx` whose `ctx.state` exposes **the original target's**
   metadata — the `deploy` above rolls back from exactly the `slot` it recorded.
   So persist what a rollback needs in `ctx.state` at the time you do the work.
+
+  Two details worth knowing before you need them, because a rollback is a bad
+  place to be surprised:
+
+  `ctx.target` names the **compensation** (`rollback`), while `ctx.state` holds
+  the **compensated** target's meta (`deploy`'s). Those are deliberately
+  different targets. `ctx.stateOf(ctx.target)` is the same handle as `ctx.state`,
+  as everywhere else — but `ctx.stateOf("deploy")`, asking for the compensated
+  target **by name**, reads **empty**. So does every other target. A compensation
+  runs off the durable graph rather than inside the run, so `ctx.state` is the
+  only state it is given; reach for it, not for `stateOf`.
+
+  Writes merge into that seeded meta and stay **in memory** — the run is ending,
+  so nothing a compensation records is persisted. What does still work is
+  `ctx.outcomeOf(...)`, which reads the durable record, so a rollback can ask
+  what actually happened to the run it is undoing. A compensation is not itself
+  a planned target, so it does not appear in `ctx.plan()`.
 - **A live run stops.** Cancelling a run another process is executing flips it
   to `cancelling`; the owner observes that on its next state write and aborts —
   its in-flight `$` commands get SIGTERM through the ambient signal, releasing

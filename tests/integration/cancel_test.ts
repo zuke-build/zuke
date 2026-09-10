@@ -208,3 +208,60 @@ Deno.test("zuke cancel with a missing run id fails with usage", async () => {
     assertStringIncludes(bad.err, "Usage: zuke cancel");
   });
 });
+
+Deno.test("a compensation's context reads its target's meta, and nothing else's", async () => {
+  // Pins the contract documented in docs/orchestration.md. The trap it exists
+  // to stop: `ctx.state` holds the COMPENSATED target's meta while `ctx.target`
+  // names the compensation, and asking for that same target through `stateOf`
+  // reads empty — so a rollback written the obvious way silently does nothing.
+  await withStateDir(async () => {
+    const seen: string[] = [];
+    const controller = new AbortController();
+    class CD extends Build {
+      rollback = target().executes(async (ctx) => {
+        seen.push(`target=${ctx.target}`);
+        // The compensated target's meta, reached through `state`...
+        seen.push(`state=${JSON.stringify(ctx.state.get())}`);
+        // ...and not through its name.
+        seen.push(
+          `stateOf(deploy)=${JSON.stringify(ctx.stateOf("deploy").get())}`,
+        );
+        seen.push(
+          `stateOf(other)=${JSON.stringify(ctx.stateOf("other").get())}`,
+        );
+        // The documented self-identity still holds for the compensation itself.
+        seen.push(`selfIdentity=${ctx.stateOf(ctx.target) === ctx.state}`);
+        // Outcomes come from the durable record, so these do work.
+        seen.push(`outcomeOf(deploy)=${ctx.outcomeOf("deploy")?.status}`);
+        // A compensation is not a planned target.
+        seen.push(`inPlan=${ctx.plan().includes("rollback")}`);
+        // Writes merge into the seeded meta, in memory only.
+        await ctx.state.set({ undone: "yes" });
+        seen.push(`afterSet=${JSON.stringify(ctx.state.get())}`);
+      });
+      other = target().executes((ctx) => ctx.state.set({ from: "other" }));
+      deploy = target()
+        .dependsOn(this.other)
+        .executes(async (ctx) => {
+          await ctx.state.set({ slot: "sit-7" });
+          controller.abort();
+        })
+        .onCancel(() => this.rollback);
+      promote = target().dependsOn(this.deploy).executes(() => {});
+    }
+    const { code } = await runCli(CD, ["promote"], {
+      signal: controller.signal,
+    });
+    assertEquals(code, 1);
+    assertEquals(seen, [
+      "target=rollback",
+      'state={"slot":"sit-7"}',
+      "stateOf(deploy)={}",
+      "stateOf(other)={}",
+      "selfIdentity=true",
+      "outcomeOf(deploy)=succeeded",
+      "inPlan=false",
+      'afterSet={"slot":"sit-7","undone":"yes"}',
+    ]);
+  });
+});
