@@ -31,6 +31,27 @@ class MemHost implements CacheHost {
     if (this.files.has(path)) return Promise.resolve({ isDirectory: false });
     return Promise.resolve(null);
   }
+  /**
+   * Paths that are symbolic links rather than the file or directory they name.
+   * `stat` still resolves them (a link to a file is a file), so only `lstat`
+   * can tell — which is the asymmetry the restore guard depends on.
+   */
+  readonly symlinks = new Set<string>();
+
+  lstat(
+    path: string,
+  ): Promise<{ isSymlink: boolean; isDirectory: boolean } | null> {
+    if (this.symlinks.has(path)) {
+      return Promise.resolve({ isSymlink: true, isDirectory: false });
+    }
+    if (this.dirs.has(path)) {
+      return Promise.resolve({ isSymlink: false, isDirectory: true });
+    }
+    if (this.files.has(path)) {
+      return Promise.resolve({ isSymlink: false, isDirectory: false });
+    }
+    return Promise.resolve(null);
+  }
   readDir(path: string): Promise<string[]> {
     return Promise.resolve(this.dirs.get(path) ?? []);
   }

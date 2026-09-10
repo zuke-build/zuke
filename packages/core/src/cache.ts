@@ -18,6 +18,7 @@
 
 import type { TargetBuilder } from "./target.ts";
 import {
+  lstatOrNull,
   messageOf,
   readFileOrNull,
   readTextOrNull,
@@ -57,6 +58,16 @@ export const defaultCacheHost: CacheHost = {
     // never has to fabricate a whole `Deno.FileInfo`.
     const info = await statOrNull(path);
     return info === null ? null : { isDirectory: info.isDirectory };
+  },
+  async lstat(
+    path: string,
+  ): Promise<{ isSymlink: boolean; isDirectory: boolean } | null> {
+    // `lstat`, not `stat`, so a symlink reports as one instead of as whatever
+    // it points at — the whole question {@link OutputHost.lstat} exists to ask.
+    const info = await lstatOrNull(path);
+    return info === null
+      ? null
+      : { isSymlink: info.isSymlink, isDirectory: info.isDirectory };
   },
   async readDir(path: string): Promise<string[]> {
     const names: string[] = [];

@@ -105,6 +105,56 @@ export async function statOrNull(path: string): Promise<Deno.FileInfo | null> {
 }
 
 /**
+ * Stat a path *without* following a final symlink, or `null` when it does not
+ * exist. The counterpart to {@link statOrNull}: this describes the link itself,
+ * which is what a guard against writing *through* a link needs — `statOrNull`
+ * would report the target and so answer the wrong question.
+ */
+export async function lstatOrNull(path: string): Promise<Deno.FileInfo | null> {
+  try {
+    return await Deno.lstat(path);
+  } catch (error) {
+    if (error instanceof Deno.errors.NotFound) return null;
+    throw error;
+  }
+}
+
+/**
+ * Read `body` into memory, or return `null` once it exceeds `limit` bytes.
+ *
+ * Reads incrementally and abandons the stream at the cap, so an oversized
+ * stream — a chunked HTTP body that declares no `content-length`, or a small
+ * archive that decompresses to gigabytes — is never buffered whole just to be
+ * rejected. A `null` body reads as empty.
+ */
+export async function readBytesBounded(
+  body: ReadableStream<Uint8Array> | null,
+  limit: number,
+): Promise<Uint8Array | null> {
+  if (body === null) return new Uint8Array(0);
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > limit) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+  const joined = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    joined.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return joined;
+}
+
+/**
  * The parent directory of a `/`- or `\`-separated path, or `null` when the path
  * has no parent to create (a bare name, or a root-level entry).
  */

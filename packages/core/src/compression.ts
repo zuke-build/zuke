@@ -26,6 +26,7 @@
  */
 
 import type { PathLike } from "./path.ts";
+import { lstatOrNull, readBytesBounded } from "./internal.ts";
 
 /**
  * Reject an archive entry whose name would escape the destination directory — an
@@ -94,6 +95,26 @@ export async function gunzip(data: Uint8Array): Promise<Uint8Array> {
     new DecompressionStream("gzip"),
   );
   return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+/**
+ * Gunzip-decompress `data`, or return `null` once the *decompressed* stream
+ * exceeds `limit` bytes.
+ *
+ * {@link gunzip} buffers whatever the stream produces, so a small archive that
+ * expands to gigabytes exhausts memory before anything can inspect it. Counting
+ * while decompressing is the only point at which it can still be refused, and
+ * it bounds what follows too: a tar entry costs at least its 512-byte header,
+ * so a byte cap is also an entry-count cap.
+ */
+export async function gunzipBounded(
+  data: Uint8Array,
+  limit: number,
+): Promise<Uint8Array | null> {
+  const stream = new Blob([new Uint8Array(data)]).stream().pipeThrough(
+    new DecompressionStream("gzip"),
+  );
+  return await readBytesBounded(stream, limit);
 }
 
 /** A single entry within a tar archive — a regular file or a symbolic link. */
@@ -416,57 +437,80 @@ function stripComponents(name: string, n: number): string {
 }
 
 /**
- * Refuse to extract an entry whose on-disk parent path passes through a symlink
- * an earlier entry planted — the second half of zip-slip defence. A symlink's
- * own target is bounded lexically by {@link assertSafeLinkTarget}, but a
- * *chain* (one entry symlinks a directory, a later entry writes through it) can
- * redirect a parent out of `destDir`; and a lexical ancestor check is defeated
- * by `.` segments or a case-insensitive / Unicode-normalising filesystem
- * (macOS, Windows) where the archive's string differs from the path the OS
- * actually opens. So this walks the real filesystem: it `lstat`s each existing
- * ancestor directory and rejects if one is a symlink — catching every alias
- * because it resolves the true inode, and touching nothing outside `destDir`
- * (it never `mkdir`s or writes through the symlink it finds).
+ * Probe a path *without* following a final symlink: the narrow shape a symlink
+ * guard needs, and no more. Resolves to `null` when the path does not exist.
+ *
+ * It is a parameter rather than a direct `Deno.lstat` because two callers ask
+ * the same question of different filesystems — the extractor of the real one,
+ * the remote-cache restore of whatever {@link "./remote_cache.ts" | OutputHost}
+ * it was given — and the guard is exactly the kind of check that must have one
+ * implementation.
+ */
+export type LinkProbe = (
+  path: string,
+) => Promise<{ isSymlink: boolean; isDirectory: boolean } | null>;
+
+/**
+ * The first ancestor directory of `name` under `root` that is a symlink, as a
+ * path relative to `root`, or `null` when every existing ancestor is a plain
+ * directory.
+ *
+ * This is the second half of zip-slip defence. A symlink's own target is
+ * bounded lexically by {@link assertSafeLinkTarget}, but a *chain* (one entry
+ * symlinks a directory, a later entry writes through it) can redirect a parent
+ * out of `destDir`; and a lexical ancestor check is defeated by `.` segments or
+ * a case-insensitive / Unicode-normalising filesystem (macOS, Windows) where
+ * the archive's string differs from the path the OS actually opens. So this
+ * walks the real filesystem: it probes each existing ancestor directory and
+ * reports the first symlink — catching every alias because it resolves the true
+ * inode, and touching nothing outside `root` (it never `mkdir`s or writes
+ * through the symlink it finds).
+ *
+ * It *reports* rather than throws because its two callers refuse for different
+ * reasons and owe the user different sentences: an archive that would escape
+ * its destination, and a cache artifact that would be written through a link
+ * the workspace already had.
  *
  * `realDirs` caches the ancestors already confirmed to be real directories so
- * a deep tree isn't re-`lstat`ed once per file (thousands of redundant calls on
+ * a deep tree isn't re-probed once per file (thousands of redundant calls on
  * a real runtime tarball). It is a cache of a *live* invariant, so the caller
  * must evict a path from it the moment that path stops being a plain directory
  * — i.e. when a symlink or file is created there — or a later entry could skip
  * the check on a path that has since become a symlink.
  */
-async function assertNoSymlinkAncestor(
+export async function findSymlinkAncestor(
+  lstat: LinkProbe,
   root: string,
   name: string,
   realDirs: Set<string>,
-): Promise<void> {
+): Promise<string | null> {
   const parts = name.replace(/\/+$/, "").split("/").slice(0, -1);
   let current = root;
   for (const part of parts) {
     current = `${current}/${part}`;
     if (realDirs.has(current)) continue;
-    let info: Deno.FileInfo;
-    try {
-      info = await Deno.lstat(current);
-    } catch {
-      return; // not yet created — nothing deeper exists to traverse
-    }
-    if (info.isSymlink) {
-      throw new Error(
-        `archive: refusing to extract "${name}" through the symlink ` +
-          `"${current.slice(root.length + 1)}" — a symlink in the archive ` +
-          `would redirect it out of the destination.`,
-      );
-    }
+    const info = await lstat(current);
+    // Not yet created — nothing deeper exists to traverse.
+    if (info === null) return null;
+    if (info.isSymlink) return current.slice(root.length + 1);
     if (info.isDirectory) realDirs.add(current);
   }
+  return null;
 }
+
+/** A {@link LinkProbe} over the real filesystem. */
+const denoLinkProbe: LinkProbe = async (path) => {
+  const info = await lstatOrNull(path);
+  return info === null
+    ? null
+    : { isSymlink: info.isSymlink, isDirectory: info.isDirectory };
+};
 
 /**
  * Write each archive `entry` under `destDir`, creating parent directories as
  * needed. Every entry name is validated first ({@link assertSafeEntryName}), a
  * symlink's target is validated ({@link assertSafeLinkTarget}), no entry is
- * written through an ancestor symlink ({@link assertNoSymlinkAncestor}), and a
+ * written through an ancestor symlink ({@link findSymlinkAncestor}), and a
  * pre-existing symlink at an entry's own path is removed before the write — so a
  * malicious archive can neither plant, point, nor chain its way (nor follow a
  * symlink left in a reused `destDir`) to a file outside `destDir` (a "zip
@@ -486,7 +530,19 @@ async function writeEntries(
   for (const entry of entries) {
     const name = stripComponents(entry.name, strip);
     if (name === "") continue; // fully stripped (e.g. the top-level directory)
-    await assertNoSymlinkAncestor(root, name, realDirs);
+    const through = await findSymlinkAncestor(
+      denoLinkProbe,
+      root,
+      name,
+      realDirs,
+    );
+    if (through !== null) {
+      throw new Error(
+        `archive: refusing to extract "${name}" through the symlink ` +
+          `"${through}" — a symlink in the archive would redirect it out of ` +
+          `the destination.`,
+      );
+    }
     const path = `${root}/${name}`;
     if (name.endsWith("/")) {
       // A directory entry (typeflag '5', or old tar's trailing-slash "file"):

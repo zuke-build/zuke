@@ -651,7 +651,7 @@ function resolveStateStore(option: StateStore | false | undefined, declared: Sta
   filesystem store under `<root>/.zuke/runs`. A plain build with no durable
   feature and no configuration gets `undefined`, so it carries zero overhead.
 
-async function restoreOutputs(artifact: Uint8Array, host: OutputHost, outputs?: readonly string[]): Promise<string[]>
+async function restoreOutputs(artifact: Uint8Array, host: OutputHost, outputs?: readonly string[], maxBytes: number): Promise<string[]>
   Restore the files in `artifact` (a gzipped tar produced by
   {@link archiveOutputs}) to disk, returning the paths written.
 
@@ -659,8 +659,24 @@ async function restoreOutputs(artifact: Uint8Array, host: OutputHost, outputs?: 
   leaves no half-written, partially-trusted output tree. An entry is refused
   when its name is absolute or escapes the workspace with `..`, when it is a
   symlink or directory entry (which {@link archiveOutputs} never produces),
-  when it lands under `.git` or `.zuke`, and — when `outputs` is given — when it
-  falls outside the target's declared outputs.
+  when it lands under `.git` or `.zuke`, when — given `outputs` — it falls
+  outside the target's declared outputs, and when the path it would be written
+  to passes through, or is, a symlink that already exists on disk.
+
+  That last refusal is what makes the confinement real rather than lexical. The
+  archive cannot plant a link, but a workspace can already hold one at a
+  declared output — `dist -> /tmp/build`, a checked-out `bazel-bin`, a Windows
+  junction — and `writeFile` follows it. Such a workspace no longer restores
+  from the remote cache and rebuilds instead; the link is left alone, because
+  the layout is the owner's and silently replacing it would be its own
+  surprise.
+
+  @param maxBytes
+      The most the artifact may decompress to before it is refused,
+      defaulting to 2 GiB. The bound is applied while decompressing, so a small
+      archive that expands without limit is refused rather than buffered first.
+      It is larger than the bound a store puts on the compressed bytes because
+      outputs compress; both exist to stop memory exhaustion.
 
   @param outputs
       The declaring target's {@link TargetBuilder.outputs}. Pass them
@@ -1521,11 +1537,16 @@ class HttpCacheStore implements RemoteCacheStore
   a cache you control, and prefer a {@link "./params.ts" | secret parameter} or
   an environment variable over a hard-coded value. On CI, restrict egress to
   the cache host so a misconfigured or overridden URL can't exfiltrate
-  artifacts. Restored archives are always confined to the workspace (see
-  {@link restoreOutputs}), so a poisoned store cannot write outside it.
+  artifacts. A restored archive cannot name a path outside the workspace, cannot
+  carry a link or directory entry, and is refused if the path it would land on
+  passes through a symlink the workspace already holds — so a poisoned store
+  cannot write outside the workspace (see {@link restoreOutputs}). An artifact
+  larger than {@link HttpCacheStoreOptions.maxArtifactBytes} is refused before
+  it is buffered, and {@link restoreOutputs} separately bounds what it
+  decompresses to.
 
   constructor(options: HttpCacheStoreOptions)
-    Build the store from its URL, optional token, and `fetch` seam.
+    Build the store from its URL, optional token, size cap, and `fetch` seam.
   async get(key: string): Promise<Uint8Array | null>
     Fetch the archived outputs stored under `key`, or `null` if there are none.
   async put(key: string, artifact: Uint8Array): Promise<void>
@@ -3471,6 +3492,12 @@ interface HttpCacheStoreOptions
     A bearer token sent as `Authorization: Bearer <token>`, if set.
   fetch?: typeof fetch
     The `fetch` implementation; defaults to the global. Overridable for tests.
+  maxArtifactBytes?: number
+    The most a fetched artifact may weigh on the wire, in bytes, before it is
+    refused. Defaults to 512 MiB. Raise it for a target whose compressed
+    outputs are genuinely larger; a refusal is a warned rebuild, not a build
+    failure. What the bytes decompress to is bounded separately, by
+    {@link restoreOutputs}.
 
 interface HttpOptions
   Options shared by the HTTP helpers.
@@ -3730,6 +3757,11 @@ interface OutputHost
     File contents, or `null` if the path does not exist.
   stat(path: string): Promise<{ isDirectory: boolean; } | null>
     Whether a path exists and is a directory, or `null` if it is missing.
+  lstat(path: string): Promise<{ isSymlink: boolean; isDirectory: boolean; } | null>
+    Describe a path without following a final symlink, or `null` if it is
+    missing. Distinct from {@link OutputHost.stat}, which resolves a link and so
+    cannot see one: {@link restoreOutputs} refuses to write through a link,
+    which is a question only an `lstat` can answer.
   readDir(path: string): Promise<string[]>
     The entry names within a directory.
   writeFile(path: string, bytes: Uint8Array): Promise<void>

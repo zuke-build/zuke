@@ -237,9 +237,34 @@ target:
   the target declared with `.outputs(...)`**. That last one is what stops an
   innocuous-looking `deno.json` or lockfile riding along in an otherwise valid
   artifact.
+- **A restore never writes through a symbolic link.** The checks above are
+  lexical — they reason about the entry's *name*. An archive cannot carry a
+  link, but a workspace can already hold one at a declared output, and writing
+  a file follows it. So before anything is written, each destination and every
+  directory above it is checked against what is actually on disk, and a link
+  anywhere on that path refuses the restore.
+
+  The link is **left alone** rather than replaced: the workspace's layout
+  belongs to whoever set it up, and silently unlinking it would be its own
+  surprise. The consequence is a real behaviour change — a workspace whose
+  declared outputs are symlinks (`dist -> /tmp/build`, a checked-out
+  `bazel-bin`, a Windows junction, which `lstat` also reports as a link) no
+  longer restores from the remote cache and rebuilds every time instead.
+  Uploads are unaffected. Replace the link with a real directory to get
+  restores back.
+- **An oversized artifact is refused before it is buffered.** A fetched archive
+  is bounded on the wire and again as it decompresses — counted while
+  inflating, so a small archive that expands without limit is refused rather
+  than exhausting memory first. The two bounds are separate numbers on purpose:
+  outputs compress, so a legitimate archive inflates several times over and a
+  shared cap would refuse real artifacts. The wire bound defaults to 512 MiB and
+  is `maxArtifactBytes` on `HttpCacheStore`; the inflated bound defaults to 2
+  GiB. Because a tar entry costs at least its 512-byte header, bounding bytes
+  bounds entry count too.
 - **A refused archive is a cache miss, not a build failure.** The target
   rebuilds and the refusal is reported as a warning — so whoever can write the
-  store cannot halt every build that reads it.
+  store cannot halt every build that reads it. That covers every refusal above,
+  the symlink and size ones included.
 
 ### Where it fits
 
