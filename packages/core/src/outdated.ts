@@ -255,9 +255,15 @@ export function formatOutdated(report: OutdatedReport): string {
       : `${behind.length} packages are`;
     lines.push(
       "",
-      `${count} behind. Refresh the lock with a plain \`deno cache --reload\` ` +
-        "— `--reload=jsr:` re-resolves from cached registry metadata and hands " +
-        "back the same versions.",
+      // Neither `--reload` flavour re-resolves: both keep the locked version
+      // and only revisit the sources behind it. `deno outdated --update` reads
+      // manifests, so it cannot see an inline `jsr:` specifier — which is the
+      // case this command exists for. Removing the entry is what makes the next
+      // run resolve it afresh.
+      `${count} behind. Delete these entries from the lock (or the lock file) ` +
+        "and re-run to resolve them afresh — neither `deno cache --reload` nor " +
+        "`--reload=jsr:` changes a locked version, and `deno outdated --update` " +
+        "only sees dependencies declared in an imports map.",
     );
   } else if (unchecked.length === 0) {
     return "Every JSR package the lock resolves is at its latest release.";

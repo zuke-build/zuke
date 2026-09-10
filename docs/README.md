@@ -31,7 +31,7 @@
   execution.
 - [Paths (`absolutePath`)](./paths.md) — the fluent path type.
 - [Packages](./packages.md) — the full package matrix with JSR badges.
-- Recipes — the three things a small project wants first:
+- Recipes — the things a small project wants first:
   [replace your shell scripts](./recipes/replace-shell-scripts.md) with the `$`
   shell, [generate your CI](./recipes/generate-ci.md) and stop editing YAML,
   [know when your dependencies fall behind](./recipes/keep-dependencies-current.md),

@@ -107,12 +107,17 @@ jobs:
 
 **Two UTC crons for one schedule, and a guard job.** GitHub only understands UTC
 cron, so a schedule in a daylight-saving zone contributes one UTC cron per
-distinct offset — `0 4` for winter, `0 3` for summer here. Both fire year-round,
-which would run the job twice a year at the wrong local hour, so Zuke generates
-the `zuke-schedule-guard` job to check the real local time and let the run
-proceed only in the intended one. A fixed-offset zone, or plain UTC, needs
-neither. Schedules are honoured on GitHub and Azure; GitLab and Bitbucket
-configure them in the provider UI, so the field is ignored there.
+distinct offset — `0 4` for winter, `0 3` for summer here. Both fire on **every**
+occurrence, so a bare pair of crons would run this job twice a week, once of them
+at the wrong local hour. Zuke generates the `zuke-schedule-guard` job to compare
+the real local time against the schedule and let the run proceed only on the
+matching one. A fixed-offset zone, or plain UTC, needs no guard.
+
+The guard is only generated for **GitHub**. On **Azure**, a daylight-saving zone
+is a hard error at generation time — write the cron in UTC, or use a
+fixed-offset zone, for that provider. **GitLab** and **Bitbucket** configure
+schedules in the provider UI rather than in-file, so the field is ignored there.
+See [schedules](../schedules.md) for the full matrix.
 
 **Egress.** The default hardening policy is `audit`, which reports egress rather
 than blocking it. If you tighten a job to `egress-policy: block`, this one needs
@@ -121,9 +126,14 @@ whole purpose is to talk to the registry.
 
 ## What `--exit-code` treats as a failure
 
-Without the flag, `outdated` is a report and always exits `0`. With it, the
+Without the flag, `outdated` is a report: being behind exits `0`. With it, the
 command exits `1` when a package is **behind** *or* when a package **could not
 be checked** — a private scope, a rename, a runner behind a proxy.
+
+One case fails either way: with **no lock file** there are no resolved versions
+to compare, and `outdated` reports that as an error and exits `1` with or
+without the flag. If the scheduled job runs before anything has written a lock,
+it goes red for that reason rather than for staleness.
 
 That second half is the point of the gate. A run that reached nothing at all
 would otherwise print that every package is at its latest release, which is the
@@ -139,11 +149,24 @@ The output names each package and the version it is behind:
 @zuke/gcloud  1.1.0  →  1.3.0
 ```
 
-Refreshing the lock has one trap worth knowing: `--reload=jsr:` re-resolves from
-cached registry metadata and hands back the same stale versions. Only a bare
-`deno cache --reload` actually re-resolves. And in a repository that also has a
-`package.json`, `deno cache` resolves the whole npm tree and writes an `npm`
-section a jsr-only lock never had.
+Refreshing the lock is the part that catches people out, because the obvious
+commands do nothing. Measured against deno 2.9.5, on a stale entry for an inline
+`jsr:` specifier:
+
+| Command | Effect on the locked version |
+| --- | --- |
+| `deno cache --reload=jsr:` | unchanged — re-resolves from cached registry metadata |
+| `deno cache --reload` | unchanged — re-downloads sources, keeps the locked resolution |
+| `deno outdated --update` | unchanged — it reads manifests, and an inline specifier is in no manifest |
+| delete the lock, then re-cache | **re-resolved** |
+
+That last row is the one that works. `deno outdated --update` *is* the right tool
+when the dependency is declared in a `deno.json` imports map — but then you would
+not have needed `zuke outdated` to find it, which is the whole point of this
+command.
+
+And in a repository that also has a `package.json`, `deno cache` resolves the
+whole npm tree and writes an `npm` section a jsr-only lock never had.
 
 Review the lock diff and commit it in the same change, exactly as you would for
 a deliberate dependency bump — the lock is part of the gate.

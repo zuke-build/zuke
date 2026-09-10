@@ -230,7 +230,7 @@ that are behind:
 @zuke/git     1.5.0  →  1.11.0
 @zuke/gcloud  1.1.0  →  1.3.0
 
-2 packages are behind. Refresh the lock with a plain `deno cache --reload` …
+2 packages are behind. Delete these entries from the lock (or the lock file) and re-run …
 ```
 
 It exists for the case nothing else covers. A build whose specifiers are
@@ -267,11 +267,18 @@ It needs the network, which is why it is a command you run rather than a line in
 `--list` or the run summary: those stay offline and instant. `outdated` is a
 reserved command name.
 
-Two things about refreshing the lock afterwards, because the obvious move is
-wrong. In a repo that also has a `package.json`, `deno cache` resolves the whole
-npm tree and writes an `npm` section a jsr-only lock never had. And
-`--reload=jsr:` re-resolves from cached registry metadata, handing back the same
-stale versions — only a bare `--reload` actually re-resolves.
+Refreshing the lock afterwards is where the obvious moves all fail. Measured on
+deno 2.9.5 against a stale entry for an inline `jsr:` specifier — the case this
+command exists for — neither reload flavour changes the locked version:
+`--reload=jsr:` re-resolves from cached registry metadata, and a bare `--reload`
+re-downloads the sources behind the resolution while leaving the resolution
+itself alone. `deno outdated --update` does re-resolve, but it reads manifests,
+so it cannot see a specifier written inline rather than in an imports map.
+
+What works is removing the stale entries from `deno.lock` (or deleting the lock)
+and re-running, which resolves them afresh. One caveat when you delete the whole
+file: in a repo that also has a `package.json`, `deno cache` resolves the whole
+npm tree and writes an `npm` section a jsr-only lock never had.
 
 ## Parallel execution
 
