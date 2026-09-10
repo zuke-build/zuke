@@ -34,6 +34,7 @@
 - Recipes — the three things a small project wants first:
   [replace your shell scripts](./recipes/replace-shell-scripts.md) with the `$`
   shell, [generate your CI](./recipes/generate-ci.md) and stop editing YAML,
+  [know when your dependencies fall behind](./recipes/keep-dependencies-current.md),
   and [release a small library](./recipes/release-a-library.md) as one chain
   of targets.
 - [Examples](../examples/README.md) — five cloneable mini projects: a Deno
