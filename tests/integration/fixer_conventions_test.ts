@@ -47,6 +47,49 @@ const FIX = JSON.stringify({
   stop_reason: "end_turn",
 });
 
+/** One message in a model request, once its shape has been checked. */
+function contentOf(message: unknown): string {
+  if (typeof message !== "object" || message === null) {
+    throw new Error("request message was not an object");
+  }
+  if (!("content" in message)) {
+    throw new Error("request message had no content");
+  }
+  const content = message.content;
+  if (typeof content !== "string") {
+    throw new Error("request message content was not a string");
+  }
+  return content;
+}
+
+/**
+ * The system and user halves of a captured model request.
+ *
+ * Every field is checked rather than indexed into, because the assertions that
+ * follow include a **negative** one — that the conventions never appear
+ * unfenced. An optional-chained read of a shape that has drifted yields an
+ * empty string, and an empty string satisfies "does not contain" for free. So a
+ * changed request format would quietly turn the security half of this test into
+ * a tautology; throwing here makes it a loud failure that names what changed.
+ */
+function promptOf(body: string): { system: string; user: string } {
+  const parsed: unknown = JSON.parse(body === "" ? "null" : body);
+  if (typeof parsed !== "object" || parsed === null) {
+    throw new Error("request body was not a JSON object");
+  }
+  if (!("system" in parsed) || !("messages" in parsed)) {
+    throw new Error("request body had no system prompt or messages");
+  }
+  const { system, messages } = parsed;
+  if (typeof system !== "string") {
+    throw new Error("request system prompt was not a string");
+  }
+  if (!Array.isArray(messages) || messages.length === 0) {
+    throw new Error("request carried no messages");
+  }
+  return { system, user: messages.map(contentOf).join("\n") };
+}
+
 Deno.test("a build's conventions reach the model fenced as untrusted data", async () => {
   const bodies: string[] = [];
   const writes: string[] = [];
@@ -91,9 +134,7 @@ Deno.test("a build's conventions reach the model fenced as untrusted data", asyn
 
   // The request is JSON, so read the prompt back the way the model receives it
   // rather than pattern-matching the wire escaping.
-  const sent: string = JSON.parse(bodies[0] ?? "{}").messages
-    ?.map((m: { content: string }) => m.content).join("\n") ?? "";
-  const system: string = JSON.parse(bodies[0] ?? "{}").system ?? "";
+  const { system, user: sent } = promptOf(bodies[0] ?? "");
 
   // The document arrives inside the fence, and the system prompt announces it.
   assertStringIncludes(sent, "<<<PROJECT_CONVENTIONS");
