@@ -11,6 +11,8 @@
  */
 
 import type { Build, BuildResult, TargetStatus } from "./build.ts";
+import { withAmbientRedactor } from "./ambient_redactor.ts";
+import type { Redactor } from "./redact.ts";
 import type { Plugin, RunInfo, TargetTiming } from "./plugin.ts";
 import type { RunRecord } from "./state/types.ts";
 import { errorMessage } from "./run_support.ts";
@@ -53,7 +55,17 @@ export function makeLifecycle(
   plugins: Plugin[],
   run: RunInfo,
   warn: (message: string) => void,
+  redactor: Redactor,
 ): Lifecycle {
+  // Every hook runs with the run's redactor installed as the ambient one.
+  //
+  // The executor's own scope covers the plan, not the calls around it, so
+  // `onStart` and `onFinish` — the natural places for a build to write its own
+  // job-summary section — ran outside it and published secrets in the clear.
+  // Installing it here rather than at each call site is what makes that true of
+  // a hook added later too: this is the one place hooks are dispatched.
+  const dispatch = <T>(fn: () => Promise<T>): Promise<T> =>
+    withAmbientRedactor(redactor, fn);
   const observe = async (
     hook: string,
     call: (p: Plugin) => void | Promise<void>,
@@ -71,28 +83,38 @@ export function makeLifecycle(
     }
   };
   return {
-    async start() {
-      await build.onStart();
-      await observe("onStart", (p) => p.onStart?.(run));
+    start() {
+      return dispatch(async () => {
+        await build.onStart();
+        await observe("onStart", (p) => p.onStart?.(run));
+      });
     },
-    async targetStart(name) {
-      await build.onTargetStart(name);
-      await observe("onTargetStart", (p) => p.onTargetStart?.(name, run));
+    targetStart(name) {
+      return dispatch(async () => {
+        await build.onTargetStart(name);
+        await observe("onTargetStart", (p) => p.onTargetStart?.(name, run));
+      });
     },
-    async targetEnd(name, status, durationMs) {
-      await build.onTargetEnd(name, status);
-      const timing: TargetTiming = { runId: run.runId, durationMs };
-      await observe(
-        "onTargetEnd",
-        (p) => p.onTargetEnd?.(name, status, timing),
-      );
+    targetEnd(name, status, durationMs) {
+      return dispatch(async () => {
+        await build.onTargetEnd(name, status);
+        const timing: TargetTiming = { runId: run.runId, durationMs };
+        await observe(
+          "onTargetEnd",
+          (p) => p.onTargetEnd?.(name, status, timing),
+        );
+      });
     },
-    async finish(result) {
-      await build.onFinish(result);
-      await observe("onFinish", (p) => p.onFinish?.(result, run));
+    finish(result) {
+      return dispatch(async () => {
+        await build.onFinish(result);
+        await observe("onFinish", (p) => p.onFinish?.(result, run));
+      });
     },
-    async runStateChange(record) {
-      await observe("onRunStateChange", (p) => p.onRunStateChange?.(record));
+    runStateChange(record) {
+      return dispatch(async () => {
+        await observe("onRunStateChange", (p) => p.onRunStateChange?.(record));
+      });
     },
   };
 }

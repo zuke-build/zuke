@@ -345,6 +345,7 @@ export async function execute(
     options.plugins ?? [],
     runInfo,
     (message) => reporter.info(message),
+    redactor,
   );
   await life.start();
 

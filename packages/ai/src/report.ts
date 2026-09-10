@@ -14,6 +14,7 @@ import type {
   Provider,
   Usage,
 } from "./types.ts";
+import { appendJobSummary } from "@zuke/core";
 import type { RetryInfo } from "./retry.ts";
 import type { StoredFinding } from "./state.ts";
 import { cell } from "./markdown.ts";
@@ -462,22 +463,23 @@ export function skipMarkdown(
 /**
  * Append `markdown` to the GitHub Actions job-summary file, if one is set.
  * Best-effort: a missing or unwritable file never fails the review.
+ *
+ * Delegates to `@zuke/core`, which redacts the run's secrets before writing —
+ * closing the gap that let a reviewer's or fixer's markdown reach the job
+ * summary unmasked while every other sink was redacted.
+ *
+ * This package used to carry its own copy of the writer, on the stated grounds
+ * that its core floor predated the export. That was not so: `appendJobSummary`
+ * has been exported since core 1.33.0, below the floor even then, so the copy
+ * never had a reason to exist.
+ *
+ * One residual, stated rather than glossed: the redaction arrived in the core
+ * release *after* this package's floor, so a consumer pinned at the floor
+ * itself gets the delegation without the masking — no worse than the copy it
+ * replaces, and correct as soon as they move up. Raising the floor is a
+ * follow-up once that release is out, since a floor above the workspace's own
+ * core version stops the repository resolving at all.
  */
 export function writeStepSummary(markdown: string): void {
-  // Deliberately not delegating to `@zuke/core`'s `appendJobSummary`: this
-  // package declares an older core floor than the release that introduced it,
-  // and a consumer installing that floor from JSR would get a missing export.
-  // Revisit once this package's declared floor has moved past it.
-  let path: string | undefined;
-  try {
-    path = Deno.env.get("GITHUB_STEP_SUMMARY");
-  } catch {
-    return; // no env access — nothing to write to
-  }
-  if (path === undefined || path === "") return;
-  try {
-    Deno.writeTextFileSync(path, `${markdown}\n`, { append: true });
-  } catch {
-    // Best-effort: an unwritable summary file must never fail the review.
-  }
+  appendJobSummary(markdown);
 }
