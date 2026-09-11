@@ -341,8 +341,11 @@ Deno.test("machine-readable output is safe on a runner and unchanged by it", asy
     // Off a runner the bytes are untouched, so a consumer diffing or
     // checksumming this output sees exactly what it always saw.
     assertStringIncludes(plain.out, "##[set-output name=x]mallory");
-    // On a runner the marker the runner scans for is not on the wire.
+    // On a runner the marker the runner scans for is not on the wire — and
+    // only the marker is touched, so an ordinary hash elsewhere in the payload
+    // is still written as itself.
     assertEquals(onActions.out.includes("##["), false);
+    assertStringIncludes(onActions.out, "name=x]mallory");
     // Unchanged: a consumer reads the same value either way.
     assertEquals(JSON.parse(onActions.out)[0].actor, actor);
     assertEquals(

@@ -118,8 +118,11 @@ export function printJson(value: unknown): void {
   // diffing it against a golden file, or checksumming it, sees no change at all.
   // On a runner the bytes differ and the parsed value does not, which is the
   // only combination that is both safe and faithful.
+  // Only the marker itself, not every `#`: escaping the first character of each
+  // occurrence is enough to stop the runner matching it, and leaves every other
+  // hash in the payload exactly as written.
   console.log(
-    onActionsRunner() ? json.replaceAll("#", "\\u0023") : json,
+    onActionsRunner() ? json.replaceAll("##[", "\\u0023#[") : json,
   );
 }
 
