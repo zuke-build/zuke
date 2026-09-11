@@ -16,6 +16,8 @@
 
 import { assertEquals, assertStringIncludes } from "./_assert.ts";
 import { escapeLineIf } from "../src/render.ts";
+import { printJson } from "../src/reporter.ts";
+import { withEnv } from "./_env.ts";
 import {
   escapingReporter,
   type Reporter,
@@ -210,6 +212,8 @@ Deno.test("no module writes to the console except the sink itself", async () => 
   //
   // Comments are stripped first: a JSDoc example showing a plugin author how to
   // write one is documentation, not a write.
+  // Keyed by path from `src/`, not by file name: a nested module sharing a
+  // basename with an allowed one would otherwise be exempt by accident.
   const allowed = new Set([
     // The sink itself, the one place allowed to reach the real console.
     "reporter.ts",
@@ -229,12 +233,13 @@ Deno.test("no module writes to the console except the sink itself", async () => 
         await walk(child);
         continue;
       }
-      if (!entry.name.endsWith(".ts") || allowed.has(entry.name)) continue;
+      const relative = child.href.slice(root.href.length);
+      if (!entry.name.endsWith(".ts") || allowed.has(relative)) continue;
       const code = (await Deno.readTextFile(child))
         .replace(/\/\*[\s\S]*?\*\//g, "")
         .replace(/\/\/[^\n]*/g, "");
       if (/\bconsole\.(log|error|warn|info|debug)\s*\(/.test(code)) {
-        offenders.push(entry.name);
+        offenders.push(relative);
       }
     }
   };
@@ -247,4 +252,35 @@ Deno.test("no module writes to the console except the sink itself", async () => 
       offenders.join(", ")
     }`,
   );
+});
+
+Deno.test("printJson encodes the marker wherever it appears in a payload", async () => {
+  // `replaceAll` runs over the whole serialised document, so field position is
+  // not a factor — but that is the kind of claim worth demonstrating rather
+  // than asserting, since a reader cannot tell from the call site whether it
+  // covers nesting, arrays, keys, or several occurrences in one value.
+  const payload = {
+    "##[key]": "top level",
+    nested: { deep: { actor: "##[set-output name=x]mallory" } },
+    list: ["a##[b", "plain", "##[c##[d"],
+    adjacent: "###[x] ####[y]",
+    innocent: "a # b #[c] ##d",
+  };
+
+  const lines: string[] = [];
+  const original = console.log;
+  console.log = (line: string) => void lines.push(line);
+  try {
+    await withEnv({ GITHUB_ACTIONS: "true" }, () => printJson(payload));
+  } finally {
+    console.log = original;
+  }
+
+  const wire = lines.join("\n");
+  // Nothing the runner scans for survives, anywhere in the document.
+  assertEquals(wire.includes("##["), false);
+  // And every value still parses back to exactly what went in.
+  assertEquals(JSON.parse(wire), payload);
+  // A hash that is not part of the marker is left as written.
+  assertStringIncludes(wire, "a # b #[c] ##d");
 });
