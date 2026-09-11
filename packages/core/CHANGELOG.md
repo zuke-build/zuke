@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.53.0](https://github.com/zuke-build/zuke/compare/core-v1.52.0...core-v1.53.0) (2026-09-11)
+
+
+### Features
+
+* **core:** the seams the credential and scope fixes need ([#566](https://github.com/zuke-build/zuke/issues/566)) ([97cf6ab](https://github.com/zuke-build/zuke/commit/97cf6ab1859911c3dfbfe6f9314ba5d7527af4d1))
+
+
+### Bug Fixes
+
+* **cli:** neutralise the CLI's own output on an Actions runner ([#571](https://github.com/zuke-build/zuke/issues/571)) ([6a82a5c](https://github.com/zuke-build/zuke/commit/6a82a5cf98bd66ae5fb224b2d8e3c49b9c91bf14))
+* **core:** keep a hostile target name inside its summary cell ([#565](https://github.com/zuke-build/zuke/issues/565)) ([9eb334d](https://github.com/zuke-build/zuke/commit/9eb334d513125011747fbacb0cffdc4b317c1e1f)), closes [#554](https://github.com/zuke-build/zuke/issues/554)
+* **core:** neutralise every line Zuke prints on an Actions runner, not only the renderer's ([#569](https://github.com/zuke-build/zuke/issues/569)) ([3544830](https://github.com/zuke-build/zuke/commit/354483054e3b4f7390c916a395fedfe8ec556af7)), closes [#567](https://github.com/zuke-build/zuke/issues/567)
+* **core:** route every command-surface write through the escaping sink ([#576](https://github.com/zuke-build/zuke/issues/576)) ([2b26631](https://github.com/zuke-build/zuke/commit/2b266312525e027b17e9ffdc6b371254e4a2f743))
+
 ## [1.52.0](https://github.com/zuke-build/zuke/compare/core-v1.51.0...core-v1.52.0) (2026-09-10)
 
 
