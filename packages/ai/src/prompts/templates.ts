@@ -11,6 +11,7 @@
 import {
   conventionsClause,
   conventionsSection,
+  defangMarkers,
   fenceUntrusted,
 } from "./fence.ts";
 
@@ -206,9 +207,23 @@ export function verifyUserPrompt(
   diff: string,
   extras: PromptExtras = {},
 ): string {
+  // The candidates are a prior pass's model output, so their text is no more
+  // ours than the diff below them — and JSON is not a fence: it escapes quotes
+  // and newlines, but a marker inside a string value survives whole, and is
+  // then closed by the real diff's own closer. Defanged here rather than in the
+  // finding, because the title is what the dedup and suppression machinery
+  // matches across runs; rewriting it in place would break that continuity
+  // silently. `id` is a base-36 hash, so it can hold no marker and is passed
+  // through as the verdicts must echo it.
+  const shown = candidates.map((c) => ({
+    ...c,
+    title: defangMarkers(c.title),
+    ...(c.file === undefined ? {} : { file: defangMarkers(c.file) }),
+    ...(c.detail === undefined ? {} : { detail: defangMarkers(c.detail) }),
+  }));
   const parts = [
     `Candidate findings to verify:\n\n${
-      JSON.stringify({ candidates }, null, 2)
+      JSON.stringify({ candidates: shown }, null, 2)
     }`,
   ];
   if (extras.files !== undefined && extras.files !== "") {
@@ -276,9 +291,14 @@ export function adjudicateUserPrompt(
 ): string {
   const parts: string[] = [];
   for (const rebuttal of rebuttals) {
+    // The comments arrive already fenced; the finding they contest does not,
+    // and its title and detail are a prior pass's model output. Same defanging,
+    // same reason it is done here and not in the finding itself.
     const lines = [
-      `Finding ${rebuttal.id}: ${rebuttal.title}`,
-      ...(rebuttal.detail !== undefined ? [rebuttal.detail] : []),
+      `Finding ${rebuttal.id}: ${defangMarkers(rebuttal.title)}`,
+      ...(rebuttal.detail === undefined
+        ? []
+        : [defangMarkers(rebuttal.detail)]),
       ``,
       ...rebuttal.comments,
     ];
@@ -340,7 +360,9 @@ export function dedupSystemPrompt(subject: string): string {
 export function dedupUserPrompt(pairs: DedupPairNote[]): string {
   return pairs.map((pair) =>
     [
-      `Pair ${pair.label} — both findings name ${pair.file}:`,
+      // The titles below are fenced, which defangs them; the path in this
+      // header is not, and it comes from the same model output they do.
+      `Pair ${pair.label} — both findings name ${defangMarkers(pair.file)}:`,
       ``,
       `New finding:`,
       fenceUntrusted(
