@@ -112,7 +112,9 @@ finish replacing any remaining generated `CmdTasks.exec` calls with typed
 With the global CLI installed, the bare `zuke` works from anywhere inside the
 project: `zuke <target>`, `zuke --list`, `zuke graph`, `zuke mcp`, bare `zuke`
 for the default target — every command that is not the CLI's own (`setup`,
-`import`, `doc`, `--help`, `--version`) is forwarded to the nearest `zuke.ts`.
+`import`, `doc`, `--help`, `--version`) is forwarded to the nearest `zuke.ts`;
+`zuke -- --help` is the build's own usage, and `zuke -- <target>` reaches a
+target that shares one of those names.
 It walks up to the `zuke.json` that marks the repository root and runs
 `deno run -A zuke.ts <args>` from there, with `--frozen` once a `deno.lock`
 exists — the launcher's exact behaviour, minus the Deno bootstrap. Outside a

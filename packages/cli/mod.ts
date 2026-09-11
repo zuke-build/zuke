@@ -239,8 +239,9 @@ Inside a project (a zuke.json in the current directory or a parent), any other
 command runs the build itself — zuke <target>, zuke --list, zuke graph,
 zuke generate-ci, zuke mcp, and bare zuke for the default target — as
 \`./zuke <command>\` would: deno run -A zuke.ts from the repository root, with
---frozen once a deno.lock exists. A target that shares a name with one of the
-commands above is reachable as zuke -- <target>.`;
+--frozen once a deno.lock exists. Anything after a \`--\` reaches the build
+unread by this CLI: zuke -- --help is the build's own usage, and
+zuke -- <target> reaches a target that shares a name with a command above.`;
 
 /** Run the `setup` subcommand. */
 async function commandSetup(

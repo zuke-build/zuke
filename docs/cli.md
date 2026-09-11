@@ -22,7 +22,9 @@ directory holding `zuke.json`, with `--frozen` once a `deno.lock` exists
 beside it (the launchers' rule), stdio inherited so `zuke mcp` and prompts
 work, and exits with the build's code. A bare `zuke` inside a project runs the
 default target, as `./zuke` does; `--help`/`-h` and `--version`/`-V` always
-answer for the global CLI (use `./zuke --help` for the build's own usage).
+answer for the global CLI. The build's own usage — the live targets and
+parameters — is `zuke -- --help`: the build's parser skips the `--`, so
+anything after it, flag or target, reaches the build unread by the global CLI.
 Outside any project the bare `zuke` prints the global usage, and any other
 command reports itself unknown along with the missing `zuke.json`. The one name both
 CLIs claim is `doc`, and the global one answers it; the two do the same
@@ -49,8 +51,8 @@ a shared writable location is run as found.
 
 The words the global CLI keeps for itself — `setup`, `import`, `doc`,
 `--help`/`-h`, `--version`/`-V` — never reach the build, so a target named
-`setup` or `import` is reached as `zuke -- setup` (the build's own parser
-skips the `--`), or through `./zuke`.
+`setup` or `import` is reached as `zuke -- setup`, the build's `doc` as
+`zuke -- doc <package>`, or any of them through `./zuke`.
 
 ## The global `zuke` CLI (`jsr:@zuke/cli`)
 
