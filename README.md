@@ -31,8 +31,8 @@ whole thing to **AI agents** as typed tools. Inspired by
 ```sh
 deno install -A -g -n zuke jsr:@zuke/cli   # 1. the CLI, once
 zuke setup                                  # 2. scaffold zuke.ts + the ./zuke launcher
-./zuke                                      # 3. run it
-./zuke generate-ci                          # 4. write .github/workflows/ci.yml from the build
+zuke                                        # 3. run it (or ./zuke — no install needed)
+zuke generate-ci                            # 4. write .github/workflows/ci.yml from the build
 ```
 
 Step 4 needs one line in the build. Here is the whole file after you have
@@ -144,10 +144,11 @@ launcher that uses the Deno on your `PATH` and fails closed without one, for a
 project that must never download a tool from its build entry point.
 
 ```sh
-deno install -A -g -n zuke jsr:@zuke/cli   # the CLI: setup, import, doc
+deno install -A -g -n zuke jsr:@zuke/cli   # the CLI: setup, import, doc — and it forwards the rest
 zuke setup                                  # or: deno run -A jsr:@zuke/cli setup
 zuke setup --mcp                            # …and register the build's MCP server for your agent
 zuke import                                 # migrate package.json scripts / a Makefile instead
+zuke ci                                     # any other command runs the project's build, like ./zuke ci
 ```
 
 > [!NOTE]

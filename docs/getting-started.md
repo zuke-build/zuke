@@ -99,10 +99,14 @@ If you already have Deno, `deno task zuke <target>` (via the `zuke` task in
 `deno.json`) does the same thing.
 
 `zuke setup`/`zuke import` scaffold this launcher for you, so once it's in place
-run every target with `./zuke <target>` — the bare `zuke` you installed globally
-only knows `setup`/`import`/`doc` (see the [CLI reference](./cli.md) for the
-full split). Shell completions (`./zuke completions install <shell>`) register
-the words `zuke` and `./zuke`, so those two forms complete targets;
+run every target with `./zuke <target>`. The bare `zuke` you installed globally
+works too: from anywhere inside the project, `zuke <target>` (or `zuke --list`,
+`zuke graph`, `zuke mcp`) forwards to the nearest `zuke.ts` — it walks up to
+the `zuke.json` marking the root and runs the build from there exactly as the
+launcher would; see the [CLI reference](./cli.md) for the split between the
+global CLI's own commands and the build's. Shell completions
+(`./zuke completions install <shell>`) register the words `zuke` and `./zuke`,
+so both forms complete targets;
 `deno task zuke <target>` does not, because the shell matches the completion on
 the first word of the line.
 

@@ -3,16 +3,32 @@
 "zuke" names **two different programs**, and this reference is split to match:
 
 - **The global `zuke` CLI** (`jsr:@zuke/cli`, installed once with
-  `deno install -A -g -n zuke jsr:@zuke/cli`) only scaffolds and inspects
-  projects — `setup`, `import`, `doc`, `--help`, `--version`. It never runs a
-  target.
-- **Your build's own CLI** — reached via the `./zuke` launcher (or
-  `deno run -A zuke.ts`) that `zuke setup`/`zuke import` drop into your repo —
-  is what runs targets and everything else: `graph`, `--list`, `generate-ci`,
-  `completions`, `mcp`, `resume`, `runs`, `cancel`, `register`, its own `doc`.
+  `deno install -A -g -n zuke jsr:@zuke/cli`) owns the commands that scaffold
+  and inspect projects — `setup`, `import`, `doc`, `--help`, `--version` — and
+  **forwards everything else to your build**: inside a project (a `zuke.json`
+  in the current directory or any parent), `zuke ci` runs the project's
+  `zuke.ts` exactly as `./zuke ci` would.
+- **Your build's own CLI** — the `zuke.ts` in your repo, reached through the
+  `./zuke` launcher (or `deno run -A zuke.ts`) that `zuke setup`/`zuke import`
+  drop into it, or through that forwarding — is what runs targets and
+  everything else: `graph`, `--list`, `generate-ci`, `completions`, `mcp`,
+  `resume`, `runs`, `cancel`, `register`, its own `doc`.
 
-If a command isn't in the first table, it belongs to the second one — run it
-with `./zuke <command>`, not the bare `zuke` you installed globally.
+If a command isn't in the first table, it belongs to the second one: run it as
+`./zuke <command>` from the repository root, or as `zuke <command>` from
+anywhere inside the project once the global CLI is installed. The two are
+equivalent — the forwarding runs `deno run -A zuke.ts <command>` from the
+directory holding `zuke.json`, with `--frozen` once a `deno.lock` exists
+beside it (the launchers' rule), stdio inherited so `zuke mcp` and prompts
+work, and exits with the build's code. A bare `zuke` inside a project runs the
+default target, as `./zuke` does; `--help`/`-h` and `--version`/`-V` always
+answer for the global CLI (use `./zuke --help` for the build's own usage).
+Outside any project the bare `zuke` prints the global usage, and any other
+command reports itself unknown along with the missing `zuke.json`. The one name both
+CLIs claim is `doc`, and the global one answers it; the two do the same
+isolated `deno doc`, so nothing is lost. The `./zuke` launcher remains the
+entry point that needs no install — it bootstraps Deno itself — so CI and a
+fresh clone keep using it.
 
 ## The global `zuke` CLI (`jsr:@zuke/cli`)
 
@@ -21,6 +37,7 @@ with `./zuke <command>`, not the bare `zuke` you installed globally.
 | `zuke setup [options]`      | Scaffold a starter `zuke.ts`, the `./zuke`/`zuke.ps1` launchers, `deno.json`, and `zuke.json` into a directory. See [Getting started](./getting-started.md#scaffold-a-project-with-zuke-setup). |
 | `zuke import [options]`     | Generate a `zuke.ts` with one target per `package.json` script or Makefile target, plus the same scaffolding as `setup`. See [Getting started](./getting-started.md#migrate-an-existing-project-with-zuke-import). |
 | `zuke doc <package>`        | Print a `@zuke/*` package's API (`zuke doc core`, `zuke doc @scope/pkg`, or a `jsr:`/`npm:`/`https:` spec as-is) via an isolated `deno doc`. |
+| `zuke [target\|command]`     | Anything else — `zuke ci`, `zuke --list`, `zuke graph`, `zuke mcp`, and bare `zuke` for the default target — is forwarded to the project's build, as `./zuke <command>` would run it. Needs a `zuke.json` in the current directory or a parent. |
 | `zuke --help` / `-h`        | Usage.                                                                                                    |
 | `zuke --version` / `-V`     | Print the installed `@zuke/cli` version.                                                                 |
 
@@ -45,8 +62,9 @@ instead of auto-detecting it. Both finish by scaffolding the launchers and
 ## Your build's CLI (`./zuke` / `deno run -A zuke.ts`)
 
 Everything below runs *your build* — the `zuke.ts` in your project, driven
-through the `./zuke` (or `.\zuke.ps1`) launcher or directly with
-`deno run -A zuke.ts`. Shell completions (see [`./zuke completions`](#zuke-completions)
+through the `./zuke` (or `.\zuke.ps1`) launcher, directly with
+`deno run -A zuke.ts`, or as `zuke <command>` from anywhere inside the project
+through the global CLI's forwarding. Shell completions (see [`./zuke completions`](#zuke-completions)
 below) attach to whichever launcher word you install them for.
 
 | Command                                                                 | Behaviour                                                                                                   |

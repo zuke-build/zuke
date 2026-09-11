@@ -22,12 +22,15 @@ zuke setup
 deno install -A -g -n zuke jsr:@zuke/cli
 ```
 
-and scaffold Zuke into any project with `zuke setup`.
+scaffold Zuke into any project with `zuke setup`, then run its build from
+anywhere inside the project with `zuke <target>`: every command that is not
+the CLI's own (`setup`, `import`, `doc`) is forwarded to the nearest
+`zuke.ts`, exactly as the `./zuke` launcher would run it.
 @module
 
-async function main(args: string[], host: SetupHost, prompter: Prompter, docRunner: DocRunner, starActions: StarActions): Promise<number>
+async function main(args: string[], host: SetupHost, prompter: Prompter, docRunner: DocRunner, starActions: StarActions, buildRunner: BuildRunner): Promise<number>
   The CLI entry point. Returns a process exit code; `host`, `prompter`,
-  `docRunner`, and `starActions` are injectable for testing.
+  `docRunner`, `starActions`, and `buildRunner` are injectable for testing.
 
 function parseImportFlags(args: string[]): ImportFlags
   Parse the argument list following `zuke import`.
@@ -43,6 +46,14 @@ function resolveDocSpec(pkg: string | undefined): string | undefined
 
 const defaultPrompter: Prompter
   The real {@link Prompter}, backed by Deno's `prompt`/`confirm`.
+
+interface BuildLocation
+  Where a forwarded command runs, and how.
+
+  root: string
+    The absolute repository root: the directory holding `zuke.json`.
+  frozen: boolean
+    Whether a `deno.lock` sits at the root, so the run passes `--frozen`.
 
 interface ImportFlags extends SetupFlags
   Flags accepted by `zuke import` — the setup flags plus `--from`.
@@ -132,6 +143,10 @@ interface StarActions
     Star the Zuke repository through `gh api`.
   openBrowser(url: string): Promise<boolean>
     Open `url` in the default browser; `false` when it could not launch.
+
+type BuildRunner = (root: string, denoArgs: string[]) => Promise<number>
+  Runs `deno <denoArgs>` from `root` and resolves to its exit code — the
+  injectable subprocess seam, so the forwarding is testable without a build.
 
 type DocRunner = (denoArgs: string[]) => Promise<number>
   Runs `deno doc <args>` — the injectable subprocess seam for
