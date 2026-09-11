@@ -26,7 +26,7 @@ import { resolveActor } from "../state/record.ts";
 import type { BuildDescriptor, BuildLocation } from "./descriptor.ts";
 import type { BuildRegistry } from "./registry.ts";
 import { resolveBuildRegistry } from "./resolve.ts";
-import { cliReporter } from "../reporter.ts";
+import { cliReporter, printJson } from "../reporter.ts";
 
 /** How many times a conflicting registration CAS is re-read and retried. */
 const MAX_RETRIES = 10;
@@ -167,7 +167,7 @@ export async function registerCommand(
   }, now);
 
   if (options.json) {
-    cliReporter.info(JSON.stringify(descriptor, null, 2));
+    printJson(descriptor);
   } else {
     cliReporter.info(
       `Registered build "${descriptor.id}" ` +

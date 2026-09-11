@@ -195,3 +195,37 @@ Deno.test("silentReporter stays silent once wrapped", () => {
   // The wrapper composes with the other reporters rather than replacing them.
   escapingReporter(silentReporter).info("::error::x");
 });
+
+Deno.test("every command-surface module writes through the shared sink", () => {
+  // Two of the modules routed through `cliReporter` had no test at all: the
+  // registry's register command and the MCP command's diagnostics. Reverting
+  // either to a bare console call left the whole suite green, which is the
+  // shape of a guard that quietly comes undone.
+  //
+  // Asserting on the source is blunt, and it is the assertion that matches what
+  // is actually being promised: not that one message is escaped, but that no
+  // module on this surface writes past the sink. A behavioural test can only
+  // cover the lines it happens to trigger.
+  const modules = [
+    "../src/cli.ts",
+    "../src/runs.ts",
+    "../src/graph_view.ts",
+    "../src/registry/register.ts",
+    "../src/mcp/command.ts",
+  ];
+  for (const relative of modules) {
+    const source = Deno.readTextFileSync(
+      new URL(relative, import.meta.url),
+    );
+    // The sink itself is the one place allowed to reach the real console, and
+    // it does not live in any of these.
+    const direct = source.match(
+      /(?<!\/\/[^\n]*)\bconsole\.(log|error|warn)\(/g,
+    );
+    assertEquals(
+      direct,
+      null,
+      `${relative} writes to the console directly; use cliReporter or printJson`,
+    );
+  }
+});

@@ -310,3 +310,61 @@ Deno.test("the run-inspection commands cannot print a forged command", async () 
     }
   });
 });
+
+Deno.test("machine-readable output is safe on a runner and unchanged by it", async () => {
+  // The sink cannot be applied to JSON. `escapeLine` encodes a legacy `##[`
+  // marker wherever it appears, so a consumer doing
+  // `zuke runs list --json | jq -r '.[0].actor'` would read a different string
+  // on Actions than it reads locally — silently, because the payload still
+  // parses. Escaping it as JSON instead costs nothing: `\u0023` is `#` to every
+  // parser, so the bytes are safe and the value round-trips.
+  await withStateDir(async () => {
+    class B extends Build {
+      deploy = target().executes(() => {});
+    }
+    const actor = "##[set-output name=x]mallory";
+    assertEquals((await runCli(B, ["deploy", "--actor", actor])).code, 0);
+
+    const plain = await runCli(B, ["runs", "list", "--json"]);
+    let onActions = { code: -1, out: "", err: "" };
+    await withEnv({ GITHUB_ACTIONS: "true" }, async () => {
+      onActions = await runCli(B, ["runs", "list", "--json"]);
+    });
+
+    // Safe: the marker the runner scans for is not on the wire.
+    assertEquals(onActions.out.includes("##["), false);
+    // Unchanged: a consumer reads the same value either way.
+    assertEquals(JSON.parse(onActions.out)[0].actor, actor);
+    assertEquals(
+      JSON.parse(onActions.out)[0].actor,
+      JSON.parse(plain.out)[0].actor,
+    );
+  });
+});
+
+Deno.test("the graph command's own output cannot forge a command", async () => {
+  // `zuke graph --output html` reports where it wrote the file, and that path
+  // includes the workspace directory — which on a runner can come from a
+  // matrix entry or a dispatch input. It has its own host with its own console
+  // write, so the sink had to reach it too.
+  const dir = await Deno.makeTempDir({ prefix: "zuke-##[error]graph-" });
+  try {
+    class B extends Build {
+      ok = target().executes(() => {});
+    }
+    const cwd = Deno.cwd();
+    Deno.chdir(dir);
+    try {
+      await Deno.writeTextFile("zuke.json", '{"build":"B"}');
+      let r = { code: -1, out: "", err: "" };
+      await withEnv({ GITHUB_ACTIONS: "true" }, async () => {
+        r = await runCli(B, ["graph", "--output", "html"]);
+      });
+      assertEquals(unintendedCommands(`${r.out}\n${r.err}`), []);
+    } finally {
+      Deno.chdir(cwd);
+    }
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});

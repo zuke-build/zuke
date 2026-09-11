@@ -7,7 +7,7 @@
  */
 
 import { type Build, discoverGroups, discoverTargets } from "./build.ts";
-import { cliReporter } from "./reporter.ts";
+import { cliReporter, printJson } from "./reporter.ts";
 import { discoverCiFiles, syncCiFiles } from "./ci.ts";
 import { isEntryModule } from "./entry.ts";
 import { messageOf } from "./internal.ts";
@@ -1394,7 +1394,7 @@ async function runCommand(
   // written descriptor).
   if (parsed.json && !parsed.runs && !parsed.register) {
     const surface = describeBuildSurface(targets, params);
-    cliReporter.info(JSON.stringify(surface, null, 2));
+    printJson(surface);
     return 0;
   }
   if (parsed.list) {

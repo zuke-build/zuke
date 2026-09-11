@@ -94,6 +94,27 @@ export const cliReporter: Reporter = {
   error: (line) => console.error(escapeLineIf(onActionsRunner(), line)),
 };
 
+/**
+ * Print `value` as JSON that is safe on a runner **and** parses to exactly what
+ * it would print anywhere else.
+ *
+ * Machine-readable output cannot go through {@link cliReporter}: `escapeLine`
+ * percent-encodes a legacy `##[` marker wherever it appears, so a consumer doing
+ * `zuke runs list --json | jq -r '.[0].actor'` would silently read a different
+ * string on Actions than it reads locally. Escaping the transport corrupts the
+ * payload.
+ *
+ * Escaping it as JSON instead costs nothing: `\u0023` **is** `#` to every
+ * parser, so the value round-trips byte for byte, while the raw bytes on the
+ * stream can no longer contain the marker. The other half of `escapeLine` needs
+ * no answer here — an indented `JSON.stringify` never begins a physical line
+ * with `::`, because a newline inside a string is written as `\n` rather than
+ * breaking the line.
+ */
+export function printJson(value: unknown): void {
+  console.log(JSON.stringify(value, null, 2).replaceAll("#", "\\u0023"));
+}
+
 /** Whether this process is running on a GitHub Actions runner. */
 function onActionsRunner(): boolean {
   return detectCiHost() === "github";

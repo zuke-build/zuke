@@ -25,7 +25,7 @@ import {
 } from "./state/types.ts";
 import { formatDuration, table } from "./render.ts";
 import { formatSummary } from "./report.ts";
-import { cliReporter } from "./reporter.ts";
+import { cliReporter, printJson } from "./reporter.ts";
 
 /** Inputs for {@link runsCommand}. */
 export interface RunsOptions {
@@ -144,18 +144,12 @@ export async function runsCommand(
       .slice(0, query.limit ?? listed.length);
     if (options.counts) {
       const counts = aggregateRunCounts(summaries);
-      cliReporter.info(
-        options.json
-          ? JSON.stringify(counts, null, 2)
-          : formatRunCounts(counts),
-      );
+      if (options.json) printJson(counts);
+      else cliReporter.info(formatRunCounts(counts));
       return 0;
     }
-    cliReporter.info(
-      options.json
-        ? JSON.stringify(summaries, null, 2)
-        : formatRunList(summaries),
-    );
+    if (options.json) printJson(summaries);
+    else cliReporter.info(formatRunList(summaries));
     return 0;
   }
   if (action === "show") {
@@ -168,11 +162,8 @@ export async function runsCommand(
       cliReporter.error(`runs: no run "${options.runId}" found in the store.`);
       return 1;
     }
-    cliReporter.info(
-      options.json
-        ? JSON.stringify(loaded.record, null, 2)
-        : formatRunDetail(loaded.record),
-    );
+    if (options.json) printJson(loaded.record);
+    else cliReporter.info(formatRunDetail(loaded.record));
     return 0;
   }
   if (action === "prune") return await pruneRuns(store, options);
@@ -207,19 +198,13 @@ async function pruneRuns(
     now(),
   );
   if (options.dryRun) {
-    cliReporter.info(
-      options.json
-        ? JSON.stringify({ wouldPrune: ids }, null, 2)
-        : `Would prune ${ids.length} run(s)${idList(ids)}.`,
-    );
+    if (options.json) printJson({ wouldPrune: ids });
+    else cliReporter.info(`Would prune ${ids.length} run(s)${idList(ids)}.`);
     return 0;
   }
   for (const id of ids) await store.deleteRun(id);
-  cliReporter.info(
-    options.json
-      ? JSON.stringify({ pruned: ids }, null, 2)
-      : `Pruned ${ids.length} run(s)${idList(ids)}.`,
-  );
+  if (options.json) printJson({ pruned: ids });
+  else cliReporter.info(`Pruned ${ids.length} run(s)${idList(ids)}.`);
   return 0;
 }
 
