@@ -999,7 +999,11 @@ export async function runScheduled(
         started.add(t);
         runningSet.add(t);
         const buffer = bufferReporter();
-        runTarget({ ...ctx, reporter: buffer.reporter }, t, flushed)
+        runTarget(
+          { ...ctx, reporter: buffer.reporter, rendered: buffer.rendered },
+          t,
+          flushed,
+        )
           .then(
             async (outcome) => {
               await life.targetEnd(
@@ -1024,7 +1028,7 @@ export async function runScheduled(
                 outcome.status === "failed" || outcome.status === "waiting";
               if (printed) {
                 if (!style.github && flushed > 0) reporter.info("");
-                buffer.flush(reporter);
+                buffer.flush(reporter, rendered);
                 flushed++;
               }
               outcomes.set(t, outcome);

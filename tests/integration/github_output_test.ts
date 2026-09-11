@@ -29,6 +29,7 @@ import {
   target,
 } from "../../packages/core/mod.ts";
 import { runCli, withStateDir } from "./_harness.ts";
+import { $ } from "../../packages/core/src/shell.ts";
 import { withEnv } from "../../packages/core/tests/_env.ts";
 
 /** Zuke's own workflow commands, which are supposed to open with `::`. */
@@ -292,4 +293,84 @@ Deno.test("the renderer's own workflow commands survive the sink", async () => {
   assertStringIncludes(stream, "::group::ok");
   assertStringIncludes(stream, "::endgroup::");
   assertEquals(stream.includes("%3A%3Agroup"), false);
+});
+
+Deno.test("a parallel run keeps each target's block inside its own fold", async () => {
+  // The regression the sink split introduced and no test caught: the per-target
+  // buffer that makes a block flush atomically was overridden for one sink and
+  // not the other, so under `--parallel` the folds opened and closed around the
+  // wrong lines while every body line landed outside them. The log still looked
+  // plausible, which is why only a structural check finds it.
+  class B extends Build {
+    alpha = target().dryRunnable().executes(async () => {
+      await $`echo ALPHA`;
+    });
+    beta = target().dryRunnable().executes(async () => {
+      await $`echo BETA`;
+    });
+    all = target().dependsOn(this.alpha, this.beta).executes(() => {});
+  }
+  let r = { code: -1, out: "", err: "" };
+  await withEnv({ GITHUB_ACTIONS: "true" }, async () => {
+    r = await runCli(B, ["all", "--parallel=4", "--dry-run"]);
+  });
+  assertEquals(r.code, 0, r.err);
+
+  let open: string | null = null;
+  const faults: string[] = [];
+  for (const line of r.out.split("\n")) {
+    if (line.startsWith("::group::")) {
+      // The runner does not nest folds: a second open swallows the first.
+      if (open !== null) faults.push(`${open} still open at ${line}`);
+      open = line;
+    } else if (line.startsWith("::endgroup::")) open = null;
+    else if (line.trim().startsWith("$ echo") && open === null) {
+      faults.push(`body outside a fold: ${line.trim()}`);
+    }
+  }
+  assertEquals(faults, []);
+});
+
+Deno.test("the cancel path escapes what a compensation throws", async () => {
+  // `cancelRun` defaults its own reporter and never goes through the run's
+  // output composition, so the sink there has to be applied separately — this is
+  // the bulk of the call sites the issue named.
+  await withStateDir(async () => {
+    class CD extends Build {
+      rollback = target().executes(() => {
+        throw new Error(HOSTILE);
+      });
+      deploy = target()
+        .executes((ctx) => ctx.state.set({ slot: "s1" }))
+        .onCancel(() => this.rollback);
+      gate = target()
+        .dependsOn(this.deploy)
+        .waitsFor((s) => s.on(externalSignal("go")));
+      promote = target().dependsOn(this.gate).executes(() => {});
+    }
+    assertEquals((await runCli(CD, ["promote"])).code, 0);
+    const listed = await runCli(CD, ["runs", "list", "--json"]);
+    const runId = String(JSON.parse(listed.out)[0].id);
+
+    let c = { code: -1, out: "", err: "" };
+    await withEnv({ GITHUB_ACTIONS: "true" }, async () => {
+      c = await runCli(CD, ["cancel", runId, "--actor", "ops"]);
+    });
+    assertEquals(unintendedCommands(`${c.out}\n${c.err}`), []);
+  });
+});
+
+Deno.test("a CLI error quoting its own argument cannot forge a command", async () => {
+  // On Actions these arguments often come from a `workflow_dispatch` input
+  // rather than from a person at a terminal, and a thrown message quotes them
+  // straight back. The catch arms leaked exactly what the success paths guarded.
+  class B extends Build {
+    ok = target().executes(() => {});
+  }
+  let r = { code: -1, out: "", err: "" };
+  await withEnv({ GITHUB_ACTIONS: "true" }, async () => {
+    r = await runCli(B, [HOSTILE]);
+  });
+  assertEquals(r.code, 1);
+  assertEquals(unintendedCommands(`${r.out}\n${r.err}`), []);
 });

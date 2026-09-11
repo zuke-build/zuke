@@ -35,7 +35,12 @@
 import { type Build, discoverTargets, resolveOrderingEdges } from "./build.ts";
 import { buildRunPlan, type RunPlan } from "./run_plan.ts";
 import { defaultReadEnv, messageOf, runWithTimeout } from "./internal.ts";
-import { consoleReporter, type Reporter, silentReporter } from "./reporter.ts";
+import {
+  consoleReporter,
+  type Reporter,
+  runnerReporter,
+  silentReporter,
+} from "./reporter.ts";
 import { type OrderingEdge, planGraph } from "./graph.ts";
 import { discoverParameters, resolveParameters } from "./params.ts";
 import { Redactor } from "./redact.ts";
@@ -778,7 +783,7 @@ export async function settleExternally(
   const runId = options.runId;
   const actor = resolveActor(options.actor, readEnv);
   const reporter = options.reporter ??
-    (options.silent ? silentReporter : consoleReporter);
+    (options.silent ? silentReporter : runnerReporter(consoleReporter));
   const now = () => new Date().toISOString();
 
   // A settlement runs *this* build's compensations against the record, so a run

@@ -41,7 +41,7 @@ import type {
   WaitDisposition,
   WaitState,
 } from "./state/types.ts";
-import { consoleReporter, silentReporter } from "./reporter.ts";
+import { consoleReporter, runnerReporter, silentReporter } from "./reporter.ts";
 
 /** Raised when a run has already been resumed by another process. */
 export class AlreadyResumedError extends Error {
@@ -574,7 +574,9 @@ export async function resumeCheck(
   // explanation of a non-zero result, so default the sink to the console the
   // same way execute() does instead of swallowing it when no reporter is given.
   const reporter = options.reporter ??
-    (options.silent === true ? silentReporter : consoleReporter);
+    (options.silent === true
+      ? silentReporter
+      : runnerReporter(consoleReporter));
   const store = resolveRunStore(
     options.stateStore,
     build.stateStore(),

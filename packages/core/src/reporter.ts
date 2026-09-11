@@ -12,6 +12,7 @@
  */
 
 import type { Redactor } from "./redact.ts";
+import { detectCiHost } from "./host.ts";
 import { escapeLine } from "./render.ts";
 
 /** Sink for executor output, defaulting to the console. Overridable in tests. */
@@ -69,6 +70,38 @@ export function escapingReporter(inner: Reporter): Reporter {
 }
 
 /**
+ * Wrap `inner` for the runner when this process is on GitHub Actions, and hand
+ * it back untouched anywhere else.
+ *
+ * The one place the question "should this line be escaped for the runner?" is
+ * answered for a reporter that was not composed by `composeOutput` — the cancel,
+ * resume and reap paths default their own sinks. Those emit no workflow commands
+ * of their own, so they wrap unconditionally: there is no renderer half to carve
+ * out, and every line they print interpolates something from the shared store or
+ * a thrown error.
+ *
+ * The reader is injectable so a caller can be tested without touching the
+ * ambient environment.
+ */
+export function runnerReporter(
+  inner: Reporter,
+  readEnv?: (name: string) => string | undefined,
+): Reporter {
+  // Decided per line, not once when this is called. A module-level
+  // `const cli = runnerReporter(consoleReporter)` would otherwise read the
+  // environment at import time, which is before a test — or any embedder that
+  // sets the variable itself — has set it, and the escaping would silently not
+  // apply. The check is a map lookup on an environment read; the cost is not
+  // worth a trap that fails open.
+  const escaped = (line: string): string =>
+    detectCiHost(readEnv) === "github" ? escapeLine(line) : line;
+  return {
+    info: (line) => inner.info(escaped(line)),
+    error: (line) => inner.error(escaped(line)),
+  };
+}
+
+/**
  * Wrap a reporter so a failing write can never escape into the run. Output is a
  * best-effort side effect: a sink that throws — a custom reporter with a bug, or
  * the default console raising `BrokenPipe`/EPIPE when stdout is piped to a reader
@@ -98,18 +131,27 @@ export function safeReporter(inner: Reporter): Reporter {
 /** A reporter that buffers lines so a target's block can flush atomically. */
 export function bufferReporter(): {
   reporter: Reporter;
-  flush: (to: Reporter) => void;
+  rendered: Reporter;
+  flush: (to: Reporter, toRendered: Reporter) => void;
 } {
-  const lines: Array<{ error: boolean; text: string }> = [];
+  const lines: Array<{ error: boolean; rendered: boolean; text: string }> = [];
+  const sink = (rendered: boolean): Reporter => ({
+    info: (text) => void lines.push({ error: false, rendered, text }),
+    error: (text) => void lines.push({ error: true, rendered, text }),
+  });
   return {
-    reporter: {
-      info: (text) => void lines.push({ error: false, text }),
-      error: (text) => void lines.push({ error: true, text }),
-    },
-    flush: (to) => {
+    reporter: sink(false),
+    // Buffered alongside the escaped sink, in one list, so the block still
+    // flushes in the order it was written — a target's header, its body and its
+    // footer come from different sinks, and two buffers would interleave them
+    // wrongly. Each line remembers which sink it came from so the escaping
+    // distinction survives the round trip.
+    rendered: sink(true),
+    flush: (to, toRendered) => {
       for (const line of lines) {
-        if (line.error) to.error(line.text);
-        else to.info(line.text);
+        const out = line.rendered ? toRendered : to;
+        if (line.error) out.error(line.text);
+        else out.info(line.text);
       }
     },
   };
