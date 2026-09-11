@@ -196,36 +196,55 @@ Deno.test("silentReporter stays silent once wrapped", () => {
   escapingReporter(silentReporter).info("::error::x");
 });
 
-Deno.test("every command-surface module writes through the shared sink", () => {
-  // Two of the modules routed through `cliReporter` had no test at all: the
-  // registry's register command and the MCP command's diagnostics. Reverting
-  // either to a bare console call left the whole suite green, which is the
+Deno.test("no module writes to the console except the sink itself", async () => {
+  // Two of the modules routed through `cliReporter` had no test at all, and
+  // reverting either to a bare console call left the whole suite green — the
   // shape of a guard that quietly comes undone.
   //
-  // Asserting on the source is blunt, and it is the assertion that matches what
-  // is actually being promised: not that one message is escaped, but that no
-  // module on this surface writes past the sink. A behavioural test can only
-  // cover the lines it happens to trigger.
-  const modules = [
-    "../src/cli.ts",
-    "../src/runs.ts",
-    "../src/graph_view.ts",
-    "../src/registry/register.ts",
-    "../src/mcp/command.ts",
-  ];
-  for (const relative of modules) {
-    const source = Deno.readTextFileSync(
-      new URL(relative, import.meta.url),
-    );
-    // The sink itself is the one place allowed to reach the real console, and
-    // it does not live in any of these.
-    const direct = source.match(
-      /(?<!\/\/[^\n]*)\bconsole\.(log|error|warn)\(/g,
-    );
-    assertEquals(
-      direct,
-      null,
-      `${relative} writes to the console directly; use cliReporter or printJson`,
-    );
-  }
+  // Scanned over the whole source tree rather than a list of modules, because a
+  // list only covers what someone remembered to add: the regression this is
+  // guarding against is a *new* write appearing somewhere it was not expected.
+  // What is promised is not that one message is escaped but that nothing
+  // reaches the console except through the sink, and that is a property of the
+  // tree, not of any one behaviour a test could trigger.
+  //
+  // Comments are stripped first: a JSDoc example showing a plugin author how to
+  // write one is documentation, not a write.
+  const allowed = new Set([
+    // The sink itself, the one place allowed to reach the real console.
+    "reporter.ts",
+    // Emits browser JavaScript inside a template literal: its `console.warn`
+    // runs in the viewer's browser, not in this process, and rewriting it would
+    // break the generated page. Stripping template literals automatically would
+    // risk hiding a real write, so this is named rather than inferred.
+    "graph_html.ts",
+  ]);
+  const offenders: string[] = [];
+  const root = new URL("../src/", import.meta.url);
+
+  const walk = async (dir: URL): Promise<void> => {
+    for await (const entry of Deno.readDir(dir)) {
+      const child = new URL(entry.name + (entry.isDirectory ? "/" : ""), dir);
+      if (entry.isDirectory) {
+        await walk(child);
+        continue;
+      }
+      if (!entry.name.endsWith(".ts") || allowed.has(entry.name)) continue;
+      const code = (await Deno.readTextFile(child))
+        .replace(/\/\*[\s\S]*?\*\//g, "")
+        .replace(/\/\/[^\n]*/g, "");
+      if (/\bconsole\.(log|error|warn|info|debug)\s*\(/.test(code)) {
+        offenders.push(entry.name);
+      }
+    }
+  };
+  await walk(root);
+
+  assertEquals(
+    offenders,
+    [],
+    `these write to the console directly; use cliReporter or printJson: ${
+      offenders.join(", ")
+    }`,
+  );
 });

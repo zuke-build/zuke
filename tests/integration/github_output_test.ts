@@ -358,7 +358,7 @@ Deno.test("the graph command's own output cannot forge a command", async () => {
       await Deno.writeTextFile("zuke.json", '{"build":"B"}');
       let r = { code: -1, out: "", err: "" };
       await withEnv({ GITHUB_ACTIONS: "true" }, async () => {
-        r = await runCli(B, ["graph", "--output", "html"]);
+        r = await runCli(B, ["graph", "--output", "html", "--no-open"]);
       });
       assertEquals(unintendedCommands(`${r.out}\n${r.err}`), []);
     } finally {
