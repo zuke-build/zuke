@@ -40,12 +40,32 @@
  * deterministic breakout — forging a delimiter.
  */
 export function fenceUntrusted(label: string, content: string): string {
-  const open = `<<<${label}`;
-  const close = `${label}>>>`;
-  const safe = content
+  return `<<<${label}\n${defangMarkers(content)}\n${label}>>>`;
+}
+
+/**
+ * Neutralise every marker-shaped sequence in `text`, for untrusted text that is
+ * **not** inside a fence.
+ *
+ * The grammar and its consequences are the contract documented on
+ * {@link fenceUntrusted}; this is that step on its own, so the two kinds of
+ * untrusted text in a prompt share one implementation of it. Fenced content
+ * gets it as part of being fenced. Everything else needs it applied directly: a
+ * candidate finding's title and detail are serialised as JSON, which escapes
+ * quotes and newlines but leaves a marker intact, so a title carrying an opening
+ * marker is closed by the next block that legitimately uses that label —
+ * swallowing the trusted structure in between, including the header that
+ * introduces the diff.
+ *
+ * It rewrites the string it returns, never anything it was given, which is what
+ * makes it safe to apply at prompt assembly: a finding's title is matched across
+ * runs by the dedup and suppression machinery, so the stored, compared and
+ * reported title has to stay exactly as the model wrote it.
+ */
+export function defangMarkers(text: string): string {
+  return text
     .replace(/([A-Z][A-Z_]*)>>>/g, "$1_>>>")
     .replace(/<<<([A-Z][A-Z_]*)/g, "<<<$1_");
-  return `${open}\n${safe}\n${close}`;
 }
 
 /**
