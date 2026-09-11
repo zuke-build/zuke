@@ -26,6 +26,7 @@ import { resolveActor } from "../state/record.ts";
 import type { BuildDescriptor, BuildLocation } from "./descriptor.ts";
 import type { BuildRegistry } from "./registry.ts";
 import { resolveBuildRegistry } from "./resolve.ts";
+import { cliReporter } from "../reporter.ts";
 
 /** How many times a conflicting registration CAS is re-read and retried. */
 const MAX_RETRIES = 10;
@@ -146,7 +147,7 @@ export async function registerCommand(
   const readEnv = options.readEnv ?? defaultReadEnv;
   const registry = resolveRegisterRegistry(options.registry, build, readEnv);
   if (registry === undefined) {
-    console.error(
+    cliReporter.error(
       "register: no build registry is configured. Set ZUKE_REGISTRY_DIR / " +
         "ZUKE_REGISTRY_URL, or override registry() on the build.",
     );
@@ -166,9 +167,9 @@ export async function registerCommand(
   }, now);
 
   if (options.json) {
-    console.log(JSON.stringify(descriptor, null, 2));
+    cliReporter.info(JSON.stringify(descriptor, null, 2));
   } else {
-    console.log(
+    cliReporter.info(
       `Registered build "${descriptor.id}" ` +
         `(${descriptor.surface.targets.length} target(s)) to the registry.`,
     );

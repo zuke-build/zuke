@@ -277,3 +277,36 @@ Deno.test("a CLI error quoting its own argument cannot forge a command", async (
     }
   });
 });
+
+Deno.test("the run-inspection commands cannot print a forged command", async () => {
+  // `runs show` and `runs list` print an actor read back from the shared store,
+  // and that actor is not always operator-typed: the registry MCP server feeds
+  // `resolveActor` the client's own self-reported name from its `initialize`
+  // request, so it can be chosen by whoever connects.
+  //
+  // These live in their own module with their own console writes, which is why
+  // the sink added for `cli.ts` did not reach them — the same shape, one file
+  // over.
+  await withStateDir(async () => {
+    class B extends Build {
+      deploy = target().executes(() => {});
+    }
+    const hostile = ["mallory", "::stop-commands::TOKEN"].join("\n");
+    assertEquals((await runCli(B, ["deploy", "--actor", hostile])).code, 0);
+    const listed = await runCli(B, ["runs", "list", "--json"]);
+    const runId = String(JSON.parse(listed.out)[0].id);
+
+    for (const args of [["runs", "show", runId], ["runs", "list"]]) {
+      let r = { code: -1, out: "", err: "" };
+      await withEnv({ GITHUB_ACTIONS: "true" }, async () => {
+        r = await runCli(B, args);
+      });
+      assertEquals(r.code, 0, r.err);
+      assertEquals(
+        unintendedCommands(`${r.out}\n${r.err}`),
+        [],
+        `\`zuke ${args.join(" ")}\` let a stored actor reach the runner`,
+      );
+    }
+  });
+});

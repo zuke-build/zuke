@@ -35,6 +35,7 @@ import {
 } from "./auth.ts";
 import { McpServer, type McpServerOptions } from "./server.ts";
 import { RegistryMcpServer, type RegistryRunner } from "./registry_server.ts";
+import { cliReporter } from "../reporter.ts";
 
 /** A thing that answers MCP messages — either server flavour drives a transport. */
 interface McpHandler {
@@ -157,7 +158,7 @@ export async function serveMcp(
   const declared = build.mcpAuth();
   const hook = build.mcpIdentity();
   if (declared !== undefined && hook !== undefined) {
-    console.error(
+    cliReporter.error(
       "zuke mcp: this build declares both mcpAuth() and mcpIdentity() — keep " +
         "one: mcpAuth() is the general seam, and mcpIdentity() is sugar for a " +
         "header-trusting authenticator.",
@@ -174,7 +175,7 @@ export async function serveMcp(
     try {
       metadataDocument(protectedResource);
     } catch (error) {
-      console.error(`zuke mcp: ${messageOf(error)}`);
+      cliReporter.error(`zuke mcp: ${messageOf(error)}`);
       return 1;
     }
   }
@@ -234,7 +235,7 @@ export async function serveMcp(
   if (!options.quiet) {
     const mode = options.allowRun ? "run enabled" : "read-only";
     const source = registry !== undefined ? "registry, " : "";
-    console.error(
+    cliReporter.error(
       `zuke mcp: serving on stdio (${source}${mode}). Press Ctrl-C to stop.`,
     );
   }
@@ -267,7 +268,7 @@ async function serveMcpHttp(
   const token = options.token ?? readEnv("ZUKE_MCP_TOKEN");
   const hasToken = token !== undefined && token !== "";
   if (!isLoopbackHost(address.host) && !hasToken && !authenticates) {
-    console.error(
+    cliReporter.error(
       `zuke mcp: refusing to bind ${address.host}:${address.port} without ` +
         `authentication. A non-loopback MCP endpoint must be authenticated — ` +
         `set ZUKE_MCP_TOKEN, declare mcpAuth() on the build, or bind 127.0.0.1 ` +
@@ -288,7 +289,7 @@ async function serveMcpHttp(
       : hasToken
       ? "bearer token required"
       : "no auth (loopback only)";
-    console.error(
+    cliReporter.error(
       `zuke mcp: serving on http://${address.host}:${address.port} ` +
         `(${source}${mode}, ${auth}). Press Ctrl-C to stop.`,
     );

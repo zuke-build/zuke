@@ -7,8 +7,7 @@
  */
 
 import { type Build, discoverGroups, discoverTargets } from "./build.ts";
-import { detectCiHost } from "./host.ts";
-import { escapeLineIf } from "./render.ts";
+import { cliReporter } from "./reporter.ts";
 import { discoverCiFiles, syncCiFiles } from "./ci.ts";
 import { isEntryModule } from "./entry.ts";
 import { messageOf } from "./internal.ts";
@@ -75,32 +74,6 @@ import {
   type InstallOptions,
 } from "./completions_install.ts";
 import { describeBuildSurface } from "./describe.ts";
-
-/**
- * The CLI's own output, neutralised for a GitHub Actions runner.
- *
- * Every command here echoes arguments the invoker chose — a run id, a target
- * name, a force reason — and on Actions those commonly come from a
- * `workflow_dispatch` input or an issue body rather than from a person at a
- * terminal. The catch arms are the sharp end: they quote a thrown message
- * straight back, so they leak exactly what the success paths are careful about.
- *
- * A sink rather than a call-site guard because there are forty-odd writes here
- * and no reason for any of them to be exempt: unlike the run's reporter, this
- * module emits no workflow commands of its own, so there is no half to carve
- * out. The decision is made per line, not once at module load — a top-level
- * `const` would read the environment before an embedder or a test has set it,
- * and the escaping would then silently not apply.
- */
-const cli: Reporter = {
-  info: (line) => console.log(escapeLineIf(inActions(), line)),
-  error: (line) => console.error(escapeLineIf(inActions(), line)),
-};
-
-/** Whether this process is running on a GitHub Actions runner. */
-function inActions(): boolean {
-  return detectCiHost() === "github";
-}
 
 /** `completions` sub-action: print the script to stdout. */
 const PRINT_SUBCOMMAND = "print";
@@ -862,18 +835,18 @@ export async function syncCiConfig(
   const files = discoverCiFiles(build);
   if (files.length === 0) {
     if (!options.quietWhenEmpty) {
-      cli.info("No CI configuration is declared on this build.");
+      cliReporter.info("No CI configuration is declared on this build.");
     }
     return 0;
   }
   const results = await syncCiFiles(files, { check: options.check });
   const stale: string[] = [];
   for (const { path, status } of results) {
-    if (status === "written") cli.info(`Generated ${path}`);
+    if (status === "written") cliReporter.info(`Generated ${path}`);
     else if (status === "stale") stale.push(path);
   }
   if (stale.length > 0) {
-    cli.error(
+    cliReporter.error(
       `CI configuration is out of date: ${stale.join(", ")}.\n` +
         `Run \`zuke generate-ci\` and commit the result.`,
     );
@@ -941,19 +914,23 @@ async function installCompletionScript(
       params,
       options.installOptions,
     );
-    cli.info(`Installed ${result.shell} completion to ${result.scriptPath}`);
+    cliReporter.info(
+      `Installed ${result.shell} completion to ${result.scriptPath}`,
+    );
     if (result.rcPath === undefined) {
-      cli.info("Open a new shell (or restart fish) to load it.");
+      cliReporter.info("Open a new shell (or restart fish) to load it.");
     } else if (result.alreadySourced) {
-      cli.info(`${result.rcPath} already sources it — nothing to change.`);
+      cliReporter.info(
+        `${result.rcPath} already sources it — nothing to change.`,
+      );
     } else {
-      cli.info(
+      cliReporter.info(
         `Added a source line to ${result.rcPath}; open a new shell to use it.`,
       );
     }
     return 0;
   } catch (error) {
-    cli.error(messageOf(error));
+    cliReporter.error(messageOf(error));
     return 1;
   }
 }
@@ -1007,11 +984,13 @@ async function runResume(
         resumeDegraded: parsed.resumeDegraded,
         plugins,
       });
-      cli.info(`Checked ${checked} suspended run(s); ${failed} failed.`);
+      cliReporter.info(
+        `Checked ${checked} suspended run(s); ${failed} failed.`,
+      );
       return failed > 0 ? 1 : 0;
     }
     if (parsed.resumeRunId === undefined) {
-      cli.error(
+      cliReporter.error(
         "Usage: zuke resume <run-id> [--signal <name>] [--data <json>]  |  " +
           "zuke resume --check [<run-id>]",
       );
@@ -1029,7 +1008,7 @@ async function runResume(
     });
     return result.ok ? 0 : 1;
   } catch (error) {
-    cli.error(messageOf(error));
+    cliReporter.error(messageOf(error));
     // A lost resume race (AlreadyResumedError) and any other failure both exit
     // non-zero; the message tells the operator what happened.
     return 1;
@@ -1063,7 +1042,7 @@ async function runMcp(build: Build, parsed: ParsedArgs): Promise<number> {
     try {
       http = parseHttpAddress(parsed.httpAddr);
     } catch (error) {
-      cli.error(messageOf(error));
+      cliReporter.error(messageOf(error));
       return 1;
     }
   }
@@ -1083,7 +1062,7 @@ async function runMcp(build: Build, parsed: ParsedArgs): Promise<number> {
 /** Run the `cancel` command: cancel a run and run its compensations. */
 async function runCancel(build: Build, parsed: ParsedArgs): Promise<number> {
   if (parsed.cancelRunId === undefined) {
-    cli.error("Usage: zuke cancel <run-id> [--actor <name>]");
+    cliReporter.error("Usage: zuke cancel <run-id> [--actor <name>]");
     return 1;
   }
   try {
@@ -1095,7 +1074,7 @@ async function runCancel(build: Build, parsed: ParsedArgs): Promise<number> {
     // a compensation that threw surfaces non-zero so the operator notices.
     return result.failures.length > 0 ? 1 : 0;
   } catch (error) {
-    cli.error(messageOf(error));
+    cliReporter.error(messageOf(error));
     return 1;
   }
 }
@@ -1109,7 +1088,7 @@ async function runCancel(build: Build, parsed: ParsedArgs): Promise<number> {
  */
 async function runForce(build: Build, parsed: ParsedArgs): Promise<number> {
   if (parsed.forceExtra !== undefined) {
-    cli.error(
+    cliReporter.error(
       `force: unexpected argument "${parsed.forceExtra}". ` +
         `Usage: zuke force <run-id> <target> --outcome skipped|succeeded ` +
         `[--reason <why>] [--actor <name>]`,
@@ -1117,7 +1096,7 @@ async function runForce(build: Build, parsed: ParsedArgs): Promise<number> {
     return 1;
   }
   if (parsed.forceRunId === undefined || parsed.forceTarget === undefined) {
-    cli.error(
+    cliReporter.error(
       "Usage: zuke force <run-id> <target> --outcome skipped|succeeded " +
         "[--reason <why>] [--actor <name>]",
     );
@@ -1125,7 +1104,7 @@ async function runForce(build: Build, parsed: ParsedArgs): Promise<number> {
   }
   const outcome = FORCED_OUTCOMES.find((o) => o === parsed.outcome);
   if (outcome === undefined) {
-    cli.error(
+    cliReporter.error(
       `force: --outcome must be one of: ${FORCED_OUTCOMES.join(", ")}` +
         (parsed.outcome === undefined ? "." : ` (got "${parsed.outcome}").`),
     );
@@ -1145,13 +1124,13 @@ async function runForce(build: Build, parsed: ParsedArgs): Promise<number> {
     // unencoded, because the MCP tool hands the same message back inside a JSON
     // payload that must not carry a terminal's encoding. The printer decides.
     if (!result.ok) {
-      cli.error(result.message);
+      cliReporter.error(result.message);
       return 1;
     }
-    cli.info(result.message);
+    cliReporter.info(result.message);
     return 0;
   } catch (error) {
-    cli.error(messageOf(error));
+    cliReporter.error(messageOf(error));
     return 1;
   }
 }
@@ -1164,7 +1143,7 @@ async function runRegister(build: Build, parsed: ParsedArgs): Promise<number> {
       json: parsed.json,
     });
   } catch (error) {
-    cli.error(messageOf(error));
+    cliReporter.error(messageOf(error));
     return 1;
   }
 }
@@ -1226,7 +1205,7 @@ async function runDoc(
 ): Promise<number> {
   let spec = parsed.docSpec;
   if (spec === undefined) {
-    cli.error(
+    cliReporter.error(
       "Usage: zuke doc <spec>   (e.g. zuke doc jsr:@zuke/deno, or ./mod.ts)",
     );
     return 1;
@@ -1237,7 +1216,7 @@ async function runDoc(
   try {
     return await runner(spec);
   } catch (error) {
-    cli.error(messageOf(error));
+    cliReporter.error(messageOf(error));
     return 1;
   }
 }
@@ -1259,7 +1238,7 @@ async function runOutdated(
 ): Promise<number> {
   try {
     const report = await findOutdated(options);
-    cli.info(formatOutdated(report));
+    cliReporter.info(formatOutdated(report));
     // A package that could not be checked counts as a failure under
     // --exit-code: a gate asking "are we current?" has not been told yes, and
     // an offline runner passing quietly is the silence this command exists to
@@ -1267,7 +1246,7 @@ async function runOutdated(
     const unresolved = report.behind.length + report.unchecked.length;
     return parsed.exitCode && unresolved > 0 ? 1 : 0;
   } catch (error) {
-    cli.error(messageOf(error));
+    cliReporter.error(messageOf(error));
     return 1;
   }
 }
@@ -1277,7 +1256,7 @@ async function runRuns(build: Build, parsed: ParsedArgs): Promise<number> {
   const query: RunQuery = {};
   if (parsed.runStatus !== undefined) {
     if (!isRunStatus(parsed.runStatus)) {
-      cli.error(
+      cliReporter.error(
         `runs: unknown --status "${parsed.runStatus}" ` +
           `(one of: ${RUN_STATUS_NAMES.join(", ")}).`,
       );
@@ -1290,7 +1269,7 @@ async function runRuns(build: Build, parsed: ParsedArgs): Promise<number> {
   if (parsed.runLimit !== undefined) {
     const limit = parsePositiveInt(parsed.runLimit);
     if (limit === undefined) {
-      cli.error(
+      cliReporter.error(
         `runs: --limit must be a positive integer (got "${parsed.runLimit}").`,
       );
       return 1;
@@ -1303,7 +1282,7 @@ async function runRuns(build: Build, parsed: ParsedArgs): Promise<number> {
     try {
       keepMs = parseDuration(parsed.keep);
     } catch (error) {
-      cli.error(`runs: --keep is ${messageOf(error)}`);
+      cliReporter.error(`runs: --keep is ${messageOf(error)}`);
       return 1;
     }
   }
@@ -1311,7 +1290,7 @@ async function runRuns(build: Build, parsed: ParsedArgs): Promise<number> {
   if (parsed.keepLast !== undefined) {
     keepLast = parsePositiveInt(parsed.keepLast);
     if (keepLast === undefined) {
-      cli.error(
+      cliReporter.error(
         `runs: --keep-last must be a positive integer (got "${parsed.keepLast}").`,
       );
       return 1;
@@ -1346,7 +1325,7 @@ export async function main(
     return await runCommand(BuildClass, args, options);
   } catch (error) {
     if (error instanceof InsecureBackendUrlError) {
-      cli.error(error.message);
+      cliReporter.error(error.message);
       return 1;
     }
     throw error;
@@ -1373,7 +1352,7 @@ async function runCommand(
     // come before `--help`, because the help text lists the parameters that
     // discovery is what produces.
     if (error instanceof ParameterError) {
-      cli.error(error.message);
+      cliReporter.error(error.message);
       return 1;
     }
     throw error;
@@ -1391,12 +1370,12 @@ async function runCommand(
   } catch (error) {
     // parseArgs only ever throws Error; messageOf narrows `unknown` without a
     // second branch here that no input can reach.
-    cli.error(messageOf(error));
+    cliReporter.error(messageOf(error));
     return 1;
   }
 
   if (parsed.help) {
-    cli.info(formatHelp(targets, params));
+    cliReporter.info(formatHelp(targets, params));
     return 0;
   }
 
@@ -1404,7 +1383,7 @@ async function runCommand(
     validateGraph(targets);
   } catch (error) {
     if (error instanceof GraphError) {
-      cli.error(error.message);
+      cliReporter.error(error.message);
       return 1;
     }
     throw error;
@@ -1415,18 +1394,18 @@ async function runCommand(
   // written descriptor).
   if (parsed.json && !parsed.runs && !parsed.register) {
     const surface = describeBuildSurface(targets, params);
-    cli.info(JSON.stringify(surface, null, 2));
+    cliReporter.info(JSON.stringify(surface, null, 2));
     return 0;
   }
   if (parsed.list) {
-    cli.info(formatList(targets, params));
+    cliReporter.info(formatList(targets, params));
     return 0;
   }
   if (parsed.graph) {
     if (parsed.output === "html") {
       return await graphCommand(targets, { open: parsed.open }, graphHost);
     }
-    cli.info(formatGraph(targets));
+    cliReporter.info(formatGraph(targets));
     return 0;
   }
   if (parsed.completions) {
@@ -1436,13 +1415,13 @@ async function runCommand(
       action === PRINT_SUBCOMMAND;
     if (!validAction || shell === undefined || !isCompletionShell(shell)) {
       const shells = COMPLETION_SHELLS.join("|");
-      cli.error(`Usage: zuke completions <install|print> <${shells}>`);
+      cliReporter.error(`Usage: zuke completions <install|print> <${shells}>`);
       return 1;
     }
     if (action === INSTALL_SUBCOMMAND) {
       return await installCompletionScript(shell, targets, params, options);
     }
-    cli.info(formatCompletions(shell, targets, params));
+    cliReporter.info(formatCompletions(shell, targets, params));
     return 0;
   }
   if (parsed.generateCi) {
@@ -1478,7 +1457,7 @@ async function runCommand(
     if (targets.has(DEFAULT_TARGET)) {
       name = DEFAULT_TARGET;
     } else {
-      cli.info(formatList(targets, params));
+      cliReporter.info(formatList(targets, params));
       return 0;
     }
   }
@@ -1491,8 +1470,8 @@ async function runCommand(
     const hint = suggestion === undefined
       ? ""
       : ` Did you mean "${suggestion}"?`;
-    cli.error(`Unknown target: ${name}.${hint}\n`);
-    cli.error(formatList(targets, params));
+    cliReporter.error(`Unknown target: ${name}.${hint}\n`);
+    cliReporter.error(formatList(targets, params));
     return 1;
   }
 
@@ -1504,7 +1483,7 @@ async function runCommand(
   // union rather than a string the type system has to be told about.
   const actorKind = ACTOR_KINDS.find((kind) => kind === parsed.actorKind);
   if (parsed.actorKind !== undefined && actorKind === undefined) {
-    cli.error(
+    cliReporter.error(
       `--actor-kind must be one of: ${ACTOR_KINDS.join(", ")} ` +
         `(got "${parsed.actorKind}").`,
     );
