@@ -1,5 +1,5 @@
 {
-  "packages/core": "1.52.0",
+  "packages/core": "1.53.0",
   "packages/deno": "1.4.0",
   "packages/docs": "1.0.1",
   "packages/npm": "1.3.0",
@@ -55,6 +55,6 @@
   "packages/tofu": "1.0.1",
   "packages/release-please": "1.0.3",
   "packages/security": "1.0.1",
-  "packages/ai": "2.3.1",
+  "packages/ai": "2.4.0",
   "packages/otel": "1.0.2"
 }

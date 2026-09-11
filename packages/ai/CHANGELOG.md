@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.4.0](https://github.com/zuke-build/zuke/compare/ai-v2.3.1...ai-v2.4.0) (2026-09-11)
+
+
+### Features
+
+* **core:** the seams the credential and scope fixes need ([#566](https://github.com/zuke-build/zuke/issues/566)) ([97cf6ab](https://github.com/zuke-build/zuke/commit/97cf6ab1859911c3dfbfe6f9314ba5d7527af4d1))
+
+
+### Bug Fixes
+
+* **ai:** a candidate finding's title cannot forge a fence marker ([#572](https://github.com/zuke-build/zuke/issues/572)) ([183f50e](https://github.com/zuke-build/zuke/commit/183f50e3eff8eb789a93b2afcb9163bcf5dd9201)), closes [#558](https://github.com/zuke-build/zuke/issues/558)
+
 ## [2.3.1](https://github.com/zuke-build/zuke/compare/ai-v2.3.0...ai-v2.3.1) (2026-09-10)
 
 
