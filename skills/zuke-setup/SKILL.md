@@ -116,7 +116,10 @@ for the default target — every command that is not the CLI's own (`setup`,
 root and runs `deno run -A zuke.ts <args>` from there, with `--frozen` once a
 `deno.lock` exists — the launcher's exact behaviour, minus the Deno bootstrap.
 Outside a project the bare `zuke` reports the unknown command and the missing
-`zuke.json`.
+`zuke.json`. The forwarding refuses a project whose root directory is owned by
+another user (the `safe.directory` rule git applies, since discovery runs code
+the caller never named); the error names the owner and the fix — run that
+project's own `./zuke` there, or take ownership.
 
 The CLI is self-describing: `./zuke --help` prints the usage grammar plus the
 build's live targets and parameters, so an agent discovers the real command

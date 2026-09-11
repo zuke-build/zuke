@@ -28,9 +28,10 @@ the CLI's own (`setup`, `import`, `doc`) is forwarded to the nearest
 `zuke.ts`, exactly as the `./zuke` launcher would run it.
 @module
 
-async function main(args: string[], host: SetupHost, prompter: Prompter, docRunner: DocRunner, starActions: StarActions, buildRunner: BuildRunner): Promise<number>
+async function main(args: string[], host: SetupHost, prompter: Prompter, docRunner: DocRunner, starActions: StarActions, buildRunner: BuildRunner, buildProbe: BuildProbe): Promise<number>
   The CLI entry point. Returns a process exit code; `host`, `prompter`,
-  `docRunner`, `starActions`, and `buildRunner` are injectable for testing.
+  `docRunner`, `starActions`, `buildRunner`, and `buildProbe` are injectable
+  for testing.
 
 function parseImportFlags(args: string[]): ImportFlags
   Parse the argument list following `zuke import`.
@@ -54,6 +55,18 @@ interface BuildLocation
     The absolute repository root: the directory holding `zuke.json`.
   frozen: boolean
     Whether a `deno.lock` sits at the root, so the run passes `--frozen`.
+
+interface BuildProbe
+  The filesystem questions discovery asks, injectable so the walk and its
+  trust gate are testable without a filesystem or a second user.
+
+  exists(path: string): Promise<boolean>
+    Whether a path exists.
+  ownerOf(path: string): Promise<number | null>
+    The numeric owner of a path, or `null` where the platform has no file
+    ownership to report (Windows).
+  uid(): number | null
+    The current user's numeric id, or `null` where the platform has none.
 
 interface ImportFlags extends SetupFlags
   Flags accepted by `zuke import` — the setup flags plus `--from`.

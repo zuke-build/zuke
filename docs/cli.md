@@ -30,6 +30,16 @@ isolated `deno doc`, so nothing is lost. The `./zuke` launcher remains the
 entry point that needs no install — it bootstraps Deno itself — so CI and a
 fresh clone keep using it.
 
+Discovery has a trust gate, because it runs code you never named: a
+`zuke.json` planted in a shared parent (`/tmp`, a shared checkout tree) would
+otherwise have `zuke ci` in any directory below it run a stranger's `zuke.ts`
+with `-A`. So, as git's `safe.directory` does, the forwarding refuses a build
+whose root directory is owned by another user, with an error naming the owner
+and the two ways forward: run that project's own launcher there
+(`cd <root> && ./zuke <command>`, an explicit act on a file you name), or take
+ownership of the directory. On Windows, which reports no file ownership to
+compare, the gate is inert.
+
 ## The global `zuke` CLI (`jsr:@zuke/cli`)
 
 | Command                    | Behaviour                                                                                              |

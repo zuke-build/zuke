@@ -3,6 +3,7 @@
 
 import { assertEquals } from "../../core/tests/_assert.ts";
 import {
+  type BuildProbe,
   defaultPrompter,
   main,
   parseSetupFlags,
@@ -340,17 +341,42 @@ Deno.test("main --version prints the version", async () => {
 });
 
 Deno.test("main shows help for --help, -h and no args", async () => {
+  // Outside any project: the probe sees no zuke.json, so a bare `zuke` is the
+  // usage rather than a forwarded default target.
   for (const args of [[], ["--help"], ["-h"]]) {
     const host = new FakeHost();
-    assertEquals(await main(args, host), 0);
+    const { runner, reached } = neverRun();
+    assertEquals(
+      await main(
+        args,
+        host,
+        defaultPrompter,
+        undefined,
+        undefined,
+        runner,
+        probeAt([]),
+      ),
+      0,
+    );
+    assertEquals(reached(), false);
     assertEquals(host.logs[0].includes("Usage:"), true);
   }
 });
 
 Deno.test("main rejects an unknown command", async () => {
   const host = new FakeHost();
-  const code = await main(["bogus"], host);
+  const { runner, reached } = neverRun();
+  const code = await main(
+    ["bogus"],
+    host,
+    defaultPrompter,
+    undefined,
+    undefined,
+    runner,
+    probeAt([]),
+  );
   assertEquals(code, 1);
+  assertEquals(reached(), false);
   assertEquals(host.logs[0].includes("Unknown command: bogus"), true);
 });
 
@@ -468,9 +494,43 @@ Deno.test("defaultPrompter wraps prompt/confirm", () => {
   }
 });
 
-/** The FakeHost path of `name` at the real cwd, where `main` starts its walk. */
+/** The path of `name` at the real cwd, where `main` starts its walk. */
 function atCwd(name: string): string {
   return `${Deno.cwd().replaceAll("\\", "/")}/${name}`;
+}
+
+/**
+ * A build probe that sees only `names` at the real cwd — never the real
+ * filesystem, where this very repository's `zuke.json` would have a test run
+ * Zuke's own build. Ownership is the inert pairing (no ids on either side)
+ * unless `owned` says otherwise: the gate has its own tests in
+ * `dispatch_test.ts`; these are about routing.
+ */
+function probeAt(
+  names: string[],
+  owned: { uid: number | null; owner: number | null } = {
+    uid: null,
+    owner: null,
+  },
+): BuildProbe {
+  const present = new Set(names.map(atCwd));
+  return {
+    exists: (path) => Promise.resolve(present.has(path)),
+    ownerOf: () => Promise.resolve(owned.owner),
+    uid: () => owned.uid,
+  };
+}
+
+/** A runner that records whether it was reached. */
+function neverRun(): { runner: () => Promise<number>; reached: () => boolean } {
+  let reached = false;
+  return {
+    runner: () => {
+      reached = true;
+      return Promise.resolve(0);
+    },
+    reached: () => reached,
+  };
 }
 
 /**
@@ -494,7 +554,7 @@ async function capturingErr(fn: () => Promise<void>): Promise<string[]> {
 }
 
 Deno.test("main forwards a build command to zuke.ts at the nearest zuke.json", async () => {
-  const host = new FakeHost({ [atCwd("zuke.json")]: "{}" });
+  const host = new FakeHost();
   let seen: [string, string[]] | undefined;
   const code = await main(
     ["ci", "--parallel"],
@@ -506,6 +566,7 @@ Deno.test("main forwards a build command to zuke.ts at the nearest zuke.json", a
       seen = [root, denoArgs];
       return Promise.resolve(0);
     },
+    probeAt(["zuke.json"]),
   );
   assertEquals(code, 0);
   assertEquals(seen, [
@@ -517,10 +578,7 @@ Deno.test("main forwards a build command to zuke.ts at the nearest zuke.json", a
 });
 
 Deno.test("main forwards with --frozen once a deno.lock sits beside zuke.json", async () => {
-  const host = new FakeHost({
-    [atCwd("zuke.json")]: "{}",
-    [atCwd("deno.lock")]: "{}",
-  });
+  const host = new FakeHost();
   let seen: string[] = [];
   const err = await capturingErr(async () => {
     const code = await main(
@@ -533,6 +591,7 @@ Deno.test("main forwards with --frozen once a deno.lock sits beside zuke.json", 
         seen = denoArgs;
         return Promise.resolve(0);
       },
+      probeAt(["zuke.json", "deno.lock"]),
     );
     assertEquals(code, 0);
   });
@@ -541,7 +600,7 @@ Deno.test("main forwards with --frozen once a deno.lock sits beside zuke.json", 
 });
 
 Deno.test("main warns on stderr when forwarding without a lockfile", async () => {
-  const host = new FakeHost({ [atCwd("zuke.json")]: "{}" });
+  const host = new FakeHost();
   const err = await capturingErr(async () => {
     await main(
       ["build"],
@@ -550,6 +609,7 @@ Deno.test("main warns on stderr when forwarding without a lockfile", async () =>
       undefined,
       undefined,
       () => Promise.resolve(0),
+      probeAt(["zuke.json"]),
     );
   });
   assertEquals(err.length, 1);
@@ -559,7 +619,7 @@ Deno.test("main warns on stderr when forwarding without a lockfile", async () =>
 });
 
 Deno.test("main propagates the build's exit code and forwards flags verbatim", async () => {
-  const host = new FakeHost({ [atCwd("zuke.json")]: "{}" });
+  const host = new FakeHost();
   let seen: string[] = [];
   const code = await main(
     ["graph", "--no-open", "--output=html"],
@@ -571,6 +631,7 @@ Deno.test("main propagates the build's exit code and forwards flags verbatim", a
       seen = denoArgs;
       return Promise.resolve(5);
     },
+    probeAt(["zuke.json"]),
   );
   assertEquals(code, 5);
   assertEquals(seen.slice(3), ["graph", "--no-open", "--output=html"]);
@@ -579,49 +640,35 @@ Deno.test("main propagates the build's exit code and forwards flags verbatim", a
 Deno.test("main keeps its own commands even inside a project", async () => {
   // A zuke.json is present, yet setup/import/doc/--help/--version stay the
   // global CLI's: none of them reaches the build runner.
-  const host = new FakeHost({ [atCwd("zuke.json")]: "{}" });
+  const host = new FakeHost();
   const forwarded: string[][] = [];
   const runner = (_root: string, denoArgs: string[]) => {
     forwarded.push(denoArgs);
     return Promise.resolve(0);
   };
   const docRunner = () => Promise.resolve(0);
-  assertEquals(
-    await main(["--help"], host, defaultPrompter, docRunner, undefined, runner),
-    0,
-  );
-  assertEquals(
-    await main(
-      ["--version"],
-      host,
-      defaultPrompter,
-      docRunner,
-      undefined,
-      runner,
-    ),
-    0,
-  );
-  assertEquals(
-    await main(
-      ["doc", "core"],
-      host,
-      defaultPrompter,
-      docRunner,
-      undefined,
-      runner,
-    ),
-    0,
-  );
+  const probe = probeAt(["zuke.json"]);
+  for (const args of [["--help"], ["--version"], ["doc", "core"]]) {
+    assertEquals(
+      await main(
+        args,
+        host,
+        defaultPrompter,
+        docRunner,
+        undefined,
+        runner,
+        probe,
+      ),
+      0,
+    );
+  }
   assertEquals(forwarded, []);
   // The help documents the forwarding so the split is discoverable.
   assertEquals(host.logs[0].includes("zuke [target|command]"), true);
 });
 
 Deno.test("main with no arguments runs the default target inside a project, like ./zuke", async () => {
-  const host = new FakeHost({
-    [atCwd("zuke.json")]: "{}",
-    [atCwd("deno.lock")]: "{}",
-  });
+  const host = new FakeHost();
   let seen: string[] | undefined;
   const code = await main(
     [],
@@ -633,6 +680,7 @@ Deno.test("main with no arguments runs the default target inside a project, like
       seen = denoArgs;
       return Promise.resolve(0);
     },
+    probeAt(["zuke.json", "deno.lock"]),
   );
   assertEquals(code, 0);
   assertEquals(seen, ["run", "-A", "--frozen", "zuke.ts"]);
@@ -652,6 +700,7 @@ Deno.test("main with no arguments outside a project prints the help", async () =
       called = true;
       return Promise.resolve(0);
     },
+    probeAt([]),
   );
   assertEquals(code, 0);
   assertEquals(called, false);
@@ -671,6 +720,7 @@ Deno.test("main outside a project reports the unknown command and the missing zu
       called = true;
       return Promise.resolve(0);
     },
+    probeAt([]),
   );
   assertEquals(code, 1);
   assertEquals(called, false);
@@ -682,7 +732,7 @@ Deno.test("main surfaces a runner failure as a clean exit 1", async () => {
   // Both forwarding paths — a named command and the bare default-target run
   // — sit under the same handler, so neither can escape as an uncaught throw.
   for (const args of [["ci"], []]) {
-    const host = new FakeHost({ [atCwd("zuke.json")]: "{}" });
+    const host = new FakeHost();
     const code = await main(
       args,
       host,
@@ -690,8 +740,30 @@ Deno.test("main surfaces a runner failure as a clean exit 1", async () => {
       undefined,
       undefined,
       () => Promise.reject(new Error("spawn failed: deno vanished")),
+      probeAt(["zuke.json"]),
     );
     assertEquals(code, 1);
     assertEquals(host.logs, ["spawn failed: deno vanished"]);
   }
+});
+
+Deno.test("main refuses to forward into a build owned by another user", async () => {
+  // The trust gate's refusal is a friendly exit 1 with the advice, and the
+  // runner is never reached.
+  const host = new FakeHost();
+  const { runner, reached } = neverRun();
+  const code = await main(
+    ["ci"],
+    host,
+    defaultPrompter,
+    undefined,
+    undefined,
+    runner,
+    probeAt(["zuke.json"], { uid: 1000, owner: 0 }),
+  );
+  assertEquals(code, 1);
+  assertEquals(reached(), false);
+  assertEquals(host.logs.length, 1);
+  assertEquals(host.logs[0].includes("refusing to run the build at"), true);
+  assertEquals(host.logs[0].includes("./zuke ci"), true);
 });

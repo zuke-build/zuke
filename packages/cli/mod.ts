@@ -32,8 +32,10 @@ import {
 import { VERSION } from "./src/version.ts";
 import { DENO_PIN } from "./src/deno_pin.ts";
 import {
+  type BuildProbe,
   buildRunArgs,
   type BuildRunner,
+  defaultBuildProbe,
   defaultBuildRunner,
   locateBuild,
   NO_LOCK_NOTICE,
@@ -42,7 +44,7 @@ import {
 export type { SetupHost } from "./src/setup.ts";
 export type { ImportSource } from "./src/import.ts";
 export type { StarActions } from "./src/star.ts";
-export type { BuildLocation, BuildRunner } from "./src/dispatch.ts";
+export type { BuildLocation, BuildProbe, BuildRunner } from "./src/dispatch.ts";
 
 /**
  * The interactive surface, injectable so the wizard is testable without a TTY.
@@ -412,16 +414,17 @@ async function commandDoc(
 
 /**
  * Forward `args` to the project's build: locate the nearest `zuke.json` above
- * the working directory and run `zuke.ts` beside it through `runner`. Returns
- * `null` when the caller is not inside a project, so `main` can report the
- * unknown command instead.
+ * the working directory (through `probe`, which also enforces the ownership
+ * trust gate) and run `zuke.ts` beside it through `runner`. Returns `null`
+ * when the caller is not inside a project, so `main` can report the unknown
+ * command instead.
  */
 async function forwardToBuild(
   args: string[],
-  host: SetupHost,
+  probe: BuildProbe,
   runner: BuildRunner,
 ): Promise<number | null> {
-  const location = await locateBuild(Deno.cwd(), (p) => host.exists(p));
+  const location = await locateBuild(Deno.cwd(), probe, args);
   if (location === null) return null;
   if (!location.frozen) ConsoleTasks.warn(NO_LOCK_NOTICE);
   return await runner(location.root, buildRunArgs(location, args));
@@ -429,7 +432,8 @@ async function forwardToBuild(
 
 /**
  * The CLI entry point. Returns a process exit code; `host`, `prompter`,
- * `docRunner`, `starActions`, and `buildRunner` are injectable for testing.
+ * `docRunner`, `starActions`, `buildRunner`, and `buildProbe` are injectable
+ * for testing.
  */
 export async function main(
   args: string[],
@@ -438,6 +442,7 @@ export async function main(
   docRunner: DocRunner = defaultDocRunner,
   starActions: StarActions = defaultStarActions,
   buildRunner: BuildRunner = defaultBuildRunner,
+  buildProbe: BuildProbe = defaultBuildProbe,
 ): Promise<number> {
   if (args[0] === "--help" || args[0] === "-h") {
     host.log(HELP);
@@ -464,7 +469,7 @@ export async function main(
     // `zuke --list`, `zuke mcp`, and a bare `zuke` for the default target,
     // as `./zuke` — and the build's own CLI answers for it, unknown-target
     // message included.
-    const forwarded = await forwardToBuild(args, host, buildRunner);
+    const forwarded = await forwardToBuild(args, buildProbe, buildRunner);
     if (forwarded !== null) return forwarded;
   } catch (error) {
     // Surface a command's own friendly error (e.g. a setup directory collision)

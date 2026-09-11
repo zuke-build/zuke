@@ -14,6 +14,15 @@
  * That is the delegation a global `gradle` makes to a checkout's wrapper: one
  * global word, the project's own build and lock deciding what actually runs.
  *
+ * Discovery has a trust gate, because it runs code the caller never named:
+ * a `zuke.json` planted in a shared parent (`/tmp`, a shared checkout tree)
+ * would otherwise have `zuke ci` in any directory below it run a stranger's
+ * `zuke.ts` with `-A`. So, as git's `safe.directory` does, a build whose root
+ * directory is owned by another user is refused with an error naming the
+ * owner and the two ways forward: run that project's own `./zuke` launcher —
+ * an explicit act on a file the caller names — or take ownership. Where the
+ * platform has no file ownership to compare (Windows), the gate is inert.
+ *
  * Locating and planning are pure given a probe, so the routing is
  * unit-testable; the spawn goes through the injectable {@link BuildRunner}.
  *
@@ -21,6 +30,7 @@
  */
 
 import { absolutePath, CONFIG_FILE } from "@zuke/core";
+import { lstatOrNull } from "./fs.ts";
 
 /** The build file a forwarded command runs, beside {@link CONFIG_FILE}. */
 export const BUILD_FILE = "zuke.ts";
@@ -37,22 +47,105 @@ export interface BuildLocation {
 }
 
 /**
+ * The filesystem questions discovery asks, injectable so the walk and its
+ * trust gate are testable without a filesystem or a second user.
+ */
+export interface BuildProbe {
+  /** Whether a path exists. */
+  exists(path: string): Promise<boolean>;
+  /**
+   * The numeric owner of a path, or `null` where the platform has no file
+   * ownership to report (Windows).
+   */
+  ownerOf(path: string): Promise<number | null>;
+  /** The current user's numeric id, or `null` where the platform has none. */
+  uid(): number | null;
+}
+
+/** The real, `Deno`-backed {@link BuildProbe}. */
+export const defaultBuildProbe: BuildProbe = {
+  async exists(path: string): Promise<boolean> {
+    return await lstatOrNull(path) !== null;
+  },
+  async ownerOf(path: string): Promise<number | null> {
+    return (await Deno.stat(path)).uid;
+  },
+  uid(): number | null {
+    return Deno.uid();
+  },
+};
+
+/**
+ * Thrown when the build discovery found belongs to another user — see the
+ * module docs for why that is refused rather than run.
+ */
+export class UntrustedBuildError extends Error {
+  /** The error's name, as reported by `String(error)` and stack traces. */
+  override name = "UntrustedBuildError";
+
+  /**
+   * @param root The directory holding the `zuke.json` that was found.
+   * @param owner The numeric owner of that directory.
+   * @param uid The current user's numeric id.
+   * @param args The forwarded arguments, echoed in the suggested launcher run.
+   */
+  constructor(
+    readonly root: string,
+    readonly owner: number,
+    readonly uid: number,
+    args: string[],
+  ) {
+    const launcher = ["./zuke", ...args].join(" ");
+    super(
+      `zuke: refusing to run the build at ${root}: the directory is owned by ` +
+        `user ${owner}, not you (${uid}), so a \`zuke.json\` there could have ` +
+        `been planted by someone else. If you trust it, run its own launcher ` +
+        `there (cd ${root} && ${launcher}), or take ownership of the directory.`,
+    );
+  }
+}
+
+/**
  * Walk up from `cwd` to the nearest directory holding {@link CONFIG_FILE},
- * probing with `exists`. Returns `null` when no ancestor has one — the caller
- * is not inside a Zuke project.
+ * asking `probe`. Returns `null` when no ancestor has one — the caller is not
+ * inside a Zuke project.
+ *
+ * @throws {UntrustedBuildError} when the root found is owned by another user
+ *   (see the module docs). `args` is only echoed in that error's advice.
  */
 export async function locateBuild(
   cwd: string,
-  exists: (path: string) => Promise<boolean>,
+  probe: BuildProbe,
+  args: string[],
 ): Promise<BuildLocation | null> {
   let dir = absolutePath(cwd);
   while (true) {
-    if (await exists(dir(CONFIG_FILE).path)) {
-      return { root: dir.path, frozen: await exists(dir(LOCK_FILE).path) };
+    if (await probe.exists(dir(CONFIG_FILE).path)) {
+      await assertTrusted(dir.path, probe, args);
+      return {
+        root: dir.path,
+        frozen: await probe.exists(dir(LOCK_FILE).path),
+      };
     }
     if (dir.isRoot) return null;
     dir = dir.parent();
   }
+}
+
+/**
+ * The trust gate: refuse a root owned by a different user. Inert when either
+ * side has no id to compare — the platform reports no owner or no user.
+ */
+async function assertTrusted(
+  root: string,
+  probe: BuildProbe,
+  args: string[],
+): Promise<void> {
+  const uid = probe.uid();
+  if (uid === null) return;
+  const owner = await probe.ownerOf(root);
+  if (owner === null || owner === uid) return;
+  throw new UntrustedBuildError(root, owner, uid, args);
 }
 
 /**
