@@ -33,12 +33,8 @@ import {
   TargetSummary,
   withAmbientSummary,
 } from "./summary_note.ts";
-import {
-  escapeLine,
-  type Style,
-  type TargetReport,
-  targetWaitFooter,
-} from "./report.ts";
+import { type Style, type TargetReport, targetWaitFooter } from "./report.ts";
+import { escapeLineIf } from "./render.ts";
 import type { Renderer } from "./renderer.ts";
 import {
   cloneTarget,
@@ -375,7 +371,7 @@ async function driveEffects(
           messageOf(error),
         );
       } catch (settleError) {
-        const safe = (text: string) => style.github ? escapeLine(text) : text;
+        const safe = (text: string) => escapeLineIf(style.github, text);
         reporter.info(
           `effect "${safe(declared.name)}" on "${safe(name)}" failed, and ` +
             `recording that failed too: ${safe(messageOf(settleError))}`,
@@ -451,7 +447,7 @@ async function runTarget(
     // stream they are neutralised like any other text this process did not
     // author. The target name is ours, but a fan-out key is not, so it goes
     // through too.
-    const safe = (text: string) => style.github ? escapeLine(text) : text;
+    const safe = (text: string) => escapeLineIf(style.github, text);
     reporter.info(
       `${safe(name)}: forced ${forced.outcome} by ${safe(forced.actor)}` +
         (forced.reason === undefined ? "" : ` — ${safe(forced.reason)}`),
@@ -512,7 +508,7 @@ async function runTarget(
               // The echoed command line is built from argv the build composed,
               // which can carry a parameter value or a fan-out key.
               (line) =>
-                reporter.info(`  $ ${style.github ? escapeLine(line) : line}`),
+                reporter.info(`  $ ${escapeLineIf(style.github, line)}`),
               () => runBody(t, targetCtx),
             ),
         );
@@ -629,7 +625,15 @@ async function runTarget(
   // or a lock declared with no store — fails the target with the guidance.
   let lock: HeldLock | null;
   try {
-    lock = await acquireTargetLock(t, env, (line) => reporter.info(line));
+    lock = await acquireTargetLock(
+      t,
+      env,
+      // The notice names the run that holds the lock — its actor, id, start
+      // time and url — and every one of those was written into the shared
+      // state store by another run. Same provenance as the forced-override
+      // line above, which has been neutralised since #547; this one was not.
+      (line) => reporter.info(escapeLineIf(style.github, line)),
+    );
   } catch (error) {
     const ms = performance.now() - start;
     failTarget(reporter, renderer, style, name, ms, error);
@@ -716,10 +720,15 @@ async function runForEachTarget(
     failTarget(reporter, renderer, style, name, ms, error);
     return { status: "failed", ms, error };
   }
+  // `name` is a class field for a top-level fan-out, but a stage of a fan-out
+  // may itself declare one: dispatch is per-target and `cloneTarget` copies the
+  // spec, so this line can be reached with `parent[key].stage` — carrying an
+  // item key — as its name.
+  const shownName = escapeLineIf(style.github, name);
   reporter.info(
     items.length === 0
-      ? `${name}: fan-out over 0 items — nothing to run.`
-      : `${name}: fan-out over ${items.length} item(s).`,
+      ? `${shownName}: fan-out over 0 items — nothing to run.`
+      : `${shownName}: fan-out over ${items.length} item(s).`,
   );
   const run = await runScheduled(
     ctx,

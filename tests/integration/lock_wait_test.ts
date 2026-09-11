@@ -23,6 +23,14 @@ import type { Reporter } from "../../packages/core/mod.ts";
 import { runCli, withStateDir } from "./_harness.ts";
 
 /**
+ * The percent-encoded `::`, kept as its own constant so the encoded prefix
+ * never fuses with the word after it into a token no dictionary can know: the
+ * spell gate reads the encoding and the word that follows it as one. The same
+ * reason `report_test.ts` splits its literal.
+ */
+const ENC = "%3A%3A";
+
+/**
  * The shared resource a lock usually guards — one dev environment, one
  * database, one port — plus the log of who was inside it when, which is what
  * the wait has to get right.
@@ -166,4 +174,69 @@ Deno.test("a waiter that runs out of time fails and says it waited", async () =>
     release();
     assertEquals((await holding).code, 0);
   });
+});
+
+Deno.test("a lock holder's actor cannot forge a command in the waiting notice", async () => {
+  // The waiting notice describes the run that holds the lock — its actor, id,
+  // start time and url — and every one of those was written into the shared
+  // state store by another run. On an Actions runner that lands on a stream
+  // parsed for workflow commands, so it is neutralised like the forced-override
+  // line beside it.
+  const NL = String.fromCharCode(10);
+  const forged = ["ci-bot", "::stop-commands::deadbeef"].join(NL);
+  const prevActor = Deno.env.get("ZUKE_ACTOR");
+  const prevActions = Deno.env.get("GITHUB_ACTIONS");
+  Deno.env.set("ZUKE_ACTOR", forged);
+  Deno.env.set("GITHUB_ACTIONS", "true");
+  try {
+    await withStateDir(async () => {
+      const { HolderBuild, release, held } = sharedResource();
+      class WaiterBuild extends Build {
+        stack = target()
+          .description("queue behind the hostile holder")
+          .lock((s) =>
+            s.lockKey("dev-env").withTtl("1h").waitUpTo("30s").pollEvery("10ms")
+          )
+          .executes(() => {});
+      }
+
+      const holderOutput = recordingReporter();
+      const holding = runCli(HolderBuild, ["stack"], {
+        reporter: holderOutput.reporter,
+      });
+      await held();
+
+      const waiterOutput = recordingReporter();
+      const waiting = runCli(WaiterBuild, ["stack"], {
+        reporter: waiterOutput.reporter,
+      });
+      // The notice is what carries the holder's actor, so waiting for it is
+      // also what makes the assertions below non-vacuous: without it they
+      // would hold over an empty buffer.
+      await waiterOutput.await(`Waiting for lock "dev-env"`);
+
+      release();
+      assertEquals((await holding).code, 0);
+      assertEquals((await waiting).code, 0);
+
+      const stream = waiterOutput.lines.join(NL).split(NL);
+      // The actor survives as text — it is neutralised, not filtered — but no
+      // line of it opens a command. Asserted on the line, not the substring:
+      // `includes("::stop-commands::")` is true either way, since the encoded
+      // form still ends in `-commands::`.
+      assertStringIncludes(
+        waiterOutput.lines.join(NL),
+        ENC + "stop-commands::deadbeef",
+      );
+      assertEquals(
+        stream.some((l) => l.startsWith("::stop-commands::")),
+        false,
+      );
+    });
+  } finally {
+    if (prevActor === undefined) Deno.env.delete("ZUKE_ACTOR");
+    else Deno.env.set("ZUKE_ACTOR", prevActor);
+    if (prevActions === undefined) Deno.env.delete("GITHUB_ACTIONS");
+    else Deno.env.set("GITHUB_ACTIONS", prevActions);
+  }
 });

@@ -86,6 +86,25 @@ export function escapeLine(text: string): string {
     .join("");
 }
 
+/**
+ * {@link escapeLine}, applied only when something is parsing this process's
+ * output for workflow commands.
+ *
+ * The condition is not a security gate — the runner parses every line a step
+ * writes, whatever this process believes about its own style. It is a
+ * readability one: `escapeLine` leaves ordinary text alone, but a compiler
+ * dump that legitimately begins a line with `::` would come back encoded, and
+ * on a developer's terminal that is noise protecting against nothing.
+ *
+ * It exists so the decision has one implementation. It was written out at more
+ * than a dozen call sites, in three shapes that had already drifted apart — two
+ * asking the style, one asking the environment — which is how a site gets added
+ * without it.
+ */
+export function escapeLineIf(github: boolean, text: string): string {
+  return github ? escapeLine(text) : text;
+}
+
 /** ANSI select-graphic-rendition codes, keyed by style name. */
 export const SGR = {
   reset: "\x1b[0m",

@@ -41,7 +41,12 @@ import type {
   WaitDisposition,
   WaitState,
 } from "./state/types.ts";
-import { consoleReporter, silentReporter } from "./reporter.ts";
+import {
+  consoleReporter,
+  escapingReporter,
+  silentReporter,
+} from "./reporter.ts";
+import { detectCiHost } from "./host.ts";
 
 /** Raised when a run has already been resumed by another process. */
 export class AlreadyResumedError extends Error {
@@ -573,8 +578,17 @@ export async function resumeCheck(
   // A per-run refusal (a degraded record above all) is the sweep's only
   // explanation of a non-zero result, so default the sink to the console the
   // same way execute() does instead of swallowing it when no reporter is given.
-  const reporter = options.reporter ??
+  const sink = options.reporter ??
     (options.silent === true ? silentReporter : consoleReporter);
+  // Every line below carries text this process did not author: a run id or
+  // status another process wrote into the shared state store, an actor, a
+  // compensation name, the message of something that threw. On an Actions
+  // runner each is parsed for workflow commands, and this module composes no
+  // commands of its own — so the whole sink is neutralised, which covers the
+  // lines that exist and the ones added later.
+  const reporter = detectCiHost(readEnv) === "github"
+    ? escapingReporter(sink)
+    : sink;
   const store = resolveRunStore(
     options.stateStore,
     build.stateStore(),

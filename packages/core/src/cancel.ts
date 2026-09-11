@@ -35,7 +35,13 @@
 import { type Build, discoverTargets, resolveOrderingEdges } from "./build.ts";
 import { buildRunPlan, type RunPlan } from "./run_plan.ts";
 import { defaultReadEnv, messageOf, runWithTimeout } from "./internal.ts";
-import { consoleReporter, type Reporter, silentReporter } from "./reporter.ts";
+import {
+  consoleReporter,
+  escapingReporter,
+  type Reporter,
+  silentReporter,
+} from "./reporter.ts";
+import { detectCiHost } from "./host.ts";
 import { type OrderingEdge, planGraph } from "./graph.ts";
 import { discoverParameters, resolveParameters } from "./params.ts";
 import { Redactor } from "./redact.ts";
@@ -777,8 +783,17 @@ export async function settleExternally(
   }
   const runId = options.runId;
   const actor = resolveActor(options.actor, readEnv);
-  const reporter = options.reporter ??
+  const sink = options.reporter ??
     (options.silent ? silentReporter : consoleReporter);
+  // Every line below carries text this process did not author: a run id or
+  // status another process wrote into the shared state store, an actor, a
+  // compensation name, the message of something that threw. On an Actions
+  // runner each is parsed for workflow commands, and this module composes no
+  // commands of its own — so the whole sink is neutralised, which covers the
+  // lines that exist and the ones added later.
+  const reporter = detectCiHost(readEnv) === "github"
+    ? escapingReporter(sink)
+    : sink;
   const now = () => new Date().toISOString();
 
   // A settlement runs *this* build's compensations against the record, so a run
