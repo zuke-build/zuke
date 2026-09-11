@@ -5619,8 +5619,14 @@ lane runs them against the filesystem store, and a backend author runs them
 against a live service:
 
 ```sh
-deno run -A jsr:@zuke/core/conformance --url http://localhost:8080 [--token …]
+ZUKE_STATE_TOKEN=… ZUKE_REGISTRY_TOKEN=… \
+  deno run -A jsr:@zuke/core/conformance --url http://localhost:8080
 ```
+
+Both variables are optional — set them only when the backend requires a
+bearer token. There is no `--token` argument: passing one is refused, because
+a credential in argv is readable by every local process and lands in the
+transcript of whatever invoked the kit.
 
 Every scenario uses freshly-generated ids, so it is safe to run against a
 shared, persistent service; the lock-takeover scenario uses a short real TTL
