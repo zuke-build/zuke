@@ -251,3 +251,29 @@ Deno.test("a build's lifecycle hooks write a redacted job summary", async () => 
     await Deno.remove(dir, { recursive: true });
   }
 });
+
+Deno.test("a CLI error quoting its own argument cannot forge a command", async () => {
+  // The run's sinks are covered; the CLI's own writes were not. Every command
+  // here echoes an argument the invoker chose, and on Actions that is commonly a
+  // `workflow_dispatch` input rather than something a person typed. The catch
+  // arms quote a thrown message straight back, so they leaked exactly what the
+  // success paths guard — one of them sat eleven lines below a success path
+  // that escapes the same value deliberately.
+  await withStateDir(async () => {
+    class B extends Build {
+      ok = target().executes(() => {});
+    }
+    for (const args of [["resume", HOSTILE], [HOSTILE], ["cancel", HOSTILE]]) {
+      let r = { code: -1, out: "", err: "" };
+      await withEnv({ GITHUB_ACTIONS: "true" }, async () => {
+        r = await runCli(B, args);
+      });
+      assertEquals(r.code, 1, `${args[0]} unexpectedly succeeded`);
+      assertEquals(
+        unintendedCommands(`${r.out}\n${r.err}`),
+        [],
+        `\`zuke ${args[0]}\` let its argument reach the runner as a command`,
+      );
+    }
+  });
+});

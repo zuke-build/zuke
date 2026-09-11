@@ -76,6 +76,32 @@ import {
 } from "./completions_install.ts";
 import { describeBuildSurface } from "./describe.ts";
 
+/**
+ * The CLI's own output, neutralised for a GitHub Actions runner.
+ *
+ * Every command here echoes arguments the invoker chose — a run id, a target
+ * name, a force reason — and on Actions those commonly come from a
+ * `workflow_dispatch` input or an issue body rather than from a person at a
+ * terminal. The catch arms are the sharp end: they quote a thrown message
+ * straight back, so they leak exactly what the success paths are careful about.
+ *
+ * A sink rather than a call-site guard because there are forty-odd writes here
+ * and no reason for any of them to be exempt: unlike the run's reporter, this
+ * module emits no workflow commands of its own, so there is no half to carve
+ * out. The decision is made per line, not once at module load — a top-level
+ * `const` would read the environment before an embedder or a test has set it,
+ * and the escaping would then silently not apply.
+ */
+const cli: Reporter = {
+  info: (line) => console.log(escapeLineIf(inActions(), line)),
+  error: (line) => console.error(escapeLineIf(inActions(), line)),
+};
+
+/** Whether this process is running on a GitHub Actions runner. */
+function inActions(): boolean {
+  return detectCiHost() === "github";
+}
+
 /** `completions` sub-action: print the script to stdout. */
 const PRINT_SUBCOMMAND = "print";
 
@@ -836,18 +862,18 @@ export async function syncCiConfig(
   const files = discoverCiFiles(build);
   if (files.length === 0) {
     if (!options.quietWhenEmpty) {
-      console.log("No CI configuration is declared on this build.");
+      cli.info("No CI configuration is declared on this build.");
     }
     return 0;
   }
   const results = await syncCiFiles(files, { check: options.check });
   const stale: string[] = [];
   for (const { path, status } of results) {
-    if (status === "written") console.log(`Generated ${path}`);
+    if (status === "written") cli.info(`Generated ${path}`);
     else if (status === "stale") stale.push(path);
   }
   if (stale.length > 0) {
-    console.error(
+    cli.error(
       `CI configuration is out of date: ${stale.join(", ")}.\n` +
         `Run \`zuke generate-ci\` and commit the result.`,
     );
@@ -915,19 +941,19 @@ async function installCompletionScript(
       params,
       options.installOptions,
     );
-    console.log(`Installed ${result.shell} completion to ${result.scriptPath}`);
+    cli.info(`Installed ${result.shell} completion to ${result.scriptPath}`);
     if (result.rcPath === undefined) {
-      console.log("Open a new shell (or restart fish) to load it.");
+      cli.info("Open a new shell (or restart fish) to load it.");
     } else if (result.alreadySourced) {
-      console.log(`${result.rcPath} already sources it — nothing to change.`);
+      cli.info(`${result.rcPath} already sources it — nothing to change.`);
     } else {
-      console.log(
+      cli.info(
         `Added a source line to ${result.rcPath}; open a new shell to use it.`,
       );
     }
     return 0;
   } catch (error) {
-    console.error(messageOf(error));
+    cli.error(messageOf(error));
     return 1;
   }
 }
@@ -981,11 +1007,11 @@ async function runResume(
         resumeDegraded: parsed.resumeDegraded,
         plugins,
       });
-      console.log(`Checked ${checked} suspended run(s); ${failed} failed.`);
+      cli.info(`Checked ${checked} suspended run(s); ${failed} failed.`);
       return failed > 0 ? 1 : 0;
     }
     if (parsed.resumeRunId === undefined) {
-      console.error(
+      cli.error(
         "Usage: zuke resume <run-id> [--signal <name>] [--data <json>]  |  " +
           "zuke resume --check [<run-id>]",
       );
@@ -1003,7 +1029,7 @@ async function runResume(
     });
     return result.ok ? 0 : 1;
   } catch (error) {
-    console.error(messageOf(error));
+    cli.error(messageOf(error));
     // A lost resume race (AlreadyResumedError) and any other failure both exit
     // non-zero; the message tells the operator what happened.
     return 1;
@@ -1037,7 +1063,7 @@ async function runMcp(build: Build, parsed: ParsedArgs): Promise<number> {
     try {
       http = parseHttpAddress(parsed.httpAddr);
     } catch (error) {
-      console.error(messageOf(error));
+      cli.error(messageOf(error));
       return 1;
     }
   }
@@ -1057,7 +1083,7 @@ async function runMcp(build: Build, parsed: ParsedArgs): Promise<number> {
 /** Run the `cancel` command: cancel a run and run its compensations. */
 async function runCancel(build: Build, parsed: ParsedArgs): Promise<number> {
   if (parsed.cancelRunId === undefined) {
-    console.error("Usage: zuke cancel <run-id> [--actor <name>]");
+    cli.error("Usage: zuke cancel <run-id> [--actor <name>]");
     return 1;
   }
   try {
@@ -1069,7 +1095,7 @@ async function runCancel(build: Build, parsed: ParsedArgs): Promise<number> {
     // a compensation that threw surfaces non-zero so the operator notices.
     return result.failures.length > 0 ? 1 : 0;
   } catch (error) {
-    console.error(messageOf(error));
+    cli.error(messageOf(error));
     return 1;
   }
 }
@@ -1083,7 +1109,7 @@ async function runCancel(build: Build, parsed: ParsedArgs): Promise<number> {
  */
 async function runForce(build: Build, parsed: ParsedArgs): Promise<number> {
   if (parsed.forceExtra !== undefined) {
-    console.error(
+    cli.error(
       `force: unexpected argument "${parsed.forceExtra}". ` +
         `Usage: zuke force <run-id> <target> --outcome skipped|succeeded ` +
         `[--reason <why>] [--actor <name>]`,
@@ -1091,7 +1117,7 @@ async function runForce(build: Build, parsed: ParsedArgs): Promise<number> {
     return 1;
   }
   if (parsed.forceRunId === undefined || parsed.forceTarget === undefined) {
-    console.error(
+    cli.error(
       "Usage: zuke force <run-id> <target> --outcome skipped|succeeded " +
         "[--reason <why>] [--actor <name>]",
     );
@@ -1099,7 +1125,7 @@ async function runForce(build: Build, parsed: ParsedArgs): Promise<number> {
   }
   const outcome = FORCED_OUTCOMES.find((o) => o === parsed.outcome);
   if (outcome === undefined) {
-    console.error(
+    cli.error(
       `force: --outcome must be one of: ${FORCED_OUTCOMES.join(", ")}` +
         (parsed.outcome === undefined ? "." : ` (got "${parsed.outcome}").`),
     );
@@ -1113,23 +1139,19 @@ async function runForce(build: Build, parsed: ParsedArgs): Promise<number> {
       ...(parsed.reason === undefined ? {} : { reason: parsed.reason }),
       actor: parsed.actor,
     });
-    // The reason inside this message is the operator's, and in a scripted force
-    // it is often interpolated from a pull request title or an issue body. The
-    // escape belongs here, at the printer that owns the terminal, rather than in
-    // `forceTarget` — the MCP tool returns the same message inside a JSON
-    // payload, which must not carry a terminal's encoding.
-    const shown = escapeLineIf(
-      detectCiHost() === "github",
-      result.message,
-    );
+    // Escaped by the sink, not here. The reason inside this message is the
+    // operator's, and in a scripted force it is often interpolated from a pull
+    // request title or an issue body — but `forceTarget` deliberately returns it
+    // unencoded, because the MCP tool hands the same message back inside a JSON
+    // payload that must not carry a terminal's encoding. The printer decides.
     if (!result.ok) {
-      console.error(shown);
+      cli.error(result.message);
       return 1;
     }
-    console.log(shown);
+    cli.info(result.message);
     return 0;
   } catch (error) {
-    console.error(messageOf(error));
+    cli.error(messageOf(error));
     return 1;
   }
 }
@@ -1142,7 +1164,7 @@ async function runRegister(build: Build, parsed: ParsedArgs): Promise<number> {
       json: parsed.json,
     });
   } catch (error) {
-    console.error(messageOf(error));
+    cli.error(messageOf(error));
     return 1;
   }
 }
@@ -1204,7 +1226,7 @@ async function runDoc(
 ): Promise<number> {
   let spec = parsed.docSpec;
   if (spec === undefined) {
-    console.error(
+    cli.error(
       "Usage: zuke doc <spec>   (e.g. zuke doc jsr:@zuke/deno, or ./mod.ts)",
     );
     return 1;
@@ -1215,7 +1237,7 @@ async function runDoc(
   try {
     return await runner(spec);
   } catch (error) {
-    console.error(messageOf(error));
+    cli.error(messageOf(error));
     return 1;
   }
 }
@@ -1237,7 +1259,7 @@ async function runOutdated(
 ): Promise<number> {
   try {
     const report = await findOutdated(options);
-    console.log(formatOutdated(report));
+    cli.info(formatOutdated(report));
     // A package that could not be checked counts as a failure under
     // --exit-code: a gate asking "are we current?" has not been told yes, and
     // an offline runner passing quietly is the silence this command exists to
@@ -1245,7 +1267,7 @@ async function runOutdated(
     const unresolved = report.behind.length + report.unchecked.length;
     return parsed.exitCode && unresolved > 0 ? 1 : 0;
   } catch (error) {
-    console.error(messageOf(error));
+    cli.error(messageOf(error));
     return 1;
   }
 }
@@ -1255,7 +1277,7 @@ async function runRuns(build: Build, parsed: ParsedArgs): Promise<number> {
   const query: RunQuery = {};
   if (parsed.runStatus !== undefined) {
     if (!isRunStatus(parsed.runStatus)) {
-      console.error(
+      cli.error(
         `runs: unknown --status "${parsed.runStatus}" ` +
           `(one of: ${RUN_STATUS_NAMES.join(", ")}).`,
       );
@@ -1268,7 +1290,7 @@ async function runRuns(build: Build, parsed: ParsedArgs): Promise<number> {
   if (parsed.runLimit !== undefined) {
     const limit = parsePositiveInt(parsed.runLimit);
     if (limit === undefined) {
-      console.error(
+      cli.error(
         `runs: --limit must be a positive integer (got "${parsed.runLimit}").`,
       );
       return 1;
@@ -1281,7 +1303,7 @@ async function runRuns(build: Build, parsed: ParsedArgs): Promise<number> {
     try {
       keepMs = parseDuration(parsed.keep);
     } catch (error) {
-      console.error(`runs: --keep is ${messageOf(error)}`);
+      cli.error(`runs: --keep is ${messageOf(error)}`);
       return 1;
     }
   }
@@ -1289,7 +1311,7 @@ async function runRuns(build: Build, parsed: ParsedArgs): Promise<number> {
   if (parsed.keepLast !== undefined) {
     keepLast = parsePositiveInt(parsed.keepLast);
     if (keepLast === undefined) {
-      console.error(
+      cli.error(
         `runs: --keep-last must be a positive integer (got "${parsed.keepLast}").`,
       );
       return 1;
@@ -1324,7 +1346,7 @@ export async function main(
     return await runCommand(BuildClass, args, options);
   } catch (error) {
     if (error instanceof InsecureBackendUrlError) {
-      console.error(error.message);
+      cli.error(error.message);
       return 1;
     }
     throw error;
@@ -1351,7 +1373,7 @@ async function runCommand(
     // come before `--help`, because the help text lists the parameters that
     // discovery is what produces.
     if (error instanceof ParameterError) {
-      console.error(error.message);
+      cli.error(error.message);
       return 1;
     }
     throw error;
@@ -1369,12 +1391,12 @@ async function runCommand(
   } catch (error) {
     // parseArgs only ever throws Error; messageOf narrows `unknown` without a
     // second branch here that no input can reach.
-    console.error(messageOf(error));
+    cli.error(messageOf(error));
     return 1;
   }
 
   if (parsed.help) {
-    console.log(formatHelp(targets, params));
+    cli.info(formatHelp(targets, params));
     return 0;
   }
 
@@ -1382,7 +1404,7 @@ async function runCommand(
     validateGraph(targets);
   } catch (error) {
     if (error instanceof GraphError) {
-      console.error(error.message);
+      cli.error(error.message);
       return 1;
     }
     throw error;
@@ -1393,18 +1415,18 @@ async function runCommand(
   // written descriptor).
   if (parsed.json && !parsed.runs && !parsed.register) {
     const surface = describeBuildSurface(targets, params);
-    console.log(JSON.stringify(surface, null, 2));
+    cli.info(JSON.stringify(surface, null, 2));
     return 0;
   }
   if (parsed.list) {
-    console.log(formatList(targets, params));
+    cli.info(formatList(targets, params));
     return 0;
   }
   if (parsed.graph) {
     if (parsed.output === "html") {
       return await graphCommand(targets, { open: parsed.open }, graphHost);
     }
-    console.log(formatGraph(targets));
+    cli.info(formatGraph(targets));
     return 0;
   }
   if (parsed.completions) {
@@ -1414,13 +1436,13 @@ async function runCommand(
       action === PRINT_SUBCOMMAND;
     if (!validAction || shell === undefined || !isCompletionShell(shell)) {
       const shells = COMPLETION_SHELLS.join("|");
-      console.error(`Usage: zuke completions <install|print> <${shells}>`);
+      cli.error(`Usage: zuke completions <install|print> <${shells}>`);
       return 1;
     }
     if (action === INSTALL_SUBCOMMAND) {
       return await installCompletionScript(shell, targets, params, options);
     }
-    console.log(formatCompletions(shell, targets, params));
+    cli.info(formatCompletions(shell, targets, params));
     return 0;
   }
   if (parsed.generateCi) {
@@ -1456,7 +1478,7 @@ async function runCommand(
     if (targets.has(DEFAULT_TARGET)) {
       name = DEFAULT_TARGET;
     } else {
-      console.log(formatList(targets, params));
+      cli.info(formatList(targets, params));
       return 0;
     }
   }
@@ -1469,8 +1491,8 @@ async function runCommand(
     const hint = suggestion === undefined
       ? ""
       : ` Did you mean "${suggestion}"?`;
-    console.error(`Unknown target: ${name}.${hint}\n`);
-    console.error(formatList(targets, params));
+    cli.error(`Unknown target: ${name}.${hint}\n`);
+    cli.error(formatList(targets, params));
     return 1;
   }
 
@@ -1482,7 +1504,7 @@ async function runCommand(
   // union rather than a string the type system has to be told about.
   const actorKind = ACTOR_KINDS.find((kind) => kind === parsed.actorKind);
   if (parsed.actorKind !== undefined && actorKind === undefined) {
-    console.error(
+    cli.error(
       `--actor-kind must be one of: ${ACTOR_KINDS.join(", ")} ` +
         `(got "${parsed.actorKind}").`,
     );
