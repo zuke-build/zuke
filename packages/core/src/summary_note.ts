@@ -42,14 +42,22 @@ export interface SummaryEntry {
 }
 
 /**
- * Collapse a reported key or value to a single line of printable text.
+ * Collapse a value to a single line of printable text, for anything that lands
+ * in a table cell.
  *
- * A note lands in a terminal table row and a Markdown table cell, and a wrapper
- * may hand over text a tool printed: a newline would start a new row and an
- * ANSI sequence would restyle the rest of the table, so both are removed here —
- * the one place — rather than at each renderer.
+ * A note or a target name lands in a terminal table row and a Markdown table
+ * cell, and neither is necessarily the build author's text: a wrapper hands
+ * over what a tool printed, and a fan-out sub-target's name carries its item
+ * key. A newline would start a new row — in Markdown, ending the row early and
+ * publishing whatever follows as document content — and an ANSI sequence would
+ * restyle the rest of the table.
+ *
+ * This is the collapsing itself, not the whole guard. A note goes through it
+ * when it is recorded; a name goes through it in `report.ts`, which applies it
+ * for every renderer it owns. A Markdown cell needs more on top — escaping the
+ * markup that would otherwise close the table — and that lives with the cell.
  */
-function singleLine(text: string): string {
+export function singleLine(text: string): string {
   return stripAnsi(text)
     // deno-lint-ignore no-control-regex
     .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, "")

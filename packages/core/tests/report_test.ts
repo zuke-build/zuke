@@ -155,6 +155,93 @@ Deno.test("colour mode wraps headers, rows, and the closing line in ANSI codes",
   assertEquals(block[block.length - 1].includes("\x1b["), true);
 });
 
+Deno.test("markup in a name cannot close the job-summary table", () => {
+  // The escape that matters most, and the one a pipe-only guard misses:
+  // `</table>` is not a newline, a pipe or a comment marker, and GitHub's
+  // sanitiser allows it — it stops scripts, it does not keep text in a cell.
+  // Left raw, the table ends at that row and everything after is published as
+  // page content, including a forged heading.
+  const md = jobSummaryMarkdown(
+    [{ name: "</table><h1>All checks passed</h1>", status: "passed", ms: 100 }],
+    100,
+    true,
+  );
+  assertEquals(md.includes("</table>"), false);
+  assertEquals(md.includes("<h1>"), false);
+  assertEquals(md.includes("&lt;/table&gt;&lt;h1&gt;"), true);
+});
+
+Deno.test("a newline in a name cannot end its job-summary row", () => {
+  const NL = String.fromCharCode(10);
+  const md = jobSummaryMarkdown(
+    [
+      {
+        name: ["a", "## Injected heading"].join(NL),
+        status: "passed",
+        ms: 100,
+      },
+      { name: "after", status: "passed", ms: 100 },
+    ],
+    200,
+    true,
+  );
+  // Asserted on the LINE, not on the substring: the heading text is expected to
+  // survive as cell content, and what must not happen is it starting a line of
+  // its own. Checking `includes("## Injected heading")` would pass either way.
+  const lines = md.split(NL);
+  assertEquals(lines.some((l) => l.startsWith("## Injected heading")), false);
+  assertEquals(lines.filter((l) => l.startsWith("|")).length, 5);
+  assertEquals(
+    md.includes("| a ## Injected heading | ✔ Succeeded | 0.1s |"),
+    true,
+  );
+});
+
+Deno.test("a pipe in a name cannot open a column of its own", () => {
+  const md = jobSummaryMarkdown(
+    [{ name: "a | b", status: "passed", ms: 100 }],
+    100,
+    true,
+  );
+  // Three cells, not four: the row still has exactly its own columns.
+  const row = md.split(String.fromCharCode(10)).find((l) =>
+    l.startsWith("| a")
+  );
+  assertEquals(row?.split(" | ").length, 3);
+  assertEquals(md.includes("a \\| b"), true);
+});
+
+Deno.test("a newline in a name cannot forge a row in the terminal table", () => {
+  // The same value, the other renderer. Left raw it prints a line of its own,
+  // which can imitate a Total row, and destroys the column alignment because
+  // the width is measured on a string that is no longer one line.
+  const NL = String.fromCharCode(10);
+  const rows = summaryBlock(
+    { github: false, color: false, width: 60 },
+    [
+      {
+        name: ["ok", "== FAKE TOTAL ==", "Build succeeded"].join(NL),
+        status: "passed",
+        ms: 100,
+      },
+      { name: "after", status: "passed", ms: 100 },
+    ],
+    200,
+    true,
+    new Date(0),
+  );
+  assertEquals(rows.some((l) => l.startsWith("== FAKE TOTAL ==")), false);
+  // Every rendered line is one line: nothing smuggled a break through.
+  assertEquals(rows.some((l) => l.includes(NL)), false);
+  // And the two target rows still align under the same column.
+  const target = rows.filter((l) => /^(ok|after)/.test(l));
+  assertEquals(target.length, 2);
+  assertEquals(
+    target[0].indexOf("Succeeded"),
+    target[1].indexOf("Succeeded"),
+  );
+});
+
 Deno.test("jobSummaryMarkdown renders an aligned table with a bold Total row", () => {
   const reports = [
     { name: "a", status: "passed" as const, ms: 100 },
