@@ -59,6 +59,9 @@ function contextFor(
         new Redactor(),
       ),
       reporter: { info: (l) => lines.push(l), error: (l) => lines.push(l) },
+      // The unit harness records both sinks into one buffer: these tests assert
+      // on what a target prints, not on which sink escaped it.
+      rendered: { info: (l) => lines.push(l), error: (l) => lines.push(l) },
       renderer: defaultRenderer,
       style: { github: false, color: false, width: 60 },
       cache: undefined,

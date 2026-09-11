@@ -33,12 +33,7 @@ import {
   TargetSummary,
   withAmbientSummary,
 } from "./summary_note.ts";
-import {
-  escapeLine,
-  type Style,
-  type TargetReport,
-  targetWaitFooter,
-} from "./report.ts";
+import { type Style, type TargetReport, targetWaitFooter } from "./report.ts";
 import type { Renderer } from "./renderer.ts";
 import {
   cloneTarget,
@@ -115,8 +110,14 @@ function failTarget(
 export interface RunContext {
   /** The composed build+plugins lifecycle. */
   life: Lifecycle;
-  /** The output sink for framework lines. */
+  /** The output sink for framework lines — escaped for the runner on Actions. */
   reporter: Reporter;
+  /**
+   * The sink for lines the **renderer** composed, which is not escaped: those
+   * carry Zuke's own workflow commands, and the renderer escapes the untrusted
+   * values inside them at construction. Nothing else may use it.
+   */
+  rendered: Reporter;
   /** The renderer producing the framework's line output. */
   renderer: Renderer;
   /** The resolved output style (color, GitHub grouping, …). */
@@ -335,7 +336,6 @@ async function driveEffects(
   ctx: TargetContext,
   env: RunEnv,
   reporter: Reporter,
-  style: Style,
 ): Promise<void> {
   if (t.effects_.length === 0) return;
   const writer = env.writer;
@@ -375,10 +375,11 @@ async function driveEffects(
           messageOf(error),
         );
       } catch (settleError) {
-        const safe = (text: string) => style.github ? escapeLine(text) : text;
+        // Not escaped here: every line through the run's reporter is escaped
+        // for the runner at the sink. See `escapingReporter`.
         reporter.info(
-          `effect "${safe(declared.name)}" on "${safe(name)}" failed, and ` +
-            `recording that failed too: ${safe(messageOf(settleError))}`,
+          `effect "${declared.name}" on "${name}" failed, and ` +
+            `recording that failed too: ${messageOf(settleError)}`,
         );
       }
       throw error;
@@ -435,8 +436,16 @@ async function runTarget(
   t: TargetBuilder,
   opened: number,
 ): Promise<TargetOutcome> {
-  const { life, reporter, renderer, style, cache, dryRun, globalRecovery } =
-    ctx;
+  const {
+    life,
+    reporter,
+    rendered,
+    renderer,
+    style,
+    cache,
+    dryRun,
+    globalRecovery,
+  } = ctx;
   const { services, env } = ctx;
   const name = t.name_ ?? "<unnamed>";
 
@@ -451,10 +460,12 @@ async function runTarget(
     // stream they are neutralised like any other text this process did not
     // author. The target name is ours, but a fan-out key is not, so it goes
     // through too.
-    const safe = (text: string) => style.github ? escapeLine(text) : text;
+    // The actor and the reason come from the shared state store, written by
+    // whichever process forced the target. Escaped at the sink with every other
+    // reporter line, rather than here.
     reporter.info(
-      `${safe(name)}: forced ${forced.outcome} by ${safe(forced.actor)}` +
-        (forced.reason === undefined ? "" : ` — ${safe(forced.reason)}`),
+      `${name}: forced ${forced.outcome} by ${forced.actor}` +
+        (forced.reason === undefined ? "" : ` — ${forced.reason}`),
     );
     return {
       status: forced.outcome === "skipped" ? "skipped" : "passed",
@@ -473,13 +484,13 @@ async function runTarget(
     const error = new Error(
       `Target "${name}" requires parameter(s) that are not set: ${names}.`,
     );
-    openTarget(reporter, renderer, style, name, opened);
-    failTarget(reporter, renderer, style, name, 0, error);
+    openTarget(rendered, renderer, style, name, opened);
+    failTarget(rendered, renderer, style, name, 0, error);
     return { status: "failed", ms: 0, error };
   }
 
   if (dryRun) {
-    openTarget(reporter, renderer, style, name, opened);
+    openTarget(rendered, renderer, style, name, opened);
     // A `.dryRunnable()` target with a body runs it with `$` in echo mode
     // instead of being skipped, to preview the exact commands a real run would
     // execute. State is in-memory only (a dry run persists nothing), and no lock
@@ -511,22 +522,21 @@ async function runTarget(
             withAmbientEcho(
               // The echoed command line is built from argv the build composed,
               // which can carry a parameter value or a fan-out key.
-              (line) =>
-                reporter.info(`  $ ${style.github ? escapeLine(line) : line}`),
+              (line) => reporter.info(`  $ ${line}`),
               () => runBody(t, targetCtx),
             ),
         );
         const ms = performance.now() - start;
-        passTarget(reporter, renderer, style, name, ms);
+        passTarget(rendered, renderer, style, name, ms);
         return noted({ status: "passed", ms }, summary);
       } catch (error) {
         const ms = performance.now() - start;
-        failTarget(reporter, renderer, style, name, ms, error);
+        failTarget(rendered, renderer, style, name, ms, error);
         return noted({ status: "failed", ms, error }, summary);
       }
     }
     for (const line of renderer.targetDryRunFooter(style, name)) {
-      reporter.info(line);
+      rendered.info(line);
     }
     return { status: "passed", ms: 0 };
   }
@@ -535,18 +545,18 @@ async function runTarget(
   // run; the registry stops it during teardown. It has no cacheable body and no
   // `.executes` — so it is handled before the cache and body paths below.
   if (t instanceof ServiceBuilder) {
-    openTarget(reporter, renderer, style, name, opened);
+    openTarget(rendered, renderer, style, name, opened);
     await life.targetStart(name);
     void env.writer?.markTargetRunning(name);
     const start = performance.now();
     try {
       services.register(await t.launch_(name));
       const ms = performance.now() - start;
-      passTarget(reporter, renderer, style, name, ms);
+      passTarget(rendered, renderer, style, name, ms);
       return { status: "passed", ms };
     } catch (error) {
       const ms = performance.now() - start;
-      failTarget(reporter, renderer, style, name, ms, error);
+      failTarget(rendered, renderer, style, name, ms, error);
       return { status: "failed", ms, error };
     }
   }
@@ -565,12 +575,12 @@ async function runTarget(
   // A `.waitsFor(...)` target is a gate, not a body: if its trigger is already
   // satisfied it passes (dependents run); otherwise the run suspends here.
   if (t.waitsFor_ !== undefined) {
-    openTarget(reporter, renderer, style, name, opened);
+    openTarget(rendered, renderer, style, name, opened);
     let wait: WaitResolution;
     try {
       wait = await resolveWait(t.waitsFor_, env, name);
     } catch (error) {
-      failTarget(reporter, renderer, style, name, 0, error);
+      failTarget(rendered, renderer, style, name, 0, error);
       return { status: "failed", ms: 0, error };
     }
     if (wait.satisfied) {
@@ -589,25 +599,24 @@ async function runTarget(
               targetContextFor(name, env, dryRun, summary),
               env,
               reporter,
-              style,
             ),
         );
       } catch (error) {
-        failTarget(reporter, renderer, style, name, 0, error);
+        failTarget(rendered, renderer, style, name, 0, error);
         return noted({ status: "failed", ms: 0, error }, summary);
       }
-      passTarget(reporter, renderer, style, name, 0);
+      passTarget(rendered, renderer, style, name, 0);
       return noted({ status: "passed", ms: 0 }, summary);
     }
     env.statuses.set(name, { status: "waiting" });
     void env.writer?.markTargetWaiting(name, wait.waitState);
     for (const line of targetWaitFooter(style, name, wait.descriptor)) {
-      reporter.info(line);
+      rendered.info(line);
     }
     return { status: "waiting", ms: 0 };
   }
 
-  openTarget(reporter, renderer, style, name, opened);
+  openTarget(rendered, renderer, style, name, opened);
   await life.targetStart(name);
   void env.writer?.markTargetRunning(name);
   const start = performance.now();
@@ -616,7 +625,7 @@ async function runTarget(
     const error = new Error(
       `Target "${name}" has no body — call .executes(...) before running.`,
     );
-    failTarget(reporter, renderer, style, name, 0, error);
+    failTarget(rendered, renderer, style, name, 0, error);
     return { status: "failed", ms: 0, error };
   }
 
@@ -632,7 +641,7 @@ async function runTarget(
     lock = await acquireTargetLock(t, env, (line) => reporter.info(line));
   } catch (error) {
     const ms = performance.now() - start;
-    failTarget(reporter, renderer, style, name, ms, error);
+    failTarget(rendered, renderer, style, name, ms, error);
     return { status: "failed", ms, error };
   }
 
@@ -640,16 +649,16 @@ async function runTarget(
     await withAmbientSummary(summary, async () => {
       for (const v of t.validateBefore_) await v.validate({ target: name });
       await runBodyWithRecovery(t, name, globalRecovery, targetCtx);
-      await driveEffects(t, name, targetCtx, env, reporter, style);
+      await driveEffects(t, name, targetCtx, env, reporter);
       for (const v of t.validateAfter_) await v.validate({ target: name });
     });
     const ms = performance.now() - start;
     if (cache !== undefined) await cache.record(t);
-    passTarget(reporter, renderer, style, name, ms);
+    passTarget(rendered, renderer, style, name, ms);
     return noted({ status: "passed", ms }, summary);
   } catch (error) {
     const ms = performance.now() - start;
-    failTarget(reporter, renderer, style, name, ms, error);
+    failTarget(rendered, renderer, style, name, ms, error);
     return noted({ status: "failed", ms, error }, summary);
   } finally {
     // Release on every path — success, failure, cancellation. The TTL is only
@@ -674,12 +683,12 @@ async function runForEachTarget(
   spec: ForEachSpec,
   opened: number,
 ): Promise<TargetOutcome> {
-  const { life, reporter, renderer, style, env } = ctx;
+  const { life, reporter, rendered, renderer, style, env } = ctx;
   const name = t.name_ ?? "<unnamed>";
   const settings = spec.configure
     ? spec.configure(new ForEachSettings())
     : new ForEachSettings();
-  openTarget(reporter, renderer, style, name, opened);
+  openTarget(rendered, renderer, style, name, opened);
   await life.targetStart(name);
   void env.writer?.markTargetRunning(name);
   const start = performance.now();
@@ -713,7 +722,7 @@ async function runForEachTarget(
     }
   } catch (error) {
     const ms = performance.now() - start;
-    failTarget(reporter, renderer, style, name, ms, error);
+    failTarget(rendered, renderer, style, name, ms, error);
     return { status: "failed", ms, error };
   }
   reporter.info(
@@ -740,7 +749,7 @@ async function runForEachTarget(
     const failed = run.reports.filter((r) => r.status === "failed").length;
     const error = run.failure ??
       new Error(`${name}: ${failed} sub-target(s) failed.`);
-    failTarget(reporter, renderer, style, name, ms, error);
+    failTarget(rendered, renderer, style, name, ms, error);
     return { status: "failed", ms, error, children: run.reports };
   }
   // A cancellation is not a success, and here it has to be said explicitly. The
@@ -755,10 +764,10 @@ async function runForEachTarget(
   // run against a deployment that never happened.
   if (ctx.env.signal.aborted) {
     const error = new Error(`${name}: cancelled before its items finished.`);
-    failTarget(reporter, renderer, style, name, ms, error);
+    failTarget(rendered, renderer, style, name, ms, error);
     return { status: "failed", ms, error, children: run.reports };
   }
-  passTarget(reporter, renderer, style, name, ms);
+  passTarget(rendered, renderer, style, name, ms);
   return { status: "passed", ms, children: run.reports };
 }
 
@@ -809,7 +818,7 @@ export async function runSequential(
   order: TargetBuilder[],
   skip: Set<string>,
 ): Promise<RunOutcome> {
-  const { life, reporter, renderer, style, env } = ctx;
+  const { life, rendered, renderer, style, env } = ctx;
   const reports: TargetReport[] = [];
   const executed: string[] = [];
   let failure: unknown;
@@ -839,7 +848,7 @@ export async function runSequential(
       // thunk, a lifecycle hook, or `life.targetEnd`) becomes a failed target so
       // the run finalizes here instead of rejecting out of `execute()` and
       // stranding the record `running`.
-      failTarget(reporter, renderer, style, name, 0, error);
+      failTarget(rendered, renderer, style, name, 0, error);
       outcome = { status: "failed", ms: 0, error };
     }
     settleTarget(
@@ -880,7 +889,7 @@ export async function runScheduled(
   limit: number,
   canOverlap: (a: TargetBuilder, b: TargetBuilder) => boolean,
 ): Promise<RunOutcome> {
-  const { life, reporter, renderer, style, env } = ctx;
+  const { life, reporter, rendered, renderer, style, env } = ctx;
   const outcomes = new Map<TargetBuilder, TargetOutcome>();
   const done = new Set<TargetBuilder>(); // passed/cached/skipped → unblocks dependents
   // Reached a terminal status, whatever it was — `done` plus the failures. This
@@ -1057,7 +1066,7 @@ export async function runScheduled(
             anyFailed = true;
             failure ??= error;
             if (!t.proceedAfterFailure_) halted = true;
-            failTarget(reporter, renderer, style, targetName, 0, error);
+            failTarget(rendered, renderer, style, targetName, 0, error);
             settleTarget(env, targetName, "failed", errorMessage(error));
             pump();
           });

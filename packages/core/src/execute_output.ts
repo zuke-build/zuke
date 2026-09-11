@@ -16,6 +16,7 @@
 
 import {
   consoleReporter,
+  escapingReporter,
   redactingReporter,
   type Reporter,
   safeReporter,
@@ -59,8 +60,17 @@ export function resolveStyle(
 export interface RunOutput {
   /** The caller's (or default) sink, unwrapped — only the mask directives use it. */
   baseReporter: Reporter;
-  /** The redaction- and failure-wrapped reporter every run message goes through. */
+  /** The redaction- and failure-wrapped reporter every run message goes through.
+   * On Actions it also escapes each line, so a value this process did not author
+   * cannot be read as a workflow command. */
   reporter: Reporter;
+  /**
+   * The same sink **without** the runner escaping, for lines the renderer
+   * composed — those carry Zuke's own workflow commands, which do not survive
+   * being escaped, and the renderer escapes the untrusted values inside them at
+   * construction. Nothing else may use this.
+   */
+  rendered: Reporter;
   /** Masks each resolved `secret` parameter in everything the run prints. */
   redactor: Redactor;
   /** Whether output reaches the real console (not silenced, not redirected). */
@@ -89,7 +99,7 @@ export function composeOutput(opts: {
   // …and every write is best-effort (see safeReporter): a throwing sink (a buggy
   // custom reporter, or EPIPE on a piped stdout) must never escape `failTarget`
   // and reject out of a scheduler, which would strand the run record `running`.
-  const reporter = safeReporter(redactingReporter(baseReporter, redactor));
+  const redacted = safeReporter(redactingReporter(baseReporter, redactor));
   // The GitHub job summary is a real-world output side effect (it appends to a
   // shared file named by GITHUB_STEP_SUMMARY). Only write it when output goes to
   // the default console — i.e. neither silenced nor redirected to a custom
@@ -100,9 +110,15 @@ export function composeOutput(opts: {
   const github = opts.github ?? inGitHubActions();
   const style = resolveStyle(github, opts.color, opts.reporter !== undefined);
   const renderer = opts.renderer ?? defaultRenderer;
+  // Two sinks over one base. Everything Zuke prints is escaped for the runner,
+  // except the lines the renderer composed — those carry the workflow commands
+  // Zuke deliberately emits, and escape their own interpolated values at
+  // construction. See `escapingReporter` for why the split is the contract.
+  const reporter = style.github ? escapingReporter(redacted) : redacted;
   return {
     baseReporter,
     reporter,
+    rendered: redacted,
     redactor,
     writesToConsole,
     style,

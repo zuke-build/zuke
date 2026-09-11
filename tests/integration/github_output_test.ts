@@ -20,6 +20,7 @@ import {
   assertEquals,
   assertStringIncludes,
 } from "../../packages/core/tests/_assert.ts";
+import type { OrderingEdge } from "../../packages/core/mod.ts";
 import {
   appendJobSummary,
   Build,
@@ -250,4 +251,45 @@ Deno.test("a build's lifecycle hooks write a redacted job summary", async () => 
   } finally {
     await Deno.remove(dir, { recursive: true });
   }
+});
+
+Deno.test("a line no renderer composed is escaped for the runner", async () => {
+  // The invariant this sink exists for: about forty reporter calls interpolate
+  // text this process did not author — a store-derived actor, a subprocess's
+  // stderr, a network warning — and keeping each of them escaped by hand is the
+  // guard that drifts. This one is an ordering provider's thrown message, which
+  // reaches the log through `reporter.error` and no renderer at all.
+  class B extends Build {
+    override orderWith(): OrderingEdge[] {
+      throw new Error(
+        ["service unreachable", "::stop-commands::TOKEN"].join("\n"),
+      );
+    }
+    ok = target().executes(() => {});
+  }
+  let r = { code: -1, out: "", err: "" };
+  await withEnv({ GITHUB_ACTIONS: "true" }, async () => {
+    r = await runCli(B, ["ok"]);
+  });
+  const stream = `${r.out}\n${r.err}`;
+  assertEquals(unintendedCommands(stream), []);
+  assertStringIncludes(stream, "%3A%3Astop-commands::TOKEN");
+});
+
+Deno.test("the renderer's own workflow commands survive the sink", async () => {
+  // The other half of the contract, and the reason this is a split rather than
+  // one escaping sink: `::endgroup::` does not survive being escaped. An earlier
+  // attempt routed every line through the escape and silently broke grouping —
+  // the log still looked plausible, with `%3A%3Agroup` where the fold should be.
+  class B extends Build {
+    ok = target().executes(() => {});
+  }
+  let r = { code: -1, out: "", err: "" };
+  await withEnv({ GITHUB_ACTIONS: "true" }, async () => {
+    r = await runCli(B, ["ok"]);
+  });
+  const stream = `${r.out}\n${r.err}`;
+  assertStringIncludes(stream, "::group::ok");
+  assertStringIncludes(stream, "::endgroup::");
+  assertEquals(stream.includes("%3A%3Agroup"), false);
 });

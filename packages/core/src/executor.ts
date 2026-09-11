@@ -245,6 +245,7 @@ export async function execute(
   const {
     baseReporter,
     reporter,
+    rendered,
     redactor,
     writesToConsole,
     style,
@@ -457,6 +458,7 @@ export async function execute(
   const ctx: RunContext = {
     life,
     reporter,
+    rendered,
     renderer,
     style,
     cache,
@@ -647,7 +649,7 @@ export async function execute(
   for (
     const line of renderer.summaryBlock(style, run.reports, totalMs, result.ok)
   ) {
-    reporter.info(line);
+    rendered.info(line);
   }
   // On suspension, point the operator at the saved run so it can be resumed.
   // A cancelled run never resumes, so it skips this even if it parked a wait.
