@@ -112,7 +112,15 @@ export const cliReporter: Reporter = {
  * breaking the line.
  */
 export function printJson(value: unknown): void {
-  console.log(JSON.stringify(value, null, 2).replaceAll("#", "\\u0023"));
+  const json = JSON.stringify(value, null, 2);
+  // Only where something is parsing for commands. Off a runner nothing scans
+  // this output, so it goes out byte for byte as it always has — a consumer
+  // diffing it against a golden file, or checksumming it, sees no change at all.
+  // On a runner the bytes differ and the parsed value does not, which is the
+  // only combination that is both safe and faithful.
+  console.log(
+    onActionsRunner() ? json.replaceAll("#", "\\u0023") : json,
+  );
 }
 
 /** Whether this process is running on a GitHub Actions runner. */

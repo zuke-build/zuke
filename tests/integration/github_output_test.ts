@@ -331,7 +331,10 @@ Deno.test("machine-readable output is safe on a runner and unchanged by it", asy
       onActions = await runCli(B, ["runs", "list", "--json"]);
     });
 
-    // Safe: the marker the runner scans for is not on the wire.
+    // Off a runner the bytes are untouched, so a consumer diffing or
+    // checksumming this output sees exactly what it always saw.
+    assertStringIncludes(plain.out, "##[set-output name=x]mallory");
+    // On a runner the marker the runner scans for is not on the wire.
     assertEquals(onActions.out.includes("##["), false);
     // Unchanged: a consumer reads the same value either way.
     assertEquals(JSON.parse(onActions.out)[0].actor, actor);
