@@ -325,7 +325,14 @@ Deno.test("machine-readable output is safe on a runner and unchanged by it", asy
     const actor = "##[set-output name=x]mallory";
     assertEquals((await runCli(B, ["deploy", "--actor", actor])).code, 0);
 
-    const plain = await runCli(B, ["runs", "list", "--json"]);
+    // Both legs state their environment. Inheriting it makes the off-runner
+    // leg a no-op when the suite itself runs on Actions, which is where this
+    // test most needs to hold — it passed locally and failed on CI for exactly
+    // that reason.
+    let plain = { code: -1, out: "", err: "" };
+    await withEnv({ GITHUB_ACTIONS: undefined }, async () => {
+      plain = await runCli(B, ["runs", "list", "--json"]);
+    });
     let onActions = { code: -1, out: "", err: "" };
     await withEnv({ GITHUB_ACTIONS: "true" }, async () => {
       onActions = await runCli(B, ["runs", "list", "--json"]);
