@@ -25,15 +25,7 @@ import { appendJobSummary } from "./job_summary.ts";
 import { maskPatterns, Redactor } from "./redact.ts";
 import { detectWidth, type Style, type TargetReport } from "./report.ts";
 import { defaultRenderer, type Renderer } from "./renderer.ts";
-
-/** Whether the build is running inside a GitHub Actions runner. */
-function inGitHubActions(): boolean {
-  try {
-    return Deno.env.get("GITHUB_ACTIONS") === "true";
-  } catch {
-    return false;
-  }
-}
+import { detectCiHost } from "./host.ts";
 
 /** Whether terminal colour should be used (TTY, and `NO_COLOR` unset). */
 function autoColor(): boolean {
@@ -97,7 +89,10 @@ export function composeOutput(opts: {
   // `execute` with `silent`/a custom reporter) from polluting the workflow
   // summary, while a normal CLI run still writes it.
   const writesToConsole = opts.reporter === undefined && !opts.silent;
-  const github = opts.github ?? inGitHubActions();
+  // The same question `detectCiHost` already answers, asked through it rather
+  // than through a second reader of GITHUB_ACTIONS — the private copy this
+  // replaces tested the identical variable for the identical value.
+  const github = opts.github ?? detectCiHost() === "github";
   const style = resolveStyle(github, opts.color, opts.reporter !== undefined);
   const renderer = opts.renderer ?? defaultRenderer;
   return {

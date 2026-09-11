@@ -33,6 +33,14 @@ import { withTemp } from "./_temp.ts";
 import { runRecord, testPlan } from "./_fakes.ts";
 import { withTempStore } from "./_store.ts";
 
+/**
+ * The percent-encoded `::`, kept as its own constant so the encoded prefix
+ * never fuses with the word after it into a token no dictionary can know: the
+ * spell gate reads the encoding and the word that follows it as one. The same
+ * reason `report_test.ts` splits its literal.
+ */
+const ENC = "%3A%3A";
+
 /** A run record scaffold for driving {@link runCompensations} directly. */
 function craftRecord(
   rootTarget: string,
@@ -1908,4 +1916,61 @@ Deno.test("a compensation reads the run's plan, not an empty one", async () => {
     reporter: { info: () => {}, error: () => {} },
   });
   assertEquals(seen, ["build,deploy", "includes(deploy)=true"]);
+});
+
+Deno.test("a failing compensation cannot forge a command on an Actions runner", async () => {
+  // Every line `cancelRun` prints carries text this process did not author — a
+  // run id, an actor, a compensation's name, the message of something that
+  // threw. None of them is ever a workflow command, so the whole sink is
+  // neutralised rather than each of the eighteen writers.
+  //
+  // Hermetic: the Actions detection reads through the injected `readEnv`, so
+  // this proves the behaviour without touching the process environment.
+  const NL = String.fromCharCode(10);
+  await withTempStore(async (store) => {
+    const makeBuild = () => {
+      class Hostile extends Build {
+        deploy = target()
+          .executes(() => {})
+          .onCancel(() => this.rollback);
+        rollback = target().executes(() => {
+          throw new Error(["boom", "::stop-commands::deadbeef"].join(NL));
+        });
+        gate = target()
+          .dependsOn(this.deploy)
+          .waitsFor((s) => s.on(externalSignal("approved")));
+      }
+      const build = new Hostile();
+      discoverTargets(build);
+      return build;
+    };
+
+    const a = makeBuild();
+    assertEquals(
+      (await execute(a, a.gate, {
+        silent: true,
+        stateStore: store,
+      })).suspended,
+      true,
+    );
+    const runId = (await store.listRuns({}))[0].id;
+
+    const onActions = capturingReporter();
+    const result = await cancelRun(makeBuild(), {
+      runId,
+      stateStore: store,
+      reporter: onActions.reporter,
+      readEnv: (name) => name === "GITHUB_ACTIONS" ? "true" : undefined,
+    });
+    // The compensation really did fail — without this the assertions below
+    // would hold over a line that was never printed.
+    assertEquals(result.failures.length, 1);
+
+    const printed = onActions.errors.join(NL);
+    assertStringIncludes(printed, ENC + "stop-commands::deadbeef");
+    assertEquals(
+      printed.split(NL).some((l) => l.startsWith("::stop-commands::")),
+      false,
+    );
+  });
 });

@@ -8,7 +8,7 @@
 
 import { type Build, discoverGroups, discoverTargets } from "./build.ts";
 import { detectCiHost } from "./host.ts";
-import { escapeLine } from "./render.ts";
+import { escapeLineIf } from "./render.ts";
 import { discoverCiFiles, syncCiFiles } from "./ci.ts";
 import { isEntryModule } from "./entry.ts";
 import { messageOf } from "./internal.ts";
@@ -1118,9 +1118,10 @@ async function runForce(build: Build, parsed: ParsedArgs): Promise<number> {
     // escape belongs here, at the printer that owns the terminal, rather than in
     // `forceTarget` — the MCP tool returns the same message inside a JSON
     // payload, which must not carry a terminal's encoding.
-    const shown = detectCiHost() === "github"
-      ? escapeLine(result.message)
-      : result.message;
+    const shown = escapeLineIf(
+      detectCiHost() === "github",
+      result.message,
+    );
     if (!result.ok) {
       console.error(shown);
       return 1;

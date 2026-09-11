@@ -22,8 +22,7 @@
 
 import type { Build, BuildResult } from "./build.ts";
 import { defaultReadEnv, messageOf } from "./internal.ts";
-import { escapeLine } from "./render.ts";
-import type { Reporter } from "./reporter.ts";
+import { escapingReporter, type Reporter } from "./reporter.ts";
 export type { Reporter } from "./reporter.ts";
 import {
   composeOutput,
@@ -250,6 +249,16 @@ export async function execute(
     style,
     renderer,
   } = composeOutput(options);
+  // The sink for lines this module and its helpers compose themselves: a run id
+  // or status another process wrote into the shared state store, a failing
+  // service's stderr, a warning a remote cache server returned, a plugin's
+  // message. None of them is ever a workflow command, and every one carries text
+  // this process did not author — so the neutralising happens once here rather
+  // than at each of the fifteen places that write one, which is how the two this
+  // change fixes came to be missed. `reporter` stays unwrapped for the
+  // renderer's lines, which *are* commands: escaping `::endgroup::` would break
+  // the grouping it closes.
+  const messages = style.github ? escapingReporter(reporter) : reporter;
   const skip = new Set(options.skip ?? []);
 
   const readEnv = options.readEnv ?? defaultReadEnv;
@@ -271,8 +280,8 @@ export async function execute(
     emitActionsMasks(secrets, baseReporter);
   }
   if (paramErrors.length > 0) {
-    reporter.error("Invalid or missing parameters:");
-    for (const message of paramErrors) reporter.error(`  ${message}`);
+    messages.error("Invalid or missing parameters:");
+    for (const message of paramErrors) messages.error(`  ${message}`);
     return {
       ok: false,
       executed: [],
@@ -292,7 +301,7 @@ export async function execute(
   try {
     extraEdges = await resolveOrderingEdges(build, discovered);
   } catch (error) {
-    reporter.error(`Failed to resolve ordering edges: ${messageOf(error)}`);
+    messages.error(`Failed to resolve ordering edges: ${messageOf(error)}`);
     return { ok: false, executed: [], error };
   }
   const { order, predecessors } = planGraph(root, extraEdges);
@@ -300,7 +309,7 @@ export async function execute(
   // answer in every process a resumed run passes through, since it is derived
   // from the graph rather than from what has happened so far.
   const planView = buildRunPlan(order, predecessors);
-  reportDanglingEdges(extraEdges, order, discovered.values(), reporter);
+  reportDanglingEdges(extraEdges, order, discovered.values(), messages);
   // Evaluate up-front conditions for `whenSkipped("skip-dependencies")` targets
   // and skip them plus any dependencies that nothing else needs.
   for (const name of await conditionSkips(root, order, planView)) {
@@ -311,7 +320,7 @@ export async function execute(
   // targets still unblock their dependents (their prior outputs are assumed
   // current), so an affected target downstream of an unaffected one still runs.
   if (options.affected !== undefined) {
-    await applyAffectedSkips(options.affected, order, skip, reporter);
+    await applyAffectedSkips(options.affected, order, skip, messages);
   }
 
   const limit = resolveConcurrency(options.parallel);
@@ -331,7 +340,7 @@ export async function execute(
     build,
     options.remoteCache,
     readEnv,
-    reporter,
+    messages,
   );
   const overallStart = performance.now();
 
@@ -344,7 +353,7 @@ export async function execute(
     build,
     options.plugins ?? [],
     runInfo,
-    (message) => reporter.info(message),
+    (message) => messages.info(message),
     redactor,
   );
   await life.start();
@@ -392,7 +401,7 @@ export async function execute(
     plan: planView,
     signal: runController.signal,
     redactor,
-    reporter,
+    reporter: messages,
     readEnv,
     nowIso,
     onExternalCancel,
@@ -403,7 +412,7 @@ export async function execute(
     resume: options.resume,
   });
   if (!opened.ok) {
-    reporter.error(opened.error.message);
+    messages.error(opened.error.message);
     return { ok: false, executed: [], error: opened.error };
   }
   const { writer, env } = opened.state;
@@ -506,7 +515,7 @@ export async function execute(
       options.signal.removeEventListener("abort", onCancel);
     }
     if (services.size > 0) {
-      await services.stopAll((line) => reporter.info(line));
+      await services.stopAll((line) => messages.info(line));
     }
   }
   // A cancellation (Ctrl-C / an aborted `options.signal`, or another process
@@ -539,7 +548,7 @@ export async function execute(
         `which now owns the run. Nothing was rolled back — the compensations ` +
         `belong to whoever holds the run.`,
     );
-    reporter.error(lost.message);
+    messages.error(lost.message);
     result = { ok: false, executed: run.executed, error: lost, runId };
   } else if (cancelled) {
     result = {
@@ -553,7 +562,7 @@ export async function execute(
       // settles the record. We stop and leave the run `cancelling`, draining any
       // pending per-target writes so none races the process exit.
       await writer?.drain();
-      reporter.info(cancelledElsewhere(runId));
+      messages.info(cancelledElsewhere(runId));
     } else if (writer !== undefined) {
       const settlement = await settleCancelledRun({
         writer,
@@ -563,7 +572,7 @@ export async function execute(
         runId,
         actor,
         signals: env.signals,
-        reporter,
+        reporter: messages,
         redactor,
         nowIso,
         isExternallyCancelled: () => externallyCancelled,
@@ -589,7 +598,7 @@ export async function execute(
             `The rest of the rollback, and the run's outcome, belong to ` +
             `whoever holds it now.`,
         );
-        reporter.error(lost.message);
+        messages.error(lost.message);
         result = { ok: false, executed: run.executed, error: lost, runId };
       }
     }
@@ -613,7 +622,7 @@ export async function execute(
           `working on it (its record says ${writer.snapshot().status}), so ` +
           `this process's result is not the run's outcome.`,
       );
-      reporter.error(settled.message);
+      messages.error(settled.message);
       result = { ok: false, executed: run.executed, error: settled, runId };
     }
   }
@@ -652,9 +661,12 @@ export async function execute(
   // On suspension, point the operator at the saved run so it can be resumed.
   // A cancelled run never resumes, so it skips this even if it parked a wait.
   if (run.suspended && !cancelled) {
+    // The names go through the sink with the rest of the line; `runId` does
+    // too, which it did not before — on a resume it is whatever id the caller
+    // named, not the generated one.
     const waiting = run.reports.filter((r) => r.status === "waiting")
-      .map((r) => style.github ? escapeLine(r.name) : r.name);
-    reporter.info(
+      .map((r) => r.name);
+    messages.info(
       `Run ${runId} suspended — state saved; waiting on: ${
         waiting.join(", ")
       }.`,

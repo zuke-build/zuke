@@ -4,14 +4,16 @@
 /**
  * The executor's output sink — the {@link Reporter} interface plus the small set
  * of reporter wrappers the engine composes: the console/silent defaults, a
- * redacting wrapper (masks resolved secrets), a best-effort wrapper (a throwing
- * sink can never unwind the run), and a buffering wrapper (so a target's block
- * flushes atomically under concurrency).
+ * redacting wrapper (masks resolved secrets), an escaping wrapper (neutralises
+ * workflow commands in text this process did not author), a best-effort wrapper
+ * (a throwing sink can never unwind the run), and a buffering wrapper (so a
+ * target's block flushes atomically under concurrency).
  *
  * @module
  */
 
 import type { Redactor } from "./redact.ts";
+import { escapeLine } from "./render.ts";
 
 /** Sink for executor output, defaulting to the console. Overridable in tests. */
 export interface Reporter {
@@ -38,6 +40,31 @@ export function redactingReporter(
   return {
     info: (line) => inner.info(redactor.redact(line)),
     error: (line) => inner.error(redactor.redact(line)),
+  };
+}
+
+/**
+ * Wrap a reporter so every line is neutralised with {@link escapeLine} before it
+ * is written — for a sink whose lines are **never** workflow commands.
+ *
+ * On a GitHub Actions runner every line a step writes is parsed for commands, so
+ * text this process did not author can forge an annotation, collapse a
+ * `::group::` over real output, or issue `::stop-commands::` and silence the
+ * masking directives that follow. The text reaching these sinks is exactly that:
+ * a run id or an actor another run wrote into the shared state store, a message
+ * a failing subprocess printed, a warning a remote cache server returned.
+ *
+ * Use this only where the module behind it emits no workflow commands of its
+ * own. `escapeLine` encodes a leading `::`, so a sink that also carries
+ * `::endgroup::` would have its grouping broken by this wrapper; those lines
+ * have to be escaped where they are composed instead, which is what the
+ * renderer does. Applying it twice is harmless — `escapeLine` removes the
+ * sequence it encodes, so it is idempotent.
+ */
+export function escapingReporter(inner: Reporter): Reporter {
+  return {
+    info: (line) => inner.info(escapeLine(line)),
+    error: (line) => inner.error(escapeLine(line)),
   };
 }
 

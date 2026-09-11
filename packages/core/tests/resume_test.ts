@@ -20,6 +20,15 @@ import type { RunRecord } from "../src/state/types.ts";
 import { externalSignal, resumeWhen } from "../src/wait.ts";
 import { withTemp } from "./_temp.ts";
 import { withTempStore } from "./_store.ts";
+import { runRecord } from "./_fakes.ts";
+
+/**
+ * The percent-encoded `::`, kept as its own constant so the encoded prefix
+ * never fuses with the word after it into a token no dictionary can know: the
+ * spell gate reads the encoding and the word that follows it as one. The same
+ * reason `report_test.ts` splits its literal.
+ */
+const ENC = "%3A%3A";
 
 Deno.test("deploy → wait → promote survives across processes, exactly once", async () => {
   await withTempStore(async (store) => {
@@ -1120,5 +1129,51 @@ Deno.test("a sweep skips a run another process holds, without counting it", asyn
     assertEquals(swept, { checked: 1, failed: 0 });
     // Left exactly as found — the holder is driving it.
     assertEquals((await store.getRun(runId))?.record.status, "suspended");
+  });
+});
+
+Deno.test("a record's root target cannot forge a command during a sweep", async () => {
+  // A sweep reads records another process wrote — on a store shared between
+  // builds, another *repository's* process. A record naming a root target this
+  // build does not declare makes `resumeRun` throw, and the sweep prints the
+  // message with the name inside it. On an Actions runner that line is parsed
+  // for workflow commands, so the whole sink is neutralised.
+  //
+  // Hermetic: the Actions detection reads through the injected `readEnv`.
+  const NL = String.fromCharCode(10);
+  const forged = ["ghost", "::stop-commands::deadbeef"].join(NL);
+  await withTempStore(async (store) => {
+    class Sweeper extends Build {
+      deploy = target().executes(() => {});
+    }
+    const build = new Sweeper();
+    discoverTargets(build);
+
+    const record: RunRecord = runRecord({
+      id: "run-hostile",
+      build: "Sweeper",
+      rootTarget: forged,
+      status: "suspended",
+      graph: [{ name: forged, dependsOn: [] }],
+      targets: { [forged]: { status: "waiting", meta: {} } },
+    });
+    await store.putRun(record, null);
+
+    const errors: string[] = [];
+    const result = await resumeCheck(build, {
+      stateStore: store,
+      reporter: { info: () => {}, error: (l) => void errors.push(l) },
+      readEnv: (name) => name === "GITHUB_ACTIONS" ? "true" : undefined,
+    });
+    // The sweep really did hit the error path — without this the assertions
+    // below would hold over an empty buffer.
+    assertEquals(result.failed, 1);
+    assertEquals(errors.length, 1);
+
+    assertEquals(errors[0].includes(ENC + "stop-commands::deadbeef"), true);
+    assertEquals(
+      errors[0].split(NL).some((l) => l.startsWith("::stop-commands::")),
+      false,
+    );
   });
 });
