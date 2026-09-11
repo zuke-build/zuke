@@ -61,10 +61,10 @@ interface BuildProbe
   trust gate are testable without a filesystem or a second user.
 
   exists(path: string): Promise<boolean>
-    Whether a path exists.
-  ownerOf(path: string): Promise<number | null>
-    The numeric owner of a path, or `null` where the platform has no file
-    ownership to report (Windows).
+    Whether a path exists (the link itself, not its target).
+  ownership(path: string): Promise<Ownership | null>
+    The owner and mode of what a path resolves to, or `null` when nothing is
+    there.
   uid(): number | null
     The current user's numeric id, or `null` where the platform has none.
 
@@ -73,6 +73,14 @@ interface ImportFlags extends SetupFlags
 
   from?: ImportSource
     Force a source (`package.json` or `makefile`); auto-detected when unset.
+
+interface Ownership
+  What the trust gate needs to know about a filesystem entry.
+
+  uid: number | null
+    The numeric owner, or `null` where the platform reports none (Windows).
+  mode: number | null
+    The permission bits, or `null` where the platform reports none.
 
 interface Prompter
   The interactive surface, injectable so the wizard is testable without a TTY.

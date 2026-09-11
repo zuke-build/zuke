@@ -18,7 +18,7 @@ import {
 } from "./mcp_config.ts";
 import { isRecord } from "./records.ts";
 import { launcherBash, launcherPwsh } from "./launcher.ts";
-import { lstatOrNull } from "./fs.ts";
+import { exists, lstatOrNull } from "./fs.ts";
 
 // Re-exported so the merge guard keeps its historical home for importers.
 export { isRecord };
@@ -158,9 +158,7 @@ export interface SetupHost {
  * as a symlink instead of as whatever it points at.
  */
 export const defaultHost: SetupHost = {
-  async exists(path: string): Promise<boolean> {
-    return await lstatOrNull(path) !== null;
-  },
+  exists,
   async isDirectory(path: string): Promise<boolean> {
     return (await lstatOrNull(path))?.isDirectory === true;
   },

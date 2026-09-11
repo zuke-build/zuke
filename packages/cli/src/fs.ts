@@ -8,6 +8,11 @@
  * @module
  */
 
+/** Whether a path exists — the link itself, not its target. */
+export async function exists(path: string): Promise<boolean> {
+  return await lstatOrNull(path) !== null;
+}
+
 /**
  * `Deno.lstat` a path, or `null` when nothing is there. Reads the link itself
  * rather than its target, so a symlink is reported as a symlink instead of as

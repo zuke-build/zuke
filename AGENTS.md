@@ -33,7 +33,7 @@ exact signatures are published — read them:
   `deno doc jsr:@zuke/deno`).
 - **On each package's JSR page / README:** a generated `## API` section.
 - **The CLI surface — commands, flags, and a build's actual targets:** run
-  `zuke --help` (or `deno run -A zuke.ts --help`). It prints the usage grammar,
+  `./zuke --help` (or `deno run -A zuke.ts --help`). It prints the usage grammar,
   every reserved command (`graph`, `generate-ci`,
   `completions <print|install> <shell>`, `mcp`, `resume`, `runs`, `cancel`,
   `register`, `doc`) and flag, **plus the current build's targets — with

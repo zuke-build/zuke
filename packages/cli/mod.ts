@@ -44,7 +44,12 @@ import {
 export type { SetupHost } from "./src/setup.ts";
 export type { ImportSource } from "./src/import.ts";
 export type { StarActions } from "./src/star.ts";
-export type { BuildLocation, BuildProbe, BuildRunner } from "./src/dispatch.ts";
+export type {
+  BuildLocation,
+  BuildProbe,
+  BuildRunner,
+  Ownership,
+} from "./src/dispatch.ts";
 
 /**
  * The interactive surface, injectable so the wizard is testable without a TTY.
@@ -234,7 +239,8 @@ Inside a project (a zuke.json in the current directory or a parent), any other
 command runs the build itself — zuke <target>, zuke --list, zuke graph,
 zuke generate-ci, zuke mcp, and bare zuke for the default target — as
 \`./zuke <command>\` would: deno run -A zuke.ts from the repository root, with
---frozen once a deno.lock exists.`;
+--frozen once a deno.lock exists. A target that shares a name with one of the
+commands above is reachable as zuke -- <target>.`;
 
 /** Run the `setup` subcommand. */
 async function commandSetup(
@@ -414,20 +420,30 @@ async function commandDoc(
 
 /**
  * Forward `args` to the project's build: locate the nearest `zuke.json` above
- * the working directory (through `probe`, which also enforces the ownership
- * trust gate) and run `zuke.ts` beside it through `runner`. Returns `null`
- * when the caller is not inside a project, so `main` can report the unknown
- * command instead.
+ * the working directory (through `probe`, which also enforces the trust gate)
+ * and run `zuke.ts` beside it through `runner`. Returns `null` when the
+ * caller is not inside a project, so `main` can report the unknown command
+ * instead. A refusal or a failed spawn is reported on **stderr** — stdout is
+ * the build's, and under `zuke mcp` it is the JSON-RPC stream — and is exit 1.
+ * Both reports bypass the log level: they are never the build's to silence.
  */
 async function forwardToBuild(
   args: string[],
   probe: BuildProbe,
   runner: BuildRunner,
 ): Promise<number | null> {
-  const location = await locateBuild(Deno.cwd(), probe, args);
-  if (location === null) return null;
-  if (!location.frozen) ConsoleTasks.warn(NO_LOCK_NOTICE);
-  return await runner(location.root, buildRunArgs(location, args));
+  // Plain stderr writes, not `ConsoleTasks`: `ZUKE_LOG_LEVEL` is a knob for
+  // the build's output, and neither a security refusal nor the launchers'
+  // unverified-lockfile notice may be silenced by it.
+  try {
+    const location = await locateBuild(Deno.cwd(), probe);
+    if (location === null) return null;
+    if (!location.frozen) console.error(NO_LOCK_NOTICE);
+    return await runner(location.root, buildRunArgs(location, args));
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    return 1;
+  }
 }
 
 /**
@@ -465,19 +481,19 @@ export async function main(
     if (command === "doc") {
       return await commandDoc(rest, host, docRunner);
     }
-    // Not one of ours: inside a project it is the build's — `zuke ci`,
-    // `zuke --list`, `zuke mcp`, and a bare `zuke` for the default target,
-    // as `./zuke` — and the build's own CLI answers for it, unknown-target
-    // message included.
-    const forwarded = await forwardToBuild(args, buildProbe, buildRunner);
-    if (forwarded !== null) return forwarded;
   } catch (error) {
     // Surface a command's own friendly error (e.g. a setup directory collision)
     // as a clean message and non-zero exit, not an uncaught stack trace.
     host.log(error instanceof Error ? error.message : String(error));
     return 1;
   }
-  // Outside any project a bare `zuke` has no build to run: it is the usage.
+  // Not one of ours: inside a project it is the build's — `zuke ci`,
+  // `zuke --list`, `zuke mcp`, and a bare `zuke` for the default target, as
+  // `./zuke` — and the build's own CLI answers for it, unknown-target message
+  // included. Outside any project a bare `zuke` has no build to run: it is
+  // the usage.
+  const forwarded = await forwardToBuild(args, buildProbe, buildRunner);
+  if (forwarded !== null) return forwarded;
   if (args.length === 0) {
     host.log(HELP);
     return 0;

@@ -516,7 +516,13 @@ function probeAt(
   const present = new Set(names.map(atCwd));
   return {
     exists: (path) => Promise.resolve(present.has(path)),
-    ownerOf: () => Promise.resolve(owned.owner),
+    // Only the root is ever owned here; an ancestor config file is absent.
+    ownership: (path) =>
+      Promise.resolve(
+        path === Deno.cwd().replaceAll("\\", "/") && owned.owner !== null
+          ? { uid: owned.owner, mode: 0o755 }
+          : null,
+      ),
     uid: () => owned.uid,
   };
 }
@@ -534,20 +540,20 @@ function neverRun(): { runner: () => Promise<number>; reached: () => boolean } {
 }
 
 /**
- * Run `fn` with the console sink captured (the no-lock notice goes to stderr
- * through `ConsoleTasks`, never to stdout where a piped `--list --json` lives),
- * returning the captured stderr lines.
+ * Run `fn` with stderr captured — the no-lock notice and a refusal go there,
+ * never to stdout where a piped `--list --json` lives — while the console is
+ * silenced, proving neither report can be muted by `ZUKE_LOG_LEVEL`. Returns
+ * the captured stderr lines.
  */
 async function capturingErr(fn: () => Promise<void>): Promise<string[]> {
   const err: string[] = [];
-  ConsoleTasks.configure({
-    level: "info",
-    color: false,
-    sink: { out: () => {}, err: (line) => err.push(line) },
-  });
+  const original = console.error;
+  console.error = (...parts: unknown[]) => void err.push(parts.join(" "));
+  ConsoleTasks.configure({ level: "silent" });
   try {
     await fn();
   } finally {
+    console.error = original;
     ConsoleTasks.reset();
   }
   return err;
@@ -728,42 +734,52 @@ Deno.test("main outside a project reports the unknown command and the missing zu
   assertEquals(host.logs[0].includes("no zuke.json was found"), true);
 });
 
-Deno.test("main surfaces a runner failure as a clean exit 1", async () => {
+Deno.test("main surfaces a runner failure as a clean exit 1 on stderr", async () => {
   // Both forwarding paths — a named command and the bare default-target run
-  // — sit under the same handler, so neither can escape as an uncaught throw.
+  // — share the handler, so neither can escape as an uncaught throw; and the
+  // report goes to stderr, never to the stdout that belongs to the build.
   for (const args of [["ci"], []]) {
     const host = new FakeHost();
-    const code = await main(
-      args,
-      host,
-      defaultPrompter,
-      undefined,
-      undefined,
-      () => Promise.reject(new Error("spawn failed: deno vanished")),
-      probeAt(["zuke.json"]),
-    );
+    let code = 0;
+    const err = await capturingErr(async () => {
+      code = await main(
+        args,
+        host,
+        defaultPrompter,
+        undefined,
+        undefined,
+        () => Promise.reject(new Error("spawn failed: deno vanished")),
+        // With a lockfile, so the no-lock notice does not share the stream.
+        probeAt(["zuke.json", "deno.lock"]),
+      );
+    });
     assertEquals(code, 1);
-    assertEquals(host.logs, ["spawn failed: deno vanished"]);
+    assertEquals(host.logs, []);
+    assertEquals(err.length, 1);
+    assertEquals(err[0].includes("spawn failed: deno vanished"), true);
   }
 });
 
 Deno.test("main refuses to forward into a build owned by another user", async () => {
-  // The trust gate's refusal is a friendly exit 1 with the advice, and the
-  // runner is never reached.
+  // The trust gate's refusal is exit 1 with the advice on stderr — under
+  // `zuke mcp` stdout is the JSON-RPC stream — and the runner is never reached.
   const host = new FakeHost();
   const { runner, reached } = neverRun();
-  const code = await main(
-    ["ci"],
-    host,
-    defaultPrompter,
-    undefined,
-    undefined,
-    runner,
-    probeAt(["zuke.json"], { uid: 1000, owner: 0 }),
-  );
+  let code = 0;
+  const err = await capturingErr(async () => {
+    code = await main(
+      ["ci"],
+      host,
+      defaultPrompter,
+      undefined,
+      undefined,
+      runner,
+      probeAt(["zuke.json"], { uid: 1000, owner: 0 }),
+    );
+  });
   assertEquals(code, 1);
   assertEquals(reached(), false);
-  assertEquals(host.logs.length, 1);
-  assertEquals(host.logs[0].includes("refusing to run the build at"), true);
-  assertEquals(host.logs[0].includes("./zuke ci"), true);
+  assertEquals(host.logs, []);
+  assertEquals(err.length, 1);
+  assertEquals(err[0].includes("refusing to run the build at"), true);
 });

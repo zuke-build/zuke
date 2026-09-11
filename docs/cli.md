@@ -34,11 +34,23 @@ Discovery has a trust gate, because it runs code you never named: a
 `zuke.json` planted in a shared parent (`/tmp`, a shared checkout tree) would
 otherwise have `zuke ci` in any directory below it run a stranger's `zuke.ts`
 with `-A`. So, as git's `safe.directory` does, the forwarding refuses a build
-whose root directory is owned by another user, with an error naming the owner
-and the two ways forward: run that project's own launcher there
-(`cd <root> && ./zuke <command>`, an explicit act on a file you name), or take
-ownership of the directory. On Windows, which reports no file ownership to
-compare, the gate is inert.
+whose root directory is owned by another user or is world-writable, and one
+whose `zuke.json`, `zuke.ts`, `deno.lock` or config file is owned by another
+user. Deno then does a walk of its own — it discovers `deno.json`, `deno.jsonc` and
+`package.json` in the root's ancestors, and an import map planted there
+rewrites what `zuke.ts` imports — so any such ancestor file owned by another
+user is refused too. The error names what was refused and the two ways
+forward: run that project's own launcher from its directory (`./zuke`, an
+explicit act on a file you name), or fix the ownership. The gate judges
+ownership, not intent: a tree you extracted or cloned yourself is yours, and
+`zuke` in it runs its build exactly as `./zuke` there would. On Windows, which
+reports no file ownership to compare, the gate is inert, so a `zuke.json` in
+a shared writable location is run as found.
+
+The words the global CLI keeps for itself — `setup`, `import`, `doc`,
+`--help`/`-h`, `--version`/`-V` — never reach the build, so a target named
+`setup` or `import` is reached as `zuke -- setup` (the build's own parser
+skips the `--`), or through `./zuke`.
 
 ## The global `zuke` CLI (`jsr:@zuke/cli`)
 

@@ -13,7 +13,8 @@
 
 import { assertEquals } from "../../packages/core/tests/_assert.ts";
 import { CONFIG_FILE } from "../../packages/core/src/config.ts";
-import { main } from "../../packages/cli/mod.ts";
+import { type BuildProbe, main } from "../../packages/cli/mod.ts";
+import { defaultBuildProbe } from "../../packages/cli/src/dispatch.ts";
 import { defaultHost, type SetupHost } from "../../packages/cli/src/setup.ts";
 import { withTemp } from "../../packages/core/tests/_temp.ts";
 
@@ -104,13 +105,37 @@ Deno.test("zuke <target> propagates a failing target's exit code", async () => {
   }, { prefix: "zuke-global-cli-" });
 });
 
+/**
+ * The real probe, confined to `dir`: everything above it reads as absent, so
+ * the walk cannot find — and the test cannot run, with `-A` — a `zuke.json`
+ * that happens to sit above the temp directory on this machine.
+ */
+function confinedTo(dir: string): BuildProbe {
+  const inside = (path: string) => path.startsWith(`${dir}/`);
+  return {
+    exists: (path) =>
+      inside(path) ? defaultBuildProbe.exists(path) : Promise.resolve(false),
+    ownership: (path) =>
+      inside(path) ? defaultBuildProbe.ownership(path) : Promise.resolve(null),
+    uid: () => defaultBuildProbe.uid(),
+  };
+}
+
 Deno.test("zuke <target> outside any project is an unknown command, not a spawn", async () => {
   await withTemp(async (dir) => {
-    // No zuke.json anywhere up from a bare temp dir (the walk ends at the
-    // filesystem root, which the suite never marks).
+    // No zuke.json in the temp dir, and none reachable above it.
     await inDir(dir, async () => {
       const host = recordingHost();
-      assertEquals(await main(["hello"], host), 1);
+      const code = await main(
+        ["hello"],
+        host,
+        undefined,
+        undefined,
+        undefined,
+        () => Promise.reject(new Error("must not spawn")),
+        confinedTo(dir),
+      );
+      assertEquals(code, 1);
       assertEquals(host.logs[0].includes("no zuke.json was found"), true);
     });
   }, { prefix: "zuke-global-cli-" });
