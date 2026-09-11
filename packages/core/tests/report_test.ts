@@ -573,3 +573,95 @@ Deno.test("a pipe in a target name cannot add a column to the job summary", () =
   // rather than opening columns of their own.
   assertEquals(row.split(/(?<!\\)\|/).length, 5);
 });
+
+Deno.test("a summary row's target name cannot open a workflow command", () => {
+  // A row starts at column 0 with the name, so a name beginning `::` needs no
+  // newline to reach the front of a line the runner parses — and `displayName`
+  // trims, so indenting it does not help either. The legacy bracketed form is
+  // recognised anywhere in a line, so it needs no position at all.
+  //
+  // This escape has been in `summaryBlock` since #547 and nothing pinned it:
+  // removing it left all 4523 tests green, which is how it was found.
+  const rows = summaryBlock(
+    GITHUB,
+    [
+      { name: "  ::error::forged", status: "failed", ms: 100 },
+      { name: "a ##[group]x", status: "passed", ms: 100 },
+    ],
+    200,
+    false,
+    NOW,
+  );
+  // Asserted on the line, not the substring: the text is meant to survive, and
+  // what must not happen is it starting one. `includes("::error::")` is true
+  // either way, since the encoded form still ends in `error::`.
+  assertEquals(rows.some((l) => l.startsWith("::")), false);
+  assertEquals(rows.some((l) => l.includes("##[")), false);
+  assertStringIncludes(rows.join("\n"), "%3A%3A" + "error::forged");
+  assertStringIncludes(rows.join("\n"), "a %23%23[group]x");
+
+  // Off a runner the name is left as written — nothing is parsing it there.
+  const plain = summaryBlock(
+    PLAIN,
+    [{ name: "  ::error::forged", status: "failed", ms: 100 }],
+    100,
+    false,
+    NOW,
+  );
+  assertEquals(plain.some((l) => l.startsWith("::error::forged")), true);
+});
+
+Deno.test("the build-failed line's culprit name cannot open a workflow command", () => {
+  // The single-culprit name is the one target name `closingLine` interpolates.
+  // It lands mid-line, after the icon and the opening quote, so the reachable
+  // form here is the legacy bracketed one — recognised anywhere in a line
+  // rather than only at its start. Escaping the name in isolation also encodes
+  // a leading `::`, which is conservative rather than load-bearing, and is
+  // asserted as the behaviour it is.
+  const bracketed = closingLine(
+    GITHUB,
+    [{ name: "deploy ##[group]x", status: "failed", ms: 100 }],
+    100,
+    false,
+    NOW,
+  );
+  assertEquals(bracketed.includes("##["), false);
+  assertStringIncludes(bracketed, "deploy %23%23[group]x");
+
+  const colons = closingLine(
+    GITHUB,
+    [{ name: "::error::forged", status: "failed", ms: 100 }],
+    100,
+    false,
+    NOW,
+  );
+  assertStringIncludes(colons, "%3A%3A" + "error::forged");
+
+  // Two or more failures name a count instead of a target, so there is nothing
+  // to escape — pinned so a future change cannot start interpolating a name
+  // there without a test noticing.
+  const many = closingLine(
+    GITHUB,
+    [
+      { name: "::error::forged", status: "failed", ms: 100 },
+      { name: "##[group]x", status: "failed", ms: 100 },
+    ],
+    200,
+    false,
+    NOW,
+  );
+  assertStringIncludes(many, "2 targets failed");
+  assertEquals(many.includes("forged"), false);
+
+  // Off a runner the name is left as written.
+  assertStringIncludes(
+    closingLine(
+      PLAIN,
+      [{ name: "deploy ##[group]x", status: "failed", ms: 100 }],
+      100,
+      false,
+      NOW,
+    ),
+    "deploy ##[group]x",
+  );
+});

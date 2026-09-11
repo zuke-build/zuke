@@ -19,6 +19,7 @@ import type { TargetStatus } from "./build.ts";
 import {
   escapeData,
   escapeLine,
+  escapeLineIf,
   escapeProperty,
   formatDuration,
   line,
@@ -120,7 +121,7 @@ export function targetPassFooter(
   // A fan-out sub-target's name carries the item key, which comes from repo or
   // remote data, so on the runner's stream it is neutralised like any other
   // untrusted text.
-  const safe = style.github ? escapeLine(name) : name;
+  const safe = escapeLineIf(style.github, name);
   const line = `${icon} ${safe} ${tail}`;
   return style.github ? [line, "::endgroup::"] : [line];
 }
@@ -184,7 +185,7 @@ export function targetWaitFooter(
   // The trigger describes what is being waited on, which for a workflow gate
   // names a repository and a workflow file, so it is no more ours than the
   // target name beside it.
-  const safe = (text: string) => style.github ? escapeLine(text) : text;
+  const safe = (text: string) => escapeLineIf(style.github, text);
   const note = paint(style.color, SGR.dim, `waiting for ${safe(trigger)}`);
   const line = `${icon} ${safe(name)} ${note}`;
   return style.github ? [line, "::endgroup::"] : [line];
@@ -194,7 +195,7 @@ export function targetWaitFooter(
 export function targetDryRunFooter(style: Style, name: string): string[] {
   const icon = paint(style.color, SGR.cyan, ICON.passed);
   const note = paint(style.color, SGR.dim, "(dry run — not executed)");
-  const line = `${icon} ${style.github ? escapeLine(name) : name} ${note}`;
+  const line = `${icon} ${escapeLineIf(style.github, name)} ${note}`;
   return style.github ? [line, "::endgroup::"] : [line];
 }
 
@@ -254,7 +255,7 @@ export function summaryBlock(
     // they are the same untrusted class as the name. They need no newline to
     // matter: the legacy bracketed command form is recognised mid-line.
     const raw = formatSummary(r.summary);
-    const note = style.github ? escapeLine(raw) : raw;
+    const note = escapeLineIf(style.github, raw);
     const notes = note === ""
       ? ""
       : "  " + paint(style.color, SGR.dim, `// ${note}`);
@@ -262,7 +263,7 @@ export function summaryBlock(
     // could open a command; the padding is computed from the raw name so the
     // columns stay aligned when nothing needed escaping.
     const shown = nameOf(r);
-    const name = style.github ? escapeLine(shown) : shown;
+    const name = escapeLineIf(style.github, shown);
     return name + " ".repeat(Math.max(0, nameWidth - shown.length)) + "  " +
       status + "  " +
       duration.padStart(durationWidth) + notes;
@@ -339,11 +340,7 @@ export function closingLine(
   }
   const failed = reports.filter((r) => r.status === "failed");
   const culprit = failed.length === 1
-    ? `'${
-      style.github
-        ? escapeLine(displayName(failed[0].name))
-        : displayName(failed[0].name)
-    }' failed`
+    ? `'${escapeLineIf(style.github, displayName(failed[0].name))}' failed`
     : failed.length > 1
     ? `${failed.length} targets failed`
     : "no target succeeded";
