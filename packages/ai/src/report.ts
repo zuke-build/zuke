@@ -473,12 +473,9 @@ export function skipMarkdown(
  * has been exported since core 1.33.0, below the floor even then, so the copy
  * never had a reason to exist.
  *
- * One residual, stated rather than glossed: the redaction arrived in the core
- * release *after* this package's floor, so a consumer pinned at the floor
- * itself gets the delegation without the masking — no worse than the copy it
- * replaces, and correct as soon as they move up. Raising the floor is a
- * follow-up once that release is out, since a floor above the workspace's own
- * core version stops the repository resolving at all.
+ * The declared core floor is the release that carries that redaction, so a
+ * consumer installing the floor itself gets the masking rather than a version
+ * that silently lacks it.
  */
 export function writeStepSummary(markdown: string): void {
   appendJobSummary(markdown);
