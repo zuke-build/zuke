@@ -112,10 +112,11 @@ finish replacing any remaining generated `CmdTasks.exec` calls with typed
 With the global CLI installed, the bare `zuke` works from anywhere inside the
 project: `zuke <target>`, `zuke --list`, `zuke graph`, `zuke mcp`, bare `zuke`
 for the default target — every command that is not the CLI's own (`setup`,
-`import`, `doc`, `--help`, `--version`) is forwarded to the nearest `zuke.ts`. It walks up to the `zuke.json` that marks the repository
-root and runs `deno run -A zuke.ts <args>` from there, with `--frozen` once a
-`deno.lock` exists — the launcher's exact behaviour, minus the Deno bootstrap.
-Outside a project the bare `zuke` reports the unknown command and the missing
+`import`, `doc`, `--help`, `--version`) is forwarded to the nearest `zuke.ts`.
+It walks up to the `zuke.json` that marks the repository root and runs
+`deno run -A zuke.ts <args>` from there, with `--frozen` once a `deno.lock`
+exists — the launcher's exact behaviour, minus the Deno bootstrap. Outside a
+project the bare `zuke` reports the unknown command and the missing
 `zuke.json`. The forwarding refuses a project whose root directory is owned by
 another user (the `safe.directory` rule git applies, since discovery runs code
 the caller never named); the error names the owner and the fix — run that
