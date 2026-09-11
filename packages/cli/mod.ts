@@ -39,7 +39,9 @@ import {
   defaultBuildRunner,
   locateBuild,
   NO_LOCK_NOTICE,
+  runningNotice,
 } from "./src/dispatch.ts";
+import { absolutePath } from "@zuke/core";
 
 export type { SetupHost } from "./src/setup.ts";
 export type { ImportSource } from "./src/import.ts";
@@ -437,8 +439,14 @@ async function forwardToBuild(
   // the build's output, and neither a security refusal nor the launchers'
   // unverified-lockfile notice may be silenced by it.
   try {
-    const location = await locateBuild(Deno.cwd(), probe);
+    const cwd = Deno.cwd();
+    const location = await locateBuild(cwd, probe);
     if (location === null) return null;
+    // Discovery ran something the caller never named: say which, unless it
+    // is the build right here, where `./zuke` would have been the same act.
+    if (location.root !== absolutePath(cwd).path) {
+      console.error(runningNotice(location.root));
+    }
     if (!location.frozen) console.error(NO_LOCK_NOTICE);
     return await runner(location.root, buildRunArgs(location, args));
   } catch (error) {

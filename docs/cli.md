@@ -45,7 +45,10 @@ user is refused too. The error names what was refused and the two ways
 forward: run that project's own launcher from its directory (`./zuke`, an
 explicit act on a file you name), or fix the ownership. The gate judges
 ownership, not intent: a tree you extracted or cloned yourself is yours, and
-`zuke` in it runs its build exactly as `./zuke` there would. On Windows, which
+`zuke` in it runs its build exactly as `./zuke` there would. Whenever the
+build discovery chose is not in the current directory, a stderr line names
+it (`zuke: running <root>/zuke.ts`), so a forwarded run is never silent about
+what it ran. On Windows, which
 reports no file ownership to compare, the gate is inert, so a `zuke.json` in
 a shared writable location is run as found.
 

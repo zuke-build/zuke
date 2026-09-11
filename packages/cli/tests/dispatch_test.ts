@@ -12,6 +12,7 @@ import {
   LOCK_FILE,
   NO_LOCK_NOTICE,
   type Ownership,
+  runningNotice,
   UntrustedBuildError,
 } from "../src/dispatch.ts";
 import { withTemp } from "../../core/tests/_temp.ts";
@@ -288,6 +289,13 @@ Deno.test("buildRunArgs mirrors the launcher: --frozen only with a lockfile", ()
   assertEquals(
     buildRunArgs({ root: "/repo", frozen: false }, []),
     ["run", "-A", BUILD_FILE],
+  );
+});
+
+Deno.test("the running notice names the build file at the root", () => {
+  assertEquals(
+    runningNotice("/home/me/app"),
+    "zuke: running /home/me/app/zuke.ts",
   );
 });
 

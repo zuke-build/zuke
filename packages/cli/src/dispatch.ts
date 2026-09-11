@@ -255,6 +255,15 @@ export function buildRunArgs(
 export const NO_LOCK_NOTICE: string = noLockNotice("—");
 
 /**
+ * The stderr line naming the build a forwarded command runs, printed when
+ * that build is not in the working directory — so a run that discovery chose
+ * is never silent about what it chose.
+ */
+export function runningNotice(root: string): string {
+  return `zuke: running ${root}/${BUILD_FILE}`;
+}
+
+/**
  * Runs `deno <denoArgs>` from `root` and resolves to its exit code — the
  * injectable subprocess seam, so the forwarding is testable without a build.
  */

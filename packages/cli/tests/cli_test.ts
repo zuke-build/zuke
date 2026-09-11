@@ -14,6 +14,7 @@ import { DENO_PIN } from "../src/deno_pin.ts";
 import { FakeHost, FakePrompter, FakeStarActions } from "./_fakes.ts";
 import { withTemp } from "../../core/tests/_temp.ts";
 import { ConsoleTasks, ZUKE_LOGO } from "@zuke/console";
+import { absolutePath } from "@zuke/core";
 
 const LOGO_TOP = ZUKE_LOGO.split("\n")[0];
 
@@ -732,6 +733,38 @@ Deno.test("main outside a project reports the unknown command and the missing zu
   assertEquals(called, false);
   assertEquals(host.logs[0].includes("Unknown command: ci"), true);
   assertEquals(host.logs[0].includes("no zuke.json was found"), true);
+});
+
+Deno.test("main names the build it forwards to when it is not in the working directory", async () => {
+  // A zuke.json at the parent of the cwd: discovery chose it, so stderr says
+  // so. (Every other routing test puts it at the cwd, where nothing is said.)
+  const parent = absolutePath(Deno.cwd()).parent();
+  const present = new Set([parent("zuke.json").path, parent("deno.lock").path]);
+  const probe: BuildProbe = {
+    exists: (path) => Promise.resolve(present.has(path)),
+    ownership: () => Promise.resolve(null),
+    uid: () => null,
+  };
+  const host = new FakeHost();
+  let root = "";
+  const err = await capturingErr(async () => {
+    const code = await main(
+      ["ci"],
+      host,
+      defaultPrompter,
+      undefined,
+      undefined,
+      (at) => {
+        root = at;
+        return Promise.resolve(0);
+      },
+      probe,
+    );
+    assertEquals(code, 0);
+  });
+  assertEquals(root, parent.path);
+  assertEquals(err, [`zuke: running ${parent.path}/zuke.ts`]);
+  assertEquals(host.logs, []);
 });
 
 Deno.test("main surfaces a runner failure as a clean exit 1 on stderr", async () => {
