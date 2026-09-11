@@ -538,6 +538,24 @@ export interface RemediationContext {
    * a `CommandError` carrying the failed command and its captured `stderr`.
    */
   error: unknown;
+  /**
+   * Mask every resolved `secret` parameter in `text`.
+   *
+   * A remediation that publishes anywhere — a pull-request comment, a job
+   * summary, a file it writes — has to run its output through this first. What
+   * it is publishing is typically a model's response to a prompt built from the
+   * failure, and that prompt carries the failed command and its output, so a
+   * secret the build holds can come back in the reply.
+   *
+   * Zuke's own reporter and run record redact what *they* emit, but a
+   * remediation that posts over the network is not going through either of them:
+   * this is the only thing between such a value and a comment that cannot be
+   * taken back.
+   *
+   * Masks the same values {@link "./params.ts".parameter} marked secret, so a
+   * credential the build never declared is not covered — declare it.
+   */
+  redact(text: string): string;
 }
 
 /** The outcome of one {@link Remediation} attempt. */

@@ -184,6 +184,9 @@ export class Command implements PromiseLike<CommandOutput> {
   #capturing = false;
   #timeoutMs?: number;
   #signal?: AbortSignal;
+  /** Text to write to the child's stdin, or `undefined` to inherit it. */
+  #stdin: string | undefined;
+
   #maxCapturedBytes = DEFAULT_MAX_CAPTURED_BYTES;
   #result?: Promise<RunResult>;
 
@@ -222,6 +225,28 @@ export class Command implements PromiseLike<CommandOutput> {
    */
   killAfter(ms: number): this {
     this.#timeoutMs = ms;
+    return this;
+  }
+
+  /**
+   * Write `text` to the child's standard input, then close it.
+   *
+   * The reason this exists is credentials. A tool that takes a password or token
+   * as an argument puts it in the process table, where any local user reading
+   * `/proc` or running `ps` can see it, and in whatever transcript the command
+   * line is echoed into. Tools that care offer a stdin form instead — `docker
+   * login --password-stdin` is the canonical one — and without this there was no
+   * way to use it: the secret had nowhere to go but argv.
+   *
+   * The text never reaches {@link Command.commandLine}, because it is not part
+   * of the command line. That is the point, not a side effect.
+   *
+   * Only affects the run paths. A {@link Command.spawn}ed long-running process
+   * keeps its inherited stdin, since a service that reads from the terminal is a
+   * different thing from a one-shot that takes a secret.
+   */
+  stdin(text: string): this {
+    this.#stdin = text;
     return this;
   }
 
@@ -302,6 +327,10 @@ export class Command implements PromiseLike<CommandOutput> {
         args,
         cwd: this.#cwd,
         env: this.#env,
+        // Piped only when there is something to write: otherwise the child keeps
+        // the inherited stdin it has always had, so a tool that prompts still
+        // works.
+        stdin: this.#stdin === undefined ? "inherit" : "piped",
         stdout: "piped",
         stderr: "piped",
         // Cancellation (an explicit `.signal()`, else the executor's ambient run
@@ -327,9 +356,14 @@ export class Command implements PromiseLike<CommandOutput> {
       // Capture is bounded (per stream) so a runaway child cannot grow the buffer
       // until the run dies; the tee to the terminal above stays unbounded.
       const cap = this.#maxCapturedBytes;
+      // Written *concurrently* with the captures, not before them. A child that
+      // writes more than a pipe buffer holds before reading its input would
+      // block on its own output while this blocked on the write, and neither
+      // side would ever move.
       const [stdout, stderr] = await Promise.all([
         captureStream(child.stdout, streamStdout ? Deno.stdout : null, cap),
         captureStream(child.stderr, streamStderr ? Deno.stderr : null, cap),
+        this.#writeStdin(child),
       ]);
       const status = await child.status;
       if (timedOut && ms !== undefined) {
@@ -343,6 +377,25 @@ export class Command implements PromiseLike<CommandOutput> {
       };
     } finally {
       if (timer !== undefined) clearTimeout(timer);
+    }
+  }
+
+  /**
+   * Write the configured stdin text to `child` and close the stream, or do
+   * nothing when none was configured.
+   *
+   * Closing is what matters: a tool reading its credential from stdin waits for
+   * end-of-input, so leaving the stream open hangs the run rather than failing
+   * it. The close therefore happens even when the write does not.
+   */
+  async #writeStdin(child: Deno.ChildProcess): Promise<void> {
+    const text = this.#stdin;
+    if (text === undefined) return;
+    const writer = child.stdin.getWriter();
+    try {
+      await writer.write(new TextEncoder().encode(text));
+    } finally {
+      await writer.close().catch(() => {});
     }
   }
 

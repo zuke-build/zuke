@@ -138,13 +138,21 @@ async function cancelRun(build: Build, options: CancelOptions): Promise<CancelRe
   @throws
       if no state store is configured, or the run does not exist.
 
-function ciHost(): string
+function ciHost(env: (name: string) => string | undefined): string
   A short identifier for the detected CI host, or `"local"` when not on CI.
   Recognises GitHub Actions, GitLab CI, Azure Pipelines, Bitbucket Pipelines,
-  and the generic `CI` convention.
+  and — as the generic `"ci"` — the common markers other systems set, including
+  Jenkins, Buildkite, CircleCI, Travis and TeamCity.
 
   Prefer {@link detectCiHost} for new code: its values match {@link CiProvider}.
   This function is kept for compatibility and uses longer, host-specific names.
+
+  @param env
+      The environment reader, injectable so detection can be unit-tested
+      hermetically; defaults to the process environment. {@link detectCiHost} has
+      taken one since it was written, and this takes the same one so a caller that
+      wants "am I on CI?" does not have to reach for the host-specific function to
+      get a testable answer.
 
 function cicd(spec: CiFileSpec): CiFile
   Declare a CI file as a build field. Running the build regenerates it (and the
@@ -452,8 +460,15 @@ async function installTree(options: InstallTreeOptions): Promise<AbsolutePath>
   are marked executable on POSIX. With a {@link InstallTreeOptions.checksum} the
   archive is verified before unpacking and a matching prior install is reused.
 
-function isCI(): boolean
+function isCI(env: (name: string) => string | undefined): boolean
   Whether the build appears to be running in a CI environment.
+
+  Broader than `detectCiHost(env) !== "local"`, which answers only whether the
+  host is one of the four Zuke names: a system it has no specific support for is
+  still CI, and this says so.
+
+  @param env
+      The environment reader; defaults to the process environment.
 
 function listStoreLocks(store: StateStore): Promise<HeldLockEntry[]>
   The locks `store` holds, or a friendly failure when the backend cannot
@@ -3841,6 +3856,22 @@ interface RemediationContext
   error: unknown
     The failure being remediated. When a target fails through the shell this is
     a `CommandError` carrying the failed command and its captured `stderr`.
+  redact(text: string): string
+    Mask every resolved `secret` parameter in `text`.
+
+    A remediation that publishes anywhere — a pull-request comment, a job
+    summary, a file it writes — has to run its output through this first. What
+    it is publishing is typically a model's response to a prompt built from the
+    failure, and that prompt carries the failed command and its output, so a
+    secret the build holds can come back in the reply.
+
+    Zuke's own reporter and run record redact what they emit, but a
+    remediation that posts over the network is not going through either of them:
+    this is the only thing between such a value and a comment that cannot be
+    taken back.
+
+    Masks the same values {@link "./params.ts".parameter} marked secret, so a
+    credential the build never declared is not covered — declare it.
 
 interface RemediationResult
   The outcome of one {@link Remediation} attempt.
@@ -4975,6 +5006,21 @@ class Command implements PromiseLike<CommandOutput>
   killAfter(ms: number): this
     Kill the process if it runs longer than `ms` milliseconds, raising a
     {@link CommandTimeoutError}. Fires even under {@link noThrow}.
+  stdin(text: string): this
+    Write `text` to the child's standard input, then close it.
+
+    The reason this exists is credentials. A tool that takes a password or token
+    as an argument puts it in the process table, where any local user reading
+    `/proc` or running `ps` can see it, and in whatever transcript the command
+    line is echoed into. Tools that care offer a stdin form instead — `docker login --password-stdin` is the canonical one — and without this there was no
+    way to use it: the secret had nowhere to go but argv.
+
+    The text never reaches {@link Command.commandLine}, because it is not part
+    of the command line. That is the point, not a side effect.
+
+    Only affects the run paths. A {@link Command.spawn}ed long-running process
+    keeps its inherited stdin, since a service that reads from the terminal is a
+    different thing from a one-shot that takes a secret.
   maxCapturedBytes(bytes: number): this
     Cap how much of each captured stream is kept in memory, in bytes
     (default 8 MiB). Capture keeps the newest bytes: once the cap is reached the
@@ -5204,8 +5250,9 @@ abstract class ToolSettings
   the base provides the shared chainers and {@link run}.
 
   os_: typeof Deno.build.os
-    The platform identifier used by {@link run} to decide whether to retry a
-    missing binary through the `cmd /c` shim path (Windows only).
+    The platform identifier used when resolving a tool from `node_modules`,
+    which on Windows means looking for the `.cmd` shim rather than the bare
+    name.
 
     In production this is always `Deno.build.os`. It is exposed as a public
     field — rather than read from `Deno.build.os` inline — so that tests can
@@ -5214,11 +5261,29 @@ abstract class ToolSettings
 
     ```ts
     const s = new MyToolSettings();
-    s.os_ = "windows"; // exercise the cmd /c retry branch on any host
+    s.os_ = "windows"; // resolve as Windows would, on any host
     ```
 
     The trailing underscore signals an internal test seam: do not rely on this
     field in production code.
+  protected markSecret(value: string): void
+    Register `value` with the run's redactor, so every rendered form of this
+    command masks it.
+
+    For the credential a tool will only take as an argument. Prefer
+    {@link "./shell.ts".Command.stdin} wherever the tool offers a stdin form:
+    this masks the rendering, not the argv, so the value is still visible in
+    the process table to anyone on the same host. It is what to reach for when
+    there is no better option, not instead of the better option.
+
+    Protected because it is for a wrapper to call while building its own
+    settings — the wrapper is what knows which of its fields is a credential.
+    A build marks its own values by declaring them with
+    {@link "./params.ts".parameter} and `.secret()`, which is the same redactor.
+
+    Does nothing outside a run, where there is no redactor to register with —
+    a wrapper used standalone in a script still works, it simply has nothing
+    masking its output.
   abstract protected defaultTool(): string
     The binary to spawn when {@link toolPath} is not set.
   abstract protected buildArgs(): string[]
@@ -5554,8 +5619,14 @@ lane runs them against the filesystem store, and a backend author runs them
 against a live service:
 
 ```sh
-deno run -A jsr:@zuke/core/conformance --url http://localhost:8080 [--token …]
+ZUKE_STATE_TOKEN=… ZUKE_REGISTRY_TOKEN=… \
+  deno run -A jsr:@zuke/core/conformance --url http://localhost:8080
 ```
+
+Both variables are optional — set them only when the backend requires a
+bearer token. There is no `--token` argument: passing one is refused, because
+a credential in argv is readable by every local process and lands in the
+transcript of whatever invoked the kit.
 
 Every scenario uses freshly-generated ids, so it is safe to run against a
 shared, persistent service; the lock-takeover scenario uses a short real TTL
@@ -5573,9 +5644,21 @@ async function checkStateStore(make: StateStoreFactory, options: ConformanceOpti
   Run the state-store conformance scenarios against the store `make` builds.
 
 async function runConformanceCli(args: string[], deps: ConformanceCliDeps): Promise<number>
-  Run the conformance kit as a CLI: `--url <base>` (required) and `--token <bearer>` (optional) name the backend, then both suites run against it. Prints
-  a `PASS`/`FAIL` line per scenario and resolves to a process exit code — `0`
-  when every scenario passes, `1` when any fails or `--url` is missing.
+  Run the conformance kit as a CLI: `--url <base>` (required) names the backend
+  and both suites run against it. Prints a `PASS`/`FAIL` line per scenario and
+  resolves to a process exit code — `0` when every scenario passes, `1` when any
+  fails, `--url` is missing, or a credential was passed as an argument.
+
+  The bearer token comes from the environment, `ZUKE_STATE_TOKEN` and
+  `ZUKE_REGISTRY_TOKEN`, exactly as every other consumer of these stores reads
+  it. It used to be a `--token` argument, which put a credential that can forge
+  run records, the audit trail and lock exclusivity into the process table for
+  any local user to read, and into the transcript of whatever invoked it.
+
+  `--token` is now refused rather than ignored: an invocation that still
+  passes one would otherwise authenticate as anonymous and fail somewhere less
+  obvious, and the credential would already have been exposed by the time it
+  did.
 
 interface ConformanceCliDeps
   Injectable dependencies for {@link runConformanceCli} (tests override them).
@@ -5586,6 +5669,8 @@ interface ConformanceCliDeps
     Build the {@link BuildRegistry} for a url/token (default {@link HttpBuildRegistry}).
   log?: (line: string) => void
     Emit a line of output (default `console.log`).
+  readEnv?: (name: string) => string | undefined
+    Read an environment variable (default the process environment).
 
 interface ConformanceOptions
   Tuning options for the conformance scenarios.

@@ -75,6 +75,7 @@ const CTX: RemediationContext = {
   target: "test",
   attempt: 1,
   error: new Error("boom: a test failed"),
+  redact: (text: string) => text,
 };
 
 const ONE_EDIT: Partial<Fix> = {
@@ -257,6 +258,7 @@ Deno.test("CommandError context feeds the failed command and stderr to the promp
     target: "lint",
     attempt: 1,
     error: new CommandError("deno lint", 1, "error: unused variable x"),
+    redact: (text: string) => text,
   });
   assertEquals(calls[0].body.includes("deno lint"), true);
   assertEquals(calls[0].body.includes("unused variable x"), true);
@@ -626,6 +628,7 @@ Deno.test("a non-Error failure value is stringified into the prompt", async () =
     target: "t",
     attempt: 1,
     error: "raw string failure",
+    redact: (text: string) => text,
   });
   assertEquals(calls[0].body.includes("raw string failure"), true);
 });

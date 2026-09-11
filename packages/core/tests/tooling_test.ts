@@ -17,6 +17,8 @@ import {
   ToolSettings,
   windowsCmdShim,
 } from "../src/tooling.ts";
+import { withAmbientRedactor } from "../src/ambient_redactor.ts";
+import { REDACTED, Redactor } from "../src/redact.ts";
 import { CommandError, CommandTimeoutError } from "../src/shell.ts";
 import { withTemp } from "./_temp.ts";
 
@@ -558,4 +560,57 @@ Deno.test("onOutput runs once under noThrow too, and the output is returned", as
   const out = await s.run();
   assertEquals(out.code, 3);
   assertEquals(s.seen, [{ code: 3, stdout: "partial" }]);
+});
+
+Deno.test("markSecret masks a credential a tool only takes as an argument", async () => {
+  // Some tools have no stdin form, so the value must ride in argv. This does not
+  // hide it from the process table — nothing can — but it keeps it out of every
+  // rendered form of the command: the dry-run echo, a CommandError, a recorded
+  // service line.
+  class TokenSettings extends ToolSettings {
+    #token = "";
+    token(value: string): this {
+      this.#token = value;
+      this.markSecret(value);
+      return this;
+    }
+    protected override defaultTool(): string {
+      return Deno.execPath();
+    }
+    protected override buildArgs(): string[] {
+      return [
+        "eval",
+        "--no-lock",
+        `console.log(${JSON.stringify(this.#token)})`,
+      ];
+    }
+  }
+
+  const redactor = new Redactor();
+  await withAmbientRedactor(redactor, () => {
+    const settings = new TokenSettings().token("hunter2");
+    assertEquals(redactor.size > 0, true);
+    assertEquals(redactor.redact("token=hunter2"), `token=${REDACTED}`);
+    return Promise.resolve(settings);
+  });
+});
+
+Deno.test("markSecret outside a run is a no-op, not a crash", async () => {
+  // A wrapper used standalone in a script has no redactor to register with. It
+  // should still work — with nothing masking its output, which is the honest
+  // outcome rather than a failure.
+  class TokenSettings extends ToolSettings {
+    token(value: string): this {
+      this.markSecret(value);
+      return this;
+    }
+    protected override defaultTool(): string {
+      return Deno.execPath();
+    }
+    protected override buildArgs(): string[] {
+      return ["eval", "--no-lock", "console.log('ok')"];
+    }
+  }
+  new TokenSettings().token("hunter2");
+  await Promise.resolve();
 });

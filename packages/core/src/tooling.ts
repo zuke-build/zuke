@@ -24,6 +24,7 @@
 
 import { Command, CommandError, type CommandOutput } from "./shell.ts";
 import { checkMaxCapturedBytes } from "./capture.ts";
+import { ambientRedactor } from "./ambient_redactor.ts";
 import { type AbsolutePath, absolutePath, type PathLike } from "./path.ts";
 
 export type { PathLike };
@@ -200,8 +201,9 @@ export type Configure<S> = (settings: S) => S;
  */
 export abstract class ToolSettings {
   /**
-   * The platform identifier used by {@link run} to decide whether to retry a
-   * missing binary through the `cmd /c` shim path (Windows only).
+   * The platform identifier used when resolving a tool from `node_modules`,
+   * which on Windows means looking for the `.cmd` shim rather than the bare
+   * name.
    *
    * In production this is always `Deno.build.os`. It is exposed as a public
    * field — rather than read from `Deno.build.os` inline — so that tests can
@@ -210,13 +212,36 @@ export abstract class ToolSettings {
    *
    * ```ts
    * const s = new MyToolSettings();
-   * s.os_ = "windows"; // exercise the cmd /c retry branch on any host
+   * s.os_ = "windows"; // resolve as Windows would, on any host
    * ```
    *
    * The trailing underscore signals an internal test seam: do not rely on this
    * field in production code.
    */
   os_: typeof Deno.build.os = Deno.build.os;
+
+  /**
+   * Register `value` with the run's redactor, so every rendered form of this
+   * command masks it.
+   *
+   * For the credential a tool will only take as an argument. Prefer
+   * {@link "./shell.ts".Command.stdin} wherever the tool offers a stdin form:
+   * this masks the *rendering*, not the argv, so the value is still visible in
+   * the process table to anyone on the same host. It is what to reach for when
+   * there is no better option, not instead of the better option.
+   *
+   * Protected because it is for a wrapper to call while building its own
+   * settings — the wrapper is what knows which of its fields is a credential.
+   * A build marks its own values by declaring them with
+   * {@link "./params.ts".parameter} and `.secret()`, which is the same redactor.
+   *
+   * Does nothing outside a run, where there is no redactor to register with —
+   * a wrapper used standalone in a script still works, it simply has nothing
+   * masking its output.
+   */
+  protected markSecret(value: string): void {
+    ambientRedactor()?.add(value);
+  }
 
   #env: Record<string, string> = {};
   #cwd?: string;

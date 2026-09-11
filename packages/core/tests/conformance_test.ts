@@ -7,7 +7,11 @@
  * CLI runner — plus the wire protocol-version handshake on the HTTP client.
  */
 
-import { assertEquals, assertRejects } from "./_assert.ts";
+import {
+  assertEquals,
+  assertRejects,
+  assertStringIncludes,
+} from "./_assert.ts";
 import {
   checkBuildRegistry,
   checkStateStore,
@@ -189,4 +193,54 @@ Deno.test("the kit catches a registry that violates listBuilds ordering", async 
   // CAS/round-trip/deregister pass; only the ordering+filter scenario fails.
   assertEquals(results.find((r) => r.name.includes("newest first"))?.ok, false);
   assertEquals(results.find((r) => r.name.includes("CAS"))?.ok, true);
+});
+
+Deno.test("runConformanceCli refuses a token passed as an argument", async () => {
+  // Refused rather than ignored: an ignored --token would authenticate as
+  // anonymous and fail somewhere less obvious, and the credential would already
+  // be in the process table and the transcript by then.
+  const lines: string[] = [];
+  const code = await runConformanceCli(
+    ["--url", "https://state.example", "--token", "hunter2"],
+    { log: (l) => lines.push(l) },
+  );
+  assertEquals(code, 1);
+  const message = lines.join("\n");
+  assertStringIncludes(message, "--token is no longer accepted");
+  assertStringIncludes(message, "ZUKE_STATE_TOKEN");
+  // And the refusal itself does not echo the credential it is refusing.
+  assertEquals(message.includes("hunter2"), false);
+});
+
+Deno.test("runConformanceCli reads each token from its own variable", async () => {
+  // The two stores have separate credentials, and every other consumer of them
+  // already reads these names. Both factories return a working store so the run
+  // completes and *both* are actually reached — an earlier cut of this test
+  // threw from the state factory, which meant the registry token was captured
+  // but never exercised, and asserting it would have been asserting nothing.
+  const dir = await Deno.makeTempDir({ prefix: "zuke-conf-token-" });
+  const seen: Record<string, string | undefined> = {};
+  try {
+    await runConformanceCli(["--url", "unused"], {
+      log: () => {},
+      readEnv: (name) =>
+        name === "ZUKE_STATE_TOKEN"
+          ? "state-token"
+          : name === "ZUKE_REGISTRY_TOKEN"
+          ? "registry-token"
+          : undefined,
+      makeStateStore: (_url, token) => {
+        seen.state = token;
+        return new FileSystemStateStore(`${dir}/a`, defaultStateHost);
+      },
+      makeBuildRegistry: (_url, token) => {
+        seen.registry = token;
+        return new FileSystemBuildRegistry(`${dir}/b`, defaultStateHost);
+      },
+    });
+    assertEquals(seen.state, "state-token");
+    assertEquals(seen.registry, "registry-token");
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
 });

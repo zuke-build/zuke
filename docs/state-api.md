@@ -231,8 +231,14 @@ client validates every summary and does not re-sort.
   takeover, append-only events, and the `/builds` register/deregister CAS:
 
   ```sh
-  deno run -A jsr:@zuke/core/conformance --url http://localhost:8080 [--token …]
+  ZUKE_STATE_TOKEN=… ZUKE_REGISTRY_TOKEN=… \
+    deno run -A jsr:@zuke/core/conformance --url http://localhost:8080
   ```
+
+  Set the two variables only when your backend requires a bearer token. There is
+  no `--token` argument: passing one is refused, because a credential in argv is
+  readable by every local process and lands in the transcript of whatever
+  invoked the kit.
 
   It exits `0` when every scenario passes and `1` (naming the failures) when one
   does not. A backend that passes is compatible with `HttpStateStore` /

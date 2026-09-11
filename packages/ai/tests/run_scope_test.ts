@@ -26,6 +26,7 @@ const CTX: RemediationContext = {
   target: "lint",
   attempt: 1,
   error: new Error("boom: a test failed"),
+  redact: (text: string) => text,
 };
 
 /** An env reader that looks like a GitHub Actions runner. */
