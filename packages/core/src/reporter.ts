@@ -57,7 +57,15 @@ export function redactingReporter(
  * unescaped sink instead; the renderer escapes the untrusted values it
  * interpolates itself, at construction, where it still knows which part of the
  * line is a command and which is data. That split is the whole contract: no
- * line leaves core unescaped unless the renderer composed it.
+ * line **Zuke composes** leaves core unescaped unless the renderer composed it.
+ *
+ * The qualifier is load-bearing. A subprocess's own stdout and stderr are
+ * relayed byte for byte by the shell, to the real file descriptors, and are not
+ * routed through any reporter — so a tool that prints a workflow command still
+ * reaches the runner as one. That is deliberate: a build may run a tool whose
+ * commands are wanted, and rewriting another program's output stream would
+ * corrupt it. What this guarantees is narrower and worth stating exactly: text
+ * Zuke itself interpolated into a line it wrote cannot be read as a command.
  *
  * `escapeLine` is a no-op on ordinary text and idempotent on text it has
  * already encoded, so double-wrapping changes nothing.
