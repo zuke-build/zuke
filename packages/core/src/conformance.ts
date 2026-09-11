@@ -42,6 +42,7 @@ import { HttpStateStore } from "./state/http_store.ts";
 import type { BuildDescriptor } from "./registry/descriptor.ts";
 import type { BuildRegistry } from "./registry/registry.ts";
 import { HttpBuildRegistry } from "./registry/http_registry.ts";
+import { cliReporter } from "./reporter.ts";
 
 /** The outcome of one conformance scenario. */
 export interface ConformanceResult {
@@ -552,7 +553,7 @@ export async function runConformanceCli(
   args: string[],
   deps: ConformanceCliDeps = {},
 ): Promise<number> {
-  const log = deps.log ?? ((line: string) => console.log(line));
+  const log = deps.log ?? ((line: string) => cliReporter.info(line));
   const env = deps.readEnv ?? defaultReadEnv;
   const url = flag(args, "--url");
   if (args.includes("--token")) {

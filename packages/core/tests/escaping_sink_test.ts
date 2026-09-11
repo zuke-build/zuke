@@ -16,6 +16,8 @@
 
 import { assertEquals, assertStringIncludes } from "./_assert.ts";
 import { escapeLineIf } from "../src/render.ts";
+import { printJson } from "../src/reporter.ts";
+import { withEnv } from "./_env.ts";
 import {
   escapingReporter,
   type Reporter,
@@ -194,4 +196,91 @@ Deno.test("a fan-out item key cannot forge a command through the count line", as
 Deno.test("silentReporter stays silent once wrapped", () => {
   // The wrapper composes with the other reporters rather than replacing them.
   escapingReporter(silentReporter).info("::error::x");
+});
+
+Deno.test("no module writes to the console except the sink itself", async () => {
+  // Two of the modules routed through `cliReporter` had no test at all, and
+  // reverting either to a bare console call left the whole suite green — the
+  // shape of a guard that quietly comes undone.
+  //
+  // Scanned over the whole source tree rather than a list of modules, because a
+  // list only covers what someone remembered to add: the regression this is
+  // guarding against is a *new* write appearing somewhere it was not expected.
+  // What is promised is not that one message is escaped but that nothing
+  // reaches the console except through the sink, and that is a property of the
+  // tree, not of any one behaviour a test could trigger.
+  //
+  // Comments are stripped first: a JSDoc example showing a plugin author how to
+  // write one is documentation, not a write.
+  // Keyed by path from `src/`, not by file name: a nested module sharing a
+  // basename with an allowed one would otherwise be exempt by accident.
+  const allowed = new Set([
+    // The sink itself, the one place allowed to reach the real console.
+    "reporter.ts",
+    // Emits browser JavaScript inside a template literal: its `console.warn`
+    // runs in the viewer's browser, not in this process, and rewriting it would
+    // break the generated page. Stripping template literals automatically would
+    // risk hiding a real write, so this is named rather than inferred.
+    "graph_html.ts",
+  ]);
+  const offenders: string[] = [];
+  const root = new URL("../src/", import.meta.url);
+
+  const walk = async (dir: URL): Promise<void> => {
+    for await (const entry of Deno.readDir(dir)) {
+      const child = new URL(entry.name + (entry.isDirectory ? "/" : ""), dir);
+      if (entry.isDirectory) {
+        await walk(child);
+        continue;
+      }
+      const relative = child.href.slice(root.href.length);
+      if (!entry.name.endsWith(".ts") || allowed.has(relative)) continue;
+      const code = (await Deno.readTextFile(child))
+        .replace(/\/\*[\s\S]*?\*\//g, "")
+        .replace(/\/\/[^\n]*/g, "");
+      if (/\bconsole\.(log|error|warn|info|debug)\s*\(/.test(code)) {
+        offenders.push(relative);
+      }
+    }
+  };
+  await walk(root);
+
+  assertEquals(
+    offenders,
+    [],
+    `these write to the console directly; use cliReporter or printJson: ${
+      offenders.join(", ")
+    }`,
+  );
+});
+
+Deno.test("printJson encodes the marker wherever it appears in a payload", async () => {
+  // `replaceAll` runs over the whole serialised document, so field position is
+  // not a factor — but that is the kind of claim worth demonstrating rather
+  // than asserting, since a reader cannot tell from the call site whether it
+  // covers nesting, arrays, keys, or several occurrences in one value.
+  const payload = {
+    "##[key]": "top level",
+    nested: { deep: { actor: "##[set-output name=x]mallory" } },
+    list: ["a##[b", "plain", "##[c##[d"],
+    adjacent: "###[x] ####[y]",
+    innocent: "a # b #[c] ##d",
+  };
+
+  const lines: string[] = [];
+  const original = console.log;
+  console.log = (line: string) => void lines.push(line);
+  try {
+    await withEnv({ GITHUB_ACTIONS: "true" }, () => printJson(payload));
+  } finally {
+    console.log = original;
+  }
+
+  const wire = lines.join("\n");
+  // Nothing the runner scans for survives, anywhere in the document.
+  assertEquals(wire.includes("##["), false);
+  // And every value still parses back to exactly what went in.
+  assertEquals(JSON.parse(wire), payload);
+  // A hash that is not part of the marker is left as written.
+  assertStringIncludes(wire, "a # b #[c] ##d");
 });

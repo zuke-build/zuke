@@ -13,7 +13,8 @@
  */
 
 import type { Redactor } from "./redact.ts";
-import { escapeLine } from "./render.ts";
+import { detectCiHost } from "./host.ts";
+import { escapeLine, escapeLineIf } from "./render.ts";
 
 /** Sink for executor output, defaulting to the console. Overridable in tests. */
 export interface Reporter {
@@ -66,6 +67,68 @@ export function escapingReporter(inner: Reporter): Reporter {
     info: (line) => inner.info(escapeLine(line)),
     error: (line) => inner.error(escapeLine(line)),
   };
+}
+
+/**
+ * The sink every command-surface module writes through, neutralised for a
+ * GitHub Actions runner.
+ *
+ * These commands echo arguments the invoker chose — a run id, a target name, a
+ * force reason — and read values another process wrote into the shared state
+ * store. Under Actions those commonly come from a workflow-dispatch input or an
+ * issue body rather than from a person at a terminal, and a thrown message
+ * quotes them straight back.
+ *
+ * A sink rather than a guard at each of the sixty-odd writes, because none of
+ * them should be exempt: unlike the run's reporter, none of these modules emits
+ * a workflow command of its own, so there is no half to carve out. The MCP
+ * command writes only diagnostics here — its protocol never goes through the
+ * console — so escaping cannot corrupt it.
+ *
+ * The decision is made per line, not once when this module loads. A top-level
+ * constant would read the environment at import time, before an embedder or a
+ * test has set it, and the escaping would then silently not apply.
+ */
+export const cliReporter: Reporter = {
+  info: (line) => console.log(escapeLineIf(onActionsRunner(), line)),
+  error: (line) => console.error(escapeLineIf(onActionsRunner(), line)),
+};
+
+/**
+ * Print `value` as JSON that is safe on a runner **and** parses to exactly what
+ * it would print anywhere else.
+ *
+ * Machine-readable output cannot go through {@link cliReporter}: `escapeLine`
+ * percent-encodes a legacy `##[` marker wherever it appears, so a consumer doing
+ * `zuke runs list --json | jq -r '.[0].actor'` would silently read a different
+ * string on Actions than it reads locally. Escaping the transport corrupts the
+ * payload.
+ *
+ * Escaping it as JSON instead costs nothing: `\u0023` **is** `#` to every
+ * parser, so the value round-trips byte for byte, while the raw bytes on the
+ * stream can no longer contain the marker. The other half of `escapeLine` needs
+ * no answer here — an indented `JSON.stringify` never begins a physical line
+ * with `::`, because a newline inside a string is written as `\n` rather than
+ * breaking the line.
+ */
+export function printJson(value: unknown): void {
+  const json = JSON.stringify(value, null, 2);
+  // Only where something is parsing for commands. Off a runner nothing scans
+  // this output, so it goes out byte for byte as it always has — a consumer
+  // diffing it against a golden file, or checksumming it, sees no change at all.
+  // On a runner the bytes differ and the parsed value does not, which is the
+  // only combination that is both safe and faithful.
+  // Only the marker itself, not every `#`: escaping the first character of each
+  // occurrence is enough to stop the runner matching it, and leaves every other
+  // hash in the payload exactly as written.
+  console.log(
+    onActionsRunner() ? json.replaceAll("##[", "\\u0023#[") : json,
+  );
+}
+
+/** Whether this process is running on a GitHub Actions runner. */
+function onActionsRunner(): boolean {
+  return detectCiHost() === "github";
 }
 
 /**

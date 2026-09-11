@@ -17,6 +17,7 @@ import { ARTIFACT_DIR, findConfigDir, pathExists } from "./config.ts";
 import { absolutePath } from "./path.ts";
 import type { TargetBuilder } from "./target.ts";
 import { browserCommand } from "./browser.ts";
+import { cliReporter } from "./reporter.ts";
 
 /** Spawn a detached command (binary + args); used to launch a browser. */
 export type Spawn = (cmd: string, args: string[]) => Promise<void>;
@@ -67,7 +68,7 @@ export const defaultGraphHost: GraphHost = {
   mkdir: (path) => Deno.mkdir(path, { recursive: true }),
   writeText: (path, content) => Deno.writeTextFile(path, content),
   open: (path) => openInBrowser(path),
-  log: (message) => console.log(message),
+  log: (message) => cliReporter.info(message),
 };
 
 /** Options controlling {@link graphCommand}. */

@@ -13,6 +13,12 @@
 
 import { main, type MainOptions } from "../../packages/core/src/cli.ts";
 import type { Build } from "../../packages/core/mod.ts";
+import { defaultGraphHost } from "../../packages/core/src/graph_view.ts";
+
+/** Swallow the browser open; see the note in `runCli`. */
+function noOpen(): Promise<void> {
+  return Promise.resolve();
+}
 
 /** The captured result of one {@link runCli} invocation. */
 export interface CliResult {
@@ -35,6 +41,17 @@ export async function runCli(
   args: string[],
   options: MainOptions = {},
 ): Promise<CliResult> {
+  // Never let a test reach the real browser opener. `zuke graph` defaults
+  // `--open` to true, so a test that forgets `--no-open` spawns the OS opener on
+  // whoever is running the suite — and then deletes the temp directory, so the
+  // tab shows nothing. Defaulting the injectable host here means a missing flag
+  // cannot do that, rather than every future test having to remember.
+  // A caller's own host is used as given — never spread into a literal, which
+  // would copy its own fields and drop every method on its prototype, quietly
+  // substituting the real implementations for a fake's.
+  const opts: MainOptions = options.graphHost !== undefined
+    ? options
+    : { ...options, graphHost: { ...defaultGraphHost, open: noOpen } };
   const out: string[] = [];
   const err: string[] = [];
   const origLog = console.log;
@@ -54,7 +71,7 @@ export async function runCli(
   };
   addEventListener("unhandledrejection", onRejection);
   try {
-    const code = await main(BuildClass, args, options);
+    const code = await main(BuildClass, args, opts);
     // A macrotask boundary so any queued unhandledrejection event has dispatched
     // before we inspect — it fires at a microtask checkpoint, which setTimeout(0)
     // is guaranteed to follow.
