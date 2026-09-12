@@ -42,6 +42,7 @@ import {
   runningNotice,
 } from "./src/dispatch.ts";
 import { absolutePath } from "@zuke/core";
+import { output } from "./src/output.ts";
 
 export type { SetupHost } from "./src/setup.ts";
 export type { ImportSource } from "./src/import.ts";
@@ -435,9 +436,11 @@ async function forwardToBuild(
   probe: BuildProbe,
   runner: BuildRunner,
 ): Promise<number | null> {
-  // Plain stderr writes, not `ConsoleTasks`: `ZUKE_LOG_LEVEL` is a knob for
-  // the build's output, and neither a security refusal nor the launchers'
-  // unverified-lockfile notice may be silenced by it.
+  // The CLI's own stderr sink, not `ConsoleTasks`: `ZUKE_LOG_LEVEL` is a knob
+  // for the build's output, and neither a security refusal nor the launchers'
+  // unverified-lockfile notice may be silenced by it. The sink neutralises the
+  // line on an Actions runner — the root and the error message below carry
+  // text from the filesystem and from a failed spawn, not from Zuke.
   try {
     const cwd = Deno.cwd();
     const location = await locateBuild(cwd, probe);
@@ -445,12 +448,12 @@ async function forwardToBuild(
     // Discovery ran something the caller never named: say which, unless it
     // is the build right here, where `./zuke` would have been the same act.
     if (location.root !== absolutePath(cwd).path) {
-      console.error(runningNotice(location.root));
+      output.error(runningNotice(location.root));
     }
-    if (!location.frozen) console.error(NO_LOCK_NOTICE);
+    if (!location.frozen) output.error(NO_LOCK_NOTICE);
     return await runner(location.root, buildRunArgs(location, args));
   } catch (error) {
-    console.error(error instanceof Error ? error.message : String(error));
+    output.error(error instanceof Error ? error.message : String(error));
     return 1;
   }
 }

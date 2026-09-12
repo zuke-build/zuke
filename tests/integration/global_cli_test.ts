@@ -17,6 +17,7 @@ import { type BuildProbe, main } from "../../packages/cli/mod.ts";
 import { defaultBuildProbe } from "../../packages/cli/src/dispatch.ts";
 import { defaultHost, type SetupHost } from "../../packages/cli/src/setup.ts";
 import { withTemp } from "../../packages/core/tests/_temp.ts";
+import { withEnv } from "../../packages/core/tests/_env.ts";
 
 /**
  * The real, filesystem-probing host — the walk up to `zuke.json` must see the
@@ -137,6 +138,50 @@ Deno.test("zuke <target> outside any project is an unknown command, not a spawn"
       );
       assertEquals(code, 1);
       assertEquals(host.logs[0].includes("no zuke.json was found"), true);
+    });
+  }, { prefix: "zuke-global-cli-" });
+});
+
+/**
+ * The percent-encoded `::`, kept as its own constant so the encoded prefix
+ * never fuses with the word after it into a token no dictionary can know.
+ */
+const ENC = "%3A%3A";
+
+Deno.test("zuke <argv> cannot forge a workflow command on an Actions runner", async () => {
+  // The whole path, as the binary runs it: the real host writing through the
+  // package's sink, the real probe (confined to the temp dir, so there is no
+  // build to forward to), and the runner's environment. The unknown-command
+  // message echoed argv raw, and an argument carrying a newline put `::` at
+  // the start of a physical line, which the runner executes; every physical
+  // line is asserted, since the runner reads lines, not messages.
+  await withTemp(async (dir) => {
+    await inDir(dir, async () => {
+      const out: string[] = [];
+      const original = console.log;
+      console.log = (...parts: unknown[]) => void out.push(parts.join(" "));
+      try {
+        await withEnv({ GITHUB_ACTIONS: "true" }, async () => {
+          const code = await main(
+            [["typo", "::stop-commands::forged"].join("\n")],
+            defaultHost,
+            undefined,
+            undefined,
+            undefined,
+            () => Promise.reject(new Error("must not spawn")),
+            confinedTo(dir),
+          );
+          assertEquals(code, 1);
+        });
+      } finally {
+        console.log = original;
+      }
+      const lines = out.flatMap((l) => l.split("\n"));
+      assertEquals(lines.some((l) => l.trimStart().startsWith("::")), false);
+      assertEquals(
+        lines.some((l) => l.startsWith(ENC + "stop-commands::forged")),
+        true,
+      );
     });
   }, { prefix: "zuke-global-cli-" });
 });

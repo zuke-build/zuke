@@ -13,6 +13,8 @@ import { VERSION } from "../src/version.ts";
 import { DENO_PIN } from "../src/deno_pin.ts";
 import { FakeHost, FakePrompter, FakeStarActions } from "./_fakes.ts";
 import { withTemp } from "../../core/tests/_temp.ts";
+import { withEnv } from "../../core/tests/_env.ts";
+import { defaultHost } from "../src/setup.ts";
 import { ConsoleTasks, ZUKE_LOGO } from "@zuke/console";
 import { absolutePath } from "@zuke/core";
 
@@ -815,4 +817,96 @@ Deno.test("main refuses to forward into a build owned by another user", async ()
   assertEquals(host.logs, []);
   assertEquals(err.length, 1);
   assertEquals(err[0].includes("refusing to run the build at"), true);
+});
+
+/**
+ * The percent-encoded `::`, kept as its own constant so the encoded prefix
+ * never fuses with the word after it into a token no dictionary can know.
+ */
+const ENC = "%3A%3A";
+
+/** Run `fn` with stdout captured, returning the lines written. */
+async function capturingOut(fn: () => Promise<void>): Promise<string[]> {
+  const out: string[] = [];
+  const original = console.log;
+  console.log = (...parts: unknown[]) => void out.push(parts.join(" "));
+  try {
+    await fn();
+  } finally {
+    console.log = original;
+  }
+  return out;
+}
+
+Deno.test("an unknown command cannot forge a workflow command through the real host", async () => {
+  // The bug: `Unknown command: <argv>` went out through a bare `console.log`.
+  // The runner acts on a line whose first non-blank characters are `::`, and
+  // an argument can carry a newline, so the second physical line of the
+  // message opened a command. Through the real `defaultHost`, with nothing
+  // above the cwd to forward to, asserted over every physical line the runner
+  // would read.
+  const { runner } = neverRun();
+  let code = 0;
+  const out = await capturingOut(() =>
+    withEnv({ GITHUB_ACTIONS: "true" }, async () => {
+      code = await main(
+        [["typo", "::stop-commands::forged"].join("\n")],
+        defaultHost,
+        defaultPrompter,
+        undefined,
+        undefined,
+        runner,
+        probeAt([]),
+      );
+    })
+  );
+  assertEquals(code, 1);
+  const lines = out.flatMap((l) => l.split("\n"));
+  assertEquals(lines.some((l) => l.trimStart().startsWith("::")), false);
+  // Neutralised, not filtered: the text is still there to read.
+  assertEquals(
+    lines.some((l) => l.startsWith(ENC + "stop-commands::forged")),
+    true,
+  );
+});
+
+Deno.test("a forwarding failure cannot forge a workflow command on stderr", async () => {
+  // The catch arm is the sharp end: a spawn failure's message is Deno's, and a
+  // refusal names a path from the filesystem — neither is Zuke's text. A
+  // message carrying a newline puts the runner's `::` at the start of a line.
+  const hostile = ["spawn failed", "::stop-commands::forged"].join("\n");
+  let code = 0;
+  const err = await capturingErr(() =>
+    withEnv({ GITHUB_ACTIONS: "true" }, async () => {
+      code = await main(
+        ["ci"],
+        new FakeHost(),
+        defaultPrompter,
+        undefined,
+        undefined,
+        () => Promise.reject(new Error(hostile)),
+        probeAt(["zuke.json", "deno.lock"]),
+      );
+    })
+  );
+  assertEquals(code, 1);
+  const lines = err.flatMap((l) => l.split("\n"));
+  assertEquals(lines.some((l) => l.trimStart().startsWith("::")), false);
+  assertEquals(lines.includes(ENC + "stop-commands::forged"), true);
+
+  // Off a runner the same message is left readable: nothing is parsing it.
+  const local = await capturingErr(() =>
+    withEnv({ GITHUB_ACTIONS: undefined }, async () => {
+      await main(
+        ["ci"],
+        new FakeHost(),
+        defaultPrompter,
+        undefined,
+        undefined,
+        () => Promise.reject(new Error(hostile)),
+        probeAt(["zuke.json", "deno.lock"]),
+      );
+    })
+  );
+  assertEquals(local.join("\n").includes("::stop-commands::forged"), true);
 });
