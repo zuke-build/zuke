@@ -1068,10 +1068,21 @@ class ZukeBuild extends Build {
       // reviewer's rewording pass only maps a fresh id onto a recorded one
       // when the severity did not grow, and each restatement grew it
       // (high to critical, medium to high) without a new path. Same
-      // decision, same rationale.
+      // decision, same rationale. `2ppk9wpe9podo` is the fourth wording of
+      // the first. `picgsdqxfo3` and `3gvbeiyh1t7xn` are the generic
+      // reviewer's two: that the CLI keeps `setup`, `import`, `doc`,
+      // `--help` and `--version` for itself (deliberate — the installed
+      // command's own words cannot change meaning when a `zuke.json`
+      // appears above the cwd — with `zuke -- <target>` as the way through,
+      // and a test pinning it), and that `forwardToBuild` reports a refusal
+      // or a failed spawn as one stderr line and exit 1, which is what
+      // `main` already does for the CLI's own commands. Each was dismissed
+      // by the reviewer after its rebuttal and re-issued under a fresh id
+      // with no new argument.
       // cspell:ignore myee fmcx ownw eav zbigfl oldslqkyj vnfjvb bja rj xp dtit
       // cspell:ignore uhzbksic lk fag hqxu trsbgqqlurzb ilv ls kom amw
-      // cspell:ignore kjblk pw vowr jzpja izcwagpzb kl yht
+      // cspell:ignore kjblk pw vowr jzpja izcwagpzb kl yht podo picgsdqxfo
+      // cspell:ignore gvbeiyh
       .suppress(
         suppressions((s) =>
           s.add(
@@ -1097,6 +1108,9 @@ class ZukeBuild extends Build {
             "1vowr25jzpja6",
             "3izcwagpzb755",
             "3kl4yht0w30c7",
+            "2ppk9wpe9podo",
+            "picgsdqxfo3",
+            "3gvbeiyh1t7xn",
           )
         ),
       )
