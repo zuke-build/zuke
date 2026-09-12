@@ -453,6 +453,14 @@ gemini-extension.json     # Gemini CLI extension manifest (serves skills/)
 - **The shell `$`** tokenises interpolated values into discrete argv entries
   (never a concatenated shell string), so command construction is
   injection-free.
+- **The global `zuke` command forwards to the project's build.** `@zuke/cli`
+  keeps `setup`, `import`, `doc`, `--help` and `--version` for itself and
+  forwards everything else to the nearest `zuke.json` above the working
+  directory, running the `zuke.ts` beside it exactly as `./zuke` would. The
+  walk-up discovery is the accepted design (#578) — it is how npm, Deno and git
+  find their roots — bounded by a trust gate modelled on git's `safe.directory`
+  (`packages/cli/src/dispatch.ts`). Review the gate's implementation; the
+  forwarding itself is not a finding.
 - **Tool wrappers** (`@zuke/deno`, `@zuke/npm`, `@zuke/cmd`) follow a
   settings-lambda style. Settings classes extend `ToolSettings` from
   `@zuke/core/tooling`; `buildArgs()` must stay pure (no I/O) so argv

@@ -972,6 +972,24 @@ class ZukeBuild extends Build {
       // see the changed files whole rather than as bare hunks, and
       // adversarially verify each candidate finding before reporting it.
       .conventionsFile("AGENTS.md")
+      // Accepted design, so the review judges its implementation rather than
+      // restating its existence (which it did five times, under five ids, on
+      // #579 — see the rationale beside those ids below).
+      .criteria(
+        "The global `zuke` command (`@zuke/cli`) forwards every command that " +
+          "is not its own (`setup`, `import`, `doc`, `--help`, `--version`) " +
+          "to the nearest `zuke.json` above the working directory and runs " +
+          "the `zuke.ts` beside it with `deno run -A`, exactly as the " +
+          "`./zuke` launcher does. That walk-up discovery is the accepted " +
+          "design (#578): it is how npm, Deno and git find `package.json`, " +
+          "`deno.json` and `.git`, and it is gated like git's " +
+          "`safe.directory` — the root, the build files in it and every " +
+          "ancestor config Deno would read must belong to the caller and the " +
+          "root must not be world-writable. Do not report the forwarding, " +
+          "the ancestor walk, the `-A` run of the caller's own build, or the " +
+          "absence of an opt-in flag as findings; review the gate's " +
+          "implementation for concrete bypasses instead.",
+      )
       .fileContext()
       .verify()
       // Engage with the PR thread: a maintainer contests a finding by replying
@@ -1078,7 +1096,11 @@ class ZukeBuild extends Build {
       // or a failed spawn as one stderr line and exit 1, which is what
       // `main` already does for the CLI's own commands. Each was dismissed
       // by the reviewer after its rebuttal and re-issued under a fresh id
-      // with no new argument.
+      // with no new argument. `3hq0fvf31l0z2` is the fifth wording of the
+      // first ("the previous finding remains in substance", it opens), and
+      // the reason the accepted design is now stated in the reviewer's
+      // criteria above: a suppressed finding leaves the review's state, so
+      // its next rewording can never be matched back to it.
       // cspell:ignore myee fmcx ownw eav zbigfl oldslqkyj vnfjvb bja rj xp dtit
       // cspell:ignore uhzbksic lk fag hqxu trsbgqqlurzb ilv ls kom amw
       // cspell:ignore kjblk pw vowr jzpja izcwagpzb kl yht podo picgsdqxfo
@@ -1111,6 +1133,7 @@ class ZukeBuild extends Build {
             "2ppk9wpe9podo",
             "picgsdqxfo3",
             "3gvbeiyh1t7xn",
+            "3hq0fvf31l0z2",
           )
         ),
       )
