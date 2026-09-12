@@ -18,6 +18,7 @@ import { assertEquals, assertStringIncludes } from "./_assert.ts";
 import { escapeLineIf } from "../src/render.ts";
 import { printJson } from "../src/reporter.ts";
 import { withEnv } from "./_env.ts";
+import { consoleWriters, ENC } from "./_escaping.ts";
 import {
   escapingReporter,
   type Reporter,
@@ -29,14 +30,6 @@ import { execute } from "../src/executor.ts";
 import type { Plugin } from "../src/plugin.ts";
 
 const NL = String.fromCharCode(10);
-
-/**
- * The percent-encoded `::`, kept as its own constant so the encoded prefix
- * never fuses with the word after it into a token no dictionary can know: the
- * spell gate reads the encoding and the word that follows it as one. The same
- * reason `report_test.ts` splits its literal.
- */
-const ENC = "%3A%3A";
 
 /** A reporter that records every line, so a test can inspect the stream. */
 function capture(): { reporter: Reporter; info: string[]; error: string[] } {
@@ -198,51 +191,13 @@ Deno.test("silentReporter stays silent once wrapped", () => {
   escapingReporter(silentReporter).info("::error::x");
 });
 
-/**
- * Every `.ts` file under `root` (recursively) that calls the console directly,
- * as paths relative to `root`, skipping the ones in `allowed`. Comments are
- * stripped first: a JSDoc example showing a plugin author how to write one is
- * documentation, not a write. Keyed by path from `root`, not by file name: a
- * nested module sharing a basename with an allowed one would otherwise be
- * exempt by accident.
- */
-async function consoleWriters(
-  root: URL,
-  allowed: ReadonlySet<string>,
-): Promise<string[]> {
-  const offenders: string[] = [];
-  const walk = async (dir: URL): Promise<void> => {
-    for await (const entry of Deno.readDir(dir)) {
-      const child = new URL(entry.name + (entry.isDirectory ? "/" : ""), dir);
-      if (entry.isDirectory) {
-        await walk(child);
-        continue;
-      }
-      const relative = child.href.slice(root.href.length);
-      if (!entry.name.endsWith(".ts") || allowed.has(relative)) continue;
-      const code = (await Deno.readTextFile(child))
-        .replace(/\/\*[\s\S]*?\*\//g, "")
-        .replace(/\/\/[^\n]*/g, "");
-      if (/\bconsole\.(log|error|warn|info|debug)\s*\(/.test(code)) {
-        offenders.push(relative);
-      }
-    }
-  };
-  await walk(root);
-  return offenders;
-}
-
 Deno.test("no module writes to the console except the sink itself", async () => {
   // Two of the modules routed through `cliReporter` had no test at all, and
   // reverting either to a bare console call left the whole suite green — the
   // shape of a guard that quietly comes undone.
   //
   // Scanned over the whole source tree rather than a list of modules, because a
-  // list only covers what someone remembered to add: the regression this is
-  // guarding against is a *new* write appearing somewhere it was not expected.
-  // What is promised is not that one message is escaped but that nothing
-  // reaches the console except through the sink, and that is a property of the
-  // tree, not of any one behaviour a test could trigger.
+  // list only covers what someone remembered to add — see `consoleWriters`.
   const allowed = new Set([
     // The sink itself, the one place allowed to reach the real console.
     "reporter.ts",
@@ -260,35 +215,6 @@ Deno.test("no module writes to the console except the sink itself", async () => 
     offenders,
     [],
     `these write to the console directly; use cliReporter or printJson: ${
-      offenders.join(", ")
-    }`,
-  );
-});
-
-Deno.test("no module of @zuke/cli writes to the console except its sink", async () => {
-  // The second command surface, and the binary users actually run: `zuke`
-  // echoes its arguments (an unknown command, a `--dir`, a `--from`), paths and
-  // error messages, and did so through a bare `console.log` in its host —
-  // `Unknown command: ::stop-commands::x` on a runner was a command. The
-  // package's writes now all go through `src/output.ts`, and this is what
-  // keeps it that way: a new direct write anywhere in the package fails here
-  // rather than being noticed later. Scanned as source, so no dependency on
-  // the package is introduced.
-  const allowed = new Set([
-    // The sink itself.
-    "src/output.ts",
-    // The scaffolded starter build, inside a template literal: its
-    // `console.log` runs in the user's project, not in this process.
-    "src/starter.ts",
-  ]);
-  const root = new URL("../../cli/", import.meta.url);
-  const offenders = (await consoleWriters(root, allowed))
-    // The package's tests capture the console on purpose.
-    .filter((path) => !path.startsWith("tests/"));
-  assertEquals(
-    offenders,
-    [],
-    `these write to the console directly; use the sink in src/output.ts: ${
       offenders.join(", ")
     }`,
   );

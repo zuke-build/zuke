@@ -10,42 +10,20 @@
 
 import { assertEquals } from "../../core/tests/_assert.ts";
 import { withEnv } from "../../core/tests/_env.ts";
+import { capture } from "../../core/tests/_console.ts";
+import { consoleWriters, ENC } from "../../core/tests/_escaping.ts";
 import { output } from "../src/output.ts";
 
-/**
- * The percent-encoded `::`, kept as its own constant so the encoded prefix
- * never fuses with the word after it into a token no dictionary can know.
- */
-const ENC = "%3A%3A";
-
-/** Run `fn` with both console streams captured, returning what was written. */
-async function captured(
-  fn: () => void | Promise<void>,
-): Promise<{ out: string[]; err: string[] }> {
-  const out: string[] = [];
-  const err: string[] = [];
-  const log = console.log;
-  const error = console.error;
-  console.log = (...parts: unknown[]) => void out.push(parts.join(" "));
-  console.error = (...parts: unknown[]) => void err.push(parts.join(" "));
-  try {
-    await fn();
-  } finally {
-    console.log = log;
-    console.error = error;
-  }
-  return { out, err };
-}
-
 Deno.test("output neutralises a workflow command on an Actions runner, on both streams", async () => {
-  const { out, err } = await captured(() =>
-    withEnv({ GITHUB_ACTIONS: "true" }, () => {
+  const { out, err } = await capture(async () => {
+    await withEnv({ GITHUB_ACTIONS: "true" }, () => {
       output.info("::stop-commands::forged");
       output.info("   ::error::forged annotation");
       output.error("held by ##[group]x");
       output.error("Unknown command: ::stop-commands::forged");
-    })
-  );
+    });
+    return 0;
+  });
   assertEquals(out, [
     ENC + "stop-commands::forged",
     "   " + ENC + "error::forged annotation",
@@ -60,12 +38,13 @@ Deno.test("output neutralises a workflow command on an Actions runner, on both s
 Deno.test("output leaves every line alone off a runner", async () => {
   // Explicitly unset: the suite itself runs under Actions, where the variable
   // is inherited and the sink would otherwise escape for the wrong reason.
-  const { out, err } = await captured(() =>
-    withEnv({ GITHUB_ACTIONS: undefined }, () => {
+  const { out, err } = await capture(async () => {
+    await withEnv({ GITHUB_ACTIONS: undefined }, () => {
       output.info("::stop-commands::forged");
       output.error("held by ##[group]x");
-    })
-  );
+    });
+    return 0;
+  });
   assertEquals(out, ["::stop-commands::forged"]);
   assertEquals(err, ["held by ##[group]x"]);
 });
@@ -73,13 +52,42 @@ Deno.test("output leaves every line alone off a runner", async () => {
 Deno.test("output decides per line, not once at import", async () => {
   // The module was loaded before this test set the environment; a decision
   // captured at import time would escape neither line, or both.
-  const { out } = await captured(async () => {
+  const { out } = await capture(async () => {
     await withEnv({ GITHUB_ACTIONS: undefined }, () => {
       output.info("::group::one");
     });
     await withEnv({ GITHUB_ACTIONS: "true" }, () => {
       output.info("::group::two");
     });
+    return 0;
   });
   assertEquals(out, ["::group::one", ENC + "group::two"]);
+});
+
+Deno.test("no module of @zuke/cli writes to the console except its sink", async () => {
+  // The bug behind #575 was a bare `console.log` in the package's host, and
+  // reverting the sink to one leaves every behavioural test above green only
+  // as long as its inputs happen to reach that write. This holds the property
+  // itself: a new direct write anywhere in the package fails here rather than
+  // being noticed on a runner later. The package root, not `src/` alone,
+  // because `mod.ts` lives there; the tests are scanned with it, and they
+  // capture the console by assignment rather than writing to it.
+  const allowed = new Set([
+    // The sink itself.
+    "src/output.ts",
+    // The scaffolded starter build, inside a template literal: its
+    // `console.log` runs in the user's project, not in this process.
+    "src/starter.ts",
+  ]);
+  const offenders = await consoleWriters(
+    new URL("../", import.meta.url),
+    allowed,
+  );
+  assertEquals(
+    offenders,
+    [],
+    `these write to the console directly; use the sink in src/output.ts: ${
+      offenders.join(", ")
+    }`,
+  );
 });
