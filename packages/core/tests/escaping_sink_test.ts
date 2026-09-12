@@ -15,6 +15,8 @@
  */
 
 import { assertEquals, assertStringIncludes } from "./_assert.ts";
+import { cliReporter } from "../mod.ts";
+import { capture as captureConsole } from "./_console.ts";
 import { escapeLineIf } from "../src/render.ts";
 import { printJson } from "../src/reporter.ts";
 import { withEnv } from "./_env.ts";
@@ -184,6 +186,26 @@ Deno.test("a fan-out item key cannot forge a command through the count line", as
     true,
   );
   assertEquals(lines.some((l) => l.startsWith("::stop-commands::")), false);
+});
+
+Deno.test("cliReporter is public, and neutralises each line only on a runner", async () => {
+  // Imported from `mod.ts`, so this pins the export a companion command
+  // surface (`@zuke/cli`) writes through rather than composing a copy. The
+  // decision is per line: the environment changes between the two writes on
+  // each stream, after the module has long been loaded.
+  const { out, err } = await captureConsole(async () => {
+    await withEnv({ GITHUB_ACTIONS: "true" }, () => {
+      cliReporter.info("::stop-commands::forged");
+      cliReporter.error("held by ##[group]x");
+    });
+    await withEnv({ GITHUB_ACTIONS: undefined }, () => {
+      cliReporter.info("::stop-commands::forged");
+      cliReporter.error("held by ##[group]x");
+    });
+    return 0;
+  });
+  assertEquals(out, [ENC + "stop-commands::forged", "::stop-commands::forged"]);
+  assertEquals(err, ["held by %23%23[group]x", "held by ##[group]x"]);
 });
 
 Deno.test("silentReporter stays silent once wrapped", () => {

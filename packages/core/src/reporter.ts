@@ -88,6 +88,14 @@ export function escapingReporter(inner: Reporter): Reporter {
  * The decision is made per line, not once when this module loads. A top-level
  * constant would read the environment at import time, before an embedder or a
  * test has set it, and the escaping would then silently not apply.
+ *
+ * Public so a companion command surface — `@zuke/cli` is one — can write
+ * through the same sink instead of composing a copy of it. It is the sink for
+ * a command's own diagnostics and output, **not** the `reporter` handed to
+ * {@link execute}: the run's renderer writes `::group::` and `::endgroup::` of
+ * its own and wraps only third-party text in {@link escapingReporter} beside
+ * them, and a sink that neutralises every leading `::` would break that
+ * grouping.
  */
 export const cliReporter: Reporter = {
   info: (line) => console.log(escapeLineIf(onActionsRunner(), line)),

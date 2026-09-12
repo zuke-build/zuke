@@ -895,6 +895,34 @@ const ZUKE_ACTION: "zuke-build/zuke"
   The name a {@link CiPinResolver} is asked for the prelude action, so a
   repository that pins its own actions can pin this one the same way.
 
+const cliReporter: Reporter
+  The sink every command-surface module writes through, neutralised for a
+  GitHub Actions runner.
+
+  These commands echo arguments the invoker chose — a run id, a target name, a
+  force reason — and read values another process wrote into the shared state
+  store. Under Actions those commonly come from a workflow-dispatch input or an
+  issue body rather than from a person at a terminal, and a thrown message
+  quotes them straight back.
+
+  A sink rather than a guard at each of the sixty-odd writes, because none of
+  them should be exempt: unlike the run's reporter, none of these modules emits
+  a workflow command of its own, so there is no half to carve out. The MCP
+  command writes only diagnostics here — its protocol never goes through the
+  console — so escaping cannot corrupt it.
+
+  The decision is made per line, not once when this module loads. A top-level
+  constant would read the environment at import time, before an embedder or a
+  test has set it, and the escaping would then silently not apply.
+
+  Public so a companion command surface — `@zuke/cli` is one — can write
+  through the same sink instead of composing a copy of it. It is the sink for
+  a command's own diagnostics and output, not the `reporter` handed to
+  {@link execute}: the run's renderer writes `::group::` and `::endgroup::` of
+  its own and wraps only third-party text in {@link escapingReporter} beside
+  them, and a sink that neutralises every leading `::` would break that
+  grouping.
+
 const defaultRenderer: Renderer
   The built-in renderer: Zuke's ruled headers and summary table.
 

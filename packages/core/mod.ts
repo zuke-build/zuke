@@ -103,6 +103,7 @@ export {
   type Reporter,
   type ResumeState,
 } from "./src/executor.ts";
+export { cliReporter } from "./src/reporter.ts";
 export {
   AlreadyResumedError,
   resumeCheck,
