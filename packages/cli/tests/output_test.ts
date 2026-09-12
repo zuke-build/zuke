@@ -69,9 +69,10 @@ Deno.test("no module of @zuke/cli writes to the console except its sink", async 
   // reverting the sink to one leaves every behavioural test above green only
   // as long as its inputs happen to reach that write. This holds the property
   // itself: a new direct write anywhere in the package fails here rather than
-  // being noticed on a runner later. The package root, not `src/` alone,
-  // because `mod.ts` lives there; the tests are scanned with it, and they
-  // capture the console by assignment rather than writing to it.
+  // being noticed on a runner later. Scanned from the package root, because
+  // `mod.ts` lives there, and narrowed to what the package publishes:
+  // `deno.json` keeps `tests/` out of it, and a test printing a diagnostic is
+  // not a write the sink was meant to own.
   const allowed = new Set([
     // The sink itself.
     "src/output.ts",
@@ -79,10 +80,10 @@ Deno.test("no module of @zuke/cli writes to the console except its sink", async 
     // `console.log` runs in the user's project, not in this process.
     "src/starter.ts",
   ]);
-  const offenders = await consoleWriters(
+  const offenders = (await consoleWriters(
     new URL("../", import.meta.url),
     allowed,
-  );
+  )).filter((path) => !path.startsWith("tests/"));
   assertEquals(
     offenders,
     [],
