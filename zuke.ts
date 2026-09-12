@@ -1063,9 +1063,15 @@ class ZukeBuild extends Build {
       // map) is closed. What the findings ask for — a build root that must be
       // the working directory — is `./zuke`, which stays the launcher.
       // Accepted by the maintainer on the PR as the design, not a defect.
+      // `3izcwagpzb755` and `3kl4yht0w30c7` are the same two findings issued
+      // again under fresh ids once the first pair was suppressed: the
+      // reviewer's rewording pass only maps a fresh id onto a recorded one
+      // when the severity did not grow, and each restatement grew it
+      // (high to critical, medium to high) without a new path. Same
+      // decision, same rationale.
       // cspell:ignore myee fmcx ownw eav zbigfl oldslqkyj vnfjvb bja rj xp dtit
       // cspell:ignore uhzbksic lk fag hqxu trsbgqqlurzb ilv ls kom amw
-      // cspell:ignore kjblk pw vowr jzpja
+      // cspell:ignore kjblk pw vowr jzpja izcwagpzb kl yht
       .suppress(
         suppressions((s) =>
           s.add(
@@ -1089,6 +1095,8 @@ class ZukeBuild extends Build {
             "3u5kom8amw7hi",
             "3kjblk57s60pw",
             "1vowr25jzpja6",
+            "3izcwagpzb755",
+            "3kl4yht0w30c7",
           )
         ),
       )
