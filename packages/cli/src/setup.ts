@@ -19,41 +19,11 @@ import {
 import { isRecord } from "./records.ts";
 import { launcherBash, launcherPwsh } from "./launcher.ts";
 import { exists, lstatOrNull } from "./fs.ts";
+import { output } from "./output.ts";
+import { starterBuild, starterConfig } from "./starter.ts";
 
 // Re-exported so the merge guard keeps its historical home for importers.
 export { isRecord };
-
-/** The starter `zuke.ts`, with the build class named `name`. */
-export function starterBuild(name: string): string {
-  return `import { Build, run, target } from "jsr:@zuke/core@^1";
-
-/** Your project's build. Run a target with \`./zuke <target>\`. */
-class ${name} extends Build {
-  hello = target()
-    .description("A sample target — replace me with real work")
-    .executes(() => {
-      console.log("Hello from Zuke!");
-    });
-
-  // Convention: \`default\` runs when no target is named.
-  default = target()
-    .description("Default target")
-    .dependsOn(this.hello)
-    .executes(() => {});
-}
-
-await run(${name});
-`;
-}
-
-/**
- * The starter `zuke.json` config. Its presence at the repository root is what
- * `@zuke/core`'s `repoRoot()` walks up to find; the recorded `name` is the
- * build class for reference.
- */
-export function starterConfig(name: string): string {
-  return `${JSON.stringify({ name }, null, 2)}\n`;
-}
 
 /**
  * The task names `setup` writes into `deno.json`, with their commands.
@@ -189,7 +159,7 @@ export const defaultHost: SetupHost = {
     return Deno.chmod(path, mode);
   },
   log(message: string): void {
-    console.log(message);
+    output.info(message);
   },
 };
 

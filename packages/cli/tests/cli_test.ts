@@ -13,6 +13,10 @@ import { VERSION } from "../src/version.ts";
 import { DENO_PIN } from "../src/deno_pin.ts";
 import { FakeHost, FakePrompter, FakeStarActions } from "./_fakes.ts";
 import { withTemp } from "../../core/tests/_temp.ts";
+import { withEnv } from "../../core/tests/_env.ts";
+import { capture } from "../../core/tests/_console.ts";
+import { ENC } from "../../core/tests/_escaping.ts";
+import { defaultHost } from "../src/setup.ts";
 import { ConsoleTasks, ZUKE_LOGO } from "@zuke/console";
 import { absolutePath } from "@zuke/core";
 
@@ -311,6 +315,41 @@ Deno.test("main doc runs a real `deno doc` via the default runner (end-to-end)",
   });
 });
 
+Deno.test("main doc relays the real runner's output through the sink, escaped on a runner", async () => {
+  // `deno doc` repeats a `--filter` it cannot find on stderr. Inherited, that
+  // line reached an Actions runner raw; relayed through the sink, the legacy
+  // marker in it is neutralised. Off a runner the same line is left as the
+  // child wrote it.
+  await withTemp(async (dir) => {
+    const fixture = `${dir}/doc_fixture.ts`;
+    await Deno.writeTextFile(
+      fixture,
+      '/** A documented greeting. */\nexport const hello = "hi";\n',
+    );
+    const filter = "##[add-mask]forged";
+    const onRunner = await capture(async () => {
+      let exit = 0;
+      await withEnv({ GITHUB_ACTIONS: "true" }, async () => {
+        exit = await main(["doc", fixture, "--filter", filter], new FakeHost());
+      });
+      return exit;
+    });
+    assertEquals(onRunner.code === 0, false);
+    const wire = onRunner.err.join("\n");
+    assertEquals(wire.includes("##["), false);
+    assertEquals(wire.includes("%23%23[add-mask]forged"), true);
+
+    const local = await capture(async () => {
+      let exit = 0;
+      await withEnv({ GITHUB_ACTIONS: undefined }, async () => {
+        exit = await main(["doc", fixture, "--filter", filter], new FakeHost());
+      });
+      return exit;
+    });
+    assertEquals(local.err.join("\n").includes(filter), true);
+  });
+});
+
 Deno.test("main doc propagates a non-zero exit from the real runner", async () => {
   const host = new FakeHost();
   // A missing file → `deno doc` exits non-zero. No injected runner, so the real
@@ -485,6 +524,9 @@ Deno.test("defaultPrompter wraps prompt/confirm", () => {
   try {
     globalThis.prompt = () => "typed";
     assertEquals(defaultPrompter.ask("q", "fallback"), "typed");
+    // An empty answer and an end of input both mean "the default".
+    globalThis.prompt = () => "";
+    assertEquals(defaultPrompter.ask("q", "fallback"), "fallback");
     globalThis.prompt = () => null;
     assertEquals(defaultPrompter.ask("q", "fallback"), "fallback");
     globalThis.confirm = () => true;
@@ -493,6 +535,37 @@ Deno.test("defaultPrompter wraps prompt/confirm", () => {
     globalThis.prompt = realPrompt;
     globalThis.confirm = realConfirm;
   }
+});
+
+Deno.test("defaultPrompter shows the default in the question, neutralised on a runner", async () => {
+  // `prompt` writes to the terminal past the package's sink, and the default
+  // it shows is `--name` from the command line. It is shown in the question
+  // rather than prefilled, escaped like every other line, and the value the
+  // caller gets back is still exactly what was typed.
+  const realPrompt = globalThis.prompt;
+  const shown: string[] = [];
+  try {
+    globalThis.prompt = (message?: string) => {
+      shown.push(message ?? "");
+      return "";
+    };
+    await withEnv({ GITHUB_ACTIONS: "true" }, () => {
+      assertEquals(
+        defaultPrompter.ask("Build class name", "::stop-commands::forged"),
+        "::stop-commands::forged",
+      );
+    });
+    await withEnv({ GITHUB_ACTIONS: undefined }, () => {
+      defaultPrompter.ask("Build class name", "Acme");
+    });
+  } finally {
+    globalThis.prompt = realPrompt;
+  }
+  assertEquals(shown, [
+    "Build class name [::stop-commands::forged]",
+    "Build class name [Acme]",
+  ]);
+  assertEquals(shown[0].includes(ENC), false); // no line opens with `::`
 });
 
 /** The path of `name` at the real cwd, where `main` starts its walk. */
@@ -815,4 +888,78 @@ Deno.test("main refuses to forward into a build owned by another user", async ()
   assertEquals(host.logs, []);
   assertEquals(err.length, 1);
   assertEquals(err[0].includes("refusing to run the build at"), true);
+});
+
+Deno.test("an unknown command cannot forge a workflow command through the real host", async () => {
+  // The bug: `Unknown command: <argv>` went out through a bare `console.log`.
+  // The runner acts on a line whose first non-blank characters are `::`, and
+  // an argument can carry a newline, so the second physical line of the
+  // message opened a command. Through the real `defaultHost`, with nothing
+  // above the cwd to forward to, asserted over every physical line the runner
+  // would read.
+  const { runner } = neverRun();
+  const { code, out } = await capture(async () => {
+    let exit = 0;
+    await withEnv({ GITHUB_ACTIONS: "true" }, async () => {
+      exit = await main(
+        [["typo", "::stop-commands::forged"].join("\n")],
+        defaultHost,
+        defaultPrompter,
+        undefined,
+        undefined,
+        runner,
+        probeAt([]),
+      );
+    });
+    return exit;
+  });
+  assertEquals(code, 1);
+  const lines = out.flatMap((l) => l.split("\n"));
+  assertEquals(lines.some((l) => l.trimStart().startsWith("::")), false);
+  // Neutralised, not filtered: the text is still there to read.
+  assertEquals(
+    lines.some((l) => l.startsWith(ENC + "stop-commands::forged")),
+    true,
+  );
+});
+
+Deno.test("a forwarding failure cannot forge a workflow command on stderr", async () => {
+  // The catch arm is the sharp end: a spawn failure's message is Deno's, and a
+  // refusal names a path from the filesystem — neither is Zuke's text. A
+  // message carrying a newline puts the runner's `::` at the start of a line.
+  const hostile = ["spawn failed", "::stop-commands::forged"].join("\n");
+  let code = 0;
+  const err = await capturingErr(() =>
+    withEnv({ GITHUB_ACTIONS: "true" }, async () => {
+      code = await main(
+        ["ci"],
+        new FakeHost(),
+        defaultPrompter,
+        undefined,
+        undefined,
+        () => Promise.reject(new Error(hostile)),
+        probeAt(["zuke.json", "deno.lock"]),
+      );
+    })
+  );
+  assertEquals(code, 1);
+  const lines = err.flatMap((l) => l.split("\n"));
+  assertEquals(lines.some((l) => l.trimStart().startsWith("::")), false);
+  assertEquals(lines.includes(ENC + "stop-commands::forged"), true);
+
+  // Off a runner the same message is left readable: nothing is parsing it.
+  const local = await capturingErr(() =>
+    withEnv({ GITHUB_ACTIONS: undefined }, async () => {
+      await main(
+        ["ci"],
+        new FakeHost(),
+        defaultPrompter,
+        undefined,
+        undefined,
+        () => Promise.reject(new Error(hostile)),
+        probeAt(["zuke.json", "deno.lock"]),
+      );
+    })
+  );
+  assertEquals(local.join("\n").includes("::stop-commands::forged"), true);
 });

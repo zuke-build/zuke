@@ -42,6 +42,7 @@ import {
   runningNotice,
 } from "./src/dispatch.ts";
 import { absolutePath } from "@zuke/core";
+import { neutralise, output } from "./src/output.ts";
 
 export type { SetupHost } from "./src/setup.ts";
 export type { ImportSource } from "./src/import.ts";
@@ -71,8 +72,13 @@ export const defaultPrompter: Prompter = {
     return Deno.stdin.isTerminal();
   },
   ask(question: string, fallback: string): string {
-    const answer = prompt(question, fallback);
-    return answer ?? fallback;
+    // The default is shown in the question rather than prefilled: `prompt`
+    // writes its text to the terminal itself, past the package's sink, and the
+    // default is what the user typed on the command line (`--name`). Shown
+    // neutralised, so the line cannot open a workflow command on a runner;
+    // the value itself stays what was typed.
+    const answer = prompt(neutralise(`${question} [${fallback}]`));
+    return answer === null || answer === "" ? fallback : answer;
   },
   confirm(question: string): boolean {
     return confirm(question);
@@ -365,19 +371,33 @@ async function commandImport(
  */
 export type DocRunner = (denoArgs: string[]) => Promise<number>;
 
-/** The default {@link DocRunner}: spawn `deno doc …` in an isolated temp dir. */
+/**
+ * The default {@link DocRunner}: spawn `deno doc …` in an isolated temp dir,
+ * relaying what it printed through the package's sink. The child's output is
+ * not inherited: it repeats the arguments the user passed (`deno doc` names a
+ * `--filter` it could not find) and prints a third-party package's own text,
+ * neither of which may reach an Actions runner raw.
+ */
 const defaultDocRunner: DocRunner = async (denoArgs) => {
   // Run from a throwaway directory so the surrounding repo's deno.json /
   // node_modules / tsconfig don't drag @types/node resolution noise into the
   // output — the whole point of `zuke doc` inside a Node project.
   const cwd = await Deno.makeTempDir({ prefix: "zuke-doc-" });
   try {
-    const { code } = await new Deno.Command(Deno.execPath(), {
+    const { code, stdout, stderr } = await new Deno.Command(Deno.execPath(), {
       args: denoArgs,
       cwd,
-      stdout: "inherit",
-      stderr: "inherit",
+      stdout: "piped",
+      stderr: "piped",
     }).output();
+    const relay = (bytes: Uint8Array, write: (line: string) => void) => {
+      const text = new TextDecoder().decode(bytes);
+      // The console adds the line's own newline; keep the text otherwise as
+      // the child wrote it, blank lines included.
+      if (text !== "") write(text.endsWith("\n") ? text.slice(0, -1) : text);
+    };
+    relay(stdout, output.info);
+    relay(stderr, output.error);
     return code;
   } finally {
     await Deno.remove(cwd, { recursive: true });
@@ -435,9 +455,11 @@ async function forwardToBuild(
   probe: BuildProbe,
   runner: BuildRunner,
 ): Promise<number | null> {
-  // Plain stderr writes, not `ConsoleTasks`: `ZUKE_LOG_LEVEL` is a knob for
-  // the build's output, and neither a security refusal nor the launchers'
-  // unverified-lockfile notice may be silenced by it.
+  // The CLI's own stderr sink, not `ConsoleTasks`: `ZUKE_LOG_LEVEL` is a knob
+  // for the build's output, and neither a security refusal nor the launchers'
+  // unverified-lockfile notice may be silenced by it. The sink neutralises the
+  // line on an Actions runner — the root and the error message below carry
+  // text from the filesystem and from a failed spawn, not from Zuke.
   try {
     const cwd = Deno.cwd();
     const location = await locateBuild(cwd, probe);
@@ -445,12 +467,12 @@ async function forwardToBuild(
     // Discovery ran something the caller never named: say which, unless it
     // is the build right here, where `./zuke` would have been the same act.
     if (location.root !== absolutePath(cwd).path) {
-      console.error(runningNotice(location.root));
+      output.error(runningNotice(location.root));
     }
-    if (!location.frozen) console.error(NO_LOCK_NOTICE);
+    if (!location.frozen) output.error(NO_LOCK_NOTICE);
     return await runner(location.root, buildRunArgs(location, args));
   } catch (error) {
-    console.error(error instanceof Error ? error.message : String(error));
+    output.error(error instanceof Error ? error.message : String(error));
     return 1;
   }
 }

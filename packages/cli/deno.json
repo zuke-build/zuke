@@ -8,7 +8,7 @@
   },
   "imports": {
     "@zuke/console": "jsr:@zuke/console@^1.1.0",
-    "@zuke/core": "jsr:@zuke/core@^1.40.0",
+    "@zuke/core": "jsr:@zuke/core@^1.53.0",
     "@zuke/gh": "jsr:@zuke/gh@^1.6.0"
   },
   "publish": {

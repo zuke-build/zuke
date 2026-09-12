@@ -11,10 +11,9 @@ import {
   isRecord,
   mergeDenoJson,
   runSetup,
-  starterBuild,
-  starterConfig,
   zukeTaskState,
 } from "../src/setup.ts";
+import { starterBuild, starterConfig } from "../src/starter.ts";
 import { FakeHost } from "./_fakes.ts";
 import { withTemp } from "../../core/tests/_temp.ts";
 
