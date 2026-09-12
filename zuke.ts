@@ -1050,8 +1050,22 @@ class ZukeBuild extends Build {
       // build-authored one from an untrusted one, so the check would be a
       // boundary in appearance only (guideline 10). The trust boundary is now
       // stated in the task's JSDoc instead.
+      // `3kjblk57s60pw` and `1vowr25jzpja6` are the global CLI's forwarding
+      // (#578) restated as findings: "arbitrary commands into a discovered
+      // build" and "discovery can reach a parent project". Nearest-marker
+      // discovery is how npm, Deno and git themselves find `package.json`,
+      // `deno.json` and `.git` from any subdirectory, and the forwarding is
+      // bounded by a trust gate git's `safe.directory` does not exceed: the
+      // root, the build files in it and every discoverable ancestor config
+      // must belong to the caller, and a root above the working directory is
+      // announced on stderr. Three independent adversarial reviewers found no
+      // path past it, and the one they did find (a planted ancestor import
+      // map) is closed. What the findings ask for — a build root that must be
+      // the working directory — is `./zuke`, which stays the launcher.
+      // Accepted by the maintainer on the PR as the design, not a defect.
       // cspell:ignore myee fmcx ownw eav zbigfl oldslqkyj vnfjvb bja rj xp dtit
       // cspell:ignore uhzbksic lk fag hqxu trsbgqqlurzb ilv ls kom amw
+      // cspell:ignore kjblk pw vowr jzpja
       .suppress(
         suppressions((s) =>
           s.add(
@@ -1073,6 +1087,8 @@ class ZukeBuild extends Build {
             "3u2ilv23j9jb2",
             "7p24ls729f3e",
             "3u5kom8amw7hi",
+            "3kjblk57s60pw",
+            "1vowr25jzpja6",
           )
         ),
       )
