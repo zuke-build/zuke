@@ -12,7 +12,8 @@ import { assertEquals } from "../../core/tests/_assert.ts";
 import { withEnv } from "../../core/tests/_env.ts";
 import { capture } from "../../core/tests/_console.ts";
 import { consoleWriters, ENC } from "../../core/tests/_escaping.ts";
-import { output } from "../src/output.ts";
+import { neutralise, output } from "../src/output.ts";
+import { cliReporter } from "@zuke/core";
 
 Deno.test("output neutralises a workflow command on an Actions runner, on both streams", async () => {
   const { out, err } = await capture(async () => {
@@ -33,6 +34,26 @@ Deno.test("output neutralises a workflow command on an Actions runner, on both s
     "held by %23%23[group]x",
     "Unknown command: ::stop-commands::forged",
   ]);
+});
+
+Deno.test("output is core's own sink, and neutralise makes the same decision", async () => {
+  // The escaping has one implementation: the sink is `cliReporter` itself,
+  // not a composition that could drift from it, and the prompt's step agrees
+  // with it line for line in both environments.
+  assertEquals(output === cliReporter, true);
+  await withEnv({ GITHUB_ACTIONS: "true" }, () => {
+    assertEquals(
+      neutralise("::stop-commands::forged"),
+      ENC + "stop-commands::forged",
+    );
+    assertEquals(neutralise("held by ##[group]x"), "held by %23%23[group]x");
+  });
+  await withEnv({ GITHUB_ACTIONS: undefined }, () => {
+    assertEquals(
+      neutralise("::stop-commands::forged"),
+      "::stop-commands::forged",
+    );
+  });
 });
 
 Deno.test("output leaves every line alone off a runner", async () => {
