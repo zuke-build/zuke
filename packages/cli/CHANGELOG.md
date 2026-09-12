@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.5.0](https://github.com/zuke-build/zuke/compare/cli-v1.4.0...cli-v1.5.0) (2026-09-12)
+
+
+### Features
+
+* **cli:** forward build commands to zuke.ts from global CLI ([#579](https://github.com/zuke-build/zuke/issues/579)) ([f4eb6b9](https://github.com/zuke-build/zuke/commit/f4eb6b9c31d9d5e450059206261be2c7c48389ec))
+
+
+### Bug Fixes
+
+* **cli:** route every console write through an escaping sink ([#582](https://github.com/zuke-build/zuke/issues/582)) ([245a3af](https://github.com/zuke-build/zuke/commit/245a3aff2b643f2cbb26a13761f85bef3ef5fbfd))
+
 ## [1.4.0](https://github.com/zuke-build/zuke/compare/cli-v1.3.0...cli-v1.4.0) (2026-09-10)
 
 

@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.54.0](https://github.com/zuke-build/zuke/compare/core-v1.53.0...core-v1.54.0) (2026-09-12)
+
+
+### Features
+
+* **core:** export cliReporter, the console sink for a command surface ([#584](https://github.com/zuke-build/zuke/issues/584)) ([ef673f1](https://github.com/zuke-build/zuke/commit/ef673f11359144ebf5ddae6cd1fea1123b8b0d68))
+
+
+### Bug Fixes
+
+* **cli:** route every console write through an escaping sink ([#582](https://github.com/zuke-build/zuke/issues/582)) ([245a3af](https://github.com/zuke-build/zuke/commit/245a3aff2b643f2cbb26a13761f85bef3ef5fbfd))
+
 ## [1.53.0](https://github.com/zuke-build/zuke/compare/core-v1.52.0...core-v1.53.0) (2026-09-11)
 
 
