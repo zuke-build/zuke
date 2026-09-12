@@ -109,6 +109,23 @@ finish replacing any remaining generated `CmdTasks.exec` calls with typed
 ./zuke <target> --dry-run   # print the plan without executing
 ```
 
+With the global CLI installed, the bare `zuke` works from anywhere inside the
+project: `zuke <target>`, `zuke --list`, `zuke graph`, `zuke mcp`, bare `zuke`
+for the default target — every command that is not the CLI's own (`setup`,
+`import`, `doc`, `--help`, `--version`) is forwarded to the nearest `zuke.ts`;
+`zuke -- --help` is the build's own usage, and `zuke -- <target>` reaches a
+target that shares one of those names.
+It walks up to the `zuke.json` that marks the repository root and runs
+`deno run -A zuke.ts <args>` from there, with `--frozen` once a `deno.lock`
+exists — the launcher's exact behaviour, minus the Deno bootstrap. Outside a
+project, `zuke <target>` reports the unknown command and the missing
+`zuke.json`, and a bare `zuke` prints the usage. The forwarding refuses a project whose root directory is owned by
+another user or is world-writable, and one where an ancestor `deno.json`,
+`deno.jsonc` or `package.json` Deno would read is owned by another user (the
+`safe.directory` rule git applies, since discovery runs code the caller never
+named); the error names what was refused and the fix — run that project's own
+`./zuke` there, or fix the ownership. On Windows the gate is inert.
+
 The CLI is self-describing: `./zuke --help` prints the usage grammar plus the
 build's live targets and parameters, so an agent discovers the real command
 surface instead of guessing. For an AI client to operate the build through typed

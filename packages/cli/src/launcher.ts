@@ -43,6 +43,19 @@ import {
 } from "./deno_pin.ts";
 
 /** Which launcher variant to render. */
+/**
+ * The notice a run without a lockfile prints — a fresh scaffold has none, so
+ * the first run must be allowed to write one, and saying so keeps a deleted
+ * lockfile from downgrading verification silently. Shared by both launcher
+ * templates and the global CLI's forwarding, so the three cannot drift.
+ * `dash` is the hyphen the caller's encoding is comfortable with (PowerShell
+ * sources are kept ASCII).
+ */
+export function noLockNotice(dash: string): string {
+  return `zuke: no deno.lock here yet ${dash} running without lockfile ` +
+    "verification so Deno can write one.";
+}
+
 export interface LauncherOptions {
   /**
    * Bootstrap a pinned, checksum-verified Deno when none is on `PATH`
@@ -296,7 +309,7 @@ ${bashResolveDeno(options, pin)}
 if [ -f deno.lock ]; then
   exec "$deno_bin" run -A --frozen zuke.ts "$@"
 else
-  echo "zuke: no deno.lock here yet — running without lockfile verification so Deno can write one." >&2
+  echo "${noLockNotice("—")}" >&2
   exec "$deno_bin" run -A zuke.ts "$@"
 fi
 `;
@@ -479,7 +492,7 @@ $denoArgs = @("run", "-A")
 if (Test-Path (Join-Path $dir "deno.lock")) {
   $denoArgs += "--frozen"
 } else {
-  Write-Warning "zuke: no deno.lock here yet - running without lockfile verification so Deno can write one."
+  Write-Warning "${noLockNotice("-")}"
 }
 $denoArgs += (Join-Path $dir "zuke.ts")
 & $deno @denoArgs @args

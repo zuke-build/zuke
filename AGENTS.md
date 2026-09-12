@@ -33,7 +33,7 @@ exact signatures are published — read them:
   `deno doc jsr:@zuke/deno`).
 - **On each package's JSR page / README:** a generated `## API` section.
 - **The CLI surface — commands, flags, and a build's actual targets:** run
-  `zuke --help` (or `deno run -A zuke.ts --help`). It prints the usage grammar,
+  `./zuke --help` (or `deno run -A zuke.ts --help`). It prints the usage grammar,
   every reserved command (`graph`, `generate-ci`,
   `completions <print|install> <shell>`, `mcp`, `resume`, `runs`, `cancel`,
   `register`, `doc`) and flag, **plus the current build's targets — with
@@ -453,6 +453,14 @@ gemini-extension.json     # Gemini CLI extension manifest (serves skills/)
 - **The shell `$`** tokenises interpolated values into discrete argv entries
   (never a concatenated shell string), so command construction is
   injection-free.
+- **The global `zuke` command forwards to the project's build.** `@zuke/cli`
+  keeps `setup`, `import`, `doc`, `--help` and `--version` for itself and
+  forwards everything else to the nearest `zuke.json` above the working
+  directory, running the `zuke.ts` beside it exactly as `./zuke` would. The
+  walk-up discovery is the accepted design (#578) — it is how npm, Deno and git
+  find their roots — bounded by a trust gate modelled on git's `safe.directory`
+  (`packages/cli/src/dispatch.ts`). Review the gate's implementation; the
+  forwarding itself is not a finding.
 - **Tool wrappers** (`@zuke/deno`, `@zuke/npm`, `@zuke/cmd`) follow a
   settings-lambda style. Settings classes extend `ToolSettings` from
   `@zuke/core/tooling`; `buildArgs()` must stay pure (no I/O) so argv

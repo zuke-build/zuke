@@ -99,10 +99,11 @@ If you already have Deno, `deno task zuke <target>` (via the `zuke` task in
 `deno.json`) does the same thing.
 
 `zuke setup`/`zuke import` scaffold this launcher for you, so once it's in place
-run every target with `./zuke <target>` — the bare `zuke` you installed globally
-only knows `setup`/`import`/`doc` (see the [CLI reference](./cli.md) for the
-full split). Shell completions (`./zuke completions install <shell>`) register
-the words `zuke` and `./zuke`, so those two forms complete targets;
+run every target with `./zuke <target>` — or, from anywhere inside the project,
+with the bare `zuke <target>` you installed globally, which forwards to the
+project's build (the [CLI reference](./cli.md) has the rules). Shell
+completions (`./zuke completions install <shell>`) register the words `zuke`
+and `./zuke`, so both forms complete targets;
 `deno task zuke <target>` does not, because the shell matches the completion on
 the first word of the line.
 

@@ -972,6 +972,24 @@ class ZukeBuild extends Build {
       // see the changed files whole rather than as bare hunks, and
       // adversarially verify each candidate finding before reporting it.
       .conventionsFile("AGENTS.md")
+      // Accepted design, so the review judges its implementation rather than
+      // restating its existence (which it did five times, under five ids, on
+      // #579 — see the rationale beside those ids below).
+      .criteria(
+        "The global `zuke` command (`@zuke/cli`) forwards every command that " +
+          "is not its own (`setup`, `import`, `doc`, `--help`, `--version`) " +
+          "to the nearest `zuke.json` above the working directory and runs " +
+          "the `zuke.ts` beside it with `deno run -A`, exactly as the " +
+          "`./zuke` launcher does. That walk-up discovery is the accepted " +
+          "design (#578): it is how npm, Deno and git find `package.json`, " +
+          "`deno.json` and `.git`, and it is gated like git's " +
+          "`safe.directory` — the root, the build files in it and every " +
+          "ancestor config Deno would read must belong to the caller and the " +
+          "root must not be world-writable. Do not report the forwarding, " +
+          "the ancestor walk, the `-A` run of the caller's own build, or the " +
+          "absence of an opt-in flag as findings; review the gate's " +
+          "implementation for concrete bypasses instead.",
+      )
       .fileContext()
       .verify()
       // Engage with the PR thread: a maintainer contests a finding by replying
@@ -1050,8 +1068,43 @@ class ZukeBuild extends Build {
       // build-authored one from an untrusted one, so the check would be a
       // boundary in appearance only (guideline 10). The trust boundary is now
       // stated in the task's JSDoc instead.
+      // `3kjblk57s60pw` and `1vowr25jzpja6` are the global CLI's forwarding
+      // (#578) restated as findings: "arbitrary commands into a discovered
+      // build" and "discovery can reach a parent project". Nearest-marker
+      // discovery is how npm, Deno and git themselves find `package.json`,
+      // `deno.json` and `.git` from any subdirectory, and the forwarding is
+      // bounded by a trust gate git's `safe.directory` does not exceed: the
+      // root, the build files in it and every discoverable ancestor config
+      // must belong to the caller, and a root above the working directory is
+      // announced on stderr. Three independent adversarial reviewers found no
+      // path past it, and the one they did find (a planted ancestor import
+      // map) is closed. What the findings ask for — a build root that must be
+      // the working directory — is `./zuke`, which stays the launcher.
+      // Accepted by the maintainer on the PR as the design, not a defect.
+      // `3izcwagpzb755` and `3kl4yht0w30c7` are the same two findings issued
+      // again under fresh ids once the first pair was suppressed: the
+      // reviewer's rewording pass only maps a fresh id onto a recorded one
+      // when the severity did not grow, and each restatement grew it
+      // (high to critical, medium to high) without a new path. Same
+      // decision, same rationale. `2ppk9wpe9podo` is the fourth wording of
+      // the first. `picgsdqxfo3` and `3gvbeiyh1t7xn` are the generic
+      // reviewer's two: that the CLI keeps `setup`, `import`, `doc`,
+      // `--help` and `--version` for itself (deliberate — the installed
+      // command's own words cannot change meaning when a `zuke.json`
+      // appears above the cwd — with `zuke -- <target>` as the way through,
+      // and a test pinning it), and that `forwardToBuild` reports a refusal
+      // or a failed spawn as one stderr line and exit 1, which is what
+      // `main` already does for the CLI's own commands. Each was dismissed
+      // by the reviewer after its rebuttal and re-issued under a fresh id
+      // with no new argument. `3hq0fvf31l0z2` is the fifth wording of the
+      // first ("the previous finding remains in substance", it opens), and
+      // the reason the accepted design is now stated in the reviewer's
+      // criteria above: a suppressed finding leaves the review's state, so
+      // its next rewording can never be matched back to it.
       // cspell:ignore myee fmcx ownw eav zbigfl oldslqkyj vnfjvb bja rj xp dtit
       // cspell:ignore uhzbksic lk fag hqxu trsbgqqlurzb ilv ls kom amw
+      // cspell:ignore kjblk pw vowr jzpja izcwagpzb kl yht podo picgsdqxfo
+      // cspell:ignore gvbeiyh
       .suppress(
         suppressions((s) =>
           s.add(
@@ -1073,6 +1126,14 @@ class ZukeBuild extends Build {
             "3u2ilv23j9jb2",
             "7p24ls729f3e",
             "3u5kom8amw7hi",
+            "3kjblk57s60pw",
+            "1vowr25jzpja6",
+            "3izcwagpzb755",
+            "3kl4yht0w30c7",
+            "2ppk9wpe9podo",
+            "picgsdqxfo3",
+            "3gvbeiyh1t7xn",
+            "3hq0fvf31l0z2",
           )
         ),
       )

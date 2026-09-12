@@ -1,7 +1,8 @@
 # MCP server
 
-`./zuke mcp` — a command on **your build's own CLI**, not the globally installed
-`jsr:@zuke/cli` (see the [CLI reference](./cli.md) for the difference) — runs a
+`./zuke mcp` — a command on **your build's own CLI** (the globally installed
+`jsr:@zuke/cli` forwards `zuke mcp` to it from anywhere inside the project; see
+the [CLI reference](./cli.md) for the split) — runs a
 [Model Context Protocol](https://modelcontextprotocol.io) server over your
 build. MCP is the open standard that lets an AI client — Claude Desktop, Claude
 Code, an IDE, any agent — discover a server's **tools** (typed, schema-described

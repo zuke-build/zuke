@@ -8,7 +8,10 @@
  * deno install -A -g -n zuke jsr:@zuke/cli
  * ```
  *
- * and scaffold Zuke into any project with `zuke setup`.
+ * scaffold Zuke into any project with `zuke setup`, then run its build from
+ * anywhere inside the project with `zuke <target>`: every command that is not
+ * the CLI's own (`setup`, `import`, `doc`) is forwarded to the nearest
+ * `zuke.ts`, exactly as the `./zuke` launcher would run it.
  *
  * @module
  */
@@ -28,10 +31,27 @@ import {
 } from "./src/star.ts";
 import { VERSION } from "./src/version.ts";
 import { DENO_PIN } from "./src/deno_pin.ts";
+import {
+  type BuildProbe,
+  buildRunArgs,
+  type BuildRunner,
+  defaultBuildProbe,
+  defaultBuildRunner,
+  locateBuild,
+  NO_LOCK_NOTICE,
+  runningNotice,
+} from "./src/dispatch.ts";
+import { absolutePath } from "@zuke/core";
 
 export type { SetupHost } from "./src/setup.ts";
 export type { ImportSource } from "./src/import.ts";
 export type { StarActions } from "./src/star.ts";
+export type {
+  BuildLocation,
+  BuildProbe,
+  BuildRunner,
+  Ownership,
+} from "./src/dispatch.ts";
 
 /**
  * The interactive surface, injectable so the wizard is testable without a TTY.
@@ -187,6 +207,7 @@ Usage:
   zuke setup [options]    Scaffold Zuke into a directory
   zuke import [options]   Generate a build from package.json scripts or a Makefile
   zuke doc <package>      Show a @zuke/* package's API docs (isolated resolution)
+  zuke [target|command]   Run the project's build (forwarded to its zuke.ts)
   zuke --help             Show this help
   zuke --version          Show the version
 
@@ -216,7 +237,13 @@ Doc:
   zuke doc core           API of @zuke/core
   zuke doc @scope/pkg      API of a scoped package (or pass jsr:/npm:/https: as-is)
 
-Run your build with the scaffolded launcher: ./zuke <target>`;
+Inside a project (a zuke.json in the current directory or a parent), any other
+command runs the build itself — zuke <target>, zuke --list, zuke graph,
+zuke generate-ci, zuke mcp, and bare zuke for the default target — as
+\`./zuke <command>\` would: deno run -A zuke.ts from the repository root, with
+--frozen once a deno.lock exists. Anything after a \`--\` reaches the build
+unread by this CLI: zuke -- --help is the build's own usage, and
+zuke -- <target> reaches a target that shares a name with a command above.`;
 
 /** Run the `setup` subcommand. */
 async function commandSetup(
@@ -395,8 +422,43 @@ async function commandDoc(
 }
 
 /**
+ * Forward `args` to the project's build: locate the nearest `zuke.json` above
+ * the working directory (through `probe`, which also enforces the trust gate)
+ * and run `zuke.ts` beside it through `runner`. Returns `null` when the
+ * caller is not inside a project, so `main` can report the unknown command
+ * instead. A refusal or a failed spawn is reported on **stderr** — stdout is
+ * the build's, and under `zuke mcp` it is the JSON-RPC stream — and is exit 1.
+ * Both reports bypass the log level: they are never the build's to silence.
+ */
+async function forwardToBuild(
+  args: string[],
+  probe: BuildProbe,
+  runner: BuildRunner,
+): Promise<number | null> {
+  // Plain stderr writes, not `ConsoleTasks`: `ZUKE_LOG_LEVEL` is a knob for
+  // the build's output, and neither a security refusal nor the launchers'
+  // unverified-lockfile notice may be silenced by it.
+  try {
+    const cwd = Deno.cwd();
+    const location = await locateBuild(cwd, probe);
+    if (location === null) return null;
+    // Discovery ran something the caller never named: say which, unless it
+    // is the build right here, where `./zuke` would have been the same act.
+    if (location.root !== absolutePath(cwd).path) {
+      console.error(runningNotice(location.root));
+    }
+    if (!location.frozen) console.error(NO_LOCK_NOTICE);
+    return await runner(location.root, buildRunArgs(location, args));
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    return 1;
+  }
+}
+
+/**
  * The CLI entry point. Returns a process exit code; `host`, `prompter`,
- * `docRunner`, and `starActions` are injectable for testing.
+ * `docRunner`, `starActions`, `buildRunner`, and `buildProbe` are injectable
+ * for testing.
  */
 export async function main(
   args: string[],
@@ -404,8 +466,10 @@ export async function main(
   prompter: Prompter = defaultPrompter,
   docRunner: DocRunner = defaultDocRunner,
   starActions: StarActions = defaultStarActions,
+  buildRunner: BuildRunner = defaultBuildRunner,
+  buildProbe: BuildProbe = defaultBuildProbe,
 ): Promise<number> {
-  if (args.length === 0 || args[0] === "--help" || args[0] === "-h") {
+  if (args[0] === "--help" || args[0] === "-h") {
     host.log(HELP);
     return 0;
   }
@@ -432,7 +496,21 @@ export async function main(
     host.log(error instanceof Error ? error.message : String(error));
     return 1;
   }
-  host.log(`Unknown command: ${command}\n`);
+  // Not one of ours: inside a project it is the build's — `zuke ci`,
+  // `zuke --list`, `zuke mcp`, and a bare `zuke` for the default target, as
+  // `./zuke` — and the build's own CLI answers for it, unknown-target message
+  // included. Outside any project a bare `zuke` has no build to run: it is
+  // the usage.
+  const forwarded = await forwardToBuild(args, buildProbe, buildRunner);
+  if (forwarded !== null) return forwarded;
+  if (args.length === 0) {
+    host.log(HELP);
+    return 0;
+  }
+  host.log(
+    `Unknown command: ${command} — and no zuke.json was found in the current ` +
+      `directory or any parent to forward it to.\n`,
+  );
   host.log(HELP);
   return 1;
 }
