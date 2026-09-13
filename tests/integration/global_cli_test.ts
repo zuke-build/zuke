@@ -20,6 +20,7 @@ import { withTemp } from "../../packages/core/tests/_temp.ts";
 import { withEnv } from "../../packages/core/tests/_env.ts";
 import { capture } from "../../packages/core/tests/_console.ts";
 import { ENC } from "../../packages/core/tests/_escaping.ts";
+import { absolutePath } from "../../packages/core/mod.ts";
 
 /**
  * The real, filesystem-probing host — the walk up to `zuke.json` must see the
@@ -48,6 +49,18 @@ class Scratch extends Build {
     .description("Fail on purpose")
     .executes(() => {
       throw new Error("broken on purpose");
+    });
+  report = target()
+    .description("Report the executable and PATH the build was spawned with")
+    .executes(async () => {
+      await Deno.writeTextFile(
+        "spawned.json",
+        JSON.stringify({
+          execPath: Deno.execPath(),
+          standalone: Deno.build.standalone,
+          path: Deno.env.get("PATH") ?? "",
+        }),
+      );
     });
 }
 
@@ -176,5 +189,29 @@ Deno.test("zuke <argv> cannot forge a workflow command on an Actions runner", as
         true,
       );
     });
+  }, { prefix: "zuke-global-cli-" });
+});
+
+Deno.test("zuke <target> forwards to a real Deno, with its directory first on PATH", async () => {
+  // The whole point of resolving Deno rather than reusing `Deno.execPath()`:
+  // what gets spawned must be an actual Deno — a compiled `zuke` spawning
+  // itself re-enters the CLI forever — and, as the launchers do, it must lead
+  // the child's PATH so a tool the build provisions with `deno install`
+  // resolves by bare name.
+  await withTemp(async (dir) => {
+    await Deno.writeTextFile(
+      `${dir}/${CONFIG_FILE}`,
+      '{ "name": "Scratch" }\n',
+    );
+    await Deno.writeTextFile(`${dir}/zuke.ts`, scratchBuild());
+    await inDir(dir, async () => {
+      assertEquals(await main(["report"], recordingHost()), 0);
+    });
+    const spawned: { execPath: string; standalone: boolean; path: string } =
+      JSON.parse(await Deno.readTextFile(`${dir}/spawned.json`));
+    assertEquals(spawned.standalone, false);
+    const separator = Deno.build.os === "windows" ? ";" : ":";
+    const binDir = absolutePath(spawned.execPath).parent().path;
+    assertEquals(spawned.path.split(separator)[0], binDir);
   }, { prefix: "zuke-global-cli-" });
 });

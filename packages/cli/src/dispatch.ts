@@ -37,6 +37,7 @@
 import { type AbsolutePath, absolutePath, CONFIG_FILE } from "@zuke/core";
 import { exists } from "./fs.ts";
 import { noLockNotice } from "./launcher.ts";
+import { spawnDeno } from "./deno_path.ts";
 
 /** The build file a forwarded command runs, beside {@link CONFIG_FILE}. */
 export const BUILD_FILE = "zuke.ts";
@@ -301,32 +302,23 @@ function signalPlan(
 }
 
 /**
- * The default {@link BuildRunner}: spawn the running Deno with stdio inherited
- * — `zuke mcp` speaks JSON-RPC over the same stdin/stdout, and a build may
- * prompt — and, as the launchers do, put that Deno first on the child's `PATH`
- * so CLIs the build provisions with `deno install` can find it by name. For
- * the build's lifetime the parent handles signals as {@link signalPlan} says,
- * so an interrupted build is never orphaned with its exit code lost.
+ * The default {@link BuildRunner}: spawn Deno — {@link spawnDeno} finds it, and
+ * puts it first on the child's `PATH` as the launchers do — with stdio
+ * inherited, because `zuke mcp` speaks JSON-RPC over the same stdin/stdout and
+ * a build may prompt. For the build's lifetime the parent handles signals as
+ * {@link signalPlan} says, so an interrupted build is never orphaned with its
+ * exit code lost.
  */
 export const defaultBuildRunner: BuildRunner = async (
   root,
   denoArgs,
 ): Promise<number> => {
-  const deno = Deno.execPath();
-  const separator = Deno.build.os === "windows" ? ";" : ":";
-  const inherited = Deno.env.get("PATH");
-  const binDir = absolutePath(deno).parent().path;
-  const path = inherited === undefined
-    ? binDir
-    : `${binDir}${separator}${inherited}`;
-  const child = new Deno.Command(deno, {
-    args: denoArgs,
+  const child = spawnDeno(denoArgs, {
     cwd: root,
-    env: { PATH: path },
     stdin: "inherit",
     stdout: "inherit",
     stderr: "inherit",
-  }).spawn();
+  });
   const plan = signalPlan(child);
   for (const [signal, handler] of plan) {
     Deno.addSignalListener(signal, handler);

@@ -42,6 +42,7 @@ import {
   runningNotice,
 } from "./src/dispatch.ts";
 import { absolutePath } from "@zuke/core";
+import { spawnDeno } from "./src/deno_path.ts";
 import { neutralise, output } from "./src/output.ts";
 
 export type { SetupHost } from "./src/setup.ts";
@@ -372,11 +373,12 @@ async function commandImport(
 export type DocRunner = (denoArgs: string[]) => Promise<number>;
 
 /**
- * The default {@link DocRunner}: spawn `deno doc …` in an isolated temp dir,
- * relaying what it printed through the package's sink. The child's output is
- * not inherited: it repeats the arguments the user passed (`deno doc` names a
- * `--filter` it could not find) and prints a third-party package's own text,
- * neither of which may reach an Actions runner raw.
+ * The default {@link DocRunner}: spawn `deno doc …` — {@link spawnDeno} finds
+ * the Deno to run it — in an isolated temp dir, relaying what it printed
+ * through the package's sink. The child's output is not inherited: it repeats
+ * the arguments the user passed (`deno doc` names a `--filter` it could not
+ * find) and prints a third-party package's own text, neither of which may
+ * reach an Actions runner raw.
  */
 const defaultDocRunner: DocRunner = async (denoArgs) => {
   // Run from a throwaway directory so the surrounding repo's deno.json /
@@ -384,12 +386,12 @@ const defaultDocRunner: DocRunner = async (denoArgs) => {
   // output — the whole point of `zuke doc` inside a Node project.
   const cwd = await Deno.makeTempDir({ prefix: "zuke-doc-" });
   try {
-    const { code, stdout, stderr } = await new Deno.Command(Deno.execPath(), {
-      args: denoArgs,
+    const child = spawnDeno(denoArgs, {
       cwd,
       stdout: "piped",
       stderr: "piped",
-    }).output();
+    });
+    const { code, stdout, stderr } = await child.output();
     const relay = (bytes: Uint8Array, write: (line: string) => void) => {
       const text = new TextDecoder().decode(bytes);
       // The console adds the line's own newline; keep the text otherwise as
