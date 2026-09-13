@@ -28,7 +28,6 @@ import { withTemp } from "../../packages/core/tests/_temp.ts";
 import { withEnv } from "../../packages/core/tests/_env.ts";
 import { capture } from "../../packages/core/tests/_console.ts";
 import { ENC } from "../../packages/core/tests/_escaping.ts";
-import { absolutePath } from "../../packages/core/mod.ts";
 
 /**
  * The real, filesystem-probing host — the walk up to `zuke.json` must see the
@@ -66,7 +65,6 @@ class Scratch extends Build {
         JSON.stringify({
           execPath: Deno.execPath(),
           standalone: Deno.build.standalone,
-          path: Deno.env.get("PATH") ?? "",
         }),
       );
     });
@@ -239,16 +237,18 @@ Deno.test("a forwarded build resolves a real Deno when the CLI is a compiled bin
       );
       assertEquals(code, 0);
     });
-    const spawned: { execPath: string; standalone: boolean; path: string } =
-      JSON.parse(await Deno.readTextFile(`${dir}/spawned.json`));
+    const spawned: { execPath: string; standalone: boolean } = JSON.parse(
+      await Deno.readTextFile(`${dir}/spawned.json`),
+    );
     // A real Deno ran the build, not the binary the host named — which is the
-    // whole of #586: spawning that name re-enters the CLI instead.
+    // whole of #586: spawning that name re-enters the CLI instead. The PATH
+    // the child gets is not asserted here: the candidate that answers is the
+    // bare name, which carries no directory to prepend, so the child inherits
+    // this process's PATH and the assertion would be about the machine rather
+    // than the code. The overlay has its own coverage — `pathWithDeno`'s unit
+    // tests, and `defaultBuildRunner puts the running Deno first on the
+    // child's PATH` in the package's dispatch tests.
     assertEquals(spawned.standalone, false);
     assertEquals(spawned.execPath.startsWith(dir), false);
-    // And, as the launchers do, that Deno leads the child's PATH, so a tool
-    // the build provisions with `deno install` resolves by bare name.
-    const separator = Deno.build.os === "windows" ? ";" : ":";
-    const binDir = absolutePath(spawned.execPath).parent().path;
-    assertEquals(spawned.path.split(separator)[0], binDir);
   }, { prefix: "zuke-global-cli-" });
 });
