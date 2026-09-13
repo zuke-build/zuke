@@ -14,6 +14,7 @@ import {
   pathWithDeno,
   spawnDeno,
 } from "../src/deno_path.ts";
+import { launcherBash, launcherPwsh } from "../src/launcher.ts";
 
 /** A {@link DenoHost} whose four answers the test dictates. */
 function host(overrides: Partial<DenoHost> = {}): DenoHost {
@@ -212,4 +213,35 @@ Deno.test("spawnDeno does not blame Deno for a cwd that is a file", async () => 
   } finally {
     await Deno.remove(dir, { recursive: true });
   }
+});
+
+Deno.test("the compiled order is the one the launchers use in shell", () => {
+  // The module doc says the compiled resolution mirrors the launchers. They
+  // answer the same question in bash and PowerShell — before Deno exists, so
+  // there is no module for either side to import and the two statements of
+  // the order can only be held together by asserting them against each other.
+  // Change a launcher's order and this fails, naming the resolver that has to
+  // follow.
+  const bash = launcherBash({ bootstrapDeno: true });
+  const pwsh = launcherPwsh({ bootstrapDeno: true });
+  const before = (haystack: string, first: string, second: string) => {
+    const at = haystack.indexOf(first);
+    const then = haystack.indexOf(second);
+    assertEquals(at >= 0 && then >= 0 && at < then, true);
+  };
+  // PATH first, the bootstrap directory second — in both launchers, and in
+  // `denoCandidates` below.
+  before(bash, "command -v deno", '"$deno_install/bin/deno"');
+  before(
+    pwsh,
+    "Get-Command deno",
+    'Join-Path $env:DENO_INSTALL "bin\\deno.exe"',
+  );
+  // And the bootstrap directory is the same one, spelled the same way.
+  assertStringIncludes(bash, 'deno_install="${DENO_INSTALL:-$HOME/.deno}"');
+  assertStringIncludes(pwsh, '$env:DENO_INSTALL = Join-Path $HOME ".deno"');
+  assertEquals(denoCandidates(envHost({ HOME: "/home/ana" })), [
+    "deno",
+    "/home/ana/.deno/bin/deno",
+  ]);
 });
