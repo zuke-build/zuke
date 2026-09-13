@@ -5377,6 +5377,28 @@ abstract class ToolSettings
     to read a result its tool prints and report it, e.g. a test runner's
     pass/fail line into the build summary via `reportSummary`; it must not
     throw. Not called when the process times out or could not be spawned.
+  protected stdinInput(): string | undefined
+    Hook: the text to write to the tool's standard input, or `undefined` to
+    leave it inherited. The base supplies none.
+
+    The reason it exists is credentials. A secret in argv is readable by every
+    local user through `/proc` or `ps`, and tools that care offer a stdin form
+    instead — `docker login --password-stdin` is the canonical one. Without a
+    hook here a wrapper could not use that form: {@link
+    "./shell.ts".Command.stdin} exists, but {@link run} builds its `Command`
+    privately, so a subclass had no way to reach it and had to put the secret
+    on the command line regardless.
+
+    Not named after that flag, because it is not docker's alone — other tools
+    read secrets from stdin too, and what this returns is simply what the tool
+    reads.
+
+    The guarantee {@link "./shell.ts".Command.stdin} makes carries through: the
+    text is not part of the command line, so it reaches neither
+    {@link "./shell.ts".Command.commandLine}, a dry-run echo, nor a
+    {@link CommandError} message. Prefer it over {@link markSecret}, which
+    masks only how the argv is rendered and leaves the value in the process
+    table.
   protected defaultResolution(): ToolResolution
     The wrapper's default binary-resolution strategy. The base returns
     `"path"` (bare name on `PATH`); a JS-ecosystem wrapper whose binary is

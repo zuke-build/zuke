@@ -40,6 +40,28 @@ class EvalSettings extends ToolSettings {
   }
 }
 
+/**
+ * The same, but supplying standard input — the shape a wrapper takes to reach
+ * a tool's stdin form (`docker login --password-stdin` and its kin).
+ */
+class StdinEvalSettings extends EvalSettings {
+  #input?: string;
+
+  input(text: string): this {
+    this.#input = text;
+    return this;
+  }
+
+  protected override stdinInput(): string | undefined {
+    return this.#input;
+  }
+}
+
+/** A script that echoes everything it is given on stdin, prefixed. */
+const ECHO_STDIN =
+  "const b = new Uint8Array(1024); const n = Deno.stdin.readSync(b) ?? 0; " +
+  "console.log('got:' + new TextDecoder().decode(b.subarray(0, n)).trim())";
+
 Deno.test("argv() is tool + buildArgs + extra args, in order", () => {
   const s = new EvalSettings().script("1").args("--extra", 2);
   assertEquals(s.argv(), [Deno.execPath(), "eval", "1", "--extra", "2"]);
@@ -613,4 +635,52 @@ Deno.test("markSecret outside a run is a no-op, not a crash", async () => {
   }
   new TokenSettings().token("hunter2");
   await Promise.resolve();
+});
+
+Deno.test("stdinInput() reaches the tool's standard input", async () => {
+  // A real pipe, not an argv assertion: what is being proved is that the text
+  // arrives on the child's stdin, which only a subprocess can show.
+  const out = await new StdinEvalSettings()
+    .script(ECHO_STDIN)
+    .input("hunter2")
+    .quiet()
+    .run();
+  assertEquals(out.code, 0);
+  assertEquals(out.stdout.includes("got:hunter2"), true);
+});
+
+Deno.test("stdin text stays out of every rendering of the command", async () => {
+  // The whole point of preferring this over markSecret: the secret is not on
+  // the command line, so nothing that renders the command line can leak it.
+  const settings = new StdinEvalSettings()
+    .script("Deno.exit(7)")
+    .input("hunter2")
+    .quiet();
+  const error = await assertRejects(
+    () => settings.run(),
+    CommandError,
+    "exit 7",
+  );
+  assertEquals(messageOf(error).includes("hunter2"), false);
+  assertEquals(settings.argv().some((a) => a.includes("hunter2")), false);
+});
+
+Deno.test("the base supplies no stdin, so every existing wrapper is unchanged", () => {
+  // The default arm, asserted on the contract rather than on a subprocess.
+  // Whether the spawn inherits stdin is `Command`'s decision, keyed on this
+  // returning undefined, and it is already covered where that decision lives.
+  // What belongs here is that the base returns undefined at all: a base
+  // returning an empty string would compile, would read as harmless, and would
+  // switch every wrapper in the workspace from inherited stdin to a pipe that
+  // closes immediately.
+  //
+  // Driving it through a subprocess instead would prove nothing: inherited
+  // stdin under `deno test` is whatever the runner happened to have, so the
+  // assertion would hold either way.
+  class PeekSettings extends EvalSettings {
+    peek(): string | undefined {
+      return this.stdinInput();
+    }
+  }
+  assertEquals(new PeekSettings().peek(), undefined);
 });
