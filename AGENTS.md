@@ -345,9 +345,10 @@ ambient tools.
    `Deno.execPath()` (guideline 5) against a temp `ZUKE_STATE_DIR`; the fixture
    is a runnable `Build` ending in `await run(...)`. **Name these files
    `*_e2e.ts`** so default `deno test` discovery skips them — they stay out of
-   the fast gate. They run only via the `integration` build target in `zuke.ts`
-   (add the file to its `DenoTasks.test(...).paths(...)`), which the generated
-   `.github/workflows/integration.yml` fans out over the three OS runners.
+   the fast gate. They run only via the `integration` build target in `zuke.ts`,
+   which the generated `.github/workflows/integration.yml` fans out over the
+   three OS runners. That target globs `tests/e2e/*_e2e.ts`, so a new file is
+   picked up on its own — there is no list to add it to.
 
 Naming wrinkle to keep straight: the in-process suite _lives in_
 `tests/integration/` but runs in the normal test lane; the build target _named_
