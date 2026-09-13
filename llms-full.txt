@@ -6478,6 +6478,19 @@ class DenoPublishSettings extends DenoSettings
     Use an explicit config file (`--config`).
   token(value: string): this
     Authenticate with a token instead of interactive/OIDC auth (`--token`).
+
+    Registered with the run's redactor, so every rendering of the command
+    masks it — a dry-run echo, a failure message. That is as far as it goes:
+    `deno publish` accepts the token only as a flag, so the value still
+    reaches the child's argv, where `ps` and `/proc/<pid>/cmdline` expose it to
+    every other user on the host and to every process the build starts.
+
+    There is no environment variable to move it to. `DENO_AUTH_TOKENS` is not
+    one — it authenticates module fetches, not publishing.
+
+    Prefer passing no token at all. On GitHub Actions `deno publish` uses OIDC,
+    so the publish is authenticated by the workflow's identity and there is no
+    credential to expose; this repository's own publish does exactly that.
   setVersion(version: string): this
     Publish under an overridden version (`--set-version`) instead of the one
     in the manifest — how a release job publishes a version it computed
@@ -7195,7 +7208,10 @@ class NpmAccessSettings extends NpmSettings
   revoke(team: string, pkg?: string): this
     Take a team's access away (`access revoke <scope:team>`).
   otp(code: string): this
-    Provide a one-time password (`--otp=`).
+    Provide a one-time password.
+
+    Carried in `npm_config_otp` rather than on the command line — see
+    {@link NpmSettings.applyOtp} for why.
   override protected subcommandArgs(): string[]
     Assemble the `npm access` argv.
 
@@ -7323,7 +7339,10 @@ class NpmDeprecateSettings extends NpmSettings
     un-deprecates a version, so it must be given deliberately rather than
     by omission.
   otp(code: string): this
-    Provide a one-time password (`--otp=`).
+    Provide a one-time password.
+
+    Carried in `npm_config_otp` rather than on the command line — see
+    {@link NpmSettings.applyOtp} for why.
   override protected subcommandArgs(): string[]
     Assemble the `npm deprecate` argv.
 
@@ -7460,7 +7479,10 @@ class NpmOwnerSettings extends NpmWorkspaceSettings
   ls(pkg: string): this
     List a package's maintainers (`owner ls <pkg>`).
   otp(code: string): this
-    Provide a one-time password (`--otp=`).
+    Provide a one-time password.
+
+    Carried in `npm_config_otp` rather than on the command line — see
+    {@link NpmSettings.applyOtp} for why.
   override protected subcommandArgs(): string[]
     Assemble the `npm owner` argv.
 
@@ -7528,7 +7550,10 @@ class NpmPublishSettings extends NpmWorkspaceSettings
   dryRun(): this
     Report what would be published without uploading (`--dry-run`).
   otp(code: string): this
-    Provide a one-time password (`--otp=`).
+    Provide a one-time password.
+
+    Carried in `npm_config_otp` rather than on the command line — see
+    {@link NpmSettings.applyOtp} for why.
   provenance(): this
     Publish with a provenance attestation (`--provenance`), which npm can
     generate from a trusted CI run — the supply-chain signal a consumer can
@@ -7590,6 +7615,23 @@ abstract class NpmSettings extends ToolSettings
     The default binary: `npm` resolved from PATH.
   abstract protected subcommandArgs(): string[]
     The subcommand argv, before the shared config flags are appended.
+  protected applyOtp(code: string): void
+    Carry a one-time password to npm through `npm_config_otp` rather than
+    `--otp=`.
+
+    npm maps every config key to `npm_config_<key>`, so the flag and the
+    variable are the same setting by two routes — and only one of them is
+    world-readable. A child's argv shows in `ps` and `/proc/<pid>/cmdline` to
+    every other user on the host and to every process the build starts; its
+    environment does not.
+
+    Protected, and deliberately not a chainer on this base: only the
+    subcommands npm actually accepts `--otp` for expose one, so the wrapper
+    keeps mirroring the real CLI. This is the single implementation those
+    chainers share.
+
+    The value is registered with the run's redactor as well, for the renderings
+    the environment route does not cover.
   registry(url: string): this
     Use a specific registry (`--registry=<url>`).
   json(): this
@@ -7633,12 +7675,25 @@ class NpmTokenSettings extends NpmSettings
     Create a token (`token create`).
   revoke(idOrToken: string): this
     Revoke a token by id or value (`token revoke <id|token>`).
+
+    npm takes this positionally, with no environment route, so the value
+    reaches the child's argv either way. It is registered with the run's
+    redactor so every rendering of the command masks it; the process table
+    is not something the wrapper can do anything about here.
+
+    Masked whichever it is, because the two are indistinguishable from here —
+    npm accepts the id or the token itself, and nothing in the string says
+    which. Masking an id costs a `[redacted]` in this run's output; not
+    masking a token puts a live credential in it.
   readOnly(): this
     Create a token that cannot publish (`--read-only`).
   cidr(...ranges: string[]): this
     Restrict a created token to these ranges (`--cidr=<range>`); repeatable.
   otp(code: string): this
-    Provide a one-time password (`--otp=`).
+    Provide a one-time password.
+
+    Carried in `npm_config_otp` rather than on the command line — see
+    {@link NpmSettings.applyOtp} for why.
   override protected subcommandArgs(): string[]
     Assemble the `npm token` argv.
 
@@ -12227,6 +12282,17 @@ class JsrPublishSettings extends JsrSettings
     Attach provenance attestation in CI (`--provenance`).
   token(value: string): this
     Authenticate with a token instead of the interactive flow (`--token`).
+
+    Registered with the run's redactor, so every rendering of the command
+    masks it — a dry-run echo, a failure message. That is as far as it goes:
+    `jsr publish` accepts the token only as a flag, so the value still reaches
+    the child's argv, where `ps` and `/proc/<pid>/cmdline` expose it to every
+    other user on the host and to every process the build starts. There is no
+    environment variable to move it to.
+
+    On GitHub Actions, prefer OIDC and pass no token at all: the publish is
+    authenticated by the workflow's identity, so there is no credential to
+    expose. This is for the cases where that is not available.
   override protected buildArgs(): string[]
     Assemble the `jsr publish` argv.
 
@@ -18579,7 +18645,17 @@ class CodecovUploadSettings extends ToolSettings
   plugins(...names: string[]): this
     Run an upload plugin, e.g. `gcov` or `noop` (`--plugin`). Repeatable.
   token(value: string): this
-    Repository upload token (`--token`); prefer the `CODECOV_TOKEN` env var.
+    Repository upload token.
+
+    Routed through `CODECOV_TOKEN` rather than `--token`, because a child's
+    argv is world-readable: `ps` or `/proc/<pid>/cmdline` shows it to every
+    other user on the host and to every process the build starts. The
+    environment of another process is not readable the same way, and the CLI
+    documents the variable, so nothing is given up by preferring it.
+
+    Also registered with the run's redactor, so a value that reaches the
+    output some other way — an error message quoting a URL, a tool echoing its
+    own configuration — is masked there too.
   slug(value: string): this
     Repository slug as `OWNER/REPO` (`--slug`).
   sha(value: string): this

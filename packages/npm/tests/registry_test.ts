@@ -53,7 +53,7 @@ Deno.test("access renders each of npm's forms", () => {
   );
   assertEquals(
     new NpmAccessSettings().setMfa("automation").otp("123456").argv().slice(1),
-    ["access", "set", "mfa=automation", "--otp=123456"],
+    ["access", "set", "mfa=automation"],
   );
   assertEquals(
     new NpmAccessSettings().listPackages("@scope").argv().slice(1),
@@ -86,7 +86,7 @@ Deno.test("owner requires a subcommand and renders each", () => {
   );
   assertEquals(
     new NpmOwnerSettings().rm("someone", "app").otp("123456").argv().slice(1),
-    ["owner", "rm", "someone", "app", "--otp=123456"],
+    ["owner", "rm", "someone", "app"],
   );
   assertEquals(new NpmOwnerSettings().ls("app").argv().slice(1), [
     "owner",

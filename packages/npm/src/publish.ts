@@ -28,7 +28,6 @@ export class NpmPublishSettings extends NpmWorkspaceSettings {
   #tag?: string;
   #access?: NpmAccess;
   #dryRun = false;
-  #otp?: string;
   #provenance = false;
 
   /** Publish under a dist-tag (`--tag=`). */
@@ -49,9 +48,14 @@ export class NpmPublishSettings extends NpmWorkspaceSettings {
     return this;
   }
 
-  /** Provide a one-time password (`--otp=`). */
+  /**
+   * Provide a one-time password.
+   *
+   * Carried in `npm_config_otp` rather than on the command line — see
+   * {@link NpmSettings.applyOtp} for why.
+   */
   otp(code: string): this {
-    this.#otp = code;
+    this.applyOtp(code);
     return this;
   }
 
@@ -75,7 +79,6 @@ export class NpmPublishSettings extends NpmWorkspaceSettings {
     if (this.#access !== undefined) argv.push(`--access=${this.#access}`);
     if (this.#dryRun) argv.push("--dry-run");
     if (this.#provenance) argv.push("--provenance");
-    if (this.#otp !== undefined) argv.push(`--otp=${this.#otp}`);
     argv.push(...this.workspaceArgs());
     return argv;
   }
@@ -221,7 +224,6 @@ export class NpmUnpublishSettings extends NpmWorkspaceSettings {
 export class NpmDeprecateSettings extends NpmSettings {
   #spec?: string;
   #message?: string;
-  #otp?: string;
 
   /** The package spec to deprecate, e.g. `app@<2` (required). */
   spec(value: string): this {
@@ -239,9 +241,14 @@ export class NpmDeprecateSettings extends NpmSettings {
     return this;
   }
 
-  /** Provide a one-time password (`--otp=`). */
+  /**
+   * Provide a one-time password.
+   *
+   * Carried in `npm_config_otp` rather than on the command line — see
+   * {@link NpmSettings.applyOtp} for why.
+   */
   otp(code: string): this {
-    this.#otp = code;
+    this.applyOtp(code);
     return this;
   }
 
@@ -257,7 +264,6 @@ export class NpmDeprecateSettings extends NpmSettings {
       );
     }
     const argv = ["deprecate"];
-    if (this.#otp !== undefined) argv.push(`--otp=${this.#otp}`);
     argv.push(this.#spec, this.#message);
     return argv;
   }

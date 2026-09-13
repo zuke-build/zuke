@@ -39,8 +39,6 @@ Deno.test("codecov: every setting renders in a deterministic order", () => {
   assertEquals(argv, [
     "codecovcli",
     "upload-process",
-    "--token",
-    "t0ken",
     "--slug",
     "acme/app",
     "--sha",
@@ -100,4 +98,29 @@ Deno.test("codecov: conforms to the wrapper contract", async () => {
       resolution: "path",
     },
   );
+});
+
+Deno.test("the upload token never reaches the command line", () => {
+  // A child's argv is world-readable — `ps`, `/proc/<pid>/cmdline` — so the
+  // token travels in CODECOV_TOKEN, which the CLI documents and which another
+  // process cannot read the same way.
+  //
+  // The class records what it registers with the run's redactor: `markSecret`
+  // is protected and its effect lands on an ambient redactor a wrapper package
+  // cannot install, so the observable thing here is the call. That the redactor
+  // then masks is core's half, and core tests it.
+  class Spy extends CodecovUploadSettings {
+    readonly marked: string[] = [];
+    protected override markSecret(value: string): void {
+      this.marked.push(value);
+    }
+  }
+  const settings = new Spy().token("t0ken");
+  const argv = settings.argv();
+  assertEquals(argv.includes("--token"), false);
+  // Asserted on the whole argv, not just the flag: a regression could pass the
+  // value positionally, or glued to the flag as `--token=t0ken`.
+  assertEquals(argv.some((a) => a.includes("t0ken")), false);
+  // The other half — the renderings the environment route does not cover.
+  assertEquals(settings.marked, ["t0ken"]);
 });

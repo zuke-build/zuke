@@ -21,6 +21,7 @@
     "buildpacks",
     "bunx",
     "chainer",
+    "cmdline",
     "chainers",
     "cheatsheet",
     "checkpointing",

@@ -58,6 +58,29 @@ export abstract class NpmSettings extends ToolSettings {
   protected abstract subcommandArgs(): string[];
 
   /**
+   * Carry a one-time password to npm through `npm_config_otp` rather than
+   * `--otp=`.
+   *
+   * npm maps every config key to `npm_config_<key>`, so the flag and the
+   * variable are the same setting by two routes — and only one of them is
+   * world-readable. A child's argv shows in `ps` and `/proc/<pid>/cmdline` to
+   * every other user on the host and to every process the build starts; its
+   * environment does not.
+   *
+   * Protected, and deliberately not a chainer on this base: only the
+   * subcommands npm actually accepts `--otp` for expose one, so the wrapper
+   * keeps mirroring the real CLI. This is the single implementation those
+   * chainers share.
+   *
+   * The value is registered with the run's redactor as well, for the renderings
+   * the environment route does not cover.
+   */
+  protected applyOtp(code: string): void {
+    this.env({ npm_config_otp: code });
+    this.markSecret(code);
+  }
+
+  /**
    * The `NpmTasks` method this settings class backs, for the errors it
    * reports — so a failure names the task a build called, not the class. A
    * field rather than a method: it is the class's identity, not a

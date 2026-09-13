@@ -69,9 +69,23 @@ export class JsrPublishSettings extends JsrSettings {
     return this;
   }
 
-  /** Authenticate with a token instead of the interactive flow (`--token`). */
+  /**
+   * Authenticate with a token instead of the interactive flow (`--token`).
+   *
+   * Registered with the run's redactor, so every *rendering* of the command
+   * masks it — a dry-run echo, a failure message. That is as far as it goes:
+   * `jsr publish` accepts the token only as a flag, so the value still reaches
+   * the child's argv, where `ps` and `/proc/<pid>/cmdline` expose it to every
+   * other user on the host and to every process the build starts. There is no
+   * environment variable to move it to.
+   *
+   * On GitHub Actions, prefer OIDC and pass no token at all: the publish is
+   * authenticated by the workflow's identity, so there is no credential to
+   * expose. This is for the cases where that is not available.
+   */
   token(value: string): this {
     this.#token = value;
+    this.markSecret(value);
     return this;
   }
 

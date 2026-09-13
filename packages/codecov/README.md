@@ -68,7 +68,17 @@ class CodecovUploadSettings extends ToolSettings
   plugins(...names: string[]): this
     Run an upload plugin, e.g. `gcov` or `noop` (`--plugin`). Repeatable.
   token(value: string): this
-    Repository upload token (`--token`); prefer the `CODECOV_TOKEN` env var.
+    Repository upload token.
+
+    Routed through `CODECOV_TOKEN` rather than `--token`, because a child's
+    argv is world-readable: `ps` or `/proc/<pid>/cmdline` shows it to every
+    other user on the host and to every process the build starts. The
+    environment of another process is not readable the same way, and the CLI
+    documents the variable, so nothing is given up by preferring it.
+
+    Also registered with the run's redactor, so a value that reaches the
+    output some other way — an error message quoting a URL, a tool echoing its
+    own configuration — is masked there too.
   slug(value: string): this
     Repository slug as `OWNER/REPO` (`--slug`).
   sha(value: string): this

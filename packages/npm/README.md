@@ -124,7 +124,10 @@ class NpmAccessSettings extends NpmSettings
   revoke(team: string, pkg?: string): this
     Take a team's access away (`access revoke <scope:team>`).
   otp(code: string): this
-    Provide a one-time password (`--otp=`).
+    Provide a one-time password.
+
+    Carried in `npm_config_otp` rather than on the command line — see
+    {@link NpmSettings.applyOtp} for why.
   override protected subcommandArgs(): string[]
     Assemble the `npm access` argv.
 
@@ -252,7 +255,10 @@ class NpmDeprecateSettings extends NpmSettings
     un-deprecates a version, so it must be given deliberately rather than
     by omission.
   otp(code: string): this
-    Provide a one-time password (`--otp=`).
+    Provide a one-time password.
+
+    Carried in `npm_config_otp` rather than on the command line — see
+    {@link NpmSettings.applyOtp} for why.
   override protected subcommandArgs(): string[]
     Assemble the `npm deprecate` argv.
 
@@ -389,7 +395,10 @@ class NpmOwnerSettings extends NpmWorkspaceSettings
   ls(pkg: string): this
     List a package's maintainers (`owner ls <pkg>`).
   otp(code: string): this
-    Provide a one-time password (`--otp=`).
+    Provide a one-time password.
+
+    Carried in `npm_config_otp` rather than on the command line — see
+    {@link NpmSettings.applyOtp} for why.
   override protected subcommandArgs(): string[]
     Assemble the `npm owner` argv.
 
@@ -457,7 +466,10 @@ class NpmPublishSettings extends NpmWorkspaceSettings
   dryRun(): this
     Report what would be published without uploading (`--dry-run`).
   otp(code: string): this
-    Provide a one-time password (`--otp=`).
+    Provide a one-time password.
+
+    Carried in `npm_config_otp` rather than on the command line — see
+    {@link NpmSettings.applyOtp} for why.
   provenance(): this
     Publish with a provenance attestation (`--provenance`), which npm can
     generate from a trusted CI run — the supply-chain signal a consumer can
@@ -519,6 +531,23 @@ abstract class NpmSettings extends ToolSettings
     The default binary: `npm` resolved from PATH.
   abstract protected subcommandArgs(): string[]
     The subcommand argv, before the shared config flags are appended.
+  protected applyOtp(code: string): void
+    Carry a one-time password to npm through `npm_config_otp` rather than
+    `--otp=`.
+
+    npm maps every config key to `npm_config_<key>`, so the flag and the
+    variable are the same setting by two routes — and only one of them is
+    world-readable. A child's argv shows in `ps` and `/proc/<pid>/cmdline` to
+    every other user on the host and to every process the build starts; its
+    environment does not.
+
+    Protected, and deliberately not a chainer on this base: only the
+    subcommands npm actually accepts `--otp` for expose one, so the wrapper
+    keeps mirroring the real CLI. This is the single implementation those
+    chainers share.
+
+    The value is registered with the run's redactor as well, for the renderings
+    the environment route does not cover.
   registry(url: string): this
     Use a specific registry (`--registry=<url>`).
   json(): this
@@ -562,12 +591,25 @@ class NpmTokenSettings extends NpmSettings
     Create a token (`token create`).
   revoke(idOrToken: string): this
     Revoke a token by id or value (`token revoke <id|token>`).
+
+    npm takes this positionally, with no environment route, so the value
+    reaches the child's argv either way. It is registered with the run's
+    redactor so every rendering of the command masks it; the process table
+    is not something the wrapper can do anything about here.
+
+    Masked whichever it is, because the two are indistinguishable from here —
+    npm accepts the id or the token itself, and nothing in the string says
+    which. Masking an id costs a `[redacted]` in this run's output; not
+    masking a token puts a live credential in it.
   readOnly(): this
     Create a token that cannot publish (`--read-only`).
   cidr(...ranges: string[]): this
     Restrict a created token to these ranges (`--cidr=<range>`); repeatable.
   otp(code: string): this
-    Provide a one-time password (`--otp=`).
+    Provide a one-time password.
+
+    Carried in `npm_config_otp` rather than on the command line — see
+    {@link NpmSettings.applyOtp} for why.
   override protected subcommandArgs(): string[]
     Assemble the `npm token` argv.
 

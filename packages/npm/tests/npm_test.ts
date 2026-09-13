@@ -126,7 +126,6 @@ Deno.test("publish: tag, access, --dry-run, otp", () => {
       "--tag=next",
       "--access=public",
       "--dry-run",
-      "--otp=123456",
     ],
   );
 });

@@ -101,7 +101,6 @@ export async function readWhoami(
 /** Settings for `npm access`. */
 export class NpmAccessSettings extends NpmSettings {
   #args: string[] = ["get", "status"];
-  #otp?: string;
 
   /** List the packages a user, scope, or team can reach (`access list packages`). */
   listPackages(owner?: string, pkg?: string): this {
@@ -158,9 +157,14 @@ export class NpmAccessSettings extends NpmSettings {
     return this;
   }
 
-  /** Provide a one-time password (`--otp=`). */
+  /**
+   * Provide a one-time password.
+   *
+   * Carried in `npm_config_otp` rather than on the command line — see
+   * {@link NpmSettings.applyOtp} for why.
+   */
   otp(code: string): this {
-    this.#otp = code;
+    this.applyOtp(code);
     return this;
   }
 
@@ -170,7 +174,6 @@ export class NpmAccessSettings extends NpmSettings {
   /** Assemble the `npm access` argv. */
   protected override subcommandArgs(): string[] {
     const argv = ["access", ...this.#args];
-    if (this.#otp !== undefined) argv.push(`--otp=${this.#otp}`);
     return argv;
   }
 }
@@ -178,7 +181,6 @@ export class NpmAccessSettings extends NpmSettings {
 /** Settings for `npm owner`. */
 export class NpmOwnerSettings extends NpmWorkspaceSettings {
   #args: string[] = [];
-  #otp?: string;
 
   /** Add a maintainer (`owner add <user> <pkg>`). */
   add(user: string, pkg: string): this {
@@ -198,9 +200,14 @@ export class NpmOwnerSettings extends NpmWorkspaceSettings {
     return this;
   }
 
-  /** Provide a one-time password (`--otp=`). */
+  /**
+   * Provide a one-time password.
+   *
+   * Carried in `npm_config_otp` rather than on the command line — see
+   * {@link NpmSettings.applyOtp} for why.
+   */
   otp(code: string): this {
-    this.#otp = code;
+    this.applyOtp(code);
     return this;
   }
 
@@ -216,7 +223,6 @@ export class NpmOwnerSettings extends NpmWorkspaceSettings {
       );
     }
     const argv = ["owner", ...this.#args];
-    if (this.#otp !== undefined) argv.push(`--otp=${this.#otp}`);
     argv.push(...this.workspaceArgs());
     return argv;
   }
@@ -234,7 +240,6 @@ export class NpmTokenSettings extends NpmSettings {
   #target?: string;
   #readOnly = false;
   #cidr: string[] = [];
-  #otp?: string;
 
   /** List this account's tokens (`token list`), the default. */
   list(): this {
@@ -248,10 +253,23 @@ export class NpmTokenSettings extends NpmSettings {
     return this;
   }
 
-  /** Revoke a token by id or value (`token revoke <id|token>`). */
+  /**
+   * Revoke a token by id or value (`token revoke <id|token>`).
+   *
+   * npm takes this positionally, with no environment route, so the value
+   * reaches the child's argv either way. It is registered with the run's
+   * redactor so every *rendering* of the command masks it; the process table
+   * is not something the wrapper can do anything about here.
+   *
+   * Masked whichever it is, because the two are indistinguishable from here —
+   * npm accepts the id or the token itself, and nothing in the string says
+   * which. Masking an id costs a `[redacted]` in this run's output; not
+   * masking a token puts a live credential in it.
+   */
   revoke(idOrToken: string): this {
     this.#mode = "revoke";
     this.#target = idOrToken;
+    this.markSecret(idOrToken);
     return this;
   }
 
@@ -267,9 +285,14 @@ export class NpmTokenSettings extends NpmSettings {
     return this;
   }
 
-  /** Provide a one-time password (`--otp=`). */
+  /**
+   * Provide a one-time password.
+   *
+   * Carried in `npm_config_otp` rather than on the command line — see
+   * {@link NpmSettings.applyOtp} for why.
+   */
   otp(code: string): this {
-    this.#otp = code;
+    this.applyOtp(code);
     return this;
   }
 
@@ -289,7 +312,6 @@ export class NpmTokenSettings extends NpmSettings {
     if (this.#target !== undefined) argv.push(this.#target);
     if (this.#readOnly) argv.push("--read-only");
     for (const range of this.#cidr) argv.push(`--cidr=${range}`);
-    if (this.#otp !== undefined) argv.push(`--otp=${this.#otp}`);
     return argv;
   }
 }

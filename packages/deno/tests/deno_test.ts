@@ -414,3 +414,23 @@ Deno.test("every remaining DenoTasks function reaches execution", async () => {
     ToolNotFoundError,
   );
 });
+
+Deno.test("the publish token is registered as a secret, and still in argv", () => {
+  // Both halves, because only one can be fixed here. `deno publish` takes the
+  // token as a flag and has no environment variable for it — `DENO_AUTH_TOKENS`
+  // authenticates module *fetches*, not publishing — so the value reaches the
+  // child's argv, where `ps` and `/proc/<pid>/cmdline` expose it. What the
+  // wrapper can do is register it so every rendering of the command masks it.
+  class Spy extends DenoPublishSettings {
+    readonly marked: string[] = [];
+    protected override markSecret(value: string): void {
+      this.marked.push(value);
+    }
+  }
+  const settings = new Spy().token("publish-token");
+  assertEquals(settings.marked, ["publish-token"]);
+  // Pinned deliberately: dropping the flag would break publishing, and
+  // "fixing" the exposure with an invented environment variable would ship a
+  // route the tool does not read.
+  assertEquals(settings.argv().includes("--token"), true);
+});

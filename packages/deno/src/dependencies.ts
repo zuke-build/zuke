@@ -493,9 +493,25 @@ export class DenoPublishSettings extends DenoSettings {
     return this;
   }
 
-  /** Authenticate with a token instead of interactive/OIDC auth (`--token`). */
+  /**
+   * Authenticate with a token instead of interactive/OIDC auth (`--token`).
+   *
+   * Registered with the run's redactor, so every *rendering* of the command
+   * masks it — a dry-run echo, a failure message. That is as far as it goes:
+   * `deno publish` accepts the token only as a flag, so the value still
+   * reaches the child's argv, where `ps` and `/proc/<pid>/cmdline` expose it to
+   * every other user on the host and to every process the build starts.
+   *
+   * There is no environment variable to move it to. `DENO_AUTH_TOKENS` is not
+   * one — it authenticates *module fetches*, not publishing.
+   *
+   * Prefer passing no token at all. On GitHub Actions `deno publish` uses OIDC,
+   * so the publish is authenticated by the workflow's identity and there is no
+   * credential to expose; this repository's own publish does exactly that.
+   */
   token(value: string): this {
     this.#token = value;
+    this.markSecret(value);
     return this;
   }
 

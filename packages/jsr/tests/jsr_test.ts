@@ -91,3 +91,23 @@ Deno.test("jsr: conforms to the wrapper contract", async () => {
     resolution: "path",
   });
 });
+
+Deno.test("the publish token is registered as a secret, and still in argv", () => {
+  // Both halves, because only one of them can be fixed here. `jsr publish`
+  // takes the token as a flag and offers no environment variable, so the value
+  // reaches the child's argv where `ps` and `/proc/<pid>/cmdline` expose it.
+  // What the wrapper can do is register it, so every *rendering* of the command
+  // masks it — and the JSDoc says exactly that rather than implying more.
+  class Spy extends JsrPublishSettings {
+    readonly marked: string[] = [];
+    protected override markSecret(value: string): void {
+      this.marked.push(value);
+    }
+  }
+  const settings = new Spy().token("publish-token");
+  assertEquals(settings.marked, ["publish-token"]);
+  // Pinned deliberately: a later change that drops the flag would break
+  // publishing, and one that "fixes" the exposure by inventing an environment
+  // variable would be shipping a route the tool does not read.
+  assertEquals(settings.argv().includes("--token"), true);
+});

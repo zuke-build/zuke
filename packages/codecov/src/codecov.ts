@@ -29,7 +29,6 @@ export class CodecovUploadSettings extends ToolSettings {
   #files: string[] = [];
   #flags: string[] = [];
   #plugins: string[] = [];
-  #token?: string;
   #slug?: string;
   #sha?: string;
   #branch?: string;
@@ -67,9 +66,22 @@ export class CodecovUploadSettings extends ToolSettings {
     return this;
   }
 
-  /** Repository upload token (`--token`); prefer the `CODECOV_TOKEN` env var. */
+  /**
+   * Repository upload token.
+   *
+   * Routed through `CODECOV_TOKEN` rather than `--token`, because a child's
+   * argv is world-readable: `ps` or `/proc/<pid>/cmdline` shows it to every
+   * other user on the host and to every process the build starts. The
+   * environment of another process is not readable the same way, and the CLI
+   * documents the variable, so nothing is given up by preferring it.
+   *
+   * Also registered with the run's redactor, so a value that reaches the
+   * output some other way — an error message quoting a URL, a tool echoing its
+   * own configuration — is masked there too.
+   */
   token(value: string): this {
-    this.#token = value;
+    this.env({ CODECOV_TOKEN: value });
+    this.markSecret(value);
     return this;
   }
 
@@ -154,7 +166,6 @@ export class CodecovUploadSettings extends ToolSettings {
   /** Assemble the `codecovcli upload-process` argv. */
   protected override buildArgs(): string[] {
     const argv = ["upload-process"];
-    if (this.#token !== undefined) argv.push("--token", this.#token);
     if (this.#slug !== undefined) argv.push("--slug", this.#slug);
     if (this.#sha !== undefined) argv.push("--sha", this.#sha);
     if (this.#branch !== undefined) argv.push("--branch", this.#branch);

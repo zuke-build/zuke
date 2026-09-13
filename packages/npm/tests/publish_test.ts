@@ -49,7 +49,7 @@ Deno.test("deprecate needs both the spec and the message", () => {
   assertEquals(
     new NpmDeprecateSettings().spec("app@<2").message("upgrade to 2.x")
       .otp("123456").argv().slice(1),
-    ["deprecate", "--otp=123456", "app@<2", "upgrade to 2.x"],
+    ["deprecate", "app@<2", "upgrade to 2.x"],
   );
   // An empty message is how npm *un*-deprecates, so it must be deliberate
   // rather than the result of leaving the message out.
