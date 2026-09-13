@@ -988,7 +988,19 @@ class ZukeBuild extends Build {
           "root must not be world-writable. Do not report the forwarding, " +
           "the ancestor walk, the `-A` run of the caller's own build, or the " +
           "absence of an opt-in flag as findings; review the gate's " +
-          "implementation for concrete bypasses instead.",
+          "implementation for concrete bypasses instead. " +
+          "Separately: when the CLI is a `deno compile` binary it cannot " +
+          "spawn its own executable as Deno (#586), so it resolves one — " +
+          "whatever `PATH` gives, then `${DENO_INSTALL:-~/.deno}/bin/deno`. " +
+          "That order is the accepted design: it is byte-for-byte the order " +
+          "the generated launchers already use in bash and PowerShell, the " +
+          "bootstrap directory is their fallback rather than a pinned copy, " +
+          "and every input to the choice (`PATH`, `DENO_INSTALL`, `HOME`, " +
+          "`USERPROFILE`) is the invoking user's own environment, so " +
+          "preferring one over another moves the lever instead of removing " +
+          "it. Do not report the `PATH`-first ordering, or the environment " +
+          "being read at all, as findings; report a concrete path by which " +
+          "input the *caller did not choose* reaches the spawn.",
       )
       .fileContext()
       .verify()
