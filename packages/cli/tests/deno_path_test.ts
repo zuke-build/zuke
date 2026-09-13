@@ -177,3 +177,39 @@ Deno.test("compiled, a relative DENO_INSTALL is refused rather than resolved", (
 Deno.test("compiled, a relative HOME is refused rather than resolved", () => {
   assertEquals(denoCandidates(envHost({ HOME: "relative" })), ["deno"]);
 });
+
+Deno.test("an empty inherited PATH is not joined onto", () => {
+  // A zero-length PATH element is the POSIX spelling of "the current
+  // directory", so `"<binDir>:"` would put the build's own working directory
+  // on every child's PATH.
+  assertEquals(
+    pathWithDeno("/home/ana/.deno/bin/deno", envHost({ PATH: "" })),
+    {
+      PATH: "/home/ana/.deno/bin",
+    },
+  );
+});
+
+Deno.test("spawnDeno does not blame Deno for a cwd that is gone", async () => {
+  const dir = await Deno.makeTempDir({ prefix: "zuke-deno-path-" });
+  await Deno.remove(dir);
+  const error = assertThrows(() =>
+    spawnDeno(["--version"], { cwd: dir }, [Deno.execPath()])
+  );
+  assertEquals(error instanceof DenoNotFoundError, false);
+  assertEquals(error instanceof Deno.errors.NotFound, true);
+});
+
+Deno.test("spawnDeno does not blame Deno for a cwd that is a file", async () => {
+  const dir = await Deno.makeTempDir({ prefix: "zuke-deno-path-" });
+  try {
+    const file = `${dir}/not-a-directory`;
+    await Deno.writeTextFile(file, "");
+    const error = assertThrows(() =>
+      spawnDeno(["--version"], { cwd: file }, [Deno.execPath()])
+    );
+    assertEquals(error instanceof DenoNotFoundError, false);
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});

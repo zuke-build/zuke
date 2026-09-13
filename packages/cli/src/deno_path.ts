@@ -113,7 +113,11 @@ export function pathWithDeno(
 ): Record<string, string> {
   if (!command.includes("/") && !command.includes("\\")) return {};
   const binDir = absolutePath(command).parent().path;
-  const inherited = host.env("PATH");
+  // An empty `PATH` is unset, not an entry to append to: a zero-length element
+  // is the POSIX spelling of "the current directory", so joining onto one
+  // would put the build's own working directory on its children's `PATH` —
+  // the same reading of an empty value {@link firstSet} makes above.
+  const inherited = firstSet(host, "PATH");
   const separator = host.windows() ? ";" : ":";
   return {
     PATH: inherited === undefined
@@ -151,8 +155,27 @@ export class DenoNotFoundError extends Error {
 export type DenoSpawnOptions = Omit<Deno.CommandOptions, "args" | "env">;
 
 /**
+ * Whether `cwd` still names a directory to spawn in — vacuously true when the
+ * caller named none and the child inherits this process's own.
+ */
+function cwdUsable(cwd: string | URL | undefined): boolean {
+  if (cwd === undefined) return true;
+  try {
+    return Deno.statSync(cwd).isDirectory;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Spawn Deno with `args`, trying each candidate in order and skipping the ones
  * that are not installed.
+ *
+ * `candidates` is this loop's own seam: the list is the only thing a test has
+ * to vary to reach the skip and the not-found paths, which a real machine —
+ * where a bare `deno` resolves — cannot produce. The resolution it defaults to
+ * is pure and takes a {@link DenoHost} instead, so each layer is injected at
+ * the level it decides something.
  *
  * @throws {DenoNotFoundError} when every candidate is missing.
  */
@@ -173,8 +196,12 @@ export function spawnDeno(
     } catch (error) {
       // Not installed here; the next candidate may be. Anything else — a
       // permission denial, a directory where the binary should be — is the
-      // caller's to see rather than a reason to keep looking.
+      // caller's to see rather than a reason to keep looking. `spawn` reports
+      // a `cwd` that is gone as `NotFound` as well, and no other Deno would
+      // fix that: telling the user to install one they already have would send
+      // them somewhere the problem is not.
       if (!(error instanceof Deno.errors.NotFound)) throw error;
+      if (!cwdUsable(options.cwd)) throw error;
     }
   }
   throw new DenoNotFoundError(tried);

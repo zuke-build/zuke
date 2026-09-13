@@ -14,7 +14,15 @@
 import { assertEquals } from "../../packages/core/tests/_assert.ts";
 import { CONFIG_FILE } from "../../packages/core/src/config.ts";
 import { type BuildProbe, main } from "../../packages/cli/mod.ts";
-import { defaultBuildProbe } from "../../packages/cli/src/dispatch.ts";
+import {
+  type BuildRunner,
+  defaultBuildProbe,
+} from "../../packages/cli/src/dispatch.ts";
+import {
+  denoCandidates,
+  type DenoHost,
+  spawnDeno,
+} from "../../packages/cli/src/deno_path.ts";
 import { defaultHost, type SetupHost } from "../../packages/cli/src/setup.ts";
 import { withTemp } from "../../packages/core/tests/_temp.ts";
 import { withEnv } from "../../packages/core/tests/_env.ts";
@@ -192,24 +200,53 @@ Deno.test("zuke <argv> cannot forge a workflow command on an Actions runner", as
   }, { prefix: "zuke-global-cli-" });
 });
 
-Deno.test("zuke <target> forwards to a real Deno, with its directory first on PATH", async () => {
-  // The whole point of resolving Deno rather than reusing `Deno.execPath()`:
-  // what gets spawned must be an actual Deno — a compiled `zuke` spawning
-  // itself re-enters the CLI forever — and, as the launchers do, it must lead
-  // the child's PATH so a tool the build provisions with `deno install`
-  // resolves by bare name.
+Deno.test("a forwarded build resolves a real Deno when the CLI is a compiled binary", async () => {
+  // The compiled case, which nothing in-process can otherwise reach: under
+  // `deno test` the running executable *is* Deno, so `Deno.execPath()` happens
+  // to be the right answer and the bug is invisible. A host that says it is
+  // standalone and names a binary that is not Deno puts the real question to
+  // the resolution — and the build only runs at all if it ignored that name
+  // and found a Deno. The rest of the path is real: the walk up to zuke.json,
+  // the spawn from the root, the target executing, the exit code coming back.
   await withTemp(async (dir) => {
     await Deno.writeTextFile(
       `${dir}/${CONFIG_FILE}`,
       '{ "name": "Scratch" }\n',
     );
     await Deno.writeTextFile(`${dir}/zuke.ts`, scratchBuild());
+    const compiled: DenoHost = {
+      standalone: () => true,
+      execPath: () => `${dir}/zuke-compiled-binary`,
+      env: (name) => Deno.env.get(name),
+      windows: () => Deno.build.os === "windows",
+    };
+    const runner: BuildRunner = async (root, denoArgs) => {
+      const child = spawnDeno(
+        denoArgs,
+        { cwd: root, stdin: "null", stdout: "null", stderr: "inherit" },
+        denoCandidates(compiled),
+      );
+      return (await child.status).code;
+    };
     await inDir(dir, async () => {
-      assertEquals(await main(["report"], recordingHost()), 0);
+      const code = await main(
+        ["report"],
+        recordingHost(),
+        undefined,
+        undefined,
+        undefined,
+        runner,
+      );
+      assertEquals(code, 0);
     });
     const spawned: { execPath: string; standalone: boolean; path: string } =
       JSON.parse(await Deno.readTextFile(`${dir}/spawned.json`));
+    // A real Deno ran the build, not the binary the host named — which is the
+    // whole of #586: spawning that name re-enters the CLI instead.
     assertEquals(spawned.standalone, false);
+    assertEquals(spawned.execPath.startsWith(dir), false);
+    // And, as the launchers do, that Deno leads the child's PATH, so a tool
+    // the build provisions with `deno install` resolves by bare name.
     const separator = Deno.build.os === "windows" ? ";" : ":";
     const binDir = absolutePath(spawned.execPath).parent().path;
     assertEquals(spawned.path.split(separator)[0], binDir);

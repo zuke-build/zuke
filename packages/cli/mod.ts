@@ -374,11 +374,13 @@ export type DocRunner = (denoArgs: string[]) => Promise<number>;
 
 /**
  * The default {@link DocRunner}: spawn `deno doc …` — {@link spawnDeno} finds
- * the Deno to run it — in an isolated temp dir, relaying what it printed
- * through the package's sink. The child's output is not inherited: it repeats
- * the arguments the user passed (`deno doc` names a `--filter` it could not
- * find) and prints a third-party package's own text, neither of which may
- * reach an Actions runner raw.
+ * the Deno to run it, and puts that Deno first on the child's `PATH` — in an
+ * isolated temp dir, relaying what it printed through the package's sink. The
+ * child's output is not inherited: it repeats the arguments the user passed
+ * (`deno doc` names a `--filter` it could not find) and prints a third-party
+ * package's own text, neither of which may reach an Actions runner raw. Its
+ * stdin is closed rather than inherited: `deno doc` reads a specifier, never
+ * the terminal, and the CLI's own stdin is not its to consume.
  */
 const defaultDocRunner: DocRunner = async (denoArgs) => {
   // Run from a throwaway directory so the surrounding repo's deno.json /
@@ -388,6 +390,7 @@ const defaultDocRunner: DocRunner = async (denoArgs) => {
   try {
     const child = spawnDeno(denoArgs, {
       cwd,
+      stdin: "null",
       stdout: "piped",
       stderr: "piped",
     });
