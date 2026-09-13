@@ -1113,6 +1113,25 @@ class ZukeBuild extends Build {
       // the reason the accepted design is now stated in the reviewer's
       // criteria above: a suppressed finding leaves the review's state, so
       // its next rewording can never be matched back to it.
+      // `1kowaq3p0bgh2` is the same thing happening to #586's Deno
+      // resolution: `obiimxnj848z` said the compiled CLI prefers a
+      // PATH-controlled `deno` over the bootstrap copy, was answered on its
+      // thread, and the reviewer itself marked it fixed — then re-issued it
+      // against unchanged code under this id, with no new argument and the
+      // same remedy. The rebuttal stands on the thread and in the criteria
+      // above: the order is byte-for-byte the launchers\' own, PATH first and
+      // `${DENO_INSTALL:-~/.deno}/bin/deno` second, and every input to the
+      // choice is the caller\'s own environment, so preferring one over
+      // another moves the lever rather than removing it. A test now pins the
+      // two orders to each other. `37q55zy2rwy3t` is not suppressed: it reads
+      // the criteria paragraph above as planted prompt injection, which gets
+      // the premise wrong — first-party build code, reviewed in the PR that
+      // changes it, is not attacker-controlled, and `.criteria(...)` is the
+      // API\'s own way to state an accepted design. The real asymmetry it
+      // gestures at — criteria run from the PR head while `conventionsFile`
+      // is deliberately read from the diff base — is #589, answered there
+      // rather than by silencing the finding.
+      // cspell:ignore kowaq bgh zy rwy
       // cspell:ignore myee fmcx ownw eav zbigfl oldslqkyj vnfjvb bja rj xp dtit
       // cspell:ignore uhzbksic lk fag hqxu trsbgqqlurzb ilv ls kom amw
       // cspell:ignore kjblk pw vowr jzpja izcwagpzb kl yht podo picgsdqxfo
@@ -1146,6 +1165,7 @@ class ZukeBuild extends Build {
             "picgsdqxfo3",
             "3gvbeiyh1t7xn",
             "3hq0fvf31l0z2",
+            "1kowaq3p0bgh2",
           )
         ),
       )
