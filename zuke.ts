@@ -1130,8 +1130,21 @@ class ZukeBuild extends Build {
       // API\'s own way to state an accepted design. The real asymmetry it
       // gestures at — criteria run from the PR head while `conventionsFile`
       // is deliberately read from the diff base — is #589, answered there
-      // rather than by silencing the finding.
-      // cspell:ignore kowaq bgh zy rwy
+      // rather than by silencing the finding. The next run refuted that
+      // framing itself, twice, in its own words: repository-owned review
+      // criteria, not attacker-controlled input.
+      // `2d10cq6cfeofm` is the third wording of the Deno resolution finding,
+      // issued one run after the reviewer marked the second fixed, against
+      // the same unchanged file. The ladder is the documented one — high,
+      // then medium, then critical — and severity is why each wording gets a
+      // fresh id: the rewording pass only aliases onto a recorded finding
+      // when the severity did not grow. Critical is the top of that ladder,
+      // so this entry is the one that can finally absorb the next
+      // restatement instead of yielding another id. If it does not, the loop
+      // stops here rather than growing this list one push at a time: the
+      // answer is on the threads, the design is in the criteria above, and
+      // the decision is the maintainer\'s.
+      // cspell:ignore kowaq bgh zy rwy cq cfeofm
       // cspell:ignore myee fmcx ownw eav zbigfl oldslqkyj vnfjvb bja rj xp dtit
       // cspell:ignore uhzbksic lk fag hqxu trsbgqqlurzb ilv ls kom amw
       // cspell:ignore kjblk pw vowr jzpja izcwagpzb kl yht podo picgsdqxfo
@@ -1166,6 +1179,7 @@ class ZukeBuild extends Build {
             "3gvbeiyh1t7xn",
             "3hq0fvf31l0z2",
             "1kowaq3p0bgh2",
+            "2d10cq6cfeofm",
           )
         ),
       )
