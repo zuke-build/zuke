@@ -104,6 +104,7 @@ import { buildFileContext } from "./file_context.ts";
 import { readTextOrUndefined } from "./context.ts";
 import type { PromptExtras, RebuttalNote } from "./prompts/templates.ts";
 import { rebuttalComment } from "./prompts/templates.ts";
+import type { Redact } from "./comment.ts";
 
 /**
  * A fluent AI reviewer. Construct one via {@link securityReviewer} (and the
@@ -507,6 +508,7 @@ export class Reviewer implements Validation {
   async #report(
     assessment: Assessment,
     target: string,
+    redact: Redact,
     usage?: Usage,
     extras: ReportExtras = {},
     commentExtra?: string,
@@ -516,6 +518,7 @@ export class Reviewer implements Validation {
     for (const line of lines) console.log(line);
     await this.#publish(
       toMarkdown(this.name, target, assessment, usage, extras),
+      redact,
       commentExtra,
     );
   }
@@ -547,10 +550,14 @@ export class Reviewer implements Validation {
    * Announce a skipped review unless quiet — on the console, the job summary,
    * and (when `.comment()` is set) the pull request.
    */
-  async #reportSkip(target: string, reason: string): Promise<void> {
+  async #reportSkip(
+    target: string,
+    reason: string,
+    redact: Redact,
+  ): Promise<void> {
     if (this.#quiet) return;
     console.log(skipConsoleLine(this.name, reason));
-    await this.#publish(skipMarkdown(this.name, target, reason));
+    await this.#publish(skipMarkdown(this.name, target, reason), redact);
   }
 
   /** The comment-posting token for `host` (explicit, or its default env var). */
@@ -565,7 +572,11 @@ export class Reviewer implements Validation {
    * `commentExtra` (the hidden discussion-state block) goes only to the PR
    * comment — the job summary has no next run to carry state to.
    */
-  async #publish(markdown: string, commentExtra?: string): Promise<void> {
+  async #publish(
+    markdown: string,
+    redact: Redact,
+    commentExtra?: string,
+  ): Promise<void> {
     writeStepSummary(markdown);
     if (!this.#comment) return;
     const host = detectReviewHost(this.#env);
@@ -583,9 +594,12 @@ export class Reviewer implements Validation {
       );
       return;
     }
-    const body = commentExtra === undefined
-      ? markdown
-      : `${markdown}\n${commentExtra}`;
+    // Masked here, at the one place this class posts a comment, so a caller
+    // cannot leak by forgetting to. The state block is included: it is built
+    // from the same assessment the markdown is.
+    const body = redact(
+      commentExtra === undefined ? markdown : `${markdown}\n${commentExtra}`,
+    );
     try {
       await upsert(this.name, body, this.#fetch ?? fetch, this.#commentMode);
     } catch (error) {
@@ -801,13 +815,14 @@ export class Reviewer implements Validation {
   }
 
   /** What the review-thread phase in `threads_phase.ts` needs from this reviewer. */
-  #threadSettings(): ThreadPhaseSettings {
+  #threadSettings(redact: Redact): ThreadPhaseSettings {
     return {
       name: this.name,
       quiet: this.#quiet,
       env: this.#env,
       doFetch: this.#fetch ?? fetch,
       token: (host) => this.#resolveCommentToken(host),
+      redact,
     };
   }
 
@@ -823,7 +838,7 @@ export class Reviewer implements Validation {
     const key = resolveKey(this.#apiKey);
     if (key === "") {
       if (this.#skipIfKeyMissing) {
-        await this.#reportSkip(context.target, "no API key");
+        await this.#reportSkip(context.target, "no API key", context.redact);
         return;
       }
       throw new AiReviewError("an API key is required; call .apiKey(...)");
@@ -854,14 +869,14 @@ export class Reviewer implements Validation {
         const reason =
           "could not compute the base diff (git fetch for the base branch failed)";
         if (this.#onError === "warn") {
-          await this.#reportSkip(context.target, reason);
+          await this.#reportSkip(context.target, reason, context.redact);
           return;
         }
         throw new AiReviewError(
           `${this.name} of "${context.target}" ${reason}; refusing to pass on an empty fallback diff`,
         );
       }
-      await this.#report(emptyAssessment(), context.target);
+      await this.#report(emptyAssessment(), context.target, context.redact);
       return;
     }
     if (this.#maxDiffTokens !== undefined) {
@@ -887,7 +902,7 @@ export class Reviewer implements Validation {
     const threadCtx =
       discussion === undefined || this.#discussion?.threads_() !== true
         ? undefined
-        : await prepareThreads(this.#threadSettings());
+        : await prepareThreads(this.#threadSettings(context.redact));
     const dismissedPrior = dismissedOf(discussion?.priorState);
     const openPrior = openOf(discussion?.priorState);
     const fixedPrior = fixedOf(discussion?.priorState);
@@ -950,6 +965,7 @@ export class Reviewer implements Validation {
       await this.#reportSkip(
         context.target,
         `AI budget exhausted — ${call.exhausted}`,
+        context.redact,
       );
       return;
     }
@@ -1300,7 +1316,7 @@ export class Reviewer implements Validation {
     const threadNotes = threadCtx === undefined || this.#quiet
       ? []
       : await postThreads(
-        this.#threadSettings(),
+        this.#threadSettings(context.redact),
         threadCtx,
         {
           open: assessment.findings,
@@ -1316,7 +1332,7 @@ export class Reviewer implements Validation {
           anchors: anchorableLines(diff),
         },
       );
-    await this.#report(assessment, context.target, usage, {
+    await this.#report(assessment, context.target, context.redact, usage, {
       suppressed: suppressed.length,
       suppressedFindings: suppressed,
       fromCache,

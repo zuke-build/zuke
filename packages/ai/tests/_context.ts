@@ -20,3 +20,18 @@ import type { ValidationContext } from "@zuke/core";
 export function noRedactionContext(target: string): ValidationContext {
   return { target, redact: (text) => text };
 }
+
+/**
+ * A context whose redactor masks `secret`, standing in for the run redactor
+ * core installs for a value the build declared.
+ *
+ * The counterpart to {@link noRedactionContext}, for the tests that are about
+ * the masking itself: with a real masker in place, a `secret` still reaching
+ * the `fetch` seam is the defect.
+ */
+export function maskingContext(
+  target: string,
+  secret: string,
+): ValidationContext {
+  return { target, redact: (text) => text.replaceAll(secret, "***") };
+}

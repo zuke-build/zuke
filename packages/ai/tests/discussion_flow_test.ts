@@ -14,7 +14,7 @@ import {
 import { stableHash } from "../src/hash.ts";
 import { withEnv } from "../../core/tests/_env.ts";
 import { captureLines as captured } from "../../core/tests/_console.ts";
-import { noRedactionContext } from "./_context.ts";
+import { maskingContext, noRedactionContext } from "./_context.ts";
 
 const DIFF = "diff --git a/src/app.ts b/src/app.ts\n" +
   "--- a/src/app.ts\n+++ b/src/app.ts\n@@\n+const x = eval(input);\n";
@@ -3222,4 +3222,78 @@ Deno.test("a reason-less dismissal still closes its thread, without an invented 
   );
   assertEquals(body.includes("**Dismissed via discussion**"), true);
   assertEquals(body.includes("**Dismissed via discussion** —"), false);
+});
+
+// A value the build declared secret, which comes back inside the model's
+// assessment because the prompt carried the diff it was found in.
+const CANARY = "review-value-that-must-not-escape";
+
+/** A finding whose title quotes the secret, anchored so it earns a thread. */
+const LEAKY = {
+  title: `Eval of user input near ${CANARY}`,
+  severity: "high",
+  file: "src/app.ts",
+  line: 12,
+};
+
+Deno.test("the overview comment is masked before it reaches the host", async () => {
+  const { fetch, calls } = threadFetch([summaryComment()], [], [
+    claude({ score: 9, severity: "high", findings: [LEAKY] }),
+  ]);
+  await captured(() =>
+    inPr(async () => {
+      await assertRejects(
+        () =>
+          securityReviewer((r) =>
+            r.provider("claude").apiKey("k")
+              .comment().discussion()
+              .diff((d) => d.text(ANCHORED_DIFF))
+              .fetch(fetch)
+          ).validate(maskingContext("t", CANARY)),
+        AiReviewError,
+      );
+    })
+  );
+  // Asserted on what the seam received, because that is what a regression
+  // changes: a comment cannot be taken back once it has been sent.
+  const posts = calls.filter((c) =>
+    c.url.includes("/issues/") && c.method !== "GET"
+  );
+  assertEquals(posts.length > 0, true);
+  for (const post of posts) {
+    assertEquals(post.body.includes(CANARY), false);
+  }
+  // Non-vacuous: the finding really did reach the comment, masked.
+  assertEquals(posts.some((p) => p.body.includes("***")), true);
+});
+
+Deno.test("a review thread is masked before it reaches the host", async () => {
+  // The sharper of the two paths: a thread is where a finding's quoted code
+  // lands, so it is the likeliest to carry a credential the model saw.
+  const { fetch, calls } = threadFetch([summaryComment()], [], [
+    claude({ score: 9, severity: "high", findings: [LEAKY] }),
+  ]);
+  await captured(() =>
+    inPr(async () => {
+      await assertRejects(
+        () =>
+          securityReviewer((r) =>
+            r.provider("claude").apiKey("k")
+              .comment().discussion((d) => d.threads())
+              .diff((d) => d.text(ANCHORED_DIFF))
+              .fetch(fetch)
+          ).validate(maskingContext("t", CANARY)),
+        AiReviewError,
+      );
+    })
+  );
+  const posts = threadPosts(calls);
+  assertEquals(posts.length, 1);
+  const payload = JSON.parse(posts[0].body);
+  assertEquals(String(payload.body).includes(CANARY), false);
+  assertEquals(String(payload.body).includes("***"), true);
+  // The anchor is not redacted: GitHub matches it against the diff, so masking
+  // it would break posting without hiding anything a secret could occupy.
+  assertEquals(payload.path, "src/app.ts");
+  assertEquals(payload.line, 12);
 });

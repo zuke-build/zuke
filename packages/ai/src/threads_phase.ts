@@ -16,6 +16,7 @@
 import { stableHash } from "./hash.ts";
 import { detectReviewHost, type EnvReader } from "./hosts.ts";
 import type { FindingThread, ReviewThreads } from "./hosts/types.ts";
+import type { Redact } from "./comment.ts";
 import {
   findingMarker,
   findingThreads,
@@ -41,6 +42,18 @@ export interface ThreadPhaseSettings {
   readonly doFetch: typeof fetch;
   /** Resolve the comment-posting token for the detected host. */
   readonly token: (host: { defaultTokenEnv: string }) => string;
+  /**
+   * Mask the run's declared secrets in a thread body before it reaches the
+   * host — `ValidationContext.redact`, which core hands a validation for
+   * exactly this.
+   *
+   * Required, not optional. A thread body is where a finding's quoted code
+   * lands, which is the text most likely to carry a credential the model saw
+   * in the diff or in a failing command's output, and a review comment cannot
+   * be taken back once it is posted. An optional guard is the one a later call
+   * site leaves out; making it part of the type means the compiler asks.
+   */
+  readonly redact: Redact;
 }
 
 /** The host's thread operations plus this reviewer's threads already on the PR. */
@@ -143,12 +156,12 @@ export async function postThreads(
       // Replies first is not an ordering accident: an outcome the maintainer
       // can read matters more than a thread that exists, so the closing half
       // of the round is never starved by the opening half.
+      // Masked once, before the branch: opening a thread and replying into one
+      // publish the same text to the same pull request, so redacting at each
+      // call separately would be two places to forget instead of one.
+      const body = settings.redact(threadBody(nameHash, action));
       const result = action.kind === "reply"
-        ? await context.ops.reply(
-          doFetch,
-          action.rootId ?? 0,
-          threadBody(nameHash, action),
-        )
+        ? await context.ops.reply(doFetch, action.rootId ?? 0, body)
         : sha === undefined || action.anchor === undefined
         ? "rejected"
         : await context.ops.open(
@@ -156,7 +169,7 @@ export async function postThreads(
           sha,
           action.anchor.path,
           action.anchor.line,
-          threadBody(nameHash, action),
+          body,
         );
       if (result === "created") posted++;
       else if (result === "rejected") rejected.push(action.id);
