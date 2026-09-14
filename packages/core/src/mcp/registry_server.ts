@@ -30,6 +30,7 @@
  * @module
  */
 
+import { denoExecutable } from "../host.ts";
 import { absolutePath } from "../path.ts";
 import { resolveActor } from "../state/record.ts";
 import type { RunEvent, RunEventOutcome } from "../state/types.ts";
@@ -826,7 +827,13 @@ export class RegistryMcpServer {
     return ok(id, textResult(output + status, result.code !== 0));
   }
 
-  /** Build the launch argv and working directory for a target's location. */
+  /**
+   * Build the launch argv and working directory for a target's location.
+   *
+   * A registered module is run with Deno, which {@link denoExecutable} names —
+   * the running Deno, or a real one on `PATH` when this server is itself a
+   * compiled binary and so is not Deno.
+   */
   #launch(
     location: BuildLocation,
     target: string,
@@ -841,7 +848,7 @@ export class RegistryMcpServer {
       return { argv: [...location.command, ...trailing], cwd: location.cwd };
     }
     return {
-      argv: [Deno.execPath(), "run", "-A", location.module, ...trailing],
+      argv: [denoExecutable(), "run", "-A", location.module, ...trailing],
       cwd: absolutePath(location.cwd).path,
     };
   }

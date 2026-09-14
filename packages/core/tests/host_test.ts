@@ -5,6 +5,7 @@ import { assertEquals } from "./_assert.ts";
 import {
   type CiHost,
   ciHost,
+  denoExecutable,
   detectCiHost,
   isCI,
   operatingSystem,
@@ -159,4 +160,16 @@ Deno.test("ciHost and isCI default to the process environment", () => {
   // reading the real environment — the property that makes this non-breaking.
   assertEquals(typeof ciHost(), "string");
   assertEquals(typeof isCI(), "boolean");
+});
+
+Deno.test("denoExecutable names the running deno, unless this is a compiled build", () => {
+  // Under `deno run` — and so under `deno test` — the executable running this
+  // code is Deno itself, which is what a `deno doc`/`deno test` subprocess
+  // should be: the same version as its parent, with no ambient install needed.
+  assertEquals(denoExecutable(false), Deno.execPath());
+  assertEquals(denoExecutable(), Deno.execPath());
+  // A `deno compile` binary is not Deno. Spawning its own executable re-enters
+  // the build instead of running Deno, so the compiled case resolves the bare
+  // name and lets the OS find a real Deno on PATH.
+  assertEquals(denoExecutable(true), "deno");
 });

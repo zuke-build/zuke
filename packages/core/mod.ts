@@ -38,6 +38,7 @@ export {
   type Architecture,
   type CiHost,
   ciHost,
+  denoExecutable,
   detectCiHost,
   isCI,
   type OperatingSystem,

@@ -4,7 +4,8 @@
 /**
  * Host / CI detection helpers for build scripts. A build can branch on where it
  * runs — e.g. only deploy from CI, pick coloured output locally, or post a PR
- * comment using the active host's API.
+ * comment using the active host's API — and ask which executable is Deno here,
+ * for the subprocesses that are Deno itself.
  *
  * ```ts
  * import { detectCiHost, isCI } from "jsr:@zuke/core";
@@ -152,4 +153,42 @@ export function operatingSystem(
     default:
       return "linux";
   }
+}
+
+/**
+ * The executable that runs Deno here — what to spawn when a build needs `deno`
+ * itself, rather than a tool it installed.
+ *
+ * Under `deno run` the executable running this code **is** Deno, so
+ * `Deno.execPath()` names it and nothing has to be looked up: a project whose
+ * Deno came from the `./zuke` launcher rather than from `PATH` still works, and
+ * the subprocess is the same version as the parent.
+ *
+ * A build compiled with `deno compile` is not Deno. There `Deno.execPath()` is
+ * the compiled binary, so spawning it re-enters the build instead of running
+ * Deno — `deno test` becomes the build running itself with `test` as a target,
+ * and `deno doc <spec>` becomes the build being asked for a target named `doc`.
+ * The compiled case therefore resolves the bare name and lets the OS find a
+ * real Deno on `PATH`. `Deno.build.standalone` is what tells the two apart.
+ *
+ * ```ts
+ * import { denoExecutable } from "jsr:@zuke/core";
+ * const deno = new Deno.Command(denoExecutable(), { args: ["doc", "jsr:@zuke/core"] });
+ * ```
+ *
+ * `@zuke/cli` answers the same question with one more step — a compiled global
+ * `zuke` falls back to the launchers' bootstrap directory when `PATH` has no
+ * Deno — because it is the command a user installs on a machine that may have
+ * no Deno at all. That fallback is the CLI's, and this is the decision the two
+ * share.
+ *
+ * @param standalone Whether this process is a `deno compile` binary rather than
+ *   Deno itself; defaults to the running host. It is a parameter so both
+ *   answers are reachable from an ordinary `deno test` run, which is never
+ *   standalone.
+ */
+export function denoExecutable(
+  standalone: boolean = Deno.build.standalone,
+): string {
+  return standalone ? "deno" : Deno.execPath();
 }

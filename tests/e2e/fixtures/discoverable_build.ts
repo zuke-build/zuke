@@ -7,6 +7,9 @@
  * registry-backed `zuke mcp` server that spawns it can be shown to have captured
  * real subprocess output.
  *
+ * `compiled_build_e2e.ts` compiles it too, for the build CLI's own commands: the
+ * `doc` command is build-independent, so any runnable build reaches it.
+ *
  * @module
  */
 

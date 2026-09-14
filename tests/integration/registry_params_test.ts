@@ -14,7 +14,12 @@ import {
   assertEquals,
   assertStringIncludes,
 } from "../../packages/core/tests/_assert.ts";
-import { Build, parameter, target } from "../../packages/core/mod.ts";
+import {
+  Build,
+  denoExecutable,
+  parameter,
+  target,
+} from "../../packages/core/mod.ts";
 import { registerCommand } from "../../packages/core/src/registry/register.ts";
 import { FileSystemBuildRegistry } from "../../packages/core/src/registry/fs_registry.ts";
 import {
@@ -113,6 +118,14 @@ Deno.test("a registered build's parameters flow into the registry run tool", asy
     assertEquals(calls.length, 1);
     assertEquals(calls[0].argv.includes("--repos=a,b"), true);
     assertEquals(calls[0].argv.includes("--skip-e2e=true"), true);
+    // A registered module is run by Deno, and the server names it the one way
+    // the whole project does (#587) — the running Deno here, a real one on
+    // PATH when the server is itself a compiled binary and so is not Deno.
+    assertEquals(calls[0].argv.slice(0, 3), [
+      denoExecutable(),
+      "run",
+      "-A",
+    ]);
 
     // The secret cannot be passed: it is rejected as an unknown parameter and
     // no second spawn happens.

@@ -12,7 +12,7 @@ import { discoverCiFiles, syncCiFiles } from "./ci.ts";
 import { isEntryModule } from "./entry.ts";
 import { messageOf } from "./internal.ts";
 import { forceTarget } from "./force.ts";
-import { isCI } from "./host.ts";
+import { denoExecutable, isCI } from "./host.ts";
 import { GraphError, validateGraph } from "./graph.ts";
 import { InsecureBackendUrlError } from "./http.ts";
 import { execute, type Reporter } from "./executor.ts";
@@ -1155,8 +1155,9 @@ async function runRegister(build: Build, parsed: ParsedArgs): Promise<number> {
 export type DocRunner = (spec: string) => Promise<number>;
 
 /**
- * The default {@link DocRunner}: spawn the running `deno` (via
- * {@link Deno.execPath}, so no ambient `deno` on `PATH` is assumed) as
+ * The default {@link DocRunner}: spawn Deno (via {@link denoExecutable}, so the
+ * running Deno is used and no ambient one on `PATH` is assumed — unless this is
+ * a compiled build, which is not Deno and has nothing else to run) as
  * `deno doc <spec>` with the working directory set to a fresh empty temp dir.
  * That isolation is the whole point — run from a Node repo, `deno doc` otherwise
  * resolves the repo's `node_modules/@types/*` and buries the API under dozens of
@@ -1165,7 +1166,7 @@ export type DocRunner = (spec: string) => Promise<number>;
 const defaultDocRunner: DocRunner = async (spec) => {
   const cwd = await Deno.makeTempDir({ prefix: "zuke-doc-" });
   try {
-    const command = new Deno.Command(Deno.execPath(), {
+    const command = new Deno.Command(denoExecutable(), {
       args: ["doc", spec],
       cwd,
       stdout: "inherit",

@@ -674,6 +674,21 @@ publish = target().onlyWhen(() => operatingSystem() === "linux").executes(
 const cpu = hostPlatform().archLabel({ x86_64: "amd64", aarch64: "arm64" });
 ```
 
+`denoExecutable()` answers a narrower question: which executable here _is_ Deno,
+for a target that spawns Deno itself. Under `deno run` that is the running
+executable, so the subprocess is the same Deno as its parent and no ambient
+install is needed. A build compiled with `deno compile` is not Deno, though —
+its own executable would re-enter the build rather than run `deno` — so that
+case resolves the bare name on `PATH` instead. Prefer
+[`DenoTasks`](https://jsr.io/@zuke/deno) for `deno` subcommands; this is for the
+rare spawn it does not cover.
+
+```ts
+import { denoExecutable } from "jsr:@zuke/core";
+
+const deno = new Deno.Command(denoExecutable(), { args: ["doc", "./mod.ts"] });
+```
+
 ### `Build`
 
 The base class your build extends. It contributes no targets of its own.
