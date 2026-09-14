@@ -64,6 +64,18 @@ interface Sent {
   body: string;
 }
 
+/**
+ * The host a request went to.
+ *
+ * Parsed and compared whole rather than matched with `url.includes(host)`:
+ * a substring test also matches a URL that merely mentions the host somewhere
+ * else, such as `https://example.invalid/?to=api.github.com`, so it is the
+ * wrong test even where the inputs happen to be ours.
+ */
+function hostOf(url: string): string {
+  return new URL(url).hostname;
+}
+
 Deno.test("the AI fixer never puts a declared secret in a PR comment", async () => {
   const sent: Sent[] = [];
   const writes: string[] = [];
@@ -72,7 +84,7 @@ Deno.test("the AI fixer never puts a declared secret in a PR comment", async () 
     const url = String(input);
     if (typeof init?.body === "string") sent.push({ url, body: init.body });
     // The model call, then GitHub: list the comments, then create one.
-    if (url.includes("api.anthropic.com")) {
+    if (hostOf(url) === "api.anthropic.com") {
       return Promise.resolve(new Response(FIX, { status: 200 }));
     }
     const method = init?.method ?? "GET";
@@ -114,7 +126,7 @@ Deno.test("the AI fixer never puts a declared secret in a PR comment", async () 
 
   // The fixer really did reach the comment API: without this the assertion
   // below would pass vacuously on a run that never published at all.
-  const comments = sent.filter((s) => s.url.includes("api.github.com"));
+  const comments = sent.filter((s) => hostOf(s.url) === "api.github.com");
   assertEquals(comments.length, 1);
 
   // The diagnosis quoted the secret, so a comment that skipped the redactor
