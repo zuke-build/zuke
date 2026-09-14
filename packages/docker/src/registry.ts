@@ -7,7 +7,9 @@
  *
  * ```ts
  * import { DockerTasks } from "jsr:@zuke/docker";
- * await DockerTasks.login((s) => s.registry("ghcr.io").username(user).passwordStdin(token));
+ * await DockerTasks.login((s) =>
+ *   s.registry("ghcr.io").username(user).passwordStdin(token)
+ * );
  * await DockerTasks.logout((s) => s.registry("ghcr.io"));
  * ```
  *
@@ -20,7 +22,7 @@ import { DockerSettings } from "./settings.ts";
 export class DockerLoginSettings extends DockerSettings {
   #username?: string;
   #password?: string;
-  #passwordStdin = false;
+  #stdinPassword?: string;
   #registry?: string;
 
   /** The username (`-u`). */
@@ -30,19 +32,43 @@ export class DockerLoginSettings extends DockerSettings {
   }
 
   /**
-   * The password (`-p`). This lands directly in the process argv, where it
-   * can leak through `ps`/process listings, shell history, or CI job logs —
-   * {@link passwordStdin} is the safe choice in CI (and generally), since it
-   * pipes the secret through STDIN instead of putting it on the command line.
+   * The password (`-p`), which docker accepts and which therefore stays on the
+   * wrapper.
+   *
+   * Prefer {@link passwordStdin}. This flag puts the password in the child's
+   * argv, and a child's argv is world-readable on a default Linux host —
+   * through `ps` or `/proc/<pid>/cmdline` — to every other user on the machine
+   * and every process the build starts. On a shared or self-hosted runner that
+   * is every co-tenant.
+   *
+   * The value is registered with the run's redactor, so Zuke's own renderings
+   * of the command mask it. That does not cover the process table: the argv
+   * handed to the operating system is not redacted, and docker itself warns
+   * about `-p` for the same reason. Masking is what can be done here, not a
+   * fix for the exposure.
    */
   password(value: string): this {
     this.#password = value;
+    this.markSecret(value);
     return this;
   }
 
-  /** Read the password from STDIN (`--password-stdin`). */
-  passwordStdin(): this {
-    this.#passwordStdin = true;
+  /**
+   * Pipe the password to docker through STDIN (`--password-stdin`), which
+   * keeps it off the command line entirely.
+   *
+   * This is the route docker documents for exactly this reason, and the one to
+   * use in CI. The token goes to the child's standard input, which — unlike its
+   * argv — no other process on the host can read.
+   *
+   * Takes the password. Until this release it took nothing and piped nothing:
+   * it appended the flag and left docker reading a stream that was never
+   * written, so the safe path this module's own example demonstrated had never
+   * actually run. Supplying the token is what makes the flag mean anything.
+   */
+  passwordStdin(token: string): this {
+    this.#stdinPassword = token;
+    this.markSecret(token);
     return this;
   }
 
@@ -52,12 +78,22 @@ export class DockerLoginSettings extends DockerSettings {
     return this;
   }
 
+  /**
+   * The password given to {@link passwordStdin}, handed to the child on its
+   * standard input. `undefined` when that setter was never called, which is
+   * what leaves stdin alone for every other login.
+   */
+  protected override stdinInput(): string | undefined {
+    return this.#stdinPassword;
+  }
+
   /** Assemble the `docker login` argv. */
   protected override subcommandArgs(): string[] {
     const argv = ["login"];
     if (this.#username !== undefined) argv.push("-u", this.#username);
     if (this.#password !== undefined) argv.push("-p", this.#password);
-    if (this.#passwordStdin) argv.push("--password-stdin");
+    // The flag only, never the token: the token travels on stdin.
+    if (this.#stdinPassword !== undefined) argv.push("--password-stdin");
     if (this.#registry !== undefined) argv.push(this.#registry);
     return argv;
   }

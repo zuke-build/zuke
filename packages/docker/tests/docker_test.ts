@@ -161,8 +161,9 @@ Deno.test("push/pull/tag build their argv", () => {
 
 Deno.test("login renders credentials and registry", () => {
   assertEquals(
-    new DockerLoginSettings().username("u").passwordStdin().registry("ghcr.io")
-      .argv(),
+    new DockerLoginSettings().username("u").passwordStdin("tok").registry(
+      "ghcr.io",
+    ).argv(),
     ["docker", "login", "-u", "u", "--password-stdin", "ghcr.io"],
   );
   assertEquals(new DockerLoginSettings().password("p").argv(), [

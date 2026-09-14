@@ -366,14 +366,38 @@ class DockerLoginSettings extends DockerSettings
   username(value: string): this
     The username (`-u`).
   password(value: string): this
-    The password (`-p`). This lands directly in the process argv, where it
-    can leak through `ps`/process listings, shell history, or CI job logs —
-    {@link passwordStdin} is the safe choice in CI (and generally), since it
-    pipes the secret through STDIN instead of putting it on the command line.
-  passwordStdin(): this
-    Read the password from STDIN (`--password-stdin`).
+    The password (`-p`), which docker accepts and which therefore stays on the
+    wrapper.
+
+    Prefer {@link passwordStdin}. This flag puts the password in the child's
+    argv, and a child's argv is world-readable on a default Linux host —
+    through `ps` or `/proc/<pid>/cmdline` — to every other user on the machine
+    and every process the build starts. On a shared or self-hosted runner that
+    is every co-tenant.
+
+    The value is registered with the run's redactor, so Zuke's own renderings
+    of the command mask it. That does not cover the process table: the argv
+    handed to the operating system is not redacted, and docker itself warns
+    about `-p` for the same reason. Masking is what can be done here, not a
+    fix for the exposure.
+  passwordStdin(token: string): this
+    Pipe the password to docker through STDIN (`--password-stdin`), which
+    keeps it off the command line entirely.
+
+    This is the route docker documents for exactly this reason, and the one to
+    use in CI. The token goes to the child's standard input, which — unlike its
+    argv — no other process on the host can read.
+
+    Takes the password. Until this release it took nothing and piped nothing:
+    it appended the flag and left docker reading a stream that was never
+    written, so the safe path this module's own example demonstrated had never
+    actually run. Supplying the token is what makes the flag mean anything.
   registry(server: string): this
     The registry server (defaults to Docker Hub).
+  override protected stdinInput(): string | undefined
+    The password given to {@link passwordStdin}, handed to the child on its
+    standard input. `undefined` when that setter was never called, which is
+    what leaves stdin alone for every other login.
   override protected subcommandArgs(): string[]
     Assemble the `docker login` argv.
 
