@@ -9,6 +9,13 @@
  * comment in place. Both are best-effort: a failure to post never breaks the
  * build.
  *
+ * Both redact before handing anything to the host API, and they do it *here*
+ * rather than at their four call sites for the reason core gives for doing the
+ * same inside `appendJobSummary`: at the one function that publishes, a caller
+ * cannot leak by forgetting to. A comment cannot be taken back — it is already
+ * in the notification mails and the API history — so the guard has to be
+ * unforgettable rather than merely available.
+ *
  * @module
  */
 
@@ -18,12 +25,37 @@ import { resolveGithubContext } from "./hosts/github.ts";
 import { postSuggestions, type Suggestion } from "./hosts/github_review.ts";
 import { resolveKey } from "./provider.ts";
 
-/** How to post a comment: the token source, the env reader, and a `fetch` seam. */
+/**
+ * Mask the run's declared secrets in a piece of text — the shape of
+ * `RemediationContext.redact`.
+ *
+ * Named once here, and imported by the fixers that thread it down to these
+ * functions, so the three do not each spell out a function type that has to
+ * stay in step.
+ */
+export type Redact = (text: string) => string;
+
+/**
+ * How to post a comment: the token source, the env reader, the redactor, and a
+ * `fetch` seam.
+ */
 export interface CommentOptions {
   /** The token to post with; defaults to the host's conventional env var. */
   commentToken?: AnyParameter | string;
   /** The environment reader used to detect the host and read the token. */
   env: EnvReader;
+  /**
+   * Mask the run's declared secrets in anything bound for the pull request —
+   * `RemediationContext.redact`, which core hands a remediation for exactly
+   * this.
+   *
+   * Required, not optional. What these functions publish is a model's reply to
+   * a prompt built from a failure, and that prompt carries the failed command
+   * and its output, so a secret the build holds can come back in the reply. An
+   * optional guard is the one that gets left out at the next call site; making
+   * it part of the type means the compiler asks instead.
+   */
+  redact: Redact;
   /** The `fetch` implementation (test seam). */
   fetch?: typeof fetch;
 }
@@ -45,7 +77,7 @@ export async function postComment(
   const upsert = host.prepare(token, options.env);
   if (upsert === undefined) return;
   try {
-    await upsert(name, markdown, options.fetch ?? fetch);
+    await upsert(name, options.redact(markdown), options.fetch ?? fetch);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.warn(`[${name}] could not post PR comment: ${message}`);
@@ -76,7 +108,23 @@ export async function postGithubSuggestions(
   const context = resolveGithubContext(token, options.env);
   if (context === undefined) return 0;
   try {
-    return await postSuggestions(context, suggestions, options.fetch ?? fetch);
+    // Inside the try, with the call: a redactor is supplied by the caller, so a
+    // throwing one would otherwise escape this function and fail the build —
+    // which is exactly the totality the doc comment above promises it will not
+    // do. Masking that fails is a skipped courtesy, not a broken build.
+    //
+    // Only `body` is redacted. It is the model-authored half — the prose and
+    // the committable `suggestion` block — and the sharper of the two publish
+    // paths, because a reviewer can commit a suggestion in one click: a secret
+    // reaching it would not merely be disclosed but proposed for check-in.
+    // `path` and the `key` derived from it are diff coordinates that must match
+    // the file for GitHub to accept the comment at all, so masking them would
+    // break posting without hiding anything a secret could occupy.
+    const masked = suggestions.map((suggestion) => ({
+      ...suggestion,
+      body: options.redact(suggestion.body),
+    }));
+    return await postSuggestions(context, masked, options.fetch ?? fetch);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.warn(`[${name}] could not post suggestions: ${message}`);

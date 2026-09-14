@@ -52,7 +52,7 @@ import {
   readTextOrUndefined,
   resolveConventions,
 } from "./context.ts";
-import { postComment, postGithubSuggestions } from "./comment.ts";
+import { postComment, postGithubSuggestions, type Redact } from "./comment.ts";
 import type { RetryInfo, RetryOptions } from "./retry.ts";
 import type { Budget } from "./budget.ts";
 import type { AiCache } from "./cache.ts";
@@ -399,7 +399,11 @@ export class AiFixer implements Remediation {
    * *applied* (`autoApply`), suggesting the same change is contradictory — post
    * a single overview comment showing what was fixed (with the code) instead.
    */
-  async #report(target: string, report: FixReport): Promise<void> {
+  async #report(
+    target: string,
+    report: FixReport,
+    redact: Redact,
+  ): Promise<void> {
     if (!this.#quiet) {
       for (const line of fixConsoleLines(this.name, target, report)) {
         console.log(line);
@@ -409,19 +413,24 @@ export class AiFixer implements Remediation {
     writeStepSummary(markdown);
     if (!this.#comment) return;
     if (
-      this.#suggest && !this.#autoApply && await this.#postSuggestions(report)
+      this.#suggest && !this.#autoApply &&
+      await this.#postSuggestions(report, redact)
     ) {
       return;
     }
-    await this.#postIssueComment(markdown);
+    await this.#postIssueComment(markdown, redact);
   }
 
   /** Announce a skipped fix on the console, summary, and (if on) the PR. */
-  async #reportSkip(target: string, reason: string): Promise<void> {
+  async #reportSkip(
+    target: string,
+    reason: string,
+    redact: Redact,
+  ): Promise<void> {
     if (!this.#quiet) console.log(skipConsoleLine(this.name, reason));
     const markdown = skipMarkdown(this.name, target, reason);
     writeStepSummary(markdown);
-    if (this.#comment) await this.#postIssueComment(markdown);
+    if (this.#comment) await this.#postIssueComment(markdown, redact);
   }
 
   /**
@@ -429,7 +438,7 @@ export class AiFixer implements Remediation {
    * `suggestion` block. Returns whether at least one was posted (so the
    * overview comment can be skipped). A no-op off GitHub or without locations.
    */
-  async #postSuggestions(report: FixReport): Promise<boolean> {
+  async #postSuggestions(report: FixReport, redact: Redact): Promise<boolean> {
     if (report.locations.length === 0) return false;
     const suggestions = report.locations.map((loc) => ({
       path: loc.file,
@@ -447,15 +456,17 @@ export class AiFixer implements Remediation {
     return (await postGithubSuggestions(this.name, suggestions, {
       commentToken: this.#commentToken,
       env: this.#env,
+      redact,
       fetch: this.#fetch,
     })) > 0;
   }
 
   /** Upsert the single overview comment via the active CI host. */
-  #postIssueComment(markdown: string): Promise<void> {
+  #postIssueComment(markdown: string, redact: Redact): Promise<void> {
     return postComment(this.name, markdown, {
       commentToken: this.#commentToken,
       env: this.#env,
+      redact,
       fetch: this.#fetch,
     });
   }
@@ -480,6 +491,7 @@ export class AiFixer implements Remediation {
       await this.#reportSkip(
         context.target,
         `disabled ${refusal.where} — ${refusal.hint}`,
+        context.redact,
       );
       return { retry: false };
     }
@@ -490,7 +502,7 @@ export class AiFixer implements Remediation {
     }
     const key = resolveKey(this.#apiKey);
     if (key === "") {
-      await this.#reportSkip(context.target, "no API key");
+      await this.#reportSkip(context.target, "no API key", context.redact);
       return { retry: false };
     }
     const model = this.#model ?? DEFAULT_MODELS[provider];
@@ -551,6 +563,7 @@ export class AiFixer implements Remediation {
       await this.#reportSkip(
         context.target,
         `AI budget exhausted — ${call.exhausted}`,
+        context.redact,
       );
       return { retry: false };
     }
@@ -573,7 +586,7 @@ export class AiFixer implements Remediation {
         files: fix.edits.map((e) => e.path),
         action,
         usage,
-      });
+      }, context.redact);
       return { retry: false, summary: fix.diagnosis };
     }
 
@@ -595,7 +608,7 @@ export class AiFixer implements Remediation {
         files: fix.edits.map((e) => e.path),
         action: `could not apply fix: ${message}`,
         usage,
-      });
+      }, context.redact);
       return { retry: false, summary: fix.diagnosis };
     }
 
@@ -623,7 +636,7 @@ export class AiFixer implements Remediation {
       files: applied,
       action,
       usage,
-    });
+    }, context.redact);
     return { retry: true, summary: fix.diagnosis };
   }
 }

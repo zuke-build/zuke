@@ -26,6 +26,13 @@ import { runCli } from "./_harness.ts";
 const ON_CI = (name: string) => name === "GITHUB_ACTIONS" ? "true" : undefined;
 /** An env reader that looks like a developer's machine. */
 const OFF_CI = () => undefined;
+/**
+ * A Jenkins runner. It sets none of the four host variables Zuke generates
+ * pipelines for, and does not set `CI` either, which is what used to make it
+ * indistinguishable from the machine above.
+ */
+const ON_JENKINS = (name: string) =>
+  name === "JENKINS_URL" ? "http://jenkins" : undefined;
 
 /** A model response proposing one edit. */
 const FIX = JSON.stringify({
@@ -116,4 +123,32 @@ Deno.test("the default scope is unchanged: it still heals a local build", async 
 
   assertEquals(code, 0);
   assertEquals(recorded.writes, ["src/app.ts"]);
+});
+
+Deno.test('runOnly("ci") heals a build on a CI system Zuke has no generator for', async () => {
+  // The whole-build half of the scope fix. Before it, this run reported a skip
+  // and left the target red on every Jenkins build, because the host was read
+  // as a developer's machine.
+  const { code, recorded } = await runWithFixer(
+    (f) => f.runOnly("ci"),
+    ON_JENKINS,
+  );
+
+  assertEquals(code, 0);
+  assertEquals(recorded.writes, ["src/app.ts"]);
+  assertEquals(recorded.modelCalls.length, 1);
+});
+
+Deno.test("the default scope does not rewrite a Jenkins checkout", async () => {
+  // The half that actually mattered. The default scope applies and commits on
+  // what it believes is a working tree someone is editing — so reading a CI
+  // runner as local meant writing to a checkout nobody was watching. It now
+  // diagnoses and declines the write, exactly as it does on Actions.
+  const { code, recorded } = await runWithFixer((f) => f, ON_JENKINS);
+
+  assertEquals(code, 1);
+  assertEquals(recorded.writes, []);
+  // It still asked the model: the default scope diagnoses on CI and refuses
+  // only the write, which is a different refusal from runOnly("ci") off CI.
+  assertEquals(recorded.modelCalls.length, 1);
 });

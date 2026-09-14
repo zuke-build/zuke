@@ -12,7 +12,7 @@
  *
  * Both {@link "./fixer.ts".AiFixer} and {@link "./agent_fixer.ts".AgentFixer}
  * gate on this one rule. Until this module they each carried their own copy of
- * it — the same field and the same `detectCiHost` comparison, differing only in
+ * it — the same field and the same host comparison, differing only in
  * the sentence they wrapped around the refusal — which is the near-copy
  * AGENTS.md guideline 12 treats as a copy-paste.
  *
@@ -25,7 +25,7 @@
  * @module
  */
 
-import { detectCiHost } from "@zuke/core";
+import { isCI } from "@zuke/core";
 import type { EnvReader } from "./hosts.ts";
 
 /**
@@ -38,13 +38,17 @@ import type { EnvReader } from "./hosts.ts";
  *   working tree someone is editing.
  * - `"both"` — apply on either host. What `.allowCI()` selects.
  *
- * "On CI" means a host `detectCiHost` recognises: GitHub Actions, GitLab CI,
- * Azure Pipelines and Bitbucket Pipelines. Anywhere else — CircleCI, Jenkins,
- * or a runner that only sets the generic `CI` variable — counts as local, so
- * `"ci"` does not run there and `"local"` does. That is the safe direction for
- * `"ci"` (an unrecognised host gets no writes rather than unexpected ones), but
- * it does mean a fixer scoped to `"ci"` on such a runner will report a skip
- * every time instead of fixing anything. Use `"both"` there.
+ * "On CI" means any CI system, not only the four Zuke names it can generate
+ * pipelines for: `isCI` recognises GitHub Actions, GitLab CI, Azure Pipelines
+ * and Bitbucket Pipelines by their own variables, and Jenkins, Buildkite,
+ * CircleCI, Travis, TeamCity and the generic `CI` convention by theirs.
+ *
+ * Reading one of those as a developer's machine would fail in the dangerous
+ * direction for both of the other scopes, which is why the broader test is the
+ * right one: `"ci"` would silently skip every run, and `"local"` — the default
+ * — would apply and commit changes to what it believed was a working tree
+ * someone was editing. Jenkins is the case that matters most, since it sets
+ * none of the four and does not set `CI` either.
  */
 export type RunScope = "local" | "ci" | "both";
 
@@ -69,7 +73,7 @@ export function outOfScope(
   env: EnvReader,
 ): ScopeRefusal | undefined {
   if (scope === "both") return undefined;
-  const onCi = detectCiHost(env) !== "local";
+  const onCi = isCI(env);
   if (scope === "local") {
     return onCi
       ? { where: "on CI", hint: '.runOnly("ci") or .runOnly("both")' }

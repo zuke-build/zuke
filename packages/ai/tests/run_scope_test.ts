@@ -246,19 +246,38 @@ Deno.test('agentFixer runOnly("ci"): the agent runs on CI', async () => {
   assertEquals(r.calls.length, 1);
 });
 
-Deno.test('an unrecognised CI host counts as local, and "ci" fails closed there', () => {
-  // detectCiHost knows GitHub, GitLab, Azure and Bitbucket. Everywhere else —
-  // CircleCI, Jenkins, a bare CI=true — reads as local. Pinning it because the
-  // consequence is asymmetric and worth knowing about rather than discovering:
-  // "local" applies on such a runner, while "ci" skips every run.
+Deno.test("a CI system Zuke cannot generate pipelines for is still CI", () => {
+  // This assertion used to run the other way, pinning the four-host test as
+  // deliberate: Jenkins and a bare CI=true read as local, described as "failing
+  // closed". Only "ci" failed closed there. The default scope is "local", and
+  // on those runners it did the opposite — applied and committed, believing it
+  // was looking at a working tree someone was editing.
+  //
+  // Each of these sets no variable any of the four hosts set, which is what
+  // made them read as a developer's machine.
   for (
-    const env of [
-      () => undefined,
-      (n: string) => (n === "CI" ? "true" : undefined),
-      (n: string) => (n === "JENKINS_URL" ? "http://jenkins" : undefined),
-    ]
+    const [label, name, value] of [
+      ["a bare CI convention", "CI", "true"],
+      ["Jenkins", "JENKINS_URL", "http://jenkins"],
+      ["Buildkite", "BUILDKITE", "true"],
+      ["CircleCI", "CIRCLECI", "true"],
+      ["Travis", "TRAVIS", "true"],
+      ["TeamCity", "TEAMCITY_VERSION", "2026.1"],
+    ] as const
   ) {
-    assertEquals(outOfScope("local", env), undefined);
-    assertEquals(outOfScope("ci", env)?.where, "outside CI");
+    const env = (n: string) => (n === name ? value : undefined);
+    // "ci" now runs there instead of reporting a skip every time.
+    assertEquals(outOfScope("ci", env), undefined, label);
+    // And the default refuses to write, which is the half that mattered.
+    assertEquals(outOfScope("local", env)?.where, "on CI", label);
   }
+});
+
+Deno.test('CI="false" is the one value that still means a developer machine', () => {
+  // The conventional opt-out, and the only marker whose *value* is consulted
+  // rather than its presence — so a shell that exports CI=false does not get
+  // treated as a runner.
+  const env = (n: string) => (n === "CI" ? "false" : undefined);
+  assertEquals(outOfScope("local", env), undefined);
+  assertEquals(outOfScope("ci", env)?.where, "outside CI");
 });

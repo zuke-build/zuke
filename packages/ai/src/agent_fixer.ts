@@ -46,7 +46,7 @@ import { agentPrompt } from "./prompts/agent.ts";
 import { commitChanged, type GitRunner, porcelainPaths } from "./commit.ts";
 import { fenceMarkdown } from "./markdown.ts";
 import { writeStepSummary } from "./report.ts";
-import { postComment, postGithubSuggestions } from "./comment.ts";
+import { postComment, postGithubSuggestions, type Redact } from "./comment.ts";
 import { type EnvReader, readEnv } from "./hosts.ts";
 import { outOfScope, type RunScope } from "./run_scope.ts";
 import { diffToSuggestions } from "./diff_suggest.ts";
@@ -301,7 +301,11 @@ export class AgentFixer implements Remediation {
    * status can't be read (fail closed), or when the agent produced no committable
    * hunks.
    */
-  async #postSuggestions(target: string, before: string[]): Promise<number> {
+  async #postSuggestions(
+    target: string,
+    before: string[],
+    redact: Redact,
+  ): Promise<number> {
     if (detectCiHost(this.#env) !== "github") return 0;
     let changed: string[];
     try {
@@ -333,12 +337,18 @@ export class AgentFixer implements Remediation {
     return await postGithubSuggestions(this.name, suggestions, {
       commentToken: this.#commentToken,
       env: this.#env,
+      redact,
       fetch: this.#fetch,
     });
   }
 
   /** Report what the agent did to the console, the job summary, and the PR. */
-  async #report(target: string, action: string, output: string): Promise<void> {
+  async #report(
+    target: string,
+    action: string,
+    output: string,
+    redact: Redact,
+  ): Promise<void> {
     if (!this.#quiet) console.log(`[${this.name}] "${target}" — ${action}`);
     const markdown = agentMarkdown(this.name, target, action, output);
     writeStepSummary(markdown);
@@ -346,6 +356,7 @@ export class AgentFixer implements Remediation {
       await postComment(this.name, markdown, {
         commentToken: this.#commentToken,
         env: this.#env,
+        redact,
         fetch: this.#fetch,
       });
     }
@@ -364,6 +375,7 @@ export class AgentFixer implements Remediation {
         context.target,
         `skipped — agent fixer is disabled ${refusal.where} (${refusal.hint})`,
         "",
+        context.redact,
       );
       return { retry: false };
     }
@@ -428,12 +440,16 @@ export class AgentFixer implements Remediation {
         action =
           "ran the agent (skipped suggestions: could not snapshot the working tree)";
       } else {
-        const posted = await this.#postSuggestions(context.target, dirtyBefore);
+        const posted = await this.#postSuggestions(
+          context.target,
+          dirtyBefore,
+          context.redact,
+        );
         action = posted > 0
           ? `ran the agent and proposed ${posted} inline suggestion(s) — apply them to fix`
           : "ran the agent (no committable suggestions produced)";
       }
-      await this.#report(context.target, action, agentOutput);
+      await this.#report(context.target, action, agentOutput, context.redact);
       return { retry: false };
     }
 
@@ -460,7 +476,7 @@ export class AgentFixer implements Remediation {
           `ran the agent (commit failed: ${message}); re-running to verify`;
       }
     }
-    await this.#report(context.target, action, agentOutput);
+    await this.#report(context.target, action, agentOutput, context.redact);
     return { retry: true };
   }
 }

@@ -1551,7 +1551,7 @@
     "members": {
       "packages/ai": {
         "dependencies": [
-          "jsr:@zuke/core@^1.52.0"
+          "jsr:@zuke/core@^1.53.0"
         ]
       },
       "packages/biome": {
