@@ -139,3 +139,19 @@ export async function withStateDir(
     }
   }
 }
+
+/**
+ * The host a request went to, for a test routing or filtering a fake `fetch`.
+ *
+ * Parsed and compared whole rather than matched with `url.includes(host)`: a
+ * substring test also matches a URL that merely mentions the host somewhere
+ * else, such as a query parameter, so it is the wrong test even where every
+ * input is one the test itself produced.
+ *
+ * Shared here rather than kept per file because it had already been written
+ * twice, and the second copy went back to the substring form — which is the
+ * way this particular mistake recurs.
+ */
+export function hostOf(url: string): string {
+  return new URL(url).hostname;
+}

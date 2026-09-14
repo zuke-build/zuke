@@ -20,7 +20,7 @@
 import { assertEquals } from "../../packages/core/tests/_assert.ts";
 import { Build, parameter, target } from "../../packages/core/mod.ts";
 import { securityReviewer } from "../../packages/ai/mod.ts";
-import { runCli } from "./_harness.ts";
+import { hostOf, runCli } from "./_harness.ts";
 
 /** The value the build declares secret, which comes back in the assessment. */
 const CANARY = "review-value-that-must-not-escape";
@@ -78,7 +78,7 @@ Deno.test("the AI reviewer never puts a declared secret on the pull request", as
     const url = String(input);
     const method = init?.method ?? "GET";
     if (typeof init?.body === "string") sent.push({ url, body: init.body });
-    if (url.includes("api.anthropic.com")) {
+    if (hostOf(url) === "api.anthropic.com") {
       return Promise.resolve(new Response(ASSESSMENT, { status: 200 }));
     }
     if (url.endsWith("/user")) {
@@ -111,7 +111,7 @@ Deno.test("the AI reviewer never puts a declared secret on the pull request", as
   assertEquals(code, 0);
 
   // It really did reach the comment API, so the assertion below is not vacuous.
-  const posted = sent.filter((s) => s.url.includes("api.github.com"));
+  const posted = sent.filter((s) => hostOf(s.url) === "api.github.com");
   assertEquals(posted.length, 1);
   assertEquals(posted[0].body.includes("stray credential"), true);
 

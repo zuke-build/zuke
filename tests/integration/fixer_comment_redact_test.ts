@@ -21,7 +21,7 @@
 import { assertEquals } from "../../packages/core/tests/_assert.ts";
 import { Build, parameter, target } from "../../packages/core/mod.ts";
 import { aiFixer } from "../../packages/ai/mod.ts";
-import { runCli } from "./_harness.ts";
+import { hostOf, runCli } from "./_harness.ts";
 
 /**
  * The value the build declares secret, and which comes back in the reply.
@@ -62,18 +62,6 @@ const FIX = JSON.stringify({
 interface Sent {
   url: string;
   body: string;
-}
-
-/**
- * The host a request went to.
- *
- * Parsed and compared whole rather than matched with `url.includes(host)`:
- * a substring test also matches a URL that merely mentions the host somewhere
- * else, such as `https://example.invalid/?to=api.github.com`, so it is the
- * wrong test even where the inputs happen to be ours.
- */
-function hostOf(url: string): string {
-  return new URL(url).hostname;
 }
 
 Deno.test("the AI fixer never puts a declared secret in a PR comment", async () => {
