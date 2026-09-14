@@ -10,7 +10,7 @@
   "packages/cmd": "1.0.1",
   "packages/console": "1.1.1",
   "packages/cli": "1.5.1",
-  "packages/docker": "1.1.0",
+  "packages/docker": "1.1.1",
   "packages/docker-compose": "1.2.0",
   "packages/kubectl": "1.1.0",
   "packages/helm": "1.0.1",
@@ -55,6 +55,6 @@
   "packages/tofu": "1.0.1",
   "packages/release-please": "1.0.3",
   "packages/security": "1.0.1",
-  "packages/ai": "2.5.0",
+  "packages/ai": "2.5.1",
   "packages/otel": "1.0.2"
 }

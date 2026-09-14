@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.5.1](https://github.com/zuke-build/zuke/compare/ai-v2.5.0...ai-v2.5.1) (2026-09-14)
+
+
+### Bug Fixes
+
+* **ai:** redact what the reviewer publishes to the pull request ([#603](https://github.com/zuke-build/zuke/issues/603)) ([b052481](https://github.com/zuke-build/zuke/commit/b0524818452b123712f932e658acad8a75ad62af))
+
 ## [2.5.0](https://github.com/zuke-build/zuke/compare/ai-v2.4.0...ai-v2.5.0) (2026-09-14)
 
 

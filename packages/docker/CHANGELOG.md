@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.1](https://github.com/zuke-build/zuke/compare/docker-v1.1.0...docker-v1.1.1) (2026-09-14)
+
+
+### Bug Fixes
+
+* **docker:** make the documented safe login path actually pipe the password ([#600](https://github.com/zuke-build/zuke/issues/600)) ([5183c2b](https://github.com/zuke-build/zuke/commit/5183c2bdca2a5320dd4d1c3446c747d83419e872))
+
 ## [1.1.0](https://github.com/zuke-build/zuke/compare/docker-v1.0.1...docker-v1.1.0) (2026-08-28)
 
 
