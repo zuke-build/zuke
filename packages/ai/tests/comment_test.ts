@@ -145,13 +145,15 @@ function suggestFetch(): { fetch: typeof fetch; calls: Call[] } {
 }
 
 // The value a build declared as a secret, standing in for one that came back
-// through a model's reply to a prompt built from the failed command.
-const LEAKED = "live-token-value";
-const MASK: Redact = (text) => text.replaceAll(LEAKED, "***");
+// through a model's reply to a prompt built from the failed command. A canary,
+// not a credential-shaped literal: the test only needs a string distinctive
+// enough to search a request body for.
+const CANARY = "canary-value-that-must-not-escape";
+const MASK: Redact = (text) => text.replaceAll(CANARY, "***");
 
 Deno.test("postComment masks a run secret before the comment body is sent", async () => {
   const { fetch, calls } = recordFetch();
-  await postComment("sec", `## body\n\nfailed with ${LEAKED} in the log`, {
+  await postComment("sec", `## body\n\nfailed with ${CANARY} in the log`, {
     commentToken: "tok",
     env: (n) => PR_ENV[n],
     redact: MASK,
@@ -162,7 +164,7 @@ Deno.test("postComment masks a run secret before the comment body is sent", asyn
   // back once it has.
   const posted = calls.filter((c) => c.body !== "");
   assertEquals(posted.length, 1);
-  assertEquals(posted[0].body.includes(LEAKED), false);
+  assertEquals(posted[0].body.includes(CANARY), false);
   assertStringIncludes(posted[0].body, "***");
 });
 
@@ -171,7 +173,7 @@ Deno.test("postGithubSuggestions masks a run secret in a suggestion body", async
   const posted = await postGithubSuggestions("sec", [{
     path: "src/app.ts",
     line: 12,
-    body: '```suggestion\nconst token = "' + LEAKED + '";\n```',
+    body: '```suggestion\nexport const greeting = "' + CANARY + '";\n```',
     key: "src/app.ts:12",
   }], {
     commentToken: "tok",
@@ -185,7 +187,7 @@ Deno.test("postGithubSuggestions masks a run secret in a suggestion body", async
   // check-in.
   const creates = calls.filter((c) => c.body !== "");
   assertEquals(creates.length, 1);
-  assertEquals(creates[0].body.includes(LEAKED), false);
+  assertEquals(creates[0].body.includes(CANARY), false);
   assertStringIncludes(creates[0].body, "***");
 });
 

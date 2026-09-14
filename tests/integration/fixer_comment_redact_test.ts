@@ -23,15 +23,22 @@ import { Build, parameter, target } from "../../packages/core/mod.ts";
 import { aiFixer } from "../../packages/ai/mod.ts";
 import { runCli } from "./_harness.ts";
 
-/** The value the build declares secret, and which comes back in the reply. */
-const SECRET = "deploy-key-value";
+/**
+ * The value the build declares secret, and which comes back in the reply.
+ *
+ * A canary rather than a credential-shaped literal: it only has to be
+ * distinctive enough to search request bodies for, and a realistic-looking
+ * token here is a hard-coded-credentials finding in every scanner that reads
+ * this file, for no gain in what the test proves.
+ */
+const CANARY = "canary-value-that-must-not-escape";
 
 /** An environment that looks like an Actions runner on a pull request. */
 const PR_ENV: Record<string, string> = {
   GITHUB_ACTIONS: "true",
   GITHUB_REPOSITORY: "o/r",
   GITHUB_REF: "refs/pull/7/merge",
-  GITHUB_TOKEN: "gh-token",
+  GITHUB_TOKEN: "tok",
 };
 
 /**
@@ -42,7 +49,7 @@ const FIX = JSON.stringify({
   content: [{
     type: "text",
     text: JSON.stringify({
-      diagnosis: `the call failed because ${SECRET} expired`,
+      diagnosis: `the call failed because ${CANARY} expired`,
       rootCause: "expired credential",
       confidence: "high",
       edits: [{ path: "src/app.ts", content: "export const x = 1;\n" }],
@@ -75,7 +82,7 @@ Deno.test("the AI fixer never puts a declared secret in a PR comment", async () 
   }) as typeof fetch;
 
   class Healing extends Build {
-    key = parameter("key").secret().default(SECRET);
+    canary = parameter("canary").secret().default(CANARY);
 
     lint = target()
       .recoverWith(
@@ -117,6 +124,6 @@ Deno.test("the AI fixer never puts a declared secret in a PR comment", async () 
   // Nothing that left the process carries the secret — the comment, and the
   // request to the model, which is built from the failure rather than the reply.
   for (const { url, body } of sent) {
-    assertEquals(body.includes(SECRET), false, url);
+    assertEquals(body.includes(CANARY), false, url);
   }
 });
