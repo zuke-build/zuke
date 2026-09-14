@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.55.1](https://github.com/zuke-build/zuke/compare/core-v1.55.0...core-v1.55.1) (2026-09-14)
+
+
+### Bug Fixes
+
+* **core:** run Deno, not the build, when a compiled build spawns deno ([#604](https://github.com/zuke-build/zuke/issues/604)) ([533d4a5](https://github.com/zuke-build/zuke/commit/533d4a538366c7d9068cea9794cb2e4200d47cf5))
+
 ## [1.55.0](https://github.com/zuke-build/zuke/compare/core-v1.54.0...core-v1.55.0) (2026-09-14)
 
 

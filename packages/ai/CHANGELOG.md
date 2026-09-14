@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.6.0](https://github.com/zuke-build/zuke/compare/ai-v2.5.1...ai-v2.6.0) (2026-09-14)
+
+
+### Features
+
+* **ai:** add a criteria document read from the diff base ([#606](https://github.com/zuke-build/zuke/issues/606)) ([6984fb2](https://github.com/zuke-build/zuke/commit/6984fb22f045a07573f87ef0296e5821bee26363))
+
 ## [2.5.1](https://github.com/zuke-build/zuke/compare/ai-v2.5.0...ai-v2.5.1) (2026-09-14)
 
 
