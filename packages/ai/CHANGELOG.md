@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.5.0](https://github.com/zuke-build/zuke/compare/ai-v2.4.0...ai-v2.5.0) (2026-09-14)
+
+
+### Features
+
+* **core:** give a validation the run's redactor ([#598](https://github.com/zuke-build/zuke/issues/598)) ([53caca9](https://github.com/zuke-build/zuke/commit/53caca91e33383779075a25c9099907b8fd0c255))
+
+
+### Bug Fixes
+
+* **ai:** treat every CI system as CI, and redact what the fixers publish ([#596](https://github.com/zuke-build/zuke/issues/596)) ([d72f39c](https://github.com/zuke-build/zuke/commit/d72f39c04b504d4b237862b5b85c8b0b9dfcddf5))
+
 ## [2.4.0](https://github.com/zuke-build/zuke/compare/ai-v2.3.1...ai-v2.4.0) (2026-09-11)
 
 

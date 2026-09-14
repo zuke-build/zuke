@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.1](https://github.com/zuke-build/zuke/compare/npm-v1.3.0...npm-v1.3.1) (2026-09-14)
+
+
+### Bug Fixes
+
+* **wrappers:** keep credentials off the command line ([#594](https://github.com/zuke-build/zuke/issues/594)) ([d19c7c4](https://github.com/zuke-build/zuke/commit/d19c7c47a5f8a5de16893f5ab6185427bcdd7295)), closes [#593](https://github.com/zuke-build/zuke/issues/593)
+
 ## [1.3.0](https://github.com/zuke-build/zuke/compare/npm-v1.2.0...npm-v1.3.0) (2026-09-10)
 
 

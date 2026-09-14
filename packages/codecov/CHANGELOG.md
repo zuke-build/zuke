@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.4](https://github.com/zuke-build/zuke/compare/codecov-v1.0.3...codecov-v1.0.4) (2026-09-14)
+
+
+### Bug Fixes
+
+* **wrappers:** keep credentials off the command line ([#594](https://github.com/zuke-build/zuke/issues/594)) ([d19c7c4](https://github.com/zuke-build/zuke/commit/d19c7c47a5f8a5de16893f5ab6185427bcdd7295)), closes [#593](https://github.com/zuke-build/zuke/issues/593)
+
 ## [1.0.3](https://github.com/zuke-build/zuke/compare/codecov-v1.0.2...codecov-v1.0.3) (2026-08-13)
 
 

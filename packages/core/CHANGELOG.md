@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.55.0](https://github.com/zuke-build/zuke/compare/core-v1.54.0...core-v1.55.0) (2026-09-14)
+
+
+### Features
+
+* **core:** give a validation the run's redactor ([#598](https://github.com/zuke-build/zuke/issues/598)) ([53caca9](https://github.com/zuke-build/zuke/commit/53caca91e33383779075a25c9099907b8fd0c255))
+* **core:** let a tool wrapper write to its tool's stdin ([#592](https://github.com/zuke-build/zuke/issues/592)) ([bf29e34](https://github.com/zuke-build/zuke/commit/bf29e348d6e05f7bca2c630b6d154961f133c4c7)), closes [#591](https://github.com/zuke-build/zuke/issues/591)
+
 ## [1.54.0](https://github.com/zuke-build/zuke/compare/core-v1.53.0...core-v1.54.0) (2026-09-12)
 
 

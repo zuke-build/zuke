@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.2](https://github.com/zuke-build/zuke/compare/jsr-v1.0.1...jsr-v1.0.2) (2026-09-14)
+
+
+### Bug Fixes
+
+* **wrappers:** keep credentials off the command line ([#594](https://github.com/zuke-build/zuke/issues/594)) ([d19c7c4](https://github.com/zuke-build/zuke/commit/d19c7c47a5f8a5de16893f5ab6185427bcdd7295)), closes [#593](https://github.com/zuke-build/zuke/issues/593)
+
 ## [1.0.1](https://github.com/zuke-build/zuke/compare/jsr-v1.0.0...jsr-v1.0.1) (2026-08-13)
 
 

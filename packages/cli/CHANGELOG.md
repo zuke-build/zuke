@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.1](https://github.com/zuke-build/zuke/compare/cli-v1.5.0...cli-v1.5.1) (2026-09-14)
+
+
+### Bug Fixes
+
+* **cli:** resolve the real Deno instead of spawning the compiled binary ([#588](https://github.com/zuke-build/zuke/issues/588)) ([c124cfc](https://github.com/zuke-build/zuke/commit/c124cfc2e3dc790e70081a2a4ae600b81394a66d))
+
 ## [1.5.0](https://github.com/zuke-build/zuke/compare/cli-v1.4.0...cli-v1.5.0) (2026-09-12)
 
 
