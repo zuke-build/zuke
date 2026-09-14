@@ -4714,6 +4714,24 @@ interface ValidationContext
 
   target: string
     The name of the target the validation is attached to.
+  redact(text: string): string
+    Mask every resolved `secret` parameter in `text`.
+
+    A validation that publishes anywhere — a pull-request comment, a review
+    thread, a job summary, a file it writes — has to run its output through
+    this first. What it is publishing is typically a model's assessment of a
+    diff, or of a failure, and the prompt behind it carries the command output
+    that a secret the build holds can appear in; the secret then comes back in
+    the reply.
+
+    Handed over rather than left for the validation to find, for the same
+    reason {@link RemediationContext.redact} is: the validation that most needs
+    it lives in another package and cannot reach core's internals. Zuke's own
+    reporter and run record redact what they emit, but a validation that
+    posts over the network goes through neither.
+
+    Masks the same values {@link "./params.ts".parameter} marked secret, so a
+    credential the build never declared is not covered — declare it.
 
 interface WaitContext
   The durable context a {@link WaitTrigger} may use while deciding whether its

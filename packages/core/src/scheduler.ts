@@ -642,10 +642,17 @@ async function runTarget(
 
   try {
     await withAmbientSummary(summary, async () => {
-      for (const v of t.validateBefore_) await v.validate({ target: name });
+      // Both sides get the run's redactor, not just one: a validation does not
+      // become less able to publish for running after the body rather than
+      // before it.
+      for (const v of t.validateBefore_) {
+        await v.validate({ target: name, redact: redactLine });
+      }
       await runBodyWithRecovery(t, name, globalRecovery, targetCtx);
       await driveEffects(t, name, targetCtx, env, reporter, style);
-      for (const v of t.validateAfter_) await v.validate({ target: name });
+      for (const v of t.validateAfter_) {
+        await v.validate({ target: name, redact: redactLine });
+      }
     });
     const ms = performance.now() - start;
     if (cache !== undefined) await cache.record(t);

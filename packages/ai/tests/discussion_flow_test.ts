@@ -14,6 +14,7 @@ import {
 import { stableHash } from "../src/hash.ts";
 import { withEnv } from "../../core/tests/_env.ts";
 import { captureLines as captured } from "../../core/tests/_console.ts";
+import { noRedactionContext } from "./_context.ts";
 
 const DIFF = "diff --git a/src/app.ts b/src/app.ts\n" +
   "--- a/src/app.ts\n+++ b/src/app.ts\n@@\n+const x = eval(input);\n";
@@ -128,7 +129,7 @@ Deno.test("a finding dismissed in an earlier round stays dismissed (no loop)", a
           .comment().discussion()
           .diff((d) => d.text(DIFF))
           .fetch(fetch)
-      ).validate({ target: "t" });
+      ).validate(noRedactionContext("t"));
     })
   );
   // The dismissal is visible in the console report, not silent.
@@ -220,7 +221,7 @@ Deno.test("a trusted rebuttal dismisses via adjudication; untrusted text never r
               .comment().discussion()
               .diff((d) => d.text(DIFF))
               .fetch(fetch)
-          ).validate({ target: "t" }),
+          ).validate(noRedactionContext("t")),
         AiReviewError,
       );
     })
@@ -278,7 +279,7 @@ Deno.test("an adjudication that answers nothing is announced, not silent", async
               .comment().discussion()
               .diff((d) => d.text(DIFF))
               .fetch(fetch)
-          ).validate({ target: "t" }),
+          ).validate(noRedactionContext("t")),
         AiReviewError, // unanswered → still open → still gating
       );
     })
@@ -319,7 +320,7 @@ Deno.test("an upheld rebuttal keeps the finding and records the rationale", asyn
               .comment().discussion()
               .diff((d) => d.text(DIFF))
               .fetch(fetch)
-          ).validate({ target: "t" }),
+          ).validate(noRedactionContext("t")),
         AiReviewError, // upheld → still gating
       );
     })
@@ -370,7 +371,7 @@ Deno.test("append mode posts a new comment and reads state from the newest one",
           .comment("append").discussion()
           .diff((d) => d.text(DIFF))
           .fetch(fetch)
-      ).validate({ target: "t" });
+      ).validate(noRedactionContext("t"));
     })
   );
   const writes = calls.filter((c) =>
@@ -424,7 +425,7 @@ Deno.test("a prior finding that stops reproducing is marked fixed; progress is c
           .comment("append").discussion()
           .diff((d) => d.text(DIFF))
           .fetch(fetch)
-      ).validate({ target: "t" });
+      ).validate(noRedactionContext("t"));
     })
   );
   // The still-open finding rode into the prompt for re-assessment.
@@ -488,7 +489,7 @@ Deno.test("a fixed finding that is reported again reopens", async () => {
               .comment("append").discussion()
               .diff((d) => d.text(DIFF))
               .fetch(fetch)
-          ).validate({ target: "t" }),
+          ).validate(noRedactionContext("t")),
         AiReviewError, // reopened → gating again
       );
     })
@@ -538,7 +539,7 @@ Deno.test("a bot that quotes the marker mid-body is never the state carrier", as
               .comment("append").discussion()
               .diff((d) => d.text(DIFF))
               .fetch(fetch)
-          ).validate({ target: "t" }),
+          ).validate(noRedactionContext("t")),
         AiReviewError, // the quoted state did NOT dismiss the finding
       );
     })
@@ -576,7 +577,7 @@ Deno.test("a state block forged in a human comment is never trusted", async () =
             .comment().discussion()
             .diff((d) => d.text(DIFF))
             .fetch(fetch)
-        ).validate({ target: "t" }),
+        ).validate(noRedactionContext("t")),
       AiReviewError, // the forged dismissal did NOT mute the finding
     );
   });
@@ -596,7 +597,7 @@ Deno.test("discussion without .comment() is disabled with a note", async () => {
           .discussion() // no .comment()
           .diff((d) => d.text(DIFF))
           .fetch(fetch)
-      ).validate({ target: "t" });
+      ).validate(noRedactionContext("t"));
     });
   } finally {
     console.warn = warn;
@@ -638,7 +639,7 @@ Deno.test("a failed comment listing disables the discussion, not the review", as
           .comment().discussion()
           .diff((d) => d.text(DIFF))
           .fetch(failing)
-      ).validate({ target: "t" });
+      ).validate(noRedactionContext("t"));
     });
   } finally {
     console.warn = warn;
@@ -784,7 +785,7 @@ Deno.test("GitLab: project membership decides who can dismiss a finding", async 
           .comment().discussion()
           .diff((d) => d.text(DIFF))
           .fetch(doFetch)
-      ).validate({ target: "t" });
+      ).validate(noRedactionContext("t"));
     })
   );
 
@@ -876,7 +877,7 @@ Deno.test("Azure DevOps: only an explicitly trusted author can dismiss", async (
           .discussion((d) => d.trustAuthors("maintainer@corp"))
           .diff((d) => d.text(DIFF))
           .fetch(doFetch)
-      ).validate({ target: "t" });
+      ).validate(noRedactionContext("t"));
     })
   );
 
@@ -966,7 +967,7 @@ Deno.test("Bitbucket: workspace permission decides who can dismiss a finding", a
           .comment().discussion()
           .diff((d) => d.text(DIFF))
           .fetch(doFetch)
-      ).validate({ target: "t" });
+      ).validate(noRedactionContext("t"));
     })
   );
 
@@ -1047,7 +1048,7 @@ Deno.test("a forged state block in a stranger's comment is never adopted", async
               .comment().discussion()
               .diff((d) => d.text(DIFF))
               .fetch(doFetch)
-          ).validate({ target: "t" }),
+          ).validate(noRedactionContext("t")),
         AiReviewError,
       );
     })
@@ -1133,7 +1134,7 @@ Deno.test("a reworded finding inherits the dismissal it restates", async () => {
           .comment().discussion()
           .diff((d) => d.text(DIFF))
           .fetch(fetch)
-      ).validate({ target: "t" });
+      ).validate(noRedactionContext("t"));
     })
   );
 
@@ -1166,7 +1167,7 @@ Deno.test("a recorded alias costs no model call on the next round", async () => 
           .comment().discussion()
           .diff((d) => d.text(DIFF))
           .fetch(fetch)
-      ).validate({ target: "t" });
+      ).validate(noRedactionContext("t"));
     })
   );
   // The review call only — the alias resolved the identity for free.
@@ -1196,7 +1197,7 @@ Deno.test("a reworded finding that was fixed reopens under the old identity", as
               .comment().discussion()
               .diff((d) => d.text(DIFF))
               .fetch(fetch)
-          ).validate({ target: "t" }),
+          ).validate(noRedactionContext("t")),
         AiReviewError,
       );
     })
@@ -1234,7 +1235,7 @@ Deno.test("a fabricated pair label matches nothing", async () => {
               .comment().discussion()
               .diff((d) => d.text(DIFF))
               .fetch(fetch)
-          ).validate({ target: "t" }),
+          ).validate(noRedactionContext("t")),
         AiReviewError,
       );
     })
@@ -1262,7 +1263,7 @@ Deno.test("a different verdict leaves the finding reported under its own id", as
               .comment().discussion()
               .diff((d) => d.text(DIFF))
               .fetch(fetch)
-          ).validate({ target: "t" }),
+          ).validate(noRedactionContext("t")),
         AiReviewError,
       );
     })
@@ -1313,7 +1314,7 @@ Deno.test("a failed dedup call leaves the finding reported, and says so", async 
               .comment().discussion().retry({ attempts: 1 })
               .diff((d) => d.text(DIFF))
               .fetch(failing)
-          ).validate({ target: "t" }),
+          ).validate(noRedactionContext("t")),
         AiReviewError,
       );
     })
@@ -1355,7 +1356,7 @@ Deno.test("a finding in another file is never compared", async () => {
               .comment().discussion()
               .diff((d) => d.text(DIFF))
               .fetch(fetch)
-          ).validate({ target: "t" }),
+          ).validate(noRedactionContext("t")),
         AiReviewError,
       );
     })
@@ -1387,7 +1388,7 @@ Deno.test("a first round with no prior state pays for no dedup call", async () =
               .comment().discussion()
               .diff((d) => d.text(DIFF))
               .fetch(fetch)
-          ).validate({ target: "t" }),
+          ).validate(noRedactionContext("t")),
         AiReviewError,
       );
     })
@@ -1429,7 +1430,7 @@ Deno.test("an aliased identity cannot silence a more severe finding", async () =
               .comment().discussion()
               .diff((d) => d.text(DIFF))
               .fetch(fetch)
-          ).validate({ target: "t" }),
+          ).validate(noRedactionContext("t")),
         AiReviewError,
       );
     })
@@ -1474,7 +1475,7 @@ Deno.test("a reworded finding that is merely still open is not claimed as fixed"
               .comment().discussion()
               .diff((d) => d.text(DIFF))
               .fetch(fetch)
-          ).validate({ target: "t" }),
+          ).validate(noRedactionContext("t")),
         AiReviewError,
       );
     })
@@ -1618,7 +1619,7 @@ Deno.test("threads are off unless asked for", async () => {
               .comment().discussion()
               .diff((d) => d.text(ANCHORED_DIFF))
               .fetch(fetch)
-          ).validate({ target: "t" }),
+          ).validate(noRedactionContext("t")),
         AiReviewError,
       );
     })
@@ -1641,7 +1642,7 @@ Deno.test("a finding is posted as a thread anchored to its line", async () => {
               .comment().discussion((d) => d.threads())
               .diff((d) => d.text(ANCHORED_DIFF))
               .fetch(fetch)
-          ).validate({ target: "t" }),
+          ).validate(noRedactionContext("t")),
         AiReviewError,
       );
     })
@@ -1681,7 +1682,7 @@ Deno.test("an existing thread is never posted twice", async () => {
               .comment().discussion((d) => d.threads())
               .diff((d) => d.text(ANCHORED_DIFF))
               .fetch(fetch)
-          ).validate({ target: "t" }),
+          ).validate(noRedactionContext("t")),
         AiReviewError,
       );
     })
@@ -1729,7 +1730,7 @@ Deno.test("a reply in a thread contests the finding without quoting any id", asy
           .comment().discussion((d) => d.threads())
           .diff((d) => d.text(ANCHORED_DIFF))
           .fetch(fetch)
-      ).validate({ target: "t" });
+      ).validate(noRedactionContext("t"));
     })
   );
   // The reply reached the adjudicator, attributed by platform metadata.
@@ -1793,7 +1794,7 @@ Deno.test("an untrusted reply in a thread is never heard", async () => {
               .comment().discussion((d) => d.threads())
               .diff((d) => d.text(ANCHORED_DIFF))
               .fetch(fetch)
-          ).validate({ target: "t" }),
+          ).validate(noRedactionContext("t")),
         AiReviewError,
       );
     })
@@ -1847,7 +1848,7 @@ Deno.test("a forged thread root is never adopted", async () => {
               .comment().discussion((d) => d.threads())
               .diff((d) => d.text(ANCHORED_DIFF))
               .fetch(fetch)
-          ).validate({ target: "t" }),
+          ).validate(noRedactionContext("t")),
         AiReviewError,
       );
     })
@@ -1878,7 +1879,7 @@ Deno.test("an unanchorable finding says so in the posted comment", async () => {
               .comment().discussion((d) => d.threads())
               .diff((d) => d.text(ANCHORED_DIFF))
               .fetch(fetch)
-          ).validate({ target: "t" }),
+          ).validate(noRedactionContext("t")),
         AiReviewError,
       );
     })
@@ -1933,7 +1934,7 @@ Deno.test("a thread listing failure leaves the review untouched", async () => {
               .comment().discussion((d) => d.threads())
               .diff((d) => d.text(ANCHORED_DIFF))
               .fetch(failing)
-          ).validate({ target: "t" }),
+          ).validate(noRedactionContext("t")),
         AiReviewError,
       );
     })
@@ -1981,7 +1982,7 @@ Deno.test("threads are declined on a host that cannot do them", async () => {
               .comment().discussion((d) => d.threads())
               .diff((d) => d.text(ANCHORED_DIFF))
               .fetch(doFetch)
-          ).validate({ target: "t" }),
+          ).validate(noRedactionContext("t")),
         AiReviewError,
       );
     })
@@ -2038,7 +2039,7 @@ Deno.test("a rejected anchor keeps the finding in the table and says so", async 
               .comment().discussion((d) => d.threads())
               .diff((d) => d.text(ANCHORED_DIFF))
               .fetch(doFetch)
-          ).validate({ target: "t" }),
+          ).validate(noRedactionContext("t")),
         AiReviewError,
       );
     })
@@ -2100,7 +2101,7 @@ Deno.test("a rate limit halts the thread phase without failing the build", async
               .comment().discussion((d) => d.threads())
               .diff((d) => d.text(ANCHORED_DIFF))
               .fetch(doFetch)
-          ).validate({ target: "t" }),
+          ).validate(noRedactionContext("t")),
         AiReviewError,
       );
     })
@@ -2192,7 +2193,7 @@ Deno.test("a failed resolve keeps the outcome reply and reports the gap", async 
           .comment().discussion((d) => d.threads())
           .diff((d) => d.text(ANCHORED_DIFF))
           .fetch(doFetch)
-      ).validate({ target: "t" });
+      ).validate(noRedactionContext("t"));
     })
   );
   // The human-visible half landed even though resolution did not.
@@ -2270,7 +2271,7 @@ Deno.test("a finding that regresses is reopened, and a failed reopen is shouted 
               .comment().discussion((d) => d.threads())
               .diff((d) => d.text(ANCHORED_DIFF))
               .fetch(doFetch)
-          ).validate({ target: "t" }),
+          ).validate(noRedactionContext("t")),
         AiReviewError,
       );
     })
@@ -2330,7 +2331,7 @@ Deno.test("no head commit means no new threads, and the run continues", async ()
               .comment().discussion((d) => d.threads())
               .diff((d) => d.text(ANCHORED_DIFF))
               .fetch(doFetch)
-          ).validate({ target: "t" }),
+          ).validate(noRedactionContext("t")),
         AiReviewError,
       );
     })
@@ -2424,7 +2425,7 @@ Deno.test("a thread whose outcome reply was refused is not resolved", async () =
           .comment().discussion((d) => d.threads())
           .diff((d) => d.text(ANCHORED_DIFF))
           .fetch(doFetch)
-      ).validate({ target: "t" });
+      ).validate(noRedactionContext("t"));
     })
   );
   // The reply was attempted and refused, so no resolve mutation followed.
@@ -2453,7 +2454,7 @@ Deno.test("a quiet reviewer posts no threads either", async () => {
               .comment().discussion((d) => d.threads())
               .diff((d) => d.text(ANCHORED_DIFF))
               .fetch(fetch)
-          ).validate({ target: "t" }),
+          ).validate(noRedactionContext("t")),
         AiReviewError,
       );
     })
@@ -2475,7 +2476,7 @@ Deno.test("comment and discussion degrade to warnings outside any CI host", asyn
         .env(() => undefined)
         .diff((d) => d.text(DIFF))
         .fetch(fetch)
-    ).validate({ target: "t" })
+    ).validate(noRedactionContext("t"))
   );
   // The discussion is declined in code, before any listing is attempted…
   assertEquals(
@@ -2529,7 +2530,7 @@ Deno.test("an exhausted budget skips the reworded-finding check, and says so", a
               .comment().discussion().budget(b)
               .diff((d) => d.text(DIFF))
               .fetch(fetch)
-          ).validate({ target: "t" }),
+          ).validate(noRedactionContext("t")),
         AiReviewError, // reported under its own id — not silenced
       );
     })
@@ -2584,7 +2585,7 @@ Deno.test("an ambiguous rewording keeps the first match and reports the rest, wi
               .comment().discussion()
               .diff((d) => d.text(DIFF))
               .fetch(fetch)
-          ).validate({ target: "t" }),
+          ).validate(noRedactionContext("t")),
         AiReviewError, // adopted an OPEN identity — still gating
       );
     })
@@ -2642,7 +2643,7 @@ Deno.test("the finding's detail reaches the adjudicator, and a reason-less dismi
           .comment().discussion()
           .diff((d) => d.text(DIFF))
           .fetch(fetch)
-      ).validate({ target: "t" });
+      ).validate(noRedactionContext("t"));
     })
   );
   const providerCalls = calls.filter((c) =>
@@ -2712,7 +2713,7 @@ Deno.test("a failed adjudication keeps contested findings open with a warning", 
               .comment().discussion().retry({ attempts: 1 })
               .diff((d) => d.text(DIFF))
               .fetch(failing)
-          ).validate({ target: "t" }),
+          ).validate(noRedactionContext("t")),
         AiReviewError, // the contested finding stayed open and gates
       );
     })
@@ -2754,7 +2755,7 @@ Deno.test("findings beyond the thread cap stay in the table, and the gap is anno
               .comment().discussion((d) => d.threads())
               .diff((d) => d.text(bigDiff))
               .fetch(fetch)
-          ).validate({ target: "t" }),
+          ).validate(noRedactionContext("t")),
         AiReviewError,
       );
     })
@@ -2813,7 +2814,7 @@ Deno.test("a thread phase that throws degrades to a note, never a failure", asyn
               .comment().discussion((d) => d.threads())
               .diff((d) => d.text(ANCHORED_DIFF))
               .fetch(doFetch)
-          ).validate({ target: "t" }),
+          ).validate(noRedactionContext("t")),
         AiReviewError, // the gate still speaks — the finding never vanished
       );
     })
@@ -2850,7 +2851,7 @@ Deno.test("discussion on GitHub without a PR context is skipped silently", async
             .comment().discussion()
             .diff((d) => d.text(DIFF))
             .fetch(fetch)
-        ).validate({ target: "t" });
+        ).validate(noRedactionContext("t"));
       },
     )
   );
@@ -2909,7 +2910,7 @@ Deno.test("a candidate matching a fixed and a dismissed prior reopens rather tha
               .comment().discussion()
               .diff((d) => d.text(DIFF))
               .fetch(fetch)
-          ).validate({ target: "t" }),
+          ).validate(noRedactionContext("t")),
         AiReviewError, // reopened — it gates again
       );
     })
@@ -2961,7 +2962,7 @@ Deno.test("an upheld verdict without a reason records no rationale", async () =>
               .comment().discussion()
               .diff((d) => d.text(DIFF))
               .fetch(fetch)
-          ).validate({ target: "t" }),
+          ).validate(noRedactionContext("t")),
         AiReviewError, // upheld → still gating
       );
     })
@@ -2998,7 +2999,7 @@ Deno.test("an exhausted budget skips the adjudication; contested findings stay o
               .comment().discussion().budget(b)
               .diff((d) => d.text(DIFF))
               .fetch(fetch)
-          ).validate({ target: "t" }),
+          ).validate(noRedactionContext("t")),
         AiReviewError, // never adjudicated → still open → still gating
       );
     })
@@ -3043,7 +3044,7 @@ Deno.test("a sticky dismissal with no recorded author or rationale still mutes, 
           .comment().discussion()
           .diff((d) => d.text(DIFF))
           .fetch(fetch)
-      ).validate({ target: "t" });
+      ).validate(noRedactionContext("t"));
     })
   );
   // Rendered without inventing an author or a reason.
@@ -3080,7 +3081,7 @@ Deno.test("a missing token env skips the comment with the PR-context warning", a
               .comment()
               .diff((d) => d.text(DIFF))
               .fetch(fetch)
-          ).validate({ target: "t" });
+          ).validate(noRedactionContext("t"));
         } finally {
           if (token !== undefined) Deno.env.set("GITHUB_TOKEN", token);
         }
@@ -3122,7 +3123,7 @@ Deno.test("a file-less open prior is re-assessed bare and marked fixed when gone
           .comment().discussion()
           .diff((d) => d.text(DIFF))
           .fetch(fetch)
-      ).validate({ target: "t" });
+      ).validate(noRedactionContext("t"));
     })
   );
   // The prior rode into the prompt as the bare `id — title` line.
@@ -3168,7 +3169,7 @@ Deno.test("a dismissal of a file-less finding records no location", async () => 
           .comment().discussion()
           .diff((d) => d.text(DIFF))
           .fetch(fetch)
-      ).validate({ target: "t" });
+      ).validate(noRedactionContext("t"));
     })
   );
   const entry = postedState(calls)?.findings.find((f) => f.id === bareId);
@@ -3209,7 +3210,7 @@ Deno.test("a reason-less dismissal still closes its thread, without an invented 
           .comment().discussion((d) => d.threads())
           .diff((d) => d.text(ANCHORED_DIFF))
           .fetch(fetch)
-      ).validate({ target: "t" });
+      ).validate(noRedactionContext("t"));
     })
   );
   // The outcome reply landed in the thread, bare — no fabricated rationale.

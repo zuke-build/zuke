@@ -19,6 +19,7 @@ import { consoleLines, toMarkdown } from "../src/report.ts";
 import type { RemediationContext } from "@zuke/core";
 import { captureLines } from "../../core/tests/_console.ts";
 import { withEnv } from "../../core/tests/_env.ts";
+import { noRedactionContext } from "./_context.ts";
 
 const DIFF = "diff --git a/src/app.ts b/src/app.ts\n" +
   "--- a/src/app.ts\n+++ b/src/app.ts\n@@\n+const x = eval(input);\n";
@@ -118,7 +119,7 @@ Deno.test("reviewer records token usage against a shared budget", async () => {
     securityReviewer((r) =>
       r.provider("claude").apiKey("k").diff((d) => d.text(DIFF)).fetch(fetch)
         .budget(b)
-    ).validate({ target: "t" })
+    ).validate(noRedactionContext("t"))
   );
   assertEquals(b.spend_().totalTokens, 120);
   assertEquals(b.spend_().calls, 1);
@@ -140,7 +141,7 @@ Deno.test("reviewer skips the call once the budget is exhausted", async () => {
     securityReviewer((r) =>
       r.provider("claude").apiKey("k").diff((d) => d.text(DIFF)).fetch(fetch)
         .budget(b)
-    ).validate({ target: "t" })
+    ).validate(noRedactionContext("t"))
   );
   assertEquals(calls.length, 0);
   assertEquals(lines.some((l) => l.includes("AI budget exhausted")), true);
@@ -187,7 +188,7 @@ Deno.test("the verify pass's own usage draws down the shared budget", async () =
     securityReviewer((r) =>
       r.provider("claude").apiKey("k").diff((d) => d.text(DIFF))
         .fetch(queued).budget(b).verify()
-    ).validate({ target: "t" })
+    ).validate(noRedactionContext("t"))
   );
   assertEquals(b.spend_().calls, 2); // review + verify both recorded
   assertEquals(b.spend_().totalTokens, 25);
@@ -205,7 +206,7 @@ Deno.test("reviewer caches a response and reuses it on a repeat run", async () =
     securityReviewer((r) =>
       r.provider("claude").apiKey("k").quiet().diff((d) => d.text(DIFF))
         .fetch(fetch).cache(c)
-    ).validate({ target: "t" });
+    ).validate(noRedactionContext("t"));
   await run();
   await run();
   assertEquals(calls.length, 1); // second served from cache
@@ -222,7 +223,7 @@ Deno.test("reviewer cache key is effort-sensitive (no cross-effort reuse)", asyn
     securityReviewer((r) =>
       r.provider("claude").apiKey("k").quiet().diff((d) => d.text(DIFF))
         .fetch(fetch).cache(c).effort(effort)
-    ).validate({ target: "t" });
+    ).validate(noRedactionContext("t"));
   await runAt("low");
   await runAt("high");
   // Different effort changes the model's output, so it must not reuse the
@@ -242,7 +243,7 @@ Deno.test("a cached review notes it served from cache", async () => {
       securityReviewer((r) =>
         r.provider("claude").apiKey("k").diff((d) => d.text(DIFF)).fetch(fetch)
           .cache(c)
-      ).validate({ target: "t" })
+      ).validate(noRedactionContext("t"))
     );
   await run();
   const lines = await run();
@@ -269,7 +270,7 @@ Deno.test("a corrupt cache entry follows the reviewer's onError policy", async (
     securityReviewer((r) =>
       r.provider("claude").apiKey("k").diff((d) => d.text(DIFF))
         .fetch(fetch).cache(c).onError(onError)
-    ).validate({ target: "t" });
+    ).validate(noRedactionContext("t"));
   await captured(() => review("warn"));
   poison(store);
   const lines = await captured(() => review("warn"));
@@ -325,7 +326,7 @@ Deno.test("a finding whose id is suppressed is dropped from the review", async (
     securityReviewer((r) =>
       r.provider("claude").apiKey("k").diff((d) => d.text(DIFF)).fetch(fetch)
         .suppress(sup)
-    ).validate({ target: "t" })
+    ).validate(noRedactionContext("t"))
   );
   assertEquals(lines.some((l) => l.includes("suppressed 1 finding(s)")), true);
   assertEquals(lines.some((l) => l.includes("— 1 finding(s)")), true);
@@ -346,7 +347,7 @@ Deno.test("suppressing every finding clears the score and passes the gate", asyn
   await securityReviewer((r) =>
     r.provider("claude").apiKey("k").quiet().diff((d) => d.text(DIFF))
       .fetch(fetch).suppress(sup)
-  ).validate({ target: "t" }); // resolves — does not throw
+  ).validate(noRedactionContext("t")); // resolves — does not throw
 });
 
 Deno.test("partial suppression recomputes severity from what remains", async () => {
@@ -360,7 +361,7 @@ Deno.test("partial suppression recomputes severity from what remains", async () 
     securityReviewer((r) =>
       r.provider("claude").apiKey("k").diff((d) => d.text(DIFF)).fetch(fetch)
         .suppress(sup)
-    ).validate({ target: "t" })
+    ).validate(noRedactionContext("t"))
   );
   // Header severity drops from high to low after the high finding is dropped.
   assertEquals(lines.some((l) => l.includes("(low) — 1 finding(s)")), true);
@@ -390,7 +391,7 @@ Deno.test("suppressing the critical finding recomputes the score below the gate"
   await securityReviewer((r) =>
     r.provider("claude").apiKey("k").quiet().diff((d) => d.text(DIFF))
       .fetch(fetch).suppress(sup)
-  ).validate({ target: "t" }); // resolves — the recomputed score no longer trips
+  ).validate(noRedactionContext("t")); // resolves — the recomputed score no longer trips
 });
 
 Deno.test("an empty suppress list leaves the findings untouched", async () => {
@@ -408,7 +409,7 @@ Deno.test("an empty suppress list leaves the findings untouched", async () => {
     securityReviewer((r) =>
       r.provider("claude").apiKey("k").diff((d) => d.text(DIFF)).fetch(fetch)
         .suppress(sup)
-    ).validate({ target: "t" })
+    ).validate(noRedactionContext("t"))
   );
   assertEquals(lines.some((l) => l.includes("suppressed")), false);
 });
@@ -432,7 +433,7 @@ Deno.test("a suppress list that matches no finding drops nothing", async () => {
         securityReviewer((r) =>
           r.provider("claude").apiKey("k").diff((d) => d.text(DIFF))
             .fetch(fetch).suppress(sup)
-        ).validate({ target: "t" }),
+        ).validate(noRedactionContext("t")),
       AiReviewError, // the unrelated fingerprint muted nothing
     );
   });
@@ -461,7 +462,7 @@ Deno.test("the verify pass is skipped once the review call exhausts the budget",
         securityReviewer((r) =>
           r.provider("claude").apiKey("k").diff((d) => d.text(DIFF))
             .fetch(fetch).budget(b).verify()
-        ).validate({ target: "t" }),
+        ).validate(noRedactionContext("t")),
       AiReviewError, // the finding was kept, not silently verified away
     );
   });

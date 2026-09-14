@@ -1505,6 +1505,29 @@ Deno.test("a throwing plugin hook is isolated and never breaks the run (M7)", as
   assertEquals(events, ["body", "good:finish"]); // the good plugin still ran
 });
 
+Deno.test("both validation hooks receive the run's redactor", async () => {
+  // The seam itself, at the unit level: a validation that publishes has to be
+  // able to mask, and whether it runs before or after the body does not change
+  // that. The integration test proves it masks a real declared secret; this
+  // proves neither call site was left handing over a bare { target }.
+  const got: string[] = [];
+  class B extends Build {
+    work = target()
+      .validateBefore({
+        validate: (ctx) => void got.push(typeof ctx.redact),
+      })
+      .validateAfter({
+        validate: (ctx) => void got.push(typeof ctx.redact),
+      })
+      .executes(() => {});
+  }
+  const b = new B();
+  discoverTargets(b);
+  const result = await execute(b, b.work, silent);
+  assertEquals(result.ok, true);
+  assertEquals(got, ["function", "function"]);
+});
+
 Deno.test("validateBefore runs before the body; validateAfter runs after", async () => {
   const log: string[] = [];
   class B extends Build {

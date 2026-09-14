@@ -13,6 +13,7 @@ import {
 } from "../mod.ts";
 import { withEnv } from "../../core/tests/_env.ts";
 import { captureLines } from "../../core/tests/_console.ts";
+import { noRedactionContext } from "./_context.ts";
 
 const DIFF = "diff --git a/src/app.ts b/src/app.ts\n" +
   "--- a/src/app.ts\n+++ b/src/app.ts\n@@\n+const x = eval(input);\n";
@@ -115,7 +116,7 @@ Deno.test("security review passes below the threshold and calls Claude", async (
   await securityReviewer((r) =>
     r.provider("claude").apiKey("sk-test").quiet()
       .diff((d) => d.text(DIFF)).fetch(fetch)
-  ).validate({ target: "deploy" });
+  ).validate(noRedactionContext("deploy"));
 
   assertEquals(calls[0].url, "https://api.anthropic.com/v1/messages");
   assertEquals(calls[0].init?.method, "POST");
@@ -146,7 +147,7 @@ Deno.test("reviewer fetchBase fetches the base branch and diffs against it", asy
         );
       })
       .fetch(fetch)
-  ).validate({ target: "t" });
+  ).validate(noRedactionContext("t"));
   // The reviewer honours fetchBase itself (previously a silent no-op): it fetches
   // the auto-detected base branch and diffs against FETCH_HEAD.
   assertEquals(git[0], [
@@ -178,7 +179,7 @@ Deno.test("reviewer fetchBase falls back to the plain diff when the fetch fails"
         return Promise.resolve("diff --git a/w b/w\n+working tree");
       })
       .fetch(fetch)
-  ).validate({ target: "t" });
+  ).validate(noRedactionContext("t"));
   assertEquals(git[0], [
     "git",
     "fetch",
@@ -208,7 +209,7 @@ Deno.test("reviewer fetchBase rejects an option-like base ref (never fetches)", 
         return Promise.resolve("diff --git a/w b/w\n+plain");
       })
       .fetch(fetch)
-  ).validate({ target: "t" });
+  ).validate(noRedactionContext("t"));
   // safeGitArg rejects the option-like ref: no `git fetch` runs, and it falls
   // straight through to the configured diff.
   assertEquals(git.some((g) => g[1] === "fetch"), false);
@@ -233,7 +234,7 @@ Deno.test("fetchBase failure with an empty fallback fails the gate, never a sile
               : Promise.resolve("")
           )
           .fetch(fetch)
-      ).validate({ target: "t" }),
+      ).validate(noRedactionContext("t")),
     AiReviewError,
     "could not compute the base diff",
   );
@@ -255,7 +256,7 @@ Deno.test("fetchBase failure with an empty fallback skips visibly under onError:
           : Promise.resolve("")
       )
       .fetch(fetch)
-  ).validate({ target: "t" });
+  ).validate(noRedactionContext("t"));
   assertEquals(calls.length, 0);
 });
 
@@ -275,7 +276,7 @@ Deno.test("fetchBase failure still reviews a non-empty working-tree fallback", a
           : Promise.resolve("diff --git a/w b/w\n+working tree")
       )
       .fetch(fetch)
-  ).validate({ target: "t" });
+  ).validate(noRedactionContext("t"));
   assertEquals(calls.length, 1); // the fallback diff was reviewed
 });
 
@@ -293,7 +294,7 @@ Deno.test("a successful fetchBase with a genuinely empty diff passes, not fails"
       .env(() => undefined)
       .exec(() => Promise.resolve("")) // fetch ok, diff empty
       .fetch(fetch)
-  ).validate({ target: "t" });
+  ).validate(noRedactionContext("t"));
   assertEquals(calls.length, 0); // no findings, no throw — a clean empty pass
 });
 
@@ -306,7 +307,7 @@ Deno.test("the build breaks when the risk score exceeds the threshold", async ()
       securityReviewer((r) =>
         r.provider("claude").apiKey("k").quiet().diff((d) => d.text(DIFF))
           .fetch(fetch)
-      ).validate({ target: "deploy" }),
+      ).validate(noRedactionContext("deploy")),
     AiReviewError,
     "risk score 9 exceeds 7",
   );
@@ -321,7 +322,7 @@ Deno.test("a high score clamps to 10 and still trips the default gate", async ()
       securityReviewer((r) =>
         r.provider("claude").apiKey("k").quiet().diff((d) => d.text(DIFF))
           .fetch(fetch)
-      ).validate({ target: "t" }),
+      ).validate(noRedactionContext("t")),
     AiReviewError,
     "risk score 10 exceeds 7",
   );
@@ -337,7 +338,7 @@ Deno.test("severityAtLeast gates on a severity derived from findings", async () 
       securityReviewer((r) =>
         r.provider("claude").apiKey("k").quiet().diff((d) => d.text(DIFF))
           .failWhen((g) => g.severityAtLeast("high")).fetch(fetch)
-      ).validate({ target: "t" }),
+      ).validate(noRedactionContext("t")),
     AiReviewError,
     'severity "high" is at least "high"',
   );
@@ -345,7 +346,8 @@ Deno.test("severityAtLeast gates on a severity derived from findings", async () 
 
 Deno.test("a provider is required", async () => {
   await assertRejects(
-    () => securityReviewer((r) => r.apiKey("k")).validate({ target: "t" }),
+    () =>
+      securityReviewer((r) => r.apiKey("k")).validate(noRedactionContext("t")),
     AiReviewError,
     "a provider is required",
   );
@@ -354,7 +356,9 @@ Deno.test("a provider is required", async () => {
 Deno.test("an API key is required", async () => {
   await assertRejects(
     () =>
-      securityReviewer((r) => r.provider("claude")).validate({ target: "t" }),
+      securityReviewer((r) => r.provider("claude")).validate(
+        noRedactionContext("t"),
+      ),
     AiReviewError,
     "an API key is required",
   );
@@ -366,7 +370,7 @@ Deno.test("skipIfKeyMissing skips the review and announces it, without calling t
     securityReviewer((r) =>
       r.provider("claude").apiKey("").skipIfKeyMissing()
         .diff((d) => d.text(DIFF)).fetch(fetch)
-    ).validate({ target: "deploy" })
+    ).validate(noRedactionContext("deploy"))
   );
   assertEquals(calls.length, 0); // no provider call when skipped
   assertEquals(lines, ["[security review] skipped — no API key"]);
@@ -377,7 +381,7 @@ Deno.test("skipIfKeyMissing stays silent under quiet()", async () => {
     securityReviewer((r) =>
       r.provider("claude").apiKey("").skipIfKeyMissing().quiet()
     )
-      .validate({ target: "deploy" })
+      .validate(noRedactionContext("deploy"))
   );
   assertEquals(lines, []);
 });
@@ -391,7 +395,7 @@ Deno.test("a skipped review is noted in the GitHub Actions job summary", async (
   try {
     await securityReviewer((r) =>
       r.provider("claude").apiKey("").skipIfKeyMissing()
-    ).validate({ target: "deploy" });
+    ).validate(noRedactionContext("deploy"));
     const md = await Deno.readTextFile(summaryFile);
     assertEquals(
       md.includes("## ⏭️ security review — `deploy`"),
@@ -411,7 +415,7 @@ Deno.test("genericReviewer runs without explicit criteria using its built-in rub
   await genericReviewer((r) =>
     r.provider("claude").apiKey("k").quiet()
       .diff((d) => d.text(DIFF)).fetch(fetch)
-  ).validate({ target: "t" });
+  ).validate(noRedactionContext("t"));
   const body = JSON.parse(calls[0].body);
   // The default subject is in the system prompt.
   assertEquals(
@@ -432,7 +436,7 @@ Deno.test(".criteria(...) appends project notes above the diff in the user promp
     r.provider("claude").apiKey("k").quiet()
       .criteria("Strict TypeScript: no `any`, no `as`.")
       .diff((d) => d.text(DIFF)).fetch(fetch)
-  ).validate({ target: "t" });
+  ).validate(noRedactionContext("t"));
   const user = JSON.parse(calls[0].body).messages[0].content;
   assertEquals(user.includes("Additional project notes:"), true);
   assertEquals(user.includes("Strict TypeScript: no `any`, no `as`."), true);
@@ -455,7 +459,7 @@ Deno.test("an injected instruction in the diff is framed as untrusted data", asy
   await securityReviewer((r) =>
     r.provider("claude").apiKey("k").quiet().diff((d) => d.text(injected))
       .fetch(fetch)
-  ).validate({ target: "t" });
+  ).validate(noRedactionContext("t"));
   const body = JSON.parse(calls[0].body);
   // The system prompt marks the diff untrusted and says to ignore instructions.
   assertEquals(body.system.includes("UNTRUSTED DATA"), true);
@@ -473,7 +477,7 @@ Deno.test("openai provider posts to chat/completions with a bearer token", async
   await correctnessReviewer((r) =>
     r.provider("openai").apiKey("sk-oa").model("gpt-x").quiet()
       .diff((d) => d.text(DIFF)).fetch(fetch)
-  ).validate({ target: "t" });
+  ).validate(noRedactionContext("t"));
   assertEquals(calls[0].url, "https://api.openai.com/v1/chat/completions");
   const headers = calls[0].init?.headers as Record<string, string>;
   assertEquals(headers.authorization, "Bearer sk-oa");
@@ -489,7 +493,7 @@ Deno.test("gemini provider posts to generateContent with the key in a header, no
   await licenseReviewer((r) =>
     r.provider("gemini").apiKey("g-key").quiet()
       .diff((d) => d.text(DIFF)).fetch(fetch)
-  ).validate({ target: "t" });
+  ).validate(noRedactionContext("t"));
   assertEquals(
     calls[0].url,
     "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent",
@@ -511,7 +515,7 @@ Deno.test("a non-2xx response fails closed, but onError warn passes", async () =
       secretsReviewer((r) =>
         r.provider("claude").apiKey("k").quiet().diff((d) => d.text(DIFF))
           .fetch(fetch)
-      ).validate({ target: "t" }),
+      ).validate(noRedactionContext("t")),
     AiReviewError,
     "claude API error: HTTP 401",
   );
@@ -521,7 +525,7 @@ Deno.test("a non-2xx response fails closed, but onError warn passes", async () =
     secretsReviewer((r) =>
       r.provider("claude").apiKey("k").onError("warn").diff((d) => d.text(DIFF))
         .fetch(warn.fetch)
-    ).validate({ target: "t" })
+    ).validate(noRedactionContext("t"))
   );
   assertEquals(lines.some((l) => l.includes("skipped")), true);
 });
@@ -534,7 +538,7 @@ Deno.test("a model refusal is surfaced as an error", async () => {
       securityReviewer((r) =>
         r.provider("claude").apiKey("k").quiet().diff((d) => d.text(DIFF))
           .fetch(fetch)
-      ).validate({ target: "t" }),
+      ).validate(noRedactionContext("t")),
     AiReviewError,
     "refused",
   );
@@ -547,7 +551,7 @@ Deno.test("invalid JSON fails, fenced/prose JSON parses", async () => {
       securityReviewer((r) =>
         r.provider("claude").apiKey("k").quiet().diff((d) => d.text(DIFF))
           .fetch(bad.fetch)
-      ).validate({ target: "t" }),
+      ).validate(noRedactionContext("t")),
     AiReviewError,
     "did not return valid JSON",
   );
@@ -558,7 +562,7 @@ Deno.test("invalid JSON fails, fenced/prose JSON parses", async () => {
   await securityReviewer((r) =>
     r.provider("claude").apiKey("k").quiet().diff((d) => d.text(DIFF))
       .fetch(fenced.fetch)
-  ).validate({ target: "t" }); // resolves
+  ).validate(noRedactionContext("t")); // resolves
 });
 
 Deno.test("a malformed response shape fails closed", async () => {
@@ -568,7 +572,7 @@ Deno.test("a malformed response shape fails closed", async () => {
       securityReviewer((r) =>
         r.provider("claude").apiKey("k").quiet().diff((d) => d.text(DIFF))
           .fetch(fetch)
-      ).validate({ target: "t" }),
+      ).validate(noRedactionContext("t")),
     AiReviewError,
     "could not read",
   );
@@ -579,7 +583,7 @@ Deno.test("an empty diff passes without calling the model", async () => {
   await securityReviewer((r) =>
     r.provider("claude").apiKey("k").quiet().diff((d) => d.text("   "))
       .fetch(fetch)
-  ).validate({ target: "t" });
+  ).validate(noRedactionContext("t"));
   assertEquals(calls.length, 0);
 });
 
@@ -589,7 +593,7 @@ Deno.test("default excludes drop lockfile-only diffs", async () => {
   await securityReviewer((r) =>
     r.provider("claude").apiKey("k").quiet().diff((d) => d.text(lockDiff))
       .fetch(fetch)
-  ).validate({ target: "t" });
+  ).validate(noRedactionContext("t"));
   assertEquals(calls.length, 0); // nothing left to review
 });
 
@@ -600,7 +604,7 @@ Deno.test("include/exclude filter the diff by path", async () => {
   await securityReviewer((r) =>
     r.provider("claude").apiKey("k").quiet().diff((d) => d.text(two))
       .include("src/**").fetch(inc.fetch)
-  ).validate({ target: "t" });
+  ).validate(noRedactionContext("t"));
   const body = JSON.parse(inc.calls[0].body).messages[0].content;
   assertEquals(body.includes("src/app.ts"), true);
   assertEquals(body.includes("generated/out.ts"), false);
@@ -609,7 +613,7 @@ Deno.test("include/exclude filter the diff by path", async () => {
   await securityReviewer((r) =>
     r.provider("claude").apiKey("k").quiet().diff((d) => d.text(two))
       .exclude("generated/**").fetch(exc.fetch)
-  ).validate({ target: "t" });
+  ).validate(noRedactionContext("t"));
   const body2 = JSON.parse(exc.calls[0].body).messages[0].content;
   assertEquals(body2.includes("generated/out.ts"), false);
 });
@@ -620,7 +624,7 @@ Deno.test("maxDiffTokens truncates a large diff (and leaves a small one)", async
   await securityReviewer((r) =>
     r.provider("claude").apiKey("k").quiet().diff((d) => d.text(big))
       .maxDiffTokens(1).fetch(cut.fetch)
-  ).validate({ target: "t" });
+  ).validate(noRedactionContext("t"));
   assertEquals(
     JSON.parse(cut.calls[0].body).messages[0].content.includes("truncated"),
     true,
@@ -630,7 +634,7 @@ Deno.test("maxDiffTokens truncates a large diff (and leaves a small one)", async
   await securityReviewer((r) =>
     r.provider("claude").apiKey("k").quiet().diff((d) => d.text(DIFF))
       .maxDiffTokens(10000).fetch(keep.fetch)
-  ).validate({ target: "t" }); // resolves, no truncation
+  ).validate(noRedactionContext("t")); // resolves, no truncation
 });
 
 Deno.test("base/staged diff is produced via the git exec seam, with effort", async () => {
@@ -643,7 +647,7 @@ Deno.test("base/staged diff is produced via the git exec seam, with effort", asy
   await securityReviewer((r) =>
     r.provider("claude").apiKey("k").quiet().effort("high")
       .diff((d) => d.base("origin/main")).exec(run).fetch(fetch)
-  ).validate({ target: "t" });
+  ).validate(noRedactionContext("t"));
   assertEquals(seen[0], ["git", "diff", "origin/main"]);
   assertEquals(JSON.parse(calls[0].body).output_config.effort, "high");
 
@@ -655,7 +659,7 @@ Deno.test("base/staged diff is produced via the git exec seam, with effort", asy
   await securityReviewer((r) =>
     r.provider("claude").apiKey("k").quiet()
       .diff((d) => d.staged()).exec(stagedRun).fetch(staged.fetch)
-  ).validate({ target: "t" });
+  ).validate(noRedactionContext("t"));
   assertEquals(seen[1], ["git", "diff", "--cached"]);
 });
 
@@ -666,7 +670,7 @@ Deno.test("the default diff source runs git via the shell (no network)", async (
   await securityReviewer((r) =>
     r.provider("claude").apiKey("k").quiet().diff((d) => d.staged())
       .fetch(fetch)
-  ).validate({ target: "t" });
+  ).validate(noRedactionContext("t"));
   assertEquals(
     calls.every((c) => c.url.startsWith("https://api.anthropic.com/")),
     true,
@@ -690,7 +694,7 @@ Deno.test("the findings table is printed when not quiet", async () => {
   const lines = await captured(() =>
     securityReviewer((r) =>
       r.provider("claude").apiKey("k").diff((d) => d.text(DIFF)).fetch(fetch)
-    ).validate({ target: "t" })
+    ).validate(noRedactionContext("t"))
   );
   assertEquals(lines.some((l) => l.includes("score 1/10")), true);
   assertEquals(
@@ -717,7 +721,7 @@ Deno.test("malformed score/severity/findings degrade to a clean pass", async () 
   const lines = await captured(() =>
     securityReviewer((r) =>
       r.provider("claude").apiKey("k").diff((d) => d.text(DIFF)).fetch(fetch)
-    ).validate({ target: "t" })
+    ).validate(noRedactionContext("t"))
   );
   assertEquals(lines.some((l) => l.includes("score 0/10 (none)")), true);
 });
@@ -737,7 +741,7 @@ Deno.test("findings print with and without a file, and carry detail", async () =
   const lines = await captured(() =>
     securityReviewer((r) =>
       r.provider("claude").apiKey("k").diff((d) => d.text(DIFF)).fetch(fetch)
-    ).validate({ target: "t" })
+    ).validate(noRedactionContext("t"))
   );
   assertEquals(
     lines.some((l) => l.includes("no-location") && !l.includes("(")),
@@ -756,7 +760,7 @@ Deno.test("a thrown Error and a thrown non-Error both surface as AiReviewError",
       securityReviewer((r) =>
         r.provider("claude").apiKey("k").quiet().diff((d) => d.text(DIFF))
           .fetch(boom)
-      ).validate({ target: "t" }),
+      ).validate(noRedactionContext("t")),
     AiReviewError,
     "boom",
   );
@@ -767,7 +771,7 @@ Deno.test("a thrown Error and a thrown non-Error both surface as AiReviewError",
       securityReviewer((r) =>
         r.provider("claude").apiKey("k").quiet().diff((d) => d.text(DIFF))
           .fetch(weird)
-      ).validate({ target: "t" }),
+      ).validate(noRedactionContext("t")),
     AiReviewError,
     "weird",
   );
@@ -780,7 +784,7 @@ Deno.test("failWhen scoreAbove gates on an explicit score threshold", async () =
       securityReviewer((r) =>
         r.provider("claude").apiKey("k").quiet().diff((d) => d.text(DIFF))
           .failWhen((g) => g.scoreAbove(5)).fetch(fetch)
-      ).validate({ target: "t" }),
+      ).validate(noRedactionContext("t")),
     AiReviewError,
     "risk score 6 exceeds 5",
   );
@@ -795,7 +799,7 @@ Deno.test("a null inside the response shape fails closed", async () => {
       securityReviewer((r) =>
         r.provider("claude").apiKey("k").quiet().diff((d) => d.text(DIFF))
           .fetch(fetch)
-      ).validate({ target: "t" }),
+      ).validate(noRedactionContext("t")),
     AiReviewError,
     "could not read",
   );
@@ -827,13 +831,13 @@ Deno.test("the assessment is appended to the GitHub Actions job summary", async 
     );
     await securityReviewer((r) =>
       r.provider("claude").apiKey("k").diff((d) => d.text(DIFF)).fetch(a.fetch)
-    ).validate({ target: "deploy" });
+    ).validate(noRedactionContext("deploy"));
 
     // Clean run: no table, no quote.
     const b = recordFetch(claude({ score: 0, findings: [] }));
     await securityReviewer((r) =>
       r.provider("claude").apiKey("k").diff((d) => d.text(DIFF)).fetch(b.fetch)
-    ).validate({ target: "deploy" });
+    ).validate(noRedactionContext("deploy"));
 
     const md = await Deno.readTextFile(summaryFile);
     assertEquals(md.includes("## 🔎 security review — `deploy`"), true);
@@ -860,7 +864,7 @@ Deno.test("an unwritable job-summary file never fails the review", async () => {
     const { fetch } = recordFetch(claude({ score: 0, findings: [] }));
     await securityReviewer((r) =>
       r.provider("claude").apiKey("k").diff((d) => d.text(DIFF)).fetch(fetch)
-    ).validate({ target: "t" }); // resolves despite the unwritable summary
+    ).validate(noRedactionContext("t")); // resolves despite the unwritable summary
   } finally {
     console.log = log;
     if (prev === undefined) Deno.env.delete("GITHUB_STEP_SUMMARY");
@@ -884,7 +888,7 @@ Deno.test("a transient 503 from the provider is retried, then the review passes"
       r.provider("claude").apiKey("k").diff((d) => d.text(DIFF))
         .fetch(scripted)
         .retry({ baseDelayMs: 0 }) // skip the real backoff in tests
-    ).validate({ target: "t" })
+    ).validate(noRedactionContext("t"))
   );
   assertEquals(i, 2); // first call hit 503, second succeeded
   // The run announces itself and the retry, so it doesn't look like a hang.
@@ -910,7 +914,7 @@ Deno.test("the start line echoes provider, model, gate, and comment settings", a
         d.text(DIFF)
       )
         .failWhen((g) => g.scoreAbove(8)).fetch(fetch)
-    ).validate({ target: "deploy" })
+    ).validate(noRedactionContext("deploy"))
   );
   assertEquals(
     lines.some((l) =>
@@ -927,7 +931,7 @@ Deno.test("retry({ attempts: 1 }) disables retries — a 503 surfaces immediatel
     securityReviewer((r) =>
       r.provider("claude").apiKey("k").diff((d) => d.text(DIFF)).fetch(fetch)
         .retry({ attempts: 1 }).onError("warn")
-    ).validate({ target: "t" })
+    ).validate(noRedactionContext("t"))
   );
   assertEquals(
     lines.some((l) => l.includes("claude API error: HTTP 503")),
@@ -945,7 +949,7 @@ Deno.test("token usage from the provider is shown in the output", async () => {
   const lines = await captured(() =>
     securityReviewer((r) =>
       r.provider("claude").apiKey("k").diff((d) => d.text(DIFF)).fetch(fetch)
-    ).validate({ target: "t" })
+    ).validate(noRedactionContext("t"))
   );
   // Claude reports no total; it is derived from input + output.
   assertEquals(
@@ -962,7 +966,7 @@ Deno.test("partial usage renders only the reported counts", async () => {
   const lines = await captured(() =>
     securityReviewer((r) =>
       r.provider("claude").apiKey("k").diff((d) => d.text(DIFF)).fetch(fetch)
-    ).validate({ target: "t" })
+    ).validate(noRedactionContext("t"))
   );
   assertEquals(lines.includes("  tokens: 42 in"), true);
 });
@@ -977,7 +981,7 @@ Deno.test("token usage is read from the openai and gemini response shapes", asyn
   let lines = await captured(() =>
     securityReviewer((r) =>
       r.provider("openai").apiKey("k").diff((d) => d.text(DIFF)).fetch(oa.fetch)
-    ).validate({ target: "t" })
+    ).validate(noRedactionContext("t"))
   );
   assertEquals(lines.includes("  tokens: 10 in · 5 out · 15 total"), true);
 
@@ -996,7 +1000,7 @@ Deno.test("token usage is read from the openai and gemini response shapes", asyn
   lines = await captured(() =>
     licenseReviewer((r) =>
       r.provider("gemini").apiKey("k").diff((d) => d.text(DIFF)).fetch(gm.fetch)
-    ).validate({ target: "t" })
+    ).validate(noRedactionContext("t"))
   );
   assertEquals(lines.includes("  tokens: 7 in · 3 out · 10 total"), true);
 });
@@ -1016,7 +1020,7 @@ Deno.test("token usage is included in the job-summary markdown", async () => {
     );
     await securityReviewer((r) =>
       r.provider("claude").apiKey("k").diff((d) => d.text(DIFF)).fetch(fetch)
-    ).validate({ target: "deploy" });
+    ).validate(noRedactionContext("deploy"));
     const md = await Deno.readTextFile(summaryFile);
     assertEquals(md.includes("**Tokens:** 100 in · 20 out · 120 total"), true);
   } finally {
@@ -1043,7 +1047,7 @@ Deno.test("comment() posts the assessment to the pull request", async () => {
         securityReviewer((r) =>
           r.provider("claude").apiKey("k").comment().githubToken("tkn")
             .diff((d) => d.text(DIFF)).fetch(fetch)
-        ).validate({ target: "deploy" })
+        ).validate(noRedactionContext("deploy"))
       );
       const posts = calls.filter((c) =>
         c.url.startsWith("https://api.github.com/") && c.init?.method === "POST"
@@ -1084,7 +1088,7 @@ Deno.test("comment() uses GITHUB_TOKEN and updates the existing comment", async 
         securityReviewer((r) =>
           r.provider("claude").apiKey("k").comment()
             .diff((d) => d.text(DIFF)).fetch(fetch)
-        ).validate({ target: "deploy" })
+        ).validate(noRedactionContext("deploy"))
       );
       const writes = calls.filter((c) => c.init?.method === "PATCH");
       assertEquals(writes.length, 1);
@@ -1110,7 +1114,7 @@ Deno.test("comment() warns and skips on GitHub without a PR ref", async () => {
         securityReviewer((r) =>
           r.provider("claude").apiKey("k").comment().githubToken("tkn")
             .diff((d) => d.text(DIFF)).fetch(fetch)
-        ).validate({ target: "deploy" })
+        ).validate(noRedactionContext("deploy"))
       );
       assertEquals(
         calls.some((c) => c.url.startsWith("https://api.github.com/")),
@@ -1140,7 +1144,7 @@ Deno.test("a failed PR comment never breaks the review", async () => {
         securityReviewer((r) =>
           r.provider("claude").apiKey("k").comment().githubToken("tkn")
             .diff((d) => d.text(DIFF)).fetch(fetch)
-        ).validate({ target: "deploy" })
+        ).validate(noRedactionContext("deploy"))
       ); // resolves despite the 500
       assertEquals(
         lines.some((l) => l.includes("could not post PR comment")),
@@ -1171,7 +1175,7 @@ Deno.test("the fetchBase fallback is announced on the console when not quiet", a
           return Promise.resolve("diff --git a/w b/w\n+working tree");
         })
         .fetch(fetch)
-    ).validate({ target: "t" })
+    ).validate(noRedactionContext("t"))
   );
   // The silent-fallback hazard is called out where the operator can see it.
   assertEquals(

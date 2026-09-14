@@ -8,6 +8,7 @@ import { buildFileContext } from "../src/file_context.ts";
 import { findingFingerprint } from "../src/suppress.ts";
 import { captureLines } from "../../core/tests/_console.ts";
 import { withEnv } from "../../core/tests/_env.ts";
+import { noRedactionContext } from "./_context.ts";
 
 const DIFF = "diff --git a/src/app.ts b/src/app.ts\n" +
   "--- a/src/app.ts\n+++ b/src/app.ts\n@@\n+const x = eval(input);\n";
@@ -112,7 +113,7 @@ Deno.test("conventionsFile reads from the diff BASE ref, not the head", async ()
       .diff((d) => d.base("origin/master"))
       .conventionsFile("AGENTS.md")
       .exec(git.run).fetch(fetch)
-  ).validate({ target: "t" });
+  ).validate(noRedactionContext("t"));
   // The read went through git at the base ref — the PR head can't supply it.
   assertEquals(
     git.calls.some((c) =>
@@ -140,7 +141,7 @@ Deno.test("an unreadable conventions file warns and reviews without it", async (
         .diff((d) => d.base("origin/master"))
         .conventionsFile("AGENTS.md")
         .exec(git.run).fetch(fetch)
-    ).validate({ target: "t" });
+    ).validate(noRedactionContext("t"));
   } finally {
     console.warn = warn;
   }
@@ -162,7 +163,7 @@ Deno.test("conventionsFile without a base ref reads from disk, and truncates", a
         .diff((d) => d.text(DIFF))
         .conventionsFile(file, 100) // ≈400 chars — forces the cut
         .fetch(fetch)
-    ).validate({ target: "t" });
+    ).validate(noRedactionContext("t"));
     const user = JSON.parse(calls[0].body).messages[0].content;
     assertEquals(user.includes("rule rule"), true);
     assertEquals(
@@ -199,7 +200,7 @@ Deno.test("fileContext feeds changed-file contents to review AND verify", async 
           .diff((d) => d.base("origin/master"))
           .fileContext(1000).verify()
           .exec(git.run).fetch(fetch)
-      ).validate({ target: "t" }),
+      ).validate(noRedactionContext("t")),
     AiReviewError, // no verdict for the finding → kept → default gate trips at 8
   );
   const review = JSON.parse(calls[0].body);
@@ -261,7 +262,7 @@ Deno.test("verify refutes a candidate: reported as refuted, not gated on", async
       r.provider("claude").apiKey("k")
         .diff((d) => d.text(DIFF)).verify()
         .fetch(fetch)
-    ).validate({ target: "t" });
+    ).validate(noRedactionContext("t"));
   } finally {
     console.log = log;
     if (summary !== undefined) Deno.env.set("GITHUB_STEP_SUMMARY", summary);
@@ -300,7 +301,7 @@ Deno.test("a failed verify pass keeps the unverified findings (fail toward repor
           .retry({ attempts: 1 })
           .diff((d) => d.text(DIFF)).verify()
           .fetch(fetch)
-      ).validate({ target: "t" }),
+      ).validate(noRedactionContext("t")),
     AiReviewError, // the finding stayed, so the gate still trips
   );
 });
@@ -311,7 +312,7 @@ Deno.test("verify is skipped cleanly when there are no findings", async () => {
     r.provider("claude").apiKey("k").quiet()
       .diff((d) => d.text(DIFF)).verify()
       .fetch(fetch)
-  ).validate({ target: "t" });
+  ).validate(noRedactionContext("t"));
   assertEquals(calls.length, 1); // no second call to verify nothing
 });
 
@@ -345,7 +346,7 @@ Deno.test("verify candidates carry the finding's line; an evidence-free refutati
           r.provider("claude").apiKey("k")
             .diff((d) => d.text(DIFF)).verify()
             .fetch(fetch)
-        ).validate({ target: "t" }),
+        ).validate(noRedactionContext("t")),
       AiReviewError,
     );
   });
@@ -389,7 +390,7 @@ Deno.test("an uncertain verdict keeps the finding reported and gating", async ()
           r.provider("claude").apiKey("k")
             .diff((d) => d.text(DIFF)).verify()
             .fetch(fetch)
-        ).validate({ target: "t" }),
+        ).validate(noRedactionContext("t")),
       AiReviewError,
     );
   });
@@ -430,7 +431,7 @@ Deno.test("a failed verify pass warns on the console when not quiet", async () =
             .retry({ attempts: 1 })
             .diff((d) => d.text(DIFF)).verify()
             .fetch(fetch)
-        ).validate({ target: "t" }),
+        ).validate(noRedactionContext("t")),
       AiReviewError, // the unverified finding stayed and still gates
     );
   });
@@ -451,7 +452,7 @@ Deno.test("an empty file context is omitted from the prompt entirely", async () 
       .diff((d) => d.base("origin/master"))
       .fileContext(1000)
       .exec(git.run).fetch(fetch)
-  ).validate({ target: "t" });
+  ).validate(noRedactionContext("t"));
   const body = JSON.parse(calls[0].body);
   // No empty UNTRUSTED_FILES block confuses the model when nothing was read.
   assertEquals(body.messages[0].content.includes("UNTRUSTED_FILES"), false);
