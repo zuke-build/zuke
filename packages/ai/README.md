@@ -64,12 +64,14 @@ structured-output mode (Claude `output_config.format`, OpenAI strict
 
 The v2 depth-and-discussion settings: `.conventionsFile("AGENTS.md")` (judge
 against the project's conventions document, read from the diff base so the
-change under review can't rewrite the rules), `.fileContext()` (send the changed
-files whole, not bare hunks), `.verify()` (adversarially re-check every
-candidate finding; refuted ones are reported but never gate), and
-`.discussion()` (engage with maintainer rebuttals on the PR — an accepted
-refutation stays dismissed instead of resurfacing; only comments whose author
-the host platform attributes as a maintainer ever reach the model).
+change under review can't rewrite the rules), `.criteriaFile("NOTES.md")` (the
+base-anchored half of `.criteria(...)`, read the same way — `.criteria` is build
+code and so travels with the change), `.fileContext()` (send the changed files
+whole, not bare hunks), `.verify()` (adversarially re-check every candidate
+finding; refuted ones are reported but never gate), and `.discussion()` (engage
+with maintainer rebuttals on the PR — an accepted refutation stays dismissed
+instead of resurfacing; only comments whose author the host platform attributes
+as a maintainer ever reach the model).
 
 `.skipIfKeyMissing()` skips the review instead of failing when the API key is
 absent — handy when the key is a CI-only secret — and announces the skip on the
@@ -609,6 +611,16 @@ class Reviewer implements Validation
     — framing that fine-tunes the built-in rubric (e.g. "strict TypeScript,
     no `any`/`as`"). Works for every reviewer; the assessment's own system
     prompt already covers what to look for, so this is purely additive.
+
+    These notes are read from the head under review, and cannot be
+    anything else: they are build code, evaluated by the very build the
+    pull request changed, so there is no base copy to read short of running
+    the base's build. A branch can therefore widen what its own review
+    overlooks, which is real but bounded — the change is first-party code in
+    the diff a maintainer reads, and a build that could not configure its own
+    reviewer from its own source would be a different feature.
+    {@link Reviewer.criteriaFile} is the base-anchored form for notes that
+    should not be editable by the change they judge.
   diff(configure: Configure<DiffSettings>): this
     Configure the diff source (default: the working-tree diff, `git diff`).
   include(...globs: string[]): this
@@ -674,6 +686,14 @@ class Reviewer implements Validation
     Hide findings whose stable ID is in a {@link Suppressions} list — a learned
     set of dismissed false positives. Every finding is fingerprinted and its ID
     surfaced in the report, so dismissing one is a copy-paste into the list.
+
+    Like {@link Reviewer.criteria}, the list is read at the head under
+    review — inline entries are build code, and the file is read from disk —
+    so a change can suppress a finding on its own run. That is deliberate:
+    every suppressed finding is still listed in the report, so the muting is
+    visible on the thread rather than silent, and the entry is in the diff a
+    maintainer reads. Nothing here reads the base, and nothing should be
+    assumed to.
   conventionsFile(path: string, maxTokens: number): this
     Feed the project's conventions document (e.g. `AGENTS.md`) to the model as
     reference material, so the review judges the change against the project's
@@ -683,6 +703,30 @@ class Reviewer implements Validation
     so a pull request cannot rewrite the rules it is judged by. Without a base
     (a local working-tree review) it is read from disk. Truncated at roughly
     `maxTokens` (default 8000).
+  criteriaFile(path: string, maxTokens: number): this
+    Project-specific notes read from a file, appended to whatever
+    {@link Reviewer.criteria} set inline — the base-anchored half of the same
+    slot.
+
+    Read exactly as {@link Reviewer.conventionsFile} is: from the diff's base
+    ref via `git show` when there is one, from disk otherwise, truncated at
+    roughly `maxTokens` (default 8000). That is the point of it. A note that
+    tells the reviewer a design is accepted — and so suppresses the findings
+    that restate it — is a rule the review is judged by, and a pull request
+    should not be able to add one to its own run. Keeping it in a file the
+    base supplies costs one merge of lag, which is the same lag the
+    conventions document already accepts, and is arguably the point: a newly
+    accepted design should be agreed before it starts muting findings.
+
+    Use it for what a branch should not be able to widen; keep
+    {@link Reviewer.criteria} for the framing that travels with the build.
+
+    What it does not buy: the build still decides whether to read a criteria
+    document at all, and that decision is head code, so a branch can drop the
+    call as easily as it can edit a string. This bounds what a change can add
+    to the rules of its own review, not whether the reviewer is configured —
+    the same limit {@link Reviewer.conventionsFile} has, and the reason the
+    diff a maintainer reads remains the control that matters.
   fileContext(maxTokens: number): this
     Also send the full post-image contents of the changed files (read via
     `git show HEAD:<path>`), bounded at roughly `maxTokens` (default 12000) —

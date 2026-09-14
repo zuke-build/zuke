@@ -1082,6 +1082,13 @@ Depth and discussion knobs (all optional, per reviewer):
 - `.conventionsFile("AGENTS.md")` — feed the project's conventions document as
   fenced reference material; read from the diff **base** (via `git show`) when
   the diff has one, so a PR cannot rewrite the rules it is judged by.
+- `.criteriaFile(".github/review-criteria.md")` — project-specific notes read
+  the same way, from the diff **base**. It is the base-anchored half of
+  `.criteria(text)`, which is build code evaluated by the build under review and
+  so is always read from the head: put the notes a branch should not be able to
+  widen — an accepted design that suppresses the findings restating it — in the
+  file. The suppress list is head-read too, and every suppressed finding stays
+  listed in the report.
 - `.fileContext()` — also send the changed files' full contents (bounded), so
   the model can check a finding against surrounding guards before reporting.
 - `.verify()` — a second, adversarial pass re-checks every candidate finding;
@@ -1175,7 +1182,8 @@ overrides that read, so a fixer authorized to write (`.autoApply()`,
 `.commitFixes()`, or any `agentFixer`, which runs an agent with no path
 allowlist) is not taking direction from a document the author of the failing
 change controls. `.conventions("")` sends none. The reviewers do the stronger
-thing already — `.conventionsFile(...)` reads from the diff base.
+thing already — `.conventionsFile(...)` and `.criteriaFile(...)` read from the
+diff base.
 
 **Delegate to a coding agent** — `agentFixer(runner)` is a `Remediation` that
 hands the failure to a coding agent you inject (`@zuke/claude`, `@zuke/codex`,

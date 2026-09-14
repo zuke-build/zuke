@@ -119,6 +119,8 @@ export class Reviewer implements Validation {
   #model?: string;
   #effort?: Effort;
   #criteria = "";
+  #criteriaFile?: string;
+  #criteriaTokens = 8000;
   readonly #diff = new DiffSettings();
   readonly #include: string[] = [];
   readonly #exclude: string[] = [];
@@ -201,6 +203,16 @@ export class Reviewer implements Validation {
    * — framing that fine-tunes the built-in rubric (e.g. "strict TypeScript,
    * no `any`/`as`"). Works for every reviewer; the assessment's own system
    * prompt already covers what to look for, so this is purely additive.
+   *
+   * These notes are **read from the head under review**, and cannot be
+   * anything else: they are build code, evaluated by the very build the
+   * pull request changed, so there is no base copy to read short of running
+   * the base's build. A branch can therefore widen what its own review
+   * overlooks, which is real but bounded — the change is first-party code in
+   * the diff a maintainer reads, and a build that could not configure its own
+   * reviewer from its own source would be a different feature.
+   * {@link Reviewer.criteriaFile} is the base-anchored form for notes that
+   * should not be editable by the change they judge.
    */
   criteria(criteria: string): this {
     this.#criteria = criteria;
@@ -359,6 +371,14 @@ export class Reviewer implements Validation {
    * Hide findings whose stable ID is in a {@link Suppressions} list — a learned
    * set of dismissed false positives. Every finding is fingerprinted and its ID
    * surfaced in the report, so dismissing one is a copy-paste into the list.
+   *
+   * Like {@link Reviewer.criteria}, the list is read at the **head** under
+   * review — inline entries are build code, and the file is read from disk —
+   * so a change can suppress a finding on its own run. That is deliberate:
+   * every suppressed finding is still listed in the report, so the muting is
+   * visible on the thread rather than silent, and the entry is in the diff a
+   * maintainer reads. Nothing here reads the base, and nothing should be
+   * assumed to.
    */
   suppress(suppressions: Suppressions): this {
     this.#suppress = suppressions;
@@ -378,6 +398,37 @@ export class Reviewer implements Validation {
   conventionsFile(path: string, maxTokens = 8000): this {
     this.#conventionsFile = path;
     this.#conventionsTokens = maxTokens;
+    return this;
+  }
+
+  /**
+   * Project-specific notes read from a **file**, appended to whatever
+   * {@link Reviewer.criteria} set inline — the base-anchored half of the same
+   * slot.
+   *
+   * Read exactly as {@link Reviewer.conventionsFile} is: from the diff's base
+   * ref via `git show` when there is one, from disk otherwise, truncated at
+   * roughly `maxTokens` (default 8000). That is the point of it. A note that
+   * tells the reviewer a design is accepted — and so suppresses the findings
+   * that restate it — is a rule the review is judged by, and a pull request
+   * should not be able to add one to its own run. Keeping it in a file the
+   * base supplies costs one merge of lag, which is the same lag the
+   * conventions document already accepts, and is arguably the point: a newly
+   * accepted design should be agreed before it starts muting findings.
+   *
+   * Use it for what a branch should not be able to widen; keep
+   * {@link Reviewer.criteria} for the framing that travels with the build.
+   *
+   * What it does not buy: the build still decides *whether* to read a criteria
+   * document at all, and that decision is head code, so a branch can drop the
+   * call as easily as it can edit a string. This bounds what a change can add
+   * to the rules of its own review, not whether the reviewer is configured —
+   * the same limit {@link Reviewer.conventionsFile} has, and the reason the
+   * diff a maintainer reads remains the control that matters.
+   */
+  criteriaFile(path: string, maxTokens = 8000): this {
+    this.#criteriaFile = path;
+    this.#criteriaTokens = maxTokens;
     return this;
   }
 
@@ -473,13 +524,23 @@ export class Reviewer implements Validation {
   }
 
   /**
-   * Resolve the conventions document for the prompt: read from the diff's base
-   * ref when there is one (so the change under review cannot edit the rules it
-   * is judged by), from disk otherwise (a local working-tree review), bounded
-   * to the configured token cap. `undefined` when unset or unreadable.
+   * Resolve one of the reviewer's reference documents for the prompt: read
+   * from the diff's base ref when there is one (so the change under review
+   * cannot edit the rules it is judged by), from disk otherwise (a local
+   * working-tree review), bounded to `maxTokens`. `undefined` when no path is
+   * configured, or when the file is unreadable or empty.
+   *
+   * The conventions document and the criteria document differ only in which
+   * path and cap they pass, and in the `what` they are called in a warning and
+   * a truncation note — so they are one read, not two that can drift apart on
+   * which ref they trust.
    */
-  async #resolveConventions(baseRef?: string): Promise<string | undefined> {
-    const path = this.#conventionsFile;
+  async #readReference(
+    path: string | undefined,
+    baseRef: string | undefined,
+    maxTokens: number,
+    what: string,
+  ): Promise<string | undefined> {
     if (path === undefined) return undefined;
     let text: string | undefined;
     if (baseRef !== undefined) {
@@ -491,14 +552,14 @@ export class Reviewer implements Validation {
       if (text === undefined && !this.#quiet) {
         console.warn(
           `[${this.name}] could not read ${path} from ${baseRef} — ` +
-            `reviewing without the conventions document`,
+            `reviewing without the ${what}`,
         );
       }
     } else {
       text = await readTextOrUndefined(path);
     }
     if (text === undefined || text.trim() === "") return undefined;
-    return truncate(text, this.#conventionsTokens, "conventions document");
+    return truncate(text, maxTokens, what);
   }
 
   /**
@@ -883,10 +944,28 @@ export class Reviewer implements Validation {
       diff = truncate(diff, this.#maxDiffTokens);
     }
 
-    // Extra context for a deeper review: the conventions document (read from
-    // the diff base, never the head under review), the changed files' full
-    // contents, and the findings dismissed in earlier discussion rounds.
-    const conventions = await this.#resolveConventions(resolved.baseRef);
+    // Extra context for a deeper review: the conventions document and the
+    // criteria document (both read from the diff base, never the head under
+    // review), the changed files' full contents, and the findings dismissed in
+    // earlier discussion rounds.
+    const conventions = await this.#readReference(
+      this.#conventionsFile,
+      resolved.baseRef,
+      this.#conventionsTokens,
+      "conventions document",
+    );
+    // The effective project notes: what the build set inline, then what the
+    // base's criteria document adds. The inline half travels with the change;
+    // only this half is beyond its reach.
+    const criteriaDoc = await this.#readReference(
+      this.#criteriaFile,
+      resolved.baseRef,
+      this.#criteriaTokens,
+      "criteria document",
+    );
+    const criteria = [this.#criteria, criteriaDoc ?? ""]
+      .filter((part) => part !== "")
+      .join("\n\n");
     let files: string | undefined;
     if (
       this.#fileContextTokens !== undefined && this.#diff.text_() === undefined
@@ -925,7 +1004,7 @@ export class Reviewer implements Validation {
 
     const { system, user } = buildPrompt(
       this.#assessment,
-      this.#criteria,
+      criteria,
       diff,
       extras,
     );

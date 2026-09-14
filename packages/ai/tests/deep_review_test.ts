@@ -177,6 +177,93 @@ Deno.test("conventionsFile without a base ref reads from disk, and truncates", a
   }
 });
 
+// ─── criteriaFile ───────────────────────────────────────────────────────────
+
+Deno.test("criteriaFile reads from the diff BASE ref and extends the inline criteria", async () => {
+  const { fetch, calls } = queuedFetch([claude({ score: 0, findings: [] })]);
+  const git = fakeGit({
+    "origin/master:.github/review-criteria.md":
+      "The walk-up discovery is the accepted design.",
+  });
+  await genericReviewer((r) =>
+    r.provider("claude").apiKey("k").quiet()
+      .diff((d) => d.base("origin/master"))
+      .criteria("Strict TypeScript.")
+      .criteriaFile(".github/review-criteria.md")
+      .exec(git.run).fetch(fetch)
+  ).validate(noRedactionContext("t"));
+  // The read went through git at the base ref: the branch under review cannot
+  // add a note that widens what its own review overlooks.
+  assertEquals(
+    git.calls.some((c) =>
+      c[1] === "show" && c[2] === "origin/master:.github/review-criteria.md"
+    ),
+    true,
+  );
+  // Both halves reach the same slot — the build's own framing, then the base's.
+  const user = JSON.parse(calls[0].body).messages[0].content;
+  assertEquals(user.includes("Additional project notes:"), true);
+  assertEquals(user.includes("Strict TypeScript."), true);
+  assertEquals(
+    user.includes("The walk-up discovery is the accepted design."),
+    true,
+  );
+});
+
+Deno.test("criteriaFile without a base ref reads from disk, and truncates", async () => {
+  const file = await Deno.makeTempFile({ suffix: ".md" });
+  try {
+    await Deno.writeTextFile(file, "note ".repeat(200)); // 1000 chars
+    const { fetch, calls } = queuedFetch([claude({ score: 0, findings: [] })]);
+    await genericReviewer((r) =>
+      r.provider("claude").apiKey("k").quiet()
+        .diff((d) => d.text(DIFF))
+        .criteriaFile(file, 100) // ≈400 chars — forces the cut
+        .fetch(fetch)
+    ).validate(noRedactionContext("t"));
+    const user = JSON.parse(calls[0].body).messages[0].content;
+    assertEquals(user.includes("note note"), true);
+    // The truncation note names this document, not the conventions one.
+    assertEquals(
+      user.includes(
+        "… (criteria document truncated to fit the token budget) …",
+      ),
+      true,
+    );
+  } finally {
+    await Deno.remove(file);
+  }
+});
+
+Deno.test("an unreadable criteria file warns and reviews with the inline criteria alone", async () => {
+  const { fetch, calls } = queuedFetch([claude({ score: 0, findings: [] })]);
+  const git = fakeGit({}); // git show fails
+  const warnings: string[] = [];
+  const warn = console.warn;
+  console.warn = (...a: unknown[]) => void warnings.push(a.join(" "));
+  try {
+    await genericReviewer((r) =>
+      r.provider("claude").apiKey("k")
+        .diff((d) => d.base("origin/master"))
+        .criteria("Strict TypeScript.")
+        .criteriaFile("missing.md")
+        .exec(git.run).fetch(fetch)
+    ).validate(noRedactionContext("t"));
+  } finally {
+    console.warn = warn;
+  }
+  assertEquals(
+    warnings.some((w) =>
+      w.includes("could not read missing.md") &&
+      w.includes("without the criteria document")
+    ),
+    true,
+  );
+  // A missing document is not a missing review: the inline half still lands.
+  const user = JSON.parse(calls[0].body).messages[0].content;
+  assertEquals(user.includes("Strict TypeScript."), true);
+});
+
 // ─── fileContext ────────────────────────────────────────────────────────────
 
 Deno.test("fileContext feeds changed-file contents to review AND verify", async () => {

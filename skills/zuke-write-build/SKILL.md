@@ -277,7 +277,9 @@ it cannot answer "does one exist for this tool?"; only the catalogue
   diagnosed and (opt-in) auto-fixed, with a committable PR suggestion. Override
   `recoverWith()` on the build to apply one fixer to every target. A reviewer
   can go deeper and hold a discussion: `.conventionsFile("AGENTS.md")` (judged
-  against the project's rules, read from the diff base), `.fileContext()` (whole
+  against the project's rules, read from the diff base), `.criteriaFile(...)`
+  (project-specific notes read from that base too — `.criteria(text)` is build
+  code and travels with the change), `.fileContext()` (whole
   changed files, not bare hunks), `.verify()` (adversarial re-check of every
   finding), and `.discussion()` (maintainers refute a finding by replying with
   its id — or, with `.discussion((d) => d.threads())`, by replying in the

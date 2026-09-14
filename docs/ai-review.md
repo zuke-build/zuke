@@ -173,7 +173,7 @@ outage isn't a silent skip either.
 
 ## Reviewing deeper
 
-Three opt-in passes trade a little cost for findings that hold up:
+A few opt-in passes trade a little cost for findings that hold up:
 
 - **`.conventionsFile("AGENTS.md")`** feeds the project's conventions document
   to the model as fenced reference material, so the change is judged against the
@@ -182,6 +182,15 @@ Three opt-in passes trade a little cost for findings that hold up:
   successful `.fetchBase()`), the file is read from that **base** via `git show`
   — never from the head under review, so a pull request cannot rewrite the rules
   it is judged by. A second argument caps its size (default ≈8000 tokens).
+- **`.criteriaFile(".github/review-criteria.md")`** feeds project-specific
+  notes the same way, and from the same **base** ref. It is the base-anchored
+  half of `.criteria(...)`: a note that records an accepted design suppresses
+  the findings that restate it, which makes it a rule the review is judged by,
+  and a pull request should not be able to add one to its own run. `.criteria`
+  itself is build code, evaluated by the build under review, so it is read from
+  the head and cannot be anything else — put what a branch should not be able
+  to widen in the file. The cost is one merge of lag, the same lag the
+  conventions document already accepts.
 - **`.fileContext()`** also sends the full post-image contents of the changed
   files (via `git show HEAD:<path>`, bounded — default ≈12000 tokens), letting
   the model check a suspicion against the surrounding code — the guard two
