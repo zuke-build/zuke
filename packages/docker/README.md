@@ -388,10 +388,10 @@ class DockerLoginSettings extends DockerSettings
     use in CI. The token goes to the child's standard input, which — unlike its
     argv — no other process on the host can read.
 
-    Takes the password. Until this release it took nothing and piped nothing:
-    it appended the flag and left docker reading a stream that was never
-    written, so the safe path this module's own example demonstrated had never
-    actually run. Supplying the token is what makes the flag mean anything.
+    The password is required, because the flag on its own means nothing: it
+    tells docker to read standard input, and this wrapper is what has to put
+    something there. A `--password-stdin` with no writer leaves docker reading
+    a stream that is never written.
   registry(server: string): this
     The registry server (defaults to Docker Hub).
   override protected stdinInput(): string | undefined
