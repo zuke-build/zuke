@@ -2,4 +2,4 @@
 // SPDX-License-Identifier: MIT
 
 /** The `@zuke/cli` version. Kept in sync with deno.json by release-please. */
-export const VERSION = "1.5.1"; // x-release-please-version
+export const VERSION = "1.5.2"; // x-release-please-version

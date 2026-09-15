@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.2](https://github.com/zuke-build/zuke/compare/cli-v1.5.1...cli-v1.5.2) (2026-09-15)
+
+
+### Bug Fixes
+
+* **deno:** resolve Deno the shared way in the wrapper and the global CLI ([#607](https://github.com/zuke-build/zuke/issues/607)) ([e3891f8](https://github.com/zuke-build/zuke/commit/e3891f8ad01608335b3a2701b28371f5a7d407fc))
+
 ## [1.5.1](https://github.com/zuke-build/zuke/compare/cli-v1.5.0...cli-v1.5.1) (2026-09-14)
 
 
