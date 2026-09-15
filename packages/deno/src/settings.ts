@@ -7,6 +7,7 @@
  * shared by the subcommands that execute user code.
  */
 
+import { denoExecutable } from "@zuke/core";
 import { ToolSettings } from "@zuke/core/tooling";
 
 /** A Deno permission domain, as used by `--allow-*` flags. */
@@ -20,11 +21,20 @@ export type DenoPermission =
   | "ffi"
   | "import";
 
-/** Base for all `deno` subcommand settings: binary is the running deno. */
+/** Base for all `deno` subcommand settings: binary is the deno running here. */
 export abstract class DenoSettings extends ToolSettings {
-  /** Default the tool binary to the running `deno` executable. */
+  /**
+   * Default the tool binary to the `deno` running this build, so a project
+   * whose Deno came from the `./zuke` launcher rather than from `PATH` still
+   * works and the subprocess is the same version as its parent.
+   *
+   * {@link denoExecutable} is what answers that: a build compiled with
+   * `deno compile` is not Deno, and spawning its own executable would run the
+   * build again with `test` or `fmt` as a target rather than running Deno, so
+   * that case resolves a real one on `PATH` instead.
+   */
   protected override defaultTool(): string {
-    return Deno.execPath();
+    return denoExecutable();
   }
 }
 

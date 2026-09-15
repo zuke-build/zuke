@@ -930,10 +930,17 @@ class DenoServeSettings extends DenoPermissionSettings
     Assemble the `deno serve` argv.
 
 abstract class DenoSettings extends ToolSettings
-  Base for all `deno` subcommand settings: binary is the running deno.
+  Base for all `deno` subcommand settings: binary is the deno running here.
 
   override protected defaultTool(): string
-    Default the tool binary to the running `deno` executable.
+    Default the tool binary to the `deno` running this build, so a project
+    whose Deno came from the `./zuke` launcher rather than from `PATH` still
+    works and the subprocess is the same version as its parent.
+
+    {@link denoExecutable} is what answers that: a build compiled with
+    `deno compile` is not Deno, and spawning its own executable would run the
+    build again with `test` or `fmt` as a target rather than running Deno, so
+    that case resolves a real one on `PATH` instead.
 
 class DenoTaskSettings extends DenoSettings
   Settings for `deno task`.

@@ -11,8 +11,9 @@
  * await DenoTasks.test((s) => s.allowAll().coverage("cov_profile"));
  * ```
  *
- * The binary defaults to the currently running `deno` executable
- * (`Deno.execPath()`), so builds never depend on PATH lookup; override with
+ * The binary defaults to the currently running `deno` executable, so builds
+ * never depend on PATH lookup — unless the build is a `deno compile` binary and
+ * so is not Deno, which resolves one on `PATH` instead. Override with
  * `.toolPath(...)`.
  */
 

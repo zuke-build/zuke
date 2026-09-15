@@ -1572,7 +1572,7 @@
       "packages/cli": {
         "dependencies": [
           "jsr:@zuke/console@^1.1.0",
-          "jsr:@zuke/core@^1.54.0",
+          "jsr:@zuke/core@^1.55.1",
           "jsr:@zuke/gh@^1.6.0"
         ]
       },
@@ -1608,7 +1608,7 @@
       },
       "packages/deno": {
         "dependencies": [
-          "jsr:@zuke/core@^1.53.0"
+          "jsr:@zuke/core@^1.55.1"
         ]
       },
       "packages/docker": {

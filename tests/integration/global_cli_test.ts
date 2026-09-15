@@ -202,10 +202,11 @@ Deno.test("a forwarded build resolves a real Deno when the CLI is a compiled bin
   // The compiled case, which nothing in-process can otherwise reach: under
   // `deno test` the running executable *is* Deno, so `Deno.execPath()` happens
   // to be the right answer and the bug is invisible. A host that says it is
-  // standalone and names a binary that is not Deno puts the real question to
-  // the resolution — and the build only runs at all if it ignored that name
-  // and found a Deno. The rest of the path is real: the walk up to zuke.json,
-  // the spawn from the root, the target executing, the exit code coming back.
+  // standalone puts the real question to the resolution — the running
+  // executable is then not an answer at all, and the build runs only if a real
+  // Deno was found instead. The rest of the path is real: the walk up to
+  // zuke.json, the spawn from the root, the target executing, the exit code
+  // coming back.
   await withTemp(async (dir) => {
     await Deno.writeTextFile(
       `${dir}/${CONFIG_FILE}`,
@@ -214,7 +215,6 @@ Deno.test("a forwarded build resolves a real Deno when the CLI is a compiled bin
     await Deno.writeTextFile(`${dir}/zuke.ts`, scratchBuild());
     const compiled: DenoHost = {
       standalone: () => true,
-      execPath: () => `${dir}/zuke-compiled-binary`,
       env: (name) => Deno.env.get(name),
       windows: () => Deno.build.os === "windows",
     };

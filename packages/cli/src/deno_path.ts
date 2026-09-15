@@ -16,8 +16,10 @@
  * `zuke ci` becomes `zuke run -A --frozen zuke.ts ci`, whose first argument is
  * not one of the CLI's own commands and is therefore forwarded too. Neither
  * terminates, and neither reports anything: the failure is unbounded process
- * creation rather than a message. `Deno.build.standalone` tells the two cases
- * apart, so the compiled one resolves the real Deno instead.
+ * creation rather than a message. `denoExecutable` in `@zuke/core` is what
+ * tells the two cases apart — the same answer the build CLI's `doc` runner and
+ * the MCP registry's module launch use — so this package adds only what is its
+ * own: where to look when the compiled case has to find a Deno.
  *
  * The order mirrors the launchers, which answer the same question in shell:
  * whatever `PATH` resolves first, then the bootstrap directory they install
@@ -29,7 +31,7 @@
  * @module
  */
 
-import { type AbsolutePath, absolutePath } from "@zuke/core";
+import { type AbsolutePath, absolutePath, denoExecutable } from "@zuke/core";
 import { DENO_INSTALL_DOCS } from "./launcher.ts";
 
 /**
@@ -39,8 +41,6 @@ import { DENO_INSTALL_DOCS } from "./launcher.ts";
 export interface DenoHost {
   /** Whether this process is a `deno compile` binary rather than Deno itself. */
   standalone(): boolean;
-  /** The running executable, which is Deno unless this is a compiled binary. */
-  execPath(): string;
   /** An environment variable's value, or `undefined` when it is unset. */
   env(name: string): string | undefined;
   /** Whether this platform is Windows, where the binary is `deno.exe`. */
@@ -50,7 +50,6 @@ export interface DenoHost {
 /** The real, `Deno`-backed {@link DenoHost}. */
 export const defaultDenoHost: DenoHost = {
   standalone: () => Deno.build.standalone,
-  execPath: () => Deno.execPath(),
   env: (name) => Deno.env.get(name),
   windows: () => Deno.build.os === "windows",
 };
@@ -86,13 +85,15 @@ function installDir(host: DenoHost): AbsolutePath | undefined {
 }
 
 /**
- * The Deno executables to try, in order. Under `deno run` that is the running
- * executable and nothing else; compiled, it is the bare name for the OS to
- * resolve on `PATH`, then the launchers' bootstrap directory.
+ * The Deno executables to try, in order. The first is whatever
+ * {@link denoExecutable} says Deno is here — the running executable under
+ * `deno run`, the bare name for the OS to resolve on `PATH` when compiled —
+ * and the rest is this package's own: the launchers' bootstrap directory, for
+ * the compiled case where `PATH` may have no Deno at all.
  */
 export function denoCandidates(host: DenoHost = defaultDenoHost): string[] {
-  if (!host.standalone()) return [host.execPath()];
-  const candidates = ["deno"];
+  const candidates = [denoExecutable(host.standalone())];
+  if (!host.standalone()) return candidates;
   const install = installDir(host);
   if (install !== undefined) {
     candidates.push(install("bin", host.windows() ? "deno.exe" : "deno").path);

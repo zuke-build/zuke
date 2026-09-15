@@ -6,6 +6,7 @@ import {
   assertRejects,
   assertThrows,
 } from "../../core/tests/_assert.ts";
+import { denoExecutable } from "@zuke/core";
 import { ToolNotFoundError } from "@zuke/core/tooling";
 import { missingTool } from "@zuke/core/tooling/conformance";
 import {
@@ -281,7 +282,12 @@ Deno.test("task: name required, then task args", () => {
   );
 });
 
-Deno.test("the default binary is the running deno executable", () => {
+Deno.test("the default binary is the deno running here, not this process", () => {
+  // Under `deno test` the two are the same, which is the point: the wrapper
+  // spawns the Deno running the build. The distinction that matters is that it
+  // asks `denoExecutable` rather than spawning its own executable — a compiled
+  // build is not Deno, and would run itself with `test` as a target (#587).
+  assertEquals(new DenoTestSettings().argv()[0], denoExecutable());
   assertEquals(new DenoTestSettings().argv()[0], Deno.execPath());
 });
 

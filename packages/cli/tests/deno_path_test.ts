@@ -15,12 +15,12 @@ import {
   spawnDeno,
 } from "../src/deno_path.ts";
 import { launcherBash, launcherPwsh } from "../src/launcher.ts";
+import { denoExecutable } from "@zuke/core";
 
-/** A {@link DenoHost} whose four answers the test dictates. */
+/** A {@link DenoHost} whose three answers the test dictates. */
 function host(overrides: Partial<DenoHost> = {}): DenoHost {
   return {
     standalone: () => true,
-    execPath: () => "/opt/deno/bin/deno",
     env: () => undefined,
     windows: () => false,
     ...overrides,
@@ -39,10 +39,18 @@ function envHost(
 const MISSING = "zuke-no-such-deno-8f3a1c";
 
 Deno.test("running under deno run, the running executable is the only candidate", () => {
-  const candidates = denoCandidates(
-    host({ standalone: () => false, execPath: () => "/usr/local/bin/deno" }),
-  );
-  assertEquals(candidates, ["/usr/local/bin/deno"]);
+  // Which executable is Deno is `denoExecutable`'s answer, shared with the
+  // build CLI and the MCP registry rather than decided again here — so under
+  // `deno test` it is this process, with nothing to look up.
+  const candidates = denoCandidates(host({ standalone: () => false }));
+  assertEquals(candidates, [Deno.execPath()]);
+  assertEquals(candidates, [denoExecutable(false)]);
+});
+
+Deno.test("compiled, the first candidate is the shared answer, not a local one", () => {
+  // The bare name the OS resolves on PATH — the same string core returns for a
+  // process that is not Deno, so the two cannot drift apart.
+  assertEquals(denoCandidates(envHost({}))[0], denoExecutable(true));
 });
 
 Deno.test("compiled, PATH comes first and DENO_INSTALL second", () => {
@@ -161,7 +169,6 @@ Deno.test({
 
 Deno.test("the default host answers from the running process", () => {
   assertEquals(defaultDenoHost.standalone(), false);
-  assertEquals(defaultDenoHost.execPath(), Deno.execPath());
   assertEquals(defaultDenoHost.windows(), Deno.build.os === "windows");
   assertEquals(defaultDenoHost.env("PATH"), Deno.env.get("PATH"));
 });
