@@ -974,34 +974,12 @@ class ZukeBuild extends Build {
       .conventionsFile("AGENTS.md")
       // Accepted design, so the review judges its implementation rather than
       // restating its existence (which it did five times, under five ids, on
-      // #579 — see the rationale beside those ids below).
-      .criteria(
-        "The global `zuke` command (`@zuke/cli`) forwards every command that " +
-          "is not its own (`setup`, `import`, `doc`, `--help`, `--version`) " +
-          "to the nearest `zuke.json` above the working directory and runs " +
-          "the `zuke.ts` beside it with `deno run -A`, exactly as the " +
-          "`./zuke` launcher does. That walk-up discovery is the accepted " +
-          "design (#578): it is how npm, Deno and git find `package.json`, " +
-          "`deno.json` and `.git`, and it is gated like git's " +
-          "`safe.directory` — the root, the build files in it and every " +
-          "ancestor config Deno would read must belong to the caller and the " +
-          "root must not be world-writable. Do not report the forwarding, " +
-          "the ancestor walk, the `-A` run of the caller's own build, or the " +
-          "absence of an opt-in flag as findings; review the gate's " +
-          "implementation for concrete bypasses instead. " +
-          "Separately: when the CLI is a `deno compile` binary it cannot " +
-          "spawn its own executable as Deno (#586), so it resolves one — " +
-          "whatever `PATH` gives, then `${DENO_INSTALL:-~/.deno}/bin/deno`. " +
-          "That order is the accepted design: it is byte-for-byte the order " +
-          "the generated launchers already use in bash and PowerShell, the " +
-          "bootstrap directory is their fallback rather than a pinned copy, " +
-          "and every input to the choice (`PATH`, `DENO_INSTALL`, `HOME`, " +
-          "`USERPROFILE`) is the invoking user's own environment, so " +
-          "preferring one over another moves the lever instead of removing " +
-          "it. Do not report the `PATH`-first ordering, or the environment " +
-          "being read at all, as findings; report a concrete path by which " +
-          "input the *caller did not choose* reaches the spawn.",
-      )
+      // #579 — see the rationale beside those ids below). Read from the diff
+      // base, like the conventions document above and for the same reason: a
+      // note recording an accepted design suppresses the findings that restate
+      // it, which makes it a rule this review is judged by, and a pull request
+      // should not be able to add one to its own run (#589).
+      .criteriaFile(".github/review-criteria.md")
       .fileContext()
       .verify()
       // Engage with the PR thread: a maintainer contests a finding by replying
@@ -1111,7 +1089,7 @@ class ZukeBuild extends Build {
       // with no new argument. `3hq0fvf31l0z2` is the fifth wording of the
       // first ("the previous finding remains in substance", it opens), and
       // the reason the accepted design is now stated in the reviewer's
-      // criteria above: a suppressed finding leaves the review's state, so
+      // criteria document: a suppressed finding leaves the review's state, so
       // its next rewording can never be matched back to it.
       // `1kowaq3p0bgh2` is the same thing happening to #586's Deno
       // resolution: `obiimxnj848z` said the compiled CLI prefers a
@@ -1119,20 +1097,22 @@ class ZukeBuild extends Build {
       // thread, and the reviewer itself marked it fixed — then re-issued it
       // against unchanged code under this id, with no new argument and the
       // same remedy. The rebuttal stands on the thread and in the criteria
-      // above: the order is byte-for-byte the launchers\' own, PATH first and
+      // document: the order is byte-for-byte the launchers' own, PATH first and
       // `${DENO_INSTALL:-~/.deno}/bin/deno` second, and every input to the
       // choice is the caller\'s own environment, so preferring one over
       // another moves the lever rather than removing it. A test now pins the
-      // two orders to each other. `37q55zy2rwy3t` is not suppressed: it reads
-      // the criteria paragraph above as planted prompt injection, which gets
-      // the premise wrong — first-party build code, reviewed in the PR that
-      // changes it, is not attacker-controlled, and `.criteria(...)` is the
-      // API\'s own way to state an accepted design. The real asymmetry it
-      // gestures at — criteria run from the PR head while `conventionsFile`
-      // is deliberately read from the diff base — is #589, answered there
-      // rather than by silencing the finding. The next run refuted that
-      // framing itself, twice, in its own words: repository-owned review
-      // criteria, not attacker-controlled input.
+      // two orders to each other. `37q55zy2rwy3t` is not suppressed: it read
+      // the criteria paragraph, inline here at the time, as planted prompt
+      // injection, which gets the premise wrong — first-party build code,
+      // reviewed in the PR that changes it, is not attacker-controlled, and
+      // stating an accepted design is what the setting is for. The next run
+      // refuted that framing itself, twice, in its own words: repository-owned
+      // review criteria, not attacker-controlled input. The real asymmetry it
+      // gestured at — criteria read from the PR head while `conventionsFile`
+      // is deliberately read from the diff base — was #589, and it is closed
+      // rather than argued: `.criteriaFile(...)` above reads this reviewer's
+      // accepted designs from the base, so the paragraph is no longer
+      // editable by the change it judges.
       // `2d10cq6cfeofm` is the third wording of the Deno resolution finding,
       // issued one run after the reviewer marked the second fixed, against
       // the same unchanged file. The ladder is the documented one — high,
@@ -1142,8 +1122,8 @@ class ZukeBuild extends Build {
       // so this entry is the one that can finally absorb the next
       // restatement instead of yielding another id. If it does not, the loop
       // stops here rather than growing this list one push at a time: the
-      // answer is on the threads, the design is in the criteria above, and
-      // the decision is the maintainer\'s.
+      // answer is on the threads, the design is in the criteria document, and
+      // the decision is the maintainer's.
       // cspell:ignore kowaq bgh zy rwy cq cfeofm
       // cspell:ignore myee fmcx ownw eav zbigfl oldslqkyj vnfjvb bja rj xp dtit
       // cspell:ignore uhzbksic lk fag hqxu trsbgqqlurzb ilv ls kom amw
@@ -1202,6 +1182,12 @@ class ZukeBuild extends Build {
       .comment("append")
       // The built-in rubric already covers clarity, cohesion, tests, and docs;
       // `.criteria(...)` adds just the project-specific conventions on top.
+      // These stay inline — read from the head — rather than moving to a
+      // `.criteriaFile(...)` the way the security reviewer's accepted designs
+      // did. That setting exists for a branch *widening* what its own review
+      // overlooks, and every clause below tightens instead: it asks for more
+      // findings, never fewer. A branch making its own review stricter is not
+      // the risk, so these travel with the build that declares them.
       .criteria(
         "This is a strict, dependency-free TypeScript codebase on Deno: no " +
           "`any`, no `as` or non-null assertions, and the public API is shaped " +
