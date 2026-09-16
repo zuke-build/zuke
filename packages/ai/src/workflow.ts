@@ -254,13 +254,21 @@ function assertSafeRef(value: string, field: string): void {
   }
 }
 
+/** A resolved {@link ReviewCommandSettings}: the command text, and its secrets. */
+interface ReviewCommand {
+  /** The command a comment must start with. */
+  readonly text: string;
+  /** The secrets the command job's review step receives. */
+  readonly secrets: readonly string[];
+}
+
 /**
  * Resolve the command settings, rejecting a command that could break out of
  * the expression it is quoted in, and a secret name Actions would not accept.
  */
 function resolveCommand(
   configure: Configure<ReviewCommandSettings>,
-): ReviewCommandSettings {
+): ReviewCommand {
   const command = configure(new ReviewCommandSettings());
   const text = command.text_;
   if (text === undefined || !SAFE_COMMAND.test(text)) {
@@ -278,7 +286,7 @@ function resolveCommand(
       );
     }
   }
-  return command;
+  return { text, secrets: command.secrets_ };
 }
 
 /** Resolve the env var name for a parameter — honours `.env(...)` overrides. */
@@ -333,7 +341,7 @@ function azureRef(name: string): string {
 class AiReviewWorkflow extends CiFile {
   readonly #spec: AiReviewWorkflowSpec;
   /** The resolved comment command, when the spec declares one. */
-  readonly #command?: ReviewCommandSettings;
+  readonly #command?: ReviewCommand;
 
   constructor(spec: AiReviewWorkflowSpec) {
     const host = spec.host ?? "github";
@@ -397,9 +405,10 @@ class AiReviewWorkflow extends CiFile {
 
   /**
    * One GitHub job of this workflow: the prelude core renders, a job-level
-   * timeout, the `if:` that gates it, and `pull-requests: write` when the
-   * reviewers comment — the two jobs differ only in their gate and their
-   * steps.
+   * timeout and concurrency group, the `if:` that gates it, and
+   * `pull-requests: write` when the reviewers comment — the two jobs differ
+   * only in their gate, their steps, and where the pull request's number is
+   * in the event.
    */
   #githubJob(
     id: string,
@@ -407,12 +416,27 @@ class AiReviewWorkflow extends CiFile {
     gate: string,
     steps: CiJob["steps"],
     comments: boolean,
+    pull: string,
   ): CiJob {
     return {
       id,
       name,
       runsOn: "ubuntu-latest",
       if: `\${{ ${gate} }}`,
+      // One run per pull request per job, the newer cancelling the older — on
+      // the job, not the workflow. Keyed on the pull request rather than
+      // `github.ref`, which is the default branch for every comment-started
+      // run. And on the job because a skipped job never enters its group,
+      // whereas a run whose jobs are all skipped still enters a workflow-level
+      // one: the review's own comment, posted as an app, fires `issue_comment`
+      // again, and that run — skipped by the bot check — would otherwise
+      // cancel the review still posting it. A push to the pull request
+      // likewise restarts only the `pull_request` job, never a maintainer's
+      // in-flight command.
+      concurrency: {
+        group: `ai-review-\${{ github.workflow }}-${id}-\${{ ${pull} }}`,
+        cancelInProgress: true,
+      },
       // The write scope sits on the job that posts, not on the workflow: with
       // two jobs, a workflow-level write is broader than either needs, and
       // zizmor's excessive-permissions audit says so.
@@ -513,27 +537,29 @@ class AiReviewWorkflow extends CiFile {
         },
       ],
       reviewers.commentEnabled,
+      "github.event.pull_request.number",
     );
     const jobs = [review];
     const command = this.#command;
-    if (command !== undefined && command.text_ !== undefined) {
+    if (command !== undefined) {
       // No base fetch and no `ZUKE_REVIEW_BASE`: the reviewers fetch the pull
       // request `ZUKE_REVIEW_PR` names and diff its merge against the base it
       // was merged onto, which needs nothing from the checkout but a remote.
       const commandEnv: Record<string, string> = { ...env };
-      for (const name of command.secrets_) commandEnv[name] = githubRef(name);
+      for (const name of command.secrets) commandEnv[name] = githubRef(name);
       commandEnv[REVIEW_PR_ENV] = "${{ github.event.issue.number }}";
       commandEnv[REVIEW_COMMENT_ENV] = "${{ github.event.comment.id }}";
       jobs.push(this.#githubJob(
         "commandReview",
         "AI review on command",
-        AiReviewWorkflow.#commandGate(command.text_),
+        AiReviewWorkflow.#commandGate(command.text),
         [{
           name: "AI review with Zuke",
           run: `./zuke ${target}`,
           env: commandEnv,
         }],
         reviewers.commentEnabled,
+        "github.event.issue.number",
       ));
     }
     return {
@@ -543,15 +569,8 @@ class AiReviewWorkflow extends CiFile {
         ...(command !== undefined ? { issueComment: ["created"] } : {}),
       },
       permissions: { contents: "read" },
-      // Keyed on the pull request, not `github.ref`: a `pull_request` run's
-      // ref is the pull request's merge ref, but a comment-started run's is
-      // the default branch, which every such run would otherwise share — and
-      // cancel each other in.
-      concurrency: {
-        group:
-          "ai-review-${{ github.workflow }}-${{ github.event.pull_request.number || github.event.issue.number }}",
-        cancelInProgress: true,
-      },
+      // No workflow-level concurrency: each job carries its own, see
+      // `#githubJob` for why.
       jobs,
     };
   }

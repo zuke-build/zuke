@@ -528,7 +528,11 @@ conversation comments as issue comments) and runs only when every clause of its
 comment's text: the comment is on a pull request; its author is not a bot
 account; the author's `author_association` is `OWNER`, `MEMBER` or
 `COLLABORATOR` (never `CONTRIBUTOR`, which anyone with one merged pull request
-carries); and the body starts with the command. `startsWith` is
+carries); and the body starts with the command. Note what those associations
+are: `MEMBER` is membership of the organisation and `COLLABORATOR` any direct
+collaborator, a read-only one included — neither implies write access. Anyone in
+that set can start a run that holds the reviewers' keys and spends their budget,
+which is the same set the discussion feature trusts. `startsWith` is
 case-insensitive, and a reply that quotes the command (`> @zuke-build review`)
 does not start a run. The comment body is matched in the expression and never
 interpolated into a `run:` line.

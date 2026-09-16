@@ -111,7 +111,10 @@ boundaries, and the design-principle arguments behind the list below:
   only to mint a token narrowed to `pull_requests` and `issues` write, so the
   review posts as `zuke-build[bot]`; nothing the release needs is minted. The
   maintainer's comment is the human gate, and the gate is the job's `if:`, every
-  clause of which reads metadata GitHub asserts.
+  clause of which reads metadata GitHub asserts. That gate admits every
+  organisation member and every direct collaborator, a read-only one included:
+  anyone in that set can start a run that spends the OpenAI budget, though never
+  one that executes their code.
 
 ## Verifying a release
 

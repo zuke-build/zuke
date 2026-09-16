@@ -18,7 +18,11 @@
  * @module
  */
 
-import { GhTasks } from "@zuke/gh";
+import {
+  type GhAppTokenResult,
+  type GhAppTokenSettings,
+  GhTasks,
+} from "@zuke/gh";
 import { ACTION_SLUG } from "./action_release.ts";
 import { type AppCredentials, resolveAppCredentials } from "./website_sync.ts";
 
@@ -41,9 +45,12 @@ const API = "https://api.github.com";
 export async function mintReviewToken(
   credentials: AppCredentials,
   repo: string,
+  appToken: (
+    configure: (s: GhAppTokenSettings) => GhAppTokenSettings,
+  ) => Promise<GhAppTokenResult> = GhTasks.appToken,
 ): Promise<string> {
   const [owner, name] = repo.split("/");
-  const { token } = await GhTasks.appToken((s) =>
+  const { token } = await appToken((s) =>
     s
       .appId(credentials.appId)
       .privateKey(credentials.privateKey)

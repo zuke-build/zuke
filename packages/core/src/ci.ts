@@ -262,6 +262,14 @@ export interface CiJob {
   if?: string;
   /** Fail the job if it runs longer than this many minutes. */
   timeoutMinutes?: number;
+  /**
+   * A concurrency group for this job alone (GitHub only), as opposed to the
+   * pipeline-level {@link CiPipeline.concurrency}. A job the `if:` skips never
+   * enters its group, whereas a run whose every job is skipped still enters the
+   * pipeline's — and, with `cancelInProgress`, cancels the run it shares the
+   * group with. Use it when a trigger can fire runs that do no work.
+   */
+  concurrency?: CiConcurrency;
   /** The steps to run, in order. Defaults to a single step that runs the build. */
   steps?: CiStep[];
 }
@@ -790,6 +798,12 @@ function github(pipeline: CiPipeline): YamlValue {
         }
         : undefined,
       env: job.env,
+      concurrency: job.concurrency
+        ? {
+          group: job.concurrency.group,
+          "cancel-in-progress": job.concurrency.cancelInProgress,
+        }
+        : undefined,
       steps,
     };
   }

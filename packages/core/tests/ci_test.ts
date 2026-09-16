@@ -853,6 +853,23 @@ Deno.test("github: pull-request types and branch protection triggers render", ()
   assertStringIncludes(yaml, "branch_protection_rule: {}");
 });
 
+Deno.test("a job-level concurrency group renders on the job, not the workflow", () => {
+  const yaml = generateCi({
+    triggers: { pullRequest: [] },
+    jobs: [{
+      id: "one",
+      concurrency: { group: "one-${{ github.ref }}", cancelInProgress: true },
+      steps: [{ run: "x" }],
+    }],
+  }, "github");
+  assertStringIncludes(
+    yaml,
+    '    concurrency:\n      group: "one-${{ github.ref }}"\n      cancel-in-progress: true',
+  );
+  assertEquals(yaml.startsWith("name:"), true);
+  assertEquals(yaml.includes("\nconcurrency:"), false);
+});
+
 Deno.test("issueComment renders an issue_comment trigger with its activity types", () => {
   const yaml = generateCi({
     triggers: { pullRequest: [], issueComment: ["created"] },

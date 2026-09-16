@@ -51,13 +51,13 @@ Deno.test("the generated YAML carries the right triggers, permissions, concurren
   assertStringIncludes(yaml, "pull_request: {}");
   // Comment is enabled on at least one reviewer → pull-requests write, on the
   // job that posts; the workflow itself stays read-only.
-  assertStringIncludes(yaml, "permissions:\n  contents: read\nconcurrency:");
+  assertStringIncludes(yaml, "permissions:\n  contents: read\njobs:");
   assertStringIncludes(
     yaml,
     "    permissions:\n      contents: read\n      pull-requests: write",
   );
-  // Concurrency keyed by workflow + ref, cancel-in-progress true.
-  assertStringIncludes(yaml, "concurrency:\n  group:");
+  // Concurrency on the job, cancel-in-progress true.
+  assertStringIncludes(yaml, "    concurrency:\n      group:");
   assertStringIncludes(yaml, "cancel-in-progress: true");
   // Fork gating, on the pull_request event by name.
   assertStringIncludes(
@@ -534,16 +534,31 @@ Deno.test("the command job carries the named secrets and no base fetch; the pull
   assertStringIncludes(commandJob, "timeout-minutes: 15");
 });
 
-Deno.test("concurrency is keyed on the pull request, which both events name", () => {
-  // `github.ref` is the default branch for every comment-started run, so
-  // keying on it would make them cancel one another.
-  for (const yaml of [commandBuild(), dualBuild().wf.render()]) {
-    assertStringIncludes(
-      yaml,
-      'group: "ai-review-${{ github.workflow }}-${{ github.event.pull_request.number || github.event.issue.number }}"',
-    );
-    assertEquals(yaml.includes("${{ github.ref }}"), false);
-  }
+Deno.test("concurrency is per job and keyed on the pull request, never on the workflow", () => {
+  // The review's own comment, posted as an app, fires `issue_comment` again.
+  // That run is skipped by the bot check — but a workflow-level group would
+  // still admit it, and cancel-in-progress would cancel the review mid-post.
+  // A skipped job never enters a job-level group. `github.ref` is the default
+  // branch for every comment-started run, so the key is the pull request.
+  const yaml = commandBuild();
+  assertEquals(yaml.includes("\nconcurrency:"), false);
+  assertEquals(yaml.includes("${{ github.ref }}"), false);
+  const [reviewJob, commandJob] = yaml.split("  commandReview:");
+  assertStringIncludes(
+    reviewJob,
+    '    concurrency:\n      group: "ai-review-${{ github.workflow }}-review-${{ github.event.pull_request.number }}"\n      cancel-in-progress: true',
+  );
+  assertStringIncludes(
+    commandJob,
+    '    concurrency:\n      group: "ai-review-${{ github.workflow }}-commandReview-${{ github.event.issue.number }}"\n      cancel-in-progress: true',
+  );
+  // The same shape without a command: one job, its own group.
+  const plain = dualBuild().wf.render();
+  assertEquals(plain.includes("\nconcurrency:"), false);
+  assertStringIncludes(
+    plain,
+    "-review-${{ github.event.pull_request.number }}",
+  );
 });
 
 Deno.test("without a command there is no issue_comment trigger and no second job", () => {

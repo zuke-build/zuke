@@ -15,9 +15,11 @@ import {
 import { captureLines } from "../packages/core/tests/_console.ts";
 import {
   acknowledgeReviewCommand,
+  mintReviewToken,
   reviewCommentToken,
 } from "../build/review_app.ts";
 import type { AppCredentials } from "../build/website_sync.ts";
+import { GhAppTokenSettings } from "../packages/gh/mod.ts";
 
 /** A reader over a fixed env map. */
 function env(
@@ -186,4 +188,32 @@ Deno.test("acknowledgeReviewCommand never throws: a refusal or a network error i
   });
   assertStringIncludes(lines.join("\n"), "HTTP 403");
   assertStringIncludes(lines.join("\n"), "offline");
+});
+
+Deno.test("mintReviewToken asks for exactly the scopes the review posts with", async () => {
+  // The scope is the security claim SECURITY.md makes: comments and inline
+  // threads, plus the reaction — nothing the release needs. A widening here
+  // must fail a test, not pass the gate.
+  let settings: GhAppTokenSettings | undefined;
+  const token = await mintReviewToken(
+    { appId: "12345", privateKey: "pem" },
+    "zuke-build/zuke",
+    (configure) => {
+      settings = configure(new GhAppTokenSettings());
+      return Promise.resolve({
+        token: "minted",
+        expiresAt: "2026-01-01T00:00:00Z",
+        installationId: 1,
+      });
+    },
+  );
+  assertEquals(token, "minted");
+  assertEquals(settings?.appId_, "12345");
+  assertEquals(settings?.privateKey_, "pem");
+  assertEquals(settings?.owner_, "zuke-build");
+  assertEquals(settings?.repositories_, ["zuke"]);
+  assertEquals(settings?.permissions_, {
+    pull_requests: "write",
+    issues: "write",
+  });
 });

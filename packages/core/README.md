@@ -3072,6 +3072,12 @@ interface CiJob
     `condition:`. Ignored on GitLab. Use it to e.g. skip forked pull requests.
   timeoutMinutes?: number
     Fail the job if it runs longer than this many minutes.
+  concurrency?: CiConcurrency
+    A concurrency group for this job alone (GitHub only), as opposed to the
+    pipeline-level {@link CiPipeline.concurrency}. A job the `if:` skips never
+    enters its group, whereas a run whose every job is skipped still enters the
+    pipeline's — and, with `cancelInProgress`, cancels the run it shares the
+    group with. Use it when a trigger can fire runs that do no work.
   steps?: CiStep[]
     The steps to run, in order. Defaults to a single step that runs the build.
 
