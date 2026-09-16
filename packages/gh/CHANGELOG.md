@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.11.0](https://github.com/zuke-build/zuke/compare/gh-v1.10.0...gh-v1.11.0) (2026-09-16)
+
+
+### Features
+
+* **gh:** publish the action's GitHub release from the build, and reconcile missing ones ([#614](https://github.com/zuke-build/zuke/issues/614)) ([112c482](https://github.com/zuke-build/zuke/commit/112c482ac902702d242a33f7b45edc6b8ec9d739)), closes [#613](https://github.com/zuke-build/zuke/issues/613)
+
 ## [1.10.0](https://github.com/zuke-build/zuke/compare/gh-v1.9.0...gh-v1.10.0) (2026-09-10)
 
 
